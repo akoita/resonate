@@ -104,3 +104,30 @@ export async function refreshSmartAccount(token: string) {
 export async function deploySmartAccountSelf(token: string) {
   return apiRequest<WalletRecord>("/wallet/aa/deploy", { method: "POST" }, token);
 }
+
+export async function configurePaymaster(
+  token: string,
+  input: { sponsorMaxUsd: number; paymasterAddress: string }
+) {
+  return apiRequest<{ status: string }>("/wallet/paymaster", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, token);
+}
+
+export async function getPaymasterStatus(token: string, userId?: string) {
+  const query = userId ? `?userId=${encodeURIComponent(userId)}` : "";
+  return apiRequest<{
+    sponsorMaxUsd: number;
+    paymasterAddress: string;
+    spentUsd?: number;
+  }>(`/wallet/paymaster${query}`, {}, token);
+}
+
+export async function resetPaymaster(token: string, userId: string) {
+  return apiRequest<{ status: string }>(
+    "/wallet/paymaster/reset",
+    { method: "POST", body: JSON.stringify({ userId }) },
+    token
+  );
+}
