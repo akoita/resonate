@@ -129,16 +129,21 @@ export class CatalogService implements OnModuleInit {
     });
   }
 
-  async search(query: string, filters?: { stemType?: string; hasIpnft?: boolean }) {
+  async search(
+    query: string,
+    filters?: { stemType?: string; hasIpnft?: boolean; limit?: number }
+  ) {
     const cacheKey = JSON.stringify({
       query,
       stemType: filters?.stemType ?? null,
       hasIpnft: filters?.hasIpnft ?? null,
+      limit: filters?.limit ?? null,
     });
     const cached = this.searchCache.get(cacheKey);
     if (cached && Date.now() - cached.cachedAt < this.cacheTtlMs) {
       return { items: cached.items };
     }
+    const cappedLimit = Math.min(Math.max(filters?.limit ?? 50, 1), 100);
     const stemsWhere =
       filters?.hasIpnft === undefined && !filters?.stemType
         ? undefined
@@ -162,7 +167,7 @@ export class CatalogService implements OnModuleInit {
         stems: stemsWhere,
       },
       include: { stems: true },
-      take: 50,
+      take: cappedLimit,
     });
     this.searchCache.set(cacheKey, { items, cachedAt: Date.now() });
     return { items };
