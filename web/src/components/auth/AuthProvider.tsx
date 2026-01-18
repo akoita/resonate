@@ -58,7 +58,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     } catch {
       return null;
     }
-  }, [resolveRole]);
+  }, []);
 
   useEffect(() => {
     const storedToken = localStorage.getItem(TOKEN_KEY);
