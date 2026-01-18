@@ -2,7 +2,7 @@ import { Button } from "../components/ui/Button";
 
 export default function Home() {
   return (
-    <main style={{ padding: "32px" }}>
+    <main>
       <h1>Resonate</h1>
       <p>Artist tools (MVP)</p>
       <div style={{ display: "flex", gap: "12px", marginTop: "16px" }}>
