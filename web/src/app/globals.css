@@ -219,6 +219,35 @@ a {
   font-size: 12px;
 }
 
+.queue-item-active {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px rgba(124, 92, 255, 0.4);
+}
+
+.player-progress {
+  margin-top: var(--space-4);
+}
+
+.player-time {
+  display: flex;
+  justify-content: space-between;
+  color: var(--color-muted);
+  font-size: 12px;
+  margin-top: var(--space-2);
+}
+
+.player-range {
+  width: 100%;
+  accent-color: var(--color-accent);
+}
+
+.player-volume {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
 .upload-grid {
   display: grid;
   grid-template-columns: 1fr 320px;
