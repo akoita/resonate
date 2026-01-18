@@ -9,10 +9,17 @@ import {
 
 @Injectable()
 export class CatalogService implements OnModuleInit {
+  private searchCache = new Map<
+    string,
+    { items: unknown[]; cachedAt: number }
+  >();
+  private readonly cacheTtlMs = 30_000;
+
   constructor(private readonly eventBus: EventBus) {}
 
   onModuleInit() {
     this.eventBus.subscribe("stems.uploaded", (event: StemsUploadedEvent) => {
+      this.clearCache();
       prisma.track
         .create({
           data: {
@@ -31,12 +38,13 @@ export class CatalogService implements OnModuleInit {
               ? new Date(event.metadata.releaseDate)
               : undefined,
             explicit: event.metadata?.explicit ?? false,
-          },
+          } as any,
         })
         .catch(() => null);
     });
 
     this.eventBus.subscribe("stems.processed", async (event: StemsProcessedEvent) => {
+      this.clearCache();
       if (event.stems?.length) {
         await prisma.stem.createMany({
           data: event.stems.map((stem) => ({
@@ -57,6 +65,7 @@ export class CatalogService implements OnModuleInit {
     });
 
     this.eventBus.subscribe("ipnft.minted", async (event: IpNftMintedEvent) => {
+      this.clearCache();
       await prisma.stem
         .update({
           where: { id: event.stemId },
@@ -78,6 +87,7 @@ export class CatalogService implements OnModuleInit {
     releaseDate?: string;
     explicit?: boolean;
   }) {
+    this.clearCache();
     return prisma.track.create({
       data: {
         artistId: input.artistId,
@@ -92,7 +102,7 @@ export class CatalogService implements OnModuleInit {
         label: input.label,
         releaseDate: input.releaseDate ? new Date(input.releaseDate) : undefined,
         explicit: input.explicit ?? false,
-      },
+      } as any,
       include: { stems: true },
     });
   }
@@ -111,6 +121,7 @@ export class CatalogService implements OnModuleInit {
       status: string;
     }>,
   ) {
+    this.clearCache();
     return prisma.track.update({
       where: { id: trackId },
       data: input,
@@ -119,6 +130,15 @@ export class CatalogService implements OnModuleInit {
   }
 
   async search(query: string, filters?: { stemType?: string; hasIpnft?: boolean }) {
+    const cacheKey = JSON.stringify({
+      query,
+      stemType: filters?.stemType ?? null,
+      hasIpnft: filters?.hasIpnft ?? null,
+    });
+    const cached = this.searchCache.get(cacheKey);
+    if (cached && Date.now() - cached.cachedAt < this.cacheTtlMs) {
+      return { items: cached.items };
+    }
     const stemsWhere =
       filters?.hasIpnft === undefined && !filters?.stemType
         ? undefined
@@ -144,6 +164,11 @@ export class CatalogService implements OnModuleInit {
       include: { stems: true },
       take: 50,
     });
+    this.searchCache.set(cacheKey, { items, cachedAt: Date.now() });
     return { items };
+  }
+
+  private clearCache() {
+    this.searchCache.clear();
   }
 }
