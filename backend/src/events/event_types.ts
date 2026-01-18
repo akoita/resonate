@@ -56,7 +56,7 @@ export interface SessionStartedEvent extends BaseEvent {
   sessionId: string;
   userId: string;
   budgetCapUsd: number;
-  preferences: Record<string, string>;
+  preferences: Record<string, unknown>;
 }
 
 export interface LicenseGrantedEvent extends BaseEvent {
@@ -72,6 +72,23 @@ export interface SessionEndedEvent extends BaseEvent {
   eventName: "session.ended";
   sessionId: string;
   spentTotalUsd: number;
+  reason: string;
+}
+
+export interface AgentTrackSelectedEvent extends BaseEvent {
+  eventName: "agent.track_selected";
+  sessionId: string;
+  trackId: string;
+  strategy: string;
+  preferences: Record<string, unknown>;
+}
+
+export interface AgentDecisionMadeEvent extends BaseEvent {
+  eventName: "agent.decision_made";
+  sessionId: string;
+  trackId: string;
+  licenseType: "personal" | "remix" | "commercial";
+  priceUsd: number;
   reason: string;
 }
 
@@ -119,6 +136,8 @@ export type ResonateEvent =
   | SessionStartedEvent
   | LicenseGrantedEvent
   | SessionEndedEvent
+  | AgentTrackSelectedEvent
+  | AgentDecisionMadeEvent
   | PaymentInitiatedEvent
   | PaymentSettledEvent
   | WalletFundedEvent

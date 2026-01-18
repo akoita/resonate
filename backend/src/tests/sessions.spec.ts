@@ -1,4 +1,6 @@
 import { SessionsService } from "../modules/sessions/sessions.service";
+import { EventBus } from "../modules/shared/event_bus";
+import { AgentOrchestrationService } from "../modules/sessions/agent_orchestration.service";
 
 const sessionStore: Record<string, any> = {
   "session-1": {
@@ -46,7 +48,9 @@ describe("sessions", () => {
       spend: async () => ({ allowed: true, remaining: 4 }),
       setBudget: async () => ({}),
     } as any;
-    const service = new SessionsService(walletService);
+    const eventBus = new EventBus();
+    const agentService = new AgentOrchestrationService(eventBus);
+    const service = new SessionsService(walletService, eventBus, agentService);
     const result = await service.playTrack({
       sessionId: "session-1",
       trackId: "track-1",
