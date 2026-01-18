@@ -2,11 +2,12 @@ import { Button } from "../../../components/ui/Button";
 import { Card } from "../../../components/ui/Card";
 import { Input } from "../../../components/ui/Input";
 
-const stems = [
-  { name: "vocals.wav", status: "Processing" },
-  { name: "drums.wav", status: "Ready" },
-  { name: "bass.wav", status: "Ready" },
+  const stems = [
+  { name: "vocals.wav", status: "Processing", progress: 60 },
+  { name: "drums.wav", status: "Ready", progress: 100 },
+  { name: "bass.wav", status: "Ready", progress: 100 },
 ];
+  const allReady = stems.every((stem) => stem.status === "Ready");
 
 export default function ArtistUploadPage() {
   return (
@@ -16,13 +17,21 @@ export default function ArtistUploadPage() {
         <p className="home-subtitle">
           Drag and drop your audio file to begin stem separation.
         </p>
-        <div className="upload-drop">Drop audio file here</div>
+        <div className="upload-drop upload-drop-active">
+          Drop audio file here
+        </div>
         <div className="upload-list">
           {stems.map((stem) => (
             <div key={stem.name} className="upload-item">
               <div>
                 <div>{stem.name}</div>
                 <div className="upload-status">{stem.status}</div>
+                <div className="upload-progress">
+                  <div
+                    className="upload-progress-bar"
+                    style={{ width: `${stem.progress}%` }}
+                  />
+                </div>
               </div>
               <Button variant="ghost">Preview</Button>
             </div>
@@ -44,7 +53,9 @@ export default function ArtistUploadPage() {
             Commercial price (USDC)
             <Input name="commercialPrice" placeholder="25" />
           </label>
-          <Button>Publish release</Button>
+          <Button variant={allReady ? "primary" : "ghost"}>
+            Publish release
+          </Button>
         </div>
       </Card>
     </main>
