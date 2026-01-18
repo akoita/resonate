@@ -6,6 +6,8 @@ import { AgentOrchestrationService, AgentPreferences } from "./agent_orchestrati
 
 @Injectable()
 export class SessionsService {
+  private playlistCache = new Map<string, { items: unknown[]; cachedAt: number }>();
+  private readonly playlistTtlMs = 15_000;
   constructor(
     private readonly walletService: WalletService,
     private readonly eventBus: EventBus,
@@ -123,11 +125,18 @@ export class SessionsService {
   }
 
   async getPlaylist(limit = 10) {
+    const cappedLimit = Math.min(Math.max(limit, 1), 50);
+    const cacheKey = `playlist:${cappedLimit}`;
+    const cached = this.playlistCache.get(cacheKey);
+    if (cached && Date.now() - cached.cachedAt < this.playlistTtlMs) {
+      return { items: cached.items };
+    }
     const items = await prisma.track.findMany({
       orderBy: { createdAt: "desc" },
-      take: limit,
+      take: cappedLimit,
       include: { stems: true },
     });
+    this.playlistCache.set(cacheKey, { items, cachedAt: Date.now() });
     return { items };
   }
 }
