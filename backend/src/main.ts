@@ -1,11 +1,12 @@
 import "reflect-metadata";
 import { randomUUID } from "crypto";
 import { NestFactory } from "@nestjs/core";
+import { type NextFunction, type Request, type Response } from "express";
 import { AppModule } from "./modules/app.module";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.use((req, res, next) => {
+  app.use((req: Request, res: Response, next: NextFunction) => {
     const incoming = req.headers["x-request-id"];
     const requestId = Array.isArray(incoming) ? incoming[0] : incoming;
     const id = requestId ?? randomUUID();

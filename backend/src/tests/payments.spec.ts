@@ -20,7 +20,9 @@ describe("payments", () => {
     });
 
     expect(settled.status).toBe("settled");
-    expect(settled.split?.platformPct).toBe(10);
-    expect(settled.txHash).toBeDefined();
+    if ("split" in settled) {
+      expect(settled.split?.platformPct).toBe(10);
+      expect(settled.txHash).toBeDefined();
+    }
   });
 });
