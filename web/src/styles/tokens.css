@@ -18,5 +18,6 @@
   --space-5: 24px;
   --space-6: 32px;
 
-  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-sans: var(--font-geist-sans), "Inter", system-ui, -apple-system,
+    sans-serif;
 }
