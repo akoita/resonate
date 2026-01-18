@@ -29,6 +29,11 @@ export interface StemsProcessedEvent extends BaseEvent {
   stemIds: string[];
   modelVersion: string;
   durationMs: number;
+  stems?: {
+    id: string;
+    uri: string;
+    type: string;
+  }[];
 }
 
 export interface IpNftMintedEvent extends BaseEvent {
