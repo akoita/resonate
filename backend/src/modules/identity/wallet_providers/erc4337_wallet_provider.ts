@@ -1,6 +1,8 @@
 import { createHash } from "crypto";
+import { Injectable } from "@nestjs/common";
 import { WalletAccount, WalletProvider } from "../wallet_provider";
 
+@Injectable()
 export class Erc4337WalletProvider implements WalletProvider {
   private readonly chainId = Number(process.env.AA_CHAIN_ID ?? 8453);
   private readonly entryPoint = process.env.AA_ENTRY_POINT ?? "0xEntryPoint";
