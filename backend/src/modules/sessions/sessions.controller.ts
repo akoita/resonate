@@ -8,7 +8,20 @@ export class SessionsController {
 
   @UseGuards(AuthGuard("jwt"))
   @Post("start")
-  start(@Body() body: { userId: string; budgetCapUsd: number }) {
+  start(
+    @Body()
+    body: {
+      userId: string;
+      budgetCapUsd: number;
+      preferences?: {
+        mood?: string;
+        energy?: "low" | "medium" | "high";
+        genres?: string[];
+        allowExplicit?: boolean;
+        licenseType?: "personal" | "remix" | "commercial";
+      };
+    }
+  ) {
     return this.sessionsService.startSession(body);
   }
 
@@ -22,6 +35,24 @@ export class SessionsController {
   @Post("play")
   play(@Body() body: { sessionId: string; trackId: string; priceUsd: number }) {
     return this.sessionsService.playTrack(body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("agent/next")
+  agentNext(
+    @Body()
+    body: {
+      sessionId: string;
+      preferences?: {
+        mood?: string;
+        energy?: "low" | "medium" | "high";
+        genres?: string[];
+        allowExplicit?: boolean;
+        licenseType?: "personal" | "remix" | "commercial";
+      };
+    }
+  ) {
+    return this.sessionsService.agentNext(body);
   }
 
   @UseGuards(AuthGuard("jwt"))
