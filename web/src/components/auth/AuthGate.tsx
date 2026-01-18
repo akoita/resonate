@@ -21,11 +21,11 @@ export default function AuthGate({
     <div className="auth-panel">
       <div className="auth-title">{title}</div>
       <div className="auth-actions auth-actions-vertical">
-        <div className="auth-actions-title">Choose a method</div>
+        <div className="auth-actions-title">Connect</div>
         <div className="auth-actions-buttons">
           {privyEnabled ? (
             <Button onClick={connectPrivy} disabled={status === "loading"}>
-              {status === "loading" ? "Connecting..." : "Continue with Privy"}
+              {status === "loading" ? "Connecting..." : "Continue with wallet"}
             </Button>
           ) : null}
         </div>
