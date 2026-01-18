@@ -1,54 +1,57 @@
 import { Injectable } from "@nestjs/common";
-
-interface WalletRecord {
-  userId: string;
-  balanceUsd: number;
-  monthlyCapUsd: number;
-  spentUsd: number;
-}
+import { prisma } from "../../db/prisma";
 
 @Injectable()
 export class WalletService {
-  private wallets = new Map<string, WalletRecord>();
-
-  fundWallet(input: { userId: string; amountUsd: number }) {
-    const wallet = this.getOrCreate(input.userId);
-    wallet.balanceUsd += input.amountUsd;
-    return wallet;
+  async fundWallet(input: { userId: string; amountUsd: number }) {
+    const wallet = await this.getOrCreate(input.userId);
+    return prisma.wallet.update({
+      where: { id: wallet.id },
+      data: { balanceUsd: wallet.balanceUsd + input.amountUsd },
+    });
   }
 
-  setBudget(input: { userId: string; monthlyCapUsd: number }) {
-    const wallet = this.getOrCreate(input.userId);
-    wallet.monthlyCapUsd = input.monthlyCapUsd;
-    return wallet;
+  async setBudget(input: { userId: string; monthlyCapUsd: number }) {
+    const wallet = await this.getOrCreate(input.userId);
+    return prisma.wallet.update({
+      where: { id: wallet.id },
+      data: { monthlyCapUsd: input.monthlyCapUsd },
+    });
   }
 
-  getWallet(userId: string) {
+  async getWallet(userId: string) {
     return this.getOrCreate(userId);
   }
 
-  spend(userId: string, amountUsd: number) {
-    const wallet = this.getOrCreate(userId);
+  async spend(userId: string, amountUsd: number) {
+    const wallet = await this.getOrCreate(userId);
     if (wallet.spentUsd + amountUsd > wallet.monthlyCapUsd) {
       return { allowed: false, remaining: wallet.monthlyCapUsd - wallet.spentUsd };
     }
-    wallet.spentUsd += amountUsd;
-    wallet.balanceUsd -= amountUsd;
-    return { allowed: true, remaining: wallet.monthlyCapUsd - wallet.spentUsd };
+    const updated = await prisma.wallet.update({
+      where: { id: wallet.id },
+      data: {
+        spentUsd: wallet.spentUsd + amountUsd,
+        balanceUsd: wallet.balanceUsd - amountUsd,
+      },
+    });
+    return { allowed: true, remaining: updated.monthlyCapUsd - updated.spentUsd };
   }
 
-  private getOrCreate(userId: string) {
-    const existing = this.wallets.get(userId);
+  private async getOrCreate(userId: string) {
+    const existing = await prisma.wallet.findFirst({ where: { userId } });
     if (existing) {
       return existing;
     }
-    const created: WalletRecord = {
-      userId,
-      balanceUsd: 0,
-      monthlyCapUsd: 0,
-      spentUsd: 0,
-    };
-    this.wallets.set(userId, created);
-    return created;
+    return prisma.wallet.create({
+      data: {
+        userId,
+        address: `wallet_${userId}`,
+        chainId: 0,
+        balanceUsd: 0,
+        monthlyCapUsd: 0,
+        spentUsd: 0,
+      },
+    });
   }
 }
