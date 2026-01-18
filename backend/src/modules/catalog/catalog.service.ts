@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
-import { StemsUploadedEvent } from "../../events/event_types";
+import { StemsProcessedEvent, StemsUploadedEvent } from "../../events/event_types";
 
 @Injectable()
 export class CatalogService implements OnModuleInit {
@@ -28,6 +28,26 @@ export class CatalogService implements OnModuleInit {
               : undefined,
             explicit: event.metadata?.explicit ?? false,
           },
+        })
+        .catch(() => null);
+    });
+
+    this.eventBus.subscribe("stems.processed", async (event: StemsProcessedEvent) => {
+      if (event.stems?.length) {
+        await prisma.stem.createMany({
+          data: event.stems.map((stem) => ({
+            id: stem.id,
+            trackId: event.trackId,
+            type: stem.type,
+            uri: stem.uri,
+          })),
+          skipDuplicates: true,
+        });
+      }
+      await prisma.track
+        .update({
+          where: { id: event.trackId },
+          data: { status: "ready" },
         })
         .catch(() => null);
     });
