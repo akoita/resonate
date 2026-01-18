@@ -176,7 +176,7 @@ a {
 
 .player-grid {
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: 420px 1fr;
   gap: var(--space-5);
 }
 
@@ -186,6 +186,35 @@ a {
   border-radius: var(--radius-lg);
   background: linear-gradient(135deg, #1a1f2e, #0b0d12);
   border: 1px solid var(--color-border);
+}
+
+.player-hero {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.player-label {
+  color: var(--color-muted);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.player-title {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.player-meta-row {
+  display: flex;
+  gap: var(--space-3);
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.queue-compact {
+  display: grid;
+  gap: var(--space-2);
 }
 
 .player-meta {
