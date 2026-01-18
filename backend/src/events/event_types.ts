@@ -54,6 +54,19 @@ export interface RemixCreatedEvent extends BaseEvent {
   txHash?: string;
 }
 
+export interface RecommendationPreferencesUpdatedEvent extends BaseEvent {
+  eventName: "recommendation.preferences_updated";
+  userId: string;
+  preferences: Record<string, unknown>;
+}
+
+export interface RecommendationGeneratedEvent extends BaseEvent {
+  eventName: "recommendation.generated";
+  userId: string;
+  trackIds: string[];
+  strategy: string;
+}
+
 export interface CatalogUpdatedEvent extends BaseEvent {
   eventName: "catalog.updated";
   trackId: string;
@@ -143,6 +156,8 @@ export type ResonateEvent =
   | StemsProcessedEvent
   | IpNftMintedEvent
   | RemixCreatedEvent
+  | RecommendationPreferencesUpdatedEvent
+  | RecommendationGeneratedEvent
   | CatalogUpdatedEvent
   | SessionStartedEvent
   | LicenseGrantedEvent
