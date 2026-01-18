@@ -15,6 +15,7 @@ streaming, remixing, and rights management.
 - `docs/phase0/event_taxonomy_domain_model.md`
 - `docs/phase0/architecture_service_boundaries.md`
 - `docs/phase0/data_model_storage_plan.md`
+- `docs/metadata/music_metadata_standard.md`
 
 ## Repository Structure (Initial)
 
