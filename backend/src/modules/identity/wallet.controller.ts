@@ -2,13 +2,15 @@ import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { Roles } from "../auth/roles.decorator";
 import { SessionKeyService } from "./session_key.service";
+import { SocialRecoveryService } from "./social_recovery.service";
 import { WalletService } from "./wallet.service";
 
 @Controller("wallet")
 export class WalletController {
   constructor(
     private readonly walletService: WalletService,
-    private readonly sessionKeyService: SessionKeyService
+    private readonly sessionKeyService: SessionKeyService,
+    private readonly recoveryService: SocialRecoveryService
   ) {}
 
   @Post("fund")
@@ -74,5 +76,26 @@ export class WalletController {
   @Roles("admin")
   validateSessionKey(@Body() body: { token: string; scope: string }) {
     return this.sessionKeyService.validate(body.token, body.scope);
+  }
+
+  @Post("guardians")
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("admin")
+  setGuardians(@Body() body: { userId: string; guardians: string[]; required: number }) {
+    return this.recoveryService.setGuardians(body.userId, body.guardians, body.required);
+  }
+
+  @Post("recovery/request")
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("admin")
+  requestRecovery(@Body() body: { userId: string; newOwner: string; required: number }) {
+    return this.recoveryService.requestRecovery(body);
+  }
+
+  @Post("recovery/approve")
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("admin")
+  approveRecovery(@Body() body: { requestId: string; guardian: string }) {
+    return this.recoveryService.approveRecovery(body);
   }
 }
