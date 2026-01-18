@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 
@@ -16,9 +17,9 @@ export default function Home() {
         </div>
         <div className="home-actions">
           <Button>Start session</Button>
-          <a href="/artist/upload">
+          <Link href="/artist/upload">
             <Button variant="ghost">Upload stems</Button>
-          </a>
+          </Link>
         </div>
         <div className="home-chips">
           {moods.map((mood) => (
