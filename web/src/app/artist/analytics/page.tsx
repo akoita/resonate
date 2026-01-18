@@ -10,15 +10,51 @@ export default function ArtistAnalyticsPage() {
   return (
     <main style={{ display: "grid", gap: "24px" }}>
       <h1>Artist Analytics</h1>
-      <div className="analytics-grid">
-        <Card title="Total Plays">11,480</Card>
-        <Card title="Total Payout">USDC 765.75</Card>
-        <Card title="Top Track">Neon Drift</Card>
-        <Card title="Followers">3,420</Card>
+      <div className="kpi-row">
+        <Card>
+          <div className="kpi">
+            <div className="kpi-icon">▶</div>
+            <div>
+              <div className="queue-meta">Total Plays</div>
+              <div>11,480</div>
+              <div className="kpi-trend">+8.4% this week</div>
+            </div>
+          </div>
+        </Card>
+        <Card>
+          <div className="kpi">
+            <div className="kpi-icon">$</div>
+            <div>
+              <div className="queue-meta">Total Payout</div>
+              <div>USDC 765.75</div>
+              <div className="kpi-trend">+5.1% this week</div>
+            </div>
+          </div>
+        </Card>
+        <Card>
+          <div className="kpi">
+            <div className="kpi-icon">★</div>
+            <div>
+              <div className="queue-meta">Top Track</div>
+              <div>Neon Drift</div>
+              <div className="kpi-trend">3,120 plays</div>
+            </div>
+          </div>
+        </Card>
+        <Card>
+          <div className="kpi">
+            <div className="kpi-icon">+</div>
+            <div>
+              <div className="queue-meta">Followers</div>
+              <div>3,420</div>
+              <div className="kpi-trend">+120 today</div>
+            </div>
+          </div>
+        </Card>
       </div>
 
       <Card title="Plays over time">
-        <div className="analytics-chart" />
+        <div className="analytics-chart analytics-chart-grid" />
       </Card>
 
       <Card title="Track performance">
