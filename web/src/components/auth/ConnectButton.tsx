@@ -4,9 +4,7 @@ import { Button } from "../ui/Button";
 import { useAuth } from "./AuthProvider";
 
 export default function ConnectButton() {
-  const { status, address, connect, connectPrivy, connectEmbedded, disconnect, error } =
-    useAuth();
-  const embeddedEnabled = process.env.NEXT_PUBLIC_EMBEDDED_WALLET === "true";
+  const { status, address, connectPrivy, disconnect, error } = useAuth();
   const privyEnabled = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID);
 
   if (status === "authenticated" && address) {
@@ -26,17 +24,9 @@ export default function ConnectButton() {
     <div className="auth-actions auth-actions-vertical">
       <div className="auth-actions-title">Connect</div>
       <div className="auth-actions-buttons">
-        <Button onClick={connect} disabled={status === "loading"}>
-          {status === "loading" ? "Connecting..." : "Continue with wallet"}
-        </Button>
         {privyEnabled ? (
-          <Button variant="ghost" onClick={connectPrivy} disabled={status === "loading"}>
-            Continue with email
-          </Button>
-        ) : null}
-        {embeddedEnabled ? (
-          <Button variant="ghost" onClick={connectEmbedded} disabled={status === "loading"}>
-            Use embedded wallet
+          <Button onClick={connectPrivy} disabled={status === "loading"}>
+            {status === "loading" ? "Connecting..." : "Continue with Privy"}
           </Button>
         ) : null}
       </div>
