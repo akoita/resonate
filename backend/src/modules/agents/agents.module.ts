@@ -8,12 +8,16 @@ import { AgentPolicyService } from "./agent_policy.service";
 import { AgentRunnerService } from "./agent_runner.service";
 import { AgentSelectorService } from "./agent_selector.service";
 import { AgentsController } from "./agents.controller";
+import { EmbeddingService } from "../embeddings/embedding.service";
+import { EmbeddingStore } from "../embeddings/embedding.store";
 import { ToolRegistry } from "./tools/tool_registry";
 
 @Module({
   controllers: [AgentsController],
   providers: [
     EventBus,
+    EmbeddingService,
+    EmbeddingStore,
     ToolRegistry,
     AgentPolicyService,
     AgentRunnerService,

@@ -1,6 +1,8 @@
 import { Injectable } from "@nestjs/common";
 import { prisma } from "../../../db/prisma";
 import { calculatePrice, PricingInput } from "../../../pricing/pricing";
+import { EmbeddingService } from "../../embeddings/embedding.service";
+import { EmbeddingStore } from "../../embeddings/embedding.store";
 
 export interface ToolInput {
   [key: string]: unknown;
@@ -19,7 +21,10 @@ export interface Tool {
 export class ToolRegistry {
   private tools = new Map<string, Tool>();
 
-  constructor() {
+  constructor(
+    private readonly embeddingService: EmbeddingService,
+    private readonly embeddingStore: EmbeddingStore
+  ) {
     this.register({
       name: "catalog.search",
       run: async (input) => {
@@ -62,6 +67,28 @@ export class ToolRegistry {
           trackId: input.trackId,
           plays: 0,
           score: 0,
+        };
+      },
+    });
+
+    this.register({
+      name: "embeddings.similarity",
+      run: async (input) => {
+        const query = String(input.query ?? "");
+        const candidateIds = (input.candidates as string[]) ?? [];
+        const queryVector = this.embeddingService.embed(query);
+        for (const trackId of candidateIds) {
+          if (this.embeddingStore.get(trackId)) {
+            continue;
+          }
+          const track = await prisma.track.findUnique({ where: { id: trackId } });
+          const text = `${track?.title ?? ""} ${track?.genre ?? ""}`.trim();
+          if (text) {
+            this.embeddingStore.upsert(trackId, this.embeddingService.embed(text));
+          }
+        }
+        return {
+          ranked: this.embeddingStore.similarity(queryVector, candidateIds),
         };
       },
     });
