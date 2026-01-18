@@ -32,6 +32,14 @@
 - Add `AgentRunnerService` with tool registry and evaluation hooks.
 - Expose `/agents/run` endpoint (internal or admin).
 - Add `agent.evaluated` event for analytics.
+- Add multi-role orchestrator: Selector/Mixer/Negotiator.
+
+## Implemented (Phase 4)
+- Tool registry with catalog + pricing tools (local).
+- Selector/Mixer/Negotiator services wired via orchestrator.
+- `/agents/orchestrate` admin endpoint.
+- Agent orchestration events: `agent.selection`, `agent.mix_planned`,
+  `agent.negotiated`, `agent.evaluated`.
 
 ## Next Steps
 - Integrate Vertex AI tool calling (planned).
