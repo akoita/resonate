@@ -1,6 +1,7 @@
 import { Body, Controller, Post, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { Roles } from "../auth/roles.decorator";
+import { AgentEvaluationService } from "./agent_evaluation.service";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentRunnerService } from "./agent_runner.service";
 
@@ -8,7 +9,8 @@ import { AgentRunnerService } from "./agent_runner.service";
 export class AgentsController {
   constructor(
     private readonly agentRunner: AgentRunnerService,
-    private readonly orchestrator: AgentOrchestratorService
+    private readonly orchestrator: AgentOrchestratorService,
+    private readonly evaluator: AgentEvaluationService
   ) {}
 
   @UseGuards(AuthGuard("jwt"))
@@ -48,5 +50,12 @@ export class AgentsController {
     };
   }) {
     return this.orchestrator.orchestrate(body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("admin")
+  @Post("evaluate")
+  evaluate(@Body() body: { sessions: Parameters<AgentEvaluationService["evaluate"]>[0] }) {
+    return this.evaluator.evaluate(body.sessions);
   }
 }
