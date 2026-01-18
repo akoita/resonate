@@ -1,3 +1,4 @@
+import SocialShare from "../../components/social/SocialShare";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 
@@ -39,6 +40,7 @@ export default function PlayerPage() {
           <span className="queue-meta">Volume</span>
           <input className="player-range" type="range" min="0" max="100" />
         </div>
+        <SocialShare title={currentTrack.name} artist={currentTrack.artist} />
       </Card>
 
       <Card title="Queue">
