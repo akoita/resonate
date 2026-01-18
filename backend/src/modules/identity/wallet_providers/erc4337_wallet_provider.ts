@@ -19,6 +19,7 @@ export class Erc4337WalletProvider implements WalletProvider {
       chainId: this.chainId,
       accountType: "erc4337",
       provider: "erc4337",
+      ownerAddress: userId,
       entryPoint: this.entryPoint,
       factory: this.factory,
       paymaster: this.paymaster,

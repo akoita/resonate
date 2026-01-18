@@ -92,3 +92,15 @@ export async function deploySmartAccount(userId: string, token: string) {
     token
   );
 }
+
+export async function enableSmartAccount(token: string) {
+  return apiRequest<WalletRecord>("/wallet/aa/enable", { method: "POST" }, token);
+}
+
+export async function refreshSmartAccount(token: string) {
+  return apiRequest<WalletRecord>("/wallet/aa/refresh", { method: "POST" }, token);
+}
+
+export async function deploySmartAccountSelf(token: string) {
+  return apiRequest<WalletRecord>("/wallet/aa/deploy", { method: "POST" }, token);
+}

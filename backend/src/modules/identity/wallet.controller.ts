@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { Roles } from "../auth/roles.decorator";
 import { SessionKeyService } from "./session_key.service";
@@ -46,6 +46,24 @@ export class WalletController {
   @Roles("admin")
   deploy(@Body() body: { userId: string }) {
     return this.walletService.deploySmartAccount(body);
+  }
+
+  @Post("aa/enable")
+  @UseGuards(AuthGuard("jwt"))
+  enableSmartAccount(@Req() req: any) {
+    return this.walletService.setProvider({ userId: req.user.userId, provider: "erc4337" });
+  }
+
+  @Post("aa/refresh")
+  @UseGuards(AuthGuard("jwt"))
+  refreshSmartAccount(@Req() req: any) {
+    return this.walletService.refreshWallet({ userId: req.user.userId, provider: "erc4337" });
+  }
+
+  @Post("aa/deploy")
+  @UseGuards(AuthGuard("jwt"))
+  deploySmartAccountForUser(@Req() req: any) {
+    return this.walletService.deploySmartAccount({ userId: req.user.userId });
   }
 
   @Post("paymaster")
