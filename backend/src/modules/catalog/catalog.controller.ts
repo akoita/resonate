@@ -57,12 +57,15 @@ export class CatalogController {
     @Query("q") query?: string,
     @Query("stemType") stemType?: string,
     @Query("hasIpnft") hasIpnft?: string,
+    @Query("limit") limit?: string,
   ) {
     const parsedHasIpnft =
       hasIpnft === undefined ? undefined : hasIpnft === "true";
+    const parsedLimit = limit ? Number(limit) : 50;
     return this.catalogService.search(query ?? "", {
       stemType,
       hasIpnft: parsedHasIpnft,
+      limit: Number.isNaN(parsedLimit) ? 50 : parsedLimit,
     });
   }
 }
