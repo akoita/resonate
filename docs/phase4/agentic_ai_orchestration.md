@@ -40,6 +40,7 @@
 - `/agents/orchestrate` admin endpoint.
 - Agent orchestration events: `agent.selection`, `agent.mix_planned`,
   `agent.negotiated`, `agent.evaluated`.
+- Evaluation harness `/agents/evaluate` with replay metrics.
 
 ## Next Steps
 - Integrate Vertex AI tool calling (planned).

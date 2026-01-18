@@ -161,6 +161,16 @@ export interface AgentNegotiatedEvent extends BaseEvent {
   reason: string;
 }
 
+export interface AgentEvaluationCompletedEvent extends BaseEvent {
+  eventName: "agent.evaluation_completed";
+  total: number;
+  approved: number;
+  rejected: number;
+  approvalRate: number;
+  avgPriceUsd: number;
+  repeatRate: number;
+}
+
 export interface PaymentInitiatedEvent extends BaseEvent {
   eventName: "payment.initiated";
   paymentId: string;
@@ -216,6 +226,7 @@ export type ResonateEvent =
   | AgentSelectionEvent
   | AgentMixPlannedEvent
   | AgentNegotiatedEvent
+  | AgentEvaluationCompletedEvent
   | PaymentInitiatedEvent
   | PaymentSettledEvent
   | WalletFundedEvent
