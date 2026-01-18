@@ -54,7 +54,9 @@ export default function ArtistAnalyticsPage() {
       </div>
 
       <Card title="Plays over time">
-        <div className="analytics-chart analytics-chart-grid" />
+        <div className="analytics-chart analytics-chart-grid">
+          <div className="analytics-line" />
+        </div>
       </Card>
 
       <Card title="Track performance">
@@ -68,7 +70,7 @@ export default function ArtistAnalyticsPage() {
           </thead>
           <tbody>
             {tracks.map((track) => (
-              <tr key={track.name}>
+              <tr key={track.name} className="analytics-row-tight">
                 <td>{track.name}</td>
                 <td>{track.plays.toLocaleString()}</td>
                 <td>{track.payout.toFixed(2)}</td>
