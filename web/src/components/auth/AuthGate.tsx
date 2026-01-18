@@ -10,7 +10,7 @@ export default function AuthGate({
   children: React.ReactNode;
   title?: string;
 }) {
-  const { status, connect } = useAuth();
+  const { status, connect, error } = useAuth();
 
   if (status === "authenticated") {
     return <>{children}</>;
@@ -22,6 +22,9 @@ export default function AuthGate({
       <Button onClick={connect} disabled={status === "loading"}>
         {status === "loading" ? "Connecting..." : "Connect wallet"}
       </Button>
+      {status === "error" && error ? (
+        <div className="auth-error">{error}</div>
+      ) : null}
     </div>
   );
 }
