@@ -1,0 +1,21 @@
+:root {
+  --color-bg: #0b0d12;
+  --color-surface: #121623;
+  --color-text: #e6e8ee;
+  --color-muted: #9aa3b2;
+  --color-accent: #7c5cff;
+  --color-accent-2: #00d1ff;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+}
