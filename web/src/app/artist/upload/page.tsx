@@ -44,8 +44,44 @@ export default function ArtistUploadPage() {
       <Card title="Release settings">
         <div className="upload-panel">
           <label>
+            Release type (single/EP/album)
+            <Input name="releaseType" placeholder="single" />
+          </label>
+          <label>
+            Release title
+            <Input name="releaseTitle" placeholder="Night Drive" />
+          </label>
+          <label>
             Track title
             <Input name="title" placeholder="Night Drive" />
+          </label>
+          <label>
+            Primary artist
+            <Input name="primaryArtist" placeholder="Aya Lune" />
+          </label>
+          <label>
+            Featured artists (comma-separated)
+            <Input name="featuredArtists" placeholder="Kiro, Mira" />
+          </label>
+          <label>
+            Genre
+            <Input name="genre" placeholder="Electronic" />
+          </label>
+          <label>
+            ISRC (optional)
+            <Input name="isrc" placeholder="US-XYZ-24-00001" />
+          </label>
+          <label>
+            Label (optional)
+            <Input name="label" placeholder="Resonate Records" />
+          </label>
+          <label>
+            Release date (optional)
+            <Input name="releaseDate" placeholder="2026-01-18" />
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <input name="explicit" type="checkbox" />
+            Explicit content
           </label>
           <label>
             Remix price (USDC)
