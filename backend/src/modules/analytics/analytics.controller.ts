@@ -17,6 +17,14 @@ export class AnalyticsController {
     return this.analyticsService.getArtistStats(artistId, Number(days ?? 7));
   }
 
+  @Get("artist/:id/v1")
+  getArtistDashboard(
+    @Param("id") artistId: string,
+    @Query("days") days?: string
+  ) {
+    return this.analyticsService.getArtistDashboard(artistId, Number(days ?? 30));
+  }
+
   @Post("ingest")
   ingest(@Body() body: { eventName: string; payload: Record<string, unknown> }) {
     return this.analyticsIngestService.ingest({
