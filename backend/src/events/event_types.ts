@@ -44,6 +44,16 @@ export interface IpNftMintedEvent extends BaseEvent {
   txHash: string;
 }
 
+export interface RemixCreatedEvent extends BaseEvent {
+  eventName: "remix.created";
+  remixId: string;
+  creatorId: string;
+  sourceTrackId: string;
+  stemIds: string[];
+  title: string;
+  txHash?: string;
+}
+
 export interface CatalogUpdatedEvent extends BaseEvent {
   eventName: "catalog.updated";
   trackId: string;
@@ -132,6 +142,7 @@ export type ResonateEvent =
   | StemsUploadedEvent
   | StemsProcessedEvent
   | IpNftMintedEvent
+  | RemixCreatedEvent
   | CatalogUpdatedEvent
   | SessionStartedEvent
   | LicenseGrantedEvent
