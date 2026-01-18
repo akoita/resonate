@@ -1,13 +1,15 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
-import { WALLET_PROVIDER, WalletProvider } from "./wallet_provider";
+import { WalletProviderRegistry } from "./wallet_provider_registry";
+
+type WalletProviderName = "local" | "erc4337";
 
 @Injectable()
 export class WalletService {
   constructor(
     private readonly eventBus: EventBus,
-    @Inject(WALLET_PROVIDER) private readonly walletProvider: WalletProvider
+    private readonly providerRegistry: WalletProviderRegistry
   ) {}
 
   async fundWallet(input: { userId: string; amountUsd: number }) {
@@ -54,6 +56,32 @@ export class WalletService {
     return this.getOrCreate(userId);
   }
 
+  async refreshWallet(input: { userId: string; provider?: WalletProviderName }) {
+    const wallet = await this.getOrCreate(input.userId, input.provider);
+    const existingProvider = (wallet as any).provider as WalletProviderName | undefined;
+    const provider = this.providerRegistry.getProvider(input.provider ?? existingProvider);
+    const account = provider.getAccount(input.userId);
+    return prisma.wallet.update({
+      where: { id: wallet.id },
+      data: {
+        address: account.address,
+        chainId: account.chainId,
+        accountType: account.accountType,
+        provider: account.provider,
+        ownerAddress: account.ownerAddress,
+        entryPoint: account.entryPoint,
+        factory: account.factory,
+        paymaster: account.paymaster,
+        bundler: account.bundler,
+        salt: account.salt,
+      } as any,
+    });
+  }
+
+  async setProvider(input: { userId: string; provider: WalletProviderName }) {
+    return this.refreshWallet(input);
+  }
+
   async spend(userId: string, amountUsd: number) {
     const wallet = await this.getOrCreate(userId);
     if (wallet.balanceUsd < amountUsd) {
@@ -81,12 +109,15 @@ export class WalletService {
     return { allowed: true, remaining: updated.monthlyCapUsd - updated.spentUsd };
   }
 
-  private async getOrCreate(userId: string) {
+  private async getOrCreate(userId: string, provider?: WalletProviderName) {
     const existing = await prisma.wallet.findFirst({ where: { userId } });
     if (existing) {
       return existing;
     }
-    const account = this.walletProvider.getAccount(userId);
+    const selected =
+      provider ??
+      ((process.env.WALLET_PROVIDER ?? "local") as WalletProviderName);
+    const account = this.providerRegistry.getProvider(selected).getAccount(userId);
     return prisma.wallet.create({
       data: {
         userId,
