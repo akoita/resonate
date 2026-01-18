@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { fetchNonce, fetchWallet, verifySignature, type WalletRecord } from "../../lib/api";
 import { clearEmbeddedAccount, getOrCreateEmbeddedAccount } from "../../lib/embedded_wallet";
+import { usePrivyBridge } from "./PrivyBridge";
 
 type AuthState = {
   status: "idle" | "loading" | "authenticated" | "error";
@@ -12,6 +13,7 @@ type AuthState = {
   wallet: WalletRecord | null;
   error?: string;
   connect: () => Promise<void>;
+  connectPrivy: () => Promise<void>;
   connectEmbedded: () => Promise<void>;
   disconnect: () => void;
   refreshWallet: () => Promise<void>;
@@ -21,6 +23,7 @@ const AuthContext = createContext<AuthState | null>(null);
 
 const TOKEN_KEY = "resonate.token";
 const ADDRESS_KEY = "resonate.address";
+const PRIVY_USER_KEY = "resonate.privy.userId";
 
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -38,6 +41,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [wallet, setWallet] = useState<WalletRecord | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
   const embeddedEnabled = process.env.NEXT_PUBLIC_EMBEDDED_WALLET === "true";
+  const privy = usePrivyBridge();
+  const [privySyncing, setPrivySyncing] = useState(false);
 
   const resolveRole = useCallback((jwt: string | null) => {
     if (!jwt) {
@@ -53,7 +58,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     } catch {
       return null;
     }
-  }, []);
+  }, [resolveRole]);
 
   useEffect(() => {
     const storedToken = localStorage.getItem(TOKEN_KEY);
@@ -123,7 +128,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       setError((err as Error).message);
       setStatus("error");
     }
-  }, []);
+  }, [privy]);
 
   const connectEmbedded = useCallback(async () => {
     setStatus("loading");
@@ -156,10 +161,74 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     }
   }, [embeddedEnabled, resolveRole]);
 
+  const connectPrivy = useCallback(async () => {
+    setStatus("loading");
+    setError(undefined);
+    try {
+      if (!privy?.enabled) {
+        throw new Error("Privy is not enabled.");
+      }
+      await privy.login();
+    } catch (err) {
+      setError((err as Error).message);
+      setStatus("error");
+    }
+  }, [privy]);
+
+  useEffect(() => {
+    if (!privy?.enabled || !privy.ready || !privy.authenticated || !privy.wallet) {
+      return;
+    }
+    if (privySyncing) {
+      return;
+    }
+    if (address?.toLowerCase() === privy.wallet.address.toLowerCase() && token) {
+      return;
+    }
+    const sync = async () => {
+      setPrivySyncing(true);
+      try {
+        const { nonce } = await fetchNonce(privy.wallet.address);
+        const message = `Resonate Sign-In\nAddress: ${privy.wallet.address}\nNonce: ${nonce}\nIssued At: ${new Date().toISOString()}`;
+        let signature: `0x${string}`;
+        try {
+          signature = (await privy.wallet.signMessage({ message })) as `0x${string}`;
+        } catch {
+          signature = (await privy.wallet.signMessage(message)) as `0x${string}`;
+        }
+        const result = await verifySignature({
+          address: privy.wallet.address,
+          message,
+          signature,
+        });
+        if (!("accessToken" in result)) {
+          throw new Error(result.status);
+        }
+        localStorage.setItem(TOKEN_KEY, result.accessToken);
+        localStorage.setItem(ADDRESS_KEY, privy.wallet.address.toLowerCase());
+        if (privy.userId) {
+          localStorage.setItem(PRIVY_USER_KEY, privy.userId);
+        }
+        setToken(result.accessToken);
+        setAddress(privy.wallet.address.toLowerCase());
+        setRole(resolveRole(result.accessToken));
+        setStatus("authenticated");
+      } catch (err) {
+        setError((err as Error).message);
+        setStatus("error");
+      } finally {
+        setPrivySyncing(false);
+      }
+    };
+    void sync();
+  }, [address, privy, privySyncing, resolveRole, token]);
+
   const disconnect = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(ADDRESS_KEY);
+    localStorage.removeItem(PRIVY_USER_KEY);
     clearEmbeddedAccount();
+    void privy?.logout?.();
     setToken(null);
     setAddress(null);
     setRole(null);
@@ -176,6 +245,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       wallet,
       error,
       connect,
+      connectPrivy,
       connectEmbedded,
       disconnect,
       refreshWallet,
@@ -188,6 +258,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       wallet,
       error,
       connect,
+      connectPrivy,
       connectEmbedded,
       disconnect,
       refreshWallet,
