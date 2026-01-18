@@ -1,21 +1,52 @@
+import { Button } from "../../../components/ui/Button";
+import { Card } from "../../../components/ui/Card";
+import { Input } from "../../../components/ui/Input";
+
+const stems = [
+  { name: "vocals.wav", status: "Processing" },
+  { name: "drums.wav", status: "Ready" },
+  { name: "bass.wav", status: "Ready" },
+];
+
 export default function ArtistUploadPage() {
   return (
-    <main style={{ fontFamily: "sans-serif", padding: "32px" }}>
-      <h1>Artist Upload</h1>
-      <p>Upload stems (MVP placeholder).</p>
-      <form>
-        <label>
-          Track title
-          <input type="text" name="title" />
-        </label>
-        <br />
-        <label>
-          File URIs (comma-separated)
-          <input type="text" name="uris" />
-        </label>
-        <br />
-        <button type="submit">Submit</button>
-      </form>
+    <main className="upload-grid">
+      <Card>
+        <h2>Upload your track</h2>
+        <p className="home-subtitle">
+          Drag and drop your audio file to begin stem separation.
+        </p>
+        <div className="upload-drop">Drop audio file here</div>
+        <div className="upload-list">
+          {stems.map((stem) => (
+            <div key={stem.name} className="upload-item">
+              <div>
+                <div>{stem.name}</div>
+                <div className="upload-status">{stem.status}</div>
+              </div>
+              <Button variant="ghost">Preview</Button>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card title="Release settings">
+        <div style={{ display: "grid", gap: "12px" }}>
+          <label>
+            Track title
+            <Input name="title" placeholder="Night Drive" />
+          </label>
+          <label>
+            Remix price (USDC)
+            <Input name="remixPrice" placeholder="5" />
+          </label>
+          <label>
+            Commercial price (USDC)
+            <Input name="commercialPrice" placeholder="25" />
+          </label>
+          <Button>Publish release</Button>
+        </div>
+      </Card>
     </main>
   );
 }
