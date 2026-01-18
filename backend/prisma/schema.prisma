@@ -24,6 +24,14 @@ model Wallet {
   balanceUsd   Float    @default(0)
   monthlyCapUsd Float   @default(0)
   spentUsd     Float    @default(0)
+  accountType  String   @default("local")
+  provider     String   @default("local")
+  ownerAddress String?
+  entryPoint   String?
+  factory      String?
+  paymaster    String?
+  bundler      String?
+  salt         String?
   user         User     @relation(fields: [userId], references: [id])
 }
 
