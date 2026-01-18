@@ -38,6 +38,7 @@
 - Generate deterministic addresses for smart accounts (Create2-style) until
   on-chain deployment is wired.
 - Add admin endpoints to rotate paymaster/bundler configs.
+- Add admin endpoints to switch provider and refresh account metadata.
 
 ## Next Implementation Steps
 - Integrate chosen SDK (Safe or Kernel) in a dedicated `wallet_provider`.
