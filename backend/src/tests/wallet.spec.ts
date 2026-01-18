@@ -41,7 +41,11 @@ describe("wallet", () => {
           }),
         }),
       } as any,
-      { sendUserOperation: async () => "0xhash" } as any
+      {
+        sendUserOperation: async () => "0xhash",
+        waitForReceipt: async () => ({}),
+      } as any,
+      { configure: () => {} } as any
     );
     await wallet.setBudget({ userId: "user-1", monthlyCapUsd: 10 });
     await wallet.fundWallet({ userId: "user-1", amountUsd: 10 });

@@ -37,6 +37,17 @@ export class Erc4337Client {
     return this.sendRpc<unknown>("eth_getUserOperationReceipt", [userOpHash]);
   }
 
+  async waitForReceipt(userOpHash: string, attempts = 10, delayMs = 500) {
+    for (let i = 0; i < attempts; i += 1) {
+      const receipt = await this.getUserOperationReceipt(userOpHash);
+      if (receipt) {
+        return receipt;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    return null;
+  }
+
   private async sendRpc<T>(method: string, params: unknown[]) {
     const request: JsonRpcRequest = {
       jsonrpc: "2.0",
