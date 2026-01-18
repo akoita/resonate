@@ -35,3 +35,9 @@
 - Introduce upload virus scan + file type allowlist
 - Add rate limiting on auth and upload endpoints
 - Enable dependency scanning in CI
+
+## Implemented (Phase 3)
+- RBAC guard with curator/admin roles on curation endpoints
+- Rate limiting on auth and upload endpoints
+- Audit log entries for auth and curation actions
+- Admin retention cleanup endpoint (manual trigger)

@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { AuditService } from "../audit/audit.service";
 import { EventBus } from "../shared/event_bus";
 
 interface StakeRecord {
@@ -21,7 +22,7 @@ export class CurationService {
   private stakes = new Map<string, StakeRecord>();
   private reports: ReportRecord[] = [];
 
-  constructor(private readonly eventBus: EventBus) {}
+  constructor(private readonly eventBus: EventBus, private readonly audit: AuditService) {}
 
   stake(input: { curatorId: string; amountUsd: number }) {
     const record: StakeRecord = {
@@ -36,6 +37,12 @@ export class CurationService {
       occurredAt: record.updatedAt,
       curatorId: input.curatorId,
       amountUsd: input.amountUsd,
+    });
+    this.audit.log({
+      action: "curator.staked",
+      actorId: input.curatorId,
+      resource: "curation",
+      metadata: { amountUsd: input.amountUsd },
     });
     return record;
   }
@@ -62,6 +69,12 @@ export class CurationService {
       curatorId: input.curatorId,
       trackId: input.trackId,
       reason: input.reason,
+    });
+    this.audit.log({
+      action: "curator.reported",
+      actorId: input.curatorId,
+      resource: `track:${input.trackId}`,
+      metadata: { reason: input.reason },
     });
     return report;
   }
