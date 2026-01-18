@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { CatalogService } from "./catalog.service";
 
@@ -34,8 +43,26 @@ export class CatalogController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @Patch(":trackId")
+  updateTrack(
+    @Param("trackId") trackId: string,
+    @Body() body: { title?: string; status?: string },
+  ) {
+    return this.catalogService.updateTrack(trackId, body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
   @Get()
-  search(@Query("q") query?: string) {
-    return this.catalogService.search(query ?? "");
+  search(
+    @Query("q") query?: string,
+    @Query("stemType") stemType?: string,
+    @Query("hasIpnft") hasIpnft?: string,
+  ) {
+    const parsedHasIpnft =
+      hasIpnft === undefined ? undefined : hasIpnft === "true";
+    return this.catalogService.search(query ?? "", {
+      stemType,
+      hasIpnft: parsedHasIpnft,
+    });
   }
 }
