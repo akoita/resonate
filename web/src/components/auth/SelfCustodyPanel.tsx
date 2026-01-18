@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { deploySmartAccount, refreshWallet, setWalletProvider } from "../../lib/api";
+import {
+  deploySmartAccount,
+  deploySmartAccountSelf,
+  enableSmartAccount,
+  refreshSmartAccount,
+  refreshWallet,
+  setWalletProvider,
+} from "../../lib/api";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { useAuth } from "./AuthProvider";
@@ -47,41 +54,82 @@ export default function SelfCustodyPanel() {
         </div>
       </div>
       <div className="wallet-actions">
-        <Button
-          variant="ghost"
-          disabled={!isAdmin || pending}
-          onClick={() =>
-            run(async () => {
-              await refreshWallet(address!, token!);
-            })
-          }
-        >
-          Refresh provider
-        </Button>
-        <Button
-          variant="ghost"
-          disabled={!isAdmin || pending}
-          onClick={() =>
-            run(async () => {
-              await setWalletProvider(address!, "erc4337", token!);
-            })
-          }
-        >
-          Switch to smart account
-        </Button>
-        <Button
-          disabled={!isAdmin || pending}
-          onClick={() =>
-            run(async () => {
-              await deploySmartAccount(address!, token!);
-            })
-          }
-        >
-          Deploy smart account
-        </Button>
+        {isAdmin ? (
+          <>
+            <Button
+              variant="ghost"
+              disabled={pending}
+              onClick={() =>
+                run(async () => {
+                  await refreshWallet(address!, token!);
+                })
+              }
+            >
+              Refresh provider
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={pending}
+              onClick={() =>
+                run(async () => {
+                  await setWalletProvider(address!, "erc4337", token!);
+                })
+              }
+            >
+              Switch to smart account
+            </Button>
+            <Button
+              disabled={pending}
+              onClick={() =>
+                run(async () => {
+                  await deploySmartAccount(address!, token!);
+                })
+              }
+            >
+              Deploy smart account
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              variant="ghost"
+              disabled={pending}
+              onClick={() =>
+                run(async () => {
+                  await enableSmartAccount(token!);
+                })
+              }
+            >
+              Enable smart account
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={pending}
+              onClick={() =>
+                run(async () => {
+                  await refreshSmartAccount(token!);
+                })
+              }
+            >
+              Refresh smart account
+            </Button>
+            <Button
+              disabled={pending}
+              onClick={() =>
+                run(async () => {
+                  await deploySmartAccountSelf(token!);
+                })
+              }
+            >
+              Deploy smart account
+            </Button>
+          </>
+        )}
       </div>
       {!isAdmin ? (
-        <div className="auth-error">Admin rights required for these actions.</div>
+        <div className="auth-error">
+          Self-service actions use your authenticated session.
+        </div>
       ) : null}
       {status ? <div className="queue-meta">{status}</div> : null}
     </Card>
