@@ -29,9 +29,10 @@ export class AgentOrchestratorService {
 
   async orchestrate(input: AgentOrchestratorInput) {
     const selection = await this.selector.select({
-      query: input.preferences.genres?.[0],
+      query: input.preferences.genres?.[0] ?? input.preferences.mood,
       recentTrackIds: input.recentTrackIds,
       allowExplicit: input.preferences.allowExplicit,
+      useEmbeddings: Boolean(input.preferences.genres?.length || input.preferences.mood),
     });
     if (!selection.selected) {
       return { status: "no_tracks" };

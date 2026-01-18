@@ -41,6 +41,7 @@
 - Agent orchestration events: `agent.selection`, `agent.mix_planned`,
   `agent.negotiated`, `agent.evaluated`.
 - Evaluation harness `/agents/evaluate` with replay metrics.
+- Embedding service + similarity scoring for selection ranking.
 
 ## Next Steps
 - Integrate Vertex AI tool calling (planned).
