@@ -19,7 +19,8 @@ CREATE TABLE wallets (
   factory TEXT,
   paymaster TEXT,
   bundler TEXT,
-  salt TEXT
+  salt TEXT,
+  deployment_tx_hash TEXT
 );
 
 CREATE TABLE artists (

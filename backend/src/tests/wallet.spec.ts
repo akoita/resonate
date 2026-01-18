@@ -40,7 +40,8 @@ describe("wallet", () => {
             provider: "local",
           }),
         }),
-      } as any
+      } as any,
+      { sendUserOperation: async () => "0xhash" } as any
     );
     await wallet.setBudget({ userId: "user-1", monthlyCapUsd: 10 });
     await wallet.fundWallet({ userId: "user-1", amountUsd: 10 });
