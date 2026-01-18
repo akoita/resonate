@@ -32,11 +32,13 @@ describe("wallet", () => {
     const wallet = new WalletService(
       { publish: () => {} } as any,
       {
-        getAccount: () => ({
-          address: "wallet_user-1",
-          chainId: 0,
-          accountType: "local",
-          provider: "local",
+        getProvider: () => ({
+          getAccount: () => ({
+            address: "wallet_user-1",
+            chainId: 0,
+            accountType: "local",
+            provider: "local",
+          }),
         }),
       } as any
     );
