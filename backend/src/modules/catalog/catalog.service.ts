@@ -1,13 +1,14 @@
 import { Injectable, OnModuleInit } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
+import { StemsUploadedEvent } from "../../events/event_types";
 
 @Injectable()
 export class CatalogService implements OnModuleInit {
   constructor(private readonly eventBus: EventBus) {}
 
   onModuleInit() {
-    this.eventBus.subscribe("stems.uploaded", (event) => {
+    this.eventBus.subscribe("stems.uploaded", (event: StemsUploadedEvent) => {
       prisma.track
         .create({
           data: {
