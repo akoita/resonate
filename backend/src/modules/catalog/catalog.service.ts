@@ -1,41 +1,32 @@
 import { Injectable } from "@nestjs/common";
-
-interface TrackRecord {
-  id: string;
-  artistId: string;
-  title: string;
-  stems: { id: string; type: string; uri: string }[];
-}
+import { prisma } from "../../db/prisma";
 
 @Injectable()
 export class CatalogService {
-  private tracks = new Map<string, TrackRecord>();
-
-  createTrack(input: { artistId: string; title: string }) {
-    const id = this.generateId("trk");
-    const record: TrackRecord = {
-      id,
-      artistId: input.artistId,
-      title: input.title,
-      stems: [],
-    };
-    this.tracks.set(id, record);
-    return record;
+  async createTrack(input: { artistId: string; title: string }) {
+    return prisma.track.create({
+      data: {
+        artistId: input.artistId,
+        title: input.title,
+        status: "draft",
+      },
+      include: { stems: true },
+    });
   }
 
-  getTrack(trackId: string) {
-    return this.tracks.get(trackId) ?? null;
+  async getTrack(trackId: string) {
+    return prisma.track.findUnique({
+      where: { id: trackId },
+      include: { stems: true },
+    });
   }
 
-  search(query: string) {
-    const normalized = query.toLowerCase();
-    const results = Array.from(this.tracks.values()).filter((track) =>
-      track.title.toLowerCase().includes(normalized)
-    );
-    return { items: results };
-  }
-
-  private generateId(prefix: string) {
-    return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+  async search(query: string) {
+    const items = await prisma.track.findMany({
+      where: { title: { contains: query, mode: "insensitive" } },
+      include: { stems: true },
+      take: 50,
+    });
+    return { items };
   }
 }
