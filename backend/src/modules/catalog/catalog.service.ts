@@ -1,7 +1,11 @@
 import { Injectable, OnModuleInit } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
-import { StemsProcessedEvent, StemsUploadedEvent } from "../../events/event_types";
+import {
+  IpNftMintedEvent,
+  StemsProcessedEvent,
+  StemsUploadedEvent,
+} from "../../events/event_types";
 
 @Injectable()
 export class CatalogService implements OnModuleInit {
@@ -51,6 +55,15 @@ export class CatalogService implements OnModuleInit {
         })
         .catch(() => null);
     });
+
+    this.eventBus.subscribe("ipnft.minted", async (event: IpNftMintedEvent) => {
+      await prisma.stem
+        .update({
+          where: { id: event.stemId },
+          data: { ipnftId: event.tokenId },
+        })
+        .catch(() => null);
+    });
   }
   async createTrack(input: {
     artistId: string;
@@ -91,9 +104,43 @@ export class CatalogService implements OnModuleInit {
     });
   }
 
-  async search(query: string) {
+  async updateTrack(
+    trackId: string,
+    input: Partial<{
+      title: string;
+      status: string;
+    }>,
+  ) {
+    return prisma.track.update({
+      where: { id: trackId },
+      data: input,
+      include: { stems: true },
+    });
+  }
+
+  async search(query: string, filters?: { stemType?: string; hasIpnft?: boolean }) {
+    const stemsWhere =
+      filters?.hasIpnft === undefined && !filters?.stemType
+        ? undefined
+        : {
+            ...(filters?.hasIpnft === true
+              ? {
+                  some: {
+                    ...(filters?.stemType ? { type: filters.stemType } : {}),
+                    ipnftId: { not: null },
+                  },
+                }
+              : {}),
+            ...(filters?.hasIpnft === false ? { every: { ipnftId: null } } : {}),
+            ...(filters?.hasIpnft !== true && filters?.stemType
+              ? { some: { type: filters.stemType } }
+              : {}),
+          };
     const items = await prisma.track.findMany({
-      where: { title: { contains: query, mode: "insensitive" } },
+      where: {
+        title: { contains: query, mode: "insensitive" },
+        stems: stemsWhere,
+      },
       include: { stems: true },
       take: 50,
     });
