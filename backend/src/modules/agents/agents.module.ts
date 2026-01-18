@@ -1,11 +1,25 @@
 import { Module } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
+import { AgentMixerService } from "./agent_mixer.service";
+import { AgentNegotiatorService } from "./agent_negotiator.service";
+import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentPolicyService } from "./agent_policy.service";
 import { AgentRunnerService } from "./agent_runner.service";
+import { AgentSelectorService } from "./agent_selector.service";
 import { AgentsController } from "./agents.controller";
+import { ToolRegistry } from "./tools/tool_registry";
 
 @Module({
   controllers: [AgentsController],
-  providers: [EventBus, AgentPolicyService, AgentRunnerService],
+  providers: [
+    EventBus,
+    ToolRegistry,
+    AgentPolicyService,
+    AgentRunnerService,
+    AgentSelectorService,
+    AgentMixerService,
+    AgentNegotiatorService,
+    AgentOrchestratorService,
+  ],
 })
 export class AgentsModule {}

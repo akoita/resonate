@@ -138,6 +138,29 @@ export interface AgentEvaluatedEvent extends BaseEvent {
   reason: string;
 }
 
+export interface AgentSelectionEvent extends BaseEvent {
+  eventName: "agent.selection";
+  sessionId: string;
+  trackId: string;
+  candidates: string[];
+}
+
+export interface AgentMixPlannedEvent extends BaseEvent {
+  eventName: "agent.mix_planned";
+  sessionId: string;
+  trackId: string;
+  transition: string;
+}
+
+export interface AgentNegotiatedEvent extends BaseEvent {
+  eventName: "agent.negotiated";
+  sessionId: string;
+  trackId: string;
+  licenseType: "personal" | "remix" | "commercial";
+  priceUsd: number;
+  reason: string;
+}
+
 export interface PaymentInitiatedEvent extends BaseEvent {
   eventName: "payment.initiated";
   paymentId: string;
@@ -190,6 +213,9 @@ export type ResonateEvent =
   | AgentTrackSelectedEvent
   | AgentDecisionMadeEvent
   | AgentEvaluatedEvent
+  | AgentSelectionEvent
+  | AgentMixPlannedEvent
+  | AgentNegotiatedEvent
   | PaymentInitiatedEvent
   | PaymentSettledEvent
   | WalletFundedEvent
