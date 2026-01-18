@@ -15,6 +15,10 @@ export class AnalyticsIngestService {
     return { status: "ok", ingested: this.events.length };
   }
 
+  listEvents() {
+    return this.events.slice();
+  }
+
   dailyRollup() {
     return { totalEvents: this.events.length };
   }
