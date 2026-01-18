@@ -1,5 +1,29 @@
 import { WalletService } from "../modules/identity/wallet.service";
 
+jest.mock("../db/prisma", () => {
+  const store = new Map<string, any>();
+  return {
+    prisma: {
+      wallet: {
+        findFirst: async ({ where }: any) => {
+          return store.get(where.userId) ?? null;
+        },
+        create: async ({ data }: any) => {
+          const record = { id: `wallet_${data.userId}`, ...data };
+          store.set(data.userId, record);
+          return record;
+        },
+        update: async ({ where, data }: any) => {
+          const existing = [...store.values()].find((w) => w.id === where.id);
+          const updated = { ...existing, ...data };
+          store.set(updated.userId, updated);
+          return updated;
+        },
+      },
+    },
+  };
+});
+
 describe("wallet", () => {
   it("enforces monthly budget cap", async () => {
     const wallet = new WalletService();
