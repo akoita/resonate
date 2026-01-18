@@ -26,7 +26,7 @@ export default function ConnectButton() {
       <div className="auth-actions-buttons">
         {privyEnabled ? (
           <Button onClick={connectPrivy} disabled={status === "loading"}>
-            {status === "loading" ? "Connecting..." : "Continue with Privy"}
+            {status === "loading" ? "Connecting..." : "Continue with wallet"}
           </Button>
         ) : null}
       </div>
