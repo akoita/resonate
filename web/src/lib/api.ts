@@ -64,3 +64,31 @@ export async function verifySignature(input: {
 export async function fetchWallet(userId: string, token: string) {
   return apiRequest<WalletRecord>(`/wallet/${userId}`, {}, token);
 }
+
+export async function refreshWallet(userId: string, token: string) {
+  return apiRequest<WalletRecord>(
+    "/wallet/refresh",
+    { method: "POST", body: JSON.stringify({ userId }) },
+    token
+  );
+}
+
+export async function setWalletProvider(
+  userId: string,
+  provider: "local" | "erc4337",
+  token: string
+) {
+  return apiRequest<WalletRecord>(
+    "/wallet/provider",
+    { method: "POST", body: JSON.stringify({ userId, provider }) },
+    token
+  );
+}
+
+export async function deploySmartAccount(userId: string, token: string) {
+  return apiRequest<WalletRecord>(
+    "/wallet/deploy",
+    { method: "POST", body: JSON.stringify({ userId }) },
+    token
+  );
+}
