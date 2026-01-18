@@ -4,6 +4,8 @@ import { AgentNegotiatorService } from "../modules/agents/agent_negotiator.servi
 import { AgentOrchestratorService } from "../modules/agents/agent_orchestrator.service";
 import { AgentSelectorService } from "../modules/agents/agent_selector.service";
 import { ToolRegistry } from "../modules/agents/tools/tool_registry";
+import { EmbeddingService } from "../modules/embeddings/embedding.service";
+import { EmbeddingStore } from "../modules/embeddings/embedding.store";
 
 jest.mock("../db/prisma", () => {
   return {
@@ -20,7 +22,7 @@ jest.mock("../db/prisma", () => {
 
 describe("agent orchestrator", () => {
   it("orchestrates selection, mix, negotiation", async () => {
-    const tools = new ToolRegistry();
+    const tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
     const orchestrator = new AgentOrchestratorService(
       new AgentSelectorService(tools),
       new AgentMixerService(),

@@ -5,6 +5,7 @@ export interface AgentSelectorInput {
   query?: string;
   recentTrackIds: string[];
   allowExplicit?: boolean;
+  useEmbeddings?: boolean;
 }
 
 @Injectable()
@@ -19,10 +20,25 @@ export class AgentSelectorService {
       allowExplicit: input.allowExplicit ?? false,
     });
     const items = (result.items as any[]) ?? [];
+    let candidates = items;
+    if (input.useEmbeddings && items.length > 1) {
+      const ranked = await this.tools.get("embeddings.similarity").run({
+        query: input.query ?? "",
+        candidates: items.map((track) => track.id),
+      });
+      const rankedIds = (ranked.ranked as { trackId: string }[]) ?? [];
+      const ordered = rankedIds
+        .map((entry) => items.find((track) => track.id === entry.trackId))
+        .filter(Boolean) as any[];
+      if (ordered.length) {
+        candidates = ordered;
+      }
+    }
     const selected =
-      items.find((track) => !input.recentTrackIds.includes(track.id)) ?? items[0];
+      candidates.find((track) => !input.recentTrackIds.includes(track.id)) ??
+      candidates[0];
     return {
-      candidates: items.map((track) => track.id),
+      candidates: candidates.map((track) => track.id),
       selected,
     };
   }
