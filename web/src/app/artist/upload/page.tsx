@@ -13,34 +13,36 @@ export default function ArtistUploadPage() {
   return (
     <main className="upload-grid">
       <Card>
-        <h2>Upload your track</h2>
-        <p className="home-subtitle">
+        <div className="upload-panel">
+          <div className="upload-section-title">Upload your track</div>
+          <p className="home-subtitle">
           Drag and drop your audio file to begin stem separation.
-        </p>
-        <div className="upload-drop upload-drop-active">
-          Drop audio file here
-        </div>
-        <div className="upload-list">
-          {stems.map((stem) => (
-            <div key={stem.name} className="upload-item">
-              <div>
-                <div>{stem.name}</div>
-                <div className="upload-status">{stem.status}</div>
-                <div className="upload-progress">
-                  <div
-                    className="upload-progress-bar"
-                    style={{ width: `${stem.progress}%` }}
-                  />
+          </p>
+          <div className="upload-drop upload-drop-active">
+            Drop audio file here
+          </div>
+          <div className="upload-list">
+            {stems.map((stem) => (
+              <div key={stem.name} className="upload-item">
+                <div>
+                  <div>{stem.name}</div>
+                  <div className="upload-status">{stem.status}</div>
+                  <div className="upload-progress">
+                    <div
+                      className="upload-progress-bar"
+                      style={{ width: `${stem.progress}%` }}
+                    />
+                  </div>
                 </div>
+                <Button variant="ghost">Preview</Button>
               </div>
-              <Button variant="ghost">Preview</Button>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </Card>
 
       <Card title="Release settings">
-        <div style={{ display: "grid", gap: "12px" }}>
+        <div className="upload-panel">
           <label>
             Track title
             <Input name="title" placeholder="Night Drive" />
