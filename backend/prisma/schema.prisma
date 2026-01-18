@@ -32,6 +32,7 @@ model Wallet {
   paymaster    String?
   bundler      String?
   salt         String?
+  deploymentTxHash String?
   user         User     @relation(fields: [userId], references: [id])
 }
 

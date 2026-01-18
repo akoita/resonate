@@ -35,6 +35,13 @@ export class WalletController {
     return this.walletService.refreshWallet(body);
   }
 
+  @Post("deploy")
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("admin")
+  deploy(@Body() body: { userId: string }) {
+    return this.walletService.deploySmartAccount(body);
+  }
+
   @Get(":userId")
   @UseGuards(AuthGuard("jwt"))
   get(@Param("userId") userId: string) {
