@@ -8,8 +8,14 @@ export class PaymentsController {
 
   @UseGuards(AuthGuard("jwt"))
   @Post("initiate")
-  initiate(@Body() body: { sessionId: string; amountUsd: number }) {
+  initiate(@Body() body: { sessionId: string; amountUsd: number; trackId?: string }) {
     return this.paymentsService.initiatePayment(body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("split-config")
+  splitConfig(@Body() body: { trackId: string; artistPct: number; mixerPct: number }) {
+    return this.paymentsService.setSplitConfig(body);
   }
 
   @UseGuards(AuthGuard("jwt"))
