@@ -17,4 +17,9 @@ export class PaymentsController {
   split(@Body() body: { paymentId: string; artistPct: number; mixerPct: number }) {
     return this.paymentsService.splitPayment(body);
   }
+
+  @Post("confirm")
+  confirm(@Body() body: { paymentId: string }) {
+    return this.paymentsService.confirmOnChain(body.paymentId);
+  }
 }
