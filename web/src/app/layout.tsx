@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
-import { PrivyProvider } from "@privy-io/react-auth";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import AppShell from "../components/layout/AppShell";
 import AuthProvider from "../components/auth/AuthProvider";
-import PrivyBridge from "../components/auth/PrivyBridge";
+import PrivyProviderClient from "../components/auth/PrivyProviderClient";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,20 +36,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.variable} ${geistSans.variable} ${geistMono.variable}`}>
         {privyAppId ? (
-          <PrivyProvider
-            appId={privyAppId}
-            config={{
-              embeddedWallets: {
-                createOnLogin: "users-without-wallets",
-              },
-            }}
-          >
-            <PrivyBridge>
-              <AuthProvider>
-                <AppShell>{children}</AppShell>
-              </AuthProvider>
-            </PrivyBridge>
-          </PrivyProvider>
+          <PrivyProviderClient appId={privyAppId}>
+            <AuthProvider>
+              <AppShell>{children}</AppShell>
+            </AuthProvider>
+          </PrivyProviderClient>
         ) : (
           <AuthProvider>
             <AppShell>{children}</AppShell>
