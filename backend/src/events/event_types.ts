@@ -90,6 +90,27 @@ export interface PaymentSettledEvent extends BaseEvent {
   status: "settled" | "failed";
 }
 
+export interface WalletFundedEvent extends BaseEvent {
+  eventName: "wallet.funded";
+  userId: string;
+  amountUsd: number;
+  balanceUsd: number;
+}
+
+export interface WalletBudgetSetEvent extends BaseEvent {
+  eventName: "wallet.budget_set";
+  userId: string;
+  monthlyCapUsd: number;
+}
+
+export interface WalletSpentEvent extends BaseEvent {
+  eventName: "wallet.spent";
+  userId: string;
+  amountUsd: number;
+  spentUsd: number;
+  balanceUsd: number;
+}
+
 export type ResonateEvent =
   | StemsUploadedEvent
   | StemsProcessedEvent
@@ -99,4 +120,7 @@ export type ResonateEvent =
   | LicenseGrantedEvent
   | SessionEndedEvent
   | PaymentInitiatedEvent
-  | PaymentSettledEvent;
+  | PaymentSettledEvent
+  | WalletFundedEvent
+  | WalletBudgetSetEvent
+  | WalletSpentEvent;
