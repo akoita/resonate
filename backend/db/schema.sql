@@ -25,6 +25,15 @@ CREATE TABLE tracks (
   id UUID PRIMARY KEY,
   artist_id UUID NOT NULL REFERENCES artists(id),
   title TEXT NOT NULL,
+  release_type TEXT NOT NULL DEFAULT 'single',
+  release_title TEXT,
+  primary_artist TEXT,
+  featured_artists TEXT,
+  genre TEXT,
+  isrc TEXT,
+  label TEXT,
+  release_date TIMESTAMP,
+  explicit BOOLEAN NOT NULL DEFAULT FALSE,
   status TEXT NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
