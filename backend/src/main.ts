@@ -6,6 +6,13 @@ import { AppModule } from "./modules/app.module";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Enable CORS for frontend
+  app.enableCors({
+    origin: ['http://localhost:3001', 'http://localhost:3000'],
+    credentials: true,
+  });
+
   app.use((req: Request, res: Response, next: NextFunction) => {
     const incoming = req.headers["x-request-id"];
     const requestId = Array.isArray(incoming) ? incoming[0] : incoming;
