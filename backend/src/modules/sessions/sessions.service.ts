@@ -29,7 +29,12 @@ export class SessionsService {
       where: { id: sessionId },
       data: { endedAt: new Date() },
     });
-    return { sessionId, status: "stopped", spentUsd: session.spentUsd };
+    return {
+      sessionId,
+      status: "stopped",
+      spentUsd: session.spentUsd,
+      remaining: session.budgetCapUsd - session.spentUsd,
+    };
   }
 
   async playTrack(input: { sessionId: string; trackId: string; priceUsd: number }) {
@@ -45,11 +50,39 @@ export class SessionsService {
       where: { id: input.sessionId },
       data: { spentUsd: session.spentUsd + input.priceUsd },
     });
+    const license = await prisma.license.create({
+      data: {
+        sessionId: input.sessionId,
+        trackId: input.trackId,
+        type: "personal",
+        priceUsd: input.priceUsd,
+        durationSeconds: 30,
+      },
+    });
+    const payment = await prisma.payment.create({
+      data: {
+        sessionId: input.sessionId,
+        amountUsd: input.priceUsd,
+        status: "settled",
+        txHash: `tx_${Date.now()}`,
+      },
+    });
     return {
       allowed: true,
       trackId: input.trackId,
       spentUsd: updated.spentUsd,
       remaining: spend.remaining,
+      licenseId: license.id,
+      paymentId: payment.id,
     };
+  }
+
+  async getPlaylist(limit = 10) {
+    const items = await prisma.track.findMany({
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      include: { stems: true },
+    });
+    return { items };
   }
 }

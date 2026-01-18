@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { SessionsService } from "./sessions.service";
 
@@ -22,5 +22,12 @@ export class SessionsController {
   @Post("play")
   play(@Body() body: { sessionId: string; trackId: string; priceUsd: number }) {
     return this.sessionsService.playTrack(body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Get("playlist")
+  playlist(@Query("limit") limit?: string) {
+    const parsed = limit ? Number(limit) : 10;
+    return this.sessionsService.getPlaylist(Number.isNaN(parsed) ? 10 : parsed);
   }
 }
