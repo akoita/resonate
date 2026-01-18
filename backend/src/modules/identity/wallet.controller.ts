@@ -1,11 +1,15 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { Roles } from "../auth/roles.decorator";
+import { SessionKeyService } from "./session_key.service";
 import { WalletService } from "./wallet.service";
 
 @Controller("wallet")
 export class WalletController {
-  constructor(private readonly walletService: WalletService) {}
+  constructor(
+    private readonly walletService: WalletService,
+    private readonly sessionKeyService: SessionKeyService
+  ) {}
 
   @Post("fund")
   @UseGuards(AuthGuard("jwt"))
@@ -54,5 +58,21 @@ export class WalletController {
   @UseGuards(AuthGuard("jwt"))
   get(@Param("userId") userId: string) {
     return this.walletService.getWallet(userId);
+  }
+
+  @Post("session-key")
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("admin")
+  createSessionKey(
+    @Body() body: { userId: string; scope: string; ttlSeconds: number }
+  ) {
+    return this.sessionKeyService.issue(body);
+  }
+
+  @Post("session-key/validate")
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("admin")
+  validateSessionKey(@Body() body: { token: string; scope: string }) {
+    return this.sessionKeyService.validate(body.token, body.scope);
   }
 }
