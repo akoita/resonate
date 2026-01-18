@@ -449,9 +449,9 @@ a {
 }
 
 .auth-actions-title {
-  font-size: 12px;
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   color: var(--color-muted);
 }
 
@@ -464,6 +464,8 @@ a {
 .auth-actions-buttons .ui-btn {
   width: 100%;
   justify-content: center;
+  min-height: 44px;
+  font-weight: 600;
 }
 
 .auth-badge {
