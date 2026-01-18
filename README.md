@@ -47,3 +47,11 @@ npm run prisma:generate
 npm run prisma:migrate
 npm run start:dev
 ```
+
+### Makefile helpers
+
+```
+make dev-up
+make backend-dev
+make web-dev
+```
