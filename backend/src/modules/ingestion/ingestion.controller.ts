@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { Throttle } from "@nestjs/throttler";
 import { IngestionService } from "./ingestion.service";
 
 @Controller("stems")
@@ -8,6 +9,7 @@ export class IngestionController {
 
   @UseGuards(AuthGuard("jwt"))
   @Post("upload")
+  @Throttle({ default: { limit: 20, ttl: 60 } })
   upload(
     @Body()
     body: {
