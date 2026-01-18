@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+  wallet    Wallet?
+  artist    Artist?
+  sessions  Session[]
+}
+
+model Wallet {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  address      String
+  chainId      Int
+  balanceUsd   Float    @default(0)
+  monthlyCapUsd Float   @default(0)
+  spentUsd     Float    @default(0)
+  user         User     @relation(fields: [userId], references: [id])
+}
+
+model Artist {
+  id            String  @id @default(uuid())
+  userId        String  @unique
+  displayName   String
+  payoutAddress String
+  user          User    @relation(fields: [userId], references: [id])
+  tracks        Track[]
+}
+
+model Track {
+  id        String   @id @default(uuid())
+  artistId  String
+  title     String
+  status    String
+  createdAt DateTime @default(now())
+  artist    Artist   @relation(fields: [artistId], references: [id])
+  stems     Stem[]
+  licenses  License[]
+}
+
+model Stem {
+  id       String @id @default(uuid())
+  trackId  String
+  type     String
+  uri      String
+  ipnftId  String?
+  checksum String?
+  track    Track  @relation(fields: [trackId], references: [id])
+}
+
+model Session {
+  id         String    @id @default(uuid())
+  userId     String
+  budgetCapUsd Float
+  spentUsd   Float     @default(0)
+  startedAt  DateTime  @default(now())
+  endedAt    DateTime?
+  user       User      @relation(fields: [userId], references: [id])
+  licenses   License[]
+  payments   Payment[]
+}
+
+model License {
+  id              String  @id @default(uuid())
+  sessionId       String
+  trackId         String
+  type            String
+  priceUsd        Float
+  durationSeconds Int
+  session         Session @relation(fields: [sessionId], references: [id])
+  track           Track   @relation(fields: [trackId], references: [id])
+}
+
+model Payment {
+  id        String   @id @default(uuid())
+  sessionId String
+  txHash    String?
+  amountUsd Float
+  status    String
+  session   Session  @relation(fields: [sessionId], references: [id])
+}
