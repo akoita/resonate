@@ -42,6 +42,7 @@
   `agent.negotiated`, `agent.evaluated`.
 - Evaluation harness `/agents/evaluate` with replay metrics.
 - Embedding service + similarity scoring for selection ranking.
+- Runtime adapter stubs for Vertex AI / LangGraph with fallback.
 
 ## Next Steps
 - Integrate Vertex AI tool calling (planned).
