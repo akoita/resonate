@@ -8,7 +8,22 @@ export class CatalogController {
 
   @UseGuards(AuthGuard("jwt"))
   @Post()
-  create(@Body() body: { artistId: string; title: string }) {
+  create(
+    @Body()
+    body: {
+      artistId: string;
+      title: string;
+      releaseType?: string;
+      releaseTitle?: string;
+      primaryArtist?: string;
+      featuredArtists?: string[];
+      genre?: string;
+      isrc?: string;
+      label?: string;
+      releaseDate?: string;
+      explicit?: boolean;
+    },
+  ) {
     return this.catalogService.createTrack(body);
   }
 
