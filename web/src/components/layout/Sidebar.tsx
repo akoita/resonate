@@ -9,6 +9,7 @@ export default function Sidebar() {
         <Link href="/player">Player</Link>
         <Link href="/artist/upload">Upload</Link>
         <Link href="/artist/analytics">Analytics</Link>
+        <Link href="/wallet">Wallet</Link>
       </nav>
     </aside>
   );
