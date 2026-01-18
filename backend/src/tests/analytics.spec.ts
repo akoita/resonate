@@ -27,4 +27,38 @@ describe("analytics", () => {
     expect(result.summary.totalPayoutUsd).toBe(1.5);
     expect(result.tracks[0].payoutUsd).toBe(1.5);
   });
+
+  it("builds v1 dashboard breakdowns", () => {
+    const ingest = new AnalyticsIngestService();
+    const analytics = new AnalyticsService(ingest);
+
+    ingest.ingest({
+      eventName: "license.granted",
+      occurredAt: new Date().toISOString(),
+      payload: {
+        artistId: "artist-2",
+        trackId: "track-9",
+        title: "Pulse",
+        sessionId: "session-9",
+        source: "agent",
+      },
+    });
+    ingest.ingest({
+      eventName: "payment.settled",
+      occurredAt: new Date().toISOString(),
+      payload: {
+        artistId: "artist-2",
+        trackId: "track-9",
+        title: "Pulse",
+        sessionId: "session-9",
+        source: "agent",
+        amountUsd: 2,
+      },
+    });
+
+    const result = analytics.getArtistDashboard("artist-2", 30);
+    expect(result.summary.totalPlays).toBe(1);
+    expect(result.sessions[0].payoutUsd).toBe(2);
+    expect(result.sources[0].source).toBe("agent");
+  });
 });
