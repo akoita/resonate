@@ -42,6 +42,14 @@ export class WalletController {
     return this.walletService.deploySmartAccount(body);
   }
 
+  @Post("paymaster")
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("admin")
+  configurePaymaster(@Body() body: { sponsorMaxUsd: number; paymasterAddress: string }) {
+    this.walletService.configurePaymaster(body);
+    return { status: "ok" };
+  }
+
   @Get(":userId")
   @UseGuards(AuthGuard("jwt"))
   get(@Param("userId") userId: string) {
