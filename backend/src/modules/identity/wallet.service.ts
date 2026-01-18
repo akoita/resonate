@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
 import { Erc4337Client, UserOperation } from "./erc4337/erc4337_client";
+import { PaymasterService } from "./paymaster.service";
 import { WalletProviderRegistry } from "./wallet_provider_registry";
 
 type WalletProviderName = "local" | "erc4337";
@@ -11,7 +12,8 @@ export class WalletService {
   constructor(
     private readonly eventBus: EventBus,
     private readonly providerRegistry: WalletProviderRegistry,
-    private readonly erc4337Client: Erc4337Client
+    private readonly erc4337Client: Erc4337Client,
+    private readonly paymasterService: PaymasterService
   ) {}
 
   async fundWallet(input: { userId: string; amountUsd: number }) {
@@ -84,6 +86,10 @@ export class WalletService {
     return this.refreshWallet(input);
   }
 
+  configurePaymaster(input: { sponsorMaxUsd: number; paymasterAddress: string }) {
+    this.paymasterService.configure(input);
+  }
+
   async deploySmartAccount(input: { userId: string }) {
     const wallet = (await this.getOrCreate(input.userId, "erc4337")) as any;
     if (wallet.deploymentTxHash) {
@@ -102,7 +108,9 @@ export class WalletService {
       paymasterAndData: wallet.paymaster ?? "0x",
       signature: "0x",
     };
+    userOp.paymasterAndData = this.paymasterService.buildPaymasterData(userOp, 0);
     const userOpHash = await this.erc4337Client.sendUserOperation(userOp);
+    await this.erc4337Client.waitForReceipt(userOpHash);
     return prisma.wallet.update({
       where: { id: wallet.id },
       data: { deploymentTxHash: userOpHash } as any,
