@@ -7,6 +7,7 @@ type AuthState = {
   status: "idle" | "loading" | "authenticated" | "error";
   address: string | null;
   token: string | null;
+  role: string | null;
   wallet: WalletRecord | null;
   error?: string;
   connect: () => Promise<void>;
@@ -31,8 +32,25 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [status, setStatus] = useState<AuthState["status"]>("idle");
   const [address, setAddress] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
   const [wallet, setWallet] = useState<WalletRecord | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
+
+  const resolveRole = useCallback((jwt: string | null) => {
+    if (!jwt) {
+      return null;
+    }
+    try {
+      const payload = jwt.split(".")[1];
+      if (!payload) {
+        return null;
+      }
+      const decoded = JSON.parse(atob(payload));
+      return typeof decoded.role === "string" ? decoded.role : null;
+    } catch {
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     const storedToken = localStorage.getItem(TOKEN_KEY);
@@ -40,9 +58,10 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     if (storedToken && storedAddress) {
       setToken(storedToken);
       setAddress(storedAddress);
+      setRole(resolveRole(storedToken));
       setStatus("authenticated");
     }
-  }, []);
+  }, [resolveRole]);
 
   const refreshWallet = useCallback(async () => {
     if (!token || !address) {
@@ -95,6 +114,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       localStorage.setItem(ADDRESS_KEY, selected.toLowerCase());
       setToken(result.accessToken);
       setAddress(selected.toLowerCase());
+      setRole(resolveRole(result.accessToken));
       setStatus("authenticated");
     } catch (err) {
       setError((err as Error).message);
@@ -107,6 +127,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     localStorage.removeItem(ADDRESS_KEY);
     setToken(null);
     setAddress(null);
+    setRole(null);
     setWallet(null);
     setStatus("idle");
   }, []);
@@ -116,13 +137,14 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       status,
       address,
       token,
+      role,
       wallet,
       error,
       connect,
       disconnect,
       refreshWallet,
     }),
-    [status, address, token, wallet, error, connect, disconnect, refreshWallet]
+    [status, address, token, role, wallet, error, connect, disconnect, refreshWallet]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
