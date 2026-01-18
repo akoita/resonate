@@ -6,6 +6,7 @@ interface PaymentRecord {
   amountUsd: number;
   status: "initiated" | "settled" | "failed";
   split?: { artistPct: number; mixerPct: number; platformPct: number };
+  txHash?: string;
 }
 
 @Injectable()
@@ -35,7 +36,20 @@ export class PaymentsService {
       platformPct,
     };
     payment.status = "settled";
+    payment.txHash = this.generateId("tx");
     return payment;
+  }
+
+  confirmOnChain(paymentId: string) {
+    const payment = this.payments.get(paymentId);
+    if (!payment) {
+      return { paymentId, status: "not_found" };
+    }
+    return {
+      paymentId,
+      status: payment.status,
+      txHash: payment.txHash ?? null,
+    };
   }
 
   private generateId(prefix: string) {
