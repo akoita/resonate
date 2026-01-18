@@ -10,8 +10,7 @@ export default function AuthGate({
   children: React.ReactNode;
   title?: string;
 }) {
-  const { status, connect, connectPrivy, connectEmbedded, error } = useAuth();
-  const embeddedEnabled = process.env.NEXT_PUBLIC_EMBEDDED_WALLET === "true";
+  const { status, connectPrivy, error } = useAuth();
   const privyEnabled = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID);
 
   if (status === "authenticated") {
@@ -24,17 +23,9 @@ export default function AuthGate({
       <div className="auth-actions auth-actions-vertical">
         <div className="auth-actions-title">Choose a method</div>
         <div className="auth-actions-buttons">
-          <Button onClick={connect} disabled={status === "loading"}>
-            {status === "loading" ? "Connecting..." : "Continue with wallet"}
-          </Button>
           {privyEnabled ? (
-            <Button variant="ghost" onClick={connectPrivy} disabled={status === "loading"}>
-              Continue with email
-            </Button>
-          ) : null}
-          {embeddedEnabled ? (
-            <Button variant="ghost" onClick={connectEmbedded} disabled={status === "loading"}>
-              Use embedded wallet
+            <Button onClick={connectPrivy} disabled={status === "loading"}>
+              {status === "loading" ? "Connecting..." : "Continue with Privy"}
             </Button>
           ) : null}
         </div>
