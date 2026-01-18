@@ -74,6 +74,21 @@ export class WalletController {
     return { status: "ok" };
   }
 
+  @Get("paymaster")
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("admin")
+  getPaymasterStatus(@Req() req: any) {
+    return this.walletService.getPaymasterStatus(req.query?.userId);
+  }
+
+  @Post("paymaster/reset")
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("admin")
+  resetPaymaster(@Body() body: { userId: string }) {
+    this.walletService.resetPaymaster(body.userId);
+    return { status: "ok" };
+  }
+
   @Get(":userId")
   @UseGuards(AuthGuard("jwt"))
   get(@Param("userId") userId: string) {

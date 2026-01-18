@@ -90,6 +90,14 @@ export class WalletService {
     this.paymasterService.configure(input);
   }
 
+  getPaymasterStatus(userId?: string) {
+    return this.paymasterService.getStatus(userId);
+  }
+
+  resetPaymaster(userId: string) {
+    this.paymasterService.resetUser(userId);
+  }
+
   async deploySmartAccount(input: { userId: string }) {
     const wallet = (await this.getOrCreate(input.userId, "erc4337")) as any;
     if (wallet.deploymentTxHash) {
@@ -108,7 +116,11 @@ export class WalletService {
       paymasterAndData: wallet.paymaster ?? "0x",
       signature: "0x",
     };
-    userOp.paymasterAndData = this.paymasterService.buildPaymasterData(userOp, 0);
+    userOp.paymasterAndData = this.paymasterService.buildPaymasterData(
+      userOp,
+      0,
+      input.userId
+    );
     const userOpHash = await this.erc4337Client.sendUserOperation(userOp);
     await this.erc4337Client.waitForReceipt(userOpHash);
     return prisma.wallet.update({
