@@ -11,7 +11,15 @@ CREATE TABLE wallets (
   user_id UUID NOT NULL REFERENCES users(id),
   address TEXT NOT NULL UNIQUE,
   chain_id INTEGER NOT NULL,
-  balance_usd NUMERIC(12, 2) NOT NULL DEFAULT 0
+  balance_usd NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  account_type TEXT NOT NULL DEFAULT 'local',
+  provider TEXT NOT NULL DEFAULT 'local',
+  owner_address TEXT,
+  entry_point TEXT,
+  factory TEXT,
+  paymaster TEXT,
+  bundler TEXT,
+  salt TEXT
 );
 
 CREATE TABLE artists (
