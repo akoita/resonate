@@ -21,6 +21,29 @@ streaming, remixing, and rights management.
 - `docs/`: product and architecture specifications
 - `.github/`: workflows and repository settings
 
-## Development (TBD)
+## Development
 
-Setup instructions will be added when the first services are scaffolded.
+### Local services
+
+Start Postgres:
+
+```
+docker compose up -d
+```
+
+### Backend
+
+Set env vars:
+
+- `DATABASE_URL=postgresql://resonate:resonate@localhost:5432/resonate`
+- `JWT_SECRET=dev-secret`
+
+Install and run:
+
+```
+cd backend
+npm install
+npm run prisma:generate
+npm run prisma:migrate
+npm run start:dev
+```
