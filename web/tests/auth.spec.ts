@@ -7,6 +7,11 @@ test("shows connect wallet call-to-action", async ({ page }) => {
   await expect(page.getByText("Connect wallet")).toBeVisible();
 });
 
+test("hides embedded wallet option when disabled", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByText("Use embedded wallet")).toHaveCount(0);
+});
+
 test("shows self-custody actions panel", async ({ page }) => {
   await page.goto("/wallet");
   await expect(page.getByText("Self-custody actions")).toBeVisible();

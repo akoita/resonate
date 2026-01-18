@@ -10,7 +10,8 @@ export default function AuthGate({
   children: React.ReactNode;
   title?: string;
 }) {
-  const { status, connect, error } = useAuth();
+  const { status, connect, connectEmbedded, error } = useAuth();
+  const embeddedEnabled = process.env.NEXT_PUBLIC_EMBEDDED_WALLET === "true";
 
   if (status === "authenticated") {
     return <>{children}</>;
@@ -19,9 +20,16 @@ export default function AuthGate({
   return (
     <div className="auth-panel">
       <div className="auth-title">{title}</div>
-      <Button onClick={connect} disabled={status === "loading"}>
-        {status === "loading" ? "Connecting..." : "Connect wallet"}
-      </Button>
+      <div className="auth-actions">
+        <Button onClick={connect} disabled={status === "loading"}>
+          {status === "loading" ? "Connecting..." : "Connect wallet"}
+        </Button>
+        {embeddedEnabled ? (
+          <Button variant="ghost" onClick={connectEmbedded} disabled={status === "loading"}>
+            Use embedded wallet
+          </Button>
+        ) : null}
+      </div>
       {status === "error" && error ? (
         <div className="auth-error">{error}</div>
       ) : null}

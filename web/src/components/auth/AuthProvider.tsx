@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { fetchNonce, fetchWallet, verifySignature, type WalletRecord } from "../../lib/api";
+import { clearEmbeddedAccount, getOrCreateEmbeddedAccount } from "../../lib/embedded_wallet";
 
 type AuthState = {
   status: "idle" | "loading" | "authenticated" | "error";
@@ -11,6 +12,7 @@ type AuthState = {
   wallet: WalletRecord | null;
   error?: string;
   connect: () => Promise<void>;
+  connectEmbedded: () => Promise<void>;
   disconnect: () => void;
   refreshWallet: () => Promise<void>;
 };
@@ -35,6 +37,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [role, setRole] = useState<string | null>(null);
   const [wallet, setWallet] = useState<WalletRecord | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
+  const embeddedEnabled = process.env.NEXT_PUBLIC_EMBEDDED_WALLET === "true";
 
   const resolveRole = useCallback((jwt: string | null) => {
     if (!jwt) {
@@ -122,9 +125,41 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     }
   }, []);
 
+  const connectEmbedded = useCallback(async () => {
+    setStatus("loading");
+    setError(undefined);
+    try {
+      if (!embeddedEnabled) {
+        throw new Error("Embedded wallet is not enabled.");
+      }
+      const account = getOrCreateEmbeddedAccount();
+      const { nonce } = await fetchNonce(account.address);
+      const message = `Resonate Sign-In\nAddress: ${account.address}\nNonce: ${nonce}\nIssued At: ${new Date().toISOString()}`;
+      const signature = await account.signMessage({ message });
+      const result = await verifySignature({
+        address: account.address,
+        message,
+        signature,
+      });
+      if (!("accessToken" in result)) {
+        throw new Error(result.status);
+      }
+      localStorage.setItem(TOKEN_KEY, result.accessToken);
+      localStorage.setItem(ADDRESS_KEY, account.address.toLowerCase());
+      setToken(result.accessToken);
+      setAddress(account.address.toLowerCase());
+      setRole(resolveRole(result.accessToken));
+      setStatus("authenticated");
+    } catch (err) {
+      setError((err as Error).message);
+      setStatus("error");
+    }
+  }, [embeddedEnabled, resolveRole]);
+
   const disconnect = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(ADDRESS_KEY);
+    clearEmbeddedAccount();
     setToken(null);
     setAddress(null);
     setRole(null);
@@ -141,10 +176,22 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       wallet,
       error,
       connect,
+      connectEmbedded,
       disconnect,
       refreshWallet,
     }),
-    [status, address, token, role, wallet, error, connect, disconnect, refreshWallet]
+    [
+      status,
+      address,
+      token,
+      role,
+      wallet,
+      error,
+      connect,
+      connectEmbedded,
+      disconnect,
+      refreshWallet,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
