@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
+import { Erc4337Client, UserOperation } from "./erc4337/erc4337_client";
 import { WalletProviderRegistry } from "./wallet_provider_registry";
 
 type WalletProviderName = "local" | "erc4337";
@@ -9,7 +10,8 @@ type WalletProviderName = "local" | "erc4337";
 export class WalletService {
   constructor(
     private readonly eventBus: EventBus,
-    private readonly providerRegistry: WalletProviderRegistry
+    private readonly providerRegistry: WalletProviderRegistry,
+    private readonly erc4337Client: Erc4337Client
   ) {}
 
   async fundWallet(input: { userId: string; amountUsd: number }) {
@@ -80,6 +82,31 @@ export class WalletService {
 
   async setProvider(input: { userId: string; provider: WalletProviderName }) {
     return this.refreshWallet(input);
+  }
+
+  async deploySmartAccount(input: { userId: string }) {
+    const wallet = (await this.getOrCreate(input.userId, "erc4337")) as any;
+    if (wallet.deploymentTxHash) {
+      return wallet;
+    }
+    const userOp: UserOperation = {
+      sender: wallet.address,
+      nonce: "0x0",
+      initCode: wallet.factory ? wallet.factory : "0x",
+      callData: "0x",
+      callGasLimit: "0x5208",
+      verificationGasLimit: "0x100000",
+      preVerificationGas: "0x5208",
+      maxFeePerGas: "0x3b9aca00",
+      maxPriorityFeePerGas: "0x3b9aca00",
+      paymasterAndData: wallet.paymaster ?? "0x",
+      signature: "0x",
+    };
+    const userOpHash = await this.erc4337Client.sendUserOperation(userOp);
+    return prisma.wallet.update({
+      where: { id: wallet.id },
+      data: { deploymentTxHash: userOpHash } as any,
+    });
   }
 
   async spend(userId: string, amountUsd: number) {
