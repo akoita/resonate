@@ -1,10 +1,14 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
+import { WALLET_PROVIDER, WalletProvider } from "./wallet_provider";
 
 @Injectable()
 export class WalletService {
-  constructor(private readonly eventBus: EventBus) {}
+  constructor(
+    private readonly eventBus: EventBus,
+    @Inject(WALLET_PROVIDER) private readonly walletProvider: WalletProvider
+  ) {}
 
   async fundWallet(input: { userId: string; amountUsd: number }) {
     const wallet = await this.getOrCreate(input.userId);
@@ -82,15 +86,24 @@ export class WalletService {
     if (existing) {
       return existing;
     }
+    const account = this.walletProvider.getAccount(userId);
     return prisma.wallet.create({
       data: {
         userId,
-        address: `wallet_${userId}`,
-        chainId: 0,
+        address: account.address,
+        chainId: account.chainId,
         balanceUsd: 0,
         monthlyCapUsd: 0,
         spentUsd: 0,
-      },
+        accountType: account.accountType,
+        provider: account.provider,
+        ownerAddress: account.ownerAddress,
+        entryPoint: account.entryPoint,
+        factory: account.factory,
+        paymaster: account.paymaster,
+        bundler: account.bundler,
+        salt: account.salt,
+      } as any,
     });
   }
 }
