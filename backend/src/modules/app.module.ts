@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { AnalyticsModule } from "./analytics/analytics.module";
+import { AgentsModule } from "./agents/agents.module";
 import { AuthModule } from "./auth/auth.module";
 import { RolesGuard } from "./auth/roles.guard";
 import { CatalogModule } from "./catalog/catalog.module";
@@ -23,6 +24,7 @@ import { SessionsModule } from "./sessions/sessions.module";
     HealthModule,
     AuthModule,
     IdentityModule,
+    AgentsModule,
     CurationModule,
     IngestionModule,
     CatalogModule,

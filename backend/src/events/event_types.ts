@@ -129,6 +129,15 @@ export interface AgentDecisionMadeEvent extends BaseEvent {
   reason: string;
 }
 
+export interface AgentEvaluatedEvent extends BaseEvent {
+  eventName: "agent.evaluated";
+  sessionId: string;
+  trackId: string;
+  licenseType: "personal" | "remix" | "commercial";
+  priceUsd: number;
+  reason: string;
+}
+
 export interface PaymentInitiatedEvent extends BaseEvent {
   eventName: "payment.initiated";
   paymentId: string;
@@ -180,6 +189,7 @@ export type ResonateEvent =
   | SessionEndedEvent
   | AgentTrackSelectedEvent
   | AgentDecisionMadeEvent
+  | AgentEvaluatedEvent
   | PaymentInitiatedEvent
   | PaymentSettledEvent
   | WalletFundedEvent
