@@ -13,10 +13,15 @@ export default function PlayerPage() {
   return (
     <main className="player-grid">
       <Card>
-        <div className="player-art" />
-        <h2 style={{ marginTop: "16px" }}>{currentTrack.name}</h2>
-        <div className="player-meta">
-          {currentTrack.artist} · {currentTrack.duration} · Mood: Night Drive
+        <div className="player-hero">
+          <div className="player-label">Now playing</div>
+          <div className="player-art" />
+          <div className="player-title">{currentTrack.name}</div>
+          <div className="player-meta-row">
+            <span>{currentTrack.artist}</span>
+            <span>Album: Midnight Drive</span>
+            <span>{currentTrack.duration}</span>
+          </div>
         </div>
         <div className="player-controls">
           <Button variant="ghost">Prev</Button>
@@ -37,7 +42,7 @@ export default function PlayerPage() {
       </Card>
 
       <Card title="Queue">
-        <div className="queue-list">
+        <div className="queue-compact">
           {queue.map((track) => (
             <div
               key={track.name}
