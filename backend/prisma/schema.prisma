@@ -37,14 +37,23 @@ model Artist {
 }
 
 model Track {
-  id        String   @id @default(uuid())
-  artistId  String
-  title     String
-  status    String
-  createdAt DateTime @default(now())
-  artist    Artist   @relation(fields: [artistId], references: [id])
-  stems     Stem[]
-  licenses  License[]
+  id              String   @id @default(uuid())
+  artistId        String
+  title           String
+  status          String
+  releaseType     String   @default("single")
+  releaseTitle    String?
+  primaryArtist   String?
+  featuredArtists String?
+  genre           String?
+  isrc            String?
+  label           String?
+  releaseDate     DateTime?
+  explicit        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  artist          Artist   @relation(fields: [artistId], references: [id])
+  stems           Stem[]
+  licenses        License[]
 }
 
 model Stem {

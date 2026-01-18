@@ -8,6 +8,17 @@ interface UploadRecord {
   artistId: string;
   fileUris: string[];
   status: UploadStatus;
+  metadata?: {
+    releaseType?: string;
+    releaseTitle?: string;
+    primaryArtist?: string;
+    featuredArtists?: string[];
+    genre?: string;
+    isrc?: string;
+    label?: string;
+    releaseDate?: string;
+    explicit?: boolean;
+  };
 }
 
 @Injectable()
@@ -16,13 +27,28 @@ export class IngestionService {
 
   constructor(private readonly eventBus: EventBus) {}
 
-  enqueueUpload(input: { artistId: string; fileUris: string[] }) {
+  enqueueUpload(input: {
+    artistId: string;
+    fileUris: string[];
+    metadata?: {
+      releaseType?: string;
+      releaseTitle?: string;
+      primaryArtist?: string;
+      featuredArtists?: string[];
+      genre?: string;
+      isrc?: string;
+      label?: string;
+      releaseDate?: string;
+      explicit?: boolean;
+    };
+  }) {
     const trackId = this.generateId("trk");
     const record: UploadRecord = {
       trackId,
       artistId: input.artistId,
       fileUris: input.fileUris,
       status: "queued",
+      metadata: input.metadata,
     };
     this.uploads.set(trackId, record);
     this.eventBus.publish({
@@ -33,6 +59,7 @@ export class IngestionService {
       artistId: input.artistId,
       fileUris: input.fileUris,
       checksum: "pending",
+      metadata: input.metadata,
     });
     return { trackId, status: record.status };
   }

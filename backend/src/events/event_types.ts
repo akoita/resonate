@@ -10,6 +10,17 @@ export interface StemsUploadedEvent extends BaseEvent {
   artistId: string;
   fileUris: string[];
   checksum: string;
+  metadata?: {
+    releaseType?: string;
+    releaseTitle?: string;
+    primaryArtist?: string;
+    featuredArtists?: string[];
+    genre?: string;
+    isrc?: string;
+    label?: string;
+    releaseDate?: string;
+    explicit?: boolean;
+  };
 }
 
 export interface StemsProcessedEvent extends BaseEvent {

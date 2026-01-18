@@ -26,6 +26,15 @@ export interface Track {
   artistId: UUID;
   title: string;
   status: "draft" | "processing" | "ready" | "failed";
+  releaseType?: "single" | "ep" | "album";
+  releaseTitle?: string;
+  primaryArtist?: string;
+  featuredArtists?: string[];
+  genre?: string;
+  isrc?: string;
+  label?: string;
+  releaseDate?: string;
+  explicit?: boolean;
 }
 
 export interface Stem {

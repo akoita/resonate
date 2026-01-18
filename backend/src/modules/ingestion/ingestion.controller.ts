@@ -8,7 +8,24 @@ export class IngestionController {
 
   @UseGuards(AuthGuard("jwt"))
   @Post("upload")
-  upload(@Body() body: { artistId: string; fileUris: string[] }) {
+  upload(
+    @Body()
+    body: {
+      artistId: string;
+      fileUris: string[];
+      metadata?: {
+        releaseType?: string;
+        releaseTitle?: string;
+        primaryArtist?: string;
+        featuredArtists?: string[];
+        genre?: string;
+        isrc?: string;
+        label?: string;
+        releaseDate?: string;
+        explicit?: boolean;
+      };
+    },
+  ) {
     return this.ingestionService.enqueueUpload(body);
   }
 
