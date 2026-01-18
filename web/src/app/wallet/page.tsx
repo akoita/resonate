@@ -2,6 +2,7 @@
 
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
+import SelfCustodyPanel from "../../components/auth/SelfCustodyPanel";
 import WalletCard from "../../components/auth/WalletCard";
 import { useAuth } from "../../components/auth/AuthProvider";
 
@@ -22,6 +23,7 @@ export default function WalletPage() {
         </div>
       </Card>
       <WalletCard />
+      <SelfCustodyPanel />
     </main>
   );
 }
