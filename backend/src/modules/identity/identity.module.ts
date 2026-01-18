@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
 import { Erc4337Client } from "./erc4337/erc4337_client";
 import { SessionKeyService } from "./session_key.service";
+import { SocialRecoveryService } from "./social_recovery.service";
 import { PaymasterService } from "./paymaster.service";
 import { WalletController } from "./wallet.controller";
 import { WalletService } from "./wallet.service";
@@ -15,6 +16,7 @@ import { WalletProviderRegistry } from "./wallet_provider_registry";
     EventBus,
     WalletService,
     SessionKeyService,
+    SocialRecoveryService,
     LocalWalletProvider,
     Erc4337WalletProvider,
     WalletProviderRegistry,
