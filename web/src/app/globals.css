@@ -291,6 +291,16 @@ a {
   color: var(--color-muted);
 }
 
+.upload-section-title {
+  font-weight: 600;
+  margin-bottom: var(--space-3);
+}
+
+.upload-panel {
+  display: grid;
+  gap: var(--space-4);
+}
+
 .upload-list {
   display: grid;
   gap: var(--space-3);
