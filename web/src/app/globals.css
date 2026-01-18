@@ -332,3 +332,52 @@ a {
   color: var(--color-muted);
   font-weight: 500;
 }
+
+.analytics-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+
+.kpi {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.kpi-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: rgba(124, 92, 255, 0.12);
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+}
+
+.kpi-trend {
+  color: var(--color-accent-2);
+  font-size: 12px;
+}
+
+.analytics-chart-grid {
+  height: 200px;
+  background-image: repeating-linear-gradient(
+      to right,
+      rgba(255, 255, 255, 0.05) 0,
+      rgba(255, 255, 255, 0.05) 1px,
+      transparent 1px,
+      transparent 40px
+    ),
+    repeating-linear-gradient(
+      to top,
+      rgba(255, 255, 255, 0.04) 0,
+      rgba(255, 255, 255, 0.04) 1px,
+      transparent 1px,
+      transparent 40px
+    );
+}
