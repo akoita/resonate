@@ -15,6 +15,9 @@ jest.mock("../db/prisma", () => {
         },
         update: async ({ where, data }: any) => {
           const existing = [...store.values()].find((w) => w.id === where.id);
+          if (!existing) {
+            throw new Error("Wallet not found");
+          }
           const updated = { ...existing, ...data };
           store.set(updated.userId, updated);
           return updated;
