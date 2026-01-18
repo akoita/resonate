@@ -3,6 +3,7 @@ import { AuthGuard } from "@nestjs/passport";
 import { Roles } from "../auth/roles.decorator";
 import { AgentEvaluationService } from "./agent_evaluation.service";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
+import { AgentRuntimeService } from "./agent_runtime.service";
 import { AgentRunnerService } from "./agent_runner.service";
 
 @Controller("agents")
@@ -10,7 +11,8 @@ export class AgentsController {
   constructor(
     private readonly agentRunner: AgentRunnerService,
     private readonly orchestrator: AgentOrchestratorService,
-    private readonly evaluator: AgentEvaluationService
+    private readonly evaluator: AgentEvaluationService,
+    private readonly runtime: AgentRuntimeService
   ) {}
 
   @UseGuards(AuthGuard("jwt"))
@@ -57,5 +59,24 @@ export class AgentsController {
   @Post("evaluate")
   evaluate(@Body() body: { sessions: Parameters<AgentEvaluationService["evaluate"]>[0] }) {
     return this.evaluator.evaluate(body.sessions);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("admin")
+  @Post("runtime")
+  runtimeRun(@Body() body: {
+    sessionId: string;
+    userId: string;
+    recentTrackIds: string[];
+    budgetRemainingUsd: number;
+    preferences: {
+      mood?: string;
+      energy?: "low" | "medium" | "high";
+      genres?: string[];
+      allowExplicit?: boolean;
+      licenseType?: "personal" | "remix" | "commercial";
+    };
+  }) {
+    return this.runtime.run(body);
   }
 }
