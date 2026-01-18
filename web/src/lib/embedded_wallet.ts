@@ -20,3 +20,10 @@ export function clearEmbeddedAccount() {
   }
   localStorage.removeItem(KEY_STORAGE);
 }
+
+export function getEmbeddedPrivateKey() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return localStorage.getItem(KEY_STORAGE);
+}
