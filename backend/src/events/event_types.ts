@@ -67,6 +67,20 @@ export interface RecommendationGeneratedEvent extends BaseEvent {
   strategy: string;
 }
 
+export interface CuratorStakedEvent extends BaseEvent {
+  eventName: "curator.staked";
+  curatorId: string;
+  amountUsd: number;
+}
+
+export interface CuratorReportedEvent extends BaseEvent {
+  eventName: "curator.reported";
+  reportId: string;
+  curatorId: string;
+  trackId: string;
+  reason: string;
+}
+
 export interface CatalogUpdatedEvent extends BaseEvent {
   eventName: "catalog.updated";
   trackId: string;
@@ -158,6 +172,8 @@ export type ResonateEvent =
   | RemixCreatedEvent
   | RecommendationPreferencesUpdatedEvent
   | RecommendationGeneratedEvent
+  | CuratorStakedEvent
+  | CuratorReportedEvent
   | CatalogUpdatedEvent
   | SessionStartedEvent
   | LicenseGrantedEvent
