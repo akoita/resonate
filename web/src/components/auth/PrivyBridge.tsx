@@ -5,7 +5,7 @@ import { usePrivy, useWallets } from "@privy-io/react-auth";
 
 type PrivyWalletLike = {
   address: string;
-  signMessage: (input: { message: string } | string) => Promise<`0x${string}`>;
+  sign: (message: string) => Promise<string>;
 };
 
 type PrivyState = {

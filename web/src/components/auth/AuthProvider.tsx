@@ -169,35 +169,63 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         throw new Error("Privy is not enabled.");
       }
       await privy.login();
+      // Note: Don't check privy.authenticated here - it's stale closure state.
+      // The effect below will handle resetting to idle if user cancels.
     } catch (err) {
       setError((err as Error).message);
       setStatus("error");
     }
   }, [privy]);
 
+  // Reset status to idle when user cancels Privy login modal
+  // This effect watches for when Privy is ready but user is not authenticated
+  // while we're still in loading state (meaning login was initiated but not completed)
+  // Also ensure we're not in the middle of a sync process
+  useEffect(() => {
+    if (
+      status === "loading" &&
+      privy?.enabled &&
+      privy.ready &&
+      !privy.authenticated &&
+      !privySyncing &&
+      !token
+    ) {
+      setStatus("idle");
+    }
+  }, [status, privy?.enabled, privy?.ready, privy?.authenticated, privySyncing, token]);
+
+  // Track if we've attempted sync for the current privy session to prevent infinite retries
+  const [syncAttempted, setSyncAttempted] = useState(false);
+
+  // Reset syncAttempted when privy user changes
+  useEffect(() => {
+    setSyncAttempted(false);
+  }, [privy?.userId]);
+
   useEffect(() => {
     if (!privy?.enabled || !privy.ready || !privy.authenticated || !privy.wallet) {
       return;
     }
-    if (privySyncing) {
+    if (privySyncing || syncAttempted) {
       return;
     }
     if (address?.toLowerCase() === privy.wallet.address.toLowerCase() && token) {
       return;
     }
+    // Capture references to avoid stale closures, but keep wallet as object to preserve method binding
+    const wallet = privy.wallet;
+    const walletAddress = wallet.address;
+    const userId = privy.userId;
+
     const sync = async () => {
       setPrivySyncing(true);
+      setSyncAttempted(true);
       try {
-        const { nonce } = await fetchNonce(privy.wallet.address);
-        const message = `Resonate Sign-In\nAddress: ${privy.wallet.address}\nNonce: ${nonce}\nIssued At: ${new Date().toISOString()}`;
-        let signature: `0x${string}`;
-        try {
-          signature = (await privy.wallet.signMessage({ message })) as `0x${string}`;
-        } catch {
-          signature = (await privy.wallet.signMessage(message)) as `0x${string}`;
-        }
+        const { nonce } = await fetchNonce(walletAddress);
+        const message = `Resonate Sign-In\nAddress: ${walletAddress}\nNonce: ${nonce}\nIssued At: ${new Date().toISOString()}`;
+        const signature = (await wallet.sign(message)) as `0x${string}`;
         const result = await verifySignature({
-          address: privy.wallet.address,
+          address: walletAddress,
           message,
           signature,
         });
@@ -205,12 +233,12 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           throw new Error(result.status);
         }
         localStorage.setItem(TOKEN_KEY, result.accessToken);
-        localStorage.setItem(ADDRESS_KEY, privy.wallet.address.toLowerCase());
-        if (privy.userId) {
-          localStorage.setItem(PRIVY_USER_KEY, privy.userId);
+        localStorage.setItem(ADDRESS_KEY, walletAddress.toLowerCase());
+        if (userId) {
+          localStorage.setItem(PRIVY_USER_KEY, userId);
         }
         setToken(result.accessToken);
-        setAddress(privy.wallet.address.toLowerCase());
+        setAddress(walletAddress.toLowerCase());
         setRole(resolveRole(result.accessToken));
         setStatus("authenticated");
       } catch (err) {
@@ -221,7 +249,18 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       }
     };
     void sync();
-  }, [address, privy, privySyncing, resolveRole, token]);
+  }, [
+    address,
+    privy?.enabled,
+    privy?.ready,
+    privy?.authenticated,
+    privy?.wallet,
+    privy?.userId,
+    privySyncing,
+    syncAttempted,
+    resolveRole,
+    token,
+  ]);
 
   const disconnect = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
