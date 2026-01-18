@@ -29,7 +29,7 @@ jest.mock("../db/prisma", () => {
 
 describe("wallet", () => {
   it("enforces monthly budget cap", async () => {
-    const wallet = new WalletService();
+    const wallet = new WalletService({ publish: () => {} } as any);
     await wallet.setBudget({ userId: "user-1", monthlyCapUsd: 10 });
     await wallet.fundWallet({ userId: "user-1", amountUsd: 10 });
     const first = await wallet.spend("user-1", 6);

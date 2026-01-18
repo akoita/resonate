@@ -11,7 +11,9 @@ export class WalletController {
   }
 
   @Post("budget")
-  setBudget(@Body() body: { userId: string; monthlyCapUsd: number }) {
+  setBudget(
+    @Body() body: { userId: string; monthlyCapUsd: number; resetSpent?: boolean },
+  ) {
     return this.walletService.setBudget(body);
   }
 
