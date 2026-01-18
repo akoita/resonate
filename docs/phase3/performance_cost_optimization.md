@@ -27,6 +27,7 @@
 - Scenario: 1k session starts per minute
 - Duration: 20 minutes per test run
 - Success: P95 latency < 1s, error rate < 1%
+- Smoke test script: `scripts/load/k6_smoke.js`
 
 ## Next Steps
 - Add Redis cache for catalog and session state
