@@ -435,3 +435,55 @@ a {
       transparent 40px
     );
 }
+
+.auth-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.auth-badge {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: rgba(124, 92, 255, 0.12);
+  font-size: 12px;
+}
+
+.auth-error {
+  color: #ff9f9f;
+  font-size: 12px;
+}
+
+.auth-panel {
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  display: grid;
+  gap: var(--space-4);
+  background: rgba(124, 92, 255, 0.04);
+}
+
+.auth-title {
+  font-weight: 600;
+}
+
+.wallet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-4);
+}
+
+.wallet-meta {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.wallet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
