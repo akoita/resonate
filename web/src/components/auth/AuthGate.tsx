@@ -21,20 +21,23 @@ export default function AuthGate({
   return (
     <div className="auth-panel">
       <div className="auth-title">{title}</div>
-      <div className="auth-actions">
-        <Button onClick={connect} disabled={status === "loading"}>
-          {status === "loading" ? "Connecting..." : "Connect wallet"}
-        </Button>
-        {privyEnabled ? (
-          <Button variant="ghost" onClick={connectPrivy} disabled={status === "loading"}>
-            Continue with email
+      <div className="auth-actions auth-actions-vertical">
+        <div className="auth-actions-title">Choose a method</div>
+        <div className="auth-actions-buttons">
+          <Button onClick={connect} disabled={status === "loading"}>
+            {status === "loading" ? "Connecting..." : "Continue with wallet"}
           </Button>
-        ) : null}
-        {embeddedEnabled ? (
-          <Button variant="ghost" onClick={connectEmbedded} disabled={status === "loading"}>
-            Use embedded wallet
-          </Button>
-        ) : null}
+          {privyEnabled ? (
+            <Button variant="ghost" onClick={connectPrivy} disabled={status === "loading"}>
+              Continue with email
+            </Button>
+          ) : null}
+          {embeddedEnabled ? (
+            <Button variant="ghost" onClick={connectEmbedded} disabled={status === "loading"}>
+              Use embedded wallet
+            </Button>
+          ) : null}
+        </div>
       </div>
       {status === "error" && error ? (
         <div className="auth-error">{error}</div>

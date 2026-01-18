@@ -443,6 +443,29 @@ a {
   flex-wrap: wrap;
 }
 
+.auth-actions-vertical {
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.auth-actions-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted);
+}
+
+.auth-actions-buttons {
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.auth-actions-buttons .ui-btn {
+  width: 100%;
+  justify-content: center;
+}
+
 .auth-badge {
   padding: 6px 12px;
   border-radius: 999px;
