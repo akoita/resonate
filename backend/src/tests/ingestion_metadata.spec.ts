@@ -31,4 +31,23 @@ describe("IngestionService metadata", () => {
 
     expect(received?.metadata).toEqual(metadata);
   });
+
+  it("emits stems.processed and updates status", () => {
+    const eventBus = new EventBus();
+    const service = new IngestionService(eventBus);
+    let processed: any;
+
+    eventBus.subscribe("stems.processed", (event) => {
+      processed = event;
+    });
+
+    const result = service.enqueueUpload({
+      artistId: "artist_1",
+      fileUris: ["gs://bucket/vocals.wav", "gs://bucket/drums.wav"],
+    });
+
+    const status = service.getStatus(result.trackId);
+    expect(status.status).toBe("complete");
+    expect(processed?.stems?.length).toBe(2);
+  });
 });
