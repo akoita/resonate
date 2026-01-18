@@ -5,6 +5,7 @@
   --color-muted: #9aa3b2;
   --color-accent: #7c5cff;
   --color-accent-2: #00d1ff;
+  --color-border: rgba(255, 255, 255, 0.08);
 
   --radius-sm: 6px;
   --radius-md: 10px;
