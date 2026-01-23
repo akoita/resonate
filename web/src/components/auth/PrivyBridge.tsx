@@ -14,8 +14,8 @@ type PrivyState = {
   authenticated: boolean;
   userId: string | null;
   wallet: PrivyWalletLike | null;
-  login: () => Promise<void>;
-  logout: () => Promise<void>;
+  login: () => void;
+  logout: () => void;
 };
 
 const PrivyStateContext = createContext<PrivyState | null>(null);
