@@ -13,7 +13,7 @@ import { CatalogService } from "./catalog.service";
 
 @Controller("catalog")
 export class CatalogController {
-  constructor(private readonly catalogService: CatalogService) {}
+  constructor(private readonly catalogService: CatalogService) { }
 
   @UseGuards(AuthGuard("jwt"))
   @Post()
@@ -49,6 +49,20 @@ export class CatalogController {
     @Body() body: { title?: string; status?: string },
   ) {
     return this.catalogService.updateTrack(trackId, body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Get("artist/:artistId")
+  listByArtist(@Param("artistId") artistId: string) {
+    return this.catalogService.listByArtist(artistId);
+  }
+
+  @Get("published")
+  listPublished(@Query("limit") limit?: string) {
+    const parsedLimit = limit ? Number(limit) : 20;
+    return this.catalogService.listPublished(
+      Number.isNaN(parsedLimit) ? 20 : parsedLimit,
+    );
   }
 
   @UseGuards(AuthGuard("jwt"))
