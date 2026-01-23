@@ -23,7 +23,7 @@ jobs:
             backend/package-lock.json
       
       - name: Install web dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
         working-directory: web
       
       - name: Run web lint
@@ -32,6 +32,10 @@ jobs:
       
       - name: Install backend dependencies
         run: npm ci
+        working-directory: backend
+      
+      - name: Generate Prisma Client
+        run: npx prisma generate
         working-directory: backend
       
       - name: Run backend lint
@@ -53,7 +57,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
       
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
         working-directory: web
       
       - name: Build
@@ -75,7 +79,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
       
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
         working-directory: web
       
       - name: Install Playwright browsers
