@@ -30,20 +30,36 @@ npx playwright test tests/catalog.spec.ts
 # Run tests matching pattern
 npx playwright test -g "HOME-01"
 
+# Run only authenticated tests
+npx playwright test --grep "authenticated"
+
 # Show HTML report after run
 npx playwright show-report
 ```
 
 ## Test Files
 
+### Unauthenticated Tests
 | File | Description | Tests |
 |------|-------------|-------|
 | `catalog.spec.ts` | Home page and catalog functionality | 6 |
 | `player.spec.ts` | Audio player controls and display | 5 |
-| `upload.spec.ts` | Artist upload flow (auth gate) | 3 |
+| `upload.spec.ts` | Upload page auth gate | 3 |
 | `auth.spec.ts` | Authentication UI and navigation | 5 |
 | `ui.spec.ts` | General UI component rendering | 4 |
 | `aa.spec.ts` | Account abstraction flows (requires backend) | 2 |
+
+### Authenticated Tests
+| File | Description | Tests |
+|------|-------------|-------|
+| `upload.authenticated.spec.ts` | Full upload form functionality | 7 |
+| `player.authenticated.spec.ts` | Player with auth context | 5 |
+| `error-handling.spec.ts` | Form validation and errors | 4 |
+
+### Auth Fixtures
+| File | Description |
+|------|-------------|
+| `auth.setup.ts` | Mock auth injection for authenticated tests |
 
 ## Test Categories
 
@@ -62,21 +78,42 @@ npx playwright show-report
 - `PLAYER-04`: Track Info card exists
 - `PLAYER-05`: Progress slider present
 
-### Upload Flow (`upload.spec.ts`)
-- `UPLOAD-01`: Auth gate shows for unauthenticated users
-- `UPLOAD-02`: Upload page has correct title
-- `UPLOAD-03`: Artist upload route accessible
+### Authenticated Upload (`upload.authenticated.spec.ts`)
+- `UPLOAD-02`: Upload form shows when authenticated
+- `UPLOAD-03`: File drop zone is visible
+- `UPLOAD-04`: File input accepts audio files
+- `UPLOAD-05`: Form input fields present
+- `UPLOAD-06`: Publish button present
+- `UPLOAD-07`: Supported formats displayed
+- `UPLOAD-08`: Release settings section exists
 
-### Authentication (`auth.spec.ts`)
-- Connect wallet CTA visible
-- Self-custody actions panel renders
-- Sidebar navigation works
+### Authenticated Player (`player.authenticated.spec.ts`)
+- `PLAYER-AUTH-01`: Player accessible when authenticated
+- `PLAYER-AUTH-02`: Track info card visible
+- `PLAYER-AUTH-03`: Player with trackId shows info card
+- `PLAYER-AUTH-04`: Volume slider interactive
+- `PLAYER-AUTH-05`: Now playing label visible
 
-### Account Abstraction (`aa.spec.ts`)
-> ⚠️ These tests require the backend server running on `localhost:3000`
+### Error Handling (`error-handling.spec.ts`)
+- `ERR-01`: Upload page shows form when authenticated
+- `ERR-02`: Publish button exists
+- `ERR-03`: Form has required input fields
+- `ERR-04`: File drop zone has instructions
 
-- Session key issuance
-- Smart account deployment
+## Authentication
+
+The `auth.setup.ts` file provides fixtures for authenticated testing:
+
+```typescript
+import { test, expect } from "./auth.setup";
+
+test("authenticated test", async ({ authenticatedPage }) => {
+  await authenticatedPage.goto("/artist/upload");
+  // Page is now authenticated - AuthGate is bypassed
+});
+```
+
+This works by injecting mock credentials into localStorage before page load.
 
 ## Configuration
 
@@ -89,6 +126,15 @@ See [`playwright.config.ts`](../playwright.config.ts) for test configuration:
 
 ## Writing New Tests
 
+### Selector Best Practices
+
+1. **Scope to `main`** when testing page content to avoid sidebar matches
+2. **Use `getByRole`** for interactive elements (buttons, links, inputs)
+3. **Use `.locator(".class")`** for specific component classes
+4. **Use `.first()`** when multiple elements may match
+
+### Example
+
 ```typescript
 import { test, expect } from "@playwright/test";
 
@@ -96,23 +142,12 @@ test.describe("Feature Name", () => {
   test("TEST-ID: Description", async ({ page }) => {
     await page.goto("/route");
     
-    // Use role-scoped selectors for specificity
     const main = page.getByRole("main");
     await expect(main.getByRole("button", { name: "Submit" })).toBeVisible();
-    
-    // Or use class-based locators
-    await expect(page.locator(".component-class")).toContainText("Expected");
   });
 });
 ```
 
-### Selector Best Practices
-
-1. **Scope to `main`** when testing page content to avoid sidebar matches
-2. **Use `getByRole`** for interactive elements (buttons, links, inputs)
-3. **Use `.locator(".class")`** for specific component classes
-4. **Avoid `getByText` alone** if text appears in multiple places
-
 ## CI Integration
 
-Tests run automatically on PR via GitHub Actions. The `aa.spec.ts` tests are skipped in CI when the backend is not available.
+Tests run automatically on PR via GitHub Actions. The `aa.spec.ts` tests are skipped when the backend is not available.
