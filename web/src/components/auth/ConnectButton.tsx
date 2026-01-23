@@ -5,7 +5,6 @@ import { useAuth } from "./AuthProvider";
 
 export default function ConnectButton() {
   const { status, address, connectPrivy, disconnect, error } = useAuth();
-  const privyEnabled = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID) || process.env.NEXT_PUBLIC_MOCK_AUTH === "true";
   const [copied, setCopied] = useState(false);
 
   const copyAddress = () => {
@@ -58,22 +57,20 @@ export default function ConnectButton() {
   return (
     <div className="wallet-connect">
       <div className="wallet-connect-label">Connect</div>
-      {privyEnabled ? (
-        <button
-          className="wallet-connect-btn"
-          onClick={connectPrivy}
-          disabled={status === "loading"}
-        >
-          <span className="wallet-connect-btn-glow" />
-          <span className="wallet-connect-btn-content">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="2" y="6" width="20" height="12" rx="2" />
-              <path d="M22 10H18a2 2 0 0 0 0 4h4" />
-            </svg>
-            {status === "loading" ? "Connecting..." : "Connect Wallet"}
-          </span>
-        </button>
-      ) : null}
+      <button
+        className="wallet-connect-btn"
+        onClick={connectPrivy}
+        disabled={status === "loading"}
+      >
+        <span className="wallet-connect-btn-glow" />
+        <span className="wallet-connect-btn-content">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="2" y="6" width="20" height="12" rx="2" />
+            <path d="M22 10H18a2 2 0 0 0 0 4h4" />
+          </svg>
+          {status === "loading" ? "Connecting..." : "Connect Wallet"}
+        </span>
+      </button>
       {status === "error" && error ? (
         <div className="wallet-error">{error}</div>
       ) : null}
