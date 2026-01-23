@@ -5,7 +5,7 @@ import { useAuth } from "./AuthProvider";
 
 export default function ConnectButton() {
   const { status, address, connectPrivy, disconnect, error } = useAuth();
-  const privyEnabled = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID);
+  const privyEnabled = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID) || process.env.NEXT_PUBLIC_MOCK_AUTH === "true";
   const [copied, setCopied] = useState(false);
 
   const copyAddress = () => {
