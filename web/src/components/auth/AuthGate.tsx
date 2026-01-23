@@ -10,7 +10,7 @@ export default function AuthGate({
   title?: string;
 }) {
   const { status, connectPrivy, error } = useAuth();
-  const privyEnabled = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID);
+  const privyEnabled = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID) || process.env.NEXT_PUBLIC_MOCK_AUTH === "true";
 
   if (status === "authenticated") {
     return <>{children}</>;
