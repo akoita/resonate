@@ -3,7 +3,7 @@ import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import AppShell from "../components/layout/AppShell";
 import AuthProvider from "../components/auth/AuthProvider";
-import PrivyProviderClient from "../components/auth/PrivyProviderClient";
+import ZeroDevProviderClient from "../components/auth/ZeroDevProviderClient";
 import { ToastProvider } from "../components/ui/Toast";
 
 const geistSans = Geist({
@@ -37,17 +37,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.variable} ${geistSans.variable} ${geistMono.variable}`}>
         <ToastProvider>
-          {privyAppId ? (
-            <PrivyProviderClient appId={privyAppId}>
-              <AuthProvider>
-                <AppShell>{children}</AppShell>
-              </AuthProvider>
-            </PrivyProviderClient>
-          ) : (
+          <ZeroDevProviderClient projectId={process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID}>
             <AuthProvider>
               <AppShell>{children}</AppShell>
             </AuthProvider>
-          )}
+          </ZeroDevProviderClient>
         </ToastProvider>
       </body>
     </html>
