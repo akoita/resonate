@@ -15,7 +15,7 @@ export class CatalogService implements OnModuleInit {
   >();
   private readonly cacheTtlMs = 30_000;
 
-  constructor(private readonly eventBus: EventBus) {}
+  constructor(private readonly eventBus: EventBus) { }
 
   onModuleInit() {
     this.eventBus.subscribe("stems.uploaded", (event: StemsUploadedEvent) => {
@@ -114,6 +114,23 @@ export class CatalogService implements OnModuleInit {
     });
   }
 
+  async listByArtist(artistId: string) {
+    return prisma.track.findMany({
+      where: { artistId },
+      include: { stems: true },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async listPublished(limit = 20) {
+    return prisma.track.findMany({
+      where: { status: "ready" },
+      include: { stems: true, artist: true },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
+  }
+
   async updateTrack(
     trackId: string,
     input: Partial<{
@@ -148,19 +165,19 @@ export class CatalogService implements OnModuleInit {
       filters?.hasIpnft === undefined && !filters?.stemType
         ? undefined
         : {
-            ...(filters?.hasIpnft === true
-              ? {
-                  some: {
-                    ...(filters?.stemType ? { type: filters.stemType } : {}),
-                    ipnftId: { not: null },
-                  },
-                }
-              : {}),
-            ...(filters?.hasIpnft === false ? { every: { ipnftId: null } } : {}),
-            ...(filters?.hasIpnft !== true && filters?.stemType
-              ? { some: { type: filters.stemType } }
-              : {}),
-          };
+          ...(filters?.hasIpnft === true
+            ? {
+              some: {
+                ...(filters?.stemType ? { type: filters.stemType } : {}),
+                ipnftId: { not: null },
+              },
+            }
+            : {}),
+          ...(filters?.hasIpnft === false ? { every: { ipnftId: null } } : {}),
+          ...(filters?.hasIpnft !== true && filters?.stemType
+            ? { some: { type: filters.stemType } }
+            : {}),
+        };
     const items = await prisma.track.findMany({
       where: {
         title: { contains: query, mode: "insensitive" },

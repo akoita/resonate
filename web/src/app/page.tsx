@@ -1,11 +1,23 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
+import { listPublishedTracks, Track } from "../lib/api";
 
 export default function Home() {
   const moods = ["Focus", "Chill", "Energy", "Night Drive", "Lo-fi"];
-  const trending = ["Neon Drift", "Satellite", "Glass City", "Echo Lane"];
-  const releases = ["Aurora Fields", "Parallel Bloom", "Blue Circuit", "Mirage"];
+  const [releases, setReleases] = useState<Track[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    listPublishedTracks(8)
+      .then(setReleases)
+      .catch(() => setReleases([]))
+      .finally(() => setLoading(false));
+  }, []);
+
   const curated = ["Deep Flow", "Momentum", "Calm Waves", "Pulse"];
 
   return (
@@ -31,25 +43,30 @@ export default function Home() {
       </section>
 
       <section className="home-section">
-        <div className="home-section-title">Trending</div>
-        <div className="card-grid">
-          {trending.map((name) => (
-            <Card key={name} title={name}>
-              Plays up 12% · 3:42
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      <section className="home-section">
         <div className="home-section-title">New Releases</div>
-        <div className="card-grid">
-          {releases.map((name) => (
-            <Card key={name} title={name}>
-              Fresh drop · 2:58
-            </Card>
-          ))}
-        </div>
+        {loading ? (
+          <div className="home-subtitle">Loading releases...</div>
+        ) : releases.length === 0 ? (
+          <div className="home-subtitle">
+            No releases yet.{" "}
+            <Link href="/artist/upload" style={{ color: "var(--color-accent)" }}>
+              Upload your first track
+            </Link>
+          </div>
+        ) : (
+          <div className="card-grid">
+            {releases.map((track) => (
+              <Link key={track.id} href={`/player?trackId=${track.id}`}>
+                <Card title={track.releaseTitle || track.title}>
+                  <div className="track-card-meta">
+                    <span>{track.primaryArtist || "Unknown Artist"}</span>
+                    <span className="track-card-status">{track.status}</span>
+                  </div>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="home-section">
@@ -65,3 +82,4 @@ export default function Home() {
     </main>
   );
 }
+
