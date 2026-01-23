@@ -131,3 +131,68 @@ export async function resetPaymaster(token: string, userId: string) {
     token
   );
 }
+
+// ========== Catalog API ==========
+
+export type Track = {
+  id: string;
+  artistId: string;
+  title: string;
+  status: string;
+  releaseType: string;
+  releaseTitle?: string | null;
+  primaryArtist?: string | null;
+  featuredArtists?: string | null;
+  genre?: string | null;
+  isrc?: string | null;
+  label?: string | null;
+  releaseDate?: string | null;
+  explicit: boolean;
+  createdAt: string;
+  stems?: Array<{
+    id: string;
+    trackId: string;
+    type: string;
+    uri: string;
+    ipnftId?: string | null;
+  }>;
+  artist?: {
+    id: string;
+    displayName: string;
+  };
+};
+
+export async function createTrack(
+  token: string,
+  input: {
+    artistId: string;
+    title: string;
+    releaseType?: string;
+    releaseTitle?: string;
+    primaryArtist?: string;
+    featuredArtists?: string[];
+    genre?: string;
+    isrc?: string;
+    label?: string;
+    releaseDate?: string;
+    explicit?: boolean;
+  }
+) {
+  return apiRequest<Track>(
+    "/catalog",
+    { method: "POST", body: JSON.stringify(input) },
+    token
+  );
+}
+
+export async function getTrack(token: string, trackId: string) {
+  return apiRequest<Track>(`/catalog/${trackId}`, {}, token);
+}
+
+export async function listArtistTracks(token: string, artistId: string) {
+  return apiRequest<Track[]>(`/catalog/artist/${artistId}`, {}, token);
+}
+
+export async function listPublishedTracks(limit = 20) {
+  return apiRequest<Track[]>(`/catalog/published?limit=${limit}`, {});
+}

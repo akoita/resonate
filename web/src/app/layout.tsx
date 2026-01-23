@@ -4,6 +4,7 @@ import "./globals.css";
 import AppShell from "../components/layout/AppShell";
 import AuthProvider from "../components/auth/AuthProvider";
 import PrivyProviderClient from "../components/auth/PrivyProviderClient";
+import { ToastProvider } from "../components/ui/Toast";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,17 +36,19 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} ${geistSans.variable} ${geistMono.variable}`}>
-        {privyAppId ? (
-          <PrivyProviderClient appId={privyAppId}>
+        <ToastProvider>
+          {privyAppId ? (
+            <PrivyProviderClient appId={privyAppId}>
+              <AuthProvider>
+                <AppShell>{children}</AppShell>
+              </AuthProvider>
+            </PrivyProviderClient>
+          ) : (
             <AuthProvider>
               <AppShell>{children}</AppShell>
             </AuthProvider>
-          </PrivyProviderClient>
-        ) : (
-          <AuthProvider>
-            <AppShell>{children}</AppShell>
-          </AuthProvider>
-        )}
+          )}
+        </ToastProvider>
       </body>
     </html>
   );
