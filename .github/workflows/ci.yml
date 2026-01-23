@@ -7,9 +7,95 @@ on:
     branches: [main]
 
 jobs:
-  lint-and-test:
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Placeholder
-        run: echo "CI scaffolded; add lint/test steps later."
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            web/package-lock.json
+            backend/package-lock.json
+      
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web
+      
+      - name: Run web lint
+        run: npm run lint
+        working-directory: web
+      
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+      
+      - name: Run backend lint
+        run: npm run lint
+        working-directory: backend
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+      
+      - name: Install dependencies
+        run: npm ci
+        working-directory: web
+      
+      - name: Build
+        run: npm run build
+        working-directory: web
+
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+      
+      - name: Install dependencies
+        run: npm ci
+        working-directory: web
+      
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+        working-directory: web
+      
+      - name: Build app
+        run: npm run build
+        working-directory: web
+      
+      - name: Run E2E tests
+        run: npm run test:e2e
+        working-directory: web
+        env:
+          CI: true
+      
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          retention-days: 7
