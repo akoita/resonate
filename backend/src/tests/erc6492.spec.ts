@@ -2,11 +2,12 @@ import { isErc6492, unwrapErc6492, wrapErc6492 } from "../modules/identity/erc64
 
 describe("erc6492", () => {
   it("wraps and unwraps signatures", () => {
-    const deployment = "0x1234";
+    const deployment = "0x" + "0".repeat(64);
     const sig = "0xaaaa";
     const wrapped = wrapErc6492(sig, deployment);
     expect(isErc6492(wrapped)).toBe(true);
     const unwrapped = unwrapErc6492(wrapped);
     expect(unwrapped.signature).toBe("0xaaaa");
+    expect(unwrapped.deploymentData).toBe(deployment);
   });
 });
