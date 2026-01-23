@@ -1,3 +1,16 @@
+/**
+ * @file catalog.spec.ts
+ * @description E2E tests for the home page and catalog functionality.
+ * 
+ * Tests cover:
+ * - Hero section rendering
+ * - Mood chip display
+ * - New Releases section
+ * - AI Curated section
+ * - Navigation to upload page
+ * 
+ * @requires Dev server running on localhost:3001
+ */
 "use strict";
 
 import { test, expect } from "@playwright/test";

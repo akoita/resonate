@@ -1,3 +1,17 @@
+/**
+ * @file player.spec.ts
+ * @description E2E tests for the audio player page and controls.
+ * 
+ * Tests cover:
+ * - Play/Prev/Next control buttons
+ * - Now playing label
+ * - Volume control
+ * - Track info card
+ * - Progress slider
+ * 
+ * @note Player shows default state when no track is selected
+ * @requires Dev server running on localhost:3001
+ */
 "use strict";
 
 import { test, expect } from "@playwright/test";
