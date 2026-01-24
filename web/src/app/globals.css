@@ -753,6 +753,27 @@ a {
   justify-content: center;
 }
 
+.wallet-connect-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.wallet-connect-btn.login {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: none;
+}
+
+.wallet-connect-btn.login:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.wallet-connect-btn.signup {
+  flex: 1.5;
+}
+
 .wallet-error {
   padding: 8px 12px;
   border-radius: var(--radius-md);
@@ -850,7 +871,7 @@ a {
   border-radius: var(--radius-lg);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  box-shadow: 
+  box-shadow:
     0 4px 20px rgba(0, 0, 0, 0.3),
     0 0 0 1px rgba(255, 255, 255, 0.05) inset;
   backdrop-filter: blur(12px);
@@ -862,6 +883,7 @@ a {
     opacity: 0;
     transform: translateX(100%);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);

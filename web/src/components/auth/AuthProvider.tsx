@@ -27,6 +27,8 @@ type AuthState = {
   wallet: WalletRecord | null;
   error?: string;
   connect: () => Promise<void>;
+  login: () => Promise<void>;
+  signup: () => Promise<void>;
   connectPrivy: () => Promise<void>;
   connectEmbedded: () => Promise<void>;
   disconnect: () => void;
@@ -87,7 +89,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     }
   }, [status, refreshWallet]);
 
-  const connectPrivy = useCallback(async () => {
+  const authenticate = useCallback(async (mode: WebAuthnMode = WebAuthnMode.Login) => {
     setStatus("loading");
     setError(undefined);
     try {
@@ -143,15 +145,15 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       }
 
       // Real Passkey login logic
-      console.log("Triggering ZeroDev Auth UI (Passkey)...");
+      console.log(`Triggering ZeroDev Auth UI (Passkey - ${mode})...`);
       const entryPoint = constants.getEntryPoint("0.7");
       const kernelVersion = constants.KERNEL_V3_1;
 
-      // We'll attempt to login via Passkey.
+      // We'll attempt to authenticate via Passkey.
       const webAuthnKey = await toWebAuthnKey({
         passkeyName: "Resonate",
         passkeyServerUrl: "https://passkeys.zerodev.app",
-        mode: WebAuthnMode.Login,
+        mode,
       });
 
       const passkeyValidator = await toPasskeyValidator(publicClient, {
@@ -198,13 +200,25 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     }
   }, [projectId, publicClient, resolveRole]);
 
+  const login = useCallback(async () => {
+    await authenticate(WebAuthnMode.Login);
+  }, [authenticate]);
+
+  const signup = useCallback(async () => {
+    await authenticate(WebAuthnMode.Register);
+  }, [authenticate]);
+
+  const connectPrivy = useCallback(async () => {
+    await login();
+  }, [login]);
+
   const connect = useCallback(async () => {
-    await connectPrivy();
-  }, [connectPrivy]);
+    await login();
+  }, [login]);
 
   const connectEmbedded = useCallback(async () => {
-    await connectPrivy();
-  }, [connectPrivy]);
+    await login();
+  }, [login]);
 
   const disconnect = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
@@ -227,12 +241,14 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       wallet,
       error,
       connect,
+      login,
+      signup,
       connectPrivy,
       connectEmbedded,
       disconnect,
       refreshWallet,
     }),
-    [status, address, token, role, wallet, error, connect, connectPrivy, connectEmbedded, disconnect, refreshWallet]
+    [status, address, token, role, wallet, error, connect, login, signup, connectPrivy, connectEmbedded, disconnect, refreshWallet]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
