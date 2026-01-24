@@ -2,18 +2,15 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { fetchNonce, fetchWallet, verifySignature, type WalletRecord } from "../../lib/api";
-import { clearEmbeddedAccount, getOrCreateEmbeddedAccount } from "../../lib/embedded_wallet";
+import { clearEmbeddedAccount } from "../../lib/embedded_wallet";
 import { useZeroDev } from "./ZeroDevProviderClient";
 import {
   createKernelAccount,
+  constants
 } from "@zerodev/sdk";
 import {
   signerToEcdsaValidator
 } from "@zerodev/ecdsa-validator";
-import {
-  entryPoint07Address
-} from "viem/account-abstraction";
-import { http, createPublicClient } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 type AuthState = {
@@ -94,16 +91,21 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         const privateKey = generatePrivateKey();
         const signer = privateKeyToAccount(privateKey);
 
+        const entryPoint = constants.getEntryPoint("0.7");
+        const kernelVersion = constants.KERNEL_V3_1;
+
         const ecdsaValidator = await signerToEcdsaValidator(publicClient, {
           signer,
-          entryPoint: entryPoint07Address,
+          entryPoint,
+          kernelVersion,
         });
 
         const account = await createKernelAccount(publicClient, {
           plugins: {
             sudo: ecdsaValidator,
           },
-          entryPoint: entryPoint07Address,
+          entryPoint,
+          kernelVersion,
         });
 
         const saAddress = account.address;
