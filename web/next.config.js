@@ -3,6 +3,14 @@ const nextConfig = {
   turbopack: {
     root: __dirname,
   },
+  async rewrites() {
+    return [
+      {
+        source: "/api/zerodev/:path*",
+        destination: "https://passkeys.zerodev.app/api/v2/:path*",
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig;
