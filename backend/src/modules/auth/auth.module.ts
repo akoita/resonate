@@ -1,4 +1,6 @@
 import { Module } from "@nestjs/common";
+import { createPublicClient, http } from "viem";
+import { sepolia } from "viem/chains";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
 import { AuditModule } from "../audit/audit.module";
@@ -17,7 +19,21 @@ import { JwtStrategy } from "./jwt.strategy";
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, AuthNonceService, JwtStrategy],
-  exports: [AuthService],
+  providers: [
+    AuthService,
+    AuthNonceService,
+    JwtStrategy,
+    {
+      provide: "PUBLIC_CLIENT",
+      useFactory: () => {
+        const rpcUrl = process.env.AA_BUNDLER || "http://localhost:4337";
+        return createPublicClient({
+          chain: sepolia, // Consistent with frontend
+          transport: rpcUrl.startsWith("http") ? http(rpcUrl) : http(),
+        });
+      },
+    },
+  ],
+  exports: [AuthService, "PUBLIC_CLIENT"],
 })
-export class AuthModule {}
+export class AuthModule { }
