@@ -11,6 +11,12 @@ import {
 import {
   signerToEcdsaValidator
 } from "@zerodev/ecdsa-validator";
+import {
+  toPasskeyValidator,
+  toWebAuthnKey,
+  WebAuthnMode,
+  PasskeyValidatorContractVersion
+} from "@zerodev/passkey-validator";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 type AuthState = {
@@ -136,8 +142,54 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         throw new Error("ZeroDev Project ID is not configured.");
       }
 
-      // Real login logic would go here
-      console.log("Triggering ZeroDev Auth UI...");
+      // Real Passkey login logic
+      console.log("Triggering ZeroDev Auth UI (Passkey)...");
+      const entryPoint = constants.getEntryPoint("0.7");
+      const kernelVersion = constants.KERNEL_V3_1;
+
+      // We'll attempt to login via Passkey.
+      const webAuthnKey = await toWebAuthnKey({
+        passkeyName: "Resonate",
+        passkeyServerUrl: "https://passkeys.zerodev.app",
+        mode: WebAuthnMode.Login,
+      });
+
+      const passkeyValidator = await toPasskeyValidator(publicClient, {
+        webAuthnKey,
+        entryPoint,
+        kernelVersion,
+        validatorContractVersion: PasskeyValidatorContractVersion.V0_0_1_UNPATCHED,
+      });
+
+      const account = await createKernelAccount(publicClient, {
+        plugins: {
+          sudo: passkeyValidator,
+        },
+        entryPoint,
+        kernelVersion,
+      });
+
+      const saAddress = account.address;
+      const { nonce } = await fetchNonce(saAddress);
+      const message = `Resonate Sign-In\nAddress: ${saAddress}\nNonce: ${nonce}\nIssued At: ${new Date().toISOString()}`;
+      const signature = await account.signMessage({ message });
+
+      const result = await verifySignature({
+        address: saAddress,
+        message,
+        signature,
+      });
+
+      if (!("accessToken" in result)) {
+        throw new Error(result.status);
+      }
+
+      localStorage.setItem(TOKEN_KEY, result.accessToken);
+      localStorage.setItem(ADDRESS_KEY, saAddress.toLowerCase());
+      setToken(result.accessToken);
+      setAddress(saAddress.toLowerCase());
+      setRole(resolveRole(result.accessToken));
+      setStatus("authenticated");
 
     } catch (err) {
       console.error(err);
