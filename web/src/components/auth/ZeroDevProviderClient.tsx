@@ -6,7 +6,7 @@ import { sepolia } from "viem/chains";
 
 type ZeroDevState = {
     projectId: string | null;
-    publicClient: any;
+    publicClient: import("viem").PublicClient;
 };
 
 const ZeroDevContext = createContext<ZeroDevState | null>(null);
