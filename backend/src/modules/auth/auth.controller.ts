@@ -1,6 +1,6 @@
-import { Body, Controller, Post } from "@nestjs/common";
+import { Body, Controller, Inject, Post } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { verifyMessage } from "viem";
+import { type PublicClient } from "viem";
 import { AuthService } from "./auth.service";
 import { AuthNonceService } from "./auth_nonce.service";
 
@@ -8,8 +8,9 @@ import { AuthNonceService } from "./auth_nonce.service";
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
-    private readonly nonceService: AuthNonceService
-  ) {}
+    private readonly nonceService: AuthNonceService,
+    @Inject("PUBLIC_CLIENT") private readonly publicClient: PublicClient
+  ) { }
 
   @Post("login")
   @Throttle({ default: { limit: 10, ttl: 60 } })
@@ -34,18 +35,26 @@ export class AuthController {
       role?: string;
     }
   ) {
-    const ok = await verifyMessage({
-      address: body.address as `0x${string}`,
-      message: body.message,
-      signature: body.signature,
-    });
-    if (!ok) {
-      return { status: "invalid_signature" };
+    try {
+      console.log(`[Auth] Verifying signature for ${body.address}`);
+      const ok = await this.publicClient.verifyMessage({
+        address: body.address as `0x${string}`,
+        message: body.message,
+        signature: body.signature,
+      });
+      if (!ok) {
+        console.warn(`[Auth] Signature verification failed for ${body.address}`);
+        return { status: "invalid_signature" };
+      }
+      const nonceMatch = /Nonce:\s*(.+)$/m.exec(body.message)?.[1] ?? "";
+      if (!this.nonceService.consume(body.address, nonceMatch)) {
+        console.warn(`[Auth] Nonce mismatch for ${body.address}`);
+        return { status: "invalid_nonce" };
+      }
+      return this.authService.issueTokenForAddress(body.address, body.role ?? "listener");
+    } catch (err) {
+      console.error(`[Auth] Error during verification:`, err);
+      return { status: "error", message: (err as Error).message };
     }
-    const nonceMatch = /Nonce:\s*(.+)$/m.exec(body.message)?.[1] ?? "";
-    if (!this.nonceService.consume(body.address, nonceMatch)) {
-      return { status: "invalid_nonce" };
-    }
-    return this.authService.issueTokenForAddress(body.address, body.role ?? "listener");
   }
 }
