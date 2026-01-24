@@ -153,7 +153,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       console.log("[Auth] Getting WebAuthn Key...");
       const webAuthnKey = await toWebAuthnKey({
         passkeyName: "Resonate",
-        passkeyServerUrl: `https://passkeys.zerodev.app/api/v2/${projectId}`,
+        passkeyServerUrl: `/api/zerodev/${projectId}`,
         mode,
       });
 
