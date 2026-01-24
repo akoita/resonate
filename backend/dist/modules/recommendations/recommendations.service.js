@@ -14,10 +14,11 @@ const common_1 = require("@nestjs/common");
 const prisma_1 = require("../../db/prisma");
 const event_bus_1 = require("../shared/event_bus");
 let RecommendationsService = class RecommendationsService {
+    eventBus;
+    preferences = new Map();
+    recentTrackIds = new Map();
     constructor(eventBus) {
         this.eventBus = eventBus;
-        this.preferences = new Map();
-        this.recentTrackIds = new Map();
     }
     setPreferences(userId, prefs) {
         const existing = this.preferences.get(userId) ?? {};

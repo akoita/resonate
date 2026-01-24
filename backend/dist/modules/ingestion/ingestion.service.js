@@ -13,9 +13,10 @@ exports.IngestionService = void 0;
 const common_1 = require("@nestjs/common");
 const event_bus_1 = require("../shared/event_bus");
 let IngestionService = class IngestionService {
+    eventBus;
+    uploads = new Map();
     constructor(eventBus) {
         this.eventBus = eventBus;
-        this.uploads = new Map();
     }
     enqueueUpload(input) {
         const trackId = this.generateId("trk");

@@ -8,6 +8,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.IdentityModule = void 0;
 const common_1 = require("@nestjs/common");
+const config_1 = require("@nestjs/config");
 const event_bus_1 = require("../shared/event_bus");
 const erc4337_client_1 = require("./erc4337/erc4337_client");
 const session_key_service_1 = require("./session_key.service");
@@ -35,9 +36,10 @@ exports.IdentityModule = IdentityModule = __decorate([
             paymaster_service_1.PaymasterService,
             {
                 provide: erc4337_client_1.Erc4337Client,
-                useFactory: () => {
-                    const bundler = process.env.AA_BUNDLER ?? "http://localhost:4337";
-                    const entryPoint = process.env.AA_ENTRY_POINT ?? "0xEntryPoint";
+                inject: [config_1.ConfigService],
+                useFactory: (config) => {
+                    const bundler = config.get("AA_BUNDLER") || "http://localhost:4337";
+                    const entryPoint = config.get("AA_ENTRY_POINT") || "0xEntryPoint";
                     return new erc4337_client_1.Erc4337Client(bundler, entryPoint);
                 },
             },

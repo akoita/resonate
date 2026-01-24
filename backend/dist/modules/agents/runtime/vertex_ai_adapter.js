@@ -9,9 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.VertexAiAdapter = void 0;
 const common_1 = require("@nestjs/common");
 let VertexAiAdapter = class VertexAiAdapter {
-    constructor() {
-        this.name = "vertex";
-    }
+    name = "vertex";
     async run(input) {
         return {
             status: input.budgetRemainingUsd > 0 ? "approved" : "rejected",

@@ -10,6 +10,7 @@ exports.AppModule = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const throttler_1 = require("@nestjs/throttler");
+const config_1 = require("@nestjs/config");
 const analytics_module_1 = require("./analytics/analytics.module");
 const agents_module_1 = require("./agents/agents.module");
 const auth_module_1 = require("./auth/auth.module");
@@ -30,6 +31,7 @@ exports.AppModule = AppModule;
 exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
         imports: [
+            config_1.ConfigModule.forRoot({ isGlobal: true }),
             throttler_1.ThrottlerModule.forRoot({
                 throttlers: [{ limit: 30, ttl: 60 }],
             }),

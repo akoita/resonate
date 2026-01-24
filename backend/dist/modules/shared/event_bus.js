@@ -9,9 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.EventBus = void 0;
 const common_1 = require("@nestjs/common");
 let EventBus = class EventBus {
-    constructor() {
-        this.handlers = {};
-    }
+    handlers = {};
     publish(event) {
         const handlers = this.handlers[event.eventName] ?? [];
         handlers.forEach((handler) => handler(event));

@@ -9,9 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.EmbeddingService = void 0;
 const common_1 = require("@nestjs/common");
 let EmbeddingService = class EmbeddingService {
-    constructor() {
-        this.dimension = 16;
-    }
+    dimension = 16;
     embed(text) {
         const vector = new Array(this.dimension).fill(0);
         const tokens = text

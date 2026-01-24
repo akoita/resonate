@@ -14,6 +14,8 @@ const common_1 = require("@nestjs/common");
 const jwt_1 = require("@nestjs/jwt");
 const audit_service_1 = require("../audit/audit.service");
 let AuthService = class AuthService {
+    jwtService;
+    auditService;
     constructor(jwtService, auditService) {
         this.jwtService = jwtService;
         this.auditService = auditService;

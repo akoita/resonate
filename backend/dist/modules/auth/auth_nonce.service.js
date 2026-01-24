@@ -10,9 +10,7 @@ exports.AuthNonceService = void 0;
 const common_1 = require("@nestjs/common");
 const crypto_1 = require("crypto");
 let AuthNonceService = class AuthNonceService {
-    constructor() {
-        this.nonces = new Map();
-    }
+    nonces = new Map();
     issue(address) {
         const nonce = (0, crypto_1.randomUUID)();
         this.nonces.set(address.toLowerCase(), nonce);

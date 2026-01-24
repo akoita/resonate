@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+import { ConfigModule } from "@nestjs/config";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { AgentsModule } from "./agents/agents.module";
 import { AuthModule } from "./auth/auth.module";
@@ -18,6 +19,7 @@ import { SessionsModule } from "./sessions/sessions.module";
 
 @Module({
   imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot({
       throttlers: [{ limit: 30, ttl: 60 }],
     }),
@@ -40,4 +42,4 @@ import { SessionsModule } from "./sessions/sessions.module";
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })
-export class AppModule {}
+export class AppModule { }
