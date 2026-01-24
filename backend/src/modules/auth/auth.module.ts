@@ -31,10 +31,11 @@ import { JwtStrategy } from "./jwt.strategy";
       provide: "PUBLIC_CLIENT",
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        const rpcUrl = config.get<string>("AA_BUNDLER") || "http://localhost:4337";
+        // Use RPC_URL for read operations (verifySignature), fallback to default Sepolia
+        const rpcUrl = config.get<string>("RPC_URL");
         return createPublicClient({
           chain: sepolia,
-          transport: rpcUrl.startsWith("http") ? http(rpcUrl) : http(),
+          transport: rpcUrl ? http(rpcUrl) : http(),
         });
       },
     },
