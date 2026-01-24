@@ -17,6 +17,7 @@ const common_1 = require("@nestjs/common");
 const passport_1 = require("@nestjs/passport");
 const payments_service_1 = require("./payments.service");
 let PaymentsController = class PaymentsController {
+    paymentsService;
     constructor(paymentsService) {
         this.paymentsService = paymentsService;
     }

@@ -15,6 +15,9 @@ const agent_orchestrator_service_1 = require("./agent_orchestrator.service");
 const langgraph_adapter_1 = require("./runtime/langgraph_adapter");
 const vertex_ai_adapter_1 = require("./runtime/vertex_ai_adapter");
 let AgentRuntimeService = class AgentRuntimeService {
+    orchestrator;
+    vertexAdapter;
+    langGraphAdapter;
     constructor(orchestrator, vertexAdapter, langGraphAdapter) {
         this.orchestrator = orchestrator;
         this.vertexAdapter = vertexAdapter;

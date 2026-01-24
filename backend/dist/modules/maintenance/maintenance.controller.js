@@ -15,6 +15,7 @@ const passport_1 = require("@nestjs/passport");
 const roles_decorator_1 = require("../auth/roles.decorator");
 const maintenance_service_1 = require("./maintenance.service");
 let MaintenanceController = class MaintenanceController {
+    maintenanceService;
     constructor(maintenanceService) {
         this.maintenanceService = maintenanceService;
     }

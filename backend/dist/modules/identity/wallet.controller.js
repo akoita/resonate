@@ -20,6 +20,9 @@ const session_key_service_1 = require("./session_key.service");
 const social_recovery_service_1 = require("./social_recovery.service");
 const wallet_service_1 = require("./wallet.service");
 let WalletController = class WalletController {
+    walletService;
+    sessionKeyService;
+    recoveryService;
     constructor(walletService, sessionKeyService, recoveryService) {
         this.walletService = walletService;
         this.sessionKeyService = sessionKeyService;

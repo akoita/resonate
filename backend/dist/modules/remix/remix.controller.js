@@ -17,6 +17,7 @@ const common_1 = require("@nestjs/common");
 const passport_1 = require("@nestjs/passport");
 const remix_service_1 = require("./remix.service");
 let RemixController = class RemixController {
+    remixService;
     constructor(remixService) {
         this.remixService = remixService;
     }

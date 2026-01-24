@@ -10,13 +10,11 @@ exports.Erc4337WalletProvider = void 0;
 const crypto_1 = require("crypto");
 const common_1 = require("@nestjs/common");
 let Erc4337WalletProvider = class Erc4337WalletProvider {
-    constructor() {
-        this.chainId = Number(process.env.AA_CHAIN_ID ?? 8453);
-        this.entryPoint = process.env.AA_ENTRY_POINT ?? "0xEntryPoint";
-        this.factory = process.env.AA_FACTORY ?? "0xFactory";
-        this.paymaster = process.env.AA_PAYMASTER ?? undefined;
-        this.bundler = process.env.AA_BUNDLER ?? undefined;
-    }
+    chainId = Number(process.env.AA_CHAIN_ID ?? 8453);
+    entryPoint = process.env.AA_ENTRY_POINT ?? "0xEntryPoint";
+    factory = process.env.AA_FACTORY ?? "0xFactory";
+    paymaster = process.env.AA_PAYMASTER ?? undefined;
+    bundler = process.env.AA_BUNDLER ?? undefined;
     getAccount(userId) {
         const salt = process.env.AA_SALT ?? "resonate";
         const seed = `${userId}:${this.factory}:${this.entryPoint}:${salt}`;

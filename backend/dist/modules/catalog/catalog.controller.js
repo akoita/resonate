@@ -17,6 +17,7 @@ const common_1 = require("@nestjs/common");
 const passport_1 = require("@nestjs/passport");
 const catalog_service_1 = require("./catalog.service");
 let CatalogController = class CatalogController {
+    catalogService;
     constructor(catalogService) {
         this.catalogService = catalogService;
     }

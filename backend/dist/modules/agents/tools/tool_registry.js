@@ -16,10 +16,12 @@ const pricing_1 = require("../../../pricing/pricing");
 const embedding_service_1 = require("../../embeddings/embedding.service");
 const embedding_store_1 = require("../../embeddings/embedding.store");
 let ToolRegistry = class ToolRegistry {
+    embeddingService;
+    embeddingStore;
+    tools = new Map();
     constructor(embeddingService, embeddingStore) {
         this.embeddingService = embeddingService;
         this.embeddingStore = embeddingStore;
-        this.tools = new Map();
         this.register({
             name: "catalog.search",
             run: async (input) => {

@@ -18,6 +18,9 @@ const throttler_1 = require("@nestjs/throttler");
 const auth_service_1 = require("./auth.service");
 const auth_nonce_service_1 = require("./auth_nonce.service");
 let AuthController = class AuthController {
+    authService;
+    nonceService;
+    publicClient;
     constructor(authService, nonceService, publicClient) {
         this.authService = authService;
         this.nonceService = nonceService;

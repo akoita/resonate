@@ -10,9 +10,7 @@ exports.SessionKeyService = void 0;
 const common_1 = require("@nestjs/common");
 const crypto_1 = require("crypto");
 let SessionKeyService = class SessionKeyService {
-    constructor() {
-        this.keys = new Map();
-    }
+    keys = new Map();
     issue(input) {
         const token = `sk_${(0, crypto_1.randomUUID)()}`;
         const record = {

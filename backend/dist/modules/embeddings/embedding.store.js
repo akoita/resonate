@@ -9,9 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.EmbeddingStore = void 0;
 const common_1 = require("@nestjs/common");
 let EmbeddingStore = class EmbeddingStore {
-    constructor() {
-        this.embeddings = new Map();
-    }
+    embeddings = new Map();
     upsert(trackId, vector) {
         this.embeddings.set(trackId, vector);
     }

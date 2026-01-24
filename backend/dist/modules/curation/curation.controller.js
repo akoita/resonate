@@ -19,6 +19,7 @@ const throttler_1 = require("@nestjs/throttler");
 const roles_decorator_1 = require("../auth/roles.decorator");
 const curation_service_1 = require("./curation.service");
 let CurationController = class CurationController {
+    curationService;
     constructor(curationService) {
         this.curationService = curationService;
     }

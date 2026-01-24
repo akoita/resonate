@@ -9,9 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuditService = void 0;
 const common_1 = require("@nestjs/common");
 let AuditService = class AuditService {
-    constructor() {
-        this.records = [];
-    }
+    records = [];
     log(record) {
         const entry = { ...record, occurredAt: new Date().toISOString() };
         this.records.push(entry);

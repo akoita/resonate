@@ -17,6 +17,8 @@ const common_1 = require("@nestjs/common");
 const analytics_ingest_service_1 = require("./analytics_ingest.service");
 const analytics_service_1 = require("./analytics.service");
 let AnalyticsController = class AnalyticsController {
+    analyticsService;
+    analyticsIngestService;
     constructor(analyticsService, analyticsIngestService) {
         this.analyticsService = analyticsService;
         this.analyticsIngestService = analyticsIngestService;

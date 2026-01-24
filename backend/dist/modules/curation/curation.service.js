@@ -14,11 +14,13 @@ const common_1 = require("@nestjs/common");
 const audit_service_1 = require("../audit/audit.service");
 const event_bus_1 = require("../shared/event_bus");
 let CurationService = class CurationService {
+    eventBus;
+    audit;
+    stakes = new Map();
+    reports = [];
     constructor(eventBus, audit) {
         this.eventBus = eventBus;
         this.audit = audit;
-        this.stakes = new Map();
-        this.reports = [];
     }
     stake(input) {
         const record = {

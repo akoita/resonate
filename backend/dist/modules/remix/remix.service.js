@@ -13,9 +13,10 @@ exports.RemixService = void 0;
 const common_1 = require("@nestjs/common");
 const event_bus_1 = require("../shared/event_bus");
 let RemixService = class RemixService {
+    eventBus;
+    remixes = new Map();
     constructor(eventBus) {
         this.eventBus = eventBus;
-        this.remixes = new Map();
     }
     createRemix(input) {
         const remixId = this.generateId("rmx");

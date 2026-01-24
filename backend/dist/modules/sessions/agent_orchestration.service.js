@@ -15,9 +15,10 @@ const prisma_1 = require("../../db/prisma");
 const event_bus_1 = require("../shared/event_bus");
 const pricing_1 = require("../../pricing/pricing");
 let AgentOrchestrationService = class AgentOrchestrationService {
+    eventBus;
+    states = new Map();
     constructor(eventBus) {
         this.eventBus = eventBus;
-        this.states = new Map();
     }
     configureSession(sessionId, preferences = {}) {
         const existing = this.states.get(sessionId);
