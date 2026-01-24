@@ -41,12 +41,12 @@ exports.AuthModule = AuthModule = __decorate([
             jwt_strategy_1.JwtStrategy,
             {
                 provide: "PUBLIC_CLIENT",
-                inject: [config_1.ConfigService],
                 useFactory: (config) => {
-                    const rpcUrl = config.get("AA_BUNDLER") || "http://localhost:4337";
+                    // Use RPC_URL for read operations (verifySignature), fallback to default Sepolia
+                    const rpcUrl = config.get("RPC_URL");
                     return (0, viem_1.createPublicClient)({
                         chain: chains_1.sepolia,
-                        transport: rpcUrl.startsWith("http") ? (0, viem_1.http)(rpcUrl) : (0, viem_1.http)(),
+                        transport: rpcUrl ? (0, viem_1.http)(rpcUrl) : (0, viem_1.http)(),
                     });
                 },
             },
