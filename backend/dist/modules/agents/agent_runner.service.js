@@ -14,6 +14,8 @@ const common_1 = require("@nestjs/common");
 const event_bus_1 = require("../shared/event_bus");
 const agent_policy_service_1 = require("./agent_policy.service");
 let AgentRunnerService = class AgentRunnerService {
+    policyService;
+    eventBus;
     constructor(policyService, eventBus) {
         this.policyService = policyService;
         this.eventBus = eventBus;

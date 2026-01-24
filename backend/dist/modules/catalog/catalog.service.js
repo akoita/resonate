@@ -14,10 +14,11 @@ const common_1 = require("@nestjs/common");
 const event_bus_1 = require("../shared/event_bus");
 const prisma_1 = require("../../db/prisma");
 let CatalogService = class CatalogService {
+    eventBus;
+    searchCache = new Map();
+    cacheTtlMs = 30_000;
     constructor(eventBus) {
         this.eventBus = eventBus;
-        this.searchCache = new Map();
-        this.cacheTtlMs = 30_000;
     }
     onModuleInit() {
         this.eventBus.subscribe("stems.uploaded", (event) => {

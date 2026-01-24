@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { createPublicClient, http } from "viem";
 import { sepolia } from "viem/chains";
 import { JwtModule } from "@nestjs/jwt";
@@ -13,9 +14,12 @@ import { JwtStrategy } from "./jwt.strategy";
   imports: [
     PassportModule,
     AuditModule,
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || "dev-secret",
-      signOptions: { expiresIn: "15m" },
+    JwtModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        secret: config.get<string>("JWT_SECRET") || "dev-secret",
+        signOptions: { expiresIn: "15m" },
+      }),
     }),
   ],
   controllers: [AuthController],
@@ -25,10 +29,11 @@ import { JwtStrategy } from "./jwt.strategy";
     JwtStrategy,
     {
       provide: "PUBLIC_CLIENT",
-      useFactory: () => {
-        const rpcUrl = process.env.AA_BUNDLER || "http://localhost:4337";
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const rpcUrl = config.get<string>("AA_BUNDLER") || "http://localhost:4337";
         return createPublicClient({
-          chain: sepolia, // Consistent with frontend
+          chain: sepolia,
           transport: rpcUrl.startsWith("http") ? http(rpcUrl) : http(),
         });
       },

@@ -13,6 +13,7 @@ exports.AgentSelectorService = void 0;
 const common_1 = require("@nestjs/common");
 const tool_registry_1 = require("./tools/tool_registry");
 let AgentSelectorService = class AgentSelectorService {
+    tools;
     constructor(tools) {
         this.tools = tools;
     }

@@ -9,10 +9,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SocialRecoveryService = void 0;
 const common_1 = require("@nestjs/common");
 let SocialRecoveryService = class SocialRecoveryService {
-    constructor() {
-        this.guardians = new Map();
-        this.recoveries = new Map();
-    }
+    guardians = new Map();
+    recoveries = new Map();
     setGuardians(userId, guardians, required) {
         if (required > guardians.length) {
             return { status: "invalid_threshold" };

@@ -16,12 +16,15 @@ const prisma_1 = require("../../db/prisma");
 const event_bus_1 = require("../shared/event_bus");
 const agent_orchestration_service_1 = require("./agent_orchestration.service");
 let SessionsService = class SessionsService {
+    walletService;
+    eventBus;
+    agentService;
+    playlistCache = new Map();
+    playlistTtlMs = 15_000;
     constructor(walletService, eventBus, agentService) {
         this.walletService = walletService;
         this.eventBus = eventBus;
         this.agentService = agentService;
-        this.playlistCache = new Map();
-        this.playlistTtlMs = 15_000;
     }
     async startSession(input) {
         await this.walletService.setBudget({

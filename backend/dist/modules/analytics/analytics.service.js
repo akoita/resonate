@@ -13,6 +13,7 @@ exports.AnalyticsService = void 0;
 const common_1 = require("@nestjs/common");
 const analytics_ingest_service_1 = require("./analytics_ingest.service");
 let AnalyticsService = class AnalyticsService {
+    ingestService;
     constructor(ingestService) {
         this.ingestService = ingestService;
     }

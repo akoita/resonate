@@ -13,10 +13,11 @@ exports.PaymentsService = void 0;
 const common_1 = require("@nestjs/common");
 const event_bus_1 = require("../shared/event_bus");
 let PaymentsService = class PaymentsService {
+    eventBus;
+    payments = new Map();
+    splitConfigByTrack = new Map();
     constructor(eventBus) {
         this.eventBus = eventBus;
-        this.payments = new Map();
-        this.splitConfigByTrack = new Map();
     }
     initiatePayment(input) {
         const payment = {

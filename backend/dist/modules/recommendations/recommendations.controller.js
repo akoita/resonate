@@ -17,6 +17,7 @@ const common_1 = require("@nestjs/common");
 const passport_1 = require("@nestjs/passport");
 const recommendations_service_1 = require("./recommendations.service");
 let RecommendationsController = class RecommendationsController {
+    recommendationsService;
     constructor(recommendationsService) {
         this.recommendationsService = recommendationsService;
     }

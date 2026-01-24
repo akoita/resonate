@@ -9,9 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.LangGraphAdapter = void 0;
 const common_1 = require("@nestjs/common");
 let LangGraphAdapter = class LangGraphAdapter {
-    constructor() {
-        this.name = "langgraph";
-    }
+    name = "langgraph";
     async run(input) {
         return {
             status: input.budgetRemainingUsd > 0 ? "approved" : "rejected",

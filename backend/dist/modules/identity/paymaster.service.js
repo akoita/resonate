@@ -9,11 +9,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PaymasterService = void 0;
 const common_1 = require("@nestjs/common");
 let PaymasterService = class PaymasterService {
-    constructor() {
-        this.sponsorMaxUsd = Number(process.env.AA_SPONSOR_MAX_USD ?? 5);
-        this.paymasterAddress = process.env.AA_PAYMASTER ?? "0xPaymaster";
-        this.sponsorSpentUsd = new Map();
-    }
+    sponsorMaxUsd = Number(process.env.AA_SPONSOR_MAX_USD ?? 5);
+    paymasterAddress = process.env.AA_PAYMASTER ?? "0xPaymaster";
+    sponsorSpentUsd = new Map();
     configure(input) {
         this.sponsorMaxUsd = input.sponsorMaxUsd;
         this.paymasterAddress = input.paymasterAddress;

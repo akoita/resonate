@@ -2,6 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Erc4337Client = void 0;
 class Erc4337Client {
+    bundlerUrl;
+    entryPoint;
     constructor(bundlerUrl, entryPoint) {
         this.bundlerUrl = bundlerUrl;
         this.entryPoint = entryPoint;

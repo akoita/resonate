@@ -14,6 +14,8 @@ const common_1 = require("@nestjs/common");
 const erc4337_wallet_provider_1 = require("./wallet_providers/erc4337_wallet_provider");
 const local_wallet_provider_1 = require("./wallet_providers/local_wallet_provider");
 let WalletProviderRegistry = class WalletProviderRegistry {
+    localProvider;
+    erc4337Provider;
     constructor(localProvider, erc4337Provider) {
         this.localProvider = localProvider;
         this.erc4337Provider = erc4337Provider;

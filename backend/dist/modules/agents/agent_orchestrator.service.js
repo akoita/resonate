@@ -16,6 +16,10 @@ const agent_mixer_service_1 = require("./agent_mixer.service");
 const agent_negotiator_service_1 = require("./agent_negotiator.service");
 const agent_selector_service_1 = require("./agent_selector.service");
 let AgentOrchestratorService = class AgentOrchestratorService {
+    selector;
+    mixer;
+    negotiator;
+    eventBus;
     constructor(selector, mixer, negotiator, eventBus) {
         this.selector = selector;
         this.mixer = mixer;

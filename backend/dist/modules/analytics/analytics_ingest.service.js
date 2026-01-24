@@ -9,9 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AnalyticsIngestService = void 0;
 const common_1 = require("@nestjs/common");
 let AnalyticsIngestService = class AnalyticsIngestService {
-    constructor() {
-        this.events = [];
-    }
+    events = [];
     ingest(event) {
         this.events.push(event);
         return { status: "ok", ingested: this.events.length };

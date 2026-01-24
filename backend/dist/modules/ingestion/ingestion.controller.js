@@ -18,6 +18,7 @@ const passport_1 = require("@nestjs/passport");
 const throttler_1 = require("@nestjs/throttler");
 const ingestion_service_1 = require("./ingestion.service");
 let IngestionController = class IngestionController {
+    ingestionService;
     constructor(ingestionService) {
         this.ingestionService = ingestionService;
     }

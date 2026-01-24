@@ -21,6 +21,10 @@ const agent_orchestrator_service_1 = require("./agent_orchestrator.service");
 const agent_runtime_service_1 = require("./agent_runtime.service");
 const agent_runner_service_1 = require("./agent_runner.service");
 let AgentsController = class AgentsController {
+    agentRunner;
+    orchestrator;
+    evaluator;
+    runtime;
     constructor(agentRunner, orchestrator, evaluator, runtime) {
         this.agentRunner = agentRunner;
         this.orchestrator = orchestrator;

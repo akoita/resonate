@@ -14,6 +14,8 @@ const common_1 = require("@nestjs/common");
 const event_bus_1 = require("../shared/event_bus");
 const agent_orchestrator_service_1 = require("./agent_orchestrator.service");
 let AgentEvaluationService = class AgentEvaluationService {
+    orchestrator;
+    eventBus;
     constructor(orchestrator, eventBus) {
         this.orchestrator = orchestrator;
         this.eventBus = eventBus;

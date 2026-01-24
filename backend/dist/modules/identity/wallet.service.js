@@ -17,6 +17,10 @@ const erc4337_client_1 = require("./erc4337/erc4337_client");
 const paymaster_service_1 = require("./paymaster.service");
 const wallet_provider_registry_1 = require("./wallet_provider_registry");
 let WalletService = class WalletService {
+    eventBus;
+    providerRegistry;
+    erc4337Client;
+    paymasterService;
     constructor(eventBus, providerRegistry, erc4337Client, paymasterService) {
         this.eventBus = eventBus;
         this.providerRegistry = providerRegistry;
