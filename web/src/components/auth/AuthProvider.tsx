@@ -145,17 +145,19 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       }
 
       // Real Passkey login logic
-      console.log(`Triggering ZeroDev Auth UI (Passkey - ${mode})...`);
+      console.log(`[Auth] Triggering ZeroDev Auth UI (Passkey - ${mode})...`);
       const entryPoint = constants.getEntryPoint("0.7");
       const kernelVersion = constants.KERNEL_V3_1;
 
       // We'll attempt to authenticate via Passkey.
+      console.log("[Auth] Getting WebAuthn Key...");
       const webAuthnKey = await toWebAuthnKey({
         passkeyName: "Resonate",
-        passkeyServerUrl: "https://passkeys.zerodev.app",
+        passkeyServerUrl: `https://passkeys.zerodev.app/api/v2/${projectId}`,
         mode,
       });
 
+      console.log("[Auth] Creating Passkey Validator...");
       const passkeyValidator = await toPasskeyValidator(publicClient, {
         webAuthnKey,
         entryPoint,
@@ -163,6 +165,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         validatorContractVersion: PasskeyValidatorContractVersion.V0_0_1_UNPATCHED,
       });
 
+      console.log("[Auth] Creating Kernel Account...");
       const account = await createKernelAccount(publicClient, {
         plugins: {
           sudo: passkeyValidator,
@@ -172,10 +175,17 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       });
 
       const saAddress = account.address;
+      console.log(`[Auth] SA Address: ${saAddress}`);
+
+      console.log("[Auth] Fetching Nonce...");
       const { nonce } = await fetchNonce(saAddress);
+      console.log(`[Auth] Nonce: ${nonce}`);
+
       const message = `Resonate Sign-In\nAddress: ${saAddress}\nNonce: ${nonce}\nIssued At: ${new Date().toISOString()}`;
+      console.log("[Auth] Signing Message...");
       const signature = await account.signMessage({ message });
 
+      console.log("[Auth] Verifying Signature with Backend...");
       const result = await verifySignature({
         address: saAddress,
         message,
@@ -186,6 +196,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         throw new Error(result.status);
       }
 
+      console.log("[Auth] Authenticated successfully.");
       localStorage.setItem(TOKEN_KEY, result.accessToken);
       localStorage.setItem(ADDRESS_KEY, saAddress.toLowerCase());
       setToken(result.accessToken);
@@ -194,7 +205,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       setStatus("authenticated");
 
     } catch (err) {
-      console.error(err);
+      console.error("[Auth] Error:", err);
       setError((err as Error).message);
       setStatus("error");
     }
