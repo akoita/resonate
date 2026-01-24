@@ -1,6 +1,6 @@
-import { Body, Controller, Post } from "@nestjs/common";
+import { Body, Controller, Inject, Post } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { verifyMessage } from "viem";
+import { verifyMessage, type PublicClient } from "viem";
 import { AuthService } from "./auth.service";
 import { AuthNonceService } from "./auth_nonce.service";
 
@@ -8,8 +8,9 @@ import { AuthNonceService } from "./auth_nonce.service";
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
-    private readonly nonceService: AuthNonceService
-  ) {}
+    private readonly nonceService: AuthNonceService,
+    @Inject("PUBLIC_CLIENT") private readonly publicClient: PublicClient
+  ) { }
 
   @Post("login")
   @Throttle({ default: { limit: 10, ttl: 60 } })
@@ -34,7 +35,7 @@ export class AuthController {
       role?: string;
     }
   ) {
-    const ok = await verifyMessage({
+    const ok = await this.publicClient.verifyMessage({
       address: body.address as `0x${string}`,
       message: body.message,
       signature: body.signature,
