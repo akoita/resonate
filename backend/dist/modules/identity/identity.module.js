@@ -1,0 +1,47 @@
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.IdentityModule = void 0;
+const common_1 = require("@nestjs/common");
+const event_bus_1 = require("../shared/event_bus");
+const erc4337_client_1 = require("./erc4337/erc4337_client");
+const session_key_service_1 = require("./session_key.service");
+const social_recovery_service_1 = require("./social_recovery.service");
+const paymaster_service_1 = require("./paymaster.service");
+const wallet_controller_1 = require("./wallet.controller");
+const wallet_service_1 = require("./wallet.service");
+const erc4337_wallet_provider_1 = require("./wallet_providers/erc4337_wallet_provider");
+const local_wallet_provider_1 = require("./wallet_providers/local_wallet_provider");
+const wallet_provider_registry_1 = require("./wallet_provider_registry");
+let IdentityModule = class IdentityModule {
+};
+exports.IdentityModule = IdentityModule;
+exports.IdentityModule = IdentityModule = __decorate([
+    (0, common_1.Module)({
+        controllers: [wallet_controller_1.WalletController],
+        providers: [
+            event_bus_1.EventBus,
+            wallet_service_1.WalletService,
+            session_key_service_1.SessionKeyService,
+            social_recovery_service_1.SocialRecoveryService,
+            local_wallet_provider_1.LocalWalletProvider,
+            erc4337_wallet_provider_1.Erc4337WalletProvider,
+            wallet_provider_registry_1.WalletProviderRegistry,
+            paymaster_service_1.PaymasterService,
+            {
+                provide: erc4337_client_1.Erc4337Client,
+                useFactory: () => {
+                    const bundler = process.env.AA_BUNDLER ?? "http://localhost:4337";
+                    const entryPoint = process.env.AA_ENTRY_POINT ?? "0xEntryPoint";
+                    return new erc4337_client_1.Erc4337Client(bundler, entryPoint);
+                },
+            },
+        ],
+        exports: [wallet_service_1.WalletService],
+    })
+], IdentityModule);
