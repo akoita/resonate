@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from "@nestjs/common";
+import { BadRequestException, Injectable, OnModuleInit } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
 import {
@@ -75,7 +75,7 @@ export class CatalogService implements OnModuleInit {
     });
   }
   async createTrack(input: {
-    artistId: string;
+    userId: string;
     title: string;
     releaseType?: string;
     releaseTitle?: string;
@@ -87,10 +87,18 @@ export class CatalogService implements OnModuleInit {
     releaseDate?: string;
     explicit?: boolean;
   }) {
+    const artist = await prisma.artist.findUnique({
+      where: { userId: input.userId },
+    });
+
+    if (!artist) {
+      throw new BadRequestException("User is not a registered artist");
+    }
+
     this.clearCache();
     return prisma.track.create({
       data: {
-        artistId: input.artistId,
+        artistId: artist.id,
         title: input.title,
         status: "draft",
         releaseType: input.releaseType ?? "single",

@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import AuthGate from "../../../components/auth/AuthGate";
+import ArtistGate from "../../../components/auth/ArtistGate";
 import { Button } from "../../../components/ui/Button";
 import { Card } from "../../../components/ui/Card";
 import { Input } from "../../../components/ui/Input";
@@ -82,9 +83,8 @@ export default function ArtistUploadPage() {
         throw new Error("Not authenticated");
       }
 
-      // For now, use address as artistId (in production, this would be a proper artist ID)
+      // artistId is now derived from the authenticated user in the backend
       await createTrack(token, {
-        artistId: address,
         title: formData.title,
         releaseType: formData.releaseType || "single",
         releaseTitle: formData.releaseTitle,
@@ -196,118 +196,120 @@ export default function ArtistUploadPage() {
 
   return (
     <AuthGate title="Connect your wallet to upload releases.">
-      <main className="upload-grid">
-        <Card>
-          <div className="upload-panel">
-            <div className="upload-section-title">Upload your track</div>
-            <p className="home-subtitle">
-              Drag and drop your audio file to begin stem separation.
-            </p>
-            <FileDropZone
-              onFileSelect={handleFileSelect}
-              accept="audio/*"
-              disabled={isUploading}
-            />
-            {stems.length > 0 && (
-              <div className="upload-list">
-                {stems.map(stem => (
-                  <div key={stem.id} className="upload-item">
-                    <div style={{ flex: 1 }}>
-                      <div className="upload-item-header">
-                        <span className="upload-item-name">{stem.name}</span>
-                        <button
-                          className="upload-item-remove"
-                          onClick={() => handleRemoveStem(stem.id)}
-                          title="Remove"
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <line x1="18" y1="6" x2="6" y2="18" />
-                            <line x1="6" y1="6" x2="18" y2="18" />
-                          </svg>
-                        </button>
-                      </div>
-                      <div className={`upload-status upload-status-${stem.status.toLowerCase()}`}>
-                        {stem.status}
-                      </div>
-                      {stem.status !== "Ready" && (
-                        <div className="upload-progress">
-                          <div
-                            className="upload-progress-bar"
-                            style={{ width: `${stem.progress}%` }}
-                          />
+      <ArtistGate>
+        <main className="upload-grid">
+          <Card>
+            <div className="upload-panel">
+              <div className="upload-section-title">Upload your track</div>
+              <p className="home-subtitle">
+                Drag and drop your audio file to begin stem separation.
+              </p>
+              <FileDropZone
+                onFileSelect={handleFileSelect}
+                accept="audio/*"
+                disabled={isUploading}
+              />
+              {stems.length > 0 && (
+                <div className="upload-list">
+                  {stems.map(stem => (
+                    <div key={stem.id} className="upload-item">
+                      <div style={{ flex: 1 }}>
+                        <div className="upload-item-header">
+                          <span className="upload-item-name">{stem.name}</span>
+                          <button
+                            className="upload-item-remove"
+                            onClick={() => handleRemoveStem(stem.id)}
+                            title="Remove"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <line x1="18" y1="6" x2="6" y2="18" />
+                              <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                          </button>
                         </div>
+                        <div className={`upload-status upload-status-${stem.status.toLowerCase()}`}>
+                          {stem.status}
+                        </div>
+                        {stem.status !== "Ready" && (
+                          <div className="upload-progress">
+                            <div
+                              className="upload-progress-bar"
+                              style={{ width: `${stem.progress}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                      {stem.status === "Ready" && (
+                        <Button variant="ghost">Preview</Button>
                       )}
                     </div>
-                    {stem.status === "Ready" && (
-                      <Button variant="ghost">Preview</Button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Card>
 
-        <Card title="Release settings">
-          <div className="upload-panel">
-            <label>
-              Release type (single/EP/album)
-              <Input name="releaseType" placeholder="single" value={formData.releaseType} onChange={handleInputChange} />
-            </label>
-            <label>
-              Release title
-              <Input name="releaseTitle" placeholder="Night Drive" value={formData.releaseTitle} onChange={handleInputChange} />
-            </label>
-            <label>
-              Track title
-              <Input name="title" placeholder="Night Drive" value={formData.title} onChange={handleInputChange} />
-            </label>
-            <label>
-              Primary artist
-              <Input name="primaryArtist" placeholder="Aya Lune" value={formData.primaryArtist} onChange={handleInputChange} />
-            </label>
-            <label>
-              Featured artists (comma-separated)
-              <Input name="featuredArtists" placeholder="Kiro, Mira" value={formData.featuredArtists} onChange={handleInputChange} />
-            </label>
-            <label>
-              Genre
-              <Input name="genre" placeholder="Electronic" value={formData.genre} onChange={handleInputChange} />
-            </label>
-            <label>
-              ISRC (optional)
-              <Input name="isrc" placeholder="US-XYZ-24-00001" value={formData.isrc} onChange={handleInputChange} />
-            </label>
-            <label>
-              Label (optional)
-              <Input name="label" placeholder="Resonate Records" value={formData.label} onChange={handleInputChange} />
-            </label>
-            <label>
-              Release date (optional)
-              <Input name="releaseDate" placeholder="2026-01-18" value={formData.releaseDate} onChange={handleInputChange} />
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <input name="explicit" type="checkbox" checked={formData.explicit} onChange={handleInputChange} />
-              Explicit content
-            </label>
-            <label>
-              Remix price (USDC)
-              <Input name="remixPrice" placeholder="5" value={formData.remixPrice} onChange={handleInputChange} />
-            </label>
-            <label>
-              Commercial price (USDC)
-              <Input name="commercialPrice" placeholder="25" value={formData.commercialPrice} onChange={handleInputChange} />
-            </label>
-            <Button
-              variant={allReady ? "primary" : "ghost"}
-              disabled={!allReady || isPublishing}
-              onClick={handlePublish}
-            >
-              {isPublishing ? "Publishing..." : "Publish release"}
-            </Button>
-          </div>
-        </Card>
-      </main>
+          <Card title="Release settings">
+            <div className="upload-panel">
+              <label>
+                Release type (single/EP/album)
+                <Input name="releaseType" placeholder="single" value={formData.releaseType} onChange={handleInputChange} />
+              </label>
+              <label>
+                Release title
+                <Input name="releaseTitle" placeholder="Night Drive" value={formData.releaseTitle} onChange={handleInputChange} />
+              </label>
+              <label>
+                Track title
+                <Input name="title" placeholder="Night Drive" value={formData.title} onChange={handleInputChange} />
+              </label>
+              <label>
+                Primary artist
+                <Input name="primaryArtist" placeholder="Aya Lune" value={formData.primaryArtist} onChange={handleInputChange} />
+              </label>
+              <label>
+                Featured artists (comma-separated)
+                <Input name="featuredArtists" placeholder="Kiro, Mira" value={formData.featuredArtists} onChange={handleInputChange} />
+              </label>
+              <label>
+                Genre
+                <Input name="genre" placeholder="Electronic" value={formData.genre} onChange={handleInputChange} />
+              </label>
+              <label>
+                ISRC (optional)
+                <Input name="isrc" placeholder="US-XYZ-24-00001" value={formData.isrc} onChange={handleInputChange} />
+              </label>
+              <label>
+                Label (optional)
+                <Input name="label" placeholder="Resonate Records" value={formData.label} onChange={handleInputChange} />
+              </label>
+              <label>
+                Release date (optional)
+                <Input name="releaseDate" placeholder="2026-01-18" value={formData.releaseDate} onChange={handleInputChange} />
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <input name="explicit" type="checkbox" checked={formData.explicit} onChange={handleInputChange} />
+                Explicit content
+              </label>
+              <label>
+                Remix price (USDC)
+                <Input name="remixPrice" placeholder="5" value={formData.remixPrice} onChange={handleInputChange} />
+              </label>
+              <label>
+                Commercial price (USDC)
+                <Input name="commercialPrice" placeholder="25" value={formData.commercialPrice} onChange={handleInputChange} />
+              </label>
+              <Button
+                variant={allReady ? "primary" : "ghost"}
+                disabled={!allReady || isPublishing}
+                onClick={handlePublish}
+              >
+                {isPublishing ? "Publishing..." : "Publish release"}
+              </Button>
+            </div>
+          </Card>
+        </main>
+      </ArtistGate>
     </AuthGate>
   );
 }

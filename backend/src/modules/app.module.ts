@@ -4,6 +4,7 @@ import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { ConfigModule } from "@nestjs/config";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { AgentsModule } from "./agents/agents.module";
+import { ArtistModule } from "./artist/artist.module";
 import { AuthModule } from "./auth/auth.module";
 import { RolesGuard } from "./auth/roles.guard";
 import { CatalogModule } from "./catalog/catalog.module";
@@ -27,6 +28,7 @@ import { SessionsModule } from "./sessions/sessions.module";
     AuthModule,
     IdentityModule,
     AgentsModule,
+    ArtistModule,
     CurationModule,
     IngestionModule,
     CatalogModule,
