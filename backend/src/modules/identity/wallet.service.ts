@@ -14,7 +14,7 @@ export class WalletService {
     private readonly providerRegistry: WalletProviderRegistry,
     private readonly erc4337Client: Erc4337Client,
     private readonly paymasterService: PaymasterService
-  ) {}
+  ) { }
 
   async fundWallet(input: { userId: string; amountUsd: number }) {
     const wallet = await this.getOrCreate(input.userId);
@@ -165,6 +165,18 @@ export class WalletService {
       provider ??
       ((process.env.WALLET_PROVIDER ?? "local") as WalletProviderName);
     const account = this.providerRegistry.getProvider(selected).getAccount(userId);
+
+    // Ensure User exists before creating Wallet to avoid FK violation
+    // Since this is wallet-auth, we might not have an email, so we generate a placeholder.
+    await prisma.user.upsert({
+      where: { id: userId },
+      create: {
+        id: userId,
+        email: `${userId}@wallet.placeholder`,
+      },
+      update: {},
+    });
+
     return prisma.wallet.create({
       data: {
         userId,
