@@ -6,6 +6,7 @@ import {
   Patch,
   Post,
   Query,
+  Request,
   UseGuards,
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
@@ -18,9 +19,9 @@ export class CatalogController {
   @UseGuards(AuthGuard("jwt"))
   @Post()
   create(
+    @Request() req: any,
     @Body()
     body: {
-      artistId: string;
       title: string;
       releaseType?: string;
       releaseTitle?: string;
@@ -33,7 +34,10 @@ export class CatalogController {
       explicit?: boolean;
     },
   ) {
-    return this.catalogService.createTrack(body);
+    return this.catalogService.createTrack({
+      ...body,
+      userId: req.user.userId,
+    });
   }
 
   @UseGuards(AuthGuard("jwt"))

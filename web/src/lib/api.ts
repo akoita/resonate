@@ -162,10 +162,31 @@ export type Track = {
   };
 };
 
+export type ArtistProfile = {
+  id: string;
+  userId: string;
+  displayName: string;
+  payoutAddress: string;
+};
+
+export async function getArtistMe(token: string) {
+  return apiRequest<ArtistProfile | null>("/artists/me", {}, token);
+}
+
+export async function createArtist(
+  token: string,
+  input: { displayName: string; payoutAddress: string }
+) {
+  return apiRequest<ArtistProfile>(
+    "/artists",
+    { method: "POST", body: JSON.stringify(input) },
+    token
+  );
+}
+
 export async function createTrack(
   token: string,
   input: {
-    artistId: string;
     title: string;
     releaseType?: string;
     releaseTitle?: string;
