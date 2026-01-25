@@ -1,1 +1,6 @@
 backend/node_modules/
+
+# Foundry
+contracts/out/
+contracts/cache/
+backend/dist/

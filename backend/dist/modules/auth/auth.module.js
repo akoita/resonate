@@ -41,6 +41,7 @@ exports.AuthModule = AuthModule = __decorate([
             jwt_strategy_1.JwtStrategy,
             {
                 provide: "PUBLIC_CLIENT",
+                inject: [config_1.ConfigService],
                 useFactory: (config) => {
                     // Use RPC_URL for read operations (verifySignature), fallback to default Sepolia
                     const rpcUrl = config.get("RPC_URL");
