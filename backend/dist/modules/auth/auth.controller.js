@@ -35,6 +35,7 @@ let AuthController = class AuthController {
     async verify(body) {
         try {
             console.log(`[Auth] Verifying signature for ${body.address}`);
+            console.log(`[Auth] Signature length: ${body.signature.length}`);
             const ok = await this.publicClient.verifyMessage({
                 address: body.address,
                 message: body.message,
