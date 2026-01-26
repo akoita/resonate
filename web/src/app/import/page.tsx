@@ -103,13 +103,31 @@ export default function ImportPage() {
                     </p>
 
                     {state === "idle" && (
-                        <FileDropZone
-                            onFileSelect={() => { }}
-                            onFilesSelect={handleFilesSelect}
-                            accept="audio/*"
-                            multiple
-                            directory
-                        />
+                        <div className="import-options">
+                            <div className="import-option">
+                                <FileDropZone
+                                    onFileSelect={() => { }}
+                                    onFilesSelect={handleFilesSelect}
+                                    accept="audio/*"
+                                    multiple
+                                />
+                                <p className="import-option-hint">
+                                    Use Ctrl+Click or Ctrl+A to select multiple files
+                                </p>
+                            </div>
+                            <div className="import-divider">
+                                <span>or</span>
+                            </div>
+                            <div className="import-option">
+                                <FileDropZone
+                                    onFileSelect={() => { }}
+                                    onFilesSelect={handleFilesSelect}
+                                    accept="audio/*"
+                                    multiple
+                                    directory
+                                />
+                            </div>
+                        </div>
                     )}
 
                     {state === "extracting" && (
