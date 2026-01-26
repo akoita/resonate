@@ -7,6 +7,7 @@ export default function Sidebar() {
       <nav style={{ marginTop: "16px", display: "grid", gap: "8px" }}>
         <Link href="/">Home</Link>
         <Link href="/player">Player</Link>
+        <Link href="/library">Library</Link>
         <Link href="/artist/upload">Upload</Link>
         <Link href="/artist/analytics">Analytics</Link>
         <Link href="/wallet">Wallet</Link>

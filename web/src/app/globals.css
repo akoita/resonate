@@ -1065,3 +1065,140 @@ a {
   background: rgba(74, 222, 128, 0.15);
   color: #4ade80;
 }
+/* Library page styles */
+.library-grid {
+  display: grid;
+  gap: var(--space-5);
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.library-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.library-title {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.library-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.library-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.library-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.library-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.library-item-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.library-item-meta {
+  font-size: 13px;
+  color: var(--color-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.library-item-duration {
+  color: var(--color-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.library-item-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Import page styles */
+.import-grid {
+  display: grid;
+  gap: var(--space-5);
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.import-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  color: var(--color-muted);
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.import-preview {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.import-preview-card {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.import-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.import-label {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.import-value {
+  font-weight: 500;
+}
+
+.import-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.text-accent {
+  color: var(--color-accent);
+}
