@@ -17,6 +17,7 @@ type Stem = {
   status: "Uploading" | "Processing" | "Ready" | "Error";
   progress: number;
   previewUrl?: string;
+  file?: File;
 };
 
 export default function ArtistUploadPage() {
@@ -94,7 +95,7 @@ export default function ArtistUploadPage() {
         releaseType: formData.releaseType || "single",
         releaseTitle: formData.releaseTitle,
         primaryArtist: formData.primaryArtist,
-        featuredArtists: formData.featuredArtists ? formData.featuredArtists.split(",").map(s => s.trim()) : undefined,
+        featuredArtists: formData.featuredArtists ? formData.featuredArtists.split(",").map((s: string) => s.trim()) : undefined,
         genre: formData.genre || undefined,
         isrc: formData.isrc || undefined,
         label: formData.label || undefined,
@@ -102,11 +103,18 @@ export default function ArtistUploadPage() {
         explicit: formData.explicit,
       };
 
-      await uploadStems(token, {
-        artistId: artist.id,
-        fileUris: ["ipfs://mock-uri"],
-        metadata,
+      const uploadPayload = new FormData();
+      uploadPayload.append("artistId", artist.id);
+      uploadPayload.append("metadata", JSON.stringify(metadata));
+
+      // Append real files
+      stems.forEach((stem) => {
+        if (stem.file) {
+          uploadPayload.append("files", stem.file);
+        }
       });
+
+      await uploadStems(token, uploadPayload);
 
       addToast({
         type: "success",
@@ -164,6 +172,7 @@ export default function ArtistUploadPage() {
       status: "Uploading",
       progress: 0,
       previewUrl,
+      file,
     };
 
     setStems(prev => [...prev, newStem]);

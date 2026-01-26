@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { ConfigModule } from "@nestjs/config";
+import { SharedModule } from "./shared/shared.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { AgentsModule } from "./agents/agents.module";
 import { ArtistModule } from "./artist/artist.module";
@@ -21,6 +22,7 @@ import { SessionsModule } from "./sessions/sessions.module";
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    SharedModule,
     ThrottlerModule.forRoot({
       throttlers: [{ limit: 30, ttl: 60 }],
     }),

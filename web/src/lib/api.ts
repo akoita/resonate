@@ -28,13 +28,21 @@ async function apiRequest<T>(
   options: RequestInit = {},
   token?: string | null
 ) {
+  console.log(`[API] ${options.method || 'GET'} ${path}`, { hasToken: !!token });
+  const headers = new Headers(options.headers);
+
+  // Don't set Content-Type if we're sending FormData (fetch will set it with boundary)
+  if (!(options.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers ?? {}),
-    },
+    headers,
   });
   if (!response.ok) {
     throw new Error(`API ${response.status}`);
@@ -206,7 +214,7 @@ export async function createTrack(
   );
 }
 
-export async function getTrack(token: string, trackId: string) {
+export async function getTrack(trackId: string, token?: string | null) {
   return apiRequest<Track>(`/catalog/${trackId}`, {}, token);
 }
 
@@ -224,25 +232,11 @@ export async function listPublishedTracks(limit = 20) {
 
 export async function uploadStems(
   token: string,
-  input: {
-    artistId: string;
-    fileUris: string[];
-    metadata?: {
-      releaseType?: string;
-      releaseTitle?: string;
-      primaryArtist?: string;
-      featuredArtists?: string[];
-      genre?: string;
-      isrc?: string;
-      label?: string;
-      releaseDate?: string;
-      explicit?: boolean;
-    };
-  }
+  formData: FormData
 ) {
   return apiRequest<{ trackId: string; status: string }>(
     "/stems/upload",
-    { method: "POST", body: JSON.stringify(input) },
+    { method: "POST", body: formData },
     token
   );
 }

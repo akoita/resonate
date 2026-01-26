@@ -18,16 +18,22 @@ export class CatalogService implements OnModuleInit {
   constructor(private readonly eventBus: EventBus) { }
 
   onModuleInit() {
-    this.eventBus.subscribe("stems.uploaded", (event: StemsUploadedEvent) => {
+    this.eventBus.subscribe("stems.uploaded", async (event: StemsUploadedEvent) => {
+      console.log(`[Catalog] Received stems.uploaded for track ${event.trackId} (artist: ${event.artistId})`);
       this.clearCache();
-      prisma.track
-        .create({
-          data: {
+      try {
+        await prisma.track.upsert({
+          where: { id: event.trackId },
+          update: {
+            artistId: event.artistId,
+            status: "processing",
+          },
+          create: {
             id: event.trackId,
             artistId: event.artistId,
-            title: event.metadata?.releaseTitle ?? "Untitled Track",
+            title: event.metadata?.releaseTitle || (event.metadata as any)?.title || "Untitled Track",
             status: "processing",
-            releaseType: event.metadata?.releaseType ?? "single",
+            releaseType: event.metadata?.releaseType || "single",
             releaseTitle: event.metadata?.releaseTitle,
             primaryArtist: event.metadata?.primaryArtist,
             featuredArtists: event.metadata?.featuredArtists?.join(", "),
@@ -39,12 +45,30 @@ export class CatalogService implements OnModuleInit {
               : undefined,
             explicit: event.metadata?.explicit ?? false,
           } as any,
-        })
-        .catch(() => null);
+        });
+        console.log(`[Catalog] Created/Updated track ${event.trackId}`);
+      } catch (err) {
+        console.error(`[Catalog] Failed to create/update track ${event.trackId}:`, err);
+      }
     });
 
     this.eventBus.subscribe("stems.processed", async (event: StemsProcessedEvent) => {
+      console.log(`[Catalog] Received stems.processed for track ${event.trackId}`);
       this.clearCache();
+
+      // Retry logic for track existence (race condition fix)
+      let track = await prisma.track.findUnique({ where: { id: event.trackId } });
+      if (!track) {
+        console.warn(`[Catalog] Track ${event.trackId} not found yet. Retrying in 1s...`);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        track = await prisma.track.findUnique({ where: { id: event.trackId } });
+      }
+
+      if (!track) {
+        console.error(`[Catalog] Track ${event.trackId} still not found. Dropping stems.`);
+        return;
+      }
+
       if (event.stems?.length) {
         await prisma.stem.createMany({
           data: event.stems.map((stem) => ({
@@ -61,7 +85,8 @@ export class CatalogService implements OnModuleInit {
           where: { id: event.trackId },
           data: { status: "ready" },
         })
-        .catch(() => null);
+        .then(() => console.log(`[Catalog] Track ${event.trackId} updated to ready`))
+        .catch((err) => console.error(`[Catalog] Failed to update track status ${event.trackId}:`, err));
     });
 
     this.eventBus.subscribe("ipnft.minted", async (event: IpNftMintedEvent) => {
@@ -74,6 +99,16 @@ export class CatalogService implements OnModuleInit {
         .catch(() => null);
     });
   }
+
+  async listPublished(limit = 20) {
+    return prisma.track.findMany({
+      where: { status: "ready" },
+      include: { stems: true, artist: true },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
+  }
+
   async createTrack(input: {
     userId: string;
     title: string;
@@ -136,15 +171,6 @@ export class CatalogService implements OnModuleInit {
     });
     if (!artist) return [];
     return this.listByArtist(artist.id);
-  }
-
-  async listPublished(limit = 20) {
-    return prisma.track.findMany({
-      where: { status: "ready" },
-      include: { stems: true, artist: true },
-      orderBy: { createdAt: "desc" },
-      take: limit,
-    });
   }
 
   async updateTrack(

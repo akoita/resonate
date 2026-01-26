@@ -7,11 +7,13 @@ export class AuthService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly auditService: AuditService
-  ) {}
+  ) { }
 
   issueToken(userId: string, role = "listener") {
     const allowedRole = this.resolveRole(userId, role);
+    console.log(`[Auth] Issuing token for ${userId} with role ${allowedRole}`);
     const token = this.jwtService.sign({ sub: userId, role: allowedRole });
+    console.log(`[Auth] Issued token for ${userId}: ${token.substring(0, 20)}...`);
     this.auditService.log({
       action: "auth.login",
       actorId: userId,
