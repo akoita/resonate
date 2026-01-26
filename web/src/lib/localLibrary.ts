@@ -25,6 +25,9 @@ export interface LocalTrack {
     duration: number | null;
     blobKey: string;
     createdAt: string;
+    // Added for incremental scanning
+    sourcePath?: string;
+    fileSize?: number;
 }
 
 /**
