@@ -130,6 +130,14 @@ export class CatalogService implements OnModuleInit {
     });
   }
 
+  async listByUserId(userId: string) {
+    const artist = await prisma.artist.findUnique({
+      where: { userId },
+    });
+    if (!artist) return [];
+    return this.listByArtist(artist.id);
+  }
+
   async listPublished(limit = 20) {
     return prisma.track.findMany({
       where: { status: "ready" },

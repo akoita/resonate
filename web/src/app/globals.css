@@ -168,6 +168,36 @@ a {
   margin-bottom: var(--space-3);
 }
 
+.status-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.status-ready {
+  background: rgba(74, 222, 128, 0.1);
+  color: #4ade80;
+}
+
+.status-processing, .status-draft {
+  background: rgba(251, 191, 36, 0.1);
+  color: #fbbf24;
+}
+
+.track-card-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.track-card-date {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

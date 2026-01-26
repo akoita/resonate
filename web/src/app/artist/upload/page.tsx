@@ -9,13 +9,14 @@ import { Input } from "../../../components/ui/Input";
 import { FileDropZone } from "../../../components/ui/FileDropZone";
 import { useToast } from "../../../components/ui/Toast";
 import { useAuth } from "../../../components/auth/AuthProvider";
-import { createTrack } from "../../../lib/api";
+import { getArtistMe, uploadStems } from "../../../lib/api";
 
 type Stem = {
   id: string;
   name: string;
   status: "Uploading" | "Processing" | "Ready" | "Error";
   progress: number;
+  previewUrl?: string;
 };
 
 export default function ArtistUploadPage() {
@@ -84,7 +85,11 @@ export default function ArtistUploadPage() {
       }
 
       // artistId is now derived from the authenticated user in the backend
-      await createTrack(token, {
+      // Using uploadStems to trigger the full ingestion flow
+      const artist = await getArtistMe(token);
+      if (!artist) throw new Error("Artist profile not found");
+
+      const metadata = {
         title: formData.title,
         releaseType: formData.releaseType || "single",
         releaseTitle: formData.releaseTitle,
@@ -95,12 +100,18 @@ export default function ArtistUploadPage() {
         label: formData.label || undefined,
         releaseDate: formData.releaseDate || undefined,
         explicit: formData.explicit,
+      };
+
+      await uploadStems(token, {
+        artistId: artist.id,
+        fileUris: ["ipfs://mock-uri"],
+        metadata,
       });
 
       addToast({
         type: "success",
-        title: "Release published!",
-        message: `"${formData.releaseTitle}" has been submitted for processing.`,
+        title: "Release submitted!",
+        message: `"${formData.releaseTitle}" has been queued for processing. It will appear on your dashboard shortly.`,
       });
 
       // Reset form
@@ -144,12 +155,15 @@ export default function ArtistUploadPage() {
 
     setIsUploading(true);
 
+    const previewUrl = URL.createObjectURL(file);
+
     // Create a new stem entry
     const newStem: Stem = {
       id: crypto.randomUUID(),
       name: file.name,
       status: "Uploading",
       progress: 0,
+      previewUrl,
     };
 
     setStems(prev => [...prev, newStem]);
@@ -239,8 +253,21 @@ export default function ArtistUploadPage() {
                           </div>
                         )}
                       </div>
-                      {stem.status === "Ready" && (
-                        <Button variant="ghost">Preview</Button>
+                      {stem.status === "Ready" && stem.previewUrl && (
+                        <Button
+                          variant="ghost"
+                          onClick={() => {
+                            const audio = new Audio(stem.previewUrl);
+                            audio.play().catch(e => console.error("Preview failed", e));
+                            addToast({
+                              type: "success",
+                              title: "Playing preview",
+                              message: `Listening to ${stem.name}`
+                            });
+                          }}
+                        >
+                          Preview
+                        </Button>
                       )}
                     </div>
                   ))}
