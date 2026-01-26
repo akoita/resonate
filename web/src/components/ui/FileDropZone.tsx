@@ -4,14 +4,20 @@ import { useCallback, useRef, useState } from "react";
 
 type FileDropZoneProps = {
     onFileSelect: (file: File) => void;
+    onFilesSelect?: (files: File[]) => void;
     accept?: string;
     disabled?: boolean;
+    multiple?: boolean;
+    directory?: boolean;
 };
 
 export function FileDropZone({
     onFileSelect,
+    onFilesSelect,
     accept = "audio/*",
     disabled = false,
+    multiple = false,
+    directory = false,
 }: FileDropZoneProps) {
     const [isDragging, setIsDragging] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -43,13 +49,22 @@ export function FileDropZone({
 
             const files = e.dataTransfer.files;
             if (files.length > 0) {
-                const file = files[0];
-                if (file) {
-                    onFileSelect(file);
+                if (multiple && onFilesSelect) {
+                    const fileArray = Array.from(files).filter(f =>
+                        f.type.startsWith("audio/") || f.name.match(/\.(mp3|wav|flac|aiff|m4a|ogg)$/i)
+                    );
+                    if (fileArray.length > 0) {
+                        onFilesSelect(fileArray);
+                    }
+                } else {
+                    const file = files[0];
+                    if (file) {
+                        onFileSelect(file);
+                    }
                 }
             }
         },
-        [disabled, onFileSelect]
+        [disabled, onFileSelect, multiple, onFilesSelect]
     );
 
     const handleClick = useCallback(() => {
@@ -62,15 +77,24 @@ export function FileDropZone({
         (e: React.ChangeEvent<HTMLInputElement>) => {
             const files = e.target.files;
             if (files && files.length > 0) {
-                const file = files[0];
-                if (file) {
-                    onFileSelect(file);
+                if (multiple && onFilesSelect) {
+                    const fileArray = Array.from(files).filter(f =>
+                        f.type.startsWith("audio/") || f.name.match(/\.(mp3|wav|flac|aiff|m4a|ogg)$/i)
+                    );
+                    if (fileArray.length > 0) {
+                        onFilesSelect(fileArray);
+                    }
+                } else {
+                    const file = files[0];
+                    if (file) {
+                        onFileSelect(file);
+                    }
                 }
             }
             // Reset input so the same file can be selected again
             e.target.value = "";
         },
-        [onFileSelect]
+        [multiple, onFileSelect, onFilesSelect]
     );
 
     return (
@@ -95,6 +119,8 @@ export function FileDropZone({
                 onChange={handleInputChange}
                 style={{ display: "none" }}
                 disabled={disabled}
+                multiple={multiple}
+                {...(directory ? { webkitdirectory: "" } : {})}
             />
             <div className="file-drop-zone-icon">
                 <svg
@@ -110,14 +136,15 @@ export function FileDropZone({
                     <line x1="12" y1="3" x2="12" y2="15" />
                 </svg>
             </div>
-            <div className="file-drop-zone-text">
-                <span className="file-drop-zone-primary">
-                    Drop audio file here or <span className="file-drop-zone-link">browse</span>
-                </span>
-                <span className="file-drop-zone-secondary">
-                    Supports MP3, WAV, FLAC, AIFF
-                </span>
-            </div>
+            <span className="file-drop-zone-primary">
+                {multiple
+                    ? <>Drop audio files here or <span className="file-drop-zone-link">browse</span></>
+                    : <>Drop audio file here or <span className="file-drop-zone-link">browse</span></>
+                }
+            </span>
+            <span className="file-drop-zone-secondary">
+                {directory ? "Select a folder to import all audio files" : "Supports MP3, WAV, FLAC, AIFF"}
+            </span>
         </div>
     );
 }
