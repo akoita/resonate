@@ -1285,3 +1285,37 @@ a {
   background: var(--color-accent);
   transition: width 0.2s ease-out;
 }
+
+/* Dual import options */
+.import-options {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.import-option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.import-option-hint {
+  text-align: center;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.import-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.import-divider::before,
+.import-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
