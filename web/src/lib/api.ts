@@ -214,6 +214,35 @@ export async function listArtistTracks(token: string, artistId: string) {
   return apiRequest<Track[]>(`/catalog/artist/${artistId}`, {}, token);
 }
 
+export async function listMyTracks(token: string) {
+  return apiRequest<Track[]>("/catalog/me", {}, token);
+}
+
 export async function listPublishedTracks(limit = 20) {
   return apiRequest<Track[]>(`/catalog/published?limit=${limit}`, {});
+}
+
+export async function uploadStems(
+  token: string,
+  input: {
+    artistId: string;
+    fileUris: string[];
+    metadata?: {
+      releaseType?: string;
+      releaseTitle?: string;
+      primaryArtist?: string;
+      featuredArtists?: string[];
+      genre?: string;
+      isrc?: string;
+      label?: string;
+      releaseDate?: string;
+      explicit?: boolean;
+    };
+  }
+) {
+  return apiRequest<{ trackId: string; status: string }>(
+    "/stems/upload",
+    { method: "POST", body: JSON.stringify(input) },
+    token
+  );
 }

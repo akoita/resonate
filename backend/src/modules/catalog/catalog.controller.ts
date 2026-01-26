@@ -17,6 +17,12 @@ export class CatalogController {
   constructor(private readonly catalogService: CatalogService) { }
 
   @UseGuards(AuthGuard("jwt"))
+  @Get("me")
+  listMe(@Request() req: any) {
+    return this.catalogService.listByUserId(req.user.userId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
   @Post()
   create(
     @Request() req: any,
