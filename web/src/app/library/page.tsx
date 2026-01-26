@@ -35,15 +35,25 @@ export default function LibraryPage() {
         void loadTracks();
     }, []);
 
-    // Reload tracks after auto-scan completes
+    // Real-time: append newly scanned tracks as they're indexed
+    useEffect(() => {
+        if (autoScan.newTracks.length > 0) {
+            // Get the latest track added
+            const latestTrack = autoScan.newTracks[autoScan.newTracks.length - 1];
+            if (latestTrack && !tracks.find(t => t.id === latestTrack.id)) {
+                // eslint-disable-next-line react-hooks/set-state-in-effect
+                setTracks(prev => [latestTrack, ...prev]);
+            }
+        }
+    }, [autoScan.newTracks, tracks]);
+
+    // Show toast when scan completes
     useEffect(() => {
         if (autoScan.result && autoScan.result.added > 0) {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
-            void loadTracks();
             addToast({
                 type: "success",
-                title: "Library Updated",
-                message: `${autoScan.result.added} new track${autoScan.result.added > 1 ? "s" : ""} found.`,
+                title: "Scan Complete",
+                message: `${autoScan.result.added} new track${autoScan.result.added > 1 ? "s" : ""} added.`,
             });
         }
     }, [autoScan.result, addToast]);
