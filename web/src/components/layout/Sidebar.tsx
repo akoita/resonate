@@ -11,6 +11,7 @@ export default function Sidebar() {
         <Link href="/artist/upload">Upload</Link>
         <Link href="/artist/analytics">Analytics</Link>
         <Link href="/wallet">Wallet</Link>
+        <Link href="/settings">Settings</Link>
       </nav>
     </aside>
   );
