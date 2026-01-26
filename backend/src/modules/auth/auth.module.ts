@@ -1,5 +1,5 @@
-import { Module } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
+import { Module, Global } from "@nestjs/common";
+import { ConfigModule, ConfigService } from "@nestjs/config";
 import { createPublicClient, http, type Chain } from "viem";
 import { sepolia, foundry } from "viem/chains";
 import { JwtModule } from "@nestjs/jwt";
@@ -28,16 +28,22 @@ function getChainFromRpc(rpcUrl: string | undefined): { chain: Chain; transport:
   };
 }
 
+@Global()
 @Module({
   imports: [
-    PassportModule,
+    PassportModule.register({ defaultStrategy: "jwt" }),
     AuditModule,
     JwtModule.registerAsync({
+      imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get<string>("JWT_SECRET") || "dev-secret",
-        signOptions: { expiresIn: "15m" },
-      }),
+      useFactory: (config: ConfigService) => {
+        const secret = config.get<string>("JWT_SECRET") || "dev-secret";
+        console.log(`[Auth] Registering JwtModule with secret starting with: ${secret.substring(0, 3)}...`);
+        return {
+          secret,
+          signOptions: { expiresIn: "7d" },
+        };
+      },
     }),
   ],
   controllers: [AuthController],
@@ -59,6 +65,6 @@ function getChainFromRpc(rpcUrl: string | undefined): { chain: Chain; transport:
       },
     },
   ],
-  exports: [AuthService, "PUBLIC_CLIENT"],
+  exports: [AuthService, "PUBLIC_CLIENT", PassportModule, JwtStrategy],
 })
 export class AuthModule { }

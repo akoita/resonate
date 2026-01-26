@@ -46,7 +46,15 @@ export class CatalogController {
     });
   }
 
-  @UseGuards(AuthGuard("jwt"))
+  @Get("published")
+  listPublished(@Query("limit") limit?: string) {
+    console.log(`[Catalog] Fetching published tracks (limit: ${limit})`);
+    const parsedLimit = limit ? Number(limit) : 20;
+    return this.catalogService.listPublished(
+      Number.isNaN(parsedLimit) ? 20 : parsedLimit,
+    );
+  }
+
   @Get(":trackId")
   getTrack(@Param("trackId") trackId: string) {
     return this.catalogService.getTrack(trackId);
@@ -61,19 +69,11 @@ export class CatalogController {
     return this.catalogService.updateTrack(trackId, body);
   }
 
-  @UseGuards(AuthGuard("jwt"))
   @Get("artist/:artistId")
   listByArtist(@Param("artistId") artistId: string) {
     return this.catalogService.listByArtist(artistId);
   }
 
-  @Get("published")
-  listPublished(@Query("limit") limit?: string) {
-    const parsedLimit = limit ? Number(limit) : 20;
-    return this.catalogService.listPublished(
-      Number.isNaN(parsedLimit) ? 20 : parsedLimit,
-    );
-  }
 
   @UseGuards(AuthGuard("jwt"))
   @Get()

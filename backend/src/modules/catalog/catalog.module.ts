@@ -5,6 +5,6 @@ import { CatalogService } from "./catalog.service";
 
 @Module({
   controllers: [CatalogController],
-  providers: [EventBus, CatalogService],
+  providers: [CatalogService],
 })
-export class CatalogModule {}
+export class CatalogModule { }

@@ -1,6 +1,5 @@
 import { Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { EventBus } from "../shared/event_bus";
 import { Erc4337Client } from "./erc4337/erc4337_client";
 import { SessionKeyService } from "./session_key.service";
 import { SocialRecoveryService } from "./social_recovery.service";
@@ -10,11 +9,13 @@ import { WalletService } from "./wallet.service";
 import { Erc4337WalletProvider } from "./wallet_providers/erc4337_wallet_provider";
 import { LocalWalletProvider } from "./wallet_providers/local_wallet_provider";
 import { WalletProviderRegistry } from "./wallet_provider_registry";
+import { AuthModule } from "../auth/auth.module";
+import { SharedModule } from "../shared/shared.module";
 
 @Module({
+  imports: [SharedModule],
   controllers: [WalletController],
   providers: [
-    EventBus,
     WalletService,
     SessionKeyService,
     SocialRecoveryService,
