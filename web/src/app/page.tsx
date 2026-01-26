@@ -4,19 +4,28 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
-import { listPublishedTracks, Track } from "../lib/api";
+import { useAuth } from "../components/auth/AuthProvider";
+import { listPublishedTracks, listMyTracks, Track } from "../lib/api";
 
 export default function Home() {
   const moods = ["Focus", "Chill", "Energy", "Night Drive", "Lo-fi"];
   const [releases, setReleases] = useState<Track[]>([]);
+  const [myTracks, setMyTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
+  const { token, status } = useAuth();
 
   useEffect(() => {
     listPublishedTracks(8)
       .then(setReleases)
       .catch(() => setReleases([]))
       .finally(() => setLoading(false));
-  }, []);
+
+    if (token && status === "authenticated") {
+      listMyTracks(token)
+        .then(setMyTracks)
+        .catch(() => setMyTracks([]));
+    }
+  }, [token, status]);
 
   const curated = ["Deep Flow", "Momentum", "Calm Waves", "Pulse"];
 
@@ -68,6 +77,28 @@ export default function Home() {
           </div>
         )}
       </section>
+
+      {status === "authenticated" && myTracks.length > 0 && (
+        <section className="home-section">
+          <div className="home-section-title">Your Uploads</div>
+          <div className="card-grid">
+            {myTracks.map((track) => (
+              <Link key={track.id} href={`/player?trackId=${track.id}`}>
+                <Card title={track.releaseTitle || track.title}>
+                  <div className="track-card-meta">
+                    <span className={`status-badge status-${track.status.toLowerCase()}`}>
+                      {track.status}
+                    </span>
+                    <span className="track-card-date">
+                      {new Date(track.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="home-section">
         <div className="home-section-title">AI Curated</div>
