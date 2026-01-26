@@ -12,13 +12,13 @@ interface ArtistGateProps {
 }
 
 export default function ArtistGate({ children }: ArtistGateProps) {
-    const { token, authenticated } = useAuth();
+    const { token, status } = useAuth();
     const [isArtist, setIsArtist] = useState<boolean | null>(null);
     const router = useRouter();
 
     useEffect(() => {
         async function checkArtist() {
-            if (token && authenticated) {
+            if (token && status === "authenticated") {
                 try {
                     const artist = await getArtistMe(token);
                     setIsArtist(!!artist);
@@ -26,12 +26,12 @@ export default function ArtistGate({ children }: ArtistGateProps) {
                     console.error("Failed to check artist status:", error);
                     setIsArtist(false);
                 }
-            } else if (authenticated === false) {
+            } else if (status === "idle" || status === "error") {
                 setIsArtist(false);
             }
         }
         checkArtist();
-    }, [token, authenticated]);
+    }, [token, status]);
 
     if (isArtist === null) {
         return (
