@@ -12,6 +12,7 @@ import {
 } from "../../lib/localLibrary";
 import { formatDuration } from "../../lib/metadataExtractor";
 import { useToast } from "../../components/ui/Toast";
+import { useAutoScan } from "../../lib/useAutoScan";
 import Link from "next/link";
 
 export default function LibraryPage() {
@@ -20,6 +21,7 @@ export default function LibraryPage() {
     const [playing, setPlaying] = useState<string | null>(null);
     const [audio, setAudio] = useState<HTMLAudioElement | null>(null);
     const { addToast } = useToast();
+    const autoScan = useAutoScan();
 
     const loadTracks = async () => {
         setLoading(true);
@@ -29,10 +31,22 @@ export default function LibraryPage() {
     };
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         void loadTracks();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // Reload tracks after auto-scan completes
+    useEffect(() => {
+        if (autoScan.result && autoScan.result.added > 0) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            void loadTracks();
+            addToast({
+                type: "success",
+                title: "Library Updated",
+                message: `${autoScan.result.added} new track${autoScan.result.added > 1 ? "s" : ""} found.`,
+            });
+        }
+    }, [autoScan.result, addToast]);
 
     const handlePlay = async (track: LocalTrack) => {
         if (audio) {
