@@ -6,7 +6,7 @@
  * re-scanning already indexed files on each app load.
  */
 import { extractMetadata } from "./metadataExtractor";
-import { saveTrack, listTracks } from "./localLibrary";
+import { saveTrack, listTracks, LocalTrack } from "./localLibrary";
 
 const AUDIO_EXTENSIONS = /\.(mp3|wav|flac|aiff|m4a|ogg|wma|aac)$/i;
 
@@ -19,6 +19,7 @@ export interface ScanProgress {
 }
 
 export type ScanProgressCallback = (progress: ScanProgress) => void;
+export type TrackAddedCallback = (track: LocalTrack) => void;
 
 interface FileEntry {
     handle: FileSystemFileHandle;
@@ -72,7 +73,8 @@ async function buildExistingIndex(): Promise<Map<string, number>> {
  */
 export async function scanAndIndex(
     dirHandle: FileSystemDirectoryHandle,
-    onProgress?: ScanProgressCallback
+    onProgress?: ScanProgressCallback,
+    onTrackAdded?: TrackAddedCallback
 ): Promise<{ added: number; skipped: number; total: number }> {
     // Phase 1: Scan filesystem for audio files
     onProgress?.({
@@ -129,7 +131,7 @@ export async function scanAndIndex(
         try {
             const metadata = await extractMetadata(file);
 
-            await saveTrack(file, {
+            const newTrack = await saveTrack(file, {
                 title: metadata.title || file.name.replace(/\.[^/.]+$/, ""),
                 artist: metadata.artist,
                 album: metadata.album,
@@ -139,6 +141,9 @@ export async function scanAndIndex(
                 sourcePath: path,
                 fileSize: file.size,
             });
+
+            // Notify UI immediately after saving
+            onTrackAdded?.(newTrack);
 
             added++;
         } catch (error) {
