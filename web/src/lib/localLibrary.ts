@@ -15,17 +15,25 @@ const blobStore = localforage.createInstance({
     storeName: "audioBlobs",
 });
 
+const artworkStore = localforage.createInstance({
+    name: "resonate",
+    storeName: "artwork",
+});
+
 export interface LocalTrack {
     id: string;
     title: string;
     artist: string | null;
+    albumArtist: string | null;
     album: string | null;
     year: number | null;
     genre: string | null;
     duration: number | null;
-    blobKey: string;
+    blobKey?: string; // Optional for remote tracks
+    artworkKey?: string | null;
     createdAt: string;
-    // Added for incremental scanning
+    remoteUrl?: string; // For streaming catalog
+    remoteArtworkUrl?: string; // For streaming catalog
     sourcePath?: string;
     fileSize?: number;
 }
@@ -35,7 +43,8 @@ export interface LocalTrack {
  */
 export async function saveTrack(
     file: File,
-    metadata: Omit<LocalTrack, "id" | "blobKey" | "createdAt">
+    metadata: Omit<LocalTrack, "id" | "blobKey" | "artworkKey" | "createdAt">,
+    artworkBlob?: Blob | null
 ): Promise<LocalTrack> {
     const id = `local_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
     const blobKey = `blob_${id}`;
@@ -43,11 +52,19 @@ export async function saveTrack(
     // Store the audio blob
     await blobStore.setItem(blobKey, file);
 
+    // Store artwork if provided
+    let artworkKey: string | null = null;
+    if (artworkBlob) {
+        artworkKey = `artwork_${id}`;
+        await artworkStore.setItem(artworkKey, artworkBlob);
+    }
+
     // Store track metadata
     const track: LocalTrack = {
         id,
         ...metadata,
         blobKey,
+        artworkKey,
         createdAt: new Date().toISOString(),
     };
 
@@ -73,9 +90,35 @@ export async function getTrackBlob(blobKey: string): Promise<Blob | null> {
  * Get a playable URL for a track (creates object URL from blob)
  */
 export async function getTrackUrl(track: LocalTrack): Promise<string | null> {
+    if (track.remoteUrl) return track.remoteUrl;
+    if (!track.blobKey) return null;
+
     const blob = await getTrackBlob(track.blobKey);
     if (!blob) return null;
     return URL.createObjectURL(blob);
+}
+
+// In-memory cache for artwork URLs to avoid recreating object URLs
+const artworkUrlCache = new Map<string, string>();
+
+/**
+ * Get artwork URL for a track (creates object URL from artwork blob)
+ * Uses in-memory cache to avoid recreating URLs on each call
+ */
+export async function getArtworkUrl(track: LocalTrack): Promise<string | null> {
+    if (track.remoteArtworkUrl) return track.remoteArtworkUrl;
+    if (!track.artworkKey) return null;
+
+    // Check cache first
+    const cached = artworkUrlCache.get(track.artworkKey);
+    if (cached) return cached;
+
+    const blob = await artworkStore.getItem<Blob>(track.artworkKey);
+    if (!blob) return null;
+
+    const url = URL.createObjectURL(blob);
+    artworkUrlCache.set(track.artworkKey, url);
+    return url;
 }
 
 /**
@@ -98,7 +141,12 @@ export async function listTracks(): Promise<LocalTrack[]> {
 export async function deleteTrack(id: string): Promise<void> {
     const track = await getTrack(id);
     if (track) {
-        await blobStore.removeItem(track.blobKey);
+        if (track.blobKey) {
+            await blobStore.removeItem(track.blobKey);
+        }
+        if (track.artworkKey) {
+            await artworkStore.removeItem(track.artworkKey);
+        }
         await trackStore.removeItem(id);
     }
 }
@@ -109,4 +157,5 @@ export async function deleteTrack(id: string): Promise<void> {
 export async function clearLibrary(): Promise<void> {
     await trackStore.clear();
     await blobStore.clear();
+    await artworkStore.clear();
 }

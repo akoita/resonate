@@ -44,10 +44,34 @@ async function apiRequest<T>(
     ...options,
     headers,
   });
+
   if (!response.ok) {
-    throw new Error(`API ${response.status}`);
+    let errorDetail = "";
+    try {
+      errorDetail = await response.text();
+    } catch {
+      // ignore
+    }
+    console.error(`[API] Error ${response.status} ${path}`, errorDetail);
+    throw new Error(`API ${response.status}: ${errorDetail || response.statusText}`);
   }
-  return (await response.json()) as T;
+
+  // Handle No Content (204) or empty body
+  if (response.status === 204) {
+    return null as T;
+  }
+
+  const text = await response.text();
+  if (!text) {
+    return null as T;
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch (err) {
+    console.error(`[API] Failed to parse JSON from ${path}`, { text, err });
+    return text as unknown as T; // Fallback to raw text if it's not JSON but was expected
+  }
 }
 
 export async function fetchNonce(address: string) {
