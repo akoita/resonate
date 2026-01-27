@@ -5,9 +5,12 @@ import Link from "next/link";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { useAuth } from "../components/auth/AuthProvider";
+import { usePlayer } from "../lib/playerContext";
 import { listPublishedTracks, listMyTracks, Track } from "../lib/api";
+import { LocalTrack } from "../lib/localLibrary";
 
 export default function Home() {
+  const { playQueue } = usePlayer();
   const moods = ["Focus", "Chill", "Energy", "Night Drive", "Lo-fi"];
   const [releases, setReleases] = useState<Track[]>([]);
   const [myTracks, setMyTracks] = useState<Track[]>([]);
@@ -27,6 +30,24 @@ export default function Home() {
     }
   }, [token, status]);
 
+  const handlePlayAll = () => {
+    if (releases.length > 0) {
+      const playableReleases: LocalTrack[] = releases.map((t) => ({
+        id: t.id,
+        title: t.title,
+        artist: t.primaryArtist || "Unknown Artist",
+        albumArtist: null,
+        album: t.releaseTitle || null,
+        year: t.releaseDate ? new Date(t.releaseDate).getFullYear() : null,
+        genre: t.genre || null,
+        duration: 0,
+        createdAt: t.createdAt,
+        remoteUrl: t.stems && t.stems.length > 0 ? t.stems[0].uri : undefined,
+      }));
+      void playQueue(playableReleases, 0);
+    }
+  };
+
   const curated = ["Deep Flow", "Momentum", "Calm Waves", "Pulse"];
 
   return (
@@ -34,10 +55,10 @@ export default function Home() {
       <section className="home-hero">
         <div className="home-title">Resonate</div>
         <div className="home-subtitle">
-          Start a session, explore new artists, or upload your next release.
+          Enter the master stage. Stream high-fidelity stems, explore curated collections, or architect your next sonic release.
         </div>
         <div className="home-actions">
-          <Button>Start session</Button>
+          <Button onClick={handlePlayAll} className="btn-start-session">Start session</Button>
           <Link href="/artist/upload">
             <Button variant="ghost">Upload stems</Button>
           </Link>

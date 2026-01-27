@@ -67,11 +67,12 @@ export default function ImportPage() {
             await saveTrack(file, {
                 title: metadata.title || file.name,
                 artist: metadata.artist,
+                albumArtist: metadata.albumArtist,
                 album: metadata.album,
                 year: metadata.year,
                 genre: metadata.genre,
                 duration: metadata.duration,
-            });
+            }, metadata.artworkBlob);
             setProgress({ current: i + 1, total: toImport.length });
         }
 

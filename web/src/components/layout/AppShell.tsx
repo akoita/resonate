@@ -1,6 +1,9 @@
+"use client";
+
 import PlayerBar from "./PlayerBar";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
+import { PlayerProvider } from "../../lib/playerContext";
 
 export default function AppShell({
   children,
@@ -8,13 +11,15 @@ export default function AppShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="app-shell">
-      <Sidebar />
-      <div className="app-main">
-        <Topbar />
-        <div className="app-content">{children}</div>
-        <PlayerBar />
+    <PlayerProvider>
+      <div className="app-shell">
+        <Sidebar />
+        <div className="app-main">
+          <Topbar />
+          <div className="app-content">{children}</div>
+          <PlayerBar />
+        </div>
       </div>
-    </div>
+    </PlayerProvider>
   );
 }
