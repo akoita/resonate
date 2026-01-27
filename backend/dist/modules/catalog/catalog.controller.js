@@ -21,21 +21,80 @@ let CatalogController = class CatalogController {
     constructor(catalogService) {
         this.catalogService = catalogService;
     }
-    create(body) {
-        return this.catalogService.createTrack(body);
+    async getReleaseArtwork(releaseId, res) {
+        const artwork = await this.catalogService.getReleaseArtwork(releaseId);
+        if (!artwork) {
+            res.status(404).send("Artwork not found");
+            return;
+        }
+        res.set({
+            "Content-Type": artwork.mimeType,
+            "Cache-Control": "public, max-age=31536000",
+        });
+        return new common_1.StreamableFile(artwork.data);
+    }
+    async getStemBlob(stemId, range, res) {
+        const stem = await this.catalogService.getStemBlob(stemId);
+        if (!stem) {
+            res.status(404).send("Stem data not found");
+            return;
+        }
+        const fileSize = stem.data.length;
+        if (range) {
+            const parts = range.replace(/bytes=/, "").split("-");
+            const start = parseInt(parts[0], 10);
+            const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+            if (start >= fileSize) {
+                res.status(416).set({
+                    'Content-Range': `bytes */${fileSize}`,
+                }).send();
+                return;
+            }
+            const chunksize = (end - start) + 1;
+            const file = stem.data.subarray(start, end + 1);
+            res.status(206).set({
+                'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+                'Accept-Ranges': 'bytes',
+                'Content-Length': chunksize,
+                'Content-Type': stem.mimeType || 'audio/mpeg',
+                'Cache-Control': 'public, max-age=31536000',
+            });
+            res.end(file);
+            return;
+        }
+        res.set({
+            'Content-Length': fileSize,
+            'Content-Type': stem.mimeType || 'audio/mpeg',
+            'Accept-Ranges': 'bytes',
+            'Cache-Control': 'public, max-age=31536000',
+        });
+        res.end(stem.data);
+    }
+    listMe(req) {
+        return this.catalogService.listByUserId(req.user.userId);
+    }
+    create(req, body) {
+        return this.catalogService.createRelease({
+            ...body,
+            userId: req.user.userId,
+        });
+    }
+    listPublished(limit) {
+        console.log(`[Catalog] Fetching published releases (limit: ${limit})`);
+        const parsedLimit = limit ? Number(limit) : 20;
+        return this.catalogService.listPublished(Number.isNaN(parsedLimit) ? 20 : parsedLimit);
+    }
+    getRelease(releaseId) {
+        return this.catalogService.getRelease(releaseId);
     }
     getTrack(trackId) {
         return this.catalogService.getTrack(trackId);
     }
-    updateTrack(trackId, body) {
-        return this.catalogService.updateTrack(trackId, body);
+    updateRelease(releaseId, body) {
+        return this.catalogService.updateRelease(releaseId, body);
     }
     listByArtist(artistId) {
         return this.catalogService.listByArtist(artistId);
-    }
-    listPublished(limit) {
-        const parsedLimit = limit ? Number(limit) : 20;
-        return this.catalogService.listPublished(Number.isNaN(parsedLimit) ? 20 : parsedLimit);
     }
     search(query, stemType, hasIpnft, limit) {
         const parsedHasIpnft = hasIpnft === undefined ? undefined : hasIpnft === "true";
@@ -49,38 +108,39 @@ let CatalogController = class CatalogController {
 };
 exports.CatalogController = CatalogController;
 __decorate([
+    (0, common_1.Get)("releases/:releaseId/artwork"),
+    __param(0, (0, common_1.Param)("releaseId")),
+    __param(1, (0, common_1.Res)({ passthrough: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], CatalogController.prototype, "getReleaseArtwork", null);
+__decorate([
+    (0, common_1.Get)("stems/:stemId/blob"),
+    __param(0, (0, common_1.Param)("stemId")),
+    __param(1, (0, common_1.Headers)("range")),
+    __param(2, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object]),
+    __metadata("design:returntype", Promise)
+], CatalogController.prototype, "getStemBlob", null);
+__decorate([
     (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
-    (0, common_1.Post)(),
-    __param(0, (0, common_1.Body)()),
+    (0, common_1.Get)("me"),
+    __param(0, (0, common_1.Request)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
-], CatalogController.prototype, "create", null);
+], CatalogController.prototype, "listMe", null);
 __decorate([
     (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
-    (0, common_1.Get)(":trackId"),
-    __param(0, (0, common_1.Param)("trackId")),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
-    __metadata("design:returntype", void 0)
-], CatalogController.prototype, "getTrack", null);
-__decorate([
-    (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
-    (0, common_1.Patch)(":trackId"),
-    __param(0, (0, common_1.Param)("trackId")),
+    (0, common_1.Post)(),
+    __param(0, (0, common_1.Request)()),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", void 0)
-], CatalogController.prototype, "updateTrack", null);
-__decorate([
-    (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
-    (0, common_1.Get)("artist/:artistId"),
-    __param(0, (0, common_1.Param)("artistId")),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
-    __metadata("design:returntype", void 0)
-], CatalogController.prototype, "listByArtist", null);
+], CatalogController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)("published"),
     __param(0, (0, common_1.Query)("limit")),
@@ -88,6 +148,36 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], CatalogController.prototype, "listPublished", null);
+__decorate([
+    (0, common_1.Get)("releases/:releaseId"),
+    __param(0, (0, common_1.Param)("releaseId")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], CatalogController.prototype, "getRelease", null);
+__decorate([
+    (0, common_1.Get)("tracks/:trackId"),
+    __param(0, (0, common_1.Param)("trackId")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], CatalogController.prototype, "getTrack", null);
+__decorate([
+    (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
+    (0, common_1.Patch)("releases/:releaseId"),
+    __param(0, (0, common_1.Param)("releaseId")),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", void 0)
+], CatalogController.prototype, "updateRelease", null);
+__decorate([
+    (0, common_1.Get)("artist/:artistId"),
+    __param(0, (0, common_1.Param)("artistId")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], CatalogController.prototype, "listByArtist", null);
 __decorate([
     (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
     (0, common_1.Get)(),

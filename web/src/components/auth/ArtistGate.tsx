@@ -131,14 +131,17 @@ export default function ArtistGate({ children }: ArtistGateProps) {
 
                     .gate-submit-btn {
                         width: 100%;
-                        height: 52px !important;
-                        border-radius: 12px !important;
-                        font-size: 1rem !important;
-                        font-weight: 600 !important;
-                        transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+                        height: 64px !important; /* Increased from 52px */
+                        border-radius: 16px !important;
+                        font-size: 1.1rem !important;
+                        font-weight: 700 !important;
+                        letter-spacing: 0.01em;
+                        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
                         background: linear-gradient(135deg, #7c5cff 0%, #a855f7 100%) !important;
-                        border: none !important;
-                        box-shadow: 0 8px 16px -4px rgba(124, 92, 255, 0.4) !important;
+                        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+                        box-shadow: 
+                            0 8px 16px -4px rgba(124, 92, 255, 0.4),
+                            0 0 20px rgba(124, 92, 255, 0.1) !important;
                     }
 
                     .gate-submit-btn:hover {

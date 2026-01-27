@@ -19,74 +19,125 @@ export class CatalogService implements OnModuleInit {
 
   onModuleInit() {
     this.eventBus.subscribe("stems.uploaded", async (event: StemsUploadedEvent) => {
-      console.log(`[Catalog] Received stems.uploaded for track ${event.trackId} (artist: ${event.artistId})`);
+      console.log(`[Catalog] Received stems.uploaded for release ${event.releaseId} (artist: ${event.artistId})`);
       this.clearCache();
       try {
-        await prisma.track.upsert({
-          where: { id: event.trackId },
+        await prisma.release.upsert({
+          where: { id: event.releaseId },
           update: {
             artistId: event.artistId,
             status: "processing",
+            artworkData: event.artworkData,
+            artworkMimeType: event.artworkMimeType,
+            title: event.metadata?.title ?? undefined,
+            type: event.metadata?.type ?? undefined,
+            primaryArtist: event.metadata?.primaryArtist ?? undefined,
+            featuredArtists: event.metadata?.featuredArtists?.join(", ") ?? undefined,
+            genre: event.metadata?.genre ?? undefined,
+            label: event.metadata?.label ?? undefined,
+            releaseDate: event.metadata?.releaseDate ? new Date(event.metadata.releaseDate) : undefined,
+            explicit: event.metadata?.explicit ?? undefined,
           },
           create: {
-            id: event.trackId,
+            id: event.releaseId,
             artistId: event.artistId,
-            title: event.metadata?.releaseTitle || (event.metadata as any)?.title || "Untitled Track",
+            title: event.metadata?.title || "Untitled Release",
             status: "processing",
-            releaseType: event.metadata?.releaseType || "single",
-            releaseTitle: event.metadata?.releaseTitle,
+            type: event.metadata?.type || "single",
             primaryArtist: event.metadata?.primaryArtist,
             featuredArtists: event.metadata?.featuredArtists?.join(", "),
             genre: event.metadata?.genre,
-            isrc: event.metadata?.isrc,
             label: event.metadata?.label,
             releaseDate: event.metadata?.releaseDate
               ? new Date(event.metadata.releaseDate)
               : undefined,
             explicit: event.metadata?.explicit ?? false,
-          } as any,
+            artworkData: event.artworkData,
+            artworkMimeType: event.artworkMimeType,
+            tracks: {
+              create: event.metadata?.tracks?.map((t: any) => ({
+                id: t.id,
+                title: t.title,
+                artist: t.artist,
+                position: t.position,
+                explicit: t.explicit ?? false,
+                isrc: t.isrc,
+              })),
+            },
+          },
         });
-        console.log(`[Catalog] Created/Updated track ${event.trackId}`);
+        console.log(`[Catalog] Created/Updated release ${event.releaseId} with ${event.metadata?.tracks?.length} tracks`);
       } catch (err) {
-        console.error(`[Catalog] Failed to create/update track ${event.trackId}:`, err);
+        console.error(`[Catalog] Failed to create/update release ${event.releaseId}:`, err);
       }
     });
 
     this.eventBus.subscribe("stems.processed", async (event: StemsProcessedEvent) => {
-      console.log(`[Catalog] Received stems.processed for track ${event.trackId}`);
+      console.log(`[Catalog] Received stems.processed for release ${event.releaseId}`);
       this.clearCache();
 
-      // Retry logic for track existence (race condition fix)
-      let track = await prisma.track.findUnique({ where: { id: event.trackId } });
-      if (!track) {
-        console.warn(`[Catalog] Track ${event.trackId} not found yet. Retrying in 1s...`);
+      let release = await prisma.release.findUnique({ where: { id: event.releaseId } });
+      if (!release) {
+        console.warn(`[Catalog] Release ${event.releaseId} not found yet. Retrying in 1s...`);
         await new Promise((resolve) => setTimeout(resolve, 1000));
-        track = await prisma.track.findUnique({ where: { id: event.trackId } });
+        release = await prisma.release.findUnique({ where: { id: event.releaseId } });
       }
 
-      if (!track) {
-        console.error(`[Catalog] Track ${event.trackId} still not found. Dropping stems.`);
+      if (!release) {
+        console.error(`[Catalog] Release ${event.releaseId} still not found. Dropping stems.`);
         return;
       }
 
-      if (event.stems?.length) {
-        await prisma.stem.createMany({
-          data: event.stems.map((stem) => ({
-            id: stem.id,
-            trackId: event.trackId,
-            type: stem.type,
-            uri: stem.uri,
-          })),
-          skipDuplicates: true,
-        });
-      }
-      await prisma.track
-        .update({
-          where: { id: event.trackId },
+      try {
+        if (event.tracks?.length) {
+          for (const trackData of event.tracks) {
+            // Ensure track exists (it should from stems.uploaded)
+            await prisma.track.upsert({
+              where: { id: trackData.id },
+              create: {
+                id: trackData.id,
+                releaseId: event.releaseId,
+                title: trackData.title,
+                artist: trackData.artist,
+                position: trackData.position,
+              },
+              update: {
+                title: trackData.title,
+                artist: trackData.artist,
+                position: trackData.position,
+              },
+            });
+
+            for (const stem of trackData.stems) {
+              await prisma.stem.upsert({
+                where: { id: stem.id },
+                create: {
+                  id: stem.id,
+                  trackId: trackData.id,
+                  type: stem.type,
+                  uri: stem.uri,
+                  data: stem.data,
+                  mimeType: stem.mimeType,
+                },
+                update: {
+                  type: stem.type,
+                  uri: stem.uri,
+                  data: stem.data,
+                  mimeType: stem.mimeType,
+                },
+              });
+            }
+          }
+        }
+
+        await prisma.release.update({
+          where: { id: event.releaseId },
           data: { status: "ready" },
-        })
-        .then(() => console.log(`[Catalog] Track ${event.trackId} updated to ready`))
-        .catch((err) => console.error(`[Catalog] Failed to update track status ${event.trackId}:`, err));
+        });
+        console.log(`[Catalog] Release ${event.releaseId} updated to ready`);
+      } catch (err) {
+        console.error(`[Catalog] Failed to finalise release ${event.releaseId}:`, err);
+      }
     });
 
     this.eventBus.subscribe("ipnft.minted", async (event: IpNftMintedEvent) => {
@@ -101,26 +152,64 @@ export class CatalogService implements OnModuleInit {
   }
 
   async listPublished(limit = 20) {
-    return prisma.track.findMany({
+    return prisma.release.findMany({
       where: { status: "ready" },
-      include: { stems: true, artist: true },
+      select: {
+        id: true,
+        artistId: true,
+        title: true,
+        status: true,
+        type: true,
+        primaryArtist: true,
+        featuredArtists: true,
+        genre: true,
+        label: true,
+        releaseDate: true,
+        explicit: true,
+        createdAt: true,
+        artworkMimeType: true, // Useful for frontend to know, but DATA must be excluded
+        artist: {
+          select: { id: true, displayName: true, payoutAddress: true }
+        },
+        tracks: {
+          orderBy: { position: "asc" },
+          select: {
+            id: true,
+            title: true,
+            artist: true,
+            position: true,
+            explicit: true,
+            isrc: true,
+            createdAt: true,
+            stems: {
+              select: {
+                id: true,
+                type: true,
+                uri: true,
+                ipnftId: true,
+                checksum: true,
+                // Exclude data and mimeType (huge blobs)
+              }
+            }
+          }
+        }
+      },
       orderBy: { createdAt: "desc" },
       take: limit,
     });
   }
 
-  async createTrack(input: {
+  async createRelease(input: {
     userId: string;
     title: string;
-    releaseType?: string;
-    releaseTitle?: string;
+    type?: string;
     primaryArtist?: string;
     featuredArtists?: string[];
     genre?: string;
-    isrc?: string;
     label?: string;
     releaseDate?: string;
     explicit?: boolean;
+    tracks?: Array<{ title: string; position: number; explicit?: boolean }>;
   }) {
     const artist = await prisma.artist.findUnique({
       where: { userId: input.userId },
@@ -131,36 +220,146 @@ export class CatalogService implements OnModuleInit {
     }
 
     this.clearCache();
-    return prisma.track.create({
+    return prisma.release.create({
       data: {
         artistId: artist.id,
         title: input.title,
         status: "draft",
-        releaseType: input.releaseType ?? "single",
-        releaseTitle: input.releaseTitle,
+        type: input.type ?? "single",
         primaryArtist: input.primaryArtist,
         featuredArtists: input.featuredArtists?.join(", "),
         genre: input.genre,
-        isrc: input.isrc,
         label: input.label,
         releaseDate: input.releaseDate ? new Date(input.releaseDate) : undefined,
         explicit: input.explicit ?? false,
-      } as any,
-      include: { stems: true },
+        tracks: {
+          create: input.tracks?.map(t => ({
+            title: t.title,
+            position: t.position,
+            explicit: t.explicit ?? false,
+          }))
+        }
+      },
+      // Return lightweight object
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        tracks: {
+          select: { id: true, title: true, position: true }
+        }
+      }
     });
   }
 
   async getTrack(trackId: string) {
     return prisma.track.findUnique({
       where: { id: trackId },
-      include: { stems: true },
+      select: {
+        id: true,
+        releaseId: true,
+        title: true,
+        position: true,
+        explicit: true,
+        isrc: true,
+        createdAt: true,
+        stems: {
+          select: {
+            id: true,
+            type: true,
+            uri: true,
+            ipnftId: true,
+            // Exclude data
+          }
+        },
+        release: {
+          select: {
+            id: true,
+            title: true,
+            primaryArtist: true,
+            artworkMimeType: true,
+            artist: { select: { id: true, displayName: true } }
+          }
+        }
+      }
+    });
+  }
+
+  async getRelease(releaseId: string) {
+    return prisma.release.findUnique({
+      where: { id: releaseId },
+      select: {
+        id: true,
+        artistId: true,
+        title: true,
+        status: true,
+        type: true,
+        primaryArtist: true,
+        featuredArtists: true,
+        genre: true,
+        label: true,
+        releaseDate: true,
+        explicit: true,
+        createdAt: true,
+        artworkMimeType: true,
+        artist: {
+          select: { id: true, displayName: true }
+        },
+        tracks: {
+          orderBy: { position: "asc" },
+          select: {
+            id: true,
+            title: true,
+            artist: true,
+            position: true,
+            explicit: true,
+            isrc: true,
+            createdAt: true,
+            stems: {
+              select: {
+                id: true,
+                type: true,
+                uri: true,
+                ipnftId: true,
+                // Exclude data
+              }
+            }
+          }
+        }
+      }
     });
   }
 
   async listByArtist(artistId: string) {
-    return prisma.track.findMany({
+    return prisma.release.findMany({
       where: { artistId },
-      include: { stems: true },
+      select: {
+        id: true,
+        artistId: true,
+        title: true,
+        status: true,
+        type: true,
+        primaryArtist: true,
+        featuredArtists: true,
+        genre: true,
+        label: true,
+        releaseDate: true,
+        explicit: true,
+        createdAt: true,
+        artworkMimeType: true,
+        tracks: {
+          orderBy: { position: "asc" },
+          select: {
+            id: true,
+            title: true,
+            position: true,
+            explicit: true,
+            stems: {
+              select: { id: true, type: true, uri: true }
+            }
+          }
+        }
+      },
       orderBy: { createdAt: "desc" },
     });
   }
@@ -173,18 +372,18 @@ export class CatalogService implements OnModuleInit {
     return this.listByArtist(artist.id);
   }
 
-  async updateTrack(
-    trackId: string,
+  async updateRelease(
+    releaseId: string,
     input: Partial<{
       title: string;
       status: string;
     }>,
   ) {
     this.clearCache();
-    return prisma.track.update({
-      where: { id: trackId },
+    return prisma.release.update({
+      where: { id: releaseId },
       data: input,
-      include: { stems: true },
+      include: { tracks: true },
     });
   }
 
@@ -203,33 +402,69 @@ export class CatalogService implements OnModuleInit {
       return { items: cached.items };
     }
     const cappedLimit = Math.min(Math.max(filters?.limit ?? 50, 1), 100);
-    const stemsWhere =
-      filters?.hasIpnft === undefined && !filters?.stemType
-        ? undefined
-        : {
-          ...(filters?.hasIpnft === true
-            ? {
-              some: {
-                ...(filters?.stemType ? { type: filters.stemType } : {}),
-                ipnftId: { not: null },
-              },
-            }
-            : {}),
-          ...(filters?.hasIpnft === false ? { every: { ipnftId: null } } : {}),
-          ...(filters?.hasIpnft !== true && filters?.stemType
-            ? { some: { type: filters.stemType } }
-            : {}),
-        };
-    const items = await prisma.track.findMany({
+
+    // Search releases by title OR tracks by title
+    const items = await prisma.release.findMany({
       where: {
-        title: { contains: query, mode: "insensitive" },
-        stems: stemsWhere,
+        OR: [
+          { title: { contains: query, mode: "insensitive" } },
+          { tracks: { some: { title: { contains: query, mode: "insensitive" } } } }
+        ],
+        status: "ready"
       },
-      include: { stems: true },
+      select: {
+        id: true,
+        artistId: true,
+        title: true,
+        status: true,
+        type: true,
+        primaryArtist: true,
+        featuredArtists: true,
+        genre: true,
+        label: true,
+        releaseDate: true,
+        explicit: true,
+        createdAt: true,
+        artworkMimeType: true,
+        artist: {
+          select: { id: true, displayName: true }
+        },
+        tracks: {
+          orderBy: { position: "asc" },
+          select: {
+            id: true,
+            title: true,
+            position: true,
+            explicit: true,
+            stems: {
+              select: { id: true, type: true, uri: true }
+            }
+          }
+        }
+      },
       take: cappedLimit,
     });
+
     this.searchCache.set(cacheKey, { items, cachedAt: Date.now() });
     return { items };
+  }
+
+  async getReleaseArtwork(releaseId: string) {
+    const release = await prisma.release.findUnique({
+      where: { id: releaseId },
+      select: { artworkData: true, artworkMimeType: true },
+    });
+    if (!release || !release.artworkData) return null;
+    return { data: release.artworkData, mimeType: release.artworkMimeType || "image/jpeg" };
+  }
+
+  async getStemBlob(stemId: string) {
+    const stem = await prisma.stem.findUnique({
+      where: { id: stemId },
+      select: { data: true, mimeType: true },
+    });
+    if (!stem || !stem.data) return null;
+    return { data: stem.data, mimeType: stem.mimeType || "audio/mpeg" };
   }
 
   private clearCache() {

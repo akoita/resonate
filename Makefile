@@ -10,6 +10,9 @@ backend-dev:
 web-dev:
 	cd web && npm run dev
 
+db-reset:
+	cd backend && npx prisma migrate reset --force
+
 # ============================================
 # Local Account Abstraction Development
 # ============================================

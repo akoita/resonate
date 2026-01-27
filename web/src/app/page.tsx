@@ -2,135 +2,278 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Button } from "../components/ui/Button";
+import { useRouter } from "next/navigation";
 import { Card } from "../components/ui/Card";
 import { useAuth } from "../components/auth/AuthProvider";
 import { usePlayer } from "../lib/playerContext";
-import { listPublishedTracks, listMyTracks, Track } from "../lib/api";
-import { LocalTrack } from "../lib/localLibrary";
+import { listPublishedReleases, listMyReleases, Release } from "../lib/api";
+import { ReleaseHero } from "../components/home/ReleaseHero";
 
 export default function Home() {
-  const { playQueue } = usePlayer();
+  const router = useRouter();
   const moods = ["Focus", "Chill", "Energy", "Night Drive", "Lo-fi"];
-  const [releases, setReleases] = useState<Track[]>([]);
-  const [myTracks, setMyTracks] = useState<Track[]>([]);
+  const [releases, setReleases] = useState<Release[]>([]);
+  const [myReleases, setMyReleases] = useState<Release[]>([]);
   const [loading, setLoading] = useState(true);
   const { token, status } = useAuth();
 
   useEffect(() => {
-    listPublishedTracks(8)
+    listPublishedReleases(12)
       .then(setReleases)
       .catch(() => setReleases([]))
       .finally(() => setLoading(false));
 
     if (token && status === "authenticated") {
-      listMyTracks(token)
-        .then(setMyTracks)
-        .catch(() => setMyTracks([]));
+      listMyReleases(token)
+        .then(setMyReleases)
+        .catch(() => setMyReleases([]));
     }
   }, [token, status]);
 
-  const handlePlayAll = () => {
-    if (releases.length > 0) {
-      const playableReleases: LocalTrack[] = releases.map((t) => ({
-        id: t.id,
-        title: t.title,
-        artist: t.primaryArtist || "Unknown Artist",
-        albumArtist: null,
-        album: t.releaseTitle || null,
-        year: t.releaseDate ? new Date(t.releaseDate).getFullYear() : null,
-        genre: t.genre || null,
-        duration: 0,
-        createdAt: t.createdAt,
-        remoteUrl: t.stems && t.stems.length > 0 ? t.stems[0].uri : undefined,
-      }));
-      void playQueue(playableReleases, 0);
-    }
-  };
-
-  const curated = ["Deep Flow", "Momentum", "Calm Waves", "Pulse"];
+  const featuredRelease = releases[0];
+  const quickAccessReleases = releases.slice(0, 6);
+  const newReleases = releases.slice(1, 9);
 
   return (
-    <main>
-      <section className="home-hero">
-        <div className="home-title">Resonate</div>
-        <div className="home-subtitle">
-          Enter the master stage. Stream high-fidelity stems, explore curated collections, or architect your next sonic release.
+    <main className="home-container">
+      <div className="mesh-gradient-bg" />
+
+      {/* 1. Master Stage Hero */}
+      {featuredRelease && (
+        <section className="home-hero-section fade-in-up">
+          <ReleaseHero release={featuredRelease} />
+        </section>
+      )}
+
+      {/* 2. Quick Access (Spotify Style but Glass) */}
+      <section className="home-section fade-in-up" style={{ animationDelay: '0.1s' }}>
+        <div className="section-header">
+          <h2 className="home-section-title text-gradient">Good Evening</h2>
         </div>
-        <div className="home-actions">
-          <Button onClick={handlePlayAll} className="btn-start-session">Start session</Button>
-          <Link href="/artist/upload">
-            <Button variant="ghost">Upload stems</Button>
-          </Link>
+        <div className="quick-access-grid">
+          {quickAccessReleases.map((release) => (
+            <Card
+              key={`quick-${release.id}`}
+              variant="compact"
+              title={release.title}
+              image={release.artworkUrl || undefined}
+              onClick={() => router.push(`/release/${release.id}`)}
+            />
+          ))}
         </div>
+      </section>
+
+      {/* 3. New Releases Section (Tidal Style Bold List/Grid) */}
+      <section className="home-section fade-in-up" style={{ animationDelay: '0.2s' }}>
+        <div className="section-header">
+          <h2 className="home-section-title">Latest Masterings</h2>
+          <Link href="/library" className="view-all-link">View all</Link>
+        </div>
+
+        {loading ? (
+          <div className="loading-shimmer-container">
+            <div className="shimmer-card" />
+            <div className="shimmer-card" />
+            <div className="shimmer-card" />
+          </div>
+        ) : (
+          <div className="release-card-grid">
+            {newReleases.map((release, idx) => (
+              <Card
+                key={release.id}
+                variant={idx === 0 ? "featured" : "standard"}
+                title={release.title}
+                image={release.artworkUrl || undefined}
+                onClick={() => {
+                  const firstTrackId = release.tracks?.[0]?.id;
+                  if (firstTrackId) router.push(`/player?trackId=${firstTrackId}`);
+                }}
+              >
+                <div className="track-card-meta">
+                  <div className="artist-stack">
+                    <span className="primary-artist">{release.primaryArtist || "Unknown Artist"}</span>
+                    <span className="release-year">{release.releaseDate ? new Date(release.releaseDate).getFullYear() : '2026'}</span>
+                  </div>
+                  <span className="track-badge">{release.type}</span>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* 4. Mood Filters / Signal Chips */}
+      <section className="home-section chip-section fade-in-up" style={{ animationDelay: '0.3s' }}>
         <div className="home-chips">
           {moods.map((mood) => (
-            <button key={mood} className="home-chip" type="button">
+            <button key={mood} className="signal-chip" type="button">
+              <span className="signal-pulse" />
               {mood}
             </button>
           ))}
         </div>
       </section>
 
-      <section className="home-section">
-        <div className="home-section-title">New Releases</div>
-        {loading ? (
-          <div className="home-subtitle">Loading releases...</div>
-        ) : releases.length === 0 ? (
-          <div className="home-subtitle">
-            No releases yet.{" "}
-            <Link href="/artist/upload" style={{ color: "var(--color-accent)" }}>
-              Upload your first track
-            </Link>
-          </div>
-        ) : (
-          <div className="card-grid">
-            {releases.map((track) => (
-              <Link key={track.id} href={`/player?trackId=${track.id}`}>
-                <Card title={track.releaseTitle || track.title}>
-                  <div className="track-card-meta">
-                    <span>{track.primaryArtist || "Unknown Artist"}</span>
-                    <span className="track-card-status">{track.status}</span>
-                  </div>
-                </Card>
-              </Link>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {status === "authenticated" && myTracks.length > 0 && (
+      {status === "authenticated" && myReleases.length > 0 && (
         <section className="home-section">
-          <div className="home-section-title">Your Uploads</div>
-          <div className="card-grid">
-            {myTracks.map((track) => (
-              <Link key={track.id} href={`/player?trackId=${track.id}`}>
-                <Card title={track.releaseTitle || track.title}>
-                  <div className="track-card-meta">
-                    <span className={`status-badge status-${track.status.toLowerCase()}`}>
-                      {track.status}
+          <div className="section-header">
+            <h2 className="home-section-title">Your Studio Vault</h2>
+          </div>
+          <div className="release-card-grid">
+            {myReleases.map((release) => (
+              <Card
+                key={release.id}
+                title={release.title}
+                image={release.artworkUrl || undefined}
+                onClick={() => {
+                  const firstTrackId = release.tracks?.[0]?.id;
+                  if (firstTrackId) router.push(`/player?trackId=${firstTrackId}`);
+                }}
+              >
+                <div className="track-card-meta">
+                  <div className="artist-stack">
+                    <span className={`status-badge status-${release.status.toLowerCase()}`}>
+                      {release.status}
                     </span>
-                    <span className="track-card-date">
-                      {new Date(track.createdAt).toLocaleDateString()}
-                    </span>
+                    <span className="release-year">{new Date(release.createdAt).toLocaleDateString()}</span>
                   </div>
-                </Card>
-              </Link>
+                </div>
+              </Card>
             ))}
           </div>
         </section>
       )}
 
-      <section className="home-section">
-        <div className="home-section-title">AI Curated</div>
-        <div className="card-grid">
-          {curated.map((name) => (
-            <Card key={name} title={name}>
-              Personalized mix · 4:10
-            </Card>
-          ))}
-        </div>
-      </section>
+      <style jsx>{`
+        .home-container {
+          max-width: 1800px;
+          margin: 0 auto;
+          display: flex;
+          flex-direction: column;
+          gap: 80px;
+          padding: 0 60px;
+        }
+
+        .home-hero-section {
+          animation-delay: 0.1s;
+        }
+
+        .section-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          margin-bottom: 24px;
+        }
+
+        .home-section-title {
+          font-size: 32px;
+          font-weight: 800;
+          letter-spacing: -0.03em;
+        }
+
+        .view-all-link {
+          font-size: 13px;
+          font-weight: 700;
+          color: var(--color-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.12em;
+          transition: color 0.2s;
+        }
+
+        .view-all-link:hover {
+          color: #fff;
+        }
+
+        .quick-access-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+          gap: 20px;
+          animation-delay: 0.2s;
+        }
+
+        .release-card-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          gap: 40px;
+          animation-delay: 0.3s;
+        }
+
+        .artist-stack {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .primary-artist {
+          font-size: 14px;
+          font-weight: 600;
+          color: #fff;
+        }
+
+        .release-year {
+          font-size: 12px;
+          color: var(--color-muted);
+        }
+
+        .signal-chip {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 24px;
+          border-radius: 50px;
+          background: var(--studio-surface);
+          border: 1px solid var(--studio-border);
+          color: var(--color-muted);
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .signal-chip:hover {
+          background: var(--studio-surface-raised);
+          color: #fff;
+          border-color: var(--studio-border-glow);
+          transform: translateY(-2px);
+        }
+
+        .signal-pulse {
+          width: 6px;
+          height: 6px;
+          background: var(--color-accent);
+          border-radius: 50%;
+          box-shadow: 0 0 10px var(--color-accent);
+          animation: pulse-ring 2s infinite;
+        }
+
+        @keyframes pulse-ring {
+          0% { transform: scale(1); opacity: 1; }
+          100% { transform: scale(2.5); opacity: 0; }
+        }
+
+        .loading-shimmer-container {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 32px;
+        }
+
+        .shimmer-card {
+          width: 100%;
+          aspect-ratio: 1/1;
+          background: var(--studio-surface);
+          border-radius: 20px;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .shimmer-card::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent);
+          animation: shimmer 1.5s infinite;
+        }
+      `}</style>
     </main>
   );
 }

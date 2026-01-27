@@ -75,8 +75,11 @@ let ToolRegistry = class ToolRegistry {
                     if (this.embeddingStore.get(trackId)) {
                         continue;
                     }
-                    const track = await prisma_1.prisma.track.findUnique({ where: { id: trackId } });
-                    const text = `${track?.title ?? ""} ${track?.genre ?? ""}`.trim();
+                    const track = await prisma_1.prisma.track.findUnique({
+                        where: { id: trackId },
+                        include: { release: true }
+                    });
+                    const text = `${track?.title ?? ""} ${track?.release?.genre ?? ""}`.trim();
                     if (text) {
                         this.embeddingStore.upsert(trackId, this.embeddingService.embed(text));
                     }

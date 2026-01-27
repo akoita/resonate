@@ -13,9 +13,6 @@ async function bootstrap() {
   console.log("========================================");
   const app = await NestFactory.create(AppModule);
 
-  // Serve uploaded audio files
-  app.use("/uploads", express.static(join(process.cwd(), "uploads")));
-
   // Global pipes
   // Enable CORS for frontend
   app.enableCors({

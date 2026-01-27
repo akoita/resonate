@@ -7,6 +7,7 @@ solc = "0.8.23"
 # Optimizer settings to reduce contract size (EntryPoint is ~25KB)
 optimizer = true
 optimizer_runs = 1000000
+code_size_limit = 50000
 
 [rpc_endpoints]
 local = "http://localhost:8545"

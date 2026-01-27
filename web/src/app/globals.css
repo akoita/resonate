@@ -1,5 +1,104 @@
 @import "../styles/tokens.css";
 
+:root {
+  /* Premium Studio Palette */
+  --studio-bg: #050508;
+  --studio-surface: rgba(255, 255, 255, 0.03);
+  --studio-surface-raised: rgba(255, 255, 255, 0.08);
+  --studio-border: rgba(255, 255, 255, 0.06);
+  --studio-border-glow: rgba(124, 92, 255, 0.3);
+
+  --accent-glow: radial-gradient(circle at center, var(--color-accent) 0%, transparent 70%);
+  --glass-blur: blur(20px);
+  --glass-saturate: saturate(180%);
+}
+
+@keyframes mesh-drift {
+  0% {
+    background-position: 0% 0%, 50% 0%, 100% 0%;
+  }
+
+  50% {
+    background-position: 10% 20%, 60% 10%, 90% 20%;
+  }
+
+  100% {
+    background-position: 0% 0%, 50% 0%, 100% 0%;
+  }
+}
+
+.mesh-gradient-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(at 0% 0%, hsla(253, 16%, 7%, 1) 0, transparent 50%),
+    radial-gradient(at 50% 0%, hsla(225, 39%, 30%, 0.15) 0, transparent 50%),
+    radial-gradient(at 100% 0%, hsla(339, 49%, 30%, 0.1) 0, transparent 50%);
+  background-color: var(--studio-bg);
+  background-size: 200% 200%;
+  animation: mesh-drift 20s ease infinite;
+}
+
+.fade-in-up {
+  opacity: 0;
+  transform: translateY(20px);
+  animation: fade-in-up 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes fade-in-up {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.glass-panel {
+  background: var(--studio-surface);
+  backdrop-filter: var(--glass-blur) var(--glass-saturate);
+  border: 1px solid var(--studio-border);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-panel:hover {
+  background: var(--studio-surface-raised);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #fff 30%, var(--color-accent) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.shimmer-mask {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer-mask::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,
+      transparent,
+      rgba(255, 255, 255, 0.05),
+      transparent);
+  animation: shimmer 2s infinite;
+}
+
 body {
   background: var(--color-bg);
   color: var(--color-text);
@@ -85,11 +184,10 @@ a {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 280px 1fr;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  /* Lock the shell */
 }
 
 .app-sidebar {
@@ -266,9 +364,8 @@ a {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  overflow-y: auto;
-  /* Independent scrolling */
-  padding-bottom: 110px;
+  overflow: hidden;
+  /* Changed from auto to hidden to prevent master scroll */
   background: radial-gradient(circle at 50% 0%, rgba(124, 92, 255, 0.05) 0%, transparent 70%);
 }
 
@@ -295,8 +392,11 @@ a {
 
 .app-content {
   padding: var(--space-10) var(--space-12);
-  /* Aligned horizontal padding */
   flex: 1;
+  overflow-y: auto;
+  /* Let the content area handle the scrolling */
+  padding-bottom: 120px;
+  /* Space for the PlayerBar */
 }
 
 
@@ -414,6 +514,16 @@ a {
   margin-top: 8px;
 }
 
+.track-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(124, 92, 255, 0.1);
+  color: var(--color-accent);
+}
+
 .track-card-date {
   font-size: 11px;
   color: var(--color-muted);
@@ -432,9 +542,12 @@ a {
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 20px;
-  padding: var(--space-6);
+  padding: 0;
+  /* Reset padding to allow full-width images */
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   height: 100%;
+  overflow: hidden;
+  /* Clip image corners */
 }
 
 .ui-card:hover {
@@ -444,7 +557,31 @@ a {
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
 }
 
+.ui-card-image {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.ui-card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+}
+
+.ui-card:hover .ui-card-image img {
+  transform: scale(1.05);
+}
+
+.ui-card-body {
+  padding: var(--space-6);
+}
+
 .ui-card-title {
+  padding: var(--space-6) var(--space-6) 0;
   font-size: 18px;
   font-weight: 700;
   color: #fff;
@@ -452,14 +589,15 @@ a {
 }
 
 .player-master-stage {
-  position: relative;
-  width: 100%;
-  height: 100vh;
+  position: absolute;
+  /* Changed to absolute to fill the app-content precisely */
+  inset: 0;
   overflow: hidden;
   display: flex;
   justify-content: center;
   align-items: center;
   background: #050508;
+  z-index: 10;
 }
 
 /* Master Mesh Backdrop */
@@ -493,7 +631,7 @@ a {
   width: 100%;
   max-width: 1200px;
   padding: var(--space-10);
-  margin-right: 480px;
+  margin-right: 520px;
   /* Space for the floating console */
 }
 
@@ -542,7 +680,7 @@ a {
   top: var(--space-6);
   right: var(--space-6);
   bottom: var(--space-6);
-  width: 440px;
+  width: 500px;
   background: rgba(10, 10, 15, 0.6);
   backdrop-filter: blur(40px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -855,8 +993,8 @@ a {
 
 .upload-grid {
   display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: var(--space-5);
+  grid-template-columns: 1fr 500px;
+  gap: var(--space-10);
 }
 
 .upload-drop {
@@ -874,7 +1012,7 @@ a {
 
 .upload-panel {
   display: grid;
-  gap: var(--space-4);
+  gap: var(--space-8);
 }
 
 .upload-list {
@@ -913,18 +1051,46 @@ a {
 
 .player-progress-container {
   position: absolute;
-  top: 0;
+  top: -4px;
+  /* Slightly above to increase hit area */
+  left: 0;
+  right: 0;
+  height: 8px;
+  /* Larger hit area */
+  background: transparent;
+  cursor: pointer;
+}
+
+.player-progress-container::before {
+  content: "";
+  position: absolute;
+  top: 4px;
   left: 0;
   right: 0;
   height: 2px;
   background: rgba(255, 255, 255, 0.05);
+  transition: all 0.2s ease;
+}
+
+.player-progress-container:hover::before {
+  height: 4px;
+  top: 3px;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .player-progress-bar {
-  height: 100%;
+  position: absolute;
+  top: 4px;
+  left: 0;
+  height: 2px;
   background: var(--color-accent);
   box-shadow: 0 0 10px var(--color-accent);
-  transition: width 0.1s linear;
+  transition: width 0.1s linear, height 0.2s ease, top 0.2s ease;
+}
+
+.player-progress-container:hover .player-progress-bar {
+  height: 4px;
+  top: 3px;
 }
 
 .queue-indicator {
@@ -1046,6 +1212,11 @@ a {
   color: var(--color-text);
 }
 
+.player-btn-side.active {
+  color: var(--color-accent);
+  text-shadow: 0 0 10px rgba(124, 92, 255, 0.5);
+}
+
 .player-volume {
   width: 300px;
   display: flex;
@@ -1063,6 +1234,158 @@ a {
 .upload-item-name {
   font-weight: 500;
   font-size: 14px;
+}
+
+.upload-item.active {
+  background: rgba(124, 92, 255, 0.05);
+  border-color: rgba(124, 92, 255, 0.3);
+}
+
+.upload-item-global {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: var(--space-4);
+}
+
+.upload-item-global:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.upload-item-artwork {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.upload-item-artwork img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.artwork-placeholder {
+  font-size: 20px;
+  opacity: 0.5;
+}
+
+.upload-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.2s;
+}
+
+.upload-item:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.upload-item-global.active {
+  background: rgba(124, 92, 255, 0.05);
+  border-color: rgba(124, 92, 255, 0.3);
+}
+
+.upload-item-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  font-size: 20px;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: var(--space-4);
+  margin-bottom: 2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 1rem;
+}
+
+.tab {
+  background: none;
+  border: none;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.tab:hover {
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tab.active {
+  color: var(--color-accent);
+  background: rgba(124, 92, 255, 0.1);
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  animation: fadeIn 0.3s ease;
+}
+
+.track-selection-mini {
+  margin-bottom: 1rem;
+}
+
+.track-select-dropdown {
+  width: 100%;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  color: white;
+  font-size: 0.9rem;
+  outline: none;
+  appearance: none;
+  /* For a cleaner look */
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 1em;
+}
+
+.track-select-dropdown option {
+  background-color: #1a1a1a;
+  color: white;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .upload-item-remove {
