@@ -3,6 +3,8 @@ backend/node_modules/
 # Foundry
 contracts/out/
 contracts/cache/
+contracts/lib/
+contracts/broadcast/
 backend/dist/
 
 # Uploads
