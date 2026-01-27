@@ -18,20 +18,43 @@ const auth_controller_1 = require("./auth.controller");
 const auth_nonce_service_1 = require("./auth_nonce.service");
 const auth_service_1 = require("./auth.service");
 const jwt_strategy_1 = require("./jwt.strategy");
+/**
+ * Get chain config based on RPC URL
+ * - Local (localhost:8545): Use foundry chain (31337)
+ * - Otherwise: Use Sepolia
+ */
+function getChainFromRpc(rpcUrl) {
+    if (rpcUrl?.includes("localhost:8545") || rpcUrl?.includes("127.0.0.1:8545")) {
+        return {
+            chain: chains_1.foundry,
+            transport: (0, viem_1.http)(rpcUrl),
+        };
+    }
+    return {
+        chain: chains_1.sepolia,
+        transport: rpcUrl ? (0, viem_1.http)(rpcUrl) : (0, viem_1.http)(),
+    };
+}
 let AuthModule = class AuthModule {
 };
 exports.AuthModule = AuthModule;
 exports.AuthModule = AuthModule = __decorate([
+    (0, common_1.Global)(),
     (0, common_1.Module)({
         imports: [
-            passport_1.PassportModule,
+            passport_1.PassportModule.register({ defaultStrategy: "jwt" }),
             audit_module_1.AuditModule,
             jwt_1.JwtModule.registerAsync({
+                imports: [config_1.ConfigModule],
                 inject: [config_1.ConfigService],
-                useFactory: (config) => ({
-                    secret: config.get("JWT_SECRET") || "dev-secret",
-                    signOptions: { expiresIn: "15m" },
-                }),
+                useFactory: (config) => {
+                    const secret = config.get("JWT_SECRET") || "dev-secret";
+                    console.log(`[Auth] Registering JwtModule with secret starting with: ${secret.substring(0, 3)}...`);
+                    return {
+                        secret,
+                        signOptions: { expiresIn: "7d" },
+                    };
+                },
             }),
         ],
         controllers: [auth_controller_1.AuthController],
@@ -43,15 +66,16 @@ exports.AuthModule = AuthModule = __decorate([
                 provide: "PUBLIC_CLIENT",
                 inject: [config_1.ConfigService],
                 useFactory: (config) => {
-                    // Use RPC_URL for read operations (verifySignature), fallback to default Sepolia
                     const rpcUrl = config.get("RPC_URL");
+                    const { chain, transport } = getChainFromRpc(rpcUrl);
+                    console.log(`[Auth] PUBLIC_CLIENT chain: ${chain.name} (${chain.id}), RPC: ${rpcUrl || 'default'}`);
                     return (0, viem_1.createPublicClient)({
-                        chain: chains_1.sepolia,
-                        transport: rpcUrl ? (0, viem_1.http)(rpcUrl) : (0, viem_1.http)(),
+                        chain,
+                        transport,
                     });
                 },
             },
         ],
-        exports: [auth_service_1.AuthService, "PUBLIC_CLIENT"],
+        exports: [auth_service_1.AuthService, "PUBLIC_CLIENT", passport_1.PassportModule, jwt_strategy_1.JwtStrategy],
     })
 ], AuthModule);

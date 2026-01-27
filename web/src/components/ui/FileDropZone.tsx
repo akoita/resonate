@@ -39,32 +39,77 @@ export function FileDropZone({
         setIsDragging(false);
     }, []);
 
+    const traverseFileTree = useCallback(async (entry: FileSystemEntry): Promise<File[]> => {
+        const results: File[] = [];
+
+        async function recursiveTraverse(item: FileSystemEntry) {
+            if (item.isFile) {
+                const fileEntry = item as FileSystemFileEntry;
+                return new Promise<void>((resolve) => {
+                    fileEntry.file((file: File) => {
+                        const audioTypes = ["audio/mpeg", "audio/wav", "audio/flac", "audio/aiff", "audio/x-aiff", "audio/m4a", "audio/ogg"];
+                        if (audioTypes.some(type => file.type.includes(type.split("/")[1] ?? "")) ||
+                            file.name.match(/\.(mp3|wav|flac|aiff|m4a|ogg)$/i)) {
+                            results.push(file);
+                        }
+                        resolve();
+                    });
+                });
+            } else if (item.isDirectory) {
+                const dirEntry = item as FileSystemDirectoryEntry;
+                const dirReader = dirEntry.createReader();
+                const entries = await new Promise<FileSystemEntry[]>((resolve) => dirReader.readEntries(resolve));
+                for (const entryItem of entries) {
+                    await recursiveTraverse(entryItem);
+                }
+            }
+        }
+
+        await recursiveTraverse(entry);
+        return results;
+    }, []);
+
     const handleDrop = useCallback(
-        (e: React.DragEvent) => {
+        async (e: React.DragEvent) => {
             e.preventDefault();
             e.stopPropagation();
             setIsDragging(false);
 
             if (disabled) return;
 
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                if (multiple && onFilesSelect) {
-                    const fileArray = Array.from(files).filter(f =>
-                        f.type.startsWith("audio/") || f.name.match(/\.(mp3|wav|flac|aiff|m4a|ogg)$/i)
-                    );
-                    if (fileArray.length > 0) {
-                        onFilesSelect(fileArray);
+            const items = e.dataTransfer.items;
+            if (items && items.length > 0) {
+                const entryPromises = Array.from(items).map(item => {
+                    const entry = item.webkitGetAsEntry();
+                    if (entry) {
+                        return traverseFileTree(entry);
                     }
-                } else {
-                    const file = files[0];
-                    if (file) {
-                        onFileSelect(file);
+                    return Promise.resolve([]);
+                });
+
+                const fileArrays = await Promise.all(entryPromises);
+                const allFiles = fileArrays.flat();
+
+                if (allFiles.length > 0) {
+                    if (multiple && onFilesSelect) {
+                        onFilesSelect(allFiles);
+                    } else {
+                        onFileSelect(allFiles[0]);
+                    }
+                }
+            } else {
+                // Fallback for browsers that don't support items
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    if (multiple && onFilesSelect) {
+                        onFilesSelect(Array.from(files));
+                    } else {
+                        onFileSelect(files[0]);
                     }
                 }
             }
         },
-        [disabled, onFileSelect, multiple, onFilesSelect]
+        [disabled, onFileSelect, multiple, onFilesSelect, traverseFileTree]
     );
 
     const handleClick = useCallback(() => {

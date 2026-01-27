@@ -14,7 +14,7 @@ export class RecommendationsService {
   private preferences = new Map<string, UserPreferences>();
   private recentTrackIds = new Map<string, string[]>();
 
-  constructor(private readonly eventBus: EventBus) {}
+  constructor(private readonly eventBus: EventBus) { }
 
   setPreferences(userId: string, prefs: UserPreferences) {
     const existing = this.preferences.get(userId) ?? {};
@@ -39,9 +39,10 @@ export class RecommendationsService {
     const allowExplicit = prefs.allowExplicit ?? false;
     const candidates = await prisma.track.findMany({
       where: {
-        ...(prefs.genres?.length ? { genre: { in: prefs.genres } } : {}),
+        ...(prefs.genres?.length ? { release: { genre: { in: prefs.genres } } } : {}),
         ...(allowExplicit ? {} : { explicit: false }),
-      } as any,
+      },
+      include: { release: true },
       take: 50,
       orderBy: { createdAt: "desc" },
     });
@@ -71,7 +72,7 @@ export class RecommendationsService {
       items: selected.map((track) => ({
         id: track.id,
         title: track.title,
-        artistId: track.artistId,
+        artistId: track.release.artistId,
       })),
     };
   }

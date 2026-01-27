@@ -20,9 +20,9 @@ import {
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 // Local AA contacts for Anvil (deployed by DeployLocalAA.s.sol)
-const LOCAL_ENTRY_POINT = "0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e" as const;
-const LOCAL_KERNEL_FACTORY = "0x9A676e781A523b5d0C0e43731313A708CB607508" as const;
-const LOCAL_ECDSA_VALIDATOR = "0x0B306BF915C4d645ff596e518fAf3F9669b97016" as const;
+const LOCAL_ENTRY_POINT = "0x5FbDB2315678afecb367f032d93F642f64180aa3" as const;
+const LOCAL_KERNEL_FACTORY = "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9" as const;
+const LOCAL_ECDSA_VALIDATOR = "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9" as const;
 
 /**
  * Get the correct EntryPoint based on chain ID

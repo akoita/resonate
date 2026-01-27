@@ -5,7 +5,11 @@ const crypto_1 = require("crypto");
 const core_1 = require("@nestjs/core");
 const app_module_1 = require("./modules/app.module");
 async function bootstrap() {
+    console.log("========================================");
+    console.log("🚀 RESONATE BACKEND BOOTING...");
+    console.log("========================================");
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
+    // Global pipes
     // Enable CORS for frontend
     app.enableCors({
         origin: ['http://localhost:3001', 'http://localhost:3000'],
@@ -23,6 +27,8 @@ async function bootstrap() {
             requestId: id,
             method: req.method,
             path: req.url,
+            hasAuth: !!req.headers["authorization"],
+            authHeader: req.headers["authorization"]?.toString().substring(0, 20) + "...",
         }));
         next();
     });

@@ -42,37 +42,56 @@ model Artist {
   displayName   String
   payoutAddress String
   user          User    @relation(fields: [userId], references: [id])
-  tracks        Track[]
+  releases      Release[]
 }
 
-model Track {
+model Release {
   id              String   @id @default(uuid())
   artistId        String
   title           String
-  status          String
-  releaseType     String   @default("single")
-  releaseTitle    String?
+  status          String   @default("processing")
+  type            String   @default("single") // SINGLE, EP, ALBUM
   primaryArtist   String?
   featuredArtists String?
   genre           String?
-  isrc            String?
   label           String?
   releaseDate     DateTime?
   explicit        Boolean  @default(false)
   createdAt       DateTime @default(now())
+  artworkUrl      String?
+  artworkData     Bytes?
+  artworkMimeType String?
   artist          Artist   @relation(fields: [artistId], references: [id])
+  tracks          Track[]
+}
+
+model Track {
+  id              String   @id @default(uuid())
+  releaseId       String
+  title           String
+  artist          String?
+  position        Int      @default(1)
+  isrc            String?
+  explicit        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  release         Release  @relation(fields: [releaseId], references: [id])
   stems           Stem[]
   licenses        License[]
 }
 
 model Stem {
-  id       String @id @default(uuid())
-  trackId  String
-  type     String
-  uri      String
-  ipnftId  String?
-  checksum String?
-  track    Track  @relation(fields: [trackId], references: [id])
+  id         String  @id @default(uuid())
+  trackId    String
+  title      String?
+  artist     String?
+  type       String
+  uri        String
+  data       Bytes?
+  mimeType   String?
+  artworkUrl String?
+  ipnftId    String?
+  checksum   String?
+  track      Track   @relation(fields: [trackId], references: [id])
 }
 
 model Session {

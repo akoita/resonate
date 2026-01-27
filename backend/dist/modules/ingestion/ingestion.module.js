@@ -8,7 +8,6 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.IngestionModule = void 0;
 const common_1 = require("@nestjs/common");
-const event_bus_1 = require("../shared/event_bus");
 const ingestion_controller_1 = require("./ingestion.controller");
 const ingestion_service_1 = require("./ingestion.service");
 let IngestionModule = class IngestionModule {
@@ -17,6 +16,6 @@ exports.IngestionModule = IngestionModule;
 exports.IngestionModule = IngestionModule = __decorate([
     (0, common_1.Module)({
         controllers: [ingestion_controller_1.IngestionController],
-        providers: [event_bus_1.EventBus, ingestion_service_1.IngestionService],
+        providers: [ingestion_service_1.IngestionService],
     })
 ], IngestionModule);

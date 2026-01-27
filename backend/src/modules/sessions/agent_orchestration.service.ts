@@ -20,7 +20,7 @@ interface AgentSessionState {
 export class AgentOrchestrationService {
   private states = new Map<string, AgentSessionState>();
 
-  constructor(private readonly eventBus: EventBus) {}
+  constructor(private readonly eventBus: EventBus) { }
 
   configureSession(sessionId: string, preferences: AgentPreferences = {}) {
     const existing = this.states.get(sessionId);
@@ -44,9 +44,10 @@ export class AgentOrchestrationService {
 
     const candidates = await prisma.track.findMany({
       where: {
-        ...(preferences.genres?.length ? { genre: { in: preferences.genres } } : {}),
+        ...(preferences.genres?.length ? { release: { genre: { in: preferences.genres } } } : {}),
         ...(allowExplicit ? {} : { explicit: false }),
-      } as any,
+      },
+      include: { release: true },
       take: 25,
       orderBy: { createdAt: "desc" },
     });
@@ -93,7 +94,7 @@ export class AgentOrchestrationService {
       track: {
         id: selected.id,
         title: selected.title,
-        artistId: selected.artistId,
+        artistId: selected.release.artistId,
       },
       licenseType,
       priceUsd,
