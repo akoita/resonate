@@ -11,8 +11,10 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const throttler_1 = require("@nestjs/throttler");
 const config_1 = require("@nestjs/config");
+const shared_module_1 = require("./shared/shared.module");
 const analytics_module_1 = require("./analytics/analytics.module");
 const agents_module_1 = require("./agents/agents.module");
+const artist_module_1 = require("./artist/artist.module");
 const auth_module_1 = require("./auth/auth.module");
 const roles_guard_1 = require("./auth/roles.guard");
 const catalog_module_1 = require("./catalog/catalog.module");
@@ -32,6 +34,7 @@ exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
         imports: [
             config_1.ConfigModule.forRoot({ isGlobal: true }),
+            shared_module_1.SharedModule,
             throttler_1.ThrottlerModule.forRoot({
                 throttlers: [{ limit: 30, ttl: 60 }],
             }),
@@ -39,6 +42,7 @@ exports.AppModule = AppModule = __decorate([
             auth_module_1.AuthModule,
             identity_module_1.IdentityModule,
             agents_module_1.AgentsModule,
+            artist_module_1.ArtistModule,
             curation_module_1.CurationModule,
             ingestion_module_1.IngestionModule,
             catalog_module_1.CatalogModule,

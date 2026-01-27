@@ -157,6 +157,16 @@ let WalletService = class WalletService {
         const selected = provider ??
             (process.env.WALLET_PROVIDER ?? "local");
         const account = this.providerRegistry.getProvider(selected).getAccount(userId);
+        // Ensure User exists before creating Wallet to avoid FK violation
+        // Since this is wallet-auth, we might not have an email, so we generate a placeholder.
+        await prisma_1.prisma.user.upsert({
+            where: { id: userId },
+            create: {
+                id: userId,
+                email: `${userId}@wallet.placeholder`,
+            },
+            update: {},
+        });
         return prisma_1.prisma.wallet.create({
             data: {
                 userId,

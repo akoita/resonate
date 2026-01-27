@@ -33,69 +33,103 @@ export class IngestionService {
   async handleFileUpload(input: {
     artistId: string;
     files: Express.Multer.File[];
+    artwork?: Express.Multer.File;
     metadata?: any;
   }) {
-    const trackId = this.generateId("trk");
-    const uploadDir = join(process.cwd(), "uploads", trackId);
-    mkdirSync(uploadDir, { recursive: true });
+    const releaseId = this.generateId("rel");
 
-    const fileUris: string[] = [];
-    const stems: { id: string; uri: string; type: string }[] = [];
+    // Prepare artwork
+    let artworkUrl: string | undefined;
+    let artworkData: Buffer | undefined;
+    let artworkMimeType: string | undefined;
 
-    for (const file of input.files) {
-      const stemId = this.generateId("stem");
-      const filename = `${stemId}_${file.originalname}`;
-      const filePath = join(uploadDir, filename);
-      writeFileSync(filePath, file.buffer);
-
-      // Serving path (must match static config in main.ts)
-      const publicUri = `http://localhost:3000/uploads/${trackId}/${filename}`;
-      fileUris.push(publicUri);
-      stems.push({
-        id: stemId,
-        uri: publicUri,
-        type: this.inferStemType(file.originalname),
-      });
+    if (input.artwork) {
+      artworkData = input.artwork.buffer;
+      artworkMimeType = input.artwork.mimetype;
+      artworkUrl = `http://localhost:3000/catalog/releases/${releaseId}/artwork`;
     }
 
-    const record: UploadRecord = {
-      trackId,
-      artistId: input.artistId,
-      fileUris,
-      status: "processing",
-      metadata: input.metadata,
-      stems,
-    };
-    this.uploads.set(trackId, record);
+    const tracks: any[] = [];
+
+    input.files.forEach((file, index) => {
+      const trackId = this.generateId("trk");
+      const stemId = this.generateId("stem");
+      const trackMeta = input.metadata?.tracks?.[index];
+
+      // Intelligent filename parsing
+      const fileName = file.originalname.split('.')[0];
+      let extractedTitle = fileName;
+      let extractedArtist = undefined;
+
+      if (fileName.includes(" - ")) {
+        const parts = fileName.split(" - ");
+        extractedArtist = parts[0].trim();
+        extractedTitle = parts[1].trim();
+      }
+
+      const publicUri = `http://localhost:3000/catalog/stems/${stemId}/blob`;
+
+      tracks.push({
+        id: trackId,
+        title: trackMeta?.title || extractedTitle,
+        artist: trackMeta?.artist || extractedArtist,
+        position: index + 1,
+        stems: [{
+          id: stemId,
+          uri: publicUri,
+          type: this.inferStemType(file.originalname),
+          data: file.buffer,
+          mimeType: file.mimetype,
+        }]
+      });
+    });
 
     // 1. Emit Uploaded
     this.eventBus.publish({
       eventName: "stems.uploaded",
       eventVersion: 1,
       occurredAt: new Date().toISOString(),
-      trackId,
+      releaseId,
       artistId: input.artistId,
-      fileUris,
       checksum: "completed",
-      metadata: input.metadata,
+      artworkData,
+      artworkMimeType,
+      metadata: {
+        ...input.metadata,
+        tracks: tracks.map((t: any) => ({
+          ...t,
+          stems: t.stems.map((s: any) => ({ ...s, data: undefined })) // Don't log buffers
+        }))
+      },
     });
 
-    // 2. Small delay to ensure DB catchup, then emit Processed
+    // 2. Emit Processed
     setTimeout(() => {
       this.eventBus.publish({
         eventName: "stems.processed",
         eventVersion: 1,
         occurredAt: new Date().toISOString(),
-        trackId,
-        stemIds: stems.map((s) => s.id),
-        modelVersion: "real-v1",
-        durationMs: 0,
-        stems,
+        releaseId,
+        artistId: input.artistId,
+        modelVersion: "resonate-v1",
+        metadata: {
+          ...input.metadata,
+          tracks: tracks.map((t: any) => ({
+            ...t,
+            stems: t.stems.map((s: any) => ({ ...s, data: undefined }))
+          }))
+        },
+        tracks: tracks.map((t: any) => ({
+          ...t,
+          stems: t.stems.map((s: any) => ({
+            ...s,
+            // Only send necessary fields for processing
+          }))
+        })),
       });
-      record.status = "complete";
     }, 1000);
 
-    return { trackId, status: record.status };
+    return { releaseId, status: "processing" };
   }
 
   enqueueUpload(input: {
@@ -126,11 +160,18 @@ export class IngestionService {
       eventName: "stems.uploaded",
       eventVersion: 1,
       occurredAt: new Date().toISOString(),
-      trackId,
+      releaseId: trackId, // Using trackId as releaseId for mock simplicity
       artistId: input.artistId,
-      fileUris: input.fileUris,
       checksum: "pending",
-      metadata: input.metadata,
+      metadata: {
+        ...input.metadata,
+        tracks: [{
+          title: input.metadata?.releaseTitle || "Unknown Track",
+          artist: input.metadata?.primaryArtist,
+          position: 1,
+          stems: input.fileUris.map(uri => ({ id: this.generateId("stem"), uri, type: "ORIGINAL" }))
+        }]
+      },
     });
     void this.processUpload(trackId);
     return { trackId, status: record.status };
@@ -164,11 +205,16 @@ export class IngestionService {
       eventName: "stems.processed",
       eventVersion: 1,
       occurredAt: new Date().toISOString(),
-      trackId: record.trackId,
-      stemIds: stems.map((stem) => stem.id),
+      releaseId: record.trackId,
+      artistId: record.artistId,
       modelVersion: "mock-v1",
-      durationMs: 0,
-      stems,
+      tracks: [{
+        id: record.trackId,
+        title: record.metadata?.releaseTitle || "Unknown Track",
+        artist: record.metadata?.primaryArtist,
+        position: 1,
+        stems: stems.map(s => ({ ...s, mimeType: "audio/mpeg" }))
+      }]
     });
     record.status = "complete";
   }
@@ -188,6 +234,6 @@ export class IngestionService {
     if (normalized.includes("bass")) {
       return "bass";
     }
-    return "other";
+    return "ORIGINAL";
   }
 }

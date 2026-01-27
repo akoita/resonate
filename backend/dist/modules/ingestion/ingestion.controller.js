@@ -14,6 +14,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.IngestionController = void 0;
 const common_1 = require("@nestjs/common");
+const platform_express_1 = require("@nestjs/platform-express");
 const passport_1 = require("@nestjs/passport");
 const throttler_1 = require("@nestjs/throttler");
 const ingestion_service_1 = require("./ingestion.service");
@@ -22,8 +23,14 @@ let IngestionController = class IngestionController {
     constructor(ingestionService) {
         this.ingestionService = ingestionService;
     }
-    upload(body) {
-        return this.ingestionService.enqueueUpload(body);
+    upload(files, body) {
+        const metadata = body.metadata ? JSON.parse(body.metadata) : undefined;
+        return this.ingestionService.handleFileUpload({
+            artistId: body.artistId,
+            files: files.files || [],
+            artwork: files.artwork?.[0],
+            metadata,
+        });
     }
     status(trackId) {
         return this.ingestionService.getStatus(trackId);
@@ -33,10 +40,15 @@ exports.IngestionController = IngestionController;
 __decorate([
     (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
     (0, common_1.Post)("upload"),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileFieldsInterceptor)([
+        { name: 'files', maxCount: 20 },
+        { name: 'artwork', maxCount: 1 },
+    ])),
     (0, throttler_1.Throttle)({ default: { limit: 20, ttl: 60 } }),
-    __param(0, (0, common_1.Body)()),
+    __param(0, (0, common_1.UploadedFiles)()),
+    __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", void 0)
 ], IngestionController.prototype, "upload", null);
 __decorate([

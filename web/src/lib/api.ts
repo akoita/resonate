@@ -1,5 +1,9 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
+export function getReleaseArtworkUrl(releaseId: string) {
+  return `${API_BASE}/catalog/releases/${releaseId}/artwork`;
+}
+
 export type WalletRecord = {
   id: string;
   userId: string;
@@ -166,20 +170,34 @@ export async function resetPaymaster(token: string, userId: string) {
 
 // ========== Catalog API ==========
 
-export type Track = {
+export type Release = {
   id: string;
   artistId: string;
   title: string;
   status: string;
-  releaseType: string;
-  releaseTitle?: string | null;
+  type: string; // SINGLE, EP, ALBUM
   primaryArtist?: string | null;
   featuredArtists?: string | null;
   genre?: string | null;
-  isrc?: string | null;
   label?: string | null;
   releaseDate?: string | null;
   explicit: boolean;
+  createdAt: string;
+  artworkUrl?: string | null;
+  tracks?: Track[];
+  artist?: {
+    id: string;
+    displayName: string;
+  };
+};
+
+export type Track = {
+  id: string;
+  releaseId: string;
+  title: string;
+  position: number;
+  explicit: boolean;
+  artist?: string | null;
   createdAt: string;
   stems?: Array<{
     id: string;
@@ -187,11 +205,11 @@ export type Track = {
     type: string;
     uri: string;
     ipnftId?: string | null;
+    title?: string | null;
+    artist?: string | null;
+    artworkUrl?: string | null;
   }>;
-  artist?: {
-    id: string;
-    displayName: string;
-  };
+  release?: Release;
 };
 
 export type ArtistProfile = {
@@ -216,49 +234,63 @@ export async function createArtist(
   );
 }
 
-export async function createTrack(
+export async function createRelease(
   token: string,
   input: {
     title: string;
-    releaseType?: string;
-    releaseTitle?: string;
+    type?: string;
     primaryArtist?: string;
     featuredArtists?: string[];
     genre?: string;
-    isrc?: string;
     label?: string;
     releaseDate?: string;
     explicit?: boolean;
+    tracks?: Array<{ title: string; position: number; explicit?: boolean }>;
   }
 ) {
-  return apiRequest<Track>(
+  return apiRequest<Release>(
     "/catalog",
     { method: "POST", body: JSON.stringify(input) },
     token
   );
 }
 
+export async function getRelease(releaseId: string, token?: string | null) {
+  const release = await apiRequest<Release>(`/catalog/releases/${releaseId}`, {}, token);
+  if (release) {
+    release.artworkUrl = getReleaseArtworkUrl(release.id);
+  }
+  return release;
+}
+
 export async function getTrack(trackId: string, token?: string | null) {
-  return apiRequest<Track>(`/catalog/${trackId}`, {}, token);
+  const track = await apiRequest<Track>(`/catalog/tracks/${trackId}`, {}, token);
+  if (track && track.release) {
+    track.release.artworkUrl = getReleaseArtworkUrl(track.release.id);
+  }
+  return track;
 }
 
-export async function listArtistTracks(token: string, artistId: string) {
-  return apiRequest<Track[]>(`/catalog/artist/${artistId}`, {}, token);
+export async function listArtistReleases(token: string, artistId: string) {
+  const releases = await apiRequest<Release[]>(`/catalog/artist/${artistId}`, {}, token);
+  return releases.map(r => ({ ...r, artworkUrl: getReleaseArtworkUrl(r.id) }));
 }
 
-export async function listMyTracks(token: string) {
-  return apiRequest<Track[]>("/catalog/me", {}, token);
+export async function listMyReleases(token: string) {
+  const releases = await apiRequest<Release[]>("/catalog/me", {}, token);
+  return releases.map(r => ({ ...r, artworkUrl: getReleaseArtworkUrl(r.id) }));
 }
 
-export async function listPublishedTracks(limit = 20) {
-  return apiRequest<Track[]>(`/catalog/published?limit=${limit}`, {});
+export async function listPublishedReleases(limit = 20) {
+  const releases = await apiRequest<Release[]>(`/catalog/published?limit=${limit}`, {});
+  return releases.map(r => ({ ...r, artworkUrl: getReleaseArtworkUrl(r.id) }));
 }
 
 export async function uploadStems(
   token: string,
   formData: FormData
 ) {
-  return apiRequest<{ trackId: string; status: string }>(
+  return apiRequest<{ releaseId: string; status: string }>(
     "/stems/upload",
     { method: "POST", body: formData },
     token

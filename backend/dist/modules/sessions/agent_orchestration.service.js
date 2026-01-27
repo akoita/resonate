@@ -40,9 +40,10 @@ let AgentOrchestrationService = class AgentOrchestrationService {
         const allowExplicit = preferences.allowExplicit ?? false;
         const candidates = await prisma_1.prisma.track.findMany({
             where: {
-                ...(preferences.genres?.length ? { genre: { in: preferences.genres } } : {}),
+                ...(preferences.genres?.length ? { release: { genre: { in: preferences.genres } } } : {}),
                 ...(allowExplicit ? {} : { explicit: false }),
             },
+            include: { release: true },
             take: 25,
             orderBy: { createdAt: "desc" },
         });
@@ -79,7 +80,7 @@ let AgentOrchestrationService = class AgentOrchestrationService {
             track: {
                 id: selected.id,
                 title: selected.title,
-                artistId: selected.artistId,
+                artistId: selected.release.artistId,
             },
             licenseType,
             priceUsd,

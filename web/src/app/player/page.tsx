@@ -1,11 +1,17 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import SocialShare from "../../components/social/SocialShare";
 import { usePlayer } from "../../lib/playerContext";
 import { formatDuration } from "../../lib/metadataExtractor";
+import { getTrack, getRelease } from "../../lib/api";
+import { LocalTrack } from "../../lib/localLibrary";
 
 function PlayerContent() {
+  const searchParams = useSearchParams();
+  const trackId = searchParams.get("trackId");
+
   const {
     currentTrack,
     isPlaying,
@@ -24,13 +30,9 @@ function PlayerContent() {
     artworkUrl
   } = usePlayer();
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    seek(parseFloat(e.target.value));
-  };
-
-  const handleVolume = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setVolume(parseFloat(e.target.value) / 100);
-  };
+  // Local state for seeking
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragValue, setDragValue] = useState(0);
 
   const formatTime = (seconds: number) => {
     if (isNaN(seconds)) return "0:00";
@@ -38,6 +40,106 @@ function PlayerContent() {
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
+
+  const handleSeekStart = (e: React.PointerEvent<HTMLInputElement>) => {
+    setIsDragging(true);
+    setDragValue(progress);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDragValue(parseFloat(e.target.value));
+  };
+
+  const handleSeekEnd = (e: React.PointerEvent<HTMLInputElement>) => {
+    seek(dragValue);
+    e.currentTarget.releasePointerCapture(e.pointerId);
+
+    // Small delay to prevent jitter where the UI jumps back to old progress
+    // before the audio engine reports the new time
+    setTimeout(() => {
+      setIsDragging(false);
+    }, 200);
+  };
+
+  const handleVolume = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setVolume(parseFloat(e.target.value) / 100);
+  };
+
+  const lastProcessedTrackId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (trackId && trackId !== lastProcessedTrackId.current) {
+      lastProcessedTrackId.current = trackId;
+
+      // 1. If currently playing this track, update ref and do nothing
+      if (currentTrack?.id === trackId) return;
+
+      // 2. If track is already in the queue, just jump to it
+      const queueIndex = queue.findIndex(t => t.id === trackId);
+      if (queueIndex !== -1) {
+        void playQueue(queue, queueIndex);
+        return;
+      }
+
+      // 3. Otherwise, load the full release context
+      const loadAndPlayTrack = async () => {
+        try {
+          const selectedTrack = await getTrack(trackId);
+          if (selectedTrack && selectedTrack.releaseId) {
+            // Fetch the full release to get the entire tracklist
+            const release = await getRelease(selectedTrack.releaseId);
+            if (release && release.tracks) {
+              const playableTracks: LocalTrack[] = release.tracks.flatMap((track) => {
+                const masteredStems = (track.stems || []).filter(s => s.type === "ORIGINAL" || s.type === "other");
+
+                if (masteredStems.length > 0) {
+                  return masteredStems.map(s => ({
+                    id: s.id,
+                    title: track.title,
+                    artist: release.primaryArtist || release.artist?.displayName || "Unknown Artist",
+                    albumArtist: null,
+                    album: release.title,
+                    year: release.releaseDate ? new Date(release.releaseDate).getFullYear() : null,
+                    genre: release.genre || null,
+                    duration: 0,
+                    createdAt: track.createdAt,
+                    remoteUrl: s.uri,
+                    remoteArtworkUrl: release.artworkUrl || undefined,
+                  }));
+                } else if (track.stems && track.stems.length > 0) {
+                  // Fallback to first stem if no ORIGINAL/other found
+                  const s = track.stems[0];
+                  return [{
+                    id: s.id,
+                    title: track.title,
+                    artist: release.primaryArtist || release.artist?.displayName || "Unknown Artist",
+                    albumArtist: null,
+                    album: release.title,
+                    year: release.releaseDate ? new Date(release.releaseDate).getFullYear() : null,
+                    genre: release.genre || null,
+                    duration: 0,
+                    createdAt: track.createdAt,
+                    remoteUrl: s.uri,
+                    remoteArtworkUrl: release.artworkUrl || undefined,
+                  }];
+                }
+                return [];
+              });
+
+              // Find the index of the track we actually clicked on
+              const startIndex = playableTracks.findIndex(t => t.title === selectedTrack.title);
+              void playQueue(playableTracks, Math.max(0, startIndex));
+            }
+          }
+        } catch (error) {
+          console.error("Failed to load release from URL:", error);
+        }
+      };
+
+      void loadAndPlayTrack();
+    }
+  }, [trackId, playQueue, queue, currentTrack?.id]);
 
   const displayTrack = currentTrack || {
     title: "No track selected",
@@ -115,15 +217,18 @@ function PlayerContent() {
         <div className="player-progress" style={{ marginBottom: "var(--space-10)" }}>
           <div className="studio-label" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: "8px" }}>
             <span>Signal Progress</span>
-            <span>{formatTime(currentTime)} / {formatTime(duration)}</span>
+            <span>{formatTime(isDragging ? (dragValue / 100) * duration : currentTime)} / {formatTime(duration)}</span>
           </div>
           <input
             className="player-range"
             type="range"
             min="0"
             max="100"
-            value={progress || 0}
-            onChange={handleSeek}
+            step="0.1"
+            value={isDragging ? dragValue : (progress || 0)}
+            onPointerDown={handleSeekStart}
+            onChange={handleSeekChange}
+            onPointerUp={handleSeekEnd}
           />
         </div>
 
@@ -192,5 +297,3 @@ export default function PlayerPage() {
     </Suspense>
   );
 }
-
-

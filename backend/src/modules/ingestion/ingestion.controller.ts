@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, UseGuards, UseInterceptors, UploadedFiles } from "@nestjs/common";
-import { FilesInterceptor } from "@nestjs/platform-express";
+import { FilesInterceptor, FileFieldsInterceptor } from "@nestjs/platform-express";
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
 import { IngestionService } from "./ingestion.service";
@@ -10,10 +10,13 @@ export class IngestionController {
 
   @UseGuards(AuthGuard("jwt"))
   @Post("upload")
-  @UseInterceptors(FilesInterceptor("files"))
+  @UseInterceptors(FileFieldsInterceptor([
+    { name: 'files', maxCount: 20 },
+    { name: 'artwork', maxCount: 1 },
+  ]))
   @Throttle({ default: { limit: 20, ttl: 60 } })
   upload(
-    @UploadedFiles() files: Express.Multer.File[],
+    @UploadedFiles() files: { files?: Express.Multer.File[], artwork?: Express.Multer.File[] },
     @Body()
     body: {
       artistId: string;
@@ -23,7 +26,8 @@ export class IngestionController {
     const metadata = body.metadata ? JSON.parse(body.metadata) : undefined;
     return this.ingestionService.handleFileUpload({
       artistId: body.artistId,
-      files,
+      files: files.files || [],
+      artwork: files.artwork?.[0],
       metadata,
     });
   }

@@ -11,22 +11,34 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.JwtStrategy = void 0;
 const common_1 = require("@nestjs/common");
+const config_1 = require("@nestjs/config");
 const passport_1 = require("@nestjs/passport");
 const passport_jwt_1 = require("passport-jwt");
-let JwtStrategy = class JwtStrategy extends (0, passport_1.PassportStrategy)(passport_jwt_1.Strategy) {
-    constructor() {
+let JwtStrategy = class JwtStrategy extends (0, passport_1.PassportStrategy)(passport_jwt_1.Strategy, "jwt") {
+    config;
+    constructor(config) {
+        const secret = config.get("JWT_SECRET") || "dev-secret";
+        console.log(`[Auth] JwtStrategy initialized. Secret starts with: ${secret.substring(0, 3)}...`);
         super({
             jwtFromRequest: passport_jwt_1.ExtractJwt.fromAuthHeaderAsBearerToken(),
             ignoreExpiration: false,
-            secretOrKey: process.env.JWT_SECRET || "dev-secret",
+            secretOrKey: secret,
         });
+        this.config = config;
     }
     validate(payload) {
-        return { userId: payload.sub, role: payload.role ?? "listener" };
+        console.log(`[Auth] JwtStrategy.validate called with payload:`, JSON.stringify(payload));
+        if (!payload || !payload.sub) {
+            console.error(`[Auth] Invalid payload in JwtStrategy:`, payload);
+            return null;
+        }
+        const user = { userId: payload.sub, role: payload.role ?? "listener" };
+        console.log(`[Auth] User validated:`, JSON.stringify(user));
+        return user;
     }
 };
 exports.JwtStrategy = JwtStrategy;
 exports.JwtStrategy = JwtStrategy = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [])
+    __metadata("design:paramtypes", [config_1.ConfigService])
 ], JwtStrategy);

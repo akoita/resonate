@@ -41,9 +41,10 @@ let RecommendationsService = class RecommendationsService {
         const allowExplicit = prefs.allowExplicit ?? false;
         const candidates = await prisma_1.prisma.track.findMany({
             where: {
-                ...(prefs.genres?.length ? { genre: { in: prefs.genres } } : {}),
+                ...(prefs.genres?.length ? { release: { genre: { in: prefs.genres } } } : {}),
                 ...(allowExplicit ? {} : { explicit: false }),
             },
+            include: { release: true },
             take: 50,
             orderBy: { createdAt: "desc" },
         });
@@ -69,7 +70,7 @@ let RecommendationsService = class RecommendationsService {
             items: selected.map((track) => ({
                 id: track.id,
                 title: track.title,
-                artistId: track.artistId,
+                artistId: track.release.artistId,
             })),
         };
     }

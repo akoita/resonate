@@ -20,6 +20,19 @@ const artworkStore = localforage.createInstance({
     storeName: "artwork",
 });
 
+const playerStore = localforage.createInstance({
+    name: "resonate",
+    storeName: "player",
+});
+
+export interface PlayerState {
+    queue: LocalTrack[];
+    currentIndex: number;
+    volume: number;
+    shuffle: boolean;
+    repeatMode: "none" | "one" | "all";
+}
+
 export interface LocalTrack {
     id: string;
     title: string;
@@ -86,16 +99,27 @@ export async function getTrackBlob(blobKey: string): Promise<Blob | null> {
     return blobStore.getItem<Blob>(blobKey);
 }
 
+// In-memory cache for track URLs to avoid recreating object URLs
+const trackUrlCache = new Map<string, string>();
+
 /**
  * Get a playable URL for a track (creates object URL from blob)
+ * Uses in-memory cache to avoid recreating URLs on each call
  */
 export async function getTrackUrl(track: LocalTrack): Promise<string | null> {
     if (track.remoteUrl) return track.remoteUrl;
     if (!track.blobKey) return null;
 
+    // Check cache first
+    const cached = trackUrlCache.get(track.blobKey);
+    if (cached) return cached;
+
     const blob = await getTrackBlob(track.blobKey);
     if (!blob) return null;
-    return URL.createObjectURL(blob);
+    
+    const url = URL.createObjectURL(blob);
+    trackUrlCache.set(track.blobKey, url);
+    return url;
 }
 
 // In-memory cache for artwork URLs to avoid recreating object URLs
@@ -158,4 +182,18 @@ export async function clearLibrary(): Promise<void> {
     await trackStore.clear();
     await blobStore.clear();
     await artworkStore.clear();
+}
+
+/**
+ * Save player state to IndexedDB
+ */
+export async function savePlayerState(state: PlayerState): Promise<void> {
+    await playerStore.setItem("current_state", state);
+}
+
+/**
+ * Load player state from IndexedDB
+ */
+export async function loadPlayerState(): Promise<PlayerState | null> {
+    return playerStore.getItem<PlayerState>("current_state");
 }

@@ -34,13 +34,20 @@ let AuthController = class AuthController {
     }
     async verify(body) {
         try {
-            console.log(`[Auth] Verifying signature for ${body.address}`);
+            const chainId = await this.publicClient.getChainId();
+            console.log(`[Auth] Verifying signature for ${body.address} on chain ${chainId}`);
             console.log(`[Auth] Signature length: ${body.signature.length}`);
-            const ok = await this.publicClient.verifyMessage({
+            const verifyOptions = {
                 address: body.address,
                 message: body.message,
                 signature: body.signature,
-            });
+            };
+            // In local development, we must point to our deployed UniversalSigValidator
+            // since the canonical ones don't exist on Anvil.
+            if (chainId === 31337) {
+                verifyOptions.universalSignatureValidatorAddress = "0xA51c1fc2f0D1a1b8494Ed1FE312d7C3a78Ed91C0";
+            }
+            const ok = await this.publicClient.verifyMessage(verifyOptions);
             if (!ok) {
                 console.warn(`[Auth] Signature verification failed for ${body.address}`);
                 return { status: "invalid_signature" };

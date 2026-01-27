@@ -6,34 +6,56 @@ export interface BaseEvent {
 
 export interface StemsUploadedEvent extends BaseEvent {
   eventName: "stems.uploaded";
-  trackId: string;
+  releaseId: string;
   artistId: string;
-  fileUris: string[];
   checksum: string;
+  artworkData?: Buffer;
+  artworkMimeType?: string;
   metadata?: {
-    releaseType?: string;
-    releaseTitle?: string;
+    type?: string;
+    title?: string;
     primaryArtist?: string;
     featuredArtists?: string[];
     genre?: string;
-    isrc?: string;
     label?: string;
     releaseDate?: string;
     explicit?: boolean;
+    tracks?: Array<{
+      title: string;
+      artist?: string;
+      position: number;
+      isrc?: string;
+      explicit?: boolean;
+      stems: Array<{
+        id: string;
+        uri: string;
+        type: string;
+        buffer?: Buffer;
+        mimetype?: string;
+      }>;
+    }>;
   };
 }
 
 export interface StemsProcessedEvent extends BaseEvent {
   eventName: "stems.processed";
-  trackId: string;
-  stemIds: string[];
+  releaseId: string;
+  artistId: string;
   modelVersion: string;
-  durationMs: number;
-  stems?: {
+  metadata?: any;
+  tracks: Array<{
     id: string;
-    uri: string;
-    type: string;
-  }[];
+    title: string;
+    artist?: string;
+    position: number;
+    stems: Array<{
+      id: string;
+      uri: string;
+      type: string;
+      data?: Buffer;
+      mimeType?: string;
+    }>;
+  }>;
 }
 
 export interface IpNftMintedEvent extends BaseEvent {
