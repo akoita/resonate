@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./AuthProvider";
 import { getArtistMe } from "../../lib/api";
-import { Card } from "../ui/Card";
 import { Button } from "../ui/Button";
 
 interface ArtistGateProps {

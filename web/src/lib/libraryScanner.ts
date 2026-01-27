@@ -134,13 +134,14 @@ export async function scanAndIndex(
             const newTrack = await saveTrack(file, {
                 title: metadata.title || file.name.replace(/\.[^/.]+$/, ""),
                 artist: metadata.artist,
+                albumArtist: metadata.albumArtist,
                 album: metadata.album,
                 year: metadata.year,
                 genre: metadata.genre,
                 duration: metadata.duration,
                 sourcePath: path,
                 fileSize: file.size,
-            });
+            }, metadata.artworkBlob);
 
             // Notify UI immediately after saving
             onTrackAdded?.(newTrack);
