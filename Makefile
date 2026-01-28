@@ -32,11 +32,18 @@ local-aa-down:
 # Deploy AA contracts to local Anvil
 local-aa-deploy:
 	cd contracts && forge script script/DeployLocalAA.s.sol --rpc-url http://localhost:8545 --broadcast
+	@echo ""
+	@echo "Updating configuration files..."
+	./scripts/update-aa-config.sh
 
-# Full local AA setup: start infra + deploy contracts
+# Full local AA setup: start infra + deploy contracts + update config
 local-aa-full: local-aa-up
 	@sleep 2
 	$(MAKE) local-aa-deploy
+
+# Update .env files with deployed AA contract addresses
+local-aa-config:
+	./scripts/update-aa-config.sh
 
 # Start web frontend in local AA mode
 web-dev-local:

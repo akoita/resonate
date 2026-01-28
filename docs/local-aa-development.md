@@ -1,25 +1,38 @@
 # Local Account Abstraction Development
 
-This guide explains how to run a fully local ERC-4337 Account Abstraction environment for ZeroDev smart wallet development.
+This guide explains how to run a fully local ERC-4337 Account Abstraction environment for smart wallet development.
 
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) and Docker Compose
 - [Foundry](https://book.getfoundry.sh/getting-started/installation) (`forge`, `cast`, `anvil`)
+- [jq](https://stedolan.github.io/jq/) (for config scripts)
 - Node.js 18+
 
 ## Quick Start
 
 ```bash
-# 1. Start local AA infrastructure (Anvil + Alto bundler)
-make local-aa-up
+# 1. Start everything with auto-configuration
+make local-aa-full
 
-# 2. Deploy AA contracts
-make local-aa-deploy
+# 2. Start backend (in separate terminal)
+make backend-dev
 
-# 3. Start frontend in local mode
+# 3. Start frontend in local mode (in separate terminal)
 make web-dev-local
 ```
+
+That's it! The deployment script automatically updates all `.env` files with the correct contract addresses.
+
+## What Gets Deployed
+
+| Contract | Description |
+|----------|-------------|
+| **EntryPoint v0.7** | ERC-4337 singleton for UserOperation validation |
+| **Kernel v3.1** | Smart account implementation (ZeroDev) |
+| **KernelFactory** | Factory for deploying smart accounts |
+| **ECDSAValidator** | Validates ECDSA signatures for smart accounts |
+| **UniversalSigValidator** | ERC-6492 signature validation |
 
 ## Architecture
 
@@ -28,24 +41,20 @@ make web-dev-local
 │   Frontend (Next.js)│
 │   localhost:3000    │
 └──────────┬──────────┘
-           │ UserOperations
+           │
            ▼
-┌─────────────────────┐
-│  Alto Bundler       │
-│  localhost:4337     │
-└──────────┬──────────┘
-           │ eth_sendRawTransaction
-           ▼
-┌─────────────────────┐
-│  Anvil Chain        │
-│  localhost:8545     │
-│  chainId: 31337     │
-├─────────────────────┤
-│  - EntryPoint v0.7  │
-│  - Kernel Factory   │
-│  - ECDSA Validator  │
-│  - YOUR CONTRACTS   │
-└─────────────────────┘
+┌─────────────────────┐     ┌─────────────────────┐
+│  Backend (NestJS)   │────▶│  Alto Bundler       │
+│  localhost:3001     │     │  localhost:4337     │
+└──────────┬──────────┘     └──────────┬──────────┘
+           │                           │
+           └───────────┬───────────────┘
+                       ▼
+           ┌─────────────────────┐
+           │  Anvil Chain        │
+           │  localhost:8545     │
+           │  chainId: 31337     │
+           └─────────────────────┘
 ```
 
 ## Commands Reference
@@ -54,21 +63,63 @@ make web-dev-local
 |---------|-------------|
 | `make local-aa-up` | Start Anvil and Alto bundler |
 | `make local-aa-down` | Stop local AA services |
-| `make local-aa-deploy` | Deploy AA contracts to Anvil |
-| `make local-aa-full` | Start infra + deploy contracts |
+| `make local-aa-deploy` | Deploy contracts + update configs |
+| `make local-aa-full` | Start infra + deploy + configure |
+| `make local-aa-config` | Update .env files with deployed addresses |
 | `make local-aa-logs` | View Docker container logs |
 | `make web-dev-local` | Start frontend with chainId 31337 |
 
+## Auto-Configuration
+
+After deployment, the `scripts/update-aa-config.sh` script automatically:
+
+1. **Parses deployment output** from `contracts/broadcast/DeployLocalAA.s.sol/31337/run-latest.json`
+2. **Queries the bundler** for its supported entry points
+3. **Updates `backend/.env`** with:
+   - `AA_ENTRY_POINT` - Entry point address (from bundler)
+   - `AA_FACTORY` - KernelFactory address
+   - `AA_KERNEL` - Kernel implementation address
+   - `AA_ECDSA_VALIDATOR` - ECDSA validator address
+   - `AA_SIG_VALIDATOR` - Universal signature validator
+   - `AA_CHAIN_ID` - Chain ID (31337)
+   - `AA_BUNDLER` - Bundler URL
+4. **Creates `web/.env.local`** if it doesn't exist
+
+### Manual Config Update
+
+If you need to update configs without redeploying:
+
+```bash
+make local-aa-config
+```
+
 ## Environment Variables
 
-For local AA development, set in `web/.env.local`:
+### Backend (`backend/.env`)
+
+```bash
+# AA Infrastructure (auto-configured by scripts/update-aa-config.sh)
+AA_BUNDLER=http://localhost:4337
+AA_ENTRY_POINT=0x...  # Set by update-aa-config.sh
+AA_FACTORY=0x...      # Set by update-aa-config.sh
+AA_CHAIN_ID=31337
+
+# Other backend config
+DATABASE_URL="postgresql://resonate:resonate@localhost:5432/resonate"
+JWT_SECRET=dev-secret
+```
+
+### Frontend (`web/.env.local`)
 
 ```bash
 # Use local Anvil chain
 NEXT_PUBLIC_CHAIN_ID=31337
 
-# No ZeroDev project ID needed for local dev
-# NEXT_PUBLIC_ZERODEV_PROJECT_ID= (leave unset)
+# API endpoint
+NEXT_PUBLIC_API_URL=http://localhost:3001
+
+# ZeroDev not needed for local dev
+# NEXT_PUBLIC_ZERODEV_PROJECT_ID=
 ```
 
 ## Deploying Your Contracts
@@ -76,40 +127,84 @@ NEXT_PUBLIC_CHAIN_ID=31337
 After starting the local AA infrastructure, deploy your own contracts:
 
 ```bash
-# Navigate to contracts folder
 cd contracts
-
-# Deploy with Foundry
 forge script script/YourDeploy.s.sol --rpc-url http://localhost:8545 --broadcast
 ```
 
 ## Funding Smart Accounts
 
-Smart accounts are "counterfactual" - the address exists before deployment. You must fund the address before sending UserOperations:
+Smart accounts are "counterfactual" - the address exists before deployment. Fund the address before sending UserOperations:
 
 ```bash
 # Fund a smart account address (using Anvil's default account)
-cast send <SMART_ACCOUNT_ADDRESS> --value 1ether --rpc-url http://localhost:8545 --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+cast send <SMART_ACCOUNT_ADDRESS> --value 1ether \
+  --rpc-url http://localhost:8545 \
+  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ```
+
+## Verifying Smart Account Deployment
+
+Check if a smart account is deployed:
+
+```bash
+cast code <SMART_ACCOUNT_ADDRESS> --rpc-url http://localhost:8545
+```
+
+- If it returns `0x` - account is not deployed yet (counterfactual)
+- If it returns bytecode - account is deployed
 
 ## Troubleshooting
 
 ### "AA21 didn't pay prefund"
 The smart account doesn't have enough ETH. Fund it using the command above.
 
-### Bundler not accepting UserOperations
-1. Check Anvil is producing blocks: `cast block-number --rpc-url http://localhost:8545`
-2. Check bundler logs: `make local-aa-logs`
-3. Ensure chainId matches (31337)
+### "Bundler not reachable"
+1. Check Docker containers are running: `docker compose --profile local-aa ps`
+2. Check bundler is accessible: `curl http://localhost:4337`
+3. Restart bundler: `docker compose --profile local-aa restart alto-bundler`
+
+### "Invalid entry point" or validation errors
+Entry point mismatch between your config and the bundler:
+```bash
+# Check bundler's entry point
+curl -s http://localhost:4337 -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"eth_supportedEntryPoints","params":[]}' | jq
+```
+Then run `make local-aa-config` to sync your config.
 
 ### EntryPoint not found
 Run `make local-aa-deploy` to deploy the AA infrastructure contracts.
 
-## Canonical Addresses (Local)
+### Addresses changed after reset
+If you run `docker compose down -v` (which resets Anvil), addresses will change. Run `make local-aa-full` to redeploy and reconfigure.
 
-| Contract | Address |
-|----------|---------|
-| EntryPoint v0.7 | `0x0165878A594ca255338adfa4d48449f69242Eb8F` |
-| UniversalSigValidator (ERC-6492) | `0xa513E6E4b8f2a923D98304ec87F64353C4D5C853` |
+## Testing the Flow
 
-> **Note**: These addresses are deterministic based on deployer nonce. If you reset Anvil (`docker compose down -v`) and redeploy, you'll get different addresses and need to update all configs.
+1. **Start everything**:
+   ```bash
+   make local-aa-full
+   make backend-dev  # separate terminal
+   make web-dev-local  # separate terminal
+   ```
+
+2. **Open the app** at http://localhost:3000
+
+3. **Connect wallet** or create an embedded wallet
+
+4. **Go to Wallet page** and click "Enable Smart Account"
+
+5. **Click "Deploy Smart Account"** - this should succeed now
+
+6. **Check the console/logs** for the deployment transaction
+
+## Docker Compose Services
+
+The `local-aa` profile starts:
+
+| Service | Image | Port | Purpose |
+|---------|-------|------|---------|
+| `anvil` | `ghcr.io/foundry-rs/foundry` | 8545 | Local EVM chain |
+| `alto-bundler` | `ghcr.io/pimlicolabs/alto` | 4337 | ERC-4337 bundler |
+
+See `docker-compose.yml` for full configuration.
