@@ -116,12 +116,22 @@ let WalletService = class WalletService {
             signature: "0x",
         };
         userOp.paymasterAndData = this.paymasterService.buildPaymasterData(userOp, 0, input.userId);
-        const userOpHash = await this.erc4337Client.sendUserOperation(userOp);
-        await this.erc4337Client.waitForReceipt(userOpHash);
-        return prisma_1.prisma.wallet.update({
-            where: { id: wallet.id },
-            data: { deploymentTxHash: userOpHash },
-        });
+        try {
+            const userOpHash = await this.erc4337Client.sendUserOperation(userOp);
+            await this.erc4337Client.waitForReceipt(userOpHash);
+            return prisma_1.prisma.wallet.update({
+                where: { id: wallet.id },
+                data: { deploymentTxHash: userOpHash },
+            });
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (message.includes("fetch") || message.includes("ECONNREFUSED")) {
+                throw new Error("Bundler not reachable. Ensure the AA bundler is running at " +
+                    (process.env.AA_BUNDLER || "http://localhost:4337"));
+            }
+            throw new Error(`Smart account deployment failed: ${message}`);
+        }
     }
     async spend(userId, amountUsd) {
         const wallet = await this.getOrCreate(userId);
