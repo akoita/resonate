@@ -127,7 +127,7 @@ NEXT_PUBLIC_CHAIN_ID=31337
 # NEXT_PUBLIC_ZERODEV_PROJECT_ID=
 
 # API URL
-NEXT_PUBLIC_API_URL=http://localhost:3001
+NEXT_PUBLIC_API_URL=http://localhost:3000
 EOF
     echo -e "${GREEN}✓ web/.env.local created${NC}"
 else

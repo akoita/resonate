@@ -4,7 +4,8 @@ import { UserOperation } from "./erc4337/erc4337_client";
 @Injectable()
 export class PaymasterService {
   private sponsorMaxUsd = Number(process.env.AA_SPONSOR_MAX_USD ?? 5);
-  private paymasterAddress = process.env.AA_PAYMASTER ?? "0xPaymaster";
+  // If AA_PAYMASTER is not set, we don't use a paymaster (self-funded)
+  private paymasterAddress: string | undefined = process.env.AA_PAYMASTER;
   private sponsorSpentUsd = new Map<string, number>();
 
   configure(input: { sponsorMaxUsd: number; paymasterAddress: string }) {
@@ -25,6 +26,10 @@ export class PaymasterService {
   }
 
   buildPaymasterData(userOp: UserOperation, spendUsd: number, userId?: string) {
+    // If no paymaster is configured, return empty (self-funded)
+    if (!this.paymasterAddress) {
+      return "0x";
+    }
     if (spendUsd > this.sponsorMaxUsd) {
       return "0x";
     }

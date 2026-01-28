@@ -12,22 +12,27 @@ type JsonRpcResponse<T> = {
   error?: { code: number; message: string };
 };
 
+// ERC-4337 v0.7 UserOperation format
 export interface UserOperation {
   sender: string;
   nonce: string;
-  initCode: string;
+  factory?: string | null;
+  factoryData?: string;
   callData: string;
   callGasLimit: string;
   verificationGasLimit: string;
   preVerificationGas: string;
   maxFeePerGas: string;
   maxPriorityFeePerGas: string;
-  paymasterAndData: string;
+  paymaster?: string | null;
+  paymasterVerificationGasLimit?: string;
+  paymasterPostOpGasLimit?: string;
+  paymasterData?: string;
   signature: string;
 }
 
 export class Erc4337Client {
-  constructor(private readonly bundlerUrl: string, private readonly entryPoint: string) {}
+  constructor(private readonly bundlerUrl: string, private readonly entryPoint: string) { }
 
   async sendUserOperation(op: UserOperation) {
     return this.sendRpc<string>("eth_sendUserOperation", [op, this.entryPoint]);

@@ -10,7 +10,8 @@ exports.PaymasterService = void 0;
 const common_1 = require("@nestjs/common");
 let PaymasterService = class PaymasterService {
     sponsorMaxUsd = Number(process.env.AA_SPONSOR_MAX_USD ?? 5);
-    paymasterAddress = process.env.AA_PAYMASTER ?? "0xPaymaster";
+    // If AA_PAYMASTER is not set, we don't use a paymaster (self-funded)
+    paymasterAddress = process.env.AA_PAYMASTER;
     sponsorSpentUsd = new Map();
     configure(input) {
         this.sponsorMaxUsd = input.sponsorMaxUsd;
@@ -27,6 +28,10 @@ let PaymasterService = class PaymasterService {
         this.sponsorSpentUsd.delete(userId);
     }
     buildPaymasterData(userOp, spendUsd, userId) {
+        // If no paymaster is configured, return empty (self-funded)
+        if (!this.paymasterAddress) {
+            return "0x";
+        }
         if (spendUsd > this.sponsorMaxUsd) {
             return "0x";
         }

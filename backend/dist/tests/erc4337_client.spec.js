@@ -12,14 +12,18 @@ describe("erc4337 client", () => {
         const result = await client.sendUserOperation({
             sender: "0xsender",
             nonce: "0x0",
-            initCode: "0x",
+            factory: null,
+            factoryData: "0x",
             callData: "0x",
             callGasLimit: "0x1",
             verificationGasLimit: "0x1",
             preVerificationGas: "0x1",
             maxFeePerGas: "0x1",
             maxPriorityFeePerGas: "0x1",
-            paymasterAndData: "0x",
+            paymaster: null,
+            paymasterVerificationGasLimit: "0x0",
+            paymasterPostOpGasLimit: "0x0",
+            paymasterData: "0x",
             signature: "0x",
         });
         expect(result).toBe("0xhash");

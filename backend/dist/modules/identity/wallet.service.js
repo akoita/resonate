@@ -102,20 +102,27 @@ let WalletService = class WalletService {
         if (wallet.deploymentTxHash) {
             return wallet;
         }
+        // Get paymaster config
+        const paymasterAddress = this.paymasterService.buildPaymasterData({}, // Not needed for check
+        0, input.userId);
+        // ERC-4337 v0.7 UserOperation format
         const userOp = {
             sender: wallet.address,
             nonce: "0x0",
-            initCode: wallet.factory ? wallet.factory : "0x",
+            factory: wallet.factory || null,
+            factoryData: "0x",
             callData: "0x",
             callGasLimit: "0x5208",
             verificationGasLimit: "0x100000",
             preVerificationGas: "0x5208",
             maxFeePerGas: "0x3b9aca00",
             maxPriorityFeePerGas: "0x3b9aca00",
-            paymasterAndData: wallet.paymaster ?? "0x",
+            paymaster: paymasterAddress !== "0x" ? paymasterAddress : null,
+            paymasterVerificationGasLimit: "0x0",
+            paymasterPostOpGasLimit: "0x0",
+            paymasterData: "0x",
             signature: "0x",
         };
-        userOp.paymasterAndData = this.paymasterService.buildPaymasterData(userOp, 0, input.userId);
         try {
             const userOpHash = await this.erc4337Client.sendUserOperation(userOp);
             await this.erc4337Client.waitForReceipt(userOpHash);
