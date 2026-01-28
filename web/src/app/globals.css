@@ -1884,6 +1884,356 @@ a {
   margin-top: var(--space-4);
 }
 
+/* ========================================
+   VAULT: Premium AA Wallet Interface
+   ======================================== */
+
+.vault-stage {
+  display: grid;
+  gap: var(--space-6);
+  padding: var(--space-6);
+  min-height: 100%;
+}
+
+.vault-hero {
+  position: relative;
+  background: linear-gradient(135deg,
+      rgba(124, 92, 255, 0.15) 0%,
+      rgba(20, 20, 30, 0.8) 50%,
+      rgba(255, 92, 124, 0.08) 100%);
+  border-radius: var(--radius-xl);
+  padding: var(--space-8);
+  border: 1px solid var(--studio-border);
+  overflow: hidden;
+}
+
+.vault-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 20% 50%, rgba(124, 92, 255, 0.2), transparent 50%);
+  pointer-events: none;
+}
+
+.vault-hero-content {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.vault-balance-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-muted);
+}
+
+.vault-balance {
+  font-size: 3.5rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #fff 30%, var(--color-accent) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  line-height: 1.1;
+}
+
+.vault-balance-currency {
+  font-size: 1.5rem;
+  opacity: 0.7;
+}
+
+.vault-status-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.vault-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.vault-status-badge--active {
+  background: rgba(46, 196, 134, 0.15);
+  color: #2ec486;
+  border: 1px solid rgba(46, 196, 134, 0.3);
+}
+
+.vault-status-badge--inactive {
+  background: rgba(255, 159, 67, 0.15);
+  color: #ff9f43;
+  border: 1px solid rgba(255, 159, 67, 0.3);
+}
+
+.vault-status-badge--locked {
+  background: rgba(255, 71, 87, 0.15);
+  color: #ff4757;
+  border: 1px solid rgba(255, 71, 87, 0.3);
+}
+
+.vault-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Vault Cards */
+.vault-card {
+  background: var(--studio-surface);
+  backdrop-filter: var(--glass-blur) var(--glass-saturate);
+  border: 1px solid var(--studio-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.vault-card:hover {
+  background: var(--studio-surface-raised);
+  border-color: rgba(124, 92, 255, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.vault-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.vault-card-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text);
+}
+
+.vault-card-icon {
+  width: 24px;
+  height: 24px;
+  opacity: 0.7;
+}
+
+/* Gas Tank Progress */
+.vault-gas-tank {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.vault-gas-bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  position: relative;
+}
+
+.vault-gas-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-accent), #a78bfa);
+  border-radius: var(--radius-full);
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.vault-gas-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  animation: shimmer 2s infinite;
+}
+
+.vault-gas-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.vault-gas-value {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* Vault Grid */
+.vault-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-5);
+}
+
+.vault-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-4);
+}
+
+.vault-meta-item {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.vault-meta-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted);
+}
+
+.vault-meta-value {
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--color-text);
+  word-break: break-all;
+}
+
+/* Vault Actions */
+.vault-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--studio-border);
+}
+
+.vault-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.vault-btn--primary {
+  background: linear-gradient(135deg, var(--color-accent), #a78bfa);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(124, 92, 255, 0.3);
+}
+
+.vault-btn--primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(124, 92, 255, 0.4);
+}
+
+.vault-btn--ghost {
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--studio-border);
+}
+
+.vault-btn--ghost:hover {
+  background: var(--studio-surface-raised);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.vault-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Security Panel */
+.vault-security-grid {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.vault-security-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--studio-border);
+}
+
+.vault-security-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: rgba(124, 92, 255, 0.1);
+  color: var(--color-accent);
+}
+
+.vault-security-info {
+  flex: 1;
+}
+
+.vault-security-title {
+  font-weight: 500;
+  margin-bottom: var(--space-1);
+}
+
+.vault-security-desc {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+/* Alert Messages */
+.vault-alert {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.vault-alert--info {
+  background: rgba(124, 92, 255, 0.1);
+  border: 1px solid rgba(124, 92, 255, 0.2);
+  color: #a78bfa;
+}
+
+.vault-alert--warning {
+  background: rgba(255, 159, 67, 0.1);
+  border: 1px solid rgba(255, 159, 67, 0.2);
+  color: #ff9f43;
+}
+
+.vault-alert--success {
+  background: rgba(46, 196, 134, 0.1);
+  border: 1px solid rgba(46, 196, 134, 0.2);
+  color: #2ec486;
+}
+
+
 .share-panel {
   display: grid;
   gap: var(--space-3);
