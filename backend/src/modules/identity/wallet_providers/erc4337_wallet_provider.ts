@@ -4,11 +4,15 @@ import { WalletAccount, WalletProvider } from "../wallet_provider";
 
 @Injectable()
 export class Erc4337WalletProvider implements WalletProvider {
-  private readonly chainId = Number(process.env.AA_CHAIN_ID ?? 8453);
-  private readonly entryPoint = process.env.AA_ENTRY_POINT ?? "0xEntryPoint";
-  private readonly factory = process.env.AA_FACTORY ?? "0xFactory";
+  private readonly chainId = Number(process.env.AA_CHAIN_ID ?? 31337);
+  // ERC-4337 v0.6 canonical entry point
+  private readonly entryPoint =
+    process.env.AA_ENTRY_POINT ?? "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789";
+  // Default factory - should be deployed locally or use a testnet factory
+  private readonly factory =
+    process.env.AA_FACTORY ?? "0x9406Cc6185a346906296840746125a0E44976454";
   private readonly paymaster = process.env.AA_PAYMASTER ?? undefined;
-  private readonly bundler = process.env.AA_BUNDLER ?? undefined;
+  private readonly bundler = process.env.AA_BUNDLER ?? "http://localhost:4337";
 
   getAccount(userId: string): WalletAccount {
     const salt = process.env.AA_SALT ?? "resonate";

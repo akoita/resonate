@@ -28,7 +28,9 @@ import { SharedModule } from "../shared/shared.module";
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
         const bundler = config.get<string>("AA_BUNDLER") || "http://localhost:4337";
-        const entryPoint = config.get<string>("AA_ENTRY_POINT") || "0xEntryPoint";
+        // ERC-4337 v0.6 canonical entry point
+        const entryPoint =
+          config.get<string>("AA_ENTRY_POINT") || "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789";
         return new Erc4337Client(bundler, entryPoint);
       },
     },

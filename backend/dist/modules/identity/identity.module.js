@@ -39,7 +39,8 @@ exports.IdentityModule = IdentityModule = __decorate([
                 inject: [config_1.ConfigService],
                 useFactory: (config) => {
                     const bundler = config.get("AA_BUNDLER") || "http://localhost:4337";
-                    const entryPoint = config.get("AA_ENTRY_POINT") || "0xEntryPoint";
+                    // ERC-4337 v0.6 canonical entry point
+                    const entryPoint = config.get("AA_ENTRY_POINT") || "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789";
                     return new erc4337_client_1.Erc4337Client(bundler, entryPoint);
                 },
             },
