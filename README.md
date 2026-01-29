@@ -12,6 +12,10 @@
 [![Solidity](https://img.shields.io/badge/Solidity-363636?style=for-the-badge&logo=solidity&logoColor=white)](https://soliditylang.org/)
 [![Foundry](https://img.shields.io/badge/Foundry-1C1C1C?style=for-the-badge&logo=ethereum&logoColor=white)](https://book.getfoundry.sh/)
 
+<br/>
+
+> **🚧 Work in Progress** — This is an experimental project under active development. Not production-ready.
+
 </div>
 
 ---
