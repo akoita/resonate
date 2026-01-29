@@ -101,6 +101,12 @@ fi
 
 # Update backend/.env
 echo "Updating $BACKEND_ENV..."
+
+# Essential dev defaults (set once if missing)
+update_env_var "DATABASE_URL" "postgresql://resonate:resonate@localhost:5432/resonate" "$BACKEND_ENV"
+update_env_var "JWT_SECRET" "dev-secret-change-in-production" "$BACKEND_ENV"
+
+# AA contract addresses (updated on each deploy)
 update_env_var "AA_ENTRY_POINT" "$ENTRY_POINT" "$BACKEND_ENV"
 update_env_var "AA_FACTORY" "$KERNEL_FACTORY" "$BACKEND_ENV"
 update_env_var "AA_KERNEL" "$KERNEL" "$BACKEND_ENV"
@@ -110,6 +116,7 @@ update_env_var "AA_CHAIN_ID" "31337" "$BACKEND_ENV"
 update_env_var "AA_BUNDLER" "http://localhost:4337" "$BACKEND_ENV"
 
 echo -e "${GREEN}✓ backend/.env updated${NC}"
+
 echo ""
 
 # Create a web/.env.local if it doesn't exist (for frontend)
