@@ -72,6 +72,7 @@ graph TB
 | **Node.js** 18+ | [nodejs.org](https://nodejs.org/) or `nvm install 18` |
 | **Docker** | [docker.com/get-started](https://www.docker.com/get-started/) |
 | **Make** | Pre-installed on macOS/Linux; Windows: use WSL |
+| **Foundry** *(for AA dev)* | [getfoundry.sh](https://getfoundry.sh/) |
 
 ### Run Locally
 
@@ -80,11 +81,21 @@ graph TB
 make dev-up          # PostgreSQL
 
 # 2. Start services
-make backend-dev     # NestJS API (port 3000)
-make web-dev         # Next.js frontend (port 3001)
+make backend-dev     # NestJS API (port 3001)
+make web-dev         # Next.js frontend (port 3000)
 ```
 
-For **smart wallet development**, see [Local AA Development Guide](docs/local-aa-development.md).
+### With Smart Wallet (AA) Development
+
+For local Account Abstraction with Anvil + bundler:
+
+```bash
+make local-aa-full   # Anvil + Alto bundler + deploy contracts
+make backend-dev     # In separate terminal
+make web-dev-local   # In separate terminal (uses chainId 31337)
+```
+
+See [Local AA Development Guide](docs/local-aa-development.md) for full details.
 
 ---
 
