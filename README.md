@@ -74,27 +74,19 @@ graph TB
 | **Make** | Pre-installed on macOS/Linux; Windows: use WSL |
 | **Foundry** *(for AA dev)* | [getfoundry.sh](https://getfoundry.sh/) |
 
-### Run Locally (Backend + UI only)
-
-> **Note**: This starts the database and services but authentication won't work without AA or ZeroDev configured.
+### Run Locally
 
 ```bash
-make dev-up          # PostgreSQL
+# 1. Start infrastructure (PostgreSQL + Anvil + bundler + deploy contracts)
+make dev-up
+make local-aa-full
+
+# 2. Start services (in separate terminals)
 make backend-dev     # NestJS API (port 3001)
-make web-dev         # Next.js frontend (port 3000)
+make web-dev-local   # Next.js frontend (port 3000, chainId 31337)
 ```
 
-### Full Development (with Smart Wallets)
-
-For complete functionality including authentication:
-
-```bash
-make local-aa-full   # Anvil + Alto bundler + deploy contracts
-make backend-dev     # In separate terminal
-make web-dev-local   # In separate terminal (uses chainId 31337)
-```
-
-See [Local AA Development Guide](docs/local-aa-development.md) for details.
+See [Local AA Development Guide](docs/local-aa-development.md) for troubleshooting and details.
 
 ---
 
