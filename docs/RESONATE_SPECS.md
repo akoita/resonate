@@ -116,38 +116,26 @@ Event-Driven Microservices with Hexagonal Architecture (Ports & Adapters).
 
 ---
 
-## 7. Roadmap
+## 7. Project Status
 
-### Phase 0: Foundations ✅
-- Repository structure, CI/CD skeleton
-- Core domain entities and event taxonomy
-- Environment and tooling setup
+### Current Focus
+- Core infrastructure: authentication, catalog, playback
+- Smart wallet integration (ERC-4337)
+- Stem upload and management
 
-### Phase 1: MVP Prototype
-- Artist upload flow with stem separation
-- Catalog indexing and metadata schema
-- Wallet funding with budget enforcement
-- Basic playback with micro-payments
+### Exploration Areas
+The following represent potential directions, not commitments:
 
-### Phase 2: Alpha
-- Agentic session orchestration
-- Remix engine contract integration
-- Analytics dashboard v1
-- Observability and SLOs
-
-### Phase 3: Beta
-- Recommendation model improvements
-- Curator staking workflow
-- Security review and data retention
-- Performance optimization
-
-### Phase 4: Launch
-- L2 scale testing
-- Partner onboarding
-- Public documentation
-- Feature freeze and launch
+| Area | Description |
+|------|-------------|
+| **AI Agents** | Autonomous curation, remix generation, negotiation |
+| **Remix Engine** | On-chain composition of stems into derivative works |
+| **Curator Economy** | Staking mechanisms for early discovery rewards |
+| **Analytics** | Real-time payout visibility and artist dashboards |
+| **L2 Scaling** | Deployment on Base/Arbitrum for lower fees |
 
 ---
+
 
 ## 8. Success Metrics
 
