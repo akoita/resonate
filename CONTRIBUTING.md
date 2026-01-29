@@ -1,17 +1,14 @@
----
-title: Contributing
----
-
 # Contributing
 
-## Workflow
+> **Note**: This is a personal learning project and I'm not actively accepting contributions at this time. Feel free to explore the codebase, fork it, or open issues for discussion, but please don't expect PR reviews or merges.
 
-1. Create a branch named `issue-<id>-<short-name>`.
-2. Keep PRs small and focused.
-3. Link PRs to issues with `Closes #<id>`.
+If this changes in the future, I'll update this document.
 
-## Standards
+## For Reference
 
-- Prefer docs-first updates for specs.
-- Keep markdown concise and structured.
-- Use ASCII unless non-ASCII is required.
+If you're exploring the codebase, here's how it's organized:
+
+- **`backend/`** — NestJS API with Prisma
+- **`web/`** — Next.js frontend
+- **`contracts/`** — Solidity smart contracts (Foundry)
+- **`docs/`** — Project specifications and guides
