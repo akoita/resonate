@@ -1,113 +1,105 @@
+<div align="center">
+
+# 🎵 Resonate
+
+### The Agentic Audio Protocol
+
+**Decentralized • AI-Native • Stem-Level Monetization**
+
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=for-the-badge&logo=nestjs&logoColor=white)](https://nestjs.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![Solidity](https://img.shields.io/badge/Solidity-363636?style=for-the-badge&logo=solidity&logoColor=white)](https://soliditylang.org/)
+[![Foundry](https://img.shields.io/badge/Foundry-1C1C1C?style=for-the-badge&logo=ethereum&logoColor=white)](https://book.getfoundry.sh/)
+
+</div>
+
 ---
-title: Project Resonate
+
+## 🌟 Overview
+
+Resonate is a decentralized music streaming protocol where artists monetize audio **stems** (vocals, drums, bass) as programmable IP, and users deploy **AI agents** to curate, remix, and negotiate usage rights in real-time.
+
+### Key Features
+
+- **🎛️ Stem-Level IP** — Artists upload stems as ERC-1155 NFTs with granular licensing
+- **🤖 AI Agent Wallets** — ERC-4337 smart accounts with autonomous micro-payment capabilities
+- **💰 Transparent Royalties** — On-chain payment splitting with real-time analytics
+- **🔀 Remix Engine** — Composable smart contracts for derivative works
+
 ---
 
-# Project Resonate
+## 🏗️ Architecture
 
-Resonate is an agentic audio protocol for decentralized, AI-native music streaming, remixing, and rights management.
-
-## 📚 Documentation
-
-- `docs/RESONATE_SPECS.md`: Project specifications
-- `docs/phase0/`: Architecture, data models, and stories
-- `docs/local-aa-development.md`: Detailed guide for Account Abstraction setup
-
-## 🚀 Development Quick Start
-
-The project supports two development modes: **Standard** (traditional web/backend) and **Local AA** (Smart Wallet development with local blockchain).
-
-### 1. Standard Development (Postgres + Backend + Web)
-
-Use this for general frontend/backend feature development.
-
-```bash
-# 1. Start Postgres
-make dev-up
-
-# 2. Start Backend (Runs migrations & starts NestJS)
-make backend-dev
-
-# 3. Start Frontend (Next.js)
-make web-dev
+```mermaid
+graph TB
+    subgraph Frontend
+        Web[Next.js App]
+    end
+    
+    subgraph Backend
+        API[NestJS API]
+        Worker[Audio Processing]
+    end
+    
+    subgraph Blockchain
+        AA[ERC-4337 Accounts]
+        NFT[Stem NFTs]
+        Split[Payment Splitter]
+    end
+    
+    subgraph Storage
+        DB[(PostgreSQL)]
+        IPFS[IPFS/GCS]
+    end
+    
+    Web --> API
+    API --> DB
+    API --> AA
+    Worker --> IPFS
+    AA --> NFT
+    NFT --> Split
 ```
 
-**Environment Variables**:
-- Backend: `DATABASE_URL=postgresql://resonate:resonate@localhost:5432/resonate`, `JWT_SECRET=dev-secret`
+---
 
-### 2. Local AA Development (Anvil + Bundler + Contracts)
-
-Use this when working on Account Abstraction, Smart Wallets, or Contract features.
+## 🚀 Quick Start
 
 ```bash
-# 1. Start Infrastructure (Anvil Chain + Alto Bundler)
-make local-aa-up
+# 1. Start infrastructure
+make dev-up          # PostgreSQL
 
-# 2. Deploy Contracts (EntryPoint, Factory, Validator)
-make local-aa-deploy
-
-# 3. Start Frontend in Local Chain Mode
-make web-dev-local
+# 2. Start services
+make backend-dev     # NestJS API (port 3000)
+make web-dev         # Next.js frontend (port 3001)
 ```
 
-**Environment Variables**:
-- Web (`.env.local`): `NEXT_PUBLIC_CHAIN_ID=31337`
+For **smart wallet development**, see [Local AA Development Guide](docs/local-aa-development.md).
 
-## 🧹 Reset & Clean
+---
 
-If you need to restart from a clean slate, use these commands:
+## 📖 Documentation
 
-### 1. Reset Application State (Database)
-Wipes all users, tracks, and releases, but keeps containers running.
-```bash
-make db-reset
-```
+| Document | Description |
+|----------|-------------|
+| [Project Specification](docs/RESONATE_SPECS.md) | Vision, architecture, and roadmap |
+| [Local AA Development](docs/local-aa-development.md) | Account abstraction setup guide |
+| [Contributing](CONTRIBUTING.md) | Contribution guidelines |
 
-### 2. Reset Infrastructure (Containers)
-Destroys containers and volumes (Postgres/Anvil). Use this if infrastructure is acting up.
-```bash
-# For Standard Dev
-make dev-down
+---
 
-# For Local AA Dev
-make local-aa-down
-```
+## 🛠️ Tech Stack
 
-## 🛠 Command Reference (Makefile)
+| Layer | Technology |
+|-------|------------|
+| Frontend | Next.js 15, TanStack Query, Viem/Wagmi |
+| Backend | NestJS, Prisma, PostgreSQL |
+| Blockchain | Solidity, Foundry, ERC-4337 |
+| AI | Vertex AI, Audio Source Separation |
+| Infrastructure | Docker, GitHub Actions |
 
-### General
-| Command | Description |
-|---------|-------------|
-| `make dev-up` | Start Postgres (Docker) |
-| `make dev-down` | Stop Postgres |
-| `make db-reset` | **Wipe Database**: Drops schema, recreates it, and runs seeds. Clears all data & uploads. |
-| `make backend-dev`| Generate Prisma, migrate DB, start Backend |
-| `make web-dev` | Start Web App (Standard Mode) |
+---
 
-### Local Account Abstraction
-| Command | Description |
-|---------|-------------|
-| `make local-aa-up` | Start Anvil & Alto Bundler |
-| `make local-aa-down` | Stop AA services |
-| `make local-aa-deploy` | Deploy AA contracts to local Anvil |
-| `make local-aa-full` | `up` + `deploy` combined |
-| `make local-aa-logs` | View Bundler/Anvil logs |
-| `make web-dev-local`| Start Web App with `CHAIN_ID=31337` |
+## 📄 License
 
-## 💰 Funding Local Smart Accounts
-
-Smart accounts deploy counterfactually. To use them locally, you often need to fund the pre-calculated address first (to pay for gas if no paymaster):
-
-```bash
-cast send <ADDRESS> --value 1ether --rpc-url http://localhost:8545 --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-```
-
-## ❓ Troubleshooting
-
-### General
-- **Database errors?** Run `make db-reset` to clean state.
-- **"Prisma Client not initialized"?** Run `npm run prisma:generate` in `backend/`.
-
-### Local AA
-- **"AA21 didn't pay prefund"?** The smart account needs ETH. Fund it using `cast send` above.
-- **Bundler acting up?** Check logs with `make local-aa-logs`. Ensure Anvil is running on port 8545.
-- **Contract addresses changed?** If you restarted Anvil (`docker compose down`), you MUST run `make local-aa-deploy` again to redeploy contracts. Frontend config usually picks up new addresses if they match the deterministic deploy script.
+MIT © 2024-2025
