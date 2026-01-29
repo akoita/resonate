@@ -92,6 +92,22 @@ make web-dev-local   # Next.js frontend (port 3000, chainId 31337)
 
 See [Local AA Development Guide](docs/local-aa-development.md) for troubleshooting and details.
 
+### Clean Up & Reset
+
+```bash
+# Stop all Docker services (keeps data)
+make dev-down
+
+# Stop only AA infrastructure
+make local-aa-down
+
+# Reset database (destructive - deletes all data)
+make db-reset
+
+# View AA logs
+make local-aa-logs
+```
+
 ---
 
 ## 📖 Documentation
