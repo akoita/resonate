@@ -42,6 +42,8 @@ Resonate builds on established Ethereum standards:
 |-----------|----------|----------------|
 | Smart Wallets | [EIP-4337](https://eips.ethereum.org/EIPS/eip-4337) | Account Abstraction with bundler/paymaster |
 | Stem NFTs | [EIP-1155](https://eips.ethereum.org/EIPS/eip-1155) | Multi-token for stem collections |
+| Royalty Info | [EIP-2981](https://eips.ethereum.org/EIPS/eip-2981) | On-chain royalty signaling |
+| Revenue Splits | [0xSplits](https://splits.org/) | Trustless, composable revenue distribution |
 | Signature Verification | [EIP-1271](https://eips.ethereum.org/EIPS/eip-1271) | Smart contract signature validation |
 | Audio Processing | [Demucs](https://github.com/facebookresearch/demucs) | State-of-the-art source separation |
 
@@ -72,8 +74,8 @@ Event-Driven Microservices with Hexagonal Architecture (Ports & Adapters).
 ┌─────────────────────▼───────────────────────────────────────────┐
 │                    Blockchain Layer                             │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
-│  │ StemRegistry │  │ RemixFactory │  │   PaymentSplitter    │   │
-│  │  (ERC-1155)  │  │ (Composable) │  │   (USDC Distribution)│   │
+│  │ StemRegistry │  │ RemixFactory │  │ RoyaltyDistribution  │   │
+│  │  (ERC-1155)  │  │ (Composable) │  │   (0xSplits-based)   │   │
 │  └──────────────┘  └──────────────┘  └──────────────────────┘   │
 │                      Base / Arbitrum L2                         │
 └─────────────────────────────────────────────────────────────────┘
@@ -162,5 +164,8 @@ Event-Driven Microservices with Hexagonal Architecture (Ports & Adapters).
 - [EIP-4337: Account Abstraction](https://eips.ethereum.org/EIPS/eip-4337)
 - [EIP-1155: Multi Token Standard](https://eips.ethereum.org/EIPS/eip-1155)
 - [EIP-1271: Standard Signature Validation](https://eips.ethereum.org/EIPS/eip-1271)
+- [EIP-2981: NFT Royalty Standard](https://eips.ethereum.org/EIPS/eip-2981)
+- [0xSplits: Revenue Distribution Protocol](https://splits.org/)
 - [Demucs: Music Source Separation](https://github.com/facebookresearch/demucs)
 - [ZeroDev: Smart Wallet SDK](https://zerodev.app/)
+
