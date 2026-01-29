@@ -65,6 +65,16 @@ graph TB
 
 ## 🚀 Quick Start
 
+### Prerequisites
+
+| Tool | Install |
+|------|---------|
+| **Node.js** 18+ | [nodejs.org](https://nodejs.org/) or `nvm install 18` |
+| **Docker** | [docker.com/get-started](https://www.docker.com/get-started/) |
+| **Make** | Pre-installed on macOS/Linux; Windows: use WSL |
+
+### Run Locally
+
 ```bash
 # 1. Start infrastructure
 make dev-up          # PostgreSQL
