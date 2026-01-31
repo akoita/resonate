@@ -312,7 +312,7 @@ export default function ArtistUploadPage() {
         }
       }, 200);
     }
-  }, [addToast, formData.primaryArtist, selectedStemId]);
+  }, [addToast, formData.primaryArtist, selectedStemId, stems.length]);
 
   const handleRemoveStem = useCallback((id: string) => {
     setStems(prev => prev.filter(s => s.id !== id));
@@ -364,6 +364,7 @@ export default function ArtistUploadPage() {
                   >
                     <div className="upload-item-artwork">
                       {formData.artworkUrl ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
                         <img src={formData.artworkUrl} alt="Release Artwork" />
                       ) : (
                         <div className="artwork-placeholder">📦</div>
@@ -383,6 +384,7 @@ export default function ArtistUploadPage() {
                     >
                       <div className="upload-item-artwork">
                         {stem.artworkUrl ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
                           <img src={stem.artworkUrl} alt={stem.name} />
                         ) : (
                           <div className="artwork-placeholder">🎵</div>
