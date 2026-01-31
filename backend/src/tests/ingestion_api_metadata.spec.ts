@@ -8,6 +8,7 @@ describe("Ingestion API metadata", () => {
   let app: INestApplication;
 
   beforeAll(async () => {
+    process.env.JWT_SECRET = "dev-secret";
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -53,6 +54,6 @@ describe("Ingestion API metadata", () => {
     expect(["queued", "complete", "processing"]).toContain(response.body.status);
 
     // Wait slightly for background events to be processed to avoid FK errors or "Cannot log after tests are done"
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await new Promise((resolve) => setTimeout(resolve, 5000));
   });
 });

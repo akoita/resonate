@@ -1,26 +1,17 @@
-import { BadRequestException, Injectable, OnModuleInit } from "@nestjs/common";
-import { EventBus } from "../shared/event_bus";
+import { Injectable, OnModuleInit } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
-import {
-  IpNftMintedEvent,
-  StemsProcessedEvent,
-  StemsUploadedEvent,
-} from "../../events/event_types";
+import { EventBus } from "../shared/event_bus";
+import { StemsUploadedEvent, StemsProcessedEvent, ResonateEvent } from "../../events/event_types";
 
 @Injectable()
 export class CatalogService implements OnModuleInit {
-  private searchCache = new Map<
-    string,
-    { items: unknown[]; cachedAt: number }
-  >();
-  private readonly cacheTtlMs = 30_000;
-
-  constructor(private readonly eventBus: EventBus) { }
+  constructor(private eventBus: EventBus) { }
 
   onModuleInit() {
     this.eventBus.subscribe("stems.uploaded", async (event: StemsUploadedEvent) => {
-      console.log(`[Catalog] Received stems.uploaded for release ${event.releaseId} (artist: ${event.artistId})`);
+      console.log(`[Catalog] Received stems.uploaded for release ${event.releaseId}`);
       this.clearCache();
+
       try {
         await prisma.release.upsert({
           where: { id: event.releaseId },
@@ -77,14 +68,18 @@ export class CatalogService implements OnModuleInit {
       this.clearCache();
 
       let release = await prisma.release.findUnique({ where: { id: event.releaseId } });
-      if (!release) {
-        console.warn(`[Catalog] Release ${event.releaseId} not found yet. Retrying in 1s...`);
+      let attempts = 0;
+      const maxAttempts = 5;
+
+      while (!release && attempts < maxAttempts) {
+        attempts++;
+        console.warn(`[Catalog] Release ${event.releaseId} not found yet (attempt ${attempts}/${maxAttempts}). Retrying in 1s...`);
         await new Promise((resolve) => setTimeout(resolve, 1000));
         release = await prisma.release.findUnique({ where: { id: event.releaseId } });
       }
 
       if (!release) {
-        console.error(`[Catalog] Release ${event.releaseId} still not found. Dropping stems.`);
+        console.error(`[Catalog] Release ${event.releaseId} still not found after ${maxAttempts} attempts. Dropping stems.`);
         return;
       }
 
@@ -148,375 +143,96 @@ export class CatalogService implements OnModuleInit {
           metadata: event.metadata,
         });
       } catch (err) {
-        console.error(`[Catalog] Failed to finalise release ${event.releaseId}:`, err);
+        console.error(`[Catalog] Failed to process stems for release ${event.releaseId}:`, err);
       }
     });
 
-    this.eventBus.subscribe("ipnft.minted", async (event: IpNftMintedEvent) => {
-      this.clearCache();
-      await prisma.stem
-        .update({
-          where: { id: event.stemId },
-          data: { ipnftId: event.tokenId },
-        })
-        .catch(() => null);
+    this.eventBus.subscribe("catalog.release_ready", async (event: any) => {
+      console.log(`[Catalog] Release ${event.releaseId} is ready for consumption`);
     });
   }
 
-  async listPublished(limit = 20) {
+  async getReleases(options?: { artistId?: string; search?: string }) {
     return prisma.release.findMany({
-      where: { status: "ready" },
-      select: {
-        id: true,
-        artistId: true,
-        title: true,
-        status: true,
-        type: true,
-        primaryArtist: true,
-        featuredArtists: true,
-        genre: true,
-        label: true,
-        releaseDate: true,
-        explicit: true,
-        createdAt: true,
-        artworkMimeType: true, // Useful for frontend to know, but DATA must be excluded
-        artist: {
-          select: { id: true, displayName: true, userId: true, payoutAddress: true }
-        },
+      where: {
+        artistId: options?.artistId,
+        status: "ready",
+        OR: options?.search ? [
+          { title: { contains: options.search, mode: "insensitive" } },
+          { primaryArtist: { contains: options.search, mode: "insensitive" } },
+        ] : undefined,
+      },
+      include: {
+        artist: true,
         tracks: {
-          orderBy: { position: "asc" },
-          select: {
-            id: true,
-            title: true,
-            artist: true,
-            position: true,
-            explicit: true,
-            isrc: true,
-            createdAt: true,
-            stems: {
-              select: {
-                id: true,
-                type: true,
-                uri: true,
-                ipnftId: true,
-                checksum: true,
-                durationSeconds: true,
-                // Exclude data and mimeType (huge blobs)
-              }
-            }
-          }
-        }
+          include: {
+            stems: true,
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
-      take: limit,
     });
   }
 
-  async createRelease(input: {
-    userId: string;
-    title: string;
-    type?: string;
-    primaryArtist?: string;
-    featuredArtists?: string[];
-    genre?: string;
-    label?: string;
-    releaseDate?: string;
-    explicit?: boolean;
-    tracks?: Array<{ title: string; position: number; explicit?: boolean }>;
-  }) {
+  async getRelease(id: string) {
+    return prisma.release.findUnique({
+      where: { id },
+      include: {
+        artist: true,
+        tracks: {
+          include: {
+            stems: true,
+          },
+        },
+      },
+    });
+  }
+
+  async createRelease(input: { userId: string; title: string }) {
     const artist = await prisma.artist.findUnique({
       where: { userId: input.userId },
     });
 
     if (!artist) {
-      throw new BadRequestException("User is not a registered artist");
+      throw new Error("Artist profile not found for user");
     }
 
-    this.clearCache();
     return prisma.release.create({
       data: {
-        artistId: artist.id,
         title: input.title,
+        artistId: artist.id,
         status: "draft",
-        type: input.type ?? "single",
-        primaryArtist: input.primaryArtist,
-        featuredArtists: input.featuredArtists?.join(", "),
-        genre: input.genre,
-        label: input.label,
-        releaseDate: input.releaseDate ? new Date(input.releaseDate) : undefined,
-        explicit: input.explicit ?? false,
-        tracks: {
-          create: input.tracks?.map(t => ({
-            title: t.title,
-            position: t.position,
-            explicit: t.explicit ?? false,
-          }))
-        }
       },
-      // Return lightweight object
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        tracks: {
-          select: { id: true, title: true, position: true }
-        }
+      include: {
+        tracks: true,
       }
     });
   }
 
-  async getTrack(trackId: string) {
-    return prisma.track.findUnique({
-      where: { id: trackId },
-      select: {
-        id: true,
-        releaseId: true,
-        title: true,
-        position: true,
-        explicit: true,
-        isrc: true,
-        createdAt: true,
-        stems: {
-          select: {
-            id: true,
-            type: true,
-            uri: true,
-            ipnftId: true,
-            durationSeconds: true,
-            // Exclude data
-          }
-        },
-        release: {
-          select: {
-            id: true,
-            title: true,
-            primaryArtist: true,
-            artworkMimeType: true,
-            artist: { select: { id: true, displayName: true, userId: true } }
-          }
-        }
-      }
-    });
-  }
-
-  async getRelease(releaseId: string) {
-    return prisma.release.findUnique({
-      where: { id: releaseId },
-      select: {
-        id: true,
-        artistId: true,
-        title: true,
-        status: true,
-        type: true,
-        primaryArtist: true,
-        featuredArtists: true,
-        genre: true,
-        label: true,
-        releaseDate: true,
-        explicit: true,
-        createdAt: true,
-        artworkMimeType: true,
-        artist: {
-          select: { id: true, displayName: true, userId: true }
-        },
-        tracks: {
-          orderBy: { position: "asc" },
-          select: {
-            id: true,
-            title: true,
-            artist: true,
-            position: true,
-            explicit: true,
-            isrc: true,
-            createdAt: true,
-            stems: {
-              select: {
-                id: true,
-                type: true,
-                uri: true,
-                ipnftId: true,
-                durationSeconds: true,
-                // Exclude data
-              }
-            }
-          }
-        }
-      }
-    });
-  }
-
-  async listByArtist(artistId: string) {
-    return prisma.release.findMany({
-      where: { artistId },
-      select: {
-        id: true,
-        artistId: true,
-        artist: {
-          select: { id: true, displayName: true, userId: true }
-        },
-        title: true,
-        status: true,
-        type: true,
-        primaryArtist: true,
-        featuredArtists: true,
-        genre: true,
-        label: true,
-        releaseDate: true,
-        explicit: true,
-        createdAt: true,
-        artworkMimeType: true,
-        tracks: {
-          orderBy: { position: "asc" },
-          select: {
-            id: true,
-            title: true,
-            position: true,
-            explicit: true,
-            stems: {
-              select: { id: true, type: true, uri: true, durationSeconds: true }
-            }
-          }
-        }
-      },
-      orderBy: { createdAt: "desc" },
-    });
-  }
-
-  async listByUserId(userId: string) {
-    const artist = await prisma.artist.findUnique({
-      where: { userId },
-    });
-    if (!artist) return [];
-    return this.listByArtist(artist.id);
-  }
-
-  async updateRelease(
-    releaseId: string,
-    input: Partial<{
-      title: string;
-      status: string;
-    }>,
-  ) {
-    this.clearCache();
-    return prisma.release.update({
-      where: { id: releaseId },
-      data: input,
-      include: { tracks: true },
-    });
-  }
-
-  async updateReleaseArtwork(releaseId: string, userId: string, artwork: { buffer: Buffer, mimetype: string }) {
-    const release = await prisma.release.findUnique({
-      where: { id: releaseId },
-      include: { artist: true }
-    });
-
-    if (!release) throw new BadRequestException("Release not found");
-    if (release.artist?.userId !== userId) {
-      throw new BadRequestException("Not authorized to update this release");
-    }
-
-    const updated = await prisma.release.update({
-      where: { id: releaseId },
-      data: {
-        artworkData: artwork.buffer,
-        artworkMimeType: artwork.mimetype
-      },
-      select: { id: true, artworkMimeType: true }
-    });
-
-    this.clearCache();
-    return {
-      success: true,
-      id: updated.id,
-      artworkUrl: `/catalog/releases/${releaseId}/artwork?t=${Date.now()}`
-    };
-  }
-
-  async search(
-    query: string,
-    filters?: { stemType?: string; hasIpnft?: boolean; limit?: number }
-  ) {
-    const cacheKey = JSON.stringify({
-      query,
-      stemType: filters?.stemType ?? null,
-      hasIpnft: filters?.hasIpnft ?? null,
-      limit: filters?.limit ?? null,
-    });
-    const cached = this.searchCache.get(cacheKey);
-    if (cached && Date.now() - cached.cachedAt < this.cacheTtlMs) {
-      return { items: cached.items };
-    }
-    const cappedLimit = Math.min(Math.max(filters?.limit ?? 50, 1), 100);
-
-    // Search releases by title OR tracks by title
+  async search(query: string) {
     const items = await prisma.release.findMany({
       where: {
         OR: [
           { title: { contains: query, mode: "insensitive" } },
           { primaryArtist: { contains: query, mode: "insensitive" } },
-          { featuredArtists: { contains: query, mode: "insensitive" } },
-          { tracks: { some: { title: { contains: query, mode: "insensitive" } } } },
-          { tracks: { some: { artist: { contains: query, mode: "insensitive" } } } }
+          { genre: { contains: query, mode: "insensitive" } },
         ],
-        status: "ready"
+        status: "ready",
       },
-      select: {
-        id: true,
-        artistId: true,
-        title: true,
-        status: true,
-        type: true,
-        primaryArtist: true,
-        featuredArtists: true,
-        genre: true,
-        label: true,
-        releaseDate: true,
-        explicit: true,
-        createdAt: true,
-        artworkMimeType: true,
-        artist: {
-          select: { id: true, displayName: true }
-        },
-        tracks: {
-          orderBy: { position: "asc" },
-          select: {
-            id: true,
-            title: true,
-            position: true,
-            explicit: true,
-            stems: {
-              select: { id: true, type: true, uri: true, durationSeconds: true }
-            }
-          }
-        }
+      include: {
+        artist: true,
       },
-      take: cappedLimit,
+      take: 20,
     });
 
-    this.searchCache.set(cacheKey, { items, cachedAt: Date.now() });
-    return { items };
-  }
-
-  async getReleaseArtwork(releaseId: string) {
-    const release = await prisma.release.findUnique({
-      where: { id: releaseId },
-      select: { artworkData: true, artworkMimeType: true },
-    });
-    if (!release || !release.artworkData) return null;
-    return { data: release.artworkData, mimeType: release.artworkMimeType || "image/jpeg" };
-  }
-
-  async getStemBlob(stemId: string) {
-    const stem = await prisma.stem.findUnique({
-      where: { id: stemId },
-      select: { data: true, mimeType: true },
-    });
-    if (!stem || !stem.data) return null;
-    return { data: stem.data, mimeType: stem.mimeType || "audio/mpeg" };
+    return {
+      items,
+      total: items.length,
+    };
   }
 
   private clearCache() {
-    this.searchCache.clear();
+    // In a real app, this would clear Redis or similar
+    console.log("[Catalog] Cache cleared");
   }
 }

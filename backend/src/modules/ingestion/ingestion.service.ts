@@ -160,7 +160,7 @@ export class IngestionService {
         })),
       });
       console.log(`[Ingestion] Emitted stems.processed for ${releaseId}. Buffer size: ${tracks[0]?.stems[0]?.data?.length ?? 0} bytes`);
-    }, 1000);
+    }, 2000);
 
     return { releaseId, status: "processing" };
   }
