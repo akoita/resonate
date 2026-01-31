@@ -26,7 +26,7 @@ test.describe("Authenticated Upload Flow", () => {
     });
 
     test("UPLOAD-03: File drop zone is visible", async ({ authenticatedPage }) => {
-        // Drop zone should be visible with correct class
+        // File drop zone should be visible
         const dropZone = authenticatedPage.locator(".file-drop-zone");
         await expect(dropZone).toBeVisible();
 
@@ -35,20 +35,27 @@ test.describe("Authenticated Upload Flow", () => {
     });
 
     test("UPLOAD-04: File input accepts audio files", async ({ authenticatedPage }) => {
-        // Check that file input exists
-        const fileInput = authenticatedPage.locator("input[type='file']");
-        await expect(fileInput).toHaveCount(1);
+        const fileInput = authenticatedPage.locator('input[type="file"][accept*="audio"]');
 
         // Verify accept attribute includes audio
         const acceptAttr = await fileInput.getAttribute("accept");
         expect(acceptAttr).toContain("audio");
+
+        await fileInput.setInputFiles({
+            name: "test.mp3",
+            mimeType: "audio/mpeg",
+            buffer: Buffer.from("test audio content"),
+        });
+
+        // Should show "Uploading" or "Processing" status
+        await expect(authenticatedPage.getByText(/Uploading|Processing|Ready/)).toBeVisible();
     });
 
     test("UPLOAD-05: Form input fields are present", async ({ authenticatedPage }) => {
-        // Check form inputs exist (Input component renders as ui-input class)
-        const inputs = authenticatedPage.locator(".ui-input");
-        const inputCount = await inputs.count();
-        expect(inputCount).toBeGreaterThan(0);
+        const titleInput = authenticatedPage.locator("input[placeholder='Night Drive']");
+        const genreInput = authenticatedPage.locator("input[placeholder='Electronic']");
+        await expect(titleInput).toBeVisible();
+        await expect(genreInput).toBeVisible();
     });
 
     test("UPLOAD-06: Publish button is present", async ({ authenticatedPage }) => {
@@ -58,8 +65,7 @@ test.describe("Authenticated Upload Flow", () => {
     });
 
     test("UPLOAD-07: Supported formats text is displayed", async ({ authenticatedPage }) => {
-        // Check for supported formats text
-        await expect(authenticatedPage.getByText(/Supports MP3, WAV, FLAC, AIFF/i)).toBeVisible();
+        await expect(authenticatedPage.getByText("Supports MP3, WAV, FLAC, AIFF")).toBeVisible();
     });
 
     test("UPLOAD-08: Release settings section exists", async ({ authenticatedPage }) => {

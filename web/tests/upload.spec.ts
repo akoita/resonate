@@ -18,13 +18,13 @@ test.describe("Upload Flow", () => {
     test("UPLOAD-01: Auth gate shows for unauthenticated users", async ({ page }) => {
         await page.goto("/artist/upload");
         // Should show auth gate message for unauthenticated users
-        await expect(page.getByText("Connect your wallet")).toBeVisible();
+        await expect(page.getByText("Connect your wallet to upload releases.")).toBeVisible();
     });
 
     test("UPLOAD-02: Auth gate has connect button", async ({ page }) => {
         await page.goto("/artist/upload");
-        // Should have a connect wallet button (use first() since there might be multiple)
-        await expect(page.getByRole("button", { name: "Connect Wallet" }).first()).toBeVisible();
+        // Should have a connect wallet button
+        await expect(page.getByRole("button", { name: "Connect Wallet" })).toBeVisible();
     });
 
     test("UPLOAD-03: Artist upload route is accessible", async ({ page }) => {

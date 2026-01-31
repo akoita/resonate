@@ -37,6 +37,7 @@ export async function injectMockAuth(page: Page): Promise<void> {
     await page.addInitScript((auth) => {
         localStorage.setItem("resonate.token", auth.token);
         localStorage.setItem("resonate.address", auth.address);
+        localStorage.setItem("resonate.mock_auth", "true");
     }, MOCK_AUTH);
 }
 
