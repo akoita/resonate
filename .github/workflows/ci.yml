@@ -105,6 +105,17 @@ jobs:
       - name: Build
         run: npm run build
         working-directory: web
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: |
+            web/.next
+            web/public
+            web/package.json
+            web/package-lock.json
+          retention-days: 1
 
   e2e-tests:
     name: E2E Tests
@@ -119,19 +130,34 @@ jobs:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
-      
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: web
+
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
         working-directory: web
-      
-      - name: Install Playwright browsers
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('web/package-lock.json') }}
+
+      - name: Install Playwright browsers (if not cached)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install chromium --with-deps
         working-directory: web
       
-      - name: Build app
-        run: npm run build
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
         working-directory: web
-      
+
       - name: Run E2E tests
         run: npm run test:e2e
         working-directory: web
