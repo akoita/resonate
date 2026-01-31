@@ -40,6 +40,8 @@ function getChainConfig() {
     };
 }
 
+const CHAIN_CONFIG = getChainConfig();
+
 export default function ZeroDevProviderClient({
     children,
     projectId,
@@ -48,18 +50,21 @@ export default function ZeroDevProviderClient({
     projectId?: string;
 }) {
     const finalProjectId = projectId || process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID || null;
-    const { chain } = getChainConfig();
+    const { chain } = CHAIN_CONFIG;
 
     const publicClient = useMemo(
         () => {
             const rpcUrl = chain.rpcUrls.default.http[0];
-            console.log(`[ZeroDev] Creating public client for chain ${chain.id} at ${rpcUrl}`);
+            // Only log in dev and only when actually re-creating
+            if (process.env.NODE_ENV === "development") {
+                console.log(`[ZeroDev] Initializing public client for chain ${chain.id} at ${rpcUrl}`);
+            }
             return createPublicClient({
                 chain,
                 transport: http(rpcUrl),
             });
         },
-        [chain]
+        [chain.id] // Use ID to stabilize
     );
 
     const value = useMemo(

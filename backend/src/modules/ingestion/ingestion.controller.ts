@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards, UseInterceptors, UploadedFiles } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, UseGuards, UseInterceptors, UploadedFiles, BadRequestException } from "@nestjs/common";
 import { FilesInterceptor, FileFieldsInterceptor } from "@nestjs/platform-express";
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
@@ -20,14 +20,21 @@ export class IngestionController {
     @Body()
     body: {
       artistId: string;
-      metadata?: string; // Metadata is sent as a JSON string in FormData
+      metadata?: any; // Can be string (from FormData) or object (from JSON body)
     },
   ) {
-    const metadata = body.metadata ? JSON.parse(body.metadata) : undefined;
+    let metadata = body.metadata;
+    if (typeof metadata === "string") {
+      try {
+        metadata = JSON.parse(metadata);
+      } catch (err) {
+        throw new BadRequestException("Invalid metadata JSON string");
+      }
+    }
     return this.ingestionService.handleFileUpload({
       artistId: body.artistId,
-      files: files.files || [],
-      artwork: files.artwork?.[0],
+      files: files?.files || [],
+      artwork: files?.artwork?.[0],
       metadata,
     });
   }

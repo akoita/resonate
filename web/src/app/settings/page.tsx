@@ -6,9 +6,11 @@ import { Button } from "../../components/ui/Button";
 import AuthGate from "../../components/auth/AuthGate";
 import { useToast } from "../../components/ui/Toast";
 import {
-    getLibrarySourceHandle,
-    setLibrarySourceHandle,
-    clearLibrarySourceHandle,
+    getLibrarySourceHandles,
+    getUniqueLibrarySourceHandles,
+    addLibrarySourceHandle,
+    removeLibrarySourceHandle,
+    clearLibrarySourceHandles,
     getSettings,
     updateSettings,
     requestPermission,
@@ -20,32 +22,47 @@ import { scanAndIndex, ScanProgress } from "../../lib/libraryScanner";
 export default function SettingsPage() {
     const { addToast } = useToast();
     const [settings, setSettings] = useState<LibrarySettings | null>(null);
-    const [hasHandle, setHasHandle] = useState(false);
+    const [sourceNames, setSourceNames] = useState<string[]>([]);
     const [scanning, setScanning] = useState(false);
     const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
+    const [scanSourceIndex, setScanSourceIndex] = useState<number>(0);
+    const [scanSourceTotal, setScanSourceTotal] = useState<number>(0);
     const [isSupported, setIsSupported] = useState(true);
+
+    const loadState = async () => {
+        const [s, handles] = await Promise.all([
+            getSettings(),
+            getLibrarySourceHandles(),
+        ]);
+        setSettings(s);
+        // Drive list from actual handles so it stays in sync after add/remove
+        setSourceNames(handles.map((h) => h.name));
+    };
 
     useEffect(() => {
         (async () => {
             setIsSupported(isFileSystemAccessSupported());
-            const s = await getSettings();
-            setSettings(s);
-            const handle = await getLibrarySourceHandle();
-            setHasHandle(!!handle);
+            await loadState();
         })();
     }, []);
 
-    const handleSelectFolder = async () => {
+    const handleAddFolder = async () => {
         try {
             const handle = await window.showDirectoryPicker({ mode: "read" });
-            await setLibrarySourceHandle(handle);
-            setHasHandle(true);
-            const s = await getSettings();
-            setSettings(s);
+            const added = await addLibrarySourceHandle(handle);
+            if (!added) {
+                addToast({
+                    type: "warning",
+                    title: "Already added",
+                    message: "This folder is already in your library sources.",
+                });
+                return;
+            }
+            await loadState();
             addToast({
                 type: "success",
-                title: "Folder Selected",
-                message: `"${handle.name}" is now your library source.`,
+                title: "Folder Added",
+                message: `"${handle.name}" added to library sources.`,
             });
         } catch (error) {
             if ((error as Error).name !== "AbortError") {
@@ -58,20 +75,76 @@ export default function SettingsPage() {
         }
     };
 
-    const handleClearFolder = async () => {
-        await clearLibrarySourceHandle();
-        setHasHandle(false);
-        const s = await getSettings();
-        setSettings(s);
+    const handleRemoveFolder = async (index: number) => {
+        await removeLibrarySourceHandle(index);
+        await loadState();
         addToast({
             type: "info",
-            title: "Cleared",
-            message: "Library source has been removed.",
+            title: "Source Removed",
+            message: "Library source removed.",
         });
     };
 
-    const handleRescan = async () => {
-        const handle = await getLibrarySourceHandle();
+    const handleClearAll = async () => {
+        await clearLibrarySourceHandles();
+        await loadState();
+        addToast({
+            type: "info",
+            title: "Cleared",
+            message: "All library sources have been removed.",
+        });
+    };
+
+    const handleRescanAll = async () => {
+        const handles = await getUniqueLibrarySourceHandles();
+        if (handles.length === 0) return;
+
+        setScanning(true);
+        setScanProgress(null);
+        setScanSourceTotal(handles.length);
+
+        let totalAdded = 0;
+        let totalSkipped = 0;
+
+        try {
+            for (let i = 0; i < handles.length; i++) {
+                setScanSourceIndex(i + 1);
+                const handle = handles[i]!;
+                const hasPermission = await requestPermission(handle);
+                if (!hasPermission) {
+                    addToast({
+                        type: "error",
+                        title: "Permission Denied",
+                        message: `Please grant access to "${handle.name}".`,
+                    });
+                    continue;
+                }
+                const result = await scanAndIndex(handle, setScanProgress);
+                totalAdded += result.added;
+                totalSkipped += result.skipped;
+            }
+            await updateSettings({ lastScanTime: new Date().toISOString() });
+            await loadState();
+            addToast({
+                type: "success",
+                title: "Scan Complete",
+                message: `Added ${totalAdded} new tracks. ${totalSkipped} skipped.`,
+            });
+        } catch (error) {
+            addToast({
+                type: "error",
+                title: "Scan Failed",
+                message: (error as Error).message,
+            });
+        } finally {
+            setScanning(false);
+            setScanProgress(null);
+        }
+    };
+
+    const handleRescanOne = async (index: number) => {
+        const handles = await getLibrarySourceHandles();
+        const handle = handles[index];
         if (!handle) return;
 
         const hasPermission = await requestPermission(handle);
@@ -86,13 +159,13 @@ export default function SettingsPage() {
 
         setScanning(true);
         setScanProgress(null);
+        setScanSourceIndex(1);
+        setScanSourceTotal(1);
 
         try {
             const result = await scanAndIndex(handle, setScanProgress);
             await updateSettings({ lastScanTime: new Date().toISOString() });
-            const s = await getSettings();
-            setSettings(s);
-
+            await loadState();
             addToast({
                 type: "success",
                 title: "Scan Complete",
@@ -106,6 +179,7 @@ export default function SettingsPage() {
             });
         } finally {
             setScanning(false);
+            setScanProgress(null);
         }
     };
 
@@ -114,6 +188,8 @@ export default function SettingsPage() {
         const updated = await updateSettings({ autoScanOnLoad: !settings.autoScanOnLoad });
         setSettings(updated);
     };
+
+    const hasSources = sourceNames.length > 0;
 
     if (!isSupported) {
         return (
@@ -138,44 +214,71 @@ export default function SettingsPage() {
                     <div className="upload-section-title">Library Settings</div>
 
                     <div className="settings-section">
-                        <h3 className="settings-section-title">Library Source</h3>
+                        <h3 className="settings-section-title">Library Sources</h3>
                         <p className="home-subtitle">
-                            Select a folder to automatically monitor and index for audio files.
+                            Add folders to automatically monitor and index for audio files. You can
+                            specify multiple local folders.
                         </p>
 
                         <div className="settings-source">
-                            {hasHandle && settings?.sourceFolderName ? (
-                                <div className="settings-source-info">
-                                    <div className="settings-source-path">
-                                        📂 {settings.sourceFolderName}
-                                    </div>
-                                    {settings.lastScanTime && (
-                                        <div className="settings-source-meta">
-                                            Last scanned: {new Date(settings.lastScanTime).toLocaleString()}
-                                        </div>
-                                    )}
-                                </div>
+                            {hasSources ? (
+                                <ul className="settings-source-list">
+                                    {sourceNames.map((name, index) => (
+                                        <li key={`${index}-${name}`} className="settings-source-item">
+                                            <div className="settings-source-info">
+                                                <div className="settings-source-path">
+                                                    📂 {name}
+                                                </div>
+                                            </div>
+                                            <div className="settings-source-item-actions">
+                                                <Button
+                                                    variant="ghost"
+                                                    onClick={() => handleRescanOne(index)}
+                                                    disabled={scanning}
+                                                >
+                                                    Rescan
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    onClick={() => handleRemoveFolder(index)}
+                                                    disabled={scanning}
+                                                >
+                                                    Remove
+                                                </Button>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
                             ) : (
                                 <div className="settings-source-empty">
-                                    No library source configured
+                                    No library sources configured
+                                </div>
+                            )}
+                            {settings?.lastScanTime && hasSources && (
+                                <div className="settings-source-meta">
+                                    Last scanned: {new Date(settings.lastScanTime).toLocaleString()}
                                 </div>
                             )}
 
                             <div className="settings-source-actions">
-                                <Button variant="primary" onClick={handleSelectFolder}>
-                                    {hasHandle ? "Change Folder" : "Select Folder"}
+                                <Button variant="primary" onClick={handleAddFolder} disabled={scanning}>
+                                    Add Folder
                                 </Button>
-                                {hasHandle && (
+                                {hasSources && (
                                     <>
                                         <Button
                                             variant="ghost"
-                                            onClick={handleRescan}
+                                            onClick={handleRescanAll}
                                             disabled={scanning}
                                         >
-                                            {scanning ? "Scanning..." : "Rescan Now"}
+                                            {scanning ? "Scanning..." : "Rescan All"}
                                         </Button>
-                                        <Button variant="ghost" onClick={handleClearFolder}>
-                                            Clear
+                                        <Button
+                                            variant="ghost"
+                                            onClick={handleClearAll}
+                                            disabled={scanning}
+                                        >
+                                            Clear All
                                         </Button>
                                     </>
                                 )}
@@ -184,6 +287,11 @@ export default function SettingsPage() {
 
                         {scanning && scanProgress && (
                             <div className="settings-scan-progress">
+                                {scanSourceTotal > 1 && (
+                                    <p>
+                                        Source {scanSourceIndex} of {scanSourceTotal}
+                                    </p>
+                                )}
                                 <p>
                                     {scanProgress.phase === "scanning"
                                         ? "Scanning for audio files..."
@@ -199,7 +307,9 @@ export default function SettingsPage() {
                                             width:
                                                 scanProgress.phase === "scanning"
                                                     ? "30%"
-                                                    : `${(scanProgress.filesIndexed / scanProgress.filesFound) * 100}%`,
+                                                    : scanProgress.filesFound > 0
+                                                      ? `${(scanProgress.filesIndexed / scanProgress.filesFound) * 100}%`
+                                                      : "0%",
                                         }}
                                     />
                                 </div>

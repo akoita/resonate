@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthController = void 0;
 const common_1 = require("@nestjs/common");
 const throttler_1 = require("@nestjs/throttler");
+const viem_1 = require("viem");
 const auth_service_1 = require("./auth.service");
 const auth_nonce_service_1 = require("./auth_nonce.service");
 let AuthController = class AuthController {
@@ -37,6 +38,24 @@ let AuthController = class AuthController {
             const chainId = await this.publicClient.getChainId();
             console.log(`[Auth] Verifying signature for ${body.address} on chain ${chainId}`);
             console.log(`[Auth] Signature length: ${body.signature.length}`);
+            // Local dev with mock EOA signer: verify EOA signature, then issue token for smart account address
+            if (chainId === 31337 && body.signerAddress) {
+                const ok = await this.publicClient.verifyMessage({
+                    address: body.signerAddress,
+                    message: body.message,
+                    signature: body.signature,
+                });
+                if (!ok) {
+                    console.warn(`[Auth] EOA signature verification failed for ${body.signerAddress}`);
+                    return { status: "invalid_signature" };
+                }
+                const nonceMatch = /Nonce:\s*(.+)$/m.exec(body.message)?.[1] ?? "";
+                if (!this.nonceService.consume(body.address, nonceMatch)) {
+                    console.warn(`[Auth] Nonce mismatch for ${body.address}`);
+                    return { status: "invalid_nonce" };
+                }
+                return this.authService.issueTokenForAddress(body.address, body.role ?? "listener");
+            }
             const verifyOptions = {
                 address: body.address,
                 message: body.message,
@@ -47,7 +66,30 @@ let AuthController = class AuthController {
             if (chainId === 31337) {
                 verifyOptions.universalSignatureValidatorAddress = "0xA51c1fc2f0D1a1b8494Ed1FE312d7C3a78Ed91C0";
             }
-            const ok = await this.publicClient.verifyMessage(verifyOptions);
+            let ok = await this.publicClient.verifyMessage(verifyOptions);
+            let issuedAddress = body.address;
+            // Fallback: Passkey/Kernel may return EOA-style signature; recover signer and issue for that address
+            if (!ok) {
+                try {
+                    const recovered = await (0, viem_1.recoverMessageAddress)({
+                        message: body.message,
+                        signature: body.signature,
+                    });
+                    const eoaOk = await this.publicClient.verifyMessage({
+                        address: recovered,
+                        message: body.message,
+                        signature: body.signature,
+                    });
+                    if (eoaOk) {
+                        ok = true;
+                        issuedAddress = recovered.toLowerCase();
+                        console.log(`[Auth] Verified via recovered EOA: ${issuedAddress}`);
+                    }
+                }
+                catch {
+                    // ignore recovery errors
+                }
+            }
             if (!ok) {
                 console.warn(`[Auth] Signature verification failed for ${body.address}`);
                 return { status: "invalid_signature" };
@@ -57,7 +99,8 @@ let AuthController = class AuthController {
                 console.warn(`[Auth] Nonce mismatch for ${body.address}`);
                 return { status: "invalid_nonce" };
             }
-            return this.authService.issueTokenForAddress(body.address, body.role ?? "listener");
+            const result = this.authService.issueTokenForAddress(issuedAddress, body.role ?? "listener");
+            return issuedAddress !== body.address ? { ...result, address: issuedAddress } : result;
         }
         catch (err) {
             console.error(`[Auth] Error during verification:`, err);
