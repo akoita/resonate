@@ -489,6 +489,7 @@ export default function ArtistUploadPage() {
                     <div style={{ display: "flex", gap: "32px", alignItems: "flex-start" }}>
                       <div className="upload-item-artwork" style={{ width: "160px", height: "160px", margin: 0, borderRadius: "12px" }}>
                         {formData.artworkUrl ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
                           <img src={formData.artworkUrl} alt="Artwork" />
                         ) : (
                           <div className="artwork-placeholder" style={{ fontSize: "40px" }}>🖼️</div>
