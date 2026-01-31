@@ -194,6 +194,7 @@ function PlayerContent() {
       {/* THE HERO STAGE */}
       <section className="player-hero-stage">
         {artworkUrl ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
           <img src={artworkUrl} alt={displayTrack.title} className="player-art-master" />
         ) : (
           <div className="player-art-master player-art-placeholder" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

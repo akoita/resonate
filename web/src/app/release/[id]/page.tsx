@@ -185,6 +185,7 @@ export default function ReleaseDetails() {
             <img
               src={release.artworkUrl}
               alt={release.title}
+              /* eslint-disable-next-line @next/next/no-img-element */
               className={`header-artwork ${isUpdatingArtwork ? 'opacity-50' : ''}`}
               draggable="false"
             />

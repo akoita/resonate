@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import AuthGate from "../../components/auth/AuthGate";
@@ -36,7 +36,7 @@ export default function LibraryPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     // const queryTab = searchParams.get("tab"); // unused
-    const { playQueue, stop: handleStop, currentTrack, isPlaying, playNext, addToQueue } = usePlayer();
+    const { playQueue, stop: handleStop, currentTrack, playNext, addToQueue } = usePlayer();
     const [tracks, setTracks] = useState<LocalTrack[]>([]);
     const [loading, setLoading] = useState(true);
     const { addToast } = useToast();
@@ -48,7 +48,7 @@ export default function LibraryPage() {
     const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
     const [selectedAlbum, setSelectedAlbum] = useState<{ name: string; artist: string } | null>(null);
     const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
-    const { tracksToAddToPlaylist, setTracksToAddToPlaylist } = useUIStore();
+    const { setTracksToAddToPlaylist } = useUIStore();
     const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, items: ContextMenuItem[] } | null>(null);
 
@@ -139,10 +139,10 @@ export default function LibraryPage() {
         }
     }, [autoScan.result, addToast]);
 
-    const handlePlay = (track: LocalTrack, trackList: LocalTrack[]) => {
+    const handlePlay = useCallback((track: LocalTrack, trackList: LocalTrack[]) => {
         const index = trackList.findIndex(t => t.id === track.id);
         void playQueue(trackList, index >= 0 ? index : 0);
-    };
+    }, [playQueue]);
 
     // Global key listener for playback
     useEffect(() => {
@@ -161,7 +161,7 @@ export default function LibraryPage() {
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [selectedTrackId, tracks]);
+    }, [selectedTrackId, tracks, handlePlay]);
 
     const handleDelete = async (id: string) => {
         if (currentTrack?.id === id) handleStop();
