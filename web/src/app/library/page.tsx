@@ -13,7 +13,7 @@ import {
 } from "../../lib/localLibrary";
 import {
     Playlist,
-    getPlaylist,
+    // getPlaylist, // removed unused import
     removeTrackFromPlaylist,
     reorderTracks,
     renamePlaylist,
@@ -257,6 +257,7 @@ export default function LibraryPage() {
                             onMouseLeave={() => setHoveredArtwork(null)}
                         >
                             {artUrl ? (
+                                /* eslint-disable-next-line @next/next/no-img-element */
                                 <img src={artUrl} alt={track.title} />
                             ) : (
                                 <div className="library-item-artwork-placeholder">🎵</div>
@@ -320,6 +321,7 @@ export default function LibraryPage() {
                         }}
                     >
                         {artUrl ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
                             <img src={artUrl} alt={artist.name} className="library-card-artwork" />
                         ) : (
                             <div className="library-card-icon">🎤</div>
@@ -369,6 +371,7 @@ export default function LibraryPage() {
                         }}
                     >
                         {artUrl ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
                             <img src={artUrl} alt={album.name} className="library-card-artwork" />
                         ) : (
                             <div className="library-card-icon">💿</div>
@@ -403,6 +406,7 @@ export default function LibraryPage() {
 
                 <div className="detail-hero">
                     {artUrl ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
                         <img src={artUrl} alt={selectedArtist || ""} className="detail-hero-artwork" />
                     ) : (
                         <div className="detail-hero-artwork" style={{ background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "80px" }}>
@@ -456,6 +460,7 @@ export default function LibraryPage() {
                                         }}
                                     >
                                         {albumArtUrl ? (
+                                            /* eslint-disable-next-line @next/next/no-img-element */
                                             <img src={albumArtUrl} alt={album.name} className="library-card-artwork" />
                                         ) : (
                                             <div className="library-card-icon">💿</div>
@@ -503,6 +508,7 @@ export default function LibraryPage() {
 
                 <div className="detail-hero">
                     {artUrl ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
                         <img src={artUrl} alt={selectedAlbum.name} className="detail-hero-artwork" />
                     ) : (
                         <div className="detail-hero-artwork" style={{ background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "80px" }}>
@@ -654,6 +660,7 @@ export default function LibraryPage() {
                 {/* Artwork Preview Modal */}
                 {hoveredArtwork && (
                     <div className="artwork-preview-overlay">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                             src={hoveredArtwork.url}
                             alt={hoveredArtwork.title}
