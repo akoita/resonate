@@ -13,10 +13,10 @@ import {
 } from "../../lib/localLibrary";
 import {
     Playlist,
-    // getPlaylist, // removed unused import
-    removeTrackFromPlaylist,
-    reorderTracks,
-    renamePlaylist,
+    // getPlaylist,
+    // removeTrackFromPlaylist,
+    // reorderTracks,
+    // renamePlaylist,
 } from "../../lib/playlistStore";
 import { formatDuration } from "../../lib/metadataExtractor";
 import { useToast } from "../../components/ui/Toast";
@@ -35,7 +35,7 @@ type ViewTab = "tracks" | "artists" | "albums" | "playlists";
 export default function LibraryPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const queryTab = searchParams.get("tab");
+    // const queryTab = searchParams.get("tab"); // unused
     const { playQueue, stop: handleStop, currentTrack, isPlaying, playNext, addToQueue } = usePlayer();
     const [tracks, setTracks] = useState<LocalTrack[]>([]);
     const [loading, setLoading] = useState(true);
