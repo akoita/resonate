@@ -36,8 +36,8 @@ test.describe("Catalog & Home Page", () => {
 
     test("HOME-04: Hero actions are visible", async ({ page }) => {
         // Hero stage has "View Release" and "Tracklist" buttons
-        await expect(page.getByText("View Release")).toBeVisible();
-        await expect(page.getByText("Tracklist")).toBeVisible();
+        await expect(page.getByText(/View Release/i)).toBeVisible();
+        await expect(page.getByText(/Tracklist/i)).toBeVisible();
     });
 
     test("HOME-05: Good Evening section exists", async ({ page }) => {
