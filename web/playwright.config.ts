@@ -16,13 +16,21 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
-    command: process.env.CI ? "npm start" : "npm run dev",
-    url: "http://localhost:3001",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120000,
-    env: {
-      NEXT_PUBLIC_MOCK_AUTH: "true",
+  webServer: [
+    {
+      command: "cd ../backend && npm run start:dev",
+      port: 3000,
+      timeout: 120000,
+      reuseExistingServer: !process.env.CI,
     },
-  },
+    {
+      command: process.env.CI ? "npm start -- -p 3001" : "npm run dev",
+      url: "http://localhost:3001",
+      reuseExistingServer: !process.env.CI,
+      timeout: 120000,
+      env: {
+        NEXT_PUBLIC_MOCK_AUTH: "true",
+      },
+    },
+  ],
 });
