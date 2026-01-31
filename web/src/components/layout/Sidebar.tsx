@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useToast } from "../ui/Toast";
+import { useUIStore } from "../../lib/uiStore";
 
-const MENU_ITEMS = [
+const PRIMARY_ITEMS = [
   {
     name: "Home",
     href: "/",
@@ -32,11 +34,25 @@ const MENU_ITEMS = [
     )
   },
   {
+    name: "Playlists",
+    href: "/library?tab=playlists",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 18V5l12-2v13"></path>
+        <circle cx="6" cy="18" r="3"></circle>
+        <circle cx="18" cy="16" r="3"></circle>
+      </svg>
+    )
+  }
+];
+
+const SECONDARY_ITEMS = [
+  {
     name: "Upload",
     href: "/artist/upload",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
       </svg>
     )
   },
@@ -71,6 +87,7 @@ const MENU_ITEMS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { isPlaylistPanelOpen, togglePlaylistPanel } = useUIStore();
 
   return (
     <aside className="app-sidebar">
@@ -79,8 +96,8 @@ export default function Sidebar() {
         <h2 className="logo-text">Resonate</h2>
       </div>
 
-      <nav className="sidebar-nav">
-        {MENU_ITEMS.map((item) => {
+      <nav className="sidebar-nav primary">
+        {PRIMARY_ITEMS.map((item) => {
           const isActive = pathname === item.href;
           return (
             <Link
@@ -91,6 +108,27 @@ export default function Sidebar() {
               <span className="link-icon">{item.icon}</span>
               <span className="link-text">{item.name}</span>
               {isActive && <div className="active-pill" />}
+            </Link>
+          );
+        })}
+
+      </nav>
+
+      {/* Spacer to push secondary nav down */}
+      <div className="flex-grow" />
+
+      <nav className="sidebar-nav secondary">
+        <div className="nav-divider" />
+        {SECONDARY_ITEMS.map((item) => {
+          const isActive = pathname === item.href;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`sidebar-link ${isActive ? 'active' : ''}`}
+            >
+              <span className="link-icon">{item.icon}</span>
+              <span className="link-text">{item.name}</span>
             </Link>
           );
         })}
@@ -107,7 +145,6 @@ export default function Sidebar() {
             </div>
           </div>
         </div>
-        <div className="pro-badge">BETA v0.1</div>
       </div>
     </aside>
   );

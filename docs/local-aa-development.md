@@ -122,6 +122,25 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 # NEXT_PUBLIC_ZERODEV_PROJECT_ID=
 ```
 
+## Local Dev Auth (Sign-in with AA Wallet)
+
+On chain **31337** with no ZeroDev project ID, the app uses a **mock ECDSA signer** so you can sign in without Passkey/ZeroDev:
+
+1. **Frontend** (`AuthProvider`):
+   - Generates a random EOA (private key) and builds a Kernel smart account with the local ECDSA validator.
+   - Requests a nonce for the **smart account address**.
+   - Signs the auth message with the **EOA** (not the smart account), so the backend can verify via standard `ecrecover`.
+   - Sends to `/auth/verify`: `address` = smart account, `signerAddress` = EOA, `message`, `signature`.
+
+2. **Backend** (`auth.controller`):
+   - When `chainId === 31337` and `signerAddress` is present, verifies the **EOA** signature with `verifyMessage(signerAddress, message, signature)`.
+   - Consumes the nonce for `address` (smart account) and issues a JWT for the **smart account address**.
+   - The session identity is the smart account, so Wallet and AA flows use the same address.
+
+3. **Result**: You can "Sign up" / "Connect" locally and get a session tied to your local smart account; no Passkey or ZeroDev required.
+
+On other chains (e.g. Sepolia), the app uses ZeroDev Passkey and the backend verifies either the smart account (ERC-1271) or, if that fails, recovers the EOA from the signature and issues the token for the recovered address.
+
 ## Deploying Your Contracts
 
 After starting the local AA infrastructure, deploy your own contracts:
@@ -188,15 +207,15 @@ If you run `docker compose down -v` (which resets Anvil), addresses will change.
    make web-dev-local  # separate terminal
    ```
 
-2. **Open the app** at http://localhost:3000
+2. **Open the app** at http://localhost:3000 (or the port your frontend uses, e.g. 3001).
 
-3. **Connect wallet** or create an embedded wallet
+3. **Sign in**: Click "Sign up" or "Connect" in the top bar. With chainId 31337 and no ZeroDev project ID, the app uses the mock ECDSA signer and creates a local smart account; the backend verifies the EOA signature and issues a JWT for the smart account address (see [Local Dev Auth](#local-dev-auth-sign-in-with-aa-wallet)).
 
-4. **Go to Wallet page** and click "Enable Smart Account"
+4. **Go to Wallet page** and click "Enable Smart Account".
 
-5. **Click "Deploy Smart Account"** - this should succeed now
+5. **Click "Deploy Smart Account"** – the smart account is deployed on Anvil.
 
-6. **Check the console/logs** for the deployment transaction
+6. **Fund the account** if you need to send UserOperations (see [Funding Smart Accounts](#funding-smart-accounts)).
 
 ## Docker Compose Services
 

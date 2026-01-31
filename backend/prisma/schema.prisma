@@ -14,6 +14,8 @@ model User {
   wallet    Wallet?
   artist    Artist?
   sessions  Session[]
+  playlists Playlist[]
+  folders   Folder[]
 }
 
 model Wallet {
@@ -80,18 +82,19 @@ model Track {
 }
 
 model Stem {
-  id         String  @id @default(uuid())
-  trackId    String
-  title      String?
-  artist     String?
-  type       String
-  uri        String
-  data       Bytes?
-  mimeType   String?
-  artworkUrl String?
-  ipnftId    String?
-  checksum   String?
-  track      Track   @relation(fields: [trackId], references: [id])
+  id              String  @id @default(uuid())
+  trackId         String
+  title           String?
+  artist          String?
+  type            String
+  uri             String
+  data            Bytes?
+  mimeType        String?
+  artworkUrl      String?
+  ipnftId         String?
+  checksum        String?
+  durationSeconds Float?
+  track           Track   @relation(fields: [trackId], references: [id])
 }
 
 model Session {
@@ -124,4 +127,25 @@ model Payment {
   amountUsd Float
   status    String
   session   Session  @relation(fields: [sessionId], references: [id])
+}
+
+model Playlist {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  trackIds  String[]
+  folderId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
+  folder    Folder?  @relation(fields: [folderId], references: [id])
+}
+
+model Folder {
+  id        String     @id @default(uuid())
+  userId    String
+  name      String
+  createdAt DateTime   @default(now())
+  user      User       @relation(fields: [userId], references: [id])
+  playlists Playlist[]
 }

@@ -57,19 +57,31 @@ export function ReleaseHero({ release }: ReleaseHeroProps) {
 
         <h1 className="hero-main-title text-gradient">{release.title}</h1>
         <p className="hero-main-artist">
-          By <span className="artist-highlight">{release.primaryArtist || release.artist?.displayName || "Unknown Artist"}</span>
+          By <span
+            className="artist-highlight clickable"
+            onClick={(e) => {
+              e.stopPropagation();
+              // Prefer artist ID (UUID), fallback to name
+              const id = release.artist?.id || release.artistId;
+              const name = release.primaryArtist || release.artist?.displayName;
+              const target = id || name;
+              if (target) router.push(`/artist/${encodeURIComponent(target)}`);
+            }}
+          >
+            {release.primaryArtist || release.artist?.displayName || "Unknown Artist"}
+          </span>
         </p>
 
         <div className="hero-actions">
-          <Button onClick={handlePlay} className="btn-main-action">
-            <span className="btn-icon">▶</span> Play Now
+          <Button onClick={handleViewDetails} className="btn-main-action">
+            <span className="btn-icon">▶</span> View Release
           </Button>
           <Button
             variant="ghost"
             className="btn-secondary-action"
             onClick={handleViewDetails}
           >
-            View Details
+            Tracklist
           </Button>
         </div>
       </div>

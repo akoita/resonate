@@ -8,6 +8,8 @@ import { useAuth } from "../components/auth/AuthProvider";
 import { usePlayer } from "../lib/playerContext";
 import { listPublishedReleases, listMyReleases, Release } from "../lib/api";
 import { ReleaseHero } from "../components/home/ReleaseHero";
+import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
+import { useToast } from "../components/ui/Toast";
 
 export default function Home() {
   const router = useRouter();
@@ -16,6 +18,32 @@ export default function Home() {
   const [myReleases, setMyReleases] = useState<Release[]>([]);
   const [loading, setLoading] = useState(true);
   const { token, status } = useAuth();
+  const { addToast } = useToast();
+
+  // WebSocket status updates
+  useWebSockets((data: ReleaseStatusUpdate) => {
+    // Notify user when status changes
+    if (data.status === 'ready') {
+      addToast({
+        type: 'success',
+        title: 'Release Ready',
+        message: `"${data.title}" is now available in your studio!`,
+        onClick: () => router.push(`/release/${data.releaseId}`)
+      });
+    } else if (data.status === 'processing') {
+      addToast({
+        type: 'info',
+        title: 'Processing Started',
+        message: `We're preparing "${data.title}"...`,
+      });
+    }
+
+    setMyReleases((prev) =>
+      prev.map((r) =>
+        r.id === data.releaseId ? { ...r, status: data.status.toUpperCase() } : r
+      )
+    );
+  });
 
   useEffect(() => {
     listPublishedReleases(12)
@@ -84,14 +112,23 @@ export default function Home() {
                 variant={idx === 0 ? "featured" : "standard"}
                 title={release.title}
                 image={release.artworkUrl || undefined}
-                onClick={() => {
-                  const firstTrackId = release.tracks?.[0]?.id;
-                  if (firstTrackId) router.push(`/player?trackId=${firstTrackId}`);
-                }}
+                onClick={() => router.push(`/release/${release.id}`)}
               >
                 <div className="track-card-meta">
                   <div className="artist-stack">
-                    <span className="primary-artist">{release.primaryArtist || "Unknown Artist"}</span>
+                    <span
+                      className="primary-artist clickable"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Prefer artist ID, fallback to name
+                        const id = release.artist?.id || release.artistId;
+                        const name = release.primaryArtist;
+                        const target = id || name;
+                        if (target) router.push(`/artist/${encodeURIComponent(target)}`);
+                      }}
+                    >
+                      {release.primaryArtist || "Unknown Artist"}
+                    </span>
                     <span className="release-year">{release.releaseDate ? new Date(release.releaseDate).getFullYear() : '2026'}</span>
                   </div>
                   <span className="track-badge">{release.type}</span>
@@ -125,10 +162,7 @@ export default function Home() {
                 key={release.id}
                 title={release.title}
                 image={release.artworkUrl || undefined}
-                onClick={() => {
-                  const firstTrackId = release.tracks?.[0]?.id;
-                  if (firstTrackId) router.push(`/player?trackId=${firstTrackId}`);
-                }}
+                onClick={() => router.push(`/release/${release.id}`)}
               >
                 <div className="track-card-meta">
                   <div className="artist-stack">

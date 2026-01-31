@@ -18,6 +18,7 @@ import { PaymentsModule } from "./payments/payments.module";
 import { RecommendationsModule } from "./recommendations/recommendations.module";
 import { RemixModule } from "./remix/remix.module";
 import { SessionsModule } from "./sessions/sessions.module";
+import { PlaylistModule } from "./playlist/playlist.module";
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { SessionsModule } from "./sessions/sessions.module";
     RemixModule,
     AnalyticsModule,
     MaintenanceModule,
+    PlaylistModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

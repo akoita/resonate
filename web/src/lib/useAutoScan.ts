@@ -1,11 +1,13 @@
 /**
  * Library Auto-Scan Hook
  * Triggers automatic library scan on app load if configured
+ * Scans all configured library sources (multiple folders)
  * Provides real-time updates as tracks are indexed
  */
 import { useEffect, useState } from "react";
 import {
-    getLibrarySourceHandle,
+    getLibrarySourceHandles,
+    getUniqueLibrarySourceHandles,
     getSettings,
     updateSettings,
 } from "./librarySettings";
@@ -21,6 +23,7 @@ export interface AutoScanState {
 
 /**
  * Hook to trigger auto-scan on mount if conditions are met
+ * Scans all configured library sources in sequence
  * Returns newly added tracks in real-time during scanning
  */
 export function useAutoScan(): AutoScanState {
@@ -38,12 +41,12 @@ export function useAutoScan(): AutoScanState {
             const settings = await getSettings();
             if (!settings.autoScanOnLoad) return;
 
-            const handle = await getLibrarySourceHandle();
-            if (!handle) return;
+            const handles = await getUniqueLibrarySourceHandles();
+            if (!handles.length) return;
 
-            // Check permission silently
+            // Check permission for first handle (others will be checked per-scan)
             try {
-                const permission = await handle.requestPermission({ mode: "read" });
+                const permission = await handles[0]!.requestPermission({ mode: "read" });
                 if (permission !== "granted") return;
             } catch {
                 return;
@@ -53,25 +56,38 @@ export function useAutoScan(): AutoScanState {
 
             setState({ scanning: true, progress: null, result: null, newTracks: [] });
 
+            let totalAdded = 0;
+            let totalSkipped = 0;
+
             try {
-                const result = await scanAndIndex(
-                    handle,
-                    // Progress callback
-                    (progress) => {
-                        if (!cancelled) {
-                            setState((prev) => ({ ...prev, progress }));
-                        }
-                    },
-                    // Track added callback - for real-time UI updates
-                    (track) => {
-                        if (!cancelled) {
-                            setState((prev) => ({
-                                ...prev,
-                                newTracks: [...prev.newTracks, track],
-                            }));
-                        }
+                for (const handle of handles) {
+                    if (cancelled) break;
+                    try {
+                        const permission = await handle.requestPermission({ mode: "read" });
+                        if (permission !== "granted") continue;
+                    } catch {
+                        continue;
                     }
-                );
+
+                    const result = await scanAndIndex(
+                        handle,
+                        (progress) => {
+                            if (!cancelled) {
+                                setState((prev) => ({ ...prev, progress }));
+                            }
+                        },
+                        (track) => {
+                            if (!cancelled) {
+                                setState((prev) => ({
+                                    ...prev,
+                                    newTracks: [...prev.newTracks, track],
+                                }));
+                            }
+                        }
+                    );
+                    totalAdded += result.added;
+                    totalSkipped += result.skipped;
+                }
 
                 await updateSettings({ lastScanTime: new Date().toISOString() });
 
@@ -80,7 +96,7 @@ export function useAutoScan(): AutoScanState {
                         ...prev,
                         scanning: false,
                         progress: null,
-                        result
+                        result: { added: totalAdded, skipped: totalSkipped, total: totalAdded + totalSkipped },
                     }));
                 }
             } catch (error) {
@@ -90,7 +106,7 @@ export function useAutoScan(): AutoScanState {
                         ...prev,
                         scanning: false,
                         progress: null,
-                        result: null
+                        result: null,
                     }));
                 }
             }

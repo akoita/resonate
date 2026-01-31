@@ -10,9 +10,13 @@ import {
   Request,
   Res,
   StreamableFile,
+  UploadedFiles,
   UseGuards,
+  UseInterceptors,
+  BadRequestException,
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { Response } from "express";
 import { CatalogService } from "./catalog.service";
 
@@ -140,6 +144,22 @@ export class CatalogController {
     @Body() body: { title?: string; status?: string },
   ) {
     return this.catalogService.updateRelease(releaseId, body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Patch("releases/:releaseId/artwork")
+  @UseInterceptors(FileFieldsInterceptor([{ name: 'artwork', maxCount: 1 }]))
+  async updateArtwork(
+    @Param("releaseId") releaseId: string,
+    @UploadedFiles() files: { artwork?: Express.Multer.File[] },
+    @Request() req: any
+  ) {
+    const artwork = files.artwork?.[0];
+    if (!artwork) throw new BadRequestException("No artwork file provided");
+    return this.catalogService.updateReleaseArtwork(releaseId, req.user.userId, {
+      buffer: artwork.buffer,
+      mimetype: artwork.mimetype
+    });
   }
 
   @Get("artist/:artistId")

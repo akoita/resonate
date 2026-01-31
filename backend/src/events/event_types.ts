@@ -32,6 +32,7 @@ export interface StemsUploadedEvent extends BaseEvent {
         type: string;
         buffer?: Buffer;
         mimetype?: string;
+        durationSeconds?: number;
       }>;
     }>;
   };
@@ -54,6 +55,7 @@ export interface StemsProcessedEvent extends BaseEvent {
       type: string;
       data?: Buffer;
       mimeType?: string;
+      durationSeconds?: number;
     }>;
   }>;
 }
@@ -108,6 +110,13 @@ export interface CatalogUpdatedEvent extends BaseEvent {
   trackId: string;
   status: string;
   version: number;
+}
+
+export interface CatalogReleaseReadyEvent extends BaseEvent {
+  eventName: "catalog.release_ready";
+  releaseId: string;
+  artistId: string;
+  metadata?: any;
 }
 
 export interface SessionStartedEvent extends BaseEvent {
@@ -239,6 +248,7 @@ export type ResonateEvent =
   | CuratorStakedEvent
   | CuratorReportedEvent
   | CatalogUpdatedEvent
+  | CatalogReleaseReadyEvent
   | SessionStartedEvent
   | LicenseGrantedEvent
   | SessionEndedEvent
