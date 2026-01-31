@@ -78,6 +78,12 @@ jobs:
         run: npx prisma generate
         working-directory: backend
       
+      - name: Sync database schema
+        run: npx prisma db push --skip-generate
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://resonate:resonate@localhost:5432/resonate
+
       - name: Run backend tests
         run: npm run test
         working-directory: backend
