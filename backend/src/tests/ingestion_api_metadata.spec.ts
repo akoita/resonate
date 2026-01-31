@@ -26,7 +26,7 @@ describe("Ingestion API metadata", () => {
       .expect(201);
 
     const payload = {
-      artistId: "artist-1",
+      artistId: "artist-of-user-1",
       fileUris: ["gs://bucket/audio.wav"],
       metadata: {
         releaseType: "single",
@@ -47,7 +47,7 @@ describe("Ingestion API metadata", () => {
       .send(payload)
       .expect(201);
 
-    expect(response.body.trackId).toBeDefined();
-    expect(["queued", "complete"]).toContain(response.body.status);
+    expect(response.body.releaseId).toBeDefined();
+    expect(["queued", "complete", "processing"]).toContain(response.body.status);
   });
 });

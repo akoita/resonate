@@ -29,16 +29,19 @@ describe("IngestionService metadata", () => {
       metadata,
     });
 
-    expect(received?.metadata).toEqual(metadata);
+    // Verify metadata (ignore auto-generated tracks array)
+    const { tracks: _, ...receivedMeta } = received?.metadata || {};
+    expect(receivedMeta).toEqual(metadata);
   });
 
-  it("emits stems.processed and updates status", () => {
+  it("emits stems.processed and updates status", async () => {
     const eventBus = new EventBus();
     const service = new IngestionService(eventBus);
-    let processed: any;
 
-    eventBus.subscribe("stems.processed", (event) => {
-      processed = event;
+    const processedPromise = new Promise((resolve) => {
+      eventBus.subscribe("stems.processed", (event) => {
+        resolve(event);
+      });
     });
 
     const result = service.enqueueUpload({
@@ -46,8 +49,9 @@ describe("IngestionService metadata", () => {
       fileUris: ["gs://bucket/vocals.wav", "gs://bucket/drums.wav"],
     });
 
+    const processed: any = await processedPromise;
     const status = service.getStatus(result.trackId);
     expect(status.status).toBe("complete");
-    expect(processed?.stems?.length).toBe(2);
+    expect(processed?.tracks?.[0]?.stems?.length).toBe(2);
   });
 });
