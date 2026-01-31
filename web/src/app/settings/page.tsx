@@ -308,8 +308,8 @@ export default function SettingsPage() {
                                                 scanProgress.phase === "scanning"
                                                     ? "30%"
                                                     : scanProgress.filesFound > 0
-                                                      ? `${(scanProgress.filesIndexed / scanProgress.filesFound) * 100}%`
-                                                      : "0%",
+                                                        ? `${(scanProgress.filesIndexed / scanProgress.filesFound) * 100}%`
+                                                        : "0%",
                                         }}
                                     />
                                 </div>
