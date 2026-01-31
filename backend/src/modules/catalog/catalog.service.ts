@@ -77,14 +77,18 @@ export class CatalogService implements OnModuleInit {
       this.clearCache();
 
       let release = await prisma.release.findUnique({ where: { id: event.releaseId } });
-      if (!release) {
-        console.warn(`[Catalog] Release ${event.releaseId} not found yet. Retrying in 1s...`);
+      let attempts = 0;
+      const maxAttempts = 5;
+
+      while (!release && attempts < maxAttempts) {
+        attempts++;
+        console.warn(`[Catalog] Release ${event.releaseId} not found yet (attempt ${attempts}/${maxAttempts}). Retrying in 1s...`);
         await new Promise((resolve) => setTimeout(resolve, 1000));
         release = await prisma.release.findUnique({ where: { id: event.releaseId } });
       }
 
       if (!release) {
-        console.error(`[Catalog] Release ${event.releaseId} still not found. Dropping stems.`);
+        console.error(`[Catalog] Release ${event.releaseId} still not found after ${maxAttempts} attempts. Dropping stems.`);
         return;
       }
 

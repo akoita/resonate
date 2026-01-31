@@ -194,6 +194,7 @@ function PlayerContent() {
       {/* THE HERO STAGE */}
       <section className="player-hero-stage">
         {artworkUrl ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
           <img src={artworkUrl} alt={displayTrack.title} className="player-art-master" />
         ) : (
           <div className="player-art-master player-art-placeholder" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -226,14 +227,14 @@ function PlayerContent() {
         </div>
 
         <div className="player-controls-backstage">
-          <button className="ui-btn" onClick={prevTrack} disabled={currentIndex <= 0}>
+          <button className="ui-btn" onClick={prevTrack} disabled={currentIndex <= 0} aria-label="Prev">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="19 20 9 12 19 4 19 20" fill="currentColor" />
               <line x1="5" y1="19" x2="5" y2="5" />
             </svg>
           </button>
 
-          <button className="ui-btn btn-main" onClick={togglePlay}>
+          <button className="ui-btn btn-main" onClick={togglePlay} aria-label={isPlaying ? "Pause" : "Play"}>
             {isPlaying ? (
               <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="6" y="4" width="4" height="16" rx="1" />
@@ -246,7 +247,7 @@ function PlayerContent() {
             )}
           </button>
 
-          <button className="ui-btn" onClick={nextTrack} disabled={currentIndex >= queue.length - 1}>
+          <button className="ui-btn" onClick={nextTrack} disabled={currentIndex >= queue.length - 1} aria-label="Next">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="5 4 15 12 5 20 5 4" fill="currentColor" />
               <line x1="19" y1="5" x2="19" y2="19" />

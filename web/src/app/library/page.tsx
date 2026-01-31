@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import AuthGate from "../../components/auth/AuthGate";
@@ -13,10 +13,10 @@ import {
 } from "../../lib/localLibrary";
 import {
     Playlist,
-    getPlaylist,
-    removeTrackFromPlaylist,
-    reorderTracks,
-    renamePlaylist,
+    // getPlaylist,
+    // removeTrackFromPlaylist,
+    // reorderTracks,
+    // renamePlaylist,
 } from "../../lib/playlistStore";
 import { formatDuration } from "../../lib/metadataExtractor";
 import { useToast } from "../../components/ui/Toast";
@@ -35,8 +35,8 @@ type ViewTab = "tracks" | "artists" | "albums" | "playlists";
 export default function LibraryPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const queryTab = searchParams.get("tab");
-    const { playQueue, stop: handleStop, currentTrack, isPlaying, playNext, addToQueue } = usePlayer();
+    // const queryTab = searchParams.get("tab"); // unused
+    const { playQueue, stop: handleStop, currentTrack, playNext, addToQueue } = usePlayer();
     const [tracks, setTracks] = useState<LocalTrack[]>([]);
     const [loading, setLoading] = useState(true);
     const { addToast } = useToast();
@@ -48,7 +48,7 @@ export default function LibraryPage() {
     const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
     const [selectedAlbum, setSelectedAlbum] = useState<{ name: string; artist: string } | null>(null);
     const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
-    const { tracksToAddToPlaylist, setTracksToAddToPlaylist } = useUIStore();
+    const { setTracksToAddToPlaylist } = useUIStore();
     const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, items: ContextMenuItem[] } | null>(null);
 
@@ -139,10 +139,10 @@ export default function LibraryPage() {
         }
     }, [autoScan.result, addToast]);
 
-    const handlePlay = (track: LocalTrack, trackList: LocalTrack[]) => {
+    const handlePlay = useCallback((track: LocalTrack, trackList: LocalTrack[]) => {
         const index = trackList.findIndex(t => t.id === track.id);
         void playQueue(trackList, index >= 0 ? index : 0);
-    };
+    }, [playQueue]);
 
     // Global key listener for playback
     useEffect(() => {
@@ -161,7 +161,7 @@ export default function LibraryPage() {
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [selectedTrackId, tracks]);
+    }, [selectedTrackId, tracks, handlePlay]);
 
     const handleDelete = async (id: string) => {
         if (currentTrack?.id === id) handleStop();
@@ -257,6 +257,7 @@ export default function LibraryPage() {
                             onMouseLeave={() => setHoveredArtwork(null)}
                         >
                             {artUrl ? (
+                                /* eslint-disable-next-line @next/next/no-img-element */
                                 <img src={artUrl} alt={track.title} />
                             ) : (
                                 <div className="library-item-artwork-placeholder">🎵</div>
@@ -320,6 +321,7 @@ export default function LibraryPage() {
                         }}
                     >
                         {artUrl ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
                             <img src={artUrl} alt={artist.name} className="library-card-artwork" />
                         ) : (
                             <div className="library-card-icon">🎤</div>
@@ -369,6 +371,7 @@ export default function LibraryPage() {
                         }}
                     >
                         {artUrl ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
                             <img src={artUrl} alt={album.name} className="library-card-artwork" />
                         ) : (
                             <div className="library-card-icon">💿</div>
@@ -403,6 +406,7 @@ export default function LibraryPage() {
 
                 <div className="detail-hero">
                     {artUrl ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
                         <img src={artUrl} alt={selectedArtist || ""} className="detail-hero-artwork" />
                     ) : (
                         <div className="detail-hero-artwork" style={{ background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "80px" }}>
@@ -456,6 +460,7 @@ export default function LibraryPage() {
                                         }}
                                     >
                                         {albumArtUrl ? (
+                                            /* eslint-disable-next-line @next/next/no-img-element */
                                             <img src={albumArtUrl} alt={album.name} className="library-card-artwork" />
                                         ) : (
                                             <div className="library-card-icon">💿</div>
@@ -503,6 +508,7 @@ export default function LibraryPage() {
 
                 <div className="detail-hero">
                     {artUrl ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
                         <img src={artUrl} alt={selectedAlbum.name} className="detail-hero-artwork" />
                     ) : (
                         <div className="detail-hero-artwork" style={{ background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "80px" }}>
@@ -654,6 +660,7 @@ export default function LibraryPage() {
                 {/* Artwork Preview Modal */}
                 {hoveredArtwork && (
                     <div className="artwork-preview-overlay">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                             src={hoveredArtwork.url}
                             alt={hoveredArtwork.title}

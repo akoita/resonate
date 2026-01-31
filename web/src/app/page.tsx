@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card } from "../components/ui/Card";
 import { useAuth } from "../components/auth/AuthProvider";
-import { usePlayer } from "../lib/playerContext";
+// import { usePlayer } from "../lib/playerContext";
 import { listPublishedReleases, listMyReleases, Release } from "../lib/api";
 import { ReleaseHero } from "../components/home/ReleaseHero";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
