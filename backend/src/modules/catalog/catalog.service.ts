@@ -109,6 +109,7 @@ export class CatalogService implements OnModuleInit {
             });
 
             for (const stem of trackData.stems) {
+              console.log(`[Catalog] Upserting stem ${stem.id} for track ${trackData.id}. Data length: ${stem.data?.length ?? "NULL"} bytes`);
               await prisma.stem.upsert({
                 where: { id: stem.id },
                 create: {
@@ -118,12 +119,14 @@ export class CatalogService implements OnModuleInit {
                   uri: stem.uri,
                   data: stem.data,
                   mimeType: stem.mimeType,
+                  durationSeconds: stem.durationSeconds,
                 },
                 update: {
                   type: stem.type,
                   uri: stem.uri,
                   data: stem.data,
                   mimeType: stem.mimeType,
+                  durationSeconds: stem.durationSeconds,
                 },
               });
             }
@@ -135,6 +138,15 @@ export class CatalogService implements OnModuleInit {
           data: { status: "ready" },
         });
         console.log(`[Catalog] Release ${event.releaseId} updated to ready`);
+
+        this.eventBus.publish({
+          eventName: "catalog.release_ready",
+          eventVersion: 1,
+          occurredAt: new Date().toISOString(),
+          releaseId: event.releaseId,
+          artistId: event.artistId,
+          metadata: event.metadata,
+        });
       } catch (err) {
         console.error(`[Catalog] Failed to finalise release ${event.releaseId}:`, err);
       }
@@ -169,7 +181,7 @@ export class CatalogService implements OnModuleInit {
         createdAt: true,
         artworkMimeType: true, // Useful for frontend to know, but DATA must be excluded
         artist: {
-          select: { id: true, displayName: true, payoutAddress: true }
+          select: { id: true, displayName: true, userId: true, payoutAddress: true }
         },
         tracks: {
           orderBy: { position: "asc" },
@@ -188,6 +200,7 @@ export class CatalogService implements OnModuleInit {
                 uri: true,
                 ipnftId: true,
                 checksum: true,
+                durationSeconds: true,
                 // Exclude data and mimeType (huge blobs)
               }
             }
@@ -269,6 +282,7 @@ export class CatalogService implements OnModuleInit {
             type: true,
             uri: true,
             ipnftId: true,
+            durationSeconds: true,
             // Exclude data
           }
         },
@@ -278,7 +292,7 @@ export class CatalogService implements OnModuleInit {
             title: true,
             primaryArtist: true,
             artworkMimeType: true,
-            artist: { select: { id: true, displayName: true } }
+            artist: { select: { id: true, displayName: true, userId: true } }
           }
         }
       }
@@ -303,7 +317,7 @@ export class CatalogService implements OnModuleInit {
         createdAt: true,
         artworkMimeType: true,
         artist: {
-          select: { id: true, displayName: true }
+          select: { id: true, displayName: true, userId: true }
         },
         tracks: {
           orderBy: { position: "asc" },
@@ -321,6 +335,7 @@ export class CatalogService implements OnModuleInit {
                 type: true,
                 uri: true,
                 ipnftId: true,
+                durationSeconds: true,
                 // Exclude data
               }
             }
@@ -336,6 +351,9 @@ export class CatalogService implements OnModuleInit {
       select: {
         id: true,
         artistId: true,
+        artist: {
+          select: { id: true, displayName: true, userId: true }
+        },
         title: true,
         status: true,
         type: true,
@@ -355,7 +373,7 @@ export class CatalogService implements OnModuleInit {
             position: true,
             explicit: true,
             stems: {
-              select: { id: true, type: true, uri: true }
+              select: { id: true, type: true, uri: true, durationSeconds: true }
             }
           }
         }
@@ -387,6 +405,34 @@ export class CatalogService implements OnModuleInit {
     });
   }
 
+  async updateReleaseArtwork(releaseId: string, userId: string, artwork: { buffer: Buffer, mimetype: string }) {
+    const release = await prisma.release.findUnique({
+      where: { id: releaseId },
+      include: { artist: true }
+    });
+
+    if (!release) throw new BadRequestException("Release not found");
+    if (release.artist?.userId !== userId) {
+      throw new BadRequestException("Not authorized to update this release");
+    }
+
+    const updated = await prisma.release.update({
+      where: { id: releaseId },
+      data: {
+        artworkData: artwork.buffer,
+        artworkMimeType: artwork.mimetype
+      },
+      select: { id: true, artworkMimeType: true }
+    });
+
+    this.clearCache();
+    return {
+      success: true,
+      id: updated.id,
+      artworkUrl: `/catalog/releases/${releaseId}/artwork?t=${Date.now()}`
+    };
+  }
+
   async search(
     query: string,
     filters?: { stemType?: string; hasIpnft?: boolean; limit?: number }
@@ -408,7 +454,10 @@ export class CatalogService implements OnModuleInit {
       where: {
         OR: [
           { title: { contains: query, mode: "insensitive" } },
-          { tracks: { some: { title: { contains: query, mode: "insensitive" } } } }
+          { primaryArtist: { contains: query, mode: "insensitive" } },
+          { featuredArtists: { contains: query, mode: "insensitive" } },
+          { tracks: { some: { title: { contains: query, mode: "insensitive" } } } },
+          { tracks: { some: { artist: { contains: query, mode: "insensitive" } } } }
         ],
         status: "ready"
       },
@@ -437,7 +486,7 @@ export class CatalogService implements OnModuleInit {
             position: true,
             explicit: true,
             stems: {
-              select: { id: true, type: true, uri: true }
+              select: { id: true, type: true, uri: true, durationSeconds: true }
             }
           }
         }

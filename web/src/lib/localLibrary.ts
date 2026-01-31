@@ -86,6 +86,14 @@ export async function saveTrack(
 }
 
 /**
+ * Save track metadata directly (useful for remote catalog tracks)
+ */
+export async function saveTrackMetadata(track: LocalTrack): Promise<LocalTrack> {
+    await trackStore.setItem(track.id, track);
+    return track;
+}
+
+/**
  * Get a track by ID
  */
 export async function getTrack(id: string): Promise<LocalTrack | null> {
@@ -116,7 +124,7 @@ export async function getTrackUrl(track: LocalTrack): Promise<string | null> {
 
     const blob = await getTrackBlob(track.blobKey);
     if (!blob) return null;
-    
+
     const url = URL.createObjectURL(blob);
     trackUrlCache.set(track.blobKey, url);
     return url;

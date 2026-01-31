@@ -24,6 +24,8 @@ interface PlayerContextType {
     seek: (percent: number) => void;
     setVolume: (value: number) => void;
     stop: () => void;
+    addToQueue: (track: LocalTrack) => void;
+    playNext: (track: LocalTrack) => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
@@ -420,9 +422,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         if (isPlaying) {
             safePause();
         } else {
-            void safePlay();
+            // If we have a current track but audio isn't loaded (e.g. after hydration or track selection), load and play it
+            const track = currentIndex >= 0 ? queue[currentIndex] : null;
+            const audioHasTrack = audioRef.current?.src && currentTrackIdRef.current === track?.id;
+            if (track && !audioHasTrack) {
+                void playQueue(queue, currentIndex);
+            } else {
+                void safePlay();
+            }
         }
-    }, [isPlaying, safePause, safePlay]);
+    }, [isPlaying, currentIndex, queue, safePause, safePlay, playQueue]);
 
     const stop = useCallback(() => {
         safePause();
@@ -576,7 +585,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             toggleRepeatMode,
             seek,
             setVolume,
-            stop
+            stop,
+            addToQueue: (track: LocalTrack) => {
+                setQueue(prev => [...prev, track]);
+            },
+            playNext: (track: LocalTrack) => {
+                if (currentIndex === -1) {
+                    void playQueue([track], 0);
+                } else {
+                    const newQueue = [...queue];
+                    newQueue.splice(currentIndex + 1, 0, track);
+                    setQueue(newQueue);
+                }
+            }
         }}>
             {children}
         </PlayerContext.Provider>

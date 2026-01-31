@@ -2,11 +2,15 @@
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { Button } from "../../components/ui/Button";
 import SocialShare from "../../components/social/SocialShare";
 import { usePlayer } from "../../lib/playerContext";
 import { formatDuration } from "../../lib/metadataExtractor";
 import { getTrack, getRelease } from "../../lib/api";
 import { LocalTrack } from "../../lib/localLibrary";
+import { AddToPlaylistModal } from "../../components/library/AddToPlaylistModal";
+import { ContextMenu, ContextMenuItem } from "../../components/ui/ContextMenu";
+import { useToast } from "../../components/ui/Toast";
 
 function PlayerContent() {
   const searchParams = useSearchParams();
@@ -27,8 +31,14 @@ function PlayerContent() {
     currentIndex,
     queue,
     playQueue,
-    artworkUrl
+    artworkUrl,
+    playNext,
+    addToQueue
   } = usePlayer();
+
+  const { addToast } = useToast();
+  const [showAddToPlaylist, setShowAddToPlaylist] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, track: LocalTrack } | null>(null);
 
   // Local state for seeking
   const [isDragging, setIsDragging] = useState(false);
@@ -66,6 +76,18 @@ function PlayerContent() {
     setVolume(parseFloat(e.target.value) / 100);
   };
 
+  const handleContextMenu = (e: React.MouseEvent, track: LocalTrack) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, track });
+  };
+
+  const getTrackContextMenuItems = (track: LocalTrack): ContextMenuItem[] => [
+    { label: "Play Next", icon: "⏭️", onClick: () => { playNext(track); addToast({ type: "success", title: "Queued", message: `"${track.title}" will play next` }); } },
+    { label: "Add to Queue", icon: "➕", onClick: () => { addToQueue(track); addToast({ type: "success", title: "Queued", message: `Added "${track.title}" to queue` }); } },
+    { separator: true, label: "", onClick: () => { } },
+    { label: "Add to Playlist", icon: "🎵", onClick: () => setShowAddToPlaylist(true) },
+  ];
+
   const lastProcessedTrackId = useRef<string | null>(null);
 
   useEffect(() => {
@@ -90,6 +112,16 @@ function PlayerContent() {
             // Fetch the full release to get the entire tracklist
             const release = await getRelease(selectedTrack.releaseId);
             if (release && release.tracks) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const getTrackDuration = (track: any): number => {
+                if (!track.stems) return 0;
+                // Prefer stems with durationSeconds
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const withDuration = track.stems.find((s: any) => s.durationSeconds);
+                if (withDuration) return withDuration.durationSeconds;
+                return track.stems[0]?.durationSeconds || 0;
+              };
+
               const playableTracks: LocalTrack[] = release.tracks.flatMap((track) => {
                 const masteredStems = (track.stems || []).filter(s => s.type === "ORIGINAL" || s.type === "other");
 
@@ -102,7 +134,7 @@ function PlayerContent() {
                     album: release.title,
                     year: release.releaseDate ? new Date(release.releaseDate).getFullYear() : null,
                     genre: release.genre || null,
-                    duration: 0,
+                    duration: getTrackDuration(track),
                     createdAt: track.createdAt,
                     remoteUrl: s.uri,
                     remoteArtworkUrl: release.artworkUrl || undefined,
@@ -118,7 +150,7 @@ function PlayerContent() {
                     album: release.title,
                     year: release.releaseDate ? new Date(release.releaseDate).getFullYear() : null,
                     genre: release.genre || null,
-                    duration: 0,
+                    duration: getTrackDuration(track),
                     createdAt: track.createdAt,
                     remoteUrl: s.uri,
                     remoteArtworkUrl: release.artworkUrl || undefined,
@@ -173,6 +205,14 @@ function PlayerContent() {
         <p className="hero-artist">
           {displayTrack.artist} {displayTrack.album ? ` • ${displayTrack.album}` : ""}
         </p>
+
+        {currentTrack && (
+          <div style={{ marginTop: "20px" }}>
+            <Button variant="ghost" onClick={() => setShowAddToPlaylist(true)}>
+              <span style={{ marginRight: "8px" }}>➕</span> Add to Playlist
+            </Button>
+          </div>
+        )}
       </section>
 
       {/* THE FLOATING CONSOLE */}
@@ -214,8 +254,8 @@ function PlayerContent() {
           </button>
         </div>
 
-        <div className="player-progress" style={{ marginBottom: "var(--space-10)" }}>
-          <div className="studio-label" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: "8px" }}>
+        <div className="player-progress" style={{ marginBottom: "var(--space-2)" }}>
+          <div className="studio-label" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: "2px" }}>
             <span>Signal Progress</span>
             <span>{formatTime(isDragging ? (dragValue / 100) * duration : currentTime)} / {formatTime(duration)}</span>
           </div>
@@ -232,8 +272,8 @@ function PlayerContent() {
           />
         </div>
 
-        <div className="player-volume" style={{ background: "transparent", padding: 0, marginBottom: "var(--space-10)" }}>
-          <div className="studio-label" style={{ marginBottom: "12px" }}>Output Gain</div>
+        <div className="player-volume" style={{ background: "transparent", padding: 0, marginBottom: "var(--space-1)" }}>
+          <div className="studio-label" style={{ marginBottom: "2px" }}>Output Gain</div>
           <div style={{ display: "flex", alignItems: "center", gap: "16px", width: "100%" }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.4 }}>
               <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
@@ -250,7 +290,7 @@ function PlayerContent() {
         </div>
 
         <div className="queue-section" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <div className="studio-label" style={{ marginBottom: "var(--space-4)" }}>Queue Manifest</div>
+          <div className="studio-label" style={{ marginBottom: "var(--space-2)" }}>Queue Manifest</div>
           <div className="queue-list" style={{ flex: 1, overflowY: "auto", paddingRight: "8px" }}>
             {queue.length > 0 ? (
               queue.map((track, idx) => (
@@ -258,6 +298,7 @@ function PlayerContent() {
                   key={`${track.id}-${idx}`}
                   className={`queue-item ${currentIndex === idx ? "queue-item-active" : ""}`}
                   onClick={() => playQueue(queue, idx)}
+                  onContextMenu={(e) => handleContextMenu(e, track)}
                   style={{
                     background: currentIndex === idx ? "rgba(124, 92, 255, 0.15)" : "rgba(255,255,255,0.02)",
                     borderRadius: "12px",
@@ -281,11 +322,27 @@ function PlayerContent() {
           </div>
         </div>
 
-        <div className="player-share-section" style={{ marginTop: "var(--space-8)", paddingTop: "var(--space-6)", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-          <div className="studio-label" style={{ marginBottom: "var(--space-4)" }}>Broadcast Signal</div>
+        <div className="player-share-section" style={{ marginTop: "var(--space-2)", paddingTop: "var(--space-2)", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+          <div className="studio-label" style={{ marginBottom: "var(--space-2)" }}>Broadcast Signal</div>
           <SocialShare title={displayTrack.title} artist={displayTrack.artist || "Unknown"} />
         </div>
       </aside>
+
+      {showAddToPlaylist && currentTrack && (
+        <AddToPlaylistModal
+          tracks={[currentTrack]}
+          onClose={() => setShowAddToPlaylist(false)}
+        />
+      )}
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={getTrackContextMenuItems(contextMenu.track)}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }

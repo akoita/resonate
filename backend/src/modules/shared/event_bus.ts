@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { ResonateEvent } from "../../events/event_types";
+import { randomUUID } from "crypto";
 
 type Handler<T extends ResonateEvent> = (event: T) => void;
 
@@ -17,5 +18,6 @@ export class EventBus {
       this.handlers[eventName] = [];
     }
     this.handlers[eventName].push(handler as Handler<ResonateEvent>);
+    console.log(`[EventBus] Subscribed to ${eventName}. Total handlers: ${this.handlers[eventName].length}`);
   }
 }

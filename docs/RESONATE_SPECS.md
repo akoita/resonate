@@ -46,10 +46,36 @@ Resonate builds on established Ethereum standards:
 | Revenue Splits | [0xSplits](https://splits.org/) | Trustless, composable revenue distribution |
 | Signature Verification | [EIP-1271](https://eips.ethereum.org/EIPS/eip-1271) | Smart contract signature validation |
 | Audio Processing | [Demucs](https://github.com/facebookresearch/demucs) | State-of-the-art source separation |
+| Agent Identity | [ERC-8004](https://eips.ethereum.org/EIPS/eip-8004) | Trustless Agent Identity & Reputation |
 
 ---
 
-## 4. Architecture
+---
+
+## 4. Agent Trust & Identity (ERC-8004)
+
+To enable a truly open "Agentic Economy," Resonate adopts **ERC-8004 (Trustless Agents)**. This standard, now live on Ethereum Mainnet, complements the execution layer (ERC-4337) by providing a portable identity and reputation layer for AI agents.
+
+### Why ERC-8004?
+- **Portable Identity**: Agents have an on-chain resume (Identity NFT) that persists across platforms.
+- **Proof of Taste**: A standardized "Reputation Registry" allows agents to build a verifiable track record of curation success.
+- **Discovery**: Users can discover agents based on verified capabilities and historical performance (e.g., "Show me agents with >90% ROI on Techno tracks").
+
+### Integration Strategy
+
+#### Phase 1: Identity (The "Agent ID")
+Every Resonate Agent (Smart Account) is minted a corresponding **ERC-8004 Identity**.
+- **Registration File**: Stores the agent's "System Prompt", "Vibe Settings" (e.g., Deep House specialist), and operational parameters.
+- **On-Chain Link**: The Identity NFT is bound to the Agent's ERC-4337 wallet address.
+
+#### Phase 2: Reputation (The "Taste Score")
+Resonate publishes curation outcomes to the **ERC-8004 Reputation Registry**.
+- **Signals**: When an agent "bets" on a track that later gains traction, the protocol emits a positive reputation signal.
+- **Leaderboards**: Verified "Taste Scores" drive the discovery of high-performing agents.
+
+---
+
+## 5. Architecture
 
 ### Architectural Style
 Event-Driven Microservices with Hexagonal Architecture (Ports & Adapters).
@@ -91,7 +117,7 @@ Event-Driven Microservices with Hexagonal Architecture (Ports & Adapters).
 
 ---
 
-## 5. Key Features (MVP)
+## 6. Key Features (MVP)
 
 1. **Smart Stem Upload** — Drag-and-drop audio → AI separation → IPFS storage → IP-NFT mint
 2. **Agent Wallet** — ERC-4337 smart account with monthly budget cap for autonomous spending
@@ -100,7 +126,7 @@ Event-Driven Microservices with Hexagonal Architecture (Ports & Adapters).
 
 ---
 
-## 6. Technology Stack
+## 7. Technology Stack
 
 | Layer | Technology | Rationale |
 |-------|------------|-----------|
@@ -116,7 +142,7 @@ Event-Driven Microservices with Hexagonal Architecture (Ports & Adapters).
 
 ---
 
-## 7. Project Status
+## 8. Project Status
 
 ### Current Focus
 - Core infrastructure: authentication, catalog, playback
@@ -137,7 +163,7 @@ The following represent potential directions, not commitments:
 ---
 
 
-## 8. Success Metrics
+## 9. Success Metrics
 
 | Metric | Target |
 |--------|--------|
@@ -147,7 +173,7 @@ The following represent potential directions, not commitments:
 
 ---
 
-## 9. References
+## 10. References
 
 - [EIP-4337: Account Abstraction](https://eips.ethereum.org/EIPS/eip-4337)
 - [EIP-1155: Multi Token Standard](https://eips.ethereum.org/EIPS/eip-1155)
