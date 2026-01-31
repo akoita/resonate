@@ -3,20 +3,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { fetchNonce, fetchWallet, verifySignature, type WalletRecord } from "../../lib/api";
 import { clearEmbeddedAccount } from "../../lib/embedded_wallet";
+import { syncPlaylists } from "../../lib/playlistStore";
 import { useZeroDev } from "./ZeroDevProviderClient";
-import {
-  createKernelAccount,
-  constants
-} from "@zerodev/sdk";
-import {
-  signerToEcdsaValidator
-} from "@zerodev/ecdsa-validator";
-import {
-  toPasskeyValidator,
-  toWebAuthnKey,
-  WebAuthnMode,
-  PasskeyValidatorContractVersion
-} from "@zerodev/passkey-validator";
+import type { WebAuthnMode } from "@zerodev/passkey-validator";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 // Local AA contacts for Anvil (deployed by DeployLocalAA.s.sol)
@@ -29,9 +18,9 @@ const LOCAL_ECDSA_VALIDATOR = "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9" as co
  * - Local (31337): Use locally deployed EntryPoint
  * - Other chains: Use canonical v0.7 EntryPoint
  */
-function getLocalEntryPoint(chainId: number) {
+async function getLocalEntryPoint(chainId: number) {
+  const { constants } = await import("@zerodev/sdk");
   if (chainId === 31337) {
-    // Return structure matching what constants.getEntryPoint returns
     return {
       address: LOCAL_ENTRY_POINT,
       version: "0.7" as const,
@@ -45,6 +34,7 @@ type AuthState = {
   address: string | null;
   token: string | null;
   role: string | null;
+  userId: string | null;
   wallet: WalletRecord | null;
   error?: string;
   connect: () => Promise<void>;
@@ -67,19 +57,23 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [address, setAddress] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [wallet, setWallet] = useState<WalletRecord | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
   const { projectId, publicClient, chainId } = useZeroDev();
 
-  const resolveRole = useCallback((jwt: string | null) => {
-    if (!jwt) return null;
+  const resolveAuth = useCallback((jwt: string | null) => {
+    if (!jwt) return { role: null, userId: null };
     try {
       const payload = jwt.split(".")[1];
-      if (!payload) return null;
+      if (!payload) return { role: null, userId: null };
       const decoded = JSON.parse(atob(payload));
-      return typeof decoded.role === "string" ? decoded.role : null;
+      return {
+        role: typeof decoded.role === "string" ? decoded.role : null,
+        userId: typeof decoded.sub === "string" ? decoded.sub : null,
+      };
     } catch {
-      return null;
+      return { role: null, userId: null };
     }
   }, []);
 
@@ -87,12 +81,14 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     const storedToken = localStorage.getItem(TOKEN_KEY);
     const storedAddress = localStorage.getItem(ADDRESS_KEY);
     if (storedToken && storedAddress) {
+      const { role: r, userId: u } = resolveAuth(storedToken);
       setToken(storedToken);
       setAddress(storedAddress);
-      setRole(resolveRole(storedToken));
+      setRole(r);
+      setUserId(u);
       setStatus("authenticated");
     }
-  }, [resolveRole]);
+  }, [resolveAuth]);
 
   const refreshWallet = useCallback(async () => {
     if (!token || !address) return;
@@ -107,22 +103,29 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (status === "authenticated") {
       refreshWallet();
+      void syncPlaylists();
     }
   }, [status, refreshWallet]);
 
-  const authenticate = useCallback(async (mode: WebAuthnMode = WebAuthnMode.Login) => {
+  const authenticate = useCallback(async (mode: WebAuthnMode) => {
     console.log("[Auth] Starting authentication...", { mode, chainId, projectId });
     setStatus("loading");
     setError(undefined);
     try {
-      // In development, if no Project ID OR if we are on the local chain, use a simple ECDSA signer.
-      // We use Kernel v3.1 with local contracts.
+      const sdk = await import("@zerodev/sdk");
+      const ecdsa = await import("@zerodev/ecdsa-validator");
+      const passkey = await import("@zerodev/passkey-validator");
+
+      const { createKernelAccount, constants } = sdk;
+      const { signerToEcdsaValidator } = ecdsa;
+      const { toPasskeyValidator, toWebAuthnKey, PasskeyValidatorContractVersion } = passkey;
+
       if (process.env.NODE_ENV === "development" && (!projectId || chainId === 31337)) {
         console.warn("Local development or missing Project ID - using mock ECDSA signer (Kernel v3)");
         const privateKey = generatePrivateKey();
         const signer = privateKeyToAccount(privateKey);
 
-        const entryPoint = getLocalEntryPoint(chainId);
+        const entryPoint = await getLocalEntryPoint(chainId);
         console.log("[Auth] Mock Signer - EntryPoint:", entryPoint);
 
         const ecdsaValidator = await signerToEcdsaValidator(publicClient, {
@@ -157,12 +160,14 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
         const { nonce } = await fetchNonce(saAddress);
         const message = `Resonate Sign-In\nAddress: ${saAddress}\nNonce: ${nonce}\nIssued At: ${new Date().toISOString()}`;
-        const signature = await account.signMessage({ message });
+        // Sign with EOA so backend can verify via ecrecover (Kernel signMessage format not accepted by verifyMessage for SA)
+        const signature = await signer.signMessage({ message });
 
         const result = await verifySignature({
           address: saAddress,
           message,
           signature,
+          signerAddress: signer.address,
         });
 
         if (!("accessToken" in result)) {
@@ -171,9 +176,12 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
         localStorage.setItem(TOKEN_KEY, result.accessToken);
         localStorage.setItem(ADDRESS_KEY, saAddress.toLowerCase());
+
+        const { role: r, userId: u } = resolveAuth(result.accessToken);
         setToken(result.accessToken);
         setAddress(saAddress.toLowerCase());
-        setRole(resolveRole(result.accessToken));
+        setRole(r);
+        setUserId(u);
         setStatus("authenticated");
         return;
       }
@@ -184,11 +192,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
       // Real Passkey login logic
       console.log(`Triggering ZeroDev Auth UI (Passkey - ${mode})...`);
-      const entryPoint = getLocalEntryPoint(chainId);
-      // Ensure we use the deployed version for local, or fallback to constant for prod
+      const entryPoint = await getLocalEntryPoint(chainId);
       const kernelVersion = chainId === 31337 ? "0.3.3" : constants.KERNEL_V3_1;
 
-      // We'll attempt to authenticate via Passkey.
       const webAuthnKey = await toWebAuthnKey({
         passkeyName: "Resonate",
         passkeyServerUrl: `/api/zerodev/${projectId}`,
@@ -233,11 +239,15 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         throw new Error(result.status);
       }
 
+      const authAddress = result.address ?? saAddress;
       localStorage.setItem(TOKEN_KEY, result.accessToken);
-      localStorage.setItem(ADDRESS_KEY, saAddress.toLowerCase());
+      localStorage.setItem(ADDRESS_KEY, authAddress.toLowerCase());
+
+      const { role: r, userId: u } = resolveAuth(result.accessToken);
       setToken(result.accessToken);
-      setAddress(saAddress.toLowerCase());
-      setRole(resolveRole(result.accessToken));
+      setAddress(authAddress.toLowerCase());
+      setRole(r);
+      setUserId(u);
       setStatus("authenticated");
 
     } catch (err) {
@@ -245,13 +255,16 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       setError((err as Error).message);
       setStatus("error");
     }
-  }, [projectId, publicClient, resolveRole, chainId]);
+  }, [projectId, publicClient, resolveAuth, chainId]);
 
   const login = useCallback(async () => {
+    // Need to handle WebAuthnMode carefully since it's an enum
+    const { WebAuthnMode } = await import("@zerodev/passkey-validator");
     await authenticate(WebAuthnMode.Login);
   }, [authenticate]);
 
   const signup = useCallback(async () => {
+    const { WebAuthnMode } = await import("@zerodev/passkey-validator");
     await authenticate(WebAuthnMode.Register);
   }, [authenticate]);
 
@@ -275,6 +288,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     setToken(null);
     setAddress(null);
     setRole(null);
+    setUserId(null);
     setWallet(null);
     setStatus("idle");
   }, []);
@@ -285,6 +299,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       address,
       token,
       role,
+      userId,
       wallet,
       error,
       connect,
@@ -295,7 +310,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       disconnect,
       refreshWallet,
     }),
-    [status, address, token, role, wallet, error, connect, login, signup, connectPrivy, connectEmbedded, disconnect, refreshWallet]
+    [status, address, token, role, userId, wallet, error, connect, login, signup, connectPrivy, connectEmbedded, disconnect, refreshWallet]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

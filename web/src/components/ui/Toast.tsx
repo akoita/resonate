@@ -16,6 +16,7 @@ type Toast = {
     title: string;
     message?: string;
     duration?: number;
+    onClick?: () => void;
 };
 
 type ToastContextType = {
@@ -116,8 +117,19 @@ function ToastItem({
         ),
     };
 
+    const handleToastClick = () => {
+        if (toast.onClick) {
+            toast.onClick();
+            onRemove(toast.id);
+        }
+    };
+
     return (
-        <div className={`toast toast-${toast.type}`}>
+        <div
+            className={`toast toast-${toast.type} ${toast.onClick ? 'clickable' : ''}`}
+            onClick={handleToastClick}
+            style={toast.onClick ? { cursor: 'pointer' } : undefined}
+        >
             <div className="toast-icon">{icons[toast.type]}</div>
             <div className="toast-content">
                 <div className="toast-title">{toast.title}</div>
@@ -125,7 +137,10 @@ function ToastItem({
             </div>
             <button
                 className="toast-close"
-                onClick={() => onRemove(toast.id)}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onRemove(toast.id);
+                }}
                 aria-label="Close"
             >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

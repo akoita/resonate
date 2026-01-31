@@ -124,6 +124,18 @@ let WalletService = class WalletService {
             signature: "0x",
         };
         try {
+            // In development with local bundler, simulate successful deployment
+            // Real deployment requires proper initCode with factory-specific calldata
+            const isDev = process.env.NODE_ENV !== "production";
+            const skipBundler = process.env.AA_SKIP_BUNDLER === "true";
+            if (isDev && skipBundler) {
+                // Simulate deployment for testing UI flows
+                const mockTxHash = `0x${Buffer.from(wallet.address + Date.now()).toString("hex").slice(0, 64)}`;
+                return prisma_1.prisma.wallet.update({
+                    where: { id: wallet.id },
+                    data: { deploymentTxHash: mockTxHash },
+                });
+            }
             const userOpHash = await this.erc4337Client.sendUserOperation(userOp);
             await this.erc4337Client.waitForReceipt(userOpHash);
             return prisma_1.prisma.wallet.update({
@@ -136,6 +148,11 @@ let WalletService = class WalletService {
             if (message.includes("fetch") || message.includes("ECONNREFUSED")) {
                 throw new Error("Bundler not reachable. Ensure the AA bundler is running at " +
                     (process.env.AA_BUNDLER || "http://localhost:4337"));
+            }
+            if (message.includes("0x99410554") || message.includes("SenderAddressResult")) {
+                throw new Error("Smart account address mismatch. The factory cannot create an account at the expected address. " +
+                    "This usually means the initCode/factoryData is incorrect. " +
+                    "Set AA_SKIP_BUNDLER=true in .env to simulate deployment for testing.");
             }
             throw new Error(`Smart account deployment failed: ${message}`);
         }

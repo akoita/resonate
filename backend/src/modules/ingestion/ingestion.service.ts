@@ -36,6 +36,7 @@ export class IngestionService {
     artwork?: Express.Multer.File;
     metadata?: any;
   }) {
+    const mm = await import("music-metadata");
     const releaseId = this.generateId("rel");
 
     // Prepare artwork
@@ -50,21 +51,43 @@ export class IngestionService {
     }
 
     const tracks: any[] = [];
+    let extractedReleaseLabel: string | undefined;
+    let extractedReleaseDate: string | undefined;
 
-    input.files.forEach((file, index) => {
+    for (const [index, file] of input.files.entries()) {
       const trackId = this.generateId("trk");
       const stemId = this.generateId("stem");
       const trackMeta = input.metadata?.tracks?.[index];
 
-      // Intelligent filename parsing
-      const fileName = file.originalname.split('.')[0];
-      let extractedTitle = fileName;
-      let extractedArtist = undefined;
+      // Extraction metadata from buffer
+      let durationSeconds: number | undefined;
+      let extractedTitle: string | undefined;
+      let extractedArtist: string | undefined;
 
-      if (fileName.includes(" - ")) {
-        const parts = fileName.split(" - ");
-        extractedArtist = parts[0].trim();
-        extractedTitle = parts[1].trim();
+      try {
+        const metadata = await mm.parseBuffer(file.buffer, { mimeType: file.mimetype });
+        durationSeconds = metadata.format.duration;
+        extractedTitle = metadata.common.title;
+        extractedArtist = metadata.common.artist;
+
+        // Try to get release-level info from first track if not provided
+        if (index === 0) {
+          extractedReleaseLabel = metadata.common.label?.[0];
+          extractedReleaseDate = metadata.common.date ? new Date(metadata.common.date).toISOString() : undefined;
+        }
+      } catch (err) {
+        console.warn(`[Ingestion] Failed to parse metadata for ${file.originalname}:`, err);
+      }
+
+      // Intelligent filename parsing fallback
+      if (!extractedTitle) {
+        const fileName = file.originalname.split('.')[0];
+        extractedTitle = fileName;
+        if (fileName.includes(" - ")) {
+          const parts = fileName.split(" - ");
+          extractedArtist = parts[0].trim();
+          extractedTitle = parts[1].trim();
+        }
       }
 
       const publicUri = `http://localhost:3000/catalog/stems/${stemId}/blob`;
@@ -80,9 +103,21 @@ export class IngestionService {
           type: this.inferStemType(file.originalname),
           data: file.buffer,
           mimeType: file.mimetype,
+          durationSeconds: durationSeconds,
         }]
       });
-    });
+    }
+
+    // Merge metadata
+    const finalMetadata = {
+      ...input.metadata,
+      label: input.metadata?.label || extractedReleaseLabel,
+      releaseDate: input.metadata?.releaseDate || extractedReleaseDate,
+      tracks: tracks.map((t: any) => ({
+        ...t,
+        stems: t.stems.map((s: any) => ({ ...s, data: undefined })) // Don't log buffers
+      }))
+    };
 
     // 1. Emit Uploaded
     this.eventBus.publish({
@@ -94,14 +129,10 @@ export class IngestionService {
       checksum: "completed",
       artworkData,
       artworkMimeType,
-      metadata: {
-        ...input.metadata,
-        tracks: tracks.map((t: any) => ({
-          ...t,
-          stems: t.stems.map((s: any) => ({ ...s, data: undefined })) // Don't log buffers
-        }))
-      },
+      metadata: finalMetadata,
     });
+
+    console.log(`[Ingestion] Emitted stems.uploaded for ${releaseId}. Buffers nuked in metadata for logging safety.`);
 
     // 2. Emit Processed
     setTimeout(() => {
@@ -112,21 +143,23 @@ export class IngestionService {
         releaseId,
         artistId: input.artistId,
         modelVersion: "resonate-v1",
-        metadata: {
-          ...input.metadata,
-          tracks: tracks.map((t: any) => ({
-            ...t,
-            stems: t.stems.map((s: any) => ({ ...s, data: undefined }))
-          }))
-        },
+        metadata: finalMetadata,
         tracks: tracks.map((t: any) => ({
-          ...t,
+          id: t.id,
+          title: t.title,
+          artist: t.artist,
+          position: t.position,
           stems: t.stems.map((s: any) => ({
-            ...s,
-            // Only send necessary fields for processing
+            id: s.id,
+            uri: s.uri,
+            type: s.type,
+            data: s.data, // This IS the buffer
+            mimeType: s.mimeType,
+            durationSeconds: s.durationSeconds,
           }))
         })),
       });
+      console.log(`[Ingestion] Emitted stems.processed for ${releaseId}. Buffer size: ${tracks[0]?.stems[0]?.data?.length ?? 0} bytes`);
     }, 1000);
 
     return { releaseId, status: "processing" };
@@ -169,7 +202,12 @@ export class IngestionService {
           title: input.metadata?.releaseTitle || "Unknown Track",
           artist: input.metadata?.primaryArtist,
           position: 1,
-          stems: input.fileUris.map(uri => ({ id: this.generateId("stem"), uri, type: "ORIGINAL" }))
+          stems: input.fileUris.map(uri => ({
+            id: this.generateId("stem"),
+            uri,
+            type: "ORIGINAL",
+            durationSeconds: 241
+          }))
         }]
       },
     });
@@ -199,6 +237,7 @@ export class IngestionService {
       id: this.generateId("stem"),
       uri: (uri.startsWith("http") || uri.startsWith("blob:")) ? uri : sampleUri,
       type: this.inferStemType(uri),
+      durationSeconds: 241, // Default duration for mock/imported tracks (4:01)
     }));
     record.stems = stems;
     this.eventBus.publish({

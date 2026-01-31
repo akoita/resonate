@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import AuthGate from "../../../components/auth/AuthGate";
 import ArtistGate from "../../../components/auth/ArtistGate";
 import { Button } from "../../../components/ui/Button";
@@ -30,6 +31,7 @@ type Stem = {
 };
 
 export default function ArtistUploadPage() {
+  const router = useRouter();
   const { token, address } = useAuth();
   const [stems, setStems] = useState<Stem[]>([]);
   const [selectedStemId, setSelectedStemId] = useState<string | null>(null);
@@ -149,12 +151,18 @@ export default function ArtistUploadPage() {
         uploadPayload.append("artwork", stems[0].artworkBlob, "artwork.png");
       }
 
-      await uploadStems(token, uploadPayload);
+      const result = await uploadStems(token, uploadPayload);
 
       addToast({
         type: "success",
         title: "Release submitted!",
-        message: `"${formData.releaseTitle}" has been queued for processing. It will appear on your dashboard shortly.`,
+        message: `"${formData.releaseTitle}" has been queued for processing. Click to view or it will appear on your dashboard shortly.`,
+        duration: 10000,
+        onClick: () => {
+          if (result && result.releaseId) {
+            router.push(`/release/${result.releaseId}`);
+          }
+        }
       });
 
       // Reset form
@@ -220,6 +228,7 @@ export default function ArtistUploadPage() {
               metadata: {
                 ...s.metadata,
                 title: meta.title || s.metadata.title,
+                isrc: meta.isrc || s.metadata.isrc,
                 featuredArtists: meta.artist && meta.artist !== formData.primaryArtist ? meta.artist : s.metadata.featuredArtists,
               }
             };
@@ -228,14 +237,21 @@ export default function ArtistUploadPage() {
         }));
 
         // Also update global release metadata if it's the first track and empty
-        setFormData(prev => ({
-          ...prev,
-          releaseTitle: prev.releaseTitle || meta.album || "",
-          primaryArtist: prev.primaryArtist || meta.artist || meta.albumArtist || "",
-          genre: prev.genre || meta.genre || "",
-          artworkUrl: prev.artworkUrl || extractedArtworkUrl || "",
-          artworkBlob: prev.artworkBlob || meta.artworkBlob || undefined,
-        }));
+        setFormData(prev => {
+          // Fallback logic for release title: Album -> Track Title (if first item)
+          const detectedTitle = meta.album || (stems.length === 0 ? meta.title : "");
+
+          return {
+            ...prev,
+            releaseTitle: prev.releaseTitle || detectedTitle || "",
+            primaryArtist: prev.primaryArtist || meta.artist || meta.albumArtist || "",
+            genre: prev.genre || meta.genre || "",
+            label: prev.label || meta.label || "",
+            releaseDate: meta.year ? `${meta.year}-01-01` : prev.releaseDate,
+            artworkUrl: prev.artworkUrl || extractedArtworkUrl || "",
+            artworkBlob: prev.artworkBlob || meta.artworkBlob || undefined,
+          };
+        });
       }).catch(err => console.error("Metadata extraction failed", err));
 
       // Create a new stem entry
