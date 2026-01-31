@@ -8,7 +8,7 @@ import { Button } from "../../../components/ui/Button";
 import { usePlayer } from "../../../lib/playerContext";
 import { AddToPlaylistModal } from "../../../components/library/AddToPlaylistModal";
 import { useToast } from "../../../components/ui/Toast";
-import { addTracksByCriteria } from "../../../lib/playlistStore";
+// import { addTracksByCriteria } from "../../../lib/playlistStore";
 import { formatDuration } from "../../../lib/metadataExtractor";
 import { useAuth } from "../../../components/auth/AuthProvider";
 
@@ -58,7 +58,7 @@ export default function ReleaseDetails() {
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mapToLocalTrack = (t: any, idx: number): LocalTrack => ({
+  const mapToLocalTrack = (t: any): LocalTrack => ({
     id: t.id,
     title: t.title,
     artist: t.artist || release?.primaryArtist || release?.artist?.displayName || "Unknown Artist",
@@ -76,14 +76,14 @@ export default function ReleaseDetails() {
 
   const handleAddReleaseToPlaylist = async () => {
     if (!release?.tracks) return;
-    const allTracks = release.tracks.map((t, idx) => mapToLocalTrack(t, idx));
+    const allTracks = release.tracks.map((t) => mapToLocalTrack(t));
     setTracksToAddToPlaylist(allTracks);
   };
 
   const handleSaveToLibrary = async () => {
     if (!release?.tracks) return;
     try {
-      const allTracks = release.tracks.map((t, idx) => mapToLocalTrack(t, idx));
+      const allTracks = release.tracks.map((t) => mapToLocalTrack(t));
       for (const track of allTracks) {
         await saveTrackMetadata(track);
       }
@@ -162,7 +162,7 @@ export default function ReleaseDetails() {
             e.stopPropagation();
             if (!release.tracks) return;
 
-            const allTracks = release.tracks.map((t, idx) => mapToLocalTrack(t, idx));
+            const allTracks = release.tracks.map((t) => mapToLocalTrack(t));
             const payload = JSON.stringify({
               type: "release-album",
               tracks: allTracks,
@@ -305,7 +305,7 @@ export default function ReleaseDetails() {
                     if (isSelected && selectedTrackIds.size > 1) {
                       const selectedTracks = release.tracks!
                         .filter(t => selectedTrackIds.has(t.id))
-                        .map((t, i) => mapToLocalTrack(t, i));
+                        .map((t) => mapToLocalTrack(t));
                       const payload = JSON.stringify({
                         type: "release-selection",
                         tracks: selectedTracks,
@@ -314,7 +314,7 @@ export default function ReleaseDetails() {
                       e.dataTransfer.setData("application/json", payload);
                       e.dataTransfer.setData("text/plain", payload);
                     } else {
-                      const localTrack = mapToLocalTrack(track, idx);
+                      const localTrack = mapToLocalTrack(track);
                       const payload = JSON.stringify({
                         type: "release-track",
                         track: localTrack,
@@ -378,7 +378,7 @@ export default function ReleaseDetails() {
                       variant="ghost"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setTracksToAddToPlaylist([mapToLocalTrack(track, idx)]);
+                        setTracksToAddToPlaylist([mapToLocalTrack(track)]);
                       }}
                     >
                       + Playlist
