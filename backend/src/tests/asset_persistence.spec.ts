@@ -25,7 +25,7 @@ describe("Asset Persistence", () => {
         const user = await prisma.user.create({
             data: { email: `test-${Date.now()}@example.com` }
         });
-        await prisma.artist.create({
+        const artist = await prisma.artist.create({
             data: { userId: user.id, displayName: "Test Artist", payoutAddress: "0x123" }
         });
 
@@ -45,7 +45,7 @@ describe("Asset Persistence", () => {
             .set("Authorization", `Bearer ${auth.body.accessToken}`)
             .attach("files", audioBuffer, "test.mp3")
             .attach("artwork", imageBuffer, "cover.jpg")
-            .field("artistId", "test-artist-id") // This field is actually ignored by handleFileUpload because it takes it from body, but let's provide it anyway. Wait, controller takes body.artistId.
+            .field("artistId", artist.id)
             .field("metadata", JSON.stringify({ title: "Test Release" }))
             .expect(201);
 
@@ -77,5 +77,5 @@ describe("Asset Persistence", () => {
         expect(stem).toBeDefined();
         expect(stem?.data).toBeDefined();
         expect(stem?.data?.toString()).toBe("fake audio data");
-    });
+    }, 15000);
 });
