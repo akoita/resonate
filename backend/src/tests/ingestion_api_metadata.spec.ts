@@ -37,17 +37,32 @@ describe("Ingestion API metadata", () => {
     await app.close();
   });
 
-  it("should process ingestion and update release metadata", async () => {
+  it("accepts metadata in upload payload", async () => {
+    const auth = await request(app.getHttpServer())
+      .post("/auth/login")
+      .send({ userId: "user-1" })
+      .expect(201);
+
+    const payload = {
+      artistId: "artist-of-user-1",
+      fileUris: ["gs://bucket/audio.wav"],
+      metadata: {
+        releaseType: "single",
+        releaseTitle: "Night Drive",
+        primaryArtist: "Aya Lune",
+        featuredArtists: ["Kiro"],
+        genre: "Electronic",
+        isrc: "US-XYZ-24-00001",
+        label: "Resonate Records",
+        releaseDate: "2026-01-18",
+        explicit: true,
+      },
+    };
+
     const response = await request(app.getHttpServer())
-      .post("/ingestion/metadata")
-      .send({
-        releaseId: `rel_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`,
-        artistId: "artist-of-user-1",
-        metadata: {
-          title: "Test Release",
-          genre: "Electronic",
-        },
-      })
+      .post("/stems/upload")
+      .set("Authorization", `Bearer ${auth.body.accessToken}`)
+      .send(payload)
       .expect(201);
 
     expect(response.body.releaseId).toBeDefined();
