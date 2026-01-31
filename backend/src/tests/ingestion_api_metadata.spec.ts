@@ -70,5 +70,5 @@ describe("Ingestion API metadata", () => {
 
     // Wait slightly for background events to be processed to avoid FK errors or "Cannot log after tests are done"
     await new Promise((resolve) => setTimeout(resolve, 5000));
-  });
+  }, 15000);
 });
