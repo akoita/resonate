@@ -17,6 +17,27 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Catalog & Home Page", () => {
     test.beforeEach(async ({ page }) => {
+        // Mock the releases API to ensure data is available for the Hero section
+        await page.route("*/**/releases/published*", async (route) => {
+            await route.fulfill({
+                status: 200,
+                contentType: "application/json",
+                body: JSON.stringify([
+                    {
+                        id: "test-release-id",
+                        title: "Test Release",
+                        primaryArtist: "Test Artist",
+                        type: "Single",
+                        releaseDate: "2026-01-01",
+                        label: "Test Label",
+                        artworkUrl: "https://placehold.co/600x600.png",
+                        artist: { id: "artist-id", displayName: "Test Artist" },
+                        tracks: [{ id: "t1", title: "Test Track", durationSeconds: 180 }]
+                    }
+                ]),
+            });
+        });
+
         await page.goto("/");
     });
 
