@@ -112,15 +112,21 @@ jobs:
         run: npm run build
         working-directory: web
       
+      - name: Verify build output
+        run: |
+          ls -ld web/.next
+          ls -R web/.next | head -n 20
+        
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: web-build
           path: |
-            web/.next
-            web/public
+            web/.next/
+            web/public/
             web/package.json
             web/package-lock.json
+          include-hidden-files: true
           retention-days: 1
 
   e2e-tests:
