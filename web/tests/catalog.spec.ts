@@ -18,7 +18,7 @@ import { test, expect } from "@playwright/test";
 test.describe("Catalog & Home Page", () => {
     test.beforeEach(async ({ page }) => {
         // Mock the releases API to ensure data is available for the Hero section
-        await page.route("*/**/releases/published*", async (route) => {
+        await page.route("*/**/catalog/published*", async (route) => {
             await route.fulfill({
                 status: 200,
                 contentType: "application/json",
