@@ -20,32 +20,33 @@ test.describe("Catalog & Home Page", () => {
         await page.goto("/");
     });
 
-    test("HOME-01: Home hero section renders title", async ({ page }) => {
-        await expect(page.locator(".home-title")).toContainText("Resonate");
+    test("HOME-01: Home page renders logo", async ({ page }) => {
+        await expect(page.locator(".logo-text")).toContainText("Resonate");
     });
 
     test("HOME-02: Mood chips are displayed", async ({ page }) => {
-        await expect(page.locator(".home-chip").first()).toBeVisible();
+        await expect(page.locator(".signal-chip").first()).toBeVisible();
         await expect(page.getByText("Focus")).toBeVisible();
         await expect(page.getByText("Chill")).toBeVisible();
     });
 
-    test("HOME-03: New Releases section exists", async ({ page }) => {
-        await expect(page.locator(".home-section-title").first()).toContainText("New Releases");
+    test("HOME-03: Latest Masterings section exists", async ({ page }) => {
+        await expect(page.locator(".home-section-title").nth(1)).toContainText("Latest Masterings");
     });
 
-    test("HOME-04: Start session and Upload buttons visible", async ({ page }) => {
-        await expect(page.getByText("Start session")).toBeVisible();
-        await expect(page.getByText("Upload stems")).toBeVisible();
+    test("HOME-04: Hero actions are visible", async ({ page }) => {
+        // Hero stage has "View Release" and "Tracklist" buttons
+        await expect(page.getByText("View Release")).toBeVisible();
+        await expect(page.getByText("Tracklist")).toBeVisible();
     });
 
-    test("HOME-05: AI Curated section exists", async ({ page }) => {
-        await expect(page.getByText("AI Curated")).toBeVisible();
+    test("HOME-05: Good Evening section exists", async ({ page }) => {
+        await expect(page.getByText("Good Evening")).toBeVisible();
     });
 
-    test("HOME-06: Clicking Upload stems navigates correctly", async ({ page }) => {
-        // Find the Upload stems button in the main content area
-        await page.locator(".home-actions").getByText("Upload stems").click();
+    test("HOME-06: Sidebar Upload link navigates correctly", async ({ page }) => {
+        // Use the sidebar link instead of a non-existent button on home page
+        await page.locator(".sidebar-link").getByText("Upload").click();
         await expect(page).toHaveURL(/\/artist\/upload/);
     });
 });

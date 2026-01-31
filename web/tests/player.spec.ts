@@ -26,19 +26,20 @@ test.describe("Player Page", () => {
         await expect(main.getByRole("button", { name: "Next" })).toBeVisible();
     });
 
-    test("PLAYER-02: Now playing label is visible", async ({ page }) => {
+    test("PLAYER-02: System monitoring label is visible", async ({ page }) => {
         await page.goto("/player");
-        await expect(page.locator(".player-label")).toContainText("Now playing");
+        await expect(page.getByText("System Monitoring")).toBeVisible();
     });
 
-    test("PLAYER-03: Volume control is present", async ({ page }) => {
+    test("PLAYER-03: Output Gain label is present", async ({ page }) => {
         await page.goto("/player");
-        await expect(page.getByText("Volume")).toBeVisible();
+        await expect(page.getByText("Output Gain")).toBeVisible();
     });
 
-    test("PLAYER-04: Track Info card exists", async ({ page }) => {
+    test("PLAYER-04: Track Title is present", async ({ page }) => {
         await page.goto("/player");
-        await expect(page.getByText("Track Info")).toBeVisible();
+        // Default text when no track is selected
+        await expect(page.getByText("No track selected")).toBeVisible();
     });
 
     test("PLAYER-05: Progress slider is present", async ({ page }) => {

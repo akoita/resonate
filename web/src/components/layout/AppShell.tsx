@@ -22,11 +22,11 @@ export default function AppShell({
         <Sidebar />
         <div className="app-main">
           <Topbar />
-          <div className="app-content">
+          <main className="app-content">
             <Suspense fallback={null}>
               {children}
             </Suspense>
-          </div>
+          </main>
           <PlayerBar />
         </div>
         <GlobalPlaylistPanel isOpen={isPlaylistPanelOpen} onClose={closePlaylistPanel} />
