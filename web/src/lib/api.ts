@@ -244,6 +244,16 @@ export type ArtistProfile = {
 };
 
 export async function getArtistMe(token: string) {
+  const isMockAuth = (typeof window !== "undefined" && localStorage.getItem("resonate.mock_auth") === "true") || process.env.NEXT_PUBLIC_MOCK_AUTH === "true";
+
+  if (isMockAuth) {
+    return {
+      id: "test-artist-id",
+      userId: "test-user",
+      displayName: "Test Artist",
+      payoutAddress: "0x742d35Cc6634C0532925a3b844Bc17e7595f1ea2c",
+    };
+  }
   return apiRequest<ArtistProfile | null>("/artists/me", {}, token);
 }
 

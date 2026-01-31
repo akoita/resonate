@@ -4,17 +4,17 @@ import { test, expect } from "@playwright/test";
 
 test("home hero renders", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator(".home-title")).toContainText("Resonate");
+  await expect(page.getByText("Latest Masterings")).toBeVisible();
 });
 
 test("wallet page renders", async ({ page }) => {
   await page.goto("/wallet");
-  await expect(page.getByText("Wallet Overview")).toBeVisible();
+  await expect(page.getByText("Total Balance")).toBeVisible();
 });
 
 test("wallet recovery panel renders", async ({ page }) => {
   await page.goto("/wallet");
-  await expect(page.getByText("Recovery & export")).toBeVisible();
+  await expect(page.getByText("Security & Recovery")).toBeVisible();
 });
 
 test("player controls visible", async ({ page }) => {

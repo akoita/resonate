@@ -10,133 +10,133 @@ import { useToast } from "../../../components/ui/Toast";
 import AuthGate from "../../../components/auth/AuthGate";
 
 export default function ArtistOnboardingPage() {
-    const { token, address, status } = useAuth();
-    const router = useRouter();
-    const { addToast } = useToast();
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [formData, setFormData] = useState({
-        displayName: "",
-        payoutAddress: address || "",
-    });
+  const { token, address } = useAuth();
+  const router = useRouter();
+  const { addToast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    displayName: "",
+    payoutAddress: address || "",
+  });
 
-    // Keep payout address in sync with wallet
-    useEffect(() => {
-        if (address && !formData.payoutAddress) {
-            setFormData(prev => ({ ...prev, payoutAddress: address }));
-        }
-    }, [address]);
+  // Keep payout address in sync with wallet
+  useEffect(() => {
+    if (address && !formData.payoutAddress) {
+      setFormData(prev => ({ ...prev, payoutAddress: address }));
+    }
+  }, [address, formData.payoutAddress]);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!token) return;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token) return;
 
-        if (!formData.displayName.trim()) {
-            addToast({
-                type: "error",
-                title: "Display Name Required",
-                message: "Please enter your artist name.",
-            });
-            return;
-        }
+    if (!formData.displayName.trim()) {
+      addToast({
+        type: "error",
+        title: "Display Name Required",
+        message: "Please enter your artist name.",
+      });
+      return;
+    }
 
-        setIsSubmitting(true);
-        try {
-            await createArtist(token, {
-                displayName: formData.displayName,
-                payoutAddress: formData.payoutAddress || address || "",
-            });
-            addToast({
-                type: "success",
-                title: "Welcome to Resonate!",
-                message: "Your artist profile has been created successfully.",
-            });
-            router.push("/artist/upload");
-        } catch (error) {
-            addToast({
-                type: "error",
-                title: "Failed to create profile",
-                message: "Something went wrong. Please check your connection and try again.",
-            });
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
+    setIsSubmitting(true);
+    try {
+      await createArtist(token, {
+        displayName: formData.displayName,
+        payoutAddress: formData.payoutAddress || address || "",
+      });
+      addToast({
+        type: "success",
+        title: "Welcome to Resonate!",
+        message: "Your artist profile has been created successfully.",
+      });
+      router.push("/artist/upload");
+    } catch {
+      addToast({
+        type: "error",
+        title: "Failed to create profile",
+        message: "Something went wrong. Please check your connection and try again.",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
-    return (
-        <AuthGate title="Connect your wallet to begin your journey.">
-            <div className="onboarding-container">
-                <div className="onboarding-glass-card">
-                    <div className="onboarding-header">
-                        <div className="onboarding-badge">Artist Onboarding</div>
-                        <h1 className="onboarding-title">Create your profile</h1>
-                        <p className="onboarding-description">
-                            Join the future of music distribution. Set up your artist identity to start uploading tracks.
-                        </p>
-                    </div>
+  return (
+    <AuthGate title="Connect your wallet to begin your journey.">
+      <div className="onboarding-container">
+        <div className="onboarding-glass-card">
+          <div className="onboarding-header">
+            <div className="onboarding-badge">Artist Onboarding</div>
+            <h1 className="onboarding-title">Create your profile</h1>
+            <p className="onboarding-description">
+              Join the future of music distribution. Set up your artist identity to start uploading tracks.
+            </p>
+          </div>
 
-                    <form onSubmit={handleSubmit} className="onboarding-form">
-                        <div className="input-group">
-                            <label className="input-label">Artist Display Name</label>
-                            <div className="input-wrapper">
-                                <Input
-                                    className="premium-input"
-                                    placeholder="e.g. Aya Lune"
-                                    value={formData.displayName}
-                                    onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
-                                />
-                                <div className="input-glow"></div>
-                            </div>
-                            <p className="input-hint">This name will be visible to your fans.</p>
-                        </div>
-
-                        <div className="input-group">
-                            <label className="input-label">Payout Address (USDC)</label>
-                            <div className="input-wrapper">
-                                <Input
-                                    className="premium-input mono-font"
-                                    placeholder="0x..."
-                                    value={formData.payoutAddress}
-                                    onChange={(e) => setFormData({ ...formData, payoutAddress: e.target.value })}
-                                />
-                                <div className="input-glow"></div>
-                            </div>
-                            <p className="input-hint">
-                                Earnings will be sent here. Defaults to your connected wallet.
-                            </p>
-                        </div>
-
-                        <Button
-                            type="submit"
-                            disabled={isSubmitting}
-                            variant="primary"
-                            className="onboarding-submit-btn"
-                        >
-                            <span className="btn-content">
-                                {isSubmitting ? (
-                                    <>
-                                        <span className="spinner"></span>
-                                        Registering...
-                                    </>
-                                ) : (
-                                    <>
-                                        Complete Registration
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                            <line x1="5" y1="12" x2="19" y2="12"></line>
-                                            <polyline points="12 5 19 12 12 19"></polyline>
-                                        </svg>
-                                    </>
-                                )}
-                            </span>
-                        </Button>
-                    </form>
-                </div>
-
-                {/* Decorative background elements */}
-                <div className="onboarding-blob-1"></div>
-                <div className="onboarding-blob-2"></div>
+          <form onSubmit={handleSubmit} className="onboarding-form">
+            <div className="input-group">
+              <label className="input-label">Artist Display Name</label>
+              <div className="input-wrapper">
+                <Input
+                  className="premium-input"
+                  placeholder="e.g. Aya Lune"
+                  value={formData.displayName}
+                  onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
+                />
+                <div className="input-glow"></div>
+              </div>
+              <p className="input-hint">This name will be visible to your fans.</p>
             </div>
 
-            <style jsx>{`
+            <div className="input-group">
+              <label className="input-label">Payout Address (USDC)</label>
+              <div className="input-wrapper">
+                <Input
+                  className="premium-input mono-font"
+                  placeholder="0x..."
+                  value={formData.payoutAddress}
+                  onChange={(e) => setFormData({ ...formData, payoutAddress: e.target.value })}
+                />
+                <div className="input-glow"></div>
+              </div>
+              <p className="input-hint">
+                Earnings will be sent here. Defaults to your connected wallet.
+              </p>
+            </div>
+
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              variant="primary"
+              className="onboarding-submit-btn"
+            >
+              <span className="btn-content">
+                {isSubmitting ? (
+                  <>
+                    <span className="spinner"></span>
+                    Registering...
+                  </>
+                ) : (
+                  <>
+                    Complete Registration
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                      <polyline points="12 5 19 12 12 19"></polyline>
+                    </svg>
+                  </>
+                )}
+              </span>
+            </Button>
+          </form>
+        </div>
+
+        {/* Decorative background elements */}
+        <div className="onboarding-blob-1"></div>
+        <div className="onboarding-blob-2"></div>
+      </div>
+
+      <style jsx>{`
         .onboarding-container {
           position: relative;
           min-height: calc(100vh - 200px);
@@ -316,6 +316,6 @@ export default function ArtistOnboardingPage() {
           to { transform: rotate(360deg); }
         }
       `}</style>
-        </AuthGate>
-    );
+    </AuthGate>
+  );
 }

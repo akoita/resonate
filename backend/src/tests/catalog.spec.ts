@@ -1,39 +1,47 @@
 import { CatalogService } from "../modules/catalog/catalog.service";
 import { EventBus } from "../modules/shared/event_bus";
-import { StemsProcessedEvent } from "../events/event_types";
 
-let trackCounter = 0;
+const mockReleases = new Map<string, any>();
+const mockTracks = new Map<string, any>();
+
 jest.mock("../db/prisma", () => {
-    const releases = new Map<string, any>();
-    const tracks = new Map<string, any>();
     return {
         prisma: {
             release: {
                 create: async ({ data }: any) => {
-                    const id = `release_${releases.size + 1}`;
+                    const id = `release_${mockReleases.size + 1}`;
                     const record = { id, status: "draft", ...data, tracks: [] };
-                    releases.set(id, record);
+                    mockReleases.set(id, record);
                     return record;
                 },
-                findUnique: async ({ where }: any) => releases.get(where.id) ?? null,
+                findUnique: async ({ where }: any) => mockReleases.get(where.id) ?? null,
                 update: async ({ where, data }: any) => {
-                    const existing = releases.get(where.id);
+                    const existing = mockReleases.get(where.id);
                     if (!existing) throw new Error("Release not found");
                     const updated = { ...existing, ...data };
-                    releases.set(where.id, updated);
+                    mockReleases.set(where.id, updated);
                     return updated;
                 },
-                findMany: async () => Array.from(releases.values()),
+                findMany: async (args: any) => {
+                    let results = Array.from(mockReleases.values());
+                    if (args?.where?.OR) {
+                        const query = args.where.OR.find((cond: any) => cond.title?.contains)?.title?.contains?.toLowerCase();
+                        if (query) {
+                            results = results.filter(r => r.title.toLowerCase().includes(query));
+                        }
+                    }
+                    return results;
+                },
             },
             track: {
                 upsert: async ({ where, create, update }: any) => {
-                    const id = where.id || `track_${tracks.size + 1}`;
-                    const existing = tracks.get(id);
+                    const id = where.id || `track_${mockTracks.size + 1}`;
+                    const existing = mockTracks.get(id);
                     const record = existing ? { ...existing, ...update } : { id, ...create };
-                    tracks.set(id, record);
+                    mockTracks.set(id, record);
                     return record;
                 },
-                findUnique: async ({ where }: any) => tracks.get(where.id) ?? null,
+                findUnique: async ({ where }: any) => mockTracks.get(where.id) ?? null,
             },
             artist: {
                 findUnique: async ({ where }: any) => ({
@@ -54,6 +62,8 @@ describe("catalog", () => {
     let eventBus: EventBus;
 
     beforeEach(() => {
+        mockReleases.clear();
+        mockTracks.clear();
         eventBus = new EventBus();
         service = new CatalogService(eventBus);
         service.onModuleInit();
