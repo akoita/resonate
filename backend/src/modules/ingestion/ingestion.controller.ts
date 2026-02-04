@@ -53,4 +53,16 @@ export class IngestionController {
   status(@Param("trackId") trackId: string) {
     return this.ingestionService.getStatus(trackId);
   }
+
+  /**
+   * @deprecated Use POST /ingestion/upload with multipart form data for real processing.
+   * This endpoint is retained for backwards compatibility and testing with mock processing.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Post("enqueue")
+  enqueue(
+    @Body() body: { artistId: string; fileUris: string[]; metadata?: any },
+  ) {
+    return this.ingestionService.enqueueUpload(body);
+  }
 }
