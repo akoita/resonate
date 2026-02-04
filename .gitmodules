@@ -10,3 +10,6 @@
 [submodule "contracts/lib/ExcessivelySafeCall"]
 	path = contracts/lib/ExcessivelySafeCall
 	url = https://github.com/nomad-xyz/ExcessivelySafeCall
+[submodule "contracts/lib/halmos-cheatcodes"]
+	path = contracts/lib/halmos-cheatcodes
+	url = https://github.com/a16z/halmos-cheatcodes
