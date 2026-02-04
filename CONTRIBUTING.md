@@ -8,7 +8,19 @@ If this changes in the future, I'll update this document.
 
 If you're exploring the codebase, here's how it's organized:
 
-- **`backend/`** — NestJS API with Prisma
+- **`backend/`** — NestJS API with Prisma, BullMQ job processing
 - **`web/`** — Next.js frontend
 - **`contracts/`** — Solidity smart contracts (Foundry)
+- **`workers/`** — Microservices (Demucs AI stem separation)
 - **`docs/`** — Project specifications and guides
+
+## Running the Stack
+
+```bash
+make dev-up          # Start Docker services (PostgreSQL, Redis, Demucs)
+make backend-dev     # Start NestJS API
+make web-dev         # Start Next.js frontend
+make worker-logs     # View Demucs worker logs
+```
+
+See [README.md](README.md) for detailed setup instructions.

@@ -56,8 +56,18 @@ export interface StemsProcessedEvent extends BaseEvent {
       data?: Buffer;
       mimeType?: string;
       durationSeconds?: number;
+      isEncrypted?: boolean;
+      encryptionMetadata?: string;
+      storageProvider?: string;
     }>;
   }>;
+}
+
+export interface StemsProgressEvent extends BaseEvent {
+  eventName: "stems.progress";
+  releaseId: string;
+  trackId: string;
+  progress: number;
 }
 
 export interface IpNftMintedEvent extends BaseEvent {
@@ -263,4 +273,5 @@ export type ResonateEvent =
   | PaymentSettledEvent
   | WalletFundedEvent
   | WalletBudgetSetEvent
-  | WalletSpentEvent;
+  | WalletSpentEvent
+  | StemsProgressEvent;

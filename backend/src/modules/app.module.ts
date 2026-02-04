@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { ConfigModule } from "@nestjs/config";
+import { BullModule } from "@nestjs/bullmq";
 import { SharedModule } from "./shared/shared.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { AgentsModule } from "./agents/agents.module";
@@ -19,13 +20,21 @@ import { RecommendationsModule } from "./recommendations/recommendations.module"
 import { RemixModule } from "./remix/remix.module";
 import { SessionsModule } from "./sessions/sessions.module";
 import { PlaylistModule } from "./playlist/playlist.module";
+import { StorageModule } from "./storage/storage.module";
+import { EncryptionModule } from "./encryption/encryption.module";
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    BullModule.forRoot({
+      connection: {
+        host: process.env.REDIS_HOST || "localhost",
+        port: parseInt(process.env.REDIS_PORT || "6379"),
+      },
+    }),
     SharedModule,
     ThrottlerModule.forRoot({
-      throttlers: [{ limit: 30, ttl: 60 }],
+      throttlers: [{ limit: 100, ttl: 60 }],
     }),
     HealthModule,
     AuthModule,
@@ -42,6 +51,8 @@ import { PlaylistModule } from "./playlist/playlist.module";
     AnalyticsModule,
     MaintenanceModule,
     PlaylistModule,
+    StorageModule,
+    EncryptionModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
