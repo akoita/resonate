@@ -56,7 +56,13 @@ jobs:
           version: nightly
       
       - name: Install dependencies
-        run: forge install
+        run: |
+          forge install foundry-rs/forge-std --no-commit
+          forge install openzeppelin/openzeppelin-contracts --no-commit
+          forge install zerodevapp/kernel --no-commit
+          forge install vectorized/solady --no-commit
+          forge install nomad-xyz/ExcessivelySafeCall --no-commit
+          forge install eth-infinitism/account-abstraction --no-commit
         working-directory: contracts
       
       - name: Run Forge build
