@@ -227,3 +227,27 @@ The `local-aa` profile starts:
 | `alto-bundler` | `ghcr.io/pimlicolabs/alto` | 4337 | ERC-4337 bundler |
 
 See `docker-compose.yml` for full configuration.
+
+## Other Services
+
+### Demucs Worker (AI Stem Separation)
+
+The Demucs worker runs alongside AA services and handles stem separation:
+
+| Service | Image | Port | Purpose |
+|---------|-------|------|---------|
+| `demucs-worker` | Custom (built from `workers/demucs/`) | 8000 | AI stem separation |
+| `redis` | `redis:7-alpine` | 6379 | Job queue for BullMQ |
+
+```bash
+# View worker logs
+make worker-logs
+
+# Check worker health
+make worker-health
+
+# Enable GPU acceleration (10-15x faster)
+make worker-gpu
+```
+
+See [README.md](../README.md#️-ai-stem-separation-demucs) for detailed configuration.

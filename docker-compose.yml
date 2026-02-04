@@ -39,5 +39,37 @@ services:
     profiles:
       - local-aa
 
+  # AI Stem Separation Worker (Demucs)
+  # CPU mode by default. For GPU acceleration, use:
+  #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up demucs-worker
+  demucs-worker:
+    build:
+      context: ./workers/demucs
+      args:
+        CACHE_MODEL: "1"  # Set to "0" to skip model pre-caching (faster builds, slower first run)
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/uploads/stems:/outputs
+      - demucs_model_cache:/root/.cache/torch  # Persist model cache between container rebuilds
+    environment:
+      - OUTPUT_DIR=/outputs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: always
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s  # Model loading can take time on first start
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: always
+
 volumes:
   resonate_pg:
+  demucs_model_cache:  # Caches the ~1GB Demucs model between container rebuilds

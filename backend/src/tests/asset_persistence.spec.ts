@@ -41,7 +41,7 @@ describe("Asset Persistence", () => {
         const imageBuffer = Buffer.from("fake image data");
 
         const response = await request(app.getHttpServer())
-            .post("/stems/upload")
+            .post("/ingestion/upload")
             .set("Authorization", `Bearer ${auth.body.accessToken}`)
             .attach("files", audioBuffer, "test.mp3")
             .attach("artwork", imageBuffer, "cover.jpg")

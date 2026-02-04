@@ -4,7 +4,7 @@ import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
 import { IngestionService } from "./ingestion.service";
 
-@Controller("stems")
+@Controller("ingestion")
 export class IngestionController {
   constructor(private readonly ingestionService: IngestionService) { }
 
@@ -39,9 +39,30 @@ export class IngestionController {
     });
   }
 
+  @Post("progress/:releaseId/:trackId")
+  handleProgress(
+    @Param("releaseId") releaseId: string,
+    @Param("trackId") trackId: string,
+    @Body() body: { progress: number },
+  ) {
+    return this.ingestionService.handleProgress(releaseId, trackId, body.progress);
+  }
+
   @UseGuards(AuthGuard("jwt"))
   @Get("status/:trackId")
   status(@Param("trackId") trackId: string) {
     return this.ingestionService.getStatus(trackId);
+  }
+
+  /**
+   * @deprecated Use POST /ingestion/upload with multipart form data for real processing.
+   * This endpoint is retained for backwards compatibility and testing with mock processing.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Post("enqueue")
+  enqueue(
+    @Body() body: { artistId: string; fileUris: string[]; metadata?: any },
+  ) {
+    return this.ingestionService.enqueueUpload(body);
   }
 }
