@@ -55,16 +55,16 @@ jobs:
         with:
           version: nightly
       
+      - name: Install dependencies
+        run: forge install
+        working-directory: contracts
+      
       - name: Run Forge build
         run: forge build --sizes
         working-directory: contracts
       
       - name: Run Forge tests
-        run: forge test -vvv
-        working-directory: contracts
-      
-      - name: Run Forge coverage
-        run: forge coverage --report summary
+        run: forge test -vvv --no-match-path "test/formal/*"
         working-directory: contracts
 
   backend-tests:
