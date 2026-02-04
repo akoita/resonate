@@ -1,10 +1,22 @@
 import { EventBus } from "../modules/shared/event_bus";
 import { IngestionService } from "../modules/ingestion/ingestion.service";
 
+// Mock dependencies
+const mockStorageProvider = { upload: jest.fn(), delete: jest.fn() };
+const mockEncryptionService = { encrypt: jest.fn().mockResolvedValue(null), isReady: true };
+const mockArtistService = { findById: jest.fn().mockResolvedValue(null) };
+const mockQueue = { add: jest.fn() };
+
 describe("IngestionService metadata", () => {
   it("publishes metadata on stems.uploaded", () => {
     const eventBus = new EventBus();
-    const service = new IngestionService(eventBus);
+    const service = new IngestionService(
+      eventBus,
+      mockStorageProvider as any,
+      mockEncryptionService as any,
+      mockArtistService as any,
+      mockQueue as any,
+    );
     let received: any;
 
     eventBus.subscribe("stems.uploaded", (event) => {
@@ -36,7 +48,13 @@ describe("IngestionService metadata", () => {
 
   it("emits stems.processed and updates status", async () => {
     const eventBus = new EventBus();
-    const service = new IngestionService(eventBus);
+    const service = new IngestionService(
+      eventBus,
+      mockStorageProvider as any,
+      mockEncryptionService as any,
+      mockArtistService as any,
+      mockQueue as any,
+    );
 
     const processedPromise = new Promise((resolve) => {
       eventBus.subscribe("stems.processed", (event) => {
