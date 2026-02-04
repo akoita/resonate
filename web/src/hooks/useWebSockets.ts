@@ -10,14 +10,28 @@ export interface ReleaseStatusUpdate {
     status: string;
 }
 
-export function useWebSockets(onStatusUpdate?: (data: ReleaseStatusUpdate) => void) {
-    const [socket, setSocket] = useState<Socket | null>(null);
-    const handlerRef = useRef(onStatusUpdate);
+export interface ReleaseProgressUpdate {
+    releaseId: string;
+    trackId: string;
+    progress: number;
+}
 
-    // Update ref when handler changes without re-triggering effect
+export function useWebSockets(
+    onStatusUpdate?: (data: ReleaseStatusUpdate) => void,
+    onProgressUpdate?: (data: ReleaseProgressUpdate) => void
+) {
+    const [socket, setSocket] = useState<Socket | null>(null);
+    const statusHandlerRef = useRef(onStatusUpdate);
+    const progressHandlerRef = useRef(onProgressUpdate);
+
+    // Update refs when handlers change without re-triggering effect
     useEffect(() => {
-        handlerRef.current = onStatusUpdate;
+        statusHandlerRef.current = onStatusUpdate;
     }, [onStatusUpdate]);
+
+    useEffect(() => {
+        progressHandlerRef.current = onProgressUpdate;
+    }, [onProgressUpdate]);
 
     useEffect(() => {
         // Initialize socket connection
@@ -36,8 +50,15 @@ export function useWebSockets(onStatusUpdate?: (data: ReleaseStatusUpdate) => vo
 
         newSocket.on('release.status', (data: ReleaseStatusUpdate) => {
             console.log('[WebSocket] Received release.status update:', data);
-            if (handlerRef.current) {
-                handlerRef.current(data);
+            if (statusHandlerRef.current) {
+                statusHandlerRef.current(data);
+            }
+        });
+
+        newSocket.on('release.progress', (data: ReleaseProgressUpdate) => {
+            console.log('[WebSocket] Received release.progress update:', data);
+            if (progressHandlerRef.current) {
+                progressHandlerRef.current(data);
             }
         });
 

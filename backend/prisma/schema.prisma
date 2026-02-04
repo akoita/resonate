@@ -8,105 +8,225 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  createdAt DateTime @default(now())
-  wallet    Wallet?
+  id        String     @id @default(uuid())
+  email     String     @unique
+  createdAt DateTime   @default(now())
   artist    Artist?
-  sessions  Session[]
-  playlists Playlist[]
   folders   Folder[]
+  playlists Playlist[]
+  sessions  Session[]
+  wallet    Wallet?
 }
 
 model Wallet {
-  id           String   @id @default(uuid())
-  userId       String   @unique
-  address      String
-  chainId      Int
-  balanceUsd   Float    @default(0)
-  monthlyCapUsd Float   @default(0)
-  spentUsd     Float    @default(0)
-  accountType  String   @default("local")
-  provider     String   @default("local")
-  ownerAddress String?
-  entryPoint   String?
-  factory      String?
-  paymaster    String?
-  bundler      String?
-  salt         String?
+  id               String  @id @default(uuid())
+  userId           String  @unique
+  address          String
+  chainId          Int
+  balanceUsd       Float   @default(0)
+  monthlyCapUsd    Float   @default(0)
+  spentUsd         Float   @default(0)
+  accountType      String  @default("local")
+  provider         String  @default("local")
+  ownerAddress     String?
+  entryPoint       String?
+  factory          String?
+  paymaster        String?
+  bundler          String?
+  salt             String?
   deploymentTxHash String?
-  user         User     @relation(fields: [userId], references: [id])
+  user             User    @relation(fields: [userId], references: [id])
 }
 
 model Artist {
-  id            String  @id @default(uuid())
-  userId        String  @unique
+  id            String    @id @default(uuid())
+  userId        String    @unique
   displayName   String
   payoutAddress String
-  user          User    @relation(fields: [userId], references: [id])
+  user          User      @relation(fields: [userId], references: [id])
   releases      Release[]
 }
 
 model Release {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   artistId        String
   title           String
-  status          String   @default("processing")
-  type            String   @default("single") // SINGLE, EP, ALBUM
+  status          String    @default("processing")
+  type            String    @default("single")
   primaryArtist   String?
   featuredArtists String?
   genre           String?
   label           String?
   releaseDate     DateTime?
-  explicit        Boolean  @default(false)
-  createdAt       DateTime @default(now())
+  explicit        Boolean   @default(false)
+  createdAt       DateTime  @default(now())
   artworkUrl      String?
   artworkData     Bytes?
   artworkMimeType String?
-  artist          Artist   @relation(fields: [artistId], references: [id])
+  artist          Artist    @relation(fields: [artistId], references: [id])
   tracks          Track[]
 }
 
 model Track {
-  id              String   @id @default(uuid())
-  releaseId       String
-  title           String
-  artist          String?
-  position        Int      @default(1)
-  isrc            String?
-  explicit        Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  release         Release  @relation(fields: [releaseId], references: [id])
-  stems           Stem[]
-  licenses        License[]
+  id        String    @id @default(uuid())
+  title     String
+  isrc      String?
+  explicit  Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  position  Int       @default(1)
+  releaseId String
+  artist    String?
+  licenses  License[]
+  stems     Stem[]
+  release   Release   @relation(fields: [releaseId], references: [id])
 }
 
 model Stem {
-  id              String  @id @default(uuid())
-  trackId         String
-  title           String?
-  artist          String?
-  type            String
-  uri             String
-  data            Bytes?
-  mimeType        String?
-  artworkUrl      String?
-  ipnftId         String?
-  checksum        String?
-  durationSeconds Float?
-  track           Track   @relation(fields: [trackId], references: [id])
+  id                 String        @id @default(uuid())
+  trackId            String
+  type               String
+  uri                String
+  ipnftId            String?
+  checksum           String?
+  artist             String?
+  artworkUrl         String?
+  title              String?
+  data               Bytes?
+  mimeType           String?
+  durationSeconds    Float?
+  isEncrypted        Boolean       @default(false)
+  encryptionMetadata String? // JSON string for individual stem encryption parameters
+  storageProvider    String        @default("local") // "local" | "ipfs" | "filecoin"
+  track              Track         @relation(fields: [trackId], references: [id])
+  // Blockchain relations
+  nftMint            StemNftMint?
+  listings           StemListing[]
+}
+
+// ============ Blockchain Models ============
+
+model StemNftMint {
+  id              String   @id @default(uuid())
+  stemId          String   @unique
+  tokenId         BigInt
+  chainId         Int
+  contractAddress String
+  creatorAddress  String
+  royaltyBps      Int
+  remixable       Boolean
+  metadataUri     String
+  transactionHash String   @unique
+  blockNumber     BigInt
+  mintedAt        DateTime
+  createdAt       DateTime @default(now())
+  // Relations
+  stem            Stem     @relation(fields: [stemId], references: [id])
+
+  @@index([tokenId, chainId])
+  @@index([creatorAddress])
+}
+
+model StemListing {
+  id              String         @id @default(uuid())
+  listingId       BigInt
+  stemId          String?
+  tokenId         BigInt
+  chainId         Int
+  contractAddress String
+  sellerAddress   String
+  pricePerUnit    String // Wei as string
+  amount          BigInt
+  paymentToken    String // address(0) = ETH
+  expiresAt       DateTime
+  transactionHash String         @unique
+  blockNumber     BigInt
+  status          String         @default("active") // active, sold, cancelled
+  listedAt        DateTime
+  soldAt          DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime       @default(now())
+  // Relations
+  stem            Stem?          @relation(fields: [stemId], references: [id])
+  purchases       StemPurchase[]
+
+  @@index([listingId, chainId])
+  @@index([sellerAddress])
+  @@index([tokenId, chainId])
+  @@index([status])
+}
+
+model StemPurchase {
+  id              String      @id @default(uuid())
+  listingId       String
+  buyerAddress    String
+  amount          BigInt
+  totalPaid       String // Wei as string
+  royaltyPaid     String // Wei as string
+  protocolFeePaid String // Wei as string
+  sellerReceived  String // Wei as string
+  transactionHash String      @unique
+  blockNumber     BigInt
+  purchasedAt     DateTime
+  createdAt       DateTime    @default(now())
+  // Relations
+  listing         StemListing @relation(fields: [listingId], references: [id])
+
+  @@index([buyerAddress])
+  @@index([purchasedAt])
+}
+
+model RoyaltyPayment {
+  id              String   @id @default(uuid())
+  tokenId         BigInt
+  chainId         Int
+  recipientAddress String
+  amount          String // Wei as string
+  transactionHash String
+  blockNumber     BigInt
+  paidAt          DateTime
+  createdAt       DateTime @default(now())
+
+  @@index([recipientAddress])
+  @@index([tokenId, chainId])
+  @@index([paidAt])
+}
+
+model ContractEvent {
+  id              String    @id @default(uuid())
+  eventName       String // StemMinted, Listed, Sold, etc.
+  chainId         Int
+  contractAddress String
+  transactionHash String
+  logIndex        Int
+  blockNumber     BigInt
+  blockHash       String
+  args            Json // Event arguments
+  processedAt     DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@unique([transactionHash, logIndex])
+  @@index([eventName])
+  @@index([blockNumber])
+  @@index([contractAddress, chainId])
+}
+
+model IndexerState {
+  id              String   @id @default(uuid())
+  chainId         Int      @unique
+  lastBlockNumber BigInt   @default(0)
+  updatedAt       DateTime @updatedAt
 }
 
 model Session {
-  id         String    @id @default(uuid())
-  userId     String
+  id           String    @id @default(uuid())
+  userId       String
   budgetCapUsd Float
-  spentUsd   Float     @default(0)
-  startedAt  DateTime  @default(now())
-  endedAt    DateTime?
-  user       User      @relation(fields: [userId], references: [id])
-  licenses   License[]
-  payments   Payment[]
+  spentUsd     Float     @default(0)
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
+  licenses     License[]
+  payments     Payment[]
+  user         User      @relation(fields: [userId], references: [id])
 }
 
 model License {
@@ -121,12 +241,12 @@ model License {
 }
 
 model Payment {
-  id        String   @id @default(uuid())
+  id        String  @id @default(uuid())
   sessionId String
   txHash    String?
   amountUsd Float
   status    String
-  session   Session  @relation(fields: [sessionId], references: [id])
+  session   Session @relation(fields: [sessionId], references: [id])
 }
 
 model Playlist {
@@ -137,8 +257,8 @@ model Playlist {
   folderId  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id])
   folder    Folder?  @relation(fields: [folderId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 model Folder {

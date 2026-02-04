@@ -338,7 +338,7 @@ export async function uploadStems(
   formData: FormData
 ) {
   return apiRequest<{ releaseId: string; status: string }>(
-    "/stems/upload",
+    "/ingestion/upload",
     { method: "POST", body: formData },
     token
   );

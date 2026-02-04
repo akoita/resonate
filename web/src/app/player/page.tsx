@@ -11,6 +11,7 @@ import { LocalTrack } from "../../lib/localLibrary";
 import { AddToPlaylistModal } from "../../components/library/AddToPlaylistModal";
 import { ContextMenu, ContextMenuItem } from "../../components/ui/ContextMenu";
 import { useToast } from "../../components/ui/Toast";
+import { MixerConsole } from "../../components/player/MixerConsole";
 
 function PlayerContent() {
   const searchParams = useSearchParams();
@@ -33,7 +34,9 @@ function PlayerContent() {
     playQueue,
     artworkUrl,
     playNext,
-    addToQueue
+    addToQueue,
+    mixerMode,
+    toggleMixerMode
   } = usePlayer();
 
   const { addToast } = useToast();
@@ -138,6 +141,7 @@ function PlayerContent() {
                     createdAt: track.createdAt,
                     remoteUrl: s.uri,
                     remoteArtworkUrl: release.artworkUrl || undefined,
+                    stems: track.stems,
                   }));
                 } else if (track.stems && track.stems.length > 0) {
                   // Fallback to first stem if no ORIGINAL/other found
@@ -154,6 +158,7 @@ function PlayerContent() {
                     createdAt: track.createdAt,
                     remoteUrl: s.uri,
                     remoteArtworkUrl: release.artworkUrl || undefined,
+                    stems: track.stems,
                   }];
                 }
                 return [];
@@ -193,14 +198,38 @@ function PlayerContent() {
 
       {/* THE HERO STAGE */}
       <section className="player-hero-stage">
-        {artworkUrl ? (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img src={artworkUrl} alt={displayTrack.title} className="player-art-master" />
-        ) : (
-          <div className="player-art-master player-art-placeholder" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontSize: "160px", opacity: 0.05 }}>🎵</span>
-          </div>
-        )}
+        <div className="player-art-container">
+          {artworkUrl ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={artworkUrl} alt={displayTrack.title} className="player-art-master" />
+          ) : (
+            <div className="player-art-master player-art-placeholder" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: "160px", opacity: 0.05 }}>🎵</span>
+            </div>
+          )}
+          
+          {/* Mixer Toggle - floating on artwork */}
+          {currentTrack && (
+            <button 
+              className={`artwork-mixer-toggle ${mixerMode ? 'active' : ''}`}
+              onClick={toggleMixerMode}
+              title={mixerMode ? "Close Mixer" : "Open Stem Mixer"}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="4" y1="21" x2="4" y2="14" />
+                <line x1="4" y1="10" x2="4" y2="3" />
+                <line x1="12" y1="21" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12" y2="3" />
+                <line x1="20" y1="21" x2="20" y2="16" />
+                <line x1="20" y1="12" x2="20" y2="3" />
+                <circle cx="4" cy="12" r="2" fill="currentColor" />
+                <circle cx="12" cy="10" r="2" fill="currentColor" />
+                <circle cx="20" cy="14" r="2" fill="currentColor" />
+              </svg>
+              <span>Stem Mixer</span>
+            </button>
+          )}
+        </div>
 
         <h1 className="hero-title">{displayTrack.title}</h1>
         <p className="hero-artist">
@@ -215,6 +244,13 @@ function PlayerContent() {
           </div>
         )}
       </section>
+
+      {/* Mixer Panel - shows when active */}
+      {mixerMode && currentTrack && (
+        <div className="player-mixer-panel">
+          <MixerConsole onClose={toggleMixerMode} />
+        </div>
+      )}
 
       {/* THE FLOATING CONSOLE */}
       <aside className="player-floating-console">
@@ -290,9 +326,9 @@ function PlayerContent() {
           </div>
         </div>
 
-        <div className="queue-section" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div className="queue-section" style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "40vh" }}>
           <div className="studio-label" style={{ marginBottom: "var(--space-2)" }}>Queue Manifest</div>
-          <div className="queue-list" style={{ flex: 1, overflowY: "auto", paddingRight: "8px" }}>
+          <div className="queue-list" style={{ overflowY: "auto", paddingRight: "8px" }}>
             {queue.length > 0 ? (
               queue.map((track, idx) => (
                 <div
@@ -323,7 +359,7 @@ function PlayerContent() {
           </div>
         </div>
 
-        <div className="player-share-section" style={{ marginTop: "var(--space-2)", paddingTop: "var(--space-2)", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+        <div className="player-share-section" style={{ marginTop: "auto", paddingTop: "var(--space-2)", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
           <div className="studio-label" style={{ marginBottom: "var(--space-2)" }}>Broadcast Signal</div>
           <SocialShare title={displayTrack.title} artist={displayTrack.artist || "Unknown"} />
         </div>

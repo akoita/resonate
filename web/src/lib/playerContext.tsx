@@ -1,4 +1,87 @@
-"use client";
+import { getAddress } from "viem";
+
+// Simple Mutex for synchronization
+class Mutex {
+    private promise: Promise<void> = Promise.resolve();
+    async lock() {
+        let unlockNext: () => void;
+        const nextPromise = new Promise<void>((resolve) => {
+            unlockNext = resolve;
+        });
+        const prevPromise = this.promise;
+        this.promise = nextPromise;
+        await prevPromise;
+        return unlockNext!;
+    }
+}
+
+// AuthSig type definition
+interface AuthSig {
+    sig: string;
+    derivedVia: string;
+    signedMessage: string;
+    address: string;
+}
+
+// Global Shared AuthSig Cache
+let cachedAuthSig: AuthSig | null = null;
+let lastAuthSigAddress: string | null = null;
+let authSigPromise: Promise<AuthSig> | null = null;
+
+/**
+ * Shared function to get or generate AuthSig.
+ * Prevents multiple signatures from being requested simultaneously.
+ */
+const getAuthSig = async (signMessage: (msg: string) => Promise<string>, address: string) => {
+    const checksumAddress = getAddress(address);
+    if (cachedAuthSig && lastAuthSigAddress === checksumAddress) {
+        return cachedAuthSig;
+    }
+
+    if (authSigPromise) {
+        console.log("[AuthSig] Waiting for existing signature process...");
+        return authSigPromise;
+    }
+
+    authSigPromise = (async () => {
+        try {
+            console.log("[AuthSig] Requesting new signature via ZeroDev...");
+            const now = new Date().toISOString();
+            const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('');
+            const expiration = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+            const siweMessage = `${window.location.host} wants you to sign in with your Ethereum account:\n${checksumAddress}\n\nLogin to Resonate\n\nURI: ${window.location.origin}\nVersion: 1\nChain ID: 11155111\nNonce: ${nonce}\nIssued At: ${now}\nExpiration Time: ${expiration}`;
+
+            const signature = await signMessage(siweMessage);
+            const isSmartContractSig = signature.length > 132;
+
+            const authSig = {
+                sig: signature,
+                derivedVia: isSmartContractSig ? "EIP1271" : "web3.eth.personal.sign",
+                signedMessage: siweMessage,
+                address: checksumAddress,
+            };
+
+            cachedAuthSig = authSig;
+            lastAuthSigAddress = checksumAddress;
+            console.log("[AuthSig] Signature generated and cached.");
+            return authSig;
+        } finally {
+            authSigPromise = null;
+        }
+    })();
+
+    return authSigPromise;
+};
+
+// Global cache for decrypted blob URLs to handle React strict mode
+const decryptedBlobCache = new Map<string, string>();
+// Promises for in-flight decryption to allow waiting
+const decryptionPromises = new Map<string, Promise<string>>();
+
+export type RepeatMode = "none" | "one" | "all";
+import { useAuth } from "../components/auth/AuthProvider";
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { LocalTrack, getTrackUrl, getArtworkUrl, savePlayerState, loadPlayerState } from "./localLibrary";
@@ -26,9 +109,266 @@ interface PlayerContextType {
     stop: () => void;
     addToQueue: (track: LocalTrack) => void;
     playNext: (track: LocalTrack) => void;
+    // Mixer support
+    mixerMode: boolean;
+    toggleMixerMode: () => void;
+    setMixerVolumes: (volumes: Record<string, number>) => void;
+    mixerVolumes: Record<string, number>;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
+
+interface StemAudioProps {
+    stem: {
+        uri: string;
+        type: string;
+        isEncrypted?: boolean;
+        encryptionMetadata?: string | null;
+    };
+    masterAudio: HTMLAudioElement | null;
+    isPlaying: boolean;
+    volume: number;
+    mixerVolume: number;
+    onMount: (type: string, el: HTMLAudioElement) => void;
+    onUnmount: (type: string) => void;
+}
+
+const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolume, onMount, onUnmount }: StemAudioProps) => {
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const [streamUrl, setStreamUrl] = useState<string | null>(null);
+    const [isDecrypting, setIsDecrypting] = useState(false);
+    const { signMessage, address } = useAuth();
+    const type = stem.type.toLowerCase();
+
+    // 1. Handle Decryption and Object URLs
+    useEffect(() => {
+        let active = true;
+        const currentUri = stem.uri;
+
+        const loadAudio = async () => {
+            // Check if we already have a cached blob URL
+            const cachedUrl = decryptedBlobCache.get(currentUri);
+            if (cachedUrl) {
+                console.log(`[StemAudio:${type}] Using cached blob URL`);
+                setStreamUrl(cachedUrl);
+                setIsDecrypting(false);
+                return;
+            }
+
+            console.log(`[StemAudio:${type}] Loading... Encrypted: ${stem.isEncrypted}, URI: ${currentUri}`);
+            
+            if (!stem.isEncrypted) {
+                console.log(`[StemAudio:${type}] Not encrypted, using raw URI.`);
+                setStreamUrl(currentUri);
+                return;
+            }
+
+            // Check if decryption is already in progress - wait for it
+            const existingPromise = decryptionPromises.get(currentUri);
+            if (existingPromise) {
+                console.log(`[StemAudio:${type}] Waiting for existing decryption...`);
+                setIsDecrypting(true);
+                try {
+                    const url = await existingPromise;
+                    if (active) {
+                        console.log(`[StemAudio:${type}] Got URL from existing decryption`);
+                        setStreamUrl(url);
+                    }
+                } catch (err) {
+                    console.error(`[StemAudio:${type}] Existing decryption failed:`, err);
+                } finally {
+                    if (active) setIsDecrypting(false);
+                }
+                return;
+            }
+
+            // Start new decryption
+            const decryptionPromise = (async () => {
+                // Calculate AuthSig using ZeroDev/Kernel signer
+                if (!address) throw new Error("No wallet connected for decryption");
+
+                const authSig = await getAuthSig(signMessage, address);
+
+                console.log(`[StemAudio:${type}] Requesting proxy decryption from backend...`);
+
+                // Send the raw metadata - backend handles both AES and legacy Lit formats
+                const rawMetadata = stem.encryptionMetadata || "";
+
+                const proxyResponse = await fetch("http://localhost:3000/encryption/decrypt", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        uri: currentUri,
+                        metadata: rawMetadata,
+                        authSig
+                    })
+                });
+
+                if (!proxyResponse.ok) {
+                    const errorText = await proxyResponse.text();
+                    throw new Error(`Proxy decryption failed: ${errorText}`);
+                }
+
+                const decryptedData = await proxyResponse.arrayBuffer();
+                console.log(`[StemAudio:${type}] Proxy decryption successful. Size: ${decryptedData.byteLength}`);
+
+                const blob = new Blob([decryptedData], { type: "audio/mpeg" });
+                const url = URL.createObjectURL(blob);
+                console.log(`[StemAudio:${type}] Created Blob URL: ${url}`);
+                
+                // Cache the blob URL
+                decryptedBlobCache.set(currentUri, url);
+                
+                return url;
+            })();
+
+            // Store the promise so other mounts can wait for it
+            decryptionPromises.set(currentUri, decryptionPromise);
+            setIsDecrypting(true);
+
+            try {
+                const url = await decryptionPromise;
+                if (active) {
+                    setStreamUrl(url);
+                }
+            } catch (err) {
+                console.error(`[StemAudio:${type}] Failed to decrypt stem:`, err);
+                if (active) setStreamUrl(currentUri); // Fallback to raw (likely fails but safe)
+            } finally {
+                if (active) setIsDecrypting(false);
+                // Clean up the promise after a delay (keep cache)
+                setTimeout(() => decryptionPromises.delete(currentUri), 5000);
+            }
+        };
+
+        loadAudio();
+
+        return () => {
+            active = false;
+            // Don't revoke blob URLs - they're cached and shared
+        };
+    }, [stem.uri, stem.isEncrypted, stem.encryptionMetadata, address, signMessage, type]);
+
+    useEffect(() => {
+        const el = audioRef.current;
+        if (el) {
+            onMount(type, el);
+            console.log(`[StemAudio:${type}] Mounted`);
+        }
+        return () => onUnmount(type);
+    }, [type, onMount, onUnmount]);
+    
+    // Track isPlaying in a ref so we can access current value without adding as dependency
+    const isPlayingRef = useRef(isPlaying);
+    useEffect(() => {
+        isPlayingRef.current = isPlaying;
+    }, [isPlaying]);
+    
+    // When streamUrl changes (after decryption), explicitly load and play the audio
+    useEffect(() => {
+        if (!audioRef.current || !streamUrl) {
+            return;
+        }
+        
+        const audio = audioRef.current;
+        console.log(`[StemAudio:${type}] streamUrl available, loading audio...`);
+        
+        // Set src and load explicitly - React's attribute update doesn't trigger load
+        audio.src = streamUrl;
+        audio.load();
+        
+        // Set volume
+        const effectiveVolume = mixerVolume * volume;
+        audio.volume = effectiveVolume;
+        console.log(`[StemAudio:${type}] Volume set to ${effectiveVolume}`);
+        
+        // Start playback when ready
+        const playWhenReady = () => {
+            // Check current playing state via ref
+            if (isPlayingRef.current) {
+                console.log(`[StemAudio:${type}] canplay event - starting playback`);
+                audio.play().catch((err) => {
+                    console.log(`[StemAudio:${type}] Play after load failed:`, err.name);
+                });
+            } else {
+                console.log(`[StemAudio:${type}] canplay event - not playing (isPlaying=false)`);
+            }
+        };
+        
+        // Listen for canplay event
+        audio.addEventListener('canplay', playWhenReady, { once: true });
+        
+        return () => {
+            audio.removeEventListener('canplay', playWhenReady);
+        };
+    }, [streamUrl, type, mixerVolume, volume]); // Include volume deps for initial volume set
+    
+    // Update volume whenever mixerVolume or master volume changes
+    useEffect(() => {
+        if (audioRef.current && streamUrl) {
+            const effectiveVolume = mixerVolume * volume;
+            console.log(`[StemAudio:${type}] Setting volume: ${effectiveVolume} (mixer: ${mixerVolume}, master: ${volume})`);
+            audioRef.current.volume = effectiveVolume;
+        }
+    }, [mixerVolume, volume, type, streamUrl]);
+
+    // Play/pause stems based on isPlaying state - only when streamUrl is available
+    useEffect(() => {
+        if (!audioRef.current || !streamUrl) {
+            return;
+        }
+        
+        if (isPlaying) {
+            console.log(`[StemAudio:${type}] isPlaying changed to true, attempting play`);
+            audioRef.current.play().catch((err) => {
+                console.log(`[StemAudio:${type}] Play failed:`, err.name);
+            });
+        } else {
+            console.log(`[StemAudio:${type}] isPlaying changed to false, pausing`);
+            audioRef.current.pause();
+        }
+    }, [isPlaying, type, streamUrl]);
+
+    // Keep audio element mounted even during decryption to maintain ref stability
+    // Note: src is set programmatically in useEffect to ensure load() is called
+    return (
+        <audio
+            ref={audioRef}
+            preload="auto"
+            onLoadStart={() => {
+                console.log(`[StemAudio:${type}] onLoadStart - loading audio from blob`);
+            }}
+            onLoadedMetadata={(e) => {
+                console.log(`[StemAudio:${type}] onLoadedMetadata - duration:`, e.currentTarget.duration);
+                // Set volume immediately when metadata loads
+                e.currentTarget.volume = mixerVolume * volume;
+                // Sync with master audio if available
+                if (masterAudio) {
+                    const targetTime = masterAudio.currentTime;
+                    if (Math.abs(e.currentTarget.currentTime - targetTime) > 0.5) {
+                        console.log(`[StemAudio:${type}] Syncing to master time:`, targetTime);
+                        e.currentTarget.currentTime = targetTime;
+                    }
+                }
+            }}
+            onCanPlay={(e) => {
+                console.log(`[StemAudio:${type}] onCanPlay fired, isPlaying:`, isPlaying);
+                // Set volume
+                e.currentTarget.volume = mixerVolume * volume;
+            }}
+            onPlay={() => {
+                console.log(`[StemAudio:${type}] onPlay - stem is now playing`);
+            }}
+            onPause={() => {
+                console.log(`[StemAudio:${type}] onPause - stem paused`);
+            }}
+            onError={(e) => {
+                console.error(`[StemAudio:${type}] Audio error:`, e.currentTarget.error);
+            }}
+        />
+    );
+});
+StemAudio.displayName = "StemAudio";
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const [queue, setQueue] = useState<LocalTrack[]>([]);
@@ -42,6 +382,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const [shuffle, setShuffle] = useState(false);
     const [repeatMode, setRepeatMode] = useState<"none" | "one" | "all">("none");
     const [isHydrated, setIsHydrated] = useState(false);
+    const [mixerMode, setMixerMode] = useState(false);
+    const [mixerVolumes, setMixerVolumesState] = useState<Record<string, number>>({
+        vocals: 1,
+        drums: 1,
+        bass: 1,
+        other: 1,
+        piano: 1,
+        guitar: 1
+    });
+
+    // Additional audio elements for stems (mixer)
+    const stemAudiosRef = useRef<Record<string, HTMLAudioElement>>({});
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const playPromiseRef = useRef<Promise<void> | null>(null);
@@ -62,9 +414,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     // Persist volume immediately when changed locally
     useEffect(() => {
         if (audioRef.current) {
-            audioRef.current.volume = volume;
+            const hasStems = currentTrack?.stems?.some(s => s.type.toUpperCase() !== 'ORIGINAL');
+            // Mute main track if mixer mode is active AND we actually have stems to play
+            audioRef.current.volume = (mixerMode && hasStems) ? 0 : volume;
         }
-    }, [volume]);
+    }, [volume, mixerMode, currentTrack?.id]);
 
     // Hydration Effect
     useEffect(() => {
@@ -147,19 +501,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             return;
         }
 
-        // Only load new track if it's different from the current one
-        if (currentTrackIdRef.current === track.id) {
-            console.log("playTrack: same track, skipping reset", track.id);
-            // Same track, just ensure volume is set and resume if needed
-            audioRef.current.volume = volume;
+        // Synchronous pause to preserve user gesture
+        // But only if we are actually changing something
+        const url = await getTrackUrl(track);
+
+        if (currentTrackIdRef.current === track.id && currentTrackUrlRef.current === url) {
+            console.log("playTrack: same track and resolved URL, skipping reset", track.id);
+            if (audioRef.current) {
+                audioRef.current.volume = volume;
+            }
             return;
         }
 
-        console.log("playTrack: loading new track", track.id, "current:", currentTrackIdRef.current);
-        // Synchronous pause to preserve user gesture
+        console.log("playTrack: loading new track/stem", track.id, "URL changed:", currentTrackUrlRef.current !== url);
         safePause();
 
-        const url = await getTrackUrl(track);
         const art = await getArtworkUrl(track);
 
         // CRITICAL: Check AGAIN after async operations - seek might have started
@@ -237,18 +593,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             return;
         }
 
-        // If we're already playing this exact track at this exact index, don't reset
-        if (currentTrackIdRef.current === trackToPlay.id && currentIndexRef.current === startIndex) {
-            console.log("playQueue: same track and index, skipping", trackToPlay.id, startIndex);
-            // Just update the queue/index state without resetting playback
-            setQueue(list);
-            setCurrentIndex(startIndex);
-            return;
-        }
-
-        console.log("playQueue: loading track", trackToPlay.id, "at index", startIndex);
+        // Update queue state
         setQueue(list);
         setCurrentIndex(startIndex);
+
+        console.log("playQueue: playing track", trackToPlay.id, "at index", startIndex);
         await playTrack(trackToPlay);
     }, [playTrack]);
 
@@ -440,129 +789,88 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         }
     }, [safePause]);
 
-    const seek = useCallback((percent: number) => {
-        if (!audioRef.current) {
-            console.warn("Seek: audioRef.current is null");
-            return;
-        }
+    // Sync stems with main audio
+    useEffect(() => {
+        if (!mixerMode || !audioRef.current) return;
 
-        // Set seeking flag IMMEDIATELY to prevent any src changes
-        isSeekingRef.current = true;
+        const mainAudio = audioRef.current;
 
-        // Store the current src to detect if it changes
-        const currentSrc = audioRef.current.src;
+        const syncStems = () => {
+            const masterTime = mainAudio.currentTime;
+            const stems = Object.values(stemAudiosRef.current);
 
-        // Clamp percent to valid range
-        const clampedPercent = Math.max(0, Math.min(100, percent));
-
-        // If duration is not available yet, wait for it
-        if (!audioRef.current.duration || isNaN(audioRef.current.duration)) {
-            console.log("Seek: waiting for duration", audioRef.current.duration);
-            const checkDuration = () => {
-                if (audioRef.current && audioRef.current.duration && !isNaN(audioRef.current.duration)) {
-                    // Check if src changed (audio was reset)
-                    if (audioRef.current.src !== currentSrc) {
-                        console.error("Seek: audio src changed while waiting for duration!");
-                        return;
-                    }
-
-                    // isSeekingRef already set above
-                    const targetTime = (clampedPercent / 100) * audioRef.current.duration;
-                    pendingSeekTimeRef.current = targetTime;
-                    console.log("Seek: setting currentTime to", targetTime, "from percent", clampedPercent);
-                    audioRef.current.currentTime = targetTime;
-                    setProgress(clampedPercent);
-                    setCurrentTime(targetTime);
-                    // The seeked event will clear isSeekingRef when the seek completes
-                } else {
-                    // Retry after a short delay
-                    setTimeout(checkDuration, 50);
+            stems.forEach(stem => {
+                // If it's more than 100ms off, snap it.
+                // Frequent snapping causes audio badness, so we only do it for large drifts.
+                if (Math.abs(stem.currentTime - masterTime) > 0.2) {
+                    stem.currentTime = masterTime;
                 }
-            };
-            checkDuration();
-            return;
-        }
 
-        // Normal seek when duration is available
-        // isSeekingRef already set above
-        const targetTime = (clampedPercent / 100) * audioRef.current.duration;
-        pendingSeekTimeRef.current = targetTime;
-        const savedSrc = audioRef.current.src;
-        const savedCurrentTime = audioRef.current.currentTime;
-        console.log("Seek: setting currentTime to", targetTime, "from percent", clampedPercent, "duration", audioRef.current.duration, "current currentTime:", savedCurrentTime, "src:", savedSrc.substring(0, 50));
-
-        // Set the currentTime immediately
-        try {
-            audioRef.current.currentTime = targetTime;
-            setProgress(clampedPercent);
-            setCurrentTime(targetTime);
-        } catch (error) {
-            console.error("Seek: error setting currentTime", error);
-            isSeekingRef.current = false;
-            pendingSeekTimeRef.current = null;
-            return;
-        }
-
-        // Monitor for src changes and restore seek if needed
-        let retryCount = 0;
-        const maxRetries = 3;
-        const verifyAndRestoreSeek = () => {
-            if (!audioRef.current || !isSeekingRef.current) return;
-
-            // Check if src changed (audio was reset)
-            if (audioRef.current.src !== savedSrc && savedSrc) {
-                console.error("Seek: audio src changed! Restoring...", "Original:", savedSrc.substring(0, 50), "New:", audioRef.current.src.substring(0, 50));
-                // Restore the src
-                audioRef.current.src = savedSrc;
-                // Wait for metadata to load, then restore seek
-                const restoreSeek = () => {
-                    if (audioRef.current && audioRef.current.duration && retryCount < maxRetries) {
-                        audioRef.current.currentTime = targetTime;
-                        retryCount++;
-                        setTimeout(verifyAndRestoreSeek, 100);
-                    } else {
-                        isSeekingRef.current = false;
-                    }
-                };
-                audioRef.current.addEventListener('loadedmetadata', restoreSeek, { once: true });
-                // Also try immediately if already loaded
-                if (audioRef.current.readyState >= 1) {
-                    restoreSeek();
-                }
-                return;
-            }
-
-            // Check if currentTime was reset to near 0
-            const actualTime = audioRef.current.currentTime;
-            if (actualTime < 1 && targetTime > 1 && retryCount < maxRetries) {
-                console.warn("Seek: currentTime reset to", actualTime, "expected", targetTime, "Retrying...", retryCount + 1);
-                audioRef.current.currentTime = targetTime;
-                retryCount++;
-                setTimeout(verifyAndRestoreSeek, 100);
-                return;
-            }
+                // Keep play states in sync
+                if (mainAudio.paused && !stem.paused) stem.pause();
+                else if (!mainAudio.paused && stem.paused) stem.play().catch(() => { });
+            });
         };
 
-        // Verify after a short delay
-        setTimeout(verifyAndRestoreSeek, 50);
+        const interval = setInterval(syncStems, 500); // Less frequent sync to reduce CPU
+        return () => clearInterval(interval);
+    }, [mixerMode, isPlaying, currentTrack?.id]);
 
-        // Fallback: if seeked event doesn't fire within 500ms, clear the flag anyway
-        setTimeout(() => {
-            if (isSeekingRef.current) {
-                console.warn("Seek: seeked event did not fire, clearing flag manually");
-                verifyAndRestoreSeek(); // Final verification
-                isSeekingRef.current = false;
-            }
-        }, 500);
-        // The seeked event will clear isSeekingRef when the seek completes
+    const handleStemMount = useCallback((type: string, el: HTMLAudioElement) => {
+        stemAudiosRef.current[type] = el;
     }, []);
+
+    const handleStemUnmount = useCallback((type: string) => {
+        delete stemAudiosRef.current[type];
+    }, []);
+
+    useEffect(() => {
+        if (!audioRef.current) return;
+        const onPlay = () => {
+            if (mixerMode) Object.values(stemAudiosRef.current).forEach(s => s.play().catch(() => { }));
+        };
+        const onPause = () => {
+            if (mixerMode) Object.values(stemAudiosRef.current).forEach(s => s.pause());
+        };
+        const main = audioRef.current;
+        main.addEventListener('play', onPlay);
+        main.addEventListener('pause', onPause);
+        return () => {
+            main.removeEventListener('play', onPlay);
+            main.removeEventListener('pause', onPause);
+        };
+    }, [mixerMode, currentTrack?.id]);
+
+    const seek = useCallback((percent: number) => {
+        if (!audioRef.current) return;
+        const targetTime = (percent / 100) * (audioRef.current.duration || 0);
+
+        isSeekingRef.current = true;
+        audioRef.current.currentTime = targetTime;
+        setProgress(percent);
+        setCurrentTime(targetTime);
+
+        if (mixerMode) {
+            Object.values(stemAudiosRef.current).forEach(s => {
+                s.currentTime = targetTime;
+            });
+        }
+    }, [mixerMode]);
 
     const setVolume = useCallback((value: number) => {
         setVolumeState(value);
         if (audioRef.current) {
-            audioRef.current.volume = value;
+            audioRef.current.volume = mixerMode ? 0 : value;
         }
-    }, []);
+        if (mixerMode) {
+            Object.entries(mixerVolumes).forEach(([type, vol]) => {
+                const audio = stemAudiosRef.current[type];
+                if (audio) {
+                    audio.volume = vol * value; // Scale stem by master volume
+                }
+            });
+        }
+    }, [mixerMode, mixerVolumes]);
 
     return (
         <PlayerContext.Provider value={{
@@ -597,9 +905,50 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
                     newQueue.splice(currentIndex + 1, 0, track);
                     setQueue(newQueue);
                 }
+            },
+            mixerMode,
+            toggleMixerMode: () => {
+                const nextMode = !mixerMode;
+                setMixerMode(nextMode);
+                // Synchronously update master volume to prevent leakage/phase issues
+                if (audioRef.current) {
+                    const hasStems = currentTrack?.stems?.some(s => s.type.toUpperCase() !== 'ORIGINAL');
+                    audioRef.current.volume = (nextMode && hasStems) ? 0 : volume;
+                }
+            },
+            mixerVolumes,
+            setMixerVolumes: (v: Record<string, number>) => {
+                console.log('[setMixerVolumes] Updating volumes:', v, 'registered stems:', Object.keys(stemAudiosRef.current));
+                setMixerVolumesState(v);
+                Object.entries(v).forEach(([type, vol]) => {
+                    const audio = stemAudiosRef.current[type];
+                    if (audio) {
+                        const effectiveVol = vol * volume;
+                        console.log(`[setMixerVolumes] Setting ${type} volume to ${effectiveVol} (mixer: ${vol}, master: ${volume})`);
+                        audio.volume = effectiveVol;
+                    } else {
+                        console.log(`[setMixerVolumes] No audio element found for ${type}`);
+                    }
+                });
             }
         }}>
             {children}
+            {mixerMode && currentTrack?.id && (
+                <div style={{ display: 'none' }}>
+                    {currentTrack.stems?.filter(s => s.type.toUpperCase() !== 'ORIGINAL').map(stem => (
+                        <StemAudio
+                            key={stem.type.toLowerCase()}
+                            stem={stem}
+                            masterAudio={audioRef.current}
+                            isPlaying={isPlaying}
+                            volume={volume}
+                            mixerVolume={mixerVolumes[stem.type.toLowerCase()] ?? 1}
+                            onMount={handleStemMount}
+                            onUnmount={handleStemUnmount}
+                        />
+                    ))}
+                </div>
+            )}
         </PlayerContext.Provider>
     );
 }

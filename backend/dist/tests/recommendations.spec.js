@@ -7,8 +7,8 @@ jest.mock("../db/prisma", () => {
         prisma: {
             track: {
                 findMany: async () => [
-                    { id: "track-1", title: "Pulse", artistId: "artist-1", explicit: false },
-                    { id: "track-2", title: "Glow", artistId: "artist-2", explicit: false },
+                    { id: "track-1", title: "Pulse", artistId: "artist-1", explicit: false, release: { artistId: "artist-1" } },
+                    { id: "track-2", title: "Glow", artistId: "artist-2", explicit: false, release: { artistId: "artist-2" } },
                 ],
             },
         },

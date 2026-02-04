@@ -79,13 +79,16 @@ let CatalogService = class CatalogService {
             console.log(`[Catalog] Received stems.processed for release ${event.releaseId}`);
             this.clearCache();
             let release = await prisma_1.prisma.release.findUnique({ where: { id: event.releaseId } });
-            if (!release) {
-                console.warn(`[Catalog] Release ${event.releaseId} not found yet. Retrying in 1s...`);
+            let attempts = 0;
+            const maxAttempts = 5;
+            while (!release && attempts < maxAttempts) {
+                attempts++;
+                console.warn(`[Catalog] Release ${event.releaseId} not found yet (attempt ${attempts}/${maxAttempts}). Retrying in 1s...`);
                 await new Promise((resolve) => setTimeout(resolve, 1000));
                 release = await prisma_1.prisma.release.findUnique({ where: { id: event.releaseId } });
             }
             if (!release) {
-                console.error(`[Catalog] Release ${event.releaseId} still not found. Dropping stems.`);
+                console.error(`[Catalog] Release ${event.releaseId} still not found after ${maxAttempts} attempts. Dropping stems.`);
                 return;
             }
             try {
@@ -108,6 +111,7 @@ let CatalogService = class CatalogService {
                             },
                         });
                         for (const stem of trackData.stems) {
+                            console.log(`[Catalog] Upserting stem ${stem.id} for track ${trackData.id}. Data length: ${stem.data?.length ?? "NULL"} bytes`);
                             await prisma_1.prisma.stem.upsert({
                                 where: { id: stem.id },
                                 create: {
@@ -117,12 +121,20 @@ let CatalogService = class CatalogService {
                                     uri: stem.uri,
                                     data: stem.data,
                                     mimeType: stem.mimeType,
+                                    durationSeconds: stem.durationSeconds,
+                                    isEncrypted: stem.isEncrypted ?? false,
+                                    encryptionMetadata: stem.encryptionMetadata,
+                                    storageProvider: stem.storageProvider ?? "local",
                                 },
                                 update: {
                                     type: stem.type,
                                     uri: stem.uri,
                                     data: stem.data,
                                     mimeType: stem.mimeType,
+                                    durationSeconds: stem.durationSeconds,
+                                    isEncrypted: stem.isEncrypted ?? false,
+                                    encryptionMetadata: stem.encryptionMetadata,
+                                    storageProvider: stem.storageProvider ?? "local",
                                 },
                             });
                         }
@@ -133,6 +145,14 @@ let CatalogService = class CatalogService {
                     data: { status: "ready" },
                 });
                 console.log(`[Catalog] Release ${event.releaseId} updated to ready`);
+                this.eventBus.publish({
+                    eventName: "catalog.release_ready",
+                    eventVersion: 1,
+                    occurredAt: new Date().toISOString(),
+                    releaseId: event.releaseId,
+                    artistId: event.artistId,
+                    metadata: event.metadata,
+                });
             }
             catch (err) {
                 console.error(`[Catalog] Failed to finalise release ${event.releaseId}:`, err);
@@ -166,7 +186,7 @@ let CatalogService = class CatalogService {
                 createdAt: true,
                 artworkMimeType: true, // Useful for frontend to know, but DATA must be excluded
                 artist: {
-                    select: { id: true, displayName: true, payoutAddress: true }
+                    select: { id: true, displayName: true, userId: true, payoutAddress: true }
                 },
                 tracks: {
                     orderBy: { position: "asc" },
@@ -185,6 +205,9 @@ let CatalogService = class CatalogService {
                                 uri: true,
                                 ipnftId: true,
                                 checksum: true,
+                                durationSeconds: true,
+                                isEncrypted: true,
+                                encryptionMetadata: true,
                                 // Exclude data and mimeType (huge blobs)
                             }
                         }
@@ -251,6 +274,9 @@ let CatalogService = class CatalogService {
                         type: true,
                         uri: true,
                         ipnftId: true,
+                        durationSeconds: true,
+                        isEncrypted: true,
+                        encryptionMetadata: true,
                         // Exclude data
                     }
                 },
@@ -260,7 +286,7 @@ let CatalogService = class CatalogService {
                         title: true,
                         primaryArtist: true,
                         artworkMimeType: true,
-                        artist: { select: { id: true, displayName: true } }
+                        artist: { select: { id: true, displayName: true, userId: true } }
                     }
                 }
             }
@@ -284,7 +310,7 @@ let CatalogService = class CatalogService {
                 createdAt: true,
                 artworkMimeType: true,
                 artist: {
-                    select: { id: true, displayName: true }
+                    select: { id: true, displayName: true, userId: true }
                 },
                 tracks: {
                     orderBy: { position: "asc" },
@@ -302,6 +328,10 @@ let CatalogService = class CatalogService {
                                 type: true,
                                 uri: true,
                                 ipnftId: true,
+                                durationSeconds: true,
+                                isEncrypted: true,
+                                encryptionMetadata: true,
+                                storageProvider: true,
                                 // Exclude data
                             }
                         }
@@ -316,6 +346,9 @@ let CatalogService = class CatalogService {
             select: {
                 id: true,
                 artistId: true,
+                artist: {
+                    select: { id: true, displayName: true, userId: true }
+                },
                 title: true,
                 status: true,
                 type: true,
@@ -335,7 +368,14 @@ let CatalogService = class CatalogService {
                         position: true,
                         explicit: true,
                         stems: {
-                            select: { id: true, type: true, uri: true }
+                            select: {
+                                id: true,
+                                type: true,
+                                uri: true,
+                                durationSeconds: true,
+                                isEncrypted: true,
+                                encryptionMetadata: true,
+                            }
                         }
                     }
                 }
@@ -359,6 +399,31 @@ let CatalogService = class CatalogService {
             include: { tracks: true },
         });
     }
+    async updateReleaseArtwork(releaseId, userId, artwork) {
+        const release = await prisma_1.prisma.release.findUnique({
+            where: { id: releaseId },
+            include: { artist: true }
+        });
+        if (!release)
+            throw new common_1.BadRequestException("Release not found");
+        if (release.artist?.userId !== userId) {
+            throw new common_1.BadRequestException("Not authorized to update this release");
+        }
+        const updated = await prisma_1.prisma.release.update({
+            where: { id: releaseId },
+            data: {
+                artworkData: artwork.buffer,
+                artworkMimeType: artwork.mimetype
+            },
+            select: { id: true, artworkMimeType: true }
+        });
+        this.clearCache();
+        return {
+            success: true,
+            id: updated.id,
+            artworkUrl: `/catalog/releases/${releaseId}/artwork?t=${Date.now()}`
+        };
+    }
     async search(query, filters) {
         const cacheKey = JSON.stringify({
             query,
@@ -376,7 +441,10 @@ let CatalogService = class CatalogService {
             where: {
                 OR: [
                     { title: { contains: query, mode: "insensitive" } },
-                    { tracks: { some: { title: { contains: query, mode: "insensitive" } } } }
+                    { primaryArtist: { contains: query, mode: "insensitive" } },
+                    { featuredArtists: { contains: query, mode: "insensitive" } },
+                    { tracks: { some: { title: { contains: query, mode: "insensitive" } } } },
+                    { tracks: { some: { artist: { contains: query, mode: "insensitive" } } } }
                 ],
                 status: "ready"
             },
@@ -405,7 +473,14 @@ let CatalogService = class CatalogService {
                         position: true,
                         explicit: true,
                         stems: {
-                            select: { id: true, type: true, uri: true }
+                            select: {
+                                id: true,
+                                type: true,
+                                uri: true,
+                                durationSeconds: true,
+                                isEncrypted: true,
+                                encryptionMetadata: true,
+                            }
                         }
                     }
                 }

@@ -13,6 +13,9 @@ jest.mock("../db/prisma", () => {
                         artistId: "artist-1",
                         genre: "ambient",
                         explicit: false,
+                        release: {
+                            artistId: "artist-1"
+                        }
                     },
                 ],
             },

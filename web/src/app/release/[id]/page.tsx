@@ -7,6 +7,8 @@ import { LocalTrack, saveTrackMetadata } from "../../../lib/localLibrary";
 import { Button } from "../../../components/ui/Button";
 import { usePlayer } from "../../../lib/playerContext";
 import { AddToPlaylistModal } from "../../../components/library/AddToPlaylistModal";
+import { MixerConsole } from "../../../components/player/MixerConsole";
+import { useUIStore } from "../../../lib/uiStore";
 import { useToast } from "../../../components/ui/Toast";
 // import { addTracksByCriteria } from "../../../lib/playlistStore";
 import { formatDuration } from "../../../lib/metadataExtractor";
@@ -20,7 +22,14 @@ const getTrackDuration = (track: { stems?: Array<{ durationSeconds?: number | nu
 export default function ReleaseDetails() {
   const { id } = useParams();
   const router = useRouter();
-  const { playQueue } = usePlayer();
+  const {
+    playQueue,
+    mixerMode,
+    toggleMixerMode,
+    mixerVolumes,
+    setMixerVolumes,
+    currentTrack
+  } = usePlayer();
   const { addToast } = useToast();
   const { token, userId } = useAuth();
   const [release, setRelease] = useState<Release | null>(null);
@@ -28,6 +37,7 @@ export default function ReleaseDetails() {
   const [isUpdatingArtwork, setIsUpdatingArtwork] = useState(false);
   const [tracksToAddToPlaylist, setTracksToAddToPlaylist] = useState<LocalTrack[] | null>(null);
   const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(new Set());
+  const [trackStems, setTrackStems] = useState<Record<string, string>>({}); // trackId -> stemType (e.g. 'vocals')
   const artworkInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -39,22 +49,37 @@ export default function ReleaseDetails() {
     }
   }, [id]);
 
-  const handlePlayTrack = (trackIndex: number) => {
+  const handlePlayTrack = (trackIndex: number, specificStem?: string) => {
     if (!release?.tracks) return;
-    const playableTracks: LocalTrack[] = (release.tracks || []).map((t) => ({
-      id: t.id,
-      title: t.title,
-      artist: t.artist || release.primaryArtist || release.artist?.displayName || "Unknown Artist",
-      albumArtist: null,
-      album: release.title,
-      year: release.releaseDate ? new Date(release.releaseDate).getFullYear() : null,
-      genre: release.genre || null,
-      duration: getTrackDuration(t),
-      createdAt: t.createdAt,
-      remoteUrl: t.stems && t.stems.length > 0 ? t.stems[0].uri : undefined,
-      remoteArtworkUrl: release.artworkUrl || undefined,
-    }));
+    const playableTracks: LocalTrack[] = (release.tracks || []).map((t) => {
+      const selectedType = specificStem || trackStems[t.id] || "ORIGINAL";
+      // Find the stem of selected type, fallback to first stem
+      const stem = t.stems?.find(s => s.type.toLowerCase() === selectedType.toLowerCase()) || t.stems?.[0];
+
+      return {
+        id: t.id,
+        title: t.title,
+        artist: t.artist || release.primaryArtist || release.artist?.displayName || "Unknown Artist",
+        albumArtist: null,
+        album: release.title,
+        year: release.releaseDate ? new Date(release.releaseDate).getFullYear() : null,
+        genre: release.genre || null,
+        duration: getTrackDuration(t),
+        createdAt: t.createdAt,
+        remoteUrl: stem?.uri,
+        remoteArtworkUrl: release.artworkUrl || undefined,
+        stems: t.stems,
+      };
+    });
     void playQueue(playableTracks, trackIndex);
+  };
+
+  const handleStemChange = (trackId: string, trackIndex: number, type: string) => {
+    setTrackStems(prev => ({ ...prev, [trackId]: type }));
+    // If the track is currently playing, we should switch it
+    // But for now, just let the user click play to start with the new stem
+    // or we can auto-play if it's simpler
+    handlePlayTrack(trackIndex, type);
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -70,6 +95,7 @@ export default function ReleaseDetails() {
     createdAt: t.createdAt ? new Date(t.createdAt).toISOString() : new Date().toISOString(),
     remoteUrl: t.stems && t.stems.length > 0 ? t.stems[0].uri : undefined,
     remoteArtworkUrl: release?.artworkUrl || undefined,
+    stems: t.stems,
   });
 
   const handlePlayAll = () => handlePlayTrack(0);
@@ -263,6 +289,12 @@ export default function ReleaseDetails() {
         </div>
       </header>
 
+      {mixerMode && currentTrack && (
+        <div className="mixer-page-section" style={{ marginBottom: 'var(--space-4)' }}>
+          <MixerConsole onClose={() => toggleMixerMode()} />
+        </div>
+      )}
+
       <section className="tracklist-section glass-panel">
         <table className="track-table">
           <thead>
@@ -351,6 +383,43 @@ export default function ReleaseDetails() {
                       <span className="track-title-name">{track.title}</span>
                       {track.explicit && <span className="explicit-tag">E</span>}
                     </div>
+                    {track.stems && track.stems.length > 1 && (
+                      <div className="stem-selector" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          variant="ghost"
+                          className={`mixer-toggle-btn ${mixerMode && currentTrack?.id === track.id ? 'active' : ''}`}
+                          onClick={() => {
+                            if (currentTrack?.id !== track.id) {
+                              void handlePlayTrack(idx);
+                            }
+                            toggleMixerMode();
+                          }}
+                        >
+                          🎚️ Mixer
+                        </Button>
+                        {!mixerMode && (
+                          <div className="stem-btns-group">
+                            {["ORIGINAL", "vocals", "drums", "bass", "other"].map((type) => {
+                              const hasStem = track.stems?.some(s => s.type.toLowerCase() === type.toLowerCase());
+                              if (!hasStem) return null;
+
+                              const isSelected = (trackStems[track.id] || "ORIGINAL").toLowerCase() === type.toLowerCase();
+                              return (
+                                <button
+                                  key={type}
+                                  className={`stem-btn ${isSelected ? 'active' : ''}`}
+                                  onClick={() => handleStemChange(track.id, idx, type)}
+                                  title={`Play ${type}`}
+                                >
+                                  {type === "ORIGINAL" ? "Full" : type.charAt(0).toUpperCase() + type.slice(1, 4)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {/* Mixer toggle remains here, but the console is moved out of the row to prevent duplication/layout issues */}
                   </td>
                   <td
                     className="track-artist clickable"
@@ -665,6 +734,38 @@ export default function ReleaseDetails() {
           padding: 1px 4px;
           border-radius: 2px;
           font-weight: 700;
+        }
+
+        .stem-selector {
+          display: flex;
+          gap: 6px;
+          margin-top: 8px;
+        }
+
+        .stem-btn {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          color: var(--color-muted);
+          font-size: 10px;
+          font-weight: 700;
+          padding: 2px 8px;
+          border-radius: 4px;
+          transition: all 0.2s;
+          cursor: pointer;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .stem-btn:hover {
+          background: rgba(255, 255, 255, 0.1);
+          color: #fff;
+        }
+
+        .stem-btn.active {
+          background: var(--color-accent);
+          border-color: var(--color-accent);
+          color: #fff;
+          box-shadow: 0 0 10px rgba(var(--color-accent-rgb), 0.4);
         }
 
         .track-artist, .track-genre {

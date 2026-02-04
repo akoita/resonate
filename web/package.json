@@ -10,6 +10,10 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@lit-protocol/auth-browser": "^7.4.0",
+    "@lit-protocol/contracts-sdk": "^7.4.0",
+    "@lit-protocol/lit-node-client": "^7.4.0",
+    "@walletconnect/modal": "^2.7.0",
     "@zerodev/ecdsa-validator": "^5.4.9",
     "@zerodev/passkey-validator": "^5.6.0",
     "@zerodev/sdk": "^5.5.7",

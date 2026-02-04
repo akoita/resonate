@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CatalogController = void 0;
 const common_1 = require("@nestjs/common");
 const passport_1 = require("@nestjs/passport");
+const platform_express_1 = require("@nestjs/platform-express");
 const catalog_service_1 = require("./catalog.service");
 let CatalogController = class CatalogController {
     catalogService;
@@ -92,6 +93,15 @@ let CatalogController = class CatalogController {
     }
     updateRelease(releaseId, body) {
         return this.catalogService.updateRelease(releaseId, body);
+    }
+    async updateArtwork(releaseId, files, req) {
+        const artwork = files.artwork?.[0];
+        if (!artwork)
+            throw new common_1.BadRequestException("No artwork file provided");
+        return this.catalogService.updateReleaseArtwork(releaseId, req.user.userId, {
+            buffer: artwork.buffer,
+            mimetype: artwork.mimetype
+        });
     }
     listByArtist(artistId) {
         return this.catalogService.listByArtist(artistId);
@@ -171,6 +181,17 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", void 0)
 ], CatalogController.prototype, "updateRelease", null);
+__decorate([
+    (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
+    (0, common_1.Patch)("releases/:releaseId/artwork"),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileFieldsInterceptor)([{ name: 'artwork', maxCount: 1 }])),
+    __param(0, (0, common_1.Param)("releaseId")),
+    __param(1, (0, common_1.UploadedFiles)()),
+    __param(2, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:returntype", Promise)
+], CatalogController.prototype, "updateArtwork", null);
 __decorate([
     (0, common_1.Get)("artist/:artistId"),
     __param(0, (0, common_1.Param)("artistId")),

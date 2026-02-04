@@ -27,6 +27,16 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
     onModuleInit() { }
 
     private subscribeToEvents() {
+        this.eventBus.subscribe('stems.progress' as any, (event: any) => {
+            if (this.server) {
+                this.server.emit('release.progress', {
+                    releaseId: event.releaseId,
+                    trackId: event.trackId,
+                    progress: event.progress,
+                });
+            }
+        });
+
         this.eventBus.subscribe('stems.uploaded', (event: StemsUploadedEvent) => {
             console.log(`[EventsGateway] Received stems.uploaded for ${event.releaseId}, broadcasting...`);
             if (this.server) {

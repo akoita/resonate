@@ -124,6 +124,9 @@ export class CatalogService implements OnModuleInit {
                   data: stem.data,
                   mimeType: stem.mimeType,
                   durationSeconds: stem.durationSeconds,
+                  isEncrypted: stem.isEncrypted ?? false,
+                  encryptionMetadata: stem.encryptionMetadata,
+                  storageProvider: stem.storageProvider ?? "local",
                 },
                 update: {
                   type: stem.type,
@@ -131,6 +134,9 @@ export class CatalogService implements OnModuleInit {
                   data: stem.data,
                   mimeType: stem.mimeType,
                   durationSeconds: stem.durationSeconds,
+                  isEncrypted: stem.isEncrypted ?? false,
+                  encryptionMetadata: stem.encryptionMetadata,
+                  storageProvider: stem.storageProvider ?? "local",
                 },
               });
             }
@@ -205,6 +211,8 @@ export class CatalogService implements OnModuleInit {
                 ipnftId: true,
                 checksum: true,
                 durationSeconds: true,
+                isEncrypted: true,
+                encryptionMetadata: true,
                 // Exclude data and mimeType (huge blobs)
               }
             }
@@ -287,6 +295,8 @@ export class CatalogService implements OnModuleInit {
             uri: true,
             ipnftId: true,
             durationSeconds: true,
+            isEncrypted: true,
+            encryptionMetadata: true,
             // Exclude data
           }
         },
@@ -340,6 +350,9 @@ export class CatalogService implements OnModuleInit {
                 uri: true,
                 ipnftId: true,
                 durationSeconds: true,
+                isEncrypted: true,
+                encryptionMetadata: true,
+                storageProvider: true,
                 // Exclude data
               }
             }
@@ -377,7 +390,14 @@ export class CatalogService implements OnModuleInit {
             position: true,
             explicit: true,
             stems: {
-              select: { id: true, type: true, uri: true, durationSeconds: true }
+              select: {
+                id: true,
+                type: true,
+                uri: true,
+                durationSeconds: true,
+                isEncrypted: true,
+                encryptionMetadata: true,
+              }
             }
           }
         }
@@ -490,7 +510,14 @@ export class CatalogService implements OnModuleInit {
             position: true,
             explicit: true,
             stems: {
-              select: { id: true, type: true, uri: true, durationSeconds: true }
+              select: {
+                id: true,
+                type: true,
+                uri: true,
+                durationSeconds: true,
+                isEncrypted: true,
+                encryptionMetadata: true,
+              }
             }
           }
         }
