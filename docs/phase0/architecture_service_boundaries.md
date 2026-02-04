@@ -17,7 +17,7 @@ owner: "@akoita"
 | Service | Responsibility | Dependencies |
 | --- | --- | --- |
 | Identity & Wallet | Auth, account abstraction, budget caps | Privy/Web3Auth, AA provider |
-| Ingestion & AI | Upload, stem separation, storage | GCS/IPFS, Vertex AI |
+| Ingestion & AI | Upload, stem separation, storage | Storage (Local/IPFS/GCS), Demucs Worker, Redis/BullMQ |
 | Catalog & Rights | Metadata, licensing, indexing | Indexer, chain events |
 | Session Orchestrator | AI DJ session and negotiation | Catalog, Wallet, Payments |
 | Payments | On-chain settlement and splits | Payment splitter contract |
@@ -52,10 +52,14 @@ owner: "@akoita"
 - GCS for raw uploads and processed outputs.
 - IPFS for content-addressable distribution.
 
-### AI
+### AI / Audio Processing
 
-- Vertex AI for stem separation and recommendation agents.
-- Model version tracking in ingestion events.
+- **Demucs Worker** for stem separation (containerized FastAPI service).
+  - Model: `htdemucs_6s` (6-stem: vocals, drums, bass, guitar, piano, other)
+  - GPU support available via `docker-compose.gpu.yml`
+  - Model pre-cached in Docker image (~1GB)
+- **BullMQ** for async job processing with Redis backend.
+- Model version tracking in `stems.processed` events (`modelVersion: "demucs-htdemucs-6s"`).
 
 ## Non-Goals (Phase 0)
 

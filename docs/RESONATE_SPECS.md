@@ -45,7 +45,7 @@ Resonate builds on established Ethereum standards:
 | Royalty Info | [EIP-2981](https://eips.ethereum.org/EIPS/eip-2981) | On-chain royalty signaling |
 | Revenue Splits | [0xSplits](https://splits.org/) | Trustless, composable revenue distribution |
 | Signature Verification | [EIP-1271](https://eips.ethereum.org/EIPS/eip-1271) | Smart contract signature validation |
-| Audio Processing | [Demucs](https://github.com/facebookresearch/demucs) | State-of-the-art source separation |
+| Audio Processing | [Demucs](https://github.com/facebookresearch/demucs) (htdemucs_6s) | 6-stem separation: vocals, drums, bass, guitar, piano, other |
 | Agent Identity | [ERC-8004](https://eips.ethereum.org/EIPS/eip-8004) | Trustless Agent Identity & Reputation |
 
 ---
@@ -180,6 +180,6 @@ The following represent potential directions, not commitments:
 - [EIP-1271: Standard Signature Validation](https://eips.ethereum.org/EIPS/eip-1271)
 - [EIP-2981: NFT Royalty Standard](https://eips.ethereum.org/EIPS/eip-2981)
 - [0xSplits: Revenue Distribution Protocol](https://splits.org/)
-- [Demucs: Music Source Separation](https://github.com/facebookresearch/demucs)
+- [Demucs: Music Source Separation](https://github.com/facebookresearch/demucs) (htdemucs_6s model)
 - [ZeroDev: Smart Wallet SDK](https://zerodev.app/)
 

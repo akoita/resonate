@@ -1,0 +1,6 @@
+git+https://github.com/adefossez/demucs.git
+fastapi
+uvicorn
+python-multipart
+numpy<2.0.0
+httpx

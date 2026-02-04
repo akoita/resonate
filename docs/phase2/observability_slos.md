@@ -23,9 +23,16 @@
 - Error rate (4xx/5xx)
 
 ### Ingestion/Catalog
-- Uploads queued/processed
-- Stem separation duration
+- Uploads queued/processed (BullMQ `stems` queue depth)
+- Stem separation duration (Demucs worker processing time)
 - Catalog update latency
+
+### Demucs Worker
+- `/health` endpoint response time
+- Separation job duration (by hardware: CPU vs GPU)
+- Memory/GPU utilization during processing
+- Job success/failure rate
+- Model load time (first request after cold start)
 
 ### Sessions/Payments
 - Session starts/stops
@@ -41,6 +48,8 @@
 - Error rate > 2% for 5 minutes
 - P95 latency > 1s for 10 minutes
 - Ingestion backlog > 200 items
+- Demucs worker unhealthy (health check failing)
+- Stem separation duration > 15 minutes (CPU) or > 2 minutes (GPU)
 
 ## Dashboards (Stub)
 - API overview (latency, error rate, throughput)

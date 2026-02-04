@@ -1,7 +1,13 @@
 import { Injectable } from "@nestjs/common";
 import { join } from "path";
-import { writeFileSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
+import { readdir } from "fs/promises";
+import { Queue } from "bullmq";
+import { InjectQueue } from "@nestjs/bullmq";
 import { EventBus } from "../shared/event_bus";
+import { StorageProvider } from "../storage/storage_provider";
+import { EncryptionService } from "../encryption/encryption.service";
+import { ArtistService } from "../artist/artist.service";
 
 type UploadStatus = "queued" | "processing" | "complete" | "failed";
 
@@ -24,11 +30,33 @@ interface UploadRecord {
   stems?: { id: string; uri: string; type: string }[];
 }
 
+interface StemAudioProps {
+  stem: {
+    uri: string;
+    type: string;
+    isEncrypted?: boolean;
+    encryptionMetadata?: string | null;
+  };
+  masterAudio: HTMLAudioElement | null;
+  isPlaying: boolean;
+  volume: number;
+  mixerVolume: number;
+  onMount: (type: string, el: HTMLAudioElement) => void;
+  onUnmount: (type: string) => void;
+}
+
 @Injectable()
 export class IngestionService {
   private uploads = new Map<string, UploadRecord>();
+  private readonly CONCURRENCY = 1;
 
-  constructor(private readonly eventBus: EventBus) { }
+  constructor(
+    private readonly eventBus: EventBus,
+    private readonly storageProvider: StorageProvider,
+    private readonly encryptionService: EncryptionService,
+    private readonly artistService: ArtistService,
+    @InjectQueue("stems") private readonly stemsQueue: Queue,
+  ) { }
 
   async handleFileUpload(input: {
     artistId: string;
@@ -134,51 +162,169 @@ export class IngestionService {
 
     console.log(`[Ingestion] Emitted stems.uploaded for ${releaseId}. Buffers nuked in metadata for logging safety.`);
 
-    // 2. Emit Processed
-    setTimeout(() => {
+    // 2. Process stems (Real implementation) via BullMQ
+    await this.stemsQueue.add("process-stems", { releaseId, artistId: input.artistId, tracks });
+
+    return { releaseId, status: "processing" };
+  }
+
+  handleProgress(releaseId: string, trackId: string, progress: number) {
+    this.eventBus.publish({
+      eventName: "stems.progress" as any,
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      releaseId,
+      trackId,
+      progress,
+    });
+    console.log(`[Ingestion] Progress for ${trackId}: ${progress}%`);
+  }
+
+  async processStemsJob(input: { releaseId: string; artistId: string; tracks: any[] }) {
+    console.log(`[Ingestion] Starting real stem processing for release ${input.releaseId}`);
+
+    // Fetch artist profile to get the wallet address for encryption
+    const artistProfile = await this.artistService.findById(input.artistId);
+    const encryptionAddress = artistProfile?.payoutAddress || input.artistId; // Fallback to ID if address not found (though unlikely for valid artists)
+
+    const processedTracks = [];
+    const MAX_RETRIES = 3;
+
+    // Process tracks one by one for worker stability
+    for (const track of input.tracks) {
+      // Yield event loop to allow heartbeats (important for large files)
+      await new Promise(resolve => setImmediate(resolve));
+
+      let attempt = 0;
+      let lastError = null;
+
+      while (attempt < MAX_RETRIES) {
+        try {
+          const originalStem = track.stems[0];
+          if (!originalStem || !originalStem.data) break;
+
+          // Crucial: BullMQ (JSON) converts Buffers to {type: 'Buffer', data: []}
+          // We must convert it back to a real Buffer or Prisma will blow the stack
+          if (!(originalStem.data instanceof Buffer)) {
+            originalStem.data = Buffer.from(originalStem.data);
+          }
+
+          const formData = new FormData();
+          const buffer = originalStem.data;
+          const blob = new Blob([buffer], { type: originalStem.mimeType });
+          formData.append("file", blob, `track_${track.id}.wav`);
+
+          console.log(`[Ingestion] Sending track ${track.id} to Demucs worker...`);
+          const response = await fetch(`http://localhost:8000/separate/${input.releaseId}/${track.id}`, {
+            method: "POST",
+            body: formData,
+            // @ts-ignore
+            signal: AbortSignal.timeout(600000), // 10 minutes
+          });
+
+          if (!response.ok) {
+            throw new Error(`Demucs worker returned ${response.status}`);
+          }
+
+          const result = await response.json() as { stems: Record<string, string> };
+          const stems = [];
+
+          // 1. Process and upload the Original Stem first
+          const originalStorage = await this.storageProvider.upload(originalStem.data, `original_${track.id}.mp3`, originalStem.mimeType);
+          stems.push({
+            ...originalStem,
+            uri: originalStorage.uri,
+            storageProvider: originalStorage.provider,
+            isEncrypted: false, // Original is usually public for discovery
+          });
+
+          // 2. Process, Encrypt, and Upload the AI-generated Stems
+          for (const [type, relativePath] of Object.entries(result.stems)) {
+            const absolutePath = join(process.cwd(), "uploads", "stems", relativePath);
+            if (existsSync(absolutePath)) {
+              let data: Buffer = readFileSync(absolutePath);
+              const stemId = this.generateId("stem");
+
+              let isEncrypted = false;
+              let encryptionMetadata: string | null = null;
+
+              // Encrypt stems - skipped if ENCRYPTION_ENABLED=false or provider returns null
+              try {
+                const encryptionContext = {
+                  contentId: stemId,
+                  ownerAddress: encryptionAddress,
+                  allowedAddresses: [], // Future: Add NFT holders, collaborators, etc.
+                };
+
+                const encrypted = await this.encryptionService.encrypt(data, encryptionContext);
+                if (encrypted) {
+                  data = Buffer.from(encrypted.encryptedData);
+                  encryptionMetadata = encrypted.metadata;
+                  isEncrypted = true;
+                  console.log(`[Ingestion] Encrypted stem ${stemId} with provider: ${encrypted.provider}`);
+                }
+                // If encrypted is null, encryption is disabled - data stays plaintext
+              } catch (encErr) {
+                console.warn(`[Ingestion] Encryption failed for ${type}, falling back to plaintext:`, encErr);
+              }
+
+              const storage = await this.storageProvider.upload(data, `${stemId}.mp3`, "audio/mpeg");
+
+              stems.push({
+                id: stemId,
+                uri: storage.uri,
+                type: type,
+                data: data,
+                mimeType: "audio/mpeg",
+                durationSeconds: originalStem.durationSeconds,
+                isEncrypted,
+                encryptionMetadata,
+                storageProvider: storage.provider,
+              });
+            }
+          }
+
+          processedTracks.push({
+            id: track.id,
+            title: track.title,
+            artist: track.artist,
+            position: track.position,
+            stems: stems,
+          });
+
+          break; // Success
+        } catch (err) {
+          attempt++;
+          lastError = err;
+          if (attempt < MAX_RETRIES) {
+            await new Promise(r => setTimeout(r, 2000 * attempt));
+          }
+        }
+      }
+    }
+
+    if (processedTracks.length > 0) {
+      // Final yield before publishing large event
+      await new Promise(resolve => setImmediate(resolve));
+
       this.eventBus.publish({
         eventName: "stems.processed",
         eventVersion: 1,
         occurredAt: new Date().toISOString(),
-        releaseId,
+        releaseId: input.releaseId,
         artistId: input.artistId,
-        modelVersion: "resonate-v1",
-        metadata: finalMetadata,
-        tracks: tracks.map((t: any) => ({
-          id: t.id,
-          title: t.title,
-          artist: t.artist,
-          position: t.position,
-          stems: t.stems.map((s: any) => ({
-            id: s.id,
-            uri: s.uri,
-            type: s.type,
-            data: s.data, // This IS the buffer
-            mimeType: s.mimeType,
-            durationSeconds: s.durationSeconds,
-          }))
-        })),
+        modelVersion: "demucs-htdemucs-6s",
+        tracks: processedTracks as any,
       });
-      console.log(`[Ingestion] Emitted stems.processed for ${releaseId}. Buffer size: ${tracks[0]?.stems[0]?.data?.length ?? 0} bytes`);
-    }, 2000);
-
-    return { releaseId, status: "processing" };
+    } else {
+      throw new Error(`Failed to process any tracks for release ${input.releaseId}`);
+    }
   }
 
   enqueueUpload(input: {
     artistId: string;
     fileUris: string[];
-    metadata?: {
-      releaseType?: string;
-      releaseTitle?: string;
-      primaryArtist?: string;
-      featuredArtists?: string[];
-      genre?: string;
-      isrc?: string;
-      label?: string;
-      releaseDate?: string;
-      explicit?: boolean;
-    };
+    metadata?: any;
   }) {
     const trackId = this.generateId("trk");
     const record: UploadRecord = {
@@ -193,7 +339,7 @@ export class IngestionService {
       eventName: "stems.uploaded",
       eventVersion: 1,
       occurredAt: new Date().toISOString(),
-      releaseId: trackId, // Using trackId as releaseId for mock simplicity
+      releaseId: trackId,
       artistId: input.artistId,
       checksum: "pending",
       metadata: {
@@ -225,19 +371,14 @@ export class IngestionService {
 
   private async processUpload(trackId: string) {
     const record = this.uploads.get(trackId);
-    if (!record) {
-      return;
-    }
-    // Mock processing delay to avoid event race conditions
+    if (!record) return;
     await new Promise((resolve) => setTimeout(resolve, 500));
     record.status = "processing";
-    // Use the user's provided URI if it looks like a playable URL, otherwise fallback to sample
-    const sampleUri = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
-    const stems = record.fileUris.map((uri, index) => ({
+    const stems = record.fileUris.map((uri) => ({
       id: this.generateId("stem"),
-      uri: (uri.startsWith("http") || uri.startsWith("blob:")) ? uri : sampleUri,
+      uri: uri.startsWith("http") ? uri : "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
       type: this.inferStemType(uri),
-      durationSeconds: 241, // Default duration for mock/imported tracks (4:01)
+      durationSeconds: 241,
     }));
     record.stems = stems;
     this.eventBus.publish({
@@ -264,15 +405,11 @@ export class IngestionService {
 
   private inferStemType(uri: string) {
     const normalized = uri.toLowerCase();
-    if (normalized.includes("drum")) {
-      return "drums";
-    }
-    if (normalized.includes("vocal")) {
-      return "vocals";
-    }
-    if (normalized.includes("bass")) {
-      return "bass";
-    }
+    if (normalized.includes("drum")) return "drums";
+    if (normalized.includes("vocal")) return "vocals";
+    if (normalized.includes("bass")) return "bass";
+    if (normalized.includes("piano")) return "piano";
+    if (normalized.includes("guitar")) return "guitar";
     return "ORIGINAL";
   }
 }

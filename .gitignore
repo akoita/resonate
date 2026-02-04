@@ -5,7 +5,22 @@ contracts/out/
 contracts/cache/
 contracts/lib/
 contracts/broadcast/
-backend/dist/
 
-# Uploads
+# Backend
+backend/dist/
+backend/.env
+backend/.env.local
+backend/src/debug_*.ts
+
+# Uploads & Test Files
 backend/uploads/
+*.wav
+*.mp3
+test_audio.*
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key

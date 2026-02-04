@@ -4,7 +4,7 @@ import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
 import { IngestionService } from "./ingestion.service";
 
-@Controller("stems")
+@Controller("ingestion")
 export class IngestionController {
   constructor(private readonly ingestionService: IngestionService) { }
 
@@ -37,6 +37,15 @@ export class IngestionController {
       artwork: files?.artwork?.[0],
       metadata,
     });
+  }
+
+  @Post("progress/:releaseId/:trackId")
+  handleProgress(
+    @Param("releaseId") releaseId: string,
+    @Param("trackId") trackId: string,
+    @Body() body: { progress: number },
+  ) {
+    return this.ingestionService.handleProgress(releaseId, trackId, body.progress);
   }
 
   @UseGuards(AuthGuard("jwt"))

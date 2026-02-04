@@ -1,0 +1,49 @@
+# GPU-enabled Demucs worker using NVIDIA CUDA
+# Use with: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up demucs-worker
+
+FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+
+# Build argument to control model pre-caching
+ARG CACHE_MODEL=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    libsndfile1 \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Demucs and dependencies (PyTorch already included in base image)
+COPY requirements.txt .
+# Filter out torch since it's already in base image, install the rest
+RUN pip install --no-cache-dir fastapi uvicorn python-multipart httpx "numpy<2.0.0" \
+    && pip install --no-cache-dir git+https://github.com/adefossez/demucs.git
+
+# Create models directory
+RUN mkdir -p /root/.cache/torch/hub/checkpoints
+
+# Pre-download the Demucs model (~1GB) during build
+RUN if [ "$CACHE_MODEL" = "1" ]; then \
+    echo "Pre-caching Demucs htdemucs_6s model..." && \
+    python -c "from demucs.pretrained import get_model; get_model('htdemucs_6s')" && \
+    echo "Model cached successfully!"; \
+    else echo "Skipping model cache (CACHE_MODEL=0)"; fi
+
+COPY . .
+
+# Ensure the output directory exists and is writable
+RUN mkdir -p /outputs && chmod 777 /outputs
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
+EXPOSE 8000
+
+# Set CUDA device visibility
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
