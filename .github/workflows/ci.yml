@@ -42,6 +42,31 @@ jobs:
         run: npm run lint
         working-directory: backend
 
+  contracts:
+    name: Smart Contract Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+      
+      - name: Run Forge build
+        run: forge build --sizes
+        working-directory: contracts
+      
+      - name: Run Forge tests
+        run: forge test -vvv
+        working-directory: contracts
+      
+      - name: Run Forge coverage
+        run: forge coverage --report summary
+        working-directory: contracts
+
   backend-tests:
     name: Backend Tests
     runs-on: ubuntu-latest
