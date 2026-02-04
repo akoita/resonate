@@ -1,0 +1,50 @@
+{
+  "$schema": "https://docs.certora.com/en/latest/_static/gambit-config-schema.json",
+  "filename": "src/core/StemMarketplaceV2.sol",
+  "contract": "StemMarketplaceV2",
+  "outdir": "gambit_out_marketplace",
+  "solc": "solc",
+  "solc_remappings": [
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "forge-std/=lib/forge-std/src/"
+  ],
+  "solc_optimize": true,
+  "mutations": [
+    {
+      "name": "arithmetic_operator_replacement",
+      "enabled": true
+    },
+    {
+      "name": "relational_operator_replacement",
+      "enabled": true
+    },
+    {
+      "name": "logical_operator_replacement",
+      "enabled": true
+    },
+    {
+      "name": "assignment_mutation",
+      "enabled": true
+    },
+    {
+      "name": "delete_expression",
+      "enabled": true
+    },
+    {
+      "name": "function_call_replacement",
+      "enabled": true
+    },
+    {
+      "name": "swap_arguments_mutation",
+      "enabled": true
+    },
+    {
+      "name": "unary_operator_mutation",
+      "enabled": true
+    },
+    {
+      "name": "require_mutation",
+      "enabled": true
+    }
+  ]
+}
