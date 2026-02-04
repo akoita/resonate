@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.23;
+pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 import {EntryPoint} from "@account-abstraction/core/EntryPoint.sol";
 import {IEntryPoint} from "kernel/interfaces/IEntryPoint.sol";
 import {Kernel} from "kernel/Kernel.sol";
-import {KernelFactory} from "../src/KernelFactory.sol";
+import {KernelFactory} from "../src/aa/KernelFactory.sol";
 import {ECDSAValidator} from "kernel/validator/ECDSAValidator.sol";
-import {UniversalSigValidator} from "../src/UniversalSigValidator.sol";
+import {UniversalSigValidator} from "../src/aa/UniversalSigValidator.sol";
 
 /**
  * @title DeployLocalAA

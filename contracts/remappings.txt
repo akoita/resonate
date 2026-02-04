@@ -6,3 +6,4 @@ kernel/=lib/kernel/src/
 solady/=lib/solady/src/
 ExcessivelySafeCall/=lib/ExcessivelySafeCall/src/
 openzeppelin-contracts/=lib/openzeppelin-contracts/contracts/
+halmos-cheatcodes/=lib/halmos-cheatcodes/src/
