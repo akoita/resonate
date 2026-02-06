@@ -154,7 +154,7 @@ export class CatalogService implements OnModuleInit {
                   trackId: trackData.id,
                   type: stem.type,
                   uri: stem.uri,
-                  // NOTE: 'data' is no longer passed in events - fetched from storage at 'uri' when needed
+                  data: stem.data, // Present in sync/test mode, undefined in production (fetched from storage URI)
                   mimeType: stem.mimeType,
                   durationSeconds: stem.durationSeconds,
                   isEncrypted: stem.isEncrypted ?? false,
@@ -164,6 +164,7 @@ export class CatalogService implements OnModuleInit {
                 update: {
                   type: stem.type,
                   uri: stem.uri,
+                  data: stem.data, // Present in sync/test mode, undefined in production
                   mimeType: stem.mimeType,
                   durationSeconds: stem.durationSeconds,
                   isEncrypted: stem.isEncrypted ?? false,
