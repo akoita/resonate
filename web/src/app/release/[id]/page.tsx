@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getRelease, Release, updateReleaseArtwork, getReleaseArtworkUrl } from "../../../lib/api";
 import { LocalTrack, saveTrackMetadata } from "../../../lib/localLibrary";
@@ -13,6 +13,9 @@ import { useToast } from "../../../components/ui/Toast";
 // import { addTracksByCriteria } from "../../../lib/playlistStore";
 import { formatDuration } from "../../../lib/metadataExtractor";
 import { useAuth } from "../../../components/auth/AuthProvider";
+import { MintStemButton } from "../../../components/marketplace/MintStemButton";
+import { TrackActionMenu } from "../../../components/ui/TrackActionMenu";
+import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressUpdate } from "../../../hooks/useWebSockets";
 
 // Helper to get duration from track's first stem
 const getTrackDuration = (track: { stems?: Array<{ durationSeconds?: number | null }> }): number => {
@@ -38,7 +41,84 @@ export default function ReleaseDetails() {
   const [tracksToAddToPlaylist, setTracksToAddToPlaylist] = useState<LocalTrack[] | null>(null);
   const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(new Set());
   const [trackStems, setTrackStems] = useState<Record<string, string>>({}); // trackId -> stemType (e.g. 'vocals')
+  const [expandedNftTracks, setExpandedNftTracks] = useState<Set<string>>(new Set());
   const artworkInputRef = useRef<HTMLInputElement>(null);
+  const [recentlyCompletedTracks, setRecentlyCompletedTracks] = useState<Set<string>>(new Set());
+  const [trackProgress, setTrackProgress] = useState<Record<string, number>>({});
+
+  // Handle real-time track progress updates via WebSocket
+  const handleProgressUpdate = useCallback((data: ReleaseProgressUpdate) => {
+    if (data.releaseId !== id) return;
+    setTrackProgress(prev => ({ ...prev, [data.trackId]: data.progress }));
+  }, [id]);
+
+  // Handle real-time track status updates via WebSocket
+  const handleTrackStatusUpdate = useCallback((data: TrackStatusUpdate) => {
+    if (data.releaseId !== id) return;
+
+    setRelease(prev => {
+      if (!prev || !prev.tracks) return prev;
+      return {
+        ...prev,
+        tracks: prev.tracks.map(track =>
+          track.id === data.trackId
+            ? { ...track, processingStatus: data.status }
+            : track
+        ),
+      };
+    });
+
+    // Clear progress when status changes away from separating
+    if (data.status !== 'separating') {
+      setTrackProgress(prev => {
+        const next = { ...prev };
+        delete next[data.trackId];
+        return next;
+      });
+    }
+
+    // Track completion with visual feedback
+    if (data.status === 'complete') {
+      setRecentlyCompletedTracks(prev => new Set([...prev, data.trackId]));
+      // Remove from recently completed after 3 seconds
+      setTimeout(() => {
+        setRecentlyCompletedTracks(prev => {
+          const next = new Set(prev);
+          next.delete(data.trackId);
+          return next;
+        });
+      }, 3000);
+    }
+  }, [id]);
+
+  // Handle release status updates (for when processing completes)
+  const handleReleaseStatusUpdate = useCallback((data: ReleaseStatusUpdate) => {
+    if (data.releaseId !== id) return;
+
+    if (data.status === 'ready') {
+      // Refresh release data to get updated stems and tracks
+      getRelease(id as string).then(freshRelease => {
+        if (freshRelease) {
+          setRelease(freshRelease);
+          addToast({
+            title: "Processing Complete",
+            message: `"${freshRelease.title}" is now ready to play!`,
+            type: "success",
+          });
+        }
+      }).catch(console.error);
+    } else if (data.status === 'failed') {
+      setRelease(prev => prev ? { ...prev, status: 'failed' } : null);
+      addToast({
+        title: "Processing Failed",
+        message: "There was an error processing your release.",
+        type: "error",
+      });
+    }
+  }, [id, addToast]);
+
+  // Subscribe to WebSocket events for real-time updates
+  useWebSockets(handleReleaseStatusUpdate, handleProgressUpdate, handleTrackStatusUpdate);
 
   useEffect(() => {
     if (typeof id === "string") {
@@ -52,9 +132,9 @@ export default function ReleaseDetails() {
   const handlePlayTrack = (trackIndex: number, specificStem?: string) => {
     if (!release?.tracks) return;
     const playableTracks: LocalTrack[] = (release.tracks || []).map((t) => {
-      const selectedType = specificStem || trackStems[t.id] || "ORIGINAL";
-      // Find the stem of selected type, fallback to first stem
-      const stem = t.stems?.find(s => s.type.toLowerCase() === selectedType.toLowerCase()) || t.stems?.[0];
+      // Always use ORIGINAL stem for the main audio player
+      // When mixer mode is active, main audio will be muted and StemAudio components play
+      const originalStem = t.stems?.find(s => s.type === "ORIGINAL");
 
       return {
         id: t.id,
@@ -66,7 +146,7 @@ export default function ReleaseDetails() {
         genre: release.genre || null,
         duration: getTrackDuration(t),
         createdAt: t.createdAt,
-        remoteUrl: stem?.uri,
+        remoteUrl: originalStem?.uri,
         remoteArtworkUrl: release.artworkUrl || undefined,
         stems: t.stems,
       };
@@ -76,10 +156,40 @@ export default function ReleaseDetails() {
 
   const handleStemChange = (trackId: string, trackIndex: number, type: string) => {
     setTrackStems(prev => ({ ...prev, [trackId]: type }));
-    // If the track is currently playing, we should switch it
-    // But for now, just let the user click play to start with the new stem
-    // or we can auto-play if it's simpler
-    handlePlayTrack(trackIndex, type);
+
+    const isOriginal = type.toUpperCase() === "ORIGINAL";
+    const isTrackAlreadyPlaying = currentTrack?.id === trackId;
+
+    if (isOriginal) {
+      // Playing full track - disable mixer mode for clean playback
+      if (mixerMode) {
+        toggleMixerMode();
+      }
+      // If track is already playing, don't re-queue (just let mixer mode change take effect)
+      if (!isTrackAlreadyPlaying) {
+        handlePlayTrack(trackIndex, type);
+      }
+    } else {
+      // Playing an individual stem - enable mixer and solo it
+      if (!mixerMode) {
+        toggleMixerMode();
+      }
+
+      // Solo the selected stem: set it to 100%, mute all others
+      const stemTypes = ["vocals", "drums", "bass", "piano", "guitar", "other"];
+      const newVolumes: Record<string, number> = {};
+      for (const stemType of stemTypes) {
+        newVolumes[stemType] = stemType.toLowerCase() === type.toLowerCase() ? 1 : 0;
+      }
+      setMixerVolumes(newVolumes);
+
+      // Only start playback if track isn't already playing
+      // IMPORTANT: Call synchronously to preserve user gesture context for browser audio
+      // The toggleMixerMode above sets the ref immediately, so playTrack will see the correct state
+      if (!isTrackAlreadyPlaying) {
+        handlePlayTrack(trackIndex, type);
+      }
+    }
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -280,9 +390,46 @@ export default function ReleaseDetails() {
             <Button variant="ghost" className="btn-save" onClick={handleSaveToLibrary}>
               Save to Library
             </Button>
+            {isOwner && (release.status === 'failed' || release.status === 'processing' || release.tracks?.some(t => t.processingStatus === 'failed')) && (
+              <Button
+                className="btn-retry"
+                onClick={async () => {
+                  if (!token) return;
+                  try {
+                    const { retryRelease } = await import("../../../lib/api");
+                    await retryRelease(token, release.id);
+                    addToast({ type: "success", title: "Retrying...", message: "Processing restarted." });
+                    // Optimistic update
+                    setRelease(prev => prev ? { ...prev, status: 'processing', tracks: prev.tracks?.map(t => ({ ...t, processingStatus: 'separating' as const })) } : null);
+                  } catch (e) {
+                    console.error(e);
+                    addToast({ type: "error", title: "Retry failed", message: "Could not restart processing." });
+                  }
+                }}
+                style={{
+                  backgroundColor: release.status === 'failed' || release.tracks?.some(t => t.processingStatus === 'failed')
+                    ? 'var(--color-error)'
+                    : 'var(--color-warning, #eab308)',
+                  color: 'white',
+                  borderColor: 'transparent'
+                }}
+              >
+                {release.status === 'failed' || release.tracks?.some(t => t.processingStatus === 'failed') ? 'Retry Processing' : 'Restart Processing'}
+              </Button>
+            )}
             {isOwner && (
               <Button variant="ghost" className="btn-save" onClick={() => artworkInputRef.current?.click()}>
                 Edit Cover
+              </Button>
+            )}
+            {/* Global Mixer Toggle - only show when a track with stems is playing */}
+            {currentTrack && currentTrack.stems && currentTrack.stems.length > 1 && (
+              <Button
+                variant="ghost"
+                className={`btn-mixer ${mixerMode ? 'active' : ''}`}
+                onClick={toggleMixerMode}
+              >
+                🎚️ Mixer
               </Button>
             )}
           </div>
@@ -316,6 +463,7 @@ export default function ReleaseDetails() {
               </th>
               <th>#</th>
               <th>Title</th>
+              <th>Status</th>
               <th>Artist</th>
               <th>Genre</th>
               <th className="th-duration">Time</th>
@@ -383,43 +531,73 @@ export default function ReleaseDetails() {
                       <span className="track-title-name">{track.title}</span>
                       {track.explicit && <span className="explicit-tag">E</span>}
                     </div>
+
                     {track.stems && track.stems.length > 1 && (
                       <div className="stem-selector" onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          variant="ghost"
-                          className={`mixer-toggle-btn ${mixerMode && currentTrack?.id === track.id ? 'active' : ''}`}
-                          onClick={() => {
-                            if (currentTrack?.id !== track.id) {
-                              void handlePlayTrack(idx);
-                            }
-                            toggleMixerMode();
-                          }}
-                        >
-                          🎚️ Mixer
-                        </Button>
-                        {!mixerMode && (
-                          <div className="stem-btns-group">
-                            {["ORIGINAL", "vocals", "drums", "bass", "other"].map((type) => {
-                              const hasStem = track.stems?.some(s => s.type.toLowerCase() === type.toLowerCase());
-                              if (!hasStem) return null;
+                        <div className="stem-btns-group">
+                          {["ORIGINAL", "vocals", "drums", "bass", "piano", "guitar", "other"].map((type) => {
+                            const hasStem = track.stems?.some(s => s.type.toLowerCase() === type.toLowerCase());
+                            if (!hasStem) return null;
 
-                              const isSelected = (trackStems[track.id] || "ORIGINAL").toLowerCase() === type.toLowerCase();
-                              return (
-                                <button
-                                  key={type}
-                                  className={`stem-btn ${isSelected ? 'active' : ''}`}
-                                  onClick={() => handleStemChange(track.id, idx, type)}
-                                  title={`Play ${type}`}
-                                >
-                                  {type === "ORIGINAL" ? "Full" : type.charAt(0).toUpperCase() + type.slice(1, 4)}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
+                            const isSelected = (trackStems[track.id] || "ORIGINAL").toLowerCase() === type.toLowerCase();
+                            return (
+                              <button
+                                key={type}
+                                className={`stem-btn ${isSelected ? 'active' : ''}`}
+                                onClick={() => handleStemChange(track.id, idx, type)}
+                                title={`Play ${type}`}
+                              >
+                                {type === "ORIGINAL" ? "Full" : type.charAt(0).toUpperCase() + type.slice(1, 4)}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
-                    {/* Mixer toggle remains here, but the console is moved out of the row to prevent duplication/layout issues */}
+                  </td>
+                  <td className="track-status-cell">
+                    {/* Processing status badge */}
+                    {(track.processingStatus && track.processingStatus !== "complete") || recentlyCompletedTracks.has(track.id) ? (
+                      <span
+                        className={`processing-badge processing-${recentlyCompletedTracks.has(track.id) ? 'complete' : track.processingStatus}`}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          verticalAlign: "middle",
+                          gap: 4,
+                          padding: "2px 8px",
+                          borderRadius: 12,
+                          fontSize: 11,
+                          fontWeight: 500,
+                          background:
+                            recentlyCompletedTracks.has(track.id) ? "#22c55e20" :
+                              track.processingStatus === "pending" ? "#3b82f620" :
+                                track.processingStatus === "separating" ? "#eab30820" :
+                                  track.processingStatus === "encrypting" ? "#f9731620" :
+                                    track.processingStatus === "storing" ? "#14b8a620" :
+                                      track.processingStatus === "failed" ? "#ef444420" : "transparent",
+                          color:
+                            recentlyCompletedTracks.has(track.id) ? "#4ade80" :
+                              track.processingStatus === "pending" ? "#60a5fa" :
+                                track.processingStatus === "separating" ? "#fbbf24" :
+                                  track.processingStatus === "encrypting" ? "#fb923c" :
+                                    track.processingStatus === "storing" ? "#2dd4bf" :
+                                      track.processingStatus === "failed" ? "#f87171" : "#a1a1aa",
+                          transition: "all 0.3s ease",
+                        }}
+                      >
+                        {recentlyCompletedTracks.has(track.id) && "✅ Complete"}
+                        {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "pending" && "🔵 Pending"}
+                        {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "separating" && (
+                          trackProgress[track.id] != null
+                            ? `🟡 Separating ${trackProgress[track.id]}%`
+                            : "🟡 Separating..."
+                        )}
+                        {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "encrypting" && "🟠 Encrypting..."}
+                        {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "storing" && "🟢 Storing..."}
+                        {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "failed" && "🔴 Failed"}
+                      </span>
+                    ) : null}
                   </td>
                   <td
                     className="track-artist clickable"
@@ -443,15 +621,11 @@ export default function ReleaseDetails() {
                   <td className="track-genre">{release.genre || "---"}</td>
                   <td className="track-duration">{formatDuration(getTrackDuration(track))}</td>
                   <td className="track-actions-cell">
-                    <Button
-                      variant="ghost"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setTracksToAddToPlaylist([mapToLocalTrack(track)]);
-                      }}
-                    >
-                      + Playlist
-                    </Button>
+                    <TrackActionMenu
+                      actions={[
+                        { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist([mapToLocalTrack(track)]) },
+                      ]}
+                    />
                   </td>
                 </tr>
               );
@@ -459,6 +633,92 @@ export default function ReleaseDetails() {
           </tbody>
         </table>
       </section>
+
+      {/* NFT Marketplace Section - Only for owners */}
+      {
+        isOwner && release.tracks && release.tracks.some(t => t.stems && t.stems.length > 0) && (
+          <section className="nft-section glass-panel">
+            <div className="nft-header">
+              <div>
+                <h3 className="nft-title">NFT Marketplace</h3>
+                <p className="nft-subtitle">Mint and list your stems as NFTs</p>
+              </div>
+              <a href="/marketplace" className="nft-link">
+                View Marketplace →
+              </a>
+            </div>
+
+            <div className="nft-tracks-accordion">
+              {release.tracks.map(track => {
+                const mintableStems = (track.stems || []).filter(s => s.type !== "ORIGINAL");
+                if (mintableStems.length === 0) return null;
+
+                const isExpanded = expandedNftTracks.has(track.id);
+                const toggleExpand = () => {
+                  setExpandedNftTracks(prev => {
+                    const next = new Set(prev);
+                    if (next.has(track.id)) {
+                      next.delete(track.id);
+                    } else {
+                      next.add(track.id);
+                    }
+                    return next;
+                  });
+                };
+
+                return (
+                  <div key={track.id} className={`nft-track-group ${isExpanded ? 'expanded' : ''}`}>
+                    <button className="nft-track-header" onClick={toggleExpand}>
+                      <div className="nft-track-left">
+                        <span className="nft-chevron">{isExpanded ? '▼' : '▶'}</span>
+                        <span className="nft-track-title">{track.title}</span>
+                      </div>
+                      <span className="nft-stem-count">{mintableStems.length} stems</span>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="nft-stems-grid">
+                        {mintableStems.map(stem => (
+                          <div key={stem.id} className="nft-stem-chip">
+                            <span className="nft-stem-emoji">
+                              {stem.type === "vocals" ? "🎤" :
+                                stem.type === "drums" ? "🥁" :
+                                  stem.type === "bass" ? "🎸" :
+                                    stem.type === "piano" ? "🎹" :
+                                      stem.type === "guitar" ? "🎸" : "🎵"}
+                            </span>
+                            <span className="nft-stem-name">
+                              {stem.type.charAt(0).toUpperCase() + stem.type.slice(1)}
+                            </span>
+                            <MintStemButton
+                              stemId={stem.id}
+                              stemTitle={`${stem.type} - ${track.title}`}
+                              stemType={stem.type}
+                              trackTitle={track.title}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="nft-royalties-banner">
+              <div className="nft-royalties-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+              </div>
+              <div>
+                <div className="nft-royalties-title">Enforced Royalties</div>
+                <div className="nft-royalties-desc">5% royalty on all secondary sales, paid automatically</div>
+              </div>
+            </div>
+          </section>
+        )
+      }
 
       <footer className="release-footer">
         <div className="credits-section">
@@ -666,6 +926,22 @@ export default function ReleaseDetails() {
           border-color: rgba(255, 255, 255, 0.2) !important;
         }
 
+        .btn-mixer {
+          border-radius: 50px !important;
+          padding: 0 24px !important;
+          height: 56px !important;
+          border-color: var(--color-accent) !important;
+          color: var(--color-accent) !important;
+          font-weight: 700 !important;
+          transition: all 0.2s ease !important;
+        }
+
+        .btn-mixer:hover,
+        .btn-mixer.active {
+          background: var(--color-accent) !important;
+          color: #fff !important;
+        }
+
         .tracklist-section {
           padding: 24px;
           border-radius: 24px;
@@ -713,13 +989,19 @@ export default function ReleaseDetails() {
         }
 
         .track-title-cell {
-          min-width: 300px;
+          min-width: 250px;
+        }
+
+        .track-status-cell {
+          width: 140px;
+          min-width: 140px;
         }
 
         .track-title-info {
           display: flex;
           align-items: center;
-          gap: 12px;
+          flex-wrap: nowrap;
+          gap: 8px;
         }
 
         .track-title-name {
@@ -783,6 +1065,10 @@ export default function ReleaseDetails() {
           width: 120px;
         }
 
+        .track-row:hover .track-action-menu-trigger {
+          opacity: 1;
+        }
+
         .th-actions {
           width: 120px;
         }
@@ -833,7 +1119,183 @@ export default function ReleaseDetails() {
           font-weight: 700;
           color: var(--color-muted);
         }
+
+        /* NFT Marketplace Accordion Styles */
+        .nft-section {
+          padding: 24px;
+          border-radius: 24px;
+        }
+
+        .nft-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 24px;
+        }
+
+        .nft-title {
+          font-size: 20px;
+          font-weight: 800;
+          color: #fff;
+          margin: 0;
+        }
+
+        .nft-subtitle {
+          font-size: 14px;
+          color: #71717a;
+          margin: 4px 0 0;
+        }
+
+        .nft-link {
+          font-size: 13px;
+          color: #10b981;
+          text-decoration: none;
+          font-weight: 600;
+          transition: color 0.2s;
+        }
+
+        .nft-link:hover {
+          color: #34d399;
+        }
+
+        .nft-tracks-accordion {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .nft-track-group {
+          background: #18181b;
+          border-radius: 12px;
+          border: 1px solid #27272a;
+          overflow: hidden;
+          transition: border-color 0.2s;
+        }
+
+        .nft-track-group.expanded {
+          border-color: #3f3f46;
+        }
+
+        .nft-track-header {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 16px 20px;
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          color: #fff;
+          transition: background 0.2s;
+        }
+
+        .nft-track-header:hover {
+          background: rgba(255, 255, 255, 0.03);
+        }
+
+        .nft-track-left {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .nft-chevron {
+          font-size: 10px;
+          color: #71717a;
+          transition: transform 0.2s;
+        }
+
+        .nft-track-title {
+          font-size: 15px;
+          font-weight: 600;
+        }
+
+        .nft-stem-count {
+          font-size: 12px;
+          color: #71717a;
+          background: #27272a;
+          padding: 4px 10px;
+          border-radius: 12px;
+        }
+
+        .nft-stems-grid {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          padding: 0 20px 20px;
+          animation: fadeSlideIn 0.2s ease;
+        }
+
+        @keyframes fadeSlideIn {
+          from {
+            opacity: 0;
+            transform: translateY(-8px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .nft-stem-chip {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          background: #27272a;
+          padding: 8px 12px;
+          border-radius: 10px;
+          border: 1px solid #3f3f46;
+          transition: border-color 0.2s, background 0.2s;
+        }
+
+        .nft-stem-chip:hover {
+          background: #3f3f46;
+          border-color: #52525b;
+        }
+
+        .nft-stem-emoji {
+          font-size: 16px;
+        }
+
+        .nft-stem-name {
+          font-size: 13px;
+          font-weight: 600;
+          color: #fff;
+          min-width: 60px;
+        }
+
+        .nft-royalties-banner {
+          margin-top: 24px;
+          padding: 16px;
+          background: #27272a;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .nft-royalties-icon {
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          background: #10b981;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .nft-royalties-title {
+          font-size: 13px;
+          font-weight: 600;
+          color: #fff;
+        }
+
+        .nft-royalties-desc {
+          font-size: 12px;
+          color: #71717a;
+        }
       `}</style>
-    </div>
+    </div >
   );
 }

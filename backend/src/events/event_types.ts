@@ -70,6 +70,13 @@ export interface StemsProgressEvent extends BaseEvent {
   progress: number;
 }
 
+export interface StemsFailedEvent extends BaseEvent {
+  eventName: "stems.failed";
+  releaseId: string;
+  artistId: string;
+  error: string;
+}
+
 export interface IpNftMintedEvent extends BaseEvent {
   eventName: "ipnft.minted";
   stemId: string;
@@ -127,6 +134,13 @@ export interface CatalogReleaseReadyEvent extends BaseEvent {
   releaseId: string;
   artistId: string;
   metadata?: any;
+}
+
+export interface CatalogTrackStatusEvent extends BaseEvent {
+  eventName: "catalog.track_status";
+  releaseId: string;
+  trackId: string;
+  status: 'pending' | 'separating' | 'encrypting' | 'storing' | 'complete' | 'failed';
 }
 
 export interface SessionStartedEvent extends BaseEvent {
@@ -320,6 +334,7 @@ export type ResonateEvent =
   | CuratorReportedEvent
   | CatalogUpdatedEvent
   | CatalogReleaseReadyEvent
+  | CatalogTrackStatusEvent
   | SessionStartedEvent
   | LicenseGrantedEvent
   | SessionEndedEvent
@@ -336,6 +351,7 @@ export type ResonateEvent =
   | WalletBudgetSetEvent
   | WalletSpentEvent
   | StemsProgressEvent
+  | StemsFailedEvent
   | ContractStemMintedEvent
   | ContractStemListedEvent
   | ContractStemSoldEvent

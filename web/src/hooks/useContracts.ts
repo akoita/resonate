@@ -25,62 +25,74 @@ import {
   StemMarketplaceABI,
 } from "../lib/contracts";
 
-// Helper to send transaction via ZeroDev kernel client
+// Helper to send transaction via ZeroDev kernel client or local wallet
 async function sendContractTransaction(
   publicClient: PublicClient,
   chainId: number,
   to: Address,
   data: Hex,
-  value: bigint = BigInt(0)
+  value: bigint = BigInt(0),
+  userAddress?: Address
 ): Promise<string> {
+  // For local Anvil (chainId 31337), use local AA with user's deterministic wallet
+  if (chainId === 31337) {
+    const { sendLocalTransaction, getLocalSignerAddress } = await import("../lib/localAA");
+
+    // Use user's address if provided, otherwise fall back to a test address
+    const effectiveAddress = userAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" as Address;
+
+    // Send transaction using user's deterministic local account
+    // This auto-funds from Anvil if needed
+    const hash = await sendLocalTransaction(publicClient, effectiveAddress, to, data, value);
+
+    return hash;
+  }
+
+  // For testnet/mainnet, use ZeroDev
+  const projectId = process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID;
+  if (!projectId) {
+    throw new Error("Transaction sending requires ZeroDev configuration. Set NEXT_PUBLIC_ZERODEV_PROJECT_ID for testnet.");
+  }
+
   // Import ZeroDev SDK dynamically
   const sdk = await import("@zerodev/sdk");
   const passkey = await import("@zerodev/passkey-validator");
-  
+
   const { createKernelAccountClient, constants } = sdk;
   const { toPasskeyValidator, toWebAuthnKey, PasskeyValidatorContractVersion } = passkey;
-  
-  const projectId = process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID;
-  
-  // For local dev, use mock transaction
-  if (chainId === 31337 || !projectId) {
-    // In local dev, we'd need to use the mock account's private key
-    // For now, throw an informative error
-    throw new Error("Transaction sending requires ZeroDev configuration. Set NEXT_PUBLIC_ZERODEV_PROJECT_ID for testnet.");
-  }
-  
+
   const entryPoint = constants.getEntryPoint("0.7");
   const kernelVersion = constants.KERNEL_V3_1;
-  
+
   // Get passkey and create validator
   const webAuthnKey = await toWebAuthnKey({
     passkeyName: "Resonate",
     passkeyServerUrl: `/api/zerodev/${projectId}`,
     mode: passkey.WebAuthnMode.Login,
   });
-  
+
   const passkeyValidator = await toPasskeyValidator(publicClient, {
     webAuthnKey,
     entryPoint,
     kernelVersion,
     validatorContractVersion: PasskeyValidatorContractVersion.V0_0_1_UNPATCHED,
   });
-  
+
   const account = await sdk.createKernelAccount(publicClient, {
     plugins: { sudo: passkeyValidator },
     entryPoint,
     kernelVersion,
   });
-  
+
   // Create kernel client with bundler
   const bundlerUrl = `https://rpc.zerodev.app/api/v3/bundler/${projectId}?chainId=${chainId}`;
-  
+
   const kernelClient = await createKernelAccountClient({
     account,
     chain: publicClient.chain,
     bundlerTransport: http(bundlerUrl),
   });
-  
+
   // Send transaction
   const hash = await kernelClient.sendTransaction({
     to,
@@ -88,7 +100,7 @@ async function sendContractTransaction(
     value,
     chain: publicClient.chain,
   });
-  
+
   return hash;
 }
 
@@ -193,21 +205,29 @@ export function useStemBalance(tokenId: bigint | undefined, account?: Address) {
     let cancelled = false;
     setLoading(true);
 
-    getBalance(publicClient, chainId, targetAccount, tokenId)
-      .then((result) => {
+    const fetchBalance = async () => {
+      try {
+        let resolvedAccount = targetAccount;
+        if (chainId === 31337 && !account) {
+          const { getLocalSignerAddress } = await import("../lib/localAA");
+          resolvedAccount = getLocalSignerAddress(targetAccount);
+        }
+
+        const result = await getBalance(publicClient, chainId, resolvedAccount, tokenId);
         if (!cancelled) setBalance(result);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err);
-      })
-      .finally(() => {
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err : new Error(String(err)));
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    };
+
+    fetchBalance();
 
     return () => {
       cancelled = true;
     };
-  }, [publicClient, chainId, tokenId, targetAccount]);
+  }, [publicClient, chainId, tokenId, targetAccount, account]);
 
   return { balance, loading, error };
 }
@@ -461,7 +481,7 @@ export function useProtocolFee() {
  */
 export function useContractAddresses() {
   const { chainId } = useZeroDev();
-  
+
   const addresses = useMemo(() => {
     try {
       return getContractAddresses(chainId);
@@ -519,7 +539,8 @@ export function useMintStem() {
           chainId,
           addresses.stemNFT,
           data,
-          BigInt(0)
+          BigInt(0),
+          address as Address
         );
 
         setTxHash(hash);
@@ -573,7 +594,8 @@ export function useListStem() {
           chainId,
           addresses.stemNFT,
           approveData,
-          BigInt(0)
+          BigInt(0),
+          address as Address
         );
 
         // Then create listing
@@ -594,7 +616,8 @@ export function useListStem() {
           chainId,
           addresses.marketplace,
           listData,
-          BigInt(0)
+          BigInt(0),
+          address as Address
         );
 
         setTxHash(hash);
@@ -651,7 +674,8 @@ export function useBuyStem() {
           chainId,
           addresses.marketplace,
           data,
-          quote.totalPrice
+          quote.totalPrice,
+          address as Address
         );
 
         setTxHash(hash);
@@ -704,7 +728,8 @@ export function useCancelListing() {
           chainId,
           addresses.marketplace,
           data,
-          BigInt(0)
+          BigInt(0),
+          address as Address
         );
 
         setTxHash(hash);

@@ -27,6 +27,7 @@ import { useUIStore } from "../../lib/uiStore";
 import { PlaylistTab } from "../../components/library/PlaylistTab";
 import { PlaylistDetail } from "../../components/library/PlaylistDetail";
 import { ContextMenu, ContextMenuItem } from "../../components/ui/ContextMenu";
+import { TrackActionMenu, ActionMenuItem } from "../../components/ui/TrackActionMenu";
 import { MarqueeText } from "../../components/ui/MarqueeText";
 import Link from "next/link";
 
@@ -289,7 +290,11 @@ export default function LibraryPage() {
                             {formatDuration(track.duration)}
                         </div>
                         <div className="library-item-actions">
-                            <Button variant="ghost" onClick={(e) => { e.stopPropagation(); setTracksToAddToPlaylist([track]); }}>+ Playlist</Button>
+                            <TrackActionMenu
+                                actions={[
+                                    { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist([track]) },
+                                ]}
+                            />
                         </div>
                     </div>
                 );

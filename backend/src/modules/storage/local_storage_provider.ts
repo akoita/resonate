@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { StorageProvider, StorageResult } from './storage_provider';
 import { join } from 'path';
-import { writeFileSync, existsSync, mkdirSync, unlinkSync } from 'fs';
+import { writeFileSync, existsSync, mkdirSync, unlinkSync, readFileSync } from 'fs';
 
 @Injectable()
 export class LocalStorageProvider extends StorageProvider {
@@ -34,5 +34,17 @@ export class LocalStorageProvider extends StorageProvider {
         if (existsSync(absolutePath)) {
             unlinkSync(absolutePath);
         }
+    }
+
+    async download(uri: string): Promise<Buffer | null> {
+        // Extract filename from URI (format: http://localhost:3000/catalog/stems/{filename}/blob)
+        const parts = uri.split('/');
+        const filename = parts[parts.length - 2];
+        const absolutePath = join(this.uploadDir, filename);
+
+        if (existsSync(absolutePath)) {
+            return readFileSync(absolutePath);
+        }
+        return null;
     }
 }

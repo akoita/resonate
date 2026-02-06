@@ -1,20 +1,20 @@
 /**
  * Contract utilities for interacting with Resonate Protocol smart contracts
  */
-import { 
-  type PublicClient, 
+import {
+  type PublicClient,
   getContract,
   type Address,
   formatEther,
   parseEther,
 } from 'viem';
-import { 
-  StemNFTABI, 
-  StemMarketplaceABI, 
+import {
+  StemNFTABI,
+  StemMarketplaceABI,
   TransferValidatorABI,
   getAddresses,
   type ContractAddresses,
-} from '../../../contracts/abi/index';
+} from '../contracts_abi/index';
 
 // Re-export ABIs for convenience
 export { StemNFTABI, StemMarketplaceABI, TransferValidatorABI };
@@ -109,7 +109,7 @@ export async function getStemData(
     functionName: 'stems',
     args: [tokenId],
   });
-  
+
   return {
     creator: result[0],
     royaltyReceiver: result[1],
@@ -161,7 +161,7 @@ export async function getRoyaltyInfo(
     functionName: 'royaltyInfo',
     args: [tokenId, salePrice],
   });
-  
+
   return {
     receiver: result[0],
     amount: result[1],
@@ -222,7 +222,7 @@ export async function getListing(
     functionName: 'getListing',
     args: [listingId],
   });
-  
+
   return {
     seller: result.seller,
     tokenId: result.tokenId,
@@ -246,7 +246,7 @@ export async function quoteBuy(
     functionName: 'quoteBuy',
     args: [listingId, amount],
   });
-  
+
   return {
     totalPrice: result[0],
     royaltyAmount: result[1],

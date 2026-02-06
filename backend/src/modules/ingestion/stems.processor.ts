@@ -3,7 +3,7 @@ import { Job } from "bullmq";
 import { IngestionService } from "./ingestion.service";
 import { Injectable, Logger } from "@nestjs/common";
 
-@Processor("stems")
+@Processor("stems", { concurrency: 1 })
 @Injectable()
 export class StemsProcessor extends WorkerHost {
     private readonly logger = new Logger(StemsProcessor.name);

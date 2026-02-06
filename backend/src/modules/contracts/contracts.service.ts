@@ -13,7 +13,7 @@ import type {
 export class ContractsService implements OnModuleInit {
   private readonly logger = new Logger(ContractsService.name);
 
-  constructor(private readonly eventBus: EventBus) {}
+  constructor(private readonly eventBus: EventBus) { }
 
   onModuleInit() {
     this.subscribeToContractEvents();
@@ -23,26 +23,51 @@ export class ContractsService implements OnModuleInit {
     // Handle StemMinted events
     this.eventBus.subscribe("contract.stem_minted", async (event: ContractStemMintedEvent) => {
       this.logger.log(`Processing StemMinted: tokenId=${event.tokenId}, tx=${event.transactionHash}`);
-      
+
       try {
-        // Find the stem by tokenURI (IPFS CID matches our stem URI)
-        const stem = await prisma.stem.findFirst({
-          where: { uri: { contains: event.tokenUri } },
-        });
+        // Find the stem by tokenURI
+        // 1. Try to extract stemId from metadata URL (e.g., .../metadata/:chainId/:stemId)
+        let stemIdFromUrl: string | undefined;
+        try {
+          const urlParts = event.tokenUri.split("/");
+          const lastPart = urlParts[urlParts.length - 1];
+          // Simple check: is the last part a uuid-like string or one of our IDs?
+          if (lastPart && (lastPart.startsWith("stem_") || lastPart.length > 20)) {
+            stemIdFromUrl = lastPart;
+          }
+        } catch (e) {
+          // ignore
+        }
+
+        const stem = stemIdFromUrl
+          ? await prisma.stem.findUnique({ where: { id: stemIdFromUrl } })
+          : await prisma.stem.findFirst({
+            where: { uri: { contains: event.tokenUri } },
+          });
+
+        // Determine royaltyBps: try to read from metadata URI query params or use default
+        let royaltyBps = 500; // 5% default
+        try {
+          const url = new URL(event.tokenUri);
+          const bpsParam = url.searchParams.get("royaltyBps");
+          if (bpsParam) royaltyBps = parseInt(bpsParam, 10);
+        } catch {
+          // tokenUri may not be a full URL, use default
+        }
 
         const createData: any = {
           tokenId: BigInt(event.tokenId),
           chainId: event.chainId,
           contractAddress: event.contractAddress,
           creatorAddress: event.creatorAddress,
-          royaltyBps: 500, // Default, will be updated from contract
+          royaltyBps,
           remixable: event.parentIds.length === 0,
           metadataUri: event.tokenUri,
           transactionHash: event.transactionHash,
           blockNumber: BigInt(event.blockNumber),
           mintedAt: new Date(event.occurredAt),
         };
-        
+
         if (stem?.id) {
           createData.stem = { connect: { id: stem.id } };
         }
@@ -70,7 +95,7 @@ export class ContractsService implements OnModuleInit {
     // Handle Listed events
     this.eventBus.subscribe("contract.stem_listed", async (event: ContractStemListedEvent) => {
       this.logger.log(`Processing StemListed: listingId=${event.listingId}, tx=${event.transactionHash}`);
-      
+
       try {
         // Find stem by tokenId
         const nftMint = await prisma.stemNftMint.findFirst({
@@ -80,25 +105,46 @@ export class ContractsService implements OnModuleInit {
           },
         });
 
+        let expiresAt = new Date(parseInt(event.expiresAt) * 1000);
+        // If expiresAt is 0, default to 7 days from now
+        if (parseInt(event.expiresAt) === 0) {
+          expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        }
+
         const listingData: any = {
           listingId: BigInt(event.listingId),
           tokenId: BigInt(event.tokenId),
           chainId: event.chainId,
           contractAddress: event.contractAddress,
-          sellerAddress: event.sellerAddress,
+          sellerAddress: event.sellerAddress.toLowerCase(),
           pricePerUnit: event.pricePerUnit,
           amount: BigInt(event.amount),
           paymentToken: event.paymentToken,
-          expiresAt: new Date(parseInt(event.expiresAt) * 1000),
+          expiresAt,
           transactionHash: event.transactionHash,
           blockNumber: BigInt(event.blockNumber),
           status: "active",
           listedAt: new Date(event.occurredAt),
         };
-        
+
         if (nftMint?.stemId) {
           listingData.stem = { connect: { id: nftMint.stemId } };
         }
+
+        // Mark any previous active listings for same tokenId/seller as cancelled
+        await prisma.stemListing.updateMany({
+          where: {
+            tokenId: BigInt(event.tokenId),
+            chainId: event.chainId,
+            sellerAddress: event.sellerAddress,
+            status: "active",
+            NOT: { transactionHash: event.transactionHash } // Don't cancel the one we just (might) have upserted
+          },
+          data: {
+            status: "cancelled",
+            cancelledAt: new Date(event.occurredAt),
+          },
+        });
 
         await prisma.stemListing.upsert({
           where: { transactionHash: event.transactionHash },
@@ -115,7 +161,7 @@ export class ContractsService implements OnModuleInit {
     // Handle Sold events
     this.eventBus.subscribe("contract.stem_sold", async (event: ContractStemSoldEvent) => {
       this.logger.log(`Processing StemSold: listingId=${event.listingId}, tx=${event.transactionHash}`);
-      
+
       try {
         // Find the listing
         const listing = await prisma.stemListing.findFirst({
@@ -135,7 +181,7 @@ export class ContractsService implements OnModuleInit {
           where: { transactionHash: event.transactionHash },
           create: {
             listingId: listing.id,
-            buyerAddress: event.buyerAddress,
+            buyerAddress: event.buyerAddress.toLowerCase(),
             amount: BigInt(event.amount),
             totalPaid: event.totalPaid,
             royaltyPaid: "0", // Will be updated from RoyaltyPaid event
@@ -168,10 +214,17 @@ export class ContractsService implements OnModuleInit {
     // Handle RoyaltyPaid events
     this.eventBus.subscribe("contract.royalty_paid", async (event: ContractRoyaltyPaidEvent) => {
       this.logger.log(`Processing RoyaltyPaid: tokenId=${event.tokenId}, tx=${event.transactionHash}`);
-      
+
       try {
-        await prisma.royaltyPayment.create({
-          data: {
+        // Use upsert to prevent duplicates on reindex (keyed on tx + tokenId)
+        await prisma.royaltyPayment.upsert({
+          where: {
+            transactionHash_tokenId: {
+              transactionHash: event.transactionHash,
+              tokenId: BigInt(event.tokenId),
+            },
+          },
+          create: {
             tokenId: BigInt(event.tokenId),
             chainId: event.chainId,
             recipientAddress: event.recipientAddress,
@@ -180,6 +233,7 @@ export class ContractsService implements OnModuleInit {
             blockNumber: BigInt(event.blockNumber),
             paidAt: new Date(event.occurredAt),
           },
+          update: {},
         });
 
         this.logger.log(`Stored RoyaltyPayment: tokenId=${event.tokenId}, amount=${event.amount}`);
@@ -191,7 +245,7 @@ export class ContractsService implements OnModuleInit {
     // Handle Cancelled events
     this.eventBus.subscribe("contract.listing_cancelled", async (event: ContractListingCancelledEvent) => {
       this.logger.log(`Processing ListingCancelled: listingId=${event.listingId}, tx=${event.transactionHash}`);
-      
+
       try {
         await prisma.stemListing.updateMany({
           where: {
@@ -219,35 +273,96 @@ export class ContractsService implements OnModuleInit {
     status?: string;
     sellerAddress?: string;
     chainId?: number;
+    artistId?: string;
+    releaseId?: string;
+    genre?: string;
     limit?: number;
     offset?: number;
   }) {
-    const { status, sellerAddress, chainId, limit = 20, offset = 0 } = options;
+    const { status, sellerAddress, chainId, artistId, releaseId, genre, limit = 20, offset = 0 } = options;
 
-    return prisma.stemListing.findMany({
+    const listings = await prisma.stemListing.findMany({
       where: {
         ...(status && { status }),
         ...(sellerAddress && { sellerAddress }),
         ...(chainId && { chainId }),
+        ...(artistId || releaseId || genre
+          ? {
+            stem: {
+              track: {
+                release: {
+                  ...(artistId && { artistId }),
+                  ...(releaseId && { id: releaseId }),
+                  ...(genre && { genre: { contains: genre, mode: "insensitive" as const } }),
+                },
+              },
+            },
+          }
+          : {}),
       },
-      include: {
+      select: {
+        id: true,
+        listingId: true,
+        tokenId: true,
+        chainId: true,
+        contractAddress: true,
+        sellerAddress: true,
+        pricePerUnit: true,
+        amount: true,
+        paymentToken: true,
+        status: true,
+        expiresAt: true,
+        listedAt: true,
+        transactionHash: true,
+        blockNumber: true,
         stem: {
-          include: { track: true },
+          select: {
+            id: true,
+            type: true,
+            title: true,
+            uri: true,
+            artworkUrl: true,
+            durationSeconds: true,
+            track: {
+              include: {
+                release: true
+              }
+            }
+          }
         },
         purchases: true,
       },
       orderBy: { listedAt: "desc" },
-      take: limit,
-      skip: offset,
+      // We don't take/skip yet because we need to deduplicate in-memory
     });
+
+    // Deduplicate: Keep only the latest listing for each (tokenId, sellerAddress, chainId)
+    // Since we ordered by listedAt desc, the first one we encounter is the most recent
+    const dedupedMap = new Map<string, typeof listings[number]>();
+    for (const l of listings) {
+      const key = `${l.chainId}-${l.tokenId}-${l.sellerAddress.toLowerCase()}`;
+      if (!dedupedMap.has(key)) {
+        dedupedMap.set(key, l);
+      }
+    }
+
+    const allDeduped = Array.from(dedupedMap.values());
+
+    // Apply pagination manually after deduplication
+    return allDeduped.slice(offset, offset + limit);
   }
+
 
   async getListingById(listingId: bigint, chainId: number) {
     return prisma.stemListing.findFirst({
       where: { listingId, chainId },
       include: {
         stem: {
-          include: { track: true },
+          include: {
+            track: {
+              include: { release: true }
+            }
+          },
         },
         purchases: true,
       },
@@ -299,5 +414,115 @@ export class ContractsService implements OnModuleInit {
       totalPayments: count,
       payments: payments.slice(0, 10), // Last 10
     };
+  }
+
+  async getStemData(stemId: string) {
+    return prisma.stem.findUnique({
+      where: { id: stemId },
+      include: {
+        track: {
+          include: { release: true },
+        },
+        nftMint: true,
+      },
+    });
+  }
+
+  /**
+   * Get all stems owned by a wallet address (via purchases)
+   */
+  async getStemsByOwner(walletAddress: string) {
+    this.logger.log(`Fetching collection for wallet: ${walletAddress}`);
+    const purchases = await prisma.stemPurchase.findMany({
+      where: { buyerAddress: walletAddress.toLowerCase() },
+      include: {
+        listing: {
+          include: {
+            stem: {
+              select: {
+                id: true,
+                trackId: true,
+                type: true,
+                uri: true,
+                ipnftId: true,
+                checksum: true,
+                artist: true,
+                artworkUrl: true,
+                title: true,
+                mimeType: true,
+                durationSeconds: true,
+                encryptionMetadata: true,
+                isEncrypted: true,
+                storageProvider: true,
+                track: {
+                  include: { release: true },
+                },
+                nftMint: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { purchasedAt: "desc" },
+    });
+
+    // 2. Fetch all active listings where this user is the seller
+    const activeListings = await prisma.stemListing.findMany({
+      where: {
+        sellerAddress: {
+          equals: walletAddress.toLowerCase(),
+          mode: "insensitive", // Handle legacy mixed-case records
+        },
+        status: "active",
+      },
+      include: {
+        stem: {
+          include: {
+            track: { include: { release: true } },
+            nftMint: true,
+          },
+        },
+      },
+    });
+
+    // Deduplicate stems
+    const stemMap = new Map<string, any>();
+
+    // Add purchased stems (they might or might not be listed now)
+    for (const purchase of purchases) {
+      const stem = purchase.listing?.stem;
+      if (stem && !stemMap.has(stem.id)) {
+        stemMap.set(stem.id, {
+          ...stem,
+          purchasedAt: purchase.purchasedAt,
+          tokenId: purchase.listing.tokenId,
+          chainId: purchase.listing.chainId,
+          // We'll fill activeListingId later
+        });
+      }
+    }
+
+    // Add/Update with active listings
+    // If a stem is in activeListings, it means the user currently owns it (and has it for sale)
+    for (const listing of activeListings) {
+      const stem = listing.stem;
+      if (stem) {
+        if (!stemMap.has(stem.id)) {
+          // This might be a stem they minted but didn't "buy"
+          stemMap.set(stem.id, {
+            ...stem,
+            tokenId: listing.tokenId,
+            chainId: listing.chainId,
+            activeListingId: listing.listingId.toString(),
+          });
+        } else {
+          // Update existing entry from purchase with the active listing info
+          const entry = stemMap.get(stem.id);
+          entry.activeListingId = listing.listingId.toString();
+        }
+      }
+    }
+
+    return Array.from(stemMap.values());
   }
 }

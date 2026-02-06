@@ -156,7 +156,7 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
             }
 
             console.log(`[StemAudio:${type}] Loading... Encrypted: ${stem.isEncrypted}, URI: ${currentUri}`);
-            
+
             if (!stem.isEncrypted) {
                 console.log(`[StemAudio:${type}] Not encrypted, using raw URI.`);
                 setStreamUrl(currentUri);
@@ -215,10 +215,10 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
                 const blob = new Blob([decryptedData], { type: "audio/mpeg" });
                 const url = URL.createObjectURL(blob);
                 console.log(`[StemAudio:${type}] Created Blob URL: ${url}`);
-                
+
                 // Cache the blob URL
                 decryptedBlobCache.set(currentUri, url);
-                
+
                 return url;
             })();
 
@@ -257,36 +257,44 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
         }
         return () => onUnmount(type);
     }, [type, onMount, onUnmount]);
-    
+
     // Track isPlaying in a ref so we can access current value without adding as dependency
     const isPlayingRef = useRef(isPlaying);
     useEffect(() => {
         isPlayingRef.current = isPlaying;
     }, [isPlaying]);
-    
+
     // When streamUrl changes (after decryption), explicitly load and play the audio
     useEffect(() => {
         if (!audioRef.current || !streamUrl) {
             return;
         }
-        
+
         const audio = audioRef.current;
         console.log(`[StemAudio:${type}] streamUrl available, loading audio...`);
-        
+
         // Set src and load explicitly - React's attribute update doesn't trigger load
         audio.src = streamUrl;
         audio.load();
-        
+
         // Set volume
         const effectiveVolume = mixerVolume * volume;
         audio.volume = effectiveVolume;
         console.log(`[StemAudio:${type}] Volume set to ${effectiveVolume}`);
-        
+
         // Start playback when ready
         const playWhenReady = () => {
             // Check current playing state via ref
             if (isPlayingRef.current) {
                 console.log(`[StemAudio:${type}] canplay event - starting playback`);
+                // CRITICAL: Sync time with master audio BEFORE playing
+                if (masterAudio) {
+                    const targetTime = masterAudio.currentTime;
+                    if (Math.abs(audio.currentTime - targetTime) > 0.1) {
+                        console.log(`[StemAudio:${type}] Syncing to master time in canplay:`, targetTime);
+                        audio.currentTime = targetTime;
+                    }
+                }
                 audio.play().catch((err) => {
                     console.log(`[StemAudio:${type}] Play after load failed:`, err.name);
                 });
@@ -294,15 +302,15 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
                 console.log(`[StemAudio:${type}] canplay event - not playing (isPlaying=false)`);
             }
         };
-        
+
         // Listen for canplay event
         audio.addEventListener('canplay', playWhenReady, { once: true });
-        
+
         return () => {
             audio.removeEventListener('canplay', playWhenReady);
         };
-    }, [streamUrl, type, mixerVolume, volume]); // Include volume deps for initial volume set
-    
+    }, [streamUrl, type, mixerVolume, volume, masterAudio]); // Include volume deps for initial volume set
+
     // Update volume whenever mixerVolume or master volume changes
     useEffect(() => {
         if (audioRef.current && streamUrl) {
@@ -317,9 +325,17 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
         if (!audioRef.current || !streamUrl) {
             return;
         }
-        
+
         if (isPlaying) {
             console.log(`[StemAudio:${type}] isPlaying changed to true, attempting play`);
+            // CRITICAL: Sync time with master audio BEFORE playing
+            if (masterAudio && audioRef.current.readyState >= 1) {
+                const targetTime = masterAudio.currentTime;
+                if (Math.abs(audioRef.current.currentTime - targetTime) > 0.1) {
+                    console.log(`[StemAudio:${type}] Syncing to master time before play:`, targetTime);
+                    audioRef.current.currentTime = targetTime;
+                }
+            }
             audioRef.current.play().catch((err) => {
                 console.log(`[StemAudio:${type}] Play failed:`, err.name);
             });
@@ -327,7 +343,7 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
             console.log(`[StemAudio:${type}] isPlaying changed to false, pausing`);
             audioRef.current.pause();
         }
-    }, [isPlaying, type, streamUrl]);
+    }, [isPlaying, type, streamUrl, masterAudio]);
 
     // Keep audio element mounted even during decryption to maintain ref stability
     // Note: src is set programmatically in useEffect to ensure load() is called
@@ -352,8 +368,7 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
                 }
             }}
             onCanPlay={(e) => {
-                console.log(`[StemAudio:${type}] onCanPlay fired, isPlaying:`, isPlaying);
-                // Set volume
+                // Set volume (don't log - this event fires frequently)
                 e.currentTarget.volume = mixerVolume * volume;
             }}
             onPlay={() => {
@@ -408,17 +423,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const currentIndexRef = useRef(-1);
     const shuffleRef = useRef(false);
     const repeatModeRef = useRef<"none" | "one" | "all">("none");
+    const mixerModeRef = useRef(false); // Synchronous tracker for mixer mode
 
     const currentTrack = currentIndex >= 0 ? queue[currentIndex] : null;
 
-    // Persist volume immediately when changed locally
+    // Mute main track when mixer mode is active and we have stems to play
     useEffect(() => {
         if (audioRef.current) {
             const hasStems = currentTrack?.stems?.some(s => s.type.toUpperCase() !== 'ORIGINAL');
-            // Mute main track if mixer mode is active AND we actually have stems to play
-            audioRef.current.volume = (mixerMode && hasStems) ? 0 : volume;
+            const shouldMute = mixerMode && hasStems;
+            console.log('[Volume Effect] mixerMode:', mixerMode, 'hasStems:', hasStems, 'shouldMute:', shouldMute);
+            audioRef.current.volume = shouldMute ? 0 : volume;
         }
-    }, [volume, mixerMode, currentTrack?.id]);
+    }, [volume, mixerMode, currentTrack?.id, currentTrack?.stems]);
+
+    // Note: isPlaying state sync is handled by play/pause event listeners on main audio element
 
     // Hydration Effect
     useEffect(() => {
@@ -508,7 +527,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         if (currentTrackIdRef.current === track.id && currentTrackUrlRef.current === url) {
             console.log("playTrack: same track and resolved URL, skipping reset", track.id);
             if (audioRef.current) {
-                audioRef.current.volume = volume;
+                const hasStems = track.stems?.some(s => s.type.toUpperCase() !== 'ORIGINAL');
+                audioRef.current.volume = (mixerModeRef.current && hasStems) ? 0 : volume;
             }
             return;
         }
@@ -526,63 +546,70 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
         if (!audioRef.current) return; // Check again in case audio was cleared
 
-        if (url) {
-            // Only set src if it's actually different to avoid resetting playback
-            // Check both the audio element's src and our cached ref
-            const currentSrc = audioRef.current.src;
+        if (!url) {
+            console.warn("playTrack: No valid URL for track", track.id, "- cannot play");
+            return;
+        }
 
-            // Normalize URLs for comparison (remove trailing slashes, etc.)
-            const normalizeUrl = (u: string) => u.replace(/\/$/, '');
-            const currentSrcNormalized = currentSrc ? normalizeUrl(currentSrc) : '';
-            const urlNormalized = normalizeUrl(url);
+        // Only set src if it's actually different to avoid resetting playback
+        // Check both the audio element's src and our cached ref
+        const currentSrc = audioRef.current.src;
 
-            // If src is already set to this URL, don't change it (this prevents reset)
-            if (currentSrcNormalized === urlNormalized || currentTrackUrlRef.current === url) {
-                console.log("playTrack: src already set, skipping", url.substring(0, 50));
-                audioRef.current.volume = volume;
-                setArtworkUrl(art || null);
-                currentTrackIdRef.current = track.id;
-                void safePlay();
-                return;
-            }
+        // Normalize URLs for comparison (remove trailing slashes, etc.)
+        const normalizeUrl = (u: string) => u.replace(/\/$/, '');
+        const currentSrcNormalized = currentSrc ? normalizeUrl(currentSrc) : '';
+        const urlNormalized = normalizeUrl(url);
 
-            // CRITICAL: Final check right before setting src
-            if (isSeekingRef.current) {
-                console.error("playTrack: seek in progress, BLOCKING src change to prevent reset!");
-                return;
-            }
-
-            // Save current time before changing src
-            const savedTime = audioRef.current.currentTime;
-            const wasPlaying = !audioRef.current.paused;
-
-            console.log("playTrack: setting new src", url.substring(0, 50), "saving time:", savedTime);
-            audioRef.current.src = url;
-            currentTrackUrlRef.current = url;
-
-            // If we had a valid position and it wasn't near the start, try to restore it
-            if (savedTime > 1 && audioRef.current.duration && savedTime < audioRef.current.duration) {
-                // Wait for metadata to load, then restore position
-                const restorePosition = () => {
-                    if (audioRef.current && audioRef.current.readyState >= 1) {
-                        console.log("playTrack: restoring position to", savedTime);
-                        audioRef.current.currentTime = savedTime;
-                        if (wasPlaying) {
-                            void safePlay();
-                        }
-                    } else if (audioRef.current) {
-                        audioRef.current.addEventListener('loadedmetadata', restorePosition, { once: true });
-                    }
-                };
-                restorePosition();
-            } else {
-                void safePlay();
-            }
-            audioRef.current.volume = volume;
+        // If src is already set to this URL, don't change it (this prevents reset)
+        if (currentSrcNormalized === urlNormalized || currentTrackUrlRef.current === url) {
+            console.log("playTrack: src already set, skipping", url.substring(0, 50));
+            const hasStems = track.stems?.some(s => s.type.toUpperCase() !== 'ORIGINAL');
+            audioRef.current.volume = (mixerModeRef.current && hasStems) ? 0 : volume;
             setArtworkUrl(art || null);
             currentTrackIdRef.current = track.id;
+            void safePlay();
+            return;
         }
-    }, [volume, safePause, safePlay]);
+
+        // CRITICAL: Final check right before setting src
+        if (isSeekingRef.current) {
+            console.error("playTrack: seek in progress, BLOCKING src change to prevent reset!");
+            return;
+        }
+
+        // Save current time before changing src
+        const savedTime = audioRef.current.currentTime;
+        const wasPlaying = !audioRef.current.paused;
+
+        console.log("playTrack: setting new src", url.substring(0, 50), "saving time:", savedTime);
+        audioRef.current.src = url;
+        currentTrackUrlRef.current = url;
+
+        // If we had a valid position and it wasn't near the start, try to restore it
+        if (savedTime > 1 && audioRef.current.duration && savedTime < audioRef.current.duration) {
+            // Wait for metadata to load, then restore position
+            const restorePosition = () => {
+                if (audioRef.current && audioRef.current.readyState >= 1) {
+                    console.log("playTrack: restoring position to", savedTime);
+                    audioRef.current.currentTime = savedTime;
+                    if (wasPlaying) {
+                        void safePlay();
+                    }
+                } else if (audioRef.current) {
+                    audioRef.current.addEventListener('loadedmetadata', restorePosition, { once: true });
+                }
+            };
+            restorePosition();
+        } else {
+            void safePlay();
+        }
+        // Mute main audio if mixer mode is active and track has stems
+        const hasStems = track.stems?.some(s => s.type.toUpperCase() !== 'ORIGINAL');
+        audioRef.current.volume = (mixerModeRef.current && hasStems) ? 0 : volume;
+        console.log('[playTrack] Setting volume:', audioRef.current.volume, 'mixerModeRef:', mixerModeRef.current, 'hasStems:', hasStems);
+        setArtworkUrl(art || null);
+        currentTrackIdRef.current = track.id;
+    }, [volume, safePause, safePlay, mixerMode]);
 
     const playQueue = useCallback(async (list: LocalTrack[], startIndex: number) => {
         const trackToPlay = list[startIndex];
@@ -741,24 +768,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         audio.addEventListener("ended", handleEnded);
 
         // One-time interaction to unlock modern browser audio silos
-        const unlock = () => {
-            if (audioRef.current && !audioRef.current.src) {
-                // Play silent probe if possible to establish gesture context
-                audioRef.current.play().catch(() => { });
-                window.removeEventListener('click', unlock);
-                window.removeEventListener('keydown', unlock);
-            }
-        };
-        window.addEventListener('click', unlock);
-        window.addEventListener('keydown', unlock);
+        // NOTE: Removed auto-unlock mechanism that was calling play() on any click.
+        // This was causing unexpected playback when users clicked "View Release" etc.
+        // Browser audio unlock should happen naturally when user explicitly clicks play.
 
         return () => {
             audio.removeEventListener("timeupdate", handleTimeUpdate);
             audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
             audio.removeEventListener("seeked", handleSeeked);
             audio.removeEventListener("ended", handleEnded);
-            window.removeEventListener('click', unlock);
-            window.removeEventListener('keydown', unlock);
             audio.pause();
             audio.src = "";
             currentTrackIdRef.current = null;
@@ -827,9 +845,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         if (!audioRef.current) return;
         const onPlay = () => {
-            if (mixerMode) Object.values(stemAudiosRef.current).forEach(s => s.play().catch(() => { }));
+            console.log('[main audio] play event fired, mixerMode:', mixerMode);
+            // CRITICAL: Sync React state with actual audio state
+            setIsPlaying(true);
+            if (mixerMode) {
+                const masterTime = main.currentTime;
+                Object.values(stemAudiosRef.current).forEach(s => {
+                    // Sync time BEFORE playing to prevent 1-second loop
+                    if (Math.abs(s.currentTime - masterTime) > 0.1) {
+                        s.currentTime = masterTime;
+                    }
+                    s.play().catch(() => { });
+                });
+            }
         };
         const onPause = () => {
+            console.log('[main audio] pause event fired, mixerMode:', mixerMode);
+            // CRITICAL: Sync React state with actual audio state
+            setIsPlaying(false);
             if (mixerMode) Object.values(stemAudiosRef.current).forEach(s => s.pause());
         };
         const main = audioRef.current;
@@ -909,11 +942,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             mixerMode,
             toggleMixerMode: () => {
                 const nextMode = !mixerMode;
+                console.log('[toggleMixerMode] Switching from', mixerMode, 'to', nextMode);
+                mixerModeRef.current = nextMode; // Synchronously update ref for immediate access
                 setMixerMode(nextMode);
                 // Synchronously update master volume to prevent leakage/phase issues
                 if (audioRef.current) {
                     const hasStems = currentTrack?.stems?.some(s => s.type.toUpperCase() !== 'ORIGINAL');
-                    audioRef.current.volume = (nextMode && hasStems) ? 0 : volume;
+                    const newVolume = (nextMode && hasStems) ? 0 : volume;
+                    const isActuallyPlaying = !audioRef.current.paused;
+                    console.log('[toggleMixerMode] Setting main audio volume to', newVolume, 'hasStems:', hasStems, 'isActuallyPlaying:', isActuallyPlaying);
+                    audioRef.current.volume = newVolume;
+                    // CRITICAL: Sync isPlaying state with actual audio state
+                    // This ensures StemAudio components get the correct isPlaying prop
+                    if (isActuallyPlaying !== isPlaying) {
+                        console.log('[toggleMixerMode] Syncing isPlaying state from', isPlaying, 'to', isActuallyPlaying);
+                        setIsPlaying(isActuallyPlaying);
+                    }
+                } else {
+                    console.log('[toggleMixerMode] No audioRef.current!');
                 }
             },
             mixerVolumes,
@@ -933,22 +979,32 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             }
         }}>
             {children}
-            {mixerMode && currentTrack?.id && (
-                <div style={{ display: 'none' }}>
-                    {currentTrack.stems?.filter(s => s.type.toUpperCase() !== 'ORIGINAL').map(stem => (
-                        <StemAudio
-                            key={stem.type.toLowerCase()}
-                            stem={stem}
-                            masterAudio={audioRef.current}
-                            isPlaying={isPlaying}
-                            volume={volume}
-                            mixerVolume={mixerVolumes[stem.type.toLowerCase()] ?? 1}
-                            onMount={handleStemMount}
-                            onUnmount={handleStemUnmount}
-                        />
-                    ))}
-                </div>
-            )}
+            {mixerMode && currentTrack?.id && (() => {
+                const stemsToRender = currentTrack.stems?.filter(s => s.type.toUpperCase() !== 'ORIGINAL') || [];
+                console.log('[PlayerProvider] Rendering StemAudio components:', {
+                    mixerMode,
+                    trackId: currentTrack.id,
+                    stemsCount: stemsToRender.length,
+                    stems: stemsToRender.map(s => ({ type: s.type, isEncrypted: s.isEncrypted, uri: s.uri?.substring(0, 50) })),
+                    mixerVolumes
+                });
+                return (
+                    <div style={{ display: 'none' }}>
+                        {stemsToRender.map(stem => (
+                            <StemAudio
+                                key={stem.type.toLowerCase()}
+                                stem={stem}
+                                masterAudio={audioRef.current}
+                                isPlaying={isPlaying}
+                                volume={volume}
+                                mixerVolume={mixerVolumes[stem.type.toLowerCase()] ?? 1}
+                                onMount={handleStemMount}
+                                onUnmount={handleStemUnmount}
+                            />
+                        ))}
+                    </div>
+                );
+            })()}
         </PlayerContext.Provider>
     );
 }

@@ -5,6 +5,7 @@ import { IngestionService } from "./ingestion.service";
 import { BullModule } from "@nestjs/bullmq";
 import { StemsProcessor } from "./stems.processor";
 import { ArtistModule } from "../artist/artist.module";
+import { CatalogModule } from "../catalog/catalog.module";
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { ArtistModule } from "../artist/artist.module";
       },
     }),
     ArtistModule,
+    CatalogModule,
   ],
   controllers: [IngestionController],
   providers: [IngestionService, StemsProcessor],

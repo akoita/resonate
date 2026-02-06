@@ -1,7 +1,10 @@
-import { BadRequestException, Injectable, OnModuleInit } from "@nestjs/common";
+import { BadRequestException, Injectable, OnModuleInit, NotFoundException } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
+import { EncryptionService } from "../encryption/encryption.service";
+import { StorageProvider } from "../storage/storage_provider";
 import {
+  CatalogTrackStatusEvent,
   IpNftMintedEvent,
   StemsProcessedEvent,
   StemsUploadedEvent,
@@ -15,7 +18,11 @@ export class CatalogService implements OnModuleInit {
   >();
   private readonly cacheTtlMs = 30_000;
 
-  constructor(private readonly eventBus: EventBus) { }
+  constructor(
+    private readonly eventBus: EventBus,
+    private readonly encryptionService: EncryptionService,
+    private readonly storageProvider: StorageProvider,
+  ) { }
 
   onModuleInit() {
     this.eventBus.subscribe("stems.uploaded", async (event: StemsUploadedEvent) => {
@@ -37,6 +44,12 @@ export class CatalogService implements OnModuleInit {
             label: event.metadata?.label ?? undefined,
             releaseDate: event.metadata?.releaseDate ? new Date(event.metadata.releaseDate) : undefined,
             explicit: event.metadata?.explicit ?? undefined,
+            tracks: event.checksum === "retry" ? {
+              updateMany: {
+                where: { releaseId: event.releaseId },
+                data: { processingStatus: "pending" }
+              }
+            } : undefined
           },
           create: {
             id: event.releaseId,
@@ -62,6 +75,14 @@ export class CatalogService implements OnModuleInit {
                 position: t.position,
                 explicit: t.explicit ?? false,
                 isrc: t.isrc,
+                stems: {
+                  create: t.stems?.map((s: any) => ({
+                    id: s.id,
+                    type: s.type,
+                    uri: s.uri,
+                    storageProvider: s.storageProvider || "local"
+                  }))
+                }
               })),
             },
           },
@@ -104,16 +125,28 @@ export class CatalogService implements OnModuleInit {
                 title: trackData.title,
                 artist: trackData.artist,
                 position: trackData.position,
+                processingStatus: "complete", // Mark as complete when processed
               },
               update: {
                 title: trackData.title,
                 artist: trackData.artist,
                 position: trackData.position,
+                processingStatus: "complete", // Mark as complete when processed
               },
             });
 
+            // Emit track status change event
+            this.eventBus.publish({
+              eventName: "catalog.track_status",
+              eventVersion: 1,
+              occurredAt: new Date().toISOString(),
+              releaseId: event.releaseId,
+              trackId: trackData.id,
+              status: "complete",
+            } as CatalogTrackStatusEvent);
+
             for (const stem of trackData.stems) {
-              console.log(`[Catalog] Upserting stem ${stem.id} for track ${trackData.id}. Data length: ${stem.data?.length ?? "NULL"} bytes`);
+              console.log(`[Catalog] Upserting stem ${stem.id} for track ${trackData.id}`);
               await prisma.stem.upsert({
                 where: { id: stem.id },
                 create: {
@@ -121,7 +154,7 @@ export class CatalogService implements OnModuleInit {
                   trackId: trackData.id,
                   type: stem.type,
                   uri: stem.uri,
-                  data: stem.data,
+                  // NOTE: 'data' is no longer passed in events - fetched from storage at 'uri' when needed
                   mimeType: stem.mimeType,
                   durationSeconds: stem.durationSeconds,
                   isEncrypted: stem.isEncrypted ?? false,
@@ -131,7 +164,6 @@ export class CatalogService implements OnModuleInit {
                 update: {
                   type: stem.type,
                   uri: stem.uri,
-                  data: stem.data,
                   mimeType: stem.mimeType,
                   durationSeconds: stem.durationSeconds,
                   isEncrypted: stem.isEncrypted ?? false,
@@ -158,9 +190,14 @@ export class CatalogService implements OnModuleInit {
           metadata: event.metadata,
         });
       } catch (err) {
-        console.error(`[Catalog] Failed to finalise release ${event.releaseId}:`, err);
+        // Extract error message only - Prisma errors can have circular refs that cause stack overflow
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error(`[Catalog] Failed to finalise release ${event.releaseId}: ${errMsg}`);
       }
     });
+
+    // Note: stems.progress status updates are now handled by IngestionService.emitTrackStage()
+    // which persists granular statuses (separating, encrypting, storing) directly
 
     this.eventBus.subscribe("ipnft.minted", async (event: IpNftMintedEvent) => {
       this.clearCache();
@@ -170,6 +207,48 @@ export class CatalogService implements OnModuleInit {
           data: { ipnftId: event.tokenId },
         })
         .catch(() => null);
+    });
+
+    this.eventBus.subscribe("stems.failed", async (event: any) => {
+      console.log(`[Catalog] Received stems.failed for release ${event.releaseId}: ${event.error}`);
+      this.clearCache();
+      try {
+        await prisma.release.update({
+          where: { id: event.releaseId },
+          data: { status: "failed" },
+        });
+
+        // Also update all non-complete tracks to failed
+        const tracksToFail = await prisma.track.findMany({
+          where: {
+            releaseId: event.releaseId,
+            processingStatus: { in: ["pending", "separating", "encrypting", "storing"] }
+          },
+          select: { id: true }
+        });
+
+        await prisma.track.updateMany({
+          where: {
+            releaseId: event.releaseId,
+            processingStatus: { in: ["pending", "separating", "encrypting", "storing"] }
+          },
+          data: { processingStatus: "failed" }
+        });
+
+        // Emit status event for each failed track
+        for (const track of tracksToFail) {
+          this.eventBus.publish({
+            eventName: "catalog.track_status",
+            eventVersion: 1,
+            occurredAt: new Date().toISOString(),
+            releaseId: event.releaseId,
+            trackId: track.id,
+            status: "failed",
+          } as CatalogTrackStatusEvent);
+        }
+      } catch (err) {
+        console.error(`[Catalog] Failed to update release status to failed for ${event.releaseId}:`, err);
+      }
     });
   }
 
@@ -203,6 +282,7 @@ export class CatalogService implements OnModuleInit {
             explicit: true,
             isrc: true,
             createdAt: true,
+            processingStatus: true,
             stems: {
               select: {
                 id: true,
@@ -343,6 +423,7 @@ export class CatalogService implements OnModuleInit {
             explicit: true,
             isrc: true,
             createdAt: true,
+            processingStatus: true,
             stems: {
               select: {
                 id: true,
@@ -389,6 +470,7 @@ export class CatalogService implements OnModuleInit {
             title: true,
             position: true,
             explicit: true,
+            processingStatus: true,
             stems: {
               select: {
                 id: true,
@@ -539,12 +621,118 @@ export class CatalogService implements OnModuleInit {
   }
 
   async getStemBlob(stemId: string) {
+    // Try finding by exact ID first
+    let stem = await prisma.stem.findUnique({
+      where: { id: stemId },
+      select: { id: true, data: true, mimeType: true, uri: true, storageProvider: true },
+    });
+
+    // Fallback: if stemId looks like a filename (e.g. from a mockup URI), try searching by URI
+    if (!stem) {
+      stem = await prisma.stem.findFirst({
+        where: { uri: { contains: stemId } },
+        select: { id: true, data: true, mimeType: true, uri: true, storageProvider: true },
+      });
+    }
+
+    if (!stem) return null;
+
+    // 1. Data is stored in DB
+    if (stem.data) {
+      return { data: stem.data, mimeType: stem.mimeType || "audio/mpeg" };
+    }
+
+    // 2. Local storage provider - try to read from disk
+    if (stem.storageProvider === "local") {
+      try {
+        const { join } = await import("path");
+        const { existsSync, readFileSync } = await import("fs");
+
+        // Extract filename from URI or ID
+        const filename = stem.uri.split("/").slice(-2, -1)[0] || stem.id;
+        const uploadDir = join(process.cwd(), "uploads", "stems");
+        const absolutePath = join(uploadDir, filename);
+
+        if (existsSync(absolutePath)) {
+          console.log(`[Catalog] Serving stem ${stem.id} from disk: ${absolutePath}`);
+          return {
+            data: readFileSync(absolutePath),
+            mimeType: stem.mimeType || "audio/mpeg"
+          };
+        }
+      } catch (err) {
+        console.error(`[Catalog] Failed to read stem ${stem.id} from disk:`, err);
+      }
+    }
+
+    // 3. Remote storage (IPFS/Lighthouse) - fetch from URI
+    if (stem.uri && (stem.storageProvider === "ipfs" || stem.uri.includes("ipfs") || stem.uri.includes("lighthouse"))) {
+      try {
+        console.log(`[Catalog] Fetching stem ${stem.id} from remote URI: ${stem.uri}`);
+        const fetchedData = await this.storageProvider.download(stem.uri);
+        if (fetchedData) {
+          return { data: fetchedData, mimeType: stem.mimeType || "audio/mpeg" };
+        }
+      } catch (err) {
+        console.error(`[Catalog] Failed to fetch stem ${stem.id} from remote:`, err);
+      }
+    }
+
+    // 4. Generic HTTP URI fallback
+    if (stem.uri && stem.uri.startsWith("http")) {
+      try {
+        console.log(`[Catalog] Fetching stem ${stem.id} from HTTP URI: ${stem.uri}`);
+        const response = await fetch(stem.uri, {
+          signal: AbortSignal.timeout(120000), // 2 minutes for large files
+        });
+        if (response.ok) {
+          const buffer = Buffer.from(await response.arrayBuffer());
+          return { data: buffer, mimeType: stem.mimeType || "audio/mpeg" };
+        }
+      } catch (err) {
+        console.error(`[Catalog] Failed to fetch stem ${stem.id} from HTTP:`, err);
+      }
+    }
+
+    return null;
+  }
+
+  async getStemPreview(stemId: string) {
     const stem = await prisma.stem.findUnique({
       where: { id: stemId },
-      select: { data: true, mimeType: true },
+      select: { uri: true, encryptionMetadata: true, data: true, mimeType: true },
     });
-    if (!stem || !stem.data) return null;
-    return { data: stem.data, mimeType: stem.mimeType || "audio/mpeg" };
+
+    if (!stem) throw new NotFoundException("Stem not found");
+
+    if (!stem.uri && !stem.data) throw new BadRequestException("Stem has no source URI or data");
+
+    // Handle encrypted content from IPFS/Lighthouse
+    // We prioritize this over stem.data because stem.data might contain the encrypted blob
+    if (stem.encryptionMetadata) {
+      // For preview, we use a public/mock authSig or bypass check if backend is allowed
+      const authSig = {
+        address: "0x0000000000000000000000000000000000000000",
+        sig: "preview-authorized",
+        signedMessage: "Marketplace preview authorization",
+      };
+
+      const decryptedBuffer = await this.encryptionService.decrypt(
+        stem.uri,
+        stem.encryptionMetadata,
+        [], // No specific access conditions for public preview if we want to bypass Lit checks on backend
+        authSig,
+      );
+
+      return { data: decryptedBuffer, mimeType: stem.mimeType || "audio/mpeg" };
+    }
+
+    // Unencrypted external content
+    const response = await fetch(stem.uri);
+    if (!response.ok) throw new Error(`Failed to fetch stem content: ${response.status}`);
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    return { data: buffer, mimeType: stem.mimeType || "audio/mpeg" };
   }
 
   private clearCache() {

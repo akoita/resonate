@@ -16,13 +16,21 @@ export interface ReleaseProgressUpdate {
     progress: number;
 }
 
+export interface TrackStatusUpdate {
+    releaseId: string;
+    trackId: string;
+    status: 'pending' | 'separating' | 'encrypting' | 'storing' | 'complete' | 'failed';
+}
+
 export function useWebSockets(
     onStatusUpdate?: (data: ReleaseStatusUpdate) => void,
-    onProgressUpdate?: (data: ReleaseProgressUpdate) => void
+    onProgressUpdate?: (data: ReleaseProgressUpdate) => void,
+    onTrackStatusUpdate?: (data: TrackStatusUpdate) => void
 ) {
     const [socket, setSocket] = useState<Socket | null>(null);
     const statusHandlerRef = useRef(onStatusUpdate);
     const progressHandlerRef = useRef(onProgressUpdate);
+    const trackStatusHandlerRef = useRef(onTrackStatusUpdate);
 
     // Update refs when handlers change without re-triggering effect
     useEffect(() => {
@@ -32,6 +40,10 @@ export function useWebSockets(
     useEffect(() => {
         progressHandlerRef.current = onProgressUpdate;
     }, [onProgressUpdate]);
+
+    useEffect(() => {
+        trackStatusHandlerRef.current = onTrackStatusUpdate;
+    }, [onTrackStatusUpdate]);
 
     useEffect(() => {
         // Initialize socket connection
@@ -55,10 +67,25 @@ export function useWebSockets(
             }
         });
 
+        // Also handle release.error using same status handler with 'failed' status
+        newSocket.on('release.error', (data: ReleaseStatusUpdate & { error?: string }) => {
+            console.log('[WebSocket] Received release.error:', data);
+            if (statusHandlerRef.current) {
+                statusHandlerRef.current({ ...data, status: 'failed' });
+            }
+        });
+
         newSocket.on('release.progress', (data: ReleaseProgressUpdate) => {
             console.log('[WebSocket] Received release.progress update:', data);
             if (progressHandlerRef.current) {
                 progressHandlerRef.current(data);
+            }
+        });
+
+        newSocket.on('track.status', (data: TrackStatusUpdate) => {
+            console.log('[WebSocket] Received track.status update:', data);
+            if (trackStatusHandlerRef.current) {
+                trackStatusHandlerRef.current(data);
             }
         });
 

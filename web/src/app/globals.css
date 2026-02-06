@@ -782,20 +782,23 @@ a {
   cursor: pointer;
   transition: all 0.25s ease;
   z-index: 10;
-  box-shadow: 
+  box-shadow:
     0 4px 20px rgba(124, 92, 255, 0.5),
     0 0 40px rgba(124, 92, 255, 0.3);
   animation: mixer-btn-glow 2.5s ease-in-out infinite;
 }
 
 @keyframes mixer-btn-glow {
-  0%, 100% {
-    box-shadow: 
+
+  0%,
+  100% {
+    box-shadow:
       0 4px 20px rgba(124, 92, 255, 0.5),
       0 0 40px rgba(124, 92, 255, 0.3);
   }
+
   50% {
-    box-shadow: 
+    box-shadow:
       0 4px 30px rgba(124, 92, 255, 0.7),
       0 0 60px rgba(124, 92, 255, 0.5);
   }
@@ -805,7 +808,7 @@ a {
   background: linear-gradient(135deg, #8a6dff 0%, #7c5cff 100%);
   border-color: rgba(255, 255, 255, 0.4);
   transform: scale(1.08);
-  box-shadow: 
+  box-shadow:
     0 6px 30px rgba(124, 92, 255, 0.7),
     0 0 60px rgba(124, 92, 255, 0.5);
   animation: none;
@@ -814,20 +817,23 @@ a {
 .artwork-mixer-toggle.active {
   background: linear-gradient(135deg, #00d1ff 0%, #7c5cff 100%);
   border-color: rgba(255, 255, 255, 0.3);
-  box-shadow: 
+  box-shadow:
     0 4px 25px rgba(0, 209, 255, 0.5),
     0 0 50px rgba(0, 209, 255, 0.3);
   animation: mixer-btn-active-glow 2s ease-in-out infinite;
 }
 
 @keyframes mixer-btn-active-glow {
-  0%, 100% {
-    box-shadow: 
+
+  0%,
+  100% {
+    box-shadow:
       0 4px 25px rgba(0, 209, 255, 0.5),
       0 0 50px rgba(0, 209, 255, 0.3);
   }
+
   50% {
-    box-shadow: 
+    box-shadow:
       0 4px 35px rgba(0, 209, 255, 0.7),
       0 0 70px rgba(0, 209, 255, 0.5);
   }
@@ -867,6 +873,7 @@ a {
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -3204,6 +3211,109 @@ a {
   justify-content: flex-end;
 }
 
+/* Track Action Menu - Subtle and Beautiful */
+.track-action-menu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.library-item:hover .track-action-menu-trigger,
+.track-row:hover .track-action-menu-trigger,
+.track-action-menu-trigger.active {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.track-action-menu-trigger:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+  transform: scale(1.05);
+}
+
+.track-action-menu-trigger.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--color-accent);
+}
+
+.track-action-menu-dropdown {
+  min-width: 180px;
+  background: rgba(22, 22, 30, 0.95);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 6px;
+  box-shadow:
+    0 4px 32px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  animation: actionMenuFadeIn 0.15s ease-out;
+}
+
+@keyframes actionMenuFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.track-action-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+
+.track-action-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.track-action-menu-item:active {
+  transform: scale(0.98);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.track-action-menu-item.destructive {
+  color: rgba(239, 68, 68, 0.9);
+}
+
+.track-action-menu-item.destructive:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+.track-action-menu-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 14px;
+  opacity: 0.85;
+}
+
 .library-item-artwork {
   position: relative;
   width: 48px;
@@ -5155,6 +5265,20 @@ a {
   height: 16px;
   accent-color: var(--color-accent);
   cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+/* Show checkboxes on hover or when tracks are selected */
+.track-table:hover .th-select input[type="checkbox"],
+.track-row:hover .track-select-cell input[type="checkbox"],
+.track-row.selected .track-select-cell input[type="checkbox"] {
+  opacity: 1;
+}
+
+/* Also show header checkbox when any track is selected */
+.track-table:has(.track-row.selected) .th-select input[type="checkbox"] {
+  opacity: 1;
 }
 
 .track-row.selected {
@@ -5645,39 +5769,44 @@ tr[draggable="true"]:hover {
 
 /* Progress Bar Styles */
 .track-progress-container {
-    width: 100%;
-    height: 12px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 6px;
-    margin-top: 8px;
-    overflow: hidden;
-    position: relative;
-    border: 1px solid rgba(255, 255, 255, 0.05);
+  width: 100%;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  margin-top: 8px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .track-progress-bar {
-    height: 100%;
-    background: linear-gradient(90deg, #3b82f6, #60a5fa, #3b82f6);
-    background-size: 200% 100%;
-    animation: progress-shimmer 2s linear infinite;
-    transition: width 0.3s ease;
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa, #3b82f6);
+  background-size: 200% 100%;
+  animation: progress-shimmer 2s linear infinite;
+  transition: width 0.3s ease;
 }
 
 @keyframes progress-shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .track-progress-label {
-    position: absolute;
-    top: 50%;
-    left: 12px;
-    transform: translateY(-50%);
-    font-size: 9px;
-    color: white;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
-    pointer-events: none;
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  font-size: 9px;
+  color: white;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
 }

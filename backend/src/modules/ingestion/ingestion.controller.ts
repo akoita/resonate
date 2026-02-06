@@ -49,6 +49,12 @@ export class IngestionController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @Post("retry/:releaseId")
+  retry(@Param("releaseId") releaseId: string) {
+    return this.ingestionService.retryRelease(releaseId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
   @Get("status/:trackId")
   status(@Param("trackId") trackId: string) {
     return this.ingestionService.getStatus(trackId);
