@@ -290,8 +290,10 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const didInit = useRef(false);
   useEffect(() => {
     const isDev = !process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID;
-    // Only run if dev mode, not yet initialized, and status is idle
-    if (isDev && !didInit.current && status === "idle") {
+    // Skip if already authenticated via localStorage (e.g., E2E mock auth)
+    const hasStoredAuth = localStorage.getItem(TOKEN_KEY) && localStorage.getItem(ADDRESS_KEY);
+    // Only run if dev mode, not yet initialized, no stored auth, and status is idle
+    if (isDev && !didInit.current && !hasStoredAuth && status === "idle") {
       didInit.current = true;
       console.log("Dev mode detected, performing full login with mock account...");
       login().catch(e => {
