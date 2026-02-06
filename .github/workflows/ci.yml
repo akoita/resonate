@@ -91,6 +91,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       
@@ -120,6 +129,7 @@ jobs:
         working-directory: backend
         env:
           DATABASE_URL: postgresql://resonate:resonate@localhost:5432/resonate
+          REDIS_URL: redis://localhost:6379
 
   build:
     name: Build
@@ -175,6 +185,15 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -U resonate"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -237,6 +256,7 @@ jobs:
         env:
           CI: true
           DATABASE_URL: postgresql://resonate:resonate@localhost:5432/resonate
+          REDIS_URL: redis://localhost:6379
           JWT_SECRET: dev-secret
       
       - name: Upload test results
