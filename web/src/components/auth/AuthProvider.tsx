@@ -152,7 +152,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         }
       };
 
-      // @ts-expect-error - mockAccount is a simplified account type for dev mode
       setActiveAccount(mockAccount);
       setAddress(mockAccount.address);
       setRole("user"); // Default role for dev
@@ -161,7 +160,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       localStorage.setItem("mock_address", mockAccount.address);
       localStorage.setItem(ADDRESS_KEY, mockAccount.address);
 
-      // @ts-expect-error - mockAccount is a simplified account type for dev mode
       return mockAccount;
     }
 
@@ -202,7 +200,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     setError(undefined);
     try {
       const account = await getOrConnectAccount(mode);
-      const saAddress = account.address;
+      const saAddress = (account as Record<string, unknown>).address as string;
 
       console.log("[Auth] SA Address:", saAddress);
       if (!saAddress || saAddress === "0x0000000000000000000000000000000000000000") {
@@ -213,7 +211,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       const message = `Resonate Sign-In\nAddress: ${saAddress}\nNonce: ${nonce}\nIssued At: ${new Date().toISOString()}`;
 
       // Sign
-      const signature = await account.signMessage({ message });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const signature = await (account as Record<string, any>).signMessage({ message });
 
       const result = await verifySignature({
         address: saAddress,
@@ -247,7 +246,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     // Default to Login mode for signing (as we assume user is registered)
     const { WebAuthnMode } = await import("@zerodev/passkey-validator");
     const account = await getOrConnectAccount(WebAuthnMode.Login);
-    return account.signMessage({ message });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (account as Record<string, any>).signMessage({ message });
   }, [getOrConnectAccount]);
 
   const login = useCallback(async () => {
