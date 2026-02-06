@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
-import { createPublicClient, http, parseAbiItem, type Log, type Address } from "viem";
+import { createPublicClient, http, parseAbiItem, decodeEventLog, type Log, type Address } from "viem";
 import { foundry, sepolia, baseSepolia } from "viem/chains";
 
 // Contract ABIs for event parsing
@@ -18,6 +18,14 @@ const ROYALTY_PAID_EVENT = parseAbiItem(
   "event RoyaltyPaid(uint256 indexed tokenId, address indexed recipient, uint256 amount)"
 );
 const CANCELLED_EVENT = parseAbiItem("event Cancelled(uint256 indexed listingId)");
+
+// Standard ERC-1155 events
+const TRANSFER_SINGLE_EVENT = parseAbiItem(
+  "event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value)"
+);
+const TRANSFER_BATCH_EVENT = parseAbiItem(
+  "event TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values)"
+);
 
 // Chain configurations
 const CHAIN_CONFIGS: Record<number, { chain: any; rpcUrl: string }> = {
@@ -38,8 +46,8 @@ const CHAIN_CONFIGS: Record<number, { chain: any; rpcUrl: string }> = {
 // Contract addresses by chain
 const CONTRACT_ADDRESSES: Record<number, { stemNFT: Address; marketplace: Address }> = {
   31337: {
-    stemNFT: (process.env.LOCAL_STEM_NFT_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
-    marketplace: (process.env.LOCAL_MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
+    stemNFT: (process.env.STEM_NFT_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
+    marketplace: (process.env.MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
   },
   11155111: {
     stemNFT: (process.env.SEPOLIA_STEM_NFT_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
@@ -58,12 +66,24 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
   private isIndexing = false;
   private readonly POLL_INTERVAL_MS = 5000; // 5 seconds
   private readonly BLOCKS_PER_BATCH = 1000;
+  private clientCache = new Map<number, any>();
 
-  constructor(private readonly eventBus: EventBus) {}
+  constructor(private readonly eventBus: EventBus) { }
+
+  private getClient(chainId: number) {
+    let client = this.clientCache.get(chainId);
+    if (!client) {
+      const config = CHAIN_CONFIGS[chainId];
+      if (!config) return null;
+      client = createPublicClient({ chain: config.chain, transport: http(config.rpcUrl) });
+      this.clientCache.set(chainId, client);
+    }
+    return client;
+  }
 
   async onModuleInit() {
     const enableIndexer = process.env.ENABLE_CONTRACT_INDEXER === "true";
-    
+
     if (!enableIndexer) {
       this.logger.log("Contract indexer disabled (set ENABLE_CONTRACT_INDEXER=true to enable)");
       return;
@@ -100,7 +120,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
     this.isIndexing = true;
 
     try {
-      const chainId = parseInt(process.env.CHAIN_ID || "31337");
+      const chainId = parseInt(process.env.INDEXER_CHAIN_ID || process.env.CHAIN_ID || "31337");
       const config = CHAIN_CONFIGS[chainId];
       const addresses = CONTRACT_ADDRESSES[chainId];
 
@@ -115,10 +135,11 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      const client = createPublicClient({
-        chain: config.chain,
-        transport: http(config.rpcUrl),
-      });
+      const client = this.getClient(chainId);
+      if (!client) {
+        this.logger.warn(`Failed to create client for chain ${chainId}`);
+        return;
+      }
 
       // Get last indexed block
       let indexerState = await prisma.indexerState.findUnique({
@@ -135,7 +156,13 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
       const currentBlock = await client.getBlockNumber();
 
       if (fromBlock > currentBlock) {
-        return; // Already up to date
+        // Detect chain reset (Anvil restart)
+        this.logger.log(`Chain reset detected (current block ${currentBlock} < last indexed ${indexerState.lastBlockNumber}). Resetting indexer...`);
+        await prisma.indexerState.update({
+          where: { chainId },
+          data: { lastBlockNumber: 0n },
+        });
+        return;
       }
 
       const toBlock = fromBlock + BigInt(this.BLOCKS_PER_BATCH) - 1n;
@@ -198,16 +225,8 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      // Identify and decode event
-      const eventSignature = topics[0];
-      let eventName: string | null = null;
-      let eventData: any = null;
-
-      // Try to decode as StemMinted
-      if (eventSignature === "0x" + Buffer.from("StemMinted(uint256,address,uint256[],string)").toString("hex").slice(0, 64)) {
-        eventName = "StemMinted";
-        // Decode event args - simplified, would use decodeEventLog in production
-      }
+      // Decode event using viem
+      const { eventName, decodedArgs } = this.decodeEvent(log);
 
       // Store raw event
       await prisma.contractEvent.create({
@@ -219,7 +238,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           logIndex: logIndex!,
           blockNumber: blockNumber!,
           blockHash: blockHash!,
-          args: {
+          args: decodedArgs || {
             topics: topics.map((t) => t.toString()),
             data: data,
           },
@@ -227,15 +246,111 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
       });
 
       // Publish typed event
-      if (eventName) {
-        await this.publishTypedEvent(eventName, log, chainId);
+      if (eventName && decodedArgs) {
+        await this.publishTypedEvent(eventName, decodedArgs, log, chainId);
       }
     } catch (error) {
       this.logger.error(`Failed to process log: ${error}`);
     }
   }
 
-  private async publishTypedEvent(eventName: string, log: Log, chainId: number) {
+  private decodeEvent(log: Log): { eventName: string | null; decodedArgs: any } {
+
+    const ABIs = [
+      STEM_MINTED_EVENT,
+      LISTED_EVENT,
+      SOLD_EVENT,
+      ROYALTY_PAID_EVENT,
+      CANCELLED_EVENT,
+      TRANSFER_SINGLE_EVENT,
+      TRANSFER_BATCH_EVENT
+    ];
+
+    for (const abiItem of ABIs) {
+      try {
+        const decoded = decodeEventLog({
+          abi: [abiItem],
+          data: log.data,
+          topics: log.topics,
+        });
+
+        const eventName = (abiItem as any).name;
+        // Cast to any — viem's decodeEventLog returns a union type across all ABIs
+        // that TS can't narrow via string comparison; the eventName check guarantees shape
+        const args = decoded.args as any;
+
+        // Custom formatting for our events
+        if (eventName === "StemMinted") {
+          return {
+            eventName,
+            decodedArgs: {
+              tokenId: args.tokenId.toString(),
+              creator: args.creator,
+              parentIds: args.parentIds.map((id: bigint) => id.toString()),
+              tokenURI: args.tokenURI,
+            },
+          };
+        }
+
+        if (eventName === "Listed") {
+          return {
+            eventName,
+            decodedArgs: {
+              listingId: args.listingId.toString(),
+              seller: args.seller,
+              tokenId: args.tokenId.toString(),
+              amount: args.amount.toString(),
+              price: args.price.toString(),
+            },
+          };
+        }
+
+        if (eventName === "Sold") {
+          return {
+            eventName,
+            decodedArgs: {
+              listingId: args.listingId.toString(),
+              buyer: args.buyer,
+              amount: args.amount.toString(),
+              totalPaid: args.totalPaid.toString(),
+            },
+          };
+        }
+
+        if (eventName === "RoyaltyPaid") {
+          return {
+            eventName,
+            decodedArgs: {
+              tokenId: args.tokenId.toString(),
+              recipient: args.recipient,
+              amount: args.amount.toString(),
+            },
+          };
+        }
+
+        if (eventName === "Cancelled") {
+          return {
+            eventName,
+            decodedArgs: {
+              listingId: args.listingId.toString(),
+            },
+          };
+        }
+
+        // Generic decoding for other events
+        return {
+          eventName,
+          decodedArgs: decoded.args
+        };
+      } catch {
+        continue;
+      }
+    }
+
+    return { eventName: null, decodedArgs: null };
+  }
+
+  private async publishTypedEvent(eventName: string, decodedArgs: any, log: Log, chainId: number) {
     const { transactionHash, blockNumber, address } = log;
     const occurredAt = new Date().toISOString();
 
@@ -245,10 +360,10 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           eventName: "contract.stem_minted",
           eventVersion: 1,
           occurredAt,
-          tokenId: "0", // Would be decoded from log
-          creatorAddress: "0x0000000000000000000000000000000000000000",
-          parentIds: [],
-          tokenUri: "",
+          tokenId: decodedArgs.tokenId,
+          creatorAddress: decodedArgs.creator,
+          parentIds: decodedArgs.parentIds,
+          tokenUri: decodedArgs.tokenURI,
           chainId,
           contractAddress: address,
           transactionHash: transactionHash!,
@@ -261,13 +376,13 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           eventName: "contract.stem_listed",
           eventVersion: 1,
           occurredAt,
-          listingId: "0",
-          sellerAddress: "0x0000000000000000000000000000000000000000",
-          tokenId: "0",
-          amount: "0",
-          pricePerUnit: "0",
-          paymentToken: "0x0000000000000000000000000000000000000000",
-          expiresAt: "0",
+          listingId: decodedArgs.listingId,
+          sellerAddress: decodedArgs.seller,
+          tokenId: decodedArgs.tokenId,
+          amount: decodedArgs.amount,
+          pricePerUnit: decodedArgs.price,
+          paymentToken: "0x0000000000000000000000000000000000000000", // ETH - event doesn't include this
+          expiresAt: "0", // Not in the event, would need to query contract
           chainId,
           contractAddress: address,
           transactionHash: transactionHash!,
@@ -280,10 +395,10 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           eventName: "contract.stem_sold",
           eventVersion: 1,
           occurredAt,
-          listingId: "0",
-          buyerAddress: "0x0000000000000000000000000000000000000000",
-          amount: "0",
-          totalPaid: "0",
+          listingId: decodedArgs.listingId,
+          buyerAddress: decodedArgs.buyer,
+          amount: decodedArgs.amount,
+          totalPaid: decodedArgs.totalPaid,
           chainId,
           contractAddress: address,
           transactionHash: transactionHash!,
@@ -296,9 +411,9 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           eventName: "contract.royalty_paid",
           eventVersion: 1,
           occurredAt,
-          tokenId: "0",
-          recipientAddress: "0x0000000000000000000000000000000000000000",
-          amount: "0",
+          tokenId: decodedArgs.tokenId,
+          recipientAddress: decodedArgs.recipient,
+          amount: decodedArgs.amount,
           chainId,
           contractAddress: address,
           transactionHash: transactionHash!,
@@ -311,7 +426,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           eventName: "contract.listing_cancelled",
           eventVersion: 1,
           occurredAt,
-          listingId: "0",
+          listingId: decodedArgs.listingId,
           chainId,
           contractAddress: address,
           transactionHash: transactionHash!,
