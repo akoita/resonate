@@ -8,6 +8,7 @@ import { useAuth } from "../components/auth/AuthProvider";
 // import { usePlayer } from "../lib/playerContext";
 import { listPublishedReleases, listMyReleases, Release } from "../lib/api";
 import { ReleaseHero } from "../components/home/ReleaseHero";
+import { HeroCarousel } from "../components/home/HeroCarousel";
 import { FeaturedStems } from "../components/home/FeaturedStems";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
 import { useToast } from "../components/ui/Toast";
@@ -72,11 +73,9 @@ export default function Home(props: {
     <main className="home-container">
       <div className="mesh-gradient-bg" />
 
-      {/* 1. Master Stage Hero */}
-      {featuredRelease && (
-        <section className="home-hero-section fade-in-up">
-          <ReleaseHero release={featuredRelease} />
-        </section>
+      {/* 1. Master Stage Hero Carousel */}
+      {releases.length > 0 && (
+        <HeroCarousel releases={releases.slice(0, 3)} />
       )}
 
       {/* 2. Featured Stems — the hero asset */}
