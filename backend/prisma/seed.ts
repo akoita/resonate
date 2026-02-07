@@ -56,7 +56,7 @@ async function main() {
             id: RELEASE_ID,
             artistId: ARTIST_ID,
             title: "Test Release",
-            status: "published",
+            status: "ready",
             type: "Single",
             primaryArtist: "Test Artist",
             genre: "Electronic",

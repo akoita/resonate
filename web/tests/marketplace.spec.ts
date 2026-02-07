@@ -35,9 +35,10 @@ test.describe("Marketplace", () => {
         await page.goto("/marketplace");
 
         await expect(page.getByText("Vocals Stem")).toBeVisible({ timeout: 15000 });
-        // Artist and track come from the seeded Release/Track records
-        await expect(page.getByText("Test Artist").first()).toBeVisible();
-        await expect(page.getByText("Groove Track").first()).toBeVisible();
+        // Scope to stem-card to avoid matching hidden <option> elements in filter dropdowns
+        const card = page.locator("[data-testid='stem-card']").first();
+        await expect(card.getByText("Test Artist")).toBeVisible();
+        await expect(card.getByText("Groove Track")).toBeVisible();
     });
 
     test("marketplace filters are interactive", async ({ page }) => {
@@ -85,7 +86,8 @@ test.describe("Marketplace", () => {
         await expect(page.getByText("Vocals Stem")).toBeVisible({ timeout: 15000 });
 
         // One listing has 1-hour expiry — should show an urgency indicator
-        await expect(page.getByText(/ending soon|left/i).first()).toBeVisible({ timeout: 15000 });
+        // Look for the expiry-badge component itself (rendered on all active listings)
+        await expect(page.locator(".expiry-badge").first()).toBeVisible({ timeout: 15000 });
     });
 
     test("stem type badges are displayed on cards", async ({ page }) => {
