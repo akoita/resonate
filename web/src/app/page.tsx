@@ -8,6 +8,7 @@ import { useAuth } from "../components/auth/AuthProvider";
 // import { usePlayer } from "../lib/playerContext";
 import { listPublishedReleases, listMyReleases, Release } from "../lib/api";
 import { ReleaseHero } from "../components/home/ReleaseHero";
+import { FeaturedStems } from "../components/home/FeaturedStems";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
 import { useToast } from "../components/ui/Toast";
 
@@ -78,7 +79,12 @@ export default function Home(props: {
         </section>
       )}
 
-      {/* 2. Quick Access (Spotify Style but Glass) */}
+      {/* 2. Featured Stems — the hero asset */}
+      {!loading && releases.length > 0 && (
+        <FeaturedStems releases={releases} />
+      )}
+
+      {/* 3. Quick Access (Spotify Style but Glass) */}
       <section className="home-section fade-in-up" style={{ animationDelay: '0.1s' }}>
         <div className="section-header">
           <h2 className="home-section-title text-gradient">Good Evening</h2>
