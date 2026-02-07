@@ -192,7 +192,17 @@ export class AgentConfigController {
             take: 20,
             include: {
                 licenses: {
-                    include: { track: { select: { id: true, title: true } } },
+                    include: {
+                        track: {
+                            select: {
+                                id: true,
+                                title: true,
+                                artist: true,
+                                releaseId: true,
+                                release: { select: { artworkUrl: true, title: true } },
+                            },
+                        },
+                    },
                 },
             },
         });
