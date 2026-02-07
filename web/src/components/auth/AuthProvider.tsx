@@ -53,12 +53,52 @@ const TOKEN_KEY = "resonate.token";
 const ADDRESS_KEY = "resonate.address";
 const PRIVY_USER_KEY = "resonate.privy.userId";
 
+/** Decode role and userId from a JWT without validation */
+function decodeAuthClaims(jwt: string | null) {
+  if (!jwt) return { role: null, userId: null };
+  try {
+    const payload = jwt.split(".")[1];
+    if (!payload) return { role: null, userId: null };
+    const decoded = JSON.parse(atob(payload));
+    return {
+      role: typeof decoded.role === "string" ? decoded.role : null,
+      userId: typeof decoded.sub === "string" ? decoded.sub : null,
+    };
+  } catch {
+    return { role: null, userId: null };
+  }
+}
+
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [status, setStatus] = useState<AuthState["status"]>("idle");
-  const [address, setAddress] = useState<string | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [role, setRole] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
+  // Memoized wrapper for use in dependency arrays
+  const resolveAuth = useCallback((jwt: string | null) => decodeAuthClaims(jwt), []);
+
+  // Lazy-read localStorage synchronously during the FIRST render so we never
+  // flash an "idle / disconnected" frame between UI updates or navigations.
+  const [status, setStatus] = useState<AuthState["status"]>(() => {
+    if (typeof window === "undefined") return "idle";
+    const t = localStorage.getItem(TOKEN_KEY);
+    const a = localStorage.getItem(ADDRESS_KEY);
+    return t && a ? "authenticated" : "idle";
+  });
+  const [address, setAddress] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem(ADDRESS_KEY);
+  });
+  const [token, setToken] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem(TOKEN_KEY);
+  });
+  const [role, setRole] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const t = localStorage.getItem(TOKEN_KEY);
+    return t ? decodeAuthClaims(t).role : null;
+  });
+  const [userId, setUserId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const t = localStorage.getItem(TOKEN_KEY);
+    return t ? decodeAuthClaims(t).userId : null;
+  });
   const [wallet, setWallet] = useState<WalletRecord | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
   const { projectId, publicClient, chainId } = useZeroDev();
@@ -68,34 +108,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   // For now, if we are in mock mode and refresh, signMessage will fail or generate a new address (which mismatches).
   // We'll address the happy path (Passkeys) primarily.
   const [activeAccount, setActiveAccount] = useState<unknown>(null);
-
-  const resolveAuth = useCallback((jwt: string | null) => {
-    if (!jwt) return { role: null, userId: null };
-    try {
-      const payload = jwt.split(".")[1];
-      if (!payload) return { role: null, userId: null };
-      const decoded = JSON.parse(atob(payload));
-      return {
-        role: typeof decoded.role === "string" ? decoded.role : null,
-        userId: typeof decoded.sub === "string" ? decoded.sub : null,
-      };
-    } catch {
-      return { role: null, userId: null };
-    }
-  }, []);
-
-  useEffect(() => {
-    const storedToken = localStorage.getItem(TOKEN_KEY);
-    const storedAddress = localStorage.getItem(ADDRESS_KEY);
-    if (storedToken && storedAddress) {
-      const { role: r, userId: u } = resolveAuth(storedToken);
-      setToken(storedToken);
-      setAddress(storedAddress);
-      setRole(r);
-      setUserId(u);
-      setStatus("authenticated");
-    }
-  }, [resolveAuth]);
 
   const refreshWallet = useCallback(async () => {
     if (!token || !address) return;

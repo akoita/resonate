@@ -22,15 +22,40 @@ export interface TrackStatusUpdate {
     status: 'pending' | 'separating' | 'encrypting' | 'storing' | 'complete' | 'failed';
 }
 
+export interface MarketplaceListingCreated {
+    type: 'created';
+    listingId: string;
+    tokenId: string;
+    seller: string;
+    price: string;
+    amount: string;
+}
+export interface MarketplaceListingSold {
+    type: 'sold';
+    listingId: string;
+    buyer: string;
+    amount: string;
+}
+export interface MarketplaceListingCancelled {
+    type: 'cancelled';
+    listingId: string;
+}
+export type MarketplaceUpdate =
+    | MarketplaceListingCreated
+    | MarketplaceListingSold
+    | MarketplaceListingCancelled;
+
 export function useWebSockets(
     onStatusUpdate?: (data: ReleaseStatusUpdate) => void,
     onProgressUpdate?: (data: ReleaseProgressUpdate) => void,
-    onTrackStatusUpdate?: (data: TrackStatusUpdate) => void
+    onTrackStatusUpdate?: (data: TrackStatusUpdate) => void,
+    onMarketplaceUpdate?: (data: MarketplaceUpdate) => void
 ) {
     const [socket, setSocket] = useState<Socket | null>(null);
     const statusHandlerRef = useRef(onStatusUpdate);
     const progressHandlerRef = useRef(onProgressUpdate);
     const trackStatusHandlerRef = useRef(onTrackStatusUpdate);
+    const marketplaceHandlerRef = useRef(onMarketplaceUpdate);
 
     // Update refs when handlers change without re-triggering effect
     useEffect(() => {
@@ -44,6 +69,10 @@ export function useWebSockets(
     useEffect(() => {
         trackStatusHandlerRef.current = onTrackStatusUpdate;
     }, [onTrackStatusUpdate]);
+
+    useEffect(() => {
+        marketplaceHandlerRef.current = onMarketplaceUpdate;
+    }, [onMarketplaceUpdate]);
 
     useEffect(() => {
         // Initialize socket connection
@@ -86,6 +115,27 @@ export function useWebSockets(
             console.log('[WebSocket] Received track.status update:', data);
             if (trackStatusHandlerRef.current) {
                 trackStatusHandlerRef.current(data);
+            }
+        });
+
+        newSocket.on('marketplace.listing_created', (data: Omit<MarketplaceListingCreated, 'type'>) => {
+            console.log('[WebSocket] Marketplace listing created:', data);
+            if (marketplaceHandlerRef.current) {
+                marketplaceHandlerRef.current({ ...data, type: 'created' });
+            }
+        });
+
+        newSocket.on('marketplace.listing_sold', (data: Omit<MarketplaceListingSold, 'type'>) => {
+            console.log('[WebSocket] Marketplace listing sold:', data);
+            if (marketplaceHandlerRef.current) {
+                marketplaceHandlerRef.current({ ...data, type: 'sold' });
+            }
+        });
+
+        newSocket.on('marketplace.listing_cancelled', (data: Omit<MarketplaceListingCancelled, 'type'>) => {
+            console.log('[WebSocket] Marketplace listing cancelled:', data);
+            if (marketplaceHandlerRef.current) {
+                marketplaceHandlerRef.current({ ...data, type: 'cancelled' });
             }
         });
 
