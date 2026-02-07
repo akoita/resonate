@@ -99,7 +99,7 @@ export function StemCard({ stem }: StemCardProps) {
     for (const s of stem.trackStems) {
       const t = s.type.toLowerCase();
       if (t === "original") continue; // never show original in mixer
-      volumes[t] = t === selectedType ? 100 : 0;
+      volumes[t] = t === selectedType ? 1 : 0;
     }
     setMixerVolumes(volumes);
 
