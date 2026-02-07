@@ -4,78 +4,100 @@ import { useRouter } from "next/navigation";
 
 /** Stem data flattened from releases → tracks → stems */
 export interface FeaturedStem {
-    id: string;
-    type: string;
-    uri: string;
-    ipnftId?: string | null;
-    durationSeconds?: number | null;
-    isEncrypted?: boolean;
-    /** Parent track info */
-    trackTitle: string;
-    trackId: string;
-    /** Parent release info */
-    releaseId: string;
-    releaseTitle: string;
-    releaseArtist: string;
-    releaseArtworkUrl?: string | null;
+  id: string;
+  type: string;
+  uri: string;
+  ipnftId?: string | null;
+  durationSeconds?: number | null;
+  isEncrypted?: boolean;
+  /** Parent track info */
+  trackTitle: string;
+  trackId: string;
+  /** Parent release info */
+  releaseId: string;
+  releaseTitle: string;
+  releaseArtist: string;
+  releaseArtworkUrl?: string | null;
 }
 
 // Color + icon map per stem type
 const STEM_STYLES: Record<string, { color: string; icon: string; label: string }> = {
-    vocals: { color: "#e879f9", icon: "🎤", label: "Vocals" },
-    drums: { color: "#f97316", icon: "🥁", label: "Drums" },
-    bass: { color: "#22d3ee", icon: "🎸", label: "Bass" },
-    guitar: { color: "#facc15", icon: "🎸", label: "Guitar" },
-    piano: { color: "#a78bfa", icon: "🎹", label: "Piano" },
-    other: { color: "#60a5fa", icon: "🎵", label: "Other" },
+  original: { color: "#94a3b8", icon: "🎶", label: "Full Mix" },
+  vocals: { color: "#e879f9", icon: "🎤", label: "Vocals" },
+  drums: { color: "#f97316", icon: "🥁", label: "Drums" },
+  bass: { color: "#22d3ee", icon: "🎸", label: "Bass" },
+  guitar: { color: "#facc15", icon: "🎸", label: "Guitar" },
+  piano: { color: "#a78bfa", icon: "🎹", label: "Piano" },
+  other: { color: "#60a5fa", icon: "🎵", label: "Other" },
 };
 
 function getStemStyle(type: string) {
-    const key = type.toLowerCase();
-    return STEM_STYLES[key] || STEM_STYLES.other;
+  const key = type.toLowerCase();
+  return STEM_STYLES[key] || STEM_STYLES.other;
 }
 
 interface StemCardProps {
-    stem: FeaturedStem;
+  stem: FeaturedStem;
 }
 
 export function StemCard({ stem }: StemCardProps) {
-    const router = useRouter();
-    const style = getStemStyle(stem.type);
-    const isRemixable = !!stem.ipnftId;
+  const router = useRouter();
+  const style = getStemStyle(stem.type);
+  const isRemixable = !!stem.ipnftId;
 
-    return (
-        <div
-            className="stem-card glass-panel"
-            onClick={() => router.push(`/release/${stem.releaseId}`)}
-        >
-            {/* Decorative waveform bar */}
-            <div
-                className="stem-card-wave"
-                style={{
-                    background: `linear-gradient(135deg, ${style.color}33 0%, ${style.color}11 100%)`,
-                    borderBottom: `1px solid ${style.color}22`,
-                }}
-            >
-                <span className="stem-card-icon">{style.icon}</span>
-                {isRemixable && (
-                    <span className="stem-remixable-badge">Remixable</span>
-                )}
-            </div>
+  /** Navigate to the release page in mixer mode */
+  const handleQuickMix = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    router.push(`/release/${stem.releaseId}?mixer=true`);
+  };
 
-            {/* Content */}
-            <div className="stem-card-body">
-                <span className="stem-type-label" style={{ color: style.color }}>
-                    {style.label}
-                </span>
-                <p className="stem-track-title">{stem.trackTitle}</p>
-                <p className="stem-release-info">
-                    from <span className="stem-release-name">{stem.releaseTitle}</span>
-                </p>
-                <p className="stem-artist">{stem.releaseArtist}</p>
-            </div>
+  return (
+    <div
+      className="stem-card glass-panel"
+      onClick={() => router.push(`/release/${stem.releaseId}`)}
+    >
+      {/* Decorative waveform bar */}
+      <div
+        className="stem-card-wave"
+        style={{
+          background: `linear-gradient(135deg, ${style.color}33 0%, ${style.color}11 100%)`,
+          borderBottom: `1px solid ${style.color}22`,
+        }}
+      >
+        <span className="stem-card-icon">{style.icon}</span>
+        <div className="stem-card-badges">
+          {isRemixable && (
+            <span className="stem-remixable-badge">Remixable</span>
+          )}
+        </div>
+      </div>
 
-            <style jsx>{`
+      {/* Content */}
+      <div className="stem-card-body">
+        <span className="stem-type-label" style={{ color: style.color }}>
+          {style.label}
+        </span>
+        <p className="stem-track-title">{stem.trackTitle}</p>
+        <p className="stem-release-info">
+          from <span className="stem-release-name">{stem.releaseTitle}</span>
+        </p>
+        <p className="stem-artist">{stem.releaseArtist}</p>
+
+        {/* Remix count + Quick Mix CTA */}
+        <div className="stem-card-actions">
+          <span className="stem-remix-count">0 remixes</span>
+          <button
+            className="stem-quick-mix-btn"
+            onClick={handleQuickMix}
+            title="Open in Mixer"
+            style={{ borderColor: `${style.color}44`, color: style.color }}
+          >
+            ⚡ Quick Mix
+          </button>
+        </div>
+      </div>
+
+      <style jsx>{`
         .stem-card {
           min-width: 220px;
           max-width: 280px;
@@ -141,6 +163,12 @@ export function StemCard({ stem }: StemCardProps) {
           filter: drop-shadow(0 2px 8px ${style.color}44);
         }
 
+        .stem-card-badges {
+          display: flex;
+          gap: 6px;
+          z-index: 1;
+        }
+
         .stem-remixable-badge {
           font-size: 9px;
           font-weight: 800;
@@ -151,11 +179,10 @@ export function StemCard({ stem }: StemCardProps) {
           border: 1px solid rgba(16, 185, 129, 0.25);
           padding: 3px 8px;
           border-radius: 6px;
-          z-index: 1;
         }
 
         .stem-card-body {
-          padding: 14px 16px 18px;
+          padding: 14px 16px 16px;
         }
 
         .stem-type-label {
@@ -194,8 +221,40 @@ export function StemCard({ stem }: StemCardProps) {
           font-size: 11px;
           color: var(--color-muted);
           opacity: 0.7;
+          margin-bottom: 10px;
+        }
+
+        .stem-card-actions {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        }
+
+        .stem-remix-count {
+          font-size: 11px;
+          color: var(--color-muted);
+          opacity: 0.6;
+        }
+
+        .stem-quick-mix-btn {
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.05em;
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid;
+          padding: 4px 10px;
+          border-radius: 8px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          white-space: nowrap;
+        }
+
+        .stem-quick-mix-btn:hover {
+          background: rgba(255, 255, 255, 0.1);
+          transform: scale(1.05);
         }
       `}</style>
-        </div>
-    );
+    </div>
+  );
 }
