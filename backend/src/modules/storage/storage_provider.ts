@@ -9,5 +9,6 @@ export interface StorageResult {
 
 export abstract class StorageProvider {
     abstract upload(data: Buffer, filename: string, mimeType: string): Promise<StorageResult>;
+    abstract download(uri: string): Promise<Buffer | null>;
     abstract delete(uri: string): Promise<void>;
 }

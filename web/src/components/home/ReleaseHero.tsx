@@ -28,6 +28,7 @@ export function ReleaseHero({ release }: ReleaseHeroProps) {
       createdAt: t.createdAt,
       remoteUrl: t.stems && t.stems.length > 0 ? t.stems[0].uri : undefined,
       remoteArtworkUrl: release.artworkUrl || undefined,
+      stems: t.stems,
     }));
     void playQueue(playableTracks, 0);
   };

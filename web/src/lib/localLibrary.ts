@@ -47,6 +47,15 @@ export interface LocalTrack {
     createdAt: string;
     remoteUrl?: string; // For streaming catalog
     remoteArtworkUrl?: string; // For streaming catalog
+    stems?: Array<{
+        id: string;
+        uri: string;
+        type: string;
+        durationSeconds?: number | null;
+        isEncrypted?: boolean;
+        encryptionMetadata?: string | null;
+        storageProvider?: string | null;
+    }>;
     sourcePath?: string;
     fileSize?: number;
 }

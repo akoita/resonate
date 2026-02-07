@@ -44,4 +44,30 @@ export class LighthouseStorageProvider extends StorageProvider {
         // but you can "unpin" if using their API specifically for pinning.
         this.logger.log(`Unpinning/Deletion requested for ${uri} (Not implemented in mock/basic SDK flow)`);
     }
+
+    async download(uri: string): Promise<Buffer | null> {
+        try {
+            // Handle both gateway URLs and ipfs:// URIs
+            let fetchUrl = uri;
+            if (uri.startsWith('ipfs://')) {
+                const cid = uri.replace('ipfs://', '');
+                fetchUrl = `https://gateway.lighthouse.storage/ipfs/${cid}`;
+            }
+
+            // IPFS gateways can be slow for cold content - use generous timeout
+            const response = await fetch(fetchUrl, {
+                signal: AbortSignal.timeout(120000), // 2 minutes
+            });
+            if (!response.ok) {
+                this.logger.error(`Failed to download from ${fetchUrl}: ${response.status}`);
+                return null;
+            }
+
+            const arrayBuffer = await response.arrayBuffer();
+            return Buffer.from(arrayBuffer);
+        } catch (error: any) {
+            this.logger.error(`Lighthouse download failed: ${error?.message || error}`);
+            return null;
+        }
+    }
 }

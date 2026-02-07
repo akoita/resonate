@@ -22,6 +22,7 @@ import { SessionsModule } from "./sessions/sessions.module";
 import { PlaylistModule } from "./playlist/playlist.module";
 import { StorageModule } from "./storage/storage.module";
 import { EncryptionModule } from "./encryption/encryption.module";
+import { ContractsModule } from "./contracts/contracts.module";
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { EncryptionModule } from "./encryption/encryption.module";
     PlaylistModule,
     StorageModule,
     EncryptionModule,
+    ContractsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

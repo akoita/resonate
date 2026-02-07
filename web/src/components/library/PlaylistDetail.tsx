@@ -16,6 +16,7 @@ import { formatDuration } from "../../lib/metadataExtractor";
 import { ContextMenu, ContextMenuItem } from "../ui/ContextMenu";
 import { useToast } from "../ui/Toast";
 import { PromptModal } from "../ui/PromptModal";
+import { useWebSockets } from "../../hooks/useWebSockets";
 
 interface PlaylistDetailProps {
     playlistId: string;
@@ -37,6 +38,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     const { playQueue, currentTrack, isPlaying, stop: handleStop, playNext, addToQueue } = usePlayer();
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, track: LocalTrack } | null>(null);
     const { addToast } = useToast();
+    const [trackProgress, setTrackProgress] = useState<Map<string, number>>(new Map());
 
     const loadPlaylistData = async () => {
         setLoading(true);
@@ -62,6 +64,22 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
         }
         setLoading(false);
     };
+
+    useWebSockets(
+        (data) => {
+            if (data.status === 'ready') {
+                void loadPlaylistData();
+                setTrackProgress((prev) => {
+                    const next = new Map(prev);
+                    next.delete(data.releaseId);
+                    return next;
+                });
+            }
+        },
+        (data) => {
+            setTrackProgress((prev) => new Map(prev).set(data.trackId, data.progress));
+        }
+    );
 
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -299,6 +317,12 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                                             </span>
                                             {track.album && ` • ${track.album}`}
                                         </div>
+                                        {trackProgress.get(track.id) !== undefined && trackProgress.get(track.id)! < 100 && (
+                                            <div className="track-progress-container">
+                                                <div className="track-progress-bar" style={{ width: `${trackProgress.get(track.id)}%` }} />
+                                                <span className="track-progress-label">Separating Stems: {trackProgress.get(track.id)}%</span>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="library-item-duration">
                                         {formatDuration(track.duration)}

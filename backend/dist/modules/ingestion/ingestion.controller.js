@@ -24,13 +24,24 @@ let IngestionController = class IngestionController {
         this.ingestionService = ingestionService;
     }
     upload(files, body) {
-        const metadata = body.metadata ? JSON.parse(body.metadata) : undefined;
+        let metadata = body.metadata;
+        if (typeof metadata === "string") {
+            try {
+                metadata = JSON.parse(metadata);
+            }
+            catch (err) {
+                throw new common_1.BadRequestException("Invalid metadata JSON string");
+            }
+        }
         return this.ingestionService.handleFileUpload({
             artistId: body.artistId,
-            files: files.files || [],
-            artwork: files.artwork?.[0],
+            files: files?.files || [],
+            artwork: files?.artwork?.[0],
             metadata,
         });
+    }
+    handleProgress(releaseId, trackId, body) {
+        return this.ingestionService.handleProgress(releaseId, trackId, body.progress);
     }
     status(trackId) {
         return this.ingestionService.getStatus(trackId);
@@ -52,6 +63,15 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], IngestionController.prototype, "upload", null);
 __decorate([
+    (0, common_1.Post)("progress/:releaseId/:trackId"),
+    __param(0, (0, common_1.Param)("releaseId")),
+    __param(1, (0, common_1.Param)("trackId")),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object]),
+    __metadata("design:returntype", void 0)
+], IngestionController.prototype, "handleProgress", null);
+__decorate([
     (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
     (0, common_1.Get)("status/:trackId"),
     __param(0, (0, common_1.Param)("trackId")),
@@ -60,6 +80,6 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], IngestionController.prototype, "status", null);
 exports.IngestionController = IngestionController = __decorate([
-    (0, common_1.Controller)("stems"),
+    (0, common_1.Controller)("ingestion"),
     __metadata("design:paramtypes", [ingestion_service_1.IngestionService])
 ], IngestionController);

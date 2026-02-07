@@ -6,6 +6,10 @@ FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
 # Build argument to control model pre-caching
 ARG CACHE_MODEL=1
 
+# Prevent interactive prompts during apt-get
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     ffmpeg \
@@ -16,10 +20,12 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Install Demucs and dependencies (PyTorch already included in base image)
-COPY requirements.txt .
-# Filter out torch since it's already in base image, install the rest
-RUN pip install --no-cache-dir fastapi uvicorn python-multipart httpx "numpy<2.0.0" \
-    && pip install --no-cache-dir git+https://github.com/adefossez/demucs.git
+COPY requirements.txt patch_demucs.py ./
+# Install demucs and other dependencies, then patch for torchaudio 2.x compatibility
+# soundfile provides the audio I/O backend for torchaudio 2.x
+RUN pip install --no-cache-dir fastapi uvicorn python-multipart httpx "numpy<2.0.0" soundfile \
+    && pip install --no-cache-dir git+https://github.com/adefossez/demucs.git \
+    && python patch_demucs.py
 
 # Create models directory
 RUN mkdir -p /root/.cache/torch/hub/checkpoints
@@ -45,5 +51,7 @@ EXPOSE 8000
 # Set CUDA device visibility
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+# Enable torchaudio backend dispatcher for 2.x compatibility
+ENV TORCHAUDIO_USE_BACKEND_DISPATCHER=1
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

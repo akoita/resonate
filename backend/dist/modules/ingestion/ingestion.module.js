@@ -10,12 +10,26 @@ exports.IngestionModule = void 0;
 const common_1 = require("@nestjs/common");
 const ingestion_controller_1 = require("./ingestion.controller");
 const ingestion_service_1 = require("./ingestion.service");
+const bullmq_1 = require("@nestjs/bullmq");
+const stems_processor_1 = require("./stems.processor");
+const artist_module_1 = require("../artist/artist.module");
 let IngestionModule = class IngestionModule {
 };
 exports.IngestionModule = IngestionModule;
 exports.IngestionModule = IngestionModule = __decorate([
     (0, common_1.Module)({
+        imports: [
+            bullmq_1.BullModule.registerQueue({
+                name: "stems",
+                defaultJobOptions: {
+                    removeOnComplete: true,
+                    removeOnFail: false,
+                },
+            }),
+            artist_module_1.ArtistModule,
+        ],
         controllers: [ingestion_controller_1.IngestionController],
-        providers: [ingestion_service_1.IngestionService],
+        providers: [ingestion_service_1.IngestionService, stems_processor_1.StemsProcessor],
+        exports: [ingestion_service_1.IngestionService],
     })
 ], IngestionModule);

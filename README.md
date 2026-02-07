@@ -85,31 +85,60 @@ graph TB
 ### Run Locally
 
 ```bash
-# 1. Start infrastructure (PostgreSQL + Anvil + bundler + deploy contracts)
+# 1. Deploy everything (Docker + Anvil + all contracts)
 make dev-up
-make local-aa-full
+make contracts-deploy-local  # Deploys AA + StemNFT + Marketplace + TransferValidator
 
-# 2. Start services (in separate terminals)
-make backend-dev     # NestJS API (port 3001)
-make web-dev-local   # Next.js frontend (port 3000, chainId 31337)
+# 2. Start services (separate terminals)
+make backend-dev     # NestJS API on port 3001
+make web-dev-local   # Next.js on port 3000 (chainId 31337)
 
-# 3. (Optional) Run Demucs Worker for AI Stem Separation
-# The worker starts automatically with 'dev-up', but you can view its logs:
+# 3. (Optional) View Demucs worker logs
 docker compose logs -f demucs-worker
 ```
+
+### Stop & Clean
+
+```bash
+make db-reset        # Reset database (requires Docker running)
+make dev-down        # Stop Docker containers
+make local-aa-down   # Stop Anvil + bundler
+```
+
+### 📤 Upload Processing Flow
+
+When an artist uploads a release, the following pipeline executes:
+
+```
+Upload → Validation → Stem Separation → Storage → Ready
+```
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| `pending` | 🔵 | Track queued for processing |
+| `separating` | 🟡 | Demucs AI splitting audio into 6 stems |
+| `uploading` | 🟡 | Uploading stems to IPFS/storage |
+| `complete` | 🟢 | Ready for playback and minting |
+| `failed` | 🔴 | Processing error (check worker logs) |
+
+**Stems generated:** vocals, drums, bass, guitar, piano, other
+
+The release page displays track status in real-time, with stems appearing as they complete processing.
 
 
 ### 🎛️ AI Stem Separation (Demucs)
 
 The Demucs worker uses Facebook's [htdemucs_6s](https://github.com/facebookresearch/demucs) model to separate audio into 6 stems: **vocals, drums, bass, guitar, piano, other**.
 
+> **GPU acceleration is enabled by default** — `make dev-up` launches the worker with NVIDIA GPU support via `docker-compose.gpu.yml`.
+
 **Performance comparison:**
 | Hardware | 3-min song | Notes |
 |----------|------------|-------|
-| CPU (8 cores) | ~10 min | Default, no setup needed |
+| CPU (8 cores) | ~10 min | Fallback if no GPU available |
 | NVIDIA GPU (RTX 3080) | ~45 sec | 10-15x faster |
 
-**Model caching:** The ~1GB model is pre-downloaded during Docker build (cached in a volume for fast rebuilds).
+**Model caching:** The ~52MB htdemucs_6s model is pre-downloaded during Docker build.
 
 ```bash
 # View worker logs
@@ -125,21 +154,12 @@ make worker-rebuild
 make worker-quick-build
 ```
 
-### ⚡ GPU Acceleration (Recommended for Production)
+### ⚡ GPU Prerequisites
 
-Enable GPU with a single command:
+Since GPU is the default, ensure these are installed:
 
-```bash
-# Start worker with GPU support
-make worker-gpu
-
-# Verify GPU is detected
-docker compose exec demucs-worker nvidia-smi
-```
-
-**Prerequisites:**
-- NVIDIA GPU with CUDA support
-- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+1. **NVIDIA GPU** with CUDA support
+2. **[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)**
 
 <details>
 <summary>📋 NVIDIA Container Toolkit Installation (Ubuntu/Debian)</summary>
@@ -163,26 +183,18 @@ docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 ```
 </details>
 
-**Troubleshooting:**
-- `nvidia-smi` fails in container → Reinstall NVIDIA Container Toolkit
-- WSL2 users → Use NVIDIA driver for WSL, not native Linux driver
-- Permission denied → Add user to `docker` group: `sudo usermod -aG docker $USER`
-
-### Clean Up & Reset
-
+**Verify GPU in worker:**
 ```bash
-# Stop all Docker services (keeps data)
-make dev-down
-
-# Stop only AA infrastructure
-make local-aa-down
-
-# Reset database (destructive - deletes all data)
-make db-reset
-
-# View AA logs
-make local-aa-logs
+docker compose exec demucs-worker nvidia-smi
 ```
+
+**Troubleshooting:**
+- `nvidia-smi` fails → Reinstall NVIDIA Container Toolkit
+- WSL2 users → Use NVIDIA driver for WSL, not native Linux driver
+- Build hangs on apt-get → Rebuild with `make worker-rebuild` (fixed via `DEBIAN_FRONTEND=noninteractive`)
+
+See [`workers/demucs/README.md`](workers/demucs/README.md) for full worker documentation.
+
 
 ---
 
@@ -192,6 +204,9 @@ make local-aa-logs
 |----------|-------------|
 | [Project Specification](docs/RESONATE_SPECS.md) | Vision, architecture, and roadmap |
 | [Local AA Development](docs/local-aa-development.md) | Account abstraction setup guide |
+| [Demucs Worker](workers/demucs/README.md) | GPU stem separation setup and troubleshooting |
+| [Core Contracts](docs/phase5/core_contracts.md) | Stem NFT and marketplace contracts |
+| [Marketplace Integration](docs/phase5/marketplace_integration.md) | Frontend/backend integration |
 | [Contributing](CONTRIBUTING.md) | Contribution guidelines |
 
 ---

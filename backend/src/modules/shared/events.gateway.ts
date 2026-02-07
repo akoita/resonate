@@ -8,7 +8,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { EventBus } from './event_bus';
-import { CatalogReleaseReadyEvent, StemsUploadedEvent } from '../../events/event_types';
+import { CatalogReleaseReadyEvent, CatalogTrackStatusEvent, StemsUploadedEvent } from '../../events/event_types';
 
 @WebSocketGateway({
     cors: {
@@ -27,6 +27,16 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
     onModuleInit() { }
 
     private subscribeToEvents() {
+        this.eventBus.subscribe('stems.progress' as any, (event: any) => {
+            if (this.server) {
+                this.server.emit('release.progress', {
+                    releaseId: event.releaseId,
+                    trackId: event.trackId,
+                    progress: event.progress,
+                });
+            }
+        });
+
         this.eventBus.subscribe('stems.uploaded', (event: StemsUploadedEvent) => {
             console.log(`[EventsGateway] Received stems.uploaded for ${event.releaseId}, broadcasting...`);
             if (this.server) {
@@ -52,6 +62,29 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                 });
             } else {
                 console.warn('[EventsGateway] Server not initialized, cannot broadcast catalog.release_ready');
+            }
+        });
+
+        this.eventBus.subscribe('stems.failed', (event: any) => {
+            console.log(`[EventsGateway] Received stems.failed for ${event.releaseId}, broadcasting...`);
+            if (this.server) {
+                this.server.emit('release.error', {
+                    releaseId: event.releaseId,
+                    artistId: event.artistId,
+                    error: event.error,
+                    status: 'failed',
+                });
+            }
+        });
+
+        this.eventBus.subscribe('catalog.track_status', (event: CatalogTrackStatusEvent) => {
+            console.log(`[EventsGateway] Received catalog.track_status for track ${event.trackId}: ${event.status}`);
+            if (this.server) {
+                this.server.emit('track.status', {
+                    releaseId: event.releaseId,
+                    trackId: event.trackId,
+                    status: event.status,
+                });
             }
         });
     }

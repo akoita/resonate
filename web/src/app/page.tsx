@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card } from "../components/ui/Card";
@@ -11,7 +11,12 @@ import { ReleaseHero } from "../components/home/ReleaseHero";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
 import { useToast } from "../components/ui/Toast";
 
-export default function Home() {
+export default function Home(props: {
+  params: Promise<Record<string, string>>;
+  searchParams: Promise<Record<string, string>>;
+}) {
+  const params = use(props.params);
+  const searchParams = use(props.searchParams);
   const router = useRouter();
   const moods = ["Focus", "Chill", "Energy", "Night Drive", "Lo-fi"];
   const [releases, setReleases] = useState<Release[]>([]);

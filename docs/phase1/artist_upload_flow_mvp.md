@@ -36,7 +36,7 @@ and registers the resulting assets in the catalog.
 ## Dependencies
 
 - Storage provider configuration (Local/IPFS/GCS).
-- Demucs worker running (`docker compose up demucs-worker`).
+- Demucs worker running (`make dev-up` starts it with GPU by default).
 - Redis for BullMQ job queue.
 - Catalog service CRUD endpoints.
 
@@ -50,7 +50,7 @@ The stem separation is handled by a containerized Demucs worker using the `htdem
 | Model | `htdemucs_6s` - 6-stem separation |
 | Output Stems | vocals, drums, bass, guitar, piano, other |
 | Output Format | MP3 320kbps |
-| Processing | CPU (~10 min/song) or GPU (~45 sec/song) |
+| Processing | GPU (~45 sec/song, default) or CPU (~10 min/song, fallback) |
 
 ### Processing Flow
 1. Upload endpoint accepts audio → returns `release_id`
@@ -61,9 +61,6 @@ The stem separation is handled by a containerized Demucs worker using the `htdem
 6. `stems.processed` event emitted with stem URIs
 
 ### GPU Acceleration
-For production, enable GPU processing:
-```bash
-make worker-gpu
-```
+GPU is enabled by default via `make dev-up`. Requires NVIDIA GPU + Container Toolkit.
 
-See [README.md](../README.md#-gpu-acceleration-recommended-for-production) for setup details.
+See [`workers/demucs/README.md`](../../workers/demucs/README.md) for full setup and troubleshooting.

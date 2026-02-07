@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../components/auth/AuthProvider";
-import { createArtist } from "../../../lib/api";
+import { createArtist, getArtistMe } from "../../../lib/api";
 import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 import { useToast } from "../../../components/ui/Toast";
@@ -13,11 +13,31 @@ export default function ArtistOnboardingPage() {
   const { token, address } = useAuth();
   const router = useRouter();
   const { addToast } = useToast();
+  const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     displayName: "",
     payoutAddress: address || "",
   });
+
+  // Check if user already has an artist profile
+  useEffect(() => {
+    async function checkExistingArtist() {
+      if (token) {
+        try {
+          const artist = await getArtistMe(token);
+          if (artist) {
+            router.push("/artist/upload");
+            return;
+          }
+        } catch (err) {
+          console.error("Failed to check artist profile:", err);
+        }
+      }
+      setIsLoading(false);
+    }
+    checkExistingArtist();
+  }, [token, router]);
 
   // Keep payout address in sync with wallet
   useEffect(() => {
@@ -51,16 +71,26 @@ export default function ArtistOnboardingPage() {
         message: "Your artist profile has been created successfully.",
       });
       router.push("/artist/upload");
-    } catch {
+    } catch (err) {
       addToast({
         type: "error",
         title: "Failed to create profile",
-        message: "Something went wrong. Please check your connection and try again.",
+        message: err instanceof Error ? err.message : "Something went wrong. Please check your connection and try again.",
       });
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <AuthGate title="Connect your wallet to begin your journey.">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      </AuthGate>
+    );
+  }
 
   return (
     <AuthGate title="Connect your wallet to begin your journey.">
