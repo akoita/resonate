@@ -58,7 +58,7 @@ interface StemCardProps {
 
 export function StemCard({ stem }: StemCardProps) {
   const router = useRouter();
-  const { playQueue, mixerMode, toggleMixerMode, setMixerVolumes } = usePlayer();
+  const { playQueue, stop, seek, mixerMode, toggleMixerMode, setMixerVolumes } = usePlayer();
   const style = getStemStyle(stem.type);
   const isRemixable = !!stem.ipnftId;
 
@@ -85,8 +85,10 @@ export function StemCard({ stem }: StemCardProps) {
       stems: stem.trackStems,
     };
 
-    // 2) Play — this stops any current playback and starts the new track
+    // 2) Stop current playback, then start from zero
+    stop();
     await playQueue([track], 0);
+    seek(0);
 
     // 3) Enable mixer mode if not already on
     if (!mixerMode) {
