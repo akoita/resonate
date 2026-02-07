@@ -153,10 +153,11 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       };
 
       setActiveAccount(mockAccount);
-      setAddress(mockAccount.address);
-      setRole("user"); // Default role for dev
-      setUserId("dev-user"); // Default ID
-      setStatus("authenticated");
+      // NOTE: Do NOT set userId/address/role/status here.
+      // This function can be called from signMessage() (e.g. during stem decryption)
+      // and overwriting userId would break isOwner checks.
+      // Auth state (userId, address, role, status) is properly set by authenticate()
+      // after JWT verification.
       localStorage.setItem("mock_address", mockAccount.address);
       localStorage.setItem(ADDRESS_KEY, mockAccount.address);
 

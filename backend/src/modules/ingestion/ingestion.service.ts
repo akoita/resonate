@@ -4,6 +4,7 @@ import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
 import { readdir } from "fs/promises";
 import { Queue } from "bullmq";
 import { InjectQueue } from "@nestjs/bullmq";
+import { Agent } from "undici";
 import { EventBus } from "../shared/event_bus";
 import { StorageProvider } from "../storage/storage_provider";
 import { EncryptionService } from "../encryption/encryption.service";
@@ -298,11 +299,19 @@ export class IngestionService {
           formData.append("file", blob, `track_${track.id}.wav`);
 
           console.log(`[Ingestion] Sending track ${track.id} to Demucs worker...`);
+          // Use custom undici Agent to override the default headersTimeout (300s).
+          // Without this, long-running Demucs separations hit UND_ERR_HEADERS_TIMEOUT
+          // before the 10-minute AbortSignal fires.
+          const demucsAgent = new Agent({
+            headersTimeout: 600_000,  // 10 minutes — matches AbortSignal
+            bodyTimeout: 0,           // unlimited — response body can be large
+          });
           const response = await fetch(`http://localhost:8000/separate/${input.releaseId}/${track.id}`, {
             method: "POST",
             body: formData,
-            // @ts-ignore
-            signal: AbortSignal.timeout(600000), // 10 minutes
+            signal: AbortSignal.timeout(600_000), // 10 minutes
+            // @ts-ignore — Node fetch accepts dispatcher but TS doesn't know about it
+            dispatcher: demucsAgent,
           });
 
           if (!response.ok) {

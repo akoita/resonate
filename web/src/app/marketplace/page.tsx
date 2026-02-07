@@ -52,7 +52,9 @@ export default function MarketplacePage(props: {
 
     async function fetchListings() {
         try {
-            setLoading(true);
+            // Only show skeleton loading on initial load, not on refetches
+            // This prevents the jarring flash of empty cards after a purchase
+            if (listings.length === 0) setLoading(true);
             const res = await fetch(`/api/contracts/listings?status=active&limit=50`);
             if (!res.ok) throw new Error("Failed to fetch");
             const data = await res.json();
@@ -85,12 +87,15 @@ export default function MarketplacePage(props: {
     const handleBuy = async (listingId: string, price: string) => {
         try {
             await buy(BigInt(listingId), BigInt(1));
+            // Optimistically remove the purchased listing for instant feedback
+            setListings(prev => prev.filter(l => l.listingId !== listingId));
             addToast({
                 type: "success",
                 title: "Purchase Successful!",
                 message: "You now own this stem NFT.",
             });
-            fetchListings(); // Refresh
+            // Also refetch in the background to get authoritative state
+            fetchListings();
         } catch (err) {
             console.error("Buy failed:", err);
             addToast({

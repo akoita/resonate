@@ -348,8 +348,11 @@ export class ContractsService implements OnModuleInit {
 
     const allDeduped = Array.from(dedupedMap.values());
 
+    // Filter out orphan listings (no linked stem) — these have no useful metadata
+    const withStems = allDeduped.filter(l => l.stem !== null);
+
     // Apply pagination manually after deduplication
-    return allDeduped.slice(offset, offset + limit);
+    return withStems.slice(offset, offset + limit);
   }
 
 

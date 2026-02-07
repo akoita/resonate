@@ -281,7 +281,7 @@ export default function ReleaseDetails() {
     }
   };
 
-  const isOwner = release?.artist?.userId === userId;
+  const isOwner = release?.artist?.userId?.toLowerCase() === userId?.toLowerCase();
 
   if (loading) return <div className="loading-state">Initializing Studio...</div>;
   if (!release) return <div className="error-state">Release not found.</div>;
@@ -443,195 +443,197 @@ export default function ReleaseDetails() {
       )}
 
       <section className="tracklist-section glass-panel">
-        <table className="track-table">
-          <thead>
-            <tr>
-              <th className="th-select">
-                <input
-                  type="checkbox"
-                  checked={selectedTrackIds.size === (release.tracks?.length || 0) && selectedTrackIds.size > 0}
-                  onChange={(e) => {
-                    if (e.target.checked && release.tracks) {
-                      setSelectedTrackIds(new Set(release.tracks.map(t => t.id)));
-                    } else {
-                      setSelectedTrackIds(new Set());
-                    }
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  title="Select all tracks"
-                />
-              </th>
-              <th>#</th>
-              <th>Title</th>
-              <th>Status</th>
-              <th>Artist</th>
-              <th>Genre</th>
-              <th className="th-duration">Time</th>
-              <th className="th-actions"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {release.tracks?.map((track, idx) => {
-              const isSelected = selectedTrackIds.has(track.id);
-              return (
-                <tr
-                  key={track.id}
-                  className={`track-row ${isSelected ? "selected" : ""}`}
-                  onClick={() => handlePlayTrack(idx)}
-                  draggable
-                  onDragStart={(e) => {
-                    // If this track is selected, drag all selected tracks
-                    // Otherwise, just drag this single track
-                    if (isSelected && selectedTrackIds.size > 1) {
-                      const selectedTracks = release.tracks!
-                        .filter(t => selectedTrackIds.has(t.id))
-                        .map((t) => mapToLocalTrack(t));
-                      const payload = JSON.stringify({
-                        type: "release-selection",
-                        tracks: selectedTracks,
-                        count: selectedTracks.length,
-                      });
-                      e.dataTransfer.setData("application/json", payload);
-                      e.dataTransfer.setData("text/plain", payload);
-                    } else {
-                      const localTrack = mapToLocalTrack(track);
-                      const payload = JSON.stringify({
-                        type: "release-track",
-                        track: localTrack,
-                        title: localTrack.title,
-                      });
-                      e.dataTransfer.setData("application/json", payload);
-                      e.dataTransfer.setData("text/plain", payload);
-                    }
-                    e.dataTransfer.effectAllowed = "copy";
-                  }}
-                >
-                  <td className="track-select-cell">
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        setSelectedTrackIds(prev => {
-                          const next = new Set(prev);
-                          if (next.has(track.id)) {
-                            next.delete(track.id);
-                          } else {
-                            next.add(track.id);
-                          }
-                          return next;
+        <div className="tracklist-scroll-container">
+          <table className="track-table">
+            <thead>
+              <tr>
+                <th className="th-select">
+                  <input
+                    type="checkbox"
+                    checked={selectedTrackIds.size === (release.tracks?.length || 0) && selectedTrackIds.size > 0}
+                    onChange={(e) => {
+                      if (e.target.checked && release.tracks) {
+                        setSelectedTrackIds(new Set(release.tracks.map(t => t.id)));
+                      } else {
+                        setSelectedTrackIds(new Set());
+                      }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    title="Select all tracks"
+                  />
+                </th>
+                <th>#</th>
+                <th>Title</th>
+                <th>Status</th>
+                <th>Artist</th>
+                <th>Genre</th>
+                <th className="th-duration">Time</th>
+                <th className="th-actions"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {release.tracks?.map((track, idx) => {
+                const isSelected = selectedTrackIds.has(track.id);
+                return (
+                  <tr
+                    key={track.id}
+                    className={`track-row ${isSelected ? "selected" : ""}`}
+                    onClick={() => handlePlayTrack(idx)}
+                    draggable
+                    onDragStart={(e) => {
+                      // If this track is selected, drag all selected tracks
+                      // Otherwise, just drag this single track
+                      if (isSelected && selectedTrackIds.size > 1) {
+                        const selectedTracks = release.tracks!
+                          .filter(t => selectedTrackIds.has(t.id))
+                          .map((t) => mapToLocalTrack(t));
+                        const payload = JSON.stringify({
+                          type: "release-selection",
+                          tracks: selectedTracks,
+                          count: selectedTracks.length,
                         });
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </td>
-                  <td className="track-num">{idx + 1}</td>
-                  <td className="track-title-cell">
-                    <div className="track-title-info">
-                      <span className="track-title-name">{track.title}</span>
-                      {track.explicit && <span className="explicit-tag">E</span>}
-                    </div>
-
-                    {track.stems && track.stems.length > 1 && (
-                      <div className="stem-selector" onClick={(e) => e.stopPropagation()}>
-                        <div className="stem-btns-group">
-                          {["ORIGINAL", "vocals", "drums", "bass", "piano", "guitar", "other"].map((type) => {
-                            const hasStem = track.stems?.some(s => s.type.toLowerCase() === type.toLowerCase());
-                            if (!hasStem) return null;
-
-                            const isSelected = (trackStems[track.id] || "ORIGINAL").toLowerCase() === type.toLowerCase();
-                            return (
-                              <button
-                                key={type}
-                                className={`stem-btn ${isSelected ? 'active' : ''}`}
-                                onClick={() => handleStemChange(track.id, idx, type)}
-                                title={`Play ${type}`}
-                              >
-                                {type === "ORIGINAL" ? "Full" : type.charAt(0).toUpperCase() + type.slice(1, 4)}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </td>
-                  <td className="track-status-cell">
-                    {/* Processing status badge */}
-                    {(track.processingStatus && track.processingStatus !== "complete") || recentlyCompletedTracks.has(track.id) ? (
-                      <span
-                        className={`processing-badge processing-${recentlyCompletedTracks.has(track.id) ? 'complete' : track.processingStatus}`}
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          verticalAlign: "middle",
-                          gap: 4,
-                          padding: "2px 8px",
-                          borderRadius: 12,
-                          fontSize: 11,
-                          fontWeight: 500,
-                          background:
-                            recentlyCompletedTracks.has(track.id) ? "#22c55e20" :
-                              track.processingStatus === "pending" ? "#3b82f620" :
-                                track.processingStatus === "separating" ? "#eab30820" :
-                                  track.processingStatus === "encrypting" ? "#f9731620" :
-                                    track.processingStatus === "storing" ? "#14b8a620" :
-                                      track.processingStatus === "failed" ? "#ef444420" : "transparent",
-                          color:
-                            recentlyCompletedTracks.has(track.id) ? "#4ade80" :
-                              track.processingStatus === "pending" ? "#60a5fa" :
-                                track.processingStatus === "separating" ? "#fbbf24" :
-                                  track.processingStatus === "encrypting" ? "#fb923c" :
-                                    track.processingStatus === "storing" ? "#2dd4bf" :
-                                      track.processingStatus === "failed" ? "#f87171" : "#a1a1aa",
-                          transition: "all 0.3s ease",
-                        }}
-                      >
-                        {recentlyCompletedTracks.has(track.id) && "✅ Complete"}
-                        {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "pending" && "🔵 Pending"}
-                        {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "separating" && (
-                          trackProgress[track.id] != null
-                            ? `🟡 Separating ${trackProgress[track.id]}%`
-                            : "🟡 Separating..."
-                        )}
-                        {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "encrypting" && "🟠 Encrypting..."}
-                        {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "storing" && "🟢 Storing..."}
-                        {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "failed" && "🔴 Failed"}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td
-                    className="track-artist clickable"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      // Track might have its own artist override, but usually it's string only in this object structure unless we expand it.
-                      // For now, if track.artist matches release primary, we use release IDs.
-                      // Otherwise fall back to name string.
-                      const name = track.artist || release.primaryArtist || release.artist?.displayName;
-
-                      // Check if it's the main artist to use the ID
-                      const isMain = name === (release.primaryArtist || release.artist?.displayName);
-                      const id = isMain ? (release.artist?.id || release.artistId) : null;
-
-                      const target = id || name;
-                      if (target) router.push(`/artist/${encodeURIComponent(target)}`);
+                        e.dataTransfer.setData("application/json", payload);
+                        e.dataTransfer.setData("text/plain", payload);
+                      } else {
+                        const localTrack = mapToLocalTrack(track);
+                        const payload = JSON.stringify({
+                          type: "release-track",
+                          track: localTrack,
+                          title: localTrack.title,
+                        });
+                        e.dataTransfer.setData("application/json", payload);
+                        e.dataTransfer.setData("text/plain", payload);
+                      }
+                      e.dataTransfer.effectAllowed = "copy";
                     }}
                   >
-                    {track.artist || release.primaryArtist || release.artist?.displayName || "Unknown Artist"}
-                  </td>
-                  <td className="track-genre">{release.genre || "---"}</td>
-                  <td className="track-duration">{formatDuration(getTrackDuration(track))}</td>
-                  <td className="track-actions-cell">
-                    <TrackActionMenu
-                      actions={[
-                        { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist([mapToLocalTrack(track)]) },
-                      ]}
-                    />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    <td className="track-select-cell">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          setSelectedTrackIds(prev => {
+                            const next = new Set(prev);
+                            if (next.has(track.id)) {
+                              next.delete(track.id);
+                            } else {
+                              next.add(track.id);
+                            }
+                            return next;
+                          });
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </td>
+                    <td className="track-num">{idx + 1}</td>
+                    <td className="track-title-cell">
+                      <div className="track-title-info">
+                        <span className="track-title-name">{track.title}</span>
+                        {track.explicit && <span className="explicit-tag">E</span>}
+                      </div>
+
+                      {track.stems && track.stems.length > 1 && (
+                        <div className="stem-selector" onClick={(e) => e.stopPropagation()}>
+                          <div className="stem-btns-group">
+                            {["ORIGINAL", "vocals", "drums", "bass", "piano", "guitar", "other"].map((type) => {
+                              const hasStem = track.stems?.some(s => s.type.toLowerCase() === type.toLowerCase());
+                              if (!hasStem) return null;
+
+                              const isSelected = (trackStems[track.id] || "ORIGINAL").toLowerCase() === type.toLowerCase();
+                              return (
+                                <button
+                                  key={type}
+                                  className={`stem-btn ${isSelected ? 'active' : ''}`}
+                                  onClick={() => handleStemChange(track.id, idx, type)}
+                                  title={`Play ${type}`}
+                                >
+                                  {type === "ORIGINAL" ? "Full" : type.charAt(0).toUpperCase() + type.slice(1, 4)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                    <td className="track-status-cell">
+                      {/* Processing status badge */}
+                      {(track.processingStatus && track.processingStatus !== "complete") || recentlyCompletedTracks.has(track.id) ? (
+                        <span
+                          className={`processing-badge processing-${recentlyCompletedTracks.has(track.id) ? 'complete' : track.processingStatus}`}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            verticalAlign: "middle",
+                            gap: 4,
+                            padding: "2px 8px",
+                            borderRadius: 12,
+                            fontSize: 11,
+                            fontWeight: 500,
+                            background:
+                              recentlyCompletedTracks.has(track.id) ? "#22c55e20" :
+                                track.processingStatus === "pending" ? "#3b82f620" :
+                                  track.processingStatus === "separating" ? "#eab30820" :
+                                    track.processingStatus === "encrypting" ? "#f9731620" :
+                                      track.processingStatus === "storing" ? "#14b8a620" :
+                                        track.processingStatus === "failed" ? "#ef444420" : "transparent",
+                            color:
+                              recentlyCompletedTracks.has(track.id) ? "#4ade80" :
+                                track.processingStatus === "pending" ? "#60a5fa" :
+                                  track.processingStatus === "separating" ? "#fbbf24" :
+                                    track.processingStatus === "encrypting" ? "#fb923c" :
+                                      track.processingStatus === "storing" ? "#2dd4bf" :
+                                        track.processingStatus === "failed" ? "#f87171" : "#a1a1aa",
+                            transition: "all 0.3s ease",
+                          }}
+                        >
+                          {recentlyCompletedTracks.has(track.id) && "✅ Complete"}
+                          {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "pending" && "🔵 Pending"}
+                          {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "separating" && (
+                            trackProgress[track.id] != null
+                              ? `🟡 Separating ${trackProgress[track.id]}%`
+                              : "🟡 Separating..."
+                          )}
+                          {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "encrypting" && "🟠 Encrypting..."}
+                          {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "storing" && "🟢 Storing..."}
+                          {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "failed" && "🔴 Failed"}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td
+                      className="track-artist clickable"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Track might have its own artist override, but usually it's string only in this object structure unless we expand it.
+                        // For now, if track.artist matches release primary, we use release IDs.
+                        // Otherwise fall back to name string.
+                        const name = track.artist || release.primaryArtist || release.artist?.displayName;
+
+                        // Check if it's the main artist to use the ID
+                        const isMain = name === (release.primaryArtist || release.artist?.displayName);
+                        const id = isMain ? (release.artist?.id || release.artistId) : null;
+
+                        const target = id || name;
+                        if (target) router.push(`/artist/${encodeURIComponent(target)}`);
+                      }}
+                    >
+                      {track.artist || release.primaryArtist || release.artist?.displayName || "Unknown Artist"}
+                    </td>
+                    <td className="track-genre">{release.genre || "---"}</td>
+                    <td className="track-duration">{formatDuration(getTrackDuration(track))}</td>
+                    <td className="track-actions-cell">
+                      <TrackActionMenu
+                        actions={[
+                          { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist([mapToLocalTrack(track)]) },
+                        ]}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       {/* NFT Marketplace Section - Only for owners */}
@@ -648,61 +650,63 @@ export default function ReleaseDetails() {
               </a>
             </div>
 
-            <div className="nft-tracks-accordion">
-              {release.tracks.map(track => {
-                const mintableStems = (track.stems || []).filter(s => s.type !== "ORIGINAL");
-                if (mintableStems.length === 0) return null;
+            <div className="nft-tracks-scroll-container">
+              <div className="nft-tracks-accordion">
+                {release.tracks.map(track => {
+                  const mintableStems = (track.stems || []).filter(s => s.type !== "ORIGINAL");
+                  if (mintableStems.length === 0) return null;
 
-                const isExpanded = expandedNftTracks.has(track.id);
-                const toggleExpand = () => {
-                  setExpandedNftTracks(prev => {
-                    const next = new Set(prev);
-                    if (next.has(track.id)) {
-                      next.delete(track.id);
-                    } else {
-                      next.add(track.id);
-                    }
-                    return next;
-                  });
-                };
+                  const isExpanded = expandedNftTracks.has(track.id);
+                  const toggleExpand = () => {
+                    setExpandedNftTracks(prev => {
+                      const next = new Set(prev);
+                      if (next.has(track.id)) {
+                        next.delete(track.id);
+                      } else {
+                        next.add(track.id);
+                      }
+                      return next;
+                    });
+                  };
 
-                return (
-                  <div key={track.id} className={`nft-track-group ${isExpanded ? 'expanded' : ''}`}>
-                    <button className="nft-track-header" onClick={toggleExpand}>
-                      <div className="nft-track-left">
-                        <span className="nft-chevron">{isExpanded ? '▼' : '▶'}</span>
-                        <span className="nft-track-title">{track.title}</span>
-                      </div>
-                      <span className="nft-stem-count">{mintableStems.length} stems</span>
-                    </button>
+                  return (
+                    <div key={track.id} className={`nft-track-group ${isExpanded ? 'expanded' : ''}`}>
+                      <button className="nft-track-header" onClick={toggleExpand}>
+                        <div className="nft-track-left">
+                          <span className="nft-chevron">{isExpanded ? '▼' : '▶'}</span>
+                          <span className="nft-track-title">{track.title}</span>
+                        </div>
+                        <span className="nft-stem-count">{mintableStems.length} stems</span>
+                      </button>
 
-                    {isExpanded && (
-                      <div className="nft-stems-grid">
-                        {mintableStems.map(stem => (
-                          <div key={stem.id} className="nft-stem-chip">
-                            <span className="nft-stem-emoji">
-                              {stem.type === "vocals" ? "🎤" :
-                                stem.type === "drums" ? "🥁" :
-                                  stem.type === "bass" ? "🎸" :
-                                    stem.type === "piano" ? "🎹" :
-                                      stem.type === "guitar" ? "🎸" : "🎵"}
-                            </span>
-                            <span className="nft-stem-name">
-                              {stem.type.charAt(0).toUpperCase() + stem.type.slice(1)}
-                            </span>
-                            <MintStemButton
-                              stemId={stem.id}
-                              stemTitle={`${stem.type} - ${track.title}`}
-                              stemType={stem.type}
-                              trackTitle={track.title}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                      {isExpanded && (
+                        <div className="nft-stems-grid">
+                          {mintableStems.map(stem => (
+                            <div key={stem.id} className="nft-stem-chip">
+                              <span className="nft-stem-emoji">
+                                {stem.type === "vocals" ? "🎤" :
+                                  stem.type === "drums" ? "🥁" :
+                                    stem.type === "bass" ? "🎸" :
+                                      stem.type === "piano" ? "🎹" :
+                                        stem.type === "guitar" ? "🎸" : "🎵"}
+                              </span>
+                              <span className="nft-stem-name">
+                                {stem.type.charAt(0).toUpperCase() + stem.type.slice(1)}
+                              </span>
+                              <MintStemButton
+                                stemId={stem.id}
+                                stemTitle={`${stem.type} - ${track.title}`}
+                                stemType={stem.type}
+                                trackTitle={track.title}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="nft-royalties-banner">
@@ -947,6 +951,30 @@ export default function ReleaseDetails() {
           border-radius: 24px;
         }
 
+        .tracklist-scroll-container {
+          max-height: 600px;
+          overflow-y: auto;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+        }
+
+        .tracklist-scroll-container::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .tracklist-scroll-container::-webkit-scrollbar-track {
+          background: transparent;
+        }
+
+        .tracklist-scroll-container::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.15);
+          border-radius: 3px;
+        }
+
+        .tracklist-scroll-container::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.3);
+        }
+
         .track-table {
           width: 100%;
           border-collapse: collapse;
@@ -1162,6 +1190,30 @@ export default function ReleaseDetails() {
           display: flex;
           flex-direction: column;
           gap: 8px;
+        }
+
+        .nft-tracks-scroll-container {
+          max-height: 500px;
+          overflow-y: auto;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+        }
+
+        .nft-tracks-scroll-container::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .nft-tracks-scroll-container::-webkit-scrollbar-track {
+          background: transparent;
+        }
+
+        .nft-tracks-scroll-container::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.15);
+          border-radius: 3px;
+        }
+
+        .nft-tracks-scroll-container::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.3);
         }
 
         .nft-track-group {
