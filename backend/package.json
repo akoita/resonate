@@ -10,7 +10,8 @@
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "prisma generate && jest --runInBand",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "db:seed": "npx prisma db seed"
   },
   "dependencies": {
     "@lighthouse-web3/sdk": "^0.4.4",
@@ -53,5 +54,8 @@
     "ts-jest": "^29.1.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.6.3"
+  },
+  "prisma": {
+    "seed": "ts-node-dev --transpile-only prisma/seed.ts"
   }
 }
