@@ -482,3 +482,93 @@ export async function getStemNftInfo(stemId: string) {
   }>(`/metadata/stem/${stemId}`, { silentErrorCodes: [404] });
 }
 
+// ========== Agent Config API ==========
+
+export type AgentConfig = {
+  id: string;
+  userId: string;
+  name: string;
+  vibes: string[];
+  monthlyCapUsd: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function getAgentConfig(token: string): Promise<AgentConfig | null> {
+  return apiRequest<AgentConfig | null>("/agents/config", { silentErrorCodes: [404] }, token);
+}
+
+export async function createAgentConfig(
+  token: string,
+  input: { name: string; vibes: string[]; monthlyCapUsd: number }
+): Promise<AgentConfig> {
+  return apiRequest<AgentConfig>(
+    "/agents/config",
+    { method: "POST", body: JSON.stringify(input) },
+    token
+  );
+}
+
+export async function updateAgentConfig(
+  token: string,
+  input: { name?: string; vibes?: string[]; monthlyCapUsd?: number; isActive?: boolean }
+): Promise<AgentConfig> {
+  return apiRequest<AgentConfig>(
+    "/agents/config",
+    { method: "PATCH", body: JSON.stringify(input) },
+    token
+  );
+}
+
+export async function startAgentSession(token: string): Promise<{ status: string; sessionId?: string }> {
+  return apiRequest<{ status: string; sessionId?: string }>(
+    "/agents/config/session",
+    { method: "POST" },
+    token
+  );
+}
+
+export async function stopAgentSession(token: string): Promise<{ status: string }> {
+  return apiRequest<{ status: string }>(
+    "/agents/config/session/stop",
+    { method: "POST" },
+    token
+  );
+}
+
+export interface AgentSessionLicense {
+  id: string;
+  trackId: string;
+  type: string;
+  priceUsd: number;
+  track: {
+    id: string;
+    title: string;
+    artist: string | null;
+    releaseId: string;
+    release: { id: string; artworkMimeType: string | null; artworkUrl?: string | null; title: string };
+  };
+}
+
+export interface AgentSession {
+  id: string;
+  budgetCapUsd: number;
+  spentUsd: number;
+  startedAt: string;
+  endedAt: string | null;
+  licenses: AgentSessionLicense[];
+}
+
+export async function getAgentHistory(token: string): Promise<AgentSession[]> {
+  const sessions = await apiRequest<AgentSession[]>("/agents/config/history", {}, token);
+  // Compute artworkUrl from release id, same pattern as getRelease/getTrack
+  for (const session of sessions) {
+    for (const lic of session.licenses) {
+      if (lic.track.release?.artworkMimeType) {
+        lic.track.release.artworkUrl = getReleaseArtworkUrl(lic.track.release.id);
+      }
+    }
+  }
+  return sessions;
+}

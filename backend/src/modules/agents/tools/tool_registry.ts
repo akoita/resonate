@@ -31,14 +31,37 @@ export class ToolRegistry {
         const query = String(input.query ?? "");
         const limit = Number(input.limit ?? 20);
         const explicitAllowed = Boolean(input.allowExplicit ?? false);
-        const items = await prisma.track.findMany({
+        const take = Math.min(Math.max(limit, 1), 50);
+
+        // Search by genre on the release, OR by title
+        const whereBase = explicitAllowed ? {} : { explicit: false };
+        let items = await prisma.track.findMany({
           where: {
-            title: { contains: query, mode: "insensitive" },
-            ...(explicitAllowed ? {} : { explicit: false }),
+            ...whereBase,
+            ...(query
+              ? {
+                OR: [
+                  { release: { genre: { contains: query, mode: "insensitive" } } },
+                  { title: { contains: query, mode: "insensitive" } },
+                ],
+              }
+              : {}),
           },
+          include: { release: { select: { title: true, genre: true, artworkUrl: true } } },
           orderBy: { createdAt: "desc" },
-          take: Math.min(Math.max(limit, 1), 50),
+          take,
         });
+
+        // Fallback: if no genre/title match, return the most recent tracks
+        if (items.length === 0 && query) {
+          items = await prisma.track.findMany({
+            where: whereBase,
+            include: { release: { select: { title: true, genre: true, artworkUrl: true } } },
+            orderBy: { createdAt: "desc" },
+            take,
+          });
+        }
+
         return { items };
       },
     });

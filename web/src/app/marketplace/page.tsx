@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, use } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, use } from "react";
 import Link from "next/link";
+import { useWebSockets, type MarketplaceUpdate } from "../../hooks/useWebSockets";
 
 interface ListingData {
     listingId: string;
@@ -37,6 +38,7 @@ export default function MarketplacePage(props: {
 
     const [listings, setListings] = useState<ListingData[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [stemType, setStemType] = useState("all");
     const [selectedGenre, setSelectedGenre] = useState("all");
     const [selectedArtist, setSelectedArtist] = useState("all");
@@ -50,16 +52,53 @@ export default function MarketplacePage(props: {
         fetchListings();
     }, []);
 
+    // ---- Real-time marketplace updates via WebSocket ----
+    const handleMarketplaceUpdate = useCallback((update: MarketplaceUpdate) => {
+        switch (update.type) {
+            case 'created':
+                // Refetch full list to get enriched stem metadata
+                fetchListings();
+                addToast({
+                    type: "success",
+                    title: "New Listing",
+                    message: "A new stem was just listed on the marketplace!",
+                });
+                break;
+            case 'sold':
+                // Optimistically update or remove the listing
+                setListings(prev => prev.map(l => {
+                    if (l.listingId === update.listingId) {
+                        const remaining = Number(l.amount) - Number(update.amount);
+                        if (remaining <= 0) return null as any;
+                        return { ...l, amount: String(remaining) };
+                    }
+                    return l;
+                }).filter(Boolean));
+                break;
+            case 'cancelled':
+                setListings(prev => prev.filter(l => l.listingId !== update.listingId));
+                break;
+        }
+    }, [addToast]);
+
+    useWebSockets(undefined, undefined, undefined, handleMarketplaceUpdate);
+
     async function fetchListings() {
         try {
             // Only show skeleton loading on initial load, not on refetches
             // This prevents the jarring flash of empty cards after a purchase
             if (listings.length === 0) setLoading(true);
+            setError(null);
             const res = await fetch(`/api/contracts/listings?status=active&limit=50`);
-            if (!res.ok) throw new Error("Failed to fetch");
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || `Failed to fetch (${res.status})`);
+            }
             const data = await res.json();
             setListings(data.listings || []);
-        } catch {
+        } catch (err) {
+            console.error("Marketplace fetch error:", err);
+            setError(err instanceof Error ? err.message : "Failed to load listings");
             setListings([]);
         } finally {
             setLoading(false);
@@ -268,6 +307,35 @@ export default function MarketplacePage(props: {
                     {[1, 2, 3, 4, 5, 6].map(i => (
                         <div key={i} style={{ background: "#18181b", borderRadius: 12, height: 180, animation: "pulse 2s infinite" }} />
                     ))}
+                </div>
+            ) : error ? (
+                <div style={{
+                    textAlign: "center",
+                    padding: "60px 20px",
+                    background: "#18181b",
+                    borderRadius: 16,
+                    border: "1px solid #7f1d1d"
+                }}>
+                    <div style={{
+                        width: 48, height: 48, borderRadius: 12, background: "#451a03",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        margin: "0 auto 16px"
+                    }}>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="1.5">
+                            <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                    </div>
+                    <h3 style={{ fontSize: 16, fontWeight: 600, color: "white", margin: "0 0 8px" }}>Unable to load listings</h3>
+                    <p style={{ fontSize: 14, color: "#a1a1aa", margin: "0 0 20px" }}>{error}</p>
+                    <button
+                        onClick={() => fetchListings()}
+                        style={{
+                            padding: "10px 20px", background: "#10b981", color: "white",
+                            borderRadius: 8, fontSize: 14, fontWeight: 500, border: "none", cursor: "pointer"
+                        }}
+                    >
+                        Retry
+                    </button>
                 </div>
             ) : filteredListings.length === 0 ? (
                 <div style={{

@@ -12,7 +12,7 @@ import { test, expect } from "@playwright/test";
 test.describe("Marketplace", () => {
     test.beforeEach(async ({ page }) => {
         // Mock the metadata/listings API to avoid needing live backend
-        await page.route("**/api/metadata/listings**", async (route) => {
+        await page.route("**/api/contracts/listings**", async (route) => {
             await route.fulfill({
                 status: 200,
                 contentType: "application/json",
@@ -79,13 +79,8 @@ test.describe("Marketplace", () => {
             "[data-testid='listing-card'], .listing-card, [class*='listing']"
         );
 
-        // If marketplace page loads listing cards, verify they show
-        const count = await listingCards.count();
-        if (count > 0) {
-            // First card should show stem title
-            const firstCard = listingCards.first();
-            await expect(firstCard).toBeVisible();
-        }
+        // Marketplace should render listing cards from mock data
+        await expect(listingCards.first()).toBeVisible({ timeout: 10000 });
     });
 
     test("navigating to /marketplace does not crash", async ({ page }) => {

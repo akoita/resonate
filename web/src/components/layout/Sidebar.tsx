@@ -43,6 +43,28 @@ const PRIMARY_ITEMS = [
     )
   },
   {
+    name: "AI DJ",
+    href: "/agent",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+      </svg>
+    )
+  },
+  {
+    name: "Sonic Radar",
+    href: "/sonic-radar",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="2" />
+        <path d="M16.24 7.76a6 6 0 0 1 0 8.49" />
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+        <path d="M7.76 16.24a6 6 0 0 1 0-8.49" />
+        <path d="M4.93 19.07a10 10 0 0 1 0-14.14" />
+      </svg>
+    )
+  },
+  {
     name: "My Collection",
     href: "/collection",
     icon: (
