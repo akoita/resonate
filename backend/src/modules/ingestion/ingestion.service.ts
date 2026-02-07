@@ -326,11 +326,13 @@ export class IngestionService {
           let finalOriginalUri = originalStem.uri;
           let finalOriginalProvider = originalStem.storageProvider || 'local';
 
-          if (!originalStem.uri || originalStem.uri.includes('localhost:3000')) {
+          if (originalStem.data && (!originalStem.uri || originalStem.uri.includes('localhost:3000'))) {
+            // Re-upload only if we have the buffer (sync/test mode) AND the URI is a local placeholder
             const originalStorage = await this.storageProvider.upload(originalStem.data, `original_${track.id}.mp3`, originalStem.mimeType);
             finalOriginalUri = originalStorage.uri;
             finalOriginalProvider = originalStorage.provider;
           }
+          // Otherwise, keep the existing URI — the original was already uploaded during handleFileUpload
 
           stems.push({
             ...originalStem,
