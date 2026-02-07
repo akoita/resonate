@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
     });
 
     try {
+        console.log(`[listings proxy] Fetching from backend: ${backendUrl.toString()}`);
         const response = await fetch(backendUrl.toString(), {
             headers: {
                 "Content-Type": "application/json",
@@ -23,20 +24,27 @@ export async function GET(request: NextRequest) {
         });
 
         if (!response.ok) {
-            throw new Error(`Backend returned ${response.status}`);
+            const body = await response.text().catch(() => "");
+            console.error(`[listings proxy] Backend returned ${response.status}: ${body}`);
+            return NextResponse.json(
+                { error: `Backend returned ${response.status}`, listings: [], total: 0 },
+                { status: 502 }
+            );
         }
 
         const data = await response.json();
         return NextResponse.json(data);
     } catch (error) {
-        console.error("Failed to fetch listings:", error);
+        console.error("[listings proxy] Failed to reach backend:", error);
 
-        // Return empty listings on error (for development without backend)
-        return NextResponse.json({
-            listings: [],
-            total: 0,
-            limit: 20,
-            offset: 0,
-        });
+        return NextResponse.json(
+            {
+                error: "Backend unreachable",
+                details: error instanceof Error ? error.message : String(error),
+                listings: [],
+                total: 0,
+            },
+            { status: 502 }
+        );
     }
 }

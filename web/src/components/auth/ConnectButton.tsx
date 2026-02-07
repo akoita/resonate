@@ -1,11 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "./AuthProvider";
 
 export default function ConnectButton() {
   const { status, address, login, signup, disconnect, error } = useAuth();
   const [copied, setCopied] = useState(false);
+  const [hasMounted, setHasMounted] = useState(false);
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
 
   const copyAddress = () => {
     if (address) {
@@ -15,7 +20,7 @@ export default function ConnectButton() {
     }
   };
 
-  if (status === "authenticated" && address) {
+  if (hasMounted && status === "authenticated" && address) {
     return (
       <div className="wallet-connected">
         <div className="wallet-connected-info">

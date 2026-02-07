@@ -87,7 +87,131 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                 });
             }
         });
+
+        // ---- Agent events → broadcast as 'agent.event' ----
+
+        this.eventBus.subscribe('session.started', (event: any) => {
+            console.log(`[EventsGateway] Agent session started: ${event.sessionId}`);
+            if (this.server) {
+                this.server.emit('agent.event', {
+                    id: `${event.sessionId}-started`,
+                    type: 'session.started',
+                    sessionId: event.sessionId,
+                    message: 'Agent session started',
+                    timestamp: event.occurredAt,
+                });
+            }
+        });
+
+        this.eventBus.subscribe('session.ended', (event: any) => {
+            console.log(`[EventsGateway] Agent session ended: ${event.sessionId}`);
+            if (this.server) {
+                this.server.emit('agent.event', {
+                    id: `${event.sessionId}-ended`,
+                    type: 'session.ended',
+                    sessionId: event.sessionId,
+                    message: 'Agent session ended',
+                    timestamp: event.occurredAt,
+                });
+            }
+        });
+
+        this.eventBus.subscribe('agent.selection', (event: any) => {
+            if (this.server) {
+                const count = event.count ?? 1;
+                const total = event.candidates?.length ?? 0;
+                this.server.emit('agent.event', {
+                    id: `${event.sessionId}-sel-${event.trackId}`,
+                    type: 'agent.selection',
+                    sessionId: event.sessionId,
+                    message: `Found ${total} tracks, selected ${count} for curation`,
+                    timestamp: event.occurredAt,
+                    detail: `Selected ${count} from ${total} candidates`,
+                });
+            }
+        });
+
+        this.eventBus.subscribe('agent.mix_planned', (event: any) => {
+            if (this.server) {
+                const title = event.trackTitle ?? event.trackId;
+                this.server.emit('agent.event', {
+                    id: `${event.sessionId}-mix-${event.trackId}`,
+                    type: 'agent.mix_planned',
+                    sessionId: event.sessionId,
+                    message: `Planning mix for "${title}" — ${event.transition}`,
+                    timestamp: event.occurredAt,
+                });
+            }
+        });
+
+        this.eventBus.subscribe('agent.negotiated', (event: any) => {
+            if (this.server) {
+                const title = event.trackTitle ?? event.trackId;
+                this.server.emit('agent.event', {
+                    id: `${event.sessionId}-neg-${event.trackId}`,
+                    type: 'agent.negotiated',
+                    sessionId: event.sessionId,
+                    message: `Negotiated "${title}": $${event.priceUsd} (${event.licenseType})`,
+                    timestamp: event.occurredAt,
+                });
+            }
+        });
+
+        this.eventBus.subscribe('agent.decision_made', (event: any) => {
+            if (this.server) {
+                const count = event.trackCount ?? 0;
+                const spend = event.totalSpend != null ? `$${event.totalSpend.toFixed(2)}` : '';
+                const msg = event.reason === 'no_tracks'
+                    ? 'No matching tracks found in catalog'
+                    : event.reason === 'error'
+                        ? 'Curation encountered an error'
+                        : `Curation complete: ${count} track${count !== 1 ? 's' : ''} selected${spend ? `, ${spend} total` : ''}`;
+                this.server.emit('agent.event', {
+                    id: `${event.sessionId}-dec-${Date.now()}`,
+                    type: 'agent.decision_made',
+                    sessionId: event.sessionId,
+                    message: msg,
+                    timestamp: event.occurredAt,
+                });
+            }
+        });
+
+        // ---- Marketplace events → broadcast for real-time UI updates ----
+
+        this.eventBus.subscribe('contract.stem_listed', (event: any) => {
+            console.log(`[EventsGateway] Stem listed: listingId=${event.listingId}, broadcasting...`);
+            if (this.server) {
+                this.server.emit('marketplace.listing_created', {
+                    listingId: event.listingId,
+                    tokenId: event.tokenId,
+                    seller: event.sellerAddress,
+                    price: event.pricePerUnit,
+                    amount: event.amount,
+                });
+            }
+        });
+
+        this.eventBus.subscribe('contract.stem_sold', (event: any) => {
+            console.log(`[EventsGateway] Stem sold: listingId=${event.listingId}, broadcasting...`);
+            if (this.server) {
+                this.server.emit('marketplace.listing_sold', {
+                    listingId: event.listingId,
+                    buyer: event.buyerAddress,
+                    amount: event.amount,
+                });
+            }
+        });
+
+        this.eventBus.subscribe('contract.listing_cancelled', (event: any) => {
+            console.log(`[EventsGateway] Listing cancelled: listingId=${event.listingId}, broadcasting...`);
+            if (this.server) {
+                this.server.emit('marketplace.listing_cancelled', {
+                    listingId: event.listingId,
+                });
+            }
+        });
     }
+
 
     afterInit(server: Server) {
         console.log('[EventsGateway] Initialized');

@@ -9,6 +9,7 @@ import { GlobalPlaylistPanel } from "./GlobalPlaylistPanel";
 import { useUIStore } from "../../lib/uiStore";
 import { AddToPlaylistModal } from "../library/AddToPlaylistModal";
 import { ResaleModal } from "../marketplace/ResaleModal";
+import AgentOnboardingGate from "../agent/AgentOnboardingGate";
 
 export default function AppShell({
   children,
@@ -47,6 +48,8 @@ export default function AppShell({
           onClose={() => setResaleModal(null)}
         />
       </div>
+      <AgentOnboardingGate />
     </PlayerProvider>
+
   );
 }
