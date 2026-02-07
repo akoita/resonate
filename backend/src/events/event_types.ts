@@ -178,9 +178,11 @@ export interface AgentTrackSelectedEvent extends BaseEvent {
 export interface AgentDecisionMadeEvent extends BaseEvent {
   eventName: "agent.decision_made";
   sessionId: string;
-  trackId: string;
-  licenseType: "personal" | "remix" | "commercial";
-  priceUsd: number;
+  trackId?: string;
+  trackCount?: number;
+  totalSpend?: number;
+  licenseType?: "personal" | "remix" | "commercial";
+  priceUsd?: number;
   reason: string;
 }
 
@@ -198,12 +200,14 @@ export interface AgentSelectionEvent extends BaseEvent {
   sessionId: string;
   trackId: string;
   candidates: string[];
+  count?: number;
 }
 
 export interface AgentMixPlannedEvent extends BaseEvent {
   eventName: "agent.mix_planned";
   sessionId: string;
   trackId: string;
+  trackTitle?: string;
   transition: string;
 }
 
@@ -211,6 +215,7 @@ export interface AgentNegotiatedEvent extends BaseEvent {
   eventName: "agent.negotiated";
   sessionId: string;
   trackId: string;
+  trackTitle?: string;
   licenseType: "personal" | "remix" | "commercial";
   priceUsd: number;
   reason: string;

@@ -21,7 +21,7 @@ export class AgentEvaluationService {
   constructor(
     private readonly orchestrator: AgentOrchestratorService,
     private readonly eventBus: EventBus
-  ) {}
+  ) { }
 
   async evaluate(sessions: AgentEvalSession[]) {
     const results = [];
@@ -33,17 +33,20 @@ export class AgentEvaluationService {
 
     for (const session of sessions) {
       const result = await this.orchestrator.orchestrate(session);
-      if (result.status === "approved") {
-        approved += 1;
-        totalPrice += result.negotiation?.priceUsd ?? 0;
-      } else {
-        rejected += 1;
-      }
-      if (result.trackId) {
-        if (seenTracks.has(result.trackId)) {
+      for (const track of result.tracks) {
+        if (track.negotiation) {
+          approved += 1;
+          totalPrice += track.negotiation.priceUsd ?? 0;
+        } else {
+          rejected += 1;
+        }
+        if (seenTracks.has(track.trackId)) {
           repeatCount += 1;
         }
-        seenTracks.add(result.trackId);
+        seenTracks.add(track.trackId);
+      }
+      if (result.tracks.length === 0) {
+        rejected += 1;
       }
       results.push(result);
     }
