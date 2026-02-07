@@ -48,7 +48,7 @@ export function StemCard({ stem }: StemCardProps) {
   /** Navigate to the release page in mixer mode */
   const handleQuickMix = (e: React.MouseEvent) => {
     e.stopPropagation();
-    router.push(`/release/${stem.releaseId}?mixer=true`);
+    router.push(`/release/${stem.releaseId}?mixer=true&stem=${stem.type.toLowerCase()}`);
   };
 
   return (

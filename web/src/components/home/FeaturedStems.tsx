@@ -90,6 +90,8 @@ function extractFeaturedStems(releases: Release[], limit: number): FeaturedStem[
         for (const track of release.tracks) {
             if (!track.stems) continue;
             for (const stem of track.stems) {
+                // Skip ORIGINAL stems — Featured Stems showcases separated stems only
+                if (stem.type.toUpperCase() === 'ORIGINAL') continue;
                 all.push({
                     id: stem.id,
                     type: stem.type,

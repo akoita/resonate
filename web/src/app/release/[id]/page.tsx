@@ -130,10 +130,20 @@ export default function ReleaseDetails() {
     }
   }, [id]);
 
-  // Auto-enable mixer mode when navigating from Quick Mix CTA (?mixer=true)
+  // Auto-enable mixer mode when navigating from Quick Mix CTA (?mixer=true&stem=vocals)
   useEffect(() => {
     if (searchParams.get('mixer') === 'true' && !mixerMode && release?.tracks?.length) {
       toggleMixerMode();
+      // Solo the specific stem if provided
+      const stemParam = searchParams.get('stem');
+      if (stemParam) {
+        const stemTypes = ["vocals", "drums", "bass", "piano", "guitar", "other"];
+        const newVolumes: Record<string, number> = {};
+        for (const st of stemTypes) {
+          newVolumes[st] = st.toLowerCase() === stemParam.toLowerCase() ? 1 : 0;
+        }
+        setMixerVolumes(newVolumes);
+      }
       // Play the first track to activate the mixer immediately
       handlePlayTrack(0);
     }
