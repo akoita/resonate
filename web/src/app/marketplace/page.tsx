@@ -354,7 +354,7 @@ export default function MarketplacePage(props: {
                 <>
                     <div className="marketplace-grid">
                         {filteredListings.map(listing => (
-                            <div key={listing.listingId} className="stem-card">
+                            <div key={listing.listingId} className="stem-card" data-testid="stem-card">
                                 {/* Artwork */}
                                 <div className="stem-card__artwork">
                                     {listing.stem?.artworkUrl ? (
