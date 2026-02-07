@@ -54,7 +54,7 @@ export function StemCard({ stem }: StemCardProps) {
   return (
     <div
       className="stem-card glass-panel"
-      onClick={() => router.push(`/release/${stem.releaseId}`)}
+      onClick={() => router.push(`/release/${stem.releaseId}?mixer=true&stem=${stem.type.toLowerCase()}`)}
     >
       {/* Decorative waveform bar */}
       <div
