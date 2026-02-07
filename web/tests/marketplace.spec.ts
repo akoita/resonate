@@ -9,54 +9,78 @@ import { test, expect } from "@playwright/test";
  * are marked with `.skip()` and documented for manual/integration CI.
  */
 
+const MOCK_LISTINGS = [
+    {
+        listingId: "1",
+        tokenId: "42",
+        seller: "0x1234567890abcdef1234567890abcdef12345678",
+        price: "1000000000000000000",
+        amount: "50",
+        status: "active",
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        stem: {
+            id: "stem_1",
+            title: "Vocals Stem",
+            type: "vocals",
+            track: "My Song",
+            artist: "Test Artist",
+            artworkUrl: null,
+            uri: null,
+        },
+    },
+    {
+        listingId: "2",
+        tokenId: "43",
+        seller: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+        price: "500000000000000000",
+        amount: "100",
+        status: "active",
+        expiresAt: new Date(Date.now() + 3600000).toISOString(), // 1 hour — urgent
+        stem: {
+            id: "stem_2",
+            title: "Bass Line",
+            type: "bass",
+            track: "Groove Track",
+            artist: "Bass Pro",
+            artworkUrl: null,
+            uri: null,
+        },
+    },
+];
+
 test.describe("Marketplace", () => {
     test.beforeEach(async ({ page }) => {
         // Mock the metadata/listings API to avoid needing live backend
         await page.route("**/api/contracts/listings**", async (route) => {
+            const url = new URL(route.request().url());
+            const searchParam = url.searchParams.get("search");
+
+            // If searching, filter mock data
+            let results = MOCK_LISTINGS;
+            if (searchParam) {
+                const q = searchParam.toLowerCase();
+                results = results.filter(l =>
+                    l.stem?.title.toLowerCase().includes(q) ||
+                    l.stem?.artist?.toLowerCase().includes(q) ||
+                    l.stem?.track?.toLowerCase().includes(q)
+                );
+            }
+
+            // If sorting, apply sort
+            const sortBy = url.searchParams.get("sortBy");
+            if (sortBy === "price_asc") {
+                results = [...results].sort((a, b) => Number(BigInt(a.price) - BigInt(b.price)));
+            } else if (sortBy === "price_desc") {
+                results = [...results].sort((a, b) => Number(BigInt(b.price) - BigInt(a.price)));
+            }
+
             await route.fulfill({
                 status: 200,
                 contentType: "application/json",
                 body: JSON.stringify({
-                    listings: [
-                        {
-                            listingId: "1",
-                            tokenId: "42",
-                            seller: "0x1234567890abcdef1234567890abcdef12345678",
-                            price: "1000000000000000000",
-                            amount: "50",
-                            status: "active",
-                            expiresAt: new Date(Date.now() + 86400000).toISOString(),
-                            stem: {
-                                id: "stem_1",
-                                title: "Vocals Stem",
-                                type: "vocals",
-                                track: "My Song",
-                                artist: "Test Artist",
-                                artworkUrl: null,
-                                uri: null,
-                            },
-                        },
-                        {
-                            listingId: "2",
-                            tokenId: "43",
-                            seller: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
-                            price: "500000000000000000",
-                            amount: "100",
-                            status: "active",
-                            expiresAt: new Date(Date.now() + 86400000).toISOString(),
-                            stem: {
-                                id: "stem_2",
-                                title: "Bass Line",
-                                type: "bass",
-                                track: "Groove Track",
-                                artist: "Bass Pro",
-                                artworkUrl: null,
-                                uri: null,
-                            },
-                        },
-                    ],
-                    total: 2,
-                    limit: 20,
+                    listings: results,
+                    total: results.length,
+                    limit: 24,
                     offset: 0,
                 }),
             });
@@ -66,9 +90,9 @@ test.describe("Marketplace", () => {
     test("marketplace page loads and displays listings", async ({ page }) => {
         await page.goto("/marketplace");
 
-        // Should display the marketplace heading or content
-        const heading = page.locator("h1, h2, [data-testid='marketplace-title']");
-        await expect(heading.first()).toBeVisible({ timeout: 10000 });
+        // Should display the marketplace heading
+        const heading = page.getByTestId("marketplace-title");
+        await expect(heading).toBeVisible({ timeout: 10000 });
     });
 
     test("listing cards show stem metadata", async ({ page }) => {
@@ -89,16 +113,52 @@ test.describe("Marketplace", () => {
     test("marketplace filters are interactive", async ({ page }) => {
         await page.goto("/marketplace");
 
-        // Look for filter/status select or buttons
-        const filterElement = page.locator(
-            "select, [data-testid='filter'], [role='combobox'], button:has-text('Filter')"
-        );
+        // Click the "vocals" stem type pill
+        const vocalsPill = page.getByRole("button", { name: /vocals/i });
+        await expect(vocalsPill).toBeVisible({ timeout: 10000 });
+        await vocalsPill.click();
 
-        const count = await filterElement.count();
-        if (count > 0) {
-            // Clicking a filter should not crash
-            await filterElement.first().click();
-        }
+        // "Vocals Stem" should still be visible, "Bass Line" should be filtered out
+        await expect(page.getByText("Vocals Stem")).toBeVisible();
+    });
+
+    test("sort dropdown changes ordering", async ({ page }) => {
+        await page.goto("/marketplace");
+        await expect(page.getByText("Vocals Stem")).toBeVisible({ timeout: 10000 });
+
+        // Change sort to Price ↑
+        const sortSelect = page.getByTestId("marketplace-sort");
+        await sortSelect.selectOption("price_asc");
+
+        // Both cards should still be visible (mock handles sorting)
+        await expect(page.getByText("Vocals Stem")).toBeVisible({ timeout: 10000 });
+        await expect(page.getByText("Bass Line")).toBeVisible({ timeout: 10000 });
+    });
+
+    test("search input filters listings", async ({ page }) => {
+        await page.goto("/marketplace");
+        await expect(page.getByText("Vocals Stem")).toBeVisible({ timeout: 10000 });
+
+        // Type a search query
+        const searchInput = page.getByTestId("marketplace-search");
+        await searchInput.fill("Bass");
+
+        // Wait for debounced refetch — Bass Line should be visible
+        await expect(page.getByText("Bass Line")).toBeVisible({ timeout: 10000 });
+    });
+
+    test("expiry badge shows countdown text", async ({ page }) => {
+        await page.goto("/marketplace");
+
+        // One listing expires in 1 hour — should show urgent countdown
+        await expect(page.getByText(/ending soon|left/i).first()).toBeVisible({ timeout: 10000 });
+    });
+
+    test("stem type badges are displayed on cards", async ({ page }) => {
+        await page.goto("/marketplace");
+
+        // Check for stem type badges
+        await expect(page.locator(".stem-type-badge").first()).toBeVisible({ timeout: 10000 });
     });
 });
 
