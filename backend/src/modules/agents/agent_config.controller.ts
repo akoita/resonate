@@ -199,7 +199,7 @@ export class AgentConfigController {
                                 title: true,
                                 artist: true,
                                 releaseId: true,
-                                release: { select: { artworkUrl: true, title: true } },
+                                release: { select: { id: true, artworkMimeType: true, title: true } },
                             },
                         },
                     },

@@ -9,6 +9,7 @@ import { AgentRunnerService } from "./agent_runner.service";
 import { AgentRuntimeService } from "./agent_runtime.service";
 import { AgentSelectorService } from "./agent_selector.service";
 import { AgentsController } from "./agents.controller";
+import { AgentConfigController } from "./agent_config.controller";
 import { EmbeddingService } from "../embeddings/embedding.service";
 import { EmbeddingStore } from "../embeddings/embedding.store";
 import { ToolRegistry } from "./tools/tool_registry";
@@ -16,7 +17,7 @@ import { LangGraphAdapter } from "./runtime/langgraph_adapter";
 import { VertexAiAdapter } from "./runtime/vertex_ai_adapter";
 
 @Module({
-  controllers: [AgentsController],
+  controllers: [AgentsController, AgentConfigController],
   providers: [
     EventBus,
     EmbeddingService,
@@ -34,4 +35,4 @@ import { VertexAiAdapter } from "./runtime/vertex_ai_adapter";
     LangGraphAdapter,
   ],
 })
-export class AgentsModule {}
+export class AgentsModule { }

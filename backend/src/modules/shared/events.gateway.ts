@@ -175,6 +175,41 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                 });
             }
         });
+
+        // ---- Marketplace events → broadcast for real-time UI updates ----
+
+        this.eventBus.subscribe('contract.stem_listed', (event: any) => {
+            console.log(`[EventsGateway] Stem listed: listingId=${event.listingId}, broadcasting...`);
+            if (this.server) {
+                this.server.emit('marketplace.listing_created', {
+                    listingId: event.listingId,
+                    tokenId: event.tokenId,
+                    seller: event.sellerAddress,
+                    price: event.pricePerUnit,
+                    amount: event.amount,
+                });
+            }
+        });
+
+        this.eventBus.subscribe('contract.stem_sold', (event: any) => {
+            console.log(`[EventsGateway] Stem sold: listingId=${event.listingId}, broadcasting...`);
+            if (this.server) {
+                this.server.emit('marketplace.listing_sold', {
+                    listingId: event.listingId,
+                    buyer: event.buyerAddress,
+                    amount: event.amount,
+                });
+            }
+        });
+
+        this.eventBus.subscribe('contract.listing_cancelled', (event: any) => {
+            console.log(`[EventsGateway] Listing cancelled: listingId=${event.listingId}, broadcasting...`);
+            if (this.server) {
+                this.server.emit('marketplace.listing_cancelled', {
+                    listingId: event.listingId,
+                });
+            }
+        });
     }
 
 
