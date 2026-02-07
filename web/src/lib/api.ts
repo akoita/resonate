@@ -263,7 +263,7 @@ export async function getArtistMe(token: string) {
       payoutAddress: "0x742d35Cc6634C0532925a3b844Bc17e7595f1ea2c",
     };
   }
-  return apiRequest<ArtistProfile | null>("/artists/me", {}, token);
+  return apiRequest<ArtistProfile | null>("/artists/me", { silentErrorCodes: [401] }, token);
 }
 
 export async function getArtistPublic(artistId: string) {
