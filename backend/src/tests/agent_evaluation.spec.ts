@@ -7,14 +7,17 @@ describe("agent evaluation", () => {
       orchestrate: async ({ sessionId }: any) =>
         sessionId === "session-1"
           ? {
-              status: "approved",
-              trackId: "track-1",
-              negotiation: { priceUsd: 0.5 },
-            }
+            status: "approved",
+            tracks: [
+              { trackId: "track-1", negotiation: { priceUsd: 0.5 }, mixPlan: {} },
+            ],
+          }
           : {
-              status: "rejected",
-              trackId: "track-1",
-            },
+            status: "rejected",
+            tracks: [
+              { trackId: "track-1", mixPlan: {} },
+            ],
+          },
     } as any;
     const service = new AgentEvaluationService(orchestrator, new EventBus());
     const result = await service.evaluate([

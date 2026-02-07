@@ -69,11 +69,11 @@ export default function MarketplacePage(props: {
                 setListings(prev => prev.map(l => {
                     if (l.listingId === update.listingId) {
                         const remaining = Number(l.amount) - Number(update.amount);
-                        if (remaining <= 0) return null as any;
+                        if (remaining <= 0) return null;
                         return { ...l, amount: String(remaining) };
                     }
                     return l;
-                }).filter(Boolean));
+                }).filter((l): l is ListingData => l !== null));
                 break;
             case 'cancelled':
                 setListings(prev => prev.filter(l => l.listingId !== update.listingId));

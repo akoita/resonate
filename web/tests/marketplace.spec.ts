@@ -74,13 +74,9 @@ test.describe("Marketplace", () => {
     test("listing cards show stem metadata", async ({ page }) => {
         await page.goto("/marketplace");
 
-        // Wait for listings to render
-        const listingCards = page.locator(
-            "[data-testid='listing-card'], .listing-card, [class*='listing']"
-        );
-
-        // Marketplace should render listing cards from mock data
-        await expect(listingCards.first()).toBeVisible({ timeout: 10000 });
+        // Wait for listings to render — check for mock stem titles
+        await expect(page.getByText("Vocals Stem")).toBeVisible({ timeout: 10000 });
+        await expect(page.getByText("Bass Line")).toBeVisible({ timeout: 10000 });
     });
 
     test("navigating to /marketplace does not crash", async ({ page }) => {

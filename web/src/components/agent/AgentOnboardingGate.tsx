@@ -15,16 +15,15 @@ const DISMISSED_KEY = "resonate.agent_onboarding_dismissed";
 export default function AgentOnboardingGate() {
     const { status, token } = useAuth();
     const [showWizard, setShowWizard] = useState(false);
-    const [checked, setChecked] = useState(false);
+    const [checked, setChecked] = useState(() => {
+        if (typeof window !== "undefined" && sessionStorage.getItem(DISMISSED_KEY)) {
+            return true;
+        }
+        return false;
+    });
 
     useEffect(() => {
         if (status !== "authenticated" || !token || checked) return;
-
-        // Don't show if user already dismissed this session
-        if (sessionStorage.getItem(DISMISSED_KEY)) {
-            setChecked(true);
-            return;
-        }
 
         let cancelled = false;
         getAgentConfig(token)
