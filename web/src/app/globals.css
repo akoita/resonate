@@ -6447,6 +6447,58 @@ tr[draggable="true"]:hover {
   margin-top: var(--space-6);
 }
 
+/* ── Discovery Banner (link to Sonic Radar) ─────────── */
+
+.agent-discovery-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  margin-top: var(--space-4);
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.06) 0%, rgba(59, 130, 246, 0.04) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.12);
+}
+
+.agent-discovery-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.agent-discovery-icon {
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.agent-discovery-text {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+.agent-discovery-text strong {
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.agent-discovery-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-accent);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.agent-discovery-link:hover {
+  color: #a78bfa;
+  gap: 6px;
+}
+
 /* ── Agent History Card ────────────────────────── */
 
 .agent-history-card {
@@ -6631,6 +6683,27 @@ tr[draggable="true"]:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139, 92, 246, 0.3) transparent;
+}
+
+.agent-history-details::-webkit-scrollbar {
+  width: 4px;
+}
+
+.agent-history-details::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.agent-history-details::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.3);
+  border-radius: 4px;
+}
+
+.agent-history-details::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.5);
 }
 
 .agent-history-license {
@@ -6741,4 +6814,395 @@ tr[draggable="true"]:hover {
   opacity: 0;
   transition: opacity 0.2s ease, transform 0.2s ease;
   flex-shrink: 0;
+}
+
+/* ══════════════════════════════════════════════════════════
+   Sonic Radar Page
+   ══════════════════════════════════════════════════════════ */
+
+.sonic-radar-page {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 40px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+}
+
+/* ── Hero ────────────────────────────────────────────── */
+
+.sonic-radar-hero {
+  position: relative;
+  border-radius: 24px;
+  overflow: hidden;
+  padding: 60px 48px;
+  text-align: center;
+}
+
+.sonic-radar-hero-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 40%, rgba(139, 92, 246, 0.2) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 50% at 20% 80%, rgba(59, 130, 246, 0.12) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 80% 20%, rgba(236, 72, 153, 0.1) 0%, transparent 60%),
+    linear-gradient(135deg, rgba(15, 15, 25, 0.95) 0%, rgba(20, 15, 40, 0.9) 100%);
+  animation: sonic-radar-bg-shift 12s ease-in-out infinite alternate;
+  z-index: 0;
+}
+
+@keyframes sonic-radar-bg-shift {
+  0% {
+    background-position: 0% 50%;
+    filter: hue-rotate(0deg);
+  }
+
+  100% {
+    background-position: 100% 50%;
+    filter: hue-rotate(15deg);
+  }
+}
+
+.sonic-radar-hero-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.sonic-radar-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: rgba(139, 92, 246, 0.12);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  color: var(--color-accent);
+  margin-bottom: 8px;
+  animation: sonic-pulse-ring 3s ease-in-out infinite;
+}
+
+@keyframes sonic-pulse-ring {
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.2), 0 0 20px rgba(139, 92, 246, 0.1);
+  }
+
+  50% {
+    box-shadow: 0 0 0 12px rgba(139, 92, 246, 0), 0 0 40px rgba(139, 92, 246, 0.2);
+  }
+}
+
+.sonic-radar-title {
+  font-size: 42px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+}
+
+.sonic-radar-subtitle {
+  font-size: 16px;
+  color: var(--color-muted);
+  max-width: 480px;
+  line-height: 1.6;
+}
+
+.sonic-radar-stats {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-top: 12px;
+  padding: 16px 28px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  backdrop-filter: blur(20px);
+}
+
+.sonic-radar-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.sonic-radar-stat-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.sonic-radar-stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.sonic-radar-stat-divider {
+  width: 1px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ── Feed / Groups ───────────────────────────────────── */
+
+.sonic-radar-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.sonic-radar-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.sonic-radar-group-date {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.sonic-radar-group-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-accent);
+  background: rgba(139, 92, 246, 0.1);
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+
+/* ── Card Grid ───────────────────────────────────────── */
+
+.sonic-radar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.sonic-radar-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+
+.sonic-radar-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(139, 92, 246, 0.2);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3), 0 0 24px rgba(139, 92, 246, 0.08);
+}
+
+.sonic-radar-card-art {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(59, 130, 246, 0.08));
+}
+
+.sonic-radar-card-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+
+.sonic-radar-card:hover .sonic-radar-card-art img {
+  transform: scale(1.05);
+}
+
+.sonic-radar-card-art-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.15);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%);
+}
+
+.sonic-radar-card-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.sonic-radar-card:hover .sonic-radar-card-overlay {
+  opacity: 1;
+}
+
+.sonic-radar-play-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.5);
+  transform: scale(0.8);
+  transition: transform 0.25s ease;
+}
+
+.sonic-radar-card:hover .sonic-radar-play-icon {
+  transform: scale(1);
+}
+
+.sonic-radar-card-info {
+  padding: 12px 14px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sonic-radar-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sonic-radar-card-artist {
+  font-size: 12px;
+  color: var(--color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sonic-radar-card-footer {
+  padding: 8px 14px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sonic-radar-card-license {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-muted);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.sonic-radar-card-price {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Loading Shimmers ────────────────────────────────── */
+
+.sonic-radar-loading {
+  padding: 0;
+}
+
+.sonic-radar-shimmer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.sonic-radar-shimmer-card {
+  aspect-ratio: 0.75;
+  border-radius: 16px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 25%, rgba(255, 255, 255, 0.06) 50%, rgba(255, 255, 255, 0.03) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease infinite;
+}
+
+/* ── Empty State ─────────────────────────────────────── */
+
+.sonic-radar-empty {
+  text-align: center;
+  padding: 60px 24px;
+  max-width: 440px;
+  margin: 0 auto;
+}
+
+.sonic-radar-empty-icon {
+  font-size: 56px;
+  margin-bottom: 16px;
+}
+
+.sonic-radar-empty h2 {
+  font-size: 24px;
+  font-weight: 800;
+  margin-bottom: 12px;
+  background: linear-gradient(135deg, #fff 30%, var(--color-accent) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.sonic-radar-empty p {
+  font-size: 14px;
+  color: var(--color-muted);
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+/* ── Responsive ──────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .sonic-radar-page {
+    padding: 0 16px 60px;
+    gap: 32px;
+  }
+
+  .sonic-radar-hero {
+    padding: 40px 24px;
+    border-radius: 16px;
+  }
+
+  .sonic-radar-title {
+    font-size: 28px;
+  }
+
+  .sonic-radar-stats {
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .sonic-radar-stat-divider {
+    width: 40px;
+    height: 1px;
+  }
+
+  .sonic-radar-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
 }

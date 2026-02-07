@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import AuthGate from "../../components/auth/AuthGate";
 import { useAgentConfig } from "../../hooks/useAgentConfig";
 import { useAgentEvents } from "../../hooks/useAgentEvents";
@@ -100,6 +101,26 @@ export default function AgentPage() {
                             <AgentBudgetCard config={config} spentUsd={sessions.reduce((sum, s) => sum + s.spentUsd, 0)} onEdit={handleEditBudget} />
                             <AgentTasteCard config={config} />
                         </div>
+                        {!historyLoading && sessions.some(s => s.licenses.length > 0) && (
+                            <div className="agent-discovery-banner">
+                                <div className="agent-discovery-info">
+                                    <svg className="agent-discovery-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <circle cx="12" cy="12" r="2" />
+                                        <path d="M16.24 7.76a6 6 0 0 1 0 8.49" />
+                                        <path d="M7.76 16.24a6 6 0 0 1 0-8.49" />
+                                    </svg>
+                                    <span className="agent-discovery-text">
+                                        <strong>{sessions.reduce((sum, s) => sum + s.licenses.length, 0)}</strong> track{sessions.reduce((sum, s) => sum + s.licenses.length, 0) !== 1 ? "s" : ""} discovered across <strong>{sessions.filter(s => s.licenses.length > 0).length}</strong> session{sessions.filter(s => s.licenses.length > 0).length !== 1 ? "s" : ""}
+                                    </span>
+                                </div>
+                                <Link href="/sonic-radar" className="agent-discovery-link">
+                                    View all on Sonic Radar
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                        <polyline points="9 18 15 12 9 6" />
+                                    </svg>
+                                </Link>
+                            </div>
+                        )}
                         <AgentHistoryCard sessions={sessions} isLoading={historyLoading} />
                     </>
                 )}

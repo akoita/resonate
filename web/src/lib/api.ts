@@ -547,7 +547,7 @@ export interface AgentSessionLicense {
     title: string;
     artist: string | null;
     releaseId: string;
-    release: { artworkUrl: string | null; title: string };
+    release: { id: string; artworkMimeType: string | null; artworkUrl?: string | null; title: string };
   };
 }
 
@@ -561,5 +561,14 @@ export interface AgentSession {
 }
 
 export async function getAgentHistory(token: string): Promise<AgentSession[]> {
-  return apiRequest<AgentSession[]>("/agents/config/history", {}, token);
+  const sessions = await apiRequest<AgentSession[]>("/agents/config/history", {}, token);
+  // Compute artworkUrl from release id, same pattern as getRelease/getTrack
+  for (const session of sessions) {
+    for (const lic of session.licenses) {
+      if (lic.track.release?.artworkMimeType) {
+        lic.track.release.artworkUrl = getReleaseArtworkUrl(lic.track.release.id);
+      }
+    }
+  }
+  return sessions;
 }
