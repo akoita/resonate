@@ -112,7 +112,7 @@ export class EncryptionService {
 
         if (existsSync(cachePath)) {
             this.logger.log(`[Cache] Hit for URI: ${uri}`);
-            
+
             // Verify access even for cached content
             const context: DecryptionContext = {
                 metadata,
@@ -162,7 +162,6 @@ export class EncryptionService {
     ): Promise<Buffer> {
         // For unencrypted content (provider = 'none'), just fetch
         if (this.provider.providerName === 'none') {
-            this.logger.log(`[Decrypt] Provider is 'none', fetching raw: ${uri}`);
             const response = await fetch(uri);
             if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
             return Buffer.from(await response.arrayBuffer());
@@ -171,7 +170,6 @@ export class EncryptionService {
         // If no metadata or empty metadata, fall back to raw fetch
         // This handles: unencrypted tracks, old Lit tracks we can't decrypt
         if (!metadata || metadata === '{}' || metadata.trim() === '') {
-            this.logger.log(`[Decrypt] No metadata provided, fetching raw: ${uri}`);
             const response = await fetch(uri);
             if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
             return Buffer.from(await response.arrayBuffer());

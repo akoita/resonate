@@ -5,6 +5,11 @@ jest.mock("../db/prisma", () => {
     const store = new Map();
     return {
         prisma: {
+            user: {
+                upsert: async ({ where, create, update }) => {
+                    return { id: where.id, ...create };
+                },
+            },
             wallet: {
                 findFirst: async ({ where }) => {
                     return store.get(where.userId) ?? null;
@@ -22,6 +27,17 @@ jest.mock("../db/prisma", () => {
                     const updated = { ...existing, ...data };
                     store.set(updated.userId, updated);
                     return updated;
+                },
+                upsert: async ({ where, create, update }) => {
+                    const existing = [...store.values()].find((w) => w.userId === where.userId);
+                    if (existing) {
+                        const updated = { ...existing, ...update };
+                        store.set(updated.userId, updated);
+                        return updated;
+                    }
+                    const record = { id: `wallet_${where.userId}`, ...create };
+                    store.set(where.userId, record);
+                    return record;
                 },
             },
         },

@@ -29,7 +29,7 @@ type AuthVerifyResponse =
 
 async function apiRequest<T>(
   path: string,
-  options: RequestInit = {},
+  options: RequestInit & { silentErrorCodes?: number[] } = {},
   token?: string | null
 ) {
   console.log(`[API] ${options.method || 'GET'} ${path}`, { hasToken: !!token });
@@ -56,7 +56,12 @@ async function apiRequest<T>(
     } catch {
       // ignore
     }
-    console.error(`[API] Error ${response.status} ${path}`, errorDetail);
+
+    const isSilent = options.silentErrorCodes?.includes(response.status);
+    if (!isSilent) {
+      console.error(`[API] Error ${response.status} ${path}`, errorDetail);
+    }
+
     throw new Error(`API ${response.status}: ${errorDetail || response.statusText}`);
   }
 
@@ -204,6 +209,7 @@ export type Track = {
   artist?: string | null;
   createdAt: string;
   artworkMimeType?: string | null;
+  processingStatus?: "pending" | "separating" | "encrypting" | "storing" | "complete" | "failed";
   stems?: Array<{
     id: string;
     trackId: string;
@@ -214,9 +220,12 @@ export type Track = {
     artist?: string | null;
     artworkUrl?: string | null;
     durationSeconds?: number | null;
+    isEncrypted?: boolean;
+    encryptionMetadata?: string | null;
   }>;
   release?: Release;
 };
+
 
 export type APIPlaylist = {
   id: string;
@@ -338,7 +347,7 @@ export async function uploadStems(
   formData: FormData
 ) {
   return apiRequest<{ releaseId: string; status: string }>(
-    "/stems/upload",
+    "/ingestion/upload",
     { method: "POST", body: formData },
     token
   );
@@ -352,6 +361,17 @@ export async function updateReleaseArtwork(
   return apiRequest<{ success: boolean; artworkUrl: string }>(
     `/catalog/releases/${releaseId}/artwork`,
     { method: "PATCH", body: formData },
+    token
+  );
+}
+
+export async function retryRelease(
+  token: string,
+  releaseId: string
+) {
+  return apiRequest<{ success: boolean; releaseId: string }>(
+    `/ingestion/retry/${releaseId}`,
+    { method: "POST" },
     token
   );
 }
@@ -417,3 +437,48 @@ export async function updateFolderAPI(id: string, token: string, name: string) {
 export async function deleteFolderAPI(id: string, token: string) {
   return apiRequest<void>(`/playlists/folders/${id}`, { method: "DELETE" }, token);
 }
+// ========== Marketplace API ==========
+
+export type APIListing = {
+  listingId: string;
+  tokenId: string;
+  chainId: number;
+  seller: string;
+  price: string;
+  amount: string;
+  paymentToken: string;
+  status: string;
+  expiresAt: string;
+  listedAt: string;
+  soldAt?: string;
+  stem?: {
+    id: string;
+    title: string;
+    type: string;
+    track?: string;
+  };
+};
+
+export async function getListings(limit = 20, offset = 0) {
+  return apiRequest<{ listings: APIListing[]; total: number }>(
+    `/metadata/listings?limit=${limit}&offset=${offset}`,
+    {}
+  );
+}
+
+export async function getListingsByStem(stemId: string) {
+  const allListings = await getListings(100);
+  return allListings.listings.filter(l => l.stem?.id === stemId);
+}
+
+export async function getStemNftInfo(stemId: string) {
+  return apiRequest<{
+    tokenId: string;
+    chainId: number;
+    contractAddress: string;
+    creator: string;
+    transactionHash: string;
+    mintedAt: string;
+  }>(`/metadata/stem/${stemId}`, { silentErrorCodes: [404] });
+}
+

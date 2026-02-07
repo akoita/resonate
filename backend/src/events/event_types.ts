@@ -70,6 +70,13 @@ export interface StemsProgressEvent extends BaseEvent {
   progress: number;
 }
 
+export interface StemsFailedEvent extends BaseEvent {
+  eventName: "stems.failed";
+  releaseId: string;
+  artistId: string;
+  error: string;
+}
+
 export interface IpNftMintedEvent extends BaseEvent {
   eventName: "ipnft.minted";
   stemId: string;
@@ -127,6 +134,13 @@ export interface CatalogReleaseReadyEvent extends BaseEvent {
   releaseId: string;
   artistId: string;
   metadata?: any;
+}
+
+export interface CatalogTrackStatusEvent extends BaseEvent {
+  eventName: "catalog.track_status";
+  releaseId: string;
+  trackId: string;
+  status: 'pending' | 'separating' | 'encrypting' | 'storing' | 'complete' | 'failed';
 }
 
 export interface SessionStartedEvent extends BaseEvent {
@@ -248,6 +262,67 @@ export interface WalletSpentEvent extends BaseEvent {
   balanceUsd: number;
 }
 
+// ============ Smart Contract Events ============
+
+export interface ContractStemMintedEvent extends BaseEvent {
+  eventName: "contract.stem_minted";
+  tokenId: string;
+  creatorAddress: string;
+  parentIds: string[];
+  tokenUri: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
+export interface ContractStemListedEvent extends BaseEvent {
+  eventName: "contract.stem_listed";
+  listingId: string;
+  sellerAddress: string;
+  tokenId: string;
+  amount: string;
+  pricePerUnit: string;
+  paymentToken: string;
+  expiresAt: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
+export interface ContractStemSoldEvent extends BaseEvent {
+  eventName: "contract.stem_sold";
+  listingId: string;
+  buyerAddress: string;
+  amount: string;
+  totalPaid: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
+export interface ContractRoyaltyPaidEvent extends BaseEvent {
+  eventName: "contract.royalty_paid";
+  tokenId: string;
+  recipientAddress: string;
+  amount: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
+export interface ContractListingCancelledEvent extends BaseEvent {
+  eventName: "contract.listing_cancelled";
+  listingId: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
 export type ResonateEvent =
   | StemsUploadedEvent
   | StemsProcessedEvent
@@ -259,6 +334,7 @@ export type ResonateEvent =
   | CuratorReportedEvent
   | CatalogUpdatedEvent
   | CatalogReleaseReadyEvent
+  | CatalogTrackStatusEvent
   | SessionStartedEvent
   | LicenseGrantedEvent
   | SessionEndedEvent
@@ -274,4 +350,10 @@ export type ResonateEvent =
   | WalletFundedEvent
   | WalletBudgetSetEvent
   | WalletSpentEvent
-  | StemsProgressEvent;
+  | StemsProgressEvent
+  | StemsFailedEvent
+  | ContractStemMintedEvent
+  | ContractStemListedEvent
+  | ContractStemSoldEvent
+  | ContractRoyaltyPaidEvent
+  | ContractListingCancelledEvent;

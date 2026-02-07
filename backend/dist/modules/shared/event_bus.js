@@ -19,6 +19,7 @@ let EventBus = class EventBus {
             this.handlers[eventName] = [];
         }
         this.handlers[eventName].push(handler);
+        console.log(`[EventBus] Subscribed to ${eventName}. Total handlers: ${this.handlers[eventName].length}`);
     }
 };
 exports.EventBus = EventBus;

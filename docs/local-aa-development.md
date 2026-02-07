@@ -232,11 +232,11 @@ See `docker-compose.yml` for full configuration.
 
 ### Demucs Worker (AI Stem Separation)
 
-The Demucs worker runs alongside AA services and handles stem separation:
+The Demucs worker runs alongside AA services and handles stem separation. **GPU acceleration is enabled by default** via `docker-compose.gpu.yml`.
 
 | Service | Image | Port | Purpose |
 |---------|-------|------|---------|
-| `demucs-worker` | Custom (built from `workers/demucs/`) | 8000 | AI stem separation |
+| `demucs-worker` | Custom (built from `workers/demucs/`) | 8000 | AI stem separation (GPU-accelerated) |
 | `redis` | `redis:7-alpine` | 6379 | Job queue for BullMQ |
 
 ```bash
@@ -246,8 +246,10 @@ make worker-logs
 # Check worker health
 make worker-health
 
-# Enable GPU acceleration (10-15x faster)
-make worker-gpu
+# Rebuild worker (after code changes)
+make worker-rebuild
 ```
 
-See [README.md](../README.md#️-ai-stem-separation-demucs) for detailed configuration.
+> **Requires:** NVIDIA GPU + [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+
+See [`workers/demucs/README.md`](../workers/demucs/README.md) for full worker documentation.

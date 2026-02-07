@@ -40,15 +40,15 @@ export class AesEncryptionProvider extends EncryptionProvider {
 
     constructor(private readonly configService: ConfigService) {
         super();
-        
+
         // Derive master key from secret (in production, use proper key management)
-        const secret = this.configService.get<string>('ENCRYPTION_SECRET') 
-            || this.configService.get<string>('JWT_SECRET') 
+        const secret = this.configService.get<string>('ENCRYPTION_SECRET')
+            || this.configService.get<string>('JWT_SECRET')
             || 'dev-encryption-secret-change-in-production';
-        
+
         // Use SHA-256 to derive a 32-byte key from the secret
         this.masterKey = createHash('sha256').update(secret).digest();
-        
+
         this.logger.log('AES-256-GCM Encryption Provider initialized');
     }
 
@@ -72,7 +72,7 @@ export class AesEncryptionProvider extends EncryptionProvider {
         try {
             const key = this.deriveKey(context.contentId);
             const iv = randomBytes(16); // 128-bit IV for GCM
-            
+
             const cipher = createCipheriv('aes-256-gcm', key, iv);
             const encrypted = Buffer.concat([cipher.update(data), cipher.final()]);
             const authTag = cipher.getAuthTag();
@@ -105,7 +105,7 @@ export class AesEncryptionProvider extends EncryptionProvider {
     async decrypt(encryptedData: Buffer, context: DecryptionContext): Promise<Buffer> {
         try {
             const metadata: AesMetadata = JSON.parse(context.metadata);
-            
+
             // Verify access before decrypting
             const hasAccess = await this.verifyAccess(context);
             if (!hasAccess) {
@@ -134,10 +134,22 @@ export class AesEncryptionProvider extends EncryptionProvider {
         try {
             // MVP: Allow any authenticated user (valid wallet signature)
             // Future: Check allowedAddresses, NFT ownership, purchase records, etc.
-            
+
             if (!context.authSig) {
                 this.logger.warn('[AES] No authSig provided - access denied');
                 return false;
+            }
+
+            // Special case: allow preview address (used by backend to proxy previews)
+            if (context.authSig.address === '0x0000000000000000000000000000000000000000') {
+                this.logger.log('[AES] Access granted for internal preview request');
+                return true;
+            }
+
+            // Special case: ownership already verified by download endpoint
+            if (context.authSig.sig === 'ownership-verified') {
+                this.logger.log(`[AES] Access granted via ownership verification for ${context.authSig.address}`);
+                return true;
             }
 
             // Verify the wallet signature is valid

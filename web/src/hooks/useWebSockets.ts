@@ -10,14 +10,40 @@ export interface ReleaseStatusUpdate {
     status: string;
 }
 
-export function useWebSockets(onStatusUpdate?: (data: ReleaseStatusUpdate) => void) {
-    const [socket, setSocket] = useState<Socket | null>(null);
-    const handlerRef = useRef(onStatusUpdate);
+export interface ReleaseProgressUpdate {
+    releaseId: string;
+    trackId: string;
+    progress: number;
+}
 
-    // Update ref when handler changes without re-triggering effect
+export interface TrackStatusUpdate {
+    releaseId: string;
+    trackId: string;
+    status: 'pending' | 'separating' | 'encrypting' | 'storing' | 'complete' | 'failed';
+}
+
+export function useWebSockets(
+    onStatusUpdate?: (data: ReleaseStatusUpdate) => void,
+    onProgressUpdate?: (data: ReleaseProgressUpdate) => void,
+    onTrackStatusUpdate?: (data: TrackStatusUpdate) => void
+) {
+    const [socket, setSocket] = useState<Socket | null>(null);
+    const statusHandlerRef = useRef(onStatusUpdate);
+    const progressHandlerRef = useRef(onProgressUpdate);
+    const trackStatusHandlerRef = useRef(onTrackStatusUpdate);
+
+    // Update refs when handlers change without re-triggering effect
     useEffect(() => {
-        handlerRef.current = onStatusUpdate;
+        statusHandlerRef.current = onStatusUpdate;
     }, [onStatusUpdate]);
+
+    useEffect(() => {
+        progressHandlerRef.current = onProgressUpdate;
+    }, [onProgressUpdate]);
+
+    useEffect(() => {
+        trackStatusHandlerRef.current = onTrackStatusUpdate;
+    }, [onTrackStatusUpdate]);
 
     useEffect(() => {
         // Initialize socket connection
@@ -36,8 +62,30 @@ export function useWebSockets(onStatusUpdate?: (data: ReleaseStatusUpdate) => vo
 
         newSocket.on('release.status', (data: ReleaseStatusUpdate) => {
             console.log('[WebSocket] Received release.status update:', data);
-            if (handlerRef.current) {
-                handlerRef.current(data);
+            if (statusHandlerRef.current) {
+                statusHandlerRef.current(data);
+            }
+        });
+
+        // Also handle release.error using same status handler with 'failed' status
+        newSocket.on('release.error', (data: ReleaseStatusUpdate & { error?: string }) => {
+            console.log('[WebSocket] Received release.error:', data);
+            if (statusHandlerRef.current) {
+                statusHandlerRef.current({ ...data, status: 'failed' });
+            }
+        });
+
+        newSocket.on('release.progress', (data: ReleaseProgressUpdate) => {
+            console.log('[WebSocket] Received release.progress update:', data);
+            if (progressHandlerRef.current) {
+                progressHandlerRef.current(data);
+            }
+        });
+
+        newSocket.on('track.status', (data: TrackStatusUpdate) => {
+            console.log('[WebSocket] Received track.status update:', data);
+            if (trackStatusHandlerRef.current) {
+                trackStatusHandlerRef.current(data);
             }
         });
 

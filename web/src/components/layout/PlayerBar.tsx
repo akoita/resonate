@@ -1,21 +1,29 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, usePathname } from "next/navigation";
 import { usePlayer } from "../../lib/playerContext";
 import { MarqueeText } from "../ui/MarqueeText";
 import { useToast } from "../ui/Toast";
 import { useUIStore } from "../../lib/uiStore";
+import { MixerConsole } from "../player/MixerConsole";
+import { useState } from "react";
 
 export default function PlayerBar() {
   const router = useRouter();
+  const pathname = usePathname();
   const {
     currentTrack, isPlaying, artworkUrl, togglePlay, nextTrack, prevTrack,
     progress, queue, currentIndex, seek,
     shuffle, repeatMode, toggleShuffle, toggleRepeatMode,
-    volume, setVolume
+    volume, setVolume,
+    mixerMode, toggleMixerMode
   } = usePlayer();
   const { addToast } = useToast();
   const { setTracksToAddToPlaylist } = useUIStore();
+
+  const isPlayerPage = pathname === '/player';
+  const isReleasePage = pathname?.startsWith('/release/');
 
   const handleToggleRepeat = () => {
     toggleRepeatMode();
@@ -208,6 +216,12 @@ export default function PlayerBar() {
           onDoubleClick={(e) => e.stopPropagation()}
         />
       </div>
+
+      {mixerMode && !isPlayerPage && !isReleasePage && (
+        <div className="player-bar-mixer-popover">
+          <MixerConsole onClose={toggleMixerMode} />
+        </div>
+      )}
     </div>
   );
 }

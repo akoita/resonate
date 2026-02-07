@@ -65,7 +65,9 @@ describe("catalog", () => {
         mockReleases.clear();
         mockTracks.clear();
         eventBus = new EventBus();
-        service = new CatalogService(eventBus);
+        const mockEncryptionService = {} as any;
+        const mockStorageProvider = {} as any;
+        service = new CatalogService(eventBus, mockEncryptionService, mockStorageProvider);
         service.onModuleInit();
     });
 

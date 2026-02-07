@@ -1,5 +1,5 @@
 dev-up:
-	docker compose up -d
+	docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 
 dev-down:
 	docker compose down -v
@@ -42,10 +42,20 @@ local-aa-deploy:
 	@echo "Updating configuration files..."
 	./scripts/update-aa-config.sh
 
-# Full local AA setup: start infra + deploy contracts + update config
-local-aa-full: local-aa-up
+# Deploy protocol contracts (StemNFT, Marketplace, TransferValidator)
+deploy-contracts:
+	@echo "Deploying Resonate Protocol contracts..."
+	cd contracts && forge script script/DeployProtocol.s.sol --rpc-url http://localhost:8545 --broadcast
+	@echo ""
+	@echo "Updating configuration files..."
+	./scripts/update-protocol-config.sh
+
+# Full local setup: infra + AA contracts + protocol contracts
+contracts-deploy-local: local-aa-up
 	@sleep 2
 	$(MAKE) local-aa-deploy
+	@sleep 1
+	$(MAKE) deploy-contracts
 
 # Update .env files with deployed AA contract addresses
 local-aa-config:
@@ -73,13 +83,8 @@ worker-gpu:
 	@echo "Demucs worker started with GPU acceleration"
 	@echo "Verify GPU: docker compose exec demucs-worker nvidia-smi"
 
-# Rebuild Demucs worker (useful after Dockerfile changes)
+# Rebuild Demucs worker with GPU support (useful after Dockerfile changes)
 worker-rebuild:
-	docker compose build --no-cache demucs-worker
-	docker compose up -d demucs-worker
-
-# Rebuild Demucs worker with GPU support
-worker-rebuild-gpu:
 	docker compose -f docker-compose.yml -f docker-compose.gpu.yml build --no-cache demucs-worker
 	docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d demucs-worker
 
@@ -89,4 +94,4 @@ worker-health:
 
 # Skip model pre-caching for faster builds (model downloads on first use)
 worker-quick-build:
-	docker compose build --build-arg CACHE_MODEL=0 demucs-worker
+	docker compose -f docker-compose.yml -f docker-compose.gpu.yml build --build-arg CACHE_MODEL=0 demucs-worker

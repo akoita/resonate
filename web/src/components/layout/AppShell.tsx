@@ -8,13 +8,21 @@ import { PlayerProvider } from "../../lib/playerContext";
 import { GlobalPlaylistPanel } from "./GlobalPlaylistPanel";
 import { useUIStore } from "../../lib/uiStore";
 import { AddToPlaylistModal } from "../library/AddToPlaylistModal";
+import { ResaleModal } from "../marketplace/ResaleModal";
 
 export default function AppShell({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { isPlaylistPanelOpen, closePlaylistPanel, tracksToAddToPlaylist, setTracksToAddToPlaylist } = useUIStore();
+  const {
+    isPlaylistPanelOpen,
+    closePlaylistPanel,
+    tracksToAddToPlaylist,
+    setTracksToAddToPlaylist,
+    resaleModal,
+    setResaleModal
+  } = useUIStore();
 
   return (
     <PlayerProvider>
@@ -33,6 +41,10 @@ export default function AppShell({
         <AddToPlaylistModal
           tracks={tracksToAddToPlaylist}
           onClose={() => setTracksToAddToPlaylist(null)}
+        />
+        <ResaleModal
+          modal={resaleModal}
+          onClose={() => setResaleModal(null)}
         />
       </div>
     </PlayerProvider>

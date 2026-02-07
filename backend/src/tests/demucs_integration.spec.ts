@@ -70,11 +70,13 @@ describe("Demucs Integration", () => {
   beforeEach(() => {
     eventBus = new EventBus();
     storageProvider = new LocalStorageProvider();
+    const mockCatalogService = {} as any;
     ingestionService = new IngestionService(
       eventBus,
       storageProvider,
       mockEncryptionService as any,
       mockArtistService as any,
+      mockCatalogService as any,
       mockQueue as any
     );
   });
