@@ -1,6 +1,19 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { usePlayer } from "../../lib/playerContext";
+import { LocalTrack } from "../../lib/localLibrary";
+
+/** Stem shape as stored on each FeaturedStem for full-track playback */
+export interface TrackStemInfo {
+  id: string;
+  uri: string;
+  type: string;
+  durationSeconds?: number | null;
+  isEncrypted?: boolean;
+  encryptionMetadata?: string | null;
+  storageProvider?: string | null;
+}
 
 /** Stem data flattened from releases → tracks → stems */
 export interface FeaturedStem {
@@ -13,6 +26,9 @@ export interface FeaturedStem {
   /** Parent track info */
   trackTitle: string;
   trackId: string;
+  trackCreatedAt: string;
+  /** All stems belonging to the parent track — needed for mixer playback */
+  trackStems: TrackStemInfo[];
   /** Parent release info */
   releaseId: string;
   releaseTitle: string;
@@ -42,19 +58,61 @@ interface StemCardProps {
 
 export function StemCard({ stem }: StemCardProps) {
   const router = useRouter();
+  const { playQueue, mixerMode, toggleMixerMode, setMixerVolumes } = usePlayer();
   const style = getStemStyle(stem.type);
   const isRemixable = !!stem.ipnftId;
 
-  /** Navigate to the release page in mixer mode */
-  const handleQuickMix = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    router.push(`/release/${stem.releaseId}?mixer=true&stem=${stem.type.toLowerCase()}`);
+  /** Play the track in mixer mode with this stem soloed */
+  const handlePlay = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+
+    // 1) Build a LocalTrack from the FeaturedStem data
+    const originalStem = stem.trackStems.find(
+      (s) => s.type.toUpperCase() === "ORIGINAL",
+    );
+    const track: LocalTrack = {
+      id: stem.trackId,
+      title: stem.trackTitle,
+      artist: stem.releaseArtist,
+      albumArtist: null,
+      album: stem.releaseTitle,
+      year: null,
+      genre: null,
+      duration: stem.durationSeconds ?? 0,
+      createdAt: stem.trackCreatedAt,
+      remoteUrl: originalStem?.uri,
+      remoteArtworkUrl: stem.releaseArtworkUrl || undefined,
+      stems: stem.trackStems,
+    };
+
+    // 2) Play — this stops any current playback and starts the new track
+    await playQueue([track], 0);
+
+    // 3) Enable mixer mode if not already on
+    if (!mixerMode) {
+      toggleMixerMode();
+    }
+
+    // 4) Solo the selected stem type
+    const selectedType = stem.type.toLowerCase();
+    const volumes: Record<string, number> = {};
+    for (const s of stem.trackStems) {
+      const t = s.type.toLowerCase();
+      if (t === "original") continue; // never show original in mixer
+      volumes[t] = t === selectedType ? 100 : 0;
+    }
+    setMixerVolumes(volumes);
+
+    // 5) Navigate to the release page so the user sees the full mixer UI
+    router.push(
+      `/release/${stem.releaseId}?mixer=true&stem=${selectedType}`,
+    );
   };
 
   return (
     <div
       className="stem-card glass-panel"
-      onClick={() => router.push(`/release/${stem.releaseId}?mixer=true&stem=${stem.type.toLowerCase()}`)}
+      onClick={handlePlay}
     >
       {/* Decorative waveform bar */}
       <div
@@ -88,11 +146,11 @@ export function StemCard({ stem }: StemCardProps) {
           <span className="stem-remix-count">0 remixes</span>
           <button
             className="stem-quick-mix-btn"
-            onClick={handleQuickMix}
-            title="Open in Mixer"
+            onClick={handlePlay}
+            title="Play in Mixer"
             style={{ borderColor: `${style.color}44`, color: style.color }}
           >
-            ⚡ Quick Mix
+            ▶ Play Stem
           </button>
         </div>
       </div>

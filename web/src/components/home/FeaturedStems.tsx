@@ -266,6 +266,15 @@ function extractFeaturedStems(
                     isEncrypted: stem.isEncrypted,
                     trackTitle: track.title,
                     trackId: track.id,
+                    trackCreatedAt: track.createdAt,
+                    trackStems: track.stems.map((s) => ({
+                        id: s.id,
+                        uri: s.uri,
+                        type: s.type,
+                        durationSeconds: s.durationSeconds,
+                        isEncrypted: s.isEncrypted,
+                        encryptionMetadata: s.encryptionMetadata,
+                    })),
                     releaseId: release.id,
                     releaseTitle: release.title,
                     releaseArtist:
