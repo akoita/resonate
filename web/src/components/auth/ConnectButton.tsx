@@ -1,16 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useAuth } from "./AuthProvider";
+
+const subscribe = () => () => { };
 
 export default function ConnectButton() {
   const { status, address, login, signup, disconnect, error } = useAuth();
   const [copied, setCopied] = useState(false);
-  const [hasMounted, setHasMounted] = useState(false);
-
-  useEffect(() => {
-    setHasMounted(true);
-  }, []);
+  const hasMounted = useSyncExternalStore(subscribe, () => true, () => false);
 
   const copyAddress = () => {
     if (address) {
