@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { getRelease, Release, updateReleaseArtwork, getReleaseArtworkUrl } from "../../../lib/api";
 import { LocalTrack, saveTrackMetadata } from "../../../lib/localLibrary";
 import { Button } from "../../../components/ui/Button";
@@ -25,6 +25,7 @@ const getTrackDuration = (track: { stems?: Array<{ durationSeconds?: number | nu
 export default function ReleaseDetails() {
   const { id } = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const {
     playQueue,
     mixerMode,
@@ -128,6 +129,27 @@ export default function ReleaseDetails() {
         .finally(() => setLoading(false));
     }
   }, [id]);
+
+  // Auto-enable mixer mode when navigating from Quick Mix CTA (?mixer=true&stem=vocals)
+  useEffect(() => {
+    if (searchParams.get('mixer') === 'true' && !mixerMode && release?.tracks?.length) {
+      toggleMixerMode();
+      // Solo the specific stem if provided
+      const stemParam = searchParams.get('stem');
+      if (stemParam) {
+        const stemTypes = ["vocals", "drums", "bass", "piano", "guitar", "other"];
+        const newVolumes: Record<string, number> = {};
+        for (const st of stemTypes) {
+          newVolumes[st] = st.toLowerCase() === stemParam.toLowerCase() ? 1 : 0;
+        }
+        setMixerVolumes(newVolumes);
+      }
+      // Play the first track to activate the mixer immediately
+      handlePlayTrack(0);
+    }
+    // Only run once when release loads
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [release?.id]);
 
   const handlePlayTrack = (trackIndex: number, specificStem?: string) => {
     if (!release?.tracks) return;
