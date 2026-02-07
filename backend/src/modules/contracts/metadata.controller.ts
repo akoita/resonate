@@ -96,6 +96,10 @@ export class MetadataController {
     @Query("artistId") artistId?: string,
     @Query("releaseId") releaseId?: string,
     @Query("genre") genre?: string,
+    @Query("search") search?: string,
+    @Query("sortBy") sortBy?: string,
+    @Query("minPrice") minPrice?: string,
+    @Query("maxPrice") maxPrice?: string,
     @Query("limit") limitStr?: string,
     @Query("offset") offsetStr?: string
   ) {
@@ -110,6 +114,10 @@ export class MetadataController {
       artistId,
       releaseId,
       genre,
+      search: search?.trim() || undefined,
+      sortBy,
+      minPrice,
+      maxPrice,
       limit,
       offset,
     });

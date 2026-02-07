@@ -276,29 +276,50 @@ export class ContractsService implements OnModuleInit {
     artistId?: string;
     releaseId?: string;
     genre?: string;
+    search?: string;
+    sortBy?: string;
+    minPrice?: string;
+    maxPrice?: string;
     limit?: number;
     offset?: number;
   }) {
-    const { status, sellerAddress, chainId, artistId, releaseId, genre, limit = 20, offset = 0 } = options;
+    const { status, sellerAddress, chainId, artistId, releaseId, genre, search, sortBy, minPrice, maxPrice, limit = 20, offset = 0 } = options;
+
+    // Build stem relation filter for artist/release/genre/search
+    const stemFilter: any = {};
+    const trackFilter: any = {};
+    const releaseFilter: any = {};
+
+    if (artistId) releaseFilter.artistId = artistId;
+    if (releaseId) releaseFilter.id = releaseId;
+    if (genre) releaseFilter.genre = { contains: genre, mode: "insensitive" as const };
+
+    if (Object.keys(releaseFilter).length > 0) {
+      trackFilter.release = releaseFilter;
+    }
+    if (Object.keys(trackFilter).length > 0) {
+      stemFilter.track = trackFilter;
+    }
+
+    // Build search filter (OR across stem title, track title, artist name)
+    const searchConditions: any[] = [];
+    if (search) {
+      searchConditions.push(
+        { stem: { title: { contains: search, mode: "insensitive" as const } } },
+        { stem: { track: { title: { contains: search, mode: "insensitive" as const } } } },
+        { stem: { track: { release: { primaryArtist: { contains: search, mode: "insensitive" as const } } } } },
+      );
+    }
 
     const listings = await prisma.stemListing.findMany({
       where: {
         ...(status && { status }),
         ...(sellerAddress && { sellerAddress }),
         ...(chainId && { chainId }),
-        ...(artistId || releaseId || genre
-          ? {
-            stem: {
-              track: {
-                release: {
-                  ...(artistId && { artistId }),
-                  ...(releaseId && { id: releaseId }),
-                  ...(genre && { genre: { contains: genre, mode: "insensitive" as const } }),
-                },
-              },
-            },
-          }
-          : {}),
+        ...(minPrice && { pricePerUnit: { gte: minPrice } }),
+        ...(maxPrice && { pricePerUnit: { lte: maxPrice } }),
+        ...(Object.keys(stemFilter).length > 0 ? { stem: stemFilter } : {}),
+        ...(searchConditions.length > 0 ? { OR: searchConditions } : {}),
       },
       select: {
         id: true,
@@ -351,10 +372,35 @@ export class ContractsService implements OnModuleInit {
     // Filter out orphan listings (no linked stem) — these have no useful metadata
     const withStems = allDeduped.filter(l => l.stem !== null);
 
-    // Apply pagination manually after deduplication
-    return withStems.slice(offset, offset + limit);
+    // Apply sorting after deduplication
+    const sorted = this.sortListings(withStems, sortBy);
+
+    // Apply pagination manually after deduplication + sorting
+    return sorted.slice(offset, offset + limit);
   }
 
+  /**
+   * Sort listings by the given strategy.
+   * Price comparison treats the string value as wei (numeric sort).
+   */
+  private sortListings<T extends { pricePerUnit: string; expiresAt: Date; listedAt: Date }>(listings: T[], sortBy?: string): T[] {
+    switch (sortBy) {
+      case 'price_asc':
+        return [...listings].sort((a, b) => {
+          try { return Number(BigInt(a.pricePerUnit) - BigInt(b.pricePerUnit)); } catch { return 0; }
+        });
+      case 'price_desc':
+        return [...listings].sort((a, b) => {
+          try { return Number(BigInt(b.pricePerUnit) - BigInt(a.pricePerUnit)); } catch { return 0; }
+        });
+      case 'ending_soon':
+        return [...listings].sort((a, b) => a.expiresAt.getTime() - b.expiresAt.getTime());
+      case 'newest':
+      default:
+        // Already ordered by listedAt desc from the DB query
+        return listings;
+    }
+  }
 
   async getListingById(listingId: bigint, chainId: number) {
     return prisma.stemListing.findFirst({
