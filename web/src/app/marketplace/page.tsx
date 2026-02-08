@@ -246,89 +246,92 @@ export default function MarketplacePage(props: {
     // ---- Render ----
     return (
         <div>
-            {/* Hero Header */}
-            <div className="marketplace-hero">
-                <h1 className="marketplace-title" data-testid="marketplace-title">
-                    Stem Marketplace
-                    <span className="marketplace-count">{filteredListings.length}</span>
-                </h1>
-                <p className="marketplace-subtitle">
-                    Browse, preview, and collect unique audio stem NFTs from artists worldwide.
-                </p>
-            </div>
-
-            {/* Search */}
-            <div className="marketplace-search">
-                <span className="marketplace-search__icon">🔍</span>
-                <input
-                    type="text"
-                    className="marketplace-search__input"
-                    placeholder="Search stems, tracks, or artists..."
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    data-testid="marketplace-search"
-                />
-            </div>
-
-            {/* Filter Toolbar */}
-            <div className="marketplace-toolbar" data-testid="filter">
-                {/* Stem Type Pills */}
-                <div className="marketplace-toolbar__group">
-                    {STEM_TYPES.map(type => (
-                        <button
-                            key={type}
-                            className={`stem-pill ${stemType === type ? "stem-pill--active" : ""}`}
-                            onClick={() => setStemType(type)}
-                        >
-                            {type === "all" ? "All" : type}
-                        </button>
-                    ))}
+            {/* Sticky Header + Search + Filter Controls */}
+            <div className="marketplace-sticky-controls">
+                {/* Hero Header */}
+                <div className="marketplace-hero">
+                    <h1 className="marketplace-title" data-testid="marketplace-title">
+                        Stem Marketplace
+                        <span className="marketplace-count">{filteredListings.length}</span>
+                    </h1>
+                    <p className="marketplace-subtitle">
+                        Browse, preview, and collect unique audio stem NFTs from artists worldwide.
+                    </p>
                 </div>
 
-                <div className="toolbar-sep" />
+                {/* Search */}
+                <div className="marketplace-search">
+                    <span className="marketplace-search__icon">🔍</span>
+                    <input
+                        type="text"
+                        className="marketplace-search__input"
+                        placeholder="Search stems, tracks, or artists..."
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        data-testid="marketplace-search"
+                    />
+                </div>
 
-                {/* Sort */}
-                <select
-                    className="marketplace-select"
-                    value={sortBy}
-                    onChange={e => setSortBy(e.target.value)}
-                    data-testid="marketplace-sort"
-                >
-                    {SORT_OPTIONS.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                </select>
+                {/* Filter Toolbar */}
+                <div className="marketplace-toolbar" data-testid="filter">
+                    {/* Stem Type Pills */}
+                    <div className="marketplace-toolbar__group">
+                        {STEM_TYPES.map(type => (
+                            <button
+                                key={type}
+                                className={`stem-pill ${stemType === type ? "stem-pill--active" : ""}`}
+                                onClick={() => setStemType(type)}
+                            >
+                                {type === "all" ? "All" : type}
+                            </button>
+                        ))}
+                    </div>
 
-                {/* Artist dropdown */}
-                {artists.length > 0 && (
+                    <div className="toolbar-sep" />
+
+                    {/* Sort */}
                     <select
                         className="marketplace-select"
-                        value={selectedArtist}
-                        onChange={e => setSelectedArtist(e.target.value)}
+                        value={sortBy}
+                        onChange={e => setSortBy(e.target.value)}
+                        data-testid="marketplace-sort"
                     >
-                        <option value="all">All Artists</option>
-                        {artists.map(a => <option key={a} value={a}>{a}</option>)}
+                        {SORT_OPTIONS.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
                     </select>
-                )}
 
-                {/* Genre dropdown */}
-                {genres.length > 0 && (
-                    <select
-                        className="marketplace-select"
-                        value={selectedGenre}
-                        onChange={e => setSelectedGenre(e.target.value)}
-                    >
-                        <option value="all">All Genres</option>
-                        {genres.map(g => <option key={g} value={g}>{g}</option>)}
-                    </select>
-                )}
+                    {/* Artist dropdown */}
+                    {artists.length > 0 && (
+                        <select
+                            className="marketplace-select"
+                            value={selectedArtist}
+                            onChange={e => setSelectedArtist(e.target.value)}
+                        >
+                            <option value="all">All Artists</option>
+                            {artists.map(a => <option key={a} value={a}>{a}</option>)}
+                        </select>
+                    )}
 
-                {/* Clear */}
-                {hasActiveFilters && (
-                    <button className="marketplace-clear-btn" onClick={clearFilters}>
-                        ✕ Clear
-                    </button>
-                )}
+                    {/* Genre dropdown */}
+                    {genres.length > 0 && (
+                        <select
+                            className="marketplace-select"
+                            value={selectedGenre}
+                            onChange={e => setSelectedGenre(e.target.value)}
+                        >
+                            <option value="all">All Genres</option>
+                            {genres.map(g => <option key={g} value={g}>{g}</option>)}
+                        </select>
+                    )}
+
+                    {/* Clear */}
+                    {hasActiveFilters && (
+                        <button className="marketplace-clear-btn" onClick={clearFilters}>
+                            ✕ Clear
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Content */}
