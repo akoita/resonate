@@ -167,7 +167,7 @@ describe("MetadataController", () => {
         });
 
         it("parses chainId, limit, and offset from strings", async () => {
-            await controller.getListings(undefined, undefined, "31337", undefined, undefined, undefined, undefined, undefined, undefined, undefined, "10", "5");
+            await controller.getListings(undefined, undefined, "31337", undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, "10", "5");
             expect(contractsService.getListings).toHaveBeenCalledWith(
                 expect.objectContaining({ chainId: 31337, limit: 10, offset: 5 })
             );
