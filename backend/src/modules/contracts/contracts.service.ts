@@ -313,6 +313,9 @@ export class ContractsService implements OnModuleInit {
 
     const listings = await prisma.stemListing.findMany({
       where: {
+        // Safety: always exclude sold-out and expired listings regardless of status field
+        amount: { gt: 0 },
+        expiresAt: { gt: new Date() },
         ...(status && { status }),
         ...(sellerAddress && { sellerAddress }),
         ...(chainId && { chainId }),
