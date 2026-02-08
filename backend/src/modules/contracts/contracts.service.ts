@@ -383,10 +383,11 @@ export class ContractsService implements OnModuleInit {
     sortBy?: string;
     minPrice?: string;
     maxPrice?: string;
+    excludeSellerAddress?: string;
     limit?: number;
     offset?: number;
   }) {
-    const { status, sellerAddress, chainId, artistId, releaseId, genre, search, sortBy, minPrice, maxPrice, limit = 20, offset = 0 } = options;
+    const { status, sellerAddress, chainId, artistId, releaseId, genre, search, sortBy, minPrice, maxPrice, excludeSellerAddress, limit = 20, offset = 0 } = options;
 
     // Build stem relation filter for artist/release/genre/search
     const stemFilter: any = {};
@@ -421,6 +422,7 @@ export class ContractsService implements OnModuleInit {
         expiresAt: { gt: new Date() },
         ...(status && { status }),
         ...(sellerAddress && { sellerAddress }),
+        ...(excludeSellerAddress && { NOT: { sellerAddress: excludeSellerAddress } }),
         ...(chainId && { chainId }),
         ...(minPrice && { pricePerUnit: { gte: minPrice } }),
         ...(maxPrice && { pricePerUnit: { lte: maxPrice } }),
