@@ -512,6 +512,50 @@ export class CatalogService implements OnModuleInit {
     });
   }
 
+  async deleteRelease(releaseId: string, userId: string) {
+    // 1. Verify release exists and ownership
+    const release = await prisma.release.findUnique({
+      where: { id: releaseId },
+      include: {
+        artist: true,
+        tracks: {
+          include: { stems: { select: { id: true } } }
+        }
+      }
+    });
+
+    if (!release) {
+      throw new NotFoundException("Release not found");
+    }
+
+    if (release.artist?.userId !== userId) {
+      throw new BadRequestException("Not authorized to delete this release");
+    }
+
+    // 2. Cascade delete: stems → tracks → release (no cascade in schema)
+    const stemIds = release.tracks.flatMap(t => t.stems.map(s => s.id));
+    const trackIds = release.tracks.map(t => t.id);
+
+    if (stemIds.length > 0) {
+      // Delete any listings/mints associated with stems first
+      await prisma.stemListing.deleteMany({ where: { stemId: { in: stemIds } } });
+      await prisma.stemNftMint.deleteMany({ where: { stemId: { in: stemIds } } });
+      await prisma.stem.deleteMany({ where: { id: { in: stemIds } } });
+    }
+
+    if (trackIds.length > 0) {
+      // Delete any licenses associated with tracks
+      await prisma.license.deleteMany({ where: { trackId: { in: trackIds } } });
+      await prisma.track.deleteMany({ where: { id: { in: trackIds } } });
+    }
+
+    await prisma.release.delete({ where: { id: releaseId } });
+
+    this.clearCache();
+    console.log(`[Catalog] Deleted release ${releaseId} with ${trackIds.length} tracks and ${stemIds.length} stems`);
+    return { success: true };
+  }
+
   async updateReleaseArtwork(releaseId: string, userId: string, artwork: { buffer: Buffer, mimetype: string }) {
     const release = await prisma.release.findUnique({
       where: { id: releaseId },
