@@ -6,6 +6,7 @@ import { useWebSockets, type MarketplaceUpdate } from "../../hooks/useWebSockets
 import { useBuyStem } from "../../hooks/useContracts";
 import { useToast } from "../../components/ui/Toast";
 import { useAuth } from "../../components/auth/AuthProvider";
+import { useZeroDev } from "../../components/auth/ZeroDevProviderClient";
 import { ExpiryBadge } from "../../components/marketplace/ExpiryBadge";
 import "./marketplace.css";
 
@@ -87,6 +88,23 @@ export default function MarketplacePage(props: {
     const { buy, pending: buyPending } = useBuyStem();
     const { addToast } = useToast();
     const { address: walletAddress } = useAuth();
+    const { chainId } = useZeroDev();
+
+    // Resolve the actual on-chain signer address.
+    // In local dev (chainId 31337), sendLocalTransaction derives a different
+    // EOA from the auth address via keccak256(salt + address). The listing's
+    // sellerAddress is this derived address, NOT the auth address.
+    const [signerAddress, setSignerAddress] = useState<string | null>(null);
+    useEffect(() => {
+        if (!walletAddress) { setSignerAddress(null); return; }
+        if (chainId === 31337) {
+            import("../../lib/localAA").then(({ getLocalSignerAddress }) => {
+                setSignerAddress(getLocalSignerAddress(walletAddress as `0x${string}`).toLowerCase());
+            }).catch(() => setSignerAddress(walletAddress.toLowerCase()));
+        } else {
+            setSignerAddress(walletAddress.toLowerCase());
+        }
+    }, [walletAddress, chainId]);
 
     // ---- Search debounce ----
     useEffect(() => {
@@ -109,7 +127,7 @@ export default function MarketplacePage(props: {
 
             const params = new URLSearchParams({ status: "active", limit: String(PAGE_SIZE), offset: String(currentOffset), sortBy });
             if (debouncedSearch) params.set("search", debouncedSearch);
-            if (hideOwnListings && walletAddress) params.set("excludeSeller", walletAddress);
+            if (hideOwnListings && signerAddress) params.set("excludeSeller", signerAddress);
 
             const res = await fetch(`/api/contracts/listings?${params.toString()}`);
             if (!res.ok) {
@@ -140,7 +158,7 @@ export default function MarketplacePage(props: {
         } finally {
             setLoading(false);
         }
-    }, [debouncedSearch, sortBy, offset, listings.length, hideOwnListings, walletAddress]);
+    }, [debouncedSearch, sortBy, offset, listings.length, hideOwnListings, signerAddress]);
 
     // ---- Refetch when sort or search changes ----
     useEffect(() => {
@@ -344,7 +362,7 @@ export default function MarketplacePage(props: {
                     )}
 
                     {/* Hide own listings toggle */}
-                    {walletAddress && (
+                    {signerAddress && (
                         <>
                             <div className="toolbar-sep" />
                             <label className="marketplace-toggle">
@@ -466,7 +484,7 @@ export default function MarketplacePage(props: {
                                                 {formatPrice(listing.price)}<small>ETH</small>
                                             </span>
                                         </div>
-                                        {walletAddress && listing.seller.toLowerCase() === walletAddress.toLowerCase() ? (
+                                        {signerAddress && listing.seller.toLowerCase() === signerAddress ? (
                                             <span className="stem-card__own-label">Your Listing</span>
                                         ) : (
                                             <button
