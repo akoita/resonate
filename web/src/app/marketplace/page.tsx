@@ -80,6 +80,7 @@ export default function MarketplacePage(props: {
     const [playingId, setPlayingId] = useState<string | null>(null);
     const [hasMore, setHasMore] = useState(false);
     const [offset, setOffset] = useState(0);
+    const [hideOwnListings, setHideOwnListings] = useState(true);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -108,6 +109,7 @@ export default function MarketplacePage(props: {
 
             const params = new URLSearchParams({ status: "active", limit: String(PAGE_SIZE), offset: String(currentOffset), sortBy });
             if (debouncedSearch) params.set("search", debouncedSearch);
+            if (hideOwnListings && walletAddress) params.set("excludeSeller", walletAddress);
 
             const res = await fetch(`/api/contracts/listings?${params.toString()}`);
             if (!res.ok) {
@@ -138,12 +140,12 @@ export default function MarketplacePage(props: {
         } finally {
             setLoading(false);
         }
-    }, [debouncedSearch, sortBy, offset, listings.length]);
+    }, [debouncedSearch, sortBy, offset, listings.length, hideOwnListings, walletAddress]);
 
     // ---- Refetch when sort or search changes ----
     useEffect(() => {
         fetchListings(false);
-    }, [debouncedSearch, sortBy]);
+    }, [debouncedSearch, sortBy, hideOwnListings]);
 
     // ---- Real-time marketplace updates via WebSocket ----
     const handleMarketplaceUpdate = useCallback((update: MarketplaceUpdate) => {
@@ -249,6 +251,7 @@ export default function MarketplacePage(props: {
         setSelectedGenre("all");
         setSelectedArtist("all");
         setSearch("");
+        setHideOwnListings(true);
     };
 
     // ---- Render ----
@@ -338,6 +341,22 @@ export default function MarketplacePage(props: {
                         <button className="marketplace-clear-btn" onClick={clearFilters}>
                             ✕ Clear
                         </button>
+                    )}
+
+                    {/* Hide own listings toggle */}
+                    {walletAddress && (
+                        <>
+                            <div className="toolbar-sep" />
+                            <label className="marketplace-toggle">
+                                <input
+                                    type="checkbox"
+                                    checked={hideOwnListings}
+                                    onChange={e => setHideOwnListings(e.target.checked)}
+                                />
+                                <span className="marketplace-toggle__slider" />
+                                <span className="marketplace-toggle__label">Hide my listings</span>
+                            </label>
+                        </>
                     )}
                 </div>
             </div>

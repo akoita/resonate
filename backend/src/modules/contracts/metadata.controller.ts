@@ -100,6 +100,7 @@ export class MetadataController {
     @Query("sortBy") sortBy?: string,
     @Query("minPrice") minPrice?: string,
     @Query("maxPrice") maxPrice?: string,
+    @Query("excludeSeller") excludeSeller?: string,
     @Query("limit") limitStr?: string,
     @Query("offset") offsetStr?: string
   ) {
@@ -118,6 +119,7 @@ export class MetadataController {
       sortBy,
       minPrice,
       maxPrice,
+      excludeSellerAddress: excludeSeller?.toLowerCase(),
       limit,
       offset,
     });
