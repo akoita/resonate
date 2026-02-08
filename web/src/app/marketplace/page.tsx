@@ -115,10 +115,18 @@ export default function MarketplacePage(props: {
             const data = await res.json();
             const newListings: ListingData[] = data.listings || [];
 
+            // Deduplicate by listingId — the API or Load-More overlap
+            // can produce entries with the same listingId.
+            const dedupe = (arr: ListingData[]) => {
+                const seen = new Map<string, ListingData>();
+                for (const l of arr) seen.set(l.listingId, l);
+                return Array.from(seen.values());
+            };
+
             if (append) {
-                setListings(prev => [...prev, ...newListings]);
+                setListings(prev => dedupe([...prev, ...newListings]));
             } else {
-                setListings(newListings);
+                setListings(dedupe(newListings));
             }
             setHasMore(newListings.length === PAGE_SIZE);
         } catch (err) {
@@ -191,7 +199,17 @@ export default function MarketplacePage(props: {
             fetchListings(false);
         } catch (err) {
             console.error("Buy failed:", err);
-            addToast({ type: "error", title: "Purchase Failed", message: err instanceof Error ? err.message : "Transaction failed" });
+            const msg = err instanceof Error ? err.message : String(err);
+
+            // ERC1155InsufficientBalance — seller no longer holds the token (already sold)
+            if (msg.includes("0x03dee4c5") || msg.includes("ERC1155InsufficientBalance")) {
+                setListings(prev => prev.filter(l => l.listingId !== listingId));
+                addToast({ type: "error", title: "Already Sold", message: "This stem has already been purchased and is no longer available." });
+                fetchListings(false);
+                return;
+            }
+
+            addToast({ type: "error", title: "Purchase Failed", message: msg });
         }
     };
 
@@ -354,7 +372,7 @@ export default function MarketplacePage(props: {
                 <>
                     <div className="marketplace-grid">
                         {filteredListings.map(listing => (
-                            <div key={listing.listingId} className="stem-card" data-testid="stem-card">
+                            <div key={`${listing.listingId}-${listing.tokenId}`} className="stem-card" data-testid="stem-card">
                                 {/* Artwork */}
                                 <div className="stem-card__artwork">
                                     {listing.stem?.artworkUrl ? (
