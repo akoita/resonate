@@ -4,19 +4,21 @@ pragma solidity ^0.8.28;
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IERC2981} from "@openzeppelin/contracts/interfaces/IERC2981.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {
+    SafeERC20
+} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title StemMarketplaceV2
  * @author Resonate Protocol
  * @notice Minimal marketplace with enforced royalties
- * @dev 
+ * @dev
  *   - Single responsibility: buy/sell with enforced royalties
  *   - Reads royalty info from EIP-2981
  *   - Routes payments directly (use 0xSplits address as royalty receiver for splits)
  *   - ~200 lines instead of ~600
- * 
+ *
  * @custom:version 2.0.0
  */
 contract StemMarketplaceV2 is Ownable {
@@ -29,7 +31,7 @@ contract StemMarketplaceV2 is Ownable {
         uint256 tokenId;
         uint256 amount;
         uint256 pricePerUnit;
-        address paymentToken;   // address(0) = ETH
+        address paymentToken; // address(0) = ETH
         uint40 expiry;
     }
 
@@ -47,10 +49,25 @@ contract StemMarketplaceV2 is Ownable {
     mapping(uint256 => Listing) public listings;
 
     // ============ Events ============
-    event Listed(uint256 indexed listingId, address indexed seller, uint256 tokenId, uint256 amount, uint256 price);
+    event Listed(
+        uint256 indexed listingId,
+        address indexed seller,
+        uint256 tokenId,
+        uint256 amount,
+        uint256 price
+    );
     event Cancelled(uint256 indexed listingId);
-    event Sold(uint256 indexed listingId, address indexed buyer, uint256 amount, uint256 totalPaid);
-    event RoyaltyPaid(uint256 indexed tokenId, address indexed recipient, uint256 amount);
+    event Sold(
+        uint256 indexed listingId,
+        address indexed buyer,
+        uint256 amount,
+        uint256 totalPaid
+    );
+    event RoyaltyPaid(
+        uint256 indexed tokenId,
+        address indexed recipient,
+        uint256 amount
+    );
 
     // ============ Errors ============
     error NotSeller();
@@ -60,6 +77,7 @@ contract StemMarketplaceV2 is Ownable {
     error InsufficientAmount();
     error TransferFailed();
     error InvalidFee();
+    error CannotBuyOwnListing();
 
     // ============ Constructor ============
 
@@ -84,8 +102,11 @@ contract StemMarketplaceV2 is Ownable {
         uint256 duration
     ) external returns (uint256 listingId) {
         // Verify ownership
-        require(stemNFT.balanceOf(msg.sender, tokenId) >= amount, "Insufficient balance");
-        
+        require(
+            stemNFT.balanceOf(msg.sender, tokenId) >= amount,
+            "Insufficient balance"
+        );
+
         listingId = ++_listingId;
         listings[listingId] = Listing({
             seller: msg.sender,
@@ -110,9 +131,10 @@ contract StemMarketplaceV2 is Ownable {
 
     function buy(uint256 listingId, uint256 amount) external payable {
         Listing storage listing = listings[listingId];
-        
+
         // Validate
         if (listing.seller == address(0)) revert InvalidListing();
+        if (listing.seller == msg.sender) revert CannotBuyOwnListing();
         if (block.timestamp > listing.expiry) revert Expired();
         if (amount > listing.amount) revert InsufficientAmount();
 
@@ -123,7 +145,10 @@ contract StemMarketplaceV2 is Ownable {
         uint256 totalPrice = amount * listing.pricePerUnit;
 
         // Calculate fees
-        (address royaltyRecipient, uint256 royaltyAmount) = _getRoyalty(tokenId, totalPrice);
+        (address royaltyRecipient, uint256 royaltyAmount) = _getRoyalty(
+            tokenId,
+            totalPrice
+        );
         uint256 protocolFee = (totalPrice * protocolFeeBps) / BPS;
         uint256 sellerAmount = totalPrice - royaltyAmount - protocolFee;
 
@@ -165,16 +190,25 @@ contract StemMarketplaceV2 is Ownable {
 
     // ============ View ============
 
-    function getListing(uint256 listingId) external view returns (Listing memory) {
+    function getListing(
+        uint256 listingId
+    ) external view returns (Listing memory) {
         return listings[listingId];
     }
 
-    function quoteBuy(uint256 listingId, uint256 amount) external view returns (
-        uint256 totalPrice,
-        uint256 royaltyAmount,
-        uint256 protocolFee,
-        uint256 sellerAmount
-    ) {
+    function quoteBuy(
+        uint256 listingId,
+        uint256 amount
+    )
+        external
+        view
+        returns (
+            uint256 totalPrice,
+            uint256 royaltyAmount,
+            uint256 protocolFee,
+            uint256 sellerAmount
+        )
+    {
         Listing storage listing = listings[listingId];
         totalPrice = amount * listing.pricePerUnit;
         (, royaltyAmount) = _getRoyalty(listing.tokenId, totalPrice);
@@ -184,8 +218,14 @@ contract StemMarketplaceV2 is Ownable {
 
     // ============ Internal ============
 
-    function _getRoyalty(uint256 tokenId, uint256 salePrice) internal view returns (address, uint256) {
-        try IERC2981(address(stemNFT)).royaltyInfo(tokenId, salePrice) returns (address r, uint256 a) {
+    function _getRoyalty(
+        uint256 tokenId,
+        uint256 salePrice
+    ) internal view returns (address, uint256) {
+        try IERC2981(address(stemNFT)).royaltyInfo(tokenId, salePrice) returns (
+            address r,
+            uint256 a
+        ) {
             // Cap royalty
             uint256 maxRoyalty = (salePrice * MAX_ROYALTY) / BPS;
             return (r, a > maxRoyalty ? maxRoyalty : a);
@@ -199,7 +239,9 @@ contract StemMarketplaceV2 is Ownable {
             if (msg.value < amount) revert InsufficientPayment();
             // Refund excess
             if (msg.value > amount) {
-                (bool ok,) = payable(msg.sender).call{value: msg.value - amount}("");
+                (bool ok, ) = payable(msg.sender).call{
+                    value: msg.value - amount
+                }("");
                 if (!ok) revert TransferFailed();
             }
         } else {
@@ -209,7 +251,7 @@ contract StemMarketplaceV2 is Ownable {
 
     function _pay(address token, address to, uint256 amount) internal {
         if (token == address(0)) {
-            (bool ok,) = payable(to).call{value: amount}("");
+            (bool ok, ) = payable(to).call{value: amount}("");
             if (!ok) revert TransferFailed();
         } else {
             IERC20(token).safeTransfer(to, amount);
