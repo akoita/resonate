@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Param,
@@ -161,6 +162,15 @@ export class CatalogController {
     @Body() body: { title?: string; status?: string },
   ) {
     return this.catalogService.updateRelease(releaseId, body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Delete("releases/:releaseId")
+  deleteRelease(
+    @Param("releaseId") releaseId: string,
+    @Request() req: any,
+  ) {
+    return this.catalogService.deleteRelease(releaseId, req.user.userId);
   }
 
   @UseGuards(AuthGuard("jwt"))

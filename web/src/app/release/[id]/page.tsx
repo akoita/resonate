@@ -440,6 +440,50 @@ export default function ReleaseDetails() {
               </Button>
             )}
             {isOwner && (
+              <TrackActionMenu
+                actions={[
+                  ...(release.status === 'processing' ? [{
+                    label: "Cancel Processing",
+                    icon: <span>⏹</span>,
+                    variant: "destructive" as const,
+                    onClick: async () => {
+                      if (!token) return;
+                      const confirmed = window.confirm("Stop processing this release? Tracks will be marked as failed.");
+                      if (!confirmed) return;
+                      try {
+                        const { cancelProcessing } = await import("../../../lib/api");
+                        await cancelProcessing(token, release.id);
+                        addToast({ type: "success", title: "Cancelled", message: "Processing has been stopped." });
+                        setRelease(prev => prev ? { ...prev, status: 'failed', tracks: prev.tracks?.map(t => ({ ...t, processingStatus: 'failed' as const })) } : null);
+                      } catch (e) {
+                        console.error(e);
+                        addToast({ type: "error", title: "Cancel failed", message: "Could not cancel processing." });
+                      }
+                    },
+                  }] : []),
+                  {
+                    label: "Delete Release",
+                    icon: <span>🗑</span>,
+                    variant: "destructive" as const,
+                    onClick: async () => {
+                      if (!token) return;
+                      const confirmed = window.confirm(`Delete "${release.title}"? This action is permanent and cannot be undone.`);
+                      if (!confirmed) return;
+                      try {
+                        const { deleteRelease } = await import("../../../lib/api");
+                        await deleteRelease(token, release.id);
+                        addToast({ type: "success", title: "Deleted", message: `"${release.title}" has been removed.` });
+                        router.push("/");
+                      } catch (e) {
+                        console.error(e);
+                        addToast({ type: "error", title: "Delete failed", message: "Could not delete the release." });
+                      }
+                    },
+                  },
+                ]}
+              />
+            )}
+            {isOwner && (
               <Button variant="ghost" className="btn-save" onClick={() => artworkInputRef.current?.click()}>
                 Edit Cover
               </Button>

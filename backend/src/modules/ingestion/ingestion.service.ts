@@ -690,6 +690,36 @@ export class IngestionService {
     return { success: true };
   }
 
+  async cancelProcessing(releaseId: string) {
+    console.log(`[Ingestion] Cancelling processing for release ${releaseId}`);
+
+    // 1. Remove any waiting/delayed jobs for this release from the BullMQ queue
+    const waitingJobs = await this.stemsQueue.getJobs(['waiting', 'delayed', 'active']);
+    for (const job of waitingJobs) {
+      if (job.data?.releaseId === releaseId) {
+        try {
+          await job.remove();
+          console.log(`[Ingestion] Removed job ${job.id} for release ${releaseId}`);
+        } catch (err) {
+          // Job might be active and can't be removed — that's ok, we'll mark it failed
+          console.warn(`[Ingestion] Could not remove job ${job.id}:`, err);
+        }
+      }
+    }
+
+    // 2. Emit stems.failed event so catalog service updates DB status
+    this.eventBus.publish({
+      eventName: "stems.failed",
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      releaseId,
+      artistId: "cancelled",
+      error: "Processing cancelled by user",
+    });
+
+    return { success: true, message: "Processing cancelled" };
+  }
+
   private inferStemType(uri: string) {
     const normalized = uri.toLowerCase();
     if (normalized.includes("drum")) return "drums";
