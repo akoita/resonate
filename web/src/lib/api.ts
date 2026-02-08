@@ -376,6 +376,28 @@ export async function retryRelease(
   );
 }
 
+export async function cancelProcessing(
+  token: string,
+  releaseId: string
+) {
+  return apiRequest<{ success: boolean; message: string }>(
+    `/ingestion/cancel/${releaseId}`,
+    { method: "POST" },
+    token
+  );
+}
+
+export async function deleteRelease(
+  token: string,
+  releaseId: string
+) {
+  return apiRequest<{ success: boolean }>(
+    `/catalog/releases/${releaseId}`,
+    { method: "DELETE" },
+    token
+  );
+}
+
 // ========== Playlist API ==========
 
 export async function createPlaylistAPI(

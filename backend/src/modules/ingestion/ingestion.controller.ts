@@ -55,6 +55,12 @@ export class IngestionController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @Post("cancel/:releaseId")
+  cancel(@Param("releaseId") releaseId: string) {
+    return this.ingestionService.cancelProcessing(releaseId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
   @Get("status/:trackId")
   status(@Param("trackId") trackId: string) {
     return this.ingestionService.getStatus(trackId);
