@@ -1,6 +1,8 @@
 import { Injectable, OnModuleInit, Logger } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
+import { createPublicClient, http, type Address } from "viem";
+import { foundry, sepolia, baseSepolia } from "viem/chains";
 import type {
   ContractStemMintedEvent,
   ContractStemListedEvent,
@@ -9,14 +11,115 @@ import type {
   ContractListingCancelledEvent,
 } from "../../events/event_types";
 
+// ABI for the marketplace getListing view function
+const MARKETPLACE_ABI = [
+  {
+    name: "getListing",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "listingId", type: "uint256" }],
+    outputs: [{
+      name: "",
+      type: "tuple",
+      components: [
+        { name: "seller", type: "address" },
+        { name: "tokenId", type: "uint256" },
+        { name: "amount", type: "uint256" },
+        { name: "pricePerUnit", type: "uint256" },
+        { name: "paymentToken", type: "address" },
+        { name: "expiry", type: "uint40" },
+      ],
+    }],
+  },
+] as const;
+
+// Chain configurations (shared with indexer)
+const CHAIN_CONFIGS: Record<number, { chain: any; rpcUrl: string }> = {
+  31337: { chain: foundry, rpcUrl: process.env.LOCAL_RPC_URL || "http://localhost:8545" },
+  11155111: { chain: sepolia, rpcUrl: process.env.SEPOLIA_RPC_URL || `https://sepolia.infura.io/v3/${process.env.INFURA_KEY}` },
+  84532: { chain: baseSepolia, rpcUrl: process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org" },
+};
+
+const MARKETPLACE_ADDRESSES: Record<number, Address> = {
+  31337: (process.env.MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
+  11155111: (process.env.SEPOLIA_MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
+  84532: (process.env.BASE_SEPOLIA_MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
+};
+
 @Injectable()
 export class ContractsService implements OnModuleInit {
   private readonly logger = new Logger(ContractsService.name);
 
   constructor(private readonly eventBus: EventBus) { }
 
-  onModuleInit() {
+  async onModuleInit() {
     this.subscribeToContractEvents();
+
+    // Reconcile stale listings on startup (non-blocking)
+    this.reconcileListings().catch(err =>
+      this.logger.error(`Listing reconciliation failed: ${err}`)
+    );
+  }
+
+  /**
+   * Reconcile DB listings with on-chain state.
+   * Any "active" listing whose on-chain record shows seller=0x0 (deleted)
+   * or amount=0 is marked as "sold" in the DB.
+   */
+  private async reconcileListings() {
+    const chainId = parseInt(process.env.INDEXER_CHAIN_ID || process.env.CHAIN_ID || "31337");
+    const config = CHAIN_CONFIGS[chainId];
+    const marketplaceAddr = MARKETPLACE_ADDRESSES[chainId];
+
+    if (!config || !marketplaceAddr || marketplaceAddr === "0x0000000000000000000000000000000000000000") {
+      this.logger.debug("Skipping listing reconciliation: no chain/contract config");
+      return;
+    }
+
+    const client = createPublicClient({ chain: config.chain, transport: http(config.rpcUrl) });
+
+    // Get all "active" listings from DB for this chain
+    const activeListings = await prisma.stemListing.findMany({
+      where: { status: "active", chainId },
+      select: { id: true, listingId: true },
+    });
+
+    if (activeListings.length === 0) return;
+
+    this.logger.log(`Reconciling ${activeListings.length} active listings against on-chain state...`);
+    let staleCount = 0;
+
+    for (const dbListing of activeListings) {
+      try {
+        const onChain = await client.readContract({
+          address: marketplaceAddr,
+          abi: MARKETPLACE_ABI,
+          functionName: "getListing",
+          args: [dbListing.listingId],
+        });
+
+        const seller = onChain.seller as string;
+        const amount = onChain.amount as bigint;
+
+        // seller == 0x0 means listing was deleted on-chain (sold out or cancelled)
+        if (seller === "0x0000000000000000000000000000000000000000" || amount === 0n) {
+          await prisma.stemListing.update({
+            where: { id: dbListing.id },
+            data: { status: "sold", amount: 0n, soldAt: new Date() },
+          });
+          staleCount++;
+          this.logger.log(`Reconciled stale listing ${dbListing.listingId} -> sold`);
+        }
+      } catch (error) {
+        this.logger.warn(`Failed to reconcile listing ${dbListing.listingId}: ${error}`);
+      }
+    }
+
+    if (staleCount > 0) {
+      this.logger.log(`Reconciliation complete: marked ${staleCount} stale listings as sold`);
+    } else {
+      this.logger.log("Reconciliation complete: all active listings are valid on-chain");
+    }
   }
 
   private subscribeToContractEvents() {
