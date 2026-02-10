@@ -184,6 +184,8 @@ export interface AgentDecisionMadeEvent extends BaseEvent {
   licenseType?: "personal" | "remix" | "commercial";
   priceUsd?: number;
   reason: string;
+  reasoning?: string;
+  latencyMs?: number;
 }
 
 export interface AgentEvaluatedEvent extends BaseEvent {
