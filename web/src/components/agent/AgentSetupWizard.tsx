@@ -1,8 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 
-const VIBES = ["Deep House", "Lo-fi", "Focus", "Ambient", "Jazz", "Electronic", "Hip Hop", "Classical"];
+const PRESET_VIBES = [
+    "Deep House", "Lo-fi", "Focus", "Ambient", "Jazz", "Electronic",
+    "Hip Hop", "Classical", "R&B", "Soul", "Trap", "Drill",
+    "Afrobeats", "Reggaeton", "Techno", "Indie", "Pop", "Rock",
+];
 
 type WizardProps = {
     onComplete: (data: { name: string; vibes: string[]; monthlyCapUsd: number }) => Promise<void>;
@@ -15,11 +19,27 @@ export default function AgentSetupWizard({ onComplete, onClose }: WizardProps) {
     const [selectedVibes, setSelectedVibes] = useState<string[]>(["Focus"]);
     const [budget, setBudget] = useState(10);
     const [submitting, setSubmitting] = useState(false);
+    const [customInput, setCustomInput] = useState("");
 
     const toggleVibe = (vibe: string) => {
         setSelectedVibes((prev) =>
             prev.includes(vibe) ? prev.filter((v) => v !== vibe) : [...prev, vibe]
         );
+    };
+
+    const addCustomGenre = () => {
+        const genre = customInput.trim();
+        if (genre && !selectedVibes.includes(genre)) {
+            setSelectedVibes((prev) => [...prev, genre]);
+        }
+        setCustomInput("");
+    };
+
+    const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            addCustomGenre();
+        }
     };
 
     const handleFinish = async () => {
@@ -36,6 +56,7 @@ export default function AgentSetupWizard({ onComplete, onClose }: WizardProps) {
     };
 
     const canAdvance = step === 0 ? true : step === 1 ? selectedVibes.length > 0 : true;
+    const customVibes = selectedVibes.filter((v) => !PRESET_VIBES.includes(v));
 
     return (
         <div className="agent-wizard-overlay" onClick={onClose}>
@@ -70,10 +91,10 @@ export default function AgentSetupWizard({ onComplete, onClose }: WizardProps) {
                         <div className="agent-wizard-emoji">🎵</div>
                         <h2 className="agent-wizard-title">Choose Your Vibe</h2>
                         <p className="agent-wizard-desc">
-                            Tell your DJ what kind of music to look for. Pick one or more.
+                            Tell your DJ what kind of music to look for. Pick one or more, or add your own.
                         </p>
                         <div className="agent-wizard-vibes">
-                            {VIBES.map((vibe) => (
+                            {PRESET_VIBES.map((vibe) => (
                                 <button
                                     key={vibe}
                                     className={`vibe-chip ${selectedVibes.includes(vibe) ? "selected" : ""}`}
@@ -82,6 +103,33 @@ export default function AgentSetupWizard({ onComplete, onClose }: WizardProps) {
                                     {vibe}
                                 </button>
                             ))}
+                            {customVibes.map((vibe) => (
+                                <button
+                                    key={vibe}
+                                    className="vibe-chip selected custom"
+                                    onClick={() => toggleVibe(vibe)}
+                                    title="Click to remove"
+                                >
+                                    {vibe} ×
+                                </button>
+                            ))}
+                        </div>
+                        <div className="agent-custom-genre-row" style={{ marginTop: "12px", maxWidth: "360px", width: "100%" }}>
+                            <input
+                                className="agent-custom-genre-input"
+                                type="text"
+                                placeholder="Add custom genre..."
+                                value={customInput}
+                                onChange={(e) => setCustomInput(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                            />
+                            <button
+                                className="ui-btn ui-btn-ghost ui-btn-sm"
+                                onClick={addCustomGenre}
+                                disabled={!customInput.trim()}
+                            >
+                                + Add
+                            </button>
                         </div>
                     </div>
                 )}
