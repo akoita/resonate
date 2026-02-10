@@ -215,20 +215,27 @@ export default function ReleaseDetails() {
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mapToLocalTrack = (t: any): LocalTrack => ({
-    id: t.id,
-    title: t.title,
-    artist: t.artist || release?.primaryArtist || release?.artist?.displayName || "Unknown Artist",
-    albumArtist: null,
-    album: release?.title || "Unknown Album",
-    year: release?.releaseDate ? new Date(release.releaseDate).getFullYear() : null,
-    genre: release?.genre || null,
-    duration: getTrackDuration(t),
-    createdAt: t.createdAt ? new Date(t.createdAt).toISOString() : new Date().toISOString(),
-    remoteUrl: t.stems && t.stems.length > 0 ? t.stems[0].uri : undefined,
-    remoteArtworkUrl: release?.artworkUrl || undefined,
-    stems: t.stems,
-  });
+  const mapToLocalTrack = (t: any): LocalTrack => {
+    // Use ORIGINAL stem for playback URL (same as handlePlayTrack)
+    // stems[0] is typically an encrypted separated stem, NOT the playable original
+    const originalStem = t.stems?.find(
+      (s: { type?: string }) => s.type?.toUpperCase() === "ORIGINAL",
+    );
+    return {
+      id: t.id,
+      title: t.title,
+      artist: t.artist || release?.primaryArtist || release?.artist?.displayName || "Unknown Artist",
+      albumArtist: null,
+      album: release?.title || "Unknown Album",
+      year: release?.releaseDate ? new Date(release.releaseDate).getFullYear() : null,
+      genre: release?.genre || null,
+      duration: getTrackDuration(t),
+      createdAt: t.createdAt ? new Date(t.createdAt).toISOString() : new Date().toISOString(),
+      remoteUrl: originalStem?.uri,
+      remoteArtworkUrl: release?.artworkUrl || undefined,
+      stems: t.stems,
+    };
+  };
 
   const handlePlayAll = () => handlePlayTrack(0);
 
