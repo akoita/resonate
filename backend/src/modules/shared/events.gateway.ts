@@ -159,13 +159,27 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
 
         this.eventBus.subscribe('agent.decision_made', (event: any) => {
             if (this.server) {
-                const count = event.trackCount ?? 0;
-                const spend = event.totalSpend != null ? `$${event.totalSpend.toFixed(2)}` : '';
-                const msg = event.reason === 'no_tracks'
-                    ? 'No matching tracks found in catalog'
-                    : event.reason === 'error'
-                        ? 'Curation encountered an error'
-                        : `Curation complete: ${count} track${count !== 1 ? 's' : ''} selected${spend ? `, ${spend} total` : ''}`;
+                let msg: string;
+                if (event.reason === 'no_tracks') {
+                    msg = 'No matching tracks found in catalog';
+                } else if (event.reason === 'error') {
+                    msg = 'Curation encountered an error';
+                } else if (event.reasoning || event.latencyMs != null) {
+                    // LLM adapter result — single track with reasoning
+                    const latency = event.latencyMs != null ? ` (${(event.latencyMs / 1000).toFixed(1)}s)` : '';
+                    const price = event.priceUsd != null ? ` — $${Number(event.priceUsd).toFixed(2)}` : '';
+                    msg = event.trackId
+                        ? `AI selected track${price}${latency}`
+                        : `AI could not find a suitable track${latency}`;
+                    if (event.reasoning) {
+                        msg += `: ${event.reasoning}`;
+                    }
+                } else {
+                    // Orchestrator pipeline result — batch of tracks
+                    const count = event.trackCount ?? 0;
+                    const spend = event.totalSpend != null ? `$${event.totalSpend.toFixed(2)}` : '';
+                    msg = `Curation complete: ${count} track${count !== 1 ? 's' : ''} selected${spend ? `, ${spend} total` : ''}`;
+                }
                 this.server.emit('agent.event', {
                     id: `${event.sessionId}-dec-${Date.now()}`,
                     type: 'agent.decision_made',
