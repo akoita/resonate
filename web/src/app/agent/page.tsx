@@ -50,8 +50,10 @@ export default function AgentPage() {
                 title: "Session Started",
                 message: "Your DJ is now scanning for tracks!",
             });
-            // Refetch history after orchestration completes (gives time for track selection + persistence)
-            setTimeout(() => refetchHistory(), 3000);
+            // Refetch history after orchestration completes (LLM may take up to ~30s for multi-genre search)
+            setTimeout(() => refetchHistory(), 15000);
+            // Safety-net refetch for slower LLM responses
+            setTimeout(() => refetchHistory(), 35000);
         }
     };
 
@@ -99,7 +101,13 @@ export default function AgentPage() {
                             <AgentStatusCard config={config} onToggle={handleToggle} />
                             <AgentActivityFeed isActive={config.isActive} events={events} />
                             <AgentBudgetCard config={config} spentUsd={sessions.reduce((sum, s) => sum + s.spentUsd, 0)} onEdit={handleEditBudget} />
-                            <AgentTasteCard config={config} />
+                            <AgentTasteCard
+                                config={config}
+                                onUpdateVibes={async (vibes) => {
+                                    await updateConfig({ vibes });
+                                    addToast({ type: "success", title: "Vibes Updated", message: "Your DJ's taste has been updated." });
+                                }}
+                            />
                         </div>
                         {!historyLoading && sessions.some(s => s.licenses.length > 0) && (
                             <div className="agent-discovery-banner">

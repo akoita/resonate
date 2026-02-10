@@ -52,7 +52,7 @@ export class AgentOrchestratorService {
       recentTrackIds: input.recentTrackIds,
       allowExplicit: input.preferences.allowExplicit,
       useEmbeddings: queries.length > 0,
-      limit: 5,
+      limit: parseInt(process.env.AGENT_TRACK_LIMIT ?? "5", 10),
     });
 
     if (!selection.selected || selection.selected.length === 0) {
