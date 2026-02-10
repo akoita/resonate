@@ -19,7 +19,8 @@ describe("agent evaluation", () => {
             ],
           },
     } as any;
-    const service = new AgentEvaluationService(orchestrator, new EventBus());
+    const runtimeService = { run: async () => ({ status: "approved" }) } as any;
+    const service = new AgentEvaluationService(orchestrator, runtimeService, new EventBus());
     const result = await service.evaluate([
       {
         sessionId: "session-1",
