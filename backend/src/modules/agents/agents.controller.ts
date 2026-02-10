@@ -57,8 +57,11 @@ export class AgentsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
   @Post("evaluate")
-  evaluate(@Body() body: { sessions: Parameters<AgentEvaluationService["evaluate"]>[0] }) {
-    return this.evaluator.evaluate(body.sessions);
+  evaluate(@Body() body: {
+    sessions: Parameters<AgentEvaluationService["evaluate"]>[0];
+    runtime?: "vertex" | "langgraph" | "local";
+  }) {
+    return this.evaluator.evaluate(body.sessions, { runtime: body.runtime });
   }
 
   @UseGuards(AuthGuard("jwt"))
