@@ -4,6 +4,7 @@ import {
   Put,
   Post,
   Param,
+  Query,
   Body,
   UseGuards,
   Req,
@@ -22,6 +23,17 @@ export class StemPricingController {
   @Get("templates")
   getTemplates() {
     return this.pricingService.getTemplates();
+  }
+
+  /**
+   * GET /api/stem-pricing/batch-get?stemIds=id1,id2,...
+   * Returns pricing for multiple stems in one call (public, no auth).
+   * Used by marketplace to display license badges without N+1 requests.
+   */
+  @Get("batch-get")
+  batchGetPricing(@Query("stemIds") stemIds: string) {
+    const ids = stemIds ? stemIds.split(",").filter(Boolean).slice(0, 100) : [];
+    return this.pricingService.batchGetPricing(ids);
   }
 
   /**

@@ -17,6 +17,8 @@ import { MintStemButton } from "../../../components/marketplace/MintStemButton";
 import { TrackActionMenu } from "../../../components/ui/TrackActionMenu";
 import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressUpdate } from "../../../hooks/useWebSockets";
 import { StemPricingPanel } from "../../../components/release/StemPricingPanel";
+import { LicensingInfoSection } from "../../../components/release/LicensingInfoSection";
+import "../../../styles/license-badges.css";
 
 // Helper to get duration from track's first stem
 const getTrackDuration = (track: { stems?: Array<{ durationSeconds?: number | null }> }): number => {
@@ -805,6 +807,18 @@ export default function ReleaseDetails() {
         );
         if (allStems.length === 0) return null;
         return <StemPricingPanel releaseId={release.id} stems={allStems} />;
+      })()}
+
+      {/* Public Licensing Info — visible to ALL users */}
+      {release.tracks && (() => {
+        const stemData = release.tracks.flatMap(t =>
+          (t.stems || []).filter(s => s.type !== "ORIGINAL").map(s => ({
+            id: s.id,
+            title: `${s.type.charAt(0).toUpperCase() + s.type.slice(1)} — ${t.title}`,
+          }))
+        );
+        if (stemData.length === 0) return null;
+        return <LicensingInfoSection stems={stemData} />;
       })()}
 
       <footer className="release-footer">

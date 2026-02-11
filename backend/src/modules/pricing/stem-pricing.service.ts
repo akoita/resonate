@@ -141,6 +141,53 @@ export class StemPricingService {
   }
 
   /**
+   * Batch-get pricing for multiple stems (public, no auth).
+   * Returns a map of stemId → pricing with computed prices.
+   * Stems without custom pricing get standard defaults.
+   */
+  async batchGetPricing(stemIds: string[]) {
+    if (stemIds.length === 0) return {};
+
+    const pricingRows = await prisma.stemPricing.findMany({
+      where: { stemId: { in: stemIds } },
+    });
+
+    const pricingMap = new Map(pricingRows.map((p) => [p.stemId, p]));
+    const result: Record<string, unknown> = {};
+
+    for (const stemId of stemIds) {
+      const pricing = pricingMap.get(stemId);
+      if (!pricing) {
+        result[stemId] = {
+          stemId,
+          basePlayPriceUsd: 0.05,
+          remixLicenseUsd: 5.0,
+          commercialLicenseUsd: 25.0,
+          floorUsd: 0.01,
+          ceilingUsd: 50.0,
+          listingDurationDays: null,
+          computed: this.computePrices({
+            basePlayPriceUsd: 0.05,
+            remixLicenseUsd: 5.0,
+            commercialLicenseUsd: 25.0,
+          }),
+        };
+      } else {
+        result[stemId] = {
+          ...pricing,
+          computed: this.computePrices({
+            basePlayPriceUsd: pricing.basePlayPriceUsd,
+            remixLicenseUsd: pricing.remixLicenseUsd,
+            commercialLicenseUsd: pricing.commercialLicenseUsd,
+          }),
+        };
+      }
+    }
+
+    return result;
+  }
+
+  /**
    * Upsert pricing for a stem
    */
   async upsertPricing(stemId: string, userId: string, dto: StemPricingDto) {

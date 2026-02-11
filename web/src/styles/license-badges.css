@@ -1,0 +1,270 @@
+/* ============================================================
+   License Components Styles
+   Badges, Type Selector, and Info Section
+   Matches marketplace glassmorphism design system
+   ============================================================ */
+
+/* ---- License Badges (marketplace cards) ---- */
+
+.license-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.license-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+}
+
+.license-badge--remix {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.2);
+}
+
+.license-badge--commercial {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.license-badge__icon {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.license-badge__price {
+  font-weight: 700;
+}
+
+/* ---- License Type Selector (BuyModal) ---- */
+
+.license-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.license-selector__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.license-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.license-option:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.license-option--selected {
+  background: rgba(var(--color-accent-rgb), 0.08);
+  border-color: rgba(var(--color-accent-rgb), 0.35);
+  box-shadow: 0 0 0 1px rgba(var(--color-accent-rgb), 0.15);
+}
+
+.license-option input[type="radio"] {
+  display: none;
+}
+
+.license-option__radio {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  flex-shrink: 0;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.license-option--selected .license-option__radio {
+  border-color: var(--color-accent);
+}
+
+.license-option--selected .license-option__radio::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+.license-option__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.license-option__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.license-option__desc {
+  font-size: 11px;
+  color: var(--color-muted);
+  margin-top: 2px;
+}
+
+.license-option__includes {
+  font-size: 10px;
+  color: rgba(var(--color-accent-rgb), 0.7);
+  margin-top: 2px;
+  font-weight: 500;
+}
+
+.license-option__price {
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.license-option__price small {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-muted);
+  margin-left: 2px;
+}
+
+/* ---- Licensing Info Section (Release Detail) ---- */
+
+.licensing-info {
+  margin-top: var(--space-8);
+  padding: var(--space-6);
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+}
+
+.licensing-info__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: var(--space-5);
+}
+
+.licensing-info__icon {
+  font-size: 20px;
+}
+
+.licensing-info__title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.licensing-info__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-4);
+}
+
+.licensing-tier {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: var(--space-4);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.02);
+  transition: all 0.25s ease;
+}
+
+.licensing-tier:hover {
+  border-color: rgba(var(--color-accent-rgb), 0.2);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.licensing-tier__name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.licensing-tier__price {
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.licensing-tier__price small {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+.licensing-tier__desc {
+  font-size: 12px;
+  color: var(--color-muted);
+  line-height: 1.5;
+}
+
+.licensing-tier__includes {
+  margin-top: 8px;
+  font-size: 11px;
+  color: rgba(var(--color-accent-rgb), 0.7);
+  font-weight: 500;
+}
+
+/* Personal tier accent */
+.licensing-tier--personal .licensing-tier__name {
+  color: #10b981;
+}
+
+/* Remix tier accent */
+.licensing-tier--remix .licensing-tier__name {
+  color: #a855f7;
+}
+
+/* Commercial tier accent */
+.licensing-tier--commercial .licensing-tier__name {
+  color: #3b82f6;
+}
+
+.licensing-info__stem-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: var(--space-3);
+}
+
+.licensing-info__stem-group {
+  margin-bottom: var(--space-5);
+}
+
+.licensing-info__stem-group:last-child {
+  margin-bottom: 0;
+}
