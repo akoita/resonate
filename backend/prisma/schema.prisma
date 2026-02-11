@@ -103,6 +103,21 @@ model Stem {
   track              Track         @relation(fields: [trackId], references: [id])
   listings           StemListing[]
   nftMint            StemNftMint?
+  pricing            StemPricing?
+}
+
+model StemPricing {
+  id                       String   @id @default(uuid())
+  stemId                   String   @unique
+  basePlayPriceUsd         Float    @default(0.05)
+  remixLicenseUsd          Float    @default(5.0)
+  commercialLicenseUsd     Float    @default(25.0)
+  floorUsd                 Float    @default(0.01)
+  ceilingUsd               Float    @default(50.0)
+  listingDurationDays      Int?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+  stem                     Stem     @relation(fields: [stemId], references: [id])
 }
 
 model StemNftMint {

@@ -1,0 +1,582 @@
+/* ==========================================
+   Stem Pricing Dashboard — Premium Design
+   ========================================== */
+
+.stem-pricing-section {
+  margin-top: var(--space-5, 2rem);
+  padding: var(--space-5, 2rem);
+  border-radius: 20px;
+  background: linear-gradient(145deg, rgba(15 15 25 / 0.85), rgba(25 20 40 / 0.7));
+  border: 1px solid rgba(255 255 255 / 0.06);
+  backdrop-filter: blur(20px);
+  box-shadow:
+    0 4px 30px rgba(0 0 0 / 0.3),
+    inset 0 1px 0 rgba(255 255 255 / 0.04);
+}
+
+/* ---- Header ---- */
+
+.stem-pricing-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-5, 2rem);
+  padding-bottom: var(--space-4, 1.5rem);
+  border-bottom: 1px solid rgba(255 255 255 / 0.06);
+  position: relative;
+}
+
+.stem-pricing-header::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 120px;
+  height: 2px;
+  background: linear-gradient(90deg, #8b5cf6, #ec4899);
+  border-radius: 2px;
+}
+
+.stem-pricing-header h3 {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--text-primary, #fff);
+  letter-spacing: -0.02em;
+}
+
+.stem-pricing-header p {
+  font-size: 0.9rem;
+  color: var(--text-secondary, #94a3b8);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+/* ==========================================
+   Template Cards — Glassmorphism + Gradient
+   ========================================== */
+
+.pricing-templates-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3, 1rem);
+  margin-bottom: var(--space-6, 2.5rem);
+}
+
+.pricing-template-card {
+  padding: var(--space-4, 1.5rem);
+  border-radius: 16px;
+  background: rgba(255 255 255 / 0.03);
+  border: 1px solid rgba(255 255 255 / 0.08);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+}
+
+.pricing-template-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, transparent);
+  transition: background 0.3s ease;
+}
+
+.pricing-template-card:hover {
+  background: rgba(255 255 255 / 0.06);
+  border-color: rgba(255 255 255 / 0.14);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0 0 0 / 0.3);
+}
+
+.pricing-template-card:hover::before {
+  background: linear-gradient(90deg, #8b5cf6, #ec4899);
+}
+
+.pricing-template-card.active {
+  border-color: rgba(139 92 246 / 0.5);
+  background: rgba(139 92 246 / 0.08);
+  box-shadow:
+    0 0 0 1px rgba(139 92 246 / 0.3),
+    0 8px 24px rgba(139 92 246 / 0.12);
+}
+
+.pricing-template-card.active::before {
+  background: linear-gradient(90deg, #8b5cf6, #ec4899);
+}
+
+.pricing-template-card .template-name {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--text-primary, #fff);
+  margin-bottom: 6px;
+  letter-spacing: -0.01em;
+}
+
+.pricing-template-card .template-desc {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #94a3b8);
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+
+.pricing-template-card .template-price {
+  font-size: 1.3rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #a78bfa, #c084fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ==========================================
+   Pricing Grid — Stem Rows
+   ========================================== */
+
+.stem-pricing-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 0.5rem);
+}
+
+.stem-pricing-row {
+  display: grid;
+  grid-template-columns: 150px 1fr 1fr 1fr auto;
+  gap: var(--space-4, 1.5rem);
+  align-items: center;
+  padding: var(--space-4, 1.5rem) var(--space-4, 1.5rem);
+  border-radius: 14px;
+  background: rgba(255 255 255 / 0.02);
+  border: 1px solid rgba(255 255 255 / 0.04);
+  transition: all 0.25s ease;
+  position: relative;
+}
+
+.stem-pricing-row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 16px;
+  bottom: 16px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--stem-accent, #8b5cf6);
+  opacity: 0.5;
+  transition: opacity 0.25s;
+}
+
+.stem-pricing-row:hover {
+  background: rgba(255 255 255 / 0.05);
+  border-color: rgba(255 255 255 / 0.08);
+}
+
+.stem-pricing-row:hover::before {
+  opacity: 1;
+}
+
+/* Stem type accent colors via nth-child */
+.stem-pricing-row:nth-child(1) { --stem-accent: #f472b6; }   /* Vocals — pink */
+.stem-pricing-row:nth-child(2) { --stem-accent: #f59e0b; }   /* Drums — amber */
+.stem-pricing-row:nth-child(3) { --stem-accent: #10b981; }   /* Bass — emerald */
+.stem-pricing-row:nth-child(4) { --stem-accent: #6366f1; }   /* Other — indigo */
+.stem-pricing-row:nth-child(5) { --stem-accent: #f43f5e; }   /* Piano — rose */
+.stem-pricing-row:nth-child(6) { --stem-accent: #06b6d4; }   /* Guitar — cyan */
+
+.stem-pricing-row .stem-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  color: var(--text-primary, #fff);
+  font-size: 0.95rem;
+  padding-left: var(--space-2, 0.5rem);
+}
+
+.stem-label .stem-emoji {
+  font-size: 1.3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(255 255 255 / 0.05);
+  flex-shrink: 0;
+}
+
+/* ==========================================
+   Input Controls — Polished
+   ========================================== */
+
+.pricing-control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pricing-control label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-secondary, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.pricing-control input[type="number"] {
+  width: 100%;
+  background: rgba(255 255 255 / 0.05);
+  border: 1px solid rgba(255 255 255 / 0.1);
+  border-radius: 10px;
+  color: var(--text-primary, #fff);
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  font-weight: 600;
+  outline: none;
+  transition: all 0.25s ease;
+}
+
+.pricing-control input[type="number"]:focus {
+  border-color: rgba(139 92 246 / 0.6);
+  box-shadow: 0 0 0 3px rgba(139 92 246 / 0.12);
+  background: rgba(139 92 246 / 0.04);
+}
+
+/* ---- Range Slider — Gradient Track ---- */
+
+.pricing-control input[type="range"] {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  height: 6px;
+  border-radius: 6px;
+  background: linear-gradient(90deg,
+    rgba(139 92 246 / 0.3),
+    rgba(139 92 246 / 0.6));
+  outline: none;
+  margin-top: 6px;
+  cursor: pointer;
+}
+
+.pricing-control input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #a78bfa, #8b5cf6);
+  cursor: pointer;
+  border: 3px solid rgba(15 15 25 / 0.8);
+  box-shadow: 0 2px 8px rgba(139 92 246 / 0.4);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pricing-control input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 2px 16px rgba(139 92 246 / 0.6);
+}
+
+.pricing-control input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #a78bfa, #8b5cf6);
+  cursor: pointer;
+  border: 3px solid rgba(15 15 25 / 0.8);
+  box-shadow: 0 2px 8px rgba(139 92 246 / 0.4);
+}
+
+/* ---- Select Dropdowns ---- */
+
+.pricing-control select {
+  background: rgba(255 255 255 / 0.05);
+  border: 1px solid rgba(255 255 255 / 0.1);
+  border-radius: 10px;
+  color: var(--text-primary, #fff);
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.pricing-control select:focus {
+  border-color: rgba(139 92 246 / 0.6);
+  box-shadow: 0 0 0 3px rgba(139 92 246 / 0.12);
+}
+
+.pricing-control select option {
+  background: #1a1a2e;
+  color: #fff;
+}
+
+/* ==========================================
+   Computed Prices — Glow Chips
+   ========================================== */
+
+.computed-prices-inline {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.computed-price-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  transition: transform 0.2s ease;
+}
+
+.computed-price-chip:hover {
+  transform: scale(1.08);
+}
+
+.computed-price-chip.personal {
+  background: linear-gradient(135deg, rgba(59 130 246 / 0.15), rgba(59 130 246 / 0.05));
+  color: #60a5fa;
+  border: 1px solid rgba(59 130 246 / 0.2);
+  box-shadow: 0 2px 8px rgba(59 130 246 / 0.1);
+}
+
+.computed-price-chip.remix {
+  background: linear-gradient(135deg, rgba(234 179 8 / 0.15), rgba(234 179 8 / 0.05));
+  color: #fbbf24;
+  border: 1px solid rgba(234 179 8 / 0.2);
+  box-shadow: 0 2px 8px rgba(234 179 8 / 0.1);
+}
+
+.computed-price-chip.commercial {
+  background: linear-gradient(135deg, rgba(34 197 94 / 0.15), rgba(34 197 94 / 0.05));
+  color: #4ade80;
+  border: 1px solid rgba(34 197 94 / 0.2);
+  box-shadow: 0 2px 8px rgba(34 197 94 / 0.1);
+}
+
+/* ==========================================
+   Duration Control
+   ========================================== */
+
+.duration-control-wrapper {
+  margin-top: var(--space-5, 2rem);
+  padding: var(--space-4, 1.5rem);
+  border-radius: 14px;
+  background: rgba(255 255 255 / 0.02);
+  border: 1px solid rgba(255 255 255 / 0.04);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4, 1.5rem);
+}
+
+.duration-control-wrapper .duration-icon {
+  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(139 92 246 / 0.1);
+  flex-shrink: 0;
+}
+
+/* ==========================================
+   Payout Split Preview — Polished Donut
+   ========================================== */
+
+.payout-split-container {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6, 2.5rem);
+  padding: var(--space-5, 2rem);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(255 255 255 / 0.03), rgba(255 255 255 / 0.01));
+  border: 1px solid rgba(255 255 255 / 0.06);
+  margin-top: var(--space-5, 2rem);
+}
+
+.split-donut {
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  position: relative;
+  box-shadow:
+    0 4px 20px rgba(139 92 246 / 0.2),
+    inset 0 0 20px rgba(0 0 0 / 0.3);
+  animation: donut-pulse 4s ease-in-out infinite;
+}
+
+@keyframes donut-pulse {
+  0%, 100% { box-shadow: 0 4px 20px rgba(139 92 246 / 0.2), inset 0 0 20px rgba(0 0 0 / 0.3); }
+  50% { box-shadow: 0 4px 30px rgba(139 92 246 / 0.35), inset 0 0 20px rgba(0 0 0 / 0.3); }
+}
+
+.split-donut::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, rgba(15 15 25 / 1), rgba(25 20 40 / 1));
+  box-shadow: inset 0 2px 8px rgba(0 0 0 / 0.4);
+}
+
+.split-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.split-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.9rem;
+}
+
+.split-color-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.split-legend-label {
+  color: var(--text-secondary, #94a3b8);
+  min-width: 110px;
+  font-weight: 500;
+}
+
+.split-legend-value {
+  font-weight: 800;
+  color: var(--text-primary, #fff);
+  font-size: 1rem;
+  min-width: 40px;
+}
+
+.split-legend-amount {
+  color: var(--text-secondary, #94a3b8);
+  font-size: 0.85rem;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+/* ==========================================
+   Save Bar — Full-Width Gradient
+   ========================================== */
+
+.pricing-save-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-3, 1rem);
+  margin-top: var(--space-5, 2rem);
+  padding-top: var(--space-4, 1.5rem);
+  border-top: 1px solid rgba(255 255 255 / 0.06);
+}
+
+.pricing-save-bar .btn-save-pricing {
+  position: relative;
+  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  color: white;
+  border: none;
+  padding: 12px 36px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  letter-spacing: -0.01em;
+  box-shadow: 0 4px 16px rgba(139 92 246 / 0.3);
+  overflow: hidden;
+}
+
+.pricing-save-bar .btn-save-pricing::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255 255 255 / 0.15), transparent);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.pricing-save-bar .btn-save-pricing:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(139 92 246 / 0.45);
+}
+
+.pricing-save-bar .btn-save-pricing:hover::before {
+  opacity: 1;
+}
+
+.pricing-save-bar .btn-save-pricing:active {
+  transform: translateY(0);
+}
+
+.pricing-save-bar .btn-save-pricing:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ==========================================
+   Responsive
+   ========================================== */
+
+@media (max-width: 900px) {
+  .stem-pricing-row {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3, 1rem);
+  }
+
+  .stem-pricing-row .stem-label {
+    grid-column: 1 / -1;
+  }
+
+  .computed-prices-inline {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 600px) {
+  .stem-pricing-section {
+    padding: var(--space-3, 1rem);
+    border-radius: 14px;
+  }
+
+  .pricing-templates-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .stem-pricing-row {
+    grid-template-columns: 1fr;
+    gap: var(--space-2, 0.5rem);
+    padding: var(--space-3, 1rem);
+  }
+
+  .payout-split-container {
+    flex-direction: column;
+    text-align: center;
+    padding: var(--space-4, 1.5rem);
+  }
+
+  .split-legend-row {
+    justify-content: center;
+  }
+}
