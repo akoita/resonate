@@ -23,6 +23,7 @@ import { PlaylistModule } from "./playlist/playlist.module";
 import { StorageModule } from "./storage/storage.module";
 import { EncryptionModule } from "./encryption/encryption.module";
 import { ContractsModule } from "./contracts/contracts.module";
+import { StemPricingModule } from "./pricing/stem-pricing.module";
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { ContractsModule } from "./contracts/contracts.module";
     StorageModule,
     EncryptionModule,
     ContractsModule,
+    StemPricingModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
