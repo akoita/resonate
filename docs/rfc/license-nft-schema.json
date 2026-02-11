@@ -1,0 +1,146 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://resonate.is/schemas/license-nft/v1",
+  "title": "Resonate License NFT Metadata",
+  "description": "Canonical metadata schema for License NFTs minted by the LicenseRegistry contract",
+  "type": "object",
+  "required": [
+    "name",
+    "description",
+    "licenseType",
+    "stemTokenId",
+    "grantee",
+    "grantor",
+    "terms",
+    "issuedAt"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Human-readable license name (e.g., 'Remix License — Midnight Vocals')"
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of the license grant"
+    },
+    "image": {
+      "type": "string",
+      "format": "uri",
+      "description": "URI to a visual badge/image representing the license type"
+    },
+    "licenseType": {
+      "type": "string",
+      "enum": ["personal", "remix", "commercial", "sync", "sample", "broadcast"],
+      "description": "The type of usage right granted"
+    },
+    "stemTokenId": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "On-chain token ID of the licensed stem (0 = blanket license covering all stems by grantor)"
+    },
+    "grantee": {
+      "type": "string",
+      "pattern": "^0x[a-fA-F0-9]{40}$",
+      "description": "Ethereum address of the license holder"
+    },
+    "grantor": {
+      "type": "string",
+      "pattern": "^0x[a-fA-F0-9]{40}$",
+      "description": "Ethereum address of the rights holder (artist/creator)"
+    },
+    "terms": {
+      "type": "object",
+      "required": ["exclusive", "territory", "duration", "attribution", "royaltyBps"],
+      "properties": {
+        "exclusive": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the grant is exclusive (blocks other licensees)"
+        },
+        "territory": {
+          "type": "string",
+          "default": "worldwide",
+          "description": "Geographic restriction (ISO 3166-1 codes or 'worldwide')"
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "License duration in seconds (0 = perpetual)"
+        },
+        "attribution": {
+          "type": "string",
+          "default": "Credit required",
+          "description": "Required credit terms and format"
+        },
+        "royaltyBps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000,
+          "default": 500,
+          "description": "Ongoing royalty in basis points (500 = 5%)"
+        },
+        "ancestryDecayFactor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 50,
+          "description": "Percentage decay per generation for recursive remix royalties"
+        },
+        "modificationRights": {
+          "type": "string",
+          "enum": ["none", "remix_only", "full"],
+          "default": "remix_only",
+          "description": "What alterations are permitted under this license"
+        },
+        "sublicensable": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the licensee can grant sub-licenses to third parties"
+        }
+      },
+      "additionalProperties": false
+    },
+    "covenants": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "default": [],
+      "description": "URIs to legal covenant documents (IPFS CIDs or HTTPS URLs)"
+    },
+    "issuedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of license issuance"
+    },
+    "expiresAt": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of license expiration (null = perpetual)"
+    },
+    "parentLicenseId": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Token ID of the parent license (for derivative works, null for originals)"
+    },
+    "parentStemIds": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "default": [],
+      "description": "Source stem token IDs used in the derivative work"
+    },
+    "ancestryDepth": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10,
+      "default": 0,
+      "description": "Depth in the remix ancestry tree (0 = original, capped at 10)"
+    }
+  },
+  "additionalProperties": false
+}
