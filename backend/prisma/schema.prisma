@@ -168,6 +168,17 @@ model StemListing {
   @@index([status])
 }
 
+// License type enum — matches RFC #310 License NFT Schema
+// Phase 1 uses personal/remix/commercial; others reserved for Phase 4+
+enum LicenseType {
+  personal
+  remix
+  commercial
+  sync
+  sample
+  broadcast
+}
+
 model StemPurchase {
   id              String      @id @default(uuid())
   listingId       String
@@ -177,6 +188,7 @@ model StemPurchase {
   royaltyPaid     String
   protocolFeePaid String
   sellerReceived  String
+  licenseType     LicenseType @default(personal)
   transactionHash String      @unique
   blockNumber     BigInt
   purchasedAt     DateTime
@@ -185,6 +197,7 @@ model StemPurchase {
 
   @@index([buyerAddress])
   @@index([purchasedAt])
+  @@index([licenseType])
 }
 
 model RoyaltyPayment {
