@@ -16,6 +16,7 @@ import { useAuth } from "../../../components/auth/AuthProvider";
 import { MintStemButton } from "../../../components/marketplace/MintStemButton";
 import { TrackActionMenu } from "../../../components/ui/TrackActionMenu";
 import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressUpdate } from "../../../hooks/useWebSockets";
+import { StemPricingPanel } from "../../../components/release/StemPricingPanel";
 
 // Helper to get duration from track's first stem
 const getTrackDuration = (track: { stems?: Array<{ durationSeconds?: number | null }> }): number => {
@@ -796,6 +797,15 @@ export default function ReleaseDetails() {
           </section>
         )
       }
+
+      {/* Stem Pricing Panel - Only for owners with stems */}
+      {isOwner && release.tracks && (() => {
+        const allStems = release.tracks.flatMap(t =>
+          (t.stems || []).filter(s => s.type !== "ORIGINAL").map(s => ({ id: s.id, type: s.type }))
+        );
+        if (allStems.length === 0) return null;
+        return <StemPricingPanel releaseId={release.id} stems={allStems} />;
+      })()}
 
       <footer className="release-footer">
         <div className="credits-section">
