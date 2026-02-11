@@ -1,0 +1,411 @@
+/* ============================================================
+   Buy Modal — Premium Glassmorphism Design
+   ============================================================ */
+
+/* Overlay backdrop */
+.buy-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.buy-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: buy-modal-fade-in 0.2s ease-out;
+}
+
+@keyframes buy-modal-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes buy-modal-slide-up {
+  from { opacity: 0; transform: translateY(24px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Modal panel */
+.buy-modal {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: rgba(15, 15, 22, 0.95);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  padding: 28px;
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.6),
+    0 0 60px rgba(124, 92, 255, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  animation: buy-modal-slide-up 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.buy-modal::-webkit-scrollbar {
+  width: 4px;
+}
+
+.buy-modal::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+/* Close button */
+.buy-modal__close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.buy-modal__close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Header */
+.buy-modal__header {
+  margin-bottom: 24px;
+}
+
+.buy-modal__title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.buy-modal__title-icon {
+  font-size: 22px;
+}
+
+/* Loading skeleton */
+.buy-modal__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.buy-modal__skeleton-line {
+  height: 16px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.buy-modal__skeleton-line:nth-child(1) { width: 70%; }
+.buy-modal__skeleton-line:nth-child(2) { width: 50%; }
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 0.8; }
+}
+
+/* Content stack */
+.buy-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Info card */
+.buy-modal__info-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.buy-modal__info-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.15), rgba(99, 102, 241, 0.1));
+  border: 1px solid rgba(124, 92, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.buy-modal__info-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.buy-modal__info-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+
+.buy-modal__info-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Quantity selector */
+.buy-modal__quantity {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.buy-modal__quantity-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.buy-modal__quantity-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.buy-modal__qty-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.buy-modal__qty-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.buy-modal__qty-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.buy-modal__qty-input {
+  flex: 1;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.2s ease;
+  -moz-appearance: textfield;
+}
+
+.buy-modal__qty-input::-webkit-outer-spin-button,
+.buy-modal__qty-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.buy-modal__qty-input:focus {
+  border-color: rgba(var(--color-accent-rgb), 0.4);
+}
+
+/* Price breakdown */
+.buy-modal__breakdown {
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.buy-modal__breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+.buy-modal__breakdown-label {
+  color: var(--color-muted);
+  font-weight: 500;
+}
+
+.buy-modal__breakdown-value {
+  color: #fff;
+  font-weight: 600;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.buy-modal__breakdown-value--royalty {
+  color: #10b981;
+}
+
+.buy-modal__breakdown-value--fee {
+  color: var(--color-muted);
+}
+
+.buy-modal__breakdown-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 2px 0;
+}
+
+.buy-modal__breakdown-row--total .buy-modal__breakdown-label {
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.buy-modal__breakdown-row--total .buy-modal__breakdown-value {
+  font-size: 16px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #fff 30%, var(--color-accent) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Error / Success alerts */
+.buy-modal__alert {
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.buy-modal__alert--error {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.buy-modal__alert--success {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.buy-modal__alert--success a {
+  color: #10b981;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Action buttons */
+.buy-modal__actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.buy-modal__btn {
+  flex: 1;
+  height: 48px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.buy-modal__btn--cancel {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.buy-modal__btn--cancel:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.buy-modal__btn--confirm {
+  background: linear-gradient(135deg, var(--color-accent), #6b4fe9);
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(124, 92, 255, 0.25);
+}
+
+.buy-modal__btn--confirm:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 30px rgba(124, 92, 255, 0.35);
+}
+
+.buy-modal__btn--confirm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Pending spinner */
+.buy-modal__spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Not found */
+.buy-modal__not-found {
+  text-align: center;
+  padding: 24px 0;
+  color: var(--color-muted);
+  font-size: 14px;
+}

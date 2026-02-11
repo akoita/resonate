@@ -1,29 +1,53 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useBuyQuote, useBuyStem, useListing } from "../../hooks/useContracts";
 import { formatPrice } from "../../lib/contracts";
+import { LicenseTypeSelector, type LicenseType } from "./LicenseTypeSelector";
+import { LicenseTermsPreview } from "./LicenseTermsPreview";
+import "../../styles/buy-modal.css";
+import "../../styles/license-badges.css";
+import "../../styles/license-terms.css";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 interface BuyModalProps {
   listingId: bigint;
+  stemId?: string;
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: (txHash: string) => void;
 }
 
-export function BuyModal({ listingId, isOpen, onClose, onSuccess }: BuyModalProps) {
+export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyModalProps) {
   const [amount, setAmount] = useState(1n);
+  const [selectedLicense, setSelectedLicense] = useState<LicenseType>("personal");
+  const [stemPricing, setStemPricing] = useState<{
+    personal: number; remix: number; commercial: number;
+  } | null>(null);
   const { listing, loading: listingLoading } = useListing(listingId);
   const { quote, loading: quoteLoading } = useBuyQuote(listingId, amount);
   const { buy, pending, error, txHash } = useBuyStem();
+
+  // Fetch stem pricing for license type selector
+  useEffect(() => {
+    if (!stemId || !isOpen) return;
+    fetch(`${API_BASE}/api/stem-pricing/${stemId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.computed) setStemPricing(data.computed);
+      })
+      .catch(err => console.error("Pricing fetch error:", err));
+  }, [stemId, isOpen]);
 
   if (!isOpen) return null;
 
   const handleBuy = async () => {
     try {
+      // TODO Phase 2: Pass selectedLicense to LicenseRegistry.mintLicense()
       const hash = await buy(listingId, amount);
       onSuccess?.(hash);
-    } catch (err) {
+    } catch {
       // Error handled by hook
     }
   };
@@ -31,104 +55,116 @@ export function BuyModal({ listingId, isOpen, onClose, onSuccess }: BuyModalProp
   const maxAmount = listing?.amount || 1n;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="buy-modal-overlay">
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      <div className="buy-modal-backdrop" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative bg-zinc-900 rounded-lg border border-zinc-800 w-full max-w-md mx-4 p-6">
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-zinc-500 hover:text-white"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+      <div className="buy-modal">
+        {/* Close */}
+        <button className="buy-modal__close" onClick={onClose}>×</button>
 
-        <h2 className="text-xl font-semibold text-white mb-4">Purchase Stem</h2>
+        {/* Header */}
+        <div className="buy-modal__header">
+          <h2 className="buy-modal__title">
+            <span className="buy-modal__title-icon">🎵</span>
+            Purchase Stem
+          </h2>
+        </div>
 
         {listingLoading ? (
-          <div className="animate-pulse space-y-4">
-            <div className="h-4 bg-zinc-800 rounded w-3/4" />
-            <div className="h-4 bg-zinc-800 rounded w-1/2" />
+          <div className="buy-modal__skeleton">
+            <div className="buy-modal__skeleton-line" />
+            <div className="buy-modal__skeleton-line" />
           </div>
         ) : listing ? (
-          <div className="space-y-4">
+          <div className="buy-modal__body">
             {/* Listing Info */}
-            <div className="bg-zinc-800 rounded-lg p-4">
-              <p className="text-sm text-zinc-400">Token ID</p>
-              <p className="text-white font-mono">{listing.tokenId.toString()}</p>
-              <p className="text-sm text-zinc-400 mt-2">Seller</p>
-              <p className="text-white font-mono text-sm">
-                {listing.seller.slice(0, 10)}...{listing.seller.slice(-8)}
-              </p>
+            <div className="buy-modal__info-card">
+              <div className="buy-modal__info-icon">🔷</div>
+              <div className="buy-modal__info-details">
+                <div className="buy-modal__info-label">Token #{listing.tokenId.toString()}</div>
+                <div className="buy-modal__info-value">
+                  {listing.seller.slice(0, 10)}…{listing.seller.slice(-8)}
+                </div>
+              </div>
             </div>
 
-            {/* Amount Selector */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-300 mb-1">
+            {/* Quantity */}
+            <div className="buy-modal__quantity">
+              <label className="buy-modal__quantity-label">
                 Quantity (max: {maxAmount.toString()})
               </label>
-              <div className="flex items-center gap-2">
+              <div className="buy-modal__quantity-controls">
                 <button
-                  onClick={() => setAmount((a) => (a > 1n ? a - 1n : a))}
+                  className="buy-modal__qty-btn"
+                  onClick={() => setAmount(a => (a > 1n ? a - 1n : a))}
                   disabled={amount <= 1n}
-                  className="w-10 h-10 bg-zinc-800 rounded-md text-white disabled:opacity-50"
                 >
-                  -
+                  −
                 </button>
                 <input
+                  className="buy-modal__qty-input"
                   type="number"
                   min="1"
                   max={maxAmount.toString()}
                   value={amount.toString()}
-                  onChange={(e) => {
+                  onChange={e => {
                     const val = BigInt(e.target.value || "1");
                     setAmount(val > maxAmount ? maxAmount : val < 1n ? 1n : val);
                   }}
-                  className="flex-1 bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-center text-white"
                 />
                 <button
-                  onClick={() => setAmount((a) => (a < maxAmount ? a + 1n : a))}
+                  className="buy-modal__qty-btn"
+                  onClick={() => setAmount(a => (a < maxAmount ? a + 1n : a))}
                   disabled={amount >= maxAmount}
-                  className="w-10 h-10 bg-zinc-800 rounded-md text-white disabled:opacity-50"
                 >
                   +
                 </button>
               </div>
             </div>
 
+            {/* License Type Selector */}
+            {stemPricing && (
+              <LicenseTypeSelector
+                selected={selectedLicense}
+                onSelect={setSelectedLicense}
+                personalPriceUsd={stemPricing.personal}
+                remixPriceUsd={stemPricing.remix}
+                commercialPriceUsd={stemPricing.commercial}
+              />
+            )}
+
+            {/* License Terms Preview */}
+            <LicenseTermsPreview licenseType={selectedLicense} compact />
+
             {/* Price Breakdown */}
             {quote && !quoteLoading && (
-              <div className="bg-zinc-800 rounded-lg p-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-zinc-400">
-                    Price ({amount.toString()} x {formatPrice(listing.pricePerUnit)})
+              <div className="buy-modal__breakdown">
+                <div className="buy-modal__breakdown-row">
+                  <span className="buy-modal__breakdown-label">
+                    Price ({amount.toString()} × {formatPrice(listing.pricePerUnit)})
                   </span>
-                  <span className="text-white">
+                  <span className="buy-modal__breakdown-value">
                     {formatPrice(listing.pricePerUnit * amount)} ETH
                   </span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-zinc-400">Creator Royalty</span>
-                  <span className="text-emerald-400">
+                <div className="buy-modal__breakdown-row">
+                  <span className="buy-modal__breakdown-label">Creator Royalty</span>
+                  <span className="buy-modal__breakdown-value buy-modal__breakdown-value--royalty">
                     {formatPrice(quote.royaltyAmount)} ETH
                   </span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-zinc-400">Protocol Fee</span>
-                  <span className="text-zinc-400">
+                <div className="buy-modal__breakdown-row">
+                  <span className="buy-modal__breakdown-label">Protocol Fee</span>
+                  <span className="buy-modal__breakdown-value buy-modal__breakdown-value--fee">
                     {formatPrice(quote.protocolFee)} ETH
                   </span>
                 </div>
-                <div className="border-t border-zinc-700 pt-2 flex justify-between">
-                  <span className="text-zinc-300 font-medium">Total</span>
-                  <span className="text-white font-semibold">
+                <div className="buy-modal__breakdown-divider" />
+                <div className="buy-modal__breakdown-row buy-modal__breakdown-row--total">
+                  <span className="buy-modal__breakdown-label">Total</span>
+                  <span className="buy-modal__breakdown-value">
                     {formatPrice(quote.totalPrice)} ETH
                   </span>
                 </div>
@@ -137,47 +173,42 @@ export function BuyModal({ listingId, isOpen, onClose, onSuccess }: BuyModalProp
 
             {/* Error */}
             {error && (
-              <div className="bg-red-900/20 border border-red-800 rounded-md p-3">
-                <p className="text-sm text-red-400">{error.message}</p>
+              <div className="buy-modal__alert buy-modal__alert--error">
+                {error.message}
               </div>
             )}
 
             {/* Success */}
             {txHash && (
-              <div className="bg-emerald-900/20 border border-emerald-800 rounded-md p-3">
-                <p className="text-sm text-emerald-400">
-                  Purchase successful!{" "}
-                  <a
-                    href={`https://sepolia.etherscan.io/tx/${txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline"
-                  >
-                    View transaction
-                  </a>
-                </p>
+              <div className="buy-modal__alert buy-modal__alert--success">
+                Purchase successful!{" "}
+                <a
+                  href={`https://sepolia.etherscan.io/tx/${txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  View transaction →
+                </a>
               </div>
             )}
 
             {/* Actions */}
-            <div className="flex gap-3">
-              <button
-                onClick={onClose}
-                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white py-3 rounded-md transition-colors"
-              >
+            <div className="buy-modal__actions">
+              <button className="buy-modal__btn buy-modal__btn--cancel" onClick={onClose}>
                 Cancel
               </button>
               <button
+                className="buy-modal__btn buy-modal__btn--confirm"
                 onClick={handleBuy}
                 disabled={pending || !quote}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white py-3 rounded-md transition-colors"
               >
-                {pending ? "Confirming..." : "Confirm Purchase"}
+                {pending && <span className="buy-modal__spinner" />}
+                {pending ? "Confirming…" : "Confirm Purchase"}
               </button>
             </div>
           </div>
         ) : (
-          <p className="text-zinc-400">Listing not found</p>
+          <p className="buy-modal__not-found">Listing not found</p>
         )}
       </div>
     </div>

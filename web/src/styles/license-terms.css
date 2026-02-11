@@ -1,0 +1,203 @@
+/* ============================================================
+   License Terms Preview — Premium Expandable Display
+   ============================================================ */
+
+.license-terms {
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-top: auto;
+}
+
+.license-terms--expanded {
+  border-color: rgba(var(--color-accent-rgb), 0.2);
+  background: rgba(10, 10, 18, 0.6);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* ---- Toggle Button ---- */
+
+.license-terms__toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  letter-spacing: 0.01em;
+}
+
+.license-terms__toggle:hover {
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.license-terms--expanded .license-terms__toggle {
+  color: var(--color-accent);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.license-terms__toggle-icon {
+  font-size: 9px;
+  color: var(--color-accent);
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.license-terms--expanded .license-terms__toggle-icon {
+  transform: rotate(0deg);
+}
+
+.license-terms__toggle-text {
+  flex: 1;
+  text-align: left;
+}
+
+.license-terms__toggle-badge {
+  font-size: 13px;
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+.license-terms__toggle:hover .license-terms__toggle-badge {
+  opacity: 0.8;
+}
+
+/* ---- Expanded Content ---- */
+
+.license-terms__content {
+  padding: 16px;
+  animation: terms-slide-down 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes terms-slide-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.license-terms__purpose {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 14px;
+  line-height: 1.6;
+  font-style: italic;
+  padding-left: 12px;
+  border-left: 2px solid rgba(var(--color-accent-rgb), 0.2);
+}
+
+/* ---- Terms Table ---- */
+
+.license-terms__table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.license-terms__row {
+  transition: background 0.15s ease;
+}
+
+.license-terms__row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.license-terms__row:not(:last-child) .license-terms__term,
+.license-terms__row:not(:last-child) .license-terms__value {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.license-terms__term {
+  padding: 8px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  vertical-align: middle;
+  width: 110px;
+  background: rgba(255, 255, 255, 0.01);
+  border-right: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.license-terms__value {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
+/* ---- Summary Clause ---- */
+
+.license-terms__summary {
+  margin: 0 0 14px;
+  padding: 12px 16px;
+  border-left: 3px solid rgba(var(--color-accent-rgb), 0.35);
+  background: rgba(var(--color-accent-rgb), 0.04);
+  border-radius: 0 10px 10px 0;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  line-height: 1.7;
+  font-style: italic;
+}
+
+/* ---- Full License Link ---- */
+
+.license-terms__full-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  margin-bottom: 10px;
+}
+
+.license-terms__full-link-icon {
+  font-size: 12px;
+}
+
+.license-terms__ipfs-badge {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(59, 130, 246, 0.12);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  margin-left: 4px;
+}
+
+/* ---- Disclaimer ---- */
+
+.license-terms__disclaimer {
+  font-size: 10px;
+  color: rgba(251, 191, 36, 0.6);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}

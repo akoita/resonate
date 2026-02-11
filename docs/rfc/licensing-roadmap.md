@@ -183,12 +183,13 @@ Phase 3: RoyaltySplitter    Phase 4: Exclusive + Legal
 
 ## Related Issues
 
-| Issue                                                 | Title                          | Phase      |
-| ----------------------------------------------------- | ------------------------------ | ---------- |
-| [#311](https://github.com/akoita/resonate/issues/311) | Buyer-Facing Licensing UI      | Phase 1    |
-| [#309](https://github.com/akoita/resonate/issues/309) | Recursive Remix Royalties      | Phase 3    |
-| [#280](https://github.com/akoita/resonate/issues/280) | Remix Lineage Visualization    | Phase 3    |
-| [#281](https://github.com/akoita/resonate/issues/281) | Artist Earnings Dashboard      | Phase 3    |
-| [#270](https://github.com/akoita/resonate/issues/270) | Artist Stem Pricing (✅ done)  | Foundation |
-| [#285](https://github.com/akoita/resonate/issues/285) | Edition Strategy Configuration | Phase 2+   |
-| [#264](https://github.com/akoita/resonate/issues/264) | Decentralized Encryption       | Parallel   |
+| Issue                                                 | Title                                        | Phase      |
+| ----------------------------------------------------- | -------------------------------------------- | ---------- |
+| [#311](https://github.com/akoita/resonate/issues/311) | Buyer-Facing Licensing UI                    | Phase 1    |
+| [#309](https://github.com/akoita/resonate/issues/309) | Recursive Remix Royalties                    | Phase 3    |
+| [#280](https://github.com/akoita/resonate/issues/280) | Remix Lineage Visualization                  | Phase 3    |
+| [#281](https://github.com/akoita/resonate/issues/281) | Artist Earnings Dashboard                    | Phase 3    |
+| [#270](https://github.com/akoita/resonate/issues/270) | Artist Stem Pricing (✅ done)                | Foundation |
+| [#285](https://github.com/akoita/resonate/issues/285) | Edition Strategy Configuration               | Phase 2+   |
+| [#315](https://github.com/akoita/resonate/issues/315) | Exclusive Licensing & Legal Covenants (IPFS) | Phase 4    |
+| [#264](https://github.com/akoita/resonate/issues/264) | Decentralized Encryption                     | Parallel   |

@@ -8,7 +8,12 @@ import { useToast } from "../../components/ui/Toast";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { useZeroDev } from "../../components/auth/ZeroDevProviderClient";
 import { ExpiryBadge } from "../../components/marketplace/ExpiryBadge";
+import { LicenseBadges } from "../../components/marketplace/LicenseBadges";
+import { BuyModal } from "../../components/marketplace/BuyModal";
 import "./marketplace.css";
+import "../../styles/license-badges.css";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 interface ListingData {
     listingId: string;
@@ -81,11 +86,13 @@ export default function MarketplacePage(props: {
     const [playingId, setPlayingId] = useState<string | null>(null);
     const [hasMore, setHasMore] = useState(false);
     const [offset, setOffset] = useState(0);
+    const [pricingMap, setPricingMap] = useState<Record<string, { remixLicenseUsd: number; commercialLicenseUsd: number }>>({});
     const [hideOwnListings, setHideOwnListings] = useState(true);
+    const [buyModalListing, setBuyModalListing] = useState<{ listingId: string; stemId: string } | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const { buy, pending: buyPending } = useBuyStem();
+    const { pending: buyPending } = useBuyStem();
     const { addToast } = useToast();
     const { address: walletAddress } = useAuth();
     const { chainId } = useZeroDev();
@@ -160,10 +167,28 @@ export default function MarketplacePage(props: {
         }
     }, [debouncedSearch, sortBy, offset, listings.length, hideOwnListings, signerAddress]);
 
-    // ---- Refetch when sort or search changes ----
+    // ---- Refetch when sort, search, or signer changes ----
+    // Guard: if the user is logged in and wants to hide own listings,
+    // wait until signerAddress has resolved before fetching — otherwise
+    // the first fetch returns unfiltered results that flash on screen.
     useEffect(() => {
+        if (hideOwnListings && walletAddress && !signerAddress) return;
         fetchListings(false);
-    }, [debouncedSearch, sortBy, hideOwnListings]);
+    }, [debouncedSearch, sortBy, hideOwnListings, signerAddress]);
+
+    // ---- Fetch batch pricing for license badges ----
+    useEffect(() => {
+        const stemIds = listings
+            .map(l => l.stem?.id)
+            .filter((id): id is string => !!id);
+        const unique = [...new Set(stemIds)];
+        if (unique.length === 0) return;
+
+        fetch(`${API_BASE}/api/stem-pricing/batch-get?stemIds=${unique.join(",")}`)
+            .then(res => res.json())
+            .then(data => setPricingMap(data))
+            .catch(err => console.error("Batch pricing fetch error:", err));
+    }, [listings]);
 
     // ---- Real-time marketplace updates via WebSocket ----
     const handleMarketplaceUpdate = useCallback((update: MarketplaceUpdate) => {
@@ -213,33 +238,6 @@ export default function MarketplacePage(props: {
     const hasActiveFilters = stemType !== "all" || selectedGenre !== "all" || selectedArtist !== "all" || search !== "";
 
     // ---- Handlers ----
-    const handleBuy = async (listingId: string) => {
-        try {
-            await buy(BigInt(listingId), BigInt(1));
-            setListings(prev => prev.filter(l => l.listingId !== listingId));
-            addToast({ type: "success", title: "Purchase Successful!", message: "You now own this stem NFT." });
-            fetchListings(false);
-        } catch (err) {
-            console.error("Buy failed:", err);
-            const msg = err instanceof Error ? err.message : String(err);
-
-            // ERC1155InsufficientBalance — seller no longer holds the token (already sold)
-            if (msg.includes("0x03dee4c5") || msg.includes("ERC1155InsufficientBalance")) {
-                setListings(prev => prev.filter(l => l.listingId !== listingId));
-                addToast({ type: "error", title: "Already Sold", message: "This stem has already been purchased and is no longer available." });
-                fetchListings(false);
-                return;
-            }
-
-            // CannotBuyOwnListing — user is the seller
-            if (msg.includes("0x50eadcb1") || msg.includes("CannotBuyOwnListing")) {
-                addToast({ type: "error", title: "Cannot Buy", message: "You cannot purchase your own listing." });
-                return;
-            }
-
-            addToast({ type: "error", title: "Purchase Failed", message: msg });
-        }
-    };
 
     const togglePlay = (id: string, uri: string) => {
         if (playingId === id) {
@@ -474,6 +472,13 @@ export default function MarketplacePage(props: {
                                     <div className="stem-card__seller">
                                         {listing.seller.slice(0, 6)}…{listing.seller.slice(-4)}
                                     </div>
+                                    {/* License price badges */}
+                                    {listing.stem?.id && pricingMap[listing.stem.id] && (
+                                        <LicenseBadges
+                                            remixLicenseUsd={pricingMap[listing.stem.id].remixLicenseUsd}
+                                            commercialLicenseUsd={pricingMap[listing.stem.id].commercialLicenseUsd}
+                                        />
+                                    )}
                                     <div className="stem-card__amount">{listing.amount} edition{listing.amount !== "1" ? "s" : ""} left</div>
 
                                     {/* Footer */}
@@ -489,10 +494,10 @@ export default function MarketplacePage(props: {
                                         ) : (
                                             <button
                                                 className="stem-card__buy"
-                                                onClick={() => handleBuy(listing.listingId)}
+                                                onClick={() => setBuyModalListing({ listingId: listing.listingId, stemId: listing.stem?.id || "" })}
                                                 disabled={buyPending}
                                             >
-                                                {buyPending ? "Buying…" : "Buy"}
+                                                Buy
                                             </button>
                                         )}
                                     </div>
@@ -510,6 +515,20 @@ export default function MarketplacePage(props: {
                         </div>
                     )}
                 </>
+            )}
+
+            {buyModalListing && (
+                <BuyModal
+                    listingId={BigInt(buyModalListing.listingId)}
+                    stemId={buyModalListing.stemId}
+                    isOpen={true}
+                    onClose={() => setBuyModalListing(null)}
+                    onSuccess={() => {
+                        setBuyModalListing(null);
+                        addToast({ type: "success", title: "Purchase Successful!", message: "You now own this stem NFT." });
+                        fetchListings(false);
+                    }}
+                />
             )}
 
             <audio ref={audioRef} onEnded={() => setPlayingId(null)} onError={() => setPlayingId(null)} />
