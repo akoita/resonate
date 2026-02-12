@@ -14,6 +14,12 @@ interface StemForPricing {
   type: string;
 }
 
+interface TrackWithStems {
+  trackId: string;
+  trackTitle: string;
+  stems: StemForPricing[];
+}
+
 interface StemPricingState {
   basePlayPriceUsd: number;
   remixLicenseUsd: number;
@@ -50,10 +56,10 @@ const DEFAULT_PRICING: StemPricingState = {
 
 interface StemPricingPanelProps {
   releaseId: string;
-  stems: StemForPricing[];
+  tracks: TrackWithStems[];
 }
 
-export function StemPricingPanel({ releaseId, stems }: StemPricingPanelProps) {
+export function StemPricingPanel({ releaseId, tracks }: StemPricingPanelProps) {
   const { token } = useAuth();
   const { addToast } = useToast();
 
@@ -62,6 +68,11 @@ export function StemPricingPanel({ releaseId, stems }: StemPricingPanelProps) {
   const [stemPricing, setStemPricing] = useState<Record<string, StemPricingState>>({});
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [expandedTracks, setExpandedTracks] = useState<Set<string>>(() =>
+    new Set(tracks.length === 1 ? [tracks[0].trackId] : [])
+  );
+
+  const allStems = tracks.flatMap((t) => t.stems);
 
   // Fetch templates
   useEffect(() => {
@@ -75,7 +86,7 @@ export function StemPricingPanel({ releaseId, stems }: StemPricingPanelProps) {
   useEffect(() => {
     const fetchAll = async () => {
       const result: Record<string, StemPricingState> = {};
-      for (const stem of stems) {
+      for (const stem of allStems) {
         try {
           const r = await fetch(`${API_BASE}/api/stem-pricing/${stem.id}`);
           const data = await r.json();
@@ -93,8 +104,9 @@ export function StemPricingPanel({ releaseId, stems }: StemPricingPanelProps) {
       }
       setStemPricing(result);
     };
-    if (stems.length > 0) fetchAll();
-  }, [stems]);
+    if (allStems.length > 0) fetchAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tracks]);
 
   const updateStem = useCallback(
     (stemId: string, patch: Partial<StemPricingState>) => {
@@ -108,12 +120,12 @@ export function StemPricingPanel({ releaseId, stems }: StemPricingPanelProps) {
     [],
   );
 
-  const applyTemplate = useCallback(
-    (template: PricingTemplate) => {
-      setActiveTemplateId(template.id);
+  // Apply template to a specific track's stems
+  const applyTemplateToTrack = useCallback(
+    (template: PricingTemplate, trackStems: StemForPricing[]) => {
       setStemPricing((prev) => {
         const next = { ...prev };
-        for (const stem of stems) {
+        for (const stem of trackStems) {
           next[stem.id] = {
             ...(next[stem.id] || DEFAULT_PRICING),
             ...template.pricing,
@@ -123,37 +135,86 @@ export function StemPricingPanel({ releaseId, stems }: StemPricingPanelProps) {
       });
       setDirty(true);
     },
-    [stems],
+    [],
+  );
+
+  // Apply template to ALL tracks
+  const applyTemplate = useCallback(
+    (template: PricingTemplate) => {
+      setActiveTemplateId(template.id);
+      setStemPricing((prev) => {
+        const next = { ...prev };
+        for (const stem of allStems) {
+          next[stem.id] = {
+            ...(next[stem.id] || DEFAULT_PRICING),
+            ...template.pricing,
+          };
+        }
+        return next;
+      });
+      setDirty(true);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tracks],
   );
 
   const saveAll = useCallback(async () => {
     if (!token) return;
     setSaving(true);
     try {
-      const firstPricing = stemPricing[stems[0]?.id] || DEFAULT_PRICING;
-      const res = await fetch(`${API_BASE}/api/stem-pricing/batch`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          releaseId,
-          basePlayPriceUsd: firstPricing.basePlayPriceUsd,
-          remixLicenseUsd: firstPricing.remixLicenseUsd,
-          commercialLicenseUsd: firstPricing.commercialLicenseUsd,
-          floorUsd: firstPricing.floorUsd,
-          ceilingUsd: firstPricing.ceilingUsd,
-          listingDurationDays: firstPricing.listingDurationDays,
-        }),
-      });
-      if (!res.ok) throw new Error("Save failed");
-      const data = await res.json();
-      addToast({
-        type: "success",
-        title: "Pricing Saved",
-        message: `Updated pricing for ${data.updated} stems`,
-      });
+      // Build per-stem pricing map
+      const pricingMap: Record<string, StemPricingState> = {};
+      for (const stem of allStems) {
+        pricingMap[stem.id] = stemPricing[stem.id] || DEFAULT_PRICING;
+      }
+
+      // Try batch-upsert first, fall back to per-stem PUT
+      let success = false;
+      try {
+        const res = await fetch(`${API_BASE}/api/stem-pricing/batch-upsert`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ releaseId, pricingMap }),
+        });
+        if (res.ok) {
+          success = true;
+          const data = await res.json();
+          addToast({
+            type: "success",
+            title: "Pricing Saved",
+            message: `Updated pricing for ${data.updated} stems`,
+          });
+        }
+      } catch {
+        // batch-upsert not available, fall through
+      }
+
+      if (!success) {
+        // Fallback: individual per-stem PUT calls
+        const results = await Promise.all(
+          Object.entries(pricingMap).map(([stemId, dto]) =>
+            fetch(`${API_BASE}/api/stem-pricing/${stemId}`, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify(dto),
+            }),
+          ),
+        );
+        const allOk = results.every((r) => r.ok);
+        if (!allOk) throw new Error("Some stems failed to save");
+        addToast({
+          type: "success",
+          title: "Pricing Saved",
+          message: `Updated pricing for ${results.length} stems`,
+        });
+      }
+
       setDirty(false);
     } catch (err) {
       console.error(err);
@@ -165,10 +226,23 @@ export function StemPricingPanel({ releaseId, stems }: StemPricingPanelProps) {
     } finally {
       setSaving(false);
     }
-  }, [token, stemPricing, stems, releaseId, addToast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, stemPricing, tracks, releaseId, addToast]);
+
+  const toggleTrack = useCallback((trackId: string) => {
+    setExpandedTracks((prev) => {
+      const next = new Set(prev);
+      if (next.has(trackId)) {
+        next.delete(trackId);
+      } else {
+        next.add(trackId);
+      }
+      return next;
+    });
+  }, []);
 
   // Use the first stem's pricing for global preview
-  const previewPricing = stemPricing[stems[0]?.id] || DEFAULT_PRICING;
+  const previewPricing = stemPricing[allStems[0]?.id] || DEFAULT_PRICING;
 
   return (
     <section className="stem-pricing-section glass-panel">
@@ -179,90 +253,153 @@ export function StemPricingPanel({ releaseId, stems }: StemPricingPanelProps) {
         </div>
       </div>
 
-      {/* Quick Templates */}
+      {/* Quick Templates — applies to ALL tracks */}
       <PricingTemplates
         templates={templates}
         activeTemplateId={activeTemplateId}
         onApply={applyTemplate}
       />
 
-      {/* Per-stem pricing grid */}
-      <div className="stem-pricing-grid">
-        {stems.map((stem) => {
-          const p = stemPricing[stem.id] || DEFAULT_PRICING;
+      {/* Per-track accordion */}
+      <div className="stem-pricing-tracks">
+        {tracks.map((track) => {
+          const isExpanded = expandedTracks.has(track.trackId);
 
           return (
-            <div key={stem.id} className="stem-pricing-row">
-              <div className="stem-label">
-                <span className="stem-emoji">
-                  {STEM_EMOJI[stem.type] || "🎵"}
+            <div
+              key={track.trackId}
+              className={`stem-pricing-track-group ${isExpanded ? "expanded" : ""}`}
+            >
+              <button
+                className="stem-pricing-track-header"
+                onClick={() => toggleTrack(track.trackId)}
+              >
+                <div className="stem-pricing-track-left">
+                  <span className="stem-pricing-chevron">
+                    {isExpanded ? "▼" : "▶"}
+                  </span>
+                  <span className="stem-pricing-track-title">
+                    {track.trackTitle}
+                  </span>
+                </div>
+                <span className="stem-pricing-track-count">
+                  {track.stems.length} stems
                 </span>
-                <span>{stem.type.charAt(0).toUpperCase() + stem.type.slice(1)}</span>
-              </div>
+              </button>
 
-              <div className="pricing-control">
-                <label>Per-Play (USD)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={5}
-                  step={0.01}
-                  value={p.basePlayPriceUsd}
-                  onChange={(e) =>
-                    updateStem(stem.id, { basePlayPriceUsd: parseFloat(e.target.value) || 0 })
-                  }
-                />
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={p.basePlayPriceUsd}
-                  onChange={(e) =>
-                    updateStem(stem.id, { basePlayPriceUsd: parseFloat(e.target.value) })
-                  }
-                />
-              </div>
+              {isExpanded && (
+                <div className="stem-pricing-track-body">
+                  {/* Per-track template quick-apply */}
+                  {tracks.length > 1 && templates.length > 0 && (
+                    <div className="stem-pricing-track-templates">
+                      <span className="track-template-label">Apply template:</span>
+                      {templates.map((t) => (
+                        <button
+                          key={t.id}
+                          className="track-template-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            applyTemplateToTrack(t, track.stems);
+                          }}
+                        >
+                          {t.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
-              <div className="pricing-control">
-                <label>Remix License (USD)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={500}
-                  step={1}
-                  value={p.remixLicenseUsd}
-                  onChange={(e) =>
-                    updateStem(stem.id, { remixLicenseUsd: parseFloat(e.target.value) || 0 })
-                  }
-                />
-              </div>
+                  <div className="stem-pricing-grid">
+                    {track.stems.map((stem) => {
+                      const p = stemPricing[stem.id] || DEFAULT_PRICING;
 
-              <div className="pricing-control">
-                <label>Commercial License (USD)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={5000}
-                  step={5}
-                  value={p.commercialLicenseUsd}
-                  onChange={(e) =>
-                    updateStem(stem.id, { commercialLicenseUsd: parseFloat(e.target.value) || 0 })
-                  }
-                />
-              </div>
+                      return (
+                        <div key={stem.id} className="stem-pricing-row">
+                          <div className="stem-label">
+                            <span className="stem-emoji">
+                              {STEM_EMOJI[stem.type] || "🎵"}
+                            </span>
+                            <span>
+                              {stem.type.charAt(0).toUpperCase() + stem.type.slice(1)}
+                            </span>
+                          </div>
 
-              <div className="computed-prices-inline">
-                <span className="computed-price-chip personal">
-                  🎧 ${p.basePlayPriceUsd.toFixed(2)}/play
-                </span>
-                <span className="computed-price-chip remix">
-                  🔄 ${p.remixLicenseUsd.toFixed(0)}
-                </span>
-                <span className="computed-price-chip commercial">
-                  💼 ${p.commercialLicenseUsd.toFixed(0)}
-                </span>
-              </div>
+                          <div className="pricing-control">
+                            <label>Per-Play (USD)</label>
+                            <input
+                              type="number"
+                              min={0}
+                              max={5}
+                              step={0.01}
+                              value={p.basePlayPriceUsd}
+                              onChange={(e) =>
+                                updateStem(stem.id, {
+                                  basePlayPriceUsd: parseFloat(e.target.value) || 0,
+                                })
+                              }
+                            />
+                            <input
+                              type="range"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={p.basePlayPriceUsd}
+                              onChange={(e) =>
+                                updateStem(stem.id, {
+                                  basePlayPriceUsd: parseFloat(e.target.value),
+                                })
+                              }
+                            />
+                          </div>
+
+                          <div className="pricing-control">
+                            <label>Remix License (USD)</label>
+                            <input
+                              type="number"
+                              min={0}
+                              max={500}
+                              step={1}
+                              value={p.remixLicenseUsd}
+                              onChange={(e) =>
+                                updateStem(stem.id, {
+                                  remixLicenseUsd: parseFloat(e.target.value) || 0,
+                                })
+                              }
+                            />
+                          </div>
+
+                          <div className="pricing-control">
+                            <label>Commercial License (USD)</label>
+                            <input
+                              type="number"
+                              min={0}
+                              max={5000}
+                              step={5}
+                              value={p.commercialLicenseUsd}
+                              onChange={(e) =>
+                                updateStem(stem.id, {
+                                  commercialLicenseUsd: parseFloat(e.target.value) || 0,
+                                })
+                              }
+                            />
+                          </div>
+
+                          <div className="computed-prices-inline">
+                            <span className="computed-price-chip personal">
+                              🎧 ${p.basePlayPriceUsd.toFixed(2)}/play
+                            </span>
+                            <span className="computed-price-chip remix">
+                              🔄 ${p.remixLicenseUsd.toFixed(0)}
+                            </span>
+                            <span className="computed-price-chip commercial">
+                              💼 ${p.commercialLicenseUsd.toFixed(0)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
@@ -278,7 +415,7 @@ export function StemPricingPanel({ releaseId, stems }: StemPricingPanelProps) {
             onChange={(e) => {
               const val = parseInt(e.target.value);
               const days = val === 0 ? null : val;
-              for (const stem of stems) {
+              for (const stem of allStems) {
                 updateStem(stem.id, { listingDurationDays: days });
               }
             }}
