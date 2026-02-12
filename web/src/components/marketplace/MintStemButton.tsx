@@ -1,9 +1,53 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../auth/AuthProvider";
-import { useMintStem, useListStem, useTotalStems } from "../../hooks/useContracts";
+import { useMintStem, useListStem } from "../../hooks/useContracts";
 import { getListingsByStem, getStemNftInfo } from "../../lib/api";
 import { useToast } from "../ui/Toast";
 import { type Address } from "viem";
+
+// Poll backend until the minted token ID is indexed (max ~30s)
+async function pollForMintedTokenId(
+    stemId: string,
+    maxAttempts = 15,
+    intervalMs = 2000
+): Promise<bigint> {
+    for (let i = 0; i < maxAttempts; i++) {
+        try {
+            const nftInfo = await getStemNftInfo(stemId);
+            if (nftInfo?.tokenId != null) {
+                return BigInt(nftInfo.tokenId);
+            }
+        } catch {
+            // Indexer may not have processed yet, keep trying
+        }
+        if (i < maxAttempts - 1) {
+            await new Promise((r) => setTimeout(r, intervalMs));
+        }
+    }
+    throw new Error("Timed out waiting for mint confirmation from backend");
+}
+
+// Poll backend until the listing is indexed (max ~30s)
+async function pollForListing(
+    stemId: string,
+    maxAttempts = 15,
+    intervalMs = 2000
+): Promise<boolean> {
+    for (let i = 0; i < maxAttempts; i++) {
+        try {
+            const listings = await getListingsByStem(stemId);
+            if (listings && listings.length > 0) {
+                return true;
+            }
+        } catch {
+            // Keep trying
+        }
+        if (i < maxAttempts - 1) {
+            await new Promise((r) => setTimeout(r, intervalMs));
+        }
+    }
+    return false;
+}
 
 interface MintStemButtonProps {
     stemId: string;
@@ -23,11 +67,11 @@ export function MintStemButton({
     const { address, status } = useAuth();
     const { mint, pending: mintPending } = useMintStem();
     const { list, pending: listPending } = useListStem();
-    const { total: totalStems, refresh: refetchTotal } = useTotalStems();
     const { addToast } = useToast();
 
     // State machine: "idle" -> "minted" -> "listed"
-    const [state, setState] = useState<"idle" | "minted" | "listed">("idle");
+    // "confirming_mint" and "confirming_list" are transient states while polling the backend
+    const [state, setState] = useState<"idle" | "confirming_mint" | "minted" | "confirming_list" | "listed">("idle");
     const [mintedTokenId, setMintedTokenId] = useState<bigint | null>(null);
 
     // Persistence check on mount
@@ -97,10 +141,6 @@ export function MintStemButton({
             const { getLocalSignerAddress } = await import("../../lib/localAA");
             const mintTo = getLocalSignerAddress(address as Address); // User's own local account
 
-            // Get current total before minting (next token ID will be totalStems + 1)
-            const currentTotal = totalStems ?? BigInt(0);
-            const expectedTokenId = currentTotal + BigInt(1);
-
             const hash = await mint({
                 to: mintTo,
                 amount: BigInt(1),
@@ -111,21 +151,22 @@ export function MintStemButton({
                 parentIds: [],
             });
 
-            // Use expected token ID
-            setMintedTokenId(expectedTokenId);
+            // Tx confirmed on-chain — now wait for backend indexer to process the event
+            // and give us the actual token ID (no more stale-counter guessing)
+            setState("confirming_mint");
+
+            const actualTokenId = await pollForMintedTokenId(stemId);
+            setMintedTokenId(actualTokenId);
             setState("minted");
 
             // Persist to local storage
             localStorage.setItem(`stem_status_${stemId}`, "minted");
-            localStorage.setItem(`stem_token_id_${stemId}`, expectedTokenId.toString());
-
-            // Refresh total for next mint
-            refetchTotal?.();
+            localStorage.setItem(`stem_token_id_${stemId}`, actualTokenId.toString());
 
             addToast({
                 type: "success",
                 title: "NFT Minted!",
-                message: `${stemType} stem minted (Token #${expectedTokenId}). Now list it for sale.`,
+                message: `${stemType} stem minted (Token #${actualTokenId}). Now list it for sale.`,
             });
         } catch (error) {
             console.error("Mint failed:", error);
@@ -159,13 +200,28 @@ export function MintStemButton({
                 durationSeconds: BigInt(7 * 24 * 60 * 60),
             });
 
-            setState("listed");
-            localStorage.setItem(`stem_status_${stemId}`, "listed");
-            addToast({
-                type: "success",
-                title: "Listed for Sale!",
-                message: `${stemType} stem (Token #${mintedTokenId}) is now on the marketplace for 0.01 ETH`,
-            });
+            // Tx confirmed on-chain — wait for backend indexer to confirm listing
+            setState("confirming_list");
+
+            const confirmed = await pollForListing(stemId);
+            if (confirmed) {
+                setState("listed");
+                localStorage.setItem(`stem_status_${stemId}`, "listed");
+                addToast({
+                    type: "success",
+                    title: "Listed for Sale!",
+                    message: `${stemType} stem (Token #${mintedTokenId}) is now on the marketplace for 0.01 ETH`,
+                });
+            } else {
+                // Listing tx went through but indexer hasn't confirmed yet
+                // Stay in "minted" so user can retry
+                setState("minted");
+                addToast({
+                    type: "warning",
+                    title: "Listing Pending",
+                    message: "Transaction succeeded but marketplace hasn't confirmed yet. Try again in a moment.",
+                });
+            }
         } catch (error) {
             console.error("List failed:", error);
             addToast({
@@ -214,6 +270,28 @@ export function MintStemButton({
                 }}
             >
                 ✓ Listed
+            </button>
+        );
+    }
+
+    if (state === "confirming_mint" || state === "confirming_list") {
+        return (
+            <button
+                disabled
+                style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    background: "#3f3f46",
+                    color: "#a1a1aa",
+                    border: "1px solid rgba(161, 161, 170, 0.3)",
+                    borderRadius: 8,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "wait",
+                    opacity: 0.8,
+                }}
+            >
+                {state === "confirming_mint" ? "Confirming mint..." : "Confirming listing..."}
             </button>
         );
     }
