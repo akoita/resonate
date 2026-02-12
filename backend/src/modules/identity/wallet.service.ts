@@ -194,6 +194,26 @@ export class WalletService {
       spentUsd: updated.spentUsd,
       balanceUsd: updated.balanceUsd,
     });
+
+    // Emit budget alerts at thresholds
+    if (updated.monthlyCapUsd > 0) {
+      const pct = (updated.spentUsd / updated.monthlyCapUsd) * 100;
+      if (pct >= 80) {
+        const level = pct >= 100 ? "exhausted" : pct >= 95 ? "critical" : "warning";
+        this.eventBus.publish({
+          eventName: "agent.budget_alert",
+          eventVersion: 1,
+          occurredAt: new Date().toISOString(),
+          userId,
+          level,
+          percentUsed: Math.round(pct),
+          spentUsd: updated.spentUsd,
+          monthlyCapUsd: updated.monthlyCapUsd,
+          remainingUsd: Math.max(0, updated.monthlyCapUsd - updated.spentUsd),
+        });
+      }
+    }
+
     return { allowed: true, remaining: updated.monthlyCapUsd - updated.spentUsd };
   }
 

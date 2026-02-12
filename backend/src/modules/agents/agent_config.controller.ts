@@ -30,6 +30,16 @@ export class AgentConfigController {
         @Req() req: any,
         @Body() body: { name: string; vibes: string[]; monthlyCapUsd: number }
     ) {
+        // Ensure User record exists (JWT userId = wallet address)
+        await prisma.user.upsert({
+            where: { id: req.user.userId },
+            update: {},
+            create: {
+                id: req.user.userId,
+                email: `${req.user.userId}@wallet.local`,
+            },
+        });
+
         return prisma.agentConfig.upsert({
             where: { userId: req.user.userId },
             update: {
@@ -124,6 +134,22 @@ export class AgentConfigController {
                                         durationSeconds: 0,
                                     },
                                 });
+                                // Also record as AgentTransaction for wallet card
+                                const mockHash = `tx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+                                await prisma.agentTransaction.create({
+                                    data: {
+                                        sessionId: session.id,
+                                        userId: req.user.userId,
+                                        listingId: BigInt(0),
+                                        tokenId: BigInt(0),
+                                        amount: BigInt(1),
+                                        totalPriceWei: "0",
+                                        priceUsd: track.negotiation.priceUsd,
+                                        status: "confirmed",
+                                        txHash: mockHash,
+                                        confirmedAt: new Date(),
+                                    },
+                                });
                             } catch (err) {
                                 this.logger.error(`Failed to persist license for ${track.trackId}:`, err);
                             }
@@ -158,6 +184,22 @@ export class AgentConfigController {
                                         type: pick.licenseType,
                                         priceUsd: pick.priceUsd,
                                         durationSeconds: 0,
+                                    },
+                                });
+                                // Also record as AgentTransaction for wallet card
+                                const mockHash = `tx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+                                await prisma.agentTransaction.create({
+                                    data: {
+                                        sessionId: session.id,
+                                        userId: req.user.userId,
+                                        listingId: BigInt(0),
+                                        tokenId: BigInt(0),
+                                        amount: BigInt(1),
+                                        totalPriceWei: "0",
+                                        priceUsd: pick.priceUsd,
+                                        status: "confirmed",
+                                        txHash: mockHash,
+                                        confirmedAt: new Date(),
                                     },
                                 });
                                 totalSpend += pick.priceUsd;

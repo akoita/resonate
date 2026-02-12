@@ -1,16 +1,22 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Inject, Param, Post, Req, UseGuards, forwardRef } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { Roles } from "../auth/roles.decorator";
 import { SessionKeyService } from "./session_key.service";
 import { SocialRecoveryService } from "./social_recovery.service";
 import { WalletService } from "./wallet.service";
+import { AgentWalletService } from "../agents/agent_wallet.service";
+import { AgentPurchaseService } from "../agents/agent_purchase.service";
 
 @Controller("wallet")
 export class WalletController {
   constructor(
     private readonly walletService: WalletService,
     private readonly sessionKeyService: SessionKeyService,
-    private readonly recoveryService: SocialRecoveryService
+    private readonly recoveryService: SocialRecoveryService,
+    @Inject(forwardRef(() => AgentWalletService))
+    private readonly agentWalletService: AgentWalletService,
+    @Inject(forwardRef(() => AgentPurchaseService))
+    private readonly agentPurchaseService: AgentPurchaseService
   ) {}
 
   @Post("fund")
@@ -130,5 +136,52 @@ export class WalletController {
   @Roles("admin")
   approveRecovery(@Body() body: { requestId: string; guardian: string }) {
     return this.recoveryService.approveRecovery(body);
+  }
+
+  // ============ Agent Wallet Endpoints ============
+
+  @Post("agent/enable")
+  @UseGuards(AuthGuard("jwt"))
+  enableAgentWallet(@Req() req: any) {
+    return this.agentWalletService.enable(req.user.userId);
+  }
+
+  @Delete("agent/session-key")
+  @UseGuards(AuthGuard("jwt"))
+  disableAgentWallet(@Req() req: any) {
+    return this.agentWalletService.disable(req.user.userId);
+  }
+
+  @Get("agent/status")
+  @UseGuards(AuthGuard("jwt"))
+  getAgentWalletStatus(@Req() req: any) {
+    return this.agentWalletService.getStatus(req.user.userId);
+  }
+
+  @Get("agent/transactions")
+  @UseGuards(AuthGuard("jwt"))
+  getAgentTransactions(@Req() req: any) {
+    return this.agentPurchaseService.getTransactions(req.user.userId);
+  }
+
+  @Post("agent/purchase")
+  @UseGuards(AuthGuard("jwt"))
+  agentPurchase(@Req() req: any, @Body() body: {
+    sessionId: string;
+    listingId: string;
+    tokenId: string;
+    amount: string;
+    totalPriceWei: string;
+    priceUsd: number;
+  }) {
+    return this.agentPurchaseService.purchase({
+      sessionId: body.sessionId,
+      userId: req.user.userId,
+      listingId: BigInt(body.listingId),
+      tokenId: BigInt(body.tokenId),
+      amount: BigInt(body.amount),
+      totalPriceWei: body.totalPriceWei,
+      priceUsd: body.priceUsd,
+    });
   }
 }

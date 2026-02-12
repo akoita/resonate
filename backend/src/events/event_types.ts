@@ -330,6 +330,49 @@ export interface ContractListingCancelledEvent extends BaseEvent {
   blockNumber: string;
 }
 
+// ============ Agent Wallet Events ============
+
+export interface AgentWalletEnabledEvent extends BaseEvent {
+  eventName: "agent.wallet_enabled";
+  userId: string;
+  walletAddress: string;
+}
+
+export interface AgentWalletDisabledEvent extends BaseEvent {
+  eventName: "agent.wallet_disabled";
+  userId: string;
+}
+
+export interface AgentBudgetAlertEvent extends BaseEvent {
+  eventName: "agent.budget_alert";
+  userId: string;
+  level: "warning" | "critical" | "exhausted";
+  percentUsed: number;
+  spentUsd: number;
+  monthlyCapUsd: number;
+  remainingUsd: number;
+}
+
+export interface AgentPurchaseCompletedEvent extends BaseEvent {
+  eventName: "agent.purchase_completed";
+  sessionId: string;
+  userId: string;
+  listingId: string;
+  tokenId: string;
+  amount: string;
+  priceUsd: number;
+  txHash: string;
+  mode: string;
+}
+
+export interface AgentPurchaseFailedEvent extends BaseEvent {
+  eventName: "agent.purchase_failed";
+  sessionId: string;
+  userId: string;
+  listingId: string;
+  error: string;
+}
+
 export type ResonateEvent =
   | StemsUploadedEvent
   | StemsProcessedEvent
@@ -363,4 +406,10 @@ export type ResonateEvent =
   | ContractStemListedEvent
   | ContractStemSoldEvent
   | ContractRoyaltyPaidEvent
-  | ContractListingCancelledEvent;
+  | ContractListingCancelledEvent
+  | AgentWalletEnabledEvent
+  | AgentWalletDisabledEvent
+  | AgentBudgetAlertEvent
+  | AgentPurchaseCompletedEvent
+  | AgentPurchaseFailedEvent;
+

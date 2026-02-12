@@ -594,3 +594,62 @@ export async function getAgentHistory(token: string): Promise<AgentSession[]> {
   }
   return sessions;
 }
+
+// ========== Agent Wallet API ==========
+
+export type AgentWalletStatus = {
+  enabled: boolean;
+  walletAddress: string | null;
+  accountType: string;
+  sessionKeyValid: boolean;
+  sessionKeyExpiresAt: number | null;
+  budgetCapUsd: number;
+  spentUsd: number;
+  remainingUsd: number;
+  alertLevel: "none" | "warning" | "critical" | "exhausted";
+};
+
+export type AgentTransaction = {
+  id: string;
+  sessionId: string;
+  listingId: string;
+  amount: string;
+  priceUsd: number;
+  status: "pending" | "confirmed" | "failed";
+  txHash: string | null;
+  userOpHash: string | null;
+  createdAt: string;
+  confirmedAt: string | null;
+};
+
+export async function enableAgentWallet(token: string): Promise<AgentWalletStatus> {
+  return apiRequest<AgentWalletStatus>(
+    "/wallet/agent/enable",
+    { method: "POST" },
+    token
+  );
+}
+
+export async function disableAgentWallet(token: string): Promise<{ status: string }> {
+  return apiRequest<{ status: string }>(
+    "/wallet/agent/session-key",
+    { method: "DELETE" },
+    token
+  );
+}
+
+export async function getAgentWalletStatus(token: string): Promise<AgentWalletStatus> {
+  return apiRequest<AgentWalletStatus>(
+    "/wallet/agent/status",
+    {},
+    token
+  );
+}
+
+export async function getAgentTransactions(token: string): Promise<AgentTransaction[]> {
+  return apiRequest<AgentTransaction[]>(
+    "/wallet/agent/transactions",
+    {},
+    token
+  );
+}

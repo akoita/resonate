@@ -5,9 +5,12 @@ import type { AgentConfig } from "../../lib/api";
 type Props = {
     config: AgentConfig;
     onToggle: () => Promise<void>;
+    sessionCount: number;
+    trackCount: number;
+    totalSpend: number;
 };
 
-export default function AgentStatusCard({ config, onToggle }: Props) {
+export default function AgentStatusCard({ config, onToggle, sessionCount, trackCount, totalSpend }: Props) {
     return (
         <div className="agent-card agent-status-card">
             <div className="agent-card-header">
@@ -28,6 +31,24 @@ export default function AgentStatusCard({ config, onToggle }: Props) {
                     {config.vibes.map((vibe) => (
                         <span key={vibe} className="vibe-chip selected small">{vibe}</span>
                     ))}
+                </div>
+            </div>
+
+            {/* Summary stats */}
+            <div className="agent-stats-row">
+                <div className="agent-stat">
+                    <span className="agent-stat-value">{sessionCount}</span>
+                    <span className="agent-stat-label">Sessions</span>
+                </div>
+                <div className="agent-stat-divider" />
+                <div className="agent-stat">
+                    <span className="agent-stat-value">{trackCount}</span>
+                    <span className="agent-stat-label">Tracks</span>
+                </div>
+                <div className="agent-stat-divider" />
+                <div className="agent-stat">
+                    <span className="agent-stat-value">${totalSpend.toFixed(2)}</span>
+                    <span className="agent-stat-label">Spent</span>
                 </div>
             </div>
 

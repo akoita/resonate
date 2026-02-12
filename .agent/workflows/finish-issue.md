@@ -46,7 +46,20 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
   - Inline JSDoc / NatSpec for code-level APIs
 - Skip this step if the change is trivial or purely internal refactoring
 
-## 6. Clean commit(s)
+## 6. Update architecture docs (if the architecture evolved)
+
+- Think about whether this change introduces or modifies **architectural patterns** — new services, data flows, module boundaries, smart contract interactions, event flows, etc.
+- If the architecture has evolved:
+  - Search for **all related architecture docs** in `docs/`, `docs/rfc/`, `docs/phase*/`, and any architecture diagrams (Mermaid, draw.io, etc.)
+  - Update them in-place to reflect the new state — keep diagrams, flow descriptions, and component lists current
+  - If no existing doc covers the new architecture area, **create a new doc** in the appropriate location (e.g. `docs/architecture/agent_wallet.md`) with:
+    - High-level overview and motivation
+    - Component diagram (Mermaid preferred)
+    - Data flow / sequence diagram for key operations
+    - Key design decisions and trade-offs
+- Skip this step if the change is purely internal refactoring with no architectural impact
+
+## 7. Clean commit(s)
 
 - Review staged/unstaged changes: `git diff --cached` and `git diff`
 - **Security check** — make sure NONE of these are committed:
@@ -60,20 +73,20 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
   - **Without issue:** `feat: description` or `fix: description`
   - One logical change per commit — split if needed
 
-## 7. Push the branch
+## 8. Push the branch
 
 // turbo
 
 - Push to remote: `git push -u origin <branch-name>`
 - Verify the push succeeded
 
-## 8. Verify CI passes on the branch
+## 9. Verify CI passes on the branch
 
 - Check the CI/CD status on the pushed branch via GitHub
 - If CI fails, fix the issues locally, commit, and push again
 - Do NOT proceed to PR until CI is green
 
-## 9. Create PR and merge
+## 10. Create PR and merge
 
 - Create a Pull Request targeting `main` with:
   - Title: concise description (referencing the issue number if one exists)
@@ -82,7 +95,7 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
 - If CI passes, merge the PR (prefer squash merge for clean history)
 - If CI fails, fix on the branch, push, and re-check
 
-## 10. Verify main branch CI
+## 11. Verify main branch CI
 
 - After merge, check that CI passes on the updated `main` branch
 - If CI fails on main:
@@ -90,14 +103,14 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
   - Fix the issue, push, create PR, merge
   - Repeat until main CI is green
 
-## 11. Clean up branches
+## 12. Clean up branches
 
 - Delete the feature branch remotely: `git push origin --delete <branch-name>`
 - Delete the feature branch locally: `git branch -d <branch-name>`
 - Delete any fix branches (remote + local) the same way
 - **NEVER delete `main`**
 
-## 12. Align local main
+## 13. Align local main
 
 // turbo
 

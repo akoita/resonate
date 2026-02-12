@@ -1,12 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { AgentConfig, AgentWalletStatus, AgentTransaction } from "../../lib/api";
+import type { AgentWalletStatus, AgentTransaction } from "../../lib/api";
 
 type Props = {
-    config: AgentConfig;
-    spentUsd: number;
-    onEdit: () => void;
     walletStatus: AgentWalletStatus | null;
     transactions: AgentTransaction[];
     isEnabling: boolean;
@@ -16,10 +13,7 @@ type Props = {
     onRefreshTransactions: () => Promise<void>;
 };
 
-export default function AgentBudgetCard({
-    config,
-    spentUsd,
-    onEdit,
+export default function AgentWalletCard({
     walletStatus,
     transactions,
     isEnabling,
@@ -30,13 +24,13 @@ export default function AgentBudgetCard({
 }: Props) {
     const [txLimit, setTxLimit] = useState(5);
 
-    const pct = config.monthlyCapUsd > 0 ? Math.min((spentUsd / config.monthlyCapUsd) * 100, 100) : 0;
-    const remaining = Math.max(0, config.monthlyCapUsd - spentUsd);
-    const circumference = 2 * Math.PI * 45;
-    const dashOffset = circumference - (pct / 100) * circumference;
-
     const isEnabled = walletStatus?.enabled ?? false;
     const alertLevel = walletStatus?.alertLevel ?? "none";
+
+    const budgetCapUsd = walletStatus?.budgetCapUsd ?? 0;
+    const spentUsd = walletStatus?.spentUsd ?? 0;
+    const remainingUsd = walletStatus?.remainingUsd ?? 0;
+    const spentPct = budgetCapUsd > 0 ? Math.min((spentUsd / budgetCapUsd) * 100, 100) : 0;
 
     const alertColors: Record<string, string> = {
         none: "var(--color-success, #4ade80)",
@@ -52,17 +46,12 @@ export default function AgentBudgetCard({
         exhausted: "Budget exhausted",
     };
 
-    const barColorClass = alertLevel === "none"
-        ? "bar-healthy"
-        : alertLevel === "warning"
-            ? "bar-warning"
-            : "bar-critical";
-
     const formatAddress = (addr: string | null) => {
         if (!addr) return "—";
         return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
     };
 
+    // Snapshot current time once per render cycle
     // eslint-disable-next-line react-hooks/exhaustive-deps
     const now = useMemo(() => Date.now(), [walletStatus]);
 
@@ -83,76 +72,80 @@ export default function AgentBudgetCard({
         return `${Math.floor(diff / 86400000)}d ago`;
     };
 
+    const barColorClass = alertLevel === "none"
+        ? "bar-healthy"
+        : alertLevel === "warning"
+            ? "bar-warning"
+            : "bar-critical";
+
     return (
-        <div className={`agent-card agent-finance-card ${alertLevel !== "none" ? `alert-${alertLevel}` : ""}`}>
+        <div className={`agent-card agent-wallet-card ${alertLevel !== "none" ? `alert-${alertLevel}` : ""}`}>
             <h3 className="agent-card-title">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="6" width="20" height="14" rx="2" />
+                    <path d="M2 10h20" />
+                    <path d="M6 14h.01" />
                 </svg>
-                Finance
+                Smart Wallet
             </h3>
 
-            {/* ── Budget Overview: Ring + Progress ── */}
-            <div className="afc-budget-row">
-                <div className="afc-ring-wrap">
-                    <svg viewBox="0 0 100 100" className="afc-ring">
-                        <circle cx="50" cy="50" r="45" className="afc-ring-bg" />
-                        <circle
-                            cx="50"
-                            cy="50"
-                            r="45"
-                            className="afc-ring-fill"
-                            strokeDasharray={circumference}
-                            strokeDashoffset={dashOffset}
-                            transform="rotate(-90 50 50)"
-                        />
-                    </svg>
-                    <div className="afc-ring-center">
-                        <span className="afc-ring-amount">${spentUsd.toFixed(2)}</span>
-                        <span className="afc-ring-cap">of ${config.monthlyCapUsd}/mo</span>
-                    </div>
-                </div>
-                <div className="afc-budget-details">
-                    <div className="afc-budget-bar-section">
-                        <div className="awc-budget-bar-track">
-                            <div
-                                className={`awc-budget-bar-fill ${barColorClass}`}
-                                style={{ width: `${pct}%` }}
-                            />
-                        </div>
-                        <div className="afc-budget-meta">
-                            <span className="afc-budget-remaining">${remaining.toFixed(2)} remaining</span>
-                            <span className="afc-budget-pct">{pct.toFixed(0)}%</span>
-                        </div>
-                    </div>
-                    <button className="afc-edit-btn" onClick={onEdit}>Edit Budget</button>
-                </div>
-            </div>
-
-            {/* ── Smart Wallet Section ── */}
             {!isEnabled ? (
-                <div className="afc-wallet-disabled">
-                    <div className="afc-wallet-disabled-info">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.5">
+                <div className="agent-wallet-empty">
+                    <div className="agent-wallet-empty-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.5">
                             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                         </svg>
-                        <span>Smart Wallet not enabled</span>
                     </div>
+                    <p className="agent-wallet-empty-text">
+                        Enable autonomous on-chain purchases for your DJ agent.
+                    </p>
                     <button
-                        className="afc-enable-btn"
+                        className="agent-toggle-btn start"
                         onClick={onEnable}
                         disabled={isEnabling}
                     >
                         {isEnabling ? (
-                            <><span className="agent-wallet-spinner" /> Enabling…</>
+                            <>
+                                <span className="agent-wallet-spinner" />
+                                Enabling…
+                            </>
                         ) : (
-                            "Enable Wallet"
+                            <>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                </svg>
+                                Enable Smart Wallet
+                            </>
                         )}
                     </button>
                 </div>
             ) : (
-                <div className="afc-wallet-active">
-                    {/* Account Details */}
+                <div className="agent-wallet-active">
+                    {/* ── Budget Progress ── */}
+                    <div className="awc-budget">
+                        <div className="awc-budget-header">
+                            <span className="awc-budget-title">Monthly Budget</span>
+                            <span className="awc-budget-nums">
+                                <span className="awc-budget-spent">${spentUsd.toFixed(2)}</span>
+                                <span className="awc-budget-sep">/</span>
+                                <span className="awc-budget-cap">${budgetCapUsd.toFixed(2)}</span>
+                            </span>
+                        </div>
+                        <div className="awc-budget-bar-track">
+                            <div
+                                className={`awc-budget-bar-fill ${barColorClass}`}
+                                style={{ width: `${spentPct}%` }}
+                            />
+                        </div>
+                        <div className="awc-budget-footer">
+                            <span className="awc-budget-remaining">
+                                ${remainingUsd.toFixed(2)} remaining
+                            </span>
+                            <span className="awc-budget-pct">{spentPct.toFixed(0)}%</span>
+                        </div>
+                    </div>
+
+                    {/* ── Account Details Grid ── */}
                     <div className="awc-details-grid">
                         <div className="awc-detail">
                             <span className="awc-detail-label">Address</span>
@@ -190,7 +183,7 @@ export default function AgentBudgetCard({
                         </div>
                     </div>
 
-                    {/* Transactions */}
+                    {/* ── Transactions ── */}
                     <div className="awc-tx-section">
                         <div className="awc-tx-header">
                             <span className="awc-tx-title">Recent Transactions</span>
@@ -240,7 +233,7 @@ export default function AgentBudgetCard({
                         )}
                     </div>
 
-                    {/* Actions */}
+                    {/* ── Actions ── */}
                     <div className="awc-actions">
                         <button
                             className="awc-revoke-btn"
