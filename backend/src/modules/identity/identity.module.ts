@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Erc4337Client } from "./erc4337/erc4337_client";
 import { SessionKeyService } from "./session_key.service";
@@ -11,9 +11,10 @@ import { LocalWalletProvider } from "./wallet_providers/local_wallet_provider";
 import { WalletProviderRegistry } from "./wallet_provider_registry";
 import { AuthModule } from "../auth/auth.module";
 import { SharedModule } from "../shared/shared.module";
+import { AgentsModule } from "../agents/agents.module";
 
 @Module({
-  imports: [SharedModule],
+  imports: [SharedModule, forwardRef(() => AgentsModule)],
   controllers: [WalletController],
   providers: [
     WalletService,
@@ -35,6 +36,12 @@ import { SharedModule } from "../shared/shared.module";
       },
     },
   ],
-  exports: [WalletService],
+  exports: [
+    WalletService,
+    SessionKeyService,
+    WalletProviderRegistry,
+    PaymasterService,
+    Erc4337Client,
+  ],
 })
 export class IdentityModule { }

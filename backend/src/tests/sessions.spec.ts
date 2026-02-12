@@ -38,6 +38,9 @@ jest.mock("../db/prisma", () => {
       track: {
         findMany: async () => [],
       },
+      agentTransaction: {
+        create: async () => ({ id: "agent-tx-1" }),
+      },
     },
   };
 });
@@ -47,10 +50,12 @@ describe("sessions", () => {
     const walletService = {
       spend: async () => ({ allowed: true, remaining: 4 }),
       setBudget: async () => ({}),
+      getWallet: async () => null,
     } as any;
     const eventBus = new EventBus();
     const agentService = new AgentOrchestrationService(eventBus);
-    const service = new SessionsService(walletService, eventBus, agentService);
+    const agentPurchaseService = {} as any;
+    const service = new SessionsService(walletService, eventBus, agentService, agentPurchaseService);
     const result = await service.playTrack({
       sessionId: "session-1",
       trackId: "track-1",
