@@ -76,4 +76,21 @@ export class StemPricingController {
       dto,
     );
   }
+
+  /**
+   * POST /api/stem-pricing/batch-upsert
+   * Per-stem pricing: bulk-set distinct pricing for each stem in a release (owner-only)
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Post("batch-upsert")
+  batchUpsertByMap(
+    @Body() body: { releaseId: string; pricingMap: Record<string, StemPricingDto> },
+    @Req() req: { user: { userId: string } },
+  ) {
+    return this.pricingService.batchUpsertByMap(
+      body.releaseId,
+      req.user.userId,
+      body.pricingMap,
+    );
+  }
 }

@@ -269,6 +269,72 @@ export class StemPricingService {
   }
 
   /**
+   * Batch-upsert pricing with per-stem configs.
+   * Validates release ownership once, then applies individual pricing per stem.
+   */
+  async batchUpsertByMap(
+    releaseId: string,
+    userId: string,
+    pricingMap: Record<string, StemPricingDto>,
+  ) {
+    const release = await prisma.release.findUnique({
+      where: { id: releaseId },
+      include: {
+        artist: true,
+        tracks: {
+          include: {
+            stems: {
+              where: { type: { not: "ORIGINAL" } },
+            },
+          },
+        },
+      },
+    });
+
+    if (!release) {
+      throw new NotFoundException(`Release ${releaseId} not found`);
+    }
+
+    if (release.artist.userId !== userId) {
+      throw new ForbiddenException("You do not own this release");
+    }
+
+    // Collect all valid stem IDs from this release
+    const validStemIds = new Set<string>();
+    for (const track of release.tracks) {
+      for (const stem of track.stems) {
+        validStemIds.add(stem.id);
+      }
+    }
+
+    // Filter to only stems that belong to this release
+    const entries = Object.entries(pricingMap).filter(([stemId]) =>
+      validStemIds.has(stemId),
+    );
+
+    if (entries.length === 0) {
+      return { updated: 0, stemIds: [] };
+    }
+
+    await prisma.$transaction(
+      entries.map(([stemId, dto]) =>
+        prisma.stemPricing.upsert({
+          where: { stemId },
+          create: { stemId, ...dto },
+          update: dto,
+        }),
+      ),
+    );
+
+    const updatedIds = entries.map(([id]) => id);
+    this.logger.log(
+      `Batch pricing upserted: ${updatedIds.length} stems in release ${releaseId}`,
+    );
+
+    return { updated: updatedIds.length, stemIds: updatedIds };
+  }
+
+  /**
    * Get available pricing templates
    */
   getTemplates(): PricingTemplate[] {

@@ -17,6 +17,10 @@ const nextConfig = {
         source: "/api/encryption/:path*",
         destination: "http://localhost:3000/encryption/:path*",
       },
+      {
+        source: "/api/stem-pricing/:path*",
+        destination: "http://localhost:3000/api/stem-pricing/:path*",
+      },
     ];
   },
 };
