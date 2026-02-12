@@ -4,7 +4,9 @@ description: Finish working on a GitHub issue — verify, test, commit, push, PR
 
 # Finish Issue Workflow
 
-When the user says "finish issue", "close issue", "wrap up", or wants to finalize work on the current issue, follow these steps:
+When the user says "finish issue", "close issue", "wrap up", or wants to finalize work on the current branch, follow these steps.
+
+> **No-issue mode**: This workflow can be invoked without a linked GitHub issue. When there is no issue, skip all issue-dependent operations (fetching issue details, referencing `#N` in commits/PR, `Closes #N` in PR body, issue-number-based branch naming). Everything else applies normally.
 
 ## 1. Verify the branch
 
@@ -18,10 +20,8 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
 
 ## 2. Verify implementation coverage
 
-- Fetch the issue details from GitHub using `issue_read` (owner: `akoita`, repo: `resonate`)
-- Re-read the issue acceptance criteria and scope
-- Review every modified/added file against the issue requirements
-- If anything is missing, implement it before proceeding
+- **If an issue exists:** Fetch the issue details from GitHub using `issue_read` (owner: `akoita`, repo: `resonate`), re-read the acceptance criteria and scope, and review every modified/added file against the issue requirements. If anything is missing, implement it before proceeding.
+- **If no issue:** Review the modified/added files to confirm the intended change is complete.
 
 ## 3. Ensure test coverage
 
@@ -55,8 +55,9 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
   - Database dumps, logs, local config overrides
 - Check `.gitignore` covers suspicious files: `git status --ignored`
 - If any sensitive files are tracked, add them to `.gitignore` first
-- Make atomic, well-scoped commits referencing the issue:
-  - Format: `feat(#N): description` or `fix(#N): description`
+- Make atomic, well-scoped commits:
+  - **With issue:** `feat(#N): description` or `fix(#N): description`
+  - **Without issue:** `feat: description` or `fix: description`
   - One logical change per commit — split if needed
 
 ## 7. Push the branch
@@ -75,8 +76,8 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
 ## 9. Create PR and merge
 
 - Create a Pull Request targeting `main` with:
-  - Title: concise description referencing the issue
-  - Body: summary of changes + `Closes #N`
+  - Title: concise description (referencing the issue number if one exists)
+  - Body: summary of changes (+ `Closes #N` only if an issue exists)
 - Wait for CI checks on the PR
 - If CI passes, merge the PR (prefer squash merge for clean history)
 - If CI fails, fix on the branch, push, and re-check
@@ -85,7 +86,7 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
 
 - After merge, check that CI passes on the updated `main` branch
 - If CI fails on main:
-  - Create a fix branch: `fix/<issue-number>-<issue-title-kebab>-hotfix`
+  - Create a fix branch: `fix/<issue-number>-<issue-title-kebab>-hotfix` (or `fix/<short-description>-hotfix` if no issue)
   - Fix the issue, push, create PR, merge
   - Repeat until main CI is green
 
