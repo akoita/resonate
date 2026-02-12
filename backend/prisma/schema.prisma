@@ -244,15 +244,38 @@ model IndexerState {
 }
 
 model Session {
-  id           String    @id @default(uuid())
-  userId       String
-  budgetCapUsd Float
-  spentUsd     Float     @default(0)
-  startedAt    DateTime  @default(now())
-  endedAt      DateTime?
-  licenses     License[]
-  payments     Payment[]
-  user         User      @relation(fields: [userId], references: [id])
+  id                String             @id @default(uuid())
+  userId            String
+  budgetCapUsd      Float
+  spentUsd          Float              @default(0)
+  startedAt         DateTime           @default(now())
+  endedAt           DateTime?
+  licenses          License[]
+  payments          Payment[]
+  agentTransactions AgentTransaction[]
+  user              User               @relation(fields: [userId], references: [id])
+}
+
+model AgentTransaction {
+  id            String    @id @default(uuid())
+  sessionId     String
+  userId        String
+  listingId     BigInt
+  tokenId       BigInt
+  amount        BigInt
+  totalPriceWei String
+  priceUsd      Float
+  txHash        String?
+  userOpHash    String?
+  status        String    @default("pending")
+  errorMessage  String?
+  createdAt     DateTime  @default(now())
+  confirmedAt   DateTime?
+  session       Session   @relation(fields: [sessionId], references: [id])
+
+  @@index([sessionId])
+  @@index([userId])
+  @@index([status])
 }
 
 model License {

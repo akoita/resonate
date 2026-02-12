@@ -1,14 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import AuthGate from "../../components/auth/AuthGate";
 import { useAgentConfig } from "../../hooks/useAgentConfig";
 import { useAgentEvents } from "../../hooks/useAgentEvents";
 import { useAgentHistory } from "../../hooks/useAgentHistory";
+import { useAgentWallet } from "../../hooks/useAgentWallet";
 import AgentSetupWizard from "../../components/agent/AgentSetupWizard";
 import AgentStatusCard from "../../components/agent/AgentStatusCard";
 import AgentActivityFeed from "../../components/agent/AgentActivityFeed";
 import AgentBudgetCard from "../../components/agent/AgentBudgetCard";
+import AgentBudgetModal from "../../components/agent/AgentBudgetModal";
 import AgentTasteCard from "../../components/agent/AgentTasteCard";
 import AgentHistoryCard from "../../components/agent/AgentHistoryCard";
 import { useToast } from "../../components/ui/Toast";
@@ -18,14 +21,33 @@ export default function AgentPage() {
         useAgentConfig();
     const events = useAgentEvents();
     const { sessions, isLoading: historyLoading, refetch: refetchHistory } = useAgentHistory();
+    const wallet = useAgentWallet();
     const { addToast } = useToast();
+    const [showBudgetModal, setShowBudgetModal] = useState(false);
 
     const handleWizardComplete = async (data: {
         name: string;
         vibes: string[];
         monthlyCapUsd: number;
+        enableWallet: boolean;
     }) => {
         await createConfig(data);
+        if (data.enableWallet) {
+            try {
+                await wallet.enable();
+                addToast({
+                    type: "success",
+                    title: "Smart Wallet Enabled",
+                    message: "Your DJ can now purchase stems autonomously.",
+                });
+            } catch {
+                addToast({
+                    type: "info",
+                    title: "Wallet Setup Skipped",
+                    message: "You can enable the smart wallet from the dashboard.",
+                });
+            }
+        }
         addToast({
             type: "success",
             title: "DJ Activated",
@@ -57,16 +79,16 @@ export default function AgentPage() {
         }
     };
 
-    const handleEditBudget = () => {
-        const newBudget = prompt("Set monthly budget cap (USD):", String(config?.monthlyCapUsd ?? 10));
-        if (newBudget && !isNaN(Number(newBudget))) {
-            updateConfig({ monthlyCapUsd: Number(newBudget) });
-            addToast({
-                type: "success",
-                title: "Budget Updated",
-                message: `Monthly cap set to $${newBudget}`,
-            });
-        }
+    const handleEditBudget = () => setShowBudgetModal(true);
+
+    const handleBudgetConfirm = (newBudget: number) => {
+        setShowBudgetModal(false);
+        updateConfig({ monthlyCapUsd: newBudget });
+        addToast({
+            type: "success",
+            title: "Budget Updated",
+            message: `Monthly cap set to $${newBudget}/mo`,
+        });
     };
 
     return (
@@ -98,9 +120,26 @@ export default function AgentPage() {
                 ) : (
                     <>
                         <div className="agent-dashboard-grid">
-                            <AgentStatusCard config={config} onToggle={handleToggle} />
+                            <AgentStatusCard
+                                config={config}
+                                onToggle={handleToggle}
+                                sessionCount={sessions.length}
+                                trackCount={sessions.reduce((sum, s) => sum + s.licenses.length, 0)}
+                                totalSpend={sessions.reduce((sum, s) => sum + s.spentUsd, 0)}
+                            />
                             <AgentActivityFeed isActive={config.isActive} events={events} />
-                            <AgentBudgetCard config={config} spentUsd={sessions.reduce((sum, s) => sum + s.spentUsd, 0)} onEdit={handleEditBudget} />
+                            <AgentBudgetCard
+                                config={config}
+                                spentUsd={sessions.reduce((sum, s) => sum + s.spentUsd, 0)}
+                                onEdit={handleEditBudget}
+                                walletStatus={wallet.walletStatus}
+                                transactions={wallet.transactions}
+                                isEnabling={wallet.isEnabling}
+                                isDisabling={wallet.isDisabling}
+                                onEnable={wallet.enable}
+                                onDisable={wallet.disable}
+                                onRefreshTransactions={wallet.refetchTransactions}
+                            />
                             <AgentTasteCard
                                 config={config}
                                 onUpdateVibes={async (vibes) => {
@@ -140,6 +179,14 @@ export default function AgentPage() {
                     onClose={() => setShowWizard(false)}
                 />
             )}
+
+            <AgentBudgetModal
+                isOpen={showBudgetModal}
+                currentBudget={config?.monthlyCapUsd ?? 10}
+                spentUsd={sessions.reduce((sum, s) => sum + s.spentUsd, 0)}
+                onConfirm={handleBudgetConfirm}
+                onClose={() => setShowBudgetModal(false)}
+            />
         </AuthGate>
     );
 }

@@ -3,6 +3,7 @@ import { WalletService } from "../identity/wallet.service";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
 import { AgentOrchestrationService, AgentPreferences } from "./agent_orchestration.service";
+import { AgentPurchaseService } from "../agents/agent_purchase.service";
 
 @Injectable()
 export class SessionsService {
@@ -11,7 +12,8 @@ export class SessionsService {
   constructor(
     private readonly walletService: WalletService,
     private readonly eventBus: EventBus,
-    private readonly agentService: AgentOrchestrationService
+    private readonly agentService: AgentOrchestrationService,
+    private readonly agentPurchaseService: AgentPurchaseService
   ) {}
 
   async startSession(input: {
@@ -70,11 +72,58 @@ export class SessionsService {
     };
   }
 
-  async playTrack(input: { sessionId: string; trackId: string; priceUsd: number }) {
+  async playTrack(input: {
+    sessionId: string;
+    trackId: string;
+    priceUsd: number;
+    listingId?: bigint;
+    tokenId?: bigint;
+    amount?: bigint;
+    totalPriceWei?: string;
+  }) {
     const session = await prisma.session.findUnique({ where: { id: input.sessionId } });
     if (!session || session.endedAt) {
       return { allowed: false, reason: "session_inactive" };
     }
+
+    // Check if agent wallet supports on-chain purchases
+    const wallet = await this.walletService.getWallet(session.userId);
+    const isOnChain =
+      (wallet as any)?.accountType === "erc4337" &&
+      process.env.AA_SKIP_BUNDLER !== "true" &&
+      input.listingId !== undefined;
+
+    if (isOnChain || (input.listingId !== undefined && process.env.AA_SKIP_BUNDLER === "true")) {
+      // Delegate to AgentPurchaseService for on-chain (or mock on-chain) purchase
+      const result = await this.agentPurchaseService.purchase({
+        sessionId: input.sessionId,
+        userId: session.userId,
+        listingId: input.listingId!,
+        tokenId: input.tokenId ?? BigInt(0),
+        amount: input.amount ?? BigInt(1),
+        totalPriceWei: input.totalPriceWei ?? "0",
+        priceUsd: input.priceUsd,
+      });
+
+      if (result.success) {
+        await prisma.session.update({
+          where: { id: input.sessionId },
+          data: { spentUsd: session.spentUsd + input.priceUsd },
+        });
+      }
+
+      return {
+        allowed: result.success,
+        reason: result.success ? undefined : (result as any).reason,
+        trackId: input.trackId,
+        txHash: (result as any).txHash,
+        transactionId: (result as any).transactionId,
+        remaining: (result as any).remaining,
+        mode: (result as any).mode,
+      };
+    }
+
+    // Fallback: off-chain mock purchase (local wallet or no listing info)
     const spend = await this.walletService.spend(session.userId, input.priceUsd);
     if (!spend.allowed) {
       return { allowed: false, reason: "budget_exceeded", remaining: spend.remaining };
@@ -92,14 +141,32 @@ export class SessionsService {
         durationSeconds: 30,
       },
     });
+    const mockTxHash = `tx_${Date.now()}`;
     const payment = await prisma.payment.create({
       data: {
         sessionId: input.sessionId,
         amountUsd: input.priceUsd,
         status: "settled",
-        txHash: `tx_${Date.now()}`,
+        txHash: mockTxHash,
       },
     });
+
+    // Also record as AgentTransaction so wallet card surfaces it
+    await prisma.agentTransaction.create({
+      data: {
+        sessionId: input.sessionId,
+        userId: session.userId,
+        listingId: input.listingId ?? BigInt(0),
+        tokenId: input.tokenId ?? BigInt(0),
+        amount: input.amount ?? BigInt(1),
+        totalPriceWei: input.totalPriceWei ?? "0",
+        priceUsd: input.priceUsd,
+        status: "confirmed",
+        txHash: mockTxHash,
+        confirmedAt: new Date(),
+      },
+    });
+
     this.eventBus.publish({
       eventName: "license.granted",
       eventVersion: 1,
