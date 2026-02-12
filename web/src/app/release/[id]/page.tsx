@@ -802,24 +802,21 @@ export default function ReleaseDetails() {
 
       {/* Stem Pricing Panel - Only for owners with stems */}
       {isOwner && release.tracks && (() => {
-        const allStems = release.tracks.flatMap(t =>
-          (t.stems || []).filter(s => s.type !== "ORIGINAL").map(s => ({ id: s.id, type: s.type }))
-        );
-        if (allStems.length === 0) return null;
-        return <StemPricingPanel releaseId={release.id} stems={allStems} />;
+        const pricingTracks = release.tracks
+          .map((t) => ({
+            trackId: t.id,
+            trackTitle: t.title,
+            stems: (t.stems || [])
+              .filter((s) => s.type !== "ORIGINAL")
+              .map((s) => ({ id: s.id, type: s.type })),
+          }))
+          .filter((t) => t.stems.length > 0);
+        if (pricingTracks.length === 0) return null;
+        return <StemPricingPanel releaseId={release.id} tracks={pricingTracks} />;
       })()}
 
       {/* Public Licensing Info — visible to ALL users */}
-      {release.tracks && (() => {
-        const stemData = release.tracks.flatMap(t =>
-          (t.stems || []).filter(s => s.type !== "ORIGINAL").map(s => ({
-            id: s.id,
-            title: `${s.type.charAt(0).toUpperCase() + s.type.slice(1)} — ${t.title}`,
-          }))
-        );
-        if (stemData.length === 0) return null;
-        return <LicensingInfoSection stems={stemData} />;
-      })()}
+      <LicensingInfoSection />
 
       <footer className="release-footer">
         <div className="credits-section">

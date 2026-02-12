@@ -268,3 +268,74 @@
 .licensing-info__stem-group:last-child {
   margin-bottom: 0;
 }
+
+/* Track accordion */
+.licensing-info__tracks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.licensing-info__track-group {
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  transition: border-color 0.25s ease;
+}
+
+.licensing-info__track-group.expanded {
+  border-color: rgba(139, 92, 246, 0.2);
+}
+
+.licensing-info__track-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--space-4, 1.5rem);
+  background: transparent;
+  border: none;
+  color: var(--text-primary, #fff);
+  cursor: pointer;
+  transition: background 0.2s ease;
+  font-family: inherit;
+}
+
+.licensing-info__track-header:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.licensing-info__track-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.licensing-info__chevron {
+  font-size: 0.7rem;
+  color: var(--text-secondary, #94a3b8);
+  width: 16px;
+  text-align: center;
+}
+
+.licensing-info__track-name-btn {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+}
+
+.licensing-info__track-count {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #94a3b8);
+  font-weight: 600;
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+}
+
+.licensing-info__track-body {
+  padding: 0 var(--space-4, 1.5rem) var(--space-4, 1.5rem);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
