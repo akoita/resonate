@@ -10,7 +10,7 @@ import {
     createPlaylist,
     createFolder,
 } from "../../lib/playlistStore";
-import { LocalTrack, saveTrackMetadata } from "../../lib/localLibrary";
+import { LocalTrack } from "../../lib/localLibrary";
 import { useToast } from "../ui/Toast";
 import { PromptModal } from "../ui/PromptModal";
 
@@ -46,9 +46,6 @@ export function AddToPlaylistModal({ tracks, onClose }: AddToPlaylistModalProps)
         if (!tracks || tracks.length === 0) return;
         setLoading(playlistId);
         try {
-            for (const track of tracks) {
-                await saveTrackMetadata(track);
-            }
 
             const trackIds = tracks.map(t => t.id);
             const result = await (trackIds.length === 1
@@ -87,9 +84,7 @@ export function AddToPlaylistModal({ tracks, onClose }: AddToPlaylistModalProps)
             if (!tracks || tracks.length === 0) return;
             try {
                 const newPlaylist = await createPlaylist(name);
-                for (const track of tracks) {
-                    await saveTrackMetadata(track);
-                }
+
                 const trackIds = tracks.map(t => t.id);
                 await addTracksToPlaylist(newPlaylist.id, trackIds);
 

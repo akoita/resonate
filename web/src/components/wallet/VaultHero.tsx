@@ -26,15 +26,15 @@ export default function VaultHero({ wallet, status, onRefresh }: VaultHeroProps)
                 {/* Status Badges */}
                 <div className="vault-status-row">
                     <span
-                        className={`vault-status-badge ${status === "connected"
+                        className={`vault-status-badge ${status === "authenticated"
                             ? "vault-status-badge--active"
-                            : status === "connecting"
+                            : status === "loading"
                                 ? "vault-status-badge--inactive"
                                 : "vault-status-badge--locked"
                             }`}
                     >
                         <span className="vault-status-dot" />
-                        {status === "connected" ? "Connected" : status === "connecting" ? "Connecting..." : "Disconnected"}
+                        {status === "authenticated" ? "Connected" : status === "loading" ? "Connecting..." : "Disconnected"}
                     </span>
 
                     {isSmartAccount && (

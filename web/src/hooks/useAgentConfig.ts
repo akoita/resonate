@@ -47,7 +47,7 @@ export function useAgentConfig() {
     );
 
     const patchConfig = useCallback(
-        async (input: { name?: string; vibes?: string[]; monthlyCapUsd?: number; isActive?: boolean }) => {
+        async (input: { name?: string; vibes?: string[]; stemTypes?: string[]; sessionMode?: "curate" | "buy"; monthlyCapUsd?: number; isActive?: boolean }) => {
             if (!token) return;
             const result = await updateAgentConfig(token, input);
             setConfig(result);

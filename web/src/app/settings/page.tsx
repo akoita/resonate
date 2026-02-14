@@ -18,6 +18,7 @@ import {
     LibrarySettings,
 } from "../../lib/librarySettings";
 import { scanAndIndex, ScanProgress } from "../../lib/libraryScanner";
+import { clearLibrary } from "../../lib/localLibrary";
 
 export default function SettingsPage() {
     const { addToast } = useToast();
@@ -87,11 +88,12 @@ export default function SettingsPage() {
 
     const handleClearAll = async () => {
         await clearLibrarySourceHandles();
+        await clearLibrary();
         await loadState();
         addToast({
             type: "info",
             title: "Cleared",
-            message: "All library sources have been removed.",
+            message: "All library sources and indexed tracks have been removed.",
         });
     };
 

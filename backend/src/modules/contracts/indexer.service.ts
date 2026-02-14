@@ -28,30 +28,34 @@ const TRANSFER_BATCH_EVENT = parseAbiItem(
 );
 
 // Chain configurations
+// Global override: when set, routes ALL chains through this RPC (e.g., local Anvil fork)
+const RPC_OVERRIDE = process.env.RPC_URL || "";
+
 const CHAIN_CONFIGS: Record<number, { chain: any; rpcUrl: string }> = {
   31337: {
     chain: foundry,
-    rpcUrl: process.env.LOCAL_RPC_URL || "http://localhost:8545",
+    rpcUrl: RPC_OVERRIDE || process.env.LOCAL_RPC_URL || "http://localhost:8545",
   },
   11155111: {
     chain: sepolia,
-    rpcUrl: process.env.SEPOLIA_RPC_URL || `https://sepolia.infura.io/v3/${process.env.INFURA_KEY}`,
+    rpcUrl: RPC_OVERRIDE || process.env.SEPOLIA_RPC_URL || `https://sepolia.infura.io/v3/${process.env.INFURA_KEY}`,
   },
   84532: {
     chain: baseSepolia,
-    rpcUrl: process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org",
+    rpcUrl: RPC_OVERRIDE || process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org",
   },
 };
 
 // Contract addresses by chain
+// For forked Sepolia, SEPOLIA_* vars may not be set — fall back to generic STEM_NFT_ADDRESS/MARKETPLACE_ADDRESS
 const CONTRACT_ADDRESSES: Record<number, { stemNFT: Address; marketplace: Address }> = {
   31337: {
     stemNFT: (process.env.STEM_NFT_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
     marketplace: (process.env.MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
   },
   11155111: {
-    stemNFT: (process.env.SEPOLIA_STEM_NFT_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
-    marketplace: (process.env.SEPOLIA_MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
+    stemNFT: (process.env.SEPOLIA_STEM_NFT_ADDRESS || process.env.STEM_NFT_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
+    marketplace: (process.env.SEPOLIA_MARKETPLACE_ADDRESS || process.env.MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
   },
   84532: {
     stemNFT: (process.env.BASE_SEPOLIA_STEM_NFT_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
@@ -120,7 +124,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
     this.isIndexing = true;
 
     try {
-      const chainId = parseInt(process.env.INDEXER_CHAIN_ID || process.env.CHAIN_ID || "31337");
+      const chainId = parseInt(process.env.INDEXER_CHAIN_ID || process.env.CHAIN_ID || process.env.AA_CHAIN_ID || "31337");
       const config = CHAIN_CONFIGS[chainId];
       const addresses = CONTRACT_ADDRESSES[chainId];
 
@@ -146,14 +150,19 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         where: { chainId },
       });
 
+      const currentBlock = await client.getBlockNumber();
+
       if (!indexerState) {
+        // Start from near-current block rather than 0 to avoid scanning millions
+        // of blocks on forked chains (e.g., Sepolia fork starts at block ~10M)
+        const startBlock = currentBlock > 100n ? currentBlock - 100n : 0n;
+        this.logger.log(`First run: starting indexer at block ${startBlock} (current: ${currentBlock})`);
         indexerState = await prisma.indexerState.create({
-          data: { chainId, lastBlockNumber: 0n },
+          data: { chainId, lastBlockNumber: startBlock },
         });
       }
 
       const fromBlock = indexerState.lastBlockNumber + 1n;
-      const currentBlock = await client.getBlockNumber();
 
       if (fromBlock > currentBlock) {
         // Detect chain reset (Anvil restart)

@@ -34,10 +34,13 @@ const MARKETPLACE_ABI = [
 ] as const;
 
 // Chain configurations (shared with indexer)
+// Global override: when set, routes ALL chains through this RPC (e.g., local Anvil fork)
+const RPC_OVERRIDE = process.env.RPC_URL || "";
+
 const CHAIN_CONFIGS: Record<number, { chain: any; rpcUrl: string }> = {
-  31337: { chain: foundry, rpcUrl: process.env.LOCAL_RPC_URL || "http://localhost:8545" },
-  11155111: { chain: sepolia, rpcUrl: process.env.SEPOLIA_RPC_URL || `https://sepolia.infura.io/v3/${process.env.INFURA_KEY}` },
-  84532: { chain: baseSepolia, rpcUrl: process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org" },
+  31337: { chain: foundry, rpcUrl: RPC_OVERRIDE || process.env.LOCAL_RPC_URL || "http://localhost:8545" },
+  11155111: { chain: sepolia, rpcUrl: RPC_OVERRIDE || process.env.SEPOLIA_RPC_URL || `https://sepolia.infura.io/v3/${process.env.INFURA_KEY}` },
+  84532: { chain: baseSepolia, rpcUrl: RPC_OVERRIDE || process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org" },
 };
 
 const MARKETPLACE_ADDRESSES: Record<number, Address> = {
@@ -67,7 +70,7 @@ export class ContractsService implements OnModuleInit {
    * or amount=0 is marked as "sold" in the DB.
    */
   private async reconcileListings() {
-    const chainId = parseInt(process.env.INDEXER_CHAIN_ID || process.env.CHAIN_ID || "31337");
+    const chainId = parseInt(process.env.INDEXER_CHAIN_ID || process.env.CHAIN_ID || process.env.AA_CHAIN_ID || "31337");
     const config = CHAIN_CONFIGS[chainId];
     const marketplaceAddr = MARKETPLACE_ADDRESSES[chainId];
 
@@ -586,12 +589,56 @@ export class ContractsService implements OnModuleInit {
   }
 
   /**
-   * Get all stems owned by a wallet address (via purchases)
+   * Get all stems owned by a wallet address (via purchases).
+   * Also checks purchases made by the user's linked smart account
+   * (agent purchases go through the Kernel AA wallet, not the EOA).
    */
   async getStemsByOwner(walletAddress: string) {
     this.logger.log(`Fetching collection for wallet: ${walletAddress}`);
+
+    // Collect all addresses linked to this wallet (EOA + smart account)
+    const addresses = new Set<string>([walletAddress.toLowerCase()]);
+
+    // Check if this address has a linked smart account (or is a smart account with an owner)
+    const wallets = await prisma.wallet.findMany({
+      where: {
+        OR: [
+          { address: { equals: walletAddress, mode: "insensitive" } },
+          { ownerAddress: { equals: walletAddress, mode: "insensitive" } },
+        ],
+      },
+      select: { address: true, ownerAddress: true },
+    });
+
+    for (const w of wallets) {
+      if (w.address) addresses.add(w.address.toLowerCase());
+      if (w.ownerAddress) addresses.add(w.ownerAddress.toLowerCase());
+    }
+
+    // Also resolve buyer addresses from agent purchases (the Kernel smart
+    // account address used on-chain differs from both the EOA and the Wallet
+    // address). We join AgentTransaction (userId) → StemPurchase (txHash)
+    // to discover the actual on-chain buyer address.
+    const agentTxs = await prisma.agentTransaction.findMany({
+      where: { userId: walletAddress.toLowerCase(), status: "confirmed", txHash: { not: null } },
+      select: { txHash: true },
+    });
+    if (agentTxs.length > 0) {
+      const txHashes = agentTxs.map(t => t.txHash!);
+      const agentPurchases = await prisma.stemPurchase.findMany({
+        where: { transactionHash: { in: txHashes } },
+        select: { buyerAddress: true },
+      });
+      for (const p of agentPurchases) {
+        addresses.add(p.buyerAddress.toLowerCase());
+      }
+    }
+
+    const allAddresses = Array.from(addresses);
+    this.logger.debug(`Querying purchases for addresses: ${allAddresses.join(", ")}`);
+
     const purchases = await prisma.stemPurchase.findMany({
-      where: { buyerAddress: walletAddress.toLowerCase() },
+      where: { buyerAddress: { in: allAddresses } },
       include: {
         listing: {
           include: {
@@ -626,10 +673,7 @@ export class ContractsService implements OnModuleInit {
     // 2. Fetch all active listings where this user is the seller
     const activeListings = await prisma.stemListing.findMany({
       where: {
-        sellerAddress: {
-          equals: walletAddress.toLowerCase(),
-          mode: "insensitive", // Handle legacy mixed-case records
-        },
+        sellerAddress: { in: allAddresses },
         status: "active",
       },
       include: {

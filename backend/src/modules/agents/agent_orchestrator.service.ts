@@ -13,6 +13,7 @@ export interface AgentOrchestratorInput {
     mood?: string;
     energy?: "low" | "medium" | "high";
     genres?: string[];
+    stemTypes?: string[];
     allowExplicit?: boolean;
     licenseType?: "personal" | "remix" | "commercial";
   };
@@ -104,6 +105,7 @@ export class AgentOrchestratorService {
         trackId: track.id,
         licenseType: input.preferences.licenseType,
         budgetRemainingUsd: budgetLeft,
+        stemTypes: input.preferences.stemTypes,
       });
 
       this.eventBus.publish({

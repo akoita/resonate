@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { getRelease, Release, updateReleaseArtwork, getReleaseArtworkUrl } from "../../../lib/api";
-import { LocalTrack, saveTrackMetadata } from "../../../lib/localLibrary";
+import { LocalTrack, saveTracksMetadata } from "../../../lib/localLibrary";
 import { Button } from "../../../components/ui/Button";
 import { usePlayer } from "../../../lib/playerContext";
 import { AddToPlaylistModal } from "../../../components/library/AddToPlaylistModal";
@@ -252,9 +252,7 @@ export default function ReleaseDetails() {
     if (!release?.tracks) return;
     try {
       const allTracks = release.tracks.map((t) => mapToLocalTrack(t));
-      for (const track of allTracks) {
-        await saveTrackMetadata(track);
-      }
+      await saveTracksMetadata(allTracks, "remote");
       addToast({
         title: "Success",
         message: `Saved ${allTracks.length} tracks to library`,

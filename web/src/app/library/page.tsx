@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import AuthGate from "../../components/auth/AuthGate";
@@ -9,10 +9,15 @@ import {
     listTracks,
     deleteTrack,
     getArtworkUrl,
+    saveTracksMetadata,
     LocalTrack,
 } from "../../lib/localLibrary";
+import { useAuth } from "../../components/auth/AuthProvider";
+import { useZeroDev } from "../../components/auth/ZeroDevProviderClient";
+import { type Address } from "viem";
 import {
     Playlist,
+    listPlaylists,
     // getPlaylist,
     // removeTrackFromPlaylist,
     // reorderTracks,
@@ -27,16 +32,15 @@ import { useUIStore } from "../../lib/uiStore";
 import { PlaylistTab } from "../../components/library/PlaylistTab";
 import { PlaylistDetail } from "../../components/library/PlaylistDetail";
 import { ContextMenu, ContextMenuItem } from "../../components/ui/ContextMenu";
-import { TrackActionMenu, ActionMenuItem } from "../../components/ui/TrackActionMenu";
+import { TrackActionMenu } from "../../components/ui/TrackActionMenu";
 import { MarqueeText } from "../../components/ui/MarqueeText";
 import Link from "next/link";
 
-type ViewTab = "tracks" | "artists" | "albums" | "playlists";
+type ViewTab = "tracks" | "artists" | "albums" | "playlists" | "stems";
 
 export default function LibraryPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    // const queryTab = searchParams.get("tab"); // unused
     const { playQueue, stop: handleStop, currentTrack, playNext, addToQueue } = usePlayer();
     const [tracks, setTracks] = useState<LocalTrack[]>([]);
     const [loading, setLoading] = useState(true);
@@ -49,20 +53,55 @@ export default function LibraryPage() {
     const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
     const [selectedAlbum, setSelectedAlbum] = useState<{ name: string; artist: string } | null>(null);
     const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
-    const { setTracksToAddToPlaylist } = useUIStore();
+    const [playlistCount, setPlaylistCount] = useState(0);
+    const { setTracksToAddToPlaylist, setResaleModal } = useUIStore();
     const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
+    const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(new Set());
+    const lastClickedTrackIdRef = useRef<string | null>(null);
+    const { address } = useAuth();
+    const { chainId } = useZeroDev();
+    
+    // Remote collection state
+    const [ownedStems, setOwnedStems] = useState<LocalTrack[]>([]);
+    const [isCollectionLoading, setIsCollectionLoading] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, items: ContextMenuItem[] } | null>(null);
+
+    // Unified tracks (Local + Owned Stems), deduplicated by ID
+    const unifiedTracks = useMemo(() => {
+        const seen = new Set<string>();
+        const result: LocalTrack[] = [];
+        for (const t of [...tracks, ...ownedStems]) {
+            if (!seen.has(t.id)) {
+                seen.add(t.id);
+                result.push(t);
+            }
+        }
+        return result;
+    }, [tracks, ownedStems]);
+
+    const [showStems, setShowStems] = useState(false);
 
     // Filtered tracks
     const filteredTracks = useMemo(() => {
-        if (!searchQuery.trim()) return tracks;
+        let source = unifiedTracks;
+
+        // In "Tracks" tab, only show stems if toggle is ON
+        if (activeTab === "tracks" && !showStems) {
+            source = source.filter(t => !t.stemType); // exclude stems
+        }
+        // In "Stems" tab, only show stems
+        else if (activeTab === "stems") {
+            source = ownedStems;
+        }
+
+        if (!searchQuery.trim()) return source;
         const q = searchQuery.toLowerCase();
-        return tracks.filter(t =>
+        return source.filter(t =>
             t.title.toLowerCase().includes(q) ||
             (t.artist && t.artist.toLowerCase().includes(q)) ||
             (t.album && t.album.toLowerCase().includes(q))
         );
-    }, [tracks, searchQuery]);
+    }, [unifiedTracks, ownedStems, activeTab, searchQuery, showStems]);
 
     // Grouped data from filtered tracks
     const artists = useMemo(() => groupByArtist(filteredTracks), [filteredTracks]);
@@ -88,10 +127,115 @@ export default function LibraryPage() {
         setArtworkUrls(urls);
     };
 
+    const fetchCollection = useCallback(async () => {
+        if (!address) return;
+        setIsCollectionLoading(true);
+        try {
+            // For local Anvil (31337) or Sepolia Fork (11155111) in dev mode,
+            // we need to check BOTH the connected EOA (for manual purchases)
+            // and the derived AA signer (for agent/automated purchases).
+            const addressesToQuery = new Set<string>([address]);
+            
+            // Allow derivation on Sepolia if we are in dev mode (handling local fork)
+            const isLocalOrFork = chainId === 31337 || (chainId === 11155111 && process.env.NODE_ENV === "development");
+
+            if (isLocalOrFork) {
+                const { getLocalSignerAddress } = await import("../../lib/localAA");
+                const derived = getLocalSignerAddress(address as Address);
+                addressesToQuery.add(derived);
+            }
+
+            // Minimal type for stem response to avoid 'any'
+            type RemoteStem = {
+                id: string;
+                title: string;
+                artist?: string;
+                releaseTitle?: string;
+                genre?: string;
+                durationSeconds?: number;
+                purchasedAt?: string;
+                type: string;
+                tokenId: string;
+                activeListingId?: string;
+                uri?: string;
+                artworkUrl?: string;
+                previewUrl?: string;
+            };
+
+            const allStemsMap = new Map<string, RemoteStem>();
+
+            await Promise.all(Array.from(addressesToQuery).map(async (addr) => {
+                try {
+                    const response = await fetch(`/api/metadata/collection/${addr}`);
+                    if (!response.ok) return; // Skip failed fetches
+                    const data = await response.json();
+                    if (data.stems) {
+                        data.stems.forEach((stem: RemoteStem) => {
+                            allStemsMap.set(stem.id, stem);
+                        });
+                    }
+                } catch (e) {
+                    console.error(`Failed to fetch for ${addr}:`, e);
+                }
+            }));
+
+            // Map backend data to LocalTrack format
+            const mappedStems: LocalTrack[] = Array.from(allStemsMap.values()).map((stem: RemoteStem) => ({
+                id: stem.id,
+                title: stem.title,
+                artist: stem.artist || "Unknown Artist",
+                album: stem.releaseTitle || "Unknown Release",
+                // Helper to group stems by the original track
+                albumArtist: stem.artist || "Unknown Artist", 
+                year: null,
+                genre: stem.genre || "Electronic",
+                duration: stem.durationSeconds || 0,
+                createdAt: stem.purchasedAt || new Date().toISOString(),
+                // Stem-specific fields
+                stemType: stem.type,
+                tokenId: stem.tokenId,
+                listingId: stem.activeListingId,
+                purchaseDate: stem.purchasedAt,
+                isOwned: true,
+                remoteUrl: stem.uri,
+                remoteArtworkUrl: stem.artworkUrl,
+                previewUrl: stem.previewUrl,
+            }));
+
+            setOwnedStems(mappedStems);
+
+            // Persist stem metadata to the library so getTrack() can find
+            // them when they are added to playlists
+            if (mappedStems.length > 0) {
+                void saveTracksMetadata(mappedStems, "remote");
+            }
+        } catch (error) {
+            console.error("Error fetching collection:", error);
+            addToast({
+                type: "error",
+                title: "Error",
+                message: "Failed to load your collection",
+            });
+        } finally {
+            setIsCollectionLoading(false);
+        }
+    }, [address, chainId, addToast]);
+
     useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         void loadTracks();
+        void listPlaylists().then(p => setPlaylistCount(p.length));
     }, []);
+
+    // Refresh playlist count when switching tabs (catches creates/deletes)
+    useEffect(() => {
+        void listPlaylists().then(p => setPlaylistCount(p.length));
+    }, [activeTab]);
+
+    useEffect(() => {
+        if (address) {
+            fetchCollection();
+        }
+    }, [fetchCollection, address]);
 
     // Handle deep-linking from query params
     useEffect(() => {
@@ -101,7 +245,6 @@ export default function LibraryPage() {
         const albumArtist = searchParams.get("albumArtist");
 
         if (tab === "playlists") {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
             setActiveTab("playlists");
         } else if (artist) {
             setSelectedArtist(artist);
@@ -117,7 +260,6 @@ export default function LibraryPage() {
         if (autoScan.newTracks.length > 0) {
             const latestTrack = autoScan.newTracks[autoScan.newTracks.length - 1];
             if (latestTrack && !tracks.find(t => t.id === latestTrack.id)) {
-                // eslint-disable-next-line react-hooks/set-state-in-effect
                 setTracks(prev => [latestTrack, ...prev]);
                 // Load artwork for new track
                 void getArtworkUrl(latestTrack).then(url => {
@@ -171,6 +313,53 @@ export default function LibraryPage() {
         loadTracks();
     };
 
+    const handleStemDownload = async (stem: LocalTrack) => {
+        if (!address) {
+            addToast({ type: "error", title: "Error", message: "Wallet not connected" });
+            return;
+        }
+
+        addToast({ type: "info", title: "Downloading...", message: `Preparing ${stem.title}` });
+
+        try {
+            // Use the secured download endpoint with ownership verification
+            const response = await fetch("/api/encryption/download", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    stemId: stem.id,
+                    walletAddress: chainId === 31337
+                        ? (await import("../../lib/localAA")).getLocalSignerAddress(address as Address)
+                        : address,
+                }),
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || "Download failed");
+            }
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${stem.title || stem.stemType}.mp3`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            addToast({ type: "success", title: "Downloaded", message: `${stem.title} saved` });
+        } catch (error) {
+            console.error("Download error:", error);
+            addToast({
+                type: "error",
+                title: "Download Failed",
+                message: error instanceof Error ? error.message : "Could not download file",
+            });
+        }
+    };
+
     const handleContextMenu = (e: React.MouseEvent, track: LocalTrack) => {
         e.preventDefault();
         setContextMenu({ x: e.clientX, y: e.clientY, items: getTrackContextMenuItems(track) });
@@ -209,18 +398,70 @@ export default function LibraryPage() {
         });
     };
 
-    const getTrackContextMenuItems = (track: LocalTrack): ContextMenuItem[] => [
-        { label: "Play Next", icon: "⏭️", onClick: () => { playNext(track); addToast({ type: "success", title: "Queued", message: `"${track.title}" will play next` }); } },
-        { label: "Add to Queue", icon: "➕", onClick: () => { addToQueue(track); addToast({ type: "success", title: "Queued", message: `Added "${track.title}" to queue` }); } },
-        { separator: true, label: "", onClick: () => { } },
-        { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist([track]) },
-        { separator: true, label: "", onClick: () => { } },
-        { label: "Delete from Library", icon: "🗑️", variant: "destructive", onClick: () => handleDelete(track.id) },
-    ];
+    const getTrackContextMenuItems = (track: LocalTrack): ContextMenuItem[] => {
+        const items: ContextMenuItem[] = [
+            { label: "Play Next", icon: "⏭️", onClick: () => { playNext(track); addToast({ type: "success", title: "Queued", message: `"${track.title}" will play next` }); } },
+            { label: "Add to Queue", icon: "➕", onClick: () => { addToQueue(track); addToast({ type: "success", title: "Queued", message: `Added "${track.title}" to queue` }); } },
+            { separator: true, label: "", onClick: () => { } },
+            { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist([track]) },
+        ];
+
+        if (track.isOwned) {
+            items.push(
+                { separator: true, label: "", onClick: () => { } },
+                { 
+                    label: "Download Stem", 
+                    icon: "⬇️", 
+                    onClick: () => handleStemDownload(track) 
+                }
+            );
+
+            if (track.tokenId && !track.listingId) {
+                items.push({
+                    label: "Add to Playlist",
+                    icon: "➕",
+                    onClick: () => setTracksToAddToPlaylist([track])
+                });
+                
+                items.push({
+                    label: "Resell Stem",
+                    icon: "💰",
+                    onClick: () => setResaleModal({
+                        stemId: track.id,
+                        tokenId: track.tokenId!,
+                        stemTitle: track.title,
+                    })
+                });
+            }
+        } else {
+             items.push(
+                { separator: true, label: "", onClick: () => { } },
+                { label: "Delete from Library", icon: "🗑️", variant: "destructive", onClick: () => handleDelete(track.id) },
+             );
+        }
+
+        return items;
+    };
 
     const renderTrackList = (trackList: LocalTrack[]) => (
         <div className="library-list">
             <div className="library-item library-item-header">
+                <div style={{ width: 28, flexShrink: 0 }}>
+                    <input
+                        type="checkbox"
+                        checked={selectedTrackIds.size === trackList.length && trackList.length > 0}
+                        onChange={(e) => {
+                            if (e.target.checked) {
+                                setSelectedTrackIds(new Set(trackList.map(t => t.id)));
+                            } else {
+                                setSelectedTrackIds(new Set());
+                            }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        title="Select all"
+                        style={{ accentColor: 'var(--color-accent)', cursor: 'pointer', width: 15, height: 15 }}
+                    />
+                </div>
                 <div></div>
                 <div>Title</div>
                 <div>Artist</div>
@@ -228,30 +469,86 @@ export default function LibraryPage() {
                 <div>Duration</div>
                 <div style={{ textAlign: 'right' }}>Actions</div>
             </div>
-            {trackList.map((track) => {
-                const artUrl = artworkUrls.get(track.id);
+            {trackList.map((track, idx) => {
+                // If remote artwork url exists, use it, otherwise check local blob map
+                const artUrl = track.remoteArtworkUrl || artworkUrls.get(track.id);
+                const isMultiSelected = selectedTrackIds.has(track.id);
                 return (
                     <div
                         key={track.id}
-                        className={`library-item ${selectedTrackId === track.id ? "selected" : ""} ${currentTrack?.id === track.id ? "playing" : ""}`}
+                        className={`library-item ${isMultiSelected ? "selected" : ""} ${selectedTrackId === track.id ? "focused" : ""} ${currentTrack?.id === track.id ? "playing" : ""}`}
                         draggable
-                        onClick={() => {
-                            setSelectedTrackId(track.id);
-                            handlePlay(track, trackList);
+                        onClick={(e) => {
+                            if (e.shiftKey && lastClickedTrackIdRef.current) {
+                                // Shift+click: range select
+                                const lastIdx = trackList.findIndex(t => t.id === lastClickedTrackIdRef.current);
+                                const curIdx = idx;
+                                const start = Math.min(lastIdx, curIdx);
+                                const end = Math.max(lastIdx, curIdx);
+                                setSelectedTrackIds(prev => {
+                                    const next = new Set(prev);
+                                    for (let i = start; i <= end; i++) {
+                                        next.add(trackList[i].id);
+                                    }
+                                    return next;
+                                });
+                            } else if (e.ctrlKey || e.metaKey) {
+                                // Ctrl/Cmd+click: toggle single
+                                setSelectedTrackIds(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(track.id)) next.delete(track.id);
+                                    else next.add(track.id);
+                                    return next;
+                                });
+                            } else {
+                                // Normal click: play track
+                                setSelectedTrackId(track.id);
+                                handlePlay(track, trackList);
+                            }
+                            lastClickedTrackIdRef.current = track.id;
                         }}
                         onContextMenu={(e) => handleContextMenu(e, track)}
                         onDragStart={(e) => {
-                            const payload = JSON.stringify({
-                                type: "track",
-                                id: track.id,
-                                title: track.title,
-                                artist: track.artist
-                            });
-                            e.dataTransfer.setData("application/json", payload);
-                            e.dataTransfer.setData("text/plain", payload);
+                            // If dragging a selected track, drag all selected
+                            if (isMultiSelected && selectedTrackIds.size > 1) {
+                                const selectedTracks = trackList.filter(t => selectedTrackIds.has(t.id));
+                                const payload = JSON.stringify({
+                                    type: "album",
+                                    name: `${selectedTracks.length} tracks`,
+                                    tracks: selectedTracks,
+                                });
+                                e.dataTransfer.setData("application/json", payload);
+                                e.dataTransfer.setData("text/plain", payload);
+                            } else {
+                                const payload = JSON.stringify({
+                                    type: "track",
+                                    id: track.id,
+                                    title: track.title,
+                                    artist: track.artist
+                                });
+                                e.dataTransfer.setData("application/json", payload);
+                                e.dataTransfer.setData("text/plain", payload);
+                            }
                             e.dataTransfer.effectAllowed = "copy";
                         }}
                     >
+                        <div style={{ width: 28, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <input
+                                type="checkbox"
+                                checked={isMultiSelected}
+                                onChange={() => {
+                                    setSelectedTrackIds(prev => {
+                                        const next = new Set(prev);
+                                        if (next.has(track.id)) next.delete(track.id);
+                                        else next.add(track.id);
+                                        return next;
+                                    });
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                style={{ accentColor: 'var(--color-accent)', cursor: 'pointer', width: 15, height: 15, opacity: isMultiSelected ? 1 : undefined }}
+                                className="library-select-checkbox"
+                            />
+                        </div>
                         <div
                             className="library-item-artwork"
                             onMouseEnter={() => artUrl && setHoveredArtwork({ url: artUrl, title: track.title })}
@@ -264,7 +561,21 @@ export default function LibraryPage() {
                                 <div className="library-item-artwork-placeholder">🎵</div>
                             )}
                         </div>
-                        <div className="library-item-title">{track.title}</div>
+                        <div className="library-item-title">
+                            {track.title}
+                            {track.stemType && (
+                                <span style={{ 
+                                    fontSize: "0.7em", 
+                                    background: "rgba(255,255,255,0.1)", 
+                                    padding: "2px 6px", 
+                                    borderRadius: "4px", 
+                                    marginLeft: "8px",
+                                    color: "#aaa"
+                                }}>
+                                    {track.stemType}
+                                </span>
+                            )}
+                        </div>
                         <div
                             className="library-item-artist clickable hover:underline"
                             onClick={(e) => {
@@ -288,6 +599,9 @@ export default function LibraryPage() {
                         </div>
                         <div className="library-item-duration">
                             {formatDuration(track.duration)}
+                            {track.listingId && (
+                                <span title="Listed for sale" style={{ marginLeft: "8px" }}>🏷️</span>
+                            )}
                         </div>
                         <div className="library-item-actions">
                             <TrackActionMenu
@@ -306,8 +620,8 @@ export default function LibraryPage() {
         <div className="library-grid-view">
             {artists.map((artist) => {
                 // Find first track with artwork for this artist
-                const trackWithArt = tracks.find(t => (t.artist || "Unknown Artist") === artist.name && artworkUrls.has(t.id));
-                const artUrl = trackWithArt ? artworkUrls.get(trackWithArt.id) : null;
+                const trackWithArt = filteredTracks.find(t => (t.artist || "Unknown Artist") === artist.name && (t.remoteArtworkUrl || artworkUrls.has(t.id)));
+                const artUrl = trackWithArt ? (trackWithArt.remoteArtworkUrl || artworkUrls.get(trackWithArt.id)) : null;
                 return (
                     <div
                         key={artist.name}
@@ -346,12 +660,12 @@ export default function LibraryPage() {
         <div className="library-grid-view">
             {albums.map((album) => {
                 // Find first track with artwork for this album
-                const trackWithArt = tracks.find(
+                const trackWithArt = filteredTracks.find(
                     t => (t.album || "Unknown Album") === album.name &&
                         (t.artist || "Unknown Artist") === album.artist &&
-                        artworkUrls.has(t.id)
+                        (t.remoteArtworkUrl || artworkUrls.has(t.id))
                 );
-                const artUrl = trackWithArt ? artworkUrls.get(trackWithArt.id) : null;
+                const artUrl = trackWithArt ? (trackWithArt.remoteArtworkUrl || artworkUrls.get(trackWithArt.id)) : null;
                 return (
                     <div
                         key={`${album.artist}::${album.name}`}
@@ -360,7 +674,7 @@ export default function LibraryPage() {
                         onContextMenu={(e) => handleAlbumContextMenu(e, album.name, album.artist)}
                         draggable
                         onDragStart={(e) => {
-                            const albumTracks = tracks.filter(t =>
+                            const albumTracks = filteredTracks.filter(t =>
                                 (t.album || "Unknown Album") === album.name &&
                                 (t.artist || "Unknown Artist") === album.artist
                             );
@@ -396,12 +710,12 @@ export default function LibraryPage() {
     );
 
     const renderArtistDetail = () => {
-        const artistTracks = tracks.filter(t => (t.artist || "Unknown Artist") === selectedArtist);
+        const artistTracks = filteredTracks.filter(t => (t.artist || "Unknown Artist") === selectedArtist);
         const artistAlbums = albums.filter(a => (a.artist || "Unknown Artist") === selectedArtist);
 
         // Find best image for artist
-        const trackWithArt = artistTracks.find(t => artworkUrls.has(t.id));
-        const artUrl = trackWithArt ? artworkUrls.get(trackWithArt.id) : null;
+        const trackWithArt = artistTracks.find(t => (t.remoteArtworkUrl || artworkUrls.has(t.id)));
+        const artUrl = trackWithArt ? (trackWithArt.remoteArtworkUrl || artworkUrls.get(trackWithArt.id)) : null;
 
         return (
             <div className="library-detail">
@@ -432,12 +746,12 @@ export default function LibraryPage() {
                         <h2 className="detail-section-title">Albums</h2>
                         <div className="library-grid-view">
                             {artistAlbums.map((album) => {
-                                const albumTrackWithArt = tracks.find(
+                                const albumTrackWithArt = filteredTracks.find(
                                     t => (t.album || "Unknown Album") === album.name &&
                                         (t.artist || "Unknown Artist") === album.artist &&
-                                        artworkUrls.has(t.id)
+                                        (t.remoteArtworkUrl || artworkUrls.has(t.id))
                                 );
-                                const albumArtUrl = albumTrackWithArt ? artworkUrls.get(albumTrackWithArt.id) : null;
+                                const albumArtUrl = albumTrackWithArt ? (albumTrackWithArt.remoteArtworkUrl || artworkUrls.get(albumTrackWithArt.id)) : null;
                                 return (
                                     <div
                                         key={`${album.artist}::${album.name}`}
@@ -449,7 +763,7 @@ export default function LibraryPage() {
                                         onContextMenu={(e) => handleAlbumContextMenu(e, album.name, album.artist)}
                                         draggable
                                         onDragStart={(e) => {
-                                            const albumTracks = tracks.filter(t =>
+                                            const albumTracks = filteredTracks.filter(t =>
                                                 (t.album || "Unknown Album") === album.name &&
                                                 (t.artist || "Unknown Artist") === album.artist
                                             );
@@ -494,14 +808,14 @@ export default function LibraryPage() {
 
     const renderAlbumDetail = () => {
         if (!selectedAlbum) return null;
-        const albumTracks = tracks.filter(
+        const albumTracks = filteredTracks.filter(
             t => (t.album || "Unknown Album") === selectedAlbum.name &&
                 (t.artist || "Unknown Artist") === selectedAlbum.artist
         );
 
         // Find cover art
-        const trackWithArt = albumTracks.find(t => artworkUrls.has(t.id));
-        const artUrl = trackWithArt ? artworkUrls.get(trackWithArt.id) : null;
+        const trackWithArt = albumTracks.find(t => (t.remoteArtworkUrl || artworkUrls.has(t.id)));
+        const artUrl = trackWithArt ? (trackWithArt.remoteArtworkUrl || artworkUrls.get(trackWithArt.id)) : null;
 
         const year = albumTracks.find(t => t.year)?.year;
 
@@ -583,40 +897,62 @@ export default function LibraryPage() {
                         </div>
                     </div>
 
-                    {/* Tabs */}
-                    <div className="library-tabs">
-                        <button
-                            className={`library-tab ${activeTab === "tracks" ? "active" : ""}`}
-                            onClick={() => { setActiveTab("tracks"); setSelectedArtist(null); setSelectedAlbum(null); }}
-                        >
-                            Tracks ({tracks.length})
-                        </button>
-                        <button
-                            className={`library-tab ${activeTab === "artists" ? "active" : ""}`}
-                            onClick={() => { setActiveTab("artists"); setSelectedArtist(null); setSelectedAlbum(null); }}
-                        >
-                            Artists ({artists.length})
-                        </button>
-                        <button
-                            className={`library-tab ${activeTab === "albums" ? "active" : ""}`}
-                            onClick={() => { setActiveTab("albums"); setSelectedArtist(null); setSelectedAlbum(null); setSelectedPlaylist(null); }}
-                        >
-                            Albums ({albums.length})
-                        </button>
-                        <button
-                            className={`library-tab ${activeTab === "playlists" ? "active" : ""}`}
-                            onClick={() => { setActiveTab("playlists"); setSelectedArtist(null); setSelectedAlbum(null); setSelectedPlaylist(null); }}
-                        >
-                            Playlists
-                        </button>
+                    {/* Tabs & Filters */}
+                    <div className="library-tabs-container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+                        <div className="library-tabs">
+                            <button
+                                className={`library-tab ${activeTab === "tracks" ? "active" : ""}`}
+                                onClick={() => { setActiveTab("tracks"); setSelectedArtist(null); setSelectedAlbum(null); }}
+                            >
+                                Tracks ({unifiedTracks.length})
+                            </button>
+                            <button
+                                className={`library-tab ${activeTab === "artists" ? "active" : ""}`}
+                                onClick={() => { setActiveTab("artists"); setSelectedArtist(null); setSelectedAlbum(null); }}
+                            >
+                                Artists ({artists.length})
+                            </button>
+                            <button
+                                className={`library-tab ${activeTab === "albums" ? "active" : ""}`}
+                                onClick={() => { setActiveTab("albums"); setSelectedArtist(null); setSelectedAlbum(null); setSelectedPlaylist(null); }}
+                            >
+                                Albums ({albums.length})
+                            </button>
+                            <button
+                                className={`library-tab ${activeTab === "playlists" ? "active" : ""}`}
+                                onClick={() => { setActiveTab("playlists"); setSelectedArtist(null); setSelectedAlbum(null); setSelectedPlaylist(null); }}
+                            >
+                                Playlists ({playlistCount})
+                            </button>
+                            <button
+                                className={`library-tab ${activeTab === "stems" ? "active" : ""}`}
+                                onClick={() => { setActiveTab("stems"); setSelectedArtist(null); setSelectedAlbum(null); setSelectedPlaylist(null); }}
+                            >
+                                Stems ({ownedStems.length})
+                            </button>
+                        </div>
+                        
+                        {activeTab === "tracks" && (
+                            <div className="library-filter-toggle">
+                                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-400 hover:text-white transition-colors">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={showStems} 
+                                        onChange={(e) => setShowStems(e.target.checked)}
+                                        className="form-checkbox h-4 w-4 text-accent rounded border-gray-600 bg-gray-700 focus:ring-accent"
+                                    />
+                                    Show Stems
+                                </label>
+                            </div>
+                        )}
                     </div>
 
                     {/* Sidebar + Content Layout */}
                     <div className="library-layout">
                         <div className="library-content w-full">
-                            {loading ? (
+                            {loading && tracks.length === 0 ? (
                                 <div className="home-subtitle">Loading your library...</div>
-                            ) : tracks.length === 0 ? (
+                            ) : unifiedTracks.length === 0 && !isCollectionLoading ? (
                                 <div className="home-subtitle">
                                     Your library is empty.{" "}
                                     <Link href="/settings" className="text-accent">Add library sources in Settings</Link>{" "}
@@ -624,7 +960,12 @@ export default function LibraryPage() {
                                 </div>
                             ) : filteredTracks.length === 0 ? (
                                 <div className="home-subtitle">
-                                    No results found for &quot;{searchQuery}&quot;
+                                    {searchQuery.trim()
+                                        ? <>No results found for &quot;{searchQuery}&quot;</>
+                                        : activeTab === "tracks" && !showStems && ownedStems.length > 0
+                                            ? <>No local tracks yet. Enable <strong>Show Stems</strong> to see your {ownedStems.length} owned stem{ownedStems.length !== 1 ? "s" : ""}.</>
+                                            : <>No tracks to display.</>
+                                    }
                                 </div>
                             ) : (
                                 <>
@@ -645,6 +986,7 @@ export default function LibraryPage() {
                                             />
                                         )
                                     )}
+                                    {activeTab === "stems" && renderTrackList(ownedStems)}
                                 </>
                             )}
                         </div>

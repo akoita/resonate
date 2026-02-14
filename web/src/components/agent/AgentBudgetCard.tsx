@@ -11,9 +11,13 @@ type Props = {
     transactions: AgentTransaction[];
     isEnabling: boolean;
     isDisabling: boolean;
-    onEnable: () => Promise<AgentWalletStatus | undefined>;
+    onEnable: () => Promise<AgentWalletStatus | null | undefined>;
     onDisable: () => Promise<void>;
     onRefreshTransactions: () => Promise<void>;
+    // Self-custodial session key state
+    sessionKeyTxHash?: string | null;
+    sessionKeyExplorerUrl?: string | null;
+    sessionKeyPermissions?: { target: string; function: string; totalCapWei: string; perTxCapWei: string; rateLimit: number } | null;
 };
 
 export default function AgentBudgetCard({
@@ -27,6 +31,9 @@ export default function AgentBudgetCard({
     onEnable,
     onDisable,
     onRefreshTransactions,
+    sessionKeyTxHash,
+    sessionKeyExplorerUrl,
+    sessionKeyPermissions,
 }: Props) {
     const [txLimit, setTxLimit] = useState(5);
 
@@ -190,6 +197,42 @@ export default function AgentBudgetCard({
                         </div>
                     </div>
 
+                    {/* On-chain Session Key Info */}
+                    {(sessionKeyTxHash || walletStatus?.sessionKeyTxHash) && (
+                        <div className="afc-session-key-info" style={{ marginTop: 12, padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, fontSize: "0.8rem" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                <span className="awc-detail-label">Session Key Tx</span>
+                                {(sessionKeyExplorerUrl || walletStatus?.sessionKeyExplorerUrl) ? (
+                                    <a
+                                        href={sessionKeyExplorerUrl || walletStatus?.sessionKeyExplorerUrl || "#"}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{ color: "var(--accent)", display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" }}
+                                    >
+                                        {formatAddress(sessionKeyTxHash || walletStatus?.sessionKeyTxHash || null)}
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                            <polyline points="15 3 21 3 21 9" />
+                                            <line x1="10" y1="14" x2="21" y2="3" />
+                                        </svg>
+                                    </a>
+                                ) : (
+                                    <span className="mono" style={{ opacity: 0.6 }}>{formatAddress(sessionKeyTxHash || walletStatus?.sessionKeyTxHash || null)}</span>
+                                )}
+                            </div>
+                            {(sessionKeyPermissions || walletStatus?.sessionKeyPermissions) && (
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                                    <span style={{ padding: "2px 6px", background: "rgba(99,102,241,0.15)", borderRadius: 4, fontSize: "0.7rem" }}>
+                                        fn: {(sessionKeyPermissions || walletStatus?.sessionKeyPermissions)?.function}
+                                    </span>
+                                    <span style={{ padding: "2px 6px", background: "rgba(99,102,241,0.15)", borderRadius: 4, fontSize: "0.7rem" }}>
+                                        rate: {(sessionKeyPermissions || walletStatus?.sessionKeyPermissions)?.rateLimit} tx/hr
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Transactions */}
                     <div className="awc-tx-section">
                         <div className="awc-tx-header">
@@ -212,12 +255,18 @@ export default function AgentBudgetCard({
                                         <div key={tx.id} className="awc-tx-row">
                                             <div className="awc-tx-left">
                                                 <span className={`awc-tx-status ${tx.status}`}>
-                                                    {tx.status === "confirmed" ? "✓" : tx.status === "pending" ? "⏳" : "✗"}
+                                                    {tx.status === "confirmed" ? "✓" : tx.status === "pending" ? "⏳" : tx.status === "curated" ? "🎧" : "✗"}
                                                 </span>
                                                 <span className="awc-tx-price">${tx.priceUsd.toFixed(2)}</span>
-                                                <span className={`awc-tx-mode ${tx.txHash?.startsWith("tx_") ? "mock" : "onchain"}`}>
-                                                    {tx.txHash?.startsWith("tx_") ? "mock" : "on-chain"}
+                                                <span className={`awc-tx-mode ${tx.status === "curated" ? "curated" : "onchain"}`}>
+                                                    {tx.status === "curated" ? "curated" : "on-chain"}
                                                 </span>
+                                                {(tx.stemName || tx.trackTitle) && (
+                                                    <span className="awc-tx-stem" title={`${tx.stemName ?? "Stem"} · ${tx.trackTitle ?? "Unknown"}`}>
+                                                        {tx.stemName ?? "Stem"}
+                                                        {tx.trackTitle && <span className="awc-tx-track"> · {tx.trackTitle}</span>}
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="awc-tx-right">
                                                 <span className="awc-tx-time">{formatRelativeTime(tx.createdAt)}</span>

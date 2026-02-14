@@ -5,13 +5,15 @@
 # and web/.env.local with StemNFT, StemMarketplaceV2, and TransferValidator
 # contract addresses.
 #
+# Auto-detects chain ID from the local RPC so it works on both plain Anvil
+# (chainId 31337) and forked Sepolia (chainId 11155111).
+#
 # Usage: ./scripts/update-protocol-config.sh
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-BROADCAST_FILE="$PROJECT_ROOT/contracts/broadcast/DeployProtocol.s.sol/31337/run-latest.json"
 BACKEND_ENV="$PROJECT_ROOT/backend/.env"
 WEB_ENV_LOCAL="$PROJECT_ROOT/web/.env.local"
 
@@ -22,6 +24,25 @@ NC='\033[0m' # No Color
 
 echo "=== Updating Protocol Configuration ==="
 echo ""
+
+# Auto-detect chain ID from the local RPC
+RPC_URL="${RPC_URL:-http://localhost:8545}"
+echo "Detecting chain ID from $RPC_URL..."
+CHAIN_ID_HEX=$(curl -sf "$RPC_URL" -X POST \
+    -H 'Content-Type: application/json' \
+    -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' \
+    | jq -r '.result' 2>/dev/null || echo "")
+
+if [[ -n "$CHAIN_ID_HEX" && "$CHAIN_ID_HEX" != "null" ]]; then
+    CHAIN_ID=$(printf "%d" "$CHAIN_ID_HEX" 2>/dev/null || echo "31337")
+else
+    CHAIN_ID="31337"
+    echo -e "${YELLOW}Warning: Could not detect chain ID from RPC, defaulting to $CHAIN_ID${NC}"
+fi
+echo -e "${GREEN}Detected chain ID: $CHAIN_ID${NC}"
+echo ""
+
+BROADCAST_FILE="$PROJECT_ROOT/contracts/broadcast/DeployProtocol.s.sol/${CHAIN_ID}/run-latest.json"
 
 # Check if broadcast file exists
 if [[ ! -f "$BROADCAST_FILE" ]]; then
@@ -83,6 +104,7 @@ echo "Updating $BACKEND_ENV..."
 update_env_var "STEM_NFT_ADDRESS" "$STEM_NFT" "$BACKEND_ENV"
 update_env_var "MARKETPLACE_ADDRESS" "$MARKETPLACE" "$BACKEND_ENV"
 update_env_var "TRANSFER_VALIDATOR_ADDRESS" "$TRANSFER_VALIDATOR" "$BACKEND_ENV"
+update_env_var "ENABLE_CONTRACT_INDEXER" "true" "$BACKEND_ENV"
 echo -e "${GREEN}✓ backend/.env updated${NC}"
 
 # --- Update web/.env.local ---
@@ -94,20 +116,54 @@ fi
 echo "Updating $WEB_ENV_LOCAL..."
 update_env_var "NEXT_PUBLIC_STEM_NFT_ADDRESS" "$STEM_NFT" "$WEB_ENV_LOCAL"
 update_env_var "NEXT_PUBLIC_MARKETPLACE_ADDRESS" "$MARKETPLACE" "$WEB_ENV_LOCAL"
+update_env_var "NEXT_PUBLIC_CHAIN_ID" "$CHAIN_ID" "$WEB_ENV_LOCAL"
 echo -e "${GREEN}✓ web/.env.local updated${NC}"
+
+# --- Reset indexer to near-current block ---
+echo ""
+echo "Resetting indexer state to current block..."
+CURRENT_BLOCK_HEX=$(curl -sf "$RPC_URL" -X POST \
+    -H 'Content-Type: application/json' \
+    -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+    | jq -r '.result' 2>/dev/null || echo "")
+
+if [[ -n "$CURRENT_BLOCK_HEX" && "$CURRENT_BLOCK_HEX" != "null" ]]; then
+    CURRENT_BLOCK=$(printf "%d" "$CURRENT_BLOCK_HEX" 2>/dev/null || echo "0")
+else
+    CURRENT_BLOCK=0
+fi
+
+if [[ "$CURRENT_BLOCK" -gt 0 ]]; then
+    RESET_BLOCK=$((CURRENT_BLOCK - 1))
+    cd "$PROJECT_ROOT/backend" && node -e "
+const { PrismaClient } = require('@prisma/client');
+const p = new PrismaClient();
+p.indexerState.upsert({
+  where: { chainId: ${CHAIN_ID} },
+  update: { lastBlockNumber: BigInt(${RESET_BLOCK}) },
+  create: { chainId: ${CHAIN_ID}, lastBlockNumber: BigInt(${RESET_BLOCK}) }
+}).then(() => { console.log('Indexer reset to block ${RESET_BLOCK}'); return p.\$disconnect(); })
+  .catch(e => { console.error('Failed to reset indexer:', e.message); process.exit(1); });
+"
+    echo -e "${GREEN}✓ Indexer state reset to block ${RESET_BLOCK} (chain ${CHAIN_ID})${NC}"
+else
+    echo -e "${YELLOW}Warning: Could not get current block, skipping indexer reset${NC}"
+fi
 
 echo ""
 
 # Print summary
 echo "=== Protocol Configuration Complete ==="
 echo ""
+echo "Chain ID: $CHAIN_ID"
+echo ""
 echo "Backend .env protocol vars:"
-grep -E "^(STEM_NFT|MARKETPLACE|TRANSFER_VALIDATOR)_" "$BACKEND_ENV" 2>/dev/null | sed 's/^/  /' || echo "  (none found)"
+grep -E "^(STEM_NFT|MARKETPLACE|TRANSFER_VALIDATOR|ENABLE_CONTRACT)_" "$BACKEND_ENV" 2>/dev/null | sed 's/^/  /' || echo "  (none found)"
 echo ""
 echo "Web .env.local protocol vars:"
-grep -E "^NEXT_PUBLIC_(STEM_NFT|MARKETPLACE)_" "$WEB_ENV_LOCAL" 2>/dev/null | sed 's/^/  /' || echo "  (none found)"
+grep -E "^NEXT_PUBLIC_(STEM_NFT|MARKETPLACE|CHAIN_ID)_?" "$WEB_ENV_LOCAL" 2>/dev/null | sed 's/^/  /' || echo "  (none found)"
 echo ""
 echo -e "${GREEN}Remember to restart services to pick up new config:${NC}"
 echo "  • Backend: make backend-dev"
-echo "  • Frontend: make web-dev-local"
+echo "  • Frontend: make web-dev-fork  (or make web-dev-local)"
 echo ""

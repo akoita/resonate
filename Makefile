@@ -33,7 +33,7 @@ local-aa-up:
 
 # Stop local AA infrastructure
 local-aa-down:
-	docker compose --profile local-aa down
+	docker compose --profile local-aa --profile fork-aa down
 
 # Deploy AA contracts to local Anvil
 local-aa-deploy:
@@ -68,6 +68,35 @@ web-dev-local:
 # View local AA logs
 local-aa-logs:
 	docker compose --profile local-aa logs -f
+
+# ============================================
+# Forked Sepolia AA Development (ZeroDev)
+# ============================================
+# Uses anvil --fork-url to fork Sepolia where ZeroDev contracts
+# are already deployed. Requires SEPOLIA_RPC_URL in .env.
+
+# Start Anvil forking Sepolia (ZeroDev contracts available)
+anvil-fork:
+	@if [ -z "$(SEPOLIA_RPC_URL)" ]; then \
+		echo "Error: SEPOLIA_RPC_URL not set. Export it or add to .env at project root."; \
+		exit 1; \
+	fi
+	SEPOLIA_RPC_URL=$(SEPOLIA_RPC_URL) docker compose --profile fork-aa up -d anvil-fork alto-bundler-fork
+
+# Full forked Sepolia setup: anvil fork + configure .env
+local-aa-fork:
+	@echo "Starting Anvil (forked Sepolia) in Docker..."
+	$(MAKE) anvil-fork
+	@echo "Waiting for Anvil to be healthy..."
+	@docker compose --profile fork-aa exec anvil-fork sh -c \
+		'for i in $$(seq 1 15); do cast block-number --rpc-url http://localhost:8545 > /dev/null 2>&1 && exit 0; sleep 1; done; exit 1'
+	./scripts/update-aa-config.sh --mode fork
+	@echo ""
+	@echo "Forked Sepolia ready! Anvil (localhost:8545) + Alto bundler (localhost:4337)"
+
+# Start web frontend in forked Sepolia mode
+web-dev-fork:
+	cd web && NEXT_PUBLIC_CHAIN_ID=11155111 NEXT_PUBLIC_RPC_URL=http://localhost:8545 npm run dev
 
 # ============================================
 # Demucs AI Stem Separation Worker

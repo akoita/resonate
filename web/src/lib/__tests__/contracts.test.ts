@@ -87,8 +87,15 @@ describe("getContractAddresses", () => {
         expect(addresses.marketplace).toBeDefined();
     });
 
-    it("throws for unconfigured chain (Sepolia 11155111)", () => {
-        expect(() => getContractAddresses(11155111)).toThrow("No contract addresses");
+    it("returns addresses for Sepolia (11155111)", () => {
+        const addresses = getContractAddresses(11155111);
+        expect(addresses).toBeDefined();
+        expect(addresses.stemNFT).toBeDefined();
+        expect(addresses.marketplace).toBeDefined();
+    });
+
+    it("throws for unconfigured chain", () => {
+        expect(() => getContractAddresses(999999)).toThrow("No contract addresses");
     });
 
     it("returns addresses for Base Sepolia (84532)", () => {

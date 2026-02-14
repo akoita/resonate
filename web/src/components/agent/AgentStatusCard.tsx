@@ -5,12 +5,13 @@ import type { AgentConfig } from "../../lib/api";
 type Props = {
     config: AgentConfig;
     onToggle: () => Promise<void>;
+    onModeChange: (mode: "curate" | "buy") => void;
     sessionCount: number;
     trackCount: number;
     totalSpend: number;
 };
 
-export default function AgentStatusCard({ config, onToggle, sessionCount, trackCount, totalSpend }: Props) {
+export default function AgentStatusCard({ config, onToggle, onModeChange, sessionCount, trackCount, totalSpend }: Props) {
     return (
         <div className="agent-card agent-status-card">
             <div className="agent-card-header">
@@ -20,9 +21,14 @@ export default function AgentStatusCard({ config, onToggle, sessionCount, trackC
                 </div>
                 <div className="agent-card-info">
                     <h3 className="agent-card-name">{config.name}</h3>
-                    <span className={`agent-status-label ${config.isActive ? "active" : ""}`}>
-                        {config.isActive ? "Active" : "Inactive"}
-                    </span>
+                    <div className="agent-status-row">
+                        <span className={`agent-status-label ${config.isActive ? "active" : ""}`}>
+                            {config.isActive ? "Active" : "Inactive"}
+                        </span>
+                        <span className={`agent-mode-badge ${config.sessionMode}`}>
+                            {config.sessionMode === "buy" ? "💰 Buy" : "🔍 Curate"}
+                        </span>
+                    </div>
                 </div>
             </div>
 
@@ -32,6 +38,30 @@ export default function AgentStatusCard({ config, onToggle, sessionCount, trackC
                         <span key={vibe} className="vibe-chip selected small">{vibe}</span>
                     ))}
                 </div>
+            </div>
+
+            {/* Session Mode Toggle */}
+            <div className="agent-mode-toggle">
+                <span className="agent-mode-label">Session Mode</span>
+                <div className="agent-mode-options">
+                    <button
+                        className={`agent-mode-chip ${config.sessionMode === "curate" ? "active" : ""}`}
+                        onClick={() => onModeChange("curate")}
+                    >
+                        🔍 Curate Only
+                    </button>
+                    <button
+                        className={`agent-mode-chip ${config.sessionMode === "buy" ? "active" : ""}`}
+                        onClick={() => onModeChange("buy")}
+                    >
+                        💰 Buy Stems
+                    </button>
+                </div>
+                <span className="agent-mode-hint">
+                    {config.sessionMode === "curate"
+                        ? "Discover tracks without purchasing"
+                        : "Discover and purchase stems on-chain"}
+                </span>
             </div>
 
             {/* Summary stats */}
@@ -71,3 +101,4 @@ export default function AgentStatusCard({ config, onToggle, sessionCount, trackC
         </div>
     );
 }
+

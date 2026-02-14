@@ -146,10 +146,42 @@ export class WalletController {
     return this.agentWalletService.enable(req.user.userId);
   }
 
+  @Post("agent/session-key/register")
+  @UseGuards(AuthGuard("jwt"))
+  registerSessionKey(
+    @Req() req: any,
+    @Body() body: {
+      serializedKey: string;
+      permissions: {
+        target: string;
+        function: string;
+        totalCapWei: string;
+        perTxCapWei: string;
+        rateLimit: number;
+      };
+      validUntil: string; // ISO date
+      txHash?: string;
+    },
+  ) {
+    return this.agentWalletService.registerSessionKey(
+      req.user.userId,
+      body.serializedKey,
+      body.permissions,
+      new Date(body.validUntil),
+      body.txHash,
+    );
+  }
+
   @Delete("agent/session-key")
   @UseGuards(AuthGuard("jwt"))
-  disableAgentWallet(@Req() req: any) {
-    return this.agentWalletService.disable(req.user.userId);
+  disableAgentWallet(
+    @Req() req: any,
+    @Body() body?: { revokeTxHash?: string },
+  ) {
+    return this.agentWalletService.disable(
+      req.user.userId,
+      body?.revokeTxHash,
+    );
   }
 
   @Get("agent/status")
