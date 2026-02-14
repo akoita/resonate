@@ -86,7 +86,7 @@ export class ToolRegistry {
 
         // Annotate and sort: listed tracks first
         const annotated = items.map((t) => {
-          const hasListing = t.stems.some((s) => s.listings.length > 0);
+          const hasListing = (t.stems ?? []).some((s) => s.listings.length > 0);
           const { stems, ...rest } = t;
           return { ...rest, hasListing };
         });
