@@ -18,10 +18,118 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo "=== Updating AA Configuration ==="
+# Parse --mode argument (default: local)
+MODE="local"
+for arg in "$@"; do
+    case $arg in
+        --mode)
+            shift
+            MODE="$1"
+            shift
+            ;;
+        --mode=*)
+            MODE="${arg#*=}"
+            shift
+            ;;
+    esac
+done
+
+echo "=== Updating AA Configuration (mode: $MODE) ==="
 echo ""
 
-# Check if broadcast file exists
+# ================================================
+# Fork mode: use known Sepolia contract addresses
+# ================================================
+if [[ "$MODE" == "fork" ]]; then
+    echo -e "${GREEN}Forked Sepolia Mode${NC}"
+    echo "Using known Sepolia contract addresses (ZeroDev Kernel v3)"
+    echo ""
+
+    # Canonical Sepolia addresses for ZeroDev / ERC-4337 v0.7
+    ENTRY_POINT="0x0000000071727De22E5E9d8BAf0edAc6f37da032"
+    # ZeroDev Kernel v3 factory (Sepolia)
+    KERNEL_FACTORY="0x5de4839a76cf55d0c90e2061ef4386d962E15ae3"
+    ECDSA_VALIDATOR="0xd9AB5096a832b9ce79914329DAEE236f8Eea0390"
+
+    # Source .env for ZERODEV_PROJECT_ID
+    if [[ -f "$BACKEND_ENV" ]]; then
+        source "$BACKEND_ENV" 2>/dev/null || true
+    fi
+
+    ZERODEV_PROJECT_ID="${ZERODEV_PROJECT_ID:-}"
+    if [[ -n "$ZERODEV_PROJECT_ID" ]]; then
+        BUNDLER_URL="https://rpc.zerodev.app/api/v2/bundler/${ZERODEV_PROJECT_ID}"
+        PAYMASTER_URL="https://rpc.zerodev.app/api/v2/paymaster/${ZERODEV_PROJECT_ID}"
+        echo -e "${GREEN}ZeroDev Project ID:${NC} $ZERODEV_PROJECT_ID"
+    else
+        BUNDLER_URL="http://localhost:4337"
+        PAYMASTER_URL=""
+        echo -e "${YELLOW}Warning: ZERODEV_PROJECT_ID not set, using localhost bundler${NC}"
+    fi
+
+    # Ensure backend/.env exists
+    if [[ ! -f "$BACKEND_ENV" ]]; then
+        echo "Creating $BACKEND_ENV..."
+        touch "$BACKEND_ENV"
+    fi
+
+    # Source the update function
+    update_env_var() {
+        local var_name="$1"
+        local var_value="$2"
+        local env_file="$3"
+
+        if [[ -z "$var_value" || "$var_value" == "null" ]]; then
+            return
+        fi
+
+        if grep -q "^${var_name}=" "$env_file" 2>/dev/null; then
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                sed -i '' "s|^${var_name}=.*|${var_name}=${var_value}|" "$env_file"
+            else
+                sed -i "s|^${var_name}=.*|${var_name}=${var_value}|" "$env_file"
+            fi
+        else
+            echo "${var_name}=${var_value}" >> "$env_file"
+        fi
+    }
+
+    # Essential dev defaults
+    update_env_var "DATABASE_URL" "postgresql://resonate:resonate@localhost:5432/resonate" "$BACKEND_ENV"
+    update_env_var "JWT_SECRET" "dev-secret-change-in-production" "$BACKEND_ENV"
+
+    # Sepolia AA addresses
+    update_env_var "AA_ENTRY_POINT" "$ENTRY_POINT" "$BACKEND_ENV"
+    update_env_var "AA_FACTORY" "$KERNEL_FACTORY" "$BACKEND_ENV"
+    update_env_var "AA_ECDSA_VALIDATOR" "$ECDSA_VALIDATOR" "$BACKEND_ENV"
+    update_env_var "AA_CHAIN_ID" "11155111" "$BACKEND_ENV"
+    update_env_var "AA_BUNDLER" "$BUNDLER_URL" "$BACKEND_ENV"
+    update_env_var "BLOCK_EXPLORER_URL" "https://sepolia.etherscan.io" "$BACKEND_ENV"
+
+    echo ""
+    echo -e "${GREEN}✓ backend/.env updated for forked Sepolia${NC}"
+
+    # Update web/.env.local chain ID for fork mode
+    WEB_ENV_LOCAL="$PROJECT_ROOT/web/.env.local"
+    if [[ ! -f "$WEB_ENV_LOCAL" ]]; then
+        touch "$WEB_ENV_LOCAL"
+    fi
+    update_env_var "NEXT_PUBLIC_CHAIN_ID" "11155111" "$WEB_ENV_LOCAL"
+    echo -e "${GREEN}✓ web/.env.local NEXT_PUBLIC_CHAIN_ID set to 11155111${NC}"
+
+    echo ""
+    echo "Backend .env now contains:"
+    grep -E "^AA_|^ZERODEV|^BLOCK_EXPLORER" "$BACKEND_ENV" | sed 's/^/  /'
+    echo ""
+    echo -e "${GREEN}Remember to restart services:${NC}"
+    echo "  • Backend: make backend-dev"
+    echo "  • Frontend: make web-dev-fork"
+    exit 0
+fi
+
+# ================================================
+# Local mode: parse Forge deployment broadcast
+# ================================================
 if [[ ! -f "$BROADCAST_FILE" ]]; then
     echo "Error: No deployment broadcast found at:"
     echo "  $BROADCAST_FILE"

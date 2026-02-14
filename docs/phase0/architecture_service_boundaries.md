@@ -14,14 +14,14 @@ owner: "@akoita"
 
 ## Service Responsibilities
 
-| Service | Responsibility | Dependencies |
-| --- | --- | --- |
-| Identity & Wallet | Auth, account abstraction, budget caps | Privy/Web3Auth, AA provider |
-| Ingestion & AI | Upload, stem separation, storage | Storage (Local/IPFS/GCS), Demucs Worker, Redis/BullMQ |
-| Catalog & Rights | Metadata, licensing, indexing | Indexer, chain events |
-| Session Orchestrator | AI DJ session and negotiation | Catalog, Wallet, Payments |
-| Payments | On-chain settlement and splits | Payment splitter contract |
-| Analytics | Reporting, dashboards, metrics | BigQuery, dbt |
+| Service              | Responsibility                         | Dependencies                                          |
+| -------------------- | -------------------------------------- | ----------------------------------------------------- |
+| Identity & Wallet    | Auth, account abstraction, budget caps | ZeroDev (passkeys), ERC-4337                          |
+| Ingestion & AI       | Upload, stem separation, storage       | Storage (Local/IPFS/GCS), Demucs Worker, Redis/BullMQ |
+| Catalog & Rights     | Metadata, licensing, indexing          | Indexer, chain events                                 |
+| Session Orchestrator | AI DJ session and negotiation          | Catalog, Wallet, Payments                             |
+| Payments             | On-chain settlement and splits         | Payment splitter contract                             |
+| Analytics            | Reporting, dashboards, metrics         | BigQuery, dbt                                         |
 
 ## API Surface (BFF)
 
@@ -35,7 +35,7 @@ owner: "@akoita"
 
 ## Auth Model (Initial)
 
-- User auth via Privy/Web3Auth.
+- User auth via ZeroDev passkeys (Kernel v3 smart account).
 - API Gateway issues short-lived JWTs.
 - Wallet actions require signed intent or AA sponsorship policy.
 

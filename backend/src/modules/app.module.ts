@@ -24,6 +24,7 @@ import { StorageModule } from "./storage/storage.module";
 import { EncryptionModule } from "./encryption/encryption.module";
 import { ContractsModule } from "./contracts/contracts.module";
 import { StemPricingModule } from "./pricing/stem-pricing.module";
+import { LibraryModule } from "./library/library.module";
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { StemPricingModule } from "./pricing/stem-pricing.module";
     AnalyticsModule,
     MaintenanceModule,
     PlaylistModule,
+    LibraryModule,
     StorageModule,
     EncryptionModule,
     ContractsModule,

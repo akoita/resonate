@@ -102,8 +102,20 @@ jest.mock("../db/prisma", () => {
                 findMany: jest.fn(async ({ where }: any) => {
                     let results = Array.from(mockStemPurchases.values());
                     if (where?.buyerAddress) {
+                        if (typeof where.buyerAddress === "string") {
+                            results = results.filter(
+                                (p) => p.buyerAddress === where.buyerAddress.toLowerCase()
+                            );
+                        } else if (where.buyerAddress.in) {
+                            const addrs = where.buyerAddress.in.map((a: string) => a.toLowerCase());
+                            results = results.filter(
+                                (p) => addrs.includes(p.buyerAddress?.toLowerCase())
+                            );
+                        }
+                    }
+                    if (where?.transactionHash?.in) {
                         results = results.filter(
-                            (p) => p.buyerAddress === where.buyerAddress.toLowerCase()
+                            (p) => where.transactionHash.in.includes(p.transactionHash)
                         );
                     }
                     return results;
@@ -126,6 +138,12 @@ jest.mock("../db/prisma", () => {
                     }
                     return results;
                 }),
+            },
+            wallet: {
+                findMany: jest.fn(async () => []),
+            },
+            agentTransaction: {
+                findMany: jest.fn(async () => []),
             },
         },
     };

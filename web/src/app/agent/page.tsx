@@ -123,6 +123,16 @@ export default function AgentPage() {
                             <AgentStatusCard
                                 config={config}
                                 onToggle={handleToggle}
+                                onModeChange={async (mode) => {
+                                    await updateConfig({ sessionMode: mode });
+                                    addToast({
+                                        type: "success",
+                                        title: "Session Mode Updated",
+                                        message: mode === "curate"
+                                            ? "Your DJ will curate tracks without purchasing."
+                                            : "Your DJ will curate and purchase stems on-chain.",
+                                    });
+                                }}
                                 sessionCount={sessions.length}
                                 trackCount={sessions.reduce((sum, s) => sum + s.licenses.length, 0)}
                                 totalSpend={sessions.reduce((sum, s) => sum + s.spentUsd, 0)}
@@ -140,13 +150,25 @@ export default function AgentPage() {
                                 onDisable={wallet.disable}
                                 onRefreshTransactions={wallet.refetchTransactions}
                             />
-                            <AgentTasteCard
-                                config={config}
-                                onUpdateVibes={async (vibes) => {
-                                    await updateConfig({ vibes });
-                                    addToast({ type: "success", title: "Vibes Updated", message: "Your DJ's taste has been updated." });
-                                }}
-                            />
+                            <div className="agent-card-wide">
+                                <AgentTasteCard
+                                    config={config}
+                                    onUpdateVibes={async (vibes) => {
+                                        await updateConfig({ vibes });
+                                        addToast({ type: "success", title: "Vibes Updated", message: "Your DJ's taste has been updated." });
+                                    }}
+                                    onUpdateStemTypes={async (stemTypes) => {
+                                        await updateConfig({ stemTypes });
+                                        addToast({
+                                            type: "success",
+                                            title: "Stem Types Updated",
+                                            message: stemTypes.length === 0
+                                                ? "Your DJ will buy all available stems."
+                                                : `Your DJ will buy: ${stemTypes.join(", ")}`,
+                                        });
+                                    }}
+                                />
+                            </div>
                         </div>
                         {!historyLoading && sessions.some(s => s.licenses.length > 0) && (
                             <div className="agent-discovery-banner">

@@ -57,6 +57,13 @@ export class AgentSelectorService {
       }
     }
 
+    // Stable-sort: listed tracks first (preserves embedding rank within each group)
+    allCandidates.sort((a: any, b: any) => {
+      const aListed = a.hasListing ? 1 : 0;
+      const bListed = b.hasListing ? 1 : 0;
+      return bListed - aListed;
+    });
+
     // Filter out recently played tracks, then take up to `limit`
     const fresh = allCandidates.filter(
       (track) => !input.recentTrackIds.includes(track.id)

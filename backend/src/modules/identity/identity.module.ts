@@ -1,7 +1,9 @@
 import { Module, forwardRef } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Erc4337Client } from "./erc4337/erc4337_client";
+import { KernelAccountService } from "./kernel_account.service";
 import { SessionKeyService } from "./session_key.service";
+import { ZeroDevSessionKeyService } from "./zerodev_session_key.service";
 import { SocialRecoveryService } from "./social_recovery.service";
 import { PaymasterService } from "./paymaster.service";
 import { WalletController } from "./wallet.controller";
@@ -19,11 +21,13 @@ import { AgentsModule } from "../agents/agents.module";
   providers: [
     WalletService,
     SessionKeyService,
+    ZeroDevSessionKeyService,
     SocialRecoveryService,
     LocalWalletProvider,
     Erc4337WalletProvider,
     WalletProviderRegistry,
     PaymasterService,
+    KernelAccountService,
     {
       provide: Erc4337Client,
       inject: [ConfigService],
@@ -39,9 +43,11 @@ import { AgentsModule } from "../agents/agents.module";
   exports: [
     WalletService,
     SessionKeyService,
+    ZeroDevSessionKeyService,
     WalletProviderRegistry,
     PaymasterService,
     Erc4337Client,
+    KernelAccountService,
   ],
 })
 export class IdentityModule { }

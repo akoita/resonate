@@ -47,7 +47,18 @@ export class ToolRegistry {
               }
               : {}),
           },
-          include: { release: { select: { title: true, genre: true, artworkUrl: true } } },
+          include: {
+            release: { select: { title: true, genre: true, artworkUrl: true } },
+            stems: {
+              select: {
+                listings: {
+                  where: { status: "active" },
+                  select: { id: true },
+                  take: 1,
+                },
+              },
+            },
+          },
           orderBy: { createdAt: "desc" },
           take,
         });
@@ -56,13 +67,32 @@ export class ToolRegistry {
         if (items.length === 0 && query) {
           items = await prisma.track.findMany({
             where: whereBase,
-            include: { release: { select: { title: true, genre: true, artworkUrl: true } } },
+            include: {
+              release: { select: { title: true, genre: true, artworkUrl: true } },
+              stems: {
+                select: {
+                  listings: {
+                    where: { status: "active" },
+                    select: { id: true },
+                    take: 1,
+                  },
+                },
+              },
+            },
             orderBy: { createdAt: "desc" },
             take,
           });
         }
 
-        return { items };
+        // Annotate and sort: listed tracks first
+        const annotated = items.map((t) => {
+          const hasListing = (t.stems ?? []).some((s) => s.listings.length > 0);
+          const { stems, ...rest } = t;
+          return { ...rest, hasListing };
+        });
+        annotated.sort((a, b) => (a.hasListing === b.hasListing ? 0 : a.hasListing ? -1 : 1));
+
+        return { items: annotated };
       },
     });
 

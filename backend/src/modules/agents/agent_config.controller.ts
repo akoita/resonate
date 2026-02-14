@@ -3,7 +3,10 @@ import { AuthGuard } from "@nestjs/passport";
 import { prisma } from "../../db/prisma";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentRuntimeService } from "./agent_runtime.service";
+import { AgentPurchaseService } from "./agent_purchase.service";
+import { AgentNegotiatorService } from "./agent_negotiator.service";
 import { EventBus } from "../shared/event_bus";
+import type { NegotiationResult } from "./agent_negotiator.service";
 
 @Controller("agents/config")
 export class AgentConfigController {
@@ -12,6 +15,8 @@ export class AgentConfigController {
     constructor(
         private readonly orchestrator: AgentOrchestratorService,
         private readonly runtimeService: AgentRuntimeService,
+        private readonly purchaseService: AgentPurchaseService,
+        private readonly negotiatorService: AgentNegotiatorService,
         private readonly eventBus: EventBus
     ) { }
 
@@ -60,7 +65,7 @@ export class AgentConfigController {
     @UseGuards(AuthGuard("jwt"))
     async update(
         @Req() req: any,
-        @Body() body: { name?: string; vibes?: string[]; monthlyCapUsd?: number; isActive?: boolean }
+        @Body() body: { name?: string; vibes?: string[]; stemTypes?: string[]; sessionMode?: string; monthlyCapUsd?: number; isActive?: boolean }
     ) {
         return prisma.agentConfig.update({
             where: { userId: req.user.userId },
@@ -92,6 +97,20 @@ export class AgentConfigController {
             data: { isActive: true },
         });
 
+        // Sync wallet budget from AgentConfig so spend() has the correct cap
+        const wallet = await prisma.wallet.findFirst({
+            where: { userId: req.user.userId },
+        });
+        if (wallet && wallet.monthlyCapUsd !== config.monthlyCapUsd) {
+            await prisma.wallet.update({
+                where: { id: wallet.id },
+                data: {
+                    monthlyCapUsd: config.monthlyCapUsd,
+                    balanceUsd: Math.max(0, config.monthlyCapUsd - wallet.spentUsd),
+                },
+            });
+        }
+
         // Delay orchestration slightly to let the WebSocket client connect
         // after receiving the HTTP response. This fixes the event race condition.
         setTimeout(() => {
@@ -114,6 +133,7 @@ export class AgentConfigController {
                 budgetRemainingUsd: config.monthlyCapUsd,
                 preferences: {
                     genres: config.vibes,
+                    stemTypes: config.stemTypes,
                     licenseType: "personal" as const,
                 },
             };
@@ -134,22 +154,17 @@ export class AgentConfigController {
                                         durationSeconds: 0,
                                     },
                                 });
-                                // Also record as AgentTransaction for wallet card
-                                const mockHash = `tx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-                                await prisma.agentTransaction.create({
-                                    data: {
-                                        sessionId: session.id,
-                                        userId: req.user.userId,
-                                        listingId: BigInt(0),
-                                        tokenId: BigInt(0),
-                                        amount: BigInt(1),
-                                        totalPriceWei: "0",
-                                        priceUsd: track.negotiation.priceUsd,
-                                        status: "confirmed",
-                                        txHash: mockHash,
-                                        confirmedAt: new Date(),
-                                    },
-                                });
+                                this.logger.log(`[Agent] Processing track ${track.trackId} in mode ${config.sessionMode}`);
+                                if (config.sessionMode === "buy") {
+                                    await this.recordPurchase(
+                                        session.id,
+                                        req.user.userId,
+                                        track.trackId,
+                                        track.negotiation,
+                                    );
+                                } else {
+                                    this.logger.log(`[Agent] Skipping purchase for ${track.trackId} (mode: ${config.sessionMode})`);
+                                }
                             } catch (err) {
                                 this.logger.error(`Failed to persist license for ${track.trackId}:`, err);
                             }
@@ -186,22 +201,26 @@ export class AgentConfigController {
                                         durationSeconds: 0,
                                     },
                                 });
-                                // Also record as AgentTransaction for wallet card
-                                const mockHash = `tx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-                                await prisma.agentTransaction.create({
-                                    data: {
-                                        sessionId: session.id,
-                                        userId: req.user.userId,
-                                        listingId: BigInt(0),
-                                        tokenId: BigInt(0),
-                                        amount: BigInt(1),
-                                        totalPriceWei: "0",
-                                        priceUsd: pick.priceUsd,
-                                        status: "confirmed",
-                                        txHash: mockHash,
-                                        confirmedAt: new Date(),
-                                    },
-                                });
+                                if (config.sessionMode === "buy") {
+                                    // Fetch actual listings to ensure we can buy
+                                    const negotiation = await this.negotiatorService.negotiate({
+                                        trackId: pick.trackId,
+                                        licenseType: pick.licenseType,
+                                        budgetRemainingUsd: config.monthlyCapUsd, // We use cap here, actual spend check happens in service
+                                        stemTypes: config.stemTypes,
+                                    });
+
+                                    if (negotiation.allowed) {
+                                        await this.recordPurchase(
+                                            session.id,
+                                            req.user.userId,
+                                            pick.trackId,
+                                            negotiation,
+                                        );
+                                    } else {
+                                        this.logger.warn(`[Agent] LLM picked track ${pick.trackId} but negotiation failed: ${negotiation.reason}`);
+                                    }
+                                }
                                 totalSpend += pick.priceUsd;
                             } catch (err) {
                                 this.logger.error(`Failed to persist license for ${pick.trackId}:`, err);
@@ -298,8 +317,94 @@ export class AgentConfigController {
                         },
                     },
                 },
+                agentTransactions: {
+                    orderBy: { createdAt: "desc" }
+                }
             },
         });
+
+        // Hydrate transactions with Stem info (same pattern as AgentPurchaseService)
+        const allTx = sessions.flatMap(s => s.agentTransactions);
+        const tokenIds = [...new Set(allTx.map((tx) => tx.tokenId))];
+        
+        if (tokenIds.length > 0) {
+            const mints = await prisma.stemNftMint.findMany({
+                where: { tokenId: { in: tokenIds } },
+                include: {
+                    stem: {
+                        include: {
+                            track: { select: { id: true, title: true, artist: true } },
+                        },
+                    },
+                },
+            });
+            const mintMap = new Map(mints.map((m) => [m.tokenId.toString(), m]));
+
+            // Mutate session objects to add hydrated fields to transactions
+            // Note: Prisma objects are plain JS objects so we can attach props
+            for (const session of sessions) {
+                // @ts-ignore - hydrating dynamic props for frontend
+                session.agentTransactions = session.agentTransactions.map(tx => {
+                    const mint = mintMap.get(tx.tokenId.toString());
+                    return {
+                        ...tx,
+                        listingId: String(tx.listingId),
+                        tokenId: String(tx.tokenId),
+                        amount: String(tx.amount),
+                        stemName: mint?.stem?.type ?? null,
+                        trackId: mint?.stem?.track?.id ?? null,
+                        trackTitle: mint?.stem?.track?.title ?? null,
+                        trackArtist: mint?.stem?.track?.artist ?? null,
+                    };
+                });
+            }
+        }
+
         return sessions;
+    }
+
+    /**
+     * Purchase all active on-chain listings for a track via the bundler.
+     * Tracks without listings are skipped — no mock records.
+     */
+    private async recordPurchase(
+        sessionId: string,
+        userId: string,
+        trackId: string,
+        negotiation: NegotiationResult,
+    ) {
+        const listings = negotiation.listings ?? [];
+        this.logger.log(`[Agent] recordPurchase: track=${trackId} user=${userId} listings=${listings.length}`);
+
+        if (listings.length === 0) {
+            this.logger.warn(`[Agent] No active listings for track ${trackId} — skipping purchase`);
+            return;
+        }
+
+        for (const listing of listings) {
+            try {
+                this.logger.log(`[Agent] Purchasing listing ${listing.listingId} price=${listing.pricePerUnit}`);
+                const result = await this.purchaseService.purchase({
+                    sessionId,
+                    userId,
+                    listingId: listing.listingId,
+                    tokenId: listing.tokenId,
+                    amount: 1n,
+                    totalPriceWei: listing.pricePerUnit,
+                    priceUsd: negotiation.priceUsd,
+                });
+                if (!result.success) {
+                    this.logger.warn(
+                        `Purchase failed for listing ${listing.listingId} (${listing.stemType}): ${result.reason}`,
+                    );
+                } else {
+                    this.logger.log(`[Agent] Purchase success: tx=${result.txHash}`);
+                }
+            } catch (err) {
+                this.logger.error(
+                    `Purchase error for listing ${listing.listingId}: ${err}`,
+                );
+            }
+        }
     }
 }
