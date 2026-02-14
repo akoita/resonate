@@ -3162,7 +3162,7 @@ a {
 .library-item {
   position: relative;
   display: grid;
-  grid-template-columns: 48px 1.5fr 1fr 1fr 80px 120px;
+  grid-template-columns: 28px 48px 1.5fr 1fr 1fr 80px 120px;
   gap: 1.5rem;
   align-items: center;
   padding: 0.75rem 1.5rem;
@@ -3191,6 +3191,31 @@ a {
 
 .library-item.playing .library-item-title {
   color: var(--color-accent);
+}
+
+/* Library checkbox visibility — hidden by default, shown on hover or when selected */
+.library-select-checkbox {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.library-item:hover .library-select-checkbox,
+.library-item.selected .library-select-checkbox {
+  opacity: 1;
+}
+
+/* Show header checkbox when any item is selected */
+.library-list:has(.library-item.selected) .library-item-header input[type="checkbox"] {
+  opacity: 1;
+}
+
+.library-item-header input[type="checkbox"] {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.library-list:hover .library-item-header input[type="checkbox"] {
+  opacity: 0.5;
 }
 
 /* Playlist Detail specific item layout */
@@ -6418,6 +6443,85 @@ tr[draggable="true"]:hover {
   gap: var(--space-4);
 }
 
+/* ── Session Mode Toggle ── */
+
+.agent-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-mode-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.agent-mode-badge.curate {
+  background: rgba(99, 102, 241, 0.2);
+  color: #818cf8;
+}
+
+.agent-mode-badge.buy {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
+
+.agent-mode-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.agent-mode-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.agent-mode-options {
+  display: flex;
+  gap: 8px;
+}
+
+.agent-mode-chip {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.agent-mode-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.agent-mode-chip.active {
+  background: rgba(139, 92, 246, 0.15);
+  border-color: rgba(139, 92, 246, 0.5);
+  color: #c4b5fd;
+}
+
+.agent-mode-hint {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  opacity: 0.7;
+}
+
 /* ── Status Card Stats ── */
 
 .agent-stats-row {
@@ -7016,7 +7120,7 @@ tr[draggable="true"]:hover {
 }
 
 .awc-detail-value.mono {
-  font-family: 'Roboto Mono', 'Courier New', monospace;
+  font-family: "Roboto Mono", "Courier New", monospace;
   font-size: 12px;
   letter-spacing: -0.02em;
   color: var(--color-accent);
@@ -7184,10 +7288,10 @@ tr[draggable="true"]:hover {
   text-transform: uppercase;
 }
 
-.awc-tx-mode.mock {
-  background: rgba(250, 204, 21, 0.1);
-  color: #facc15;
-  border: 1px solid rgba(250, 204, 21, 0.15);
+.awc-tx-mode.curated {
+  background: rgba(168, 85, 247, 0.1);
+  color: #a855f7;
+  border: 1px solid rgba(168, 85, 247, 0.15);
 }
 
 .awc-tx-mode.onchain {
@@ -7205,9 +7309,24 @@ tr[draggable="true"]:hover {
 
 .awc-tx-hash {
   font-size: 10px;
-  font-family: 'Roboto Mono', 'Courier New', monospace;
+  font-family: "Roboto Mono", "Courier New", monospace;
   color: var(--color-muted);
   opacity: 0.5;
+}
+
+.awc-tx-stem {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.awc-tx-track {
+  color: var(--color-muted);
+  opacity: 0.7;
 }
 
 .awc-tx-more {
@@ -7272,7 +7391,9 @@ tr[draggable="true"]:hover {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ── Wizard Wallet Opt-In ────────────────────────── */
@@ -8010,6 +8131,23 @@ tr[draggable="true"]:hover {
   white-space: nowrap;
 }
 
+.sonic-radar-stems {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.sonic-radar-stem-badge {
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: capitalize;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .sonic-radar-card-footer {
   padding: 8px 14px 14px;
   display: flex;
@@ -8033,6 +8171,57 @@ tr[draggable="true"]:hover {
   font-weight: 700;
   color: var(--color-accent);
   font-variant-numeric: tabular-nums;
+}
+
+/* Sonic Radar - Add to Playlist buttons */
+.sonic-radar-add-playlist-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-muted);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.sonic-radar-add-playlist-btn:hover {
+  color: var(--color-accent);
+  background: rgba(124, 92, 255, 0.1);
+  border-color: rgba(124, 92, 255, 0.3);
+}
+
+.sonic-radar-card-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-muted);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  opacity: 0;
+  line-height: 1;
+}
+
+.sonic-radar-card:hover .sonic-radar-card-add-btn {
+  opacity: 1;
+}
+
+.sonic-radar-card-add-btn:hover {
+  color: #fff;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
 }
 
 /* ── Loading Shimmers ────────────────────────────────── */
@@ -8140,8 +8329,12 @@ tr[draggable="true"]:hover {
 }
 
 @keyframes budget-modal-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .budget-modal {
@@ -8152,9 +8345,7 @@ tr[draggable="true"]:hover {
   padding: 32px;
   width: 90%;
   max-width: 440px;
-  box-shadow:
-    0 40px 80px rgba(0, 0, 0, 0.6),
-    0 0 60px rgba(124, 92, 255, 0.08);
+  box-shadow: 0 40px 80px rgba(0, 0, 0, 0.6), 0 0 60px rgba(124, 92, 255, 0.08);
   animation: budget-modal-slide-up 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -8181,7 +8372,11 @@ tr[draggable="true"]:hover {
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-2, #a78bfa));
+  background: linear-gradient(
+    135deg,
+    var(--color-accent),
+    var(--color-accent-2, #a78bfa)
+  );
   display: flex;
   align-items: center;
   justify-content: center;
@@ -8237,7 +8432,11 @@ tr[draggable="true"]:hover {
 .budget-modal__currency {
   font-size: 28px;
   font-weight: 700;
-  background: linear-gradient(135deg, rgba(255,255,255,0.5), var(--color-accent));
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.5),
+    var(--color-accent)
+  );
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -8304,7 +8503,11 @@ tr[draggable="true"]:hover {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-2, #a78bfa));
+  background: linear-gradient(
+    135deg,
+    var(--color-accent),
+    var(--color-accent-2, #a78bfa)
+  );
   cursor: pointer;
   box-shadow: 0 0 14px rgba(124, 92, 255, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -8320,7 +8523,11 @@ tr[draggable="true"]:hover {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-2, #a78bfa));
+  background: linear-gradient(
+    135deg,
+    var(--color-accent),
+    var(--color-accent-2, #a78bfa)
+  );
   cursor: pointer;
   box-shadow: 0 0 14px rgba(124, 92, 255, 0.5);
   border: 2px solid rgba(255, 255, 255, 0.2);
@@ -8395,10 +8602,18 @@ tr[draggable="true"]:hover {
   color: #fff;
 }
 
-.budget-modal__context-value--ok { color: #10b981; }
-.budget-modal__context-value--warning { color: #f59e0b; }
-.budget-modal__context-value--critical { color: #ef4444; }
-.budget-modal__context-value--exhausted { color: #ef4444; }
+.budget-modal__context-value--ok {
+  color: #10b981;
+}
+.budget-modal__context-value--warning {
+  color: #f59e0b;
+}
+.budget-modal__context-value--critical {
+  color: #ef4444;
+}
+.budget-modal__context-value--exhausted {
+  color: #ef4444;
+}
 
 .budget-modal__progress-track {
   width: 100%;
@@ -8500,4 +8715,48 @@ tr[draggable="true"]:hover {
   opacity: 0.4;
   cursor: not-allowed;
   box-shadow: none;
+}
+
+/* Wide Agent Card Layout */
+.agent-card-wide {
+  grid-column: 1 / -1;
+}
+
+/* When taste card is wide, use grid layout internally */
+.agent-card-wide .agent-taste-card {
+  /* Reset previous grid if any, we now use internal columns */
+  display: block;
+}
+
+.agent-taste-content {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--space-6);
+  height: 100%;
+}
+
+.agent-taste-col-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  border-right: 1px solid var(--color-surface-hover);
+  padding-right: var(--space-6);
+}
+
+.agent-taste-col-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* Make title span full width */
+.agent-card-wide .agent-taste-card .agent-card-title {
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-surface-hover);
+}
+
+/* Ensure sections align */
+.agent-card-wide .agent-taste-card .agent-taste-section {
+  height: auto;
 }

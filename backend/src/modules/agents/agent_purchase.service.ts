@@ -1,10 +1,10 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
-import { Erc4337Client, UserOperation } from "../identity/erc4337/erc4337_client";
 import { WalletService } from "../identity/wallet.service";
+import { KernelAccountService } from "../identity/kernel_account.service";
 import { AgentWalletService } from "./agent_wallet.service";
-import { encodeFunctionData } from "viem";
+import { encodeFunctionData, type Address, type Hex } from "viem";
 
 // StemMarketplaceV2.buy(uint256 listingId, uint256 amount) ABI fragment
 const BUY_ABI = [
@@ -32,13 +32,14 @@ export interface AgentPurchaseInput {
 
 @Injectable()
 export class AgentPurchaseService {
+  private readonly logger = new Logger(AgentPurchaseService.name);
   private readonly marketplaceAddress: string;
   private readonly skipBundler: boolean;
 
   constructor(
     private readonly walletService: WalletService,
     private readonly agentWalletService: AgentWalletService,
-    private readonly erc4337Client: Erc4337Client,
+    private readonly kernelAccountService: KernelAccountService,
     private readonly eventBus: EventBus
   ) {
     this.marketplaceAddress =
@@ -95,11 +96,11 @@ export class AgentPurchaseService {
 
       if (this.skipBundler) {
         // Dev mode: mock the transaction
-        const mockTxHash = `0x${Buffer.from(
-          `agent-buy-${input.listingId}-${Date.now()}`
+        const mockTxHash = `tx_${Date.now()}_${Buffer.from(
+          `agent-buy-${input.listingId}`
         )
           .toString("hex")
-          .slice(0, 64)}`;
+          .slice(0, 8)}`;
 
         const confirmed = await prisma.agentTransaction.update({
           where: { id: agentTx.id },
@@ -131,41 +132,22 @@ export class AgentPurchaseService {
         };
       }
 
-      // Real UserOp submission
-      const userOp: UserOperation = {
-        sender: wallet!.address,
-        nonce: "0x0",
-        factory: null,
-        factoryData: "0x",
-        callData,
-        callGasLimit: "0x30000",
-        verificationGasLimit: "0x100000",
-        preVerificationGas: "0x5208",
-        maxFeePerGas: "0x3b9aca00",
-        maxPriorityFeePerGas: "0x3b9aca00",
-        paymaster: (wallet as any)?.paymaster ?? null,
-        paymasterVerificationGasLimit: "0x0",
-        paymasterPostOpGasLimit: "0x0",
-        paymasterData: "0x",
-        signature: "0x",
-      };
-
-      const userOpHash = await this.erc4337Client.sendUserOperation(userOp);
+      // Real transaction via ZeroDev Kernel account → bundler → EntryPoint
+      this.logger.log(
+        `Sending Kernel tx for listing ${input.listingId} (user: ${input.userId})`,
+      );
 
       await prisma.agentTransaction.update({
         where: { id: agentTx.id },
-        data: {
-          userOpHash,
-          status: "submitted",
-        },
+        data: { status: "submitted" },
       });
 
-      // Wait for receipt
-      const receipt = await this.erc4337Client.waitForReceipt(userOpHash);
-      const txHash =
-        typeof receipt === "object" && receipt !== null
-          ? (receipt as any).transactionHash ?? userOpHash
-          : userOpHash;
+      const txHash = await this.kernelAccountService.sendTransaction(
+        input.userId,
+        this.marketplaceAddress as Address,
+        callData as Hex,
+        BigInt(input.totalPriceWei),
+      );
 
       await prisma.agentTransaction.update({
         where: { id: agentTx.id },
@@ -176,6 +158,7 @@ export class AgentPurchaseService {
         },
       });
 
+      this.logger.log(`Transaction confirmed: ${txHash}`);
       this.publishPurchaseEvent(input, txHash, "onchain");
 
       // Check budget alerts
@@ -192,7 +175,6 @@ export class AgentPurchaseService {
         success: true,
         transactionId: agentTx.id,
         txHash,
-        userOpHash,
         mode: "onchain",
         remaining: spendResult.remaining,
       };
@@ -225,6 +207,7 @@ export class AgentPurchaseService {
     }
   }
 
+
   encodeBuyCalldata(listingId: bigint, amount: bigint): string {
     return encodeFunctionData({
       abi: BUY_ABI,
@@ -239,13 +222,33 @@ export class AgentPurchaseService {
       orderBy: { createdAt: "desc" },
       take: Math.min(limit, 50),
     });
-    // BigInt fields can't be JSON-serialized — convert to strings
-    return rows.map((r) => ({
-      ...r,
-      listingId: String(r.listingId),
-      tokenId: String(r.tokenId),
-      amount: String(r.amount),
-    }));
+
+    // Resolve stem/track metadata for each transaction
+    const tokenIds = [...new Set(rows.map((r) => r.tokenId))];
+    const mints = await prisma.stemNftMint.findMany({
+      where: { tokenId: { in: tokenIds } },
+      include: {
+        stem: {
+          include: {
+            track: { select: { title: true, artist: true } },
+          },
+        },
+      },
+    });
+    const mintMap = new Map(mints.map((m) => [m.tokenId.toString(), m]));
+
+    return rows.map((r) => {
+      const mint = mintMap.get(r.tokenId.toString());
+      return {
+        ...r,
+        listingId: String(r.listingId),
+        tokenId: String(r.tokenId),
+        amount: String(r.amount),
+        stemName: mint?.stem?.type ?? null,
+        trackTitle: mint?.stem?.track?.title ?? null,
+        trackArtist: mint?.stem?.track?.artist ?? null,
+      };
+    });
   }
 
   private publishPurchaseEvent(

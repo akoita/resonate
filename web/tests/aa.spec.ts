@@ -5,15 +5,23 @@ import { test, expect } from "@playwright/test";
 test.describe("account abstraction flows", () => {
   test.skip(() => true, "Requires running backend server");
 
-  test("session key issuance", async ({ request }) => {
+  test("session key registration (self-custodial)", async ({ request }) => {
     const login = await request.post("http://localhost:3000/auth/login", {
       data: { userId: "user-1", role: "admin" },
     });
     const token = (await login.json()).accessToken;
-    const response = await request.post("http://localhost:3000/wallet/session-key", {
-      data: { userId: "user-1", scope: "playback", ttlSeconds: 60 },
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const response = await request.post(
+      "http://localhost:3000/wallet/agent/session-key/register",
+      {
+        data: {
+          serializedKey: "mock-serialized-key",
+          permissions: { maxValuePerTx: "0.01", allowedContracts: [] },
+          validUntil: new Date(Date.now() + 3600_000).toISOString(),
+          txHash: "0x" + "ab".repeat(32),
+        },
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
     expect(response.ok()).toBeTruthy();
   });
 

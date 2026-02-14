@@ -40,24 +40,24 @@ graph TB
     subgraph Frontend
         Web[Next.js App]
     end
-    
+
     subgraph Backend
         API[NestJS API]
         Worker[Demucs Worker]
         Redis[(Redis Queue)]
     end
-    
+
     subgraph Blockchain
         AA[ERC-4337 Accounts]
         NFT[Stem NFTs]
         Split[Payment Splitter]
     end
-    
+
     subgraph Storage
         DB[(PostgreSQL)]
         IPFS[IPFS/GCS]
     end
-    
+
     Web --> API
     API --> DB
     API --> Redis
@@ -74,15 +74,35 @@ graph TB
 
 ### Prerequisites
 
-| Tool | Install |
-|------|---------|
-| **Node.js** 18+ | [nodejs.org](https://nodejs.org/) or `nvm install 18` |
-| **Docker** | [docker.com/get-started](https://www.docker.com/get-started/) |
-| **Redis** | Starts via Docker (port 6379) |
-| **Make** | Pre-installed on macOS/Linux; Windows: use WSL |
-| **Foundry** *(for AA dev)* | [getfoundry.sh](https://getfoundry.sh/) |
+| Tool                                    | Install                                                       |
+| --------------------------------------- | ------------------------------------------------------------- |
+| **Node.js** 18+                         | [nodejs.org](https://nodejs.org/) or `nvm install 18`         |
+| **Docker**                              | [docker.com/get-started](https://www.docker.com/get-started/) |
+| **Redis**                               | Starts via Docker (port 6379)                                 |
+| **Make**                                | Pre-installed on macOS/Linux; Windows: use WSL                |
+| **Foundry** _(for contract deployment)_ | [getfoundry.sh](https://getfoundry.sh/)                       |
 
 ### Run Locally
+
+Two AA modes are available — see [AA Integration](docs/account-abstraction.md) for architecture and [Local AA Development](docs/local-aa-development.md) for setup.
+
+#### Forked Sepolia (recommended — session keys, full AA)
+
+```bash
+# 1. Set env vars
+export SEPOLIA_RPC_URL=https://sepolia.drpc.org
+
+# 2. Start forked Anvil + DB
+make dev-up
+make local-aa-fork              # Forks Sepolia, configures .env (AA infra already on-chain)
+make deploy-contracts           # Deploy StemNFT + Marketplace + TransferValidator
+
+# 3. Start services (separate terminals)
+make backend-dev     # NestJS API on port 3001
+make web-dev-fork    # Next.js on port 3000 (chainId 11155111, local RPC)
+```
+
+#### Local-Only (offline, no internet required)
 
 ```bash
 # 1. Deploy everything (Docker + Anvil + all contracts)
@@ -113,18 +133,17 @@ When an artist uploads a release, the following pipeline executes:
 Upload → Validation → Stem Separation → Storage → Ready
 ```
 
-| Stage | Status | Description |
-|-------|--------|-------------|
-| `pending` | 🔵 | Track queued for processing |
-| `separating` | 🟡 | Demucs AI splitting audio into 6 stems |
-| `uploading` | 🟡 | Uploading stems to IPFS/storage |
-| `complete` | 🟢 | Ready for playback and minting |
-| `failed` | 🔴 | Processing error (check worker logs) |
+| Stage        | Status | Description                            |
+| ------------ | ------ | -------------------------------------- |
+| `pending`    | 🔵     | Track queued for processing            |
+| `separating` | 🟡     | Demucs AI splitting audio into 6 stems |
+| `uploading`  | 🟡     | Uploading stems to IPFS/storage        |
+| `complete`   | 🟢     | Ready for playback and minting         |
+| `failed`     | 🔴     | Processing error (check worker logs)   |
 
 **Stems generated:** vocals, drums, bass, guitar, piano, other
 
 The release page displays track status in real-time, with stems appearing as they complete processing.
-
 
 ### 🎛️ AI Stem Separation (Demucs)
 
@@ -181,45 +200,47 @@ sudo systemctl restart docker
 # Verify installation
 docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 ```
+
 </details>
 
 **Verify GPU in worker:**
+
 ```bash
 docker compose exec demucs-worker nvidia-smi
 ```
 
 **Troubleshooting:**
+
 - `nvidia-smi` fails → Reinstall NVIDIA Container Toolkit
 - WSL2 users → Use NVIDIA driver for WSL, not native Linux driver
 - Build hangs on apt-get → Rebuild with `make worker-rebuild` (fixed via `DEBIAN_FRONTEND=noninteractive`)
 
 See [`workers/demucs/README.md`](workers/demucs/README.md) for full worker documentation.
 
-
 ---
 
 ## 📖 Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Project Specification](docs/RESONATE_SPECS.md) | Vision, architecture, and roadmap |
-| [Local AA Development](docs/local-aa-development.md) | Account abstraction setup guide |
-| [Demucs Worker](workers/demucs/README.md) | GPU stem separation setup and troubleshooting |
-| [Core Contracts](docs/phase5/core_contracts.md) | Stem NFT and marketplace contracts |
-| [Marketplace Integration](docs/phase5/marketplace_integration.md) | Frontend/backend integration |
-| [Contributing](CONTRIBUTING.md) | Contribution guidelines |
+| Document                                                          | Description                                   |
+| ----------------------------------------------------------------- | --------------------------------------------- |
+| [Project Specification](docs/RESONATE_SPECS.md)                   | Vision, architecture, and roadmap             |
+| [Local AA Development](docs/local-aa-development.md)              | Account abstraction setup guide               |
+| [Demucs Worker](workers/demucs/README.md)                         | GPU stem separation setup and troubleshooting |
+| [Core Contracts](docs/phase5/core_contracts.md)                   | Stem NFT and marketplace contracts            |
+| [Marketplace Integration](docs/phase5/marketplace_integration.md) | Frontend/backend integration                  |
+| [Contributing](CONTRIBUTING.md)                                   | Contribution guidelines                       |
 
 ---
 
 ## 🛠️ Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| Frontend | Next.js 15, TanStack Query, Viem/Wagmi |
-| Backend | NestJS, Prisma, BullMQ, PostgreSQL |
-| Blockchain | Solidity, Foundry, ERC-4337 |
-| AI | Demucs (htdemucs_6s), Vertex AI |
-| Infrastructure | Docker, Redis, GitHub Actions |
+| Layer          | Technology                             |
+| -------------- | -------------------------------------- |
+| Frontend       | Next.js 15, TanStack Query, Viem/Wagmi |
+| Backend        | NestJS, Prisma, BullMQ, PostgreSQL     |
+| Blockchain     | Solidity, Foundry, ERC-4337, ZeroDev   |
+| AI             | Demucs (htdemucs_6s), Vertex AI        |
+| Infrastructure | Docker, Redis, GitHub Actions          |
 
 ---
 

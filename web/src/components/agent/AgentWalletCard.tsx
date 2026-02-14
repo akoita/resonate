@@ -211,6 +211,12 @@ export default function AgentWalletCard({
                                                 <span className={`awc-tx-mode ${tx.txHash?.startsWith("tx_") ? "mock" : "onchain"}`}>
                                                     {tx.txHash?.startsWith("tx_") ? "mock" : "on-chain"}
                                                 </span>
+                                                {(tx.stemName || tx.trackTitle) && (
+                                                    <span className="awc-tx-stem" title={`${tx.stemName ?? "Stem"} · ${tx.trackTitle ?? "Unknown"}`}>
+                                                        {tx.stemName ?? "Stem"}
+                                                        {tx.trackTitle && <span className="awc-tx-track"> · {tx.trackTitle}</span>}
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="awc-tx-right">
                                                 <span className="awc-tx-time">{formatRelativeTime(tx.createdAt)}</span>

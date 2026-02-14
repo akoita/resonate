@@ -511,6 +511,8 @@ export type AgentConfig = {
   userId: string;
   name: string;
   vibes: string[];
+  stemTypes: string[];
+  sessionMode: "curate" | "buy";
   monthlyCapUsd: number;
   isActive: boolean;
   createdAt: string;
@@ -534,7 +536,7 @@ export async function createAgentConfig(
 
 export async function updateAgentConfig(
   token: string,
-  input: { name?: string; vibes?: string[]; monthlyCapUsd?: number; isActive?: boolean }
+  input: { name?: string; vibes?: string[]; stemTypes?: string[]; sessionMode?: "curate" | "buy"; monthlyCapUsd?: number; isActive?: boolean }
 ): Promise<AgentConfig> {
   return apiRequest<AgentConfig>(
     "/agents/config",
@@ -580,6 +582,7 @@ export interface AgentSession {
   startedAt: string;
   endedAt: string | null;
   licenses: AgentSessionLicense[];
+  agentTransactions: AgentTransaction[];
 }
 
 export async function getAgentHistory(token: string): Promise<AgentSession[]> {
@@ -597,6 +600,14 @@ export async function getAgentHistory(token: string): Promise<AgentSession[]> {
 
 // ========== Agent Wallet API ==========
 
+export type SessionKeyPermissions = {
+  target: string;
+  function: string;
+  totalCapWei: string;
+  perTxCapWei: string;
+  rateLimit: number;
+};
+
 export type AgentWalletStatus = {
   enabled: boolean;
   walletAddress: string | null;
@@ -607,19 +618,28 @@ export type AgentWalletStatus = {
   spentUsd: number;
   remainingUsd: number;
   alertLevel: "none" | "warning" | "critical" | "exhausted";
+  // On-chain session key fields (self-custodial)
+  sessionKeyTxHash: string | null;
+  sessionKeyExplorerUrl: string | null;
+  sessionKeyPermissions: SessionKeyPermissions | null;
 };
 
 export type AgentTransaction = {
   id: string;
   sessionId: string;
   listingId: string;
+  tokenId: string;
   amount: string;
   priceUsd: number;
-  status: "pending" | "confirmed" | "failed";
+  status: "pending" | "confirmed" | "failed" | "curated";
   txHash: string | null;
   userOpHash: string | null;
   createdAt: string;
   confirmedAt: string | null;
+  stemName: string | null;
+  trackId: string | null;
+  trackTitle: string | null;
+  trackArtist: string | null;
 };
 
 export async function enableAgentWallet(token: string): Promise<AgentWalletStatus> {
@@ -630,10 +650,41 @@ export async function enableAgentWallet(token: string): Promise<AgentWalletStatu
   );
 }
 
-export async function disableAgentWallet(token: string): Promise<{ status: string }> {
+export async function registerAgentSessionKey(
+  token: string,
+  input: {
+    serializedKey: string;
+    permissions: SessionKeyPermissions;
+    validUntil: string; // ISO date
+    txHash?: string;
+  },
+): Promise<{ id: string; userId: string }> {
+  return apiRequest<{ id: string; userId: string }>(
+    "/wallet/agent/session-key/register",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+      headers: { "Content-Type": "application/json" },
+    },
+    token
+  );
+}
+
+export async function disableAgentWallet(
+  token: string,
+  revokeTxHash?: string,
+): Promise<{ status: string }> {
   return apiRequest<{ status: string }>(
     "/wallet/agent/session-key",
-    { method: "DELETE" },
+    {
+      method: "DELETE",
+      ...(revokeTxHash
+        ? {
+            body: JSON.stringify({ revokeTxHash }),
+            headers: { "Content-Type": "application/json" },
+          }
+        : {}),
+    },
     token
   );
 }
@@ -652,4 +703,71 @@ export async function getAgentTransactions(token: string): Promise<AgentTransact
     {},
     token
   );
+}
+
+// ========== Library API ==========
+
+export type APILibraryTrack = {
+  id: string;
+  userId: string;
+  source: "local" | "remote";
+  title: string;
+  artist?: string | null;
+  albumArtist?: string | null;
+  album?: string | null;
+  year?: number | null;
+  genre?: string | null;
+  duration?: number | null;
+  sourcePath?: string | null;
+  fileSize?: number | null;
+  catalogTrackId?: string | null;
+  remoteUrl?: string | null;
+  remoteArtworkUrl?: string | null;
+  stemType?: string | null;
+  tokenId?: string | null;
+  listingId?: string | null;
+  purchaseDate?: string | null;
+  isOwned?: boolean;
+  previewUrl?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function saveLibraryTrackAPI(
+  token: string,
+  track: Omit<APILibraryTrack, "userId" | "createdAt" | "updatedAt">
+) {
+  return apiRequest<APILibraryTrack>(
+    "/library/tracks",
+    { method: "POST", body: JSON.stringify(track) },
+    token
+  );
+}
+
+export async function saveLibraryTracksAPI(
+  token: string,
+  tracks: Omit<APILibraryTrack, "userId" | "createdAt" | "updatedAt">[]
+) {
+  return apiRequest<APILibraryTrack[]>(
+    "/library/tracks/batch",
+    { method: "POST", body: JSON.stringify({ tracks }) },
+    token
+  );
+}
+
+export async function listLibraryTracksAPI(token: string, source?: string) {
+  const query = source ? `?source=${encodeURIComponent(source)}` : "";
+  return apiRequest<APILibraryTrack[]>(`/library/tracks${query}`, {}, token);
+}
+
+export async function getLibraryTrackAPI(id: string, token: string) {
+  return apiRequest<APILibraryTrack>(`/library/tracks/${id}`, { silentErrorCodes: [404] }, token);
+}
+
+export async function deleteLibraryTrackAPI(id: string, token: string) {
+  return apiRequest<void>(`/library/tracks/${id}`, { method: "DELETE" }, token);
+}
+
+export async function clearLocalLibraryAPI(token: string) {
+  return apiRequest<void>("/library/tracks/local", { method: "DELETE" }, token);
 }

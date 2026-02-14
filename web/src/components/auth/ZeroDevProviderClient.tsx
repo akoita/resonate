@@ -15,10 +15,12 @@ const ZeroDevContext = createContext<ZeroDevState | null>(null);
 /**
  * Get the chain configuration based on environment
  * - Local development: NEXT_PUBLIC_CHAIN_ID=31337 (Foundry/Anvil)
+ * - Forked Sepolia: NEXT_PUBLIC_CHAIN_ID=11155111 + NEXT_PUBLIC_RPC_URL=http://localhost:8545
  * - Testnet: NEXT_PUBLIC_CHAIN_ID=11155111 or unset (Sepolia)
  */
 function getChainConfig() {
     const chainId = process.env.NEXT_PUBLIC_CHAIN_ID;
+    const rpcUrlOverride = process.env.NEXT_PUBLIC_RPC_URL;
 
     if (chainId === "31337") {
         return {
@@ -30,6 +32,20 @@ function getChainConfig() {
                 },
             },
             bundlerUrl: "http://localhost:4337",
+        };
+    }
+
+    // Forked Sepolia: Sepolia chain ID but local RPC
+    if (rpcUrlOverride?.includes("localhost") || rpcUrlOverride?.includes("127.0.0.1")) {
+        return {
+            chain: {
+                ...sepolia,
+                rpcUrls: {
+                    default: { http: [rpcUrlOverride] },
+                    public: { http: [rpcUrlOverride] },
+                },
+            },
+            bundlerUrl: undefined, // Use ZeroDev's hosted bundler
         };
     }
 

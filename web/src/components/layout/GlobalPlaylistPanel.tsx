@@ -19,7 +19,7 @@ import {
     syncPlaylists,
     addTracksByCriteria,
 } from "../../lib/playlistStore";
-import { saveTrackMetadata, LocalTrack, listTracks, getTrack } from "../../lib/localLibrary";
+import { LocalTrack, getTrack } from "../../lib/localLibrary";
 import { useUIStore } from "../../lib/uiStore";
 import { useToast } from "../ui/Toast";
 import { PromptModal } from "../ui/PromptModal";
@@ -45,7 +45,7 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
     const { playQueue, currentTrack, playNext, addToQueue } = usePlayer();
     const [isSyncing, setIsSyncing] = useState(false);
 
-    // -- Keyboard Shortcut (Ctrl+J) --
+    // Keyboard shortcut: Ctrl+J / Cmd+J to toggle
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             // Check for Ctrl+J or Cmd+J
@@ -58,6 +58,30 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [togglePlaylistPanel]);
+
+    // Auto-open playlist panel when dragging near right edge
+    const { openPlaylistPanel } = useUIStore();
+    useEffect(() => {
+        let openTimeout: ReturnType<typeof setTimeout> | null = null;
+        const handleGlobalDragOver = (e: DragEvent) => {
+            if (e.clientX > window.innerWidth - 60 && !isOpen) {
+                if (!openTimeout) {
+                    openTimeout = setTimeout(() => {
+                        openPlaylistPanel();
+                        openTimeout = null;
+                    }, 400); // 400ms delay to avoid accidental opens
+                }
+            } else if (openTimeout) {
+                clearTimeout(openTimeout);
+                openTimeout = null;
+            }
+        };
+        window.addEventListener('dragover', handleGlobalDragOver);
+        return () => {
+            window.removeEventListener('dragover', handleGlobalDragOver);
+            if (openTimeout) clearTimeout(openTimeout);
+        };
+    }, [isOpen, openPlaylistPanel]);
 
     // UX States
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
@@ -305,20 +329,15 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
 
             if (data.type === "album" && data.tracks) {
                 const tracks = data.tracks as LocalTrack[];
-                const trackIdsToAdd = [];
-                for (const track of tracks) {
-                    await saveTrackMetadata(track);
-                    trackIdsToAdd.push(track.id);
-                }
+                const trackIdsToAdd = tracks.map(track => track.id);
                 await addTracksToPlaylist(playlistId, trackIdsToAdd, index);
                 addedCount = tracks.length;
                 title = data.name || "album";
             } else if (data.type === "track") {
                 // Handle both full track object and just ID
                 const trackId = data.id;
-                // If we have the full track object in the payload (which we now do), save metadata
+                // Use full track object if available for title, but don't save metadata
                 if (data.title) {
-                    await saveTrackMetadata(data as LocalTrack);
                     title = data.title;
                 } else {
                     const track = await getTrack(trackId);
@@ -329,11 +348,22 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
             } else if (data.type === "artist") {
                 const result = await addTracksByCriteria(playlistId, { artist: data.name });
                 if (result) {
-                    addedCount = result.trackIds.length; // This is a bit imprecise as it returns the whole playlist
+                    addedCount = result.trackIds.length;
                     title = data.name;
-                    // We don't have the exact count added easily without comparing, 
-                    // but the logic works.
                 }
+            } else if (data.type === "release-track" && data.track) {
+                // Single track dragged from release page
+                const trackId = data.track.id;
+                title = data.track.title || data.title || "track";
+                await addTrackToPlaylist(playlistId, trackId, index);
+                addedCount = 1;
+            } else if ((data.type === "release-selection" || data.type === "release-album") && data.tracks) {
+                // Multiple tracks or full album dragged from release page
+                const tracks = data.tracks as LocalTrack[];
+                const trackIdsToAdd = tracks.map(track => track.id);
+                await addTracksToPlaylist(playlistId, trackIdsToAdd, index);
+                addedCount = tracks.length;
+                title = data.title || `${tracks.length} tracks`;
             }
 
             if (addedCount > 0) {

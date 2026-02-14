@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useToast } from "../ui/Toast";
-import { useUIStore } from "../../lib/uiStore";
 
 const PRIMARY_ITEMS = [
   {
@@ -64,15 +62,7 @@ const PRIMARY_ITEMS = [
       </svg>
     )
   },
-  {
-    name: "My Collection",
-    href: "/collection",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-      </svg>
-    )
-  },
+
   {
     name: "Playlists",
     href: "/library?tab=playlists",
@@ -128,7 +118,6 @@ const SECONDARY_ITEMS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { isPlaylistPanelOpen, togglePlaylistPanel } = useUIStore();
 
   return (
     <aside className="app-sidebar">

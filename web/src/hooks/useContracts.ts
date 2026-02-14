@@ -34,9 +34,13 @@ async function sendContractTransaction(
   value: bigint = BigInt(0),
   userAddress?: Address
 ): Promise<string> {
-  // For local Anvil (chainId 31337), use local AA with user's deterministic wallet
-  if (chainId === 31337) {
-    const { sendLocalTransaction, getLocalSignerAddress } = await import("../lib/localAA");
+  // Detect local development: either Anvil (31337) or forked Sepolia with local RPC
+  const rpcOverride = process.env.NEXT_PUBLIC_RPC_URL || "";
+  const isLocalRpc = rpcOverride.includes("localhost") || rpcOverride.includes("127.0.0.1");
+  const isLocalDev = chainId === 31337 || isLocalRpc;
+
+  if (isLocalDev) {
+    const { sendLocalTransaction } = await import("../lib/localAA");
 
     // Use user's address if provided, otherwise fall back to a test address
     const effectiveAddress = userAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" as Address;
@@ -208,7 +212,8 @@ export function useStemBalance(tokenId: bigint | undefined, account?: Address) {
     const fetchBalance = async () => {
       try {
         let resolvedAccount = targetAccount;
-        if (chainId === 31337 && !account) {
+        const isLocalOrFork = chainId === 31337 || (chainId === 11155111 && process.env.NODE_ENV === "development");
+        if (isLocalOrFork && !account) {
           const { getLocalSignerAddress } = await import("../lib/localAA");
           resolvedAccount = getLocalSignerAddress(targetAccount);
         }

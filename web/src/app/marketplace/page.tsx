@@ -98,13 +98,14 @@ export default function MarketplacePage(props: {
     const { chainId } = useZeroDev();
 
     // Resolve the actual on-chain signer address.
-    // In local dev (chainId 31337), sendLocalTransaction derives a different
-    // EOA from the auth address via keccak256(salt + address). The listing's
-    // sellerAddress is this derived address, NOT the auth address.
+    // In local dev (chainId 31337 or forked Sepolia 11155111), sendLocalTransaction
+    // derives a different EOA from the auth address via keccak256(salt + address).
+    // The listing's sellerAddress is this derived address, NOT the auth address.
     const [signerAddress, setSignerAddress] = useState<string | null>(null);
     useEffect(() => {
         if (!walletAddress) { setSignerAddress(null); return; }
-        if (chainId === 31337) {
+        const isLocalOrFork = chainId === 31337 || (chainId === 11155111 && process.env.NODE_ENV === "development");
+        if (isLocalOrFork) {
             import("../../lib/localAA").then(({ getLocalSignerAddress }) => {
                 setSignerAddress(getLocalSignerAddress(walletAddress as `0x${string}`).toLowerCase());
             }).catch(() => setSignerAddress(walletAddress.toLowerCase()));
@@ -177,18 +178,20 @@ export default function MarketplacePage(props: {
     }, [debouncedSearch, sortBy, hideOwnListings, signerAddress]);
 
     // ---- Fetch batch pricing for license badges ----
-    useEffect(() => {
+    const batchStemIdsKey = useMemo(() => {
         const stemIds = listings
             .map(l => l.stem?.id)
             .filter((id): id is string => !!id);
-        const unique = [...new Set(stemIds)];
-        if (unique.length === 0) return;
+        return [...new Set(stemIds)].sort().join(",");
+    }, [listings]);
 
-        fetch(`${API_BASE}/api/stem-pricing/batch-get?stemIds=${unique.join(",")}`)
+    useEffect(() => {
+        if (!batchStemIdsKey) return;
+        fetch(`${API_BASE}/api/stem-pricing/batch-get?stemIds=${batchStemIdsKey}`)
             .then(res => res.json())
             .then(data => setPricingMap(data))
             .catch(err => console.error("Batch pricing fetch error:", err));
-    }, [listings]);
+    }, [batchStemIdsKey]);
 
     // ---- Real-time marketplace updates via WebSocket ----
     const handleMarketplaceUpdate = useCallback((update: MarketplaceUpdate) => {
@@ -418,7 +421,24 @@ export default function MarketplacePage(props: {
                 <>
                     <div className="marketplace-grid">
                         {filteredListings.map(listing => (
-                            <div key={`${listing.listingId}-${listing.tokenId}`} className="stem-card" data-testid="stem-card">
+                            <div
+                                key={`${listing.listingId}-${listing.tokenId}`}
+                                className="stem-card"
+                                data-testid="stem-card"
+                                draggable={!!listing.stem}
+                                onDragStart={(e) => {
+                                    if (!listing.stem) return;
+                                    const payload = JSON.stringify({
+                                        type: "track",
+                                        id: listing.stem.id,
+                                        title: listing.stem.title || "Stem",
+                                        artist: listing.stem.artist || "Unknown Artist",
+                                    });
+                                    e.dataTransfer.setData("application/json", payload);
+                                    e.dataTransfer.setData("text/plain", payload);
+                                    e.dataTransfer.effectAllowed = "copy";
+                                }}
+                            >
                                 {/* Artwork */}
                                 <div className="stem-card__artwork">
                                     {listing.stem?.artworkUrl ? (

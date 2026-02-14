@@ -82,15 +82,21 @@ export function StemPricingPanel({ releaseId, tracks }: StemPricingPanelProps) {
       .catch(console.error);
   }, []);
 
+  // Stable key for stem IDs — prevents infinite re-fetch when parent
+  // passes a new `tracks` array reference with the same data.
+  const stemIdsKey = allStems.map((s) => s.id).join(",");
+
   // Fetch per-stem pricing
   useEffect(() => {
+    if (!stemIdsKey) return;
+    const ids = stemIdsKey.split(",");
     const fetchAll = async () => {
       const result: Record<string, StemPricingState> = {};
-      for (const stem of allStems) {
+      for (const id of ids) {
         try {
-          const r = await fetch(`${API_BASE}/api/stem-pricing/${stem.id}`);
+          const r = await fetch(`${API_BASE}/api/stem-pricing/${id}`);
           const data = await r.json();
-          result[stem.id] = {
+          result[id] = {
             basePlayPriceUsd: data.basePlayPriceUsd ?? DEFAULT_PRICING.basePlayPriceUsd,
             remixLicenseUsd: data.remixLicenseUsd ?? DEFAULT_PRICING.remixLicenseUsd,
             commercialLicenseUsd: data.commercialLicenseUsd ?? DEFAULT_PRICING.commercialLicenseUsd,
@@ -99,14 +105,13 @@ export function StemPricingPanel({ releaseId, tracks }: StemPricingPanelProps) {
             listingDurationDays: data.listingDurationDays ?? null,
           };
         } catch {
-          result[stem.id] = { ...DEFAULT_PRICING };
+          result[id] = { ...DEFAULT_PRICING };
         }
       }
       setStemPricing(result);
     };
-    if (allStems.length > 0) fetchAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tracks]);
+    fetchAll();
+  }, [stemIdsKey]);
 
   const updateStem = useCallback(
     (stemId: string, patch: Partial<StemPricingState>) => {

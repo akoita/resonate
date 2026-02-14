@@ -1,6 +1,116 @@
 # Local Account Abstraction Development
 
-This guide explains how to run a fully local ERC-4337 Account Abstraction environment for smart wallet development.
+This guide explains how to run ERC-4337 Account Abstraction locally. Two modes are available:
+
+> **See also:** [Account Abstraction Integration](account-abstraction.md) for the full architecture, auth flow, session keys, and API reference.
+
+| Mode                             | Use case                   | Setup              |
+| -------------------------------- | -------------------------- | ------------------ |
+| **Forked Sepolia** (recommended) | Session keys, ZeroDev SDK  | `make anvil-fork`  |
+| **Local-Only**                   | Offline, bare contract dev | `make local-aa-up` |
+
+---
+
+## Forked Sepolia Mode (Recommended)
+
+Fork Sepolia so that ZeroDev's deployed contracts (Kernel v3, session key plugins) are available locally. Uses the **Alto bundler** (Docker) for local UserOp processing — the `KernelAccountService` sends transactions through the full ERC-4337 stack.
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) and Docker Compose
+- A Sepolia RPC URL (e.g. Infura, Alchemy, dRPC)
+- (Optional) A [ZeroDev Project ID](https://dashboard.zerodev.app) for production passkey auth
+
+### Quick Start
+
+```bash
+# 1. Set env vars
+export SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/YOUR_KEY
+
+# 2. Start forked Anvil + configure .env
+make local-aa-fork
+
+# 3. Start backend (in separate terminal)
+make backend-dev
+
+# 4. Start frontend for Sepolia (in separate terminal)
+make web-dev-fork
+```
+
+### Architecture (Forked Sepolia)
+
+```
+┌─────────────────────┐
+│   Frontend (Next.js)│
+│   localhost:3001    │
+│   chainId: 11155111 │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐     ┌─────────────────────┐
+│  Backend (NestJS)   │     │  Alto Bundler       │
+│  localhost:3000     │     │  localhost:4337     │
+│                     │     │  (Docker)           │
+│  KernelAccountService     └──────────┬──────────┘
+│  (ZeroDev SDK) ──────────────────────┤
+└──────────┬──────────┘                │
+           │                           │
+           └───────────┬───────────────┘
+                       ▼
+           ┌─────────────────────┐
+           │  Anvil (Docker)     │
+           │  localhost:8545     │
+           │  ← Sepolia state   │
+           └─────────────────────┘
+```
+
+### Env Vars (Forked Sepolia)
+
+| Variable             | Description           | Required?                               |
+| -------------------- | --------------------- | --------------------------------------- |
+| `SEPOLIA_RPC_URL`    | Sepolia RPC endpoint  | Yes                                     |
+| `BLOCK_EXPLORER_URL` | Explorer for tx links | No (defaults to `sepolia.etherscan.io`) |
+
+### Session Key Workflow (Self-Custodial)
+
+In forked Sepolia mode, the user holds the root key (passkey/EOA) and grants a **delegated session key** to the backend agent. All constraints are enforced on-chain by the smart account.
+
+```
+┌─────────────┐    1. Sign grant tx    ┌─────────────┐
+│  Frontend   │ ──────────────────────▶│  Smart Acct │
+│ (useSession │    (ZeroDev SDK)       │  (on-chain) │
+│   Key hook) │◀──────────────────────│             │
+│             │    2. Serialized key   └─────────────┘
+│             │                              │
+│             │    3. POST /register         │
+│             │ ─────────┐                   │
+│             │           ▼                  │
+│             │    ┌─────────────┐            │
+└─────────────┘    │  Backend    │   4. Uses  │
+                   │  (stores    │   key for  │
+                   │   key only) │   purchases│
+                   └─────────────┘            │
+```
+
+**Key points:**
+
+- The backend **never creates or holds** the root key
+- Session keys have on-chain enforced policies: call policy, value cap, rate limit, expiry
+- The user can revoke at any time via the frontend
+- In `AA_SKIP_BUNDLER=true` mode, a mock flow is used for local testing (transactions show as `MOCK` in the UI)
+- When `AA_SKIP_BUNDLER` is not set (default), agent purchases submit real UserOps via the bundler
+
+**Backend endpoints:**
+| Endpoint | Method | Description |
+| ------------------------------------- | -------- | -------------------------------- |
+| `/wallet/agent/session-key/register` | `POST` | Register user-granted session key|
+| `/wallet/agent/session-key` | `DELETE` | Revoke session key |
+| `/wallet/agent/enable` | `POST` | Enable agent wallet |
+| `/wallet/agent/status` | `GET` | Get wallet + session key status |
+
+---
+
+## Local-Only Mode
 
 ## Prerequisites
 
@@ -26,26 +136,26 @@ That's it! The deployment script automatically updates all `.env` files with the
 
 ## What Gets Deployed
 
-| Contract | Description |
-|----------|-------------|
-| **EntryPoint v0.7** | ERC-4337 singleton for UserOperation validation |
-| **Kernel v3.1** | Smart account implementation (ZeroDev) |
-| **KernelFactory** | Factory for deploying smart accounts |
-| **ECDSAValidator** | Validates ECDSA signatures for smart accounts |
-| **UniversalSigValidator** | ERC-6492 signature validation |
+| Contract                  | Description                                     |
+| ------------------------- | ----------------------------------------------- |
+| **EntryPoint v0.7**       | ERC-4337 singleton for UserOperation validation |
+| **Kernel v3.1**           | Smart account implementation (ZeroDev)          |
+| **KernelFactory**         | Factory for deploying smart accounts            |
+| **ECDSAValidator**        | Validates ECDSA signatures for smart accounts   |
+| **UniversalSigValidator** | ERC-6492 signature validation                   |
 
 ## Architecture
 
 ```
 ┌─────────────────────┐
 │   Frontend (Next.js)│
-│   localhost:3000    │
+│   localhost:3001    │
 └──────────┬──────────┘
            │
            ▼
 ┌─────────────────────┐     ┌─────────────────────┐
 │  Backend (NestJS)   │────▶│  Alto Bundler       │
-│  localhost:3001     │     │  localhost:4337     │
+│  localhost:3000     │     │  localhost:4337     │
 └──────────┬──────────┘     └──────────┬──────────┘
            │                           │
            └───────────┬───────────────┘
@@ -59,15 +169,26 @@ That's it! The deployment script automatically updates all `.env` files with the
 
 ## Commands Reference
 
-| Command | Description |
-|---------|-------------|
-| `make local-aa-up` | Start Anvil and Alto bundler |
-| `make local-aa-down` | Stop local AA services |
-| `make local-aa-deploy` | Deploy contracts + update configs |
-| `make local-aa-full` | Start infra + deploy + configure |
+### Forked Sepolia (ZeroDev Session Keys)
+
+| Command              | Description                                          |
+| -------------------- | ---------------------------------------------------- |
+| `make anvil-fork`    | Start Anvil (Docker) forking Sepolia                 |
+| `make local-aa-fork` | Start Docker fork + wait for health + configure .env |
+| `make local-aa-down` | Stop local-aa and fork-aa Docker services            |
+| `make web-dev-fork`  | Start frontend with chainId 11155111                 |
+
+### Local-Only (Offline Dev)
+
+| Command                | Description                               |
+| ---------------------- | ----------------------------------------- |
+| `make local-aa-up`     | Start Anvil and Alto bundler              |
+| `make local-aa-down`   | Stop local AA services                    |
+| `make local-aa-deploy` | Deploy contracts + update configs         |
+| `make local-aa-full`   | Start infra + deploy + configure          |
 | `make local-aa-config` | Update .env files with deployed addresses |
-| `make local-aa-logs` | View Docker container logs |
-| `make web-dev-local` | Start frontend with chainId 31337 |
+| `make local-aa-logs`   | View Docker container logs                |
+| `make web-dev-local`   | Start frontend with chainId 31337         |
 
 ## Auto-Configuration
 
@@ -103,6 +224,14 @@ AA_BUNDLER=http://localhost:4337
 AA_ENTRY_POINT=0x...  # Set by update-aa-config.sh
 AA_FACTORY=0x...      # Set by update-aa-config.sh
 AA_CHAIN_ID=31337
+AA_SKIP_BUNDLER=true  # Set true for mock mode (agent txns show as MOCK in UI)
+
+# For forked Sepolia mode (set by `make local-aa-fork`):
+# AA_CHAIN_ID=11155111
+# AA_BUNDLER=https://rpc.zerodev.app/api/v2/bundler/YOUR_PROJECT_ID
+# ZERODEV_PROJECT_ID=your-project-id
+# SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/YOUR_KEY
+# BLOCK_EXPLORER_URL=https://sepolia.etherscan.io
 
 # Other backend config
 DATABASE_URL="postgresql://resonate:resonate@localhost:5432/resonate"
@@ -118,6 +247,10 @@ NEXT_PUBLIC_CHAIN_ID=31337
 # API endpoint
 NEXT_PUBLIC_API_URL=http://localhost:3001
 
+# For forked Sepolia mode (set by `make web-dev-fork`):
+# NEXT_PUBLIC_CHAIN_ID=11155111
+# NEXT_PUBLIC_RPC_URL=http://localhost:8545
+
 # ZeroDev not needed for local dev
 # NEXT_PUBLIC_ZERODEV_PROJECT_ID=
 ```
@@ -127,12 +260,14 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 On chain **31337** with no ZeroDev project ID, the app uses a **mock ECDSA signer** so you can sign in without Passkey/ZeroDev:
 
 1. **Frontend** (`AuthProvider`):
+
    - Generates a random EOA (private key) and builds a Kernel smart account with the local ECDSA validator.
    - Requests a nonce for the **smart account address**.
    - Signs the auth message with the **EOA** (not the smart account), so the backend can verify via standard `ecrecover`.
    - Sends to `/auth/verify`: `address` = smart account, `signerAddress` = EOA, `message`, `signature`.
 
 2. **Backend** (`auth.controller`):
+
    - When `chainId === 31337` and `signerAddress` is present, verifies the **EOA** signature with `verifyMessage(signerAddress, message, signature)`.
    - Consumes the nonce for `address` (smart account) and issues a JWT for the **smart account address**.
    - The session identity is the smart account, so Wallet and AA flows use the same address.
@@ -175,32 +310,40 @@ cast code <SMART_ACCOUNT_ADDRESS> --rpc-url http://localhost:8545
 ## Troubleshooting
 
 ### "AA21 didn't pay prefund"
+
 The smart account doesn't have enough ETH. Fund it using the command above.
 
 ### "Bundler not reachable"
+
 1. Check Docker containers are running: `docker compose --profile local-aa ps`
 2. Check bundler is accessible: `curl http://localhost:4337`
 3. Restart bundler: `docker compose --profile local-aa restart alto-bundler`
 
 ### "Invalid entry point" or validation errors
+
 Entry point mismatch between your config and the bundler:
+
 ```bash
 # Check bundler's entry point
 curl -s http://localhost:4337 -X POST \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"eth_supportedEntryPoints","params":[]}' | jq
 ```
+
 Then run `make local-aa-config` to sync your config.
 
 ### EntryPoint not found
+
 Run `make local-aa-deploy` to deploy the AA infrastructure contracts.
 
 ### Addresses changed after reset
+
 If you run `docker compose down -v` (which resets Anvil), addresses will change. Run `make local-aa-full` to redeploy and reconfigure.
 
 ## Testing the Flow
 
 1. **Start everything**:
+
    ```bash
    make local-aa-full
    make backend-dev  # separate terminal
@@ -221,10 +364,17 @@ If you run `docker compose down -v` (which resets Anvil), addresses will change.
 
 The `local-aa` profile starts:
 
-| Service | Image | Port | Purpose |
-|---------|-------|------|---------|
-| `anvil` | `ghcr.io/foundry-rs/foundry` | 8545 | Local EVM chain |
-| `alto-bundler` | `ghcr.io/pimlicolabs/alto` | 4337 | ERC-4337 bundler |
+| Service        | Image                        | Port | Purpose          |
+| -------------- | ---------------------------- | ---- | ---------------- |
+| `anvil`        | `ghcr.io/foundry-rs/foundry` | 8545 | Local EVM chain  |
+| `alto-bundler` | `ghcr.io/pimlicolabs/alto`   | 4337 | ERC-4337 bundler |
+
+The `fork-aa` profile starts:
+
+| Service             | Image                        | Port | Purpose                        |
+| ------------------- | ---------------------------- | ---- | ------------------------------ |
+| `anvil-fork`        | `ghcr.io/foundry-rs/foundry` | 8545 | Forked Sepolia EVM (in Docker) |
+| `alto-bundler-fork` | `ghcr.io/pimlicolabs/alto`   | 4337 | ERC-4337 bundler (Docker)      |
 
 See `docker-compose.yml` for full configuration.
 
@@ -234,10 +384,10 @@ See `docker-compose.yml` for full configuration.
 
 The Demucs worker runs alongside AA services and handles stem separation. **GPU acceleration is enabled by default** via `docker-compose.gpu.yml`.
 
-| Service | Image | Port | Purpose |
-|---------|-------|------|---------|
+| Service         | Image                                 | Port | Purpose                              |
+| --------------- | ------------------------------------- | ---- | ------------------------------------ |
 | `demucs-worker` | Custom (built from `workers/demucs/`) | 8000 | AI stem separation (GPU-accelerated) |
-| `redis` | `redis:7-alpine` | 6379 | Job queue for BullMQ |
+| `redis`         | `redis:7-alpine`                      | 6379 | Job queue for BullMQ                 |
 
 ```bash
 # View worker logs

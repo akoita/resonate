@@ -5,12 +5,15 @@ import { useRouter } from "next/navigation";
 import AuthGate from "../../components/auth/AuthGate";
 import { useAgentHistory } from "../../hooks/useAgentHistory";
 import { useAuth } from "../../components/auth/AuthProvider";
-import type { AgentSessionLicense } from "../../lib/api";
+import { useUIStore } from "../../lib/uiStore";
+import type { LocalTrack } from "../../lib/localLibrary";
+import type { AgentSessionLicense, AgentTransaction } from "../../lib/api";
 
 type GroupedSession = {
     date: string;
     sessionId: string;
     licenses: AgentSessionLicense[];
+    transactions: AgentTransaction[];
 };
 
 function formatSessionDate(iso: string) {
@@ -38,6 +41,22 @@ export default function SonicRadarPage() {
     const { sessions, isLoading } = useAgentHistory();
     const { status } = useAuth();
     const router = useRouter();
+    const { setTracksToAddToPlaylist } = useUIStore();
+
+    /** Convert a license to a minimal LocalTrack for playlist operations */
+    const licenseToTrack = (lic: AgentSessionLicense): LocalTrack => ({
+        id: lic.trackId,
+        title: lic.track.title,
+        artist: lic.track.artist,
+        albumArtist: null,
+        album: lic.track.release?.title || null,
+        year: null,
+        genre: null,
+        duration: null,
+        createdAt: new Date().toISOString(),
+        source: "remote" as const,
+        remoteArtworkUrl: lic.track.release?.artworkUrl || undefined,
+    });
 
     // Flatten sessions into grouped display
     const groups: GroupedSession[] = sessions
@@ -46,6 +65,7 @@ export default function SonicRadarPage() {
             date: formatSessionDate(s.startedAt),
             sessionId: s.id,
             licenses: s.licenses,
+            transactions: s.agentTransactions || [],
         }));
 
     // Total unique tracks
@@ -124,53 +144,109 @@ export default function SonicRadarPage() {
                             <section key={group.sessionId} className="sonic-radar-group">
                                 <div className="sonic-radar-group-header">
                                     <span className="sonic-radar-group-date">{group.date}</span>
-                                    <span className="sonic-radar-group-count">
-                                        {group.licenses.length} track{group.licenses.length !== 1 ? "s" : ""}
-                                    </span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <button
+                                            className="sonic-radar-add-playlist-btn"
+                                            title="Add all session tracks to playlist"
+                                            onClick={() => {
+                                                const tracks = group.licenses.map(licenseToTrack);
+                                                setTracksToAddToPlaylist(tracks);
+                                            }}
+                                        >
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5" />
+                                                <path d="M18 2h4v4" />
+                                                <path d="M15 9l7-7" />
+                                            </svg>
+                                            Add to Playlist
+                                        </button>
+                                        <span className="sonic-radar-group-count">
+                                            {group.licenses.length} track{group.licenses.length !== 1 ? "s" : ""}
+                                        </span>
+                                    </div>
                                 </div>
                                 <div className="sonic-radar-grid">
-                                    {group.licenses.map((lic) => (
-                                        <Link
-                                            key={lic.id}
-                                            href={`/release/${lic.track.releaseId}`}
-                                            className="sonic-radar-card"
-                                        >
-                                            <div className="sonic-radar-card-art">
-                                                {lic.track.release?.artworkUrl ? (
-                                                    <img
-                                                        src={lic.track.release.artworkUrl}
-                                                        alt={lic.track.title}
-                                                        loading="lazy"
-                                                    />
-                                                ) : (
-                                                    <div className="sonic-radar-card-art-placeholder">
-                                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                                            <path d="M9 18V5l12-2v13" />
-                                                            <circle cx="6" cy="18" r="3" />
-                                                            <circle cx="18" cy="16" r="3" />
-                                                        </svg>
+                                    {group.licenses.map((lic) => {
+                                        const storedTx = group.transactions.filter(t => t.trackId === lic.track.id && t.status === 'confirmed');
+                                        const purchasedStems = storedTx.map(t => t.stemName).filter(Boolean);
+
+                                        return (
+                                            <div
+                                                key={lic.id}
+                                                className="sonic-radar-card"
+                                                draggable
+                                                onDragStart={(e) => {
+                                                    const payload = JSON.stringify({
+                                                        type: "track",
+                                                        id: lic.trackId,
+                                                        title: lic.track.title,
+                                                        artist: lic.track.artist || "Unknown Artist",
+                                                    });
+                                                    e.dataTransfer.setData("application/json", payload);
+                                                    e.dataTransfer.setData("text/plain", payload);
+                                                    e.dataTransfer.effectAllowed = "copy";
+                                                }}
+                                                onClick={() => router.push(`/release/${lic.track.releaseId}`)}
+                                                style={{ cursor: 'pointer' }}
+                                            >
+                                                <div className="sonic-radar-card-art">
+                                                    {lic.track.release?.artworkUrl ? (
+                                                        <img
+                                                            src={lic.track.release.artworkUrl}
+                                                            alt={lic.track.title}
+                                                            loading="lazy"
+                                                        />
+                                                    ) : (
+                                                        <div className="sonic-radar-card-art-placeholder">
+                                                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                                                <path d="M9 18V5l12-2v13" />
+                                                                <circle cx="6" cy="18" r="3" />
+                                                                <circle cx="18" cy="16" r="3" />
+                                                            </svg>
+                                                        </div>
+                                                    )}
+                                                    <div className="sonic-radar-card-overlay">
+                                                        <div className="sonic-radar-play-icon">
+                                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                                                                <polygon points="5 3 19 12 5 21 5 3" />
+                                                            </svg>
+                                                        </div>
                                                     </div>
-                                                )}
-                                                <div className="sonic-radar-card-overlay">
-                                                    <div className="sonic-radar-play-icon">
-                                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                                                            <polygon points="5 3 19 12 5 21 5 3" />
-                                                        </svg>
+                                                </div>
+                                                <div className="sonic-radar-card-info">
+                                                    <span className="sonic-radar-card-title">{lic.track.title}</span>
+                                                    <span className="sonic-radar-card-artist">
+                                                        {lic.track.artist || lic.track.release?.title || "Unknown Artist"}
+                                                    </span>
+                                                    {purchasedStems.length > 0 && (
+                                                        <div className="sonic-radar-stems">
+                                                            {purchasedStems.map((stem, i) => (
+                                                                <span key={i} className="sonic-radar-stem-badge">
+                                                                    {stem}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="sonic-radar-card-footer">
+                                                    <span className="sonic-radar-card-license">{licenseLabel(lic.type)}</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <button
+                                                            className="sonic-radar-card-add-btn"
+                                                            title="Add to playlist"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setTracksToAddToPlaylist([licenseToTrack(lic)]);
+                                                            }}
+                                                        >
+                                                            +
+                                                        </button>
+                                                        <span className="sonic-radar-card-price">${lic.priceUsd.toFixed(2)}</span>
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div className="sonic-radar-card-info">
-                                                <span className="sonic-radar-card-title">{lic.track.title}</span>
-                                                <span className="sonic-radar-card-artist">
-                                                    {lic.track.artist || lic.track.release?.title || "Unknown Artist"}
-                                                </span>
-                                            </div>
-                                            <div className="sonic-radar-card-footer">
-                                                <span className="sonic-radar-card-license">{licenseLabel(lic.type)}</span>
-                                                <span className="sonic-radar-card-price">${lic.priceUsd.toFixed(2)}</span>
-                                            </div>
-                                        </Link>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </section>
                         ))}

@@ -135,7 +135,8 @@ export function MintStemButton({
         }
 
         try {
-            const tokenUri = metadataUri || `${window.location.protocol}//${window.location.host}/api/metadata/31337/stem/${stemId}`;
+            const currentChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
+            const tokenUri = metadataUri || `${window.location.protocol}//${window.location.host}/api/metadata/${currentChainId}/stem/${stemId}`;
 
             // Get user's local signer address (deterministic per user, auto-funded from Anvil)
             const { getLocalSignerAddress } = await import("../../lib/localAA");

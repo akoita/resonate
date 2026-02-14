@@ -1,7 +1,8 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
-import { Erc4337Client, UserOperation } from "./erc4337/erc4337_client";
+import { Erc4337Client } from "./erc4337/erc4337_client";
+import { KernelAccountService } from "./kernel_account.service";
 import { PaymasterService } from "./paymaster.service";
 import { WalletProviderRegistry } from "./wallet_provider_registry";
 
@@ -9,11 +10,14 @@ type WalletProviderName = "local" | "erc4337";
 
 @Injectable()
 export class WalletService {
+  private readonly logger = new Logger(WalletService.name);
+
   constructor(
     private readonly eventBus: EventBus,
     private readonly providerRegistry: WalletProviderRegistry,
     private readonly erc4337Client: Erc4337Client,
-    private readonly paymasterService: PaymasterService
+    private readonly paymasterService: PaymasterService,
+    private readonly kernelAccountService: KernelAccountService,
   ) { }
 
   async fundWallet(input: { userId: string; amountUsd: number }) {
@@ -104,66 +108,44 @@ export class WalletService {
       return wallet;
     }
 
-    // Get paymaster config
-    const paymasterAddress = this.paymasterService.buildPaymasterData(
-      {} as any,  // Not needed for check
-      0,
-      input.userId
-    );
-
-    // ERC-4337 v0.7 UserOperation format
-    const userOp: UserOperation = {
-      sender: wallet.address,
-      nonce: "0x0",
-      factory: wallet.factory || null,
-      factoryData: "0x",
-      callData: "0x",
-      callGasLimit: "0x5208",
-      verificationGasLimit: "0x100000",
-      preVerificationGas: "0x5208",
-      maxFeePerGas: "0x3b9aca00",
-      maxPriorityFeePerGas: "0x3b9aca00",
-      paymaster: paymasterAddress !== "0x" ? paymasterAddress : null,
-      paymasterVerificationGasLimit: "0x0",
-      paymasterPostOpGasLimit: "0x0",
-      paymasterData: "0x",
-      signature: "0x",
-    };
-
     try {
-      // In development with local bundler, simulate successful deployment
-      // Real deployment requires proper initCode with factory-specific calldata
-      const isDev = process.env.NODE_ENV !== "production";
-      const skipBundler = process.env.AA_SKIP_BUNDLER === "true";
+      this.logger.log(`Deploying smart account for user ${input.userId}`);
 
-      if (isDev && skipBundler) {
-        // Simulate deployment for testing UI flows
-        const mockTxHash = `0x${Buffer.from(wallet.address + Date.now()).toString("hex").slice(0, 64)}`;
-        return prisma.wallet.update({
-          where: { id: wallet.id },
-          data: { deploymentTxHash: mockTxHash } as any,
-        });
-      }
+      // Use KernelAccountService — it handles:
+      //   - Deterministic signer creation from userId
+      //   - Kernel account creation (counterfactual)
+      //   - Account deployment via initCode if not yet on-chain
+      //   - Gas estimation + bundler submission
+      //   - Falls back to direct EOA send on local Anvil if bundler fails
+      const { account, kernelClient } = await this.kernelAccountService.createKernelClient(input.userId);
 
-      const userOpHash = await this.erc4337Client.sendUserOperation(userOp);
-      await this.erc4337Client.waitForReceipt(userOpHash);
+      // Send a 0-value self-send to force deployment
+      // The SDK includes initCode automatically if the account isn't deployed yet
+      const txHash = await (kernelClient as any).sendTransaction({
+        to: account.address,
+        data: "0x" as `0x${string}`,
+        value: BigInt(0),
+      });
+
+      this.logger.log(`Smart account deployed at ${account.address}, tx: ${txHash}`);
+
+      // Update wallet record with real smart account address and deployment info
       return prisma.wallet.update({
         where: { id: wallet.id },
-        data: { deploymentTxHash: userOpHash } as any,
+        data: {
+          address: account.address,
+          deploymentTxHash: txHash,
+          accountType: "kernel",
+        } as any,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Smart account deployment failed: ${message}`);
+
       if (message.includes("fetch") || message.includes("ECONNREFUSED")) {
         throw new Error(
           "Bundler not reachable. Ensure the AA bundler is running at " +
           (process.env.AA_BUNDLER || "http://localhost:4337")
-        );
-      }
-      if (message.includes("0x99410554") || message.includes("SenderAddressResult")) {
-        throw new Error(
-          "Smart account address mismatch. The factory cannot create an account at the expected address. " +
-          "This usually means the initCode/factoryData is incorrect. " +
-          "Set AA_SKIP_BUNDLER=true in .env to simulate deployment for testing."
         );
       }
       throw new Error(`Smart account deployment failed: ${message}`);
@@ -224,7 +206,7 @@ export class WalletService {
     }
     const selected =
       provider ??
-      ((process.env.WALLET_PROVIDER ?? "local") as WalletProviderName);
+      ((process.env.WALLET_PROVIDER ?? "erc4337") as WalletProviderName);
     const account = this.providerRegistry.getProvider(selected).getAccount(userId);
 
     // Ensure User exists before creating Wallet to avoid FK violation
@@ -238,7 +220,7 @@ export class WalletService {
       update: {},
     });
 
-    return prisma.wallet.create({
+    const wallet = await prisma.wallet.create({
       data: {
         userId,
         address: account.address,
@@ -256,5 +238,16 @@ export class WalletService {
         salt: account.salt,
       } as any,
     });
+
+    // Auto-deploy smart account in the background for AA wallets
+    if (selected === "erc4337" && !(wallet as any).deploymentTxHash) {
+      this.deploySmartAccount({ userId }).catch((err) => {
+        this.logger.warn(
+          `Auto-deploy of smart account for ${userId} failed (will retry on next explicit deploy): ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    }
+
+    return wallet;
   }
 }

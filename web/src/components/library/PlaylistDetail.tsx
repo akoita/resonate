@@ -300,6 +300,11 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                                         ) : (
                                             <div className="library-item-artwork-placeholder">🎵</div>
                                         )}
+                                        {track.stemType && track.stemType.toLowerCase() !== 'original' && (
+                                            <div className="absolute top-0 right-0 bg-accent text-white text-[9px] px-1 py-0.5 rounded-bl font-bold shadow-md">
+                                                STEM
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="library-item-info">
                                         <div className="library-item-title">{track.title}</div>
@@ -316,6 +321,11 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                                                 {track.artist || "Unknown Artist"}
                                             </span>
                                             {track.album && ` • ${track.album}`}
+                                            {track.stemType && track.stemType.toLowerCase() !== 'original' && (
+                                                <span className="text-accent text-xs ml-2 font-medium border border-accent/30 px-1.5 py-0.5 rounded-full">
+                                                    {track.stemType}
+                                                </span>
+                                            )}
                                         </div>
                                         {trackProgress.get(track.id) !== undefined && trackProgress.get(track.id)! < 100 && (
                                             <div className="track-progress-container">

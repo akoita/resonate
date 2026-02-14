@@ -10,8 +10,9 @@ const mockAgentWalletService = {
   validateSessionKey: jest.fn(),
 };
 
-const mockErc4337Client = {
-  sendUserOp: jest.fn(),
+const mockKernelAccountService = {
+  sendTransaction: jest.fn(),
+  getSmartAccountAddress: jest.fn(),
 };
 
 const mockEventBus = {
@@ -26,6 +27,9 @@ jest.mock("../../db/prisma", () => ({
       update: jest.fn(),
       findMany: jest.fn(),
     },
+    stemNftMint: {
+      findMany: jest.fn(),
+    },
   },
 }));
 
@@ -35,7 +39,7 @@ function createService(): AgentPurchaseService {
   return new (AgentPurchaseService as any)(
     mockWalletService,
     mockAgentWalletService,
-    mockErc4337Client,
+    mockKernelAccountService,
     mockEventBus
   );
 }
@@ -125,19 +129,22 @@ describe("AgentPurchaseService", () => {
   });
 
   describe("getTransactions", () => {
-    it("should return transactions with stringified BigInt fields", async () => {
+    it("should return transactions with stringified BigInt fields and stem metadata", async () => {
       const fakeRows = [
         { id: "tx-1", userId: "u1", status: "confirmed", listingId: BigInt(1), tokenId: BigInt(100), amount: BigInt(1) },
         { id: "tx-2", userId: "u1", status: "pending", listingId: BigInt(2), tokenId: BigInt(200), amount: BigInt(1) },
       ];
       (prisma.agentTransaction.findMany as jest.Mock).mockResolvedValue(fakeRows);
+      (prisma.stemNftMint.findMany as jest.Mock).mockResolvedValue([
+        { tokenId: BigInt(100), stem: { type: "vocals", track: { title: "Track A", artist: "Artist X" } } },
+      ]);
 
       const service = createService();
       const result = await service.getTransactions("u1");
 
       expect(result).toEqual([
-        { id: "tx-1", userId: "u1", status: "confirmed", listingId: "1", tokenId: "100", amount: "1" },
-        { id: "tx-2", userId: "u1", status: "pending", listingId: "2", tokenId: "200", amount: "1" },
+        { id: "tx-1", userId: "u1", status: "confirmed", listingId: "1", tokenId: "100", amount: "1", stemName: "vocals", trackTitle: "Track A", trackArtist: "Artist X" },
+        { id: "tx-2", userId: "u1", status: "pending", listingId: "2", tokenId: "200", amount: "1", stemName: null, trackTitle: null, trackArtist: null },
       ]);
       expect(prisma.agentTransaction.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { userId: "u1" } })

@@ -626,7 +626,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         devLog('[playTrack] Setting volume:', audioRef.current.volume, 'mixerModeRef:', mixerModeRef.current, 'hasStems:', hasStems);
         setArtworkUrl(art || null);
         currentTrackIdRef.current = track.id;
-    }, [volume, safePause, safePlay, mixerMode]);
+    // NOTE: mixerMode intentionally excluded - we use mixerModeRef.current to avoid
+    // cascading recreation of playQueue → nextTrack → togglePlay on mixer toggle
+    }, [volume, safePause, safePlay]);
 
     const playQueue = useCallback(async (list: LocalTrack[], startIndex: number) => {
         const trackToPlay = list[startIndex];
@@ -947,106 +949,115 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         }
     }, [mixerMode, mixerVolumes]);
 
-    return (
-        <PlayerContext.Provider value={{
-            currentTrack,
-            queue,
-            currentIndex,
-            isPlaying,
-            progress,
-            currentTime,
-            duration,
-            artworkUrl,
-            volume,
-            shuffle,
-            repeatMode,
-            playQueue,
-            nextTrack,
-            prevTrack,
-            togglePlay,
-            toggleShuffle,
-            toggleRepeatMode,
-            seek,
-            setVolume,
-            stop,
-            addToQueue: (track: LocalTrack) => {
-                setQueue(prev => [...prev, track]);
-            },
-            playNext: (track: LocalTrack) => {
-                if (currentIndex === -1) {
-                    void playQueue([track], 0);
-                } else {
-                    const newQueue = [...queue];
-                    newQueue.splice(currentIndex + 1, 0, track);
-                    setQueue(newQueue);
-                }
-            },
-            mixerMode,
-            toggleMixerMode: () => {
-                const nextMode = !mixerMode;
-                devLog('[toggleMixerMode] Switching from', mixerMode, 'to', nextMode);
-                mixerModeRef.current = nextMode; // Synchronously update ref for immediate access
-                setMixerMode(nextMode);
-                // Synchronously update master volume to prevent leakage/phase issues
-                if (audioRef.current) {
-                    const hasStems = currentTrack?.stems?.some(s => s.type.toUpperCase() !== 'ORIGINAL');
-                    const newVolume = (nextMode && hasStems) ? 0 : volume;
-                    const isActuallyPlaying = !audioRef.current.paused;
-                    devLog('[toggleMixerMode] Setting main audio volume to', newVolume, 'hasStems:', hasStems, 'isActuallyPlaying:', isActuallyPlaying);
-                    audioRef.current.volume = newVolume;
-                    // CRITICAL: Sync isPlaying state with actual audio state
-                    // This ensures StemAudio components get the correct isPlaying prop
-                    if (isActuallyPlaying !== isPlaying) {
-                        devLog('[toggleMixerMode] Syncing isPlaying state from', isPlaying, 'to', isActuallyPlaying);
-                        setIsPlaying(isActuallyPlaying);
-                    }
-                } else {
-                    devLog('[toggleMixerMode] No audioRef.current!');
-                }
-            },
-            mixerVolumes,
-            setMixerVolumes: (v: Record<string, number>) => {
-                devLog('[setMixerVolumes] Updating volumes:', v, 'registered stems:', Object.keys(stemAudiosRef.current));
-                setMixerVolumesState(v);
-                Object.entries(v).forEach(([type, vol]) => {
-                    const audio = stemAudiosRef.current[type];
-                    if (audio) {
-                        const effectiveVol = vol * volume;
-                        devLog(`[setMixerVolumes] Setting ${type} volume to ${effectiveVol} (mixer: ${vol}, master: ${volume})`);
-                        audio.volume = effectiveVol;
-                    } else {
-                        devLog(`[setMixerVolumes] No audio element found for ${type}`);
-                    }
-                });
+    const addToQueue = useCallback((track: LocalTrack) => {
+        setQueue(prev => [...prev, track]);
+    }, []);
+
+    const playNextInQueue = useCallback((track: LocalTrack) => {
+        const idx = currentIndexRef.current;
+        if (idx === -1) {
+            void playQueue([track], 0);
+        } else {
+            setQueue(prev => {
+                const newQueue = [...prev];
+                newQueue.splice(currentIndexRef.current + 1, 0, track);
+                return newQueue;
+            });
+        }
+    }, [playQueue]);
+
+    const toggleMixerMode = useCallback(() => {
+        setMixerMode(prev => {
+            const nextMode = !prev;
+            devLog('[toggleMixerMode] Switching from', prev, 'to', nextMode);
+            mixerModeRef.current = nextMode;
+            // Synchronously update master volume to prevent leakage/phase issues
+            if (audioRef.current) {
+                const hasStems = currentTrack?.stems?.some(s => s.type.toUpperCase() !== 'ORIGINAL');
+                const newVolume = (nextMode && hasStems) ? 0 : volume;
+                const isActuallyPlaying = !audioRef.current.paused;
+                devLog('[toggleMixerMode] Setting main audio volume to', newVolume, 'hasStems:', hasStems, 'isActuallyPlaying:', isActuallyPlaying);
+                audioRef.current.volume = newVolume;
+            } else {
+                devLog('[toggleMixerMode] No audioRef.current!');
             }
-        }}>
+            return nextMode;
+        });
+    }, [currentTrack?.stems, volume]);
+
+    const setMixerVolumes = useCallback((v: Record<string, number>) => {
+        devLog('[setMixerVolumes] Updating volumes:', v, 'registered stems:', Object.keys(stemAudiosRef.current));
+        setMixerVolumesState(v);
+        Object.entries(v).forEach(([type, vol]) => {
+            const audio = stemAudiosRef.current[type];
+            if (audio) {
+                const effectiveVol = vol * volume;
+                devLog(`[setMixerVolumes] Setting ${type} volume to ${effectiveVol} (mixer: ${vol}, master: ${volume})`);
+                audio.volume = effectiveVol;
+            } else {
+                devLog(`[setMixerVolumes] No audio element found for ${type}`);
+            }
+        });
+    }, [volume]);
+
+    const stemsToRender = mixerMode && currentTrack?.id
+        ? (currentTrack.stems?.filter(s => s.type.toUpperCase() !== 'ORIGINAL') || [])
+        : [];
+
+    const contextValue = React.useMemo<PlayerContextType>(() => ({
+        currentTrack,
+        queue,
+        currentIndex,
+        isPlaying,
+        progress,
+        currentTime,
+        duration,
+        artworkUrl,
+        volume,
+        shuffle,
+        repeatMode,
+        playQueue,
+        nextTrack,
+        prevTrack,
+        togglePlay,
+        toggleShuffle,
+        toggleRepeatMode,
+        seek,
+        setVolume,
+        stop,
+        addToQueue,
+        playNext: playNextInQueue,
+        mixerMode,
+        toggleMixerMode,
+        mixerVolumes,
+        setMixerVolumes,
+    }), [
+        currentTrack, queue, currentIndex, isPlaying, progress, currentTime,
+        duration, artworkUrl, volume, shuffle, repeatMode, playQueue, nextTrack,
+        prevTrack, togglePlay, toggleShuffle, toggleRepeatMode, seek, setVolume,
+        stop, addToQueue, playNextInQueue, mixerMode, toggleMixerMode, mixerVolumes,
+        setMixerVolumes,
+    ]);
+
+    return (
+        <PlayerContext.Provider value={contextValue}>
             {children}
-            {mixerMode && currentTrack?.id && (() => {
-                const stemsToRender = currentTrack.stems?.filter(s => s.type.toUpperCase() !== 'ORIGINAL') || [];
-                devLog('[PlayerProvider] Rendering StemAudio components:', {
-                    mixerMode,
-                    trackId: currentTrack.id,
-                    stemsCount: stemsToRender.length,
-                    stems: stemsToRender.map(s => ({ type: s.type, isEncrypted: s.isEncrypted, uri: s.uri?.substring(0, 50) })),
-                    mixerVolumes
-                });
-                return (
-                    <div style={{ display: 'none' }}>
-                        {stemsToRender.map(stem => (
-                            <StemAudio
-                                key={stem.type.toLowerCase()}
-                                stem={stem}
-                                masterAudio={audioRef.current}
-                                isPlaying={isPlaying}
-                                volume={volume}
-                                mixerVolume={mixerVolumes[stem.type.toLowerCase()] ?? 1}
-                                onMount={handleStemMount}
-                                onUnmount={handleStemUnmount}
-                            />
-                        ))}
-                    </div>
-                );
-            })()}
+            {stemsToRender.length > 0 && (
+                <div style={{ display: 'none' }}>
+                    {stemsToRender.map(stem => (
+                        <StemAudio
+                            key={stem.type.toLowerCase()}
+                            stem={stem}
+                            masterAudio={audioRef.current}
+                            isPlaying={isPlaying}
+                            volume={volume}
+                            mixerVolume={mixerVolumes[stem.type.toLowerCase()] ?? 1}
+                            onMount={handleStemMount}
+                            onUnmount={handleStemUnmount}
+                        />
+                    ))}
+                </div>
+            )}
         </PlayerContext.Provider>
     );
 }
