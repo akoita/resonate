@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentRuntimeInput } from "./runtime/agent_runtime.adapter";
+import { AdkAdapter } from "./runtime/adk_adapter";
 import { LangGraphAdapter } from "./runtime/langgraph_adapter";
 import { VertexAiAdapter } from "./runtime/vertex_ai_adapter";
 
@@ -11,13 +12,16 @@ export class AgentRuntimeService {
   constructor(
     private readonly orchestrator: AgentOrchestratorService,
     private readonly vertexAdapter: VertexAiAdapter,
-    private readonly langGraphAdapter: LangGraphAdapter
+    private readonly langGraphAdapter: LangGraphAdapter,
+    private readonly adkAdapter: AdkAdapter
   ) {}
 
   async run(input: AgentRuntimeInput) {
-    const mode = process.env.AGENT_RUNTIME ?? "local";
+    const mode = process.env.AGENT_RUNTIME ?? "adk";
     const adapter =
-      mode === "vertex"
+      mode === "adk"
+        ? this.adkAdapter
+        : mode === "vertex"
         ? this.vertexAdapter
         : mode === "langgraph"
         ? this.langGraphAdapter
