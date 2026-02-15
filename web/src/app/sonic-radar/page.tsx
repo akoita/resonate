@@ -6,8 +6,9 @@ import AuthGate from "../../components/auth/AuthGate";
 import { useAgentHistory } from "../../hooks/useAgentHistory";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { useUIStore } from "../../lib/uiStore";
-import type { LocalTrack } from "../../lib/localLibrary";
+import { type LocalTrack, saveTracksMetadata } from "../../lib/localLibrary";
 import type { AgentSessionLicense, AgentTransaction } from "../../lib/api";
+import { getReleaseArtworkUrl } from "../../lib/api";
 
 type GroupedSession = {
     date: string;
@@ -43,20 +44,74 @@ export default function SonicRadarPage() {
     const router = useRouter();
     const { setTracksToAddToPlaylist } = useUIStore();
 
-    /** Convert a license to a minimal LocalTrack for playlist operations */
-    const licenseToTrack = (lic: AgentSessionLicense): LocalTrack => ({
-        id: lic.trackId,
-        title: lic.track.title,
-        artist: lic.track.artist,
-        albumArtist: null,
-        album: lic.track.release?.title || null,
-        year: null,
-        genre: null,
-        duration: null,
-        createdAt: new Date().toISOString(),
-        source: "remote" as const,
-        remoteArtworkUrl: lic.track.release?.artworkUrl || undefined,
-    });
+    /**
+     * Build individual stem-level LocalTrack entries from a session group.
+     * Each confirmed transaction (Drums, Vocals, etc.) becomes a separate
+     * playlist entry with a deterministic ID so it's both unique and resolvable.
+     * Saves them to the library before returning so getTrack() can resolve later.
+     */
+    const buildStemTracks = async (group: GroupedSession): Promise<LocalTrack[]> => {
+        const confirmedTxs = group.transactions.filter(t => t.status === 'confirmed' && t.trackId);
+
+        if (confirmedTxs.length === 0) {
+            // Fallback: no transactions, use licenses (one per parent track)
+            const seen = new Set<string>();
+            return group.licenses
+                .filter(lic => {
+                    if (seen.has(lic.trackId)) return false;
+                    seen.add(lic.trackId);
+                    return true;
+                })
+                .map(lic => ({
+                    id: lic.trackId,
+                    title: lic.track.title,
+                    artist: lic.track.artist,
+                    albumArtist: null,
+                    album: lic.track.release?.title || null,
+                    year: null,
+                    genre: null,
+                    duration: null,
+                    createdAt: new Date().toISOString(),
+                    source: "remote" as const,
+                    remoteArtworkUrl: lic.track.release?.artworkUrl || undefined,
+                }));
+        }
+
+        // Build a lookup from trackId → license (for artwork)
+        const licByTrack = new Map(group.licenses.map(l => [l.trackId, l]));
+
+        // Create one LocalTrack per stem transaction
+        const stemTracks: LocalTrack[] = confirmedTxs.map(tx => {
+            const stemSlug = tx.stemName?.toLowerCase().replace(/\s+/g, '_') || 'unknown';
+            const lic = licByTrack.get(tx.trackId!);
+            const artworkUrl = lic?.track.release?.artworkUrl
+                || (lic?.track.release?.artworkMimeType ? getReleaseArtworkUrl(lic.track.release.id) : undefined);
+
+            return {
+                id: `stem_${tx.trackId}_${stemSlug}`,
+                title: tx.stemName ? `${tx.trackTitle || 'Unknown'} (${tx.stemName})` : (tx.trackTitle || 'Unknown'),
+                artist: tx.trackArtist || null,
+                albumArtist: null,
+                album: lic?.track.release?.title || null,
+                year: null,
+                genre: null,
+                duration: null,
+                createdAt: tx.createdAt,
+                source: "remote" as const,
+                stemType: tx.stemName || undefined,
+                remoteArtworkUrl: artworkUrl,
+            };
+        });
+
+        // Persist to library so PlaylistDetail.getTrack() can resolve them
+        try {
+            await saveTracksMetadata(stemTracks, "remote");
+        } catch (err) {
+            console.warn('[SonicRadar] Failed to save stem tracks to library:', err);
+        }
+
+        return stemTracks;
+    };
 
     // Flatten sessions into grouped display
     const groups: GroupedSession[] = sessions
@@ -148,8 +203,8 @@ export default function SonicRadarPage() {
                                         <button
                                             className="sonic-radar-add-playlist-btn"
                                             title="Add all session tracks to playlist"
-                                            onClick={() => {
-                                                const tracks = group.licenses.map(licenseToTrack);
+                                            onClick={async () => {
+                                                const tracks = await buildStemTracks(group);
                                                 setTracksToAddToPlaylist(tracks);
                                             }}
                                         >
@@ -234,9 +289,37 @@ export default function SonicRadarPage() {
                                                         <button
                                                             className="sonic-radar-card-add-btn"
                                                             title="Add to playlist"
-                                                            onClick={(e) => {
+                                                            onClick={async (e) => {
                                                                 e.stopPropagation();
-                                                                setTracksToAddToPlaylist([licenseToTrack(lic)]);
+                                                                // Build stem tracks for just this license's track
+                                                                const txsForTrack = group.transactions.filter(
+                                                                    t => t.trackId === lic.trackId && t.status === 'confirmed'
+                                                                );
+                                                                if (txsForTrack.length > 0) {
+                                                                    // Create a mini-group for this one track
+                                                                    const miniGroup: GroupedSession = {
+                                                                        ...group,
+                                                                        transactions: txsForTrack,
+                                                                        licenses: [lic],
+                                                                    };
+                                                                    const tracks = await buildStemTracks(miniGroup);
+                                                                    setTracksToAddToPlaylist(tracks);
+                                                                } else {
+                                                                    // Fallback: add parent track
+                                                                    setTracksToAddToPlaylist([{
+                                                                        id: lic.trackId,
+                                                                        title: lic.track.title,
+                                                                        artist: lic.track.artist,
+                                                                        albumArtist: null,
+                                                                        album: lic.track.release?.title || null,
+                                                                        year: null,
+                                                                        genre: null,
+                                                                        duration: null,
+                                                                        createdAt: new Date().toISOString(),
+                                                                        source: "remote" as const,
+                                                                        remoteArtworkUrl: lic.track.release?.artworkUrl || undefined,
+                                                                    }]);
+                                                                }
                                                             }}
                                                         >
                                                             +
