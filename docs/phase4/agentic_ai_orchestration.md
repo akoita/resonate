@@ -15,9 +15,11 @@
 
 ## Recommended Stack (v1)
 
-- **Runtime**: Vertex AI Agent or LangGraph (server-side).
+- **Runtime**: Google ADK (`@google/adk`) — default runtime as of #321.
+  - Previous: Vertex AI manual SDK (deprecated, still available as `AGENT_RUNTIME=vertex`).
+  - LangGraph stub available but not production-ready.
 - **Policy Layer**: Deterministic policy + LLM arbitration.
-- **Retrieval**: Catalog + analytics features as tools (genre, mood, budgets).
+- **Retrieval**: Catalog + analytics features as ADK `FunctionTool`s (genre, mood, budgets).
 - **Safety**: Budget caps + explicit content filters enforced outside LLM.
 
 ## Agent Roles
@@ -49,19 +51,42 @@
   `agent.negotiated`, `agent.evaluated`.
 - Evaluation harness `/agents/evaluate` with replay metrics.
 - Embedding service + similarity scoring for selection ranking.
-- Runtime adapter stubs for Vertex AI / LangGraph with fallback.
+- **ADK Runtime (default)**: Migrated from manual Vertex AI SDK to Google ADK (#321).
+  - `AdkCurationAgent`: Declarative `LlmAgent` with 4 `FunctionTool`s
+    (`catalog_search`, `pricing_quote`, `analytics_signal`, `embeddings_similarity`).
+  - `AdkAdapter`: Uses `InMemoryRunner` with event streaming and `TRACK:` response parsing.
+  - ADK handles multi-turn tool calling, retries, and conversation state natively.
+  - Old `VertexAiAdapter` preserved as fallback (`AGENT_RUNTIME=vertex`).
 - **On-chain purchase integration**: Negotiator looks up active `StemListing`
   records and routes purchases through `AgentPurchaseService` for real UserOps.
   Falls back to mock transactions for unlisted tracks or when `AA_SKIP_BUNDLER=true`.
 - **Listing-aware track selection**: `catalog.search` annotates results with
-  `hasListing` flag; the selector and Vertex AI system prompt both prioritize
+  `hasListing` flag; the selector and ADK system prompt both prioritize
   tracks with active marketplace listings.
 - **Self-healing listing lookup**: `recordPurchase` performs a fallback
-  `StemListing` query when the upstream runtime (e.g. Vertex adapter) doesn't
+  `StemListing` query when the upstream runtime (e.g. ADK adapter) doesn't
   provide listing data.
+
+## Architecture — Agent Runtime
+
+```mermaid
+graph TB
+    A["AgentRuntimeService"] -->|"mode=adk (default)"| B["AdkAdapter"]
+    A -->|"mode=vertex"| V["VertexAiAdapter (deprecated)"]
+    A -->|"mode=local"| O["AgentOrchestratorService"]
+    B --> C["InMemoryRunner"]
+    C --> D["LlmAgent (resonate_curation_agent)"]
+    D --> E["FunctionTool: catalog_search"]
+    D --> F["FunctionTool: pricing_quote"]
+    D --> G["FunctionTool: analytics_signal"]
+    D --> H["FunctionTool: embeddings_similarity"]
+    E & F & G & H --> I["ToolRegistry"]
+```
 
 ## Next Steps
 
 - Auto-list stems after minting to close the listing gap.
 - Add vector similarity for mood/genre embeddings.
 - Expand evaluation harness with listing-hit-rate metric.
+- Remove deprecated `VertexAiAdapter` and `tool_declarations.ts` once ADK proves stable.
+- Explore multi-agent composition (Selector → Mixer → Negotiator as sub-agents).

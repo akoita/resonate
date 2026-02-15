@@ -15,6 +15,7 @@ import { AgentConfigController } from "./agent_config.controller";
 import { EmbeddingService } from "../embeddings/embedding.service";
 import { EmbeddingStore } from "../embeddings/embedding.store";
 import { ToolRegistry } from "./tools/tool_registry";
+import { AdkAdapter } from "./runtime/adk_adapter";
 import { LangGraphAdapter } from "./runtime/langgraph_adapter";
 import { VertexAiAdapter } from "./runtime/vertex_ai_adapter";
 import { IdentityModule } from "../identity/identity.module";
@@ -36,6 +37,7 @@ import { IdentityModule } from "../identity/identity.module";
     AgentNegotiatorService,
     AgentOrchestratorService,
     VertexAiAdapter,
+    AdkAdapter,
     LangGraphAdapter,
     AgentWalletService,
     AgentPurchaseService,
