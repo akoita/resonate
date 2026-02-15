@@ -33,6 +33,6 @@ export interface AgentRuntimeResult {
 }
 
 export interface AgentRuntimeAdapter {
-  name: "vertex" | "langgraph";
+  name: "vertex" | "langgraph" | "adk";
   run(input: AgentRuntimeInput): Promise<AgentRuntimeResult>;
 }
