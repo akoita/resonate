@@ -1,0 +1,40 @@
+# Production-like stack for local Docker validation
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build
+
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://resonate:resonate@postgres:5432/resonate
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production}
+      - ENABLE_CONTRACT_INDEXER=${ENABLE_CONTRACT_INDEXER:-false}
+      - RPC_URL=${RPC_URL:-http://host.docker.internal:8545}
+      - STEM_NFT_ADDRESS=${STEM_NFT_ADDRESS:-}
+      - MARKETPLACE_ADDRESS=${MARKETPLACE_ADDRESS:-}
+      - TRANSFER_VALIDATOR_ADDRESS=${TRANSFER_VALIDATOR_ADDRESS:-}
+      - AA_ENTRY_POINT=${AA_ENTRY_POINT:-}
+      - AA_FACTORY=${AA_FACTORY:-}
+      - AA_CHAIN_ID=${AA_CHAIN_ID:-11155111}
+      - AA_BUNDLER=${AA_BUNDLER:-}
+      - GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY:-}
+      - AGENT_RUNTIME=${AGENT_RUNTIME:-adk}
+      - BLOCK_EXPLORER_URL=${BLOCK_EXPLORER_URL:-https://sepolia.etherscan.io}
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+    ports:
+      - "3001:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:3000
+    depends_on:
+      - backend
+    restart: unless-stopped

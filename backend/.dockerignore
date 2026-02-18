@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+.env.*
+uploads
+*.test.ts
+*.spec.ts
+jest.config.js
+coverage
+README.md

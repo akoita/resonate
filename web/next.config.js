@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
+const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+
 const nextConfig = {
+  output: "standalone",
   turbopack: {
     root: __dirname,
   },
@@ -11,15 +14,15 @@ const nextConfig = {
       },
       {
         source: "/api/metadata/:path*",
-        destination: "http://localhost:3000/metadata/:path*",
+        destination: `${apiUrl}/metadata/:path*`,
       },
       {
         source: "/api/encryption/:path*",
-        destination: "http://localhost:3000/encryption/:path*",
+        destination: `${apiUrl}/encryption/:path*`,
       },
       {
         source: "/api/stem-pricing/:path*",
-        destination: "http://localhost:3000/api/stem-pricing/:path*",
+        destination: `${apiUrl}/api/stem-pricing/:path*`,
       },
     ];
   },
