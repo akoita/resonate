@@ -21,6 +21,30 @@ docker-up:
 docker-down:
 	docker compose -f docker-compose.yml -f docker-compose.prod.yml down
 
+# ============================================
+# Sepolia Contract Deployment
+# ============================================
+
+deploy-sepolia:
+	./scripts/deploy-sepolia.sh
+
+# ============================================
+# GCP Infrastructure (Terraform)
+# ============================================
+
+infra-init:
+	cd infra/terraform && terraform init
+
+infra-plan:
+	cd infra/terraform && terraform plan
+
+infra-apply:
+	cd infra/terraform && terraform apply
+
+infra-destroy:
+	cd infra/terraform && terraform destroy
+
+
 
 backend-dev: dev-clean
 	cd backend && npm run prisma:generate && npm run prisma:migrate && npm run start:dev

@@ -24,3 +24,14 @@ test_audio.*
 .env.*.local
 *.pem
 *.key
+
+# Terraform / Infrastructure
+infra/terraform/.terraform/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.*
+infra/terraform/*.tfvars
+infra/terraform/.terraform.lock.hcl
+infra/terraform/terraform.tfplan
+
+# Deployment secrets (never commit private keys or API keys)
+contracts/deployments/*-secrets.json

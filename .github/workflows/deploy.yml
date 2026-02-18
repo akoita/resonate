@@ -1,0 +1,118 @@
+# =============================================================================
+# Deploy to GCP — Build, push, and deploy Docker images to Cloud Run
+# =============================================================================
+# Triggers on push to main (after CI passes)
+# Uses Workload Identity Federation (keyless auth — no service account keys)
+
+name: Deploy to GCP
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "web/**"
+      - "docker-compose.prod.yml"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch: # Allow manual trigger
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+# Required for Workload Identity Federation
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: gen-lang-client-0683924123
+  REGION: europe-west1
+  REGISTRY: europe-west1-docker.pkg.dev/gen-lang-client-0683924123/resonate-dev
+
+jobs:
+  # --- Wait for CI to pass ---
+  ci-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for CI
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          running-workflow-name: "Deploy to GCP"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          check-name: "build-web"
+
+  # --- Build & Deploy Backend ---
+  deploy-backend:
+    needs: ci-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build & Push Backend Image
+        run: |
+          docker build \
+            -t ${{ env.REGISTRY }}/backend:${{ github.sha }} \
+            -t ${{ env.REGISTRY }}/backend:latest \
+            ./backend
+          docker push ${{ env.REGISTRY }}/backend:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/backend:latest
+
+      - name: Deploy Backend to Cloud Run
+        run: |
+          gcloud run services update resonate-dev-backend \
+            --image=${{ env.REGISTRY }}/backend:${{ github.sha }} \
+            --region=${{ env.REGION }} \
+            --quiet
+
+  # --- Build & Deploy Frontend ---
+  deploy-frontend:
+    needs: ci-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build & Push Frontend Image
+        run: |
+          docker build \
+            -t ${{ env.REGISTRY }}/frontend:${{ github.sha }} \
+            -t ${{ env.REGISTRY }}/frontend:latest \
+            ./web
+          docker push ${{ env.REGISTRY }}/frontend:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/frontend:latest
+
+      - name: Deploy Frontend to Cloud Run
+        run: |
+          gcloud run services update resonate-dev-frontend \
+            --image=${{ env.REGISTRY }}/frontend:${{ github.sha }} \
+            --region=${{ env.REGION }} \
+            --quiet

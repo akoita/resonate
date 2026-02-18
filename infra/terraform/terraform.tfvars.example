@@ -1,0 +1,36 @@
+# =============================================================================
+# Terraform Variables — Example (copy to terraform.tfvars and fill in)
+# =============================================================================
+# ⚠️  terraform.tfvars is gitignored — NEVER commit real values
+# cp terraform.tfvars.example terraform.tfvars
+
+project_id  = "gen-lang-client-0683924123"
+region      = "europe-west1"
+environment = "dev"
+
+# --- Database ---
+db_tier     = "db-f1-micro"
+db_password = "CHANGE_ME_STRONG_PASSWORD"
+
+# --- Redis ---
+redis_memory_gb = 1
+
+# --- Application Secrets ---
+jwt_secret        = "CHANGE_ME_RANDOM_SECRET"
+google_ai_api_key = ""
+
+# --- Contract Addresses (update after running deploy-sepolia.sh) ---
+stem_nft_address           = ""
+marketplace_address        = ""
+transfer_validator_address = ""
+sepolia_rpc_url            = "https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY"
+
+# --- IAP Access Control ---
+# Add your Google account(s) that should have access
+iap_authorized_members = [
+  # "user:your-email@gmail.com",
+]
+
+# --- Cloud Run ---
+backend_min_instances  = 1
+frontend_min_instances = 0
