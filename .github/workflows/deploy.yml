@@ -31,10 +31,19 @@ env:
   REGISTRY: europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/resonate-dev
 
 jobs:
-  # --- Wait for CI to pass ---
+  # --- Guard: only repo owner can deploy ---
   ci-check:
     runs-on: ubuntu-latest
+    if: github.actor == 'akoita'
     steps:
+      - name: Verify deployer identity
+        run: |
+          echo "Deploy triggered by: ${{ github.actor }}"
+          if [[ "${{ github.actor }}" != "akoita" ]]; then
+            echo "::error::Unauthorized deployer. Only akoita can deploy."
+            exit 1
+          fi
+
       - name: Wait for CI
         uses: lewagon/wait-on-check-action@v1.3.4
         with:
@@ -47,6 +56,7 @@ jobs:
   deploy-backend:
     needs: ci-check
     runs-on: ubuntu-latest
+    environment: dev
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -84,6 +94,7 @@ jobs:
   deploy-frontend:
     needs: ci-check
     runs-on: ubuntu-latest
+    environment: dev
     steps:
       - name: Checkout
         uses: actions/checkout@v4
