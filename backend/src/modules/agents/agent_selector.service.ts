@@ -1,5 +1,6 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { ToolRegistry } from "./tools/tool_registry";
+import type { CuratorAgentService } from "./curator_agent.service";
 
 export interface AgentSelectorInput {
   queries?: string[];
@@ -7,11 +8,21 @@ export interface AgentSelectorInput {
   allowExplicit?: boolean;
   useEmbeddings?: boolean;
   limit?: number;
+  /** Minimum quality score (0-100). Stems below this are deprioritised. */
+  qualityThreshold?: number;
 }
 
 @Injectable()
 export class AgentSelectorService {
+  private readonly logger = new Logger(AgentSelectorService.name);
+  private curatorService: CuratorAgentService | null = null;
+
   constructor(private readonly tools: ToolRegistry) { }
+
+  /** Set curator service reference (avoids circular DI). */
+  setCuratorService(service: CuratorAgentService) {
+    this.curatorService = service;
+  }
 
   async select(input: AgentSelectorInput) {
     const queries = (input.queries ?? []).filter(Boolean);
@@ -63,6 +74,38 @@ export class AgentSelectorService {
       const bListed = b.hasListing ? 1 : 0;
       return bListed - aListed;
     });
+
+    // ─── Quality filter ──────────────────────────────────────
+    // Deprioritise low-quality tracks (sort to bottom, don't hard-filter)
+    const qualityThreshold = input.qualityThreshold
+      ?? Number(process.env.AGENT_QUALITY_THRESHOLD ?? "30");
+
+    if (this.curatorService) {
+      try {
+        const trackIds = allCandidates.map((t: any) => t.id);
+        const qualityMap = await this.curatorService.lookupTrackQuality(trackIds);
+
+        if (qualityMap.size > 0) {
+          // Stable-sort by quality: rated-and-above-threshold first,
+          // then unrated, then rated-but-below-threshold
+          allCandidates.sort((a: any, b: any) => {
+            const aScore = qualityMap.get(a.id);
+            const bScore = qualityMap.get(b.id);
+            const aGroup = aScore === undefined ? 1 : aScore >= qualityThreshold ? 0 : 2;
+            const bGroup = bScore === undefined ? 1 : bScore >= qualityThreshold ? 0 : 2;
+            if (aGroup !== bGroup) return aGroup - bGroup;
+            // Within same group, prefer higher scores
+            return (bScore ?? 0) - (aScore ?? 0);
+          });
+
+          this.logger.debug(
+            `Quality-sorted ${allCandidates.length} candidates (${qualityMap.size} rated, threshold=${qualityThreshold})`,
+          );
+        }
+      } catch (err) {
+        this.logger.warn(`Quality lookup failed, proceeding without: ${err}`);
+      }
+    }
 
     // Filter out recently played tracks, then take up to `limit`
     const fresh = allCandidates.filter(

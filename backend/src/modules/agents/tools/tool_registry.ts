@@ -3,6 +3,7 @@ import { prisma } from "../../../db/prisma";
 import { calculatePrice, PricingInput } from "../../../pricing/pricing";
 import { EmbeddingService } from "../../embeddings/embedding.service";
 import { EmbeddingStore } from "../../embeddings/embedding.store";
+import type { CuratorAgentService } from "../curator_agent.service";
 
 export interface ToolInput {
   [key: string]: unknown;
@@ -20,6 +21,12 @@ export interface Tool {
 @Injectable()
 export class ToolRegistry {
   private tools = new Map<string, Tool>();
+  private curatorService: CuratorAgentService | null = null;
+
+  /** Set curator service reference (avoids circular DI). */
+  setCuratorService(service: CuratorAgentService) {
+    this.curatorService = service;
+  }
 
   constructor(
     private readonly embeddingService: EmbeddingService,
@@ -146,6 +153,53 @@ export class ToolRegistry {
         return {
           ranked: this.embeddingStore.similarity(queryVector, candidateIds),
         };
+      },
+    });
+
+    // ─── Quality Tools ──────────────────────────────────────
+
+    this.register({
+      name: "quality.rate",
+      run: async (input) => {
+        if (!this.curatorService) {
+          return { error: "Curator service not available" };
+        }
+        const stemId = String(input.stemId ?? "");
+        const curatorId = String(input.curatorId ?? "system");
+        if (!stemId) return { error: "stemId is required" };
+        try {
+          const result = await this.curatorService.analyzeStem(stemId, curatorId);
+          return {
+            stemId: result.stemId,
+            score: result.score,
+            rmsEnergy: result.metrics.rmsEnergy,
+            spectralDensity: result.metrics.spectralDensity,
+            silenceRatio: result.metrics.silenceRatio,
+            musicalSalience: result.metrics.musicalSalience,
+          };
+        } catch (err) {
+          return { error: String(err) };
+        }
+      },
+    });
+
+    this.register({
+      name: "quality.lookup",
+      run: async (input) => {
+        const stemIds = (input.stemIds as string[]) ?? [];
+        if (stemIds.length === 0) return { ratings: {} };
+        const ratings = await prisma.stemQualityRating.findMany({
+          where: { stemId: { in: stemIds } },
+          orderBy: { score: "desc" },
+        });
+        // Group best score per stem
+        const best: Record<string, { score: number; curatorId: string }> = {};
+        for (const r of ratings) {
+          if (!best[r.stemId]) {
+            best[r.stemId] = { score: r.score, curatorId: r.curatorId };
+          }
+        }
+        return { ratings: best };
       },
     });
   }

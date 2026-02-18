@@ -23,6 +23,7 @@ export interface OrchestratedTrack {
   trackId: string;
   mixPlan: any;
   negotiation: any;
+  qualityScore?: number;
 }
 
 @Injectable()

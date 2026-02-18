@@ -106,6 +106,25 @@ model Stem {
   listings           StemListing[]
   nftMint            StemNftMint?
   pricing            StemPricing?
+  qualityRatings     StemQualityRating[]
+}
+
+model StemQualityRating {
+  id              String   @id @default(uuid())
+  stemId          String
+  curatorId       String   // Agent/user who rated — future: ERC-8004 agent identity
+  score           Int      // 0-100 composite quality score
+  rmsEnergy       Float    // RMS energy level (0.0 - 1.0)
+  spectralDensity Float    // Tonal richness (0.0 - 1.0)
+  silenceRatio    Float    // Fraction of stem that is silent (0.0 - 1.0)
+  musicalSalience Float    // Core musical element presence (0.0 - 1.0)
+  analysisJson    Json?    // Full analysis metadata (essentia.js output)
+  createdAt       DateTime @default(now())
+  stem            Stem     @relation(fields: [stemId], references: [id])
+
+  @@unique([stemId, curatorId])
+  @@index([stemId])
+  @@index([score])
 }
 
 model StemPricing {

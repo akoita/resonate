@@ -96,6 +96,45 @@ export function getToolDeclarations(): FunctionDeclaration[] {
         required: ["query", "candidates"],
       },
     },
+    {
+      name: "quality_rate",
+      description:
+        "Analyse a stem's audio quality and produce a quality score (0-100). " +
+        "Examines RMS energy, spectral density, silence ratio, and musical salience. " +
+        "Use before purchasing to verify a stem has meaningful audio content.",
+      parameters: {
+        type: SchemaType.OBJECT,
+        properties: {
+          stemId: {
+            type: SchemaType.STRING,
+            description: "The stem ID to analyse",
+          },
+          curatorId: {
+            type: SchemaType.STRING,
+            description: "Optional curator agent ID (defaults to 'system')",
+          },
+        },
+        required: ["stemId"],
+      },
+    },
+    {
+      name: "quality_lookup",
+      description:
+        "Look up existing quality ratings for one or more stems. " +
+        "Returns the best score per stem. Use to filter stems by quality before purchasing. " +
+        "Stems with score < 30 likely contain near-silence or noise.",
+      parameters: {
+        type: SchemaType.OBJECT,
+        properties: {
+          stemIds: {
+            type: SchemaType.ARRAY,
+            items: { type: SchemaType.STRING },
+            description: "Array of stem IDs to look up quality ratings for",
+          },
+        },
+        required: ["stemIds"],
+      },
+    },
   ];
 }
 
