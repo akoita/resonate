@@ -23,6 +23,8 @@ services:
       - GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY:-}
       - AGENT_RUNTIME=${AGENT_RUNTIME:-adk}
       - BLOCK_EXPLORER_URL=${BLOCK_EXPLORER_URL:-https://sepolia.etherscan.io}
+      - DEMUCS_WORKER_URL=${DEMUCS_WORKER_URL:-http://demucs-worker:8000}
+      - BACKEND_URL=${BACKEND_URL:-http://backend:3000}
     depends_on:
       - postgres
       - redis

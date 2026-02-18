@@ -298,7 +298,13 @@ export class IngestionService {
           const blob = new Blob([new Uint8Array(audioBuffer)], { type: originalStem.mimeType });
           formData.append("file", blob, `track_${track.id}.wav`);
 
-          console.log(`[Ingestion] Sending track ${track.id} to Demucs worker...`);
+          // Configurable worker URL — no longer hardcoded to localhost
+          const workerUrl = process.env.DEMUCS_WORKER_URL || 'http://localhost:8000';
+          // Pass callback URL so worker can report progress without hardcoded backend address
+          const backendUrl = process.env.BACKEND_URL || 'http://host.docker.internal:3000';
+          const callbackParam = `?callback_url=${encodeURIComponent(backendUrl)}`;
+
+          console.log(`[Ingestion] Sending track ${track.id} to Demucs worker at ${workerUrl}...`);
           // Use custom undici Agent to override the default headersTimeout (300s).
           // Without this, long-running Demucs separations hit UND_ERR_HEADERS_TIMEOUT
           // before the 10-minute AbortSignal fires.
@@ -306,7 +312,7 @@ export class IngestionService {
             headersTimeout: 600_000,  // 10 minutes — matches AbortSignal
             bodyTimeout: 0,           // unlimited — response body can be large
           });
-          const response = await fetch(`http://localhost:8000/separate/${input.releaseId}/${track.id}`, {
+          const response = await fetch(`${workerUrl}/separate/${input.releaseId}/${track.id}${callbackParam}`, {
             method: "POST",
             body: formData,
             signal: AbortSignal.timeout(600_000), // 10 minutes
@@ -345,10 +351,34 @@ export class IngestionService {
           await this.emitTrackStage(input.releaseId, track.id, 'encrypting');
 
           // 2. Process, Encrypt, and Upload the AI-generated Stems
-          for (const [type, relativePath] of Object.entries(result.stems)) {
-            const absolutePath = join(process.cwd(), "uploads", "stems", relativePath);
-            if (existsSync(absolutePath)) {
-              let data: Buffer = readFileSync(absolutePath);
+          for (const [type, stemUri] of Object.entries(result.stems)) {
+            // Download stem data — supports both HTTPS URLs (GCS mode) and local paths
+            let data: Buffer | null = null;
+            const stemUriStr = stemUri as string;
+
+            if (stemUriStr.startsWith('http://') || stemUriStr.startsWith('https://')) {
+              // GCS/remote mode: download from URL
+              console.log(`[Ingestion] Downloading stem from URL: ${stemUriStr}`);
+              try {
+                const stemResponse = await fetch(stemUriStr, { signal: AbortSignal.timeout(120_000) });
+                if (stemResponse.ok) {
+                  const arrayBuffer = await stemResponse.arrayBuffer();
+                  data = Buffer.from(new Uint8Array(arrayBuffer));
+                } else {
+                  console.error(`[Ingestion] Failed to download stem: HTTP ${stemResponse.status}`);
+                }
+              } catch (dlErr) {
+                console.error(`[Ingestion] Failed to download stem from ${stemUriStr}:`, dlErr);
+              }
+            } else {
+              // Local mode: read from shared volume (backward compatible)
+              const absolutePath = join(process.cwd(), "uploads", "stems", stemUriStr);
+              if (existsSync(absolutePath)) {
+                data = readFileSync(absolutePath);
+              }
+            }
+
+            if (data) {
               const stemId = this.generateId("stem");
 
               let isEncrypted = false;
@@ -388,6 +418,8 @@ export class IngestionService {
                 encryptionMetadata,
                 storageProvider: storage.provider,
               });
+            } else {
+              console.warn(`[Ingestion] Could not load stem data for ${type} (${stemUriStr}), skipping`);
             }
           }
 

@@ -12,7 +12,7 @@ locals {
 resource "google_cloud_run_v2_service" "backend" {
   name     = "resonate-${var.environment}-backend"
   location = var.region
-  ingress  = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+  ingress  = "INGRESS_TRAFFIC_ALL"  # TODO: restrict to INTERNAL_LOAD_BALANCER once LB + IAP is configured
 
   template {
     service_account = google_service_account.cloud_run.email
@@ -37,7 +37,7 @@ resource "google_cloud_run_v2_service" "backend" {
       resources {
         limits = {
           cpu    = "1"
-          memory = "512Mi"
+          memory = "1Gi"
         }
       }
 
@@ -48,8 +48,8 @@ resource "google_cloud_run_v2_service" "backend" {
       }
 
       env {
-        name  = "PORT"
-        value = "3000"
+        name  = "CORS_ORIGIN"
+        value = var.frontend_url
       }
 
       env {
@@ -87,21 +87,44 @@ resource "google_cloud_run_v2_service" "backend" {
         value = "adk"
       }
 
-      # Database URL (contains password — from Secret Manager)
+      # Demucs worker URL (CPU on Cloud Run or GPU on GCE)
       env {
-        name = "DATABASE_URL"
-        value_source {
-          secret_key_ref {
-            secret  = google_secret_manager_secret.secrets["db-password"].secret_id
-            version = "latest"
-          }
-        }
+        name  = "DEMUCS_WORKER_URL"
+        value = (
+          var.demucs_cpu_enabled
+            ? google_cloud_run_v2_service.demucs_cpu[0].uri
+            : var.demucs_gpu_enabled
+              ? "http://${google_compute_address.demucs_internal[0].address}:8000"
+              : ""
+        )
+      }
+
+      # Backend's own URL — passed to Demucs worker for progress callbacks
+      env {
+        name  = "BACKEND_URL"
+        value = google_cloud_run_v2_service.backend.uri
+      }
+
+      # Database URL (connection via private VPC — not exposed externally)
+      env {
+        name  = "DATABASE_URL"
+        value = local.database_url
       }
 
       # Redis URL
       env {
         name  = "REDIS_URL"
         value = "redis://${google_redis_instance.redis.host}:${google_redis_instance.redis.port}"
+      }
+
+      env {
+        name  = "REDIS_HOST"
+        value = google_redis_instance.redis.host
+      }
+
+      env {
+        name  = "REDIS_PORT"
+        value = "${google_redis_instance.redis.port}"
       }
 
       # Secrets from Secret Manager
@@ -139,9 +162,9 @@ resource "google_cloud_run_v2_service" "backend" {
         http_get {
           path = "/health"
         }
-        initial_delay_seconds = 10
-        period_seconds        = 5
-        failure_threshold     = 10
+        initial_delay_seconds = 15
+        period_seconds        = 10
+        failure_threshold     = 12
       }
 
       liveness_probe {

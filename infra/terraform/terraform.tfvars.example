@@ -34,3 +34,9 @@ iap_authorized_members = [
 # --- Cloud Run ---
 backend_min_instances  = 1
 frontend_min_instances = 0
+
+# --- Frontend ---
+zerodev_project_id = ""  # Get from https://dashboard.zerodev.app
+
+# --- Deployer ---
+deployer_private_key = ""  # Sepolia deployer wallet private key
