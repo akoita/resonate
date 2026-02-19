@@ -25,6 +25,7 @@ import { EncryptionModule } from "./encryption/encryption.module";
 import { ContractsModule } from "./contracts/contracts.module";
 import { StemPricingModule } from "./pricing/stem-pricing.module";
 import { LibraryModule } from "./library/library.module";
+import { GenerationModule } from "./generation/generation.module";
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { LibraryModule } from "./library/library.module";
     EncryptionModule,
     ContractsModule,
     StemPricingModule,
+    GenerationModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

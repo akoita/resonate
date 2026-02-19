@@ -8,7 +8,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { EventBus } from './event_bus';
-import { CatalogReleaseReadyEvent, CatalogTrackStatusEvent, StemsUploadedEvent } from '../../events/event_types';
+import { CatalogReleaseReadyEvent, CatalogTrackStatusEvent, StemsUploadedEvent, GenerationStartedEvent, GenerationProgressEvent, GenerationCompletedEvent, GenerationFailedEvent } from '../../events/event_types';
 
 @WebSocketGateway({
     cors: {
@@ -221,6 +221,50 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
             if (this.server) {
                 this.server.emit('marketplace.listing_cancelled', {
                     listingId: event.listingId,
+                });
+            }
+        });
+
+        // ---- Generation events → broadcast real-time generation status ----
+
+        this.eventBus.subscribe('generation.started', (event: GenerationStartedEvent) => {
+            console.log(`[EventsGateway] Generation started: jobId=${event.jobId}`);
+            if (this.server) {
+                this.server.emit('generation.status', {
+                    jobId: event.jobId,
+                    status: 'generating',
+                    prompt: event.prompt,
+                });
+            }
+        });
+
+        this.eventBus.subscribe('generation.progress', (event: GenerationProgressEvent) => {
+            if (this.server) {
+                this.server.emit('generation.progress', {
+                    jobId: event.jobId,
+                    phase: event.phase,
+                });
+            }
+        });
+
+        this.eventBus.subscribe('generation.completed', (event: GenerationCompletedEvent) => {
+            console.log(`[EventsGateway] Generation completed: jobId=${event.jobId}, trackId=${event.trackId}`);
+            if (this.server) {
+                this.server.emit('generation.status', {
+                    jobId: event.jobId,
+                    status: 'completed',
+                    trackId: event.trackId,
+                    releaseId: event.releaseId,
+                });
+            }
+        });
+
+        this.eventBus.subscribe('generation.failed', (event: GenerationFailedEvent) => {
+            console.log(`[EventsGateway] Generation failed: jobId=${event.jobId}: ${event.error}`);
+            if (this.server) {
+                this.server.emit('generation.error', {
+                    jobId: event.jobId,
+                    error: event.error,
                 });
             }
         });

@@ -373,6 +373,36 @@ export interface AgentPurchaseFailedEvent extends BaseEvent {
   error: string;
 }
 
+// ============ Generation Events ============
+
+export interface GenerationStartedEvent extends BaseEvent {
+  eventName: "generation.started";
+  jobId: string;
+  userId: string;
+  prompt: string;
+}
+
+export interface GenerationProgressEvent extends BaseEvent {
+  eventName: "generation.progress";
+  jobId: string;
+  phase: 'queued' | 'generating' | 'storing' | 'finalizing';
+}
+
+export interface GenerationCompletedEvent extends BaseEvent {
+  eventName: "generation.completed";
+  jobId: string;
+  userId: string;
+  trackId: string;
+  releaseId: string;
+}
+
+export interface GenerationFailedEvent extends BaseEvent {
+  eventName: "generation.failed";
+  jobId: string;
+  userId: string;
+  error: string;
+}
+
 export type ResonateEvent =
   | StemsUploadedEvent
   | StemsProcessedEvent
@@ -411,5 +441,9 @@ export type ResonateEvent =
   | AgentWalletDisabledEvent
   | AgentBudgetAlertEvent
   | AgentPurchaseCompletedEvent
-  | AgentPurchaseFailedEvent;
+  | AgentPurchaseFailedEvent
+  | GenerationStartedEvent
+  | GenerationProgressEvent
+  | GenerationCompletedEvent
+  | GenerationFailedEvent;
 
