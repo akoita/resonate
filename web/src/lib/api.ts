@@ -805,3 +805,25 @@ export async function getGenerationStatus(token: string, jobId: string) {
     token
   );
 }
+
+export type GenerationListItem = {
+  releaseId: string;
+  trackId: string;
+  title: string;
+  prompt: string;
+  negativePrompt: string | null;
+  seed: number | null;
+  provider: string;
+  generatedAt: string;
+  durationSeconds: number;
+  cost: number;
+  audioUri: string | null;
+};
+
+export async function getMyGenerations(token: string) {
+  return apiRequest<GenerationListItem[]>(
+    "/generation/mine",
+    {},
+    token
+  );
+}

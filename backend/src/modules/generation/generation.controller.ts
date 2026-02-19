@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards, Req } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
 import { GenerationService } from './generation.service';
@@ -21,6 +21,24 @@ export class GenerationController {
   ) {
     const userId = req.user?.id || req.user?.sub;
     return this.generationService.createGeneration(dto, userId);
+  }
+
+  /**
+   * List the authenticated user's AI-generated tracks.
+   */
+  @UseGuards(AuthGuard('jwt'))
+  @Get('mine')
+  async listMine(
+    @Req() req: any,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    const userId = req.user?.id || req.user?.sub;
+    return this.generationService.listUserGenerations(
+      userId,
+      limit ? parseInt(limit, 10) : 50,
+      offset ? parseInt(offset, 10) : 0,
+    );
   }
 
   /**

@@ -9,6 +9,10 @@ jest.mock('../db/prisma', () => ({
         id: 'release-1',
         tracks: [{ id: 'track-1' }],
       }),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    artist: {
+      findFirst: jest.fn().mockResolvedValue(null),
     },
   },
 }));
@@ -210,6 +214,57 @@ describe('GenerationService', () => {
       const status = await service.getStatus('nonexistent');
       expect(status.status).toBe('failed');
       expect(status.error).toBe('Job not found');
+    });
+  });
+
+  describe('listUserGenerations', () => {
+    // Access the mocked prisma via require (avoids hoisting issues)
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { prisma: mockedPrisma } = require('../db/prisma');
+
+    it('returns flattened track list for a user with generations', async () => {
+      mockedPrisma.artist.findFirst.mockResolvedValueOnce({ id: 'artist-1' });
+      mockedPrisma.release.findMany.mockResolvedValueOnce([
+        {
+          id: 'release-10',
+          createdAt: new Date('2026-02-18T12:00:00Z'),
+          tracks: [
+            {
+              id: 'track-10',
+              title: 'Ambient forest vibes',
+              generationMetadata: {
+                prompt: 'Ambient forest vibes',
+                negativePrompt: 'drums',
+                seed: 99,
+                provider: 'lyria-002',
+                generatedAt: '2026-02-18T12:00:00Z',
+                durationSeconds: 30,
+                cost: 0.06,
+              },
+              stems: [{ type: 'master', uri: 'local://gen-10.wav' }],
+            },
+          ],
+        },
+      ]);
+
+      const result = await service.listUserGenerations('user-1');
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        releaseId: 'release-10',
+        trackId: 'track-10',
+        prompt: 'Ambient forest vibes',
+        negativePrompt: 'drums',
+        seed: 99,
+        audioUri: 'local://gen-10.wav',
+      });
+    });
+
+    it('returns empty array when user has no artist', async () => {
+      mockedPrisma.artist.findFirst.mockResolvedValueOnce(null);
+
+      const result = await service.listUserGenerations('no-artist-user');
+      expect(result).toEqual([]);
     });
   });
 });

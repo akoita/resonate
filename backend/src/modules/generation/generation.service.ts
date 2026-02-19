@@ -224,6 +224,48 @@ export class GenerationService {
   }
 
   /**
+   * List AI-generated tracks for the given user.
+   */
+  async listUserGenerations(userId: string, limit = 50, offset = 0) {
+    // Find the user's artist(s)
+    const artist = await prisma.artist.findFirst({ where: { userId } });
+    if (!artist) return [];
+
+    const releases = await prisma.release.findMany({
+      where: { artistId: artist.id, type: 'ai_generated' },
+      orderBy: { createdAt: 'desc' },
+      skip: offset,
+      take: limit,
+      include: {
+        tracks: {
+          include: {
+            stems: { where: { type: 'master' }, take: 1 },
+          },
+        },
+      },
+    });
+
+    return releases.flatMap((release) =>
+      release.tracks.map((track) => {
+        const meta = (track.generationMetadata as any) || {};
+        return {
+          releaseId: release.id,
+          trackId: track.id,
+          title: track.title,
+          prompt: meta.prompt || track.title,
+          negativePrompt: meta.negativePrompt || null,
+          seed: meta.seed ?? null,
+          provider: meta.provider || 'lyria-002',
+          generatedAt: meta.generatedAt || release.createdAt.toISOString(),
+          durationSeconds: meta.durationSeconds || 30,
+          cost: meta.cost || 0.06,
+          audioUri: track.stems[0]?.uri || null,
+        };
+      }),
+    );
+  }
+
+  /**
    * Enforce per-user rate limiting (sliding window).
    */
   private enforceRateLimit(userId: string): void {

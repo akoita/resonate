@@ -12,6 +12,7 @@ import {
     saveTracksMetadata,
     LocalTrack,
 } from "../../lib/localLibrary";
+import { getMyGenerations, type GenerationListItem } from "../../lib/api";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { useZeroDev } from "../../components/auth/ZeroDevProviderClient";
 import { type Address } from "viem";
@@ -36,7 +37,19 @@ import { TrackActionMenu } from "../../components/ui/TrackActionMenu";
 import { MarqueeText } from "../../components/ui/MarqueeText";
 import Link from "next/link";
 
-type ViewTab = "tracks" | "artists" | "albums" | "playlists" | "stems";
+type ViewTab = "tracks" | "artists" | "albums" | "playlists" | "stems" | "ai_creations";
+
+function getRelativeTime(dateStr: string): string {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 30) return `${days}d ago`;
+    return new Date(dateStr).toLocaleDateString();
+}
 
 export default function LibraryPage() {
     const router = useRouter();
@@ -58,13 +71,18 @@ export default function LibraryPage() {
     const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
     const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(new Set());
     const lastClickedTrackIdRef = useRef<string | null>(null);
-    const { address } = useAuth();
+    const { address, token } = useAuth();
     const { chainId } = useZeroDev();
     
     // Remote collection state
     const [ownedStems, setOwnedStems] = useState<LocalTrack[]>([]);
     const [isCollectionLoading, setIsCollectionLoading] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, items: ContextMenuItem[] } | null>(null);
+
+    // AI Creations state
+    const [aiCreations, setAiCreations] = useState<GenerationListItem[]>([]);
+    const [aiCreationsLoading, setAiCreationsLoading] = useState(false);
+    const [selectedGeneration, setSelectedGeneration] = useState<GenerationListItem | null>(null);
 
     // Unified tracks (Local + Owned Stems), deduplicated by ID
     const unifiedTracks = useMemo(() => {
@@ -221,6 +239,7 @@ export default function LibraryPage() {
         }
     }, [address, chainId, addToast]);
 
+
     useEffect(() => {
         void loadTracks();
         void listPlaylists().then(p => setPlaylistCount(p.length));
@@ -237,6 +256,17 @@ export default function LibraryPage() {
         }
     }, [fetchCollection, address]);
 
+    // Fetch AI creations when authenticated
+    useEffect(() => {
+        if (token) {
+            setAiCreationsLoading(true);
+            getMyGenerations(token)
+                .then(setAiCreations)
+                .catch(() => { /* ignore */ })
+                .finally(() => setAiCreationsLoading(false));
+        }
+    }, [token]);
+
     // Handle deep-linking from query params
     useEffect(() => {
         const tab = searchParams.get("tab");
@@ -246,6 +276,8 @@ export default function LibraryPage() {
 
         if (tab === "playlists") {
             setActiveTab("playlists");
+        } else if (tab === "ai_creations") {
+            setActiveTab("ai_creations");
         } else if (artist) {
             setSelectedArtist(artist);
             setActiveTab("artists");
@@ -930,6 +962,12 @@ export default function LibraryPage() {
                             >
                                 Stems ({ownedStems.length})
                             </button>
+                            <button
+                                className={`library-tab ${activeTab === "ai_creations" ? "active" : ""}`}
+                                onClick={() => { setActiveTab("ai_creations"); setSelectedArtist(null); setSelectedAlbum(null); setSelectedPlaylist(null); }}
+                            >
+                                ✨ AI Creations ({aiCreations.length})
+                            </button>
                         </div>
                         
                         {activeTab === "tracks" && (
@@ -987,6 +1025,134 @@ export default function LibraryPage() {
                                         )
                                     )}
                                     {activeTab === "stems" && renderTrackList(ownedStems)}
+                                    {activeTab === "ai_creations" && (
+                                        aiCreationsLoading ? (
+                                            <div className="home-subtitle">Loading AI creations...</div>
+                                        ) : aiCreations.length === 0 ? (
+                                            <div className="home-subtitle">
+                                                No AI-generated tracks yet.{" "}
+                                                <Link href="/create" className="text-accent">Create your first track</Link>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="library-grid-view">
+                                                    {aiCreations.map((gen) => {
+                                                        const timeAgo = getRelativeTime(gen.generatedAt);
+                                                        return (
+                                                            <div
+                                                                key={gen.trackId}
+                                                                className="library-card ai-creation-card"
+                                                                onClick={() => setSelectedGeneration(gen)}
+                                                            >
+                                                                <div className="library-card-icon ai-creation-icon">🤖</div>
+                                                                <div className="library-card-title ai-creation-prompt">
+                                                                    {gen.prompt.length > 60 ? gen.prompt.slice(0, 57) + "..." : gen.prompt}
+                                                                </div>
+                                                                <div className="library-card-meta">
+                                                                    {timeAgo} • {gen.durationSeconds}s
+                                                                </div>
+                                                                <div className="ai-creation-actions">
+                                                                    <button
+                                                                        className="ai-creation-play-btn"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            const asTrack: LocalTrack = {
+                                                                                id: gen.trackId,
+                                                                                title: gen.prompt.slice(0, 60),
+                                                                                artist: "AI (Lyria)",
+                                                                                album: "AI Creations",
+                                                                                albumArtist: "AI (Lyria)",
+                                                                                year: null,
+                                                                                genre: "AI Generated",
+                                                                                duration: gen.durationSeconds,
+                                                                                createdAt: gen.generatedAt,
+                                                                                source: "remote",
+                                                                            };
+                                                                            void playQueue([asTrack], 0);
+                                                                        }}
+                                                                        type="button"
+                                                                        title="Play"
+                                                                    >
+                                                                        ▶
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+
+                                                {/* Generation Detail Modal */}
+                                                {selectedGeneration && (
+                                                    <div className="ai-detail-overlay" onClick={() => setSelectedGeneration(null)}>
+                                                        <div className="ai-detail-modal" onClick={(e) => e.stopPropagation()}>
+                                                            <button className="ai-detail-close" onClick={() => setSelectedGeneration(null)} type="button">✕</button>
+                                                            <h3 className="ai-detail-title">Generation Details</h3>
+                                                            <div className="ai-detail-field">
+                                                                <span className="ai-detail-label">Prompt</span>
+                                                                <p className="ai-detail-value">{selectedGeneration.prompt}</p>
+                                                            </div>
+                                                            {selectedGeneration.negativePrompt && (
+                                                                <div className="ai-detail-field">
+                                                                    <span className="ai-detail-label">Negative Prompt</span>
+                                                                    <p className="ai-detail-value">{selectedGeneration.negativePrompt}</p>
+                                                                </div>
+                                                            )}
+                                                            <div className="ai-detail-grid">
+                                                                <div className="ai-detail-field">
+                                                                    <span className="ai-detail-label">Provider</span>
+                                                                    <span className="ai-detail-value">{selectedGeneration.provider}</span>
+                                                                </div>
+                                                                <div className="ai-detail-field">
+                                                                    <span className="ai-detail-label">Seed</span>
+                                                                    <span className="ai-detail-value">{selectedGeneration.seed ?? "Random"}</span>
+                                                                </div>
+                                                                <div className="ai-detail-field">
+                                                                    <span className="ai-detail-label">Duration</span>
+                                                                    <span className="ai-detail-value">{selectedGeneration.durationSeconds}s</span>
+                                                                </div>
+                                                                <div className="ai-detail-field">
+                                                                    <span className="ai-detail-label">Cost</span>
+                                                                    <span className="ai-detail-value">${selectedGeneration.cost.toFixed(2)}</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="ai-detail-field">
+                                                                <span className="ai-detail-label">Generated</span>
+                                                                <span className="ai-detail-value">{new Date(selectedGeneration.generatedAt).toLocaleString()}</span>
+                                                            </div>
+                                                            <div className="ai-detail-actions">
+                                                                <button
+                                                                    className="result-action-btn"
+                                                                    onClick={() => {
+                                                                        const asTrack: LocalTrack = {
+                                                                            id: selectedGeneration.trackId,
+                                                                            title: selectedGeneration.prompt.slice(0, 60),
+                                                                            artist: "AI (Lyria)",
+                                                                            album: "AI Creations",
+                                                                            albumArtist: "AI (Lyria)",
+                                                                            year: null,
+                                                                            genre: "AI Generated",
+                                                                            duration: selectedGeneration.durationSeconds,
+                                                                            createdAt: selectedGeneration.generatedAt,
+                                                                            source: "remote",
+                                                                        };
+                                                                        void playQueue([asTrack], 0);
+                                                                    }}
+                                                                    type="button"
+                                                                >
+                                                                    ▶ Play
+                                                                </button>
+                                                                <Link href="/create">
+                                                                    <button className="result-action-btn primary" type="button">
+                                                                        ✨ Create New
+                                                                    </button>
+                                                                </Link>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </>
+                                        )
+                                    )}
                                 </>
                             )}
                         </div>
