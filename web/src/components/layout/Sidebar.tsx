@@ -32,6 +32,15 @@ const PRIMARY_ITEMS = [
     )
   },
   {
+    name: "Create",
+    href: "/create",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 3v18" /><path d="M18.5 8.5L6 17" /><path d="M6 8.5l12.5 8.5" />
+      </svg>
+    )
+  },
+  {
     name: "Marketplace",
     href: "/marketplace",
     icon: (
