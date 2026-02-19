@@ -26,7 +26,11 @@ export default function CreatePage() {
   const [noVocals, setNoVocals] = useState(false);
   const [noDrums, setNoDrums] = useState(false);
   const [customExclude, setCustomExclude] = useState("");
-  const [analytics, setAnalytics] = useState<GenerationAnalytics | null>(null);
+  const [analytics, setAnalytics] = useState<GenerationAnalytics>({
+    totalGenerations: 0,
+    totalCost: 0,
+    rateLimit: { remaining: 5, limit: 5, resetsAt: null },
+  });
 
   const { state, result, error, startGeneration, reset } = useGeneration(token, artistId);
 
