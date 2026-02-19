@@ -1,10 +1,43 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
 var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
@@ -13,12 +46,18 @@ exports.CatalogService = void 0;
 const common_1 = require("@nestjs/common");
 const event_bus_1 = require("../shared/event_bus");
 const prisma_1 = require("../../db/prisma");
+const encryption_service_1 = require("../encryption/encryption.service");
+const storage_provider_1 = require("../storage/storage_provider");
 let CatalogService = class CatalogService {
     eventBus;
+    encryptionService;
+    storageProvider;
     searchCache = new Map();
     cacheTtlMs = 30_000;
-    constructor(eventBus) {
+    constructor(eventBus, encryptionService, storageProvider) {
         this.eventBus = eventBus;
+        this.encryptionService = encryptionService;
+        this.storageProvider = storageProvider;
     }
     onModuleInit() {
         this.eventBus.subscribe("stems.uploaded", async (event) => {
@@ -40,6 +79,12 @@ let CatalogService = class CatalogService {
                         label: event.metadata?.label ?? undefined,
                         releaseDate: event.metadata?.releaseDate ? new Date(event.metadata.releaseDate) : undefined,
                         explicit: event.metadata?.explicit ?? undefined,
+                        tracks: event.checksum === "retry" ? {
+                            updateMany: {
+                                where: { releaseId: event.releaseId },
+                                data: { processingStatus: "pending" }
+                            }
+                        } : undefined
                     },
                     create: {
                         id: event.releaseId,
@@ -65,6 +110,14 @@ let CatalogService = class CatalogService {
                                 position: t.position,
                                 explicit: t.explicit ?? false,
                                 isrc: t.isrc,
+                                stems: {
+                                    create: t.stems?.map((s) => ({
+                                        id: s.id,
+                                        type: s.type,
+                                        uri: s.uri,
+                                        storageProvider: s.storageProvider || "local"
+                                    }))
+                                }
                             })),
                         },
                     },
@@ -103,15 +156,26 @@ let CatalogService = class CatalogService {
                                 title: trackData.title,
                                 artist: trackData.artist,
                                 position: trackData.position,
+                                processingStatus: "complete", // Mark as complete when processed
                             },
                             update: {
                                 title: trackData.title,
                                 artist: trackData.artist,
                                 position: trackData.position,
+                                processingStatus: "complete", // Mark as complete when processed
                             },
                         });
+                        // Emit track status change event
+                        this.eventBus.publish({
+                            eventName: "catalog.track_status",
+                            eventVersion: 1,
+                            occurredAt: new Date().toISOString(),
+                            releaseId: event.releaseId,
+                            trackId: trackData.id,
+                            status: "complete",
+                        });
                         for (const stem of trackData.stems) {
-                            console.log(`[Catalog] Upserting stem ${stem.id} for track ${trackData.id}. Data length: ${stem.data?.length ?? "NULL"} bytes`);
+                            console.log(`[Catalog] Upserting stem ${stem.id} for track ${trackData.id}`);
                             await prisma_1.prisma.stem.upsert({
                                 where: { id: stem.id },
                                 create: {
@@ -119,7 +183,7 @@ let CatalogService = class CatalogService {
                                     trackId: trackData.id,
                                     type: stem.type,
                                     uri: stem.uri,
-                                    data: stem.data,
+                                    data: stem.data, // Present in sync/test mode, undefined in production (fetched from storage URI)
                                     mimeType: stem.mimeType,
                                     durationSeconds: stem.durationSeconds,
                                     isEncrypted: stem.isEncrypted ?? false,
@@ -129,7 +193,7 @@ let CatalogService = class CatalogService {
                                 update: {
                                     type: stem.type,
                                     uri: stem.uri,
-                                    data: stem.data,
+                                    data: stem.data, // Present in sync/test mode, undefined in production
                                     mimeType: stem.mimeType,
                                     durationSeconds: stem.durationSeconds,
                                     isEncrypted: stem.isEncrypted ?? false,
@@ -155,9 +219,13 @@ let CatalogService = class CatalogService {
                 });
             }
             catch (err) {
-                console.error(`[Catalog] Failed to finalise release ${event.releaseId}:`, err);
+                // Extract error message only - Prisma errors can have circular refs that cause stack overflow
+                const errMsg = err instanceof Error ? err.message : String(err);
+                console.error(`[Catalog] Failed to finalise release ${event.releaseId}: ${errMsg}`);
             }
         });
+        // Note: stems.progress status updates are now handled by IngestionService.emitTrackStage()
+        // which persists granular statuses (separating, encrypting, storing) directly
         this.eventBus.subscribe("ipnft.minted", async (event) => {
             this.clearCache();
             await prisma_1.prisma.stem
@@ -166,6 +234,45 @@ let CatalogService = class CatalogService {
                 data: { ipnftId: event.tokenId },
             })
                 .catch(() => null);
+        });
+        this.eventBus.subscribe("stems.failed", async (event) => {
+            console.log(`[Catalog] Received stems.failed for release ${event.releaseId}: ${event.error}`);
+            this.clearCache();
+            try {
+                await prisma_1.prisma.release.update({
+                    where: { id: event.releaseId },
+                    data: { status: "failed" },
+                });
+                // Also update all non-complete tracks to failed
+                const tracksToFail = await prisma_1.prisma.track.findMany({
+                    where: {
+                        releaseId: event.releaseId,
+                        processingStatus: { in: ["pending", "separating", "encrypting", "storing"] }
+                    },
+                    select: { id: true }
+                });
+                await prisma_1.prisma.track.updateMany({
+                    where: {
+                        releaseId: event.releaseId,
+                        processingStatus: { in: ["pending", "separating", "encrypting", "storing"] }
+                    },
+                    data: { processingStatus: "failed" }
+                });
+                // Emit status event for each failed track
+                for (const track of tracksToFail) {
+                    this.eventBus.publish({
+                        eventName: "catalog.track_status",
+                        eventVersion: 1,
+                        occurredAt: new Date().toISOString(),
+                        releaseId: event.releaseId,
+                        trackId: track.id,
+                        status: "failed",
+                    });
+                }
+            }
+            catch (err) {
+                console.error(`[Catalog] Failed to update release status to failed for ${event.releaseId}:`, err);
+            }
         });
     }
     async listPublished(limit = 20) {
@@ -198,6 +305,7 @@ let CatalogService = class CatalogService {
                         explicit: true,
                         isrc: true,
                         createdAt: true,
+                        processingStatus: true,
                         stems: {
                             select: {
                                 id: true,
@@ -322,6 +430,7 @@ let CatalogService = class CatalogService {
                         explicit: true,
                         isrc: true,
                         createdAt: true,
+                        processingStatus: true,
                         stems: {
                             select: {
                                 id: true,
@@ -367,6 +476,7 @@ let CatalogService = class CatalogService {
                         title: true,
                         position: true,
                         explicit: true,
+                        processingStatus: true,
                         stems: {
                             select: {
                                 id: true,
@@ -398,6 +508,42 @@ let CatalogService = class CatalogService {
             data: input,
             include: { tracks: true },
         });
+    }
+    async deleteRelease(releaseId, userId) {
+        // 1. Verify release exists and ownership
+        const release = await prisma_1.prisma.release.findUnique({
+            where: { id: releaseId },
+            include: {
+                artist: true,
+                tracks: {
+                    include: { stems: { select: { id: true } } }
+                }
+            }
+        });
+        if (!release) {
+            throw new common_1.NotFoundException("Release not found");
+        }
+        if (release.artist?.userId !== userId) {
+            throw new common_1.BadRequestException("Not authorized to delete this release");
+        }
+        // 2. Cascade delete: stems → tracks → release (no cascade in schema)
+        const stemIds = release.tracks.flatMap(t => t.stems.map(s => s.id));
+        const trackIds = release.tracks.map(t => t.id);
+        if (stemIds.length > 0) {
+            // Delete any listings/mints associated with stems first
+            await prisma_1.prisma.stemListing.deleteMany({ where: { stemId: { in: stemIds } } });
+            await prisma_1.prisma.stemNftMint.deleteMany({ where: { stemId: { in: stemIds } } });
+            await prisma_1.prisma.stem.deleteMany({ where: { id: { in: stemIds } } });
+        }
+        if (trackIds.length > 0) {
+            // Delete any licenses associated with tracks
+            await prisma_1.prisma.license.deleteMany({ where: { trackId: { in: trackIds } } });
+            await prisma_1.prisma.track.deleteMany({ where: { id: { in: trackIds } } });
+        }
+        await prisma_1.prisma.release.delete({ where: { id: releaseId } });
+        this.clearCache();
+        console.log(`[Catalog] Deleted release ${releaseId} with ${trackIds.length} tracks and ${stemIds.length} stems`);
+        return { success: true };
     }
     async updateReleaseArtwork(releaseId, userId, artwork) {
         const release = await prisma_1.prisma.release.findUnique({
@@ -500,13 +646,104 @@ let CatalogService = class CatalogService {
         return { data: release.artworkData, mimeType: release.artworkMimeType || "image/jpeg" };
     }
     async getStemBlob(stemId) {
+        // Try finding by exact ID first
+        let stem = await prisma_1.prisma.stem.findUnique({
+            where: { id: stemId },
+            select: { id: true, data: true, mimeType: true, uri: true, storageProvider: true },
+        });
+        // Fallback: if stemId looks like a filename (e.g. from a mockup URI), try searching by URI
+        if (!stem) {
+            stem = await prisma_1.prisma.stem.findFirst({
+                where: { uri: { contains: stemId } },
+                select: { id: true, data: true, mimeType: true, uri: true, storageProvider: true },
+            });
+        }
+        if (!stem)
+            return null;
+        // 1. Data is stored in DB
+        if (stem.data) {
+            return { data: stem.data, mimeType: stem.mimeType || "audio/mpeg" };
+        }
+        // 2. Local storage provider - try to read from disk
+        if (stem.storageProvider === "local") {
+            try {
+                const { join } = await Promise.resolve().then(() => __importStar(require("path")));
+                const { existsSync, readFileSync } = await Promise.resolve().then(() => __importStar(require("fs")));
+                // Extract filename from URI or ID
+                const filename = stem.uri.split("/").slice(-2, -1)[0] || stem.id;
+                const uploadDir = join(process.cwd(), "uploads", "stems");
+                const absolutePath = join(uploadDir, filename);
+                if (existsSync(absolutePath)) {
+                    console.log(`[Catalog] Serving stem ${stem.id} from disk: ${absolutePath}`);
+                    return {
+                        data: readFileSync(absolutePath),
+                        mimeType: stem.mimeType || "audio/mpeg"
+                    };
+                }
+            }
+            catch (err) {
+                console.error(`[Catalog] Failed to read stem ${stem.id} from disk:`, err);
+            }
+        }
+        // 3. Remote storage (IPFS/Lighthouse) - fetch from URI
+        if (stem.uri && (stem.storageProvider === "ipfs" || stem.uri.includes("ipfs") || stem.uri.includes("lighthouse"))) {
+            try {
+                console.log(`[Catalog] Fetching stem ${stem.id} from remote URI: ${stem.uri}`);
+                const fetchedData = await this.storageProvider.download(stem.uri);
+                if (fetchedData) {
+                    return { data: fetchedData, mimeType: stem.mimeType || "audio/mpeg" };
+                }
+            }
+            catch (err) {
+                console.error(`[Catalog] Failed to fetch stem ${stem.id} from remote:`, err);
+            }
+        }
+        // 4. Generic HTTP URI fallback
+        if (stem.uri && stem.uri.startsWith("http")) {
+            try {
+                console.log(`[Catalog] Fetching stem ${stem.id} from HTTP URI: ${stem.uri}`);
+                const response = await fetch(stem.uri, {
+                    signal: AbortSignal.timeout(120000), // 2 minutes for large files
+                });
+                if (response.ok) {
+                    const buffer = Buffer.from(await response.arrayBuffer());
+                    return { data: buffer, mimeType: stem.mimeType || "audio/mpeg" };
+                }
+            }
+            catch (err) {
+                console.error(`[Catalog] Failed to fetch stem ${stem.id} from HTTP:`, err);
+            }
+        }
+        return null;
+    }
+    async getStemPreview(stemId) {
         const stem = await prisma_1.prisma.stem.findUnique({
             where: { id: stemId },
-            select: { data: true, mimeType: true },
+            select: { uri: true, encryptionMetadata: true, data: true, mimeType: true },
         });
-        if (!stem || !stem.data)
-            return null;
-        return { data: stem.data, mimeType: stem.mimeType || "audio/mpeg" };
+        if (!stem)
+            throw new common_1.NotFoundException("Stem not found");
+        if (!stem.uri && !stem.data)
+            throw new common_1.BadRequestException("Stem has no source URI or data");
+        // Handle encrypted content from IPFS/Lighthouse
+        // We prioritize this over stem.data because stem.data might contain the encrypted blob
+        if (stem.encryptionMetadata) {
+            // For preview, we use a public/mock authSig or bypass check if backend is allowed
+            const authSig = {
+                address: "0x0000000000000000000000000000000000000000",
+                sig: "preview-authorized",
+                signedMessage: "Marketplace preview authorization",
+            };
+            const decryptedBuffer = await this.encryptionService.decrypt(stem.uri, stem.encryptionMetadata, [], // No specific access conditions for public preview if we want to bypass Lit checks on backend
+            authSig);
+            return { data: decryptedBuffer, mimeType: stem.mimeType || "audio/mpeg" };
+        }
+        // Unencrypted external content
+        const response = await fetch(stem.uri);
+        if (!response.ok)
+            throw new Error(`Failed to fetch stem content: ${response.status}`);
+        const buffer = Buffer.from(await response.arrayBuffer());
+        return { data: buffer, mimeType: stem.mimeType || "audio/mpeg" };
     }
     clearCache() {
         this.searchCache.clear();
@@ -515,5 +752,7 @@ let CatalogService = class CatalogService {
 exports.CatalogService = CatalogService;
 exports.CatalogService = CatalogService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [event_bus_1.EventBus])
+    __metadata("design:paramtypes", [event_bus_1.EventBus,
+        encryption_service_1.EncryptionService,
+        storage_provider_1.StorageProvider])
 ], CatalogService);

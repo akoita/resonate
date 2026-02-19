@@ -8,28 +8,35 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var AgentRuntimeService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AgentRuntimeService = void 0;
 const common_1 = require("@nestjs/common");
 const agent_orchestrator_service_1 = require("./agent_orchestrator.service");
+const adk_adapter_1 = require("./runtime/adk_adapter");
 const langgraph_adapter_1 = require("./runtime/langgraph_adapter");
 const vertex_ai_adapter_1 = require("./runtime/vertex_ai_adapter");
-let AgentRuntimeService = class AgentRuntimeService {
+let AgentRuntimeService = AgentRuntimeService_1 = class AgentRuntimeService {
     orchestrator;
     vertexAdapter;
     langGraphAdapter;
-    constructor(orchestrator, vertexAdapter, langGraphAdapter) {
+    adkAdapter;
+    logger = new common_1.Logger(AgentRuntimeService_1.name);
+    constructor(orchestrator, vertexAdapter, langGraphAdapter, adkAdapter) {
         this.orchestrator = orchestrator;
         this.vertexAdapter = vertexAdapter;
         this.langGraphAdapter = langGraphAdapter;
+        this.adkAdapter = adkAdapter;
     }
     async run(input) {
-        const mode = process.env.AGENT_RUNTIME ?? "local";
-        const adapter = mode === "vertex"
-            ? this.vertexAdapter
-            : mode === "langgraph"
-                ? this.langGraphAdapter
-                : undefined;
+        const mode = process.env.AGENT_RUNTIME ?? "adk";
+        const adapter = mode === "adk"
+            ? this.adkAdapter
+            : mode === "vertex"
+                ? this.vertexAdapter
+                : mode === "langgraph"
+                    ? this.langGraphAdapter
+                    : undefined;
         if (!adapter) {
             return this.orchestrator.orchestrate(input);
         }
@@ -37,14 +44,16 @@ let AgentRuntimeService = class AgentRuntimeService {
             return await adapter.run(input);
         }
         catch (error) {
+            this.logger.warn(`${adapter.name} adapter failed (${error.message}) — falling back to deterministic orchestrator`);
             return this.orchestrator.orchestrate(input);
         }
     }
 };
 exports.AgentRuntimeService = AgentRuntimeService;
-exports.AgentRuntimeService = AgentRuntimeService = __decorate([
+exports.AgentRuntimeService = AgentRuntimeService = AgentRuntimeService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [agent_orchestrator_service_1.AgentOrchestratorService,
         vertex_ai_adapter_1.VertexAiAdapter,
-        langgraph_adapter_1.LangGraphAdapter])
+        langgraph_adapter_1.LangGraphAdapter,
+        adk_adapter_1.AdkAdapter])
 ], AgentRuntimeService);

@@ -10,12 +10,15 @@ exports.CatalogModule = void 0;
 const common_1 = require("@nestjs/common");
 const catalog_controller_1 = require("./catalog.controller");
 const catalog_service_1 = require("./catalog.service");
+const encryption_module_1 = require("../encryption/encryption.module");
 let CatalogModule = class CatalogModule {
 };
 exports.CatalogModule = CatalogModule;
 exports.CatalogModule = CatalogModule = __decorate([
     (0, common_1.Module)({
+        imports: [encryption_module_1.EncryptionModule],
         controllers: [catalog_controller_1.CatalogController],
         providers: [catalog_service_1.CatalogService],
+        exports: [catalog_service_1.CatalogService],
     })
 ], CatalogModule);

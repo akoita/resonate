@@ -11,8 +11,13 @@ async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
     // Global pipes
     // Enable CORS for frontend
+    const corsOrigins = [
+        'http://localhost:3001',
+        'http://localhost:3000',
+        ...(process.env.CORS_ORIGIN ? [process.env.CORS_ORIGIN] : []),
+    ];
     app.enableCors({
-        origin: ['http://localhost:3001', 'http://localhost:3000'],
+        origin: corsOrigins,
         credentials: true,
     });
     app.use((req, res, next) => {
@@ -32,6 +37,8 @@ async function bootstrap() {
         }));
         next();
     });
-    await app.listen(3000);
+    const port = process.env.PORT || 3000;
+    await app.listen(port);
+    console.log(`🚀 Backend is running on: http://localhost:${port}`);
 }
 bootstrap();

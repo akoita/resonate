@@ -43,8 +43,21 @@ let IngestionController = class IngestionController {
     handleProgress(releaseId, trackId, body) {
         return this.ingestionService.handleProgress(releaseId, trackId, body.progress);
     }
+    retry(releaseId) {
+        return this.ingestionService.retryRelease(releaseId);
+    }
+    cancel(releaseId) {
+        return this.ingestionService.cancelProcessing(releaseId);
+    }
     status(trackId) {
         return this.ingestionService.getStatus(trackId);
+    }
+    /**
+     * @deprecated Use POST /ingestion/upload with multipart form data for real processing.
+     * This endpoint is retained for backwards compatibility and testing with mock processing.
+     */
+    enqueue(body) {
+        return this.ingestionService.enqueueUpload(body);
     }
 };
 exports.IngestionController = IngestionController;
@@ -73,12 +86,36 @@ __decorate([
 ], IngestionController.prototype, "handleProgress", null);
 __decorate([
     (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
+    (0, common_1.Post)("retry/:releaseId"),
+    __param(0, (0, common_1.Param)("releaseId")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], IngestionController.prototype, "retry", null);
+__decorate([
+    (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
+    (0, common_1.Post)("cancel/:releaseId"),
+    __param(0, (0, common_1.Param)("releaseId")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], IngestionController.prototype, "cancel", null);
+__decorate([
+    (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
     (0, common_1.Get)("status/:trackId"),
     __param(0, (0, common_1.Param)("trackId")),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], IngestionController.prototype, "status", null);
+__decorate([
+    (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
+    (0, common_1.Post)("enqueue"),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], IngestionController.prototype, "enqueue", null);
 exports.IngestionController = IngestionController = __decorate([
     (0, common_1.Controller)("ingestion"),
     __metadata("design:paramtypes", [ingestion_service_1.IngestionService])

@@ -28,15 +28,64 @@ let ToolRegistry = class ToolRegistry {
                 const query = String(input.query ?? "");
                 const limit = Number(input.limit ?? 20);
                 const explicitAllowed = Boolean(input.allowExplicit ?? false);
-                const items = await prisma_1.prisma.track.findMany({
+                const take = Math.min(Math.max(limit, 1), 50);
+                // Search by genre on the release, OR by title
+                const whereBase = explicitAllowed ? {} : { explicit: false };
+                let items = await prisma_1.prisma.track.findMany({
                     where: {
-                        title: { contains: query, mode: "insensitive" },
-                        ...(explicitAllowed ? {} : { explicit: false }),
+                        ...whereBase,
+                        ...(query
+                            ? {
+                                OR: [
+                                    { release: { genre: { contains: query, mode: "insensitive" } } },
+                                    { title: { contains: query, mode: "insensitive" } },
+                                ],
+                            }
+                            : {}),
+                    },
+                    include: {
+                        release: { select: { title: true, genre: true, artworkUrl: true } },
+                        stems: {
+                            select: {
+                                listings: {
+                                    where: { status: "active" },
+                                    select: { id: true },
+                                    take: 1,
+                                },
+                            },
+                        },
                     },
                     orderBy: { createdAt: "desc" },
-                    take: Math.min(Math.max(limit, 1), 50),
+                    take,
                 });
-                return { items };
+                // Fallback: if no genre/title match, return the most recent tracks
+                if (items.length === 0 && query) {
+                    items = await prisma_1.prisma.track.findMany({
+                        where: whereBase,
+                        include: {
+                            release: { select: { title: true, genre: true, artworkUrl: true } },
+                            stems: {
+                                select: {
+                                    listings: {
+                                        where: { status: "active" },
+                                        select: { id: true },
+                                        take: 1,
+                                    },
+                                },
+                            },
+                        },
+                        orderBy: { createdAt: "desc" },
+                        take,
+                    });
+                }
+                // Annotate and sort: listed tracks first
+                const annotated = items.map((t) => {
+                    const hasListing = (t.stems ?? []).some((s) => s.listings.length > 0);
+                    const { stems, ...rest } = t;
+                    return { ...rest, hasListing };
+                });
+                annotated.sort((a, b) => (a.hasListing === b.hasListing ? 0 : a.hasListing ? -1 : 1));
+                return { items: annotated };
             },
         });
         this.register({

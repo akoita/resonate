@@ -100,10 +100,11 @@ resource "google_cloud_run_v2_service" "backend" {
       }
 
       # Backend's own URL — passed to Demucs worker for progress callbacks
-      env {
-        name  = "BACKEND_URL"
-        value = google_cloud_run_v2_service.backend.uri
-      }
+      # Commented out to avoid Terraform self-referential cycle:
+      # env {
+      #   name  = "BACKEND_URL"
+      #   value = google_cloud_run_v2_service.backend.uri
+      # }
 
       # Database URL (connection via private VPC — not exposed externally)
       env {

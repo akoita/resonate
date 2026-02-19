@@ -138,9 +138,12 @@ export function MintStemButton({
             const currentChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
             const tokenUri = metadataUri || `${window.location.protocol}//${window.location.host}/api/metadata/${currentChainId}/stem/${stemId}`;
 
-            // Get user's local signer address (deterministic per user, auto-funded from Anvil)
-            const { getLocalSignerAddress } = await import("../../lib/localAA");
-            const mintTo = getLocalSignerAddress(address as Address); // User's own local account
+            let mintTo = address as Address;
+            const isLocalOrFork = currentChainId === "31337" || (currentChainId === "11155111" && process.env.NODE_ENV === "development");
+            if (isLocalOrFork) {
+                const { getLocalSignerAddress } = await import("../../lib/localAA");
+                mintTo = getLocalSignerAddress(address as Address); // User's own local account
+            }
 
             const hash = await mint({
                 to: mintTo,

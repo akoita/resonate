@@ -64,7 +64,9 @@ describe("catalog", () => {
         mockReleases.clear();
         mockTracks.clear();
         eventBus = new event_bus_1.EventBus();
-        service = new catalog_service_1.CatalogService(eventBus);
+        const mockEncryptionService = {};
+        const mockStorageProvider = {};
+        service = new catalog_service_1.CatalogService(eventBus, mockEncryptionService, mockStorageProvider);
         service.onModuleInit();
     });
     it("creates a release in draft status", async () => {

@@ -13,6 +13,55 @@ docker-build:
 	docker build -t resonate-backend ./backend
 	docker build -t resonate-web ./web
 
+# Build for cloud deployment (passes NEXT_PUBLIC_* compile-time vars to frontend)
+# Usage: make docker-build-cloud NEXT_PUBLIC_API_URL=https://... NEXT_PUBLIC_ZERODEV_PROJECT_ID=...
+docker-build-cloud:
+	docker build -t resonate-backend ./backend
+	docker build -t resonate-web \
+		--build-arg NEXT_PUBLIC_API_URL=$(NEXT_PUBLIC_API_URL) \
+		--build-arg NEXT_PUBLIC_ZERODEV_PROJECT_ID=$(NEXT_PUBLIC_ZERODEV_PROJECT_ID) \
+		--build-arg NEXT_PUBLIC_CHAIN_ID=11155111 \
+		--build-arg NEXT_PUBLIC_STEM_NFT_ADDRESS=$(NEXT_PUBLIC_STEM_NFT_ADDRESS) \
+		--build-arg NEXT_PUBLIC_MARKETPLACE_ADDRESS=$(NEXT_PUBLIC_MARKETPLACE_ADDRESS) \
+		./web
+
+# ============================================
+# Cloud Deployment (per-environment)
+# ============================================
+# Usage:  make deploy-all ENV=dev
+#         make deploy-backend ENV=dev
+#         make deploy-frontend ENV=dev
+#
+# Requires: .env.deploy.<ENV> (copy from .env.deploy.example)
+
+ENV ?= dev
+-include .env.deploy.$(ENV)
+export
+
+deploy-backend:
+	@test -f .env.deploy.$(ENV) || (echo "Error: .env.deploy.$(ENV) not found. Copy .env.deploy.example" && exit 1)
+	docker build -t $(REGISTRY)/backend:latest -f backend/Dockerfile backend/
+	docker push $(REGISTRY)/backend:latest
+	gcloud run services update resonate-$(ENV)-backend \
+		--image=$(REGISTRY)/backend:latest \
+		--region=$(GCP_REGION)
+
+deploy-frontend:
+	@test -f .env.deploy.$(ENV) || (echo "Error: .env.deploy.$(ENV) not found. Copy .env.deploy.example" && exit 1)
+	docker build -t $(REGISTRY)/frontend:latest \
+		--build-arg NEXT_PUBLIC_API_URL=$(NEXT_PUBLIC_API_URL) \
+		--build-arg NEXT_PUBLIC_ZERODEV_PROJECT_ID=$(NEXT_PUBLIC_ZERODEV_PROJECT_ID) \
+		--build-arg NEXT_PUBLIC_CHAIN_ID=$(NEXT_PUBLIC_CHAIN_ID) \
+		--build-arg NEXT_PUBLIC_STEM_NFT_ADDRESS=$(NEXT_PUBLIC_STEM_NFT_ADDRESS) \
+		--build-arg NEXT_PUBLIC_MARKETPLACE_ADDRESS=$(NEXT_PUBLIC_MARKETPLACE_ADDRESS) \
+		-f web/Dockerfile web/
+	docker push $(REGISTRY)/frontend:latest
+	gcloud run services update resonate-$(ENV)-frontend \
+		--image=$(REGISTRY)/frontend:latest \
+		--region=$(GCP_REGION)
+
+deploy-all: deploy-backend deploy-frontend
+
 # Start production-like stack (backend + web + postgres + redis)
 docker-up:
 	docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d

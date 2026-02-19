@@ -8,24 +8,29 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var WalletService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WalletService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_1 = require("../../db/prisma");
 const event_bus_1 = require("../shared/event_bus");
 const erc4337_client_1 = require("./erc4337/erc4337_client");
+const kernel_account_service_1 = require("./kernel_account.service");
 const paymaster_service_1 = require("./paymaster.service");
 const wallet_provider_registry_1 = require("./wallet_provider_registry");
-let WalletService = class WalletService {
+let WalletService = WalletService_1 = class WalletService {
     eventBus;
     providerRegistry;
     erc4337Client;
     paymasterService;
-    constructor(eventBus, providerRegistry, erc4337Client, paymasterService) {
+    kernelAccountService;
+    logger = new common_1.Logger(WalletService_1.name);
+    constructor(eventBus, providerRegistry, erc4337Client, paymasterService, kernelAccountService) {
         this.eventBus = eventBus;
         this.providerRegistry = providerRegistry;
         this.erc4337Client = erc4337Client;
         this.paymasterService = paymasterService;
+        this.kernelAccountService = kernelAccountService;
     }
     async fundWallet(input) {
         const wallet = await this.getOrCreate(input.userId);
@@ -102,57 +107,39 @@ let WalletService = class WalletService {
         if (wallet.deploymentTxHash) {
             return wallet;
         }
-        // Get paymaster config
-        const paymasterAddress = this.paymasterService.buildPaymasterData({}, // Not needed for check
-        0, input.userId);
-        // ERC-4337 v0.7 UserOperation format
-        const userOp = {
-            sender: wallet.address,
-            nonce: "0x0",
-            factory: wallet.factory || null,
-            factoryData: "0x",
-            callData: "0x",
-            callGasLimit: "0x5208",
-            verificationGasLimit: "0x100000",
-            preVerificationGas: "0x5208",
-            maxFeePerGas: "0x3b9aca00",
-            maxPriorityFeePerGas: "0x3b9aca00",
-            paymaster: paymasterAddress !== "0x" ? paymasterAddress : null,
-            paymasterVerificationGasLimit: "0x0",
-            paymasterPostOpGasLimit: "0x0",
-            paymasterData: "0x",
-            signature: "0x",
-        };
         try {
-            // In development with local bundler, simulate successful deployment
-            // Real deployment requires proper initCode with factory-specific calldata
-            const isDev = process.env.NODE_ENV !== "production";
-            const skipBundler = process.env.AA_SKIP_BUNDLER === "true";
-            if (isDev && skipBundler) {
-                // Simulate deployment for testing UI flows
-                const mockTxHash = `0x${Buffer.from(wallet.address + Date.now()).toString("hex").slice(0, 64)}`;
-                return prisma_1.prisma.wallet.update({
-                    where: { id: wallet.id },
-                    data: { deploymentTxHash: mockTxHash },
-                });
-            }
-            const userOpHash = await this.erc4337Client.sendUserOperation(userOp);
-            await this.erc4337Client.waitForReceipt(userOpHash);
+            this.logger.log(`Deploying smart account for user ${input.userId}`);
+            // Use KernelAccountService — it handles:
+            //   - Deterministic signer creation from userId
+            //   - Kernel account creation (counterfactual)
+            //   - Account deployment via initCode if not yet on-chain
+            //   - Gas estimation + bundler submission
+            //   - Falls back to direct EOA send on local Anvil if bundler fails
+            const { account, kernelClient } = await this.kernelAccountService.createKernelClient(input.userId);
+            // Send a 0-value self-send to force deployment
+            // The SDK includes initCode automatically if the account isn't deployed yet
+            const txHash = await kernelClient.sendTransaction({
+                to: account.address,
+                data: "0x",
+                value: BigInt(0),
+            });
+            this.logger.log(`Smart account deployed at ${account.address}, tx: ${txHash}`);
+            // Update wallet record with real smart account address and deployment info
             return prisma_1.prisma.wallet.update({
                 where: { id: wallet.id },
-                data: { deploymentTxHash: userOpHash },
+                data: {
+                    address: account.address,
+                    deploymentTxHash: txHash,
+                    accountType: "kernel",
+                },
             });
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
+            this.logger.error(`Smart account deployment failed: ${message}`);
             if (message.includes("fetch") || message.includes("ECONNREFUSED")) {
                 throw new Error("Bundler not reachable. Ensure the AA bundler is running at " +
                     (process.env.AA_BUNDLER || "http://localhost:4337"));
-            }
-            if (message.includes("0x99410554") || message.includes("SenderAddressResult")) {
-                throw new Error("Smart account address mismatch. The factory cannot create an account at the expected address. " +
-                    "This usually means the initCode/factoryData is incorrect. " +
-                    "Set AA_SKIP_BUNDLER=true in .env to simulate deployment for testing.");
             }
             throw new Error(`Smart account deployment failed: ${message}`);
         }
@@ -181,6 +168,24 @@ let WalletService = class WalletService {
             spentUsd: updated.spentUsd,
             balanceUsd: updated.balanceUsd,
         });
+        // Emit budget alerts at thresholds
+        if (updated.monthlyCapUsd > 0) {
+            const pct = (updated.spentUsd / updated.monthlyCapUsd) * 100;
+            if (pct >= 80) {
+                const level = pct >= 100 ? "exhausted" : pct >= 95 ? "critical" : "warning";
+                this.eventBus.publish({
+                    eventName: "agent.budget_alert",
+                    eventVersion: 1,
+                    occurredAt: new Date().toISOString(),
+                    userId,
+                    level,
+                    percentUsed: Math.round(pct),
+                    spentUsd: updated.spentUsd,
+                    monthlyCapUsd: updated.monthlyCapUsd,
+                    remainingUsd: Math.max(0, updated.monthlyCapUsd - updated.spentUsd),
+                });
+            }
+        }
         return { allowed: true, remaining: updated.monthlyCapUsd - updated.spentUsd };
     }
     async getOrCreate(userId, provider) {
@@ -189,7 +194,7 @@ let WalletService = class WalletService {
             return existing;
         }
         const selected = provider ??
-            (process.env.WALLET_PROVIDER ?? "local");
+            (process.env.WALLET_PROVIDER ?? "erc4337");
         const account = this.providerRegistry.getProvider(selected).getAccount(userId);
         // Ensure User exists before creating Wallet to avoid FK violation
         // Since this is wallet-auth, we might not have an email, so we generate a placeholder.
@@ -201,7 +206,7 @@ let WalletService = class WalletService {
             },
             update: {},
         });
-        return prisma_1.prisma.wallet.create({
+        const wallet = await prisma_1.prisma.wallet.create({
             data: {
                 userId,
                 address: account.address,
@@ -219,13 +224,21 @@ let WalletService = class WalletService {
                 salt: account.salt,
             },
         });
+        // Auto-deploy smart account in the background for AA wallets
+        if (selected === "erc4337" && !wallet.deploymentTxHash) {
+            this.deploySmartAccount({ userId }).catch((err) => {
+                this.logger.warn(`Auto-deploy of smart account for ${userId} failed (will retry on next explicit deploy): ${err instanceof Error ? err.message : String(err)}`);
+            });
+        }
+        return wallet;
     }
 };
 exports.WalletService = WalletService;
-exports.WalletService = WalletService = __decorate([
+exports.WalletService = WalletService = WalletService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [event_bus_1.EventBus,
         wallet_provider_registry_1.WalletProviderRegistry,
         erc4337_client_1.Erc4337Client,
-        paymaster_service_1.PaymasterService])
+        paymaster_service_1.PaymasterService,
+        kernel_account_service_1.KernelAccountService])
 ], WalletService);

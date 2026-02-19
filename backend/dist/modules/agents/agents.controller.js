@@ -38,7 +38,7 @@ let AgentsController = class AgentsController {
         return this.orchestrator.orchestrate(body);
     }
     evaluate(body) {
-        return this.evaluator.evaluate(body.sessions);
+        return this.evaluator.evaluate(body.sessions, { runtime: body.runtime });
     }
     runtimeRun(body) {
         return this.runtime.run(body);

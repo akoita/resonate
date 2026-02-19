@@ -146,6 +146,12 @@ variable "zerodev_project_id" {
   default     = ""
 }
 
+variable "passkey_server_url" {
+  description = "ZeroDev Passkey Server URL for WebAuthn RP_ID matching"
+  type        = string
+  default     = ""
+}
+
 variable "frontend_url" {
   description = "Frontend Cloud Run URL for CORS (set after first deploy)"
   type        = string

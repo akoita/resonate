@@ -11,12 +11,37 @@ async function bootstrap() {
   console.log("========================================");
   console.log("🚀 RESONATE BACKEND BOOTING...");
   console.log("========================================");
+
+  // Self-Healing: Reset indexer if it's vastly out of date (e.g. from an old Sepolia fork/deployment)
+  try {
+    const { prisma } = require("./db/prisma");
+    const chainId = parseInt(process.env.AA_CHAIN_ID || "11155111");
+    if (chainId === 11155111) {
+      const state = await prisma.indexerState.findUnique({ where: { chainId } });
+      const currentSepoliaBlock = 10295000n; // Recent safe cutoff
+      // If the indexer is millions of blocks behind, fast-forward it automatically
+      if (!state || (state.lastBlockNumber < 10290000n && state.lastBlockNumber > 0n)) {
+        console.log(`[Self-Healing] Detected stale indexer state (Block ${state?.lastBlockNumber}). Fast-forwarding to ${currentSepoliaBlock}...`);
+        await prisma.indexerState.update({
+          where: { chainId },
+          data: { lastBlockNumber: currentSepoliaBlock },
+        });
+        console.log(`[Self-Healing] Indexer fast-forward complete.`);
+      }
+    }
+  } catch (e) {
+    console.warn(`[Self-Healing] Could not check indexer state:`, e);
+  }
+
   const app = await NestFactory.create(AppModule);
 
-  // Global pipes
-  // Enable CORS for frontend
+  const allowedOrigins = ['http://localhost:3001', 'http://localhost:3000'];
+  if (process.env.CORS_ORIGIN) {
+    allowedOrigins.push(...process.env.CORS_ORIGIN.split(',').map(o => o.trim()));
+  }
+
   app.enableCors({
-    origin: ['http://localhost:3001', 'http://localhost:3000'],
+    origin: allowedOrigins,
     credentials: true,
   });
 

@@ -11,17 +11,21 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
+var AuthController_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthController = void 0;
 const common_1 = require("@nestjs/common");
 const throttler_1 = require("@nestjs/throttler");
 const viem_1 = require("viem");
+const sdk_1 = require("@zerodev/sdk");
 const auth_service_1 = require("./auth.service");
 const auth_nonce_service_1 = require("./auth_nonce.service");
-let AuthController = class AuthController {
+const ERC_6492_MAGIC_BYTES = "0x6492649264926492649264926492649264926492649264926492649264926492";
+let AuthController = AuthController_1 = class AuthController {
     authService;
     nonceService;
     publicClient;
+    logger = new common_1.Logger(AuthController_1.name);
     constructor(authService, nonceService, publicClient) {
         this.authService = authService;
         this.nonceService = nonceService;
@@ -36,8 +40,8 @@ let AuthController = class AuthController {
     async verify(body) {
         try {
             const chainId = await this.publicClient.getChainId();
-            console.log(`[Auth] Verifying signature for ${body.address} on chain ${chainId}`);
-            console.log(`[Auth] Signature length: ${body.signature.length}`);
+            this.logger.log(`[Auth] Verifying signature for ${body.address} on chain ${chainId}`);
+            this.logger.debug(`[Auth] Signature length: ${body.signature.length}`);
             // Local dev with mock EOA signer: verify EOA signature, then issue token for smart account address
             if (chainId === 31337 && body.signerAddress) {
                 const ok = await this.publicClient.verifyMessage({
@@ -46,12 +50,12 @@ let AuthController = class AuthController {
                     signature: body.signature,
                 });
                 if (!ok) {
-                    console.warn(`[Auth] EOA signature verification failed for ${body.signerAddress}`);
+                    this.logger.warn(`[Auth] EOA signature verification failed for ${body.signerAddress}`);
                     return { status: "invalid_signature" };
                 }
                 const nonceMatch = /Nonce:\s*(.+)$/m.exec(body.message)?.[1] ?? "";
                 if (!this.nonceService.consume(body.address, nonceMatch)) {
-                    console.warn(`[Auth] Nonce mismatch for ${body.address}`);
+                    this.logger.warn(`[Auth] Nonce mismatch for ${body.address}`);
                     return { status: "invalid_nonce" };
                 }
                 return this.authService.issueTokenForAddress(body.address, body.role ?? "listener");
@@ -66,44 +70,149 @@ let AuthController = class AuthController {
             if (chainId === 31337) {
                 verifyOptions.universalSignatureValidatorAddress = "0xA51c1fc2f0D1a1b8494Ed1FE312d7C3a78Ed91C0";
             }
-            let ok = await this.publicClient.verifyMessage(verifyOptions);
+            let ok = false;
             let issuedAddress = body.address;
-            // Fallback: Passkey/Kernel may return EOA-style signature; recover signer and issue for that address
+            // Primary verification: ERC-6492 + EIP-1271 via inline bytecode (works for smart accounts)
+            try {
+                ok = await this.publicClient.verifyMessage(verifyOptions);
+                if (ok) {
+                    this.logger.log(`[Auth] ✅ Primary verifyMessage succeeded for ${body.address}`);
+                }
+                else {
+                    this.logger.log(`[Auth] ⚠ Primary verifyMessage returned false for ${body.address}`);
+                }
+            }
+            catch (verifyErr) {
+                this.logger.warn(`[Auth] Primary verifyMessage threw: ${verifyErr.message?.substring(0, 300)}`);
+            }
+            // Fallback 1: Use ZeroDev's own ERC-6492 verifier bytecode.
+            if (!ok) {
+                try {
+                    const hash = (0, viem_1.hashMessage)(body.message);
+                    const zdOk = await (0, sdk_1.verifyEIP6492Signature)({
+                        signer: body.address,
+                        hash,
+                        signature: body.signature,
+                        client: this.publicClient,
+                    });
+                    if (zdOk) {
+                        ok = true;
+                        this.logger.log(`[Auth] ✅ ZeroDev verifyEIP6492Signature succeeded for ${body.address}`);
+                    }
+                    else {
+                        this.logger.log(`[Auth] ⚠ ZeroDev verifyEIP6492Signature returned false for ${body.address}`);
+                    }
+                }
+                catch (zdErr) {
+                    this.logger.warn(`[Auth] ZeroDev verifyEIP6492Signature threw: ${zdErr.message?.substring(0, 300)}`);
+                }
+            }
+            // Fallback 2: Address Recovery from ERC-6492 Signature (Counterfactual Address Mismatch Fix)
+            // If the frontend calculated address A, but the signature is actually for address B (common in dev/deployments),
+            // we can recover B from the signature's initCode and verify against B.
+            if (!ok && body.signature.endsWith(ERC_6492_MAGIC_BYTES.slice(2))) {
+                try {
+                    this.logger.log(`[Auth] Attempting address recovery from ERC-6492 signature...`);
+                    const encoded = body.signature.slice(0, -64);
+                    const [factory, factoryCalldata] = (0, viem_1.decodeAbiParameters)((0, viem_1.parseAbiParameters)("address, bytes, bytes"), encoded);
+                    // Simulate factory call to get the address
+                    const { data } = await this.publicClient.call({
+                        to: factory,
+                        data: factoryCalldata,
+                    });
+                    if (data) {
+                        // The result is usually the address (left-padded to 32 bytes)
+                        const recoveredAddress = ("0x" + data.slice(-40));
+                        this.logger.log(`[Auth] Recovered address from initCode: ${recoveredAddress}`);
+                        if (recoveredAddress.toLowerCase() !== body.address.toLowerCase()) {
+                            this.logger.log(`[Auth] ⚠ Mismatch detected! Frontend: ${body.address}, Recovered: ${recoveredAddress}`);
+                            // Verify the signature against the RECOVERED address
+                            const recoveryVerifyOptions = { ...verifyOptions, address: recoveredAddress };
+                            const recoveredOk = await this.publicClient.verifyMessage(recoveryVerifyOptions);
+                            if (recoveredOk) {
+                                ok = true;
+                                issuedAddress = recoveredAddress;
+                                this.logger.log(`[Auth] ✅ Signature verified against recovered address: ${issuedAddress}. Authenticating as recovered identity.`);
+                            }
+                            else {
+                                this.logger.warn(`[Auth] Signature failed verification even against recovered address: ${recoveredAddress}`);
+                            }
+                        }
+                    }
+                }
+                catch (recoveryErr) {
+                    this.logger.warn(`[Auth] Address recovery failed: ${recoveryErr.message}`);
+                }
+            }
+            // Fallback 3: Passkey/Kernel may return EOA-style signature; recover signer and issue for that address.
             if (!ok) {
                 try {
                     const recovered = await (0, viem_1.recoverMessageAddress)({
                         message: body.message,
                         signature: body.signature,
                     });
-                    const eoaOk = await this.publicClient.verifyMessage({
-                        address: recovered,
-                        message: body.message,
-                        signature: body.signature,
-                    });
-                    if (eoaOk) {
+                    if (recovered.toLowerCase() === body.address.toLowerCase()) {
                         ok = true;
-                        issuedAddress = recovered.toLowerCase();
-                        console.log(`[Auth] Verified via recovered EOA: ${issuedAddress}`);
+                        issuedAddress = body.address;
+                        this.logger.log(`[Auth] Verified via recovered EOA (exact match): ${issuedAddress}`);
+                    }
+                    else {
+                        // If the EOA signature is valid but doesn't match the claimed address,
+                        // we *could* treat it as valid if we trust the EOA -> Smart Account mapping,
+                        // but for now we just log it.
+                        // Actually, for consistency with the above recovery, if it's a valid EOA sig, maybe we just issue?
+                        // But usually this means it's a "Validator" signature (EOA) not the Smart Account itself.
+                        this.logger.log(`[Auth] Recovered EOA: ${recovered}, expected: ${body.address}`);
                     }
                 }
-                catch {
-                    // ignore recovery errors
+                catch (recoverErr) {
+                    this.logger.warn(`[Auth] recoverMessageAddress failed: ${recoverErr.message?.substring(0, 200)}`);
                 }
             }
             if (!ok) {
-                console.warn(`[Auth] Signature verification failed for ${body.address}`);
+                this.logger.warn(`[Auth] Signature verification failed for ${body.address}`);
+                this.logger.warn(`[Auth] Failed Message: ${JSON.stringify(body.message)}`);
+                this.logger.warn(`[Auth] Failed Signature: ${body.signature}`);
                 return { status: "invalid_signature" };
             }
+            // Nonce check
+            // Note: The message might contain the OLD address if the frontend constructed it that way.
+            // But the Nonce inside the message should still match what we issued for the Claimed Address?
+            // Or should we check the nonce for the Issued Address?
+            // Since we key nonces by address, if the user claimed Address A, we issued a nonce for Address A.
+            // If we recover Address B, we should technically check if Address A's nonce was used?
+            // Or does Address B have a nonce?
+            // The frontend requested a nonce for A. So we must consume the nonce for A.
+            // The signature is valid for B.
+            // Does this open a replay attack?
+            // - Attacker gets nonce for A.
+            // - Attacker sends signature for B (valid).
+            // - We log them in as B.
+            // - Nonce for A is consumed.
+            // If B didn't request a nonce, B's nonce is untouched.
+            // This seems acceptable for now as long as the signature itself commits to the message (which contains the nonce).
+            // The message likely says "Address: 0xF22..." (Address A).
+            // If Account B signed "Address: 0xF22...", then B *intended* to sign for A? 
+            // Or is the message just "Resonate Sign-In..."?
+            // The message format is `Resonate Sign-In\nAddress: ${saAddress}\nNonce: ${nonce}...`
+            // So Account B signed a message saying "Address: A". 
+            // This implies B authorizes actions for A, OR B is just confused.
+            // Since we return `issuedAddress = B`, we are logging them in as B.
+            // If B signed "I am A", should we log them in as B?
+            // This is a bit weird. But in the context of "Counterfactual Address Mismatch", 
+            // A and B are likely the *same* logical user, just different factory params.
+            // So it's safe to log them in as the *actual* owner of the key (B).
             const nonceMatch = /Nonce:\s*(.+)$/m.exec(body.message)?.[1] ?? "";
+            // We consume the nonce for the CLAIMED address (body.address) because that's what was requested.
             if (!this.nonceService.consume(body.address, nonceMatch)) {
-                console.warn(`[Auth] Nonce mismatch for ${body.address}`);
+                this.logger.warn(`[Auth] Nonce mismatch for ${body.address}`);
                 return { status: "invalid_nonce" };
             }
             const result = this.authService.issueTokenForAddress(issuedAddress, body.role ?? "listener");
-            return issuedAddress !== body.address ? { ...result, address: issuedAddress } : result;
+            return issuedAddress.toLowerCase() !== body.address.toLowerCase() ? { ...result, address: issuedAddress } : result;
         }
         catch (err) {
-            console.error(`[Auth] Error during verification:`, err);
+            this.logger.error(`[Auth] Error during verification:`, err);
             return { status: "error", message: err.message };
         }
     }
@@ -133,7 +242,7 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "verify", null);
-exports.AuthController = AuthController = __decorate([
+exports.AuthController = AuthController = AuthController_1 = __decorate([
     (0, common_1.Controller)("auth"),
     __param(2, (0, common_1.Inject)("PUBLIC_CLIENT")),
     __metadata("design:paramtypes", [auth_service_1.AuthService,

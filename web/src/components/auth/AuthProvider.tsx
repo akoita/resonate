@@ -37,6 +37,8 @@ type AuthState = {
   userId: string | null;
   wallet: WalletRecord | null;
   error?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  kernelAccount: any;
   connect: () => Promise<void>;
   login: () => Promise<void>;
   signup: () => Promise<void>;
@@ -184,8 +186,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
     const webAuthnKey = await toWebAuthnKey({
       passkeyName: "Resonate",
-      passkeyServerUrl: `/api/zerodev/${projectId}`,
+      passkeyServerUrl: process.env.NEXT_PUBLIC_PASSKEY_SERVER_URL || `https://passkeys.zerodev.app/api/v3/REDACTED_ZERODEV_PROJECT_ID`,
       mode,
+      rpID: typeof window !== "undefined" ? window.location.hostname : undefined,
     });
 
     const passkeyValidator = await toPasskeyValidator(publicClient, {
@@ -325,6 +328,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       userId,
       wallet,
       error,
+      kernelAccount: activeAccount,
       connect,
       login,
       signup,
@@ -334,7 +338,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       refreshWallet,
       signMessage,
     }),
-    [status, address, token, role, userId, wallet, error, connect, login, signup, connectPrivy, connectEmbedded, disconnect, refreshWallet, signMessage]
+    [status, address, token, role, userId, wallet, error, activeAccount, connect, login, signup, connectPrivy, connectEmbedded, disconnect, refreshWallet, signMessage]
   );
 
 

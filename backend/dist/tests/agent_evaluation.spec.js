@@ -8,15 +8,19 @@ describe("agent evaluation", () => {
             orchestrate: async ({ sessionId }) => sessionId === "session-1"
                 ? {
                     status: "approved",
-                    trackId: "track-1",
-                    negotiation: { priceUsd: 0.5 },
+                    tracks: [
+                        { trackId: "track-1", negotiation: { priceUsd: 0.5 }, mixPlan: {} },
+                    ],
                 }
                 : {
                     status: "rejected",
-                    trackId: "track-1",
+                    tracks: [
+                        { trackId: "track-1", mixPlan: {} },
+                    ],
                 },
         };
-        const service = new agent_evaluation_service_1.AgentEvaluationService(orchestrator, new event_bus_1.EventBus());
+        const runtimeService = { run: async () => ({ status: "approved" }) };
+        const service = new agent_evaluation_service_1.AgentEvaluationService(orchestrator, runtimeService, new event_bus_1.EventBus());
         const result = await service.evaluate([
             {
                 sessionId: "session-1",

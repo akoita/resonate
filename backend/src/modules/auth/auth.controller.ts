@@ -137,6 +137,9 @@ export class AuthController {
       // We verify the signature directly: extract pubkey from factory calldata, verify P-256 sig.
       if (!ok && body.signature.endsWith(ERC_6492_MAGIC_BYTES)) {
         try {
+          // ZeroDev v3.1 signatures no longer contain the factory calldata required 
+          // to extract the P-256 public key off-chain in the same layout.
+          // We will attempt it, but catch the point extraction error gracefully.
           this.logger.log(`[Auth] Trying off-chain WebAuthn P-256 verification...`);
           ok = this.verifyPasskeyOffChain(body.address, body.message, body.signature, chainId);
           if (ok) {

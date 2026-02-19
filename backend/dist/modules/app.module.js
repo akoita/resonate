@@ -31,6 +31,9 @@ const sessions_module_1 = require("./sessions/sessions.module");
 const playlist_module_1 = require("./playlist/playlist.module");
 const storage_module_1 = require("./storage/storage.module");
 const encryption_module_1 = require("./encryption/encryption.module");
+const contracts_module_1 = require("./contracts/contracts.module");
+const stem_pricing_module_1 = require("./pricing/stem-pricing.module");
+const library_module_1 = require("./library/library.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -63,8 +66,11 @@ exports.AppModule = AppModule = __decorate([
             analytics_module_1.AnalyticsModule,
             maintenance_module_1.MaintenanceModule,
             playlist_module_1.PlaylistModule,
+            library_module_1.LibraryModule,
             storage_module_1.StorageModule,
             encryption_module_1.EncryptionModule,
+            contracts_module_1.ContractsModule,
+            stem_pricing_module_1.StemPricingModule,
         ],
         providers: [
             { provide: core_1.APP_GUARD, useClass: throttler_1.ThrottlerGuard },

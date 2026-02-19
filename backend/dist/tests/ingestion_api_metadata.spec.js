@@ -57,11 +57,11 @@ describe("Ingestion API metadata", () => {
             },
         };
         const response = await (0, supertest_1.default)(app.getHttpServer())
-            .post("/stems/upload")
+            .post("/ingestion/enqueue")
             .set("Authorization", `Bearer ${auth.body.accessToken}`)
             .send(payload)
             .expect(201);
-        expect(response.body.releaseId).toBeDefined();
+        expect(response.body.trackId).toBeDefined();
         expect(["queued", "complete", "processing"]).toContain(response.body.status);
         // Wait slightly for background events to be processed to avoid FK errors or "Cannot log after tests are done"
         await new Promise((resolve) => setTimeout(resolve, 5000));

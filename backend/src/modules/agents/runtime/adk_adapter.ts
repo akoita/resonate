@@ -63,6 +63,14 @@ export class AdkAdapter implements AgentRuntimeAdapter {
     const runner = this.getRunner();
     const userMessage = buildUserMessage(input);
 
+    // Create a fresh ADK session for each stateless invocation
+    const adkSessionId = `adk_${input.sessionId}_${Date.now()}`;
+    await runner.sessionService.createSession({
+      appName: APP_NAME,
+      userId: input.userId,
+      sessionId: adkSessionId,
+    });
+
     const newMessage: Content = {
       role: "user",
       parts: [{ text: userMessage }],
@@ -72,7 +80,7 @@ export class AdkAdapter implements AgentRuntimeAdapter {
     let finalText = "";
     for await (const event of runner.runAsync({
       userId: input.userId,
-      sessionId: input.sessionId,
+      sessionId: adkSessionId,
       newMessage,
     })) {
       this.logger.debug(

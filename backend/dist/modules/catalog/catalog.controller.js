@@ -71,6 +71,16 @@ let CatalogController = class CatalogController {
         });
         res.end(stem.data);
     }
+    async getStemPreview(stemId, res) {
+        const stem = await this.catalogService.getStemPreview(stemId);
+        res.set({
+            'Content-Length': stem.data.length,
+            'Content-Type': stem.mimeType || 'audio/mpeg',
+            'Accept-Ranges': 'none', // Previews might be easier as full downloads for now or small chunks
+            'Cache-Control': 'public, max-age=3600',
+        });
+        res.end(stem.data);
+    }
     listMe(req) {
         return this.catalogService.listByUserId(req.user.userId);
     }
@@ -93,6 +103,9 @@ let CatalogController = class CatalogController {
     }
     updateRelease(releaseId, body) {
         return this.catalogService.updateRelease(releaseId, body);
+    }
+    deleteRelease(releaseId, req) {
+        return this.catalogService.deleteRelease(releaseId, req.user.userId);
     }
     async updateArtwork(releaseId, files, req) {
         const artwork = files.artwork?.[0];
@@ -134,6 +147,14 @@ __decorate([
     __metadata("design:paramtypes", [String, String, Object]),
     __metadata("design:returntype", Promise)
 ], CatalogController.prototype, "getStemBlob", null);
+__decorate([
+    (0, common_1.Get)("stems/:stemId/preview"),
+    __param(0, (0, common_1.Param)("stemId")),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], CatalogController.prototype, "getStemPreview", null);
 __decorate([
     (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
     (0, common_1.Get)("me"),
@@ -181,6 +202,15 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", void 0)
 ], CatalogController.prototype, "updateRelease", null);
+__decorate([
+    (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
+    (0, common_1.Delete)("releases/:releaseId"),
+    __param(0, (0, common_1.Param)("releaseId")),
+    __param(1, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", void 0)
+], CatalogController.prototype, "deleteRelease", null);
 __decorate([
     (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
     (0, common_1.Patch)("releases/:releaseId/artwork"),

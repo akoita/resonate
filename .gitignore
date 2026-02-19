@@ -22,6 +22,8 @@ test_audio.*
 .env
 .env.local
 .env.*.local
+.env.deploy.*
+!.env.deploy.example
 *.pem
 *.key
 

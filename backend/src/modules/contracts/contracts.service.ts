@@ -161,6 +161,11 @@ export class ContractsService implements OnModuleInit {
           // tokenUri may not be a full URL, use default
         }
 
+        if (!stem) {
+          this.logger.warn(`Skipping StemMinted (tokenId=${event.tokenId}): Stem not found for URI ${event.tokenUri}`);
+          return;
+        }
+
         const createData: any = {
           tokenId: BigInt(event.tokenId),
           chainId: event.chainId,
@@ -172,11 +177,8 @@ export class ContractsService implements OnModuleInit {
           transactionHash: event.transactionHash,
           blockNumber: BigInt(event.blockNumber),
           mintedAt: new Date(event.occurredAt),
+          stem: { connect: { id: stem.id } },
         };
-
-        if (stem?.id) {
-          createData.stem = { connect: { id: stem.id } };
-        }
 
         await prisma.stemNftMint.upsert({
           where: { transactionHash: event.transactionHash },

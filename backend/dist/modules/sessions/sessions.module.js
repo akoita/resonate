@@ -9,6 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SessionsModule = void 0;
 const common_1 = require("@nestjs/common");
 const identity_module_1 = require("../identity/identity.module");
+const agents_module_1 = require("../agents/agents.module");
 const event_bus_1 = require("../shared/event_bus");
 const agent_orchestration_service_1 = require("./agent_orchestration.service");
 const sessions_controller_1 = require("./sessions.controller");
@@ -18,7 +19,7 @@ let SessionsModule = class SessionsModule {
 exports.SessionsModule = SessionsModule;
 exports.SessionsModule = SessionsModule = __decorate([
     (0, common_1.Module)({
-        imports: [identity_module_1.IdentityModule],
+        imports: [identity_module_1.IdentityModule, agents_module_1.AgentsModule],
         controllers: [sessions_controller_1.SessionsController],
         providers: [event_bus_1.EventBus, agent_orchestration_service_1.AgentOrchestrationService, sessions_service_1.SessionsService],
     })

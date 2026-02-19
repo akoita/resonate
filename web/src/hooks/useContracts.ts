@@ -32,7 +32,9 @@ async function sendContractTransaction(
   to: Address,
   data: Hex,
   value: bigint = BigInt(0),
-  userAddress?: Address
+  userAddress?: Address,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  kernelAccount?: any
 ): Promise<string> {
   // Detect local development: either Anvil (31337) or forked Sepolia with local RPC
   const rpcOverride = process.env.NEXT_PUBLIC_RPC_URL || "";
@@ -60,51 +62,82 @@ async function sendContractTransaction(
 
   // Import ZeroDev SDK dynamically
   const sdk = await import("@zerodev/sdk");
-  const passkey = await import("@zerodev/passkey-validator");
-
   const { createKernelAccountClient, constants } = sdk;
-  const { toPasskeyValidator, toWebAuthnKey, PasskeyValidatorContractVersion } = passkey;
 
-  const entryPoint = constants.getEntryPoint("0.7");
-  const kernelVersion = constants.KERNEL_V3_1;
+  // Use the pre-authenticated kernel account from auth context.
+  // This avoids creating a duplicate passkey validator which could pick up
+  // a stale passkey registered on a different domain (e.g. localhost).
+  let account = kernelAccount;
 
-  // Get passkey and create validator
-  const webAuthnKey = await toWebAuthnKey({
-    passkeyName: "Resonate",
-    passkeyServerUrl: `/api/zerodev/${projectId}`,
-    mode: passkey.WebAuthnMode.Login,
-  });
+  if (!account) {
+    // Fallback: create a new passkey validator (requires user interaction)
+    const passkey = await import("@zerodev/passkey-validator");
+    const { toPasskeyValidator, toWebAuthnKey, PasskeyValidatorContractVersion } = passkey;
 
-  const passkeyValidator = await toPasskeyValidator(publicClient, {
-    webAuthnKey,
-    entryPoint,
-    kernelVersion,
-    validatorContractVersion: PasskeyValidatorContractVersion.V0_0_1_UNPATCHED,
-  });
+    const entryPoint = constants.getEntryPoint("0.7");
+    const kernelVersion = constants.KERNEL_V3_1;
 
-  const account = await sdk.createKernelAccount(publicClient, {
-    plugins: { sudo: passkeyValidator },
-    entryPoint,
-    kernelVersion,
-  });
+    const webAuthnKey = await toWebAuthnKey({
+      passkeyName: "Resonate",
+      passkeyServerUrl: process.env.NEXT_PUBLIC_PASSKEY_SERVER_URL || `https://passkeys.zerodev.app/api/v3/${projectId}`,
+      mode: passkey.WebAuthnMode.Login,
+      rpID: typeof window !== "undefined" ? window.location.hostname : undefined,
+    });
 
-  // Create kernel client with bundler
-  const bundlerUrl = `https://rpc.zerodev.app/api/v3/bundler/${projectId}?chainId=${chainId}`;
+    const passkeyValidator = await toPasskeyValidator(publicClient, {
+      webAuthnKey,
+      entryPoint,
+      kernelVersion,
+      validatorContractVersion: PasskeyValidatorContractVersion.V0_0_1_UNPATCHED,
+    });
+
+    account = await sdk.createKernelAccount(publicClient, {
+      plugins: { sudo: passkeyValidator },
+      entryPoint,
+      kernelVersion,
+    });
+  }
+
+  // Use Pimlico bundler (self-funded, no paymaster).
+  // ZeroDev's bundler rejects passkey-based accounts with "Unauthorized: wapk".
+  const pimlicoApiKey = process.env.NEXT_PUBLIC_PIMLICO_API_KEY || "REDACTED_PIMLICO_KEY";
+  const bundlerUrl = `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${pimlicoApiKey}`;
+
+  // Custom transport that maps ZeroDev-proprietary methods to Pimlico equivalents.
+  // ZeroDev SDK calls "zd_getUserOperationGasPrice" which Pimlico doesn't support,
+  // but Pimlico has "pimlico_getUserOperationGasPrice" with the same response format.
+  const pimlicoTransport = http(bundlerUrl);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mappedTransport = (opts: any) => {
+    const transport = pimlicoTransport(opts);
+    const originalRequest = transport.request;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    transport.request = async (args: any) => {
+      const mappedArgs = { ...args };
+      if (args.method === "zd_getUserOperationGasPrice") {
+        mappedArgs.method = "pimlico_getUserOperationGasPrice";
+      }
+      return originalRequest(mappedArgs);
+    };
+    return transport;
+  };
 
   const kernelClient = await createKernelAccountClient({
     account,
     chain: publicClient.chain,
-    bundlerTransport: http(bundlerUrl),
+    bundlerTransport: mappedTransport,
   });
 
   // Send transaction
-  const hash = await kernelClient.sendTransaction({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const hash = await (kernelClient as any).sendTransaction({
     to,
     data,
     value,
     chain: publicClient.chain,
   });
 
+  console.log("[ZeroDev] Transaction submitted! Hash:", hash);
   return hash;
 }
 
@@ -505,7 +538,7 @@ export function useContractAddresses() {
  */
 export function useMintStem() {
   const { publicClient, chainId } = useZeroDev();
-  const { address, status } = useAuth();
+  const { address, status, kernelAccount } = useAuth();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -545,7 +578,8 @@ export function useMintStem() {
           addresses.stemNFT,
           data,
           BigInt(0),
-          address as Address
+          address as Address,
+          kernelAccount
         );
 
         setTxHash(hash);
@@ -558,7 +592,7 @@ export function useMintStem() {
         setPending(false);
       }
     },
-    [publicClient, address, status, chainId]
+    [publicClient, address, status, chainId, kernelAccount]
   );
 
   return { mint, pending, error, txHash };
@@ -569,7 +603,7 @@ export function useMintStem() {
  */
 export function useListStem() {
   const { publicClient, chainId } = useZeroDev();
-  const { address, status } = useAuth();
+  const { address, status, kernelAccount } = useAuth();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -600,7 +634,8 @@ export function useListStem() {
           addresses.stemNFT,
           approveData,
           BigInt(0),
-          address as Address
+          address as Address,
+          kernelAccount
         );
 
         // Then create listing
@@ -622,7 +657,8 @@ export function useListStem() {
           addresses.marketplace,
           listData,
           BigInt(0),
-          address as Address
+          address as Address,
+          kernelAccount
         );
 
         setTxHash(hash);
@@ -635,7 +671,7 @@ export function useListStem() {
         setPending(false);
       }
     },
-    [publicClient, address, status, chainId]
+    [publicClient, address, status, chainId, kernelAccount]
   );
 
   return { list, pending, error, txHash };
@@ -646,7 +682,7 @@ export function useListStem() {
  */
 export function useBuyStem() {
   const { publicClient, chainId } = useZeroDev();
-  const { address, status } = useAuth();
+  const { address, status, kernelAccount } = useAuth();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -680,7 +716,8 @@ export function useBuyStem() {
           addresses.marketplace,
           data,
           quote.totalPrice,
-          address as Address
+          address as Address,
+          kernelAccount
         );
 
         setTxHash(hash);
@@ -693,7 +730,7 @@ export function useBuyStem() {
         setPending(false);
       }
     },
-    [publicClient, address, status, chainId]
+    [publicClient, address, status, chainId, kernelAccount]
   );
 
   return { buy, pending, error, txHash };
@@ -704,7 +741,7 @@ export function useBuyStem() {
  */
 export function useCancelListing() {
   const { publicClient, chainId } = useZeroDev();
-  const { address, status } = useAuth();
+  const { address, status, kernelAccount } = useAuth();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -734,7 +771,8 @@ export function useCancelListing() {
           addresses.marketplace,
           data,
           BigInt(0),
-          address as Address
+          address as Address,
+          kernelAccount
         );
 
         setTxHash(hash);
@@ -747,7 +785,7 @@ export function useCancelListing() {
         setPending(false);
       }
     },
-    [publicClient, address, status, chainId]
+    [publicClient, address, status, chainId, kernelAccount]
   );
 
   return { cancel, pending, error, txHash };

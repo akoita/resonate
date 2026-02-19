@@ -32,9 +32,8 @@ describe("agent orchestrator", () => {
             preferences: {},
         });
         expect(result.status).toBe("approved");
-        expect(result.trackId).toBe("track-1");
-        if (result.status === "approved") {
-            expect(result.mixPlan?.transition).toBeDefined();
-        }
+        expect(result.tracks.length).toBeGreaterThan(0);
+        expect(result.tracks[0].trackId).toBe("track-1");
+        expect(result.tracks[0].mixPlan?.transition).toBeDefined();
     });
 });

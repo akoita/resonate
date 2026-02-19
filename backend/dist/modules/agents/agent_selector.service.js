@@ -18,31 +18,56 @@ let AgentSelectorService = class AgentSelectorService {
         this.tools = tools;
     }
     async select(input) {
-        const tool = this.tools.get("catalog.search");
-        const result = await tool.run({
-            query: input.query ?? "",
-            limit: 20,
-            allowExplicit: input.allowExplicit ?? false,
-        });
-        const items = result.items ?? [];
-        let candidates = items;
-        if (input.useEmbeddings && items.length > 1) {
+        const queries = (input.queries ?? []).filter(Boolean);
+        const limit = input.limit ?? 5;
+        // Gather candidates from all vibes/queries
+        const seen = new Set();
+        let allCandidates = [];
+        for (const query of queries.length > 0 ? queries : [""]) {
+            const tool = this.tools.get("catalog.search");
+            const result = await tool.run({
+                query,
+                limit: 20,
+                allowExplicit: input.allowExplicit ?? false,
+            });
+            const items = result.items ?? [];
+            for (const item of items) {
+                if (!seen.has(item.id)) {
+                    seen.add(item.id);
+                    allCandidates.push(item);
+                }
+            }
+        }
+        if (allCandidates.length === 0) {
+            return { candidates: [], selected: [] };
+        }
+        // Optionally rank by embedding similarity to the combined query
+        if (input.useEmbeddings && allCandidates.length > 1 && queries.length > 0) {
+            const combinedQuery = queries.join(" ");
             const ranked = await this.tools.get("embeddings.similarity").run({
-                query: input.query ?? "",
-                candidates: items.map((track) => track.id),
+                query: combinedQuery,
+                candidates: allCandidates.map((track) => track.id),
             });
             const rankedIds = ranked.ranked ?? [];
             const ordered = rankedIds
-                .map((entry) => items.find((track) => track.id === entry.trackId))
+                .map((entry) => allCandidates.find((track) => track.id === entry.trackId))
                 .filter(Boolean);
             if (ordered.length) {
-                candidates = ordered;
+                allCandidates = ordered;
             }
         }
-        const selected = candidates.find((track) => !input.recentTrackIds.includes(track.id)) ??
-            candidates[0];
+        // Stable-sort: listed tracks first (preserves embedding rank within each group)
+        allCandidates.sort((a, b) => {
+            const aListed = a.hasListing ? 1 : 0;
+            const bListed = b.hasListing ? 1 : 0;
+            return bListed - aListed;
+        });
+        // Filter out recently played tracks, then take up to `limit`
+        const fresh = allCandidates.filter((track) => !input.recentTrackIds.includes(track.id));
+        const pool = fresh.length > 0 ? fresh : allCandidates;
+        const selected = pool.slice(0, limit);
         return {
-            candidates: candidates.map((track) => track.id),
+            candidates: allCandidates.map((track) => track.id),
             selected,
         };
     }

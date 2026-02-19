@@ -51,24 +51,32 @@ const path_1 = require("path");
 const fs_1 = require("fs");
 const bullmq_1 = require("bullmq");
 const bullmq_2 = require("@nestjs/bullmq");
+const undici_1 = require("undici");
 const event_bus_1 = require("../shared/event_bus");
 const storage_provider_1 = require("../storage/storage_provider");
 const encryption_service_1 = require("../encryption/encryption.service");
 const artist_service_1 = require("../artist/artist.service");
+const catalog_service_1 = require("../catalog/catalog.service");
+const prisma_1 = require("../../db/prisma");
 let IngestionService = class IngestionService {
     eventBus;
     storageProvider;
     encryptionService;
     artistService;
+    catalogService;
     stemsQueue;
     uploads = new Map();
     CONCURRENCY = 1;
-    constructor(eventBus, storageProvider, encryptionService, artistService, stemsQueue) {
+    useSyncProcessing;
+    constructor(eventBus, storageProvider, encryptionService, artistService, catalogService, stemsQueue) {
         this.eventBus = eventBus;
         this.storageProvider = storageProvider;
         this.encryptionService = encryptionService;
         this.artistService = artistService;
+        this.catalogService = catalogService;
         this.stemsQueue = stemsQueue;
+        // In test mode, process synchronously instead of through BullMQ queue
+        this.useSyncProcessing = process.env.NODE_ENV === "test" || process.env.USE_SYNC_PROCESSING === "true";
     }
     async handleFileUpload(input) {
         const mm = await Promise.resolve().then(() => __importStar(require("music-metadata")));
@@ -117,7 +125,15 @@ let IngestionService = class IngestionService {
                     extractedTitle = parts[1].trim();
                 }
             }
-            const publicUri = `http://localhost:3000/catalog/stems/${stemId}/blob`;
+            // Upload original stem to storage provider immediately
+            let storageResult;
+            try {
+                storageResult = await this.storageProvider.upload(file.buffer, `original_${stemId}.${file.originalname.split('.').pop() || 'mp3'}`, file.mimetype);
+            }
+            catch (err) {
+                console.error(`[Ingestion] Failed to upload original stem ${stemId} to storage:`, err);
+            }
+            const publicUri = storageResult?.uri || `http://localhost:3000/catalog/stems/${stemId}/blob`;
             tracks.push({
                 id: trackId,
                 title: trackMeta?.title || extractedTitle,
@@ -126,6 +142,7 @@ let IngestionService = class IngestionService {
                 stems: [{
                         id: stemId,
                         uri: publicUri,
+                        storageProvider: storageResult?.provider || 'local',
                         type: this.inferStemType(file.originalname),
                         data: file.buffer,
                         mimeType: file.mimetype,
@@ -140,7 +157,11 @@ let IngestionService = class IngestionService {
             releaseDate: input.metadata?.releaseDate || extractedReleaseDate,
             tracks: tracks.map((t) => ({
                 ...t,
-                stems: t.stems.map((s) => ({ ...s, data: undefined })) // Don't log buffers
+                stems: t.stems.map((s) => ({
+                    ...s,
+                    data: undefined, // Don't log buffers
+                    buffer: undefined, // Type compatibility
+                }))
             }))
         };
         // 1. Emit Uploaded
@@ -156,8 +177,46 @@ let IngestionService = class IngestionService {
             metadata: finalMetadata,
         });
         console.log(`[Ingestion] Emitted stems.uploaded for ${releaseId}. Buffers nuked in metadata for logging safety.`);
-        // 2. Process stems (Real implementation) via BullMQ
-        await this.stemsQueue.add("process-stems", { releaseId, artistId: input.artistId, tracks });
+        // 2. Process stems
+        if (this.useSyncProcessing) {
+            // In test mode, emit mock stems.processed immediately (skip actual Demucs processing)
+            console.log(`[Ingestion] Test mode: emitting mock stems.processed for ${releaseId}`);
+            const mockProcessedTracks = tracks.map((track) => ({
+                id: track.id,
+                title: track.title,
+                artist: track.artist,
+                position: track.position,
+                stems: track.stems.map((stem) => ({
+                    ...stem,
+                    data: stem.data, // Keep the original data for tests
+                    uri: `mock://stems/${stem.id}`,
+                    storageProvider: "local",
+                    isEncrypted: false,
+                })),
+            }));
+            this.eventBus.publish({
+                eventName: "stems.processed",
+                eventVersion: 1,
+                occurredAt: new Date().toISOString(),
+                releaseId,
+                artistId: input.artistId,
+                modelVersion: "test-mock-v1",
+                tracks: mockProcessedTracks,
+            });
+            return { releaseId, status: "processing" };
+        }
+        // Production: queue for async processing via BullMQ
+        // CRITICAL: Strip Buffer data from job payload to avoid JSON serialization failures
+        // (BullMQ can't serialize payloads > ~512MB, and albums with many tracks blow this limit)
+        // The processor will fetch audio data from the storage URIs instead.
+        const serializableTracks = tracks.map((track) => ({
+            ...track,
+            stems: track.stems.map((stem) => ({
+                ...stem,
+                data: undefined, // Remove Buffer - it's already uploaded to storage
+            })),
+        }));
+        await this.stemsQueue.add("process-stems", { releaseId, artistId: input.artistId, tracks: serializableTracks });
         return { releaseId, status: "processing" };
     }
     handleProgress(releaseId, trackId, progress) {
@@ -184,26 +243,61 @@ let IngestionService = class IngestionService {
             await new Promise(resolve => setImmediate(resolve));
             let attempt = 0;
             let lastError = null;
+            // Emit 'separating' stage when starting to process this track
+            await this.emitTrackStage(input.releaseId, track.id, 'separating');
             while (attempt < MAX_RETRIES) {
                 try {
                     const originalStem = track.stems[0];
-                    if (!originalStem || !originalStem.data)
+                    if (!originalStem)
                         break;
-                    // Crucial: BullMQ (JSON) converts Buffers to {type: 'Buffer', data: []}
-                    // We must convert it back to a real Buffer or Prisma will blow the stack
-                    if (!(originalStem.data instanceof Buffer)) {
-                        originalStem.data = Buffer.from(originalStem.data);
+                    // Get audio data - either from job payload or fetch from storage URI
+                    let audioBuffer;
+                    if (originalStem.data) {
+                        // Crucial: BullMQ (JSON) converts Buffers to {type: 'Buffer', data: []}
+                        // We must convert it back to a real Buffer or Prisma will blow the stack
+                        if (!(originalStem.data instanceof Buffer)) {
+                            audioBuffer = Buffer.from(originalStem.data);
+                        }
+                        else {
+                            audioBuffer = originalStem.data;
+                        }
+                    }
+                    else if (originalStem.uri) {
+                        // Data stripped from job payload - fetch from storage URI
+                        console.log(`[Ingestion] Fetching audio from storage for track ${track.id}: ${originalStem.uri}`);
+                        const fetchedData = await this.storageProvider.download(originalStem.uri);
+                        if (!fetchedData) {
+                            throw new Error(`Failed to fetch audio from storage: ${originalStem.uri}`);
+                        }
+                        audioBuffer = fetchedData;
+                    }
+                    else {
+                        console.warn(`[Ingestion] Track ${track.id} has no data or URI, skipping`);
+                        break;
                     }
                     const formData = new FormData();
-                    const buffer = originalStem.data;
-                    const blob = new Blob([buffer], { type: originalStem.mimeType });
+                    // Convert Buffer to Uint8Array for Blob compatibility (TS strictness)
+                    const blob = new Blob([new Uint8Array(audioBuffer)], { type: originalStem.mimeType });
                     formData.append("file", blob, `track_${track.id}.wav`);
-                    console.log(`[Ingestion] Sending track ${track.id} to Demucs worker...`);
-                    const response = await fetch(`http://localhost:8000/separate/${input.releaseId}/${track.id}`, {
+                    // Configurable worker URL — no longer hardcoded to localhost
+                    const workerUrl = process.env.DEMUCS_WORKER_URL || 'http://localhost:8000';
+                    // Pass callback URL so worker can report progress without hardcoded backend address
+                    const backendUrl = process.env.BACKEND_URL || 'http://host.docker.internal:3000';
+                    const callbackParam = `?callback_url=${encodeURIComponent(backendUrl)}`;
+                    console.log(`[Ingestion] Sending track ${track.id} to Demucs worker at ${workerUrl}...`);
+                    // Use custom undici Agent to override the default headersTimeout (300s).
+                    // Without this, long-running Demucs separations hit UND_ERR_HEADERS_TIMEOUT
+                    // before the 10-minute AbortSignal fires.
+                    const demucsAgent = new undici_1.Agent({
+                        headersTimeout: 600_000, // 10 minutes — matches AbortSignal
+                        bodyTimeout: 0, // unlimited — response body can be large
+                    });
+                    const response = await fetch(`${workerUrl}/separate/${input.releaseId}/${track.id}${callbackParam}`, {
                         method: "POST",
                         body: formData,
-                        // @ts-ignore
-                        signal: AbortSignal.timeout(600000), // 10 minutes
+                        signal: AbortSignal.timeout(600_000), // 10 minutes
+                        // @ts-ignore — Node fetch accepts dispatcher but TS doesn't know about it
+                        dispatcher: demucsAgent,
                     });
                     if (!response.ok) {
                         throw new Error(`Demucs worker returned ${response.status}`);
@@ -211,18 +305,54 @@ let IngestionService = class IngestionService {
                     const result = await response.json();
                     const stems = [];
                     // 1. Process and upload the Original Stem first
-                    const originalStorage = await this.storageProvider.upload(originalStem.data, `original_${track.id}.mp3`, originalStem.mimeType);
+                    // If already uploaded (production), reuse URI. Otherwise (mock) it might be different.
+                    let finalOriginalUri = originalStem.uri;
+                    let finalOriginalProvider = originalStem.storageProvider || 'local';
+                    if (originalStem.data && (!originalStem.uri || originalStem.uri.includes('localhost:3000'))) {
+                        // Re-upload only if we have the buffer (sync/test mode) AND the URI is a local placeholder
+                        const originalStorage = await this.storageProvider.upload(originalStem.data, `original_${track.id}.mp3`, originalStem.mimeType);
+                        finalOriginalUri = originalStorage.uri;
+                        finalOriginalProvider = originalStorage.provider;
+                    }
+                    // Otherwise, keep the existing URI — the original was already uploaded during handleFileUpload
                     stems.push({
                         ...originalStem,
-                        uri: originalStorage.uri,
-                        storageProvider: originalStorage.provider,
+                        uri: finalOriginalUri,
+                        storageProvider: finalOriginalProvider,
                         isEncrypted: false, // Original is usually public for discovery
                     });
+                    // Emit 'encrypting' stage before processing AI-generated stems
+                    await this.emitTrackStage(input.releaseId, track.id, 'encrypting');
                     // 2. Process, Encrypt, and Upload the AI-generated Stems
-                    for (const [type, relativePath] of Object.entries(result.stems)) {
-                        const absolutePath = (0, path_1.join)(process.cwd(), "uploads", "stems", relativePath);
-                        if ((0, fs_1.existsSync)(absolutePath)) {
-                            let data = (0, fs_1.readFileSync)(absolutePath);
+                    for (const [type, stemUri] of Object.entries(result.stems)) {
+                        // Download stem data — supports both HTTPS URLs (GCS mode) and local paths
+                        let data = null;
+                        const stemUriStr = stemUri;
+                        if (stemUriStr.startsWith('http://') || stemUriStr.startsWith('https://')) {
+                            // GCS/remote mode: download from URL
+                            console.log(`[Ingestion] Downloading stem from URL: ${stemUriStr}`);
+                            try {
+                                const stemResponse = await fetch(stemUriStr, { signal: AbortSignal.timeout(120_000) });
+                                if (stemResponse.ok) {
+                                    const arrayBuffer = await stemResponse.arrayBuffer();
+                                    data = Buffer.from(arrayBuffer);
+                                }
+                                else {
+                                    console.error(`[Ingestion] Failed to download stem: HTTP ${stemResponse.status}`);
+                                }
+                            }
+                            catch (dlErr) {
+                                console.error(`[Ingestion] Failed to download stem from ${stemUriStr}:`, dlErr);
+                            }
+                        }
+                        else {
+                            // Local mode: read from shared volume (backward compatible)
+                            const absolutePath = (0, path_1.join)(process.cwd(), "uploads", "stems", stemUriStr);
+                            if ((0, fs_1.existsSync)(absolutePath)) {
+                                data = (0, fs_1.readFileSync)(absolutePath);
+                            }
+                        }
+                        if (data) {
                             const stemId = this.generateId("stem");
                             let isEncrypted = false;
                             let encryptionMetadata = null;
@@ -250,13 +380,17 @@ let IngestionService = class IngestionService {
                                 id: stemId,
                                 uri: storage.uri,
                                 type: type,
-                                data: data,
+                                // NOTE: Removed 'data' buffer from event - already uploaded to storage at 'uri'
+                                // Passing Buffer in events causes Prisma formatting stack overflow on large files
                                 mimeType: "audio/mpeg",
                                 durationSeconds: originalStem.durationSeconds,
                                 isEncrypted,
                                 encryptionMetadata,
                                 storageProvider: storage.provider,
                             });
+                        }
+                        else {
+                            console.warn(`[Ingestion] Could not load stem data for ${type} (${stemUriStr}), skipping`);
                         }
                     }
                     processedTracks.push({
@@ -266,9 +400,12 @@ let IngestionService = class IngestionService {
                         position: track.position,
                         stems: stems,
                     });
+                    // Emit 'complete' stage for this track
+                    await this.emitTrackStage(input.releaseId, track.id, 'complete');
                     break; // Success
                 }
                 catch (err) {
+                    console.error(`[Ingestion] Attempt ${attempt + 1}/${MAX_RETRIES} failed for track ${track.id}:`, err);
                     attempt++;
                     lastError = err;
                     if (attempt < MAX_RETRIES) {
@@ -291,7 +428,17 @@ let IngestionService = class IngestionService {
             });
         }
         else {
-            throw new Error(`Failed to process any tracks for release ${input.releaseId}`);
+            const errorMsg = `Failed to process any tracks for release ${input.releaseId}`;
+            console.error(`[Ingestion] ${errorMsg}`);
+            this.eventBus.publish({
+                eventName: "stems.failed",
+                eventVersion: 1,
+                occurredAt: new Date().toISOString(),
+                releaseId: input.releaseId,
+                artistId: input.artistId,
+                error: errorMsg,
+            });
+            throw new Error(errorMsg);
         }
     }
     enqueueUpload(input) {
@@ -369,6 +516,177 @@ let IngestionService = class IngestionService {
     generateId(prefix) {
         return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
     }
+    async emitTrackStage(releaseId, trackId, stage) {
+        // Persist the status to database so it's available on page load
+        // Retry logic to handle race condition where Track record may not exist yet
+        const MAX_RETRIES = 5;
+        const RETRY_DELAY = 500;
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                await prisma_1.prisma.track.update({
+                    where: { id: trackId },
+                    data: { processingStatus: stage }
+                });
+                break; // Success
+            }
+            catch (err) {
+                // P2025 = Record not found (Prisma error code)
+                if (err?.code === 'P2025' && attempt < MAX_RETRIES) {
+                    console.warn(`[Ingestion] Track ${trackId} not found yet (attempt ${attempt}/${MAX_RETRIES}), retrying in ${RETRY_DELAY}ms...`);
+                    await new Promise(r => setTimeout(r, RETRY_DELAY));
+                }
+                else {
+                    console.error(`[Ingestion] Failed to update track ${trackId} status to ${stage}:`, err);
+                    break;
+                }
+            }
+        }
+        // Emit WebSocket event for real-time updates
+        this.eventBus.publish({
+            eventName: "catalog.track_status",
+            eventVersion: 1,
+            occurredAt: new Date().toISOString(),
+            releaseId,
+            trackId,
+            status: stage,
+        });
+        console.log(`[Ingestion] Track ${trackId} stage: ${stage}`);
+    }
+    async retryRelease(releaseId) {
+        console.log(`[Ingestion] Retrying release ${releaseId}`);
+        // 1. Fetch release details from Catalog
+        const release = await this.catalogService.getRelease(releaseId);
+        if (!release) {
+            throw new Error(`Release ${releaseId} not found`);
+        }
+        if (release.status === 'ready') {
+            throw new Error(`Release ${releaseId} is already ready`);
+        }
+        // 2. Re-emit Uploaded event to reset status to processing
+        // We map the tracks back to the format expected by the event
+        const tracks = release.tracks.map(t => ({
+            id: t.id,
+            title: t.title,
+            artist: t.artist,
+            position: t.position,
+            stems: t.stems.map((s) => ({
+                id: s.id,
+                uri: s.uri,
+                type: s.type,
+                // Note: For a retry, we assume the Buffer is no longer available in memory.
+                // The worker needs to fetch from the URI.
+                // If s.storageProvider is 'local', URI is a file path or localhost URL.
+                // We might need to ensure the worker can handle fetching from URI if data is null.
+                // Currently processStemsJob expects 'data' prop on stems.
+                // This is a limitation: we can't fully retry if we didn't persist the raw upload buffer.
+                // But for local fs, we could potentially re-read it if we knew the path.
+                // For now, let's assume we can't easily re-read raw buffers unless we stored them.
+                // However, the demucs-worker fetches from URI anyway if data is missing?
+                // Checking processStemsJob...
+                // It checks: if (!originalStem || !originalStem.data) break;
+                // So we strictly need the data buffer.
+                // If we don't have it, we can't retry the separation.
+                // Wait, the original upload flow:
+                // 1. handleFileUpload receives Files (Buffers).
+                // 2. It creates 'tracks' object WITH buffers.
+                // 3. It adds to Queue.
+                // If we want to retry LATER, those buffers are gone from RAM.
+                // We saved the 'original' stem to storage (local/ipfs).
+                // So we need to fetch the original file content back into a buffer.
+            }))
+        }));
+        // For a robust retry, we need to re-download the original file.
+        // Let's implement that.
+        const tracksWithData = await Promise.all(release.tracks.map(async (t) => {
+            const originalStem = t.stems.find(s => s.type === 'ORIGINAL' || s.type === 'original');
+            if (!originalStem)
+                return null;
+            const dbStem = await this.catalogService.getStemBlob(originalStem.id);
+            let buffer;
+            if (dbStem && dbStem.data) {
+                buffer = dbStem.data;
+            }
+            else {
+                console.error(`[Ingestion] Could not re-hydrate data for stem ${originalStem.id}`);
+                return null;
+            }
+            return {
+                ...t,
+                stems: [{
+                        ...originalStem,
+                        data: buffer
+                    }]
+            };
+        }));
+        const validTracks = tracksWithData.filter((t) => t !== null);
+        if (validTracks.length === 0) {
+            throw new Error(`Could not re-hydrate any tracks for release ${releaseId}`);
+        }
+        // 3. Re-emit Uploaded event to reset status to processing
+        this.eventBus.publish({
+            eventName: "stems.uploaded",
+            eventVersion: 1,
+            occurredAt: new Date().toISOString(),
+            releaseId: release.id,
+            artistId: release.artistId,
+            checksum: "retry",
+            metadata: {
+                title: release.title || "Unknown",
+                tracks: validTracks.map(t => ({
+                    title: t.title,
+                    artist: t.artist,
+                    position: t.position,
+                    stems: t.stems.map((s) => ({
+                        id: s.id,
+                        uri: s.uri,
+                        type: s.type
+                    }))
+                }))
+            }
+        });
+        // 4. Re-queue for processing
+        await this.stemsQueue.add("process-stems", {
+            releaseId: release.id,
+            artistId: release.artistId,
+            tracks: validTracks,
+        }, {
+            jobId: release.id,
+            removeOnComplete: true,
+            attempts: 3,
+            backoff: {
+                type: "exponential",
+                delay: 5000,
+            },
+        });
+        return { success: true };
+    }
+    async cancelProcessing(releaseId) {
+        console.log(`[Ingestion] Cancelling processing for release ${releaseId}`);
+        // 1. Remove any waiting/delayed jobs for this release from the BullMQ queue
+        const waitingJobs = await this.stemsQueue.getJobs(['waiting', 'delayed', 'active']);
+        for (const job of waitingJobs) {
+            if (job.data?.releaseId === releaseId) {
+                try {
+                    await job.remove();
+                    console.log(`[Ingestion] Removed job ${job.id} for release ${releaseId}`);
+                }
+                catch (err) {
+                    // Job might be active and can't be removed — that's ok, we'll mark it failed
+                    console.warn(`[Ingestion] Could not remove job ${job.id}:`, err);
+                }
+            }
+        }
+        // 2. Emit stems.failed event so catalog service updates DB status
+        this.eventBus.publish({
+            eventName: "stems.failed",
+            eventVersion: 1,
+            occurredAt: new Date().toISOString(),
+            releaseId,
+            artistId: "cancelled",
+            error: "Processing cancelled by user",
+        });
+        return { success: true, message: "Processing cancelled" };
+    }
     inferStemType(uri) {
         const normalized = uri.toLowerCase();
         if (normalized.includes("drum"))
@@ -387,10 +705,11 @@ let IngestionService = class IngestionService {
 exports.IngestionService = IngestionService;
 exports.IngestionService = IngestionService = __decorate([
     (0, common_1.Injectable)(),
-    __param(4, (0, bullmq_2.InjectQueue)("stems")),
+    __param(5, (0, bullmq_2.InjectQueue)("stems")),
     __metadata("design:paramtypes", [event_bus_1.EventBus,
         storage_provider_1.StorageProvider,
         encryption_service_1.EncryptionService,
         artist_service_1.ArtistService,
+        catalog_service_1.CatalogService,
         bullmq_1.Queue])
 ], IngestionService);

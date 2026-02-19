@@ -10,7 +10,8 @@ const mockQueue = { add: jest.fn() };
 describe("IngestionService metadata", () => {
     it("publishes metadata on stems.uploaded", () => {
         const eventBus = new event_bus_1.EventBus();
-        const service = new ingestion_service_1.IngestionService(eventBus, mockStorageProvider, mockEncryptionService, mockArtistService, mockQueue);
+        const mockCatalogService = {};
+        const service = new ingestion_service_1.IngestionService(eventBus, mockStorageProvider, mockEncryptionService, mockArtistService, mockCatalogService, mockQueue);
         let received;
         eventBus.subscribe("stems.uploaded", (event) => {
             received = event;
@@ -37,7 +38,8 @@ describe("IngestionService metadata", () => {
     });
     it("emits stems.processed and updates status", async () => {
         const eventBus = new event_bus_1.EventBus();
-        const service = new ingestion_service_1.IngestionService(eventBus, mockStorageProvider, mockEncryptionService, mockArtistService, mockQueue);
+        const mockCatalogService = {};
+        const service = new ingestion_service_1.IngestionService(eventBus, mockStorageProvider, mockEncryptionService, mockArtistService, mockCatalogService, mockQueue);
         const processedPromise = new Promise((resolve) => {
             eventBus.subscribe("stems.processed", (event) => {
                 resolve(event);

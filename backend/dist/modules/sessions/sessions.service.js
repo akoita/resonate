@@ -15,16 +15,19 @@ const wallet_service_1 = require("../identity/wallet.service");
 const prisma_1 = require("../../db/prisma");
 const event_bus_1 = require("../shared/event_bus");
 const agent_orchestration_service_1 = require("./agent_orchestration.service");
+const agent_purchase_service_1 = require("../agents/agent_purchase.service");
 let SessionsService = class SessionsService {
     walletService;
     eventBus;
     agentService;
+    agentPurchaseService;
     playlistCache = new Map();
     playlistTtlMs = 15_000;
-    constructor(walletService, eventBus, agentService) {
+    constructor(walletService, eventBus, agentService, agentPurchaseService) {
         this.walletService = walletService;
         this.eventBus = eventBus;
         this.agentService = agentService;
+        this.agentPurchaseService = agentPurchaseService;
     }
     async startSession(input) {
         await this.walletService.setBudget({
@@ -81,6 +84,39 @@ let SessionsService = class SessionsService {
         if (!session || session.endedAt) {
             return { allowed: false, reason: "session_inactive" };
         }
+        // Check if agent wallet supports on-chain purchases
+        const wallet = await this.walletService.getWallet(session.userId);
+        const isOnChain = wallet?.accountType === "erc4337" &&
+            process.env.AA_SKIP_BUNDLER !== "true" &&
+            input.listingId !== undefined;
+        if (isOnChain || (input.listingId !== undefined && process.env.AA_SKIP_BUNDLER === "true")) {
+            // Delegate to AgentPurchaseService for on-chain (or mock on-chain) purchase
+            const result = await this.agentPurchaseService.purchase({
+                sessionId: input.sessionId,
+                userId: session.userId,
+                listingId: input.listingId,
+                tokenId: input.tokenId ?? BigInt(0),
+                amount: input.amount ?? BigInt(1),
+                totalPriceWei: input.totalPriceWei ?? "0",
+                priceUsd: input.priceUsd,
+            });
+            if (result.success) {
+                await prisma_1.prisma.session.update({
+                    where: { id: input.sessionId },
+                    data: { spentUsd: session.spentUsd + input.priceUsd },
+                });
+            }
+            return {
+                allowed: result.success,
+                reason: result.success ? undefined : result.reason,
+                trackId: input.trackId,
+                txHash: result.txHash,
+                transactionId: result.transactionId,
+                remaining: result.remaining,
+                mode: result.mode,
+            };
+        }
+        // Fallback: off-chain mock purchase (local wallet or no listing info)
         const spend = await this.walletService.spend(session.userId, input.priceUsd);
         if (!spend.allowed) {
             return { allowed: false, reason: "budget_exceeded", remaining: spend.remaining };
@@ -98,12 +134,28 @@ let SessionsService = class SessionsService {
                 durationSeconds: 30,
             },
         });
+        const mockTxHash = `tx_${Date.now()}`;
         const payment = await prisma_1.prisma.payment.create({
             data: {
                 sessionId: input.sessionId,
                 amountUsd: input.priceUsd,
                 status: "settled",
-                txHash: `tx_${Date.now()}`,
+                txHash: mockTxHash,
+            },
+        });
+        // Also record as AgentTransaction so wallet card surfaces it
+        await prisma_1.prisma.agentTransaction.create({
+            data: {
+                sessionId: input.sessionId,
+                userId: session.userId,
+                listingId: input.listingId ?? BigInt(0),
+                tokenId: input.tokenId ?? BigInt(0),
+                amount: input.amount ?? BigInt(1),
+                totalPriceWei: input.totalPriceWei ?? "0",
+                priceUsd: input.priceUsd,
+                status: "confirmed",
+                txHash: mockTxHash,
+                confirmedAt: new Date(),
             },
         });
         this.eventBus.publish({
@@ -149,5 +201,6 @@ exports.SessionsService = SessionsService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [wallet_service_1.WalletService,
         event_bus_1.EventBus,
-        agent_orchestration_service_1.AgentOrchestrationService])
+        agent_orchestration_service_1.AgentOrchestrationService,
+        agent_purchase_service_1.AgentPurchaseService])
 ], SessionsService);

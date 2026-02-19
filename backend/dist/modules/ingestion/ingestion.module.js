@@ -13,6 +13,7 @@ const ingestion_service_1 = require("./ingestion.service");
 const bullmq_1 = require("@nestjs/bullmq");
 const stems_processor_1 = require("./stems.processor");
 const artist_module_1 = require("../artist/artist.module");
+const catalog_module_1 = require("../catalog/catalog.module");
 let IngestionModule = class IngestionModule {
 };
 exports.IngestionModule = IngestionModule;
@@ -27,6 +28,7 @@ exports.IngestionModule = IngestionModule = __decorate([
                 },
             }),
             artist_module_1.ArtistModule,
+            catalog_module_1.CatalogModule,
         ],
         controllers: [ingestion_controller_1.IngestionController],
         providers: [ingestion_service_1.IngestionService, stems_processor_1.StemsProcessor],

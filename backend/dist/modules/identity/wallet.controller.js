@@ -19,14 +19,20 @@ const roles_decorator_1 = require("../auth/roles.decorator");
 const session_key_service_1 = require("./session_key.service");
 const social_recovery_service_1 = require("./social_recovery.service");
 const wallet_service_1 = require("./wallet.service");
+const agent_wallet_service_1 = require("../agents/agent_wallet.service");
+const agent_purchase_service_1 = require("../agents/agent_purchase.service");
 let WalletController = class WalletController {
     walletService;
     sessionKeyService;
     recoveryService;
-    constructor(walletService, sessionKeyService, recoveryService) {
+    agentWalletService;
+    agentPurchaseService;
+    constructor(walletService, sessionKeyService, recoveryService, agentWalletService, agentPurchaseService) {
         this.walletService = walletService;
         this.sessionKeyService = sessionKeyService;
         this.recoveryService = recoveryService;
+        this.agentWalletService = agentWalletService;
+        this.agentPurchaseService = agentPurchaseService;
     }
     fund(body) {
         return this.walletService.fundWallet(body);
@@ -80,6 +86,33 @@ let WalletController = class WalletController {
     }
     approveRecovery(body) {
         return this.recoveryService.approveRecovery(body);
+    }
+    // ============ Agent Wallet Endpoints ============
+    enableAgentWallet(req) {
+        return this.agentWalletService.enable(req.user.userId);
+    }
+    registerSessionKey(req, body) {
+        return this.agentWalletService.registerSessionKey(req.user.userId, body.serializedKey, body.permissions, new Date(body.validUntil), body.txHash);
+    }
+    disableAgentWallet(req, body) {
+        return this.agentWalletService.disable(req.user.userId, body?.revokeTxHash);
+    }
+    getAgentWalletStatus(req) {
+        return this.agentWalletService.getStatus(req.user.userId);
+    }
+    getAgentTransactions(req) {
+        return this.agentPurchaseService.getTransactions(req.user.userId);
+    }
+    agentPurchase(req, body) {
+        return this.agentPurchaseService.purchase({
+            sessionId: body.sessionId,
+            userId: req.user.userId,
+            listingId: BigInt(body.listingId),
+            tokenId: BigInt(body.tokenId),
+            amount: BigInt(body.amount),
+            totalPriceWei: body.totalPriceWei,
+            priceUsd: body.priceUsd,
+        });
     }
 };
 exports.WalletController = WalletController;
@@ -230,9 +263,64 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], WalletController.prototype, "approveRecovery", null);
+__decorate([
+    (0, common_1.Post)("agent/enable"),
+    (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], WalletController.prototype, "enableAgentWallet", null);
+__decorate([
+    (0, common_1.Post)("agent/session-key/register"),
+    (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", void 0)
+], WalletController.prototype, "registerSessionKey", null);
+__decorate([
+    (0, common_1.Delete)("agent/session-key"),
+    (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", void 0)
+], WalletController.prototype, "disableAgentWallet", null);
+__decorate([
+    (0, common_1.Get)("agent/status"),
+    (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], WalletController.prototype, "getAgentWalletStatus", null);
+__decorate([
+    (0, common_1.Get)("agent/transactions"),
+    (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], WalletController.prototype, "getAgentTransactions", null);
+__decorate([
+    (0, common_1.Post)("agent/purchase"),
+    (0, common_1.UseGuards)((0, passport_1.AuthGuard)("jwt")),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", void 0)
+], WalletController.prototype, "agentPurchase", null);
 exports.WalletController = WalletController = __decorate([
     (0, common_1.Controller)("wallet"),
+    __param(3, (0, common_1.Inject)((0, common_1.forwardRef)(() => agent_wallet_service_1.AgentWalletService))),
+    __param(4, (0, common_1.Inject)((0, common_1.forwardRef)(() => agent_purchase_service_1.AgentPurchaseService))),
     __metadata("design:paramtypes", [wallet_service_1.WalletService,
         session_key_service_1.SessionKeyService,
-        social_recovery_service_1.SocialRecoveryService])
+        social_recovery_service_1.SocialRecoveryService,
+        agent_wallet_service_1.AgentWalletService,
+        agent_purchase_service_1.AgentPurchaseService])
 ], WalletController);
