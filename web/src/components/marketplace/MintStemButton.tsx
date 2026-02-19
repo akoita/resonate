@@ -64,7 +64,7 @@ export function MintStemButton({
     trackTitle,
     metadataUri,
 }: MintStemButtonProps) {
-    const { address, status } = useAuth();
+    const { address, status, kernelAccount } = useAuth();
     const { mint, pending: mintPending } = useMintStem();
     const { list, pending: listPending } = useListStem();
     const { addToast } = useToast();
@@ -138,7 +138,7 @@ export function MintStemButton({
             const currentChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
             const tokenUri = metadataUri || `${window.location.protocol}//${window.location.host}/api/metadata/${currentChainId}/stem/${stemId}`;
 
-            let mintTo = address as Address;
+            let mintTo = (kernelAccount?.address || address) as Address;
             const isLocalOrFork = currentChainId === "31337" || (currentChainId === "11155111" && process.env.NODE_ENV === "development");
             if (isLocalOrFork) {
                 const { getLocalSignerAddress } = await import("../../lib/localAA");
@@ -149,7 +149,7 @@ export function MintStemButton({
                 to: mintTo,
                 amount: BigInt(1),
                 tokenURI: tokenUri,
-                royaltyReceiver: address as Address,
+                royaltyReceiver: mintTo,
                 royaltyBps: 500,
                 remixable: true,
                 parentIds: [],
