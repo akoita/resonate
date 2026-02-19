@@ -266,6 +266,51 @@ export class GenerationService {
   }
 
   /**
+   * Get analytics & rate limit status for a user.
+   */
+  async getAnalytics(userId: string) {
+    // ---- total generations & cost ----
+    const artist = await prisma.artist.findFirst({ where: { userId } });
+    let totalGenerations = 0;
+    let totalCost = 0;
+
+    if (artist) {
+      totalGenerations = await prisma.release.count({
+        where: { artistId: artist.id, type: 'ai_generated' },
+      });
+      totalCost = +(totalGenerations * COST_PER_GENERATION).toFixed(2);
+    }
+
+    // ---- rate limit state ----
+    const now = Date.now();
+    const entry = this.rateLimits.get(userId);
+    let used = 0;
+    let resetsAt: string | null = null;
+
+    if (entry) {
+      const activeTimestamps = entry.timestamps.filter(
+        (ts) => now - ts < RATE_LIMIT_WINDOW_MS,
+      );
+      used = activeTimestamps.length;
+      if (activeTimestamps.length > 0) {
+        resetsAt = new Date(
+          Math.min(...activeTimestamps) + RATE_LIMIT_WINDOW_MS,
+        ).toISOString();
+      }
+    }
+
+    return {
+      totalGenerations,
+      totalCost,
+      rateLimit: {
+        remaining: Math.max(0, this.maxPerHour - used),
+        limit: this.maxPerHour,
+        resetsAt,
+      },
+    };
+  }
+
+  /**
    * Enforce per-user rate limiting (sliding window).
    */
   private enforceRateLimit(userId: string): void {

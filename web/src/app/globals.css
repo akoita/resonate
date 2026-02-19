@@ -4116,6 +4116,61 @@ a {
   border-top: 1px solid var(--color-border);
 }
 
+/* ---- Analytics Stats Bar & Rate Limit ---- */
+
+.analytics-stats-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.ai-analytics-header {
+  backdrop-filter: blur(8px);
+  background: rgba(124, 92, 255, 0.05);
+  border-color: rgba(124, 92, 255, 0.15);
+}
+
+.generation-count-stat {
+  font-size: 13px;
+  color: var(--color-muted);
+  font-weight: 500;
+}
+
+.rate-limit-pill {
+  font-size: 12px;
+  font-weight: 600;
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  transition: background 0.2s, color 0.2s;
+}
+
+.rate-limit-pill.ok {
+  background: rgba(34, 197, 94, 0.12);
+  color: #4ade80;
+}
+
+.rate-limit-pill.low {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+}
+
+.rate-limit-pill.exhausted {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+}
+
+.rate-limit-reset {
+  font-size: 12px;
+  color: var(--color-muted);
+  font-style: italic;
+}
+
 /* Detail view enhancements */
 .library-detail {
   padding: var(--space-4) 0;

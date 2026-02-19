@@ -10,6 +10,7 @@ jest.mock('../db/prisma', () => ({
         tracks: [{ id: 'track-1' }],
       }),
       findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
     },
     artist: {
       findFirst: jest.fn().mockResolvedValue(null),
@@ -265,6 +266,50 @@ describe('GenerationService', () => {
 
       const result = await service.listUserGenerations('no-artist-user');
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('getAnalytics', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { prisma: analyticsPrisma } = require('../db/prisma');
+
+    it('returns totals and full rate limit for user with generations', async () => {
+      analyticsPrisma.artist.findFirst.mockResolvedValueOnce({ id: 'artist-1' });
+      analyticsPrisma.release.count.mockResolvedValueOnce(10);
+
+      const result = await service.getAnalytics('user-1');
+
+      expect(result.totalGenerations).toBe(10);
+      expect(result.totalCost).toBe(0.6);
+      expect(result.rateLimit.limit).toBe(5);
+      expect(result.rateLimit.remaining).toBe(5); // no in-memory usage
+      expect(result.rateLimit.resetsAt).toBeNull();
+    });
+
+    it('returns zeros when user has no artist', async () => {
+      analyticsPrisma.artist.findFirst.mockResolvedValueOnce(null);
+
+      const result = await service.getAnalytics('no-artist-user');
+
+      expect(result.totalGenerations).toBe(0);
+      expect(result.totalCost).toBe(0);
+      expect(result.rateLimit.remaining).toBe(5);
+    });
+
+    it('tracks rate limit after active generations', async () => {
+      analyticsPrisma.artist.findFirst.mockResolvedValueOnce({ id: 'artist-1' });
+      analyticsPrisma.release.count.mockResolvedValueOnce(3);
+
+      // Simulate 2 recent generations in the rate limiter
+      await service.createGeneration({ prompt: 'test-a', artistId: 'artist-1' }, 'rl-user');
+      await service.createGeneration({ prompt: 'test-b', artistId: 'artist-1' }, 'rl-user');
+
+      analyticsPrisma.artist.findFirst.mockResolvedValueOnce({ id: 'artist-1' });
+      analyticsPrisma.release.count.mockResolvedValueOnce(3);
+      const result = await service.getAnalytics('rl-user');
+
+      expect(result.rateLimit.remaining).toBe(3); // 5 - 2
+      expect(result.rateLimit.resetsAt).toBeDefined();
     });
   });
 });

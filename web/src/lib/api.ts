@@ -827,3 +827,21 @@ export async function getMyGenerations(token: string) {
     token
   );
 }
+
+export type GenerationAnalytics = {
+  totalGenerations: number;
+  totalCost: number;
+  rateLimit: {
+    remaining: number;
+    limit: number;
+    resetsAt: string | null;
+  };
+};
+
+export async function getGenerationAnalytics(token: string) {
+  return apiRequest<GenerationAnalytics>(
+    "/generation/analytics",
+    {},
+    token
+  );
+}
