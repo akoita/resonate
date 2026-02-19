@@ -32,9 +32,14 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
 
 ## 4. Run tests
 
-- Run the project test suite: `npm test` (or equivalent)
+- **Do NOT run the full test suite locally** — it exhausts WSL2 memory and crashes the system
+- Instead, run only tests related to the changed files:
+  1. Identify changed modules from `git diff --name-only main`
+  2. Build Jest pattern arguments matching those modules (e.g. `agent_orchestrator agent_runtime tool_declarations`)
+  3. Run: `cd backend && npx jest --no-coverage --forceExit -- <patterns>`
 - If any tests fail, fix the code or tests and re-run
-- Do NOT proceed until all tests pass
+- CI will run the full suite remotely — rely on that for broader regression coverage
+- Do NOT proceed until the targeted tests pass
 
 ## 5. Update documentation (if convenient)
 
