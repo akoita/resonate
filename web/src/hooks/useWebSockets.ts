@@ -45,17 +45,34 @@ export type MarketplaceUpdate =
     | MarketplaceListingSold
     | MarketplaceListingCancelled;
 
+export interface GenerationStatusUpdate {
+    jobId: string;
+    userId: string;
+    trackId?: string;
+    releaseId?: string;
+    error?: string;
+}
+
+export interface GenerationProgressUpdate {
+    jobId: string;
+    phase: 'generating' | 'storing' | 'finalizing';
+}
+
 export function useWebSockets(
     onStatusUpdate?: (data: ReleaseStatusUpdate) => void,
     onProgressUpdate?: (data: ReleaseProgressUpdate) => void,
     onTrackStatusUpdate?: (data: TrackStatusUpdate) => void,
-    onMarketplaceUpdate?: (data: MarketplaceUpdate) => void
+    onMarketplaceUpdate?: (data: MarketplaceUpdate) => void,
+    onGenerationStatus?: (data: GenerationStatusUpdate) => void,
+    onGenerationProgress?: (data: GenerationProgressUpdate) => void
 ) {
     const [socket, setSocket] = useState<Socket | null>(null);
     const statusHandlerRef = useRef(onStatusUpdate);
     const progressHandlerRef = useRef(onProgressUpdate);
     const trackStatusHandlerRef = useRef(onTrackStatusUpdate);
     const marketplaceHandlerRef = useRef(onMarketplaceUpdate);
+    const generationStatusHandlerRef = useRef(onGenerationStatus);
+    const generationProgressHandlerRef = useRef(onGenerationProgress);
 
     // Update refs when handlers change without re-triggering effect
     useEffect(() => {
@@ -73,6 +90,14 @@ export function useWebSockets(
     useEffect(() => {
         marketplaceHandlerRef.current = onMarketplaceUpdate;
     }, [onMarketplaceUpdate]);
+
+    useEffect(() => {
+        generationStatusHandlerRef.current = onGenerationStatus;
+    }, [onGenerationStatus]);
+
+    useEffect(() => {
+        generationProgressHandlerRef.current = onGenerationProgress;
+    }, [onGenerationProgress]);
 
     useEffect(() => {
         // Initialize socket connection
@@ -136,6 +161,27 @@ export function useWebSockets(
             console.log('[WebSocket] Marketplace listing cancelled:', data);
             if (marketplaceHandlerRef.current) {
                 marketplaceHandlerRef.current({ ...data, type: 'cancelled' });
+            }
+        });
+
+        newSocket.on('generation.status', (data: GenerationStatusUpdate) => {
+            console.log('[WebSocket] Generation status:', data);
+            if (generationStatusHandlerRef.current) {
+                generationStatusHandlerRef.current(data);
+            }
+        });
+
+        newSocket.on('generation.progress', (data: GenerationProgressUpdate) => {
+            console.log('[WebSocket] Generation progress:', data);
+            if (generationProgressHandlerRef.current) {
+                generationProgressHandlerRef.current(data);
+            }
+        });
+
+        newSocket.on('generation.error', (data: GenerationStatusUpdate) => {
+            console.log('[WebSocket] Generation error:', data);
+            if (generationStatusHandlerRef.current) {
+                generationStatusHandlerRef.current(data);
             }
         });
 

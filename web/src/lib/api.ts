@@ -771,3 +771,37 @@ export async function deleteLibraryTrackAPI(id: string, token: string) {
 export async function clearLocalLibraryAPI(token: string) {
   return apiRequest<void>("/library/tracks/local", { method: "DELETE" }, token);
 }
+
+// ========== Generation API ==========
+
+export type GenerationStatusResponse = {
+  jobId: string;
+  status: "queued" | "generating" | "storing" | "complete" | "failed";
+  trackId?: string;
+  releaseId?: string;
+  error?: string;
+};
+
+export async function createGeneration(
+  token: string,
+  input: {
+    prompt: string;
+    artistId: string;
+    negativePrompt?: string;
+    seed?: number;
+  }
+) {
+  return apiRequest<{ jobId: string }>(
+    "/generation/create",
+    { method: "POST", body: JSON.stringify(input) },
+    token
+  );
+}
+
+export async function getGenerationStatus(token: string, jobId: string) {
+  return apiRequest<GenerationStatusResponse>(
+    `/generation/${jobId}/status`,
+    {},
+    token
+  );
+}
