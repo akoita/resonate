@@ -80,6 +80,7 @@ model Track {
   releaseId        String
   artist           String?
   processingStatus String    @default("pending") // pending, processing, complete, failed
+  generationMetadata Json?   // { provider, prompt, negativePrompt, seed, generatedAt, synthIdPresent, durationSeconds, sampleRate, cost }
   licenses         License[]
   stems            Stem[]
   release          Release   @relation(fields: [releaseId], references: [id])

@@ -1,0 +1,215 @@
+import { EventBus } from '../modules/shared/event_bus';
+import { GenerationService } from '../modules/generation/generation.service';
+
+// Mock Prisma
+jest.mock('../db/prisma', () => ({
+  prisma: {
+    release: {
+      create: jest.fn().mockResolvedValue({
+        id: 'release-1',
+        tracks: [{ id: 'track-1' }],
+      }),
+    },
+  },
+}));
+
+// Mock dependencies
+const mockStorageProvider = {
+  upload: jest.fn().mockResolvedValue({ uri: 'local://generated-test.wav', provider: 'local' }),
+  download: jest.fn(),
+  delete: jest.fn(),
+};
+
+const mockLyriaClient = {
+  generate: jest.fn().mockResolvedValue({
+    audioBytes: Buffer.from('fake-audio-data'),
+    synthIdPresent: true,
+    seed: 42,
+    durationSeconds: 30,
+    sampleRate: 48000,
+  }),
+};
+
+const mockCatalogService = {} as any;
+
+const mockQueue = {
+  add: jest.fn().mockResolvedValue({ id: 'job-1' }),
+  getJob: jest.fn(),
+};
+
+describe('GenerationService', () => {
+  let service: GenerationService;
+  let eventBus: EventBus;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    eventBus = new EventBus();
+    service = new GenerationService(
+      eventBus,
+      mockStorageProvider as any,
+      mockCatalogService,
+      mockLyriaClient as any,
+      mockQueue as any,
+    );
+  });
+
+  describe('createGeneration', () => {
+    it('enqueues a BullMQ job and returns a jobId', async () => {
+      const result = await service.createGeneration(
+        { prompt: 'Chill lo-fi beats', artistId: 'artist-1' },
+        'user-1',
+      );
+
+      expect(result.jobId).toBeDefined();
+      expect(typeof result.jobId).toBe('string');
+      expect(mockQueue.add).toHaveBeenCalledTimes(1);
+      expect(mockQueue.add).toHaveBeenCalledWith(
+        'generate',
+        expect.objectContaining({
+          userId: 'user-1',
+          artistId: 'artist-1',
+          prompt: 'Chill lo-fi beats',
+        }),
+        expect.objectContaining({
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 5000 },
+        }),
+      );
+    });
+
+    it('emits generation.started event', async () => {
+      let receivedEvent: any;
+      eventBus.subscribe('generation.started', (event: any) => {
+        receivedEvent = event;
+      });
+
+      await service.createGeneration(
+        { prompt: 'Ambient space music', artistId: 'artist-1' },
+        'user-1',
+      );
+
+      expect(receivedEvent).toBeDefined();
+      expect(receivedEvent.eventName).toBe('generation.started');
+      expect(receivedEvent.prompt).toBe('Ambient space music');
+      expect(receivedEvent.userId).toBe('user-1');
+    });
+
+    it('enforces rate limiting after max generations', async () => {
+      // Use up the rate limit (5 per hour)
+      for (let i = 0; i < 5; i++) {
+        await service.createGeneration(
+          { prompt: `Track ${i}`, artistId: 'artist-1' },
+          'rate-limit-user',
+        );
+      }
+
+      // 6th should throw
+      await expect(
+        service.createGeneration(
+          { prompt: 'One too many', artistId: 'artist-1' },
+          'rate-limit-user',
+        ),
+      ).rejects.toThrow('Rate limit exceeded');
+    });
+
+    it('allows different users independently', async () => {
+      for (let i = 0; i < 5; i++) {
+        await service.createGeneration(
+          { prompt: `Track ${i}`, artistId: 'artist-1' },
+          'user-a',
+        );
+      }
+
+      // Different user should still be allowed
+      const result = await service.createGeneration(
+        { prompt: 'Different user track', artistId: 'artist-1' },
+        'user-b',
+      );
+      expect(result.jobId).toBeDefined();
+    });
+  });
+
+  describe('processGenerationJob', () => {
+    it('calls LyriaClient, stores audio, creates DB records, and emits events', async () => {
+      const events: any[] = [];
+      eventBus.subscribe('generation.progress', (e: any) => events.push(e));
+      eventBus.subscribe('generation.completed', (e: any) => events.push(e));
+
+      await service.processGenerationJob({
+        jobId: 'job-1',
+        userId: 'user-1',
+        artistId: 'artist-1',
+        prompt: 'Epic orchestral',
+        seed: 42,
+      });
+
+      // Verify Lyria was called
+      expect(mockLyriaClient.generate).toHaveBeenCalledWith({
+        prompt: 'Epic orchestral',
+        negativePrompt: undefined,
+        seed: 42,
+      });
+
+      // Verify storage
+      expect(mockStorageProvider.upload).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        expect.stringContaining('generated-'),
+        'audio/wav',
+      );
+
+      // Verify progress and completion events
+      const progressEvents = events.filter(e => e.eventName === 'generation.progress');
+      expect(progressEvents.length).toBe(3); // generating, storing, finalizing
+
+      const completedEvent = events.find(e => e.eventName === 'generation.completed');
+      expect(completedEvent).toBeDefined();
+      expect(completedEvent.trackId).toBe('track-1');
+      expect(completedEvent.releaseId).toBe('release-1');
+    });
+
+    it('emits generation.failed on LyriaClient error', async () => {
+      mockLyriaClient.generate.mockRejectedValueOnce(new Error('Quota exceeded'));
+
+      let failedEvent: any;
+      eventBus.subscribe('generation.failed', (e: any) => {
+        failedEvent = e;
+      });
+
+      await expect(
+        service.processGenerationJob({
+          jobId: 'job-fail',
+          userId: 'user-1',
+          artistId: 'artist-1',
+          prompt: 'Test failure',
+        }),
+      ).rejects.toThrow('Quota exceeded');
+
+      expect(failedEvent).toBeDefined();
+      expect(failedEvent.eventName).toBe('generation.failed');
+      expect(failedEvent.error).toBe('Quota exceeded');
+    });
+  });
+
+  describe('getStatus', () => {
+    it('returns job status from BullMQ', async () => {
+      mockQueue.getJob.mockResolvedValueOnce({
+        getState: jest.fn().mockResolvedValue('completed'),
+        timestamp: Date.now(),
+        returnvalue: { trackId: 'track-1', releaseId: 'release-1' },
+      });
+
+      const status = await service.getStatus('job-1');
+      expect(status.status).toBe('completed');
+      expect(status.trackId).toBe('track-1');
+      expect(status.releaseId).toBe('release-1');
+    });
+
+    it('returns failed status for unknown job', async () => {
+      mockQueue.getJob.mockResolvedValueOnce(null);
+
+      const status = await service.getStatus('nonexistent');
+      expect(status.status).toBe('failed');
+      expect(status.error).toBe('Job not found');
+    });
+  });
+});
