@@ -1035,12 +1035,23 @@ export default function LibraryPage() {
                                     {activeTab === "stems" && renderTrackList(ownedStems)}
                                     {activeTab === "ai_creations" && (
                                         <>
-                                            <div className="analytics-stats-bar ai-analytics-header">
-                                                <span className="generation-count-stat">🎵 {aiAnalytics.totalGenerations} generation{aiAnalytics.totalGenerations !== 1 ? "s" : ""}</span>
-                                                <span className="generation-count-stat">💰 ${aiAnalytics.totalCost.toFixed(2)} total cost</span>
-                                                <span className={`rate-limit-pill ${aiAnalytics.rateLimit.remaining === 0 ? "exhausted" : aiAnalytics.rateLimit.remaining <= 2 ? "low" : "ok"}`}>
-                                                    ⚡ {aiAnalytics.rateLimit.remaining}/{aiAnalytics.rateLimit.limit} remaining
-                                                </span>
+                                            <div className="create-analytics-strip ai-analytics-header">
+                                                <div className="create-analytics-item">
+                                                    <span className="create-analytics-label">Generations</span>
+                                                    <span className="create-analytics-value">{aiAnalytics.totalGenerations}</span>
+                                                </div>
+                                                <div className="create-analytics-divider" />
+                                                <div className="create-analytics-item">
+                                                    <span className="create-analytics-label">Total Cost</span>
+                                                    <span className="create-analytics-value">${aiAnalytics.totalCost.toFixed(2)}</span>
+                                                </div>
+                                                <div className="create-analytics-divider" />
+                                                <div className="create-analytics-item">
+                                                    <span className="create-analytics-label">Rate Limit</span>
+                                                    <span className={`create-analytics-value rate-status ${aiAnalytics.rateLimit.remaining === 0 ? "exhausted" : aiAnalytics.rateLimit.remaining <= 2 ? "low" : "ok"}`}>
+                                                        {aiAnalytics.rateLimit.remaining}/{aiAnalytics.rateLimit.limit}
+                                                    </span>
+                                                </div>
                                             </div>
                                             {aiCreationsLoading ? (
                                                 <div className="home-subtitle">Loading AI creations...</div>

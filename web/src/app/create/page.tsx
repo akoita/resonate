@@ -219,35 +219,44 @@ export default function CreatePage() {
             </div>
           )}
 
-          {/* Generate Button */}
-          <div className="generate-section">
-            {analytics && (
-              <div className="analytics-stats-bar">
-                <span className={`rate-limit-pill ${
+          {/* Analytics Info Strip */}
+          {analytics && (
+            <div className="create-analytics-strip">
+              <div className="create-analytics-item">
+                <span className="create-analytics-label">Generations</span>
+                <span className="create-analytics-value">{analytics.totalGenerations}</span>
+              </div>
+              <div className="create-analytics-divider" />
+              <div className="create-analytics-item">
+                <span className="create-analytics-label">Rate Limit</span>
+                <span className={`create-analytics-value rate-status ${
                   analytics.rateLimit.remaining === 0 ? "exhausted" :
                   analytics.rateLimit.remaining <= 2 ? "low" : "ok"
                 }`}>
-                  ⚡ {analytics.rateLimit.remaining}/{analytics.rateLimit.limit} remaining
+                  {analytics.rateLimit.remaining}/{analytics.rateLimit.limit}
                 </span>
-                <span className="generation-count-stat">
-                  🎵 {analytics.totalGenerations} track{analytics.totalGenerations !== 1 ? "s" : ""} created
-                </span>
-                {analytics.rateLimit.remaining === 0 && analytics.rateLimit.resetsAt && (
-                  <span className="rate-limit-reset">
-                    Resets {new Date(analytics.rateLimit.resetsAt).toLocaleTimeString()}
-                  </span>
-                )}
               </div>
-            )}
-            <button
-              className="generate-btn"
-              onClick={handleGenerate}
-              disabled={!prompt.trim() || isGenerating || !artistId}
-              type="button"
-            >
-              {isGenerating ? "Generating..." : "🎵 Generate Track"}
-            </button>
-          </div>
+              {analytics.rateLimit.remaining === 0 && analytics.rateLimit.resetsAt && (
+                <>
+                  <div className="create-analytics-divider" />
+                  <div className="create-analytics-item">
+                    <span className="create-analytics-label">Resets</span>
+                    <span className="create-analytics-value">{new Date(analytics.rateLimit.resetsAt).toLocaleTimeString()}</span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Generate Button */}
+          <button
+            className="generate-btn"
+            onClick={handleGenerate}
+            disabled={!prompt.trim() || isGenerating || !artistId}
+            type="button"
+          >
+            {isGenerating ? "Generating..." : "✨ Generate Track"}
+          </button>
 
           {/* No Artist Profile Warning */}
           {!artistId && status === "authenticated" && (
