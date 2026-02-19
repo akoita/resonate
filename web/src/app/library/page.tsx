@@ -12,7 +12,7 @@ import {
     saveTracksMetadata,
     LocalTrack,
 } from "../../lib/localLibrary";
-import { getMyGenerations, type GenerationListItem } from "../../lib/api";
+import { getMyGenerations, getGenerationAnalytics, type GenerationListItem, type GenerationAnalytics } from "../../lib/api";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { useZeroDev } from "../../components/auth/ZeroDevProviderClient";
 import { type Address } from "viem";
@@ -83,6 +83,7 @@ export default function LibraryPage() {
     const [aiCreations, setAiCreations] = useState<GenerationListItem[]>([]);
     const [aiCreationsLoading, setAiCreationsLoading] = useState(false);
     const [selectedGeneration, setSelectedGeneration] = useState<GenerationListItem | null>(null);
+    const [aiAnalytics, setAiAnalytics] = useState<GenerationAnalytics | null>(null);
 
     // Unified tracks (Local + Owned Stems), deduplicated by ID
     const unifiedTracks = useMemo(() => {
@@ -264,6 +265,9 @@ export default function LibraryPage() {
                 .then(setAiCreations)
                 .catch(() => { /* ignore */ })
                 .finally(() => setAiCreationsLoading(false));
+            getGenerationAnalytics(token)
+                .then(setAiAnalytics)
+                .catch(() => { /* ignore */ });
         }
     }, [token]);
 
@@ -1035,6 +1039,15 @@ export default function LibraryPage() {
                                             </div>
                                         ) : (
                                             <>
+                                                {aiAnalytics && (
+                                                    <div className="analytics-stats-bar ai-analytics-header">
+                                                        <span className="generation-count-stat">🎵 {aiAnalytics.totalGenerations} generation{aiAnalytics.totalGenerations !== 1 ? "s" : ""}</span>
+                                                        <span className="generation-count-stat">💰 ${aiAnalytics.totalCost.toFixed(2)} total cost</span>
+                                                        <span className={`rate-limit-pill ${aiAnalytics.rateLimit.remaining === 0 ? "exhausted" : aiAnalytics.rateLimit.remaining <= 2 ? "low" : "ok"}`}>
+                                                            ⚡ {aiAnalytics.rateLimit.remaining}/{aiAnalytics.rateLimit.limit} remaining
+                                                        </span>
+                                                    </div>
+                                                )}
                                                 <div className="library-grid-view">
                                                     {aiCreations.map((gen) => {
                                                         const timeAgo = getRelativeTime(gen.generatedAt);

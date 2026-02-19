@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import AuthGate from "../../components/auth/AuthGate";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { useGeneration } from "../../hooks/useGeneration";
-import { getArtistMe, uploadStems, getReleaseArtworkUrl, saveLibraryTrackAPI } from "../../lib/api";
+import { getArtistMe, uploadStems, getReleaseArtworkUrl, saveLibraryTrackAPI, getGenerationAnalytics, GenerationAnalytics } from "../../lib/api";
 import "../../styles/create.css";
 
 const STYLE_PRESETS = [
@@ -26,6 +26,7 @@ export default function CreatePage() {
   const [noVocals, setNoVocals] = useState(false);
   const [noDrums, setNoDrums] = useState(false);
   const [customExclude, setCustomExclude] = useState("");
+  const [analytics, setAnalytics] = useState<GenerationAnalytics | null>(null);
 
   const { state, result, error, startGeneration, reset } = useGeneration(token, artistId);
 
@@ -35,6 +36,9 @@ export default function CreatePage() {
       getArtistMe(token).then((artist) => {
         if (artist) setArtistId(artist.id);
       }).catch(() => { /* ignore */ });
+      getGenerationAnalytics(token)
+        .then(setAnalytics)
+        .catch(() => { /* ignore */ });
     }
   }, [token, status]);
 
@@ -213,6 +217,24 @@ export default function CreatePage() {
 
           {/* Generate Button */}
           <div className="generate-section">
+            {analytics && (
+              <div className="analytics-stats-bar">
+                <span className={`rate-limit-pill ${
+                  analytics.rateLimit.remaining === 0 ? "exhausted" :
+                  analytics.rateLimit.remaining <= 2 ? "low" : "ok"
+                }`}>
+                  ⚡ {analytics.rateLimit.remaining}/{analytics.rateLimit.limit} remaining
+                </span>
+                <span className="generation-count-stat">
+                  🎵 {analytics.totalGenerations} track{analytics.totalGenerations !== 1 ? "s" : ""} created
+                </span>
+                {analytics.rateLimit.remaining === 0 && analytics.rateLimit.resetsAt && (
+                  <span className="rate-limit-reset">
+                    Resets {new Date(analytics.rateLimit.resetsAt).toLocaleTimeString()}
+                  </span>
+                )}
+              </div>
+            )}
             <button
               className="generate-btn"
               onClick={handleGenerate}

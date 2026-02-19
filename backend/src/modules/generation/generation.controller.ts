@@ -42,6 +42,16 @@ export class GenerationController {
   }
 
   /**
+   * Get generation analytics and rate limit status for the authenticated user.
+   */
+  @UseGuards(AuthGuard('jwt'))
+  @Get('analytics')
+  async analytics(@Req() req: any) {
+    const userId = req.user?.id || req.user?.sub;
+    return this.generationService.getAnalytics(userId);
+  }
+
+  /**
    * Get the status of a generation job.
    */
   @UseGuards(AuthGuard('jwt'))
