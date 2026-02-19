@@ -19,9 +19,10 @@ import { AdkAdapter } from "./runtime/adk_adapter";
 import { LangGraphAdapter } from "./runtime/langgraph_adapter";
 import { VertexAiAdapter } from "./runtime/vertex_ai_adapter";
 import { IdentityModule } from "../identity/identity.module";
+import { GenerationModule } from "../generation/generation.module";
 
 @Module({
-  imports: [forwardRef(() => IdentityModule)],
+  imports: [forwardRef(() => IdentityModule), GenerationModule],
   controllers: [AgentsController, AgentConfigController],
   providers: [
     EventBus,

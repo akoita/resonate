@@ -3,6 +3,8 @@ export interface AgentRuntimeInput {
   userId: string;
   recentTrackIds: string[];
   budgetRemainingUsd: number;
+  /** Budget available for Lyria AI generation ($0.06/clip). Defaults to $1.00. */
+  generationBudgetUsd?: number;
   preferences: {
     mood?: string;
     energy?: "low" | "medium" | "high";
@@ -18,6 +20,12 @@ export interface LlmTrackPick {
   priceUsd: number;
 }
 
+export interface LlmGenerationPick {
+  jobId: string;
+  costUsd: number;
+  prompt: string;
+}
+
 export interface AgentRuntimeResult {
   status: "approved" | "rejected";
   trackId?: string;
@@ -30,6 +38,12 @@ export interface AgentRuntimeResult {
   latencyMs?: number;
   /** Multiple track picks from the LLM */
   picks?: LlmTrackPick[];
+  /** Number of Lyria generations triggered during this session */
+  generationsUsed?: number;
+  /** Total USD spent on generations during this session */
+  generationSpendUsd?: number;
+  /** AI-generated track picks */
+  generationPicks?: LlmGenerationPick[];
 }
 
 export interface AgentRuntimeAdapter {

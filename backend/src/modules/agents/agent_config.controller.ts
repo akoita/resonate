@@ -126,11 +126,13 @@ export class AgentConfigController {
             });
 
             // Kick off orchestration — route through LLM when AGENT_RUNTIME is set
+            const generationBudgetUsd = parseFloat(process.env.AGENT_GENERATION_BUDGET ?? "1.00");
             const runtimeInput = {
                 sessionId: session.id,
                 userId: req.user.userId,
                 recentTrackIds: [] as string[],
                 budgetRemainingUsd: config.monthlyCapUsd,
+                generationBudgetUsd,
                 preferences: {
                     genres: config.vibes,
                     stemTypes: config.stemTypes,
