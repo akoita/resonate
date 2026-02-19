@@ -16,6 +16,7 @@ import {
   AgentRuntimeInput,
   AgentRuntimeResult,
   LlmTrackPick,
+  LlmGenerationPick,
 } from "./agent_runtime.adapter";
 import { ToolRegistry } from "../tools/tool_registry";
 import { createCurationAgent, buildUserMessage } from "./adk_curation_agent";
@@ -27,7 +28,6 @@ const APP_NAME = "resonate";
 export class AdkAdapter implements AgentRuntimeAdapter {
   name: "adk" = "adk";
   private readonly logger = new Logger(AdkAdapter.name);
-  private runner: InMemoryRunner | null = null;
 
   constructor(private readonly tools: ToolRegistry) {}
 
@@ -48,19 +48,17 @@ export class AdkAdapter implements AgentRuntimeAdapter {
     return this.withTimeout(this.callAgent(input, start), TIMEOUT_MS, start);
   }
 
-  private getRunner(): InMemoryRunner {
-    if (!this.runner) {
-      const agent = createCurationAgent(this.tools);
-      this.runner = new InMemoryRunner({ agent, appName: APP_NAME });
-    }
-    return this.runner;
+  private getRunnerForUser(userId: string): InMemoryRunner {
+    // Create a fresh runner per call — generation tools bind to the userId
+    const agent = createCurationAgent(this.tools, userId);
+    return new InMemoryRunner({ agent, appName: APP_NAME });
   }
 
   private async callAgent(
     input: AgentRuntimeInput,
     startMs: number
   ): Promise<AgentRuntimeResult> {
-    const runner = this.getRunner();
+    const runner = this.getRunnerForUser(input.userId);
     const userMessage = buildUserMessage(input);
 
     const newMessage: Content = {
@@ -135,10 +133,27 @@ export class AdkAdapter implements AgentRuntimeAdapter {
       }
     }
 
+    // Parse GENERATED: lines — AI-generated content via Lyria
+    const genPattern =
+      /GENERATED:\s*(.+?)\s*\|\s*COST:\s*\$?([\d.]+)\s*\|\s*PROMPT:\s*(.+)/gi;
+    const generationPicks: LlmGenerationPick[] = [];
+    let genMatch: RegExpExecArray | null;
+
+    while ((genMatch = genPattern.exec(text)) !== null) {
+      generationPicks.push({
+        jobId: genMatch[1].trim(),
+        costUsd: parseFloat(genMatch[2]),
+        prompt: genMatch[3].trim(),
+      });
+    }
+
+    const generationsUsed = generationPicks.length;
+    const generationSpendUsd = generationPicks.reduce((sum, g) => sum + g.costUsd, 0);
+
     const reasoningMatch = text.match(/REASONING:\s*(.+)/i);
     const reasoning = reasoningMatch?.[1]?.trim() ?? text.slice(0, 200);
 
-    if (picks.length === 0) {
+    if (picks.length === 0 && generationPicks.length === 0) {
       return {
         status: "rejected",
         reason: "llm_no_track_selected",
@@ -147,17 +162,22 @@ export class AdkAdapter implements AgentRuntimeAdapter {
       };
     }
 
-    this.logger.log(`ADK selected ${picks.length} track(s) in ${latencyMs}ms`);
+    this.logger.log(
+      `ADK selected ${picks.length} track(s) + ${generationsUsed} generation(s) in ${latencyMs}ms`
+    );
 
     return {
       status: "approved",
-      trackId: picks[0].trackId,
-      licenseType: picks[0].licenseType,
-      priceUsd: picks[0].priceUsd,
+      trackId: picks[0]?.trackId,
+      licenseType: picks[0]?.licenseType,
+      priceUsd: picks[0]?.priceUsd,
       reason: "adk_llm",
       reasoning,
       latencyMs,
       picks,
+      generationsUsed,
+      generationSpendUsd,
+      generationPicks,
     };
   }
 

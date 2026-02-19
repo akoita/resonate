@@ -186,6 +186,19 @@ export interface AgentDecisionMadeEvent extends BaseEvent {
   reason: string;
   reasoning?: string;
   latencyMs?: number;
+  /** Number of AI generations triggered during this session */
+  generationsUsed?: number;
+  /** Total USD spent on AI generation */
+  generationSpendUsd?: number;
+}
+
+export interface AgentGenerationTriggeredEvent extends BaseEvent {
+  eventName: "agent.generation_triggered";
+  sessionId: string;
+  jobId: string;
+  prompt: string;
+  costUsd: number;
+  reason: string;
 }
 
 export interface AgentEvaluatedEvent extends BaseEvent {
@@ -442,6 +455,7 @@ export type ResonateEvent =
   | AgentBudgetAlertEvent
   | AgentPurchaseCompletedEvent
   | AgentPurchaseFailedEvent
+  | AgentGenerationTriggeredEvent
   | GenerationStartedEvent
   | GenerationProgressEvent
   | GenerationCompletedEvent

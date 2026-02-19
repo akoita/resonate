@@ -20,14 +20,19 @@ jest.mock("../db/prisma", () => {
   };
 });
 
+const mockGenerationService = {
+  createGeneration: jest.fn().mockResolvedValue({ jobId: "gen-mock-1" }),
+} as any;
+
 describe("agent orchestrator", () => {
   it("orchestrates selection, mix, negotiation", async () => {
-    const tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
+    const tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
     const orchestrator = new AgentOrchestratorService(
       new AgentSelectorService(tools),
-      new AgentMixerService(),
+      new AgentMixerService(mockGenerationService),
       new AgentNegotiatorService(tools),
-      new EventBus()
+      new EventBus(),
+      mockGenerationService
     );
     const result = await orchestrator.orchestrate({
       sessionId: "session-1",

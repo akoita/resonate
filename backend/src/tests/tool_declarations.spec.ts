@@ -15,6 +15,10 @@ jest.mock("../db/prisma", () => ({
   },
 }));
 
+const mockGenerationService = {
+  createGeneration: jest.fn().mockResolvedValue({ jobId: "gen-mock-1" }),
+} as any;
+
 describe("tool declarations", () => {
   it("returns function declarations for all 4 tools", () => {
     const declarations = getToolDeclarations();
@@ -37,7 +41,7 @@ describe("tool declarations", () => {
   });
 
   it("executeTool dispatches catalog_search to catalog.search", async () => {
-    const registry = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
+    const registry = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
     const result = await executeTool(registry, {
       name: "catalog_search",
       args: { query: "electronic", limit: 5 },
@@ -47,7 +51,7 @@ describe("tool declarations", () => {
   });
 
   it("executeTool dispatches pricing_quote to pricing.quote", async () => {
-    const registry = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
+    const registry = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
     const result = await executeTool(registry, {
       name: "pricing_quote",
       args: { licenseType: "personal" },
@@ -57,7 +61,7 @@ describe("tool declarations", () => {
   });
 
   it("executeTool throws on unknown tool", async () => {
-    const registry = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
+    const registry = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
     await expect(
       executeTool(registry, { name: "nonexistent_tool", args: {} })
     ).rejects.toThrow("Tool not found");

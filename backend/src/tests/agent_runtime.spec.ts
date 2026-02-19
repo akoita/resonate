@@ -29,6 +29,10 @@ jest.mock("../db/prisma", () => ({
   },
 }));
 
+const mockGenerationService = {
+  createGeneration: jest.fn().mockResolvedValue({ jobId: "gen-mock-1" }),
+} as any;
+
 function makeInput(overrides: Record<string, any> = {}) {
   return {
     sessionId: "session-1",
@@ -44,7 +48,7 @@ describe("agent runtime", () => {
   let tools: ToolRegistry;
 
   beforeEach(() => {
-    tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
+    tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
   });
 
   it("falls back to orchestrator when mode is local", async () => {
@@ -153,7 +157,7 @@ describe("VertexAiAdapter", () => {
   let tools: ToolRegistry;
 
   beforeEach(() => {
-    tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
+    tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
   });
 
   it("throws when GOOGLE_AI_API_KEY is not set", async () => {
@@ -173,7 +177,7 @@ describe("AdkAdapter", () => {
   let tools: ToolRegistry;
 
   beforeEach(() => {
-    tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore());
+    tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
   });
 
   it("throws when GOOGLE_AI_API_KEY is not set", async () => {
