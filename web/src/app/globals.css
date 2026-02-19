@@ -4116,54 +4116,66 @@ a {
   border-top: 1px solid var(--color-border);
 }
 
-/* ---- Analytics Stats Bar & Rate Limit ---- */
+/* ---- Analytics Strip (Create + Library) ---- */
 
-.analytics-stats-bar {
+.create-analytics-strip {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  margin-bottom: var(--space-4);
-  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  margin-top: 20px;
+  margin-bottom: 16px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
-.ai-analytics-header {
-  backdrop-filter: blur(8px);
-  background: rgba(124, 92, 255, 0.05);
+.create-analytics-strip.ai-analytics-header {
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.08), rgba(124, 92, 255, 0.03));
   border-color: rgba(124, 92, 255, 0.15);
+  margin-bottom: 20px;
 }
 
-.generation-count-stat {
-  font-size: 13px;
-  color: var(--color-muted);
-  font-weight: 500;
+.create-analytics-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 20px;
 }
 
-.rate-limit-pill {
-  font-size: 12px;
+.create-analytics-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: rgba(255, 255, 255, 0.4);
   font-weight: 600;
-  padding: var(--space-1) var(--space-3);
-  border-radius: 999px;
-  transition: background 0.2s, color 0.2s;
 }
 
-.rate-limit-pill.ok {
-  background: rgba(34, 197, 94, 0.12);
-  color: #4ade80;
+.create-analytics-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.88);
+  font-variant-numeric: tabular-nums;
 }
 
-.rate-limit-pill.low {
-  background: rgba(245, 158, 11, 0.12);
-  color: #fbbf24;
+.create-analytics-divider {
+  width: 1px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
 }
 
-.rate-limit-pill.exhausted {
-  background: rgba(239, 68, 68, 0.12);
-  color: #f87171;
-}
+/* Rate-limit color states */
+.rate-status.ok    { color: #4ade80; }
+.rate-status.low   { color: #fbbf24; }
+.rate-status.exhausted { color: #f87171; }
+
+/* Keep old pill class for backwards compat but remove the standalone background */
+.rate-limit-pill { display: none; }
 
 .rate-limit-reset {
   font-size: 12px;

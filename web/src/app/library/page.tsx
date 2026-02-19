@@ -83,7 +83,11 @@ export default function LibraryPage() {
     const [aiCreations, setAiCreations] = useState<GenerationListItem[]>([]);
     const [aiCreationsLoading, setAiCreationsLoading] = useState(false);
     const [selectedGeneration, setSelectedGeneration] = useState<GenerationListItem | null>(null);
-    const [aiAnalytics, setAiAnalytics] = useState<GenerationAnalytics | null>(null);
+    const [aiAnalytics, setAiAnalytics] = useState<GenerationAnalytics>({
+        totalGenerations: 0,
+        totalCost: 0,
+        rateLimit: { remaining: 5, limit: 5, resetsAt: null },
+    });
 
     // Unified tracks (Local + Owned Stems), deduplicated by ID
     const unifiedTracks = useMemo(() => {
@@ -1030,24 +1034,33 @@ export default function LibraryPage() {
                                     )}
                                     {activeTab === "stems" && renderTrackList(ownedStems)}
                                     {activeTab === "ai_creations" && (
-                                        aiCreationsLoading ? (
-                                            <div className="home-subtitle">Loading AI creations...</div>
-                                        ) : aiCreations.length === 0 ? (
-                                            <div className="home-subtitle">
-                                                No AI-generated tracks yet.{" "}
-                                                <Link href="/create" className="text-accent">Create your first track</Link>
+                                        <>
+                                            <div className="create-analytics-strip ai-analytics-header">
+                                                <div className="create-analytics-item">
+                                                    <span className="create-analytics-label">Generations</span>
+                                                    <span className="create-analytics-value">{aiAnalytics.totalGenerations}</span>
+                                                </div>
+                                                <div className="create-analytics-divider" />
+                                                <div className="create-analytics-item">
+                                                    <span className="create-analytics-label">Total Cost</span>
+                                                    <span className="create-analytics-value">${aiAnalytics.totalCost.toFixed(2)}</span>
+                                                </div>
+                                                <div className="create-analytics-divider" />
+                                                <div className="create-analytics-item">
+                                                    <span className="create-analytics-label">Rate Limit</span>
+                                                    <span className={`create-analytics-value rate-status ${aiAnalytics.rateLimit.remaining === 0 ? "exhausted" : aiAnalytics.rateLimit.remaining <= 2 ? "low" : "ok"}`}>
+                                                        {aiAnalytics.rateLimit.remaining}/{aiAnalytics.rateLimit.limit}
+                                                    </span>
+                                                </div>
                                             </div>
-                                        ) : (
-                                            <>
-                                                {aiAnalytics && (
-                                                    <div className="analytics-stats-bar ai-analytics-header">
-                                                        <span className="generation-count-stat">🎵 {aiAnalytics.totalGenerations} generation{aiAnalytics.totalGenerations !== 1 ? "s" : ""}</span>
-                                                        <span className="generation-count-stat">💰 ${aiAnalytics.totalCost.toFixed(2)} total cost</span>
-                                                        <span className={`rate-limit-pill ${aiAnalytics.rateLimit.remaining === 0 ? "exhausted" : aiAnalytics.rateLimit.remaining <= 2 ? "low" : "ok"}`}>
-                                                            ⚡ {aiAnalytics.rateLimit.remaining}/{aiAnalytics.rateLimit.limit} remaining
-                                                        </span>
-                                                    </div>
-                                                )}
+                                            {aiCreationsLoading ? (
+                                                <div className="home-subtitle">Loading AI creations...</div>
+                                            ) : aiCreations.length === 0 ? (
+                                                <div className="home-subtitle">
+                                                    No AI-generated tracks yet.{" "}
+                                                    <Link href="/create" className="text-accent">Create your first track</Link>
+                                                </div>
+                                            ) : (
                                                 <div className="library-grid-view">
                                                     {aiCreations.map((gen) => {
                                                         const timeAgo = getRelativeTime(gen.generatedAt);
@@ -1093,78 +1106,78 @@ export default function LibraryPage() {
                                                         );
                                                     })}
                                                 </div>
+                                            )}
 
-                                                {/* Generation Detail Modal */}
-                                                {selectedGeneration && (
-                                                    <div className="ai-detail-overlay" onClick={() => setSelectedGeneration(null)}>
-                                                        <div className="ai-detail-modal" onClick={(e) => e.stopPropagation()}>
-                                                            <button className="ai-detail-close" onClick={() => setSelectedGeneration(null)} type="button">✕</button>
-                                                            <h3 className="ai-detail-title">Generation Details</h3>
+                                            {/* Generation Detail Modal */}
+                                            {selectedGeneration && (
+                                                <div className="ai-detail-overlay" onClick={() => setSelectedGeneration(null)}>
+                                                    <div className="ai-detail-modal" onClick={(e) => e.stopPropagation()}>
+                                                        <button className="ai-detail-close" onClick={() => setSelectedGeneration(null)} type="button">✕</button>
+                                                        <h3 className="ai-detail-title">Generation Details</h3>
+                                                        <div className="ai-detail-field">
+                                                            <span className="ai-detail-label">Prompt</span>
+                                                            <p className="ai-detail-value">{selectedGeneration.prompt}</p>
+                                                        </div>
+                                                        {selectedGeneration.negativePrompt && (
                                                             <div className="ai-detail-field">
-                                                                <span className="ai-detail-label">Prompt</span>
-                                                                <p className="ai-detail-value">{selectedGeneration.prompt}</p>
+                                                                <span className="ai-detail-label">Negative Prompt</span>
+                                                                <p className="ai-detail-value">{selectedGeneration.negativePrompt}</p>
                                                             </div>
-                                                            {selectedGeneration.negativePrompt && (
-                                                                <div className="ai-detail-field">
-                                                                    <span className="ai-detail-label">Negative Prompt</span>
-                                                                    <p className="ai-detail-value">{selectedGeneration.negativePrompt}</p>
-                                                                </div>
-                                                            )}
-                                                            <div className="ai-detail-grid">
-                                                                <div className="ai-detail-field">
-                                                                    <span className="ai-detail-label">Provider</span>
-                                                                    <span className="ai-detail-value">{selectedGeneration.provider}</span>
-                                                                </div>
-                                                                <div className="ai-detail-field">
-                                                                    <span className="ai-detail-label">Seed</span>
-                                                                    <span className="ai-detail-value">{selectedGeneration.seed ?? "Random"}</span>
-                                                                </div>
-                                                                <div className="ai-detail-field">
-                                                                    <span className="ai-detail-label">Duration</span>
-                                                                    <span className="ai-detail-value">{selectedGeneration.durationSeconds}s</span>
-                                                                </div>
-                                                                <div className="ai-detail-field">
-                                                                    <span className="ai-detail-label">Cost</span>
-                                                                    <span className="ai-detail-value">${selectedGeneration.cost.toFixed(2)}</span>
-                                                                </div>
+                                                        )}
+                                                        <div className="ai-detail-grid">
+                                                            <div className="ai-detail-field">
+                                                                <span className="ai-detail-label">Provider</span>
+                                                                <span className="ai-detail-value">{selectedGeneration.provider}</span>
                                                             </div>
                                                             <div className="ai-detail-field">
-                                                                <span className="ai-detail-label">Generated</span>
-                                                                <span className="ai-detail-value">{new Date(selectedGeneration.generatedAt).toLocaleString()}</span>
+                                                                <span className="ai-detail-label">Seed</span>
+                                                                <span className="ai-detail-value">{selectedGeneration.seed ?? "Random"}</span>
                                                             </div>
-                                                            <div className="ai-detail-actions">
-                                                                <button
-                                                                    className="result-action-btn"
-                                                                    onClick={() => {
-                                                                        const asTrack: LocalTrack = {
-                                                                            id: selectedGeneration.trackId,
-                                                                            title: selectedGeneration.prompt.slice(0, 60),
-                                                                            artist: "AI (Lyria)",
-                                                                            album: "AI Creations",
-                                                                            albumArtist: "AI (Lyria)",
-                                                                            year: null,
-                                                                            genre: "AI Generated",
-                                                                            duration: selectedGeneration.durationSeconds,
-                                                                            createdAt: selectedGeneration.generatedAt,
-                                                                            source: "remote",
-                                                                        };
-                                                                        void playQueue([asTrack], 0);
-                                                                    }}
-                                                                    type="button"
-                                                                >
-                                                                    ▶ Play
-                                                                </button>
-                                                                <Link href="/create">
-                                                                    <button className="result-action-btn primary" type="button">
-                                                                        ✨ Create New
-                                                                    </button>
-                                                                </Link>
+                                                            <div className="ai-detail-field">
+                                                                <span className="ai-detail-label">Duration</span>
+                                                                <span className="ai-detail-value">{selectedGeneration.durationSeconds}s</span>
+                                                            </div>
+                                                            <div className="ai-detail-field">
+                                                                <span className="ai-detail-label">Cost</span>
+                                                                <span className="ai-detail-value">${selectedGeneration.cost.toFixed(2)}</span>
                                                             </div>
                                                         </div>
+                                                        <div className="ai-detail-field">
+                                                            <span className="ai-detail-label">Generated</span>
+                                                            <span className="ai-detail-value">{new Date(selectedGeneration.generatedAt).toLocaleString()}</span>
+                                                        </div>
+                                                        <div className="ai-detail-actions">
+                                                            <button
+                                                                className="result-action-btn"
+                                                                onClick={() => {
+                                                                    const asTrack: LocalTrack = {
+                                                                        id: selectedGeneration.trackId,
+                                                                        title: selectedGeneration.prompt.slice(0, 60),
+                                                                        artist: "AI (Lyria)",
+                                                                        album: "AI Creations",
+                                                                        albumArtist: "AI (Lyria)",
+                                                                        year: null,
+                                                                        genre: "AI Generated",
+                                                                        duration: selectedGeneration.durationSeconds,
+                                                                        createdAt: selectedGeneration.generatedAt,
+                                                                        source: "remote",
+                                                                    };
+                                                                    void playQueue([asTrack], 0);
+                                                                }}
+                                                                type="button"
+                                                            >
+                                                                ▶ Play
+                                                            </button>
+                                                            <Link href="/create">
+                                                                <button className="result-action-btn primary" type="button">
+                                                                    ✨ Create New
+                                                                </button>
+                                                            </Link>
+                                                        </div>
                                                     </div>
-                                                )}
-                                            </>
-                                        )
+                                                </div>
+                                            )}
+                                        </>
                                     )}
                                 </>
                             )}
