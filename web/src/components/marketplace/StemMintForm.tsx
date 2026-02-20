@@ -18,7 +18,7 @@ export function StemMintForm({
   onSuccess,
   onError,
 }: StemMintFormProps) {
-  const { address, status, kernelAccount } = useAuth();
+  const { address, status } = useAuth();
   const { mint, pending, error: mintError, txHash } = useMintStem();
 
   const [amount, setAmount] = useState("1");
@@ -35,13 +35,11 @@ export function StemMintForm({
     }
 
     try {
-      const smartAccountAddress = (kernelAccount?.address || address) as Address;
       const royaltyReceiver = customRoyaltyReceiver
         ? (customRoyaltyReceiver as Address)
-        : smartAccountAddress;
+        : undefined;
 
       const hash = await mint({
-        to: smartAccountAddress,
         amount: BigInt(amount),
         tokenURI: metadataUri,
         royaltyReceiver,
