@@ -601,6 +601,112 @@ export function useMintStem() {
   return { mint, pending, error, txHash };
 }
 
+/**
+ * Hook to atomically mint and list a stem in a single UserOperation
+ */
+export function useMintAndListStem() {
+  const { publicClient, chainId } = useZeroDev();
+  const { address, status, kernelAccount } = useAuth();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const [txHash, setTxHash] = useState<string | null>(null);
+
+  const mintAndList = useCallback(
+    async (params: Omit<MintParams, 'to' | 'royaltyReceiver'> & Omit<ListParams, 'tokenId'>) => {
+      // Local development doesn't support batching via useContracts.ts yet
+      const isLocalDev = chainId === 31337 || (process.env.NEXT_PUBLIC_RPC_URL || "").includes("localhost");
+      if (isLocalDev) {
+        throw new Error("Batch transaction (mint + list) is only supported on testnet/mainnet with ZeroDev.");
+      }
+
+      if (status !== "authenticated" || !address) {
+        throw new Error("Wallet not connected");
+      }
+
+      setPending(true);
+      setError(null);
+      setTxHash(null);
+
+      try {
+        const addresses = getContractAddresses(chainId);
+
+        // 1. Predict the Token ID by reading the current total stems natively
+        const currentTotal = await publicClient.readContract({
+          address: addresses.stemNFT as Address,
+          abi: StemNFTABI,
+          functionName: "totalStems",
+        });
+        const expectedTokenId = (currentTotal as bigint) + BigInt(1);
+
+        // 2. Prepare Mint Call
+        const mintCall = {
+          to: addresses.stemNFT as Address,
+          data: (resolvedAddress: Address) => encodeFunctionData({
+            abi: StemNFTABI,
+            functionName: "mint",
+            args: [
+              resolvedAddress, // to
+              params.amount,
+              params.tokenURI,
+              resolvedAddress, // royaltyReceiver
+              BigInt(params.royaltyBps),
+              params.remixable,
+              params.parentIds,
+            ],
+          }),
+        };
+
+        // 3. Prepare Approve Call
+        const approveCall = {
+          to: addresses.stemNFT as Address,
+          data: encodeFunctionData({
+            abi: StemNFTABI,
+            functionName: "setApprovalForAll",
+            args: [addresses.marketplace as Address, true],
+          }),
+        };
+
+        // 4. Prepare List Call
+        const listCall = {
+          to: addresses.marketplace as Address,
+          data: encodeFunctionData({
+            abi: StemMarketplaceABI,
+            functionName: "list",
+            args: [
+              expectedTokenId,
+              params.amount,
+              params.pricePerUnit,
+              params.paymentToken,
+              params.durationSeconds,
+            ],
+          }),
+        };
+
+        // 5. Send as a single batch UserOperation
+        const hash = await sendBatchContractTransactions(
+          publicClient,
+          chainId,
+          [mintCall, approveCall, listCall],
+          address as Address,
+          kernelAccount
+        );
+
+        setTxHash(hash);
+        return { hash, expectedTokenId };
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        setError(error);
+        throw error;
+      } finally {
+        setPending(false);
+      }
+    },
+    [publicClient, address, status, chainId, kernelAccount]
+  );
+
+  return { mintAndList, pending, error, txHash };
+}
+
 // Helper to send batch transactions via ZeroDev kernel client
 async function sendBatchContractTransactions(
   publicClient: PublicClient,
