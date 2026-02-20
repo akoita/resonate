@@ -94,7 +94,7 @@ export default function MarketplacePage(props: {
 
     const { pending: buyPending } = useBuyStem();
     const { addToast } = useToast();
-    const { address: walletAddress } = useAuth();
+    const { address: walletAddress, kernelAccount } = useAuth();
     const { chainId } = useZeroDev();
 
     // Resolve the actual on-chain signer address.
@@ -105,16 +105,21 @@ export default function MarketplacePage(props: {
     useEffect(() => {
         if (!walletAddress) { setSignerAddress(null); return; }
         const rpcOverride = process.env.NEXT_PUBLIC_RPC_URL || "";
-            const isLocalRpc = rpcOverride.includes("localhost") || rpcOverride.includes("127.0.0.1");
-            const isLocalOrFork = chainId === 31337 || isLocalRpc;
+        const isLocalRpc = rpcOverride.includes("localhost") || rpcOverride.includes("127.0.0.1");
+        const isLocalOrFork = chainId === 31337 || isLocalRpc;
         if (isLocalOrFork) {
             import("../../lib/localAA").then(({ getLocalSignerAddress }) => {
                 setSignerAddress(getLocalSignerAddress(walletAddress as `0x${string}`).toLowerCase());
             }).catch(() => setSignerAddress(walletAddress.toLowerCase()));
         } else {
-            setSignerAddress(walletAddress.toLowerCase());
+            // Prefer Smart Account address on testnet/mainnet, otherwise fallback to EOA base address
+            if (kernelAccount && kernelAccount.address) {
+                setSignerAddress(kernelAccount.address.toLowerCase());
+            } else {
+                setSignerAddress(walletAddress.toLowerCase());
+            }
         }
-    }, [walletAddress, chainId]);
+    }, [walletAddress, chainId, kernelAccount]);
 
     // ---- Search debounce ----
     useEffect(() => {

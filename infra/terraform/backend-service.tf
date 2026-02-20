@@ -99,12 +99,16 @@ resource "google_cloud_run_v2_service" "backend" {
         )
       }
 
-      # Backend's own URL — passed to Demucs worker for progress callbacks
-      # Commented out to avoid Terraform self-referential cycle:
-      # env {
-      #   name  = "BACKEND_URL"
-      #   value = google_cloud_run_v2_service.backend.uri
-      # }
+      # Backend's own URL — passed to Demucs worker for progress callbacks & used for metadata URIs
+      env {
+        name  = "BACKEND_URL"
+        value = "https://resonate-${var.environment}-backend-${data.google_project.project.number}.${var.region}.run.app"
+      }
+
+      env {
+        name  = "FRONTEND_URL"
+        value = var.frontend_url
+      }
 
       # Database URL (connection via private VPC — not exposed externally)
       env {
