@@ -110,8 +110,13 @@ describe("catalog", () => {
     });
 
     it("searches releases by title", async () => {
-        await service.createRelease({ userId: "user-search-1", title: "Ambient Morning" });
-        await service.createRelease({ userId: "user-search-1", title: "Deep Night" });
+        const r1 = await service.createRelease({ userId: "user-search-1", title: "Ambient Morning" });
+        const r2 = await service.createRelease({ userId: "user-search-1", title: "Deep Night" });
+        // Search filters by status='ready', so update from draft
+        mockReleases.set(r1.id, { ...mockReleases.get(r1.id), status: "ready" });
+        mockReleases.set(r2.id, { ...mockReleases.get(r2.id), status: "ready" });
+        // Clear search cache to ensure fresh results
+        (service as any).searchCache.clear();
 
         const results = await service.search("ambient");
         expect(results.items.length).toBe(1);

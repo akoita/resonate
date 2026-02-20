@@ -10,6 +10,7 @@ jest.mock('../db/prisma', () => ({
         tracks: [{ id: 'track-1' }],
       }),
       findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn().mockResolvedValue(null),
       count: jest.fn().mockResolvedValue(0),
     },
     artist: {
@@ -265,7 +266,7 @@ describe('GenerationService', () => {
         prompt: 'Ambient forest vibes',
         negativePrompt: 'drums',
         seed: 99,
-        audioUri: 'local://gen-10.wav',
+        audioUri: '/catalog/releases/release-10/tracks/track-10/stream',
       });
     });
 
