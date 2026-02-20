@@ -617,11 +617,40 @@ async function sendBatchContractTransactions(
     throw new Error("Transaction sending requires ZeroDev configuration. Set NEXT_PUBLIC_ZERODEV_PROJECT_ID for testnet.");
   }
 
+  // Import ZeroDev SDK dynamically
   const sdk = await import("@zerodev/sdk");
-  const { createKernelAccountClient } = sdk;
+  const { createKernelAccountClient, constants } = sdk;
 
-  const account = kernelAccount;
-  if (!account) throw new Error("Kernel account is required for batch transactions");
+  let account = kernelAccount;
+
+  if (!account) {
+    // Fallback: create a new passkey validator (requires user interaction)
+    const passkey = await import("@zerodev/passkey-validator");
+    const { toPasskeyValidator, toWebAuthnKey, PasskeyValidatorContractVersion } = passkey;
+
+    const entryPoint = constants.getEntryPoint("0.7");
+    const kernelVersion = constants.KERNEL_V3_1;
+
+    const webAuthnKey = await toWebAuthnKey({
+      passkeyName: "Resonate",
+      passkeyServerUrl: process.env.NEXT_PUBLIC_PASSKEY_SERVER_URL || `https://passkeys.zerodev.app/api/v3/${projectId}`,
+      mode: passkey.WebAuthnMode.Login,
+      rpID: typeof window !== "undefined" ? window.location.hostname : undefined,
+    });
+
+    const passkeyValidator = await toPasskeyValidator(publicClient, {
+      webAuthnKey,
+      entryPoint,
+      kernelVersion,
+      validatorContractVersion: PasskeyValidatorContractVersion.V0_0_1_UNPATCHED,
+    });
+
+    account = await sdk.createKernelAccount(publicClient, {
+      plugins: { sudo: passkeyValidator },
+      entryPoint,
+      kernelVersion,
+    });
+  }
 
   const pimlicoApiKey = process.env.NEXT_PUBLIC_PIMLICO_API_KEY || "REDACTED_PIMLICO_KEY";
   const bundlerUrl = `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${pimlicoApiKey}`;
