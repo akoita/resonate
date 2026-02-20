@@ -26,6 +26,8 @@ test_audio.*
 !.env.deploy.example
 *.pem
 *.key
+db-env.yaml
+env.yaml
 
 # Terraform / Infrastructure
 infra/terraform/.terraform/

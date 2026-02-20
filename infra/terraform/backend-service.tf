@@ -78,6 +78,11 @@ resource "google_cloud_run_v2_service" "backend" {
       }
 
       env {
+        name  = "AA_BUNDLER"
+        value = "https://api.pimlico.io/v2/11155111/rpc?apikey=${var.pimlico_api_key}"
+      }
+
+      env {
         name  = "BLOCK_EXPLORER_URL"
         value = "https://sepolia.etherscan.io"
       }

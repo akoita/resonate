@@ -90,6 +90,13 @@ variable "sepolia_rpc_url" {
   default     = ""
 }
 
+variable "pimlico_api_key" {
+  description = "Pimlico API key for ERC-4337 bundler"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # --- IAP ---
 
 variable "iap_authorized_members" {

@@ -102,7 +102,7 @@ async function sendContractTransaction(
 
   // Use Pimlico bundler (self-funded, no paymaster).
   // ZeroDev's bundler rejects passkey-based accounts with "Unauthorized: wapk".
-  const pimlicoApiKey = process.env.NEXT_PUBLIC_PIMLICO_API_KEY || "REDACTED_PIMLICO_KEY";
+  const pimlicoApiKey = process.env.NEXT_PUBLIC_PIMLICO_API_KEY || "";
   const bundlerUrl = `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${pimlicoApiKey}`;
 
   // Custom transport that maps ZeroDev-proprietary methods to Pimlico equivalents.
@@ -761,7 +761,7 @@ async function sendBatchContractTransactions(
     });
   }
 
-  const pimlicoApiKey = process.env.NEXT_PUBLIC_PIMLICO_API_KEY || "REDACTED_PIMLICO_KEY";
+  const pimlicoApiKey = process.env.NEXT_PUBLIC_PIMLICO_API_KEY || "";
   const bundlerUrl = `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${pimlicoApiKey}`;
   const pimlicoTransport = http(bundlerUrl);
   
