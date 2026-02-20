@@ -42,7 +42,7 @@ async function sendContractTransaction(
   const isLocalDev = chainId === 31337 || isLocalRpc;
 
   if (isLocalDev) {
-    const { sendLocalTransaction } = await import("../lib/localAA");
+    const { sendLocalTransaction, getLocalSignerAddress } = await import("../lib/localAA");
 
     const effectiveAddress = userAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" as Address;
     const derivedLocalAddress = getLocalSignerAddress(effectiveAddress);
