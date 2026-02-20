@@ -245,7 +245,9 @@ export function useStemBalance(tokenId: bigint | undefined, account?: Address) {
     const fetchBalance = async () => {
       try {
         let resolvedAccount = targetAccount;
-        const isLocalOrFork = chainId === 31337 || (chainId === 11155111 && process.env.NODE_ENV === "development");
+        const rpcOverride = process.env.NEXT_PUBLIC_RPC_URL || "";
+            const isLocalRpc = rpcOverride.includes("localhost") || rpcOverride.includes("127.0.0.1");
+            const isLocalOrFork = chainId === 31337 || isLocalRpc;
         if (isLocalOrFork && !account) {
           const { getLocalSignerAddress } = await import("../lib/localAA");
           resolvedAccount = getLocalSignerAddress(targetAccount);

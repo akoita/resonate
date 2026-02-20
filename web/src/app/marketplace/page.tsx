@@ -104,7 +104,9 @@ export default function MarketplacePage(props: {
     const [signerAddress, setSignerAddress] = useState<string | null>(null);
     useEffect(() => {
         if (!walletAddress) { setSignerAddress(null); return; }
-        const isLocalOrFork = chainId === 31337 || (chainId === 11155111 && process.env.NODE_ENV === "development");
+        const rpcOverride = process.env.NEXT_PUBLIC_RPC_URL || "";
+            const isLocalRpc = rpcOverride.includes("localhost") || rpcOverride.includes("127.0.0.1");
+            const isLocalOrFork = chainId === 31337 || isLocalRpc;
         if (isLocalOrFork) {
             import("../../lib/localAA").then(({ getLocalSignerAddress }) => {
                 setSignerAddress(getLocalSignerAddress(walletAddress as `0x${string}`).toLowerCase());

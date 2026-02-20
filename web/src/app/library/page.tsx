@@ -137,7 +137,9 @@ export default function LibraryPage() {
             const addressesToQuery = new Set<string>([address]);
             
             // Allow derivation on Sepolia if we are in dev mode (handling local fork)
-            const isLocalOrFork = chainId === 31337 || (chainId === 11155111 && process.env.NODE_ENV === "development");
+            const rpcOverride = process.env.NEXT_PUBLIC_RPC_URL || "";
+            const isLocalRpc = rpcOverride.includes("localhost") || rpcOverride.includes("127.0.0.1");
+            const isLocalOrFork = chainId === 31337 || isLocalRpc;
 
             if (isLocalOrFork) {
                 const { getLocalSignerAddress } = await import("../../lib/localAA");
@@ -328,7 +330,7 @@ export default function LibraryPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     stemId: stem.id,
-                    walletAddress: chainId === 31337
+                    walletAddress: (chainId === 31337 || (process.env.NEXT_PUBLIC_RPC_URL || "").includes("localhost") || (process.env.NEXT_PUBLIC_RPC_URL || "").includes("127.0.0.1"))
                         ? (await import("../../lib/localAA")).getLocalSignerAddress(address as Address)
                         : address,
                 }),

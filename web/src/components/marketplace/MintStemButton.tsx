@@ -59,9 +59,9 @@ interface MintStemButtonProps {
 
 export function MintStemButton({
     stemId,
-    stemTitle,
+    
     stemType,
-    trackTitle,
+    
     metadataUri,
 }: MintStemButtonProps) {
     const { address, status, kernelAccount } = useAuth();
@@ -139,13 +139,17 @@ export function MintStemButton({
             const tokenUri = metadataUri || `${window.location.protocol}//${window.location.host}/api/metadata/${currentChainId}/stem/${stemId}`;
 
             let mintTo = (kernelAccount?.address || address) as Address;
-            const isLocalOrFork = currentChainId === "31337" || (currentChainId === "11155111" && process.env.NODE_ENV === "development");
-            if (isLocalOrFork) {
+            
+            const rpcOverride = process.env.NEXT_PUBLIC_RPC_URL || "";
+            const isLocalRpc = rpcOverride.includes("localhost") || rpcOverride.includes("127.0.0.1");
+            const isLocalDev = currentChainId === "31337" || isLocalRpc;
+            
+            if (isLocalDev) {
                 const { getLocalSignerAddress } = await import("../../lib/localAA");
                 mintTo = getLocalSignerAddress(address as Address); // User's own local account
             }
 
-            const hash = await mint({
+            await mint({
                 to: mintTo,
                 amount: BigInt(1),
                 tokenURI: tokenUri,
@@ -196,7 +200,7 @@ export function MintStemButton({
             // List for 0.01 ETH, 1 unit, 7 days
             const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
 
-            const hash = await list({
+            await list({
                 tokenId: mintedTokenId,
                 pricePerUnit: BigInt("10000000000000000"), // 0.01 ETH
                 amount: BigInt(1),
