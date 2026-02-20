@@ -24,12 +24,41 @@ jest.mock("../db/prisma", () => {
                 },
                 findMany: async (args: any) => {
                     let results = Array.from(mockReleases.values());
+
+                    // Handle status filter (supports { in: [...] } and string)
+                    if (args?.where?.status) {
+                        const statusFilter = args.where.status;
+                        if (statusFilter.in) {
+                            results = results.filter(r => statusFilter.in.includes(r.status));
+                        } else if (typeof statusFilter === 'string') {
+                            results = results.filter(r => r.status === statusFilter);
+                        }
+                    }
+
+                    // Handle primaryArtist filter (case-insensitive equals)
+                    if (args?.where?.primaryArtist) {
+                        const artistFilter = args.where.primaryArtist;
+                        if (artistFilter.equals) {
+                            const target = artistFilter.equals.toLowerCase();
+                            results = results.filter(r =>
+                                (r.primaryArtist || '').toLowerCase() === target
+                            );
+                        }
+                    }
+
+                    // Handle search (OR with title contains)
                     if (args?.where?.OR) {
                         const query = args.where.OR.find((cond: any) => cond.title?.contains)?.title?.contains?.toLowerCase();
                         if (query) {
                             results = results.filter(r => r.title.toLowerCase().includes(query));
                         }
                     }
+
+                    // Handle limit
+                    if (args?.take) {
+                        results = results.slice(0, args.take);
+                    }
+
                     return results;
                 },
             },
@@ -87,5 +116,59 @@ describe("catalog", () => {
         const results = await service.search("ambient");
         expect(results.items.length).toBe(1);
         expect((results.items[0] as any).title).toBe("Ambient Morning");
+    });
+
+    describe("listPublished", () => {
+        beforeEach(async () => {
+            // Seed releases with different statuses and artists
+            // Manually insert so we control status
+            mockReleases.set("r1", {
+                id: "r1", title: "Ready Track", status: "ready",
+                primaryArtist: "Human Artist", tracks: [],
+            });
+            mockReleases.set("r2", {
+                id: "r2", title: "AI Funky Beat", status: "published",
+                primaryArtist: "AI (Lyria)", tracks: [],
+            });
+            mockReleases.set("r3", {
+                id: "r3", title: "AI Chill Vibes", status: "published",
+                primaryArtist: "AI (Lyria)", tracks: [],
+            });
+            mockReleases.set("r4", {
+                id: "r4", title: "Draft Song", status: "draft",
+                primaryArtist: "Human Artist", tracks: [],
+            });
+        });
+
+        it("returns both 'ready' and 'published' releases", async () => {
+            const results = await service.listPublished();
+            expect(results.length).toBe(3); // r1 (ready) + r2, r3 (published)
+            const statuses = results.map((r: any) => r.status);
+            expect(statuses).toContain("ready");
+            expect(statuses).toContain("published");
+            expect(statuses).not.toContain("draft");
+        });
+
+        it("filters by primaryArtist (case-insensitive)", async () => {
+            const results = await service.listPublished(20, "AI (Lyria)");
+            expect(results.length).toBe(2);
+            expect(results.every((r: any) => r.primaryArtist === "AI (Lyria)")).toBe(true);
+        });
+
+        it("filters by primaryArtist case-insensitively", async () => {
+            const results = await service.listPublished(20, "ai (lyria)");
+            expect(results.length).toBe(2);
+        });
+
+        it("returns empty when artist has no published releases", async () => {
+            const results = await service.listPublished(20, "Unknown Artist");
+            expect(results.length).toBe(0);
+        });
+
+        it("excludes draft releases even with artist filter", async () => {
+            const results = await service.listPublished(20, "Human Artist");
+            expect(results.length).toBe(1);
+            expect(results[0].status).toBe("ready");
+        });
     });
 });

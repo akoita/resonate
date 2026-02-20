@@ -253,9 +253,14 @@ export class CatalogService implements OnModuleInit {
     });
   }
 
-  async listPublished(limit = 20) {
+  async listPublished(limit = 20, primaryArtist?: string) {
     return prisma.release.findMany({
-      where: { status: "ready" },
+      where: {
+        status: { in: ['ready', 'published'] },
+        ...(primaryArtist && {
+          primaryArtist: { equals: primaryArtist, mode: 'insensitive' as const },
+        }),
+      },
       select: {
         id: true,
         artistId: true,
@@ -663,6 +668,25 @@ export class CatalogService implements OnModuleInit {
     });
     if (!release || !release.artworkData) return null;
     return { data: release.artworkData, mimeType: release.artworkMimeType || "image/jpeg" };
+  }
+
+  async getTrackStream(trackId: string) {
+    // Find the track's stems, preferring the 'master' stem for generated tracks
+    const track = await prisma.track.findUnique({
+      where: { id: trackId },
+      select: {
+        stems: {
+          select: { id: true, type: true },
+          orderBy: { type: 'asc' },
+        },
+      },
+    });
+
+    if (!track || track.stems.length === 0) return null;
+
+    // Prefer master stem, fall back to first stem
+    const masterStem = track.stems.find(s => s.type === 'master') || track.stems[0];
+    return this.getStemBlob(masterStem.id);
   }
 
   async getStemBlob(stemId: string) {

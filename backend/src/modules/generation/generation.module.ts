@@ -5,6 +5,9 @@ import { GenerationController } from './generation.controller';
 import { GenerationService } from './generation.service';
 import { GenerationProcessor } from './generation.processor';
 import { LyriaClient } from './lyria.client';
+import { LyriaRealtimeService } from './lyria_realtime.service';
+import { SynthIdService } from './synthid.service';
+import { SynthIdController } from './synthid.controller';
 
 @Module({
   imports: [
@@ -17,8 +20,9 @@ import { LyriaClient } from './lyria.client';
     }),
     CatalogModule,
   ],
-  controllers: [GenerationController],
-  providers: [GenerationService, GenerationProcessor, LyriaClient],
-  exports: [GenerationService],
+  controllers: [GenerationController, SynthIdController],
+  providers: [GenerationService, GenerationProcessor, LyriaClient, LyriaRealtimeService, SynthIdService],
+  exports: [GenerationService, LyriaRealtimeService, SynthIdService],
 })
 export class GenerationModule {}
+

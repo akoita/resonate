@@ -892,6 +892,84 @@ a {
   }
 }
 
+/* ── Stem-Aware Generation — missing stem channel ── */
+
+.mixer-channel--missing {
+  border: 1px dashed rgba(124, 92, 255, 0.35) !important;
+  background: rgba(124, 92, 255, 0.04) !important;
+}
+
+.mixer-generate-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 38px;
+}
+
+.mixer-generate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(124, 92, 255, 0.4);
+  background: rgba(124, 92, 255, 0.1);
+  color: rgba(200, 180, 255, 0.9);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  letter-spacing: 0.02em;
+}
+
+.mixer-generate-btn:hover:not(:disabled) {
+  background: rgba(124, 92, 255, 0.25);
+  border-color: rgba(124, 92, 255, 0.7);
+  color: #fff;
+  box-shadow: 0 0 16px rgba(124, 92, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.mixer-generate-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.mixer-gen-sparkle {
+  font-size: 14px;
+}
+
+.mixer-gen-label {
+  font-size: 12px;
+}
+
+.mixer-generating {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(124, 92, 255, 0.8);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+@keyframes mixer-spin {
+  to { transform: rotate(360deg); }
+}
+
+.mixer-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(124, 92, 255, 0.2);
+  border-top-color: rgba(124, 92, 255, 0.8);
+  border-radius: 50%;
+  animation: mixer-spin 0.8s linear infinite;
+}
+
+.mixer-gen-text {
+  letter-spacing: 0.03em;
+}
+
 .hero-title {
   font-size: 48px;
   font-weight: 900;

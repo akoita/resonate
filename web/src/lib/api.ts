@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 export function getReleaseArtworkUrl(releaseId: string) {
   return `${API_BASE}/catalog/releases/${releaseId}/artwork`;
@@ -334,8 +334,10 @@ export async function listMyReleases(token: string) {
   }));
 }
 
-export async function listPublishedReleases(limit = 20) {
-  const releases = await apiRequest<Release[]>(`/catalog/published?limit=${limit}`, {});
+export async function listPublishedReleases(limit = 20, primaryArtist?: string) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (primaryArtist) params.set('primaryArtist', primaryArtist);
+  const releases = await apiRequest<Release[]>(`/catalog/published?${params}`, {});
   return releases.map(r => ({
     ...r,
     artworkUrl: r.artworkMimeType ? getReleaseArtworkUrl(r.id) : null
@@ -823,7 +825,7 @@ export type GenerationListItem = {
 export async function getMyGenerations(token: string) {
   return apiRequest<GenerationListItem[]>(
     "/generation/mine",
-    {},
+    { cache: "no-store" },
     token
   );
 }
@@ -841,7 +843,68 @@ export type GenerationAnalytics = {
 export async function getGenerationAnalytics(token: string) {
   return apiRequest<GenerationAnalytics>(
     "/generation/analytics",
+    { cache: "no-store" },
+    token
+  );
+}
+
+export async function publishAiGeneration(
+  token: string,
+  trackId: string,
+  formData: FormData
+) {
+  return apiRequest<{ success: boolean; releaseId: string }>(
+    `/generation/${trackId}/publish`,
+    { method: "PATCH", body: formData },
+    token
+  );
+}
+
+export async function generateArtwork(
+  token: string,
+  prompt: string
+): Promise<{ imageData: string; mimeType: string }> {
+  return apiRequest<{ imageData: string; mimeType: string }>(
+    "/generation/artwork",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    },
+    token
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Stem-Aware Generation — #336 subset
+// ---------------------------------------------------------------------------
+
+export type StemAnalysisResult = {
+  trackId: string;
+  trackTitle: string;
+  releaseGenre?: string;
+  presentTypes: string[];
+  missingTypes: string[];
+  suggestedPrompt: string;
+  negativePrompt: string;
+};
+
+export async function analyzeTrackStems(token: string, trackId: string) {
+  return apiRequest<StemAnalysisResult>(
+    `/generation/analyze/${trackId}`,
     {},
+    token
+  );
+}
+
+export async function generateComplementaryStem(
+  token: string,
+  trackId: string,
+  stemType: string
+) {
+  return apiRequest<{ jobId: string }>(
+    "/generation/complementary",
+    { method: "POST", body: JSON.stringify({ trackId, stemType }) },
     token
   );
 }

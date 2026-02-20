@@ -359,6 +359,26 @@
   color: #fdf2f8;
 }
 
+.stem-type-badge--ai {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.85), rgba(79, 70, 229, 0.85));
+  color: #ede9fe;
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.4);
+  animation: ai-glow 2s ease-in-out infinite alternate;
+}
+
+@keyframes ai-glow {
+  0% { box-shadow: 0 0 6px rgba(139, 92, 246, 0.3); }
+  100% { box-shadow: 0 0 12px rgba(139, 92, 246, 0.6); }
+}
+
+.stem-type-badge--synthid {
+  background: linear-gradient(135deg, rgba(20, 184, 166, 0.85), rgba(6, 148, 162, 0.85));
+  color: #ccfbf1;
+  box-shadow: 0 0 8px rgba(20, 184, 166, 0.35);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+}
+
 /* Expiry badge */
 .expiry-badge {
   padding: 3px 10px;

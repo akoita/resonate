@@ -67,11 +67,45 @@ export class IngestionService {
   }
 
   async handleFileUpload(input: {
-    artistId: string;
+    artistId?: string;
+    userId?: string;
     files: Express.Multer.File[];
     artwork?: Express.Multer.File;
     metadata?: any;
+    catalogTrackId?: string;
   }) {
+    // Resolve artistId: from body, or lookup from userId
+    let artistId = input.artistId;
+    if (!artistId && input.userId) {
+      const artist = await this.artistService.getProfile(input.userId);
+      artistId = artist?.id;
+    }
+    if (!artistId) {
+      throw new Error("Could not resolve artist for upload");
+    }
+    const resolvedArtistId: string = artistId;
+
+    // If catalogTrackId is provided, fetch the audio from catalog
+    if (input.catalogTrackId && input.files.length === 0) {
+      const trackStream = await this.catalogService.getTrackStream(input.catalogTrackId);
+      if (!trackStream) {
+        throw new Error(`Track ${input.catalogTrackId} audio not found in catalog`);
+      }
+      // Create a synthetic Multer-like file from the catalog data
+      const syntheticFile: Express.Multer.File = {
+        buffer: trackStream.data,
+        originalname: `${input.catalogTrackId}.wav`,
+        mimetype: trackStream.mimeType || "audio/wav",
+        fieldname: "files",
+        encoding: "7bit",
+        size: trackStream.data.length,
+        stream: null as any,
+        destination: "",
+        filename: "",
+        path: "",
+      };
+      input.files = [syntheticFile];
+    }
     const mm = await import("music-metadata");
     const releaseId = this.generateId("rel");
 
@@ -178,7 +212,7 @@ export class IngestionService {
       eventVersion: 1,
       occurredAt: new Date().toISOString(),
       releaseId,
-      artistId: input.artistId,
+      artistId: resolvedArtistId,
       checksum: "completed",
       artworkData,
       artworkMimeType,
@@ -209,7 +243,7 @@ export class IngestionService {
         eventVersion: 1,
         occurredAt: new Date().toISOString(),
         releaseId,
-        artistId: input.artistId,
+        artistId: resolvedArtistId,
         modelVersion: "test-mock-v1",
         tracks: mockProcessedTracks as any,
       });
@@ -227,7 +261,7 @@ export class IngestionService {
         data: undefined, // Remove Buffer - it's already uploaded to storage
       })),
     }));
-    await this.stemsQueue.add("process-stems", { releaseId, artistId: input.artistId, tracks: serializableTracks });
+    await this.stemsQueue.add("process-stems", { releaseId, artistId: resolvedArtistId, tracks: serializableTracks });
 
     return { releaseId, status: "processing" };
   }
@@ -247,6 +281,13 @@ export class IngestionService {
   async processStemsJob(input: { releaseId: string; artistId: string; tracks: any[] }) {
     console.log(`[Ingestion] Starting real stem processing for release ${input.releaseId}`);
 
+    // Guard: check if release is already ready (stems already processed)
+    const currentRelease = await this.catalogService.getRelease(input.releaseId);
+    if (currentRelease && currentRelease.status === 'ready') {
+      console.log(`[Ingestion] Release ${input.releaseId} is already ready, skipping stem processing`);
+      return;
+    }
+
     // Fetch artist profile to get the wallet address for encryption
     const artistProfile = await this.artistService.findById(input.artistId);
     const encryptionAddress = artistProfile?.payoutAddress || input.artistId; // Fallback to ID if address not found (though unlikely for valid artists)
@@ -258,6 +299,13 @@ export class IngestionService {
     for (const track of input.tracks) {
       // Yield event loop to allow heartbeats (important for large files)
       await new Promise(resolve => setImmediate(resolve));
+
+      // Guard: skip tracks that already have processed stems (more than just the original)
+      const existingTrack = currentRelease?.tracks?.find((t: any) => t.id === track.id);
+      if (existingTrack?.stems && existingTrack.stems.length > 1) {
+        console.log(`[Ingestion] Track ${track.id} already has ${existingTrack.stems.length} stems, skipping`);
+        continue;
+      }
 
       let attempt = 0;
       let lastError = null;
@@ -617,7 +665,7 @@ export class IngestionService {
     // Let's implement that.
 
     const tracksWithData = await Promise.all(release.tracks.map(async (t) => {
-      const originalStem = t.stems.find(s => s.type === 'ORIGINAL' || s.type === 'original');
+      const originalStem = t.stems.find(s => s.type === 'ORIGINAL' || s.type === 'original' || s.type === 'master');
       if (!originalStem) return null;
 
       const dbStem = await this.catalogService.getStemBlob(originalStem.id);
@@ -679,7 +727,7 @@ export class IngestionService {
       {
         jobId: release.id,
         removeOnComplete: true,
-        attempts: 3,
+        attempts: 1,
         backoff: {
           type: "exponential",
           delay: 5000,

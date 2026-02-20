@@ -41,6 +41,7 @@
     "class-validator": "^0.14.3",
     "google-auth-library": "^10.5.0",
     "music-metadata": "^7.14.0",
+    "node-id3": "^0.2.9",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "permissionless": "^0.3.4",

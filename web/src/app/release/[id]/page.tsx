@@ -127,11 +127,20 @@ export default function ReleaseDetails() {
   useEffect(() => {
     if (typeof id === "string") {
       getRelease(id)
-        .then(setRelease)
+        .then((r) => {
+          if (r) {
+            // If a ?rev= param is present (e.g. from post-publish toast), bust artwork cache
+            const rev = searchParams.get('rev');
+            if (rev && r.artworkUrl) {
+              r.artworkUrl = `${r.artworkUrl}?rev=${rev}`;
+            }
+          }
+          setRelease(r);
+        })
         .catch(console.error)
         .finally(() => setLoading(false));
     }
-  }, [id]);
+  }, [id, searchParams]);
 
   // Auto-enable mixer mode when navigating from Quick Mix CTA (?mixer=true&stem=vocals)
   useEffect(() => {
@@ -157,9 +166,14 @@ export default function ReleaseDetails() {
   const handlePlayTrack = (trackIndex: number, specificStem?: string) => {
     if (!release?.tracks) return;
     const playableTracks: LocalTrack[] = (release.tracks || []).map((t) => {
-      // Always use ORIGINAL stem for the main audio player
-      // When mixer mode is active, main audio will be muted and StemAudio components play
-      const originalStem = t.stems?.find(s => s.type === "ORIGINAL");
+      // Use ORIGINAL stem for uploaded tracks, or 'master' for AI-generated tracks
+      const originalStem = t.stems?.find(s => s.type === 'ORIGINAL')
+        || t.stems?.find(s => s.type === 'master')
+        || t.stems?.[0]; // fallback to first stem
+
+      // Construct stream URL: prefer stem URI, fall back to catalog stream endpoint
+      const streamUrl = originalStem?.uri
+        || (release.id && t.id ? `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000"}/catalog/releases/${release.id}/tracks/${t.id}/stream` : undefined);
 
       return {
         id: t.id,
@@ -171,7 +185,7 @@ export default function ReleaseDetails() {
         genre: release.genre || null,
         duration: getTrackDuration(t),
         createdAt: t.createdAt,
-        remoteUrl: originalStem?.uri,
+        remoteUrl: streamUrl,
         remoteArtworkUrl: release.artworkUrl || undefined,
         stems: t.stems,
       };
@@ -420,6 +434,37 @@ export default function ReleaseDetails() {
             <Button variant="ghost" className="btn-save" onClick={handleSaveToLibrary}>
               Save to Library
             </Button>
+            {/* Produce Stems: show when owner has tracks with only the original stem and not currently processing */}
+            {isOwner && release.status !== 'processing' && release.tracks?.some(t => !t.stems || t.stems.length <= 1) && (
+              <Button
+                variant="ghost"
+                className="btn-save"
+                style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
+                onClick={async () => {
+                  if (!token) return;
+                  try {
+                    const { retryRelease } = await import("../../../lib/api");
+                    await retryRelease(token, release.id);
+                    addToast({ type: "success", title: "Stems processing started!", message: "Your tracks are being separated into stems by Demucs." });
+                    // Optimistic: mark tracks as processing
+                    setRelease(prev => prev ? {
+                      ...prev,
+                      status: 'processing',
+                      tracks: prev.tracks?.map(t =>
+                        (!t.stems || t.stems.length <= 1)
+                          ? { ...t, processingStatus: 'separating' as const }
+                          : t
+                      )
+                    } : null);
+                  } catch (e) {
+                    console.error(e);
+                    addToast({ type: "error", title: "Failed", message: "Could not start stem production." });
+                  }
+                }}
+              >
+                🎛️ Produce Stems
+              </Button>
+            )}
             {isOwner && (release.status === 'failed' || release.status === 'processing' || release.tracks?.some(t => t.processingStatus === 'failed')) && (
               <Button
                 className="btn-retry"
@@ -447,9 +492,25 @@ export default function ReleaseDetails() {
                 {release.status === 'failed' || release.tracks?.some(t => t.processingStatus === 'failed') ? 'Retry Processing' : 'Restart Processing'}
               </Button>
             )}
+            {/* Global Mixer Toggle - only show when track has Demucs-separated stems */}
+            {currentTrack && currentTrack.stems && currentTrack.stems.some(s => !['ORIGINAL', 'master', 'other'].includes(s.type)) && (
+              <Button
+                variant="ghost"
+                className={`btn-mixer ${mixerMode ? 'active' : ''}`}
+                onClick={toggleMixerMode}
+              >
+                🎚️ Mixer
+              </Button>
+            )}
+            {/* Three-dots menu at the rightmost position */}
             {isOwner && (
               <TrackActionMenu
                 actions={[
+                  {
+                    label: "Edit Cover",
+                    icon: <span>🖼️</span>,
+                    onClick: () => artworkInputRef.current?.click(),
+                  },
                   ...(release.status === 'processing' ? [{
                     label: "Cancel Processing",
                     icon: <span>⏹</span>,
@@ -490,21 +551,6 @@ export default function ReleaseDetails() {
                   },
                 ]}
               />
-            )}
-            {isOwner && (
-              <Button variant="ghost" className="btn-save" onClick={() => artworkInputRef.current?.click()}>
-                Edit Cover
-              </Button>
-            )}
-            {/* Global Mixer Toggle - only show when a track with stems is playing */}
-            {currentTrack && currentTrack.stems && currentTrack.stems.length > 1 && (
-              <Button
-                variant="ghost"
-                className={`btn-mixer ${mixerMode ? 'active' : ''}`}
-                onClick={toggleMixerMode}
-              >
-                🎚️ Mixer
-              </Button>
             )}
           </div>
         </div>
@@ -987,6 +1033,12 @@ export default function ReleaseDetails() {
         .artist-name {
           font-weight: 800;
           color: #fff;
+          cursor: pointer;
+          transition: color 0.2s;
+        }
+        .artist-name:hover {
+          color: var(--color-accent);
+          text-decoration: underline;
         }
 
         .dot {

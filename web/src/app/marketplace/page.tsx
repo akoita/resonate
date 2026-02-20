@@ -34,6 +34,10 @@ interface ListingData {
         uri?: string;
         artistId?: string;
         releaseId?: string;
+        isAiGenerated?: boolean;
+        generationProvider?: string;
+        synthIdVerified?: boolean;
+        synthIdConfidence?: number;
     } | null;
 }
 
@@ -451,6 +455,19 @@ export default function MarketplacePage(props: {
 
                                     {/* Badges */}
                                     <div className="stem-card__badges">
+                                        {listing.stem?.isAiGenerated && (
+                                            <span className="stem-type-badge stem-type-badge--ai" title={listing.stem.generationProvider || 'AI Generated'}>
+                                                🤖 AI
+                                            </span>
+                                        )}
+                                        {listing.stem?.synthIdVerified && (
+                                            <span
+                                                className="stem-type-badge stem-type-badge--synthid"
+                                                title={`SynthID Verified (${Math.round((listing.stem.synthIdConfidence ?? 0) * 100)}% confidence)`}
+                                            >
+                                                ✓ SynthID
+                                            </span>
+                                        )}
                                         {listing.stem?.type && (
                                             <span className={`stem-type-badge ${stemTypeBadgeClass(listing.stem.type)}`}>
                                                 {listing.stem.type}

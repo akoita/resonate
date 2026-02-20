@@ -24,15 +24,20 @@ export function useGeneration(token: string | null, artistId: string | null) {
   const [result, setResult] = useState<GenerationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const activeJobRef = useRef<string | null>(null);
+  const completedRef = useRef(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleGenerationStatus = useCallback((data: GenerationStatusUpdate) => {
     if (activeJobRef.current && data.jobId === activeJobRef.current) {
       if (data.trackId && data.releaseId) {
+        completedRef.current = true;
         setResult({ trackId: data.trackId, releaseId: data.releaseId });
         setState("complete");
+        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
       } else if (data.error) {
         setError(data.error);
         setState("failed");
+        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
       }
     }
   }, []);
@@ -77,16 +82,28 @@ export function useGeneration(token: string | null, artistId: string | null) {
 
         // Poll for status in case WebSocket misses
         const pollInterval = setInterval(async () => {
+          // If already completed (via WebSocket), stop polling immediately
+          if (completedRef.current) {
+            clearInterval(pollInterval);
+            pollRef.current = null;
+            return;
+          }
           try {
             const status = await getGenerationStatus(token, res.jobId);
+            if (completedRef.current) return; // Double-check after async call
             if (status.status === "complete" && status.trackId && status.releaseId) {
+              completedRef.current = true;
               setResult({ trackId: status.trackId, releaseId: status.releaseId });
               setState("complete");
               clearInterval(pollInterval);
+              pollRef.current = null;
             } else if (status.status === "failed") {
+              // Ignore "Job not found" if we already have a result or it completed
+              if (status.error === "Job not found" && completedRef.current) return;
               setError(status.error || "Generation failed");
               setState("failed");
               clearInterval(pollInterval);
+              pollRef.current = null;
             } else if (status.status === "generating" || status.status === "storing") {
               setState(status.status);
             }
@@ -94,9 +111,10 @@ export function useGeneration(token: string | null, artistId: string | null) {
             // Ignore polling errors
           }
         }, 3000);
+        pollRef.current = pollInterval;
 
         // Stop polling after 5 minutes
-        setTimeout(() => clearInterval(pollInterval), 5 * 60 * 1000);
+        setTimeout(() => { clearInterval(pollInterval); pollRef.current = null; }, 5 * 60 * 1000);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Failed to start generation";
         setError(message);
@@ -112,6 +130,8 @@ export function useGeneration(token: string | null, artistId: string | null) {
     setResult(null);
     setError(null);
     activeJobRef.current = null;
+    completedRef.current = false;
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   }, []);
 
   return {
@@ -121,5 +141,9 @@ export function useGeneration(token: string | null, artistId: string | null) {
     error,
     startGeneration,
     reset,
+    restoreState: useCallback((restoredState: GenerationState, restoredResult: GenerationResult | null) => {
+      setState(restoredState);
+      setResult(restoredResult);
+    }, []),
   };
 }

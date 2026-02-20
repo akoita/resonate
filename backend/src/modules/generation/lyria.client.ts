@@ -88,13 +88,30 @@ export class LyriaClient {
 
     const responseData = await response.json() as any;
 
-    // Extract audio bytes from the Vertex AI response
+    // Log response structure for debugging
+    this.logger.debug(`Lyria API response keys: ${JSON.stringify(Object.keys(responseData))}`);
     const prediction = responseData.predictions?.[0];
-    if (!prediction?.audioContent) {
-      throw new Error('Lyria API response missing audioContent');
+    if (prediction) {
+      this.logger.debug(`Prediction keys: ${JSON.stringify(Object.keys(prediction))}`);
+    } else {
+      this.logger.warn(`No predictions array. Full response: ${JSON.stringify(responseData).substring(0, 500)}`);
     }
 
-    const audioBytes = Buffer.from(prediction.audioContent, 'base64');
+    // Extract audio bytes — try multiple possible field names
+    const audioB64 =
+      prediction?.audioContent ??
+      prediction?.audio_content ??
+      prediction?.bytesBase64Encoded ??
+      prediction?.audio?.audioContent ??
+      prediction?.generatedAudio ??
+      // Gemini-style response
+      responseData?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+
+    if (!audioB64) {
+      throw new Error(`Lyria API response missing audioContent. Response shape: ${JSON.stringify(responseData).substring(0, 500)}`);
+    }
+
+    const audioBytes = Buffer.from(audioB64, 'base64');
     this.logger.log(`Generated ${audioBytes.length} bytes of audio`);
 
     return {

@@ -208,8 +208,8 @@ function PlayerContent() {
             </div>
           )}
           
-          {/* Mixer Toggle - floating on artwork */}
-          {currentTrack && (
+          {/* Mixer Toggle - only show when track has Demucs-separated stems */}
+          {currentTrack && currentTrack.stems?.some(s => !['ORIGINAL', 'master', 'other'].includes(s.type)) && (
             <button 
               className={`artwork-mixer-toggle ${mixerMode ? 'active' : ''}`}
               onClick={toggleMixerMode}

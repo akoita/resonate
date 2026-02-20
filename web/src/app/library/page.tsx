@@ -12,7 +12,7 @@ import {
     saveTracksMetadata,
     LocalTrack,
 } from "../../lib/localLibrary";
-import { getMyGenerations, getGenerationAnalytics, type GenerationListItem, type GenerationAnalytics } from "../../lib/api";
+import { getMyGenerations, getGenerationAnalytics, type GenerationListItem, type GenerationAnalytics, API_BASE } from "../../lib/api";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { useZeroDev } from "../../components/auth/ZeroDevProviderClient";
 import { type Address } from "viem";
@@ -1093,6 +1093,7 @@ export default function LibraryPage() {
                                                                                 duration: gen.durationSeconds,
                                                                                 createdAt: gen.generatedAt,
                                                                                 source: "remote",
+                                                                                remoteUrl: gen.audioUri ? (gen.audioUri.startsWith('http') ? gen.audioUri : `${API_BASE}/${gen.audioUri.replace(/^\//, '')}`) : undefined,
                                                                             };
                                                                             void playQueue([asTrack], 0);
                                                                         }}
@@ -1161,6 +1162,7 @@ export default function LibraryPage() {
                                                                         duration: selectedGeneration.durationSeconds,
                                                                         createdAt: selectedGeneration.generatedAt,
                                                                         source: "remote",
+                                                                        remoteUrl: selectedGeneration.audioUri ? (selectedGeneration.audioUri.startsWith('http') ? selectedGeneration.audioUri : `${API_BASE}/${selectedGeneration.audioUri.replace(/^\//, '')}`) : undefined,
                                                                     };
                                                                     void playQueue([asTrack], 0);
                                                                 }}

@@ -1,10 +1,15 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import AuthGate from "../../components/auth/AuthGate";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { useGeneration } from "../../hooks/useGeneration";
-import { getArtistMe, uploadStems, getReleaseArtworkUrl, saveLibraryTrackAPI, getGenerationAnalytics, GenerationAnalytics } from "../../lib/api";
+import { getArtistMe, uploadStems, getReleaseArtworkUrl, saveLibraryTrackAPI, getGenerationAnalytics, GenerationAnalytics, publishAiGeneration } from "../../lib/api";
+import { AICreationPublishModal, PublishMetadata } from "../../components/create/AICreationPublishModal";
+import { DuplicatePublishWarningModal } from "../../components/create/DuplicatePublishWarningModal";
+import { useToast } from "../../components/ui/Toast";
 import "../../styles/create.css";
 
 const STYLE_PRESETS = [
@@ -19,7 +24,10 @@ const STYLE_PRESETS = [
 
 export default function CreatePage() {
   const { token, status } = useAuth();
+  const router = useRouter();
+  const { addToast } = useToast();
   const [artistId, setArtistId] = useState<string | null>(null);
+  const [artistDisplayName, setArtistDisplayName] = useState<string>("");
   const [prompt, setPrompt] = useState("");
   const [activeStyles, setActiveStyles] = useState<Set<string>>(new Set());
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -31,14 +39,50 @@ export default function CreatePage() {
     totalCost: 0,
     rateLimit: { remaining: 5, limit: 5, resetsAt: null },
   });
+  const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
+  const [isDuplicateWarningOpen, setIsDuplicateWarningOpen] = useState(false);
+  const [publishActionQueue, setPublishActionQueue] = useState<'library' | 'demucs' | null>(null);
+  const [hasPublished, setHasPublished] = useState(false);
 
-  const { state, result, error, startGeneration, reset } = useGeneration(token, artistId);
+  const { state, result, error, startGeneration, reset, restoreState } = useGeneration(token, artistId);
+
+  // Restore session state on mount
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem("resonate_ai_session");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.prompt) setPrompt(parsed.prompt);
+        if (parsed.hasPublished) setHasPublished(parsed.hasPublished);
+        if (parsed.state && parsed.result) {
+          restoreState(parsed.state, parsed.result);
+        }
+      }
+    } catch { /* ignore parse errors */ }
+  }, [restoreState]);
+
+  // Guard: skip idle-cleanup on initial mount so the restore effect can read sessionStorage first
+  const hasMountedRef = useRef(false);
+
+  // Save session state when it changes
+  useEffect(() => {
+    if (state === "complete" && result) {
+      hasMountedRef.current = true;
+      sessionStorage.setItem("resonate_ai_session", JSON.stringify({ prompt, state, result, hasPublished }));
+    } else if (state === "idle" && hasMountedRef.current) {
+      sessionStorage.removeItem("resonate_ai_session");
+      setHasPublished(false);
+    }
+  }, [state, result, prompt, hasPublished]);
 
   // Fetch artist profile on mount
   useEffect(() => {
     if (token && status === "authenticated") {
       getArtistMe(token).then((artist) => {
-        if (artist) setArtistId(artist.id);
+        if (artist) {
+          setArtistId(artist.id);
+          setArtistDisplayName(artist.displayName || "");
+        }
       }).catch(() => { /* ignore */ });
       getGenerationAnalytics(token)
         .then(setAnalytics)
@@ -84,44 +128,126 @@ export default function CreatePage() {
     });
   }, [prompt, startGeneration, buildNegativePrompt, reset]);
 
-  const handleSendToDemucs = useCallback(async () => {
-    if (!result?.trackId || !token) return;
+  const handleSendToDemucs = useCallback(() => {
+    setPublishActionQueue("demucs");
+    if (hasPublished) {
+      setIsDuplicateWarningOpen(true);
+      return;
+    }
+    setIsPublishModalOpen(true);
+  }, [hasPublished]);
+
+  const handleSaveToLibrary = useCallback(() => {
+    setPublishActionQueue("library");
+    if (hasPublished) {
+      setIsDuplicateWarningOpen(true);
+      return;
+    }
+    setIsPublishModalOpen(true);
+  }, [hasPublished]);
+
+  const handleDuplicateWarningConfirm = useCallback(() => {
+    setIsDuplicateWarningOpen(false);
+    setIsPublishModalOpen(true);
+  }, []);
+
+  const handlePublishConfirm = useCallback(async (metadata: PublishMetadata) => {
+    if (!result?.trackId || !token || !publishActionQueue) return;
     try {
       const formData = new FormData();
-      formData.append("trackId", result.trackId);
-      formData.append("source", "ai_generated");
-      await uploadStems(token, formData);
-    } catch {
-      // toast will handle
-    }
-  }, [result, token]);
+      formData.append("title", metadata.title);
+      formData.append("artist", metadata.artist);
+      if (metadata.remixedBy) formData.append("featuredArtists", metadata.remixedBy);
+      if (metadata.genre) formData.append("genre", metadata.genre);
+      if (metadata.label) formData.append("label", metadata.label);
+      if (metadata.releaseDate) formData.append("releaseDate", metadata.releaseDate);
+      console.log("[AI Publish] artworkBlob:", metadata.artworkBlob ? `${metadata.artworkBlob.size} bytes, type=${metadata.artworkBlob.type}` : "none");
+      if (metadata.artworkBlob) formData.append("artworkBlob", metadata.artworkBlob, "cover.png");
 
-  const handleSaveToLibrary = useCallback(async () => {
-    if (!result?.trackId || !token) return;
-    try {
-      await saveLibraryTrackAPI(token, {
-        id: result.trackId,
-        source: "remote",
-        title: prompt.trim().slice(0, 60) || "AI Generated Track",
-        artist: "AI (Lyria)",
-        catalogTrackId: result.trackId,
+      // First publish metadata to the global catalog release
+      const publishResult = await publishAiGeneration(token, result.trackId, formData);
+
+      // Use the authoritative releaseId from the backend response
+      let targetReleaseId = publishResult?.releaseId ?? result.releaseId;
+
+      if (publishActionQueue === "library") {
+        await saveLibraryTrackAPI(token, {
+          id: result.trackId,
+          source: "remote",
+          title: metadata.title,
+          artist: metadata.artist,
+          album: metadata.title, // Use title as album for singles
+          albumArtist: metadata.artist,
+          genre: metadata.genre,
+          year: metadata.releaseDate ? parseInt(metadata.releaseDate.split("-")[0]) : undefined,
+          catalogTrackId: result.trackId,
+          remoteUrl: `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000"}/catalog/releases/${targetReleaseId}/tracks/${result.trackId}/stream`,
+          remoteArtworkUrl: getReleaseArtworkUrl(targetReleaseId),
+        });
+      } else if (publishActionQueue === "demucs") {
+        const demucsFormData = new FormData();
+        demucsFormData.append("trackId", result.trackId);
+        demucsFormData.append("source", "ai_generated");
+        // Send structured metadata matching what ingestion service expects
+        demucsFormData.append("metadata", JSON.stringify({
+          title: metadata.title,
+          primaryArtist: metadata.artist,
+          genre: metadata.genre,
+          label: metadata.label,
+          releaseDate: metadata.releaseDate,
+          tracks: [{
+            title: metadata.title,
+            artist: metadata.artist,
+          }],
+        }));
+        if (metadata.artworkBlob) {
+          demucsFormData.append("artwork", metadata.artworkBlob, "cover.png");
+        }
+        const demucsResult = await uploadStems(token, demucsFormData);
+
+        // Demucs creates a new release — use that ID for navigation
+        if (demucsResult?.releaseId) {
+          targetReleaseId = demucsResult.releaseId;
+        }
+      }
+      setHasPublished(true);
+
+      // Show clickable toast linking to the release (with cache-busting rev to show fresh artwork)
+      const actionLabel = publishActionQueue === "demucs" ? "sent to Demucs" : "published";
+      addToast({
+        type: "success",
+        title: `Track ${actionLabel}!`,
+        message: "Click here to view your release →",
+        duration: 8000,
+        onClick: () => router.push(`/release/${targetReleaseId}?rev=${Date.now()}`),
       });
-    } catch {
-      // toast will handle
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsPublishModalOpen(false);
+      setPublishActionQueue(null);
     }
-  }, [result, token, prompt]);
+  }, [result, token, publishActionQueue, addToast, router]);
 
   const getStreamUrl = useCallback(() => {
     if (!result) return "";
     return `${getReleaseArtworkUrl(result.releaseId).replace("/artwork", `/tracks/${result.trackId}/stream`)}`;
   }, [result]);
 
-  const handleDownload = useCallback(() => {
+  const handleDownload = useCallback(async () => {
     if (!result) return;
-    const link = document.createElement("a");
-    link.href = getStreamUrl();
-    link.download = `${prompt.trim().slice(0, 40) || "ai-track"}.wav`;
-    link.click();
+    try {
+      const response = await fetch(getStreamUrl());
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${prompt.trim().slice(0, 40) || "ai-track"}.wav`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (err) {
+      console.error("Download failed:", err);
+    }
   }, [result, getStreamUrl, prompt]);
 
   const isGenerating = state !== "idle" && state !== "complete" && state !== "failed";
@@ -264,7 +390,7 @@ export default function CreatePage() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
               </svg>
-              <span>Set up an <a href="/settings" style={{ color: "inherit", textDecoration: "underline" }}>artist profile</a> to start generating.</span>
+              <span>Set up an <Link href="/artist/onboarding?returnUrl=/create" style={{ color: "inherit", textDecoration: "underline" }}>artist profile</Link> to start generating.</span>
             </div>
           )}
         </div>
@@ -352,6 +478,26 @@ export default function CreatePage() {
           </div>
         )}
       </div>
+
+          <DuplicatePublishWarningModal
+            isOpen={isDuplicateWarningOpen}
+            onConfirm={handleDuplicateWarningConfirm}
+            onCancel={() => setIsDuplicateWarningOpen(false)}
+          />
+
+          <AICreationPublishModal
+            isOpen={isPublishModalOpen}
+            onClose={() => {
+              setIsPublishModalOpen(false);
+              setPublishActionQueue(null);
+            }}
+            onPublish={handlePublishConfirm}
+            defaultTitle={prompt.trim().slice(0, 60) || "AI Generated Track"}
+            defaultAudioUrl={getStreamUrl()}
+            action={publishActionQueue ?? 'library'}
+            userDisplayName={artistDisplayName}
+            token={token ?? undefined}
+          />
     </AuthGate>
   );
 }

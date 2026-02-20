@@ -42,6 +42,13 @@ const mockQueue = {
   getJob: jest.fn(),
 };
 
+const mockConfigService = {
+  get: jest.fn().mockImplementation((key: string, defaultValue: any) => {
+    if (key === 'STRIKE_RATE_LIMIT') return 5;
+    return defaultValue;
+  }),
+};
+
 describe('GenerationService', () => {
   let service: GenerationService;
   let eventBus: EventBus;
@@ -54,6 +61,7 @@ describe('GenerationService', () => {
       mockStorageProvider as any,
       mockCatalogService,
       mockLyriaClient as any,
+      mockConfigService as any,
       mockQueue as any,
     );
   });

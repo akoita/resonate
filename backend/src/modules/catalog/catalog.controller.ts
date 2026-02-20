@@ -34,7 +34,7 @@ export class CatalogController {
     }
     res.set({
       "Content-Type": artwork.mimeType,
-      "Cache-Control": "public, max-age=31536000",
+      "Cache-Control": "no-cache",
     });
     return new StreamableFile(artwork.data);
   }
@@ -90,6 +90,55 @@ export class CatalogController {
     res.end(stem.data);
   }
 
+  @Get("releases/:releaseId/tracks/:trackId/stream")
+  async getTrackStream(
+    @Param("trackId") trackId: string,
+    @Headers("range") range: string,
+    @Res() res: Response,
+  ) {
+    const streamData = await this.catalogService.getTrackStream(trackId);
+    if (!streamData) {
+      res.status(404).send("Track audio not found");
+      return;
+    }
+
+    const fileSize = streamData.data.length;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+      if (start >= fileSize) {
+        res.status(416).set({ "Content-Range": `bytes */${fileSize}` }).send();
+        return;
+      }
+
+      const chunksize = end - start + 1;
+      const file = streamData.data.subarray(start, end + 1);
+
+      res.status(206).set({
+        "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+        "Accept-Ranges": "bytes",
+        "Content-Length": chunksize,
+        "Content-Type": streamData.mimeType || "audio/wav",
+        "Cache-Control": "public, max-age=31536000",
+      });
+
+      res.end(file);
+      return;
+    }
+
+    res.set({
+      "Content-Length": fileSize,
+      "Content-Type": streamData.mimeType || "audio/wav",
+      "Accept-Ranges": "bytes",
+      "Cache-Control": "public, max-age=31536000",
+    });
+
+    res.end(streamData.data);
+  }
+
   @Get("stems/:stemId/preview")
   async getStemPreview(
     @Param("stemId") stemId: string,
@@ -137,11 +186,15 @@ export class CatalogController {
   }
 
   @Get("published")
-  listPublished(@Query("limit") limit?: string) {
-    console.log(`[Catalog] Fetching published releases (limit: ${limit})`);
+  listPublished(
+    @Query("limit") limit?: string,
+    @Query("primaryArtist") primaryArtist?: string,
+  ) {
+    console.log(`[Catalog] Fetching published releases (limit: ${limit}, artist: ${primaryArtist})`);
     const parsedLimit = limit ? Number(limit) : 20;
     return this.catalogService.listPublished(
       Number.isNaN(parsedLimit) ? 20 : parsedLimit,
+      primaryArtist,
     );
   }
 

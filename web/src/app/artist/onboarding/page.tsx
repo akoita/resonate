@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { createArtist, getArtistMe } from "../../../lib/api";
 import { Button } from "../../../components/ui/Button";
@@ -12,6 +12,7 @@ import AuthGate from "../../../components/auth/AuthGate";
 export default function ArtistOnboardingPage() {
   const { token, address } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { addToast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -27,7 +28,8 @@ export default function ArtistOnboardingPage() {
         try {
           const artist = await getArtistMe(token);
           if (artist) {
-            router.push("/artist/upload");
+            const returnUrl = searchParams.get("returnUrl");
+            router.push(returnUrl || "/artist/upload");
             return;
           }
         } catch (err) {
@@ -37,7 +39,7 @@ export default function ArtistOnboardingPage() {
       setIsLoading(false);
     }
     checkExistingArtist();
-  }, [token, router]);
+  }, [token, router, searchParams]);
 
   // Keep payout address in sync with wallet
   useEffect(() => {
@@ -70,7 +72,8 @@ export default function ArtistOnboardingPage() {
         title: "Welcome to Resonate!",
         message: "Your artist profile has been created successfully.",
       });
-      router.push("/artist/upload");
+      const returnUrl = searchParams.get("returnUrl");
+      router.push(returnUrl || "/artist/upload");
     } catch (err) {
       addToast({
         type: "error",

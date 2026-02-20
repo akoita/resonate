@@ -416,6 +416,23 @@ export interface GenerationFailedEvent extends BaseEvent {
   error: string;
 }
 
+// ============ Realtime Events ============
+
+export interface RealtimeAudioEvent extends BaseEvent {
+  eventName: "realtime.audio";
+  sessionId: string;
+  userId: string;
+  chunk: string; // base64-encoded PCM audio
+  timestamp: number;
+}
+
+export interface RealtimeDisconnectedEvent extends BaseEvent {
+  eventName: "realtime.disconnected";
+  sessionId: string;
+  userId: string;
+  reason: string;
+}
+
 export type ResonateEvent =
   | StemsUploadedEvent
   | StemsProcessedEvent
@@ -459,5 +476,7 @@ export type ResonateEvent =
   | GenerationStartedEvent
   | GenerationProgressEvent
   | GenerationCompletedEvent
-  | GenerationFailedEvent;
+  | GenerationFailedEvent
+  | RealtimeAudioEvent
+  | RealtimeDisconnectedEvent;
 
