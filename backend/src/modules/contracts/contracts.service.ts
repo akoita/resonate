@@ -420,6 +420,25 @@ export class ContractsService implements OnModuleInit {
       );
     }
 
+    let excludeAddresses: string[] | undefined;
+    if (excludeSellerAddress) {
+      const addresses = new Set<string>([excludeSellerAddress.toLowerCase()]);
+      const wallets = await prisma.wallet.findMany({
+        where: {
+          OR: [
+            { address: { equals: excludeSellerAddress, mode: "insensitive" } },
+            { ownerAddress: { equals: excludeSellerAddress, mode: "insensitive" } },
+          ],
+        },
+        select: { address: true, ownerAddress: true },
+      });
+      for (const w of wallets) {
+        if (w.address) addresses.add(w.address.toLowerCase());
+        if (w.ownerAddress) addresses.add(w.ownerAddress.toLowerCase());
+      }
+      excludeAddresses = Array.from(addresses);
+    }
+
     const listings = await prisma.stemListing.findMany({
       where: {
         // Safety: always exclude sold-out and expired listings regardless of status field
@@ -427,7 +446,7 @@ export class ContractsService implements OnModuleInit {
         expiresAt: { gt: new Date() },
         ...(status && { status }),
         ...(sellerAddress && { sellerAddress }),
-        ...(excludeSellerAddress && { NOT: { sellerAddress: excludeSellerAddress } }),
+        ...(excludeAddresses && { NOT: { sellerAddress: { in: excludeAddresses } } }),
         ...(chainId && { chainId }),
         ...(minPrice && { pricePerUnit: { gte: minPrice } }),
         ...(maxPrice && { pricePerUnit: { lte: maxPrice } }),
