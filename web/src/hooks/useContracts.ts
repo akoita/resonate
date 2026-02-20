@@ -598,6 +598,71 @@ export function useMintStem() {
   return { mint, pending, error, txHash };
 }
 
+// Helper to send batch transactions via ZeroDev kernel client
+async function sendBatchContractTransactions(
+  publicClient: PublicClient,
+  chainId: number,
+  calls: { to: Address; data: Hex; value?: bigint }[],
+  userAddress?: Address,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  kernelAccount?: any
+): Promise<string> {
+  const isLocalDev = chainId === 31337;
+  if (isLocalDev) {
+    throw new Error("Batch transactions not implemented for local development wrapper");
+  }
+
+  const projectId = process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID;
+  if (!projectId) {
+    throw new Error("Transaction sending requires ZeroDev configuration. Set NEXT_PUBLIC_ZERODEV_PROJECT_ID for testnet.");
+  }
+
+  const sdk = await import("@zerodev/sdk");
+  const { createKernelAccountClient } = sdk;
+
+  const account = kernelAccount;
+  if (!account) throw new Error("Kernel account is required for batch transactions");
+
+  const pimlicoApiKey = process.env.NEXT_PUBLIC_PIMLICO_API_KEY || "REDACTED_PIMLICO_KEY";
+  const bundlerUrl = `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${pimlicoApiKey}`;
+  const pimlicoTransport = http(bundlerUrl);
+  
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mappedTransport = (opts: any) => {
+    const transport = pimlicoTransport(opts);
+    const originalRequest = transport.request;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    transport.request = async (args: any) => {
+      const mappedArgs = { ...args };
+      if (args.method === "zd_getUserOperationGasPrice") {
+        mappedArgs.method = "pimlico_getUserOperationGasPrice";
+      }
+      return originalRequest(mappedArgs);
+    };
+    return transport;
+  };
+
+  const kernelClient = await createKernelAccountClient({
+    account,
+    chain: publicClient.chain,
+    bundlerTransport: mappedTransport,
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const hash = await (kernelClient as any).sendTransactions({
+    transactions: calls.map(c => ({
+      to: c.to,
+      data: c.data,
+      value: c.value || BigInt(0),
+    })),
+  });
+
+  console.log("[ZeroDev] Batch Transaction submitted! Hash:", hash);
+  return hash;
+}
+
+// ... existing code ...
+
 /**
  * Hook to list a stem on the marketplace
  */
@@ -628,16 +693,6 @@ export function useListStem() {
           args: [addresses.marketplace, true],
         });
 
-        await sendContractTransaction(
-          publicClient,
-          chainId,
-          addresses.stemNFT,
-          approveData,
-          BigInt(0),
-          address as Address,
-          kernelAccount
-        );
-
         // Then create listing
         const listData = encodeFunctionData({
           abi: StemMarketplaceABI,
@@ -651,12 +706,14 @@ export function useListStem() {
           ],
         });
 
-        const hash = await sendContractTransaction(
+        // Batch both approval and listing into a single UserOperation
+        const hash = await sendBatchContractTransactions(
           publicClient,
           chainId,
-          addresses.marketplace,
-          listData,
-          BigInt(0),
+          [
+            { to: addresses.stemNFT, data: approveData },
+            { to: addresses.marketplace, data: listData }
+          ],
           address as Address,
           kernelAccount
         );
