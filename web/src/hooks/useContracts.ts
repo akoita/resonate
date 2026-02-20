@@ -677,15 +677,23 @@ async function sendBatchContractTransactions(
     bundlerTransport: mappedTransport,
   });
 
+  // Send batch as a single UserOperation
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const hash = await (kernelClient as any).sendTransactions({
-    transactions: calls.map(c => ({
+  const userOpHash = await (kernelClient as any).sendUserOperation({
+    calls: calls.map(c => ({
       to: c.to,
       data: c.data,
       value: c.value || BigInt(0),
     })),
   });
 
+  // Wait for the bundler to mine the UserOperation
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const receipt = await (kernelClient as unknown as any).waitForUserOperationReceipt({
+    hash: userOpHash,
+  });
+
+  const hash = receipt.receipt.transactionHash;
   console.log("[ZeroDev] Batch Transaction submitted! Hash:", hash);
   return hash;
 }
