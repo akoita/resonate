@@ -30,7 +30,7 @@ async function sendContractTransaction(
   publicClient: PublicClient,
   chainId: number,
   to: Address,
-  data: Hex,
+  data: Hex | ((addr: Address) => Hex),
   value: bigint = BigInt(0),
   userAddress?: Address,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -44,12 +44,14 @@ async function sendContractTransaction(
   if (isLocalDev) {
     const { sendLocalTransaction } = await import("../lib/localAA");
 
-    // Use user's address if provided, otherwise fall back to a test address
     const effectiveAddress = userAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" as Address;
+    const derivedLocalAddress = getLocalSignerAddress(effectiveAddress);
+
+    const finalData = typeof data === 'function' ? data(derivedLocalAddress) : data;
 
     // Send transaction using user's deterministic local account
     // This auto-funds from Anvil if needed
-    const hash = await sendLocalTransaction(publicClient, effectiveAddress, to, data, value);
+    const hash = await sendLocalTransaction(publicClient, effectiveAddress, to, finalData, value);
 
     return hash;
   }
@@ -128,11 +130,13 @@ async function sendContractTransaction(
     bundlerTransport: mappedTransport,
   });
 
+  const finalDataZeroDev = typeof data === 'function' ? data(account.address as Address) : data;
+
   // Send transaction
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const hash = await (kernelClient as any).sendTransaction({
     to,
-    data,
+    data: finalDataZeroDev,
     value,
     chain: publicClient.chain,
   });
@@ -558,27 +562,24 @@ export function useMintStem() {
       try {
         const addresses = getContractAddresses(chainId);
 
-        // Encode the function call
-        const data = encodeFunctionData({
-          abi: StemNFTABI,
-          functionName: "mint",
-          args: [
-            params.to,
-            params.amount,
-            params.tokenURI,
-            params.royaltyReceiver,
-            BigInt(params.royaltyBps),
-            params.remixable,
-            params.parentIds,
-          ],
-        });
-
         // Send transaction via ZeroDev kernel client
         const hash = await sendContractTransaction(
           publicClient,
           chainId,
           addresses.stemNFT,
-          data,
+          (resolvedAddress: Address) => encodeFunctionData({
+            abi: StemNFTABI,
+            functionName: "mint",
+            args: [
+              params.to || resolvedAddress,
+              params.amount,
+              params.tokenURI,
+              params.royaltyReceiver || resolvedAddress,
+              BigInt(params.royaltyBps),
+              params.remixable,
+              params.parentIds,
+            ],
+          }),
           BigInt(0),
           address as Address,
           kernelAccount
@@ -604,7 +605,7 @@ export function useMintStem() {
 async function sendBatchContractTransactions(
   publicClient: PublicClient,
   chainId: number,
-  calls: { to: Address; data: Hex; value?: bigint }[],
+  calls: { to: Address; data: Hex | ((addr: Address) => Hex); value?: bigint }[],
   userAddress?: Address,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   kernelAccount?: any
@@ -684,7 +685,7 @@ async function sendBatchContractTransactions(
   const userOpHash = await (kernelClient as any).sendUserOperation({
     calls: calls.map(c => ({
       to: c.to,
-      data: c.data,
+      data: typeof c.data === 'function' ? c.data(account.address as Address) : c.data,
       value: c.value || BigInt(0),
     })),
   });
