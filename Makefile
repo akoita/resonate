@@ -54,6 +54,7 @@ deploy-frontend:
 		--build-arg NEXT_PUBLIC_CHAIN_ID=$(NEXT_PUBLIC_CHAIN_ID) \
 		--build-arg NEXT_PUBLIC_STEM_NFT_ADDRESS=$(NEXT_PUBLIC_STEM_NFT_ADDRESS) \
 		--build-arg NEXT_PUBLIC_MARKETPLACE_ADDRESS=$(NEXT_PUBLIC_MARKETPLACE_ADDRESS) \
+		--build-arg NEXT_PUBLIC_PIMLICO_API_KEY=$(NEXT_PUBLIC_PIMLICO_API_KEY) \
 		-f web/Dockerfile web/
 	docker push $(REGISTRY)/frontend:latest
 	gcloud run services update resonate-$(ENV)-frontend \
