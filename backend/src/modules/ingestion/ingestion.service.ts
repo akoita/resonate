@@ -83,7 +83,7 @@ export class IngestionService {
     if (input.artwork) {
       artworkData = input.artwork.buffer;
       artworkMimeType = input.artwork.mimetype;
-      artworkUrl = `http://localhost:3000/catalog/releases/${releaseId}/artwork`;
+      artworkUrl = `${process.env.BACKEND_URL || 'http://localhost:3000'}/catalog/releases/${releaseId}/artwork`;
     }
 
     const tracks: any[] = [];
@@ -138,7 +138,7 @@ export class IngestionService {
         console.error(`[Ingestion] Failed to upload original stem ${stemId} to storage:`, err);
       }
 
-      const publicUri = storageResult?.uri || `http://localhost:3000/catalog/stems/${stemId}/blob`;
+      const publicUri = storageResult?.uri || `${process.env.BACKEND_URL || 'http://localhost:3000'}/catalog/stems/${stemId}/blob`;
 
       tracks.push({
         id: trackId,

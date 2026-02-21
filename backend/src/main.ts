@@ -29,6 +29,31 @@ async function bootstrap() {
         console.log(`[Self-Healing] Indexer fast-forward complete.`);
       }
     }
+
+    // Self-Healing: Fix hardcoded localhost:3000 stem URIs from local storage provider
+    const backendUrl = process.env.BACKEND_URL;
+    if (backendUrl && !backendUrl.includes('localhost')) {
+      const brokenStems = await prisma.stem.findMany({
+        where: { uri: { startsWith: 'http://localhost:3000/' } },
+        select: { id: true },
+      });
+      if (brokenStems.length > 0) {
+        console.log(`[Self-Healing] Found ${brokenStems.length} stems with localhost URIs, migrating to ${backendUrl}...`);
+        await prisma.$executeRawUnsafe(
+          `UPDATE "Stem" SET uri = REPLACE(uri, 'http://localhost:3000', $1) WHERE uri LIKE 'http://localhost:3000%'`,
+          backendUrl
+        );
+        console.log(`[Self-Healing] Fixed ${brokenStems.length} stem URIs.`);
+      }
+      // Also fix Release artworkUrl
+      const brokenReleases = await prisma.$executeRawUnsafe(
+        `UPDATE "Release" SET "artworkUrl" = REPLACE("artworkUrl", 'http://localhost:3000', $1) WHERE "artworkUrl" LIKE 'http://localhost:3000%'`,
+        backendUrl
+      );
+      if (brokenReleases > 0) {
+        console.log(`[Self-Healing] Fixed ${brokenReleases} release artwork URLs.`);
+      }
+    }
   } catch (e) {
     console.warn(`[Self-Healing] Could not check indexer state:`, e);
   }
