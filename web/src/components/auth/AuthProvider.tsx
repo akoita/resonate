@@ -237,9 +237,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       const connectResult = await getOrConnectAccount(mode);
       // getOrConnectAccount returns { account, webAuthnKey } for real passkeys, or just the account for mock
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = connectResult as Record<string, any>;
-      const account = result.account ?? connectResult;
-      const webAuthnKey = result.webAuthnKey;
+      const parsed = connectResult as Record<string, any>;
+      const account = parsed.account ?? connectResult;
+      const webAuthnKey = parsed.webAuthnKey;
       const saAddress = (account as Record<string, unknown>).address as string;
 
       console.log("[Auth] SA Address:", saAddress);

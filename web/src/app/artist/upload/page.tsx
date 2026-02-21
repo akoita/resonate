@@ -13,6 +13,18 @@ import { useAuth } from "../../../components/auth/AuthProvider";
 import { getArtistMe, uploadStems } from "../../../lib/api";
 import { extractMetadata } from "../../../lib/metadataExtractor";
 
+const MAX_FILE_SIZE_MB = 200;
+const MAX_TOTAL_SIZE_MB = 500;
+const MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024;
+const MAX_TOTAL_SIZE = MAX_TOTAL_SIZE_MB * 1024 * 1024;
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
 type Stem = {
   id: string;
   name: string;
@@ -132,6 +144,16 @@ export default function ArtistUploadPage() {
         }))
       };
 
+      // Check total payload size before uploading
+      const totalSize = stems.reduce((acc, s) => acc + (s.file?.size ?? 0), 0)
+        + (formData.artworkBlob?.size ?? 0);
+      if (totalSize > MAX_TOTAL_SIZE) {
+        throw new Error(
+          `Total upload size is ${formatFileSize(totalSize)} — max ${MAX_TOTAL_SIZE_MB}MB. ` +
+          `Consider using FLAC or MP3 instead of WAV, or upload fewer tracks at once.`
+        );
+      }
+
       const uploadPayload = new FormData();
       uploadPayload.append("artistId", artist.id);
       uploadPayload.append("metadata", JSON.stringify(metadata));
@@ -184,11 +206,27 @@ export default function ArtistUploadPage() {
         artworkBlob: undefined,
       });
       setSelectedStemId(null);
-    } catch {
+    } catch (err) {
+      const msg = (err as Error).message || "";
+      let title = "Failed to publish";
+      let message = "An error occurred while publishing. Please try again.";
+
+      if (msg.includes("Total upload size") || msg.includes("File too large")) {
+        title = "Upload too large";
+        message = msg;
+      } else if (msg.includes("413") || msg.includes("Content Too Large") || msg.includes("ERR_FAILED")) {
+        title = "Upload too large";
+        message = `The upload exceeds the server limit. Try compressing your files to FLAC or MP3, or upload fewer tracks at once.`;
+      } else if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("CORS")) {
+        title = "Network error";
+        message = "Could not reach the server. Please check your connection and try again.";
+      }
+
       addToast({
         type: "error",
-        title: "Failed to publish",
-        message: "An error occurred while publishing. Please try again.",
+        title,
+        message,
+        duration: 10000,
       });
     } finally {
       setIsPublishing(false);
@@ -209,6 +247,17 @@ export default function ArtistUploadPage() {
           type: "error",
           title: "Invalid file format",
           message: `Skipping ${file.name}: please select a valid audio file.`,
+        });
+        continue;
+      }
+
+      // Validate individual file size
+      if (file.size > MAX_FILE_SIZE) {
+        addToast({
+          type: "error",
+          title: "File too large",
+          message: `${file.name} is ${formatFileSize(file.size)} — max ${MAX_FILE_SIZE_MB}MB per file. Consider compressing to FLAC or MP3.`,
+          duration: 8000,
         });
         continue;
       }

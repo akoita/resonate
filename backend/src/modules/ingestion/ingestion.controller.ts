@@ -4,6 +4,8 @@ import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
 import { IngestionService } from "./ingestion.service";
 
+const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200 MB per file
+
 @Controller("ingestion")
 export class IngestionController {
   constructor(private readonly ingestionService: IngestionService) { }
@@ -13,7 +15,7 @@ export class IngestionController {
   @UseInterceptors(FileFieldsInterceptor([
     { name: 'files', maxCount: 20 },
     { name: 'artwork', maxCount: 1 },
-  ]))
+  ], { limits: { fileSize: MAX_FILE_SIZE } }))
   @Throttle({ default: { limit: 20, ttl: 60 } })
   upload(
     @UploadedFiles() files: { files?: Express.Multer.File[], artwork?: Express.Multer.File[] },
