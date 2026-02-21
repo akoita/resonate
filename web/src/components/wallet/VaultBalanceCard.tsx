@@ -67,6 +67,12 @@ export default function VaultBalanceCard({ wallet }: VaultBalanceCardProps) {
             {/* AA Infrastructure Meta */}
             <div className="vault-meta-grid" style={{ marginTop: "var(--space-5)" }}>
                 <div className="vault-meta-item">
+                    <span className="vault-meta-label">Account Address</span>
+                    <span className="vault-meta-value">
+                        {wallet.address ? `${wallet.address.slice(0, 8)}...${wallet.address.slice(-6)}` : "N/A"}
+                    </span>
+                </div>
+                <div className="vault-meta-item">
                     <span className="vault-meta-label">Entry Point</span>
                     <span className="vault-meta-value">
                         {wallet.entryPoint ? `${wallet.entryPoint.slice(0, 8)}...${wallet.entryPoint.slice(-6)}` : "N/A"}
