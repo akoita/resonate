@@ -205,7 +205,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
     const webAuthnKey = await toWebAuthnKey({
       passkeyName: "Resonate",
-      passkeyServerUrl: process.env.NEXT_PUBLIC_PASSKEY_SERVER_URL || "",
+      passkeyServerUrl: process.env.NEXT_PUBLIC_PASSKEY_SERVER_URL || `https://passkeys.zerodev.app/api/v3/b46420a2-a527-441e-8793-ceb418e4d6ef`,
       mode,
       rpID: typeof window !== "undefined" ? window.location.hostname : undefined,
     });
