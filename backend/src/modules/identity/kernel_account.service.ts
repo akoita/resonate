@@ -103,6 +103,11 @@ export class KernelAccountService {
     label: string,
     minEth: string = "0.5",
   ): Promise<void> {
+    // Anvil account 0 funding is only valid on local devnets
+    if (this.chainId !== 31337 && this.chainId !== 1337) {
+      return; 
+    }
+
     const chain = this.getChain();
     const publicClient = createPublicClient({
       chain,
