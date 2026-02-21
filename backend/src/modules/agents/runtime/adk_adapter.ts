@@ -3,14 +3,11 @@
  *
  * Uses InMemoryRunner + InMemorySessionService to run the curation agent.
  * ADK handles the tool-calling loop, retries, and conversation management.
+ *
+ * NOTE: @google/adk and @google/genai are loaded lazily via dynamic import()
+ * to avoid breaking Jest, which cannot parse their ESM-only transitive deps.
  */
 import { Injectable, Logger } from "@nestjs/common";
-import {
-  InMemoryRunner,
-  isFinalResponse,
-  stringifyContent,
-} from "@google/adk";
-import type { Content } from "@google/genai";
 import {
   AgentRuntimeAdapter,
   AgentRuntimeInput,
@@ -18,16 +15,24 @@ import {
   LlmTrackPick,
 } from "./agent_runtime.adapter";
 import { ToolRegistry } from "../tools/tool_registry";
-import { createCurationAgent, buildUserMessage } from "./adk_curation_agent";
 
 const TIMEOUT_MS = 30_000;
 const APP_NAME = "resonate";
+
+// Lazily-resolved ADK modules
+let _adkModule: typeof import("@google/adk") | null = null;
+async function getAdk() {
+  if (!_adkModule) _adkModule = await import("@google/adk");
+  return _adkModule;
+}
 
 @Injectable()
 export class AdkAdapter implements AgentRuntimeAdapter {
   name: "adk" = "adk";
   private readonly logger = new Logger(AdkAdapter.name);
-  private runner: InMemoryRunner | null = null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private runner: any = null;
 
   constructor(private readonly tools: ToolRegistry) {}
 
@@ -48,10 +53,12 @@ export class AdkAdapter implements AgentRuntimeAdapter {
     return this.withTimeout(this.callAgent(input, start), TIMEOUT_MS, start);
   }
 
-  private getRunner(): InMemoryRunner {
+  private async getRunner() {
     if (!this.runner) {
-      const agent = createCurationAgent(this.tools);
-      this.runner = new InMemoryRunner({ agent, appName: APP_NAME });
+      const adk = await getAdk();
+      const { createCurationAgent } = await import("./adk_curation_agent");
+      const agent = await createCurationAgent(this.tools);
+      this.runner = new adk.InMemoryRunner({ agent, appName: APP_NAME });
     }
     return this.runner;
   }
@@ -60,7 +67,9 @@ export class AdkAdapter implements AgentRuntimeAdapter {
     input: AgentRuntimeInput,
     startMs: number
   ): Promise<AgentRuntimeResult> {
-    const runner = this.getRunner();
+    const adk = await getAdk();
+    const { buildUserMessage } = await import("./adk_curation_agent");
+    const runner = await this.getRunner();
     const userMessage = buildUserMessage(input);
 
     // Create a fresh ADK session for each stateless invocation
@@ -71,8 +80,8 @@ export class AdkAdapter implements AgentRuntimeAdapter {
       sessionId: adkSessionId,
     });
 
-    const newMessage: Content = {
-      role: "user",
+    const newMessage = {
+      role: "user" as const,
       parts: [{ text: userMessage }],
     };
 
@@ -84,10 +93,10 @@ export class AdkAdapter implements AgentRuntimeAdapter {
       newMessage,
     })) {
       this.logger.debug(
-        `ADK event: author=${event.author} final=${isFinalResponse(event)}`
+        `ADK event: author=${event.author} final=${adk.isFinalResponse(event)}`
       );
-      if (isFinalResponse(event)) {
-        finalText = stringifyContent(event);
+      if (adk.isFinalResponse(event)) {
+        finalText = adk.stringifyContent(event);
       }
     }
 
