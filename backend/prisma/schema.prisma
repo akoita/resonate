@@ -38,6 +38,8 @@ model Wallet {
   bundler          String?
   salt             String?
   deploymentTxHash String?
+  pubKeyX          String?
+  pubKeyY          String?
   user             User    @relation(fields: [userId], references: [id])
 }
 

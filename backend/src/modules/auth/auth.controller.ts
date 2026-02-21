@@ -5,6 +5,8 @@ import { p256 } from "@noble/curves/p256";
 import * as crypto from "crypto";
 import { AuthService } from "./auth.service";
 import { AuthNonceService } from "./auth_nonce.service";
+import { AbiCoder } from "ethers";
+import { prisma } from "../../db/prisma";
 
 const ERC_6492_MAGIC_BYTES = "6492649264926492649264926492649264926492649264926492649264926492";
 
@@ -132,16 +134,34 @@ export class AuthController {
         }
       }
 
+      let extractedPubKey: { x: string; y: string } | undefined;
+
       // Fallback 2: Off-chain WebAuthn P-256 verification (for both deployed and undeployed Kernel + passkey)
       // On-chain isValidSignature may fail even for deployed accounts if the validator config differs.
       if (!ok) {
         try {
-          // ZeroDev v3.1 signatures no longer contain the factory calldata required 
-          // to extract the P-256 public key off-chain in the same layout.
-          // We will attempt it, but catch the point extraction error gracefully.
           this.logger.log(`[Auth] Trying off-chain WebAuthn P-256 verification...`);
-          ok = this.verifyPasskeyOffChain(body.address, body.message, body.signature, chainId);
-          if (ok) {
+
+          const walletInfo = await prisma.wallet.findFirst({
+            where: { address: { equals: body.address, mode: "insensitive" } },
+          });
+
+          let dbPubX: string | undefined;
+          let dbPubY: string | undefined;
+
+          if (walletInfo?.pubKeyX && walletInfo?.pubKeyY) {
+            dbPubX = walletInfo.pubKeyX;
+            dbPubY = walletInfo.pubKeyY;
+            this.logger.debug(`[Auth] Found existing P-256 public key in database for ${body.address}`);
+          }
+
+          const p256Result = this.verifyPasskeyOffChain(body.address, body.message, body.signature, chainId, dbPubX, dbPubY);
+          
+          if (p256Result.isValid) {
+            ok = true;
+            if (p256Result.pubX && p256Result.pubY && (!dbPubX || !dbPubY)) {
+              extractedPubKey = { x: p256Result.pubX, y: p256Result.pubY };
+            }
             this.logger.log(`[Auth] ✅ Off-chain WebAuthn P-256 verification succeeded for ${body.address}`);
           } else {
             this.logger.log(`[Auth] ⚠ Off-chain WebAuthn P-256 verification returned false for ${body.address}`);
@@ -217,6 +237,37 @@ export class AuthController {
          this.logger.warn(`[Auth] Nonce mismatch for ${body.address}`);
         return { status: "invalid_nonce" };
       }
+
+      const mappedAddress = issuedAddress.toLowerCase() !== body.address.toLowerCase() ? issuedAddress : body.address;
+
+      if (ok && extractedPubKey) {
+        try {
+          // Ensure user exists first just in case
+          const lowerAddress = mappedAddress.toLowerCase();
+          await prisma.user.upsert({
+            where: { id: lowerAddress },
+            create: { id: lowerAddress, email: `${lowerAddress}@wallet.placeholder` },
+            update: {},
+          });
+          await prisma.wallet.upsert({
+            where: { userId: lowerAddress },
+            create: {
+              userId: lowerAddress,
+              address: lowerAddress,
+              chainId,
+              pubKeyX: extractedPubKey.x,
+              pubKeyY: extractedPubKey.y,
+            } as any,
+            update: {
+              pubKeyX: extractedPubKey.x,
+              pubKeyY: extractedPubKey.y,
+            },
+          });
+          this.logger.log(`[Auth] Saved extracted WebAuthn P-256 public key for ${lowerAddress}`);
+        } catch (dbErr) {
+          this.logger.error(`[Auth] Failed to save WebAuthn public key to DB:`, dbErr);
+        }
+      }
       
       const result = this.authService.issueTokenForAddress(issuedAddress, body.role ?? "listener");
       return issuedAddress.toLowerCase() !== body.address.toLowerCase() ? { ...result, address: issuedAddress } : result;
@@ -241,29 +292,70 @@ export class AuthController {
     message: string,
     signature: `0x${string}`,
     chainId: number,
-  ): boolean {
-    // 1. Strip ERC-6492 magic suffix and decode the outer wrapper
-    const sigBody = ("0x" + signature.slice(2).slice(0, -64)) as Hex;
-    const [, factoryCalldata, innerSig] = decodeAbiParameters(
-      [{ type: "address" }, { type: "bytes" }, { type: "bytes" }],
-      sigBody,
-    );
+    dbPubX?: string,
+    dbPubY?: string,
+  ): { isValid: boolean; pubX?: string; pubY?: string } {
+    const isWrapped = signature.endsWith(ERC_6492_MAGIC_BYTES);
+    let innerSig: string = signature;
+    let extractedPubX: string | undefined = undefined;
+    let extractedPubY: string | undefined = undefined;
+
+    if (isWrapped) {
+      // 1. Strip ERC-6492 magic suffix and decode the outer wrapper
+      const sigBody = ("0x" + signature.slice(2).slice(0, -64)) as Hex;
+      const [, factoryCalldata, decodedInnerSig] = decodeAbiParameters(
+        [{ type: "address" }, { type: "bytes" }, { type: "bytes" }],
+        sigBody,
+      );
+      innerSig = decodedInnerSig as string;
+
+      // 4. Extract public key from factory calldata
+      const fcHex = (factoryCalldata as Hex).slice(2);
+      const [, initData] = decodeAbiParameters(
+        [{ type: "address" }, { type: "bytes" }, { type: "uint256" }],
+        ("0x" + fcHex.substring(8)) as Hex,
+      );
+
+      const initHex = (initData as Hex).slice(2);
+      const initParams = initHex.substring(8);
+      const vdOffset = parseInt(initParams.substring(128, 192), 16);
+      const vdLength = parseInt(initParams.substring(vdOffset * 2, vdOffset * 2 + 64), 16);
+      const vdData = initParams.substring(vdOffset * 2 + 64, vdOffset * 2 + 64 + vdLength * 2);
+
+      if (vdData.length >= 192) {
+        const pubX = BigInt("0x" + vdData.substring(0, 64));
+        const pubY = BigInt("0x" + vdData.substring(64, 128));
+        extractedPubX = pubX.toString(16).padStart(64, "0");
+        extractedPubY = pubY.toString(16).padStart(64, "0");
+      }
+    }
+
+    const activePubX = extractedPubX ?? dbPubX;
+    const activePubY = extractedPubY ?? dbPubY;
+
+    if (!activePubX || !activePubY) {
+      this.logger.warn(`[Auth] P-256: Missing public key for off-chain verification. Neither extracted nor found in DB.`);
+      return { isValid: false };
+    }
+
+    const pubKeyHex = "04" + activePubX + activePubY;
+
+    // Validate it's a real P-256 point (throws if invalid)
+    p256.ProjectivePoint.fromHex(pubKeyHex);
 
     // 2. Parse inner signature: mode byte (1) + validator address (20) = 21 bytes = 42 hex chars
-    const innerHex = innerSig as Hex;
-    const afterValidator = ("0x" + (innerHex as string).slice(44)) as Hex;
+    const afterValidator = ("0x" + innerSig.slice(44)) as Hex;
 
-    const [authenticatorData, clientDataJSON, , r, s] = decodeAbiParameters(
-      [
-        { type: "bytes" },
-        { type: "string" },
-        { type: "uint256" },
-        { type: "uint256" },
-        { type: "uint256" },
-        { type: "bool" },
-      ],
+    const coder = new AbiCoder();
+    const ethersDecoded = coder.decode(
+      ["bytes", "string", "uint256", "uint256", "uint256", "bool"],
       afterValidator,
     );
+
+    const authenticatorData = ethersDecoded[0] as string;
+    const clientDataJSON = ethersDecoded[1] as string;
+    const r = ethersDecoded[3] as bigint;
+    const s = ethersDecoded[4] as bigint;
 
     // 3. Verify challenge matches EIP-712 Kernel hash
     const messageHash = hashMessage(message);
@@ -291,40 +383,9 @@ export class AuthController {
     const clientData = JSON.parse(clientDataJSON as string);
     if (clientData.challenge !== expectedChallenge) {
       this.logger.warn(`[Auth] P-256: challenge mismatch: got ${clientData.challenge}, expected ${expectedChallenge}`);
-      return false;
+      return { isValid: false };
     }
     this.logger.debug(`[Auth] P-256: challenge matches ✅`);
-
-    // 4. Extract public key from factory calldata
-    const fcHex = (factoryCalldata as Hex).slice(2);
-    // createAccount(address impl, bytes initData, uint256 salt)
-    const [, initData] = decodeAbiParameters(
-      [{ type: "address" }, { type: "bytes" }, { type: "uint256" }],
-      ("0x" + fcHex.substring(8)) as Hex,
-    );
-
-    const initHex = (initData as Hex).slice(2);
-    // Skip selector (4 bytes = 8 hex), then parse initData params:
-    // bytes21 validatorId (static, 32 bytes padded)
-    // address hook (static, 32 bytes)
-    // bytes validatorData (dynamic, offset at position 2)
-    // bytes hookData (dynamic)
-    // bytes[] initConfig (dynamic)
-    const initParams = initHex.substring(8);
-    const vdOffset = parseInt(initParams.substring(128, 192), 16);
-    const vdLength = parseInt(initParams.substring(vdOffset * 2, vdOffset * 2 + 64), 16);
-    const vdData = initParams.substring(vdOffset * 2 + 64, vdOffset * 2 + 64 + vdLength * 2);
-
-    // enableData = abi.encode((uint256 x, uint256 y), bytes32 authenticatorIdHash)
-    // Layout: x (32 bytes) || y (32 bytes) || authenticatorIdHash (32 bytes)
-    if (vdData.length < 192) {
-      this.logger.warn(`[Auth] P-256: validatorData too short: ${vdData.length}`);
-      return false;
-    }
-
-    const pubX = BigInt("0x" + vdData.substring(0, 64));
-    const pubY = BigInt("0x" + vdData.substring(64, 128));
-    const pubKeyHex = "04" + pubX.toString(16).padStart(64, "0") + pubY.toString(16).padStart(64, "0");
 
     // Validate it's a real P-256 point (throws if invalid)
     p256.ProjectivePoint.fromHex(pubKeyHex);
@@ -340,6 +401,6 @@ export class AuthController {
       (s as bigint).toString(16).padStart(64, "0");
 
     const isValid = p256.verify(sigHex, signedDataHash, pubKeyHex);
-    return isValid;
+    return { isValid, pubX: extractedPubX, pubY: extractedPubY };
   }
 }
