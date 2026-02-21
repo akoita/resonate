@@ -45,6 +45,10 @@ export class AuthController {
       role?: string;
       /** Local dev (31337): EOA that signed; we verify this and issue token for address (smart account) */
       signerAddress?: string;
+      /** P-256 WebAuthn public key X coordinate (hex, no 0x prefix) — sent by frontend for cross-device persistence */
+      pubKeyX?: string;
+      /** P-256 WebAuthn public key Y coordinate (hex, no 0x prefix) */
+      pubKeyY?: string;
     }
   ) {
     try {
@@ -85,6 +89,22 @@ export class AuthController {
 
       let ok = false;
       let issuedAddress = body.address;
+      let extractedPubKey: { x: string; y: string } | undefined;
+
+      // If the frontend sent the P-256 public key, use it as a source
+      if (body.pubKeyX && body.pubKeyY) {
+        this.logger.log(`[Auth] Frontend sent P-256 public key — will persist if verification succeeds`);
+      }
+
+      // Load existing public key from DB for all verification paths
+      const walletInfo = await prisma.wallet.findFirst({
+        where: { address: { equals: body.address, mode: "insensitive" } },
+      });
+      const dbPubX = walletInfo?.pubKeyX ?? undefined;
+      const dbPubY = walletInfo?.pubKeyY ?? undefined;
+      if (dbPubX && dbPubY) {
+        this.logger.debug(`[Auth] Found existing P-256 public key in DB for ${body.address}`);
+      }
 
       // Primary verification: ERC-6492 + EIP-1271 via inline bytecode (works for smart accounts)
       try {
@@ -99,9 +119,6 @@ export class AuthController {
       }
 
       // Fallback 1: EIP-712 Kernel Wrapper Verification (ZeroDev Kernel v0.7)
-      // The Kernel account's signMessage wraps the EIP-191 messageHash in an
-      // EIP-712 hashTypedData({Kernel: [{hash: messageHash}]}) before signing.
-      // We must replicate this wrapping when verifying.
       if (!ok) {
         try {
           const messageHash = hashMessage(body.message);
@@ -134,28 +151,15 @@ export class AuthController {
         }
       }
 
-      let extractedPubKey: { x: string; y: string } | undefined;
-
-      // Fallback 2: Off-chain WebAuthn P-256 verification (for both deployed and undeployed Kernel + passkey)
-      // On-chain isValidSignature may fail even for deployed accounts if the validator config differs.
+      // Fallback 2: Off-chain WebAuthn P-256 verification
+      // Works for both deployed (raw sig) and undeployed (ERC-6492 wrapped) accounts
       if (!ok) {
         try {
           this.logger.log(`[Auth] Trying off-chain WebAuthn P-256 verification...`);
-
-          const walletInfo = await prisma.wallet.findFirst({
-            where: { address: { equals: body.address, mode: "insensitive" } },
-          });
-
-          let dbPubX: string | undefined;
-          let dbPubY: string | undefined;
-
-          if (walletInfo?.pubKeyX && walletInfo?.pubKeyY) {
-            dbPubX = walletInfo.pubKeyX;
-            dbPubY = walletInfo.pubKeyY;
-            this.logger.debug(`[Auth] Found existing P-256 public key in database for ${body.address}`);
-          }
-
-          const p256Result = this.verifyPasskeyOffChain(body.address, body.message, body.signature, chainId, dbPubX, dbPubY);
+          // Use frontend-provided key as fallback when DB key is missing (cross-device scenario)
+          const effectivePubX = dbPubX ?? body.pubKeyX;
+          const effectivePubY = dbPubY ?? body.pubKeyY;
+          const p256Result = this.verifyPasskeyOffChain(body.address, body.message, body.signature, chainId, effectivePubX, effectivePubY);
           
           if (p256Result.isValid) {
             ok = true;
@@ -171,7 +175,7 @@ export class AuthController {
         }
       }
 
-      // Fallback 3: Passkey/Kernel may return EOA-style signature; recover signer and issue for that address.
+      // Fallback 3: EOA recovery
       if (!ok) {
         try {
           const recovered = await recoverMessageAddress({
@@ -183,15 +187,39 @@ export class AuthController {
             issuedAddress = body.address;
             this.logger.log(`[Auth] Verified via recovered EOA (exact match): ${issuedAddress}`);
           } else {
-            // If the EOA signature is valid but doesn't match the claimed address,
-            // we *could* treat it as valid if we trust the EOA -> Smart Account mapping,
-            // but for now we just log it.
-            // Actually, for consistency with the above recovery, if it's a valid EOA sig, maybe we just issue?
-            // But usually this means it's a "Validator" signature (EOA) not the Smart Account itself.
-             this.logger.log(`[Auth] Recovered EOA: ${recovered}, expected: ${body.address}`);
+            this.logger.log(`[Auth] Recovered EOA: ${recovered}, expected: ${body.address}`);
           }
         } catch (recoverErr) {
-           this.logger.warn(`[Auth] recoverMessageAddress failed: ${(recoverErr as Error).message?.substring(0, 200)}`);
+          this.logger.warn(`[Auth] recoverMessageAddress failed: ${(recoverErr as Error).message?.substring(0, 200)}`);
+        }
+      }
+
+      // Even if verification succeeded via on-chain path, persist the P-256
+      // public key for future cross-device off-chain verification.
+      // Sources (in priority order): signature extraction, frontend-provided, DB
+      if (ok && !extractedPubKey && !dbPubX) {
+        // Try extracting from ERC-6492 wrapped signature
+        try {
+          const keyResult = this.extractPubKeyFromSignature(body.signature);
+          if (keyResult) {
+            extractedPubKey = keyResult;
+            this.logger.log(`[Auth] Extracted P-256 public key from ERC-6492 signature`);
+          }
+        } catch {
+          // Best-effort
+        }
+
+        // Use frontend-provided key if nothing else worked
+        if (!extractedPubKey && body.pubKeyX && body.pubKeyY) {
+          try {
+            // Validate it's a real P-256 point before trusting the frontend
+            const testKey = "04" + body.pubKeyX + body.pubKeyY;
+            p256.ProjectivePoint.fromHex(testKey);
+            extractedPubKey = { x: body.pubKeyX, y: body.pubKeyY };
+            this.logger.log(`[Auth] Using frontend-provided P-256 public key`);
+          } catch {
+            this.logger.warn(`[Auth] Frontend-provided P-256 key is invalid, ignoring`);
+          }
         }
       }
 
@@ -402,5 +430,48 @@ export class AuthController {
 
     const isValid = p256.verify(sigHex, signedDataHash, pubKeyHex);
     return { isValid, pubX: extractedPubX, pubY: extractedPubY };
+  }
+
+  /**
+   * Best-effort extraction of P-256 public key from an ERC-6492 wrapped signature.
+   * Used to persist the key after first login so cross-device auth works off-chain.
+   */
+  private extractPubKeyFromSignature(signature: `0x${string}`): { x: string; y: string } | null {
+    const isWrapped = signature.endsWith(ERC_6492_MAGIC_BYTES);
+    if (!isWrapped) return null;
+
+    try {
+      const sigBody = ("0x" + signature.slice(2).slice(0, -64)) as Hex;
+      const [, factoryCalldata] = decodeAbiParameters(
+        [{ type: "address" }, { type: "bytes" }, { type: "bytes" }],
+        sigBody,
+      );
+
+      const fcHex = (factoryCalldata as Hex).slice(2);
+      const [, initData] = decodeAbiParameters(
+        [{ type: "address" }, { type: "bytes" }, { type: "uint256" }],
+        ("0x" + fcHex.substring(8)) as Hex,
+      );
+
+      const initHex = (initData as Hex).slice(2);
+      const initParams = initHex.substring(8);
+      const vdOffset = parseInt(initParams.substring(128, 192), 16);
+      const vdLength = parseInt(initParams.substring(vdOffset * 2, vdOffset * 2 + 64), 16);
+      const vdData = initParams.substring(vdOffset * 2 + 64, vdOffset * 2 + 64 + vdLength * 2);
+
+      if (vdData.length >= 192) {
+        const pubX = BigInt("0x" + vdData.substring(0, 64));
+        const pubY = BigInt("0x" + vdData.substring(64, 128));
+        const x = pubX.toString(16).padStart(64, "0");
+        const y = pubY.toString(16).padStart(64, "0");
+
+        // Validate it's a real P-256 point
+        p256.ProjectivePoint.fromHex("04" + x + y);
+        return { x, y };
+      }
+    } catch {
+      // Not a valid ERC-6492 passkey sig — that's fine
+    }
+    return null;
   }
 }

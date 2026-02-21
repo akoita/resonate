@@ -97,36 +97,29 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   // Memoized wrapper for use in dependency arrays
   const resolveAuth = useCallback((jwt: string | null) => decodeAuthClaims(jwt), []);
 
-  // Lazy-read localStorage synchronously during the FIRST render so we never
-  // flash an "idle / disconnected" frame between UI updates or navigations.
-  const [status, setStatus] = useState<AuthState["status"]>(() => {
-    if (typeof window === "undefined") return "idle";
+  const [status, setStatus] = useState<AuthState["status"]>("idle");
+  const [address, setAddress] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [smartAccountAddress, setSmartAccountAddress] = useState<string | null>(null);
+
+  useEffect(() => {
     const t = localStorage.getItem(TOKEN_KEY);
     const a = localStorage.getItem(ADDRESS_KEY);
-    return t && a ? "authenticated" : "idle";
-  });
-  const [address, setAddress] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem(ADDRESS_KEY);
-  });
-  const [token, setToken] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem(TOKEN_KEY);
-  });
-  const [role, setRole] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    const t = localStorage.getItem(TOKEN_KEY);
-    return t ? decodeAuthClaims(t).role : null;
-  });
-  const [userId, setUserId] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    const t = localStorage.getItem(TOKEN_KEY);
-    return t ? decodeAuthClaims(t).userId : null;
-  });
-  const [smartAccountAddress, setSmartAccountAddress] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem(SA_ADDRESS_KEY);
-  });
+    if (t && a) {
+      setStatus("authenticated");
+      setToken(t);
+      setAddress(a);
+      const claims = decodeAuthClaims(t);
+      setRole(claims.role);
+      setUserId(claims.userId);
+    }
+    const sa = localStorage.getItem(SA_ADDRESS_KEY);
+    if (sa) {
+      setSmartAccountAddress(sa);
+    }
+  }, []);
   const [wallet, setWallet] = useState<WalletRecord | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
   const { projectId, publicClient, chainId } = useZeroDev();
@@ -231,7 +224,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     });
 
     setActiveAccount(account);
-    return account;
+    return { account, webAuthnKey };
 
   }, [projectId, publicClient, chainId, activeAccount]);
 
@@ -241,7 +234,12 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     setStatus("loading");
     setError(undefined);
     try {
-      const account = await getOrConnectAccount(mode);
+      const connectResult = await getOrConnectAccount(mode);
+      // getOrConnectAccount returns { account, webAuthnKey } for real passkeys, or just the account for mock
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = connectResult as Record<string, any>;
+      const account = result.account ?? connectResult;
+      const webAuthnKey = result.webAuthnKey;
       const saAddress = (account as Record<string, unknown>).address as string;
 
       console.log("[Auth] SA Address:", saAddress);
@@ -256,10 +254,14 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const signature = await (account as Record<string, any>).signMessage({ message });
 
+      // Send P-256 public key alongside signature so the backend can persist it
+      // for future cross-device off-chain verification
       const result = await verifySignature({
         address: saAddress,
         message,
         signature,
+        pubKeyX: webAuthnKey?.pubX?.toString(16)?.padStart(64, "0"),
+        pubKeyY: webAuthnKey?.pubY?.toString(16)?.padStart(64, "0"),
       });
 
       if (!("accessToken" in result)) {

@@ -2,7 +2,6 @@
 
 import { useAuth } from "../../components/auth/AuthProvider";
 import VaultHero from "../../components/wallet/VaultHero";
-import VaultBalanceCard from "../../components/wallet/VaultBalanceCard";
 import VaultSmartAccountCard from "../../components/wallet/VaultSmartAccountCard";
 import VaultSecurityCard from "../../components/wallet/VaultSecurityCard";
 
@@ -15,13 +14,13 @@ export default function WalletPage() {
       <VaultHero
         wallet={wallet}
         status={status}
+        address={address}
         onRefresh={refreshWallet}
       />
 
-      {/* Cards Grid */}
-      <div className="vault-grid">
-        <VaultBalanceCard wallet={wallet} />
-        <VaultSmartAccountCard />
+      {/* Cards Grid — 2 column */}
+      <div className="vault-grid vault-grid--2col">
+        <VaultSmartAccountCard wallet={wallet} address={address} />
         <VaultSecurityCard />
       </div>
     </main>

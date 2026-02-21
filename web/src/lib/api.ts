@@ -97,6 +97,10 @@ export async function verifySignature(input: {
   role?: string;
   /** For local dev (chainId 31337): EOA that signed; backend verifies this and issues token for address */
   signerAddress?: string;
+  /** P-256 WebAuthn public key X coordinate (hex, no 0x prefix) — for cross-device auth persistence */
+  pubKeyX?: string;
+  /** P-256 WebAuthn public key Y coordinate (hex, no 0x prefix) — for cross-device auth persistence */
+  pubKeyY?: string;
 }) {
   return apiRequest<AuthVerifyResponse>(
     "/auth/verify",
