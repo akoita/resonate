@@ -14,7 +14,7 @@ export default function SocialShare({ title, artist, url }: SocialShareProps) {
 
   useEffect(() => {
     setIsMounted(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const shareUrl = useMemo(() => {

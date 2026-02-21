@@ -228,12 +228,20 @@ export class KernelAccountService {
       };
     };
 
-    // Create Kernel account client with bundler transport
+    // Create Paymaster client (Pimlico supports shared bundler/paymaster endpoints)
+    const paymasterUrl = this.config.get<string>("AA_PAYMASTER") || this.bundlerUrl;
+    const paymasterClient = sdk.createZeroDevPaymasterClient({
+      chain,
+      transport: http(paymasterUrl),
+    });
+
+    // Create Kernel account client with bundler transport and paymaster
     const kernelClient = sdk.createKernelAccountClient({
       account,
       chain,
       bundlerTransport: http(this.bundlerUrl),
       userOperation: { estimateFeesPerGas },
+      paymaster: paymasterClient as any,
     });
 
     return { account, kernelClient, signerAddress: signer.address };
