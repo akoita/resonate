@@ -94,7 +94,7 @@ export default function MarketplacePage(props: {
 
     const { pending: buyPending } = useBuyStem();
     const { addToast } = useToast();
-    const { address: walletAddress, kernelAccount, knownAddresses } = useAuth();
+    const { address: walletAddress, kernelAccount, knownAddresses, smartAccountAddress } = useAuth();
     const { chainId } = useZeroDev();
 
     // Resolve the actual on-chain signer address.
@@ -112,14 +112,17 @@ export default function MarketplacePage(props: {
                 setSignerAddress(getLocalSignerAddress(walletAddress as `0x${string}`).toLowerCase());
             }).catch(() => setSignerAddress(walletAddress.toLowerCase()));
         } else {
-            // Prefer Smart Account address on testnet/mainnet, otherwise fallback to EOA base address
-            if (kernelAccount && kernelAccount.address) {
+            // Use the persisted Smart Account address (the actual on-chain identity),
+            // then fall back to kernelAccount.address, then walletAddress
+            if (smartAccountAddress) {
+                setSignerAddress(smartAccountAddress.toLowerCase());
+            } else if (kernelAccount && kernelAccount.address) {
                 setSignerAddress(kernelAccount.address.toLowerCase());
             } else {
                 setSignerAddress(walletAddress.toLowerCase());
             }
         }
-    }, [walletAddress, chainId, kernelAccount]);
+    }, [walletAddress, chainId, kernelAccount, smartAccountAddress]);
 
     // ---- Search debounce ----
     useEffect(() => {

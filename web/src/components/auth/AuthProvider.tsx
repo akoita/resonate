@@ -41,6 +41,8 @@ type AuthState = {
   kernelAccount: any;
   /** All Smart Account addresses this user has ever authenticated with */
   knownAddresses: string[];
+  /** The actual on-chain Smart Account address (may differ from auth address) */
+  smartAccountAddress: string | null;
   connect: () => Promise<void>;
   login: () => Promise<void>;
   signup: () => Promise<void>;
@@ -55,6 +57,7 @@ const AuthContext = createContext<AuthState | null>(null);
 
 const TOKEN_KEY = "resonate.token";
 const ADDRESS_KEY = "resonate.address";
+const SA_ADDRESS_KEY = "resonate.smartAccountAddress";
 const PRIVY_USER_KEY = "resonate.privy.userId";
 const KNOWN_ADDRESSES_KEY = "resonate.knownAddresses";
 
@@ -119,6 +122,10 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     if (typeof window === "undefined") return null;
     const t = localStorage.getItem(TOKEN_KEY);
     return t ? decodeAuthClaims(t).userId : null;
+  });
+  const [smartAccountAddress, setSmartAccountAddress] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem(SA_ADDRESS_KEY);
   });
   const [wallet, setWallet] = useState<WalletRecord | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -262,16 +269,19 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       const authAddress = result.address ?? saAddress;
       localStorage.setItem(TOKEN_KEY, result.accessToken);
       localStorage.setItem(ADDRESS_KEY, authAddress.toLowerCase());
+      // Store the actual SA address (used for on-chain transactions) separately
+      localStorage.setItem(SA_ADDRESS_KEY, saAddress.toLowerCase());
 
       const { role: r, userId: u } = resolveAuth(result.accessToken);
       setToken(result.accessToken);
       setAddress(authAddress.toLowerCase());
+      setSmartAccountAddress(saAddress.toLowerCase());
       setRole(r);
       setUserId(u);
       setStatus("authenticated");
 
-      // Accumulate this SA address so the marketplace can filter across SDK version changes
-      addKnownAddress(authAddress);
+      // Accumulate the SA address (the on-chain identity) for marketplace filtering
+      addKnownAddress(saAddress);
 
     } catch (err) {
       console.error(err);
@@ -313,10 +323,12 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const disconnect = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(ADDRESS_KEY);
+    localStorage.removeItem(SA_ADDRESS_KEY);
     localStorage.removeItem(PRIVY_USER_KEY);
     clearEmbeddedAccount();
     setToken(null);
     setAddress(null);
+    setSmartAccountAddress(null);
     setRole(null);
     setUserId(null);
     setWallet(null);
@@ -352,6 +364,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       error,
       kernelAccount: activeAccount,
       knownAddresses: getKnownAddresses(),
+      smartAccountAddress,
       connect,
       login,
       signup,
@@ -361,7 +374,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       refreshWallet,
       signMessage,
     }),
-    [status, address, token, role, userId, wallet, error, activeAccount, connect, login, signup, connectPrivy, connectEmbedded, disconnect, refreshWallet, signMessage]
+    [status, address, token, role, userId, wallet, error, activeAccount, smartAccountAddress, connect, login, signup, connectPrivy, connectEmbedded, disconnect, refreshWallet, signMessage]
   );
 
 
