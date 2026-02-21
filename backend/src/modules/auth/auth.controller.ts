@@ -132,10 +132,9 @@ export class AuthController {
         }
       }
 
-      // Fallback 2: Off-chain WebAuthn P-256 verification (for undeployed Kernel v0.7 + passkey)
-      // On-chain isValidSignature fails for undeployed accounts with secondary passkey validators.
-      // We verify the signature directly: extract pubkey from factory calldata, verify P-256 sig.
-      if (!ok && body.signature.endsWith(ERC_6492_MAGIC_BYTES)) {
+      // Fallback 2: Off-chain WebAuthn P-256 verification (for both deployed and undeployed Kernel + passkey)
+      // On-chain isValidSignature may fail even for deployed accounts if the validator config differs.
+      if (!ok) {
         try {
           // ZeroDev v3.1 signatures no longer contain the factory calldata required 
           // to extract the P-256 public key off-chain in the same layout.
