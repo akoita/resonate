@@ -422,78 +422,79 @@ export class ContractsService implements OnModuleInit {
 
     let excludeAddresses: string[] | undefined;
     if (excludeSellerAddress) {
-      const addresses = new Set<string>([excludeSellerAddress.toLowerCase()]);
+      const addresses = new Set<string>();
 
-      // 1. Resolve via Wallet table (EOA ↔ Smart Account)
-      const wallets = await prisma.wallet.findMany({
-        where: {
-          OR: [
-            { address: { equals: excludeSellerAddress, mode: "insensitive" } },
-            { ownerAddress: { equals: excludeSellerAddress, mode: "insensitive" } },
-          ],
-        },
-        select: { address: true, ownerAddress: true },
-      });
-      for (const w of wallets) {
-        if (w.address) addresses.add(w.address.toLowerCase());
-        if (w.ownerAddress) addresses.add(w.ownerAddress.toLowerCase());
+      // Support comma-separated addresses (frontend sends all known SA addresses)
+      const inputAddresses = excludeSellerAddress.split(",").map(a => a.trim().toLowerCase()).filter(Boolean);
+      for (const addr of inputAddresses) {
+        addresses.add(addr);
       }
 
-      // 2. Resolve via User identity — if this address was used to authenticate,
-      //    the User table stores it as an ID or email prefix. Discover all wallet
-      //    addresses (including historic Smart Accounts) for the same user.
-      const userByAddress = await prisma.user.findFirst({
-        where: {
-          OR: [
-            { id: { equals: excludeSellerAddress, mode: "insensitive" } },
-            { email: { startsWith: excludeSellerAddress.toLowerCase() } },
-          ],
-        },
-        select: { id: true },
-      });
-      if (userByAddress) {
-        const userWallet = await prisma.wallet.findFirst({
-          where: { userId: userByAddress.id },
+      // For each input address, resolve via Wallet table (EOA ↔ Smart Account)
+      for (const addr of inputAddresses) {
+        const wallets = await prisma.wallet.findMany({
+          where: {
+            OR: [
+              { address: { equals: addr, mode: "insensitive" } },
+              { ownerAddress: { equals: addr, mode: "insensitive" } },
+            ],
+          },
           select: { address: true, ownerAddress: true },
         });
-        if (userWallet?.address) addresses.add(userWallet.address.toLowerCase());
-        if (userWallet?.ownerAddress) addresses.add(userWallet.ownerAddress.toLowerCase());
-      }
-
-      // 3. Resolve via on-chain identity graph: if this address was the creator
-      //    of any NFT mints, other Smart Account addresses that listed those
-      //    same stems belong to the same identity (handles SA address changes
-      //    across ZeroDev SDK versions).
-      const myMints = await prisma.stemNftMint.findMany({
-        where: { creatorAddress: { equals: excludeSellerAddress, mode: "insensitive" } },
-        select: { stemId: true },
-      });
-      if (myMints.length > 0) {
-        const myStemIds = myMints.map(m => m.stemId);
-        const relatedListings = await prisma.stemListing.findMany({
-          where: { stemId: { in: myStemIds } },
-          select: { sellerAddress: true },
-        });
-        for (const rl of relatedListings) {
-          addresses.add(rl.sellerAddress.toLowerCase());
+        for (const w of wallets) {
+          if (w.address) addresses.add(w.address.toLowerCase());
+          if (w.ownerAddress) addresses.add(w.ownerAddress.toLowerCase());
         }
-      }
 
-      // 4. Reverse: if this address was a seller on any listing, find the NFT
-      //    creator addresses for those same stems (catches the opposite direction)
-      const myListings = await prisma.stemListing.findMany({
-        where: { sellerAddress: { equals: excludeSellerAddress, mode: "insensitive" } },
-        select: { stemId: true },
-      });
-      if (myListings.length > 0) {
-        const listedStemIds = myListings.map(l => l.stemId).filter((id): id is string => !!id);
-        if (listedStemIds.length > 0) {
-          const relatedMints = await prisma.stemNftMint.findMany({
-            where: { stemId: { in: listedStemIds } },
-            select: { creatorAddress: true },
+        // Resolve via User identity (addresses used as userId in auth)
+        const userByAddress = await prisma.user.findFirst({
+          where: {
+            OR: [
+              { id: { equals: addr, mode: "insensitive" } },
+              { email: { startsWith: addr.toLowerCase() } },
+            ],
+          },
+          select: { id: true },
+        });
+        if (userByAddress) {
+          const userWallet = await prisma.wallet.findFirst({
+            where: { userId: userByAddress.id },
+            select: { address: true, ownerAddress: true },
           });
-          for (const rm of relatedMints) {
-            addresses.add(rm.creatorAddress.toLowerCase());
+          if (userWallet?.address) addresses.add(userWallet.address.toLowerCase());
+          if (userWallet?.ownerAddress) addresses.add(userWallet.ownerAddress.toLowerCase());
+        }
+
+        // Resolve via NFT creator → stem → listing seller graph
+        const myMints = await prisma.stemNftMint.findMany({
+          where: { creatorAddress: { equals: addr, mode: "insensitive" } },
+          select: { stemId: true },
+        });
+        if (myMints.length > 0) {
+          const relatedListings = await prisma.stemListing.findMany({
+            where: { stemId: { in: myMints.map(m => m.stemId) } },
+            select: { sellerAddress: true },
+          });
+          for (const rl of relatedListings) {
+            addresses.add(rl.sellerAddress.toLowerCase());
+          }
+        }
+
+        // Reverse: listing seller → stem → NFT creator graph
+        const myListings = await prisma.stemListing.findMany({
+          where: { sellerAddress: { equals: addr, mode: "insensitive" } },
+          select: { stemId: true },
+        });
+        if (myListings.length > 0) {
+          const listedStemIds = myListings.map(l => l.stemId).filter((id): id is string => !!id);
+          if (listedStemIds.length > 0) {
+            const relatedMints = await prisma.stemNftMint.findMany({
+              where: { stemId: { in: listedStemIds } },
+              select: { creatorAddress: true },
+            });
+            for (const rm of relatedMints) {
+              addresses.add(rm.creatorAddress.toLowerCase());
+            }
           }
         }
       }

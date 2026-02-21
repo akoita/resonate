@@ -39,6 +39,8 @@ type AuthState = {
   error?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   kernelAccount: any;
+  /** All Smart Account addresses this user has ever authenticated with */
+  knownAddresses: string[];
   connect: () => Promise<void>;
   login: () => Promise<void>;
   signup: () => Promise<void>;
@@ -54,6 +56,23 @@ const AuthContext = createContext<AuthState | null>(null);
 const TOKEN_KEY = "resonate.token";
 const ADDRESS_KEY = "resonate.address";
 const PRIVY_USER_KEY = "resonate.privy.userId";
+const KNOWN_ADDRESSES_KEY = "resonate.knownAddresses";
+
+/** Read the accumulated set of all Smart Account addresses this Passkey has ever used */
+function getKnownAddresses(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = localStorage.getItem(KNOWN_ADDRESSES_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch { return []; }
+}
+
+/** Add a new address to the accumulated set */
+function addKnownAddress(addr: string) {
+  const set = new Set(getKnownAddresses().map((a: string) => a.toLowerCase()));
+  set.add(addr.toLowerCase());
+  localStorage.setItem(KNOWN_ADDRESSES_KEY, JSON.stringify(Array.from(set)));
+}
 
 /** Decode role and userId from a JWT without validation */
 function decodeAuthClaims(jwt: string | null) {
@@ -251,6 +270,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       setUserId(u);
       setStatus("authenticated");
 
+      // Accumulate this SA address so the marketplace can filter across SDK version changes
+      addKnownAddress(authAddress);
+
     } catch (err) {
       console.error(err);
       setError((err as Error).message);
@@ -329,6 +351,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       wallet,
       error,
       kernelAccount: activeAccount,
+      knownAddresses: getKnownAddresses(),
       connect,
       login,
       signup,

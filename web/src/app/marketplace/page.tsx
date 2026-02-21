@@ -94,7 +94,7 @@ export default function MarketplacePage(props: {
 
     const { pending: buyPending } = useBuyStem();
     const { addToast } = useToast();
-    const { address: walletAddress, kernelAccount } = useAuth();
+    const { address: walletAddress, kernelAccount, knownAddresses } = useAuth();
     const { chainId } = useZeroDev();
 
     // Resolve the actual on-chain signer address.
@@ -142,7 +142,11 @@ export default function MarketplacePage(props: {
 
             const params = new URLSearchParams({ status: "active", limit: String(PAGE_SIZE), offset: String(currentOffset), sortBy });
             if (debouncedSearch) params.set("search", debouncedSearch);
-            if (hideOwnListings && signerAddress) params.set("excludeSeller", signerAddress);
+            if (hideOwnListings && signerAddress) {
+                // Send all known SA addresses (handles ZeroDev SDK/version changes)
+                const allAddresses = new Set([signerAddress, ...knownAddresses.map((a: string) => a.toLowerCase())]);
+                params.set("excludeSeller", Array.from(allAddresses).join(","));
+            }
 
             const res = await fetch(`/api/contracts/listings?${params.toString()}`);
             if (!res.ok) {
@@ -173,7 +177,7 @@ export default function MarketplacePage(props: {
         } finally {
             setLoading(false);
         }
-    }, [debouncedSearch, sortBy, offset, listings.length, hideOwnListings, signerAddress]);
+    }, [debouncedSearch, sortBy, offset, listings.length, hideOwnListings, signerAddress, knownAddresses]);
 
     // ---- Refetch when sort, search, or signer changes ----
     // Guard: if the user is logged in and wants to hide own listings,
