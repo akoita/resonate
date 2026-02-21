@@ -335,7 +335,7 @@ let IngestionService = class IngestionService {
                                 const stemResponse = await fetch(stemUriStr, { signal: AbortSignal.timeout(120_000) });
                                 if (stemResponse.ok) {
                                     const arrayBuffer = await stemResponse.arrayBuffer();
-                                    data = Buffer.from(arrayBuffer);
+                                    data = Buffer.from(new Uint8Array(arrayBuffer));
                                 }
                                 else {
                                     console.error(`[Ingestion] Failed to download stem: HTTP ${stemResponse.status}`);

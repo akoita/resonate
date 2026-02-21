@@ -1,10 +1,43 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
 var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
@@ -17,10 +50,12 @@ exports.AuthController = void 0;
 const common_1 = require("@nestjs/common");
 const throttler_1 = require("@nestjs/throttler");
 const viem_1 = require("viem");
-const sdk_1 = require("@zerodev/sdk");
+const p256_1 = require("@noble/curves/p256");
+const crypto = __importStar(require("crypto"));
 const auth_service_1 = require("./auth.service");
 const auth_nonce_service_1 = require("./auth_nonce.service");
-const ERC_6492_MAGIC_BYTES = "0x6492649264926492649264926492649264926492649264926492649264926492";
+const prisma_1 = require("../../db/prisma");
+const ERC_6492_MAGIC_BYTES = "6492649264926492649264926492649264926492649264926492649264926492";
 let AuthController = AuthController_1 = class AuthController {
     authService;
     nonceService;
@@ -85,63 +120,73 @@ let AuthController = AuthController_1 = class AuthController {
             catch (verifyErr) {
                 this.logger.warn(`[Auth] Primary verifyMessage threw: ${verifyErr.message?.substring(0, 300)}`);
             }
-            // Fallback 1: Use ZeroDev's own ERC-6492 verifier bytecode.
+            // Fallback 1: EIP-712 Kernel Wrapper Verification (ZeroDev Kernel v0.7)
+            // The Kernel account's signMessage wraps the EIP-191 messageHash in an
+            // EIP-712 hashTypedData({Kernel: [{hash: messageHash}]}) before signing.
+            // We must replicate this wrapping when verifying.
             if (!ok) {
                 try {
-                    const hash = (0, viem_1.hashMessage)(body.message);
-                    const zdOk = await (0, sdk_1.verifyEIP6492Signature)({
-                        signer: body.address,
-                        hash,
+                    const messageHash = (0, viem_1.hashMessage)(body.message);
+                    this.logger.log(`[Auth] Trying EIP-712 Kernel wrapper verification...`);
+                    const kernelOk = await this.publicClient.verifyTypedData({
+                        address: body.address,
+                        domain: {
+                            name: "Kernel",
+                            version: "0.3.1",
+                            chainId,
+                            verifyingContract: body.address,
+                        },
+                        types: {
+                            Kernel: [{ name: "hash", type: "bytes32" }],
+                        },
+                        primaryType: "Kernel",
+                        message: {
+                            hash: messageHash,
+                        },
                         signature: body.signature,
-                        client: this.publicClient,
                     });
-                    if (zdOk) {
+                    if (kernelOk) {
                         ok = true;
-                        this.logger.log(`[Auth] ✅ ZeroDev verifyEIP6492Signature succeeded for ${body.address}`);
+                        this.logger.log(`[Auth] ✅ EIP-712 Kernel verifyTypedData succeeded for ${body.address}`);
                     }
                     else {
-                        this.logger.log(`[Auth] ⚠ ZeroDev verifyEIP6492Signature returned false for ${body.address}`);
+                        this.logger.log(`[Auth] ⚠ EIP-712 Kernel verifyTypedData returned false for ${body.address}`);
                     }
                 }
-                catch (zdErr) {
-                    this.logger.warn(`[Auth] ZeroDev verifyEIP6492Signature threw: ${zdErr.message?.substring(0, 300)}`);
+                catch (kernelErr) {
+                    this.logger.warn(`[Auth] EIP-712 Kernel verifyTypedData threw: ${kernelErr.message?.substring(0, 300)}`);
                 }
             }
-            // Fallback 2: Address Recovery from ERC-6492 Signature (Counterfactual Address Mismatch Fix)
-            // If the frontend calculated address A, but the signature is actually for address B (common in dev/deployments),
-            // we can recover B from the signature's initCode and verify against B.
-            if (!ok && body.signature.endsWith(ERC_6492_MAGIC_BYTES.slice(2))) {
+            let extractedPubKey;
+            // Fallback 2: Off-chain WebAuthn P-256 verification (for both deployed and undeployed Kernel + passkey)
+            // On-chain isValidSignature may fail even for deployed accounts if the validator config differs.
+            if (!ok) {
                 try {
-                    this.logger.log(`[Auth] Attempting address recovery from ERC-6492 signature...`);
-                    const encoded = body.signature.slice(0, -64);
-                    const [factory, factoryCalldata] = (0, viem_1.decodeAbiParameters)((0, viem_1.parseAbiParameters)("address, bytes, bytes"), encoded);
-                    // Simulate factory call to get the address
-                    const { data } = await this.publicClient.call({
-                        to: factory,
-                        data: factoryCalldata,
+                    this.logger.log(`[Auth] Trying off-chain WebAuthn P-256 verification...`);
+                    const walletInfo = await prisma_1.prisma.wallet.findFirst({
+                        where: { address: { equals: body.address, mode: "insensitive" } },
                     });
-                    if (data) {
-                        // The result is usually the address (left-padded to 32 bytes)
-                        const recoveredAddress = ("0x" + data.slice(-40));
-                        this.logger.log(`[Auth] Recovered address from initCode: ${recoveredAddress}`);
-                        if (recoveredAddress.toLowerCase() !== body.address.toLowerCase()) {
-                            this.logger.log(`[Auth] ⚠ Mismatch detected! Frontend: ${body.address}, Recovered: ${recoveredAddress}`);
-                            // Verify the signature against the RECOVERED address
-                            const recoveryVerifyOptions = { ...verifyOptions, address: recoveredAddress };
-                            const recoveredOk = await this.publicClient.verifyMessage(recoveryVerifyOptions);
-                            if (recoveredOk) {
-                                ok = true;
-                                issuedAddress = recoveredAddress;
-                                this.logger.log(`[Auth] ✅ Signature verified against recovered address: ${issuedAddress}. Authenticating as recovered identity.`);
-                            }
-                            else {
-                                this.logger.warn(`[Auth] Signature failed verification even against recovered address: ${recoveredAddress}`);
-                            }
+                    let dbPubX;
+                    let dbPubY;
+                    if (walletInfo?.pubKeyX && walletInfo?.pubKeyY) {
+                        dbPubX = walletInfo.pubKeyX;
+                        dbPubY = walletInfo.pubKeyY;
+                        this.logger.debug(`[Auth] Found existing P-256 public key in database for ${body.address}`);
+                    }
+                    const p256Result = this.verifyPasskeyOffChain(body.address, body.message, body.signature, chainId, dbPubX, dbPubY);
+                    if (p256Result.isValid) {
+                        ok = true;
+                        if (p256Result.pubX && p256Result.pubY && (!dbPubX || !dbPubY)) {
+                            extractedPubKey = { x: p256Result.pubX, y: p256Result.pubY };
                         }
+                        this.logger.log(`[Auth] ✅ Off-chain WebAuthn P-256 verification succeeded for ${body.address}`);
+                    }
+                    else {
+                        this.logger.log(`[Auth] ⚠ Off-chain WebAuthn P-256 verification returned false for ${body.address}`);
                     }
                 }
-                catch (recoveryErr) {
-                    this.logger.warn(`[Auth] Address recovery failed: ${recoveryErr.message}`);
+                catch (p256Err) {
+                    this.logger.warn(`[Auth] Off-chain WebAuthn verification failed: ${p256Err.message?.substring(0, 300)}`);
                 }
             }
             // Fallback 3: Passkey/Kernel may return EOA-style signature; recover signer and issue for that address.
@@ -208,6 +253,36 @@ let AuthController = AuthController_1 = class AuthController {
                 this.logger.warn(`[Auth] Nonce mismatch for ${body.address}`);
                 return { status: "invalid_nonce" };
             }
+            const mappedAddress = issuedAddress.toLowerCase() !== body.address.toLowerCase() ? issuedAddress : body.address;
+            if (ok && extractedPubKey) {
+                try {
+                    // Ensure user exists first just in case
+                    const lowerAddress = mappedAddress.toLowerCase();
+                    await prisma_1.prisma.user.upsert({
+                        where: { id: lowerAddress },
+                        create: { id: lowerAddress, email: `${lowerAddress}@wallet.placeholder` },
+                        update: {},
+                    });
+                    await prisma_1.prisma.wallet.upsert({
+                        where: { userId: lowerAddress },
+                        create: {
+                            userId: lowerAddress,
+                            address: lowerAddress,
+                            chainId,
+                            pubKeyX: extractedPubKey.x,
+                            pubKeyY: extractedPubKey.y,
+                        },
+                        update: {
+                            pubKeyX: extractedPubKey.x,
+                            pubKeyY: extractedPubKey.y,
+                        },
+                    });
+                    this.logger.log(`[Auth] Saved extracted WebAuthn P-256 public key for ${lowerAddress}`);
+                }
+                catch (dbErr) {
+                    this.logger.error(`[Auth] Failed to save WebAuthn public key to DB:`, dbErr);
+                }
+            }
             const result = this.authService.issueTokenForAddress(issuedAddress, body.role ?? "listener");
             return issuedAddress.toLowerCase() !== body.address.toLowerCase() ? { ...result, address: issuedAddress } : result;
         }
@@ -215,6 +290,100 @@ let AuthController = AuthController_1 = class AuthController {
             this.logger.error(`[Auth] Error during verification:`, err);
             return { status: "error", message: err.message };
         }
+    }
+    /**
+     * Off-chain WebAuthn P-256 signature verification for ERC-6492 wrapped passkey signatures.
+     *
+     * Steps:
+     * 1. Decode ERC-6492 wrapper → {factory, factoryCalldata, innerSig}
+     * 2. Parse inner signature: strip mode byte + validator addr, ABI-decode passkey fields
+     * 3. Verify challenge in clientDataJSON matches EIP-712 Kernel hash of the message
+     * 4. Extract public key (x, y) from factory calldata's validator enableData
+     * 5. Verify P-256 signature (r, s) against SHA-256(authenticatorData || SHA-256(clientDataJSON))
+     */
+    verifyPasskeyOffChain(address, message, signature, chainId, dbPubX, dbPubY) {
+        const isWrapped = signature.endsWith(ERC_6492_MAGIC_BYTES);
+        let innerSig = signature;
+        let extractedPubX = undefined;
+        let extractedPubY = undefined;
+        if (isWrapped) {
+            // 1. Strip ERC-6492 magic suffix and decode the outer wrapper
+            const sigBody = ("0x" + signature.slice(2).slice(0, -64));
+            const [, factoryCalldata, decodedInnerSig] = (0, viem_1.decodeAbiParameters)([{ type: "address" }, { type: "bytes" }, { type: "bytes" }], sigBody);
+            innerSig = decodedInnerSig;
+            // 4. Extract public key from factory calldata
+            const fcHex = factoryCalldata.slice(2);
+            const [, initData] = (0, viem_1.decodeAbiParameters)([{ type: "address" }, { type: "bytes" }, { type: "uint256" }], ("0x" + fcHex.substring(8)));
+            const initHex = initData.slice(2);
+            const initParams = initHex.substring(8);
+            const vdOffset = parseInt(initParams.substring(128, 192), 16);
+            const vdLength = parseInt(initParams.substring(vdOffset * 2, vdOffset * 2 + 64), 16);
+            const vdData = initParams.substring(vdOffset * 2 + 64, vdOffset * 2 + 64 + vdLength * 2);
+            if (vdData.length >= 192) {
+                const pubX = BigInt("0x" + vdData.substring(0, 64));
+                const pubY = BigInt("0x" + vdData.substring(64, 128));
+                extractedPubX = pubX.toString(16).padStart(64, "0");
+                extractedPubY = pubY.toString(16).padStart(64, "0");
+            }
+        }
+        const activePubX = extractedPubX ?? dbPubX;
+        const activePubY = extractedPubY ?? dbPubY;
+        if (!activePubX || !activePubY) {
+            this.logger.warn(`[Auth] P-256: Missing public key for off-chain verification. Neither extracted nor found in DB.`);
+            return { isValid: false };
+        }
+        const pubKeyHex = "04" + activePubX + activePubY;
+        // Validate it's a real P-256 point (throws if invalid)
+        p256_1.p256.ProjectivePoint.fromHex(pubKeyHex);
+        // 2. Parse inner signature: mode byte (1) + validator address (20) = 21 bytes = 42 hex chars
+        const afterValidator = ("0x" + innerSig.slice(44));
+        const [authenticatorData, clientDataJSON, , r, s] = (0, viem_1.decodeAbiParameters)([
+            { type: "bytes" },
+            { type: "string" },
+            { type: "uint256" },
+            { type: "uint256" },
+            { type: "uint256" },
+            { type: "bool" },
+        ], afterValidator);
+        // 3. Verify challenge matches EIP-712 Kernel hash
+        const messageHash = (0, viem_1.hashMessage)(message);
+        const kernelHash = (0, viem_1.hashTypedData)({
+            domain: {
+                name: "Kernel",
+                version: "0.3.1",
+                chainId,
+                verifyingContract: address,
+            },
+            types: { Kernel: [{ name: "hash", type: "bytes32" }] },
+            primaryType: "Kernel",
+            message: { hash: messageHash },
+        });
+        // Convert hash to base64url for comparison with WebAuthn challenge
+        const hashBytes = (0, viem_1.fromHex)(kernelHash, "bytes");
+        let b64 = "";
+        for (const b of hashBytes)
+            b64 += String.fromCharCode(b);
+        const expectedChallenge = btoa(b64)
+            .replace(/\+/g, "-")
+            .replace(/\//g, "_")
+            .replace(/=+$/, "");
+        const clientData = JSON.parse(clientDataJSON);
+        if (clientData.challenge !== expectedChallenge) {
+            this.logger.warn(`[Auth] P-256: challenge mismatch: got ${clientData.challenge}, expected ${expectedChallenge}`);
+            return { isValid: false };
+        }
+        this.logger.debug(`[Auth] P-256: challenge matches ✅`);
+        // Validate it's a real P-256 point (throws if invalid)
+        p256_1.p256.ProjectivePoint.fromHex(pubKeyHex);
+        // 5. Verify P-256 signature
+        const authDataBytes = (0, viem_1.toBytes)(authenticatorData);
+        const clientDataHash = crypto.createHash("sha256").update(clientDataJSON).digest();
+        const signedData = Buffer.concat([Buffer.from(authDataBytes), clientDataHash]);
+        const signedDataHash = crypto.createHash("sha256").update(signedData).digest();
+        const sigHex = r.toString(16).padStart(64, "0") +
+            s.toString(16).padStart(64, "0");
+        const isValid = p256_1.p256.verify(sigHex, signedDataHash, pubKeyHex);
+        return { isValid, pubX: extractedPubX, pubY: extractedPubY };
     }
 };
 exports.AuthController = AuthController;
