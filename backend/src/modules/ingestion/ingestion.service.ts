@@ -673,7 +673,91 @@ export class IngestionService {
     const validTracks = tracksWithData.filter((t): t is any => t !== null);
 
     if (validTracks.length === 0) {
-      throw new Error(`Could not re-hydrate any tracks for release ${releaseId}`);
+      // Fallback: if separation already completed but DB write failed,
+      // re-download stems from GCS and persist them directly
+      console.log(`[Ingestion] Original audio unavailable. Checking GCS for already-separated stems...`);
+
+      const stemTypes = ["vocals", "drums", "bass", "piano", "guitar", "other"];
+      const bucket = process.env.GCS_STEMS_BUCKET || "resonate-stems-dev";
+      let recovered = false;
+
+      for (const track of release.tracks) {
+        const stems: Array<{
+          id: string; type: string; uri: string; data: Buffer;
+          mimeType: string; durationSeconds: number; isEncrypted: boolean;
+          storageProvider: string;
+        }> = [];
+
+        // Keep the original stem as-is (even without data)
+        const originalStem = track.stems.find(s => s.type === "ORIGINAL" || s.type === "original");
+
+        for (const stemType of stemTypes) {
+          const gcsPath = `stems/${releaseId}/${track.id}/${stemType}.mp3`;
+          const gcsUrl = `https://storage.googleapis.com/${bucket}/${gcsPath}`;
+
+          try {
+            const response = await fetch(gcsUrl, { signal: AbortSignal.timeout(15000) });
+            if (!response.ok) continue;
+
+            const buffer = Buffer.from(await response.arrayBuffer());
+            const stemId = `stem_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+
+            stems.push({
+              id: stemId,
+              type: stemType,
+              uri: gcsUrl,
+              data: buffer,
+              mimeType: "audio/mpeg",
+              durationSeconds: originalStem?.durationSeconds ?? 0,
+              isEncrypted: false,
+              storageProvider: "gcs",
+            });
+
+            console.log(`[Ingestion] Recovered ${stemType} stem from GCS for track ${track.id}`);
+          } catch (e) {
+            // Stem doesn't exist in GCS, skip
+          }
+        }
+
+        if (stems.length > 0) {
+          recovered = true;
+
+          // Emit stems.processed to redo the DB write
+          this.eventBus.publish({
+            eventName: "stems.processed",
+            eventVersion: 1,
+            occurredAt: new Date().toISOString(),
+            releaseId,
+            artistId: release.artistId,
+            modelVersion: "htdemucs_6s",
+            tracks: [{
+              id: track.id,
+              title: track.title,
+              artist: track.artist ?? undefined,
+              position: track.position,
+              stems: [
+                // Include original stem if exists
+                ...(originalStem ? [{
+                  id: originalStem.id,
+                  type: originalStem.type,
+                  uri: originalStem.uri,
+                  mimeType: "audio/mpeg",
+                  durationSeconds: originalStem.durationSeconds ?? 0,
+                  isEncrypted: false,
+                  storageProvider: originalStem.storageProvider || "local",
+                }] : []),
+                ...stems,
+              ],
+            }],
+          });
+        }
+      }
+
+      if (!recovered) {
+        throw new Error(`Could not re-hydrate any tracks for release ${releaseId}. Original audio and separated stems are both unavailable. Please delete and re-upload.`);
+      }
+
+      return { message: "Recovered stems from cloud storage and re-processing" };
     }
 
     // 3. Re-emit Uploaded event to reset status to processing

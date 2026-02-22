@@ -194,6 +194,56 @@ export class CatalogService implements OnModuleInit {
         // Extract error message only - Prisma errors can have circular refs that cause stack overflow
         const errMsg = err instanceof Error ? err.message : String(err);
         console.error(`[Catalog] Failed to finalise release ${event.releaseId}: ${errMsg}`);
+
+        // Propagate failure to UI — don't silently leave release stuck at "processing"
+        try {
+          await prisma.release.update({
+            where: { id: event.releaseId },
+            data: { status: "failed" },
+          });
+
+          // Mark non-complete tracks as failed
+          const tracksToFail = await prisma.track.findMany({
+            where: {
+              releaseId: event.releaseId,
+              processingStatus: { not: "complete" },
+            },
+            select: { id: true },
+          });
+
+          if (tracksToFail.length > 0) {
+            await prisma.track.updateMany({
+              where: {
+                releaseId: event.releaseId,
+                processingStatus: { not: "complete" },
+              },
+              data: { processingStatus: "failed" },
+            });
+
+            for (const track of tracksToFail) {
+              this.eventBus.publish({
+                eventName: "catalog.track_status",
+                eventVersion: 1,
+                occurredAt: new Date().toISOString(),
+                releaseId: event.releaseId,
+                trackId: track.id,
+                status: "failed",
+              } as CatalogTrackStatusEvent);
+            }
+          }
+
+          // Notify frontend via WebSocket
+          this.eventBus.publish({
+            eventName: "stems.failed",
+            eventVersion: 1,
+            occurredAt: new Date().toISOString(),
+            releaseId: event.releaseId,
+            artistId: event.artistId,
+            error: `Database error during finalisation: ${errMsg}`,
+          });
+        } catch (innerErr) {
+          console.error(`[Catalog] Could not propagate failure for ${event.releaseId}:`, innerErr);
+        }
       }
     });
 
