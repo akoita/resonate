@@ -295,8 +295,11 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const signMessage = useCallback(async (message: string) => {
     // Default to Login mode for signing (as we assume user is registered)
     const { WebAuthnMode } = await import("@zerodev/passkey-validator");
-    const account = await getOrConnectAccount(WebAuthnMode.Login);
+    const connectResult = await getOrConnectAccount(WebAuthnMode.Login);
+    // getOrConnectAccount returns { account, webAuthnKey } for real passkeys, or just the account for mock
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parsed = connectResult as Record<string, any>;
+    const account = parsed.account ?? connectResult;
     return (account as Record<string, any>).signMessage({ message });
   }, [getOrConnectAccount]);
 
