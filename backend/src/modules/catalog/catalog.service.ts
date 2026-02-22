@@ -723,12 +723,12 @@ export class CatalogService implements OnModuleInit {
       }
     }
 
-    // 4. Generic HTTP URI fallback
-    if (stem.uri && stem.uri.startsWith("http")) {
+    // 4. Generic HTTP URI fallback (skip self-referential URIs to prevent infinite loops)
+    if (stem.uri && stem.uri.startsWith("http") && !stem.uri.includes("/catalog/stems/")) {
       try {
         console.log(`[Catalog] Fetching stem ${stem.id} from HTTP URI: ${stem.uri}`);
         const response = await fetch(stem.uri, {
-          signal: AbortSignal.timeout(120000), // 2 minutes for large files
+          signal: AbortSignal.timeout(30000), // 30s timeout (was 120s)
         });
         if (response.ok) {
           const buffer = Buffer.from(await response.arrayBuffer());
