@@ -31,18 +31,33 @@ export class MaintenanceService {
 
     this.logger.warn("⚠️  WIPE: Deleting all releases, tracks, stems, and related data...");
 
-    // Delete in reverse FK order: leaf tables first
-    const listings = (await prisma.stemListing.deleteMany()).count;
-    const mints = (await prisma.stemNftMint.deleteMany()).count;
-    const pricing = (await prisma.stemPricing.deleteMany()).count;
-    const licenses = (await prisma.license.deleteMany()).count;
-    const stems = (await prisma.stem.deleteMany()).count;
-    const tracks = (await prisma.track.deleteMany()).count;
-    const releases = (await prisma.release.deleteMany()).count;
+    // Delete in reverse FK order: deepest leaf tables first
+    const deleted: Record<string, number> = {};
+
+    // StemPurchase → StemListing
+    deleted.stemPurchases = (await prisma.stemPurchase.deleteMany()).count;
+    // RoyaltyPayment → listingId (from contract events)
+    deleted.royaltyPayments = (await prisma.royaltyPayment.deleteMany()).count;
+    // StemListing → Stem
+    deleted.stemListings = (await prisma.stemListing.deleteMany()).count;
+    // StemNftMint → Stem
+    deleted.stemNftMints = (await prisma.stemNftMint.deleteMany()).count;
+    // StemPricing → Stem
+    deleted.stemPricing = (await prisma.stemPricing.deleteMany()).count;
+    // License → Track
+    deleted.licenses = (await prisma.license.deleteMany()).count;
+    // LibraryTrack (uses trackId as string[], no FK but clean anyway)
+    deleted.libraryTracks = (await prisma.libraryTrack.deleteMany()).count;
+    // Stem → Track
+    deleted.stems = (await prisma.stem.deleteMany()).count;
+    // Track → Release
+    deleted.tracks = (await prisma.track.deleteMany()).count;
+    // Release (root)
+    deleted.releases = (await prisma.release.deleteMany()).count;
 
     const result = {
       status: "wiped",
-      deleted: { releases, tracks, stems, listings, mints, pricing, licenses },
+      deleted,
       ranAt: new Date().toISOString(),
     };
 
