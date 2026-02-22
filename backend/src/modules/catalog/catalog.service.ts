@@ -760,7 +760,21 @@ export class CatalogService implements OnModuleInit {
       }
     }
 
-    // 3. Remote storage (IPFS/Lighthouse) - fetch from URI
+    // 3. GCS storage - fetch from Google Cloud Storage
+    if (stem.uri && (stem.storageProvider === "gcs" || stem.uri.includes("storage.googleapis.com"))) {
+      try {
+        console.log(`[Catalog] Fetching stem ${stem.id} from GCS: ${stem.uri}`);
+        const response = await fetch(stem.uri, { signal: AbortSignal.timeout(30000) });
+        if (response.ok) {
+          const buffer = Buffer.from(await response.arrayBuffer());
+          return { data: buffer, mimeType: stem.mimeType || "audio/mpeg" };
+        }
+      } catch (err) {
+        console.error(`[Catalog] Failed to fetch stem ${stem.id} from GCS:`, err);
+      }
+    }
+
+    // 4. Remote storage (IPFS/Lighthouse) - fetch from URI
     if (stem.uri && (stem.storageProvider === "ipfs" || stem.uri.includes("ipfs") || stem.uri.includes("lighthouse"))) {
       try {
         console.log(`[Catalog] Fetching stem ${stem.id} from remote URI: ${stem.uri}`);
@@ -786,6 +800,28 @@ export class CatalogService implements OnModuleInit {
         }
       } catch (err) {
         console.error(`[Catalog] Failed to fetch stem ${stem.id} from HTTP:`, err);
+      }
+    }
+
+    // 6. Last resort: try GCS by looking up the stem's track and release context
+    if (stem.storageProvider === "local") {
+      try {
+        const stemWithTrack = await prisma.stem.findUnique({
+          where: { id: stem.id },
+          select: { type: true, track: { select: { id: true, releaseId: true } } },
+        });
+        if (stemWithTrack?.track) {
+          const bucket = process.env.GCS_STEMS_BUCKET || "resonate-stems-dev";
+          const gcsUrl = `https://storage.googleapis.com/${bucket}/stems/${stemWithTrack.track.releaseId}/${stemWithTrack.track.id}/${stemWithTrack.type}.mp3`;
+          console.log(`[Catalog] Fallback: trying GCS for stem ${stem.id}: ${gcsUrl}`);
+          const response = await fetch(gcsUrl, { signal: AbortSignal.timeout(30000) });
+          if (response.ok) {
+            const buffer = Buffer.from(await response.arrayBuffer());
+            return { data: buffer, mimeType: stem.mimeType || "audio/mpeg" };
+          }
+        }
+      } catch (err) {
+        console.error(`[Catalog] GCS fallback failed for stem ${stem.id}:`, err);
       }
     }
 
