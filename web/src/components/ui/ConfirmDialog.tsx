@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Button } from "./Button";
 
 interface ConfirmDialogProps {
     isOpen: boolean;
@@ -15,6 +14,73 @@ interface ConfirmDialogProps {
     onCancel: () => void;
 }
 
+/* ---------- SVG Icons ---------- */
+
+function TrashIcon() {
+    return (
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            <line x1="10" y1="11" x2="10" y2="17" />
+            <line x1="14" y1="11" x2="14" y2="17" />
+        </svg>
+    );
+}
+
+function WarningIcon() {
+    return (
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+    );
+}
+
+function QuestionIcon() {
+    return (
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+    );
+}
+
+/* ---------- Variant Configs ---------- */
+
+const variantConfig = {
+    danger: {
+        color: "#ef4444",
+        bgLight: "rgba(239, 68, 68, 0.08)",
+        bgMedium: "rgba(239, 68, 68, 0.12)",
+        borderColor: "rgba(239, 68, 68, 0.20)",
+        glow: "0 0 40px rgba(239, 68, 68, 0.15)",
+        Icon: TrashIcon,
+    },
+    warning: {
+        color: "#f59e0b",
+        bgLight: "rgba(245, 158, 11, 0.08)",
+        bgMedium: "rgba(245, 158, 11, 0.12)",
+        borderColor: "rgba(245, 158, 11, 0.20)",
+        glow: "0 0 40px rgba(245, 158, 11, 0.15)",
+        Icon: WarningIcon,
+    },
+    default: {
+        color: "#8b5cf6",
+        bgLight: "rgba(139, 92, 246, 0.08)",
+        bgMedium: "rgba(139, 92, 246, 0.12)",
+        borderColor: "rgba(139, 92, 246, 0.20)",
+        glow: "0 0 40px rgba(139, 92, 246, 0.15)",
+        Icon: QuestionIcon,
+    },
+};
+
+/* ---------- Component ---------- */
+
 export function ConfirmDialog({
     isOpen,
     title,
@@ -26,8 +92,13 @@ export function ConfirmDialog({
     onCancel,
 }: ConfirmDialogProps) {
     const [mounted, setMounted] = useState(false);
+    const [animating, setAnimating] = useState(false);
 
     useEffect(() => setMounted(true), []);
+
+    useEffect(() => {
+        if (isOpen) setAnimating(true);
+    }, [isOpen]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -40,119 +111,188 @@ export function ConfirmDialog({
 
     if (!isOpen || !mounted) return null;
 
-    const iconMap = {
-        danger: "🗑️",
-        warning: "⚠️",
-        default: "❓",
-    };
-
-    const confirmColorMap = {
-        danger: "var(--color-error, #ef4444)",
-        warning: "var(--color-warning, #eab308)",
-        default: "var(--color-accent, #6366f1)",
-    };
+    const v = variantConfig[variant];
+    const IconComponent = v.Icon;
 
     const dialog = (
         <div
             style={{
                 position: "fixed",
                 inset: 0,
-                background: "rgba(0, 0, 0, 0.85)",
-                backdropFilter: "blur(8px)",
+                background: "rgba(0, 0, 0, 0.75)",
+                backdropFilter: "blur(12px)",
+                WebkitBackdropFilter: "blur(12px)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 zIndex: 9999,
-                animation: "modal-backdrop-in 0.3s ease-out",
+                opacity: animating ? 1 : 0,
+                transition: "opacity 0.2s ease-out",
+                padding: "24px",
             }}
             onClick={onCancel}
         >
+            {/* Keyframes injected inline */}
+            <style>{`
+                @keyframes confirm-dialog-enter {
+                    from {
+                        opacity: 0;
+                        transform: scale(0.95) translateY(8px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: scale(1) translateY(0);
+                    }
+                }
+                @keyframes confirm-icon-pulse {
+                    0%, 100% { transform: scale(1); }
+                    50% { transform: scale(1.05); }
+                }
+                .confirm-dialog-cancel-btn {
+                    flex: 1;
+                    padding: 12px 24px;
+                    border-radius: 12px;
+                    border: 1px solid rgba(255, 255, 255, 0.10);
+                    background: rgba(255, 255, 255, 0.04);
+                    color: rgba(255, 255, 255, 0.7);
+                    font-size: 14px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    font-family: inherit;
+                    letter-spacing: 0.01em;
+                }
+                .confirm-dialog-cancel-btn:hover {
+                    background: rgba(255, 255, 255, 0.08);
+                    border-color: rgba(255, 255, 255, 0.18);
+                    color: #fff;
+                }
+                .confirm-dialog-confirm-btn {
+                    flex: 1;
+                    padding: 12px 24px;
+                    border-radius: 12px;
+                    border: none;
+                    color: #fff;
+                    font-size: 14px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    font-family: inherit;
+                    letter-spacing: 0.01em;
+                }
+                .confirm-dialog-confirm-btn:hover {
+                    filter: brightness(1.15);
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+                }
+                .confirm-dialog-confirm-btn:active {
+                    transform: translateY(0);
+                }
+            `}</style>
+
             <div
                 onClick={(e) => e.stopPropagation()}
                 style={{
-                    maxWidth: "440px",
-                    width: "calc(100% - 48px)",
-                    background: "#1a1a24",
-                    border: "1px solid rgba(255, 255, 255, 0.12)",
-                    borderRadius: "24px",
-                    boxShadow: "0 30px 80px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.05)",
+                    maxWidth: "420px",
+                    width: "100%",
+                    background: "linear-gradient(170deg, rgba(30, 30, 40, 0.98) 0%, rgba(18, 18, 24, 0.99) 100%)",
+                    border: `1px solid ${v.borderColor}`,
+                    borderRadius: "20px",
+                    boxShadow: `
+                        0 24px 80px rgba(0, 0, 0, 0.6),
+                        0 0 0 1px rgba(255, 255, 255, 0.04),
+                        ${v.glow}
+                    `,
                     overflow: "hidden",
-                    animation: "modal-slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
+                    animation: "confirm-dialog-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1)",
                 }}
             >
+                {/* Top accent line */}
+                <div style={{
+                    height: "2px",
+                    background: `linear-gradient(90deg, transparent, ${v.color}, transparent)`,
+                    opacity: 0.6,
+                }} />
+
+                {/* Content */}
                 <div style={{
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
-                    padding: "32px 32px 16px",
-                    gap: "16px",
+                    padding: "36px 32px 20px",
+                    gap: "20px",
                     textAlign: "center",
                 }}>
+                    {/* Icon */}
                     <div style={{
-                        width: "56px",
-                        height: "56px",
-                        borderRadius: "50%",
+                        width: "64px",
+                        height: "64px",
+                        borderRadius: "18px",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontSize: "24px",
-                        background: variant === "danger"
-                            ? "rgba(239, 68, 68, 0.15)"
-                            : variant === "warning"
-                                ? "rgba(234, 179, 8, 0.15)"
-                                : "rgba(99, 102, 241, 0.15)",
-                        border: `1px solid ${variant === "danger"
-                            ? "rgba(239, 68, 68, 0.25)"
-                            : variant === "warning"
-                                ? "rgba(234, 179, 8, 0.25)"
-                                : "rgba(99, 102, 241, 0.25)"}`,
+                        background: v.bgLight,
+                        border: `1px solid ${v.borderColor}`,
+                        color: v.color,
+                        animation: "confirm-icon-pulse 2s ease-in-out infinite",
+                        boxShadow: `inset 0 1px 0 rgba(255,255,255,0.04)`,
                     }}>
-                        {iconMap[variant]}
+                        <IconComponent />
                     </div>
 
+                    {/* Title */}
                     <h3 style={{
-                        fontSize: "20px",
+                        fontSize: "18px",
                         fontWeight: 600,
                         color: "#fff",
                         margin: 0,
+                        letterSpacing: "-0.01em",
+                        lineHeight: 1.3,
                     }}>
                         {title}
                     </h3>
 
+                    {/* Message */}
                     <p style={{
-                        fontSize: "14px",
-                        lineHeight: 1.6,
-                        color: "rgba(255,255,255,0.6)",
+                        fontSize: "13.5px",
+                        lineHeight: 1.65,
+                        color: "rgba(255, 255, 255, 0.5)",
                         margin: 0,
-                        maxWidth: "340px",
+                        maxWidth: "320px",
                     }}>
                         {message}
                     </p>
                 </div>
 
+                {/* Divider */}
+                <div style={{
+                    height: "1px",
+                    background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent)",
+                    margin: "0 24px",
+                }} />
+
+                {/* Actions */}
                 <div style={{
                     display: "flex",
-                    gap: "12px",
-                    padding: "16px 32px 28px",
+                    gap: "10px",
+                    padding: "20px 24px 24px",
                 }}>
-                    <Button
-                        variant="ghost"
+                    <button
+                        className="confirm-dialog-cancel-btn"
                         onClick={onCancel}
-                        className="flex-1"
                     >
                         {cancelLabel}
-                    </Button>
-                    <Button
+                    </button>
+                    <button
+                        className="confirm-dialog-confirm-btn"
                         onClick={onConfirm}
-                        className="flex-1"
                         style={{
-                            background: confirmColorMap[variant],
-                            color: "white",
-                            border: "none",
+                            background: `linear-gradient(135deg, ${v.color}, ${v.color}dd)`,
+                            boxShadow: `0 2px 12px ${v.color}40`,
                         }}
                     >
                         {confirmLabel}
-                    </Button>
+                    </button>
                 </div>
             </div>
         </div>
