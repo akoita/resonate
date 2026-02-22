@@ -483,14 +483,15 @@ export default function ReleaseDetails() {
                         variant: "warning",
                         confirmLabel: "Stop Processing",
                         onConfirm: async () => {
-                          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
                           try {
                             const { cancelProcessing } = await import("../../../lib/api");
                             await cancelProcessing(token, release.id);
+                            setConfirmDialog(prev => ({ ...prev, isOpen: false }));
                             addToast({ type: "success", title: "Cancelled", message: "Processing has been stopped." });
                             setRelease(prev => prev ? { ...prev, status: 'failed', tracks: prev.tracks?.map(t => ({ ...t, processingStatus: 'failed' as const })) } : null);
                           } catch (e) {
                             console.error(e);
+                            setConfirmDialog(prev => ({ ...prev, isOpen: false }));
                             addToast({ type: "error", title: "Cancel failed", message: "Could not cancel processing." });
                           }
                         },
@@ -510,14 +511,15 @@ export default function ReleaseDetails() {
                         variant: "danger",
                         confirmLabel: "Delete Forever",
                         onConfirm: async () => {
-                          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
                           try {
                             const { deleteRelease } = await import("../../../lib/api");
                             await deleteRelease(token, release.id);
+                            setConfirmDialog(prev => ({ ...prev, isOpen: false }));
                             addToast({ type: "success", title: "Deleted", message: `"${release.title}" has been removed.` });
                             router.push("/");
                           } catch (e) {
                             console.error(e);
+                            setConfirmDialog(prev => ({ ...prev, isOpen: false }));
                             addToast({ type: "error", title: "Delete failed", message: "Could not delete the release." });
                           }
                         },
