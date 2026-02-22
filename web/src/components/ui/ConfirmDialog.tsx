@@ -60,7 +60,12 @@ export function ConfirmDialog({
             <div
                 className="playlist-modal redesigned"
                 onClick={(e) => e.stopPropagation()}
-                style={{ maxWidth: "440px" }}
+                style={{
+                    maxWidth: "440px",
+                    background: "#1a1a24",
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    boxShadow: "0 30px 80px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.05)",
+                }}
             >
                 <div style={{
                     display: "flex",
