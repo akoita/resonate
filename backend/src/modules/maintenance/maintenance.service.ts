@@ -20,6 +20,15 @@ export class MaintenanceService {
   }
 
   async wipeReleases() {
+    // Safety gate: only works when explicitly enabled via env var
+    if (process.env.ENABLE_DEV_WIPE !== "true") {
+      this.logger.warn("🚫 WIPE rejected: ENABLE_DEV_WIPE is not set to 'true'");
+      return {
+        status: "blocked",
+        message: "Wipe is disabled. Set ENABLE_DEV_WIPE=true on this environment to enable.",
+      };
+    }
+
     this.logger.warn("⚠️  WIPE: Deleting all releases, tracks, stems, and related data...");
 
     // Delete in reverse FK order: leaf tables first
