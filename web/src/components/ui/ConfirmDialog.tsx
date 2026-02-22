@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "./Button";
 
 interface ConfirmDialogProps {
@@ -24,9 +25,9 @@ export function ConfirmDialog({
     onConfirm,
     onCancel,
 }: ConfirmDialogProps) {
+    const [mounted, setMounted] = useState(false);
 
-
-
+    useEffect(() => setMounted(true), []);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -37,7 +38,7 @@ export function ConfirmDialog({
         return () => window.removeEventListener("keydown", handleKey);
     }, [isOpen, onCancel]);
 
-    if (!isOpen) return null;
+    if (!isOpen || !mounted) return null;
 
     const iconMap = {
         danger: "🗑️",
@@ -51,20 +52,32 @@ export function ConfirmDialog({
         default: "var(--color-accent, #6366f1)",
     };
 
-    return (
+    const dialog = (
         <div
-            className="playlist-modal-overlay"
-            style={{ zIndex: 2000 }}
+            style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0, 0, 0, 0.85)",
+                backdropFilter: "blur(8px)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 9999,
+                animation: "modal-backdrop-in 0.3s ease-out",
+            }}
             onClick={onCancel}
         >
             <div
-                className="playlist-modal redesigned"
                 onClick={(e) => e.stopPropagation()}
                 style={{
                     maxWidth: "440px",
+                    width: "calc(100% - 48px)",
                     background: "#1a1a24",
                     border: "1px solid rgba(255, 255, 255, 0.12)",
+                    borderRadius: "24px",
                     boxShadow: "0 30px 80px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.05)",
+                    overflow: "hidden",
+                    animation: "modal-slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
                 }}
             >
                 <div style={{
@@ -100,7 +113,7 @@ export function ConfirmDialog({
                     <h3 style={{
                         fontSize: "20px",
                         fontWeight: 600,
-                        color: "var(--color-text-primary, #fff)",
+                        color: "#fff",
                         margin: 0,
                     }}>
                         {title}
@@ -109,7 +122,7 @@ export function ConfirmDialog({
                     <p style={{
                         fontSize: "14px",
                         lineHeight: 1.6,
-                        color: "var(--color-text-secondary, rgba(255,255,255,0.6))",
+                        color: "rgba(255,255,255,0.6)",
                         margin: 0,
                         maxWidth: "340px",
                     }}>
@@ -117,7 +130,7 @@ export function ConfirmDialog({
                     </p>
                 </div>
 
-                <div className="playlist-modal-footer" style={{
+                <div style={{
                     display: "flex",
                     gap: "12px",
                     padding: "16px 32px 28px",
@@ -144,4 +157,6 @@ export function ConfirmDialog({
             </div>
         </div>
     );
+
+    return createPortal(dialog, document.body);
 }
