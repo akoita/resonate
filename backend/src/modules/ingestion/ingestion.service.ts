@@ -410,8 +410,7 @@ export class IngestionService {
                 id: stemId,
                 uri: storage.uri,
                 type: type,
-                // NOTE: Removed 'data' buffer from event - already uploaded to storage at 'uri'
-                // Passing Buffer in events causes Prisma formatting stack overflow on large files
+                data: data, // Include encrypted data for Prisma persistence (Cloud Run ephemeral FS)
                 mimeType: "audio/mpeg",
                 durationSeconds: originalStem.durationSeconds,
                 isEncrypted,
