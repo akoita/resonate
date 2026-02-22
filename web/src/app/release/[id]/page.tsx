@@ -15,6 +15,7 @@ import { formatDuration } from "../../../lib/metadataExtractor";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { MintStemButton } from "../../../components/marketplace/MintStemButton";
 import { TrackActionMenu } from "../../../components/ui/TrackActionMenu";
+import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressUpdate } from "../../../hooks/useWebSockets";
 import { StemPricingPanel } from "../../../components/release/StemPricingPanel";
 import { LicensingInfoSection } from "../../../components/release/LicensingInfoSection";
@@ -49,6 +50,14 @@ export default function ReleaseDetails() {
   const artworkInputRef = useRef<HTMLInputElement>(null);
   const [recentlyCompletedTracks, setRecentlyCompletedTracks] = useState<Set<string>>(new Set());
   const [trackProgress, setTrackProgress] = useState<Record<string, number>>({});
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    variant: "danger" | "warning" | "default";
+    confirmLabel: string;
+    onConfirm: () => void;
+  }>({ isOpen: false, title: "", message: "", variant: "default", confirmLabel: "Confirm", onConfirm: () => {} });
 
   // Handle real-time track progress updates via WebSocket
   const handleProgressUpdate = useCallback((data: ReleaseProgressUpdate) => {
@@ -454,38 +463,54 @@ export default function ReleaseDetails() {
                     label: "Cancel Processing",
                     icon: <span>⏹</span>,
                     variant: "destructive" as const,
-                    onClick: async () => {
+                    onClick: () => {
                       if (!token) return;
-                      const confirmed = window.confirm("Stop processing this release? Tracks will be marked as failed.");
-                      if (!confirmed) return;
-                      try {
-                        const { cancelProcessing } = await import("../../../lib/api");
-                        await cancelProcessing(token, release.id);
-                        addToast({ type: "success", title: "Cancelled", message: "Processing has been stopped." });
-                        setRelease(prev => prev ? { ...prev, status: 'failed', tracks: prev.tracks?.map(t => ({ ...t, processingStatus: 'failed' as const })) } : null);
-                      } catch (e) {
-                        console.error(e);
-                        addToast({ type: "error", title: "Cancel failed", message: "Could not cancel processing." });
-                      }
+                      setConfirmDialog({
+                        isOpen: true,
+                        title: "Cancel Processing",
+                        message: "Stop processing this release? All tracks will be marked as failed.",
+                        variant: "warning",
+                        confirmLabel: "Stop Processing",
+                        onConfirm: async () => {
+                          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                          try {
+                            const { cancelProcessing } = await import("../../../lib/api");
+                            await cancelProcessing(token, release.id);
+                            addToast({ type: "success", title: "Cancelled", message: "Processing has been stopped." });
+                            setRelease(prev => prev ? { ...prev, status: 'failed', tracks: prev.tracks?.map(t => ({ ...t, processingStatus: 'failed' as const })) } : null);
+                          } catch (e) {
+                            console.error(e);
+                            addToast({ type: "error", title: "Cancel failed", message: "Could not cancel processing." });
+                          }
+                        },
+                      });
                     },
                   }] : []),
                   {
                     label: "Delete Release",
                     icon: <span>🗑</span>,
                     variant: "destructive" as const,
-                    onClick: async () => {
+                    onClick: () => {
                       if (!token) return;
-                      const confirmed = window.confirm(`Delete "${release.title}"? This action is permanent and cannot be undone.`);
-                      if (!confirmed) return;
-                      try {
-                        const { deleteRelease } = await import("../../../lib/api");
-                        await deleteRelease(token, release.id);
-                        addToast({ type: "success", title: "Deleted", message: `"${release.title}" has been removed.` });
-                        router.push("/");
-                      } catch (e) {
-                        console.error(e);
-                        addToast({ type: "error", title: "Delete failed", message: "Could not delete the release." });
-                      }
+                      setConfirmDialog({
+                        isOpen: true,
+                        title: "Delete Release",
+                        message: `Are you sure you want to delete "${release.title}"? This action is permanent and cannot be undone. All tracks, stems, and associated NFT data will be removed.`,
+                        variant: "danger",
+                        confirmLabel: "Delete Forever",
+                        onConfirm: async () => {
+                          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                          try {
+                            const { deleteRelease } = await import("../../../lib/api");
+                            await deleteRelease(token, release.id);
+                            addToast({ type: "success", title: "Deleted", message: `"${release.title}" has been removed.` });
+                            router.push("/");
+                          } catch (e) {
+                            console.error(e);
+                            addToast({ type: "error", title: "Delete failed", message: "Could not delete the release." });
+                          }
+                        },
+                      });
                     },
                   },
                 ]}
@@ -841,6 +866,16 @@ export default function ReleaseDetails() {
       <AddToPlaylistModal
         tracks={tracksToAddToPlaylist}
         onClose={() => setTracksToAddToPlaylist(null)}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant={confirmDialog.variant}
+        confirmLabel={confirmDialog.confirmLabel}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
       />
 
       <style jsx>{`
