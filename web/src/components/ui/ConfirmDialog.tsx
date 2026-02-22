@@ -10,7 +10,7 @@ interface ConfirmDialogProps {
     confirmLabel?: string;
     cancelLabel?: string;
     variant?: "danger" | "warning" | "default";
-    onConfirm: () => void;
+    onConfirm: () => void | Promise<void>;
     onCancel: () => void;
 }
 
@@ -93,6 +93,7 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
     const [mounted, setMounted] = useState(false);
     const [animating, setAnimating] = useState(false);
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => setMounted(true), []);
 
@@ -101,13 +102,16 @@ export function ConfirmDialog({
     }, [isOpen]);
 
     useEffect(() => {
-        if (!isOpen) return;
+        if (!isOpen) {
+            setLoading(false);
+            return;
+        }
         const handleKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape") onCancel();
+            if (e.key === "Escape" && !loading) onCancel();
         };
         window.addEventListener("keydown", handleKey);
         return () => window.removeEventListener("keydown", handleKey);
-    }, [isOpen, onCancel]);
+    }, [isOpen, onCancel, loading]);
 
     if (!isOpen || !mounted) return null;
 
@@ -130,10 +134,13 @@ export function ConfirmDialog({
                 transition: "opacity 0.2s ease-out",
                 padding: "24px",
             }}
-            onClick={onCancel}
+            onClick={() => { if (!loading) onCancel(); }}
         >
             {/* Keyframes injected inline */}
             <style>{`
+                @keyframes confirm-spinner {
+                    to { transform: rotate(360deg); }
+                }
                 @keyframes confirm-dialog-enter {
                     from {
                         opacity: 0;
@@ -180,13 +187,19 @@ export function ConfirmDialog({
                     font-family: inherit;
                     letter-spacing: 0.01em;
                 }
-                .confirm-dialog-confirm-btn:hover {
+                .confirm-dialog-confirm-btn:hover:not(:disabled) {
                     filter: brightness(1.15);
                     transform: translateY(-1px);
                     box-shadow: 0 4px 16px rgba(0,0,0,0.3);
                 }
-                .confirm-dialog-confirm-btn:active {
+                .confirm-dialog-confirm-btn:active:not(:disabled) {
                     transform: translateY(0);
+                }
+                .confirm-dialog-confirm-btn:disabled,
+                .confirm-dialog-cancel-btn:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                    pointer-events: none;
                 }
             `}</style>
 
@@ -280,18 +293,40 @@ export function ConfirmDialog({
                     <button
                         className="confirm-dialog-cancel-btn"
                         onClick={onCancel}
+                        disabled={loading}
                     >
                         {cancelLabel}
                     </button>
                     <button
                         className="confirm-dialog-confirm-btn"
-                        onClick={onConfirm}
+                        onClick={async () => {
+                            setLoading(true);
+                            try {
+                                await onConfirm();
+                            } catch {
+                                setLoading(false);
+                            }
+                        }}
+                        disabled={loading}
                         style={{
                             background: `linear-gradient(135deg, ${v.color}, ${v.color}dd)`,
                             boxShadow: `0 2px 12px ${v.color}40`,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "8px",
                         }}
                     >
-                        {confirmLabel}
+                        {loading && (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                style={{ animation: "confirm-spinner 0.8s linear infinite" }}>
+                                <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)"
+                                    strokeWidth="3" />
+                                <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff"
+                                    strokeWidth="3" strokeLinecap="round" />
+                            </svg>
+                        )}
+                        {loading ? "Processing…" : confirmLabel}
                     </button>
                 </div>
             </div>
