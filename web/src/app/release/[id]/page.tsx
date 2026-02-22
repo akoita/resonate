@@ -169,6 +169,12 @@ export default function ReleaseDetails() {
       // Always use ORIGINAL stem for the main audio player
       // When mixer mode is active, main audio will be muted and StemAudio components play
       const originalStem = t.stems?.find(s => s.type === "ORIGINAL");
+      // Fallback: if no ORIGINAL, try vocals first, then any available stem
+      const fallbackStem = !originalStem
+        ? t.stems?.find(s => s.type?.toLowerCase() === "vocals")
+          || t.stems?.find(s => s.type !== "ORIGINAL" && s.uri)
+        : null;
+      const playbackStem = originalStem || fallbackStem;
 
       return {
         id: t.id,
@@ -180,7 +186,7 @@ export default function ReleaseDetails() {
         genre: release.genre || null,
         duration: getTrackDuration(t),
         createdAt: t.createdAt,
-        remoteUrl: originalStem?.uri,
+        remoteUrl: playbackStem?.uri,
         remoteArtworkUrl: release.artworkUrl || undefined,
         stems: t.stems,
       };
@@ -229,10 +235,15 @@ export default function ReleaseDetails() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapToLocalTrack = (t: any): LocalTrack => {
     // Use ORIGINAL stem for playback URL (same as handlePlayTrack)
-    // stems[0] is typically an encrypted separated stem, NOT the playable original
+    // Fallback: if no ORIGINAL, try vocals then any available stem
     const originalStem = t.stems?.find(
       (s: { type?: string }) => s.type?.toUpperCase() === "ORIGINAL",
     );
+    const fallbackStem = !originalStem
+      ? t.stems?.find((s: { type?: string; uri?: string }) => s.type?.toLowerCase() === "vocals")
+        || t.stems?.find((s: { type?: string; uri?: string }) => s.type !== "ORIGINAL" && s.uri)
+      : null;
+    const playbackStem = originalStem || fallbackStem;
     return {
       id: t.id,
       title: t.title,
@@ -243,7 +254,7 @@ export default function ReleaseDetails() {
       genre: release?.genre || null,
       duration: getTrackDuration(t),
       createdAt: t.createdAt ? new Date(t.createdAt).toISOString() : new Date().toISOString(),
-      remoteUrl: originalStem?.uri,
+      remoteUrl: playbackStem?.uri,
       remoteArtworkUrl: release?.artworkUrl || undefined,
       stems: t.stems,
     };
