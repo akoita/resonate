@@ -145,6 +145,20 @@ variable "gcs_stems_bucket" {
   default     = "resonate-stems-dev"
 }
 
+# --- Admin / Maintenance ---
+
+variable "admin_addresses" {
+  description = "Comma-separated wallet addresses auto-promoted to admin role"
+  type        = string
+  default     = ""
+}
+
+variable "enable_dev_wipe" {
+  description = "Enable the DELETE /admin/wipe-releases endpoint (dev/staging only)"
+  type        = bool
+  default     = false
+}
+
 # --- Frontend ---
 
 variable "zerodev_project_id" {

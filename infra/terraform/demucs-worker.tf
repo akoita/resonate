@@ -59,6 +59,16 @@ resource "google_storage_bucket_iam_member" "stems_public_reader" {
   member = "allUsers"
 }
 
+# Grant backend Cloud Run SA objectAdmin on stems bucket
+# (backend uploads originals to GCS before stem separation)
+resource "google_storage_bucket_iam_member" "backend_gcs_writer" {
+  count = local.demucs_enabled ? 1 : 0
+
+  bucket = google_storage_bucket.stems[0].name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.cloud_run.email}"
+}
+
 # Grant Artifact Registry read access (to pull Docker images)
 resource "google_artifact_registry_repository_iam_member" "demucs_reader" {
   count = local.demucs_enabled ? 1 : 0

@@ -115,6 +115,29 @@ resource "google_cloud_run_v2_service" "backend" {
         value = var.frontend_url
       }
 
+      # GCS storage for original stems (avoids ephemeral disk loss on Cloud Run)
+      env {
+        name  = "STORAGE_PROVIDER"
+        value = local.demucs_enabled ? "gcs" : "local"
+      }
+
+      env {
+        name  = "GCS_STEMS_BUCKET"
+        value = var.gcs_stems_bucket
+      }
+
+      # Admin addresses (comma-separated) — auto-promoted to admin role on login
+      env {
+        name  = "ADMIN_ADDRESSES"
+        value = var.admin_addresses
+      }
+
+      # Safety gate for DELETE /admin/wipe-releases (dev/staging only)
+      env {
+        name  = "ENABLE_DEV_WIPE"
+        value = var.enable_dev_wipe ? "true" : "false"
+      }
+
       # Database URL (connection via private VPC — not exposed externally)
       env {
         name  = "DATABASE_URL"
