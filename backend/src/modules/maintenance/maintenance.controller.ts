@@ -1,4 +1,4 @@
-import { Controller, Post, UseGuards } from "@nestjs/common";
+import { Controller, Delete, Post, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { Roles } from "../auth/roles.decorator";
 import { MaintenanceService } from "./maintenance.service";
@@ -12,5 +12,12 @@ export class MaintenanceController {
   @Post("retention/cleanup")
   cleanup() {
     return this.maintenanceService.runRetentionCleanup();
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("admin")
+  @Delete("wipe-releases")
+  wipeReleases() {
+    return this.maintenanceService.wipeReleases();
   }
 }
