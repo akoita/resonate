@@ -39,3 +39,25 @@ infra/terraform/terraform.tfplan
 
 # Deployment secrets (never commit private keys or API keys)
 contracts/deployments/*-secrets.json
+
+# Debug / temp scripts (root-level scratch files)
+check-mint.js
+ff.js
+db-update.js
+run.sh
+test-verify.js
+final-env.yaml
+update-indexer.yaml
+Dockerfile.db
+tmp-db-update/
+
+# Backend debug scripts
+backend/check_*.js
+backend/debug_*.ts
+backend/inspect_*.ts
+backend/parse-*.js
+
+# Frontend debug scripts & build artifacts
+web/check-*.cjs
+web/lint_output.txt
+
