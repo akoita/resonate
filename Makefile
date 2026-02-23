@@ -61,7 +61,15 @@ deploy-frontend:
 		--image=$(REGISTRY)/frontend:latest \
 		--region=$(GCP_REGION)
 
-deploy-all: deploy-backend deploy-frontend
+deploy-demucs:
+	@test -f .env.deploy.$(ENV) || (echo "Error: .env.deploy.$(ENV) not found. Copy .env.deploy.example" && exit 1)
+	docker build -t $(REGISTRY)/demucs-worker:latest -f workers/demucs/Dockerfile workers/demucs/
+	docker push $(REGISTRY)/demucs-worker:latest
+	gcloud run services update resonate-$(ENV)-demucs \
+		--image=$(REGISTRY)/demucs-worker:latest \
+		--region=$(GCP_REGION)
+
+deploy-all: deploy-backend deploy-frontend deploy-demucs
 
 # Start production-like stack (backend + web + postgres + redis)
 docker-up:
