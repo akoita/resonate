@@ -1,20 +1,20 @@
 "use client";
 import { getAddress } from "viem";
 
-// Simple Mutex for synchronization
-class Mutex {
-    private promise: Promise<void> = Promise.resolve();
-    async lock() {
-        let unlockNext: () => void;
-        const nextPromise = new Promise<void>((resolve) => {
-            unlockNext = resolve;
-        });
-        const prevPromise = this.promise;
-        this.promise = nextPromise;
-        await prevPromise;
-        return unlockNext!;
-    }
-}
+// Simple Mutex for synchronization (currently unused, kept for future use)
+// class Mutex {
+//     private promise: Promise<void> = Promise.resolve();
+//     async lock() {
+//         let unlockNext: () => void;
+//         const nextPromise = new Promise<void>((resolve) => {
+//             unlockNext = resolve;
+//         });
+//         const prevPromise = this.promise;
+//         this.promise = nextPromise;
+//         await prevPromise;
+//         return unlockNext!;
+//     }
+// }
 
 // AuthSig type definition
 interface AuthSig {
@@ -143,7 +143,7 @@ interface StemAudioProps {
 const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolume, onMount, onUnmount }: StemAudioProps) => {
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [streamUrl, setStreamUrl] = useState<string | null>(null);
-    const [isDecrypting, setIsDecrypting] = useState(false);
+    const [_isDecrypting, setIsDecrypting] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
     const { signMessage, address } = useAuth();
     const type = stem.type.toLowerCase();
 

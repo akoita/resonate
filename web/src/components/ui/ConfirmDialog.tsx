@@ -95,22 +95,27 @@ export function ConfirmDialog({
     const [animating, setAnimating] = useState(false);
     const [loading, setLoading] = useState(false);
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR hydration guard
     useEffect(() => setMounted(true), []);
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- trigger enter animation
         if (isOpen) setAnimating(true);
     }, [isOpen]);
 
     useEffect(() => {
         if (!isOpen) {
-            setLoading(false);
             return;
         }
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- reset loading when dialog opens
+        setLoading(false);
         const handleKey = (e: KeyboardEvent) => {
             if (e.key === "Escape" && !loading) onCancel();
         };
         window.addEventListener("keydown", handleKey);
-        return () => window.removeEventListener("keydown", handleKey);
+        return () => {
+            window.removeEventListener("keydown", handleKey);
+        };
     }, [isOpen, onCancel, loading]);
 
     if (!isOpen || !mounted) return null;
