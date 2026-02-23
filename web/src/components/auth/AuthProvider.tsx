@@ -300,6 +300,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const parsed = connectResult as Record<string, any>;
     const account = parsed.account ?? connectResult;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (account as Record<string, any>).signMessage({ message });
   }, [getOrConnectAccount]);
 
