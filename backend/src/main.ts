@@ -22,9 +22,10 @@ async function bootstrap() {
       // If the indexer is millions of blocks behind, fast-forward it automatically
       if (!state || (state.lastBlockNumber < 10290000n && state.lastBlockNumber > 0n)) {
         console.log(`[Self-Healing] Detected stale indexer state (Block ${state?.lastBlockNumber}). Fast-forwarding to ${currentSepoliaBlock}...`);
-        await prisma.indexerState.update({
+        await prisma.indexerState.upsert({
           where: { chainId },
-          data: { lastBlockNumber: currentSepoliaBlock },
+          update: { lastBlockNumber: currentSepoliaBlock },
+          create: { chainId, lastBlockNumber: currentSepoliaBlock },
         });
         console.log(`[Self-Healing] Indexer fast-forward complete.`);
       }
