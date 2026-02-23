@@ -100,7 +100,7 @@ async function sendContractTransaction(
     });
   }
 
-  // Use Pimlico bundler (self-funded, no paymaster).
+  // Use Pimlico bundler + paymaster for fully gas-sponsored transactions.
   // ZeroDev's bundler rejects passkey-based accounts with "Unauthorized: wapk".
   const pimlicoApiKey = process.env.NEXT_PUBLIC_PIMLICO_API_KEY || "";
   const bundlerUrl = `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${pimlicoApiKey}`;
@@ -124,10 +124,18 @@ async function sendContractTransaction(
     return transport;
   };
 
+  // Pimlico Paymaster sponsors gas fees so users never need to hold ETH
+  const { createZeroDevPaymasterClient } = await import("@zerodev/sdk");
+  const paymasterClient = createZeroDevPaymasterClient({
+    chain: publicClient.chain,
+    transport: http(bundlerUrl),
+  });
+
   const kernelClient = await createKernelAccountClient({
     account,
     chain: publicClient.chain,
     bundlerTransport: mappedTransport,
+    paymaster: paymasterClient,
   });
 
   const finalDataZeroDev = typeof data === 'function' ? data(account.address as Address) : data;
@@ -780,10 +788,18 @@ async function sendBatchContractTransactions(
     return transport;
   };
 
+  // Pimlico Paymaster sponsors gas fees so users never need to hold ETH
+  const { createZeroDevPaymasterClient: createBatchPaymaster } = await import("@zerodev/sdk");
+  const batchPaymasterClient = createBatchPaymaster({
+    chain: publicClient.chain,
+    transport: http(bundlerUrl),
+  });
+
   const kernelClient = await createKernelAccountClient({
     account,
     chain: publicClient.chain,
     bundlerTransport: mappedTransport,
+    paymaster: batchPaymasterClient,
   });
 
   // Send batch as a single UserOperation
