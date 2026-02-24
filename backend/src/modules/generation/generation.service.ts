@@ -153,12 +153,25 @@ export class GenerationService {
   async processGenerationJob(data: {
     jobId: string;
     userId: string;
-    artistId: string;
+    artistId?: string;
     prompt: string;
     negativePrompt?: string;
     seed?: number;
   }): Promise<void> {
-    const { jobId, userId, artistId, prompt, negativePrompt, seed } = data;
+    const { jobId, userId, prompt, negativePrompt, seed } = data;
+    let { artistId } = data;
+
+    // Auto-resolve artistId from userId if not provided
+    if (!artistId) {
+      let artist = await prisma.artist.findFirst({ where: { userId } });
+      if (!artist) {
+        artist = await prisma.artist.create({
+          data: { userId, displayName: 'AI Creator', payoutAddress: userId },
+        });
+        this.logger.log(`[Generation] Auto-created artist ${artist.id} for user ${userId}`);
+      }
+      artistId = artist.id;
+    }
 
     try {
       // Phase 1: Generate audio
