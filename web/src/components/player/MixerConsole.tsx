@@ -324,6 +324,7 @@ export function MixerConsole({ onClose, className = "", showCloseButton = true }
                     gap: 8px;
                     height: 220px;
                     padding: 8px 0;
+                    position: relative;
                 }
 
                 .mixer-channel {
@@ -331,26 +332,53 @@ export function MixerConsole({ onClose, className = "", showCloseButton = true }
                     display: flex;
                     flex-direction: column;
                     align-items: center;
-                    gap: 12px;
+                    gap: 8px;
                     background: rgba(255, 255, 255, 0.03);
-                    padding: 16px 4px;
+                    padding: 12px 4px;
                     border-radius: 12px;
                     border: 1px solid rgba(255, 255, 255, 0.05);
                     min-width: 0;
+                    overflow: hidden;
                 }
 
-                .channel-v-slider {
-                    height: 140px;
-                    width: 30px;
+                .mixer-label {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 2px;
+                    width: 100%;
+                }
+
+                .mixer-label-icon {
+                    font-size: 16px;
+                    line-height: 1;
+                }
+
+                .mixer-label-title {
+                    font-size: 9px;
+                    font-weight: 800;
+                    text-transform: uppercase;
+                    color: rgba(255, 255, 255, 0.5);
+                    letter-spacing: 0.05em;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    max-width: 100%;
+                    text-align: center;
+                }
+
+                .mixer-slider-container {
+                    flex: 1;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    position: relative;
+                    width: 100%;
+                    min-height: 0;
                 }
 
                 .mixer-slider {
                     -webkit-appearance: none;
-                    width: 130px;
+                    width: 120px;
                     height: 6px;
                     background: rgba(0, 0, 0, 0.3);
                     border-radius: 3px;
@@ -371,27 +399,7 @@ export function MixerConsole({ onClose, className = "", showCloseButton = true }
                     cursor: pointer;
                 }
 
-                .channel-info {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    gap: 4px;
-                    width: 100%;
-                }
-
-                .channel-icon {
-                    font-size: 16px;
-                }
-
-                .channel-label {
-                    font-size: 9px;
-                    font-weight: 800;
-                    text-transform: uppercase;
-                    color: rgba(255, 255, 255, 0.5);
-                    letter-spacing: 0.05em;
-                }
-
-                .channel-value {
+                .mixer-value {
                     font-size: 10px;
                     font-weight: 700;
                     font-family: monospace;
@@ -399,6 +407,52 @@ export function MixerConsole({ onClose, className = "", showCloseButton = true }
                     background: rgba(124, 92, 255, 0.1);
                     padding: 2px 6px;
                     border-radius: 4px;
+                    white-space: nowrap;
+                }
+
+                .mixer-overlay {
+                    position: absolute;
+                    inset: 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: rgba(15, 15, 20, 0.85);
+                    border-radius: 12px;
+                    z-index: 10;
+                    backdrop-filter: blur(4px);
+                }
+
+                .mixer-overlay-content {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 8px;
+                    text-align: center;
+                    padding: 16px;
+                }
+
+                .mixer-overlay-icon {
+                    font-size: 24px;
+                }
+
+                .mixer-overlay-text {
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: rgba(255, 255, 255, 0.8);
+                    margin: 0;
+                }
+
+                .mixer-overlay-hint {
+                    font-size: 11px;
+                    color: rgba(255, 255, 255, 0.4);
+                }
+
+                .opacity-20 {
+                    opacity: 0.2;
+                }
+
+                .pointer-events-none {
+                    pointer-events: none;
                 }
 
                 .mixer-footer {
@@ -407,7 +461,7 @@ export function MixerConsole({ onClose, className = "", showCloseButton = true }
                     text-align: center;
                 }
 
-                .mixer-hint {
+                .mixer-sync-text {
                     font-size: 8px;
                     color: rgba(255, 255, 255, 0.3);
                     text-transform: uppercase;
