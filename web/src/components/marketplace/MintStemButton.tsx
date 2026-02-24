@@ -135,12 +135,22 @@ export function MintStemButton({
         }
 
         try {
+            // Determine mint recipient based on environment
             const currentChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
+            const rpcOverride = process.env.NEXT_PUBLIC_RPC_URL || "";
+            const isLocalDev = currentChainId === "31337" || rpcOverride.includes("localhost") || rpcOverride.includes("127.0.0.1");
+
             const tokenUri = metadataUri || `${window.location.protocol}//${window.location.host}/api/metadata/${currentChainId}/stem/${stemId}`;
 
-            // Get user's local signer address (deterministic per user, auto-funded from Anvil)
-            const { getLocalSignerAddress } = await import("../../lib/localAA");
-            const mintTo = getLocalSignerAddress(address as Address); // User's own local account
+            let mintTo: Address;
+            if (isLocalDev) {
+                // Local dev: use deterministic signer (auto-funded from Anvil)
+                const { getLocalSignerAddress } = await import("../../lib/localAA");
+                mintTo = getLocalSignerAddress(address as Address);
+            } else {
+                // Testnet/mainnet: mint to user's actual wallet address
+                mintTo = address as Address;
+            }
 
             const hash = await mint({
                 to: mintTo,
