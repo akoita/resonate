@@ -152,19 +152,60 @@ export class AesEncryptionProvider extends EncryptionProvider {
                 return true;
             }
 
-            // Verify the wallet signature is valid
-            const isValidSig = await verifyMessage({
-                address: getAddress(context.authSig.address),
-                message: context.authSig.signedMessage,
-                signature: context.authSig.sig as `0x${string}`,
-            });
-
-            if (isValidSig) {
-                this.logger.log(`[AES] Access granted for authenticated user: ${context.authSig.address}`);
-                return true;
+            // Check if requester is the content owner (skip sig verification)
+            if (context.metadata) {
+                try {
+                    const metadata: AesMetadata = JSON.parse(context.metadata);
+                    const requesterAddr = context.authSig.address.toLowerCase();
+                    if (metadata.ownerAddress === requesterAddr ||
+                        metadata.allowedAddresses?.map(a => a.toLowerCase()).includes(requesterAddr)) {
+                        this.logger.log(`[AES] Access granted for owner/allowed address: ${context.authSig.address}`);
+                        return true;
+                    }
+                } catch (e) {
+                    // metadata parse failure, continue with sig verification
+                }
             }
 
-            this.logger.warn(`[AES] Invalid signature for ${context.authSig.address}`);
+            // Try standard EOA signature verification first
+            try {
+                const isValidSig = await verifyMessage({
+                    address: getAddress(context.authSig.address),
+                    message: context.authSig.signedMessage,
+                    signature: context.authSig.sig as `0x${string}`,
+                });
+
+                if (isValidSig) {
+                    this.logger.log(`[AES] Access granted for authenticated user: ${context.authSig.address}`);
+                    return true;
+                }
+            } catch (eoaErr: any) {
+                // EOA verification failed (e.g. invalid signature length for smart contract wallets)
+                this.logger.debug(`[AES] EOA sig verification failed, trying EIP-1271: ${eoaErr.message}`);
+            }
+
+            // Fallback: EIP-1271 smart contract wallet verification (ZeroDev/Kernel)
+            try {
+                const { createPublicClient, http } = await import('viem');
+                const { sepolia } = await import('viem/chains');
+                const publicClient = createPublicClient({
+                    chain: sepolia,
+                    transport: http(),
+                });
+                const isValid = await publicClient.verifyMessage({
+                    address: getAddress(context.authSig.address),
+                    message: context.authSig.signedMessage,
+                    signature: context.authSig.sig as `0x${string}`,
+                });
+                if (isValid) {
+                    this.logger.log(`[AES] Access granted via EIP-1271 for: ${context.authSig.address}`);
+                    return true;
+                }
+            } catch (eip1271Err: any) {
+                this.logger.debug(`[AES] EIP-1271 verification also failed: ${eip1271Err.message}`);
+            }
+
+            this.logger.warn(`[AES] All verification methods failed for ${context.authSig.address}`);
             return false;
         } catch (error: any) {
             this.logger.error(`[AES] Access verification failed: ${error.message}`);
