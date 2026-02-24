@@ -89,7 +89,7 @@ async function sendContractTransaction(
   });
 
   // Create kernel client with bundler
-  const bundlerUrl = `https://rpc.zerodev.app/api/v3/bundler/${projectId}?chainId=${chainId}`;
+  const bundlerUrl = `https://rpc.zerodev.app/api/v3/${projectId}/chain/${chainId}`;
 
   const kernelClient = await createKernelAccountClient({
     account,
