@@ -3,6 +3,9 @@ const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
 const nextConfig = {
   output: "standalone",
+  experimental: {
+    cssChunking: 'strict',  // Only load CSS for components actually rendered
+  },
   turbopack: {
     root: __dirname,
   },
