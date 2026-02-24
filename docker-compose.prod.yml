@@ -33,6 +33,10 @@ services:
       # GCS storage for stems (decoupled from worker — no shared volume)
       - STORAGE_PROVIDER=${STORAGE_PROVIDER:-gcs}
       - GCS_STEMS_BUCKET=${GCS_STEMS_BUCKET:-resonate-stems-dev}
+      # Phase 2: Event-driven stem processing via Pub/Sub
+      - STEM_PROCESSING_MODE=${STEM_PROCESSING_MODE:-pubsub}
+      - PUBSUB_EMULATOR_HOST=${PUBSUB_EMULATOR_HOST:-pubsub-emulator:8085}
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID:-resonate-local}
       # Admin / Maintenance
       - ADMIN_ADDRESSES=${ADMIN_ADDRESSES:-}
       - ENABLE_DEV_WIPE=${ENABLE_DEV_WIPE:-false}
@@ -47,6 +51,10 @@ services:
       - STORAGE_MODE=gcs
       - GCS_BUCKET=${GCS_STEMS_BUCKET:-resonate-stems-dev}
       - OUTPUT_DIR=/outputs
+      - PROCESSING_MODE=pubsub
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID:-resonate-local}
+      - PUBSUB_SUBSCRIPTION=stem-separate-worker
+      - PUBSUB_RESULTS_TOPIC=stem-results
     # Remove the shared bind mount from base config — GCS mode needs no local volumes
     volumes: !reset []
 
