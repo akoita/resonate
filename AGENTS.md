@@ -34,8 +34,8 @@ environment-dependent values directly in source code.
    ```
 
 3. **Port conventions** — local dev defaults must use the correct port:
-   - Frontend (Next.js): `3000`
-   - Backend (NestJS): `3001`
+   - Backend (NestJS): `3000`
+   - Frontend (Next.js): `3001`
    - Demucs Worker: `8000`
    - Anvil (local chain): `8545`
    - AA Bundler: `4337`

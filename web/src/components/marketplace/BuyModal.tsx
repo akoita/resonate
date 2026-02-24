@@ -9,7 +9,7 @@ import "../../styles/buy-modal.css";
 import "../../styles/license-badges.css";
 import "../../styles/license-terms.css";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 interface BuyModalProps {
   listingId: bigint;

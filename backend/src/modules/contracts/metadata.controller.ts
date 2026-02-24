@@ -58,10 +58,10 @@ export class MetadataController {
         // Artwork logic: Stem > Release URL > Release blob endpoint > Default
         let artworkUrl = this.toPublicUrl(stem.artworkUrl || release?.artworkUrl);
         if (!artworkUrl && release?.id && release?.artworkMimeType) {
-          artworkUrl = `${process.env.BACKEND_URL || "http://localhost:3001"}/catalog/releases/${release.id}/artwork`;
+          artworkUrl = `${process.env.BACKEND_URL || "http://localhost:3000"}/catalog/releases/${release.id}/artwork`;
         }
         if (!artworkUrl) {
-          artworkUrl = `${process.env.BACKEND_URL || "http://localhost:3001"}/default-stem-cover.png`;
+          artworkUrl = `${process.env.BACKEND_URL || "http://localhost:3000"}/default-stem-cover.png`;
         }
 
         return {
@@ -137,11 +137,11 @@ export class MetadataController {
 
         // If no direct URL but release has artwork data, use the catalog endpoint
         if (!artworkUrl && release?.id && release?.artworkMimeType) {
-          artworkUrl = `${process.env.BACKEND_URL || "http://localhost:3001"}/catalog/releases/${release.id}/artwork`;
+          artworkUrl = `${process.env.BACKEND_URL || "http://localhost:3000"}/catalog/releases/${release.id}/artwork`;
         }
 
         if (!artworkUrl) {
-          artworkUrl = `${process.env.BACKEND_URL || "http://localhost:3001"}/default-stem-cover.png`;
+          artworkUrl = `${process.env.BACKEND_URL || "http://localhost:3000"}/default-stem-cover.png`;
         }
 
 
@@ -390,7 +390,7 @@ export class MetadataController {
     // IF stemId is provided, we ALWAYS proxy through the backend for audio playback
     // This allows for decryption and ensures the browser receives standard mp3 headers
     if (stemId) {
-      return `${process.env.BACKEND_URL || "http://localhost:3001"}/catalog/stems/${stemId}/preview`;
+      return `${process.env.BACKEND_URL || "http://localhost:3000"}/catalog/stems/${stemId}/preview`;
     }
 
     // Handle ipfs:// protocol for artwork/other
