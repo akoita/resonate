@@ -74,6 +74,7 @@ export class StemsProcessor extends WorkerHost {
                 trackPosition: track.position,
                 originalStemUri,
                 mimeType: originalStem.mimeType || "audio/mpeg",
+                callbackUrl: process.env.BACKEND_URL || undefined,
                 originalStemMeta: {
                     id: originalStem.id,
                     durationSeconds: originalStem.durationSeconds,

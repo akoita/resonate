@@ -14,6 +14,8 @@ export interface StemSeparateMessage {
   trackPosition?: number;
   originalStemUri: string;
   mimeType: string;
+  /** Backend URL for progress HTTP callbacks during processing */
+  callbackUrl?: string;
   /** Original stem metadata for re-assembly after separation */
   originalStemMeta?: {
     id?: string;

@@ -244,8 +244,9 @@ async def process_pubsub_message(message_data: dict):
     original_stem_uri = message_data["originalStemUri"]
     mime_type = message_data.get("mimeType", "audio/mpeg")
     original_stem_meta = message_data.get("originalStemMeta", {})
+    callback_url = message_data.get("callbackUrl")
 
-    logger.info(f"[PubSub] Processing job {job_id}: release={release_id}, track={track_id}")
+    logger.info(f"[PubSub] Processing job {job_id}: release={release_id}, track={track_id}, callback={callback_url}")
 
     with tempfile.TemporaryDirectory() as temp_dir:
         # Download original audio from GCS
@@ -254,8 +255,8 @@ async def process_pubsub_message(message_data: dict):
         logger.info(f"[PubSub] Downloading audio from {original_stem_uri}")
         download_from_gcs(original_stem_uri, input_path)
 
-        # Run separation
-        results = await run_demucs_separation(input_path, temp_dir, release_id, track_id)
+        # Run separation (with progress callbacks if callbackUrl provided)
+        results = await run_demucs_separation(input_path, temp_dir, release_id, track_id, callback_url)
 
         # Publish result to stem-results topic
         from google.cloud import pubsub_v1
