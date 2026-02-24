@@ -126,6 +126,17 @@ resource "google_cloud_run_v2_service" "backend" {
         value = var.gcs_stems_bucket
       }
 
+      # Phase 2: Event-driven stem processing via Pub/Sub
+      env {
+        name  = "STEM_PROCESSING_MODE"
+        value = "pubsub"
+      }
+
+      env {
+        name  = "GCP_PROJECT_ID"
+        value = var.project_id
+      }
+
       # Admin addresses (comma-separated) — auto-promoted to admin role on login
       env {
         name  = "ADMIN_ADDRESSES"

@@ -136,6 +136,27 @@ resource "google_cloud_run_v2_service" "demucs_cpu" {
         value = "/outputs"
       }
 
+      # Phase 2: Event-driven Pub/Sub mode
+      env {
+        name  = "PROCESSING_MODE"
+        value = "pubsub"
+      }
+
+      env {
+        name  = "GCP_PROJECT_ID"
+        value = var.project_id
+      }
+
+      env {
+        name  = "PUBSUB_SUBSCRIPTION"
+        value = "stem-separate-worker"
+      }
+
+      env {
+        name  = "PUBSUB_RESULTS_TOPIC"
+        value = "stem-results"
+      }
+
       startup_probe {
         http_get {
           path = "/health"
@@ -242,6 +263,10 @@ resource "google_compute_instance" "demucs_worker" {
             { name = "STORAGE_MODE", value = "gcs" },
             { name = "GCS_BUCKET", value = var.gcs_stems_bucket },
             { name = "OUTPUT_DIR", value = "/outputs" },
+            { name = "PROCESSING_MODE", value = "pubsub" },
+            { name = "GCP_PROJECT_ID", value = var.project_id },
+            { name = "PUBSUB_SUBSCRIPTION", value = "stem-separate-worker" },
+            { name = "PUBSUB_RESULTS_TOPIC", value = "stem-results" },
           ]
           volumeMounts = [{
             name      = "model-cache"
