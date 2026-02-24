@@ -94,7 +94,7 @@ export default function MarketplacePage(props: {
 
     const { pending: buyPending } = useBuyStem();
     const { addToast } = useToast();
-    const { address: walletAddress } = useAuth();
+    const { address: walletAddress, kernelAccount, knownAddresses, smartAccountAddress } = useAuth();
     const { chainId } = useZeroDev();
 
     // Resolve the actual on-chain signer address.
@@ -104,15 +104,25 @@ export default function MarketplacePage(props: {
     const [signerAddress, setSignerAddress] = useState<string | null>(null);
     useEffect(() => {
         if (!walletAddress) { setSignerAddress(null); return; }
-        const isLocalOrFork = chainId === 31337 || (chainId === 11155111 && process.env.NODE_ENV === "development");
+        const rpcOverride = process.env.NEXT_PUBLIC_RPC_URL || "";
+        const isLocalRpc = rpcOverride.includes("localhost") || rpcOverride.includes("127.0.0.1");
+        const isLocalOrFork = chainId === 31337 || isLocalRpc;
         if (isLocalOrFork) {
             import("../../lib/localAA").then(({ getLocalSignerAddress }) => {
                 setSignerAddress(getLocalSignerAddress(walletAddress as `0x${string}`).toLowerCase());
             }).catch(() => setSignerAddress(walletAddress.toLowerCase()));
         } else {
-            setSignerAddress(walletAddress.toLowerCase());
+            // Use the persisted Smart Account address (the actual on-chain identity),
+            // then fall back to kernelAccount.address, then walletAddress
+            if (smartAccountAddress) {
+                setSignerAddress(smartAccountAddress.toLowerCase());
+            } else if (kernelAccount && kernelAccount.address) {
+                setSignerAddress(kernelAccount.address.toLowerCase());
+            } else {
+                setSignerAddress(walletAddress.toLowerCase());
+            }
         }
-    }, [walletAddress, chainId]);
+    }, [walletAddress, chainId, kernelAccount, smartAccountAddress]);
 
     // ---- Search debounce ----
     useEffect(() => {
@@ -135,7 +145,11 @@ export default function MarketplacePage(props: {
 
             const params = new URLSearchParams({ status: "active", limit: String(PAGE_SIZE), offset: String(currentOffset), sortBy });
             if (debouncedSearch) params.set("search", debouncedSearch);
-            if (hideOwnListings && signerAddress) params.set("excludeSeller", signerAddress);
+            if (hideOwnListings && signerAddress) {
+                // Send all known SA addresses (handles ZeroDev SDK/version changes)
+                const allAddresses = new Set([signerAddress, ...knownAddresses.map((a: string) => a.toLowerCase())]);
+                params.set("excludeSeller", Array.from(allAddresses).join(","));
+            }
 
             const res = await fetch(`/api/contracts/listings?${params.toString()}`);
             if (!res.ok) {
@@ -166,7 +180,7 @@ export default function MarketplacePage(props: {
         } finally {
             setLoading(false);
         }
-    }, [debouncedSearch, sortBy, offset, listings.length, hideOwnListings, signerAddress]);
+    }, [debouncedSearch, sortBy, offset, listings.length, hideOwnListings, signerAddress, knownAddresses]);
 
     // ---- Refetch when sort, search, or signer changes ----
     // Guard: if the user is logged in and wants to hide own listings,

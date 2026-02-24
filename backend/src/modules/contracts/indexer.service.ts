@@ -162,15 +162,20 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         });
       }
 
-      const fromBlock = indexerState.lastBlockNumber + 1n;
-
-      if (fromBlock > currentBlock) {
+      if (indexerState.lastBlockNumber > currentBlock) {
         // Detect chain reset (Anvil restart)
         this.logger.log(`Chain reset detected (current block ${currentBlock} < last indexed ${indexerState.lastBlockNumber}). Resetting indexer...`);
         await prisma.indexerState.update({
           where: { chainId },
           data: { lastBlockNumber: 0n },
         });
+        return;
+      }
+
+      const fromBlock = indexerState.lastBlockNumber + 1n;
+
+      if (fromBlock > currentBlock) {
+        // Already caught up
         return;
       }
 

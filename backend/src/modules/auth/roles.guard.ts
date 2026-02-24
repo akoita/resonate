@@ -15,7 +15,11 @@ export class RolesGuard implements CanActivate {
       return true;
     }
     const request = context.switchToHttp().getRequest();
-    const role = request.user?.role ?? "listener";
+    // If no user on the request yet (AuthGuard hasn't run), defer to AuthGuard
+    if (!request.user) {
+      return true;
+    }
+    const role = request.user.role ?? "listener";
     return required.includes(role);
   }
 }

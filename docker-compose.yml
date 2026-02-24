@@ -112,6 +112,7 @@ services:
       - demucs_model_cache:/root/.cache/torch # Persist model cache between container rebuilds
     environment:
       - OUTPUT_DIR=/outputs
+      - STORAGE_MODE=local
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: always

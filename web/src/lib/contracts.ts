@@ -46,10 +46,10 @@ export interface BuyQuote {
 }
 
 export interface MintParams {
-  to: Address;
+  to?: Address;
   amount: bigint;
   tokenURI: string;
-  royaltyReceiver: Address;
+  royaltyReceiver?: Address;
   royaltyBps: number;
   remixable: boolean;
   parentIds: bigint[];

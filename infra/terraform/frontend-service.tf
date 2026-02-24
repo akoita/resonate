@@ -9,7 +9,7 @@ locals {
 resource "google_cloud_run_v2_service" "frontend" {
   name     = "resonate-${var.environment}-frontend"
   location = var.region
-  ingress  = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+  ingress  = "INGRESS_TRAFFIC_ALL"  # TODO: restrict to INTERNAL_LOAD_BALANCER once LB + IAP is configured
 
   template {
     service_account = google_service_account.cloud_run.email
@@ -48,11 +48,6 @@ resource "google_cloud_run_v2_service" "frontend" {
         value = "0.0.0.0"
       }
 
-      env {
-        name  = "PORT"
-        value = "3000"
-      }
-
       # Point frontend rewrites to the backend Cloud Run service (internal URL)
       env {
         name  = "NEXT_PUBLIC_API_URL"
@@ -72,6 +67,16 @@ resource "google_cloud_run_v2_service" "frontend" {
       env {
         name  = "NEXT_PUBLIC_MARKETPLACE_ADDRESS"
         value = var.marketplace_address
+      }
+
+      env {
+        name  = "NEXT_PUBLIC_ZERODEV_PROJECT_ID"
+        value = var.zerodev_project_id
+      }
+
+      env {
+        name  = "NEXT_PUBLIC_PASSKEY_SERVER_URL"
+        value = var.passkey_server_url
       }
 
       startup_probe {

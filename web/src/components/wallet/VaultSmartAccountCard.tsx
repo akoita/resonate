@@ -3,20 +3,99 @@
 import { useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import {
-    deploySmartAccount,
     deploySmartAccountSelf,
     enableSmartAccount,
     refreshSmartAccount,
-    setWalletProvider,
 } from "../../lib/api";
+import { WalletRecord } from "../../lib/api";
 
-export default function VaultSmartAccountCard() {
-    const { address, token, role, wallet, refreshWallet } = useAuth();
+type Props = {
+    wallet: WalletRecord | null;
+    address: string | null;
+};
+
+const EXPLORER_URL = "https://sepolia.etherscan.io";
+
+function AddressValue({ value, href, badge }: {
+    value: string | null | undefined;
+    href?: string;
+    badge?: string;
+}) {
+    const [expanded, setExpanded] = useState(false);
+    const [copied, setCopied] = useState(false);
+
+    if (!value) return <span className="vault-detail-value">—</span>;
+
+    const isHex = value.startsWith("0x");
+    const short = isHex ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
+
+    const copy = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        await navigator.clipboard.writeText(value);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <span className="vault-detail-value">
+            {isHex ? (
+                <span className="vault-addr-container">
+                    {/* Shortened or full display */}
+                    <button
+                        className="vault-addr-toggle"
+                        onClick={() => setExpanded(!expanded)}
+                        title={expanded ? "Collapse" : "Show full address"}
+                    >
+                        <span className={expanded ? "vault-addr-full" : "vault-addr-short"}>
+                            {expanded ? value : short}
+                        </span>
+                    </button>
+
+                    {/* Copy button */}
+                    <button className="vault-addr-action" onClick={copy} title="Copy to clipboard">
+                        {copied ? (
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2ec486" strokeWidth="2.5">
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                        ) : (
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                            </svg>
+                        )}
+                    </button>
+
+                    {/* Explorer link */}
+                    {href && (
+                        <a
+                            href={href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="vault-addr-action"
+                            title="View on Etherscan"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                                <polyline points="15 3 21 3 21 9" />
+                                <line x1="10" y1="14" x2="21" y2="3" />
+                            </svg>
+                        </a>
+                    )}
+                </span>
+            ) : (
+                value
+            )}
+            {badge && <span className="vault-detail-badge">{badge}</span>}
+        </span>
+    );
+}
+
+export default function VaultSmartAccountCard({ wallet, address }: Props) {
+    const { token, refreshWallet } = useAuth();
     const [status, setStatus] = useState<string | null>(null);
     const [pending, setPending] = useState(false);
-    const isAdmin = role === "admin";
     const isDeployed = Boolean(wallet?.deploymentTxHash);
-    const isSmartAccount = wallet?.accountType === "erc4337" || wallet?.accountType === "kernel";
 
     const run = async (action: () => Promise<void>) => {
         if (!address || !token) {
@@ -28,7 +107,7 @@ export default function VaultSmartAccountCard() {
             setStatus(null);
             await action();
             await refreshWallet();
-            setStatus("✓ Updated successfully");
+            setStatus("✓ Updated");
         } catch (err) {
             setStatus((err as Error).message);
         } finally {
@@ -47,92 +126,74 @@ export default function VaultSmartAccountCard() {
                     </svg>
                     Smart Account
                 </span>
-                <span
-                    className={`vault-status-badge ${isDeployed
-                            ? "vault-status-badge--active"
-                            : isSmartAccount
-                                ? "vault-status-badge--inactive"
-                                : "vault-status-badge--locked"
-                        }`}
-                >
+                <span className={`vault-status-badge ${isDeployed ? "vault-status-badge--active" : "vault-status-badge--inactive"}`}>
                     <span className="vault-status-dot" />
-                    {isDeployed ? "Deployed" : isSmartAccount ? "Pending" : "EOA"}
+                    {isDeployed ? "Deployed" : "Pending"}
                 </span>
             </div>
 
-            {/* Meta Info */}
-            <div className="vault-meta-grid">
-                <div className="vault-meta-item">
-                    <span className="vault-meta-label">Provider</span>
-                    <span className="vault-meta-value">{wallet?.provider ?? "local"}</span>
+            {/* Account Details */}
+            <div className="vault-detail-list">
+                <div className="vault-detail-row">
+                    <span className="vault-detail-label">Address</span>
+                    <AddressValue value={address} href={address ? `${EXPLORER_URL}/address/${address}` : undefined} />
                 </div>
-                <div className="vault-meta-item">
-                    <span className="vault-meta-label">Account Type</span>
-                    <span className="vault-meta-value">{wallet?.accountType ?? "EOA"}</span>
+                <div className="vault-detail-row">
+                    <span className="vault-detail-label">Entry Point</span>
+                    <AddressValue value={wallet?.entryPoint} href={wallet?.entryPoint ? `${EXPLORER_URL}/address/${wallet.entryPoint}` : undefined} />
                 </div>
+                <div className="vault-detail-row">
+                    <span className="vault-detail-label">Factory</span>
+                    <AddressValue value={wallet?.factory} href={wallet?.factory ? `${EXPLORER_URL}/address/${wallet.factory}` : undefined} />
+                </div>
+                <div className="vault-detail-row">
+                    <span className="vault-detail-label">Paymaster</span>
+                    <AddressValue
+                        value={wallet?.paymaster ? "Pimlico" : "Self-funded"}
+                        badge={wallet?.paymaster ? "✓" : undefined}
+                    />
+                </div>
+                <div className="vault-detail-row">
+                    <span className="vault-detail-label">Bundler</span>
+                    <AddressValue
+                        value={wallet?.bundler?.includes("pimlico") ? "Pimlico" : wallet?.bundler}
+                    />
+                </div>
+                {wallet?.deploymentTxHash && (
+                    <div className="vault-detail-row">
+                        <span className="vault-detail-label">Deploy TX</span>
+                        <AddressValue
+                            value={wallet.deploymentTxHash}
+                            href={`${EXPLORER_URL}/tx/${wallet.deploymentTxHash}`}
+                        />
+                    </div>
+                )}
             </div>
 
             {/* Actions */}
             <div className="vault-actions">
-                {isAdmin ? (
+                <button
+                    className="vault-btn vault-btn--ghost vault-btn--sm"
+                    disabled={pending}
+                    onClick={() => run(async () => { await refreshSmartAccount(token!); })}
+                >
+                    Refresh Status
+                </button>
+                {!isDeployed && (
                     <>
                         <button
-                            className="vault-btn vault-btn--ghost"
+                            className="vault-btn vault-btn--ghost vault-btn--sm"
                             disabled={pending}
-                            onClick={() =>
-                                run(async () => {
-                                    await setWalletProvider(address!, "erc4337", token!);
-                                })
-                            }
+                            onClick={() => run(async () => { await enableSmartAccount(token!); })}
                         >
-                            Switch to Smart Account
+                            Enable
                         </button>
                         <button
-                            className="vault-btn vault-btn--primary"
+                            className="vault-btn vault-btn--primary vault-btn--sm"
                             disabled={pending}
-                            onClick={() =>
-                                run(async () => {
-                                    await deploySmartAccount(address!, token!);
-                                })
-                            }
+                            onClick={() => run(async () => { await deploySmartAccountSelf(token!); })}
                         >
-                            Deploy Smart Account
-                        </button>
-                    </>
-                ) : (
-                    <>
-                        <button
-                            className="vault-btn vault-btn--ghost"
-                            disabled={pending}
-                            onClick={() =>
-                                run(async () => {
-                                    await enableSmartAccount(token!);
-                                })
-                            }
-                        >
-                            Enable Smart Account
-                        </button>
-                        <button
-                            className="vault-btn vault-btn--ghost"
-                            disabled={pending}
-                            onClick={() =>
-                                run(async () => {
-                                    await refreshSmartAccount(token!);
-                                })
-                            }
-                        >
-                            Refresh Status
-                        </button>
-                        <button
-                            className="vault-btn vault-btn--primary"
-                            disabled={pending}
-                            onClick={() =>
-                                run(async () => {
-                                    await deploySmartAccountSelf(token!);
-                                })
-                            }
-                        >
-                            Deploy Smart Account
+                            Deploy
                         </button>
                     </>
                 )}
@@ -140,7 +201,7 @@ export default function VaultSmartAccountCard() {
 
             {/* Status Message */}
             {status && (
-                <div className={`vault-alert ${status.startsWith("✓") ? "vault-alert--success" : "vault-alert--warning"}`} style={{ marginTop: "var(--space-4)" }}>
+                <div className={`vault-alert ${status.startsWith("✓") ? "vault-alert--success" : "vault-alert--warning"}`} style={{ marginTop: "var(--space-3)" }}>
                     {status}
                 </div>
             )}

@@ -264,6 +264,7 @@ describe("ContractsService", () => {
 
     describe("subscribeToContractEvents", () => {
         it("persists StemMinted event to database", async () => {
+            mockStems.set("stem_abc", { id: "stem_abc", uri: "some_uri" });
             const event = makeMintedEvent({ tokenId: "42", transactionHash: "0xmint_test" });
             eventBus.publish(event);
 
@@ -293,6 +294,7 @@ describe("ContractsService", () => {
         });
 
         it("sets remixable=true when parentIds is empty", async () => {
+            mockStems.set("stem_abc", { id: "stem_abc", uri: "some_uri" });
             const event = makeMintedEvent({ parentIds: [], transactionHash: "0xmint_original" });
             eventBus.publish(event);
             await new Promise((r) => setTimeout(r, 50));
@@ -302,6 +304,7 @@ describe("ContractsService", () => {
         });
 
         it("sets remixable=false when parentIds is non-empty", async () => {
+            mockStems.set("stem_abc", { id: "stem_abc", uri: "some_uri" });
             const event = makeMintedEvent({
                 parentIds: ["1"],
                 transactionHash: "0xmint_remix",
@@ -408,6 +411,7 @@ describe("ContractsService", () => {
         });
 
         it("is idempotent — upsert does not duplicate on re-publish", async () => {
+            mockStems.set("stem_abc", { id: "stem_abc", uri: "some_uri" });
             const event = makeMintedEvent({ transactionHash: "0xmint_idem" });
             eventBus.publish(event);
             await new Promise((r) => setTimeout(r, 50));

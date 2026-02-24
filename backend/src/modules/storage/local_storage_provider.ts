@@ -17,9 +17,10 @@ export class LocalStorageProvider extends StorageProvider {
     async upload(data: Buffer, filename: string, mimeType: string): Promise<StorageResult> {
         const absolutePath = join(this.uploadDir, filename);
         writeFileSync(absolutePath, data);
+        const baseUrl = process.env.BACKEND_URL || 'http://localhost:3000';
 
         return {
-            uri: `http://localhost:3000/catalog/stems/${filename}/blob`, // Mock URL
+            uri: `${baseUrl}/catalog/stems/${filename}/blob`,
             provider: 'local',
             metadata: { path: absolutePath }
         };

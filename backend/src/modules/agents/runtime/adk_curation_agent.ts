@@ -4,17 +4,27 @@
  * Uses Google's Agent Development Kit to declaratively define tools and
  * system instructions. ADK handles the tool-calling loop, retries, and
  * response extraction natively — replacing the manual loop in VertexAiAdapter.
+ *
+ * NOTE: @google/adk is loaded lazily via dynamic import() to avoid breaking
+ * Jest, which cannot parse its ESM-only transitive dependencies.
  */
-import { FunctionTool, LlmAgent } from "@google/adk";
 import { z } from "zod";
 import { ToolRegistry } from "../tools/tool_registry";
 import type { AgentRuntimeInput } from "./agent_runtime.adapter";
+
+// Lazily-resolved ADK module
+let _adkModule: typeof import("@google/adk") | null = null;
+async function getAdk() {
+  if (!_adkModule) _adkModule = await import("@google/adk");
+  return _adkModule;
+}
 
 // ---------------------------------------------------------------------------
 // Tool definitions — each delegates to the existing ToolRegistry
 // ---------------------------------------------------------------------------
 
-function buildTools(tools: ToolRegistry): FunctionTool[] {
+async function buildTools(tools: ToolRegistry) {
+  const { FunctionTool } = await getAdk();
   const catalogSearch = new FunctionTool({
     name: "catalog_search",
     description:
@@ -169,13 +179,14 @@ export function buildUserMessage(input: AgentRuntimeInput): string {
 // Factory — creates the LlmAgent for use by the adapter
 // ---------------------------------------------------------------------------
 
-export function createCurationAgent(toolRegistry: ToolRegistry): LlmAgent {
+export async function createCurationAgent(toolRegistry: ToolRegistry) {
+  const { LlmAgent } = await getAdk();
   const modelName = process.env.VERTEX_AI_MODEL ?? "gemini-2.5-flash";
   return new LlmAgent({
     name: "resonate_curation_agent",
     model: modelName,
     description: "AI DJ agent that curates music tracks based on user preferences, budget, and catalog availability.",
     instruction: buildSystemPrompt(),
-    tools: buildTools(toolRegistry),
+    tools: await buildTools(toolRegistry),
   });
 }

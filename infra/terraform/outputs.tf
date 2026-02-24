@@ -50,3 +50,20 @@ output "vpc_connector_name" {
   description = "VPC Access Connector name"
   value       = google_vpc_access_connector.connector.name
 }
+
+# Demucs Worker
+output "demucs_worker_url" {
+  description = "Demucs worker URL (Cloud Run or GCE internal IP)"
+  value = (
+    var.demucs_cpu_enabled
+      ? google_cloud_run_v2_service.demucs_cpu[0].uri
+      : var.demucs_gpu_enabled
+        ? "http://${google_compute_address.demucs_internal[0].address}:8000"
+        : null
+  )
+}
+
+output "gcs_stems_bucket_url" {
+  description = "GCS bucket URL for stem storage"
+  value       = (var.demucs_cpu_enabled || var.demucs_gpu_enabled) ? "gs://${google_storage_bucket.stems[0].name}" : null
+}

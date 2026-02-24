@@ -1,0 +1,17 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "deployer": "0x3e19e4B2f22fC27B5105A6762FCC6C6f129550BE",
+  "deployedAt": "2026-02-18T05:01:52Z",
+  "contracts": {
+    "StemNFT": "0x024a8127989a13ee4f0b87e45afb529e4e5c28ea",
+    "StemMarketplaceV2": "0x3542a31ff2241723e2f73cf90a6bb427deabd3e1",
+    "TransferValidator": "0x68297ae1bae9d616f7c85e408644f1fe57733f04"
+  },
+  "verification": {
+    "etherscan": "https://sepolia.etherscan.io/address/0x024a8127989a13ee4f0b87e45afb529e4e5c28ea",
+    "marketplace": "https://sepolia.etherscan.io/address/0x3542a31ff2241723e2f73cf90a6bb427deabd3e1",
+    "validator": "https://sepolia.etherscan.io/address/0x68297ae1bae9d616f7c85e408644f1fe57733f04"
+  },
+  "firstTransaction": "0x8e730739b37e3ad672025c00436ea330671677023c9dc323c3475fb83f1c3e7d"
+}

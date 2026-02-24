@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { StorageProvider } from './storage_provider';
 import { LocalStorageProvider } from './local_storage_provider';
 import { LighthouseStorageProvider } from './lighthouse_storage_provider';
+import { GcsStorageProvider } from './gcs_storage_provider';
 
 @Global()
 @Module({
@@ -12,6 +13,10 @@ import { LighthouseStorageProvider } from './lighthouse_storage_provider';
             provide: StorageProvider,
             useFactory: (configService: ConfigService) => {
                 const provider = configService.get<string>('STORAGE_PROVIDER', 'local');
+                console.log(`[Storage] Using storage provider: ${provider}`);
+                if (provider === 'gcs') {
+                    return new GcsStorageProvider(configService);
+                }
                 if (provider === 'ipfs' || provider === 'filecoin') {
                     return new LighthouseStorageProvider(configService);
                 }

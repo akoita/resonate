@@ -61,7 +61,8 @@ export class WalletService {
   }
 
   async getWallet(userId: string) {
-    return this.getOrCreate(userId);
+    const wallet = await this.getOrCreate(userId);
+    return wallet;
   }
 
   async refreshWallet(input: { userId: string; provider?: WalletProviderName }) {
@@ -130,12 +131,15 @@ export class WalletService {
       this.logger.log(`Smart account deployed at ${account.address}, tx: ${txHash}`);
 
       // Update wallet record with real smart account address and deployment info
+      const bundlerUrl = process.env.AA_BUNDLER || "http://localhost:4337";
       return prisma.wallet.update({
         where: { id: wallet.id },
         data: {
           address: account.address,
           deploymentTxHash: txHash,
           accountType: "kernel",
+          paymaster: bundlerUrl,
+          bundler: bundlerUrl,
         } as any,
       });
     } catch (error) {

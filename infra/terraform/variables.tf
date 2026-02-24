@@ -90,6 +90,13 @@ variable "sepolia_rpc_url" {
   default     = ""
 }
 
+variable "pimlico_api_key" {
+  description = "Pimlico API key for ERC-4337 bundler"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # --- IAP ---
 
 variable "iap_authorized_members" {
@@ -110,4 +117,64 @@ variable "frontend_min_instances" {
   description = "Minimum Cloud Run instances for frontend"
   type        = number
   default     = 0
+}
+
+# --- Demucs Worker ---
+
+variable "demucs_cpu_enabled" {
+  description = "Enable Demucs worker on Cloud Run with CPU (no GPU quota needed, slower)"
+  type        = bool
+  default     = false
+}
+
+variable "demucs_gpu_enabled" {
+  description = "Enable GCE GPU instance for Demucs worker (opt-in to avoid costs)"
+  type        = bool
+  default     = false
+}
+
+variable "demucs_machine_type" {
+  description = "GCE machine type for Demucs worker"
+  type        = string
+  default     = "n1-standard-4"
+}
+
+variable "gcs_stems_bucket" {
+  description = "GCS bucket name for temporary stem storage"
+  type        = string
+  default     = "resonate-stems-dev"
+}
+
+# --- Admin / Maintenance ---
+
+variable "admin_addresses" {
+  description = "Comma-separated wallet addresses auto-promoted to admin role"
+  type        = string
+  default     = ""
+}
+
+variable "enable_dev_wipe" {
+  description = "Enable the DELETE /admin/wipe-releases endpoint (dev/staging only)"
+  type        = bool
+  default     = false
+}
+
+# --- Frontend ---
+
+variable "zerodev_project_id" {
+  description = "ZeroDev project ID for passkey/smart wallet auth"
+  type        = string
+  default     = ""
+}
+
+variable "passkey_server_url" {
+  description = "ZeroDev Passkey Server URL for WebAuthn RP_ID matching"
+  type        = string
+  default     = ""
+}
+
+variable "frontend_url" {
+  description = "Frontend Cloud Run URL for CORS (set after first deploy)"
+  type        = string
+  default     = ""
 }
