@@ -436,64 +436,71 @@ export default function ReleaseDetails() {
             <Button variant="ghost" className="btn-save" onClick={handleSaveToLibrary}>
               Save to Library
             </Button>
-            {/* Produce Stems: show when owner has tracks with only the original stem and not currently processing */}
-            {isOwner && release.status !== 'processing' && release.tracks?.some(t => !t.stems || t.stems.length <= 1) && (
-              <Button
-                variant="ghost"
-                className="btn-save"
-                style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
-                onClick={async () => {
-                  if (!token) return;
-                  try {
-                    const { retryRelease } = await import("../../../lib/api");
-                    await retryRelease(token, release.id);
-                    addToast({ type: "success", title: "Stems processing started!", message: "Your tracks are being separated into stems by Demucs." });
-                    // Optimistic: mark tracks as processing
-                    setRelease(prev => prev ? {
-                      ...prev,
-                      status: 'processing',
-                      tracks: prev.tracks?.map(t =>
-                        (!t.stems || t.stems.length <= 1)
-                          ? { ...t, processingStatus: 'separating' as const }
-                          : t
-                      )
-                    } : null);
-                  } catch (e) {
-                    console.error(e);
-                    addToast({ type: "error", title: "Failed", message: "Could not start stem production." });
-                  }
-                }}
-              >
-                🎛️ Produce Stems
-              </Button>
-            )}
-            {isOwner && (release.status === 'failed' || release.status === 'processing' || release.tracks?.some(t => t.processingStatus === 'failed')) && (
-              <Button
-                className="btn-retry"
-                onClick={async () => {
-                  if (!token) return;
-                  try {
-                    const { retryRelease } = await import("../../../lib/api");
-                    await retryRelease(token, release.id);
-                    addToast({ type: "success", title: "Retrying...", message: "Processing restarted." });
-                    // Optimistic update
-                    setRelease(prev => prev ? { ...prev, status: 'processing', tracks: prev.tracks?.map(t => ({ ...t, processingStatus: 'separating' as const })) } : null);
-                  } catch (e) {
-                    console.error(e);
-                    addToast({ type: "error", title: "Retry failed", message: "Could not restart processing." });
-                  }
-                }}
-                style={{
-                  backgroundColor: release.status === 'failed' || release.tracks?.some(t => t.processingStatus === 'failed')
-                    ? 'var(--color-error)'
-                    : 'var(--color-warning, #eab308)',
-                  color: 'white',
-                  borderColor: 'transparent'
-                }}
-              >
-                {release.status === 'failed' || release.tracks?.some(t => t.processingStatus === 'failed') ? 'Retry Processing' : 'Restart Processing'}
-              </Button>
-            )}
+            {/* Produce Stems / Retry Processing — mutually exclusive */}
+            {isOwner && (() => {
+              const hasFailed = release.status === 'failed' || release.tracks?.some(t => t.processingStatus === 'failed');
+              const isProcessing = release.status === 'processing';
+              const hasUnprocessedTracks = release.tracks?.some(t => !t.stems || t.stems.length <= 1);
+
+              // Priority: Retry/Restart when failed or processing; otherwise Produce Stems
+              if (hasFailed || isProcessing) {
+                return (
+                  <Button
+                    className="btn-retry"
+                    onClick={async () => {
+                      if (!token) return;
+                      try {
+                        const { retryRelease } = await import("../../../lib/api");
+                        await retryRelease(token, release.id);
+                        addToast({ type: "success", title: "Retrying...", message: "Processing restarted." });
+                        setRelease(prev => prev ? { ...prev, status: 'processing', tracks: prev.tracks?.map(t => ({ ...t, processingStatus: 'separating' as const })) } : null);
+                      } catch (e) {
+                        console.error(e);
+                        addToast({ type: "error", title: "Retry failed", message: "Could not restart processing." });
+                      }
+                    }}
+                    style={{
+                      backgroundColor: hasFailed ? 'var(--color-error)' : 'var(--color-warning, #eab308)',
+                      color: 'white',
+                      borderColor: 'transparent'
+                    }}
+                  >
+                    {hasFailed ? 'Retry Processing' : 'Restart Processing'}
+                  </Button>
+                );
+              } else if (hasUnprocessedTracks) {
+                return (
+                  <Button
+                    variant="ghost"
+                    className="btn-save"
+                    style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
+                    onClick={async () => {
+                      if (!token) return;
+                      try {
+                        const { retryRelease } = await import("../../../lib/api");
+                        await retryRelease(token, release.id);
+                        addToast({ type: "success", title: "Stems processing started!", message: "Your tracks are being separated into stems by Demucs." });
+                        setRelease(prev => prev ? {
+                          ...prev,
+                          status: 'processing',
+                          tracks: prev.tracks?.map(t =>
+                            (!t.stems || t.stems.length <= 1)
+                              ? { ...t, processingStatus: 'separating' as const }
+                              : t
+                          )
+                        } : null);
+                      } catch (e) {
+                        console.error(e);
+                        addToast({ type: "error", title: "Failed", message: "Could not start stem production." });
+                      }
+                    }}
+                  >
+                    🎛️ Produce Stems
+                  </Button>
+                );
+              }
+              return null;
+            })()}
             {/* Global Mixer Toggle - only show when track has Demucs-separated stems */}
             {currentTrack && currentTrack.stems && currentTrack.stems.some(s => !['ORIGINAL', 'master', 'other'].includes(s.type)) && (
               <Button
