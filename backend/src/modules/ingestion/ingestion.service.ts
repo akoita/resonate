@@ -622,7 +622,8 @@ export class IngestionService {
     }
 
     if (release.status === 'ready') {
-      throw new Error(`Release ${releaseId} is already ready`);
+      console.log(`[Ingestion] Release ${releaseId} is already ready, skipping retry`);
+      return { success: true, message: 'Release is already processed', releaseId };
     }
 
     // 2. Re-emit Uploaded event to reset status to processing
