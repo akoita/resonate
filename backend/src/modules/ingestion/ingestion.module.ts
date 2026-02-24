@@ -4,6 +4,8 @@ import { IngestionController } from "./ingestion.controller";
 import { IngestionService } from "./ingestion.service";
 import { BullModule } from "@nestjs/bullmq";
 import { StemsProcessor } from "./stems.processor";
+import { StemPubSubPublisher } from "./stem-pubsub.publisher";
+import { StemResultSubscriber } from "./stem-result.subscriber";
 import { ArtistModule } from "../artist/artist.module";
 import { CatalogModule } from "../catalog/catalog.module";
 
@@ -20,7 +22,12 @@ import { CatalogModule } from "../catalog/catalog.module";
     CatalogModule,
   ],
   controllers: [IngestionController],
-  providers: [IngestionService, StemsProcessor],
+  providers: [
+    IngestionService,
+    StemsProcessor,
+    StemPubSubPublisher,
+    StemResultSubscriber,
+  ],
   exports: [IngestionService],
 })
 export class IngestionModule { }

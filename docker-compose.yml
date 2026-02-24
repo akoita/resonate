@@ -113,8 +113,15 @@ services:
     environment:
       - OUTPUT_DIR=/outputs
       - STORAGE_MODE=local
+      - PROCESSING_MODE=${PROCESSING_MODE:-http}
+      - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+      - GCP_PROJECT_ID=resonate-local
+      - PUBSUB_SUBSCRIPTION=stem-separate-worker
+      - PUBSUB_RESULTS_TOPIC=stem-results
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      - pubsub-emulator
     restart: always
     healthcheck:
       test:
@@ -133,6 +140,14 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    restart: always
+
+  # Pub/Sub emulator for local dev (Phase 2 event-driven architecture)
+  pubsub-emulator:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    command: gcloud beta emulators pubsub start --host-port=0.0.0.0:8085 --project=resonate-local
+    ports:
+      - "8085:8085"
     restart: always
 
 volumes:

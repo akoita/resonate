@@ -553,6 +553,14 @@ export class IngestionService {
     record.status = "complete";
   }
 
+  /**
+   * Public accessor for the storage provider upload.
+   * Used by StemsProcessor to upload originals before publishing Pub/Sub jobs.
+   */
+  async uploadToStorage(data: Buffer, filename: string, mimeType: string) {
+    return this.storageProvider.upload(data, filename, mimeType);
+  }
+
   private generateId(prefix: string) {
     return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
   }

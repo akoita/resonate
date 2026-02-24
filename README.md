@@ -45,6 +45,7 @@ graph TB
         API[NestJS API]
         Worker[Demucs Worker]
         Redis[(Redis Queue)]
+        PubSub[GCP Pub/Sub]
     end
 
     subgraph Blockchain
@@ -61,7 +62,10 @@ graph TB
     Web --> API
     API --> DB
     API --> Redis
-    Redis --> Worker
+    API -->|stem-separate| PubSub
+    PubSub -->|pull| Worker
+    Worker -->|stem-results| PubSub
+    PubSub -->|pull| API
     API --> AA
     Worker --> IPFS
     AA --> NFT
@@ -92,7 +96,7 @@ Two AA modes are available — see [AA Integration](docs/account-abstraction.md)
 # 1. Set env vars
 export SEPOLIA_RPC_URL=https://sepolia.drpc.org
 
-# 2. Start forked Anvil + DB
+# 2. Start infrastructure (Postgres, Redis, Pub/Sub emulator, Demucs worker)
 make dev-up
 make local-aa-fork              # Forks Sepolia, configures .env (AA infra already on-chain)
 make deploy-contracts           # Deploy StemNFT + Marketplace + TransferValidator
@@ -106,6 +110,7 @@ make web-dev-fork    # Next.js on port 3000 (chainId 11155111, local RPC)
 
 ```bash
 # 1. Deploy everything (Docker + Anvil + all contracts)
+# This starts Postgres, Redis, Pub/Sub emulator, and Demucs worker
 make dev-up
 make contracts-deploy-local  # Deploys AA + StemNFT + Marketplace + TransferValidator
 
@@ -130,7 +135,7 @@ make local-aa-down   # Stop Anvil + bundler
 When an artist uploads a release, the following pipeline executes:
 
 ```
-Upload → Validation → Stem Separation → Storage → Ready
+Upload → Validation → Pub/Sub → Stem Separation → Encryption → Storage → Ready
 ```
 
 | Stage        | Status | Description                            |
@@ -234,13 +239,13 @@ See [`workers/demucs/README.md`](workers/demucs/README.md) for full worker docum
 
 ## 🛠️ Tech Stack
 
-| Layer          | Technology                             |
-| -------------- | -------------------------------------- |
-| Frontend       | Next.js 15, TanStack Query, Viem/Wagmi |
-| Backend        | NestJS, Prisma, BullMQ, PostgreSQL     |
-| Blockchain     | Solidity, Foundry, ERC-4337, ZeroDev   |
-| AI             | Demucs (htdemucs_6s), Vertex AI        |
-| Infrastructure | Docker, Redis, GitHub Actions          |
+| Layer          | Technology                                      |
+| -------------- | ----------------------------------------------- |
+| Frontend       | Next.js 15, TanStack Query, Viem/Wagmi          |
+| Backend        | NestJS, Prisma, BullMQ, GCP Pub/Sub, PostgreSQL |
+| Blockchain     | Solidity, Foundry, ERC-4337, ZeroDev            |
+| AI             | Demucs (htdemucs_6s), Vertex AI                 |
+| Infrastructure | Docker, Redis, GCP Pub/Sub, GitHub Actions      |
 
 ---
 
