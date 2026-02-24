@@ -145,6 +145,19 @@ export class CatalogService implements OnModuleInit {
               status: "complete",
             } as CatalogTrackStatusEvent);
 
+            // Clean up stale separated stems from previous (possibly crashed) runs
+            const newStemIds = trackData.stems.map((s: any) => s.id);
+            const deletedStale = await prisma.stem.deleteMany({
+              where: {
+                trackId: trackData.id,
+                type: { not: "original" },
+                id: { notIn: newStemIds },
+              },
+            });
+            if (deletedStale.count > 0) {
+              console.log(`[Catalog] Cleaned up ${deletedStale.count} stale stems for track ${trackData.id}`);
+            }
+
             for (const stem of trackData.stems) {
               console.log(`[Catalog] Upserting stem ${stem.id} for track ${trackData.id}`);
               await prisma.stem.upsert({
