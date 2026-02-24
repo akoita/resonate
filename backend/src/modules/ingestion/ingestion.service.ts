@@ -354,7 +354,8 @@ export class IngestionService {
             headersTimeout: 600_000,  // 10 minutes — matches AbortSignal
             bodyTimeout: 0,           // unlimited — response body can be large
           });
-          const response = await fetch(`http://localhost:8000/separate/${input.releaseId}/${track.id}`, {
+          const demucsBaseUrl = process.env.DEMUCS_WORKER_URL || 'http://localhost:8000';
+          const response = await fetch(`${demucsBaseUrl}/separate/${input.releaseId}/${track.id}`, {
             method: "POST",
             body: formData,
             signal: AbortSignal.timeout(600_000), // 10 minutes
