@@ -144,34 +144,6 @@ export default function ReleaseDetails() {
     }
   }, [id, searchParams]);
 
-  // Fallback polling: re-fetch release every 10s while status is pending/processing.
-  // WebSocket events can be missed due to race conditions (event fires before page connects).
-  useEffect(() => {
-    if (!release || !id) return;
-    const status = release.status?.toLowerCase();
-    const tracksPending = release.tracks?.some(
-      (t: any) => t.processingStatus === 'pending' || t.processingStatus === 'separating' || t.processingStatus === 'encrypting'
-    );
-    if (status !== 'pending' && status !== 'processing' && !tracksPending) return;
-
-    const interval = setInterval(() => {
-      getRelease(id as string).then((r) => {
-        if (r) {
-          setRelease(r);
-          if (r.status === 'ready') {
-            addToast({
-              title: "Processing Complete",
-              message: `"${r.title}" is now ready to play!`,
-              type: "success",
-            });
-          }
-        }
-      }).catch(console.error);
-    }, 10_000);
-
-    return () => clearInterval(interval);
-  }, [id, release?.status, release?.tracks, addToast]);
-
   // Auto-enable mixer mode when navigating from Quick Mix CTA (?mixer=true&stem=vocals)
   useEffect(() => {
     if (searchParams.get('mixer') === 'true' && !mixerMode && release?.tracks?.length) {

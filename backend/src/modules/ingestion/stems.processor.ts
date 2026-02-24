@@ -85,5 +85,24 @@ export class StemsProcessor extends WorkerHost {
         }
 
         this.logger.log(`[StemsProcessor] Published ${tracks.length} track(s) for release ${releaseId}`);
+
+        // Update DB status so the API returns the correct state immediately.
+        // WebSocket events are ephemeral and can be missed if the client connects late.
+        try {
+            const { prisma } = await import("../../db/prisma");
+            await prisma.release.update({
+                where: { id: releaseId },
+                data: { status: "processing" },
+            });
+            for (const track of tracks) {
+                await prisma.track.updateMany({
+                    where: { id: track.id },
+                    data: { processingStatus: "separating" },
+                });
+            }
+            this.logger.log(`[StemsProcessor] Updated release ${releaseId} to 'processing' and tracks to 'separating'`);
+        } catch (err: any) {
+            this.logger.warn(`[StemsProcessor] Failed to update DB status: ${err?.message}`);
+        }
     }
 }
