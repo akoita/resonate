@@ -201,7 +201,7 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
                 // Send the raw metadata - backend handles both AES and legacy Lit formats
                 const rawMetadata = stem.encryptionMetadata || "";
 
-                const proxyResponse = await fetch("http://localhost:3000/encryption/decrypt", {
+                const proxyResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"}/encryption/decrypt`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({

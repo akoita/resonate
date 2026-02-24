@@ -7,7 +7,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
 import "../../styles/stem-pricing.css";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 interface StemForPricing {
   id: string;

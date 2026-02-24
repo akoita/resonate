@@ -13,7 +13,7 @@ import { BuyModal } from "../../components/marketplace/BuyModal";
 import "./marketplace.css";
 import "../../styles/license-badges.css";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 interface ListingData {
     listingId: string;

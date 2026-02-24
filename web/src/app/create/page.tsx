@@ -181,7 +181,7 @@ export default function CreatePage() {
           genre: metadata.genre,
           year: metadata.releaseDate ? parseInt(metadata.releaseDate.split("-")[0]) : undefined,
           catalogTrackId: result.trackId,
-          remoteUrl: `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000"}/catalog/releases/${targetReleaseId}/tracks/${result.trackId}/stream`,
+          remoteUrl: `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"}/catalog/releases/${targetReleaseId}/tracks/${result.trackId}/stream`,
           remoteArtworkUrl: getReleaseArtworkUrl(targetReleaseId),
         });
       } else if (publishActionQueue === "demucs") {

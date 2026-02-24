@@ -175,7 +175,7 @@ export default function ReleaseDetails() {
 
       // Construct stream URL: prefer stem URI, fall back to catalog stream endpoint
       const streamUrl = originalStem?.uri
-        || (release.id && t.id ? `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000"}/catalog/releases/${release.id}/tracks/${t.id}/stream` : undefined);
+        || (release.id && t.id ? `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"}/catalog/releases/${release.id}/tracks/${t.id}/stream` : undefined);
 
       return {
         id: t.id,

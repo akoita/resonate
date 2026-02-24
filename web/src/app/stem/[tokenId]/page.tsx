@@ -52,7 +52,7 @@ export default function StemDetailPage() {
     // Fetch artwork from metadata service
     useEffect(() => {
         if (!tokenId || !chainId) return;
-        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
         fetch(`${backendUrl}/api/metadata/${chainId}/${tokenId.toString()}`)
             .then(r => r.ok ? r.json() : null)
             .then(data => {
