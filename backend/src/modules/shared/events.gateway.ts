@@ -48,7 +48,8 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
         });
 
         this.eventBus.subscribe('stems.uploaded', (event: StemsUploadedEvent) => {
-            console.log(`[EventsGateway] Received stems.uploaded for ${event.releaseId}, broadcasting...`);
+            const connectedCount = this.server?.sockets?.sockets?.size ?? 0;
+            console.log(`[EventsGateway] Received stems.uploaded for ${event.releaseId}, broadcasting to ${connectedCount} clients...`);
             if (this.server) {
                 this.server.emit('release.status', {
                     releaseId: event.releaseId,
@@ -56,6 +57,7 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                     title: event.metadata?.title || 'Unknown Release',
                     status: 'processing',
                 });
+                console.log(`[EventsGateway] Emitted release.status (processing) for ${event.releaseId}`);
             } else {
                 console.warn('[EventsGateway] Server not initialized, cannot broadcast stems.uploaded');
             }
