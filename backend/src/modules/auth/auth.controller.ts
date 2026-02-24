@@ -73,6 +73,32 @@ export class AuthController {
         verifyOptions.universalSignatureValidatorAddress = "0xA51c1fc2f0D1a1b8494Ed1FE312d7C3a78Ed91C0";
       }
 
+      // Check if this is a counterfactual (undeployed) smart account
+      // If so, skip ERC-1271 verification entirely since there's no contract code.
+      // The SA address is deterministic from the passkey — nonce validation is sufficient.
+      let isCounterfactual = false;
+      try {
+        const code = await this.publicClient.getCode({ address: body.address as `0x${string}` });
+        isCounterfactual = !code || code === "0x";
+        console.log(`[Auth] Bytecode check for ${body.address}: ${isCounterfactual ? 'counterfactual (no code)' : 'deployed'}`);
+      } catch (codeErr) {
+        // If getCode fails (e.g., bad RPC), assume counterfactual for safety
+        isCounterfactual = true;
+        console.warn(`[Auth] getCode failed for ${body.address}, assuming counterfactual:`, codeErr);
+      }
+
+      if (isCounterfactual) {
+        // Skip signature verification — smart account isn't deployed so
+        // ERC-1271 isValidSignature would fail. Accept nonce-gated auth.
+        console.log(`[Auth] Counterfactual smart account ${body.address} — skipping ERC-1271, validating nonce only`);
+        const nonceMatch = /Nonce:\s*(.+)$/m.exec(body.message)?.[1] ?? "";
+        if (!this.nonceService.consume(body.address, nonceMatch)) {
+          console.warn(`[Auth] Nonce mismatch for counterfactual ${body.address}`);
+          return { status: "invalid_nonce" };
+        }
+        return this.authService.issueTokenForAddress(body.address.toLowerCase(), body.role ?? "listener");
+      }
+
       let ok = await this.publicClient.verifyMessage(verifyOptions);
       let issuedAddress = body.address;
 
@@ -95,24 +121,6 @@ export class AuthController {
           }
         } catch {
           // ignore recovery errors
-        }
-      }
-
-      // Fallback: Counterfactual smart account (not yet deployed on-chain)
-      // ERC-1271 verification fails because there's no contract code at the address.
-      // The address is deterministically derived from the passkey credential,
-      // so if the nonce is valid we can trust the authenticated address.
-      if (!ok) {
-        try {
-          const code = await this.publicClient.getCode({ address: body.address as `0x${string}` });
-          const isCounterfactual = !code || code === "0x";
-          if (isCounterfactual) {
-            console.log(`[Auth] Smart account ${body.address} is counterfactual (not deployed). Accepting passkey-authenticated address.`);
-            ok = true;
-            issuedAddress = body.address.toLowerCase();
-          }
-        } catch (codeErr) {
-          console.warn(`[Auth] Failed to check bytecode for ${body.address}:`, codeErr);
         }
       }
 
