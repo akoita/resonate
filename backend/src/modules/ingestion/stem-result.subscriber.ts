@@ -204,6 +204,8 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
     await this.emitTrackStage(result.releaseId, result.trackId, "complete");
 
     // Publish stems.processed event
+    // IMPORTANT: Do NOT include raw `data` buffers — they cause OOM.
+    // In pubsub mode, stems are already uploaded to GCS; only URIs are needed.
     this.eventBus.publish({
       eventName: "stems.processed",
       eventVersion: 1,
@@ -216,7 +218,7 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
           id: result.trackId,
           title: result.trackTitle || result.trackId,
           position: result.trackPosition || 0,
-          stems,
+          stems: stems.map(({ data, ...rest }) => rest),
         },
       ] as any,
     });
