@@ -10,7 +10,6 @@ import { getArtistMe, uploadStems, getReleaseArtworkUrl, saveLibraryTrackAPI, ge
 import { AICreationPublishModal, PublishMetadata } from "../../components/create/AICreationPublishModal";
 import { DuplicatePublishWarningModal } from "../../components/create/DuplicatePublishWarningModal";
 import { useToast } from "../../components/ui/Toast";
-import "../../styles/create.css";
 
 const STYLE_PRESETS = [
   { label: "Lo-fi Chill", prompt: "Lo-fi chill beat, relaxed, warm vinyl crackle" },
