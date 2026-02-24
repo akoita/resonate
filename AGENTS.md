@@ -14,10 +14,10 @@ environment-dependent values directly in source code.
 
    ```typescript
    // ✅ CORRECT
-   const url = process.env.BACKEND_URL || "http://localhost:3001";
+   const url = process.env.BACKEND_URL || "http://localhost:3000";
 
    // ❌ WRONG — hardcoded production/staging URL
-   const url = "https://resonate-dev-backend-82886308956.europe-west1.run.app";
+   const url = "https://my-service-XXXXX.region.run.app";
 
    // ❌ WRONG — no env var at all
    const url = "http://localhost:3001/encryption/decrypt";
