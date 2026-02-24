@@ -1,0 +1,16 @@
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: check-indexer
+spec:
+  template:
+    spec:
+      template:
+        spec:
+          containers:
+          - image: bitnami/postgresql:latest
+            command:
+            - /bin/bash
+            - -c
+            - |
+              psql $DATABASE_URL -c "UPDATE \"IndexerState\" SET \"lastBlockNumber\" = 10295000 WHERE \"chainId\" = 11155111;"

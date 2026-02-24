@@ -13,8 +13,9 @@ export default function SocialShare({ title, artist, url }: SocialShareProps) {
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR hydration guard
     setIsMounted(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const shareUrl = useMemo(() => {

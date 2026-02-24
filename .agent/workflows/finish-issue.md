@@ -64,6 +64,7 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
 - Review staged/unstaged changes: `git diff --cached` and `git diff`
 - **Security check** — make sure NONE of these are committed:
   - `.env` files, API keys, secrets, tokens, private keys
+  - **Hardcoded credentials in ANY file** (e.g. passwords, API keys, wallet private keys embedded in source code, config files, scripts, Terraform tfvars, or Docker compose files)
   - Large binary files, `node_modules/`, build artifacts
   - Database dumps, logs, local config overrides
 - Check `.gitignore` covers suspicious files: `git status --ignored`
@@ -122,6 +123,8 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
 
 ## Important rules
 
+- **NEVER push a file that contains clear private data** — no hardcoded credentials, API keys, passwords, private keys, or tokens in ANY file, regardless of file type. Scan every file before staging. This has happened before and must never happen again.
+- **NEVER commit or push before user approval** — always ask first
 - **NEVER force-push to `main`**
 - **NEVER delete `main`** — only delete feature and fix branches
 - **ALWAYS verify CI** before and after merging

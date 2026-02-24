@@ -12,7 +12,7 @@ locals {
 resource "google_cloud_run_v2_service" "backend" {
   name     = "resonate-${var.environment}-backend"
   location = var.region
-  ingress  = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+  ingress  = "INGRESS_TRAFFIC_ALL"  # TODO: restrict to INTERNAL_LOAD_BALANCER once LB + IAP is configured
 
   template {
     service_account = google_service_account.cloud_run.email
@@ -37,7 +37,7 @@ resource "google_cloud_run_v2_service" "backend" {
       resources {
         limits = {
           cpu    = "1"
-          memory = "512Mi"
+          memory = "1Gi"
         }
       }
 
@@ -48,8 +48,8 @@ resource "google_cloud_run_v2_service" "backend" {
       }
 
       env {
-        name  = "PORT"
-        value = "3000"
+        name  = "CORS_ORIGIN"
+        value = var.frontend_url
       }
 
       env {
@@ -78,6 +78,11 @@ resource "google_cloud_run_v2_service" "backend" {
       }
 
       env {
+        name  = "AA_BUNDLER"
+        value = "https://api.pimlico.io/v2/11155111/rpc?apikey=${var.pimlico_api_key}"
+      }
+
+      env {
         name  = "BLOCK_EXPLORER_URL"
         value = "https://sepolia.etherscan.io"
       }
@@ -87,21 +92,72 @@ resource "google_cloud_run_v2_service" "backend" {
         value = "adk"
       }
 
-      # Database URL (contains password — from Secret Manager)
+      # Demucs worker URL (CPU on Cloud Run or GPU on GCE)
       env {
-        name = "DATABASE_URL"
-        value_source {
-          secret_key_ref {
-            secret  = google_secret_manager_secret.secrets["db-password"].secret_id
-            version = "latest"
-          }
-        }
+        name  = "DEMUCS_WORKER_URL"
+        value = (
+          var.demucs_cpu_enabled
+            ? google_cloud_run_v2_service.demucs_cpu[0].uri
+            : var.demucs_gpu_enabled
+              ? "http://${google_compute_address.demucs_internal[0].address}:8000"
+              : ""
+        )
+      }
+
+      # Backend's own URL — passed to Demucs worker for progress callbacks & used for metadata URIs
+      env {
+        name  = "BACKEND_URL"
+        value = "https://resonate-${var.environment}-backend-${data.google_project.project.number}.${var.region}.run.app"
+      }
+
+      env {
+        name  = "FRONTEND_URL"
+        value = var.frontend_url
+      }
+
+      # GCS storage for original stems (avoids ephemeral disk loss on Cloud Run)
+      env {
+        name  = "STORAGE_PROVIDER"
+        value = local.demucs_enabled ? "gcs" : "local"
+      }
+
+      env {
+        name  = "GCS_STEMS_BUCKET"
+        value = var.gcs_stems_bucket
+      }
+
+      # Admin addresses (comma-separated) — auto-promoted to admin role on login
+      env {
+        name  = "ADMIN_ADDRESSES"
+        value = var.admin_addresses
+      }
+
+      # Safety gate for DELETE /admin/wipe-releases (dev/staging only)
+      env {
+        name  = "ENABLE_DEV_WIPE"
+        value = var.enable_dev_wipe ? "true" : "false"
+      }
+
+      # Database URL (connection via private VPC — not exposed externally)
+      env {
+        name  = "DATABASE_URL"
+        value = local.database_url
       }
 
       # Redis URL
       env {
         name  = "REDIS_URL"
         value = "redis://${google_redis_instance.redis.host}:${google_redis_instance.redis.port}"
+      }
+
+      env {
+        name  = "REDIS_HOST"
+        value = google_redis_instance.redis.host
+      }
+
+      env {
+        name  = "REDIS_PORT"
+        value = "${google_redis_instance.redis.port}"
       }
 
       # Secrets from Secret Manager
@@ -139,9 +195,9 @@ resource "google_cloud_run_v2_service" "backend" {
         http_get {
           path = "/health"
         }
-        initial_delay_seconds = 10
-        period_seconds        = 5
-        failure_threshold     = 10
+        initial_delay_seconds = 15
+        period_seconds        = 10
+        failure_threshold     = 12
       }
 
       liveness_probe {

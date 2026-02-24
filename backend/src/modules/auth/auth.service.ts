@@ -28,9 +28,7 @@ export class AuthService {
   }
 
   private resolveRole(userId: string, role: string) {
-    if (role !== "admin") {
-      return role;
-    }
+    // Always check admin allow list — auto-promote if address matches
     const allowList = (process.env.ADMIN_ADDRESSES ?? "")
       .split(",")
       .map((value) => value.trim().toLowerCase())
@@ -38,6 +36,6 @@ export class AuthService {
     if (allowList.includes(userId.toLowerCase())) {
       return "admin";
     }
-    return "listener";
+    return role;
   }
 }

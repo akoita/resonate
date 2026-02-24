@@ -4,90 +4,73 @@ import { WalletRecord } from "../../lib/api";
 
 type VaultBalanceCardProps = {
     wallet: WalletRecord | null;
+    address: string | null;
 };
 
-export default function VaultBalanceCard({ wallet }: VaultBalanceCardProps) {
-    if (!wallet) {
-        return (
-            <div className="vault-card">
-                <div className="vault-card-header">
-                    <span className="vault-card-title">
-                        <svg className="vault-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="2" y="4" width="20" height="16" rx="2" />
-                            <path d="M6 8h.01M6 12h.01M6 16h.01" />
-                        </svg>
-                        Balance & Limits
-                    </span>
-                </div>
-                <div className="vault-alert vault-alert--info">
-                    Connect your wallet to view balance information.
-                </div>
-            </div>
-        );
-    }
+/** Sepolia block explorer base URL */
+const EXPLORER_URL = "https://sepolia.etherscan.io";
 
-    const remaining = Math.max(0, wallet.monthlyCapUsd - wallet.spentUsd);
-    const usagePercent = wallet.monthlyCapUsd > 0
-        ? Math.min(100, (wallet.spentUsd / wallet.monthlyCapUsd) * 100)
-        : 0;
+export default function VaultBalanceCard({ wallet, address }: VaultBalanceCardProps) {
+    const shortAddr = (addr: string | null | undefined) =>
+        addr ? `${addr.slice(0, 8)}...${addr.slice(-6)}` : "N/A";
 
     return (
         <div className="vault-card">
             <div className="vault-card-header">
                 <span className="vault-card-title">
                     <svg className="vault-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="2" y="4" width="20" height="16" rx="2" />
-                        <path d="M6 8h.01M6 12h.01M6 16h.01" />
+                        <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+                        <line x1="1" y1="10" x2="23" y2="10" />
                     </svg>
-                    Balance & Limits
+                    Account Details
                 </span>
             </div>
 
-            {/* Gas Tank */}
-            <div className="vault-gas-tank">
-                <div className="vault-gas-labels">
-                    <span>Monthly Usage</span>
-                    <span>
-                        <span className="vault-gas-value">${wallet.spentUsd.toFixed(2)}</span>
-                        {" / $"}{wallet.monthlyCapUsd.toFixed(2)}
+            {/* Meta Grid */}
+            <div className="vault-meta-grid" style={{ marginTop: "var(--space-3)" }}>
+                <div className="vault-meta-item" style={{ gridColumn: "1 / -1" }}>
+                    <span className="vault-meta-label">Smart Account</span>
+                    <span className="vault-meta-value">
+                        {address ? (
+                            <a
+                                href={`${EXPLORER_URL}/address/${address}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="vault-address-link"
+                                title={address}
+                            >
+                                {shortAddr(address)}
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginLeft: 4 }}>
+                                    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                                    <polyline points="15 3 21 3 21 9" />
+                                    <line x1="10" y1="14" x2="21" y2="3" />
+                                </svg>
+                            </a>
+                        ) : "N/A"}
                     </span>
                 </div>
-                <div className="vault-gas-bar">
-                    <div
-                        className="vault-gas-fill"
-                        style={{ width: `${usagePercent}%` }}
-                    />
-                </div>
-                <div className="vault-gas-labels">
-                    <span>Remaining</span>
-                    <span className="vault-gas-value">${remaining.toFixed(2)}</span>
-                </div>
-            </div>
 
-            {/* AA Infrastructure Meta */}
-            <div className="vault-meta-grid" style={{ marginTop: "var(--space-5)" }}>
                 <div className="vault-meta-item">
                     <span className="vault-meta-label">Entry Point</span>
-                    <span className="vault-meta-value">
-                        {wallet.entryPoint ? `${wallet.entryPoint.slice(0, 8)}...${wallet.entryPoint.slice(-6)}` : "N/A"}
-                    </span>
+                    <span className="vault-meta-value">{shortAddr(wallet?.entryPoint)}</span>
                 </div>
+
                 <div className="vault-meta-item">
                     <span className="vault-meta-label">Factory</span>
-                    <span className="vault-meta-value">
-                        {wallet.factory ? `${wallet.factory.slice(0, 8)}...${wallet.factory.slice(-6)}` : "N/A"}
-                    </span>
+                    <span className="vault-meta-value">{shortAddr(wallet?.factory)}</span>
                 </div>
+
                 <div className="vault-meta-item">
                     <span className="vault-meta-label">Paymaster</span>
                     <span className="vault-meta-value">
-                        {wallet.paymaster ? `${wallet.paymaster.slice(0, 8)}...${wallet.paymaster.slice(-6)}` : "N/A"}
+                        {wallet?.paymaster ? "Pimlico (Sponsored)" : "Self-funded"}
                     </span>
                 </div>
+
                 <div className="vault-meta-item">
                     <span className="vault-meta-label">Bundler</span>
                     <span className="vault-meta-value">
-                        {wallet.bundler ? `${wallet.bundler.slice(0, 8)}...${wallet.bundler.slice(-6)}` : "N/A"}
+                        {wallet?.bundler?.includes("pimlico") ? "Pimlico" : shortAddr(wallet?.bundler)}
                     </span>
                 </div>
             </div>

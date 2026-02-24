@@ -25,7 +25,6 @@ resource "google_monitoring_uptime_check_config" "backend_health" {
     path         = "/health"
     port         = 443
     use_ssl      = true
-    validate_ssl = true
   }
 
   monitored_resource {

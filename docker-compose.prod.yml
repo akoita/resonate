@@ -1,5 +1,10 @@
 # Production-like stack for local Docker validation
 # Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build
+#
+# This overrides the base docker-compose.yml to:
+#   - Build and run the backend and frontend services
+#   - Configure the Demucs worker for GCS storage (instead of shared volume)
+#   - Set the backend to use GCS storage provider for original stem persistence
 
 services:
   backend:
@@ -23,10 +28,27 @@ services:
       - GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY:-}
       - AGENT_RUNTIME=${AGENT_RUNTIME:-adk}
       - BLOCK_EXPLORER_URL=${BLOCK_EXPLORER_URL:-https://sepolia.etherscan.io}
+      - DEMUCS_WORKER_URL=${DEMUCS_WORKER_URL:-http://demucs-worker:8000}
+      - BACKEND_URL=${BACKEND_URL:-http://backend:3000}
+      # GCS storage for stems (decoupled from worker — no shared volume)
+      - STORAGE_PROVIDER=${STORAGE_PROVIDER:-gcs}
+      - GCS_STEMS_BUCKET=${GCS_STEMS_BUCKET:-resonate-stems-dev}
+      # Admin / Maintenance
+      - ADMIN_ADDRESSES=${ADMIN_ADDRESSES:-}
+      - ENABLE_DEV_WIPE=${ENABLE_DEV_WIPE:-false}
     depends_on:
       - postgres
       - redis
     restart: unless-stopped
+
+  # Demucs worker in GCS mode (no shared volume with backend)
+  demucs-worker:
+    environment:
+      - STORAGE_MODE=gcs
+      - GCS_BUCKET=${GCS_STEMS_BUCKET:-resonate-stems-dev}
+      - OUTPUT_DIR=/outputs
+    # Remove the shared bind mount from base config — GCS mode needs no local volumes
+    volumes: !reset []
 
   web:
     build:

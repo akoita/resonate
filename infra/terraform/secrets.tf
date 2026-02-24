@@ -11,6 +11,7 @@ locals {
     "google-ai-api-key" = var.google_ai_api_key
     "sepolia-rpc-url"   = var.sepolia_rpc_url
     "deployer-key"      = var.deployer_private_key
+    "pimlico-api-key"   = var.pimlico_api_key
   }
 }
 
