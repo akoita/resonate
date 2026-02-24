@@ -6,10 +6,11 @@ import { WalletRecord } from "../../lib/api";
 type VaultHeroProps = {
     wallet: WalletRecord | null;
     status: string;
+    address?: string | null;
     onRefresh: () => void;
 };
 
-export default function VaultHero({ wallet, status, onRefresh }: VaultHeroProps) {
+export default function VaultHero({ wallet, status, address, onRefresh }: VaultHeroProps) {
     const isDeployed = Boolean(wallet?.deploymentTxHash);
     const isSmartAccount = wallet?.accountType === "erc4337" || wallet?.accountType === "kernel";
 
