@@ -815,7 +815,7 @@ export default function ReleaseDetails() {
             <div className="nft-tracks-scroll-container">
               <div className="nft-tracks-accordion">
                 {release.tracks.map(track => {
-                  const mintableStems = (track.stems || []).filter(s => s.type !== "ORIGINAL");
+                  const mintableStems = (track.stems || []).filter(s => s.type.toLowerCase() !== "original");
                   if (mintableStems.length === 0) return null;
 
                   const isExpanded = expandedNftTracks.has(track.id);
