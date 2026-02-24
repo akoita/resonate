@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card } from "../components/ui/Card";
 import { useAuth } from "../components/auth/AuthProvider";
 // import { usePlayer } from "../lib/playerContext";
 import { listPublishedReleases, listMyReleases, Release } from "../lib/api";
-// import { ReleaseHero } from "../components/home/ReleaseHero";
+import { ReleaseHero } from "../components/home/ReleaseHero";
 import { HeroCarousel } from "../components/home/HeroCarousel";
 import { FeaturedStems } from "../components/home/FeaturedStems";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
@@ -17,9 +17,8 @@ export default function Home(props: {
   params: Promise<Record<string, string>>;
   searchParams: Promise<Record<string, string>>;
 }) {
-  // Next.js page props consumed but not directly used
-  void props.params;
-  void props.searchParams;
+  const params = use(props.params);
+  const searchParams = use(props.searchParams);
   const router = useRouter();
   const moods = ["Focus", "Chill", "Energy", "Night Drive", "Lo-fi"];
   const [releases, setReleases] = useState<Release[]>([]);
@@ -66,6 +65,7 @@ export default function Home(props: {
     }
   }, [token, status]);
 
+  const featuredRelease = releases[0];
   const quickAccessReleases = releases.slice(0, 6);
   const newReleases = releases.slice(1, 9);
 

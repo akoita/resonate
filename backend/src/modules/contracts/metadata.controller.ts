@@ -1,6 +1,7 @@
 import { Controller, Get, Param, Query, NotFoundException, Logger } from "@nestjs/common";
 import { ContractsService } from "./contracts.service";
 import { prisma } from "../../db/prisma";
+import { keccak256, toHex } from "viem";
 
 /**
  * NFT Metadata Controller
@@ -164,6 +165,8 @@ export class MetadataController {
               artistId: release?.artistId,
               artworkUrl,
               uri: this.toPublicUrl(stem.uri, stem.id),
+              isAiGenerated: release?.type === 'ai_generated' || !!track?.generationMetadata,
+              generationProvider: (track?.generationMetadata as any)?.provider,
             }
             : null,
         };
@@ -303,8 +306,33 @@ export class MetadataController {
     const stem = nftData.stem;
     const track = stem?.track;
     const release = track?.release;
+    const genMeta = (track?.generationMetadata as any) || null;
 
     // Build OpenSea-compatible metadata
+    const properties: Record<string, any> = {
+      creator: nftData.creatorAddress,
+      royalty_bps: nftData.royaltyBps,
+      remixable: nftData.remixable,
+      chain_id: chainId,
+      contract_address: nftData.contractAddress,
+    };
+
+    // Add generation provenance for AI-created stems
+    if (genMeta) {
+      properties.generation = {
+        provider: genMeta.provider || 'lyria-002',
+        prompt_hash: genMeta.prompt
+          ? keccak256(toHex(genMeta.prompt))
+          : undefined,
+        seed: genMeta.seed,
+        synthid: genMeta.synthIdPresent ?? false,
+        generated_at: genMeta.generatedAt,
+        cost_usd: genMeta.cost != null
+          ? String(genMeta.cost)
+          : undefined,
+      };
+    }
+
     const metadata = {
       name: stem?.title || track?.title || (stem?.type ? `${stem.type.charAt(0).toUpperCase() + stem.type.slice(1)} Stem` : `Stem #${tokenId}`),
       description: this.buildDescription(stem, track, release),
@@ -312,13 +340,7 @@ export class MetadataController {
       animation_url: this.toPublicUrl(stem?.uri, stem?.id),
       external_url: `${process.env.FRONTEND_URL || "https://resonate.audio"}/stem/${tokenId}`,
       attributes: this.buildAttributes(nftData, stem, track, release),
-      properties: {
-        creator: nftData.creatorAddress,
-        royalty_bps: nftData.royaltyBps,
-        remixable: nftData.remixable,
-        chain_id: chainId,
-        contract_address: nftData.contractAddress,
-      },
+      properties,
     };
 
     return metadata;
@@ -389,7 +411,12 @@ export class MetadataController {
   }
 
   private buildDescription(stem: any, track: any, release: any): string {
+    const isAi = release?.type === 'ai_generated' || !!track?.generationMetadata;
     const parts: string[] = [];
+
+    if (isAi) {
+      parts.push('AI-Generated');
+    }
 
     if (stem?.type) {
       parts.push(`${stem.type.charAt(0).toUpperCase() + stem.type.slice(1)} stem`);
@@ -456,6 +483,28 @@ export class MetadataController {
       attributes.push({
         trait_type: "Storage",
         value: stem.storageProvider.toUpperCase(),
+      });
+    }
+
+    // AI generation provenance attributes
+    const genMeta = track?.generationMetadata as any;
+    const isAi = release?.type === 'ai_generated' || !!genMeta;
+    attributes.push({
+      trait_type: "AI Generated",
+      value: isAi ? "Yes" : "No",
+    });
+
+    if (isAi && genMeta?.provider) {
+      attributes.push({
+        trait_type: "AI Provider",
+        value: genMeta.provider,
+      });
+    }
+
+    if (isAi && genMeta?.synthIdPresent) {
+      attributes.push({
+        trait_type: "SynthID Verified",
+        value: "Yes",
       });
     }
 

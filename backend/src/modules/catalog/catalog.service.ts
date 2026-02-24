@@ -194,56 +194,6 @@ export class CatalogService implements OnModuleInit {
         // Extract error message only - Prisma errors can have circular refs that cause stack overflow
         const errMsg = err instanceof Error ? err.message : String(err);
         console.error(`[Catalog] Failed to finalise release ${event.releaseId}: ${errMsg}`);
-
-        // Propagate failure to UI — don't silently leave release stuck at "processing"
-        try {
-          await prisma.release.update({
-            where: { id: event.releaseId },
-            data: { status: "failed" },
-          });
-
-          // Mark non-complete tracks as failed
-          const tracksToFail = await prisma.track.findMany({
-            where: {
-              releaseId: event.releaseId,
-              processingStatus: { not: "complete" },
-            },
-            select: { id: true },
-          });
-
-          if (tracksToFail.length > 0) {
-            await prisma.track.updateMany({
-              where: {
-                releaseId: event.releaseId,
-                processingStatus: { not: "complete" },
-              },
-              data: { processingStatus: "failed" },
-            });
-
-            for (const track of tracksToFail) {
-              this.eventBus.publish({
-                eventName: "catalog.track_status",
-                eventVersion: 1,
-                occurredAt: new Date().toISOString(),
-                releaseId: event.releaseId,
-                trackId: track.id,
-                status: "failed",
-              } as CatalogTrackStatusEvent);
-            }
-          }
-
-          // Notify frontend via WebSocket
-          this.eventBus.publish({
-            eventName: "stems.failed",
-            eventVersion: 1,
-            occurredAt: new Date().toISOString(),
-            releaseId: event.releaseId,
-            artistId: event.artistId,
-            error: `Database error during finalisation: ${errMsg}`,
-          });
-        } catch (innerErr) {
-          console.error(`[Catalog] Could not propagate failure for ${event.releaseId}:`, innerErr);
-        }
       }
     });
 
@@ -303,9 +253,14 @@ export class CatalogService implements OnModuleInit {
     });
   }
 
-  async listPublished(limit = 20) {
+  async listPublished(limit = 20, primaryArtist?: string) {
     return prisma.release.findMany({
-      where: { status: "ready" },
+      where: {
+        status: { in: ['ready', 'published'] },
+        ...(primaryArtist && {
+          primaryArtist: { equals: primaryArtist, mode: 'insensitive' as const },
+        }),
+      },
       select: {
         id: true,
         artistId: true,
@@ -715,6 +670,25 @@ export class CatalogService implements OnModuleInit {
     return { data: release.artworkData, mimeType: release.artworkMimeType || "image/jpeg" };
   }
 
+  async getTrackStream(trackId: string) {
+    // Find the track's stems, preferring the 'master' stem for generated tracks
+    const track = await prisma.track.findUnique({
+      where: { id: trackId },
+      select: {
+        stems: {
+          select: { id: true, type: true },
+          orderBy: { type: 'asc' },
+        },
+      },
+    });
+
+    if (!track || track.stems.length === 0) return null;
+
+    // Prefer master stem, fall back to first stem
+    const masterStem = track.stems.find(s => s.type === 'master') || track.stems[0];
+    return this.getStemBlob(masterStem.id);
+  }
+
   async getStemBlob(stemId: string) {
     // Try finding by exact ID first
     let stem = await prisma.stem.findUnique({
@@ -760,21 +734,7 @@ export class CatalogService implements OnModuleInit {
       }
     }
 
-    // 3. GCS storage - fetch from Google Cloud Storage
-    if (stem.uri && (stem.storageProvider === "gcs" || stem.uri.includes("storage.googleapis.com"))) {
-      try {
-        console.log(`[Catalog] Fetching stem ${stem.id} from GCS: ${stem.uri}`);
-        const response = await fetch(stem.uri, { signal: AbortSignal.timeout(30000) });
-        if (response.ok) {
-          const buffer = Buffer.from(await response.arrayBuffer());
-          return { data: buffer, mimeType: stem.mimeType || "audio/mpeg" };
-        }
-      } catch (err) {
-        console.error(`[Catalog] Failed to fetch stem ${stem.id} from GCS:`, err);
-      }
-    }
-
-    // 4. Remote storage (IPFS/Lighthouse) - fetch from URI
+    // 3. Remote storage (IPFS/Lighthouse) - fetch from URI
     if (stem.uri && (stem.storageProvider === "ipfs" || stem.uri.includes("ipfs") || stem.uri.includes("lighthouse"))) {
       try {
         console.log(`[Catalog] Fetching stem ${stem.id} from remote URI: ${stem.uri}`);
@@ -787,12 +747,12 @@ export class CatalogService implements OnModuleInit {
       }
     }
 
-    // 4. Generic HTTP URI fallback (skip self-referential URIs to prevent infinite loops)
-    if (stem.uri && stem.uri.startsWith("http") && !stem.uri.includes("/catalog/stems/")) {
+    // 4. Generic HTTP URI fallback
+    if (stem.uri && stem.uri.startsWith("http")) {
       try {
         console.log(`[Catalog] Fetching stem ${stem.id} from HTTP URI: ${stem.uri}`);
         const response = await fetch(stem.uri, {
-          signal: AbortSignal.timeout(30000), // 30s timeout (was 120s)
+          signal: AbortSignal.timeout(120000), // 2 minutes for large files
         });
         if (response.ok) {
           const buffer = Buffer.from(await response.arrayBuffer());
@@ -800,28 +760,6 @@ export class CatalogService implements OnModuleInit {
         }
       } catch (err) {
         console.error(`[Catalog] Failed to fetch stem ${stem.id} from HTTP:`, err);
-      }
-    }
-
-    // 6. Last resort: try GCS by looking up the stem's track and release context
-    if (stem.storageProvider === "local") {
-      try {
-        const stemWithTrack = await prisma.stem.findUnique({
-          where: { id: stem.id },
-          select: { type: true, track: { select: { id: true, releaseId: true } } },
-        });
-        if (stemWithTrack?.track) {
-          const bucket = process.env.GCS_STEMS_BUCKET || "resonate-stems-dev";
-          const gcsUrl = `https://storage.googleapis.com/${bucket}/stems/${stemWithTrack.track.releaseId}/${stemWithTrack.track.id}/${stemWithTrack.type}.mp3`;
-          console.log(`[Catalog] Fallback: trying GCS for stem ${stem.id}: ${gcsUrl}`);
-          const response = await fetch(gcsUrl, { signal: AbortSignal.timeout(30000) });
-          if (response.ok) {
-            const buffer = Buffer.from(await response.arrayBuffer());
-            return { data: buffer, mimeType: stem.mimeType || "audio/mpeg" };
-          }
-        }
-      } catch (err) {
-        console.error(`[Catalog] GCS fallback failed for stem ${stem.id}:`, err);
       }
     }
 

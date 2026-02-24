@@ -8,6 +8,7 @@ import {
     listPlaylistsAPI,
     updatePlaylistAPI,
     deletePlaylistAPI,
+    getPlaylistAPI,
     createFolderAPI,
     listFoldersAPI,
     updateFolderAPI,

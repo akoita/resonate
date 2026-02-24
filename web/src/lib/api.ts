@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 export function getReleaseArtworkUrl(releaseId: string) {
   return `${API_BASE}/catalog/releases/${releaseId}/artwork`;
@@ -97,10 +97,6 @@ export async function verifySignature(input: {
   role?: string;
   /** For local dev (chainId 31337): EOA that signed; backend verifies this and issues token for address */
   signerAddress?: string;
-  /** P-256 WebAuthn public key X coordinate (hex, no 0x prefix) — for cross-device auth persistence */
-  pubKeyX?: string;
-  /** P-256 WebAuthn public key Y coordinate (hex, no 0x prefix) — for cross-device auth persistence */
-  pubKeyY?: string;
 }) {
   return apiRequest<AuthVerifyResponse>(
     "/auth/verify",
@@ -338,8 +334,10 @@ export async function listMyReleases(token: string) {
   }));
 }
 
-export async function listPublishedReleases(limit = 20) {
-  const releases = await apiRequest<Release[]>(`/catalog/published?limit=${limit}`, {});
+export async function listPublishedReleases(limit = 20, primaryArtist?: string) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (primaryArtist) params.set('primaryArtist', primaryArtist);
+  const releases = await apiRequest<Release[]>(`/catalog/published?${params}`, {});
   return releases.map(r => ({
     ...r,
     artworkUrl: r.artworkMimeType ? getReleaseArtworkUrl(r.id) : null
@@ -774,4 +772,139 @@ export async function deleteLibraryTrackAPI(id: string, token: string) {
 
 export async function clearLocalLibraryAPI(token: string) {
   return apiRequest<void>("/library/tracks/local", { method: "DELETE" }, token);
+}
+
+// ========== Generation API ==========
+
+export type GenerationStatusResponse = {
+  jobId: string;
+  status: "queued" | "generating" | "storing" | "complete" | "failed";
+  trackId?: string;
+  releaseId?: string;
+  error?: string;
+};
+
+export async function createGeneration(
+  token: string,
+  input: {
+    prompt: string;
+    artistId: string;
+    negativePrompt?: string;
+    seed?: number;
+  }
+) {
+  return apiRequest<{ jobId: string }>(
+    "/generation/create",
+    { method: "POST", body: JSON.stringify(input) },
+    token
+  );
+}
+
+export async function getGenerationStatus(token: string, jobId: string) {
+  return apiRequest<GenerationStatusResponse>(
+    `/generation/${jobId}/status`,
+    {},
+    token
+  );
+}
+
+export type GenerationListItem = {
+  releaseId: string;
+  trackId: string;
+  title: string;
+  prompt: string;
+  negativePrompt: string | null;
+  seed: number | null;
+  provider: string;
+  generatedAt: string;
+  durationSeconds: number;
+  cost: number;
+  audioUri: string | null;
+};
+
+export async function getMyGenerations(token: string) {
+  return apiRequest<GenerationListItem[]>(
+    "/generation/mine",
+    { cache: "no-store" },
+    token
+  );
+}
+
+export type GenerationAnalytics = {
+  totalGenerations: number;
+  totalCost: number;
+  rateLimit: {
+    remaining: number;
+    limit: number;
+    resetsAt: string | null;
+  };
+};
+
+export async function getGenerationAnalytics(token: string) {
+  return apiRequest<GenerationAnalytics>(
+    "/generation/analytics",
+    { cache: "no-store" },
+    token
+  );
+}
+
+export async function publishAiGeneration(
+  token: string,
+  trackId: string,
+  formData: FormData
+) {
+  return apiRequest<{ success: boolean; releaseId: string }>(
+    `/generation/${trackId}/publish`,
+    { method: "PATCH", body: formData },
+    token
+  );
+}
+
+export async function generateArtwork(
+  token: string,
+  prompt: string
+): Promise<{ imageData: string; mimeType: string }> {
+  return apiRequest<{ imageData: string; mimeType: string }>(
+    "/generation/artwork",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    },
+    token
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Stem-Aware Generation — #336 subset
+// ---------------------------------------------------------------------------
+
+export type StemAnalysisResult = {
+  trackId: string;
+  trackTitle: string;
+  releaseGenre?: string;
+  presentTypes: string[];
+  missingTypes: string[];
+  suggestedPrompt: string;
+  negativePrompt: string;
+};
+
+export async function analyzeTrackStems(token: string, trackId: string) {
+  return apiRequest<StemAnalysisResult>(
+    `/generation/analyze/${trackId}`,
+    {},
+    token
+  );
+}
+
+export async function generateComplementaryStem(
+  token: string,
+  trackId: string,
+  stemType: string
+) {
+  return apiRequest<{ jobId: string }>(
+    "/generation/complementary",
+    { method: "POST", body: JSON.stringify({ trackId, stemType }) },
+    token
+  );
 }

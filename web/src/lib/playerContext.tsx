@@ -1,20 +1,20 @@
 "use client";
 import { getAddress } from "viem";
 
-// Simple Mutex for synchronization (currently unused, kept for future use)
-// class Mutex {
-//     private promise: Promise<void> = Promise.resolve();
-//     async lock() {
-//         let unlockNext: () => void;
-//         const nextPromise = new Promise<void>((resolve) => {
-//             unlockNext = resolve;
-//         });
-//         const prevPromise = this.promise;
-//         this.promise = nextPromise;
-//         await prevPromise;
-//         return unlockNext!;
-//     }
-// }
+// Simple Mutex for synchronization
+class Mutex {
+    private promise: Promise<void> = Promise.resolve();
+    async lock() {
+        let unlockNext: () => void;
+        const nextPromise = new Promise<void>((resolve) => {
+            unlockNext = resolve;
+        });
+        const prevPromise = this.promise;
+        this.promise = nextPromise;
+        await prevPromise;
+        return unlockNext!;
+    }
+}
 
 // AuthSig type definition
 interface AuthSig {
@@ -143,7 +143,7 @@ interface StemAudioProps {
 const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolume, onMount, onUnmount }: StemAudioProps) => {
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [streamUrl, setStreamUrl] = useState<string | null>(null);
-    const [_isDecrypting, setIsDecrypting] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
+    const [isDecrypting, setIsDecrypting] = useState(false);
     const { signMessage, address } = useAuth();
     const type = stem.type.toLowerCase();
 
@@ -201,8 +201,7 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
                 // Send the raw metadata - backend handles both AES and legacy Lit formats
                 const rawMetadata = stem.encryptionMetadata || "";
 
-                const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-                const proxyResponse = await fetch(`${apiBase}/encryption/decrypt`, {
+                const proxyResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000"}/encryption/decrypt`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({

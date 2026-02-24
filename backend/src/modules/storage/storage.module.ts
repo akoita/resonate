@@ -13,7 +13,6 @@ import { GcsStorageProvider } from './gcs_storage_provider';
             provide: StorageProvider,
             useFactory: (configService: ConfigService) => {
                 const provider = configService.get<string>('STORAGE_PROVIDER', 'local');
-                console.log(`[Storage] Using storage provider: ${provider}`);
                 if (provider === 'gcs') {
                     return new GcsStorageProvider(configService);
                 }

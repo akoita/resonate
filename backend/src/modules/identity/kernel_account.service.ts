@@ -103,11 +103,6 @@ export class KernelAccountService {
     label: string,
     minEth: string = "0.5",
   ): Promise<void> {
-    // Anvil account 0 funding is only valid on local devnets
-    if (this.chainId !== 31337 && this.chainId !== 1337) {
-      return; 
-    }
-
     const chain = this.getChain();
     const publicClient = createPublicClient({
       chain,
@@ -228,20 +223,12 @@ export class KernelAccountService {
       };
     };
 
-    // Create Paymaster client (Pimlico supports shared bundler/paymaster endpoints)
-    const paymasterUrl = this.config.get<string>("AA_PAYMASTER") || this.bundlerUrl;
-    const paymasterClient = sdk.createZeroDevPaymasterClient({
-      chain,
-      transport: http(paymasterUrl),
-    });
-
-    // Create Kernel account client with bundler transport and paymaster
+    // Create Kernel account client with bundler transport
     const kernelClient = sdk.createKernelAccountClient({
       account,
       chain,
       bundlerTransport: http(this.bundlerUrl),
       userOperation: { estimateFeesPerGas },
-      paymaster: paymasterClient as any,
     });
 
     return { account, kernelClient, signerAddress: signer.address };

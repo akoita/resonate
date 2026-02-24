@@ -8,7 +8,7 @@ import { Button } from "../../../components/ui/Button";
 import { usePlayer } from "../../../lib/playerContext";
 import { AddToPlaylistModal } from "../../../components/library/AddToPlaylistModal";
 import { MixerConsole } from "../../../components/player/MixerConsole";
-// import { useUIStore } from "../../../lib/uiStore";
+import { useUIStore } from "../../../lib/uiStore";
 import { useToast } from "../../../components/ui/Toast";
 // import { addTracksByCriteria } from "../../../lib/playlistStore";
 import { formatDuration } from "../../../lib/metadataExtractor";
@@ -34,6 +34,7 @@ export default function ReleaseDetails() {
     playQueue,
     mixerMode,
     toggleMixerMode,
+    mixerVolumes,
     setMixerVolumes,
     currentTrack
   } = usePlayer();
@@ -48,15 +49,8 @@ export default function ReleaseDetails() {
   const [expandedNftTracks, setExpandedNftTracks] = useState<Set<string>>(new Set());
   const artworkInputRef = useRef<HTMLInputElement>(null);
   const [recentlyCompletedTracks, setRecentlyCompletedTracks] = useState<Set<string>>(new Set());
+  const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; variant: "danger" | "warning" | "default"; confirmLabel: string; onConfirm: () => Promise<void> } | null>(null);
   const [trackProgress, setTrackProgress] = useState<Record<string, number>>({});
-  const [confirmDialog, setConfirmDialog] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    variant: "danger" | "warning" | "default";
-    confirmLabel: string;
-    onConfirm: () => void;
-  }>({ isOpen: false, title: "", message: "", variant: "default", confirmLabel: "Confirm", onConfirm: () => {} });
 
   // Handle real-time track progress updates via WebSocket
   const handleProgressUpdate = useCallback((data: ReleaseProgressUpdate) => {
@@ -135,11 +129,20 @@ export default function ReleaseDetails() {
   useEffect(() => {
     if (typeof id === "string") {
       getRelease(id)
-        .then(setRelease)
+        .then((r) => {
+          if (r) {
+            // If a ?rev= param is present (e.g. from post-publish toast), bust artwork cache
+            const rev = searchParams.get('rev');
+            if (rev && r.artworkUrl) {
+              r.artworkUrl = `${r.artworkUrl}?rev=${rev}`;
+            }
+          }
+          setRelease(r);
+        })
         .catch(console.error)
         .finally(() => setLoading(false));
     }
-  }, [id]);
+  }, [id, searchParams]);
 
   // Auto-enable mixer mode when navigating from Quick Mix CTA (?mixer=true&stem=vocals)
   useEffect(() => {
@@ -165,15 +168,14 @@ export default function ReleaseDetails() {
   const handlePlayTrack = (trackIndex: number, specificStem?: string) => {
     if (!release?.tracks) return;
     const playableTracks: LocalTrack[] = (release.tracks || []).map((t) => {
-      // Always use ORIGINAL stem for the main audio player
-      // When mixer mode is active, main audio will be muted and StemAudio components play
-      const originalStem = t.stems?.find(s => s.type === "ORIGINAL");
-      // Fallback: if no ORIGINAL, try vocals first, then any available stem
-      const fallbackStem = !originalStem
-        ? t.stems?.find(s => s.type?.toLowerCase() === "vocals")
-          || t.stems?.find(s => s.type !== "ORIGINAL" && s.uri)
-        : null;
-      const playbackStem = originalStem || fallbackStem;
+      // Use ORIGINAL stem for uploaded tracks, or 'master' for AI-generated tracks
+      const originalStem = t.stems?.find(s => s.type === 'ORIGINAL')
+        || t.stems?.find(s => s.type === 'master')
+        || t.stems?.[0]; // fallback to first stem
+
+      // Construct stream URL: prefer stem URI, fall back to catalog stream endpoint
+      const streamUrl = originalStem?.uri
+        || (release.id && t.id ? `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000"}/catalog/releases/${release.id}/tracks/${t.id}/stream` : undefined);
 
       return {
         id: t.id,
@@ -185,7 +187,7 @@ export default function ReleaseDetails() {
         genre: release.genre || null,
         duration: getTrackDuration(t),
         createdAt: t.createdAt,
-        remoteUrl: playbackStem?.uri,
+        remoteUrl: streamUrl,
         remoteArtworkUrl: release.artworkUrl || undefined,
         stems: t.stems,
       };
@@ -234,15 +236,10 @@ export default function ReleaseDetails() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapToLocalTrack = (t: any): LocalTrack => {
     // Use ORIGINAL stem for playback URL (same as handlePlayTrack)
-    // Fallback: if no ORIGINAL, try vocals then any available stem
+    // stems[0] is typically an encrypted separated stem, NOT the playable original
     const originalStem = t.stems?.find(
       (s: { type?: string }) => s.type?.toUpperCase() === "ORIGINAL",
     );
-    const fallbackStem = !originalStem
-      ? t.stems?.find((s: { type?: string; uri?: string }) => s.type?.toLowerCase() === "vocals")
-        || t.stems?.find((s: { type?: string; uri?: string }) => s.type !== "ORIGINAL" && s.uri)
-      : null;
-    const playbackStem = originalStem || fallbackStem;
     return {
       id: t.id,
       title: t.title,
@@ -253,7 +250,7 @@ export default function ReleaseDetails() {
       genre: release?.genre || null,
       duration: getTrackDuration(t),
       createdAt: t.createdAt ? new Date(t.createdAt).toISOString() : new Date().toISOString(),
-      remoteUrl: playbackStem?.uri,
+      remoteUrl: originalStem?.uri,
       remoteArtworkUrl: release?.artworkUrl || undefined,
       stems: t.stems,
     };
@@ -370,7 +367,7 @@ export default function ReleaseDetails() {
             <img
               src={release.artworkUrl}
               alt={release.title}
-               
+              /* eslint-disable-next-line @next/next/no-img-element */
               className={`header-artwork ${isUpdatingArtwork ? 'opacity-50' : ''}`}
               draggable="false"
             />
@@ -439,6 +436,37 @@ export default function ReleaseDetails() {
             <Button variant="ghost" className="btn-save" onClick={handleSaveToLibrary}>
               Save to Library
             </Button>
+            {/* Produce Stems: show when owner has tracks with only the original stem and not currently processing */}
+            {isOwner && release.status !== 'processing' && release.tracks?.some(t => !t.stems || t.stems.length <= 1) && (
+              <Button
+                variant="ghost"
+                className="btn-save"
+                style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
+                onClick={async () => {
+                  if (!token) return;
+                  try {
+                    const { retryRelease } = await import("../../../lib/api");
+                    await retryRelease(token, release.id);
+                    addToast({ type: "success", title: "Stems processing started!", message: "Your tracks are being separated into stems by Demucs." });
+                    // Optimistic: mark tracks as processing
+                    setRelease(prev => prev ? {
+                      ...prev,
+                      status: 'processing',
+                      tracks: prev.tracks?.map(t =>
+                        (!t.stems || t.stems.length <= 1)
+                          ? { ...t, processingStatus: 'separating' as const }
+                          : t
+                      )
+                    } : null);
+                  } catch (e) {
+                    console.error(e);
+                    addToast({ type: "error", title: "Failed", message: "Could not start stem production." });
+                  }
+                }}
+              >
+                🎛️ Produce Stems
+              </Button>
+            )}
             {isOwner && (release.status === 'failed' || release.status === 'processing' || release.tracks?.some(t => t.processingStatus === 'failed')) && (
               <Button
                 className="btn-retry"
@@ -466,9 +494,25 @@ export default function ReleaseDetails() {
                 {release.status === 'failed' || release.tracks?.some(t => t.processingStatus === 'failed') ? 'Retry Processing' : 'Restart Processing'}
               </Button>
             )}
+            {/* Global Mixer Toggle - only show when track has Demucs-separated stems */}
+            {currentTrack && currentTrack.stems && currentTrack.stems.some(s => !['ORIGINAL', 'master', 'other'].includes(s.type)) && (
+              <Button
+                variant="ghost"
+                className={`btn-mixer ${mixerMode ? 'active' : ''}`}
+                onClick={toggleMixerMode}
+              >
+                🎚️ Mixer
+              </Button>
+            )}
+            {/* Three-dots menu at the rightmost position */}
             {isOwner && (
               <TrackActionMenu
                 actions={[
+                  {
+                    label: "Edit Cover",
+                    icon: <span>🖼️</span>,
+                    onClick: () => artworkInputRef.current?.click(),
+                  },
                   ...(release.status === 'processing' ? [{
                     label: "Cancel Processing",
                     icon: <span>⏹</span>,
@@ -476,22 +520,21 @@ export default function ReleaseDetails() {
                     onClick: () => {
                       if (!token) return;
                       setConfirmDialog({
-                        isOpen: true,
                         title: "Cancel Processing",
-                        message: "Stop processing this release? All tracks will be marked as failed.",
+                        message: "Stop processing this release? Tracks will be marked as failed.",
                         variant: "warning",
                         confirmLabel: "Stop Processing",
                         onConfirm: async () => {
                           try {
                             const { cancelProcessing } = await import("../../../lib/api");
                             await cancelProcessing(token, release.id);
-                            setConfirmDialog(prev => ({ ...prev, isOpen: false }));
                             addToast({ type: "success", title: "Cancelled", message: "Processing has been stopped." });
                             setRelease(prev => prev ? { ...prev, status: 'failed', tracks: prev.tracks?.map(t => ({ ...t, processingStatus: 'failed' as const })) } : null);
                           } catch (e) {
                             console.error(e);
-                            setConfirmDialog(prev => ({ ...prev, isOpen: false }));
                             addToast({ type: "error", title: "Cancel failed", message: "Could not cancel processing." });
+                          } finally {
+                            setConfirmDialog(null);
                           }
                         },
                       });
@@ -504,22 +547,21 @@ export default function ReleaseDetails() {
                     onClick: () => {
                       if (!token) return;
                       setConfirmDialog({
-                        isOpen: true,
                         title: "Delete Release",
-                        message: `Are you sure you want to delete "${release.title}"? This action is permanent and cannot be undone. All tracks, stems, and associated NFT data will be removed.`,
+                        message: `Delete "${release.title}"? This action is permanent and cannot be undone.`,
                         variant: "danger",
                         confirmLabel: "Delete Forever",
                         onConfirm: async () => {
                           try {
                             const { deleteRelease } = await import("../../../lib/api");
                             await deleteRelease(token, release.id);
-                            setConfirmDialog(prev => ({ ...prev, isOpen: false }));
                             addToast({ type: "success", title: "Deleted", message: `"${release.title}" has been removed.` });
                             router.push("/");
                           } catch (e) {
                             console.error(e);
-                            setConfirmDialog(prev => ({ ...prev, isOpen: false }));
                             addToast({ type: "error", title: "Delete failed", message: "Could not delete the release." });
+                          } finally {
+                            setConfirmDialog(null);
                           }
                         },
                       });
@@ -527,21 +569,6 @@ export default function ReleaseDetails() {
                   },
                 ]}
               />
-            )}
-            {isOwner && (
-              <Button variant="ghost" className="btn-save" onClick={() => artworkInputRef.current?.click()}>
-                Edit Cover
-              </Button>
-            )}
-            {/* Global Mixer Toggle - only show when a track with stems is playing */}
-            {currentTrack && currentTrack.stems && currentTrack.stems.length > 1 && (
-              <Button
-                variant="ghost"
-                className={`btn-mixer ${mixerMode ? 'active' : ''}`}
-                onClick={toggleMixerMode}
-              >
-                🎚️ Mixer
-              </Button>
             )}
           </div>
         </div>
@@ -880,16 +907,6 @@ export default function ReleaseDetails() {
         onClose={() => setTracksToAddToPlaylist(null)}
       />
 
-      <ConfirmDialog
-        isOpen={confirmDialog.isOpen}
-        title={confirmDialog.title}
-        message={confirmDialog.message}
-        variant={confirmDialog.variant}
-        confirmLabel={confirmDialog.confirmLabel}
-        onConfirm={confirmDialog.onConfirm}
-        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
-      />
-
       <style jsx>{`
         .release-details-container {
           max-width: 1400px;
@@ -1034,6 +1051,12 @@ export default function ReleaseDetails() {
         .artist-name {
           font-weight: 800;
           color: #fff;
+          cursor: pointer;
+          transition: color 0.2s;
+        }
+        .artist-name:hover {
+          color: var(--color-accent);
+          text-decoration: underline;
         }
 
         .dot {
@@ -1487,6 +1510,17 @@ export default function ReleaseDetails() {
           color: #71717a;
         }
       `}</style>
+
+      {/* Confirm dialog for destructive actions */}
+      <ConfirmDialog
+        isOpen={!!confirmDialog}
+        title={confirmDialog?.title ?? ""}
+        message={confirmDialog?.message ?? ""}
+        variant={confirmDialog?.variant ?? "default"}
+        confirmLabel={confirmDialog?.confirmLabel ?? "Confirm"}
+        onConfirm={confirmDialog?.onConfirm ?? (() => {})}
+        onCancel={() => setConfirmDialog(null)}
+      />
     </div >
   );
 }

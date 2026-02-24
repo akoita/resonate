@@ -3,36 +3,31 @@
  *
  * Uses InMemoryRunner + InMemorySessionService to run the curation agent.
  * ADK handles the tool-calling loop, retries, and conversation management.
- *
- * NOTE: @google/adk and @google/genai are loaded lazily via dynamic import()
- * to avoid breaking Jest, which cannot parse their ESM-only transitive deps.
  */
 import { Injectable, Logger } from "@nestjs/common";
+import {
+  InMemoryRunner,
+  isFinalResponse,
+  stringifyContent,
+} from "@google/adk";
+import type { Content } from "@google/genai";
 import {
   AgentRuntimeAdapter,
   AgentRuntimeInput,
   AgentRuntimeResult,
   LlmTrackPick,
+  LlmGenerationPick,
 } from "./agent_runtime.adapter";
 import { ToolRegistry } from "../tools/tool_registry";
+import { createCurationAgent, buildUserMessage } from "./adk_curation_agent";
 
 const TIMEOUT_MS = 30_000;
 const APP_NAME = "resonate";
-
-// Lazily-resolved ADK modules
-let _adkModule: typeof import("@google/adk") | null = null;
-async function getAdk() {
-  if (!_adkModule) _adkModule = await import("@google/adk");
-  return _adkModule;
-}
 
 @Injectable()
 export class AdkAdapter implements AgentRuntimeAdapter {
   name: "adk" = "adk";
   private readonly logger = new Logger(AdkAdapter.name);
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private runner: any = null;
 
   constructor(private readonly tools: ToolRegistry) {}
 
@@ -53,35 +48,21 @@ export class AdkAdapter implements AgentRuntimeAdapter {
     return this.withTimeout(this.callAgent(input, start), TIMEOUT_MS, start);
   }
 
-  private async getRunner() {
-    if (!this.runner) {
-      const adk = await getAdk();
-      const { createCurationAgent } = await import("./adk_curation_agent");
-      const agent = await createCurationAgent(this.tools);
-      this.runner = new adk.InMemoryRunner({ agent, appName: APP_NAME });
-    }
-    return this.runner;
+  private getRunnerForUser(userId: string): InMemoryRunner {
+    // Create a fresh runner per call — generation tools bind to the userId
+    const agent = createCurationAgent(this.tools, userId);
+    return new InMemoryRunner({ agent, appName: APP_NAME });
   }
 
   private async callAgent(
     input: AgentRuntimeInput,
     startMs: number
   ): Promise<AgentRuntimeResult> {
-    const adk = await getAdk();
-    const { buildUserMessage } = await import("./adk_curation_agent");
-    const runner = await this.getRunner();
+    const runner = this.getRunnerForUser(input.userId);
     const userMessage = buildUserMessage(input);
 
-    // Create a fresh ADK session for each stateless invocation
-    const adkSessionId = `adk_${input.sessionId}_${Date.now()}`;
-    await runner.sessionService.createSession({
-      appName: APP_NAME,
-      userId: input.userId,
-      sessionId: adkSessionId,
-    });
-
-    const newMessage = {
-      role: "user" as const,
+    const newMessage: Content = {
+      role: "user",
       parts: [{ text: userMessage }],
     };
 
@@ -89,14 +70,14 @@ export class AdkAdapter implements AgentRuntimeAdapter {
     let finalText = "";
     for await (const event of runner.runAsync({
       userId: input.userId,
-      sessionId: adkSessionId,
+      sessionId: input.sessionId,
       newMessage,
     })) {
       this.logger.debug(
-        `ADK event: author=${event.author} final=${adk.isFinalResponse(event)}`
+        `ADK event: author=${event.author} final=${isFinalResponse(event)}`
       );
-      if (adk.isFinalResponse(event)) {
-        finalText = adk.stringifyContent(event);
+      if (isFinalResponse(event)) {
+        finalText = stringifyContent(event);
       }
     }
 
@@ -152,10 +133,27 @@ export class AdkAdapter implements AgentRuntimeAdapter {
       }
     }
 
+    // Parse GENERATED: lines — AI-generated content via Lyria
+    const genPattern =
+      /GENERATED:\s*(.+?)\s*\|\s*COST:\s*\$?([\d.]+)\s*\|\s*PROMPT:\s*(.+)/gi;
+    const generationPicks: LlmGenerationPick[] = [];
+    let genMatch: RegExpExecArray | null;
+
+    while ((genMatch = genPattern.exec(text)) !== null) {
+      generationPicks.push({
+        jobId: genMatch[1].trim(),
+        costUsd: parseFloat(genMatch[2]),
+        prompt: genMatch[3].trim(),
+      });
+    }
+
+    const generationsUsed = generationPicks.length;
+    const generationSpendUsd = generationPicks.reduce((sum, g) => sum + g.costUsd, 0);
+
     const reasoningMatch = text.match(/REASONING:\s*(.+)/i);
     const reasoning = reasoningMatch?.[1]?.trim() ?? text.slice(0, 200);
 
-    if (picks.length === 0) {
+    if (picks.length === 0 && generationPicks.length === 0) {
       return {
         status: "rejected",
         reason: "llm_no_track_selected",
@@ -164,17 +162,22 @@ export class AdkAdapter implements AgentRuntimeAdapter {
       };
     }
 
-    this.logger.log(`ADK selected ${picks.length} track(s) in ${latencyMs}ms`);
+    this.logger.log(
+      `ADK selected ${picks.length} track(s) + ${generationsUsed} generation(s) in ${latencyMs}ms`
+    );
 
     return {
       status: "approved",
-      trackId: picks[0].trackId,
-      licenseType: picks[0].licenseType,
-      priceUsd: picks[0].priceUsd,
+      trackId: picks[0]?.trackId,
+      licenseType: picks[0]?.licenseType,
+      priceUsd: picks[0]?.priceUsd,
       reason: "adk_llm",
       reasoning,
       latencyMs,
       picks,
+      generationsUsed,
+      generationSpendUsd,
+      generationPicks,
     };
   }
 

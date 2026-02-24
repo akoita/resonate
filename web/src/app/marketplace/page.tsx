@@ -34,6 +34,10 @@ interface ListingData {
         uri?: string;
         artistId?: string;
         releaseId?: string;
+        isAiGenerated?: boolean;
+        generationProvider?: string;
+        synthIdVerified?: boolean;
+        synthIdConfidence?: number;
     } | null;
 }
 
@@ -94,7 +98,7 @@ export default function MarketplacePage(props: {
 
     const { pending: buyPending } = useBuyStem();
     const { addToast } = useToast();
-    const { address: walletAddress, kernelAccount, knownAddresses, smartAccountAddress } = useAuth();
+    const { address: walletAddress } = useAuth();
     const { chainId } = useZeroDev();
 
     // Resolve the actual on-chain signer address.
@@ -104,25 +108,15 @@ export default function MarketplacePage(props: {
     const [signerAddress, setSignerAddress] = useState<string | null>(null);
     useEffect(() => {
         if (!walletAddress) { setSignerAddress(null); return; }
-        const rpcOverride = process.env.NEXT_PUBLIC_RPC_URL || "";
-        const isLocalRpc = rpcOverride.includes("localhost") || rpcOverride.includes("127.0.0.1");
-        const isLocalOrFork = chainId === 31337 || isLocalRpc;
+        const isLocalOrFork = chainId === 31337 || (chainId === 11155111 && process.env.NODE_ENV === "development");
         if (isLocalOrFork) {
             import("../../lib/localAA").then(({ getLocalSignerAddress }) => {
                 setSignerAddress(getLocalSignerAddress(walletAddress as `0x${string}`).toLowerCase());
             }).catch(() => setSignerAddress(walletAddress.toLowerCase()));
         } else {
-            // Use the persisted Smart Account address (the actual on-chain identity),
-            // then fall back to kernelAccount.address, then walletAddress
-            if (smartAccountAddress) {
-                setSignerAddress(smartAccountAddress.toLowerCase());
-            } else if (kernelAccount && kernelAccount.address) {
-                setSignerAddress(kernelAccount.address.toLowerCase());
-            } else {
-                setSignerAddress(walletAddress.toLowerCase());
-            }
+            setSignerAddress(walletAddress.toLowerCase());
         }
-    }, [walletAddress, chainId, kernelAccount, smartAccountAddress]);
+    }, [walletAddress, chainId]);
 
     // ---- Search debounce ----
     useEffect(() => {
@@ -145,11 +139,7 @@ export default function MarketplacePage(props: {
 
             const params = new URLSearchParams({ status: "active", limit: String(PAGE_SIZE), offset: String(currentOffset), sortBy });
             if (debouncedSearch) params.set("search", debouncedSearch);
-            if (hideOwnListings && signerAddress) {
-                // Send all known SA addresses (handles ZeroDev SDK/version changes)
-                const allAddresses = new Set([signerAddress, ...knownAddresses.map((a: string) => a.toLowerCase())]);
-                params.set("excludeSeller", Array.from(allAddresses).join(","));
-            }
+            if (hideOwnListings && signerAddress) params.set("excludeSeller", signerAddress);
 
             const res = await fetch(`/api/contracts/listings?${params.toString()}`);
             if (!res.ok) {
@@ -180,7 +170,7 @@ export default function MarketplacePage(props: {
         } finally {
             setLoading(false);
         }
-    }, [debouncedSearch, sortBy, offset, listings.length, hideOwnListings, signerAddress, knownAddresses]);
+    }, [debouncedSearch, sortBy, offset, listings.length, hideOwnListings, signerAddress]);
 
     // ---- Refetch when sort, search, or signer changes ----
     // Guard: if the user is logged in and wants to hide own listings,
@@ -465,6 +455,19 @@ export default function MarketplacePage(props: {
 
                                     {/* Badges */}
                                     <div className="stem-card__badges">
+                                        {listing.stem?.isAiGenerated && (
+                                            <span className="stem-type-badge stem-type-badge--ai" title={listing.stem.generationProvider || 'AI Generated'}>
+                                                🤖 AI
+                                            </span>
+                                        )}
+                                        {listing.stem?.synthIdVerified && (
+                                            <span
+                                                className="stem-type-badge stem-type-badge--synthid"
+                                                title={`SynthID Verified (${Math.round((listing.stem.synthIdConfidence ?? 0) * 100)}% confidence)`}
+                                            >
+                                                ✓ SynthID
+                                            </span>
+                                        )}
                                         {listing.stem?.type && (
                                             <span className={`stem-type-badge ${stemTypeBadgeClass(listing.stem.type)}`}>
                                                 {listing.stem.type}

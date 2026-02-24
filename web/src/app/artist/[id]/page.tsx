@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { getArtistPublic, listArtistReleases, Release, ArtistProfile } from "../../../lib/api";
+import { getArtistPublic, listArtistReleases, listPublishedReleases, Release, ArtistProfile } from "../../../lib/api";
 import { listTracks, LocalTrack } from "../../../lib/localLibrary";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
@@ -35,6 +35,9 @@ export default function ArtistPage() {
                 if (isUuid) {
                     promises.push(getArtistPublic(artistId).catch(() => null).then(p => setArtist(p)));
                     promises.push(listArtistReleases(artistId).catch(() => []).then(r => setReleases(r)));
+                } else {
+                    // Non-UUID: search published releases by artist name
+                    promises.push(listPublishedReleases(50, artistId).catch(() => []).then(r => setReleases(r)));
                 }
 
                 // 2. Fetch from Local Library (IndexedDB)

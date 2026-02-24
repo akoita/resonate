@@ -67,11 +67,45 @@ export class IngestionService {
   }
 
   async handleFileUpload(input: {
-    artistId: string;
+    artistId?: string;
+    userId?: string;
     files: Express.Multer.File[];
     artwork?: Express.Multer.File;
     metadata?: any;
+    catalogTrackId?: string;
   }) {
+    // Resolve artistId: from body, or lookup from userId
+    let artistId = input.artistId;
+    if (!artistId && input.userId) {
+      const artist = await this.artistService.getProfile(input.userId);
+      artistId = artist?.id;
+    }
+    if (!artistId) {
+      throw new Error("Could not resolve artist for upload");
+    }
+    const resolvedArtistId: string = artistId;
+
+    // If catalogTrackId is provided, fetch the audio from catalog
+    if (input.catalogTrackId && input.files.length === 0) {
+      const trackStream = await this.catalogService.getTrackStream(input.catalogTrackId);
+      if (!trackStream) {
+        throw new Error(`Track ${input.catalogTrackId} audio not found in catalog`);
+      }
+      // Create a synthetic Multer-like file from the catalog data
+      const syntheticFile: Express.Multer.File = {
+        buffer: trackStream.data,
+        originalname: `${input.catalogTrackId}.wav`,
+        mimetype: trackStream.mimeType || "audio/wav",
+        fieldname: "files",
+        encoding: "7bit",
+        size: trackStream.data.length,
+        stream: null as any,
+        destination: "",
+        filename: "",
+        path: "",
+      };
+      input.files = [syntheticFile];
+    }
     const mm = await import("music-metadata");
     const releaseId = this.generateId("rel");
 
@@ -178,7 +212,7 @@ export class IngestionService {
       eventVersion: 1,
       occurredAt: new Date().toISOString(),
       releaseId,
-      artistId: input.artistId,
+      artistId: resolvedArtistId,
       checksum: "completed",
       artworkData,
       artworkMimeType,
@@ -209,7 +243,7 @@ export class IngestionService {
         eventVersion: 1,
         occurredAt: new Date().toISOString(),
         releaseId,
-        artistId: input.artistId,
+        artistId: resolvedArtistId,
         modelVersion: "test-mock-v1",
         tracks: mockProcessedTracks as any,
       });
@@ -227,7 +261,7 @@ export class IngestionService {
         data: undefined, // Remove Buffer - it's already uploaded to storage
       })),
     }));
-    await this.stemsQueue.add("process-stems", { releaseId, artistId: input.artistId, tracks: serializableTracks });
+    await this.stemsQueue.add("process-stems", { releaseId, artistId: resolvedArtistId, tracks: serializableTracks });
 
     return { releaseId, status: "processing" };
   }
@@ -247,6 +281,13 @@ export class IngestionService {
   async processStemsJob(input: { releaseId: string; artistId: string; tracks: any[] }) {
     console.log(`[Ingestion] Starting real stem processing for release ${input.releaseId}`);
 
+    // Guard: check if release is already ready (stems already processed)
+    const currentRelease = await this.catalogService.getRelease(input.releaseId);
+    if (currentRelease && currentRelease.status === 'ready') {
+      console.log(`[Ingestion] Release ${input.releaseId} is already ready, skipping stem processing`);
+      return;
+    }
+
     // Fetch artist profile to get the wallet address for encryption
     const artistProfile = await this.artistService.findById(input.artistId);
     const encryptionAddress = artistProfile?.payoutAddress || input.artistId; // Fallback to ID if address not found (though unlikely for valid artists)
@@ -258,6 +299,13 @@ export class IngestionService {
     for (const track of input.tracks) {
       // Yield event loop to allow heartbeats (important for large files)
       await new Promise(resolve => setImmediate(resolve));
+
+      // Guard: skip tracks that already have processed stems (more than just the original)
+      const existingTrack = currentRelease?.tracks?.find((t: any) => t.id === track.id);
+      if (existingTrack?.stems && existingTrack.stems.length > 1) {
+        console.log(`[Ingestion] Track ${track.id} already has ${existingTrack.stems.length} stems, skipping`);
+        continue;
+      }
 
       let attempt = 0;
       let lastError = null;
@@ -298,13 +346,7 @@ export class IngestionService {
           const blob = new Blob([new Uint8Array(audioBuffer)], { type: originalStem.mimeType });
           formData.append("file", blob, `track_${track.id}.wav`);
 
-          // Configurable worker URL — no longer hardcoded to localhost
-          const workerUrl = process.env.DEMUCS_WORKER_URL || 'http://localhost:8000';
-          // Pass callback URL so worker can report progress without hardcoded backend address
-          const backendUrl = process.env.BACKEND_URL || 'http://host.docker.internal:3000';
-          const callbackParam = `?callback_url=${encodeURIComponent(backendUrl)}`;
-
-          console.log(`[Ingestion] Sending track ${track.id} to Demucs worker at ${workerUrl}...`);
+          console.log(`[Ingestion] Sending track ${track.id} to Demucs worker...`);
           // Use custom undici Agent to override the default headersTimeout (300s).
           // Without this, long-running Demucs separations hit UND_ERR_HEADERS_TIMEOUT
           // before the 10-minute AbortSignal fires.
@@ -312,7 +354,8 @@ export class IngestionService {
             headersTimeout: 600_000,  // 10 minutes — matches AbortSignal
             bodyTimeout: 0,           // unlimited — response body can be large
           });
-          const response = await fetch(`${workerUrl}/separate/${input.releaseId}/${track.id}${callbackParam}`, {
+          const demucsBaseUrl = process.env.DEMUCS_WORKER_URL || 'http://localhost:8000';
+          const response = await fetch(`${demucsBaseUrl}/separate/${input.releaseId}/${track.id}`, {
             method: "POST",
             body: formData,
             signal: AbortSignal.timeout(600_000), // 10 minutes
@@ -351,34 +394,10 @@ export class IngestionService {
           await this.emitTrackStage(input.releaseId, track.id, 'encrypting');
 
           // 2. Process, Encrypt, and Upload the AI-generated Stems
-          for (const [type, stemUri] of Object.entries(result.stems)) {
-            // Download stem data — supports both HTTPS URLs (GCS mode) and local paths
-            let data: Buffer | null = null;
-            const stemUriStr = stemUri as string;
-
-            if (stemUriStr.startsWith('http://') || stemUriStr.startsWith('https://')) {
-              // GCS/remote mode: download from URL
-              console.log(`[Ingestion] Downloading stem from URL: ${stemUriStr}`);
-              try {
-                const stemResponse = await fetch(stemUriStr, { signal: AbortSignal.timeout(120_000) });
-                if (stemResponse.ok) {
-                  const arrayBuffer = await stemResponse.arrayBuffer();
-                  data = Buffer.from(new Uint8Array(arrayBuffer));
-                } else {
-                  console.error(`[Ingestion] Failed to download stem: HTTP ${stemResponse.status}`);
-                }
-              } catch (dlErr) {
-                console.error(`[Ingestion] Failed to download stem from ${stemUriStr}:`, dlErr);
-              }
-            } else {
-              // Local mode: read from shared volume (backward compatible)
-              const absolutePath = join(process.cwd(), "uploads", "stems", stemUriStr);
-              if (existsSync(absolutePath)) {
-                data = readFileSync(absolutePath);
-              }
-            }
-
-            if (data) {
+          for (const [type, relativePath] of Object.entries(result.stems)) {
+            const absolutePath = join(process.cwd(), "uploads", "stems", relativePath);
+            if (existsSync(absolutePath)) {
+              let data: Buffer = readFileSync(absolutePath);
               const stemId = this.generateId("stem");
 
               let isEncrypted = false;
@@ -410,15 +429,14 @@ export class IngestionService {
                 id: stemId,
                 uri: storage.uri,
                 type: type,
-                data: data, // Include encrypted data for Prisma persistence (Cloud Run ephemeral FS)
+                // NOTE: Removed 'data' buffer from event - already uploaded to storage at 'uri'
+                // Passing Buffer in events causes Prisma formatting stack overflow on large files
                 mimeType: "audio/mpeg",
                 durationSeconds: originalStem.durationSeconds,
                 isEncrypted,
                 encryptionMetadata,
                 storageProvider: storage.provider,
               });
-            } else {
-              console.warn(`[Ingestion] Could not load stem data for ${type} (${stemUriStr}), skipping`);
             }
           }
 
@@ -604,7 +622,8 @@ export class IngestionService {
     }
 
     if (release.status === 'ready') {
-      throw new Error(`Release ${releaseId} is already ready`);
+      console.log(`[Ingestion] Release ${releaseId} is already ready, skipping retry`);
+      return { success: true, message: 'Release is already processed', releaseId };
     }
 
     // 2. Re-emit Uploaded event to reset status to processing
@@ -648,7 +667,7 @@ export class IngestionService {
     // Let's implement that.
 
     const tracksWithData = await Promise.all(release.tracks.map(async (t) => {
-      const originalStem = t.stems.find(s => s.type === 'ORIGINAL' || s.type === 'original');
+      const originalStem = t.stems.find(s => s.type === 'ORIGINAL' || s.type === 'original' || s.type === 'master');
       if (!originalStem) return null;
 
       const dbStem = await this.catalogService.getStemBlob(originalStem.id);
@@ -673,91 +692,7 @@ export class IngestionService {
     const validTracks = tracksWithData.filter((t): t is any => t !== null);
 
     if (validTracks.length === 0) {
-      // Fallback: if separation already completed but DB write failed,
-      // re-download stems from GCS and persist them directly
-      console.log(`[Ingestion] Original audio unavailable. Checking GCS for already-separated stems...`);
-
-      const stemTypes = ["vocals", "drums", "bass", "piano", "guitar", "other"];
-      const bucket = process.env.GCS_STEMS_BUCKET || "resonate-stems-dev";
-      let recovered = false;
-
-      for (const track of release.tracks) {
-        const stems: Array<{
-          id: string; type: string; uri: string; data: Buffer;
-          mimeType: string; durationSeconds: number; isEncrypted: boolean;
-          storageProvider: string;
-        }> = [];
-
-        // Keep the original stem as-is (even without data)
-        const originalStem = track.stems.find(s => s.type === "ORIGINAL" || s.type === "original");
-
-        for (const stemType of stemTypes) {
-          const gcsPath = `stems/${releaseId}/${track.id}/${stemType}.mp3`;
-          const gcsUrl = `https://storage.googleapis.com/${bucket}/${gcsPath}`;
-
-          try {
-            const response = await fetch(gcsUrl, { signal: AbortSignal.timeout(15000) });
-            if (!response.ok) continue;
-
-            const buffer = Buffer.from(await response.arrayBuffer());
-            const stemId = `stem_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
-
-            stems.push({
-              id: stemId,
-              type: stemType,
-              uri: gcsUrl,
-              data: buffer,
-              mimeType: "audio/mpeg",
-              durationSeconds: originalStem?.durationSeconds ?? 0,
-              isEncrypted: false,
-              storageProvider: "gcs",
-            });
-
-            console.log(`[Ingestion] Recovered ${stemType} stem from GCS for track ${track.id}`);
-          } catch (e) {
-            // Stem doesn't exist in GCS, skip
-          }
-        }
-
-        if (stems.length > 0) {
-          recovered = true;
-
-          // Emit stems.processed to redo the DB write
-          this.eventBus.publish({
-            eventName: "stems.processed",
-            eventVersion: 1,
-            occurredAt: new Date().toISOString(),
-            releaseId,
-            artistId: release.artistId,
-            modelVersion: "htdemucs_6s",
-            tracks: [{
-              id: track.id,
-              title: track.title,
-              artist: track.artist ?? undefined,
-              position: track.position,
-              stems: [
-                // Include original stem if exists
-                ...(originalStem ? [{
-                  id: originalStem.id,
-                  type: originalStem.type,
-                  uri: originalStem.uri,
-                  mimeType: "audio/mpeg",
-                  durationSeconds: originalStem.durationSeconds ?? 0,
-                  isEncrypted: false,
-                  storageProvider: originalStem.storageProvider || "local",
-                }] : []),
-                ...stems,
-              ],
-            }],
-          });
-        }
-      }
-
-      if (!recovered) {
-        throw new Error(`Could not re-hydrate any tracks for release ${releaseId}. Original audio and separated stems are both unavailable. Please delete and re-upload.`);
-      }
-
-      return { message: "Recovered stems from cloud storage and re-processing" };
+      throw new Error(`Could not re-hydrate any tracks for release ${releaseId}`);
     }
 
     // 3. Re-emit Uploaded event to reset status to processing
@@ -794,7 +729,7 @@ export class IngestionService {
       {
         jobId: release.id,
         removeOnComplete: true,
-        attempts: 3,
+        attempts: 1,
         backoff: {
           type: "exponential",
           delay: 5000,

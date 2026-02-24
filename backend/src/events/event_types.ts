@@ -186,6 +186,19 @@ export interface AgentDecisionMadeEvent extends BaseEvent {
   reason: string;
   reasoning?: string;
   latencyMs?: number;
+  /** Number of AI generations triggered during this session */
+  generationsUsed?: number;
+  /** Total USD spent on AI generation */
+  generationSpendUsd?: number;
+}
+
+export interface AgentGenerationTriggeredEvent extends BaseEvent {
+  eventName: "agent.generation_triggered";
+  sessionId: string;
+  jobId: string;
+  prompt: string;
+  costUsd: number;
+  reason: string;
 }
 
 export interface AgentEvaluatedEvent extends BaseEvent {
@@ -373,6 +386,53 @@ export interface AgentPurchaseFailedEvent extends BaseEvent {
   error: string;
 }
 
+// ============ Generation Events ============
+
+export interface GenerationStartedEvent extends BaseEvent {
+  eventName: "generation.started";
+  jobId: string;
+  userId: string;
+  prompt: string;
+}
+
+export interface GenerationProgressEvent extends BaseEvent {
+  eventName: "generation.progress";
+  jobId: string;
+  phase: 'queued' | 'generating' | 'storing' | 'finalizing';
+}
+
+export interface GenerationCompletedEvent extends BaseEvent {
+  eventName: "generation.completed";
+  jobId: string;
+  userId: string;
+  trackId: string;
+  releaseId: string;
+}
+
+export interface GenerationFailedEvent extends BaseEvent {
+  eventName: "generation.failed";
+  jobId: string;
+  userId: string;
+  error: string;
+}
+
+// ============ Realtime Events ============
+
+export interface RealtimeAudioEvent extends BaseEvent {
+  eventName: "realtime.audio";
+  sessionId: string;
+  userId: string;
+  chunk: string; // base64-encoded PCM audio
+  timestamp: number;
+}
+
+export interface RealtimeDisconnectedEvent extends BaseEvent {
+  eventName: "realtime.disconnected";
+  sessionId: string;
+  userId: string;
+  reason: string;
+}
+
 export type ResonateEvent =
   | StemsUploadedEvent
   | StemsProcessedEvent
@@ -411,5 +471,12 @@ export type ResonateEvent =
   | AgentWalletDisabledEvent
   | AgentBudgetAlertEvent
   | AgentPurchaseCompletedEvent
-  | AgentPurchaseFailedEvent;
+  | AgentPurchaseFailedEvent
+  | AgentGenerationTriggeredEvent
+  | GenerationStartedEvent
+  | GenerationProgressEvent
+  | GenerationCompletedEvent
+  | GenerationFailedEvent
+  | RealtimeAudioEvent
+  | RealtimeDisconnectedEvent;
 

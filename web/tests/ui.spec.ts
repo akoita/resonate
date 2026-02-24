@@ -9,7 +9,7 @@ test("home hero renders", async ({ page }) => {
 
 test("wallet page renders", async ({ page }) => {
   await page.goto("/wallet");
-  await expect(page.getByText("Smart Account Balance")).toBeVisible();
+  await expect(page.getByText("Total Balance")).toBeVisible();
 });
 
 test("wallet recovery panel renders", async ({ page }) => {

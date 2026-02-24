@@ -4,11 +4,15 @@ import {
     OnGatewayInit,
     OnGatewayConnection,
     OnGatewayDisconnect,
+    SubscribeMessage,
+    MessageBody,
+    ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { EventBus } from './event_bus';
-import { CatalogReleaseReadyEvent, CatalogTrackStatusEvent, StemsUploadedEvent } from '../../events/event_types';
+import { CatalogReleaseReadyEvent, CatalogTrackStatusEvent, StemsUploadedEvent, GenerationStartedEvent, GenerationProgressEvent, GenerationCompletedEvent, GenerationFailedEvent, RealtimeAudioEvent, RealtimeDisconnectedEvent } from '../../events/event_types';
+import { LyriaRealtimeService } from '../generation/lyria_realtime.service';
 
 @WebSocketGateway({
     cors: {
@@ -19,8 +23,14 @@ import { CatalogReleaseReadyEvent, CatalogTrackStatusEvent, StemsUploadedEvent }
 @Injectable()
 export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
     @WebSocketServer() server!: Server;
+    private readonly logger = new Logger(EventsGateway.name);
+    /** Maps sessionId → client socket id for targeted audio delivery */
+    private readonly sessionClients = new Map<string, string>();
 
-    constructor(private readonly eventBus: EventBus) {
+    constructor(
+        private readonly eventBus: EventBus,
+        private readonly lyriaRealtime: LyriaRealtimeService,
+    ) {
         this.subscribeToEvents();
     }
 
@@ -224,6 +234,74 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                 });
             }
         });
+
+        // ---- Generation events → broadcast real-time generation status ----
+
+        this.eventBus.subscribe('generation.started', (event: GenerationStartedEvent) => {
+            console.log(`[EventsGateway] Generation started: jobId=${event.jobId}`);
+            if (this.server) {
+                this.server.emit('generation.status', {
+                    jobId: event.jobId,
+                    status: 'generating',
+                    prompt: event.prompt,
+                });
+            }
+        });
+
+        this.eventBus.subscribe('generation.progress', (event: GenerationProgressEvent) => {
+            if (this.server) {
+                this.server.emit('generation.progress', {
+                    jobId: event.jobId,
+                    phase: event.phase,
+                });
+            }
+        });
+
+        this.eventBus.subscribe('generation.completed', (event: GenerationCompletedEvent) => {
+            console.log(`[EventsGateway] Generation completed: jobId=${event.jobId}, trackId=${event.trackId}`);
+            if (this.server) {
+                this.server.emit('generation.status', {
+                    jobId: event.jobId,
+                    status: 'completed',
+                    trackId: event.trackId,
+                    releaseId: event.releaseId,
+                });
+            }
+        });
+
+        this.eventBus.subscribe('generation.failed', (event: GenerationFailedEvent) => {
+            console.log(`[EventsGateway] Generation failed: jobId=${event.jobId}: ${event.error}`);
+            if (this.server) {
+                this.server.emit('generation.error', {
+                    jobId: event.jobId,
+                    error: event.error,
+                });
+            }
+        });
+
+        // ============ Realtime Events ============
+
+        this.eventBus.subscribe('realtime.audio', (event: RealtimeAudioEvent) => {
+            const clientId = this.sessionClients.get(event.sessionId);
+            if (clientId && this.server) {
+                this.server.to(clientId).emit('realtime:audio', {
+                    sessionId: event.sessionId,
+                    chunk: event.chunk,
+                    timestamp: event.timestamp,
+                });
+            }
+        });
+
+        this.eventBus.subscribe('realtime.disconnected', (event: RealtimeDisconnectedEvent) => {
+            const clientId = this.sessionClients.get(event.sessionId);
+            if (clientId && this.server) {
+                this.server.to(clientId).emit('realtime:disconnected', {
+                    sessionId: event.sessionId,
+                    reason: event.reason,
+                });
+            }
+            this.sessionClients.delete(event.sessionId);
+        });
     }
 
 
@@ -237,5 +315,110 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
 
     handleDisconnect(client: Socket) {
         console.log(`[EventsGateway] Client disconnected: ${client.id}`);
+        // Clean up any realtime sessions owned by this client
+        for (const [sessionId, socketId] of this.sessionClients.entries()) {
+            if (socketId === client.id) {
+                this.lyriaRealtime.stopSession(sessionId);
+                this.sessionClients.delete(sessionId);
+                this.logger.log(`Cleaned up realtime session ${sessionId} for disconnected client ${client.id}`);
+            }
+        }
+    }
+
+    // ============ Realtime Message Handlers ============
+
+    @SubscribeMessage('realtime:start')
+    async handleRealtimeStart(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() data: { trackId: string; userId: string; bpm?: number; key?: string; density?: number; brightness?: number },
+    ) {
+        this.logger.log(`Realtime start request from ${client.id}: trackId=${data.trackId}`);
+
+        if (!this.lyriaRealtime.isAvailable()) {
+            client.emit('realtime:error', { message: 'Lyria RealTime is not available' });
+            return;
+        }
+
+        try {
+            const sessionId = await this.lyriaRealtime.startSession({
+                trackId: data.trackId,
+                userId: data.userId,
+                bpm: data.bpm,
+                key: data.key,
+                density: data.density,
+                brightness: data.brightness,
+            });
+
+            // Map session to this client for targeted audio delivery
+            this.sessionClients.set(sessionId, client.id);
+
+            client.emit('realtime:started', {
+                sessionId,
+                available: true,
+            });
+        } catch (error) {
+            this.logger.error(`Failed to start realtime session: ${error}`);
+            client.emit('realtime:error', { message: 'Failed to start realtime session' });
+        }
+    }
+
+    @SubscribeMessage('realtime:control')
+    async handleRealtimeControl(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() data: { sessionId: string; bpm?: number; key?: string; density?: number; brightness?: number },
+    ) {
+        try {
+            await this.lyriaRealtime.updateControls(data.sessionId, {
+                bpm: data.bpm,
+                key: data.key,
+                density: data.density,
+                brightness: data.brightness,
+            });
+        } catch (error) {
+            client.emit('realtime:error', { message: `Control update failed: ${error}` });
+        }
+    }
+
+    @SubscribeMessage('realtime:stop')
+    async handleRealtimeStop(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() data: { sessionId: string },
+    ) {
+        this.logger.log(`Realtime stop request: sessionId=${data.sessionId}`);
+        this.lyriaRealtime.stopSession(data.sessionId);
+        this.sessionClients.delete(data.sessionId);
+        client.emit('realtime:stopped', { sessionId: data.sessionId });
+    }
+
+    @SubscribeMessage('realtime:record-start')
+    async handleRecordStart(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() data: { sessionId: string },
+    ) {
+        try {
+            this.lyriaRealtime.startRecording(data.sessionId);
+            client.emit('realtime:recording', { sessionId: data.sessionId, isRecording: true });
+        } catch (error) {
+            client.emit('realtime:error', { message: `Record start failed: ${error}` });
+        }
+    }
+
+    @SubscribeMessage('realtime:record-stop')
+    async handleRecordStop(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() data: { sessionId: string },
+    ) {
+        try {
+            const wavBuffer = this.lyriaRealtime.stopRecording(data.sessionId);
+            // Send the WAV data back as base64
+            client.emit('realtime:recorded', {
+                sessionId: data.sessionId,
+                audio: wavBuffer.toString('base64'),
+                format: 'wav',
+                sampleRate: 48000,
+            });
+        } catch (error) {
+            client.emit('realtime:error', { message: `Record stop failed: ${error}` });
+        }
     }
 }

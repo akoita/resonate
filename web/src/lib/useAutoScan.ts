@@ -6,6 +6,7 @@
  */
 import { useEffect, useState } from "react";
 import {
+    getLibrarySourceHandles,
     getUniqueLibrarySourceHandles,
     getSettings,
     updateSettings,

@@ -37,9 +37,10 @@ export function StemMintForm({
     try {
       const royaltyReceiver = customRoyaltyReceiver
         ? (customRoyaltyReceiver as Address)
-        : undefined;
+        : (address as Address);
 
       const hash = await mint({
+        to: address as Address,
         amount: BigInt(amount),
         tokenURI: metadataUri,
         royaltyReceiver,

@@ -1,10 +1,8 @@
-import { Body, Controller, Get, Param, Post, UseGuards, UseInterceptors, UploadedFiles, BadRequestException } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Request, UseGuards, UseInterceptors, UploadedFiles, BadRequestException } from "@nestjs/common";
 import { FilesInterceptor, FileFieldsInterceptor } from "@nestjs/platform-express";
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
 import { IngestionService } from "./ingestion.service";
-
-const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200 MB per file
 
 @Controller("ingestion")
 export class IngestionController {
@@ -15,15 +13,18 @@ export class IngestionController {
   @UseInterceptors(FileFieldsInterceptor([
     { name: 'files', maxCount: 20 },
     { name: 'artwork', maxCount: 1 },
-  ], { limits: { fileSize: MAX_FILE_SIZE } }))
+  ]))
   @Throttle({ default: { limit: 20, ttl: 60 } })
   upload(
     @UploadedFiles() files: { files?: Express.Multer.File[], artwork?: Express.Multer.File[] },
     @Body()
     body: {
-      artistId: string;
+      artistId?: string;
+      trackId?: string; // For AI-generated tracks — fetch audio from catalog
+      source?: string;
       metadata?: any; // Can be string (from FormData) or object (from JSON body)
     },
+    @Request() req: any,
   ) {
     let metadata = body.metadata;
     if (typeof metadata === "string") {
@@ -35,9 +36,11 @@ export class IngestionController {
     }
     return this.ingestionService.handleFileUpload({
       artistId: body.artistId,
+      userId: req.user?.userId,
       files: files?.files || [],
       artwork: files?.artwork?.[0],
       metadata,
+      catalogTrackId: body.trackId,
     });
   }
 
