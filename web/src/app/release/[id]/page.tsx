@@ -56,6 +56,23 @@ export default function ReleaseDetails() {
   const handleProgressUpdate = useCallback((data: ReleaseProgressUpdate) => {
     if (data.releaseId !== id) return;
     setTrackProgress(prev => ({ ...prev, [data.trackId]: data.progress }));
+    // When progress arrives, ensure the track shows "Separating X%"
+    setRelease(prev => {
+      if (!prev) return prev;
+      const needsUpdate = prev.status === 'pending' || prev.tracks?.some(
+        t => t.id === data.trackId && t.processingStatus === 'pending'
+      );
+      if (!needsUpdate) return prev;
+      return {
+        ...prev,
+        status: prev.status === 'pending' ? 'processing' : prev.status,
+        tracks: prev.tracks?.map(t =>
+          t.id === data.trackId && t.processingStatus === 'pending'
+            ? { ...t, processingStatus: 'separating' as const }
+            : t
+        ),
+      };
+    });
   }, [id]);
 
   // Handle real-time track status updates via WebSocket
