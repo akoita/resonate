@@ -201,8 +201,13 @@ export default function MarketplacePage(props: {
     const handleMarketplaceUpdate = useCallback((update: MarketplaceUpdate) => {
         switch (update.type) {
             case 'created':
-                fetchListings(false);
                 addToast({ type: "success", title: "New Listing", message: "A new stem was just listed!" });
+                // The WebSocket fires instantly but the backend indexer may not have
+                // stored the listing yet. Refetch immediately + staggered retries.
+                fetchListings(false);
+                setTimeout(() => fetchListings(false), 3000);
+                setTimeout(() => fetchListings(false), 8000);
+                setTimeout(() => fetchListings(false), 15000);
                 break;
             case 'sold':
                 setListings(prev => prev.map(l => {
