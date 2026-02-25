@@ -83,15 +83,15 @@ export function MintStemButton({
     useEffect(() => {
         const checkStatus = async () => {
             try {
-                // 1. Initial hint from local storage (faster UI)
+                // 1. Use localStorage hint ONLY for "minted" (safe — tx confirmed).
+                //    Never trust localStorage for "listed" — only backend is authoritative
+                //    because the listing might not have been indexed yet or may have expired.
                 const localStatus = localStorage.getItem(`stem_status_${stemId}`);
-                if (localStatus === "listed") {
-                    setState("listed");
-                } else if (localStatus === "minted") {
+                if (localStatus === "minted" || localStatus === "listed") {
                     const localId = localStorage.getItem(`stem_token_id_${stemId}`);
                     if (localId) {
                         setMintedTokenId(BigInt(localId));
-                        setState("minted");
+                        setState("minted"); // Always start at "minted", backend upgrades to "listed"
                     }
                 }
 
