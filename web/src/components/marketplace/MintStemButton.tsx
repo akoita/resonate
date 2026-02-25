@@ -257,11 +257,12 @@ export function MintStemButton({
                 durationSeconds: BigInt(7 * 24 * 60 * 60),
             });
 
-            // The batch UserOperation already waited for on-chain receipt,
-            // so mint + approve + list are all confirmed at this point.
+            // Tx confirmed on-chain (mint + approve + list).
+            // Mark as "minted" — the background poll will upgrade to "listed"
+            // once the backend indexer picks up the listing event.
             setMintedTokenId(expectedTokenId);
-            setState("listed");
-            localStorage.setItem(`stem_status_${stemId}`, "listed");
+            setState("minted");
+            localStorage.setItem(`stem_status_${stemId}`, "minted");
             localStorage.setItem(`stem_token_id_${stemId}`, expectedTokenId.toString());
 
             addToast({
@@ -270,9 +271,14 @@ export function MintStemButton({
                 message: `${stemType} stem (Token #${expectedTokenId}) is now on the marketplace for 0.01 ETH`,
             });
 
-            // Kick off background indexer poll (non-blocking) so the
-            // marketplace page picks up the listing faster
-            pollForListing(stemId).catch(() => { /* indexer will catch up eventually */ });
+            // Background poll: wait for indexer to confirm the listing,
+            // then upgrade state to "listed"
+            pollForListing(stemId).then(confirmed => {
+                if (confirmed) {
+                    setState("listed");
+                    localStorage.setItem(`stem_status_${stemId}`, "listed");
+                }
+            }).catch(() => { /* indexer will catch up eventually */ });
         } catch (error) {
             console.error("Mint & List failed:", error);
             setState("idle");
