@@ -165,11 +165,18 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
       let fromBlock = indexerState.lastBlockNumber + 1n;
 
       if (fromBlock > currentBlock) {
-        // Detect chain reset (Anvil restart)
-        this.logger.log(`Chain reset detected (current block ${currentBlock} < last indexed ${indexerState.lastBlockNumber}). Resetting indexer...`);
+        if (currentBlock === 0n) {
+          // RPC returned 0 — likely a network glitch, skip this cycle
+          this.logger.warn(`RPC returned block 0, skipping cycle (last indexed: ${indexerState.lastBlockNumber})`);
+          return;
+        }
+        // Chain reset detected (Anvil restart) or RPC glitch.
+        // Reset to near chain tip — never to 0 (catastrophic on public testnets).
+        const safeBlock = currentBlock > 50n ? currentBlock - 50n : 0n;
+        this.logger.warn(`Chain behind: current block ${currentBlock} < last indexed ${indexerState.lastBlockNumber}. Resetting to ${safeBlock}`);
         await prisma.indexerState.update({
           where: { chainId },
-          data: { lastBlockNumber: 0n },
+          data: { lastBlockNumber: safeBlock },
         });
         return;
       }
