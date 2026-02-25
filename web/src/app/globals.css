@@ -2476,7 +2476,7 @@ a {
     rgba(255, 92, 180, 0.08) 100%
   );
   border-radius: var(--radius-xl);
-  padding: var(--space-5) var(--space-6);
+  padding: var(--space-8) var(--space-8);
   border: 1px solid var(--studio-border);
   overflow: hidden;
 }
@@ -2546,7 +2546,7 @@ a {
 .vault-balance-group {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 
 .vault-balance-label {
@@ -2558,7 +2558,7 @@ a {
 }
 
 .vault-balance {
-  font-size: 2.8rem;
+  font-size: 3.5rem;
   font-weight: 700;
   background: linear-gradient(135deg, #fff 40%, var(--color-accent) 100%);
   -webkit-background-clip: text;

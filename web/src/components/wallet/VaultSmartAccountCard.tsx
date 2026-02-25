@@ -147,16 +147,36 @@ export default function VaultSmartAccountCard({ wallet, address }: Props) {
                 </div>
                 <div className="vault-detail-row">
                     <span className="vault-detail-label">Paymaster</span>
-                    <AddressValue
-                        value={wallet?.paymaster ? "Pimlico" : "Self-funded"}
-                        badge={wallet?.paymaster ? "✓" : undefined}
-                    />
+                    <span className="vault-detail-value">
+                        {wallet?.paymaster ? (
+                            <a href="https://dashboard.pimlico.io" target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                Pimlico
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.5 }}>
+                                    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                                    <polyline points="15 3 21 3 21 9" />
+                                    <line x1="10" y1="14" x2="21" y2="3" />
+                                </svg>
+                            </a>
+                        ) : "Self-funded"}
+                        {wallet?.paymaster && <span className="vault-detail-badge">✓</span>}
+                    </span>
                 </div>
                 <div className="vault-detail-row">
                     <span className="vault-detail-label">Bundler</span>
-                    <AddressValue
-                        value={wallet?.bundler?.includes("pimlico") ? "Pimlico" : wallet?.bundler}
-                    />
+                    <span className="vault-detail-value">
+                        {wallet?.bundler?.includes("pimlico") ? (
+                            <a href="https://dashboard.pimlico.io" target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                Pimlico
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.5 }}>
+                                    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                                    <polyline points="15 3 21 3 21 9" />
+                                    <line x1="10" y1="14" x2="21" y2="3" />
+                                </svg>
+                            </a>
+                        ) : (
+                            <AddressValue value={wallet?.bundler} />
+                        )}
+                    </span>
                 </div>
                 {wallet?.deploymentTxHash && (
                     <div className="vault-detail-row">
