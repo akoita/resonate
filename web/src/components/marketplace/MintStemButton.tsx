@@ -144,8 +144,10 @@ export function MintStemButton({
             const tokenUri = metadataUri || `${window.location.protocol}//${window.location.host}/api/metadata/${currentChainId}/stem/${stemId}`;
 
             const hash = await mint({
+                to: address as Address,
                 amount: BigInt(1),
                 tokenURI: tokenUri,
+                royaltyReceiver: address as Address,
                 royaltyBps: 500,
                 remixable: true,
                 parentIds: [],
