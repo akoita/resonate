@@ -170,14 +170,19 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(`RPC returned block 0, skipping cycle (last indexed: ${indexerState.lastBlockNumber})`);
           return;
         }
-        // Chain reset detected (Anvil restart) or RPC glitch.
-        // Reset to near chain tip — never to 0 (catastrophic on public testnets).
-        const safeBlock = currentBlock > 50n ? currentBlock - 50n : 0n;
-        this.logger.warn(`Chain behind: current block ${currentBlock} < last indexed ${indexerState.lastBlockNumber}. Resetting to ${safeBlock}`);
-        await prisma.indexerState.update({
-          where: { chainId },
-          data: { lastBlockNumber: safeBlock },
-        });
+
+        const gap = indexerState.lastBlockNumber - currentBlock;
+        if (gap > 1000n) {
+          // Large gap — actual chain reset (e.g. Anvil restart).
+          // Jump to near chain tip rather than re-scanning from 0.
+          const safeBlock = currentBlock > 50n ? currentBlock - 50n : 0n;
+          this.logger.warn(`Chain reset detected: last indexed ${indexerState.lastBlockNumber} >> current ${currentBlock}. Resetting to ${safeBlock}`);
+          await prisma.indexerState.update({
+            where: { chainId },
+            data: { lastBlockNumber: safeBlock },
+          });
+        }
+        // Otherwise: we're caught up, just wait for new blocks
         return;
       }
 
