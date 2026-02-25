@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../auth/AuthProvider";
-import { useMintStem, useListStem } from "../../hooks/useContracts";
+import { useMintStem, useListStem, useMintAndListStem } from "../../hooks/useContracts";
 import { getListingsByStem, getStemNftInfo } from "../../lib/api";
 import { useToast } from "../ui/Toast";
 import { type Address } from "viem";
@@ -59,15 +59,20 @@ interface MintStemButtonProps {
 
 export function MintStemButton({
     stemId,
-    stemTitle,
+    
     stemType,
-    trackTitle,
+    
     metadataUri,
 }: MintStemButtonProps) {
-    const { address, status } = useAuth();
+    const { address, status, kernelAccount } = useAuth();
     const { mint, pending: mintPending } = useMintStem();
     const { list, pending: listPending } = useListStem();
+    const { mintAndList, pending: mintAndListPending } = useMintAndListStem();
     const { addToast } = useToast();
+
+    // Determine if we should use the single-click AA flow
+    const currentChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
+    const isLocalDev = currentChainId === "31337" || (process.env.NEXT_PUBLIC_RPC_URL || "").includes("localhost");
 
     // State machine: "idle" -> "minted" -> "listed"
     // "confirming_mint" and "confirming_list" are transient states while polling the backend
@@ -135,28 +140,12 @@ export function MintStemButton({
         }
 
         try {
-            // Determine mint recipient based on environment
             const currentChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
-            const rpcOverride = process.env.NEXT_PUBLIC_RPC_URL || "";
-            const isLocalDev = currentChainId === "31337" || rpcOverride.includes("localhost") || rpcOverride.includes("127.0.0.1");
-
             const tokenUri = metadataUri || `${window.location.protocol}//${window.location.host}/api/metadata/${currentChainId}/stem/${stemId}`;
 
-            let mintTo: Address;
-            if (isLocalDev) {
-                // Local dev: use deterministic signer (auto-funded from Anvil)
-                const { getLocalSignerAddress } = await import("../../lib/localAA");
-                mintTo = getLocalSignerAddress(address as Address);
-            } else {
-                // Testnet/mainnet: mint to user's actual wallet address
-                mintTo = address as Address;
-            }
-
             const hash = await mint({
-                to: mintTo,
                 amount: BigInt(1),
                 tokenURI: tokenUri,
-                royaltyReceiver: address as Address,
                 royaltyBps: 500,
                 remixable: true,
                 parentIds: [],
@@ -243,6 +232,60 @@ export function MintStemButton({
         }
     };
 
+    const handleMintAndList = async () => {
+        if (!address) {
+            addToast({ type: "error", title: "Wallet Required", message: "Connect your wallet" });
+            return;
+        }
+
+        try {
+            const tokenUri = metadataUri || `${window.location.protocol}//${window.location.host}/api/metadata/${currentChainId}/stem/${stemId}`;
+            const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
+
+            setState("confirming_mint");
+
+            const { expectedTokenId } = await mintAndList({
+                amount: BigInt(1),
+                tokenURI: tokenUri,
+                royaltyBps: 500,
+                remixable: true,
+                parentIds: [],
+                pricePerUnit: BigInt("10000000000000000"), // 0.01 ETH
+                paymentToken: ZERO_ADDRESS,
+                durationSeconds: BigInt(7 * 24 * 60 * 60),
+            });
+
+            setMintedTokenId(expectedTokenId);
+            setState("confirming_list");
+
+            const confirmed = await pollForListing(stemId);
+            if (confirmed) {
+                setState("listed");
+                localStorage.setItem(`stem_status_${stemId}`, "listed");
+                addToast({
+                    type: "success",
+                    title: "Minted & Listed!",
+                    message: `${stemType} stem is now on the marketplace for 0.01 ETH`,
+                });
+            } else {
+                setState("minted");
+                addToast({
+                    type: "warning",
+                    title: "Listing Pending",
+                    message: "Transaction succeeded but marketplace hasn't confirmed yet.",
+                });
+            }
+        } catch (error) {
+            console.error("Mint & List failed:", error);
+            setState("idle");
+            addToast({
+                type: "error",
+                title: "Transaction Failed",
+                message: error instanceof Error ? error.message : "Transaction failed",
+            });
+        }
+    };
+
     if (status !== "authenticated") {
         return (
             <button
@@ -302,7 +345,7 @@ export function MintStemButton({
                     opacity: 0.8,
                 }}
             >
-                {state === "confirming_mint" ? "Confirming mint..." : "Confirming listing..."}
+                {state === "confirming_mint" ? (!isLocalDev ? "Confirming transaction..." : "Confirming mint...") : "Confirming listing..."}
             </button>
         );
     }
@@ -326,6 +369,29 @@ export function MintStemButton({
                 }}
             >
                 {listPending ? "Listing..." : "List for Sale"}
+            </button>
+        );
+    }
+
+    if (!isLocalDev) {
+        return (
+            <button
+                onClick={handleMintAndList}
+                disabled={mintAndListPending}
+                style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    background: mintAndListPending ? "#3f3f46" : "#8b5cf6",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 8,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: mintAndListPending ? "wait" : "pointer",
+                    opacity: mintAndListPending ? 0.7 : 1,
+                }}
+            >
+                {mintAndListPending ? "Processing..." : "Mint & List"}
             </button>
         );
     }

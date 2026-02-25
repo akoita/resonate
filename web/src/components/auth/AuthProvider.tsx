@@ -37,6 +37,12 @@ type AuthState = {
   userId: string | null;
   wallet: WalletRecord | null;
   error?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  kernelAccount: any;
+  /** All Smart Account addresses this user has ever authenticated with */
+  knownAddresses: string[];
+  /** The actual on-chain Smart Account address (may differ from auth address) */
+  smartAccountAddress: string | null;
   connect: () => Promise<void>;
   login: () => Promise<void>;
   signup: () => Promise<void>;
@@ -51,7 +57,25 @@ const AuthContext = createContext<AuthState | null>(null);
 
 const TOKEN_KEY = "resonate.token";
 const ADDRESS_KEY = "resonate.address";
+const SA_ADDRESS_KEY = "resonate.smartAccountAddress";
 const PRIVY_USER_KEY = "resonate.privy.userId";
+const KNOWN_ADDRESSES_KEY = "resonate.knownAddresses";
+
+/** Read the accumulated set of all Smart Account addresses this Passkey has ever used */
+function getKnownAddresses(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = localStorage.getItem(KNOWN_ADDRESSES_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch { return []; }
+}
+
+/** Add a new address to the accumulated set */
+function addKnownAddress(addr: string) {
+  const set = new Set(getKnownAddresses().map((a: string) => a.toLowerCase()));
+  set.add(addr.toLowerCase());
+  localStorage.setItem(KNOWN_ADDRESSES_KEY, JSON.stringify(Array.from(set)));
+}
 
 /** Decode role and userId from a JWT without validation */
 function decodeAuthClaims(jwt: string | null) {
@@ -99,14 +123,15 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     const t = localStorage.getItem(TOKEN_KEY);
     return t ? decodeAuthClaims(t).userId : null;
   });
+  const [smartAccountAddress, setSmartAccountAddress] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem(SA_ADDRESS_KEY);
+  });
   const [wallet, setWallet] = useState<WalletRecord | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
   const { projectId, publicClient, chainId } = useZeroDev();
 
   // Keep track of the active account in memory if possible (for mock mode especially)
-  // In a real app with persistent mock keys, we'd store the private key in local storage.
-  // For now, if we are in mock mode and refresh, signMessage will fail or generate a new address (which mismatches).
-  // We'll address the happy path (Passkeys) primarily.
   const [activeAccount, setActiveAccount] = useState<unknown>(null);
 
   const refreshWallet = useCallback(async () => {
@@ -186,6 +211,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       passkeyName: "Resonate",
       passkeyServerUrl: `/api/zerodev/${projectId}`,
       mode,
+      rpID: typeof window !== "undefined" ? window.location.hostname : undefined,
     });
 
     const passkeyValidator = await toPasskeyValidator(publicClient, {
@@ -202,7 +228,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     });
 
     setActiveAccount(account);
-    return account;
+    return { account, webAuthnKey };
 
   }, [projectId, publicClient, chainId, activeAccount]);
 
@@ -212,7 +238,12 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     setStatus("loading");
     setError(undefined);
     try {
-      const account = await getOrConnectAccount(mode);
+      const connectResult = await getOrConnectAccount(mode);
+      // getOrConnectAccount returns { account, webAuthnKey } for real passkeys, or just the account for mock
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const parsed = connectResult as Record<string, any>;
+      const account = parsed.account ?? connectResult;
+      const webAuthnKey = parsed.webAuthnKey;
       const saAddress = (account as Record<string, unknown>).address as string;
 
       console.log("[Auth] SA Address:", saAddress);
@@ -227,10 +258,14 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const signature = await (account as Record<string, any>).signMessage({ message });
 
+      // Send P-256 public key alongside signature so the backend can persist it
+      // for future cross-device off-chain verification
       const result = await verifySignature({
         address: saAddress,
         message,
         signature,
+        pubKeyX: webAuthnKey?.pubX?.toString(16)?.padStart(64, "0"),
+        pubKeyY: webAuthnKey?.pubY?.toString(16)?.padStart(64, "0"),
       });
 
       if (!("accessToken" in result)) {
@@ -240,13 +275,19 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       const authAddress = result.address ?? saAddress;
       localStorage.setItem(TOKEN_KEY, result.accessToken);
       localStorage.setItem(ADDRESS_KEY, authAddress.toLowerCase());
+      // Store the actual SA address (used for on-chain transactions) separately
+      localStorage.setItem(SA_ADDRESS_KEY, saAddress.toLowerCase());
 
       const { role: r, userId: u } = resolveAuth(result.accessToken);
       setToken(result.accessToken);
       setAddress(authAddress.toLowerCase());
+      setSmartAccountAddress(saAddress.toLowerCase());
       setRole(r);
       setUserId(u);
       setStatus("authenticated");
+
+      // Accumulate the SA address (the on-chain identity) for marketplace filtering
+      addKnownAddress(saAddress);
 
     } catch (err) {
       console.error(err);
@@ -258,7 +299,11 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const signMessage = useCallback(async (message: string) => {
     // Default to Login mode for signing (as we assume user is registered)
     const { WebAuthnMode } = await import("@zerodev/passkey-validator");
-    const account = await getOrConnectAccount(WebAuthnMode.Login);
+    const connectResult = await getOrConnectAccount(WebAuthnMode.Login);
+    // getOrConnectAccount returns { account, webAuthnKey } for real passkeys, or just the account for mock
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parsed = connectResult as Record<string, any>;
+    const account = parsed.account ?? connectResult;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (account as Record<string, any>).signMessage({ message });
   }, [getOrConnectAccount]);
@@ -288,10 +333,12 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const disconnect = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(ADDRESS_KEY);
+    localStorage.removeItem(SA_ADDRESS_KEY);
     localStorage.removeItem(PRIVY_USER_KEY);
     clearEmbeddedAccount();
     setToken(null);
     setAddress(null);
+    setSmartAccountAddress(null);
     setRole(null);
     setUserId(null);
     setWallet(null);
@@ -325,6 +372,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       userId,
       wallet,
       error,
+      kernelAccount: activeAccount,
+      knownAddresses: getKnownAddresses(),
+      smartAccountAddress,
       connect,
       login,
       signup,
@@ -334,7 +384,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       refreshWallet,
       signMessage,
     }),
-    [status, address, token, role, userId, wallet, error, connect, login, signup, connectPrivy, connectEmbedded, disconnect, refreshWallet, signMessage]
+    [status, address, token, role, userId, wallet, error, activeAccount, smartAccountAddress, connect, login, signup, connectPrivy, connectEmbedded, disconnect, refreshWallet, signMessage]
   );
 
 
