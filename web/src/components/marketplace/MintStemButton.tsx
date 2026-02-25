@@ -57,6 +57,11 @@ interface MintStemButtonProps {
     metadataUri?: string;
 }
 
+// TTL for localStorage "listed" hint: 1 hour.
+// Within this window, we trust the on-chain receipt as proof the listing exists.
+// After this, the backend indexer should have caught up and becomes authoritative.
+const LISTED_TTL_MS = 60 * 60 * 1000;
+
 export function MintStemButton({
     stemId,
     
@@ -83,37 +88,60 @@ export function MintStemButton({
     useEffect(() => {
         const checkStatus = async () => {
             try {
-                // 1. Use localStorage hint ONLY for "minted" (safe — tx confirmed).
-                //    Never trust localStorage for "listed" — only backend is authoritative
-                //    because the listing might not have been indexed yet or may have expired.
-                const localStatus = localStorage.getItem(`stem_status_${stemId}`);
+                const localData = localStorage.getItem(`stem_status_${stemId}`);
+                let localStatus: string | null = null;
+                let localTimestamp: number | null = null;
+
+                // Parse localStorage: supports both legacy string ("listed") and new JSON format
+                if (localData) {
+                    try {
+                        const parsed = JSON.parse(localData);
+                        localStatus = parsed.status;
+                        localTimestamp = parsed.timestamp;
+                    } catch {
+                        // Legacy format: plain string "listed" or "minted"
+                        localStatus = localData;
+                    }
+                }
+
+                // If localStorage says "listed" and it's within TTL, trust it immediately.
+                // The on-chain tx receipt already proved the listing was created.
+                if (localStatus === "listed" && localTimestamp && (Date.now() - localTimestamp < LISTED_TTL_MS)) {
+                    const localId = localStorage.getItem(`stem_token_id_${stemId}`);
+                    if (localId) {
+                        setMintedTokenId(BigInt(localId));
+                        setState("listed");
+                        return; // Trust the recent on-chain confirmation
+                    }
+                }
+
+                // For "minted" hint or stale/legacy "listed", show minted while we verify
                 if (localStatus === "minted" || localStatus === "listed") {
                     const localId = localStorage.getItem(`stem_token_id_${stemId}`);
                     if (localId) {
                         setMintedTokenId(BigInt(localId));
-                        setState("minted"); // Always start at "minted", backend upgrades to "listed"
+                        setState("minted"); // Start at minted, backend may upgrade to listed
                     }
                 }
 
-                // 2. Verify with backend API (source of truth)
-                // First check for a listing
+                // Verify with backend API (source of truth)
                 const listings = await getListingsByStem(stemId);
                 if (listings && listings.length > 0) {
                     setState("listed");
-                    localStorage.setItem(`stem_status_${stemId}`, "listed");
+                    localStorage.setItem(`stem_status_${stemId}`, JSON.stringify({ status: "listed", timestamp: Date.now() }));
                     return;
                 }
 
-                // If not listed in backend, check if it was at least minted
+                // If not listed, check if at least minted
                 const nftInfo = await getStemNftInfo(stemId);
                 if (nftInfo) {
                     const tid = BigInt(nftInfo.tokenId);
                     setMintedTokenId(tid);
                     setState("minted");
-                    localStorage.setItem(`stem_status_${stemId}`, "minted");
+                    localStorage.setItem(`stem_status_${stemId}`, JSON.stringify({ status: "minted", timestamp: Date.now() }));
                     localStorage.setItem(`stem_token_id_${stemId}`, tid.toString());
                 } else {
-                    // Not minted in backend truth
+                    // Not minted — clear everything
                     setState("idle");
                     localStorage.removeItem(`stem_status_${stemId}`);
                     localStorage.removeItem(`stem_token_id_${stemId}`);
@@ -258,11 +286,11 @@ export function MintStemButton({
             });
 
             // Tx confirmed on-chain (mint + approve + list).
-            // Mark as "minted" — the background poll will upgrade to "listed"
-            // once the backend indexer picks up the listing event.
+            // The batch UserOp waited for receipt, so listing is confirmed.
+            // Mark as "listed" immediately — on-chain receipt is proof.
             setMintedTokenId(expectedTokenId);
-            setState("minted");
-            localStorage.setItem(`stem_status_${stemId}`, "minted");
+            setState("listed");
+            localStorage.setItem(`stem_status_${stemId}`, JSON.stringify({ status: "listed", timestamp: Date.now() }));
             localStorage.setItem(`stem_token_id_${stemId}`, expectedTokenId.toString());
 
             addToast({
@@ -271,14 +299,9 @@ export function MintStemButton({
                 message: `${stemType} stem (Token #${expectedTokenId}) is now on the marketplace for 0.01 ETH`,
             });
 
-            // Background poll: wait for indexer to confirm the listing,
-            // then upgrade state to "listed"
-            pollForListing(stemId).then(confirmed => {
-                if (confirmed) {
-                    setState("listed");
-                    localStorage.setItem(`stem_status_${stemId}`, "listed");
-                }
-            }).catch(() => { /* indexer will catch up eventually */ });
+            // Kick off background indexer poll (non-blocking) so the
+            // marketplace page picks up the listing faster
+            pollForListing(stemId).catch(() => { /* indexer will catch up eventually */ });
         } catch (error) {
             console.error("Mint & List failed:", error);
             setState("idle");
