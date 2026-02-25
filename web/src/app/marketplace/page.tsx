@@ -93,6 +93,7 @@ export default function MarketplacePage(props: {
     const [pricingMap, setPricingMap] = useState<Record<string, { remixLicenseUsd: number; commercialLicenseUsd: number }>>({});
     const [hideOwnListings, setHideOwnListings] = useState(true);
     const [buyModalListing, setBuyModalListing] = useState<{ listingId: string; stemId: string } | null>(null);
+    const [hasStaleData, setHasStaleData] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -205,23 +206,29 @@ export default function MarketplacePage(props: {
         switch (update.type) {
             case 'created':
                 addToast({ type: "success", title: "New Listing", message: "A new stem was just listed!" });
-                // Poll until the listing count actually increases or 60s elapses.
-                // This handles any indexer delay — the loop stops as soon as
-                // the backend has the new listing.
+                // Try to fetch new listings up to 3 times (15s total).
+                // If we still can't find them, show a stale-data banner.
                 {
+                    setHasStaleData(false); // clear previous stale flag
                     const countBefore = listingsCountRef.current;
                     let attempt = 0;
-                    const MAX_ATTEMPTS = 12; // 12 × 5s = 60s
+                    const MAX_ATTEMPTS = 3;
                     const poll = () => {
                         fetchListings(false);
                         attempt++;
-                        // Check after a small delay if count increased
                         setTimeout(() => {
-                            if (listingsCountRef.current > countBefore || attempt >= MAX_ATTEMPTS) return;
+                            if (listingsCountRef.current > countBefore) {
+                                setHasStaleData(false);
+                                return; // found it
+                            }
+                            if (attempt >= MAX_ATTEMPTS) {
+                                setHasStaleData(true); // give up, show banner
+                                return;
+                            }
                             setTimeout(poll, 5000);
                         }, 500);
                     };
-                    poll(); // first attempt immediately
+                    poll();
                 }
                 break;
             case 'sold':
@@ -443,6 +450,26 @@ export default function MarketplacePage(props: {
                 </div>
             ) : (
                 <>
+                    {hasStaleData && (
+                        <div className="marketplace-stale-banner" style={{
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                            padding: "10px 16px", marginBottom: 16, borderRadius: 8,
+                            background: "rgba(255, 170, 0, 0.1)", border: "1px solid rgba(255, 170, 0, 0.3)",
+                            color: "#ffaa00", fontSize: 14,
+                        }}>
+                            <span>⚠ Some recently listed items may not be shown yet.</span>
+                            <button
+                                onClick={() => { setHasStaleData(false); fetchListings(false); }}
+                                style={{
+                                    background: "rgba(255, 170, 0, 0.2)", border: "1px solid rgba(255, 170, 0, 0.4)",
+                                    color: "#ffaa00", borderRadius: 6, padding: "4px 12px", cursor: "pointer",
+                                    fontSize: 13, marginLeft: 12,
+                                }}
+                            >
+                                Refresh
+                            </button>
+                        </div>
+                    )}
                     <div className="marketplace-grid">
                         {filteredListings.map(listing => (
                             <div
