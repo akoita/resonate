@@ -198,16 +198,31 @@ export default function MarketplacePage(props: {
     }, [batchStemIdsKey]);
 
     // ---- Real-time marketplace updates via WebSocket ----
+    const listingsCountRef = useRef(0);
+    useEffect(() => { listingsCountRef.current = listings.length; }, [listings.length]);
+
     const handleMarketplaceUpdate = useCallback((update: MarketplaceUpdate) => {
         switch (update.type) {
             case 'created':
                 addToast({ type: "success", title: "New Listing", message: "A new stem was just listed!" });
-                // The WebSocket fires instantly but the backend indexer may not have
-                // stored the listing yet. Refetch immediately + staggered retries.
-                fetchListings(false);
-                setTimeout(() => fetchListings(false), 3000);
-                setTimeout(() => fetchListings(false), 8000);
-                setTimeout(() => fetchListings(false), 15000);
+                // Poll until the listing count actually increases or 60s elapses.
+                // This handles any indexer delay — the loop stops as soon as
+                // the backend has the new listing.
+                {
+                    const countBefore = listingsCountRef.current;
+                    let attempt = 0;
+                    const MAX_ATTEMPTS = 12; // 12 × 5s = 60s
+                    const poll = () => {
+                        fetchListings(false);
+                        attempt++;
+                        // Check after a small delay if count increased
+                        setTimeout(() => {
+                            if (listingsCountRef.current > countBefore || attempt >= MAX_ATTEMPTS) return;
+                            setTimeout(poll, 5000);
+                        }, 500);
+                    };
+                    poll(); // first attempt immediately
+                }
                 break;
             case 'sold':
                 setListings(prev => prev.map(l => {
