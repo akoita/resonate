@@ -1,11 +1,12 @@
 "use client";
 
 import { useAuth } from "../auth/AuthProvider";
+import { useIsDeployed } from "../../hooks/useIsDeployed";
 
 export default function VaultSecurityCard() {
-    const { status, wallet } = useAuth();
+    const { status, wallet, address } = useAuth();
     const isAuthenticated = status === "authenticated";
-    const isDeployed = Boolean(wallet?.deploymentTxHash);
+    const { isDeployed } = useIsDeployed(address);
     const hasPasskey = isAuthenticated; // ZeroDev passkey is the signer
 
     return (

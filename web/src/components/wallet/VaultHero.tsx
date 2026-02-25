@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { WalletRecord } from "../../lib/api";
 import { useOnChainBalance } from "../../hooks/useOnChainBalance";
+import { useIsDeployed } from "../../hooks/useIsDeployed";
 
 type VaultHeroProps = {
     wallet: WalletRecord | null;
@@ -15,7 +16,7 @@ const EXPLORER_URL = "https://sepolia.etherscan.io";
 const ETH_PRICE_APPROX = 3000; // Approximate USD/ETH for display
 
 export default function VaultHero({ wallet, status, address, onRefresh }: VaultHeroProps) {
-    const isDeployed = Boolean(wallet?.deploymentTxHash);
+    const { isDeployed } = useIsDeployed(address);
     const isSmartAccount = wallet?.accountType === "erc4337" || wallet?.accountType === "kernel";
     const { balanceEth, loading: balanceLoading } = useOnChainBalance(address);
     const [copied, setCopied] = useState(false);

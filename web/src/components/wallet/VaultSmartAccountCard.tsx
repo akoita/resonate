@@ -8,6 +8,7 @@ import {
     refreshSmartAccount,
 } from "../../lib/api";
 import { WalletRecord } from "../../lib/api";
+import { useIsDeployed } from "../../hooks/useIsDeployed";
 
 type Props = {
     wallet: WalletRecord | null;
@@ -93,7 +94,7 @@ export default function VaultSmartAccountCard({ wallet, address }: Props) {
     const { token, refreshWallet } = useAuth();
     const [status, setStatus] = useState<string | null>(null);
     const [pending, setPending] = useState(false);
-    const isDeployed = Boolean(wallet?.deploymentTxHash);
+    const { isDeployed } = useIsDeployed(address);
 
     const run = async (action: () => Promise<void>) => {
         if (!address || !token) {
