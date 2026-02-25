@@ -299,6 +299,17 @@ export function MintStemButton({
                 message: `${stemType} stem (Token #${expectedTokenId}) is now on the marketplace for 0.01 ETH`,
             });
 
+            // Notify all connected clients via WebSocket for instant marketplace refresh
+            // This bypasses the indexer lag — other users see the new listing immediately
+            fetch("/api/contracts/notify-listing", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    tokenId: expectedTokenId.toString(),
+                    seller: address,
+                }),
+            }).catch(() => { /* best-effort, non-blocking */ });
+
             // Kick off background indexer poll (non-blocking) so the
             // marketplace page picks up the listing faster
             pollForListing(stemId).catch(() => { /* indexer will catch up eventually */ });

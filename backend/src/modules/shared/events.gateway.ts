@@ -327,6 +327,32 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
         }
     }
 
+    // ============ Marketplace Message Handlers ============
+
+    /**
+     * Frontend-initiated listing notification.
+     * After a successful on-chain mintAndList tx, the frontend emits this
+     * so all connected clients get an instant marketplace refresh,
+     * bypassing the indexer polling delay.
+     */
+    @SubscribeMessage('marketplace:notify_created')
+    handleNotifyListingCreated(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() data: { listingId?: string; tokenId?: string; seller?: string; price?: string; amount?: string },
+    ) {
+        this.logger.log(`[Marketplace] Client ${client.id} notified listing created: ${JSON.stringify(data)}`);
+        // Broadcast to ALL clients (including sender) so every marketplace page refreshes
+        if (this.server) {
+            this.server.emit('marketplace.listing_created', {
+                listingId: data.listingId || 'pending',
+                tokenId: data.tokenId || '0',
+                seller: data.seller || '',
+                price: data.price || '0',
+                amount: data.amount || '1',
+            });
+        }
+    }
+
     // ============ Realtime Message Handlers ============
 
     @SubscribeMessage('realtime:start')

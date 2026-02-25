@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Param, Query, Body, NotFoundException, Logger } from "@nestjs/common";
 import { ContractsService } from "./contracts.service";
 import { IndexerService } from "./indexer.service";
+import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
 import { keccak256, toHex } from "viem";
 
@@ -18,6 +19,7 @@ export class MetadataController {
   constructor(
     private readonly contractsService: ContractsService,
     private readonly indexerService: IndexerService,
+    private readonly eventBus: EventBus,
   ) { }
 
   // ============ STATIC ROUTES (must come first) ============
@@ -550,5 +552,33 @@ export class MetadataController {
     this.logger.log(`Manually reindexing tx ${txHash} on chain ${chainId}`);
     const result = await this.indexerService.indexTransaction(txHash, chainId);
     return { success: true, ...result };
+  }
+
+  /**
+   * POST /metadata/notify-listing
+   * Frontend calls this after a successful on-chain mintAndList to
+   * broadcast a WebSocket event to all connected clients immediately,
+   * bypassing the indexer polling delay.
+   */
+  @Post("notify-listing")
+  async notifyListingCreated(@Body() body: { tokenId?: string; seller?: string }) {
+    this.logger.log(`Broadcasting listing notification: tokenId=${body.tokenId}`);
+    this.eventBus.publish({
+      eventName: "contract.stem_listed",
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      listingId: "pending",
+      sellerAddress: body.seller || "",
+      tokenId: body.tokenId || "0",
+      amount: "1",
+      pricePerUnit: "0",
+      paymentToken: "0x0000000000000000000000000000000000000000",
+      expiresAt: "0",
+      chainId: 11155111,
+      contractAddress: "",
+      transactionHash: `notify_${Date.now()}`,
+      blockNumber: 0,
+    } as any);
+    return { success: true };
   }
 }
