@@ -202,35 +202,42 @@ export default function MarketplacePage(props: {
     const listingsCountRef = useRef(0);
     useEffect(() => { listingsCountRef.current = listings.length; }, [listings.length]);
 
+    // Deduplicate listing_created events — both notify-listing and indexer emit them
+    const recentCreatedRef = useRef<Set<string>>(new Set());
+
     const handleMarketplaceUpdate = useCallback((update: MarketplaceUpdate) => {
         switch (update.type) {
-            case 'created':
+            case 'created': {
+                // Deduplicate: skip if we've seen this tokenId in the last 30s
+                const dedupeKey = update.tokenId || update.listingId || '';
+                if (recentCreatedRef.current.has(dedupeKey)) return;
+                recentCreatedRef.current.add(dedupeKey);
+                setTimeout(() => recentCreatedRef.current.delete(dedupeKey), 30000);
+
                 addToast({ type: "success", title: "New Listing", message: "A new stem was just listed!" });
-                // Try to fetch new listings up to 3 times (15s total).
-                // If we still can't find them, show a stale-data banner.
-                {
-                    setHasStaleData(false); // clear previous stale flag
-                    const countBefore = listingsCountRef.current;
-                    let attempt = 0;
-                    const MAX_ATTEMPTS = 3;
-                    const poll = () => {
-                        fetchListings(false);
-                        attempt++;
-                        setTimeout(() => {
-                            if (listingsCountRef.current > countBefore) {
-                                setHasStaleData(false);
-                                return; // found it
-                            }
-                            if (attempt >= MAX_ATTEMPTS) {
-                                setHasStaleData(true); // give up, show banner
-                                return;
-                            }
-                            setTimeout(poll, 5000);
-                        }, 500);
-                    };
-                    poll();
-                }
+                // Poll: fetch listings and check if count increased. Only show
+                // stale-data banner if ALL attempts fail to find the new item.
+                setHasStaleData(false);
+                const countBefore = listingsCountRef.current;
+                const MAX_ATTEMPTS = 3;
+                const doPoll = async (attempt: number) => {
+                    await fetchListings(false);
+                    // Give React a tick to update the ref via the useEffect
+                    await new Promise(r => setTimeout(r, 200));
+                    if (listingsCountRef.current > countBefore) {
+                        setHasStaleData(false);
+                        return; // found it
+                    }
+                    if (attempt >= MAX_ATTEMPTS) {
+                        setHasStaleData(true); // give up, show banner
+                        return;
+                    }
+                    // Wait 5s before next attempt
+                    setTimeout(() => doPoll(attempt + 1), 5000);
+                };
+                doPoll(1);
                 break;
+            }
             case 'sold':
                 setListings(prev => prev.map(l => {
                     if (l.listingId === update.listingId) {
