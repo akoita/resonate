@@ -2477,6 +2477,10 @@ a {
   );
   border-radius: var(--radius-xl);
   padding: var(--space-8) var(--space-8);
+  min-height: 40vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   border: 1px solid var(--studio-border);
   overflow: hidden;
 }
