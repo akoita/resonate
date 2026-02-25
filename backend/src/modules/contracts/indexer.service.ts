@@ -162,7 +162,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         });
       }
 
-      const fromBlock = indexerState.lastBlockNumber + 1n;
+      let fromBlock = indexerState.lastBlockNumber + 1n;
 
       if (fromBlock > currentBlock) {
         // Detect chain reset (Anvil restart)
@@ -174,39 +174,51 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      const toBlock = fromBlock + BigInt(this.BLOCKS_PER_BATCH) - 1n;
-      const effectiveToBlock = toBlock > currentBlock ? currentBlock : toBlock;
+      // Process multiple batches in one cycle to catch up quickly.
+      // Cap at 20 batches per cycle to avoid blocking too long.
+      const MAX_BATCHES_PER_CYCLE = 20;
+      let batchCount = 0;
+      let totalEvents = 0;
 
-      this.logger.debug(`Indexing blocks ${fromBlock} to ${effectiveToBlock} on chain ${chainId}`);
+      while (fromBlock <= currentBlock && batchCount < MAX_BATCHES_PER_CYCLE) {
+        const toBlock = fromBlock + BigInt(this.BLOCKS_PER_BATCH) - 1n;
+        const effectiveToBlock = toBlock > currentBlock ? currentBlock : toBlock;
 
-      // Fetch logs for StemNFT contract
-      const stemNftLogs = await client.getLogs({
-        address: addresses.stemNFT,
-        fromBlock,
-        toBlock: effectiveToBlock,
-      });
+        this.logger.debug(`Indexing blocks ${fromBlock} to ${effectiveToBlock} on chain ${chainId} (batch ${batchCount + 1})`);
 
-      // Fetch logs for Marketplace contract
-      const marketplaceLogs = await client.getLogs({
-        address: addresses.marketplace,
-        fromBlock,
-        toBlock: effectiveToBlock,
-      });
+        // Fetch logs for StemNFT contract
+        const stemNftLogs = await client.getLogs({
+          address: addresses.stemNFT,
+          fromBlock,
+          toBlock: effectiveToBlock,
+        });
 
-      // Process all logs
-      for (const log of [...stemNftLogs, ...marketplaceLogs]) {
-        await this.processLog(log, chainId);
+        // Fetch logs for Marketplace contract
+        const marketplaceLogs = await client.getLogs({
+          address: addresses.marketplace,
+          fromBlock,
+          toBlock: effectiveToBlock,
+        });
+
+        // Process all logs
+        for (const log of [...stemNftLogs, ...marketplaceLogs]) {
+          await this.processLog(log, chainId);
+        }
+
+        // Update last indexed block
+        await prisma.indexerState.update({
+          where: { chainId },
+          data: { lastBlockNumber: effectiveToBlock },
+        });
+
+        totalEvents += stemNftLogs.length + marketplaceLogs.length;
+        fromBlock = effectiveToBlock + 1n;
+        batchCount++;
       }
 
-      // Update last indexed block
-      await prisma.indexerState.update({
-        where: { chainId },
-        data: { lastBlockNumber: effectiveToBlock },
-      });
-
-      if (stemNftLogs.length + marketplaceLogs.length > 0) {
+      if (totalEvents > 0 || batchCount > 1) {
         this.logger.log(
-          `Indexed ${stemNftLogs.length + marketplaceLogs.length} events from blocks ${fromBlock}-${effectiveToBlock}`
+          `Indexed ${totalEvents} events in ${batchCount} batch(es), now at block ${fromBlock - 1n}`
         );
       }
     } catch (error) {
