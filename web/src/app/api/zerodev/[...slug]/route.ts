@@ -14,8 +14,18 @@ import { NextRequest, NextResponse } from "next/server";
  *   https://passkeys.zerodev.app/api/v4/[projectId]/...
  */
 
-const ZERODEV_PASSKEY_SERVER =
-    process.env.ZERODEV_PASSKEY_SERVER_URL || "https://passkeys.zerodev.app/api/v4";
+// Base URL for ZeroDev passkey server. The slug already contains the projectId,
+// so we need just the base (e.g., https://passkeys.zerodev.app/api/v3).
+// NEXT_PUBLIC_PASSKEY_SERVER_URL may contain the project ID — strip it.
+function getPasskeyServerBase(): string {
+    const envUrl = process.env.NEXT_PUBLIC_PASSKEY_SERVER_URL || process.env.ZERODEV_PASSKEY_SERVER_URL || "";
+    if (envUrl) {
+        // Strip trailing project ID (UUID pattern) if present
+        return envUrl.replace(/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/?$/i, "");
+    }
+    return "https://passkeys.zerodev.app/api/v3";
+}
+const ZERODEV_PASSKEY_SERVER = getPasskeyServerBase();
 
 async function proxyRequest(req: NextRequest, { params }: { params: Promise<{ slug: string[] }> }) {
     const { slug } = await params;
