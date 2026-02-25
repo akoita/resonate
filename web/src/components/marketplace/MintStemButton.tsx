@@ -257,26 +257,22 @@ export function MintStemButton({
                 durationSeconds: BigInt(7 * 24 * 60 * 60),
             });
 
+            // The batch UserOperation already waited for on-chain receipt,
+            // so mint + approve + list are all confirmed at this point.
             setMintedTokenId(expectedTokenId);
-            setState("confirming_list");
+            setState("listed");
+            localStorage.setItem(`stem_status_${stemId}`, "listed");
+            localStorage.setItem(`stem_token_id_${stemId}`, expectedTokenId.toString());
 
-            const confirmed = await pollForListing(stemId);
-            if (confirmed) {
-                setState("listed");
-                localStorage.setItem(`stem_status_${stemId}`, "listed");
-                addToast({
-                    type: "success",
-                    title: "Minted & Listed!",
-                    message: `${stemType} stem is now on the marketplace for 0.01 ETH`,
-                });
-            } else {
-                setState("minted");
-                addToast({
-                    type: "warning",
-                    title: "Listing Pending",
-                    message: "Transaction succeeded but marketplace hasn't confirmed yet.",
-                });
-            }
+            addToast({
+                type: "success",
+                title: "Minted & Listed!",
+                message: `${stemType} stem (Token #${expectedTokenId}) is now on the marketplace for 0.01 ETH`,
+            });
+
+            // Kick off background indexer poll (non-blocking) so the
+            // marketplace page picks up the listing faster
+            pollForListing(stemId).catch(() => { /* indexer will catch up eventually */ });
         } catch (error) {
             console.error("Mint & List failed:", error);
             setState("idle");
