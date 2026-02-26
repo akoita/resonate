@@ -8,7 +8,7 @@ import { Button } from "../../../components/ui/Button";
 import { usePlayer } from "../../../lib/playerContext";
 import { AddToPlaylistModal } from "../../../components/library/AddToPlaylistModal";
 import { MixerConsole } from "../../../components/player/MixerConsole";
-import { useUIStore } from "../../../lib/uiStore";
+
 import { useToast } from "../../../components/ui/Toast";
 // import { addTracksByCriteria } from "../../../lib/playlistStore";
 import { formatDuration } from "../../../lib/metadataExtractor";
@@ -34,7 +34,6 @@ export default function ReleaseDetails() {
     playQueue,
     mixerMode,
     toggleMixerMode,
-    mixerVolumes,
     setMixerVolumes,
     currentTrack
   } = usePlayer();
@@ -182,7 +181,7 @@ export default function ReleaseDetails() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [release?.id]);
 
-  const handlePlayTrack = (trackIndex: number, specificStem?: string) => {
+  const handlePlayTrack = (trackIndex: number, _specificStem?: string) => {
     if (!release?.tracks) return;
     const playableTracks: LocalTrack[] = (release.tracks || []).map((t) => {
       // Use ORIGINAL stem for uploaded tracks, or 'master' for AI-generated tracks

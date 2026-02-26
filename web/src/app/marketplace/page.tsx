@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback, use } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useWebSockets, type MarketplaceUpdate } from "../../hooks/useWebSockets";
 import { useBuyStem } from "../../hooks/useContracts";
@@ -70,12 +70,7 @@ function formatPrice(weiStr: string): string {
     } catch { return "—"; }
 }
 
-export default function MarketplacePage(props: {
-    params: Promise<Record<string, string>>;
-    searchParams: Promise<Record<string, string>>;
-}) {
-    const params = use(props.params);
-    const searchParams = use(props.searchParams);
+export default function MarketplacePage() {
 
     // ---- State ----
     const [listings, setListings] = useState<ListingData[]>([]);
@@ -180,6 +175,7 @@ export default function MarketplacePage(props: {
     useEffect(() => {
         if (hideOwnListings && walletAddress && !signerAddress) return;
         fetchListings(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [debouncedSearch, sortBy, hideOwnListings, signerAddress]);
 
     // ---- Fetch batch pricing for license badges ----
