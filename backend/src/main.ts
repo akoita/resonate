@@ -6,6 +6,7 @@ import { type NextFunction, type Request, type Response } from "express";
 import { join } from "path";
 import * as express from "express";
 import { AppModule } from "./modules/app.module";
+import { RedisIoAdapter } from "./modules/shared/redis.adapter";
 
 async function bootstrap() {
   console.log("========================================");
@@ -60,6 +61,16 @@ async function bootstrap() {
   }
 
   const app = await NestFactory.create(AppModule);
+
+  // Enable cross-instance WebSocket broadcasting via Redis pub/sub
+  try {
+    const redisIoAdapter = new RedisIoAdapter(app);
+    await redisIoAdapter.connectToRedis();
+    app.useWebSocketAdapter(redisIoAdapter);
+    console.log('[Bootstrap] Redis Socket.IO adapter enabled');
+  } catch (err) {
+    console.warn('[Bootstrap] Redis Socket.IO adapter failed, falling back to in-memory:', err);
+  }
 
   const allowedOrigins = ['http://localhost:3001', 'http://localhost:3000'];
   if (process.env.CORS_ORIGIN) {

@@ -17,16 +17,15 @@ resource "google_cloud_run_v2_service" "backend" {
   template {
     service_account = google_service_account.cloud_run.email
 
-    # Ensure WebSocket clients and API requests from the same session
-    # hit the same instance (required for in-memory EventBus broadcasts)
-    session_affinity = true
+    # Session affinity no longer required — Socket.IO Redis adapter handles
+    # cross-instance WebSocket broadcasting via Redis pub/sub (#363).
+    session_affinity = false
 
     scaling {
       min_instance_count = var.backend_min_instances
-      # IMPORTANT: Must be 1 while using in-memory EventBus for WebSocket broadcasts.
-      # Uploads go through the frontend proxy (different source IP from browser WS),
-      # so session affinity alone doesn't help. For multi-instance, use Redis pub/sub.
-      max_instance_count = 1
+      # Socket.IO Redis adapter enables cross-instance WebSocket broadcasting.
+      # See: backend/src/modules/shared/redis.adapter.ts
+      max_instance_count = 4
     }
 
     vpc_access {
