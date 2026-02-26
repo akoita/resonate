@@ -52,6 +52,14 @@ owner: "@akoita"
 - GCS for raw uploads and processed outputs.
 - IPFS for content-addressable distribution.
 
+### Real-Time / WebSocket
+
+- **Socket.IO** with **Redis adapter** (`@socket.io/redis-adapter`) for cross-instance WebSocket broadcasting.
+  - Redis pub/sub ensures events emitted on any Cloud Run instance reach all connected clients.
+  - Graceful fallback: if Redis is unavailable at boot, the backend falls back to in-memory mode (single-instance only).
+  - Enables horizontal scaling (`max_instance_count > 1` in Cloud Run).
+  - See: `backend/src/modules/shared/redis.adapter.ts`
+
 ### AI / Audio Processing
 
 - **Demucs Worker** for stem separation (containerized FastAPI + Pub/Sub consumer).
