@@ -61,7 +61,7 @@ owner: "@akoita"
 - **GCP Pub/Sub** for event-driven job dispatch (Phase 2).
   - Topics: `stem-separate` (jobs), `stem-results` (completions), `stem-dlq` (dead letters)
   - Workers pull from subscription with consumer group semantics
-  - Dead letter queue after 3 delivery attempts
+  - Dead letter queue after 5 delivery attempts (exponential backoff 10s–300s)
 - **BullMQ** for initial upload queue processing with Redis backend.
 - Model version tracking in `stems.processed` events (`modelVersion: "demucs-htdemucs-6s"`).
 
