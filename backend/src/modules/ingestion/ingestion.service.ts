@@ -263,6 +263,26 @@ export class IngestionService {
     }));
     await this.stemsQueue.add("process-stems", { releaseId, artistId: resolvedArtistId, tracks: serializableTracks });
 
+    // Persist processing status in DB synchronously so the API returns it immediately.
+    // This must happen BEFORE the HTTP response — the frontend navigates to the release
+    // page right after upload, and the BullMQ job runs asynchronously.
+    try {
+      await prisma.release.update({
+        where: { id: releaseId },
+        data: { status: "processing" },
+      });
+      const trackIds = tracks.map((t: any) => t.id);
+      if (trackIds.length > 0) {
+        await prisma.track.updateMany({
+          where: { id: { in: trackIds } },
+          data: { processingStatus: "separating" },
+        });
+      }
+      console.log(`[Ingestion] Updated release ${releaseId} to 'processing', tracks to 'separating'`);
+    } catch (err: any) {
+      console.warn(`[Ingestion] Failed to update processing status: ${err?.message}`);
+    }
+
     return { releaseId, status: "processing" };
   }
 
@@ -569,6 +589,14 @@ export class IngestionService {
       }]
     });
     record.status = "complete";
+  }
+
+  /**
+   * Public accessor for the storage provider upload.
+   * Used by StemsProcessor to upload originals before publishing Pub/Sub jobs.
+   */
+  async uploadToStorage(data: Buffer, filename: string, mimeType: string) {
+    return this.storageProvider.upload(data, filename, mimeType);
   }
 
   private generateId(prefix: string) {

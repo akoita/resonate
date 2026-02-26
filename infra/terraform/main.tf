@@ -61,6 +61,7 @@ locals {
     "cloudbuild.googleapis.com",       # Cloud Build (CI/CD)
     "iam.googleapis.com",              # IAM
     "servicenetworking.googleapis.com", # Service Networking (VPC peering)
+    "pubsub.googleapis.com",           # Pub/Sub (event-driven stem separation)
   ]
 }
 

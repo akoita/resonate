@@ -14,14 +14,14 @@ owner: "@akoita"
 
 ## Service Responsibilities
 
-| Service              | Responsibility                         | Dependencies                                          |
-| -------------------- | -------------------------------------- | ----------------------------------------------------- |
-| Identity & Wallet    | Auth, account abstraction, budget caps | ZeroDev (passkeys), ERC-4337                          |
-| Ingestion & AI       | Upload, stem separation, storage       | Storage (Local/IPFS/GCS), Demucs Worker, Redis/BullMQ |
-| Catalog & Rights     | Metadata, licensing, indexing          | Indexer, chain events                                 |
-| Session Orchestrator | AI DJ session and negotiation          | Catalog, Wallet, Payments                             |
-| Payments             | On-chain settlement and splits         | Payment splitter contract                             |
-| Analytics            | Reporting, dashboards, metrics         | BigQuery, dbt                                         |
+| Service              | Responsibility                         | Dependencies                                                       |
+| -------------------- | -------------------------------------- | ------------------------------------------------------------------ |
+| Identity & Wallet    | Auth, account abstraction, budget caps | ZeroDev (passkeys), ERC-4337                                       |
+| Ingestion & AI       | Upload, stem separation, storage       | Storage (Local/IPFS/GCS), Demucs Worker, GCP Pub/Sub, Redis/BullMQ |
+| Catalog & Rights     | Metadata, licensing, indexing          | Indexer, chain events                                              |
+| Session Orchestrator | AI DJ session and negotiation          | Catalog, Wallet, Payments                                          |
+| Payments             | On-chain settlement and splits         | Payment splitter contract                                          |
+| Analytics            | Reporting, dashboards, metrics         | BigQuery, dbt                                                      |
 
 ## API Surface (BFF)
 
@@ -54,11 +54,15 @@ owner: "@akoita"
 
 ### AI / Audio Processing
 
-- **Demucs Worker** for stem separation (containerized FastAPI service).
+- **Demucs Worker** for stem separation (containerized FastAPI + Pub/Sub consumer).
   - Model: `htdemucs_6s` (6-stem: vocals, drums, bass, guitar, piano, other)
   - GPU support available via `docker-compose.gpu.yml`
   - Model pre-cached in Docker image (~1GB)
-- **BullMQ** for async job processing with Redis backend.
+- **GCP Pub/Sub** for event-driven job dispatch (Phase 2).
+  - Topics: `stem-separate` (jobs), `stem-results` (completions), `stem-dlq` (dead letters)
+  - Workers pull from subscription with consumer group semantics
+  - Dead letter queue after 5 delivery attempts (exponential backoff 10s–300s)
+- **BullMQ** for initial upload queue processing with Redis backend.
 - Model version tracking in `stems.processed` events (`modelVersion: "demucs-htdemucs-6s"`).
 
 ## Non-Goals (Phase 0)

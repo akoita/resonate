@@ -54,6 +54,12 @@ resource "google_cloud_run_v2_service" "frontend" {
         value = "https://resonate-${var.environment}-backend-${data.google_project.project.number}.${var.region}.run.app"
       }
 
+      # Server-side proxy routes (e.g. /api/contracts/listings) also need the backend URL
+      env {
+        name  = "BACKEND_URL"
+        value = "https://resonate-${var.environment}-backend-${data.google_project.project.number}.${var.region}.run.app"
+      }
+
       env {
         name  = "NEXT_PUBLIC_CHAIN_ID"
         value = "11155111"

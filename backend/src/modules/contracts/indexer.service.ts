@@ -27,6 +27,28 @@ const TRANSFER_BATCH_EVENT = parseAbiItem(
   "event TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values)"
 );
 
+// ABI for querying on-chain listing state (to get actual expiry)
+const MARKETPLACE_GET_LISTING_ABI = [
+  {
+    name: "getListing",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "listingId", type: "uint256" }],
+    outputs: [{
+      name: "",
+      type: "tuple",
+      components: [
+        { name: "seller", type: "address" },
+        { name: "tokenId", type: "uint256" },
+        { name: "amount", type: "uint256" },
+        { name: "pricePerUnit", type: "uint256" },
+        { name: "paymentToken", type: "address" },
+        { name: "expiry", type: "uint40" },
+      ],
+    }],
+  },
+] as const;
+
 // Chain configurations
 // Global override: when set, routes ALL chains through this RPC (e.g., local Anvil fork)
 const RPC_OVERRIDE = process.env.RPC_URL || "";
@@ -162,51 +184,75 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         });
       }
 
-      const fromBlock = indexerState.lastBlockNumber + 1n;
+      let fromBlock = indexerState.lastBlockNumber + 1n;
 
       if (fromBlock > currentBlock) {
-        // Detect chain reset (Anvil restart)
-        this.logger.log(`Chain reset detected (current block ${currentBlock} < last indexed ${indexerState.lastBlockNumber}). Resetting indexer...`);
-        await prisma.indexerState.update({
-          where: { chainId },
-          data: { lastBlockNumber: 0n },
-        });
+        if (currentBlock === 0n) {
+          // RPC returned 0 — likely a network glitch, skip this cycle
+          this.logger.warn(`RPC returned block 0, skipping cycle (last indexed: ${indexerState.lastBlockNumber})`);
+          return;
+        }
+
+        const gap = indexerState.lastBlockNumber - currentBlock;
+        if (gap > 1000n) {
+          // Large gap — actual chain reset (e.g. Anvil restart).
+          // Jump to near chain tip rather than re-scanning from 0.
+          const safeBlock = currentBlock > 50n ? currentBlock - 50n : 0n;
+          this.logger.warn(`Chain reset detected: last indexed ${indexerState.lastBlockNumber} >> current ${currentBlock}. Resetting to ${safeBlock}`);
+          await prisma.indexerState.update({
+            where: { chainId },
+            data: { lastBlockNumber: safeBlock },
+          });
+        }
+        // Otherwise: we're caught up, just wait for new blocks
         return;
       }
 
-      const toBlock = fromBlock + BigInt(this.BLOCKS_PER_BATCH) - 1n;
-      const effectiveToBlock = toBlock > currentBlock ? currentBlock : toBlock;
+      // Process multiple batches in one cycle to catch up quickly.
+      // Cap at 20 batches per cycle to avoid blocking too long.
+      const MAX_BATCHES_PER_CYCLE = 20;
+      let batchCount = 0;
+      let totalEvents = 0;
 
-      this.logger.debug(`Indexing blocks ${fromBlock} to ${effectiveToBlock} on chain ${chainId}`);
+      while (fromBlock <= currentBlock && batchCount < MAX_BATCHES_PER_CYCLE) {
+        const toBlock = fromBlock + BigInt(this.BLOCKS_PER_BATCH) - 1n;
+        const effectiveToBlock = toBlock > currentBlock ? currentBlock : toBlock;
 
-      // Fetch logs for StemNFT contract
-      const stemNftLogs = await client.getLogs({
-        address: addresses.stemNFT,
-        fromBlock,
-        toBlock: effectiveToBlock,
-      });
+        this.logger.debug(`Indexing blocks ${fromBlock} to ${effectiveToBlock} on chain ${chainId} (batch ${batchCount + 1})`);
 
-      // Fetch logs for Marketplace contract
-      const marketplaceLogs = await client.getLogs({
-        address: addresses.marketplace,
-        fromBlock,
-        toBlock: effectiveToBlock,
-      });
+        // Fetch logs for StemNFT contract
+        const stemNftLogs = await client.getLogs({
+          address: addresses.stemNFT,
+          fromBlock,
+          toBlock: effectiveToBlock,
+        });
 
-      // Process all logs
-      for (const log of [...stemNftLogs, ...marketplaceLogs]) {
-        await this.processLog(log, chainId);
+        // Fetch logs for Marketplace contract
+        const marketplaceLogs = await client.getLogs({
+          address: addresses.marketplace,
+          fromBlock,
+          toBlock: effectiveToBlock,
+        });
+
+        // Process all logs
+        for (const log of [...stemNftLogs, ...marketplaceLogs]) {
+          await this.processLog(log, chainId);
+        }
+
+        // Update last indexed block
+        await prisma.indexerState.update({
+          where: { chainId },
+          data: { lastBlockNumber: effectiveToBlock },
+        });
+
+        totalEvents += stemNftLogs.length + marketplaceLogs.length;
+        fromBlock = effectiveToBlock + 1n;
+        batchCount++;
       }
 
-      // Update last indexed block
-      await prisma.indexerState.update({
-        where: { chainId },
-        data: { lastBlockNumber: effectiveToBlock },
-      });
-
-      if (stemNftLogs.length + marketplaceLogs.length > 0) {
+      if (totalEvents > 0 || batchCount > 1) {
         this.logger.log(
-          `Indexed ${stemNftLogs.length + marketplaceLogs.length} events from blocks ${fromBlock}-${effectiveToBlock}`
+          `Indexed ${totalEvents} events in ${batchCount} batch(es), now at block ${fromBlock - 1n}`
         );
       }
     } catch (error) {
@@ -380,7 +426,28 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         });
         break;
 
-      case "Listed":
+      case "Listed": {
+        // Query on-chain listing to get actual expiry (not emitted in the event)
+        let onChainExpiry = "0";
+        try {
+          const marketplaceAddr = CONTRACT_ADDRESSES[chainId]?.marketplace;
+          const listingClient = this.getClient(chainId);
+          if (listingClient && marketplaceAddr && marketplaceAddr !== "0x0000000000000000000000000000000000000000") {
+            const onChainListing = await listingClient.readContract({
+              address: marketplaceAddr,
+              abi: MARKETPLACE_GET_LISTING_ABI,
+              functionName: "getListing",
+              args: [BigInt(decodedArgs.listingId)],
+            });
+            const expiry = (onChainListing as any).expiry;
+            if (expiry && Number(expiry) > 0) {
+              onChainExpiry = expiry.toString();
+            }
+          }
+        } catch (err) {
+          this.logger.warn(`Failed to query on-chain expiry for listing ${decodedArgs.listingId}: ${err}`);
+        }
+
         this.eventBus.publish({
           eventName: "contract.stem_listed",
           eventVersion: 1,
@@ -391,13 +458,14 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           amount: decodedArgs.amount,
           pricePerUnit: decodedArgs.price,
           paymentToken: "0x0000000000000000000000000000000000000000", // ETH - event doesn't include this
-          expiresAt: "0", // Not in the event, would need to query contract
+          expiresAt: onChainExpiry,
           chainId,
           contractAddress: address,
           transactionHash: transactionHash!,
           blockNumber: blockNumber!.toString(),
         });
         break;
+      }
 
       case "Sold":
         this.eventBus.publish({

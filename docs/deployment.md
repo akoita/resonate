@@ -75,7 +75,7 @@ graph TB
         end
 
         subgraph "GPU Worker"
-            DW["Demucs Worker<br/>FastAPI + PyTorch<br/>GCE T4 GPU :8000"]
+            DW["Demucs Worker<br/>FastAPI + Pub/Sub Consumer<br/>GCE T4 GPU :8000"]
         end
 
         subgraph "Private VPC — 10.0.0.0/20"
@@ -108,7 +108,10 @@ graph TB
     BE --> VPCC
     VPCC --> SQL
     VPCC --> REDIS
-    BE -->|"DEMUCS_WORKER_URL"| DW
+    BE -->|"Pub/Sub: stem-separate"| PS["GCP Pub/Sub"]
+    PS -->|"Pull subscription"| DW
+    DW -->|"Pub/Sub: stem-results"| PS
+    PS -->|"Pull subscription"| BE
     DW -->|"Upload stems"| GCS
     BE -->|"Download stems"| GCS
     BE -->|"RPC_URL"| SEP
@@ -134,7 +137,7 @@ graph LR
     end
 
     subgraph "AI & Audio Pipeline"
-        INGESTION["Ingestion<br/>Upload → BullMQ queue<br/>→ Demucs → encrypt → store"]
+        INGESTION["Ingestion<br/>Upload → BullMQ queue<br/>→ Pub/Sub → Demucs<br/>→ encrypt → store"]
         CURATION["Curation<br/>AI agent for release<br/>quality scoring"]
         EMBEDDINGS["Embeddings<br/>Audio feature vectors"]
         AGENTS["Agents<br/>ADK / Vertex AI<br/>runtime adapter"]
@@ -165,22 +168,22 @@ graph LR
 
 #### Module Responsibilities
 
-| Module              | Purpose                                                  | Key Files                                          |
-| ------------------- | -------------------------------------------------------- | -------------------------------------------------- |
-| **Ingestion**       | Upload → queue → Demucs → encrypt → store pipeline       | `ingestion.service.ts`, `ingestion.controller.ts`  |
-| **Catalog**         | CRUD for releases, tracks, stems                         | `catalog.service.ts`, `catalog.controller.ts`      |
-| **Auth**            | JWT tokens, passkey verification, role guards            | `auth.service.ts`, `roles.guard.ts`                |
-| **Identity**        | User profiles, wallet linking, artist onboarding         | `identity.service.ts`                              |
-| **Contracts**       | On-chain StemNFT minting, marketplace ops, event indexer | `contracts.service.ts`, `indexer.service.ts`       |
-| **Storage**         | Abstraction over Local / Lighthouse IPFS providers       | `storage_provider.ts`, `local_storage_provider.ts` |
-| **Encryption**      | Stem-level encryption with access control metadata       | `encryption.service.ts`                            |
-| **Sessions**        | WebSocket gateway for real-time progress & events        | `events.gateway.ts`                                |
-| **Agents**          | AI runtime adapter (ADK / Vertex / LangGraph / local)    | `agent_runtime.service.ts`, `adk_adapter.ts`       |
-| **Curation**        | AI-powered release quality scoring                       | `curation.service.ts`                              |
-| **Payments**        | Transaction handling for stem purchases                  | `payments.service.ts`                              |
-| **Pricing**         | Dynamic stem pricing with edition strategies             | `stem-pricing.service.ts`                          |
-| **Recommendations** | Personalized music discovery                             | `recommendations.service.ts`                       |
-| **Analytics**       | Play counts, trending stems, artist stats                | `analytics.service.ts`                             |
+| Module              | Purpose                                                  | Key Files                                                                                             |
+| ------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| **Ingestion**       | Upload → queue → Pub/Sub → Demucs → encrypt → store      | `ingestion.service.ts`, `stems.processor.ts`, `stem-pubsub.publisher.ts`, `stem-result.subscriber.ts` |
+| **Catalog**         | CRUD for releases, tracks, stems                         | `catalog.service.ts`, `catalog.controller.ts`                                                         |
+| **Auth**            | JWT tokens, passkey verification, role guards            | `auth.service.ts`, `roles.guard.ts`                                                                   |
+| **Identity**        | User profiles, wallet linking, artist onboarding         | `identity.service.ts`                                                                                 |
+| **Contracts**       | On-chain StemNFT minting, marketplace ops, event indexer | `contracts.service.ts`, `indexer.service.ts`                                                          |
+| **Storage**         | Abstraction over Local / Lighthouse IPFS providers       | `storage_provider.ts`, `local_storage_provider.ts`                                                    |
+| **Encryption**      | Stem-level encryption with access control metadata       | `encryption.service.ts`                                                                               |
+| **Sessions**        | WebSocket gateway for real-time progress & events        | `events.gateway.ts`                                                                                   |
+| **Agents**          | AI runtime adapter (ADK / Vertex / LangGraph / local)    | `agent_runtime.service.ts`, `adk_adapter.ts`                                                          |
+| **Curation**        | AI-powered release quality scoring                       | `curation.service.ts`                                                                                 |
+| **Payments**        | Transaction handling for stem purchases                  | `payments.service.ts`                                                                                 |
+| **Pricing**         | Dynamic stem pricing with edition strategies             | `stem-pricing.service.ts`                                                                             |
+| **Recommendations** | Personalized music discovery                             | `recommendations.service.ts`                                                                          |
+| **Analytics**       | Play counts, trending stems, artist stats                | `analytics.service.ts`                                                                                |
 
 ### Security Layers
 
@@ -411,7 +414,7 @@ curl -s $(terraform -chdir=infra/terraform output -raw demucs_worker_url)/health
 # Should return: {"status":"ok","storage_mode":"gcs"}
 ```
 
-The backend automatically uses the worker URL via `DEMUCS_WORKER_URL` (set in `backend-service.tf`).
+The backend communicates with the worker via **GCP Pub/Sub** (event-driven, Phase 2). Legacy HTTP mode is available via `STEM_PROCESSING_MODE=sync` and `DEMUCS_WORKER_URL` (set in `backend-service.tf`).
 
 > **⚠️ Container Port**: The worker listens on port 8000 (configured in Terraform via `container_port`). If deploying manually, ensure `--port=8000` is set.
 

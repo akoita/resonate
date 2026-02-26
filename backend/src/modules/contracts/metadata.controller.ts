@@ -1,5 +1,7 @@
-import { Controller, Get, Param, Query, NotFoundException, Logger } from "@nestjs/common";
+import { Controller, Get, Post, Param, Query, Body, NotFoundException, Logger } from "@nestjs/common";
 import { ContractsService } from "./contracts.service";
+import { IndexerService } from "./indexer.service";
+import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
 import { keccak256, toHex } from "viem";
 
@@ -14,7 +16,11 @@ import { keccak256, toHex } from "viem";
 export class MetadataController {
   private readonly logger = new Logger(MetadataController.name);
 
-  constructor(private readonly contractsService: ContractsService) { }
+  constructor(
+    private readonly contractsService: ContractsService,
+    private readonly indexerService: IndexerService,
+    private readonly eventBus: EventBus,
+  ) { }
 
   // ============ STATIC ROUTES (must come first) ============
 
@@ -509,5 +515,70 @@ export class MetadataController {
     }
 
     return attributes;
+  }
+
+  // ============ INDEXER MANAGEMENT ============
+
+  /**
+   * GET /metadata/indexer/status
+   * Returns indexer state (enabled, last indexed block per chain)
+   */
+  @Get("indexer/status")
+  async getIndexerStatus() {
+    return this.indexerService.getStatus();
+  }
+
+  /**
+   * POST /metadata/indexer/reset
+   * Reset indexer to reprocess from a specific block
+   * Body: { chainId: number, fromBlock: number }
+   */
+  @Post("indexer/reset")
+  async resetIndexer(@Body() body: { chainId: number; fromBlock: number }) {
+    const { chainId, fromBlock } = body;
+    this.logger.log(`Resetting indexer for chain ${chainId} to block ${fromBlock}`);
+    await this.indexerService.resetIndexer(chainId, BigInt(fromBlock));
+    return { success: true, chainId, fromBlock };
+  }
+
+  /**
+   * POST /metadata/indexer/reindex-tx
+   * Manually index a specific transaction
+   * Body: { txHash: string, chainId: number }
+   */
+  @Post("indexer/reindex-tx")
+  async reindexTransaction(@Body() body: { txHash: string; chainId: number }) {
+    const { txHash, chainId } = body;
+    this.logger.log(`Manually reindexing tx ${txHash} on chain ${chainId}`);
+    const result = await this.indexerService.indexTransaction(txHash, chainId);
+    return { success: true, ...result };
+  }
+
+  /**
+   * POST /metadata/notify-listing
+   * Frontend calls this after a successful on-chain mintAndList to
+   * broadcast a WebSocket event to all connected clients immediately,
+   * bypassing the indexer polling delay.
+   */
+  @Post("notify-listing")
+  async notifyListingCreated(@Body() body: { tokenId?: string; seller?: string }) {
+    this.logger.log(`Broadcasting listing notification: tokenId=${body.tokenId}`);
+    this.eventBus.publish({
+      eventName: "contract.stem_listed",
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      listingId: "pending",
+      sellerAddress: body.seller || "",
+      tokenId: body.tokenId || "0",
+      amount: "1",
+      pricePerUnit: "0",
+      paymentToken: "0x0000000000000000000000000000000000000000",
+      expiresAt: "0",
+      chainId: 11155111,
+      contractAddress: "",
+      transactionHash: `notify_${Date.now()}`,
+      blockNumber: 0,
+    } as any);
+    return { success: true };
   }
 }

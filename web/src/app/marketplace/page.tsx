@@ -93,6 +93,7 @@ export default function MarketplacePage(props: {
     const [pricingMap, setPricingMap] = useState<Record<string, { remixLicenseUsd: number; commercialLicenseUsd: number }>>({});
     const [hideOwnListings, setHideOwnListings] = useState(true);
     const [buyModalListing, setBuyModalListing] = useState<{ listingId: string; stemId: string } | null>(null);
+    const [hasStaleData, setHasStaleData] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -198,12 +199,45 @@ export default function MarketplacePage(props: {
     }, [batchStemIdsKey]);
 
     // ---- Real-time marketplace updates via WebSocket ----
+    const listingsCountRef = useRef(0);
+    useEffect(() => { listingsCountRef.current = listings.length; }, [listings.length]);
+
+    // Deduplicate listing_created events — both notify-listing and indexer emit them
+    const recentCreatedRef = useRef<Set<string>>(new Set());
+
     const handleMarketplaceUpdate = useCallback((update: MarketplaceUpdate) => {
         switch (update.type) {
-            case 'created':
-                fetchListings(false);
+            case 'created': {
+                // Deduplicate: skip if we've seen this tokenId in the last 30s
+                const dedupeKey = update.tokenId || update.listingId || '';
+                if (recentCreatedRef.current.has(dedupeKey)) return;
+                recentCreatedRef.current.add(dedupeKey);
+                setTimeout(() => recentCreatedRef.current.delete(dedupeKey), 30000);
+
                 addToast({ type: "success", title: "New Listing", message: "A new stem was just listed!" });
+                // Poll: fetch listings and check if count increased. Only show
+                // stale-data banner if ALL attempts fail to find the new item.
+                setHasStaleData(false);
+                const countBefore = listingsCountRef.current;
+                const MAX_ATTEMPTS = 3;
+                const doPoll = async (attempt: number) => {
+                    await fetchListings(false);
+                    // Give React a tick to update the ref via the useEffect
+                    await new Promise(r => setTimeout(r, 200));
+                    if (listingsCountRef.current > countBefore) {
+                        setHasStaleData(false);
+                        return; // found it
+                    }
+                    if (attempt >= MAX_ATTEMPTS) {
+                        setHasStaleData(true); // give up, show banner
+                        return;
+                    }
+                    // Wait 5s before next attempt
+                    setTimeout(() => doPoll(attempt + 1), 5000);
+                };
+                doPoll(1);
                 break;
+            }
             case 'sold':
                 setListings(prev => prev.map(l => {
                     if (l.listingId === update.listingId) {
@@ -423,6 +457,26 @@ export default function MarketplacePage(props: {
                 </div>
             ) : (
                 <>
+                    {hasStaleData && (
+                        <div className="marketplace-stale-banner" style={{
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                            padding: "10px 16px", marginBottom: 16, borderRadius: 8,
+                            background: "rgba(255, 170, 0, 0.1)", border: "1px solid rgba(255, 170, 0, 0.3)",
+                            color: "#ffaa00", fontSize: 14,
+                        }}>
+                            <span>⚠ Some recently listed items may not be shown yet.</span>
+                            <button
+                                onClick={() => { setHasStaleData(false); fetchListings(false); }}
+                                style={{
+                                    background: "rgba(255, 170, 0, 0.2)", border: "1px solid rgba(255, 170, 0, 0.4)",
+                                    color: "#ffaa00", borderRadius: 6, padding: "4px 12px", cursor: "pointer",
+                                    fontSize: 13, marginLeft: 12,
+                                }}
+                            >
+                                Refresh
+                            </button>
+                        </div>
+                    )}
                     <div className="marketplace-grid">
                         {filteredListings.map(listing => (
                             <div

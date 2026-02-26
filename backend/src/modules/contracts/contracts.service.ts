@@ -62,6 +62,11 @@ export class ContractsService implements OnModuleInit {
     this.reconcileListings().catch(err =>
       this.logger.error(`Listing reconciliation failed: ${err}`)
     );
+
+    // Fix orphan listings (no stemId) on startup (non-blocking)
+    this.reconcileOrphanListings().catch(err =>
+      this.logger.error(`Orphan listing reconciliation failed: ${err}`)
+    );
   }
 
   /**
@@ -84,13 +89,14 @@ export class ContractsService implements OnModuleInit {
     // Get all "active" listings from DB for this chain
     const activeListings = await prisma.stemListing.findMany({
       where: { status: "active", chainId },
-      select: { id: true, listingId: true },
+      select: { id: true, listingId: true, expiresAt: true },
     });
 
     if (activeListings.length === 0) return;
 
     this.logger.log(`Reconciling ${activeListings.length} active listings against on-chain state...`);
     let staleCount = 0;
+    let expiryFixCount = 0;
 
     for (const dbListing of activeListings) {
       try {
@@ -112,17 +118,76 @@ export class ContractsService implements OnModuleInit {
           });
           staleCount++;
           this.logger.log(`Reconciled stale listing ${dbListing.listingId} -> sold`);
+        } else {
+          // Listing is still active on-chain — fix expiresAt if it's stale in DB
+          const onChainExpiry = new Date(Number((onChain as any).expiry) * 1000);
+          if (onChainExpiry > new Date() && dbListing.expiresAt < new Date()) {
+            await prisma.stemListing.update({
+              where: { id: dbListing.id },
+              data: { expiresAt: onChainExpiry },
+            });
+            expiryFixCount++;
+            this.logger.log(`Fixed expired listing ${dbListing.listingId}: DB expiresAt updated to ${onChainExpiry.toISOString()}`);
+          }
         }
       } catch (error) {
         this.logger.warn(`Failed to reconcile listing ${dbListing.listingId}: ${error}`);
       }
     }
 
-    if (staleCount > 0) {
-      this.logger.log(`Reconciliation complete: marked ${staleCount} stale listings as sold`);
+    if (staleCount > 0 || expiryFixCount > 0) {
+      this.logger.log(`Reconciliation complete: ${staleCount} sold, ${expiryFixCount} expiry fixes`);
     } else {
       this.logger.log("Reconciliation complete: all active listings are valid on-chain");
     }
+  }
+
+  /**
+   * Fix orphan listings that have no stemId link.
+   * Attempts to match listings to stems via the StemNftMint tokenId → Stem relationship.
+   */
+  private async reconcileOrphanListings() {
+    const orphans = await prisma.stemListing.findMany({
+      where: { stemId: null, status: "active" },
+      select: { id: true, tokenId: true, chainId: true, listingId: true },
+    });
+
+    if (orphans.length === 0) return;
+
+    this.logger.log(`Reconciling ${orphans.length} orphan listings (no stemId)...`);
+    let fixedCount = 0;
+
+    for (const listing of orphans) {
+      try {
+        // Try to find stem via StemNftMint
+        const nftMint = await prisma.stemNftMint.findFirst({
+          where: { tokenId: listing.tokenId, chainId: listing.chainId },
+        });
+
+        let stemId = nftMint?.stemId;
+
+        // Fallback: try finding stem via ipnftId
+        if (!stemId) {
+          const stemByToken = await prisma.stem.findFirst({
+            where: { ipnftId: listing.tokenId.toString() },
+          });
+          stemId = stemByToken?.id;
+        }
+
+        if (stemId) {
+          await prisma.stemListing.update({
+            where: { id: listing.id },
+            data: { stemId },
+          });
+          fixedCount++;
+          this.logger.log(`Linked orphan listing ${listing.listingId} to stem ${stemId}`);
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to reconcile orphan listing ${listing.listingId}: ${err}`);
+      }
+    }
+
+    this.logger.log(`Orphan reconciliation complete: linked ${fixedCount} of ${orphans.length} listings`);
   }
 
   private subscribeToContractEvents() {
@@ -212,9 +277,11 @@ export class ContractsService implements OnModuleInit {
         });
 
         let expiresAt = new Date(parseInt(event.expiresAt) * 1000);
-        // If expiresAt is 0, default to 7 days from now
+        // If expiresAt is 0 (on-chain query failed or not available), default to 1 year
+        // to prevent listings from silently disappearing. The actual on-chain expiry
+        // is enforced by the smart contract regardless of this DB value.
         if (parseInt(event.expiresAt) === 0) {
-          expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+          expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
         }
 
         const listingData: any = {
@@ -235,6 +302,15 @@ export class ContractsService implements OnModuleInit {
 
         if (nftMint?.stemId) {
           listingData.stem = { connect: { id: nftMint.stemId } };
+        } else {
+          // Fallback: try finding stem via ipnftId (handles race condition
+          // where Listed event arrives before StemMinted is fully processed)
+          const stemByToken = await prisma.stem.findFirst({
+            where: { ipnftId: event.tokenId },
+          });
+          if (stemByToken) {
+            listingData.stem = { connect: { id: stemByToken.id } };
+          }
         }
 
         // Mark any previous active listings for same tokenId/seller as cancelled

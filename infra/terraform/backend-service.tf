@@ -17,9 +17,16 @@ resource "google_cloud_run_v2_service" "backend" {
   template {
     service_account = google_service_account.cloud_run.email
 
+    # Ensure WebSocket clients and API requests from the same session
+    # hit the same instance (required for in-memory EventBus broadcasts)
+    session_affinity = true
+
     scaling {
       min_instance_count = var.backend_min_instances
-      max_instance_count = 4
+      # IMPORTANT: Must be 1 while using in-memory EventBus for WebSocket broadcasts.
+      # Uploads go through the frontend proxy (different source IP from browser WS),
+      # so session affinity alone doesn't help. For multi-instance, use Redis pub/sub.
+      max_instance_count = 1
     }
 
     vpc_access {
@@ -37,7 +44,7 @@ resource "google_cloud_run_v2_service" "backend" {
       resources {
         limits = {
           cpu    = "1"
-          memory = "1Gi"
+          memory = "2Gi"
         }
       }
 
@@ -135,6 +142,17 @@ resource "google_cloud_run_v2_service" "backend" {
       env {
         name  = "GCS_STEMS_BUCKET"
         value = var.gcs_stems_bucket
+      }
+
+      # Phase 2: Event-driven stem processing via Pub/Sub
+      env {
+        name  = "STEM_PROCESSING_MODE"
+        value = "pubsub"
+      }
+
+      env {
+        name  = "GCP_PROJECT_ID"
+        value = var.project_id
       }
 
       # Admin addresses (comma-separated) — auto-promoted to admin role on login

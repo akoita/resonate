@@ -8,6 +8,7 @@ import {
     refreshSmartAccount,
 } from "../../lib/api";
 import { WalletRecord } from "../../lib/api";
+import { useIsDeployed } from "../../hooks/useIsDeployed";
 
 type Props = {
     wallet: WalletRecord | null;
@@ -15,6 +16,7 @@ type Props = {
 };
 
 const EXPLORER_URL = "https://sepolia.etherscan.io";
+const FAUCET_URL = "https://www.alchemy.com/faucets/ethereum-sepolia";
 
 function AddressValue({ value, href, badge }: {
     value: string | null | undefined;
@@ -40,7 +42,6 @@ function AddressValue({ value, href, badge }: {
         <span className="vault-detail-value">
             {isHex ? (
                 <span className="vault-addr-container">
-                    {/* Shortened or full display */}
                     <button
                         className="vault-addr-toggle"
                         onClick={() => setExpanded(!expanded)}
@@ -51,7 +52,6 @@ function AddressValue({ value, href, badge }: {
                         </span>
                     </button>
 
-                    {/* Copy button */}
                     <button className="vault-addr-action" onClick={copy} title="Copy to clipboard">
                         {copied ? (
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2ec486" strokeWidth="2.5">
@@ -65,7 +65,6 @@ function AddressValue({ value, href, badge }: {
                         )}
                     </button>
 
-                    {/* Explorer link */}
                     {href && (
                         <a
                             href={href}
@@ -95,7 +94,7 @@ export default function VaultSmartAccountCard({ wallet, address }: Props) {
     const { token, refreshWallet } = useAuth();
     const [status, setStatus] = useState<string | null>(null);
     const [pending, setPending] = useState(false);
-    const isDeployed = Boolean(wallet?.deploymentTxHash);
+    const { isDeployed } = useIsDeployed(address);
 
     const run = async (action: () => Promise<void>) => {
         if (!address || !token) {
@@ -148,16 +147,36 @@ export default function VaultSmartAccountCard({ wallet, address }: Props) {
                 </div>
                 <div className="vault-detail-row">
                     <span className="vault-detail-label">Paymaster</span>
-                    <AddressValue
-                        value={wallet?.paymaster ? "Pimlico" : "Self-funded"}
-                        badge={wallet?.paymaster ? "✓" : undefined}
-                    />
+                    <span className="vault-detail-value">
+                        {wallet?.paymaster ? (
+                            <a href="https://dashboard.pimlico.io" target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                Pimlico
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.5 }}>
+                                    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                                    <polyline points="15 3 21 3 21 9" />
+                                    <line x1="10" y1="14" x2="21" y2="3" />
+                                </svg>
+                            </a>
+                        ) : "Self-funded"}
+                        {wallet?.paymaster && <span className="vault-detail-badge">✓</span>}
+                    </span>
                 </div>
                 <div className="vault-detail-row">
                     <span className="vault-detail-label">Bundler</span>
-                    <AddressValue
-                        value={wallet?.bundler?.includes("pimlico") ? "Pimlico" : wallet?.bundler}
-                    />
+                    <span className="vault-detail-value">
+                        {wallet?.bundler?.includes("pimlico") ? (
+                            <a href="https://dashboard.pimlico.io" target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                Pimlico
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.5 }}>
+                                    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                                    <polyline points="15 3 21 3 21 9" />
+                                    <line x1="10" y1="14" x2="21" y2="3" />
+                                </svg>
+                            </a>
+                        ) : (
+                            <AddressValue value={wallet?.bundler} />
+                        )}
+                    </span>
                 </div>
                 {wallet?.deploymentTxHash && (
                     <div className="vault-detail-row">
@@ -177,7 +196,11 @@ export default function VaultSmartAccountCard({ wallet, address }: Props) {
                     disabled={pending}
                     onClick={() => run(async () => { await refreshSmartAccount(token!); })}
                 >
-                    Refresh Status
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="23 4 23 10 17 10" />
+                        <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
+                    </svg>
+                    Refresh
                 </button>
                 {!isDeployed && (
                     <>
@@ -197,6 +220,18 @@ export default function VaultSmartAccountCard({ wallet, address }: Props) {
                         </button>
                     </>
                 )}
+                <a
+                    href={FAUCET_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="vault-btn vault-btn--ghost vault-btn--sm"
+                    style={{ textDecoration: "none" }}
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 2v20M2 12h20" />
+                    </svg>
+                    Get Test ETH
+                </a>
             </div>
 
             {/* Status Message */}

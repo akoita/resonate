@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:3000";
 
+// Force dynamic — never cache this route or its upstream fetch
+export const dynamic = "force-dynamic";
+
 /**
  * Proxy listings requests to backend metadata API
  * GET /api/contracts/listings -> backend /api/metadata/listings
@@ -21,6 +24,7 @@ export async function GET(request: NextRequest) {
             headers: {
                 "Content-Type": "application/json",
             },
+            cache: "no-store", // CRITICAL: prevent Next.js from caching stale listing data
         });
 
         if (!response.ok) {

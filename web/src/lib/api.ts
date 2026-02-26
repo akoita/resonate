@@ -97,6 +97,10 @@ export async function verifySignature(input: {
   role?: string;
   /** For local dev (chainId 31337): EOA that signed; backend verifies this and issues token for address */
   signerAddress?: string;
+  /** P-256 public key X coordinate (hex) for off-chain verification */
+  pubKeyX?: string;
+  /** P-256 public key Y coordinate (hex) for off-chain verification */
+  pubKeyY?: string;
 }) {
   return apiRequest<AuthVerifyResponse>(
     "/auth/verify",
