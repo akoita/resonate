@@ -329,15 +329,37 @@ describe("ContractsService", () => {
             expect(listing.status).toBe("active");
         });
 
-        it("defaults expiresAt to 7 days when zero", async () => {
+        it("defaults expiresAt to 1 year when zero", async () => {
             const event = makeListedEvent({ expiresAt: "0", transactionHash: "0xlist_noexpiry" });
             eventBus.publish(event);
             await new Promise((r) => setTimeout(r, 50));
 
             const listing = [...mockStemListings.values()][0];
-            const sevenDaysFromNow = Date.now() + 7 * 24 * 60 * 60 * 1000;
-            expect(listing.expiresAt.getTime()).toBeGreaterThan(sevenDaysFromNow - 5000);
-            expect(listing.expiresAt.getTime()).toBeLessThan(sevenDaysFromNow + 5000);
+            const oneYearFromNow = Date.now() + 365 * 24 * 60 * 60 * 1000;
+            expect(listing.expiresAt.getTime()).toBeGreaterThan(oneYearFromNow - 5000);
+            expect(listing.expiresAt.getTime()).toBeLessThan(oneYearFromNow + 5000);
+        });
+
+        it("links listing via ipnftId fallback when nftMint not found", async () => {
+            // No StemNftMint exists, but stem has ipnftId matching tokenId
+            mockStems.set("stem_fallback", { id: "stem_fallback", type: "vocals", ipnftId: "99" });
+
+            // Override stem.findFirst to return our stem when ipnftId matches
+            const { prisma } = require("../db/prisma");
+            prisma.stem.findFirst.mockImplementation(async ({ where }: any) => {
+                if (where?.ipnftId === "99") return mockStems.get("stem_fallback");
+                return null;
+            });
+
+            const event = makeListedEvent({
+                tokenId: "99",
+                transactionHash: "0xlist_fallback",
+            });
+            eventBus.publish(event);
+            await new Promise((r) => setTimeout(r, 50));
+
+            const listing = [...mockStemListings.values()][0];
+            expect(listing.stem).toEqual({ connect: { id: "stem_fallback" } });
         });
 
         it("persists StemSold event and updates listing status", async () => {
