@@ -12,6 +12,7 @@ export default function WalletPage() {
 
   // Defer rendering until client mount to avoid SSR hydration mismatch.
   // Auth state (address, wallet, status) is only available on the client.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setMounted(true); }, []);
 
   if (!mounted) {
