@@ -31,7 +31,18 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    this.pubsub = new PubSub();
+    // Skip if no Pub/Sub config available (CI, local dev without GCP)
+    if (!process.env.PUBSUB_EMULATOR_HOST && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      this.logger.warn(
+        "No Pub/Sub config (PUBSUB_EMULATOR_HOST or GOOGLE_APPLICATION_CREDENTIALS not set) " +
+        "— skipping result subscriber. Set PUBSUB_EMULATOR_HOST for local dev or STEM_PROCESSING_MODE=sync.",
+      );
+      return;
+    }
+
+    const projectId = process.env.GCP_PROJECT_ID || 'resonate-local';
+    this.pubsub = new PubSub({ projectId });
+    this.logger.log(`StemResultSubscriber PubSub project: ${projectId}, emulator: ${process.env.PUBSUB_EMULATOR_HOST || 'NOT SET'}`);
 
     // Ensure subscription exists (idempotent)
     try {
@@ -139,7 +150,7 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
     // Process each AI-generated stem
     for (const [type, stemUri] of Object.entries(result.stems!)) {
       try {
-        // Download stem from GCS
+        // Download stem data
         let data: Buffer | null = null;
         if (stemUri.startsWith("http://") || stemUri.startsWith("https://")) {
           const response = await fetch(stemUri, { signal: AbortSignal.timeout(120_000) });
@@ -150,9 +161,23 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
             this.logger.error(`Failed to download stem ${type}: HTTP ${response.status}`);
             continue;
           }
-        } else {
-          // Local/GCS storage provider download
+        } else if (stemUri.startsWith("gs://")) {
+          // GCS storage provider download (production)
           data = await this.storageProvider.download(stemUri);
+        } else {
+          // Local relative path from worker (e.g., "rel_xxx/trk_xxx/vocals.mp3")
+          // Worker writes to /outputs/ which maps to backend/uploads/stems/
+          const { join } = await import("path");
+          const { readFileSync, existsSync } = await import("fs");
+          const uploadsDir = join(process.cwd(), "uploads", "stems");
+          const localPath = join(uploadsDir, stemUri);
+          if (existsSync(localPath)) {
+            data = readFileSync(localPath);
+            this.logger.log(`Read stem ${type} from local path: ${localPath} (${data.length} bytes)`);
+          } else {
+            this.logger.warn(`Stem file not found at ${localPath}, trying storage provider...`);
+            data = await this.storageProvider.download(stemUri);
+          }
         }
 
         if (!data) {
@@ -257,6 +282,17 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
           where: { id: trackId },
           data: { processingStatus: stage },
         });
+
+        // Broadcast stage change via EventBus → WebSocket
+        this.eventBus.publish({
+          eventName: "catalog.track_status",
+          eventVersion: 1,
+          occurredAt: new Date().toISOString(),
+          releaseId,
+          trackId,
+          status: stage,
+        } as any);
+
         break;
       } catch (err: any) {
         if (err?.code === "P2025" && attempt < MAX_RETRIES) {
@@ -271,6 +307,7 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
       }
     }
   }
+
 
   private generateId(prefix: string) {
     return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;

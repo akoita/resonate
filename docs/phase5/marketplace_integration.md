@@ -55,7 +55,7 @@ The AI agent prioritizes tracks with active marketplace listings for real on-cha
 4. `recordPurchase` does a fallback listing lookup if the runtime adapter didn't provide one
 5. If listing exists → `AgentPurchaseService.purchase()` submits a real UserOp
 6. If no listing → falls back to mock transaction record
-7. When `AA_SKIP_BUNDLER=true` → all purchases are mock (shown as MOCK in the UI)
+7. Agent purchases always use session-key-scoped UserOps through the bundler
 
 ## Frontend Hooks
 

@@ -34,7 +34,6 @@ export interface AgentPurchaseInput {
 export class AgentPurchaseService {
   private readonly logger = new Logger(AgentPurchaseService.name);
   private readonly marketplaceAddress: string;
-  private readonly skipBundler: boolean;
 
   constructor(
     private readonly walletService: WalletService,
@@ -45,12 +44,11 @@ export class AgentPurchaseService {
     this.marketplaceAddress =
       process.env.MARKETPLACE_ADDRESS ??
       "0x0000000000000000000000000000000000000000";
-    this.skipBundler = process.env.AA_SKIP_BUNDLER === "true";
   }
 
   async purchase(input: AgentPurchaseInput) {
     // 1. Validate session key
-    const keyValid = this.agentWalletService.validateSessionKey(input.userId);
+    const keyValid = await this.agentWalletService.validateSessionKey(input.userId);
     if (!keyValid) {
       return {
         success: false,
@@ -90,51 +88,10 @@ export class AgentPurchaseService {
     // 4. Encode calldata
     const callData = this.encodeBuyCalldata(input.listingId, input.amount);
 
-    // 5. Submit UserOp or mock
+    // 5. Submit UserOp via session key
     try {
-      const wallet = await this.walletService.getWallet(input.userId);
-
-      if (this.skipBundler) {
-        // Dev mode: mock the transaction
-        const mockTxHash = `tx_${Date.now()}_${Buffer.from(
-          `agent-buy-${input.listingId}`
-        )
-          .toString("hex")
-          .slice(0, 8)}`;
-
-        const confirmed = await prisma.agentTransaction.update({
-          where: { id: agentTx.id },
-          data: {
-            txHash: mockTxHash,
-            status: "confirmed",
-            confirmedAt: new Date(),
-          },
-        });
-
-        this.publishPurchaseEvent(input, mockTxHash, "mock");
-
-        // Check budget alerts after purchase
-        const updatedWallet = await this.walletService.getWallet(input.userId);
-        if (updatedWallet) {
-          this.agentWalletService.checkAndEmitBudgetAlert(
-            input.userId,
-            updatedWallet.spentUsd,
-            updatedWallet.monthlyCapUsd
-          );
-        }
-
-        return {
-          success: true,
-          transactionId: confirmed.id,
-          txHash: mockTxHash,
-          mode: "mock",
-          remaining: spendResult.remaining,
-        };
-      }
-
-      // Real transaction via ZeroDev Kernel account → bundler → EntryPoint
       this.logger.log(
-        `Sending Kernel tx for listing ${input.listingId} (user: ${input.userId})`,
+        `Sending session key tx for listing ${input.listingId} (user: ${input.userId})`,
       );
 
       await prisma.agentTransaction.update({
@@ -142,12 +99,28 @@ export class AgentPurchaseService {
         data: { status: "submitted" },
       });
 
-      const txHash = await this.kernelAccountService.sendTransaction(
-        input.userId,
-        this.marketplaceAddress as Address,
-        callData as Hex,
-        BigInt(input.totalPriceWei),
-      );
+      // Get the agent's key data (private key as SensitiveBuffer + approval)
+      const agentKeyData = await this.agentWalletService.getAgentKeyData(input.userId);
+
+      if (!agentKeyData) {
+        throw new Error("No agent key data found — session key may have been revoked");
+      }
+
+      // Send via session-key-scoped Kernel client through the bundler
+      // The private key is read once via toString() and zeroed in the finally block
+      let txHash: string;
+      try {
+        txHash = await this.kernelAccountService.sendSessionKeyTransaction(
+          agentKeyData.agentPrivateKey.toString(),  // one-time read from SensitiveBuffer
+          agentKeyData.approvalData,
+          this.marketplaceAddress as Address,
+          callData as Hex,
+          BigInt(input.totalPriceWei),
+        );
+      } finally {
+        // Zero the private key from memory immediately after signing
+        agentKeyData.agentPrivateKey.zero();
+      }
 
       await prisma.agentTransaction.update({
         where: { id: agentTx.id },

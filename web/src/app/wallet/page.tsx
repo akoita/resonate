@@ -5,9 +5,12 @@ import { useAuth } from "../../components/auth/AuthProvider";
 import VaultHero from "../../components/wallet/VaultHero";
 import VaultSmartAccountCard from "../../components/wallet/VaultSmartAccountCard";
 import VaultSecurityCard from "../../components/wallet/VaultSecurityCard";
+import { useIsDeployed } from "../../hooks/useIsDeployed";
 
 export default function WalletPage() {
-  const { status, wallet, address, refreshWallet } = useAuth();
+  const { status, wallet, address, smartAccountAddress, refreshWallet } = useAuth();
+  const saAddress = smartAccountAddress || address;
+  const { isDeployed, recheck } = useIsDeployed(saAddress);
   const [mounted, setMounted] = useState(false);
 
   // Defer rendering until client mount to avoid SSR hydration mismatch.
@@ -29,13 +32,14 @@ export default function WalletPage() {
       <VaultHero
         wallet={wallet}
         status={status}
-        address={address}
+        address={saAddress}
+        isDeployed={isDeployed}
         onRefresh={refreshWallet}
       />
 
       {/* Cards Grid — 2 column */}
       <div className="vault-grid vault-grid--2col">
-        <VaultSmartAccountCard wallet={wallet} address={address} />
+        <VaultSmartAccountCard wallet={wallet} address={saAddress} isDeployed={isDeployed} recheck={recheck} />
         <VaultSecurityCard />
       </div>
     </main>

@@ -27,8 +27,10 @@ Fork Sepolia so that ZeroDev's deployed contracts (Kernel v3, session key plugin
 # 1. Set env vars
 export SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/YOUR_KEY
 
-# 2. Start forked Anvil + configure .env
-make local-aa-fork
+# 2. Start infrastructure
+make dev-up                  # Postgres, Redis, Pub/Sub, Demucs worker
+make local-aa-fork           # Forks Sepolia, configures AA .env vars
+make deploy-contracts        # Configures .env with existing Sepolia contract addresses
 
 # 3. Start backend (in separate terminal)
 make backend-dev
@@ -36,6 +38,8 @@ make backend-dev
 # 4. Start frontend for Sepolia (in separate terminal)
 make web-dev-fork
 ```
+
+> **Important:** On a Sepolia fork, `deploy-contracts` does NOT deploy new contracts. It reads the existing Sepolia deployment addresses from `contracts/deployments/sepolia.json` and updates `.env` files. The contracts (StemNFT, Marketplace, TransferValidator) already exist on the fork from the real Sepolia state.
 
 ### Architecture (Forked Sepolia)
 
@@ -97,8 +101,8 @@ In forked Sepolia mode, the user holds the root key (passkey/EOA) and grants a *
 - The backend **never creates or holds** the root key
 - Session keys have on-chain enforced policies: call policy, value cap, rate limit, expiry
 - The user can revoke at any time via the frontend
-- In `AA_SKIP_BUNDLER=true` mode, a mock flow is used for local testing (transactions show as `MOCK` in the UI)
-- When `AA_SKIP_BUNDLER` is not set (default), agent purchases submit real UserOps via the bundler
+- Agent purchases always submit real UserOps via the bundler using the session key
+- The session key is deserialized on the backend and used to create a scoped Kernel client
 
 **Backend endpoints:**
 | Endpoint | Method | Description |
@@ -107,6 +111,55 @@ In forked Sepolia mode, the user holds the root key (passkey/EOA) and grants a *
 | `/wallet/agent/session-key` | `DELETE` | Revoke session key |
 | `/wallet/agent/enable` | `POST` | Enable agent wallet |
 | `/wallet/agent/status` | `GET` | Get wallet + session key status |
+
+---
+
+### Passkey Testing in Forked Sepolia
+
+When a `ZERODEV_PROJECT_ID` is configured, the frontend uses real WebAuthn Passkeys instead of mock ECDSA signers. This closes the auth gap between forked mode and production.
+
+**Setup:**
+
+1. Get a ZeroDev Project ID from [dashboard.zerodev.app](https://dashboard.zerodev.app)
+2. Set it in both environments:
+
+```bash
+# backend/.env
+ZERODEV_PROJECT_ID=your-project-id
+
+# web/.env.local
+NEXT_PUBLIC_ZERODEV_PROJECT_ID=your-project-id
+```
+
+3. Restart services: `make backend-dev` + `make web-dev-fork`
+4. The "Sign up" / "Connect" flow now uses Passkeys via WebAuthn
+
+> **Note:** Passkeys require HTTPS in some browsers. Use a local HTTPS proxy (e.g. `mkcert` + `local-ssl-proxy`) if your browser rejects WebAuthn on `http://localhost`.
+
+### Test Paymaster in Forked Sepolia
+
+A Paymaster sponsors gas so users don't need ETH. Two options:
+
+**Option A — ZeroDev Testnet Paymaster (recommended)**
+
+ZeroDev's free tier includes testnet Paymaster. Add to `backend/.env`:
+
+```bash
+AA_PAYMASTER=https://rpc.zerodev.app/api/v2/paymaster/YOUR_PROJECT_ID
+```
+
+The `KernelAccountService` will include the Paymaster URL when creating the Kernel client.
+
+**Option B — Local VerifyingPaymaster**
+
+Deploy a simple paymaster to forked Anvil:
+
+```bash
+cd contracts
+forge script script/DeployPaymaster.s.sol --rpc-url http://localhost:8545 --broadcast
+```
+
+Then set `AA_PAYMASTER=http://localhost:8545` (or the paymaster contract address depending on your implementation).
 
 ---
 
@@ -123,7 +176,8 @@ In forked Sepolia mode, the user holds the root key (passkey/EOA) and grants a *
 
 ```bash
 # 1. Start everything with auto-configuration
-make local-aa-full
+make dev-up
+make contracts-deploy-local
 
 # 2. Start backend (in separate terminal)
 make backend-dev
@@ -171,24 +225,25 @@ That's it! The deployment script automatically updates all `.env` files with the
 
 ### Forked Sepolia (ZeroDev Session Keys)
 
-| Command              | Description                                          |
-| -------------------- | ---------------------------------------------------- |
-| `make anvil-fork`    | Start Anvil (Docker) forking Sepolia                 |
-| `make local-aa-fork` | Start Docker fork + wait for health + configure .env |
-| `make local-aa-down` | Stop local-aa and fork-aa Docker services            |
-| `make web-dev-fork`  | Start frontend with chainId 11155111                 |
+| Command                 | Description                                                        |
+| ----------------------- | ------------------------------------------------------------------ |
+| `make anvil-fork`       | Start Anvil (Docker) forking Sepolia                               |
+| `make local-aa-fork`    | Start Docker fork + wait for health + configure .env               |
+| `make deploy-contracts` | Configure .env with Sepolia contract addresses (no new deployment) |
+| `make local-aa-down`    | Stop local-aa and fork-aa Docker services                          |
+| `make web-dev-fork`     | Start frontend with chainId 11155111 (clears `.next` cache first)  |
 
 ### Local-Only (Offline Dev)
 
-| Command                | Description                               |
-| ---------------------- | ----------------------------------------- |
-| `make local-aa-up`     | Start Anvil and Alto bundler              |
-| `make local-aa-down`   | Stop local AA services                    |
-| `make local-aa-deploy` | Deploy contracts + update configs         |
-| `make local-aa-full`   | Start infra + deploy + configure          |
-| `make local-aa-config` | Update .env files with deployed addresses |
-| `make local-aa-logs`   | View Docker container logs                |
-| `make web-dev-local`   | Start frontend with chainId 31337         |
+| Command                       | Description                               |
+| ----------------------------- | ----------------------------------------- |
+| `make local-aa-up`            | Start Anvil and Alto bundler              |
+| `make local-aa-down`          | Stop local AA services                    |
+| `make local-aa-deploy`        | Deploy contracts + update configs         |
+| `make contracts-deploy-local` | Start infra + deploy + configure          |
+| `make local-aa-config`        | Update .env files with deployed addresses |
+| `make local-aa-logs`          | View Docker container logs                |
+| `make web-dev-local`          | Start frontend with chainId 31337         |
 
 ## Auto-Configuration
 
@@ -224,7 +279,8 @@ AA_BUNDLER=http://localhost:4337
 AA_ENTRY_POINT=0x...  # Set by update-aa-config.sh
 AA_FACTORY=0x...      # Set by update-aa-config.sh
 AA_CHAIN_ID=31337
-AA_SKIP_BUNDLER=true  # Set true for mock mode (agent txns show as MOCK in UI)
+AA_STRICT_BUNDLER=    # Set true to throw on bundler failure (no fallback to direct EOA)
+AA_STRICT_MODE=       # Set true for full parity: no fallbacks, no auto-funding
 
 # For forked Sepolia mode (set by `make local-aa-fork`):
 # AA_CHAIN_ID=11155111
@@ -260,14 +316,12 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 On chain **31337** with no ZeroDev project ID, the app uses a **mock ECDSA signer** so you can sign in without Passkey/ZeroDev:
 
 1. **Frontend** (`AuthProvider`):
-
    - Generates a random EOA (private key) and builds a Kernel smart account with the local ECDSA validator.
    - Requests a nonce for the **smart account address**.
    - Signs the auth message with the **EOA** (not the smart account), so the backend can verify via standard `ecrecover`.
    - Sends to `/auth/verify`: `address` = smart account, `signerAddress` = EOA, `message`, `signature`.
 
 2. **Backend** (`auth.controller`):
-
    - When `chainId === 31337` and `signerAddress` is present, verifies the **EOA** signature with `verifyMessage(signerAddress, message, signature)`.
    - Consumes the nonce for `address` (smart account) and issues a JWT for the **smart account address**.
    - The session identity is the smart account, so Wallet and AA flows use the same address.
@@ -338,14 +392,40 @@ Run `make local-aa-deploy` to deploy the AA infrastructure contracts.
 
 ### Addresses changed after reset
 
-If you run `docker compose down -v` (which resets Anvil), addresses will change. Run `make local-aa-full` to redeploy and reconfigure.
+If you run `docker compose down -v` (which resets Anvil), addresses will change. Run `make dev-up && make contracts-deploy-local` to redeploy and reconfigure.
+
+### Marketplace shows "No listings" after minting
+
+This usually means a **contract address mismatch** — the backend indexer is watching different addresses than the ones the frontend uses.
+
+**On a Sepolia fork**, never deploy new contracts with `forge script` directly. The existing Sepolia contracts (from `contracts/deployments/sepolia.json`) are always used. Running `make deploy-contracts` handles this automatically.
+
+To verify addresses are in sync:
+
+```bash
+# Check what the backend uses
+grep -E 'STEM_NFT|MARKETPLACE' backend/.env
+
+# Check what the frontend uses
+grep -E 'STEM_NFT|MARKETPLACE' web/.env.local
+
+# Check on-chain (should have totalStems > 0)
+cast call <STEM_NFT_ADDRESS> "totalStems()(uint256)" --rpc-url http://localhost:8545
+```
+
+If addresses don't match, run `make deploy-contracts` to re-sync them, then restart the backend and frontend.
+
+### Next.js uses stale contract addresses
+
+Next.js bakes `NEXT_PUBLIC_*` env vars into the build cache (`web/.next/`). Both `make deploy-contracts` and `make web-dev-fork` now clear this cache automatically. If you update `.env.local` manually, delete `web/.next/` before restarting the frontend.
 
 ## Testing the Flow
 
 1. **Start everything**:
 
    ```bash
-   make local-aa-full
+    make dev-up
+    make contracts-deploy-local
    make backend-dev  # separate terminal
    make web-dev-local  # separate terminal
    ```

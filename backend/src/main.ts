@@ -1,3 +1,4 @@
+import "dotenv/config";
 import "reflect-metadata";
 import { randomUUID } from "crypto";
 import { NestFactory } from "@nestjs/core";
@@ -32,29 +33,19 @@ async function bootstrap() {
       }
     }
 
-    // Self-Healing: Fix hardcoded localhost:3000 stem URIs from local storage provider
-    const backendUrl = process.env.BACKEND_URL;
-    if (backendUrl && !backendUrl.includes('localhost')) {
-      const brokenStems = await prisma.stem.findMany({
-        where: { uri: { startsWith: 'http://localhost:3000/' } },
-        select: { id: true },
-      });
-      if (brokenStems.length > 0) {
-        console.log(`[Self-Healing] Found ${brokenStems.length} stems with localhost URIs, migrating to ${backendUrl}...`);
-        await prisma.$executeRawUnsafe(
-          `UPDATE "Stem" SET uri = REPLACE(uri, 'http://localhost:3000', $1) WHERE uri LIKE 'http://localhost:3000%'`,
-          backendUrl
-        );
-        console.log(`[Self-Healing] Fixed ${brokenStems.length} stem URIs.`);
-      }
-      // Also fix Release artworkUrl
-      const brokenReleases = await prisma.$executeRawUnsafe(
-        `UPDATE "Release" SET "artworkUrl" = REPLACE("artworkUrl", 'http://localhost:3000', $1) WHERE "artworkUrl" LIKE 'http://localhost:3000%'`,
-        backendUrl
-      );
-      if (brokenReleases > 0) {
-        console.log(`[Self-Healing] Fixed ${brokenReleases} release artwork URLs.`);
-      }
+    // Self-Healing: Convert any absolute URLs in stem URIs and release artwork to relative paths
+    // This ensures the frontend can prepend its own API_BASE for browser access
+    const absoluteStemCount = await prisma.$executeRawUnsafe(
+      `UPDATE "Stem" SET uri = regexp_replace(uri, '^https?://[^/]+', '') WHERE uri ~ '^https?://'`
+    );
+    if (absoluteStemCount > 0) {
+      console.log(`[Self-Healing] Converted ${absoluteStemCount} stem URIs to relative paths.`);
+    }
+    const absoluteArtworkCount = await prisma.$executeRawUnsafe(
+      `UPDATE "Release" SET "artworkUrl" = regexp_replace("artworkUrl", '^https?://[^/]+', '') WHERE "artworkUrl" ~ '^https?://'`
+    );
+    if (absoluteArtworkCount > 0) {
+      console.log(`[Self-Healing] Converted ${absoluteArtworkCount} release artwork URLs to relative paths.`);
     }
   } catch (e) {
     console.warn(`[Self-Healing] Could not check indexer state:`, e);

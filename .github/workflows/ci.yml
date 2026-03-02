@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, 'feat/*']
+    branches: [main, develop, "feat/*"]
   pull_request:
-    branches: [main, develop, 'feat/*']
+    branches: [main, develop, "feat/*"]
 
 jobs:
   lint:
@@ -12,32 +12,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
           cache-dependency-path: |
             web/package-lock.json
             backend/package-lock.json
-      
+
       - name: Install web dependencies
         run: npm ci --legacy-peer-deps
         working-directory: web
-      
+
       - name: Run web lint
         run: npm run lint
         working-directory: web
-      
+
       - name: Install backend dependencies
         run: npm ci
         working-directory: backend
-      
+
       - name: Generate Prisma Client
         run: npx prisma generate
         working-directory: backend
-      
+
       - name: Run backend lint
         run: npm run lint
         working-directory: backend
@@ -49,12 +49,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      
+
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
-      
+
       - name: Install dependencies
         run: |
           forge install foundry-rs/forge-std --no-git
@@ -64,11 +64,11 @@ jobs:
           forge install nomad-xyz/ExcessivelySafeCall --no-git
           forge install eth-infinitism/account-abstraction --no-git
         working-directory: contracts
-      
+
       - name: Run Forge build
         run: forge build
         working-directory: contracts
-      
+
       - name: Run Forge tests
         run: forge test -vvv --no-match-path "test/formal/*"
         working-directory: contracts
@@ -102,22 +102,22 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
           cache-dependency-path: backend/package-lock.json
-      
+
       - name: Install dependencies
         run: npm ci
         working-directory: backend
-      
+
       - name: Generate Prisma Client
         run: npx prisma generate
         working-directory: backend
-      
+
       - name: Sync database schema
         run: npx prisma db push --skip-generate
         working-directory: backend
@@ -130,6 +130,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://resonate:resonate@localhost:5432/resonate
           REDIS_URL: redis://localhost:6379
+          STEM_PROCESSING_MODE: sync
 
   build:
     name: Build
@@ -137,27 +138,27 @@ jobs:
     needs: lint
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
           cache-dependency-path: web/package-lock.json
-      
+
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
         working-directory: web
-      
+
       - name: Build
         run: npm run build
         working-directory: web
-      
+
       - name: Verify build output
         run: |
           ls -ld web/.next
           ls -R web/.next | head -n 20
-        
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -199,12 +200,12 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
           cache-dependency-path: |
             web/package-lock.json
             backend/package-lock.json
@@ -218,11 +219,11 @@ jobs:
       - name: Install backend dependencies
         run: npm ci
         working-directory: backend
-      
+
       - name: Generate Prisma Client
         run: npx prisma generate
         working-directory: backend
-      
+
       - name: Sync database schema
         run: npx prisma db push --skip-generate
         working-directory: backend
@@ -244,7 +245,7 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install chromium --with-deps
         working-directory: web
-      
+
       - name: Install Playwright system dependencies
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
@@ -258,7 +259,8 @@ jobs:
           DATABASE_URL: postgresql://resonate:resonate@localhost:5432/resonate
           REDIS_URL: redis://localhost:6379
           JWT_SECRET: dev-secret
-      
+          STEM_PROCESSING_MODE: sync
+
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: failure()

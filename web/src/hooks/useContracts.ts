@@ -25,7 +25,64 @@ import {
   StemMarketplaceABI,
 } from "../lib/contracts";
 
-// Helper to send transaction via ZeroDev kernel client or local wallet
+// Detect whether we're running against a local RPC (Anvil / forked Sepolia)
+function isLocalDevEnvironment(): boolean {
+  const rpcOverride = process.env.NEXT_PUBLIC_RPC_URL || "";
+  return rpcOverride.includes("localhost") || rpcOverride.includes("127.0.0.1");
+}
+
+// Get the bundler URL — local Alto (via Next.js proxy) or Pimlico cloud
+function getBundlerUrl(chainId: number): string {
+  const override = process.env.NEXT_PUBLIC_AA_BUNDLER;
+  if (override) return override;
+  if (isLocalDevEnvironment()) return "http://localhost:3001/api/bundler";
+  const pimlicoApiKey = process.env.NEXT_PUBLIC_PIMLICO_API_KEY || "";
+  return `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${pimlicoApiKey}`;
+}
+
+// Custom transport that maps ZeroDev-proprietary methods to Pimlico/Alto equivalents
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function createMappedTransport(bundlerUrl: string): (opts: any) => any {
+  const baseTransport = http(bundlerUrl);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (opts: any) => {
+    const transport = baseTransport(opts);
+    const originalRequest = transport.request;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    transport.request = async (args: any) => {
+      const mappedArgs = { ...args };
+      if (args.method === "zd_getUserOperationGasPrice") {
+        mappedArgs.method = "pimlico_getUserOperationGasPrice";
+      }
+      return originalRequest(mappedArgs);
+    };
+    return transport;
+  };
+}
+
+/**
+ * Auto-fund a smart account from Anvil when running locally.
+ */
+async function ensureLocalFunding(
+  publicClient: PublicClient,
+  smartAccountAddress: Address,
+  value: bigint
+): Promise<void> {
+  if (!isLocalDevEnvironment()) return;
+  const balance = await publicClient.getBalance({ address: smartAccountAddress });
+  const needed = value + BigInt("500000000000000000");
+  if (balance >= needed) return;
+  console.log(`[AA] Funding smart account ${smartAccountAddress} from Anvil...`);
+  const { fundSmartAccount } = await import("../lib/localFunding");
+  await fundSmartAccount(publicClient, smartAccountAddress, needed - balance + BigInt("1000000000000000000"));
+}
+
+/**
+ * Send a transaction via the authenticated Kernel smart account.
+ * Uses the same code path for both local dev and production:
+ * - Local: passkey-signed UserOp → local Alto bundler (no paymaster)
+ * - Production: passkey-signed UserOp → Pimlico bundler + paymaster
+ */
 async function sendContractTransaction(
   publicClient: PublicClient,
   chainId: number,
@@ -36,52 +93,27 @@ async function sendContractTransaction(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   kernelAccount?: any
 ): Promise<string> {
-  // Detect local development: either Anvil (31337) or forked Sepolia with local RPC
-  const rpcOverride = process.env.NEXT_PUBLIC_RPC_URL || "";
-  const isLocalRpc = rpcOverride.includes("localhost") || rpcOverride.includes("127.0.0.1");
-  const isLocalDev = chainId === 31337 || isLocalRpc;
-
-  if (isLocalDev) {
-    const { sendLocalTransaction, getLocalSignerAddress } = await import("../lib/localAA");
-
-    const effectiveAddress = userAddress || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" as Address;
-    const derivedLocalAddress = getLocalSignerAddress(effectiveAddress);
-
-    const finalData = typeof data === 'function' ? data(derivedLocalAddress) : data;
-
-    // Send transaction using user's deterministic local account
-    // This auto-funds from Anvil if needed
-    const hash = await sendLocalTransaction(publicClient, effectiveAddress, to, finalData, value);
-
-    return hash;
-  }
-
-  // For testnet/mainnet, use ZeroDev
-  const projectId = process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID;
-  if (!projectId) {
-    throw new Error("Transaction sending requires ZeroDev configuration. Set NEXT_PUBLIC_ZERODEV_PROJECT_ID for testnet.");
-  }
-
-  // Import ZeroDev SDK dynamically
   const sdk = await import("@zerodev/sdk");
   const { createKernelAccountClient, constants } = sdk;
 
-  // Use the pre-authenticated kernel account from auth context.
-  // This avoids creating a duplicate passkey validator which could pick up
-  // a stale passkey registered on a different domain (e.g. localhost).
   let account = kernelAccount;
 
   if (!account) {
     // Fallback: create a new passkey validator (requires user interaction)
+    const projectId = process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID;
     const passkey = await import("@zerodev/passkey-validator");
     const { toPasskeyValidator, toWebAuthnKey, PasskeyValidatorContractVersion } = passkey;
 
     const entryPoint = constants.getEntryPoint("0.7");
     const kernelVersion = constants.KERNEL_V3_1;
 
+    const passkeyServerUrl = projectId
+      ? `/api/zerodev/${projectId}`
+      : `/api/zerodev/self-hosted`;
+
     const webAuthnKey = await toWebAuthnKey({
       passkeyName: "Resonate",
-      passkeyServerUrl: `/api/zerodev/${projectId}`,
+      passkeyServerUrl,
       mode: passkey.WebAuthnMode.Login,
       rpID: typeof window !== "undefined" ? window.location.hostname : undefined,
     });
@@ -100,56 +132,40 @@ async function sendContractTransaction(
     });
   }
 
-  // Use Pimlico bundler + paymaster for fully gas-sponsored transactions.
-  // ZeroDev's bundler rejects passkey-based accounts with "Unauthorized: wapk".
-  const pimlicoApiKey = process.env.NEXT_PUBLIC_PIMLICO_API_KEY || "";
-  const bundlerUrl = `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${pimlicoApiKey}`;
+  // Auto-fund on local dev (Anvil has pre-funded accounts)
+  await ensureLocalFunding(publicClient, account.address as Address, value);
 
-  // Custom transport that maps ZeroDev-proprietary methods to Pimlico equivalents.
-  // ZeroDev SDK calls "zd_getUserOperationGasPrice" which Pimlico doesn't support,
-  // but Pimlico has "pimlico_getUserOperationGasPrice" with the same response format.
-  const pimlicoTransport = http(bundlerUrl);
+  const bundlerUrl = getBundlerUrl(chainId);
+  const mappedTransport = createMappedTransport(bundlerUrl);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mappedTransport = (opts: any) => {
-    const transport = pimlicoTransport(opts);
-    const originalRequest = transport.request;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    transport.request = async (args: any) => {
-      const mappedArgs = { ...args };
-      if (args.method === "zd_getUserOperationGasPrice") {
-        mappedArgs.method = "pimlico_getUserOperationGasPrice";
-      }
-      return originalRequest(mappedArgs);
-    };
-    return transport;
-  };
-
-  // Pimlico Paymaster sponsors gas fees so users never need to hold ETH
-  const { createZeroDevPaymasterClient } = await import("@zerodev/sdk");
-  const paymasterClient = createZeroDevPaymasterClient({
-    chain: publicClient.chain,
-    transport: http(bundlerUrl),
-  });
-
-  const kernelClient = await createKernelAccountClient({
+  const clientOpts: any = {
     account,
     chain: publicClient.chain,
     bundlerTransport: mappedTransport,
-    paymaster: paymasterClient,
-  });
+  };
 
-  const finalDataZeroDev = typeof data === 'function' ? data(account.address as Address) : data;
+  // Only use paymaster on non-local environments (local dev is self-funded)
+  if (!isLocalDevEnvironment()) {
+    const { createZeroDevPaymasterClient } = await import("@zerodev/sdk");
+    clientOpts.paymaster = createZeroDevPaymasterClient({
+      chain: publicClient.chain,
+      transport: http(bundlerUrl),
+    });
+  }
 
-  // Send transaction
+  const kernelClient = await createKernelAccountClient(clientOpts);
+  const finalData = typeof data === 'function' ? data(account.address as Address) : data;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const hash = await (kernelClient as any).sendTransaction({
     to,
-    data: finalDataZeroDev,
+    data: finalData,
     value,
     chain: publicClient.chain,
   });
 
-  console.log("[ZeroDev] Transaction submitted! Hash:", hash);
+  console.log("[AA] Transaction submitted! Hash:", hash);
   return hash;
 }
 
@@ -241,8 +257,9 @@ export function useTokenURI(tokenId: bigint | undefined) {
  */
 export function useStemBalance(tokenId: bigint | undefined, account?: Address) {
   const { publicClient, chainId } = useZeroDev();
-  const { address: authAddress } = useAuth();
-  const targetAccount = account || (authAddress as Address | undefined);
+  const { address: authAddress, smartAccountAddress } = useAuth();
+  // Use the smart account address (on-chain identity) for balance queries
+  const targetAccount = account || (smartAccountAddress as Address | undefined) || (authAddress as Address | undefined);
 
   const [balance, setBalance] = useState<bigint>(0n);
   const [loading, setLoading] = useState(false);
@@ -256,16 +273,7 @@ export function useStemBalance(tokenId: bigint | undefined, account?: Address) {
 
     const fetchBalance = async () => {
       try {
-        let resolvedAccount = targetAccount;
-        const rpcOverride = process.env.NEXT_PUBLIC_RPC_URL || "";
-            const isLocalRpc = rpcOverride.includes("localhost") || rpcOverride.includes("127.0.0.1");
-            const isLocalOrFork = chainId === 31337 || isLocalRpc;
-        if (isLocalOrFork && !account) {
-          const { getLocalSignerAddress } = await import("../lib/localAA");
-          resolvedAccount = getLocalSignerAddress(targetAccount);
-        }
-
-        const result = await getBalance(publicClient, chainId, resolvedAccount, tokenId);
+        const result = await getBalance(publicClient, chainId, targetAccount, tokenId);
         if (!cancelled) setBalance(result);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err : new Error(String(err)));
@@ -621,11 +629,6 @@ export function useMintAndListStem() {
 
   const mintAndList = useCallback(
     async (params: Omit<MintParams, 'to' | 'royaltyReceiver'> & Omit<ListParams, 'tokenId'>) => {
-      // Local development doesn't support batching via useContracts.ts yet
-      const isLocalDev = chainId === 31337 || (process.env.NEXT_PUBLIC_RPC_URL || "").includes("localhost");
-      if (isLocalDev) {
-        throw new Error("Batch transaction (mint + list) is only supported on testnet/mainnet with ZeroDev.");
-      }
 
       if (status !== "authenticated" || !address) {
         throw new Error("Wallet not connected");
@@ -715,7 +718,7 @@ export function useMintAndListStem() {
   return { mintAndList, pending, error, txHash };
 }
 
-// Helper to send batch transactions via ZeroDev kernel client
+// Helper to send batch transactions via Kernel client (unified path)
 async function sendBatchContractTransactions(
   publicClient: PublicClient,
   chainId: number,
@@ -724,33 +727,26 @@ async function sendBatchContractTransactions(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   kernelAccount?: any
 ): Promise<string> {
-  const isLocalDev = chainId === 31337;
-  if (isLocalDev) {
-    throw new Error("Batch transactions not implemented for local development wrapper");
-  }
-
-  const projectId = process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID;
-  if (!projectId) {
-    throw new Error("Transaction sending requires ZeroDev configuration. Set NEXT_PUBLIC_ZERODEV_PROJECT_ID for testnet.");
-  }
-
-  // Import ZeroDev SDK dynamically
   const sdk = await import("@zerodev/sdk");
   const { createKernelAccountClient, constants } = sdk;
 
   let account = kernelAccount;
 
   if (!account) {
-    // Fallback: create a new passkey validator (requires user interaction)
+    const projectId = process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID;
     const passkey = await import("@zerodev/passkey-validator");
     const { toPasskeyValidator, toWebAuthnKey, PasskeyValidatorContractVersion } = passkey;
 
     const entryPoint = constants.getEntryPoint("0.7");
     const kernelVersion = constants.KERNEL_V3_1;
 
+    const passkeyServerUrl = projectId
+      ? `/api/zerodev/${projectId}`
+      : `/api/zerodev/self-hosted`;
+
     const webAuthnKey = await toWebAuthnKey({
       passkeyName: "Resonate",
-      passkeyServerUrl: `/api/zerodev/${projectId}`,
+      passkeyServerUrl,
       mode: passkey.WebAuthnMode.Login,
       rpID: typeof window !== "undefined" ? window.location.hostname : undefined,
     });
@@ -769,38 +765,29 @@ async function sendBatchContractTransactions(
     });
   }
 
-  const pimlicoApiKey = process.env.NEXT_PUBLIC_PIMLICO_API_KEY || "";
-  const bundlerUrl = `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${pimlicoApiKey}`;
-  const pimlicoTransport = http(bundlerUrl);
-  
+  // Auto-fund on local dev
+  const totalValue = calls.reduce((sum, c) => sum + (c.value || BigInt(0)), BigInt(0));
+  await ensureLocalFunding(publicClient, account.address as Address, totalValue);
+
+  const bundlerUrl = getBundlerUrl(chainId);
+  const mappedTransport = createMappedTransport(bundlerUrl);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mappedTransport = (opts: any) => {
-    const transport = pimlicoTransport(opts);
-    const originalRequest = transport.request;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    transport.request = async (args: any) => {
-      const mappedArgs = { ...args };
-      if (args.method === "zd_getUserOperationGasPrice") {
-        mappedArgs.method = "pimlico_getUserOperationGasPrice";
-      }
-      return originalRequest(mappedArgs);
-    };
-    return transport;
-  };
-
-  // Pimlico Paymaster sponsors gas fees so users never need to hold ETH
-  const { createZeroDevPaymasterClient: createBatchPaymaster } = await import("@zerodev/sdk");
-  const batchPaymasterClient = createBatchPaymaster({
-    chain: publicClient.chain,
-    transport: http(bundlerUrl),
-  });
-
-  const kernelClient = await createKernelAccountClient({
+  const clientOpts: any = {
     account,
     chain: publicClient.chain,
     bundlerTransport: mappedTransport,
-    paymaster: batchPaymasterClient,
-  });
+  };
+
+  if (!isLocalDevEnvironment()) {
+    const { createZeroDevPaymasterClient } = await import("@zerodev/sdk");
+    clientOpts.paymaster = createZeroDevPaymasterClient({
+      chain: publicClient.chain,
+      transport: http(bundlerUrl),
+    });
+  }
+
+  const kernelClient = await createKernelAccountClient(clientOpts);
 
   // Send batch as a single UserOperation
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -812,14 +799,13 @@ async function sendBatchContractTransactions(
     })),
   });
 
-  // Wait for the bundler to mine the UserOperation
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const receipt = await (kernelClient as unknown as any).waitForUserOperationReceipt({
     hash: userOpHash,
   });
 
   const hash = receipt.receipt.transactionHash;
-  console.log("[ZeroDev] Batch Transaction submitted! Hash:", hash);
+  console.log("[AA] Batch Transaction submitted! Hash:", hash);
   return hash;
 }
 

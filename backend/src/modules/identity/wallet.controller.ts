@@ -140,34 +140,56 @@ export class WalletController {
 
   // ============ Agent Wallet Endpoints ============
 
+  /**
+   * Enable agent wallet — generates the agent's keypair server-side
+   * and returns the agent's public address for the frontend to build
+   * the permission validator around.
+   */
   @Post("agent/enable")
   @UseGuards(AuthGuard("jwt"))
-  enableAgentWallet(@Req() req: any) {
-    return this.agentWalletService.enable(req.user.userId);
-  }
-
-  @Post("agent/session-key/register")
-  @UseGuards(AuthGuard("jwt"))
-  registerSessionKey(
+  enableAgentWallet(
     @Req() req: any,
-    @Body() body: {
-      serializedKey: string;
-      permissions: {
+    @Body() body?: {
+      permissions?: {
         target: string;
         function: string;
         totalCapWei: string;
         perTxCapWei: string;
         rateLimit: number;
       };
-      validUntil: string; // ISO date
+      validityHours?: number;
+    },
+  ) {
+    const defaultPermissions = {
+      target: process.env.MARKETPLACE_ADDRESS ?? "",
+      function: "buy(uint256,uint256)",
+      totalCapWei: "50000000000000000000",
+      perTxCapWei: "5000000000000000000",
+      rateLimit: 10,
+    };
+    return this.agentWalletService.enable(
+      req.user.userId,
+      body?.permissions ?? defaultPermissions,
+      body?.validityHours ?? 24,
+    );
+  }
+
+  /**
+   * Activate the session key after the user signs the approval.
+   * The frontend sends the approval data (NOT the private key).
+   */
+  @Post("agent/session-key/activate")
+  @UseGuards(AuthGuard("jwt"))
+  activateSessionKey(
+    @Req() req: any,
+    @Body() body: {
+      approvalData: string;
       txHash?: string;
     },
   ) {
-    return this.agentWalletService.registerSessionKey(
+    return this.agentWalletService.activateSessionKey(
       req.user.userId,
-      body.serializedKey,
-      body.permissions,
-      new Date(body.validUntil),
+      body.approvalData,
       body.txHash,
     );
   }
@@ -194,6 +216,34 @@ export class WalletController {
   @UseGuards(AuthGuard("jwt"))
   getAgentTransactions(@Req() req: any) {
     return this.agentPurchaseService.getTransactions(req.user.userId);
+  }
+
+  /**
+   * Rotate the agent's key — generates a new keypair, revokes old.
+   * Returns the new agent address; frontend must re-approve permissions.
+   */
+  @Post("agent/rotate")
+  @UseGuards(AuthGuard("jwt"))
+  rotateAgentKey(
+    @Req() req: any,
+    @Body() body?: {
+      permissions?: any;
+      validityHours?: number;
+    },
+  ) {
+    const defaultPermissions = {
+      target: process.env.MARKETPLACE_ADDRESS || "",
+      function: "buy(uint256,uint256)",
+      totalCapWei: "50000000000000000000",
+      perTxCapWei: "5000000000000000000",
+      rateLimit: 10,
+    };
+
+    return this.agentWalletService.rotateKey(
+      req.user.userId,
+      body?.permissions || defaultPermissions,
+      body?.validityHours || 24,
+    );
   }
 
   @Post("agent/purchase")

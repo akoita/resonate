@@ -648,29 +648,68 @@ export type AgentTransaction = {
   trackArtist: string | null;
 };
 
-export async function enableAgentWallet(token: string): Promise<AgentWalletStatus> {
-  return apiRequest<AgentWalletStatus>(
+export type EnableAgentWalletResponse = {
+  agentAddress: string;
+  status: AgentWalletStatus;
+};
+
+export async function enableAgentWallet(
+  token: string,
+  input?: {
+    permissions?: SessionKeyPermissions;
+    validityHours?: number;
+  },
+): Promise<EnableAgentWalletResponse> {
+  return apiRequest<EnableAgentWalletResponse>(
     "/wallet/agent/enable",
-    { method: "POST" },
+    {
+      method: "POST",
+      ...(input
+        ? {
+            body: JSON.stringify(input),
+            headers: { "Content-Type": "application/json" },
+          }
+        : {}),
+    },
     token
   );
 }
 
-export async function registerAgentSessionKey(
+export async function activateAgentSessionKey(
   token: string,
   input: {
-    serializedKey: string;
-    permissions: SessionKeyPermissions;
-    validUntil: string; // ISO date
+    approvalData: string;
     txHash?: string;
   },
-): Promise<{ id: string; userId: string }> {
-  return apiRequest<{ id: string; userId: string }>(
-    "/wallet/agent/session-key/register",
+): Promise<{ id: string; userId: string; agentAddress: string }> {
+  return apiRequest<{ id: string; userId: string; agentAddress: string }>(
+    "/wallet/agent/session-key/activate",
     {
       method: "POST",
       body: JSON.stringify(input),
       headers: { "Content-Type": "application/json" },
+    },
+    token
+  );
+}
+
+export async function rotateAgentKey(
+  token: string,
+  input?: {
+    permissions?: Record<string, unknown>;
+    validityHours?: number;
+  },
+): Promise<{ agentAddress: string; oldAgentAddress: string | null }> {
+  return apiRequest<{ agentAddress: string; oldAgentAddress: string | null }>(
+    "/wallet/agent/rotate",
+    {
+      method: "POST",
+      ...(input
+        ? {
+            body: JSON.stringify(input),
+            headers: { "Content-Type": "application/json" },
+          }
+        : {}),
     },
     token
   );

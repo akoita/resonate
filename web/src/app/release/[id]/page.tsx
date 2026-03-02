@@ -13,6 +13,7 @@ import { useToast } from "../../../components/ui/Toast";
 // import { addTracksByCriteria } from "../../../lib/playlistStore";
 import { formatDuration } from "../../../lib/metadataExtractor";
 import { useAuth } from "../../../components/auth/AuthProvider";
+import { sanitizeStemUrl } from "../../../lib/urlUtils";
 import { MintStemButton } from "../../../components/marketplace/MintStemButton";
 import { TrackActionMenu } from "../../../components/ui/TrackActionMenu";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
@@ -185,13 +186,16 @@ export default function ReleaseDetails() {
     if (!release?.tracks) return;
     const playableTracks: LocalTrack[] = (release.tracks || []).map((t) => {
       // Use ORIGINAL stem for uploaded tracks, or 'master' for AI-generated tracks
-      const originalStem = t.stems?.find(s => s.type === 'ORIGINAL')
+      const originalStem = t.stems?.find(s => s.type?.toUpperCase() === 'ORIGINAL')
         || t.stems?.find(s => s.type === 'master')
         || t.stems?.[0]; // fallback to first stem
 
       // Construct stream URL: prefer stem URI, fall back to catalog stream endpoint
-      const streamUrl = originalStem?.uri
-        || (release.id && t.id ? `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000"}/catalog/releases/${release.id}/tracks/${t.id}/stream` : undefined);
+      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+      const rawUrl = originalStem?.uri
+        || (release.id && t.id ? `${apiBase}/catalog/releases/${release.id}/tracks/${t.id}/stream` : undefined);
+      // Sanitize: replace Docker-internal hostnames and resolve relative paths
+      const streamUrl = sanitizeStemUrl(rawUrl, apiBase);
 
       return {
         id: t.id,

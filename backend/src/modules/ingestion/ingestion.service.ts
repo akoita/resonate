@@ -117,7 +117,7 @@ export class IngestionService {
     if (input.artwork) {
       artworkData = input.artwork.buffer;
       artworkMimeType = input.artwork.mimetype;
-      artworkUrl = `${process.env.BACKEND_URL || 'http://localhost:3000'}/catalog/releases/${releaseId}/artwork`;
+      artworkUrl = `/catalog/releases/${releaseId}/artwork`;
     }
 
     const tracks: any[] = [];
@@ -172,7 +172,7 @@ export class IngestionService {
         console.error(`[Ingestion] Failed to upload original stem ${stemId} to storage:`, err);
       }
 
-      const publicUri = storageResult?.uri || `${process.env.BACKEND_URL || 'http://localhost:3000'}/catalog/stems/${stemId}/blob`;
+      const publicUri = storageResult?.uri || `/catalog/stems/${stemId}/blob`;
 
       tracks.push({
         id: trackId,
@@ -375,7 +375,10 @@ export class IngestionService {
             bodyTimeout: 0,           // unlimited — response body can be large
           });
           const demucsBaseUrl = process.env.DEMUCS_WORKER_URL || 'http://localhost:8000';
-          const response = await fetch(`${demucsBaseUrl}/separate/${input.releaseId}/${track.id}`, {
+          // Pass callback_url so the worker POSTs progress updates to /ingestion/progress/{releaseId}/{trackId}
+          const callbackUrl = process.env.BACKEND_URL || 'http://host.docker.internal:3000';
+          const separateUrl = `${demucsBaseUrl}/separate/${input.releaseId}/${track.id}?callback_url=${encodeURIComponent(callbackUrl)}`;
+          const response = await fetch(separateUrl, {
             method: "POST",
             body: formData,
             signal: AbortSignal.timeout(600_000), // 10 minutes

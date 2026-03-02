@@ -11,9 +11,11 @@ const nextConfig = {
   },
   async rewrites() {
     return [
+      // ZeroDev passkey proxy is handled by /api/zerodev/[...slug]/route.ts
+      // which routes to either self-hosted (NestJS) or ZeroDev based on slug
       {
-        source: "/api/zerodev/:path*",
-        destination: "https://passkeys.zerodev.app/api/v2/:path*",
+        source: "/api/bundler/:path*",
+        destination: "http://localhost:4337/:path*",
       },
       {
         source: "/api/metadata/:path*",

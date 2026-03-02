@@ -30,7 +30,7 @@ export const LOCAL_AA_CONTRACTS = {
     ecdsaValidator: "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9" as Address,
 };
 
-export const LOCAL_BUNDLER_URL = "http://localhost:4337";
+export const LOCAL_BUNDLER_URL = "http://localhost:3001/api/bundler";
 export const LOCAL_RPC_URL = "http://localhost:8545";
 
 // Secret salt for deterministic key derivation (LOCAL DEV ONLY)

@@ -42,28 +42,39 @@ fi
 echo -e "${GREEN}Detected chain ID: $CHAIN_ID${NC}"
 echo ""
 
-BROADCAST_FILE="$PROJECT_ROOT/contracts/broadcast/DeployProtocol.s.sol/${CHAIN_ID}/run-latest.json"
+SEPOLIA_DEPLOY_FILE="$PROJECT_ROOT/contracts/deployments/sepolia.json"
 
-# Check if broadcast file exists
-if [[ ! -f "$BROADCAST_FILE" ]]; then
-    echo "Error: No deployment broadcast found at:"
-    echo "  $BROADCAST_FILE"
-    echo ""
-    echo "Run 'make deploy-contracts' first."
-    exit 1
+# On a Sepolia fork, use the existing Sepolia deployment addresses
+# (the contracts are already deployed on the fork from the real Sepolia state)
+if [[ "$CHAIN_ID" == "11155111" && -f "$SEPOLIA_DEPLOY_FILE" ]]; then
+    echo -e "${GREEN}Sepolia fork detected — using existing Sepolia deployment addresses${NC}"
+    STEM_NFT=$(jq -r '.contracts.StemNFT' "$SEPOLIA_DEPLOY_FILE")
+    MARKETPLACE=$(jq -r '.contracts.StemMarketplaceV2' "$SEPOLIA_DEPLOY_FILE")
+    TRANSFER_VALIDATOR=$(jq -r '.contracts.TransferValidator' "$SEPOLIA_DEPLOY_FILE")
+else
+    BROADCAST_FILE="$PROJECT_ROOT/contracts/broadcast/DeployProtocol.s.sol/${CHAIN_ID}/run-latest.json"
+
+    # Check if broadcast file exists
+    if [[ ! -f "$BROADCAST_FILE" ]]; then
+        echo "Error: No deployment broadcast found at:"
+        echo "  $BROADCAST_FILE"
+        echo ""
+        echo "Run 'make deploy-contracts' first."
+        exit 1
+    fi
+
+    # Check for jq
+    if ! command -v jq &> /dev/null; then
+        echo "Error: 'jq' is required but not installed."
+        echo "Install with: sudo apt install jq  (or brew install jq on macOS)"
+        exit 1
+    fi
+
+    # Parse the JSON — filter to CREATE transactions only (skip CALLs)
+    STEM_NFT=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemNFT") | .contractAddress' "$BROADCAST_FILE")
+    MARKETPLACE=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemMarketplaceV2") | .contractAddress' "$BROADCAST_FILE")
+    TRANSFER_VALIDATOR=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "TransferValidator") | .contractAddress' "$BROADCAST_FILE")
 fi
-
-# Check for jq
-if ! command -v jq &> /dev/null; then
-    echo "Error: 'jq' is required but not installed."
-    echo "Install with: sudo apt install jq  (or brew install jq on macOS)"
-    exit 1
-fi
-
-# Parse the JSON — filter to CREATE transactions only (skip CALLs)
-STEM_NFT=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemNFT") | .contractAddress' "$BROADCAST_FILE")
-MARKETPLACE=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemMarketplaceV2") | .contractAddress' "$BROADCAST_FILE")
-TRANSFER_VALIDATOR=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "TransferValidator") | .contractAddress' "$BROADCAST_FILE")
 
 echo -e "${GREEN}Deployed Protocol Addresses:${NC}"
 echo "  StemNFT:             $STEM_NFT"

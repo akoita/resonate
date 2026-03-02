@@ -30,8 +30,8 @@
 ### Quick Start
 
 ```bash
-# 1. Start infrastructure (Postgres, Redis, Demucs worker)
-make dev-up
+# 1. Start infrastructure (Postgres, Redis, Pub/Sub, Demucs worker)
+make dev-up           # first time, or after worker code changes: make dev-up-build
 
 # 2. Set up backend (first time: copy .env)
 cp backend/.env.example backend/.env
@@ -41,18 +41,22 @@ make backend-dev    # runs migrations + dev server on :3000
 make web-dev        # Next.js dev server on :3001
 ```
 
+> **Note:** `make dev-up` always rebuilds Docker images to pick up code changes.
+> Use `make dev-up-quick` to skip rebuilds when you know images are current.
+
 ### Useful Commands
 
-| Command               | Description                            |
-| --------------------- | -------------------------------------- |
-| `make dev-up`         | Start Postgres + Redis + Demucs worker |
-| `make dev-down`       | Stop all services + remove volumes     |
-| `make backend-dev`    | Backend dev server (:3000)             |
-| `make web-dev`        | Frontend dev server (:3001)            |
-| `make worker-health`  | Check Demucs worker status             |
-| `make worker-logs`    | Tail Demucs worker logs                |
-| `make worker-rebuild` | Rebuild worker image                   |
-| `make db-reset`       | Reset database (drops all data)        |
+| Command               | Description                                    |
+| --------------------- | ---------------------------------------------- |
+| `make dev-up`         | Start infra (Postgres, Redis, Pub/Sub, Demucs) |
+| `make dev-up-build`   | Start infra + rebuild Docker images            |
+| `make dev-down`       | Stop all services + remove volumes             |
+| `make backend-dev`    | Backend dev server (:3000)                     |
+| `make web-dev`        | Frontend dev server (:3001)                    |
+| `make worker-health`  | Check Demucs worker status                     |
+| `make worker-logs`    | Tail Demucs worker logs                        |
+| `make worker-rebuild` | Rebuild worker image (no-cache)                |
+| `make db-reset`       | Reset database (drops all data)                |
 
 ---
 
@@ -185,17 +189,55 @@ graph LR
 | **Recommendations** | Personalized music discovery                             | `recommendations.service.ts`                                                                          |
 | **Analytics**       | Play counts, trending stems, artist stats                | `analytics.service.ts`                                                                                |
 
+#### Storage Provider Configuration
+
+The storage layer is abstracted via `StorageProvider` (`backend/src/modules/storage/`). All providers implement the same interface (`upload`, `download`, `delete`), so they're fully interchangeable.
+
+Set the backend env var `STORAGE_PROVIDER` to choose which provider to use:
+
+| Value                | Provider                    | Status                     | Description                                                            |
+| -------------------- | --------------------------- | -------------------------- | ---------------------------------------------------------------------- |
+| `local` (default)    | `LocalStorageProvider`      | ✅ Production-ready (dev)  | Stores files in `backend/uploads/stems/`. No config needed.            |
+| `ipfs` or `filecoin` | `LighthouseStorageProvider` | ⚠️ Functional with caveats | Uploads to Lighthouse (IPFS/Filecoin pinning). Returns `ipfs://` CIDs. |
+| `gcs`                | `GcsStorageProvider`        | ⚠️ Functional with caveats | Google Cloud Storage via JSON API. Auth via GCE metadata server.       |
+
+**Environment variables by provider:**
+
+| Variable             | Provider | Required | Description                                                                                          |
+| -------------------- | -------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| `STORAGE_PROVIDER`   | All      | No       | Provider selection: `local`, `ipfs`, `filecoin`, `gcs`. Default: `local`                             |
+| `LIGHTHOUSE_API_KEY` | IPFS     | **Yes**  | Lighthouse Web3 SDK API key. Get one at [files.lighthouse.storage](https://files.lighthouse.storage) |
+| `GCS_STEMS_BUCKET`   | GCS      | No       | GCS bucket name. Default: `resonate-stems-dev`                                                       |
+
+**Known gaps:**
+
+| Provider | Issue                                                                   | Impact                                      |
+| -------- | ----------------------------------------------------------------------- | ------------------------------------------- |
+| **IPFS** | Returns mock CIDs if `LIGHTHOUSE_API_KEY` is missing instead of failing | Stems appear "stored" but are unplayable    |
+| **IPFS** | `delete()` is a no-op stub                                              | Minor — IPFS content is immutable by design |
+| **GCS**  | Returns `provider: 'local'` instead of `'gcs'` in `StorageResult`       | Misleading provider tracking in DB          |
+| **GCS**  | `StorageResult` type doesn't include `'gcs'` as valid provider          | TypeScript type safety gap                  |
+| **GCS**  | Auth only works on GCE/Cloud Run (metadata server)                      | Cannot test GCS locally without emulator    |
+
+> **Note:** Stem URIs and artwork URLs are stored as **relative paths** in the database (e.g., `/catalog/stems/{id}/blob`).
+> The frontend prepends `API_BASE` for browser access, and the NFT metadata controller prepends `BACKEND_URL` for on-chain consumers.
+> IPFS URIs (`ipfs://...`) are the exception — they pass through as absolute gateway URLs.
+
 ### Security Layers
 
-| Layer                  | Mechanism                              | Detail                                           |
-| ---------------------- | -------------------------------------- | ------------------------------------------------ |
-| **External access**    | IAP (Identity-Aware Proxy)             | Only whitelisted Google accounts — no VPN needed |
-| **Service networking** | VPC connector + private IPs            | Cloud SQL and Redis have zero public exposure    |
-| **Secrets**            | GCP Secret Manager                     | Injected at runtime, never in env vars or code   |
-| **Docker images**      | Private Artifact Registry              | Not publicly accessible                          |
-| **CI/CD auth**         | Workload Identity Federation           | Keyless GitHub → GCP, no service account JSON    |
-| **Network firewall**   | Deny-all ingress + internal-only allow | Custom VPC, no default network                   |
-| **Database**           | Daily backups + PITR                   | Point-in-time recovery, 7-day retention          |
+| Layer                  | Mechanism                              | Detail                                                       |
+| ---------------------- | -------------------------------------- | ------------------------------------------------------------ |
+| **External access**    | IAP (Identity-Aware Proxy)             | Only whitelisted Google accounts — no VPN needed             |
+| **Service networking** | VPC connector + private IPs            | Cloud SQL and Redis have zero public exposure                |
+| **Secrets**            | GCP Secret Manager                     | Injected at runtime, never in env vars or code               |
+| **Agent key encrypt**  | AES-256-GCM / GCP Cloud KMS            | Private keys encrypted at rest, zeroed from memory after use |
+| **Agent key audit**    | KeyAuditLog (append-only)              | Every decrypt, sign, rotate, and revoke is logged            |
+| **Docker images**      | Private Artifact Registry              | Not publicly accessible                                      |
+| **CI/CD auth**         | Workload Identity Federation           | Keyless GitHub → GCP, no service account JSON                |
+| **Network firewall**   | Deny-all ingress + internal-only allow | Custom VPC, no default network                               |
+| **Database**           | Daily backups + PITR                   | Point-in-time recovery, 7-day retention                      |
+
+> See [Agent Wallet Security](agent-wallet-security.md) for encryption setup, key rotation, and audit logging.
 
 ---
 
@@ -455,11 +497,11 @@ The backend automatically uses the worker's internal IP via `DEMUCS_WORKER_URL` 
 
 ### Environment Variables (Worker)
 
-| Variable       | Description                    | Default                |
-| -------------- | ------------------------------ | ---------------------- |
-| `STORAGE_MODE` | `local` (dev) or `gcs` (cloud) | `local`                |
-| `GCS_BUCKET`   | GCS bucket for stem uploads    | (required in gcs mode) |
-| `OUTPUT_DIR`   | Local output directory         | `/outputs`             |
+| Variable           | Description                    | Default                |
+| ------------------ | ------------------------------ | ---------------------- |
+| `STORAGE_PROVIDER` | `local` (dev) or `gcs` (cloud) | `local`                |
+| `GCS_BUCKET`       | GCS bucket for stem uploads    | (required in gcs mode) |
+| `OUTPUT_DIR`       | Local output directory         | `/outputs`             |
 
 > **GPU Quota**: Check IAM & Admin → Quotas → `NVIDIA_T4_GPUS`. Default is 0 for new projects.
 >

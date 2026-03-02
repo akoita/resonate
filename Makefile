@@ -1,5 +1,57 @@
 dev-up:
+	@# Pre-check for port conflicts that silently break docker compose up
+	@for port_info in "6379:Redis" "5432:Postgres" "8000:Demucs worker" "8085:PubSub emulator"; do \
+		port=$$(echo $$port_info | cut -d: -f1); \
+		svc=$$(echo $$port_info | cut -d: -f2); \
+		pid=$$(lsof -ti :$$port 2>/dev/null | head -1); \
+		if [ -n "$$pid" ]; then \
+			container=$$(docker ps --filter "publish=$$port" --format '{{.Names}}' 2>/dev/null | head -1); \
+			if [ -n "$$container" ] && echo "$$container" | grep -q "^resonate-"; then continue; fi; \
+			echo ""; \
+			echo "⚠️  Port $$port ($$svc) is already in use by: $${container:-PID $$pid}"; \
+			echo "   Stop it first:  docker stop $$container  OR  kill $$pid"; \
+			echo ""; \
+		fi; \
+	done
 	docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+	@sleep 3
+	@if ! docker compose ps demucs-worker 2>/dev/null | grep -q 'Up'; then \
+		echo ""; \
+		echo "⚠️  WARNING: demucs-worker failed to start (GPU mode)."; \
+		echo "   Falling back to CPU-only mode..."; \
+		docker compose up -d demucs-worker 2>&1; \
+		sleep 3; \
+		if docker compose ps demucs-worker 2>/dev/null | grep -q 'Up'; then \
+			echo "   ✅ Worker started in CPU mode."; \
+		else \
+			echo "   ❌ Worker failed to start. Check: docker compose logs demucs-worker"; \
+		fi; \
+	fi
+	@# Final health check summary
+	@echo ""
+	@echo "━━━ Container Status ━━━"
+	@for svc in postgres redis pubsub-emulator demucs-worker; do \
+		status=$$(docker compose ps $$svc --format '{{.Status}}' 2>/dev/null); \
+		if echo "$$status" | grep -q 'Up'; then \
+			echo "  ✅ $$svc: $$status"; \
+		elif [ -z "$$status" ]; then \
+			echo "  ⚪ $$svc: not created"; \
+		else \
+			echo "  ❌ $$svc: $$status"; \
+		fi; \
+	done
+	@echo ""
+
+dev-up-build:
+	docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build -d
+	@sleep 3
+	@if ! docker compose ps demucs-worker --format '{{.Status}}' 2>/dev/null | grep -q 'Up'; then \
+		echo ""; \
+		echo "⚠️  WARNING: demucs-worker failed to start (GPU mode)."; \
+		echo "   Falling back to CPU-only mode..."; \
+		docker compose up --build -d demucs-worker; \
+		echo "   ✅ Worker started in CPU mode."; \
+	fi
 
 dev-down:
 	docker compose down -v
@@ -108,7 +160,7 @@ backend-dev: dev-clean
 	cd backend && npm run prisma:generate && npm run prisma:migrate && npm run start:dev
 
 web-dev: dev-clean
-	cd web && npm run dev
+	cd web && NEXT_PUBLIC_API_URL=http://localhost:3000 npm run dev
 
 db-reset:
 	cd backend && npx prisma migrate reset --force
@@ -143,12 +195,22 @@ local-aa-deploy:
 	./scripts/update-aa-config.sh
 
 # Deploy protocol contracts (StemNFT, Marketplace, TransferValidator)
+# On a Sepolia fork, contracts already exist — only .env config is updated.
+# On local-only (chain 31337), contracts are deployed fresh via forge.
 deploy-contracts:
-	@echo "Deploying Resonate Protocol contracts..."
-	cd contracts && forge script script/DeployProtocol.s.sol --rpc-url http://localhost:8545 --broadcast
-	@echo ""
+	@if docker compose --profile fork-aa ps anvil-fork --format '{{.Status}}' 2>/dev/null | grep -q 'Up'; then \
+		echo "Sepolia fork detected — contracts already deployed on Sepolia."; \
+		echo "Updating .env files with existing Sepolia deployment addresses..."; \
+	else \
+		echo "Deploying Resonate Protocol contracts..."; \
+		cd contracts && forge script script/DeployProtocol.s.sol --rpc-url http://localhost:8545 --broadcast; \
+		echo ""; \
+	fi
 	@echo "Updating configuration files..."
 	./scripts/update-protocol-config.sh
+	@echo "Clearing Next.js cache (env vars are baked at build time)..."
+	@rm -rf web/.next
+	@echo "✓ Done — restart frontend to use contract addresses"
 
 # Full local setup: infra + AA contracts + protocol contracts
 contracts-deploy-local: local-aa-up
@@ -163,7 +225,8 @@ local-aa-config:
 
 # Start web frontend in local AA mode
 web-dev-local:
-	cd web && NEXT_PUBLIC_CHAIN_ID=31337 npm run dev
+	@rm -rf web/.next
+	cd web && NEXT_PUBLIC_API_URL=http://localhost:3000 NEXT_PUBLIC_CHAIN_ID=31337 npm run dev
 
 # View local AA logs
 local-aa-logs:
@@ -196,7 +259,8 @@ local-aa-fork:
 
 # Start web frontend in forked Sepolia mode
 web-dev-fork:
-	cd web && NEXT_PUBLIC_CHAIN_ID=11155111 NEXT_PUBLIC_RPC_URL=http://localhost:8545 npm run dev
+	@rm -rf web/.next
+	cd web && NEXT_PUBLIC_API_URL=http://localhost:3000 NEXT_PUBLIC_ZERODEV_PROJECT_ID= NEXT_PUBLIC_CHAIN_ID=11155111 NEXT_PUBLIC_RPC_URL=http://localhost:8545 npm run dev
 
 # ============================================
 # Demucs AI Stem Separation Worker

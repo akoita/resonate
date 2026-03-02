@@ -59,7 +59,7 @@
   - Old `VertexAiAdapter` preserved as fallback (`AGENT_RUNTIME=vertex`).
 - **On-chain purchase integration**: Negotiator looks up active `StemListing`
   records and routes purchases through `AgentPurchaseService` for real UserOps.
-  Falls back to mock transactions for unlisted tracks or when `AA_SKIP_BUNDLER=true`.
+  Falls back to off-chain tracking for unlisted tracks (no marketplace listing).
 - **Listing-aware track selection**: `catalog.search` annotates results with
   `hasListing` flag; the selector and ADK system prompt both prioritize
   tracks with active marketplace listings.

@@ -6,12 +6,9 @@ import { clearEmbeddedAccount } from "../../lib/embedded_wallet";
 import { syncPlaylists } from "../../lib/playlistStore";
 import { useZeroDev } from "./ZeroDevProviderClient";
 import type { WebAuthnMode } from "@zerodev/passkey-validator";
-import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 // Local AA contacts for Anvil (deployed by DeployLocalAA.s.sol)
 const LOCAL_ENTRY_POINT = "0x5FbDB2315678afecb367f032d93F642f64180aa3" as const;
-const LOCAL_KERNEL_FACTORY = "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9" as const;
-const LOCAL_ECDSA_VALIDATOR = "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9" as const;
 
 /**
  * Get the correct EntryPoint based on chain ID
@@ -39,6 +36,8 @@ type AuthState = {
   error?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   kernelAccount: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  webAuthnKey: any;
   /** All Smart Account addresses this user has ever authenticated with */
   knownAddresses: string[];
   /** The actual on-chain Smart Account address (may differ from auth address) */
@@ -133,6 +132,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
   // Keep track of the active account in memory if possible (for mock mode especially)
   const [activeAccount, setActiveAccount] = useState<unknown>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [storedWebAuthnKey, setStoredWebAuthnKey] = useState<any>(null);
 
   const refreshWallet = useCallback(async () => {
     if (!token || !address) return;
@@ -159,57 +160,31 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     if (activeAccount) return activeAccount;
 
     const sdk = await import("@zerodev/sdk");
-    const ecdsa = await import("@zerodev/ecdsa-validator");
-    const passkey = await import("@zerodev/passkey-validator");
-
     const { createKernelAccount, constants } = sdk;
-    const { signerToEcdsaValidator } = ecdsa;
+    const passkey = await import("@zerodev/passkey-validator");
     const { toPasskeyValidator, toWebAuthnKey, PasskeyValidatorContractVersion } = passkey;
 
-    if (process.env.NODE_ENV === "development" && (!projectId || chainId === 31337)) {
-      console.warn("Local development or missing Project ID - using mock ECDSA signer (Kernel v3)");
+    // Always use real passkeys (either self-hosted or ZeroDev)
+    // This ensures local dev validates the same auth path as production.
 
-      let privateKey = localStorage.getItem("mock_pk") as `0x${string}`;
-      if (!privateKey) {
-        privateKey = generatePrivateKey();
-        localStorage.setItem("mock_pk", privateKey);
-      }
-      const signer = privateKeyToAccount(privateKey);
-
-
-      // In Local Dev Mode, we MUST use the EOA (Signer) directly for Identity and Signing.
-      // Why? Because Lit Protocol (running on public internet) CANNOT verify EIP-1271 signatures
-      // from a Smart Account deployed on Localhost (unreachable).
-      // By using the EOA, we return a standard ECDSA signature which Lit verifies off-chain (math).
-      const mockAccount = {
-        ...signer,
-        address: signer.address,
-        signMessage: async ({ message }: { message: string }) => {
-          return signer.signMessage({ message });
-        }
-      };
-
-      setActiveAccount(mockAccount);
-      // NOTE: Do NOT set userId/address/role/status here.
-      // This function can be called from signMessage() (e.g. during stem decryption)
-      // and overwriting userId would break isOwner checks.
-      // Auth state (userId, address, role, status) is properly set by authenticate()
-      // after JWT verification.
-      localStorage.setItem("mock_address", mockAccount.address);
-      localStorage.setItem(ADDRESS_KEY, mockAccount.address);
-
-      return mockAccount;
-    }
-
-    if (!projectId) throw new Error("ZeroDev Project ID is not configured.");
-
-    // Real Passkey
+    // Path 2 & 3: Real Passkeys (either self-hosted or ZeroDev)
     const entryPoint = await getLocalEntryPoint(chainId);
-    const kernelVersion = chainId === 31337 ? "0.3.3" : constants.KERNEL_V3_1;
+    const kernelVersion = constants.KERNEL_V3_1;
+
+    // Determine passkey server URL:
+    // - With projectId: ZeroDev hosted (existing)
+    // - Without projectId: Self-hosted on NestJS backend (no ZeroDev dependency)
+    const passkeyServerUrl = projectId
+      ? `/api/zerodev/${projectId}`
+      : `/api/zerodev/self-hosted`;
+
+    if (!projectId) {
+      console.log("[Auth] Using self-hosted Passkey server (no ZeroDev Project ID)");
+    }
 
     const webAuthnKey = await toWebAuthnKey({
       passkeyName: "Resonate",
-      passkeyServerUrl: `/api/zerodev/${projectId}`,
+      passkeyServerUrl,
       mode,
       rpID: typeof window !== "undefined" ? window.location.hostname : undefined,
     });
@@ -244,6 +219,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       const parsed = connectResult as Record<string, any>;
       const account = parsed.account ?? connectResult;
       const webAuthnKey = parsed.webAuthnKey;
+      if (webAuthnKey) setStoredWebAuthnKey(webAuthnKey);
       const saAddress = (account as Record<string, unknown>).address as string;
 
       console.log("[Auth] SA Address:", saAddress);
@@ -289,10 +265,15 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       // Accumulate the SA address (the on-chain identity) for marketplace filtering
       addKnownAddress(saAddress);
 
+      // Return the account so callers can use it immediately
+      // (React state update from setActiveAccount won't flush until next render)
+      return account;
+
     } catch (err) {
       console.error(err);
       setError((err as Error).message);
       setStatus("error");
+      return null;
     }
   }, [getOrConnectAccount, chainId, projectId, resolveAuth]);
 
@@ -310,7 +291,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
   const login = useCallback(async () => {
     const { WebAuthnMode } = await import("@zerodev/passkey-validator");
-    await authenticate(WebAuthnMode.Login);
+    return authenticate(WebAuthnMode.Login);
   }, [authenticate]);
 
   const signup = useCallback(async () => {
@@ -346,22 +327,23 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     setActiveAccount(null);
   }, []);
 
-  // Auto-init mock account in dev mode to ensure address consistency
+  // Auto-init mock account for pure local Anvil (chainId 31337)
+  // Passkey auth on forked Sepolia requires user gesture (click), so no auto-init there
   const didInit = useRef(false);
   useEffect(() => {
-    const isDev = !process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID;
+    const isLocalAnvil = chainId === 31337;
     // Skip if already authenticated via localStorage (e.g., E2E mock auth)
     const hasStoredAuth = localStorage.getItem(TOKEN_KEY) && localStorage.getItem(ADDRESS_KEY);
-    // Only run if dev mode, not yet initialized, no stored auth, and status is idle
-    if (isDev && !didInit.current && !hasStoredAuth && status === "idle") {
+    // Only auto-login on local Anvil where mock ECDSA doesn't need user gesture
+    if (isLocalAnvil && !didInit.current && !hasStoredAuth && status === "idle") {
       didInit.current = true;
-      console.log("Dev mode detected, performing full login with mock account...");
+      console.log("Local Anvil detected, performing auto-login with mock account...");
       login().catch(e => {
         console.error("Mock login failed:", e);
         didInit.current = false; // Reset on failure so we can try again if needed
       });
     }
-  }, [login, status]);
+  }, [login, status, chainId]);
 
   const value = useMemo<AuthState>(
     () => ({
@@ -373,6 +355,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       wallet,
       error,
       kernelAccount: activeAccount,
+      webAuthnKey: storedWebAuthnKey,
       knownAddresses: getKnownAddresses(),
       smartAccountAddress,
       connect,
@@ -384,7 +367,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       refreshWallet,
       signMessage,
     }),
-    [status, address, token, role, userId, wallet, error, activeAccount, smartAccountAddress, connect, login, signup, connectPrivy, connectEmbedded, disconnect, refreshWallet, signMessage]
+    [status, address, token, role, userId, wallet, error, activeAccount, storedWebAuthnKey, smartAccountAddress, connect, login, signup, connectPrivy, connectEmbedded, disconnect, refreshWallet, signMessage]
   );
 
 

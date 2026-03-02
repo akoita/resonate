@@ -113,7 +113,7 @@ services:
     environment:
       - OUTPUT_DIR=/outputs
       - STORAGE_MODE=local
-      - PROCESSING_MODE=${PROCESSING_MODE:-http}
+      - PROCESSING_MODE=${PROCESSING_MODE:-pubsub}
       - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
       - GCP_PROJECT_ID=resonate-local
       - PUBSUB_SUBSCRIPTION=stem-separate-worker

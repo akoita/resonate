@@ -62,12 +62,12 @@ export class MetadataController {
         const release = stem.track?.release;
 
         // Artwork logic: Stem > Release URL > Release blob endpoint > Default
-        let artworkUrl = this.toPublicUrl(stem.artworkUrl || release?.artworkUrl);
+        let artworkUrl = this.toRelativeUrl(stem.artworkUrl || release?.artworkUrl);
         if (!artworkUrl && release?.id && release?.artworkMimeType) {
-          artworkUrl = `${process.env.BACKEND_URL || "http://localhost:3000"}/catalog/releases/${release.id}/artwork`;
+          artworkUrl = `/catalog/releases/${release.id}/artwork`;
         }
         if (!artworkUrl) {
-          artworkUrl = `${process.env.BACKEND_URL || "http://localhost:3000"}/default-stem-cover.png`;
+          artworkUrl = `/default-stem-cover.png`;
         }
 
         return {
@@ -79,8 +79,8 @@ export class MetadataController {
           releaseTitle: release?.title,
           genre: release?.genre,
           artworkUrl,
-          previewUrl: this.toPublicUrl(stem.previewUrl, stem.id),
-          uri: this.toPublicUrl(stem.uri, stem.id),
+          previewUrl: this.toRelativeUrl(stem.previewUrl, stem.id),
+          uri: this.toRelativeUrl(stem.uri, stem.id),
           tokenId: stem.tokenId?.toString(),
           chainId: stem.chainId,
           purchasedAt: stem.purchasedAt?.toISOString(),
@@ -139,15 +139,15 @@ export class MetadataController {
         const release = track?.release;
 
         // Artwork logic: Stem > Release URL > Release blob endpoint > Default
-        let artworkUrl = this.toPublicUrl(stem?.artworkUrl || release?.artworkUrl);
+        let artworkUrl = this.toRelativeUrl(stem?.artworkUrl || release?.artworkUrl);
 
         // If no direct URL but release has artwork data, use the catalog endpoint
         if (!artworkUrl && release?.id && release?.artworkMimeType) {
-          artworkUrl = `${process.env.BACKEND_URL || "http://localhost:3000"}/catalog/releases/${release.id}/artwork`;
+          artworkUrl = `/catalog/releases/${release.id}/artwork`;
         }
 
         if (!artworkUrl) {
-          artworkUrl = `${process.env.BACKEND_URL || "http://localhost:3000"}/default-stem-cover.png`;
+          artworkUrl = `/default-stem-cover.png`;
         }
 
 
@@ -170,7 +170,7 @@ export class MetadataController {
               releaseId: release?.id,
               artistId: release?.artistId,
               artworkUrl,
-              uri: this.toPublicUrl(stem.uri, stem.id),
+              uri: this.toRelativeUrl(stem.uri, stem.id),
               isAiGenerated: release?.type === 'ai_generated' || !!track?.generationMetadata,
               generationProvider: (track?.generationMetadata as any)?.provider,
             }
@@ -222,12 +222,12 @@ export class MetadataController {
           id: stem.id,
           title: stem.title,
           type: stem.type,
-          uri: this.toPublicUrl(stem.uri, stem.id),
+          uri: this.toRelativeUrl(stem.uri, stem.id),
           track: track?.title,
           artist: release?.primaryArtist,
           artistId: release?.artistId,
           releaseId: release?.id,
-          artworkUrl: this.toPublicUrl(stem.artworkUrl || release?.artworkUrl),
+          artworkUrl: this.toRelativeUrl(stem.artworkUrl || release?.artworkUrl),
         }
         : null,
       purchases: listing.purchases.map((p) => ({
@@ -390,30 +390,54 @@ export class MetadataController {
 
   // ============ Helper Methods ============
 
-  private toPublicUrl(uri?: string | null, stemId?: string): string | undefined {
+  /**
+   * Convert a DB-stored URI to a relative path for frontend consumption.
+   * The frontend prepends its own API_BASE (e.g., http://localhost:3000).
+   */
+  private toRelativeUrl(uri?: string | null, stemId?: string): string | undefined {
     if (!uri) return undefined;
 
-    // IF stemId is provided, we ALWAYS proxy through the backend for audio playback
-    // This allows for decryption and ensures the browser receives standard mp3 headers
+    // If stemId is provided, proxy through the backend for audio playback
     if (stemId) {
-      return `${process.env.BACKEND_URL || "http://localhost:3000"}/catalog/stems/${stemId}/preview`;
+      return `/catalog/stems/${stemId}/preview`;
     }
 
-    // Handle ipfs:// protocol for artwork/other
+    // Handle ipfs:// protocol — return absolute gateway URL
     if (uri.startsWith("ipfs://")) {
       return `https://ipfs.io/ipfs/${uri.replace("ipfs://", "")}`;
     }
 
-    // Normalize Lighthouse gateway links to ipfs.io for artwork/other
+    // Normalize Lighthouse gateway links
     if (uri.includes("gateway.lighthouse.storage/ipfs/")) {
       return uri.replace("https://gateway.lighthouse.storage/ipfs/", "https://ipfs.io/ipfs/");
     }
 
+    // Strip any absolute backend URL prefix to make it relative
     if (uri.startsWith("http")) {
-      return uri;
+      try {
+        const url = new URL(uri);
+        return url.pathname + url.search;
+      } catch {
+        return uri;
+      }
     }
 
     return uri;
+  }
+
+  /**
+   * Convert a DB-stored URI to an absolute public URL for NFT metadata.
+   * On-chain consumers (OpenSea, wallets) need full URLs.
+   */
+  private toPublicUrl(uri?: string | null, stemId?: string): string | undefined {
+    const relative = this.toRelativeUrl(uri, stemId);
+    if (!relative) return undefined;
+
+    // Already absolute (IPFS, etc)
+    if (relative.startsWith("http")) return relative;
+
+    // Prepend BACKEND_URL for relative paths
+    return `${process.env.BACKEND_URL || "http://localhost:3000"}${relative}`;
   }
 
   private buildDescription(stem: any, track: any, release: any): string {
@@ -561,24 +585,53 @@ export class MetadataController {
    * bypassing the indexer polling delay.
    */
   @Post("notify-listing")
-  async notifyListingCreated(@Body() body: { tokenId?: string; seller?: string }) {
-    this.logger.log(`Broadcasting listing notification: tokenId=${body.tokenId}`);
-    this.eventBus.publish({
-      eventName: "contract.stem_listed",
-      eventVersion: 1,
-      occurredAt: new Date().toISOString(),
-      listingId: "pending",
-      sellerAddress: body.seller || "",
-      tokenId: body.tokenId || "0",
-      amount: "1",
-      pricePerUnit: "0",
-      paymentToken: "0x0000000000000000000000000000000000000000",
-      expiresAt: "0",
-      chainId: 11155111,
-      contractAddress: "",
-      transactionHash: `notify_${Date.now()}`,
-      blockNumber: 0,
-    } as any);
-    return { success: true };
+  async notifyListingCreated(@Body() body: {
+    tokenId?: string;
+    seller?: string;
+    price?: string;
+    amount?: string;
+    paymentToken?: string;
+    durationSeconds?: string;
+    transactionHash?: string;
+    stemId?: string;
+  }) {
+    this.logger.log(`Notify listing: tokenId=${body.tokenId}, stemId=${body.stemId}`);
+
+    try {
+      const chainId = parseInt(process.env.AA_CHAIN_ID || process.env.CHAIN_ID || "11155111");
+
+      // Link stem to its NFT tokenId so the indexer can correlate
+      // StemListed events (which carry tokenId) back to our stem record.
+      if (body.stemId && body.tokenId) {
+        await prisma.stem.update({
+          where: { id: body.stemId },
+          data: { ipnftId: body.tokenId },
+        }).catch((e) => this.logger.warn(`Failed to set ipnftId on stem: ${e}`));
+      }
+
+      // Broadcast WebSocket notification for instant UI feedback.
+      // Uses 'marketplace.listing_notify' (not 'contract.stem_listed')
+      // so that only the WebSocket broadcast fires — no DB handler.
+      // The actual DB listing is created by the indexer when it picks up
+      // the on-chain StemListed event with the correct listing ID.
+      this.eventBus.publish({
+        eventName: "marketplace.listing_notify",
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        listingId: "pending",
+        tokenId: body.tokenId || "0",
+        sellerAddress: (body.seller || "").toLowerCase(),
+        amount: body.amount || "1",
+        pricePerUnit: body.price || "10000000000000000",
+        stemId: body.stemId,
+        transactionHash: body.transactionHash,
+      } as any);
+
+      this.logger.log(`Listing notification sent for stemId=${body.stemId}, tokenId=${body.tokenId}. Indexer will create DB record.`);
+      return { success: true, message: "Notification sent, indexer will create listing" };
+    } catch (error) {
+      this.logger.error(`Failed to notify listing: ${error}`);
+      return { success: false, error: String(error) };
+    }
   }
 }

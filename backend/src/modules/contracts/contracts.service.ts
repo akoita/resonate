@@ -239,9 +239,14 @@ export class ContractsService implements OnModuleInit {
           mintedAt: new Date(event.occurredAt),
         };
 
-        if (stem?.id) {
-          createData.stem = { connect: { id: stem.id } };
+        if (!stem?.id) {
+          this.logger.debug(
+            `Skipping StemMinted tokenId=${event.tokenId}: no matching stem in DB (historical on-chain event)`,
+          );
+          return;
         }
+
+        createData.stem = { connect: { id: stem.id } };
 
         await prisma.stemNftMint.upsert({
           where: { transactionHash: event.transactionHash },

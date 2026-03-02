@@ -59,7 +59,18 @@ export class StemPubSubPublisher implements OnModuleInit {
   private resultsTopic!: Topic;
 
   async onModuleInit() {
-    this.pubsub = new PubSub();
+    // Skip if no Pub/Sub config available (CI, local dev without GCP)
+    if (!process.env.PUBSUB_EMULATOR_HOST && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      this.logger.warn(
+        "No Pub/Sub config — publisher disabled. " +
+        "Set PUBSUB_EMULATOR_HOST for local dev or GOOGLE_APPLICATION_CREDENTIALS for production.",
+      );
+      return;
+    }
+
+    const projectId = process.env.GCP_PROJECT_ID || 'resonate-local';
+    this.pubsub = new PubSub({ projectId });
+    this.logger.log(`PubSub initialized with project: ${projectId}, emulator: ${process.env.PUBSUB_EMULATOR_HOST || 'NOT SET'}`);
     this.separateTopic = this.pubsub.topic(TOPIC_SEPARATE);
     this.resultsTopic = this.pubsub.topic(TOPIC_RESULTS);
 
@@ -76,6 +87,17 @@ export class StemPubSubPublisher implements OnModuleInit {
         await this.pubsub.createTopic(TOPIC_RESULTS);
         this.logger.log(`Created Pub/Sub topic: ${TOPIC_RESULTS}`);
       }
+
+      // Ensure the worker subscription exists on the separate topic
+      const workerSubName = 'stem-separate-worker';
+      const workerSub = this.pubsub.subscription(workerSubName);
+      const [workerSubExists] = await workerSub.exists();
+      if (!workerSubExists) {
+        await this.separateTopic.createSubscription(workerSubName, {
+          ackDeadlineSeconds: 600,  // 10min — stem separation is slow
+        });
+        this.logger.log(`Created Pub/Sub subscription: ${workerSubName}`);
+      }
     } catch (err) {
       // In emulator mode or if topics already exist, this is expected
       this.logger.warn(`Pub/Sub topic init (may be expected in emulator): ${err}`);
@@ -89,6 +111,10 @@ export class StemPubSubPublisher implements OnModuleInit {
    * Returns immediately — worker picks it up asynchronously.
    */
   async publishSeparationJob(message: StemSeparateMessage): Promise<string> {
+    if (!this.separateTopic) {
+      this.logger.warn("Pub/Sub publisher not initialized — cannot publish separation job");
+      return "pubsub-disabled";
+    }
     const data = Buffer.from(JSON.stringify(message));
     const messageId = await this.separateTopic.publishMessage({
       data,
