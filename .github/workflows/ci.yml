@@ -131,6 +131,8 @@ jobs:
           DATABASE_URL: postgresql://resonate:resonate@localhost:5432/resonate
           REDIS_URL: redis://localhost:6379
           STEM_PROCESSING_MODE: sync
+          JWT_SECRET: ci-test-secret
+          ENCRYPTION_SECRET: ci-test-encryption-secret
 
   build:
     name: Build

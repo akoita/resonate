@@ -36,7 +36,16 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
 - If any tests fail, fix the code or tests and re-run
 - Do NOT proceed until all tests pass
 
-## 5. Update documentation (if convenient)
+## 5. Run security scans (if applicable)
+
+Check the changed files (`git diff --name-only main`) and run the appropriate security scans:
+
+- **If `contracts/` files changed:** Run the `/smart-contract-scan` workflow. This produces `scv-scan-report.md`. If any High or Critical findings are reported, fix them before proceeding.
+- **If `backend/` files changed:** Run the `/security-best-practices` workflow. This produces `security_best_practices_report.md`. If any Critical or High findings are reported, fix them before proceeding.
+- **If neither changed**, skip this step.
+- Commit the updated scan reports alongside the code changes.
+
+## 6. Update documentation (if convenient)
 
 - Check if the change affects any existing docs (READMEs, RFCs, specs, API docs)
 - If so, update them in the same branch — keep docs close to the code they describe
@@ -46,7 +55,7 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
   - Inline JSDoc / NatSpec for code-level APIs
 - Skip this step if the change is trivial or purely internal refactoring
 
-## 6. Update architecture docs (if the architecture evolved)
+## 7. Update architecture docs (if the architecture evolved)
 
 - Think about whether this change introduces or modifies **architectural patterns** — new services, data flows, module boundaries, smart contract interactions, event flows, etc.
 - If the architecture has evolved:
@@ -59,7 +68,7 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
     - Key design decisions and trade-offs
 - Skip this step if the change is purely internal refactoring with no architectural impact
 
-## 7. Clean commit(s)
+## 8. Clean commit(s)
 
 - Review staged/unstaged changes: `git diff --cached` and `git diff`
 - **Security check** — make sure NONE of these are committed:
@@ -74,20 +83,20 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
   - **Without issue:** `feat: description` or `fix: description`
   - One logical change per commit — split if needed
 
-## 8. Push the branch
+## 9. Push the branch
 
 // turbo
 
 - Push to remote: `git push -u origin <branch-name>`
 - Verify the push succeeded
 
-## 9. Verify CI passes on the branch
+## 10. Verify CI passes on the branch
 
 - Check the CI/CD status on the pushed branch via GitHub
 - If CI fails, fix the issues locally, commit, and push again
 - Do NOT proceed to PR until CI is green
 
-## 10. Create PR and merge
+## 11. Create PR and merge
 
 - Create a Pull Request targeting `main` with:
   - Title: concise description (referencing the issue number if one exists)
@@ -96,7 +105,7 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
 - If CI passes, merge the PR (prefer squash merge for clean history)
 - If CI fails, fix on the branch, push, and re-check
 
-## 11. Verify main branch CI
+## 12. Verify main branch CI
 
 - After merge, check that CI passes on the updated `main` branch
 - If CI fails on main:
@@ -104,14 +113,14 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
   - Fix the issue, push, create PR, merge
   - Repeat until main CI is green
 
-## 12. Clean up branches
+## 13. Clean up branches
 
 - Delete the feature branch remotely: `git push origin --delete <branch-name>`
 - Delete the feature branch locally: `git branch -d <branch-name>`
 - Delete any fix branches (remote + local) the same way
 - **NEVER delete `main`**
 
-## 13. Align local main
+## 14. Align local main
 
 // turbo
 
