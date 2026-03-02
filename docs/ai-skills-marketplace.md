@@ -17,6 +17,18 @@ After adding the marketplace, use `/plugin menu` to browse and install individua
 
 ---
 
+## Antigravity Workflows (Agent-Agnostic)
+
+The three highest-priority security skills have been ported to `.agent/workflows/` and work with **any** AI coding agent (Antigravity, Copilot, etc.):
+
+| Slash command              | What it does                                                  | Source                           |
+| -------------------------- | ------------------------------------------------------------- | -------------------------------- |
+| `/smart-contract-scan`     | 4-phase Solidity vulnerability audit of `contracts/`          | `scv-scan`                       |
+| `/security-best-practices` | Security review of backend + frontend with prioritized report | `openai-security-best-practices` |
+| `/security-threat-model`   | AppSec-grade threat model anchored to actual code             | `openai-security-threat-model`   |
+
+---
+
 ## Recommended Plugins
 
 ### ⭐ Critical — Smart Contract Security
