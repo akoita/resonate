@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 export interface StorageResult {
     uri: string;
-    provider: 'local' | 'ipfs' | 'filecoin';
+    provider: 'local' | 'ipfs' | 'filecoin' | 'gcs';
     cid?: string;
     metadata?: any;
 }
