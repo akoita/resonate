@@ -58,6 +58,27 @@ Document any new env var in `docs/deployment.md` and the relevant Terraform conf
 
 ---
 
+## 🚨 Git Workflow — Branch & PR Only
+
+**NEVER push directly to `main`.** All changes must go through a feature branch and Pull Request.
+
+### Rules
+
+1. **Always work on a branch** — use the naming conventions:
+   - `feat/<issue-number>-<short-description>` for features
+   - `fix/<issue-number>-<short-description>` for bug fixes
+   - `docs/<issue-number>-<short-description>` for documentation
+
+2. **Submit a Pull Request** targeting `main` — include a clear description and reference the issue (`Closes #N`).
+
+3. **Merge only on explicit developer request** — never merge a PR autonomously. Wait for the developer to say "merge", "you can merge", or equivalent.
+
+4. **Never force-push to `main`** — only force-push on feature branches if absolutely necessary.
+
+5. **Clean up after merge** — delete the feature branch (local + remote) and align local `main`.
+
+---
+
 ## Architecture Conventions
 
 ### Backend (NestJS)

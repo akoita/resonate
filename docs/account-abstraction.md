@@ -299,7 +299,6 @@ All endpoints are under `/wallet` and require JWT authentication.
 | ------ | -------------------- | -------------------------------- |
 | `POST` | `/wallet/aa/enable`  | Switch user to ERC-4337 provider |
 | `POST` | `/wallet/aa/refresh` | Refresh smart account metadata   |
-| `POST` | `/wallet/aa/deploy`  | Deploy smart account on-chain    |
 | `GET`  | `/wallet/:userId`    | Get wallet record                |
 | `POST` | `/wallet/fund`       | Fund wallet (admin)              |
 | `POST` | `/wallet/budget`     | Set monthly spending cap         |
