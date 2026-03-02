@@ -40,6 +40,7 @@ export class KernelAccountService {
   private readonly chainId: number;
   private readonly strictMode: boolean;
   private readonly funderKey: Hex;
+  private readonly paymasterUrl: string | null;
 
   constructor(private readonly config: ConfigService) {
     this.rpcUrl = this.config.get<string>("RPC_URL") || "http://localhost:8545";
@@ -47,6 +48,13 @@ export class KernelAccountService {
       this.config.get<string>("AA_BUNDLER") || "http://localhost:4337";
     this.chainId = Number(this.config.get<string>("AA_CHAIN_ID") || "11155111");
     this.strictMode = this.config.get<string>("AA_STRICT_MODE") === "true";
+
+    // Pimlico paymaster URL for gas sponsorship (production/testnet).
+    // When set, UserOps are sponsored — no ETH needed in the smart account.
+    this.paymasterUrl = this.config.get<string>("AA_PAYMASTER") || null;
+    if (this.paymasterUrl) {
+      this.logger.log(`Paymaster configured: ${this.paymasterUrl.replace(/apikey=.*/, 'apikey=***')}`);
+    }
 
     // Funder key for local Anvil auto-funding (not used in production).
     const funder = this.config.get<string>("AA_FUNDER_KEY");
@@ -160,14 +168,14 @@ export class KernelAccountService {
       approvalData,
     );
 
-    // Fund the smart account if needed (local Anvil only)
+    // Fund the smart account if needed (fallback when paymaster is absent or limited)
     await this.fundAccountIfNeeded(permissionAccount.address, "session-key-account", "1");
 
     this.logger.log(
-      `Session key account: ${permissionAccount.address}, sending tx to ${to}`,
+      `Session key account: ${permissionAccount.address}, sending tx to ${to}${this.paymasterUrl ? " (gas sponsored)" : ""}`,
     );
 
-    // Custom gas price fetcher for Alto bundler
+    // Custom gas price fetcher for Alto/Pimlico bundler
     const estimateFeesPerGas = async () => {
       try {
         const response = await fetch(this.bundlerUrl, {
@@ -196,11 +204,22 @@ export class KernelAccountService {
       };
     };
 
+    // Pimlico paymaster — sponsors gas when configured.
+    // Use ZeroDev's paymaster client for SDK compatibility.
+    let paymasterClient: Awaited<ReturnType<typeof sdk.createZeroDevPaymasterClient>> | undefined;
+    if (this.paymasterUrl) {
+      paymasterClient = sdk.createZeroDevPaymasterClient({
+        chain,
+        transport: http(this.paymasterUrl),
+      });
+    }
+
     // Create a Kernel client scoped to the session key
     const sessionKeyClient = sdk.createKernelAccountClient({
       account: permissionAccount,
       chain,
       bundlerTransport: http(this.bundlerUrl),
+      ...(paymasterClient ? { paymaster: paymasterClient } : {}),
       userOperation: { estimateFeesPerGas },
     });
 
