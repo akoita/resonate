@@ -264,7 +264,14 @@ describe("ContractsService", () => {
 
     describe("subscribeToContractEvents", () => {
         it("persists StemMinted event to database", async () => {
-            const event = makeMintedEvent({ tokenId: "42", transactionHash: "0xmint_test" });
+            // Handler now requires a matching stem in DB to persist; add one
+            mockStems.set("stem_42", { id: "stem_42", uri: "some_uri" });
+
+            const event = makeMintedEvent({
+                tokenId: "42",
+                transactionHash: "0xmint_test",
+                tokenUri: "https://api.resonate.fm/metadata/31337/stem_42",
+            });
             eventBus.publish(event);
 
             // Let async handler complete
@@ -293,7 +300,13 @@ describe("ContractsService", () => {
         });
 
         it("sets remixable=true when parentIds is empty", async () => {
-            const event = makeMintedEvent({ parentIds: [], transactionHash: "0xmint_original" });
+            mockStems.set("stem_orig", { id: "stem_orig", uri: "some_uri" });
+
+            const event = makeMintedEvent({
+                parentIds: [],
+                transactionHash: "0xmint_original",
+                tokenUri: "https://api.resonate.fm/metadata/31337/stem_orig",
+            });
             eventBus.publish(event);
             await new Promise((r) => setTimeout(r, 50));
 
@@ -302,9 +315,12 @@ describe("ContractsService", () => {
         });
 
         it("sets remixable=false when parentIds is non-empty", async () => {
+            mockStems.set("stem_remix", { id: "stem_remix", uri: "some_uri" });
+
             const event = makeMintedEvent({
                 parentIds: ["1"],
                 transactionHash: "0xmint_remix",
+                tokenUri: "https://api.resonate.fm/metadata/31337/stem_remix",
             });
             eventBus.publish(event);
             await new Promise((r) => setTimeout(r, 50));
@@ -430,7 +446,12 @@ describe("ContractsService", () => {
         });
 
         it("is idempotent — upsert does not duplicate on re-publish", async () => {
-            const event = makeMintedEvent({ transactionHash: "0xmint_idem" });
+            mockStems.set("stem_idem", { id: "stem_idem", uri: "some_uri" });
+
+            const event = makeMintedEvent({
+                transactionHash: "0xmint_idem",
+                tokenUri: "https://api.resonate.fm/metadata/31337/stem_idem",
+            });
             eventBus.publish(event);
             await new Promise((r) => setTimeout(r, 50));
 
