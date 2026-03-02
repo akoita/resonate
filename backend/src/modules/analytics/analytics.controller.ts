@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { AuthGuard } from "@nestjs/passport";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
 import { AnalyticsService } from "./analytics.service";
 
+@UseGuards(AuthGuard("jwt"))
 @Controller("analytics")
 export class AnalyticsController {
   constructor(

@@ -35,15 +35,11 @@ async function bootstrap() {
 
     // Self-Healing: Convert any absolute URLs in stem URIs and release artwork to relative paths
     // This ensures the frontend can prepend its own API_BASE for browser access
-    const absoluteStemCount = await prisma.$executeRawUnsafe(
-      `UPDATE "Stem" SET uri = regexp_replace(uri, '^https?://[^/]+', '') WHERE uri ~ '^https?://'`
-    );
+    const absoluteStemCount = await prisma.$executeRaw`UPDATE "Stem" SET uri = regexp_replace(uri, '^https?://[^/]+', '') WHERE uri ~ '^https?://'`;
     if (absoluteStemCount > 0) {
       console.log(`[Self-Healing] Converted ${absoluteStemCount} stem URIs to relative paths.`);
     }
-    const absoluteArtworkCount = await prisma.$executeRawUnsafe(
-      `UPDATE "Release" SET "artworkUrl" = regexp_replace("artworkUrl", '^https?://[^/]+', '') WHERE "artworkUrl" ~ '^https?://'`
-    );
+    const absoluteArtworkCount = await prisma.$executeRaw`UPDATE "Release" SET "artworkUrl" = regexp_replace("artworkUrl", '^https?://[^/]+', '') WHERE "artworkUrl" ~ '^https?://'`;
     if (absoluteArtworkCount > 0) {
       console.log(`[Self-Healing] Converted ${absoluteArtworkCount} release artwork URLs to relative paths.`);
     }
@@ -87,7 +83,6 @@ async function bootstrap() {
         method: req.method,
         path: req.url,
         hasAuth: !!req.headers["authorization"],
-        authHeader: req.headers["authorization"]?.toString().substring(0, 20) + "...",
       })
     );
     next();

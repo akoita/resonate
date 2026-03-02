@@ -41,10 +41,12 @@ export class AesEncryptionProvider extends EncryptionProvider {
     constructor(private readonly configService: ConfigService) {
         super();
 
-        // Derive master key from secret (in production, use proper key management)
+        // Derive master key from secret — NO hardcoded fallback (SBPR-001)
         const secret = this.configService.get<string>('ENCRYPTION_SECRET')
-            || this.configService.get<string>('JWT_SECRET')
-            || 'dev-encryption-secret-change-in-production';
+            || this.configService.get<string>('JWT_SECRET');
+        if (!secret) {
+            throw new Error('ENCRYPTION_SECRET or JWT_SECRET must be set');
+        }
 
         // Use SHA-256 to derive a 32-byte key from the secret
         this.masterKey = createHash('sha256').update(secret).digest();
@@ -140,16 +142,26 @@ export class AesEncryptionProvider extends EncryptionProvider {
                 return false;
             }
 
-            // Special case: allow preview address (used by backend to proxy previews)
-            if (context.authSig.address === '0x0000000000000000000000000000000000000000') {
-                this.logger.log('[AES] Access granted for internal preview request');
-                return true;
-            }
+            // Internal bypasses gated by INTERNAL_SERVICE_KEY (SBPR-004)
+            const internalKey = this.configService.get<string>('INTERNAL_SERVICE_KEY');
+            if (internalKey) {
+                // Special case: allow preview address (used by backend to proxy previews)
+                if (
+                    context.authSig.address === '0x0000000000000000000000000000000000000000' &&
+                    (context.authSig as any).internalKey === internalKey
+                ) {
+                    this.logger.log('[AES] Access granted for internal preview request');
+                    return true;
+                }
 
-            // Special case: ownership already verified by download endpoint
-            if (context.authSig.sig === 'ownership-verified') {
-                this.logger.log(`[AES] Access granted via ownership verification for ${context.authSig.address}`);
-                return true;
+                // Special case: ownership already verified by download endpoint
+                if (
+                    context.authSig.sig === 'ownership-verified' &&
+                    (context.authSig as any).internalKey === internalKey
+                ) {
+                    this.logger.log(`[AES] Access granted via ownership verification for ${context.authSig.address}`);
+                    return true;
+                }
             }
 
             // Check if requester is the content owner (skip sig verification)
@@ -187,10 +199,13 @@ export class AesEncryptionProvider extends EncryptionProvider {
             // Fallback: EIP-1271 smart contract wallet verification (ZeroDev/Kernel)
             try {
                 const { createPublicClient, http } = await import('viem');
-                const { sepolia } = await import('viem/chains');
+                const viemChains = await import('viem/chains');
+                const rpcUrl = this.configService.get<string>('RPC_URL');
+                const chainName = this.configService.get<string>('CHAIN_NAME') || 'sepolia';
+                const chain = (viemChains as any)[chainName] || viemChains.sepolia;
                 const publicClient = createPublicClient({
-                    chain: sepolia,
-                    transport: http(),
+                    chain,
+                    transport: rpcUrl ? http(rpcUrl) : http(),
                 });
                 const isValid = await publicClient.verifyMessage({
                     address: getAddress(context.authSig.address),
