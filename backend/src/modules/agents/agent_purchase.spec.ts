@@ -15,7 +15,7 @@ const mockAgentWalletService = {
 
 const mockKernelAccountService = {
   sendSessionKeyTransaction: jest.fn(),
-  getSmartAccountAddress: jest.fn(),
+  getSmartAccountAddress: jest.fn(), // legacy — kept for mock compatibility
 };
 
 const mockEventBus = {

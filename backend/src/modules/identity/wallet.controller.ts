@@ -47,12 +47,6 @@ export class WalletController {
     return this.walletService.refreshWallet(body);
   }
 
-  @Post("deploy")
-  @UseGuards(AuthGuard("jwt"))
-  @Roles("admin")
-  deploy(@Body() body: { userId: string }) {
-    return this.walletService.deploySmartAccount(body);
-  }
 
   @Post("aa/enable")
   @UseGuards(AuthGuard("jwt"))
@@ -66,11 +60,6 @@ export class WalletController {
     return this.walletService.refreshWallet({ userId: req.user.userId, provider: "erc4337" });
   }
 
-  @Post("aa/deploy")
-  @UseGuards(AuthGuard("jwt"))
-  deploySmartAccountForUser(@Req() req: any) {
-    return this.walletService.deploySmartAccount({ userId: req.user.userId });
-  }
 
   @Post("paymaster")
   @UseGuards(AuthGuard("jwt"))
