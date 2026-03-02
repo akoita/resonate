@@ -16,7 +16,7 @@ contract UniversalSigValidator {
     /// @notice ERC-6492 detection suffix
     bytes32 private constant ERC6492_DETECTION_SUFFIX =
         0x6492649264926492649264926492649264926492649264926492649264926492;
-    
+
     /// @notice ERC-1271 magic value for valid signature
     bytes4 private constant ERC1271_SUCCESS = 0x1626ba7e;
 
@@ -25,6 +25,7 @@ contract UniversalSigValidator {
     error DeploymentFailed();
     error ContractNotDeployed();
     error InvalidSignatureLength(uint256 length);
+    error InvalidSValue();
 
     // ============ External Functions ============
 
@@ -44,7 +45,8 @@ contract UniversalSigValidator {
         // Check if this is an ERC-6492 signature (contains deployment data)
         if (
             _signature.length >= 32 &&
-            bytes32(_signature[_signature.length - 32:]) == ERC6492_DETECTION_SUFFIX
+            bytes32(_signature[_signature.length - 32:]) ==
+            ERC6492_DETECTION_SUFFIX
         ) {
             // ERC-6492 signature - decode deployment data
             (
@@ -110,7 +112,10 @@ contract UniversalSigValidator {
         bytes32 _hash,
         bytes memory _signature
     ) internal pure returns (bool) {
-        require(_signature.length == 65, InvalidSignatureLength(_signature.length));
+        require(
+            _signature.length == 65,
+            InvalidSignatureLength(_signature.length)
+        );
 
         bytes32 r;
         bytes32 s;
@@ -123,6 +128,13 @@ contract UniversalSigValidator {
         }
 
         if (v < 27) v += 27;
+
+        // Enforce lower-s to prevent signature malleability
+        require(
+            uint256(s) <=
+                0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0,
+            InvalidSValue()
+        );
 
         address recovered = ecrecover(_hash, v, r, s);
         return recovered == _signer && recovered != address(0);

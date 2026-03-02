@@ -22,7 +22,12 @@ contract StemNFTTest is Test {
     string constant BASE_URI = "https://api.resonate.fm/metadata/";
     string constant TOKEN_URI = "ipfs://QmTest123";
 
-    event StemMinted(uint256 indexed tokenId, address indexed creator, uint256[] parentIds, string tokenURI);
+    event StemMinted(
+        uint256 indexed tokenId,
+        address indexed creator,
+        uint256[] parentIds,
+        string tokenURI
+    );
     event TransferValidatorSet(address indexed validator);
     event RoyaltyUpdated(uint256 indexed tokenId, address receiver, uint96 bps);
 
@@ -30,9 +35,10 @@ contract StemNFTTest is Test {
         vm.startPrank(admin);
         stemNFT = new StemNFT(BASE_URI);
         validator = new TransferValidator();
-        
+
         // Grant minter role
         stemNFT.grantRole(stemNFT.MINTER_ROLE(), minter);
+        stemNFT.grantRole(stemNFT.MINTER_ROLE(), alice);
         vm.stopPrank();
     }
 
@@ -52,7 +58,7 @@ contract StemNFTTest is Test {
 
     function test_Mint_OriginalStem() public {
         uint256[] memory parentIds = new uint256[](0);
-        
+
         vm.prank(minter);
         uint256 tokenId = stemNFT.mint(
             alice,
@@ -75,14 +81,30 @@ contract StemNFTTest is Test {
         // First mint original
         uint256[] memory noParents = new uint256[](0);
         vm.prank(minter);
-        uint256 originalId = stemNFT.mint(alice, 100, TOKEN_URI, royaltyReceiver, 500, true, noParents);
+        uint256 originalId = stemNFT.mint(
+            alice,
+            100,
+            TOKEN_URI,
+            royaltyReceiver,
+            500,
+            true,
+            noParents
+        );
 
         // Then mint remix
         uint256[] memory parentIds = new uint256[](1);
         parentIds[0] = originalId;
 
         vm.prank(alice);
-        uint256 remixId = stemNFT.mint(bob, 50, "ipfs://remix", bob, 300, true, parentIds);
+        uint256 remixId = stemNFT.mint(
+            bob,
+            50,
+            "ipfs://remix",
+            bob,
+            300,
+            true,
+            parentIds
+        );
 
         assertTrue(stemNFT.isRemix(remixId));
         assertEq(stemNFT.getParentIds(remixId).length, 1);
@@ -91,36 +113,70 @@ contract StemNFTTest is Test {
 
     function test_Mint_DefaultRoyalty() public {
         uint256[] memory parentIds = new uint256[](0);
-        
+
         vm.prank(minter);
-        uint256 tokenId = stemNFT.mint(alice, 100, TOKEN_URI, address(0), 0, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            alice,
+            100,
+            TOKEN_URI,
+            address(0),
+            0,
+            true,
+            parentIds
+        );
 
         // Check default royalty (5%)
-        (address receiver, uint256 amount) = stemNFT.royaltyInfo(tokenId, 10000);
+        (address receiver, uint256 amount) = stemNFT.royaltyInfo(
+            tokenId,
+            10000
+        );
         assertEq(receiver, minter); // Default to creator
         assertEq(amount, 500); // 5% of 10000
     }
 
     function test_Mint_RevertInvalidRoyalty() public {
         uint256[] memory parentIds = new uint256[](0);
-        
+
         vm.prank(minter);
-        vm.expectRevert(abi.encodeWithSelector(StemNFT.InvalidRoyalty.selector, 1001));
-        stemNFT.mint(alice, 100, TOKEN_URI, royaltyReceiver, 1001, true, parentIds);
+        vm.expectRevert(
+            abi.encodeWithSelector(StemNFT.InvalidRoyalty.selector, 1001)
+        );
+        stemNFT.mint(
+            alice,
+            100,
+            TOKEN_URI,
+            royaltyReceiver,
+            1001,
+            true,
+            parentIds
+        );
     }
 
     function test_Mint_RevertParentNotRemixable() public {
         // Mint non-remixable original
         uint256[] memory noParents = new uint256[](0);
         vm.prank(minter);
-        uint256 originalId = stemNFT.mint(alice, 100, TOKEN_URI, royaltyReceiver, 500, false, noParents);
+        uint256 originalId = stemNFT.mint(
+            alice,
+            100,
+            TOKEN_URI,
+            royaltyReceiver,
+            500,
+            false,
+            noParents
+        );
 
         // Try to remix
         uint256[] memory parentIds = new uint256[](1);
         parentIds[0] = originalId;
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(StemNFT.ParentNotRemixable.selector, originalId));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                StemNFT.ParentNotRemixable.selector,
+                originalId
+            )
+        );
         stemNFT.mint(bob, 50, "ipfs://remix", bob, 300, true, parentIds);
     }
 
@@ -129,17 +185,35 @@ contract StemNFTTest is Test {
         parentIds[0] = 999; // Non-existent
 
         vm.prank(minter);
-        vm.expectRevert(abi.encodeWithSelector(StemNFT.StemNotFound.selector, 999));
-        stemNFT.mint(alice, 100, TOKEN_URI, royaltyReceiver, 500, true, parentIds);
+        vm.expectRevert(
+            abi.encodeWithSelector(StemNFT.StemNotFound.selector, 999)
+        );
+        stemNFT.mint(
+            alice,
+            100,
+            TOKEN_URI,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds
+        );
     }
 
     function test_Mint_EmitsEvent() public {
         uint256[] memory parentIds = new uint256[](0);
-        
+
         vm.prank(minter);
         vm.expectEmit(true, true, false, true);
         emit StemMinted(1, minter, parentIds, TOKEN_URI);
-        stemNFT.mint(alice, 100, TOKEN_URI, royaltyReceiver, 500, true, parentIds);
+        stemNFT.mint(
+            alice,
+            100,
+            TOKEN_URI,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds
+        );
     }
 
     // ============ MintMore Tests ============
@@ -147,7 +221,15 @@ contract StemNFTTest is Test {
     function test_MintMore_ByCreator() public {
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(minter);
-        uint256 tokenId = stemNFT.mint(alice, 100, TOKEN_URI, royaltyReceiver, 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            alice,
+            100,
+            TOKEN_URI,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds
+        );
 
         vm.prank(minter);
         stemNFT.mintMore(bob, tokenId, 50);
@@ -159,10 +241,20 @@ contract StemNFTTest is Test {
     function test_MintMore_RevertNotCreator() public {
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(minter);
-        uint256 tokenId = stemNFT.mint(alice, 100, TOKEN_URI, royaltyReceiver, 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            alice,
+            100,
+            TOKEN_URI,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds
+        );
 
-        vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(StemNFT.NotStemCreator.selector, tokenId));
+        vm.prank(bob);
+        vm.expectRevert(
+            abi.encodeWithSelector(StemNFT.NotStemCreator.selector, tokenId)
+        );
         stemNFT.mintMore(bob, tokenId, 50);
     }
 
@@ -171,20 +263,36 @@ contract StemNFTTest is Test {
     function test_SetRoyaltyReceiver() public {
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(minter);
-        uint256 tokenId = stemNFT.mint(alice, 100, TOKEN_URI, royaltyReceiver, 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            alice,
+            100,
+            TOKEN_URI,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds
+        );
 
         address newReceiver = makeAddr("newReceiver");
         vm.prank(minter);
         stemNFT.setRoyaltyReceiver(tokenId, newReceiver);
 
-        (address receiver,) = stemNFT.royaltyInfo(tokenId, 10000);
+        (address receiver, ) = stemNFT.royaltyInfo(tokenId, 10000);
         assertEq(receiver, newReceiver);
     }
 
     function test_SetRoyaltyBps() public {
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(minter);
-        uint256 tokenId = stemNFT.mint(alice, 100, TOKEN_URI, royaltyReceiver, 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            alice,
+            100,
+            TOKEN_URI,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds
+        );
 
         vm.prank(minter);
         stemNFT.setRoyaltyBps(tokenId, 750);
@@ -196,10 +304,20 @@ contract StemNFTTest is Test {
     function test_SetRoyaltyBps_RevertExceedsMax() public {
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(minter);
-        uint256 tokenId = stemNFT.mint(alice, 100, TOKEN_URI, royaltyReceiver, 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            alice,
+            100,
+            TOKEN_URI,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds
+        );
 
         vm.prank(minter);
-        vm.expectRevert(abi.encodeWithSelector(StemNFT.InvalidRoyalty.selector, 1001));
+        vm.expectRevert(
+            abi.encodeWithSelector(StemNFT.InvalidRoyalty.selector, 1001)
+        );
         stemNFT.setRoyaltyBps(tokenId, 1001);
     }
 
@@ -218,7 +336,7 @@ contract StemNFTTest is Test {
         // Setup validator with no whitelist
         vm.prank(admin);
         stemNFT.setTransferValidator(address(validator));
-        
+
         // Disable direct transfers
         vm.prank(admin);
         validator.setAllowDirectTransfers(false);
@@ -226,7 +344,15 @@ contract StemNFTTest is Test {
         // Mint
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(minter);
-        uint256 tokenId = stemNFT.mint(alice, 100, TOKEN_URI, royaltyReceiver, 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            alice,
+            100,
+            TOKEN_URI,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds
+        );
 
         // Try transfer - should fail
         vm.prank(alice);
@@ -245,7 +371,15 @@ contract StemNFTTest is Test {
         // Mint
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(minter);
-        uint256 tokenId = stemNFT.mint(alice, 100, TOKEN_URI, royaltyReceiver, 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            alice,
+            100,
+            TOKEN_URI,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds
+        );
 
         // Transfer - should succeed
         vm.prank(alice);
@@ -262,7 +396,15 @@ contract StemNFTTest is Test {
         // Mint
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(minter);
-        uint256 tokenId = stemNFT.mint(alice, 100, TOKEN_URI, royaltyReceiver, 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            alice,
+            100,
+            TOKEN_URI,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds
+        );
 
         // Direct transfer should work
         vm.prank(alice);
@@ -276,23 +418,57 @@ contract StemNFTTest is Test {
     function test_Uri_ReturnsTokenUri() public {
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(minter);
-        uint256 tokenId = stemNFT.mint(alice, 100, TOKEN_URI, royaltyReceiver, 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            alice,
+            100,
+            TOKEN_URI,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds
+        );
 
         assertEq(stemNFT.uri(tokenId), TOKEN_URI);
     }
 
     function test_Uri_RevertNotFound() public {
-        vm.expectRevert(abi.encodeWithSelector(StemNFT.StemNotFound.selector, 999));
+        vm.expectRevert(
+            abi.encodeWithSelector(StemNFT.StemNotFound.selector, 999)
+        );
         stemNFT.uri(999);
     }
 
     function test_TotalStems() public {
         uint256[] memory parentIds = new uint256[](0);
-        
+
         vm.startPrank(minter);
-        stemNFT.mint(alice, 100, TOKEN_URI, royaltyReceiver, 500, true, parentIds);
-        stemNFT.mint(bob, 50, "ipfs://2", royaltyReceiver, 500, true, parentIds);
-        stemNFT.mint(alice, 25, "ipfs://3", royaltyReceiver, 500, true, parentIds);
+        stemNFT.mint(
+            alice,
+            100,
+            TOKEN_URI,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds
+        );
+        stemNFT.mint(
+            bob,
+            50,
+            "ipfs://2",
+            royaltyReceiver,
+            500,
+            true,
+            parentIds
+        );
+        stemNFT.mint(
+            alice,
+            25,
+            "ipfs://3",
+            royaltyReceiver,
+            500,
+            true,
+            parentIds
+        );
         vm.stopPrank();
 
         assertEq(stemNFT.totalStems(), 3);
@@ -303,17 +479,28 @@ contract StemNFTTest is Test {
     function test_RoyaltyInfo_ReturnsCorrectValues() public {
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(minter);
-        uint256 tokenId = stemNFT.mint(alice, 100, TOKEN_URI, royaltyReceiver, 750, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            alice,
+            100,
+            TOKEN_URI,
+            royaltyReceiver,
+            750,
+            true,
+            parentIds
+        );
 
-        (address receiver, uint256 amount) = stemNFT.royaltyInfo(tokenId, 1 ether);
-        
+        (address receiver, uint256 amount) = stemNFT.royaltyInfo(
+            tokenId,
+            1 ether
+        );
+
         assertEq(receiver, royaltyReceiver);
         assertEq(amount, 0.075 ether); // 7.5%
     }
 
     function test_RoyaltyInfo_NonExistentToken() public view {
         (address receiver, uint256 amount) = stemNFT.royaltyInfo(999, 1 ether);
-        
+
         assertEq(receiver, address(0));
         assertEq(amount, 0);
     }
@@ -330,5 +517,45 @@ contract StemNFTTest is Test {
 
     function test_SupportsInterface_AccessControl() public view {
         assertTrue(stemNFT.supportsInterface(0x7965db0b)); // AccessControl
+    }
+
+    // ============ Access Control Tests ============
+
+    function test_Mint_RevertUnauthorized() public {
+        uint256[] memory parentIds = new uint256[](0);
+
+        vm.prank(bob); // bob has no MINTER_ROLE
+        vm.expectRevert();
+        stemNFT.mint(
+            bob,
+            100,
+            TOKEN_URI,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds
+        );
+    }
+
+    // ============ Zero-Address Guard Tests ============
+
+    function test_SetRoyaltyReceiver_RevertZeroAddress() public {
+        uint256[] memory parentIds = new uint256[](0);
+        vm.prank(minter);
+        uint256 tokenId = stemNFT.mint(
+            alice,
+            100,
+            TOKEN_URI,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds
+        );
+
+        vm.prank(minter);
+        vm.expectRevert(
+            abi.encodeWithSelector(StemNFT.InvalidRoyalty.selector, 0)
+        );
+        stemNFT.setRoyaltyReceiver(tokenId, address(0));
     }
 }

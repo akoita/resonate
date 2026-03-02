@@ -2,7 +2,9 @@
 pragma solidity ^0.8.28;
 
 import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
-import {ERC1155Supply} from "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Supply.sol";
+import {
+    ERC1155Supply
+} from "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Supply.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC2981} from "@openzeppelin/contracts/interfaces/IERC2981.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
@@ -12,12 +14,12 @@ import {ITransferValidator} from "../interfaces/ITransferValidator.sol";
  * @title StemNFT
  * @author Resonate Protocol
  * @notice Minimal ERC-1155 for audio stems with EIP-2981 royalties
- * @dev 
+ * @dev
  *   - Metadata stored off-chain (tokenURI → IPFS)
  *   - Only essential data on-chain (creator, royalty, license flags)
  *   - Optional TransferValidator module for royalty enforcement
  *   - Remixes are stems with parentIds (no separate contract needed)
- * 
+ *
  * @custom:version 2.0.0
  */
 contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
@@ -25,20 +27,20 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
     // ============ Structs ============
-    
+
     /// @notice On-chain stem data (minimal - metadata in tokenURI)
     struct StemData {
-        address creator;        // Original creator (receives royalties)
-        address royaltyReceiver;// Can differ from creator (e.g., split contract)
-        uint96 royaltyBps;      // Royalty in basis points (max 10%)
-        bool remixable;         // Can be used in remixes?
-        bool exists;            // Token exists flag
+        address creator; // Original creator (receives royalties)
+        address royaltyReceiver; // Can differ from creator (e.g., split contract)
+        uint96 royaltyBps; // Royalty in basis points (max 10%)
+        bool remixable; // Can be used in remixes?
+        bool exists; // Token exists flag
     }
 
     /// @notice Remix relationship (optional, for on-chain lineage tracking)
     struct RemixInfo {
-        uint256[] parentIds;    // Parent stem IDs (empty = original)
-        uint40 createdAt;       // Timestamp
+        uint256[] parentIds; // Parent stem IDs (empty = original)
+        uint40 createdAt; // Timestamp
     }
 
     // ============ Constants ============
@@ -47,13 +49,13 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
 
     // ============ State ============
     uint256 private _tokenIdCounter;
-    
+
     /// @notice Stem data by token ID
     mapping(uint256 => StemData) public stems;
-    
+
     /// @notice Remix info by token ID (optional)
     mapping(uint256 => RemixInfo) public remixes;
-    
+
     /// @notice Token URIs (IPFS CIDs or full URIs)
     mapping(uint256 => string) private _tokenURIs;
 
@@ -67,7 +69,7 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
         uint256[] parentIds,
         string tokenURI
     );
-    
+
     event TransferValidatorSet(address indexed validator);
     event RoyaltyUpdated(uint256 indexed tokenId, address receiver, uint96 bps);
 
@@ -104,23 +106,31 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
         uint96 royaltyBps,
         bool remixable,
         uint256[] calldata parentIds
-    ) external returns (uint256 tokenId) {
+    ) external onlyRole(MINTER_ROLE) returns (uint256 tokenId) {
         // Validate royalty
-        uint96 effectiveRoyalty = royaltyBps == 0 ? DEFAULT_ROYALTY_BPS : royaltyBps;
-        if (effectiveRoyalty > MAX_ROYALTY_BPS) revert InvalidRoyalty(royaltyBps);
+        uint96 effectiveRoyalty = royaltyBps == 0
+            ? DEFAULT_ROYALTY_BPS
+            : royaltyBps;
+        if (effectiveRoyalty > MAX_ROYALTY_BPS)
+            revert InvalidRoyalty(royaltyBps);
 
         // Validate parent stems (if remix)
         for (uint256 i; i < parentIds.length; ++i) {
             if (!stems[parentIds[i]].exists) revert StemNotFound(parentIds[i]);
-            if (!stems[parentIds[i]].remixable) revert ParentNotRemixable(parentIds[i]);
+            if (!stems[parentIds[i]].remixable)
+                revert ParentNotRemixable(parentIds[i]);
         }
 
         tokenId = ++_tokenIdCounter;
 
         // Store minimal on-chain data
+        // Note: creator = msg.sender (the minting account, e.g. backend service).
+        // This may differ from the artist; use royaltyReceiver for payment routing.
         stems[tokenId] = StemData({
             creator: msg.sender,
-            royaltyReceiver: royaltyReceiver == address(0) ? msg.sender : royaltyReceiver,
+            royaltyReceiver: royaltyReceiver == address(0)
+                ? msg.sender
+                : royaltyReceiver,
             royaltyBps: effectiveRoyalty,
             remixable: remixable,
             exists: true
@@ -146,13 +156,12 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
     /**
      * @notice Mint additional editions of existing stem
      */
-    function mintMore(
-        address to,
-        uint256 tokenId,
-        uint256 amount
-    ) external {
+    function mintMore(address to, uint256 tokenId, uint256 amount) external {
         if (!stems[tokenId].exists) revert StemNotFound(tokenId);
-        if (stems[tokenId].creator != msg.sender && !hasRole(MINTER_ROLE, msg.sender)) {
+        if (
+            stems[tokenId].creator != msg.sender &&
+            !hasRole(MINTER_ROLE, msg.sender)
+        ) {
             revert NotStemCreator(tokenId);
         }
         _mint(to, tokenId, amount, "");
@@ -165,9 +174,13 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
      */
     function setRoyaltyReceiver(uint256 tokenId, address receiver) external {
         if (!stems[tokenId].exists) revert StemNotFound(tokenId);
-        if (stems[tokenId].creator != msg.sender && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
+        if (
+            stems[tokenId].creator != msg.sender &&
+            !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)
+        ) {
             revert NotStemCreator(tokenId);
         }
+        if (receiver == address(0)) revert InvalidRoyalty(0);
         stems[tokenId].royaltyReceiver = receiver;
         emit RoyaltyUpdated(tokenId, receiver, stems[tokenId].royaltyBps);
     }
@@ -177,7 +190,10 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
      */
     function setRoyaltyBps(uint256 tokenId, uint96 bps) external {
         if (!stems[tokenId].exists) revert StemNotFound(tokenId);
-        if (stems[tokenId].creator != msg.sender && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
+        if (
+            stems[tokenId].creator != msg.sender &&
+            !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)
+        ) {
             revert NotStemCreator(tokenId);
         }
         if (bps > MAX_ROYALTY_BPS) revert InvalidRoyalty(bps);
@@ -191,7 +207,9 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
      * @notice Set transfer validator module (for royalty enforcement)
      * @param validator Address of validator (address(0) to disable)
      */
-    function setTransferValidator(address validator) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setTransferValidator(
+        address validator
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         transferValidator = ITransferValidator(validator);
         emit TransferValidatorSet(validator);
     }
@@ -200,10 +218,10 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
 
     function uri(uint256 tokenId) public view override returns (string memory) {
         if (!stems[tokenId].exists) revert StemNotFound(tokenId);
-        
+
         string memory tokenURI_ = _tokenURIs[tokenId];
         string memory base = super.uri(tokenId);
-        
+
         // If tokenURI is set, use it; otherwise use base + tokenId
         if (bytes(tokenURI_).length > 0) {
             return tokenURI_;
@@ -219,7 +237,9 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
         return remixes[tokenId].parentIds.length > 0;
     }
 
-    function getParentIds(uint256 tokenId) external view returns (uint256[] memory) {
+    function getParentIds(
+        uint256 tokenId
+    ) external view returns (uint256[] memory) {
         return remixes[tokenId].parentIds;
     }
 
@@ -229,12 +249,13 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
 
     // ============ EIP-2981 ============
 
-    function royaltyInfo(uint256 tokenId, uint256 salePrice) 
-        external view override returns (address, uint256) 
-    {
+    function royaltyInfo(
+        uint256 tokenId,
+        uint256 salePrice
+    ) external view override returns (address, uint256) {
         StemData storage stem = stems[tokenId];
         if (!stem.exists) return (address(0), 0);
-        
+
         uint256 royaltyAmount = (salePrice * stem.royaltyBps) / 10000;
         return (stem.royaltyReceiver, royaltyAmount);
     }
@@ -248,7 +269,11 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
         uint256[] memory values
     ) internal override(ERC1155, ERC1155Supply) {
         // Check transfer validator if set (skip for mints/burns)
-        if (address(transferValidator) != address(0) && from != address(0) && to != address(0)) {
+        if (
+            address(transferValidator) != address(0) &&
+            from != address(0) &&
+            to != address(0)
+        ) {
             if (!transferValidator.validateTransfer(msg.sender, from, to)) {
                 revert TransferNotAllowed();
             }
@@ -258,9 +283,11 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
 
     // ============ Interface Support ============
 
-    function supportsInterface(bytes4 interfaceId) 
-        public view override(ERC1155, AccessControl, IERC165) returns (bool) 
-    {
-        return interfaceId == type(IERC2981).interfaceId || super.supportsInterface(interfaceId);
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view override(ERC1155, AccessControl, IERC165) returns (bool) {
+        return
+            interfaceId == type(IERC2981).interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 }
