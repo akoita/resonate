@@ -1,4 +1,5 @@
 import { AgentPurchaseService } from "../modules/agents/agent_purchase.service";
+import { SensitiveBuffer } from "../modules/shared/sensitive_buffer";
 
 // Mock prisma
 jest.mock("../db/prisma", () => {
@@ -27,7 +28,10 @@ function makeMockServices() {
     },
     agentWalletService: {
       validateSessionKey: () => true,
-      getSerializedSessionKey: async () => "serialized_session_key_data",
+      getAgentKeyData: async () => ({
+        agentPrivateKey: new SensitiveBuffer("mock_agent_private_key_hex"),
+        approvalData: "mock_approval_data",
+      }),
       checkAndEmitBudgetAlert: () => {},
     },
     kernelAccountService: {
@@ -80,14 +84,14 @@ describe("AgentPurchaseService — session key parity", () => {
     expect((result as any).reason).toBe("session_key_invalid");
   });
 
-  it("rejects when no serialized session key is found", async () => {
+  it("rejects when no agent key data is found", async () => {
     const { svc, mocks } = makeService();
-    mocks.agentWalletService.getSerializedSessionKey = async () => null as any;
+    mocks.agentWalletService.getAgentKeyData = async () => null as any;
 
     const result = await svc.purchase(baseInput);
     expect(result.success).toBe(false);
     expect((result as any).reason).toBe("transaction_failed");
-    expect((result as any).message).toContain("serialized session key");
+    expect((result as any).message).toContain("agent key data");
   });
 
   it("handles sendSessionKeyTransaction failure gracefully", async () => {

@@ -1,4 +1,5 @@
 import { AgentPurchaseService } from "./agent_purchase.service";
+import { SensitiveBuffer } from "../shared/sensitive_buffer";
 
 // ─── mocks ──────────────────────────────────────────────
 const mockWalletService = {
@@ -8,7 +9,7 @@ const mockWalletService = {
 
 const mockAgentWalletService = {
   validateSessionKey: jest.fn(),
-  getSerializedSessionKey: jest.fn(),
+  getAgentKeyData: jest.fn(),
   checkAndEmitBudgetAlert: jest.fn(),
 };
 
@@ -95,7 +96,10 @@ describe("AgentPurchaseService", () => {
   describe("purchase – session key transaction success", () => {
     it("should succeed via session key UserOp through bundler", async () => {
       mockAgentWalletService.validateSessionKey.mockResolvedValue(true);
-      mockAgentWalletService.getSerializedSessionKey.mockResolvedValue("serialized_key_data");
+      mockAgentWalletService.getAgentKeyData.mockResolvedValue({
+        agentPrivateKey: new SensitiveBuffer("mock_agent_private_key_hex"),
+        approvalData: "mock_approval_data",
+      });
       mockWalletService.spend.mockResolvedValue({ allowed: true, remaining: 45 });
       mockWalletService.getWallet.mockResolvedValue({ spentUsd: 5, monthlyCapUsd: 50 });
       (prisma.agentTransaction.create as jest.Mock).mockResolvedValue({
@@ -123,9 +127,10 @@ describe("AgentPurchaseService", () => {
       expect((result as any).mode).toBe("onchain");
       expect((result as any).txHash).toBe("0xreal_onchain_hash");
       expect(mockKernelAccountService.sendSessionKeyTransaction).toHaveBeenCalledWith(
-        "serialized_key_data",
-        expect.any(String), // marketplace address
-        expect.any(String), // calldata
+        "mock_agent_private_key_hex",  // private key from SensitiveBuffer.toString()
+        "mock_approval_data",         // approval data
+        expect.any(String),           // marketplace address
+        expect.any(String),           // calldata
         BigInt("3000000"),
       );
       expect(mockEventBus.publish).toHaveBeenCalledWith(
@@ -133,9 +138,9 @@ describe("AgentPurchaseService", () => {
       );
     });
 
-    it("should fail when no serialized session key is found", async () => {
+    it("should fail when no agent key data is found", async () => {
       mockAgentWalletService.validateSessionKey.mockResolvedValue(true);
-      mockAgentWalletService.getSerializedSessionKey.mockResolvedValue(null);
+      mockAgentWalletService.getAgentKeyData.mockResolvedValue(null);
       mockWalletService.spend.mockResolvedValue({ allowed: true, remaining: 45 });
       (prisma.agentTransaction.create as jest.Mock).mockResolvedValue({
         id: "tx-2",
@@ -159,14 +164,17 @@ describe("AgentPurchaseService", () => {
 
       expect(result.success).toBe(false);
       expect((result as any).reason).toBe("transaction_failed");
-      expect((result as any).message).toContain("serialized session key");
+      expect((result as any).message).toContain("agent key data");
     });
   });
 
   describe("purchase – transaction failure", () => {
     it("should handle bundler transaction failure gracefully", async () => {
       mockAgentWalletService.validateSessionKey.mockResolvedValue(true);
-      mockAgentWalletService.getSerializedSessionKey.mockResolvedValue("serialized_key_data");
+      mockAgentWalletService.getAgentKeyData.mockResolvedValue({
+        agentPrivateKey: new SensitiveBuffer("mock_agent_private_key_hex"),
+        approvalData: "mock_approval_data",
+      });
       mockWalletService.spend.mockResolvedValue({ allowed: true, remaining: 45 });
       (prisma.agentTransaction.create as jest.Mock).mockResolvedValue({
         id: "tx-3",
