@@ -82,6 +82,8 @@ describe("StemResultSubscriber", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.STEM_PROCESSING_MODE = "pubsub";
+    // Set emulator host so the graceful-skip guard doesn't trigger
+    process.env.PUBSUB_EMULATOR_HOST = "localhost:8085";
     eventBus = new EventBus();
     subscriber = new StemResultSubscriber(
       eventBus,
@@ -93,6 +95,7 @@ describe("StemResultSubscriber", () => {
 
   afterEach(() => {
     delete process.env.STEM_PROCESSING_MODE;
+    delete process.env.PUBSUB_EMULATOR_HOST;
   });
 
   describe("onModuleInit", () => {

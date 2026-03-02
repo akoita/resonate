@@ -31,6 +31,15 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    // Skip if no Pub/Sub config available (CI, local dev without GCP)
+    if (!process.env.PUBSUB_EMULATOR_HOST && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      this.logger.warn(
+        "No Pub/Sub config (PUBSUB_EMULATOR_HOST or GOOGLE_APPLICATION_CREDENTIALS not set) " +
+        "— skipping result subscriber. Set PUBSUB_EMULATOR_HOST for local dev or STEM_PROCESSING_MODE=sync.",
+      );
+      return;
+    }
+
     const projectId = process.env.GCP_PROJECT_ID || 'resonate-local';
     this.pubsub = new PubSub({ projectId });
     this.logger.log(`StemResultSubscriber PubSub project: ${projectId}, emulator: ${process.env.PUBSUB_EMULATOR_HOST || 'NOT SET'}`);

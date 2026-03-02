@@ -59,6 +59,15 @@ export class StemPubSubPublisher implements OnModuleInit {
   private resultsTopic!: Topic;
 
   async onModuleInit() {
+    // Skip if no Pub/Sub config available (CI, local dev without GCP)
+    if (!process.env.PUBSUB_EMULATOR_HOST && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      this.logger.warn(
+        "No Pub/Sub config — publisher disabled. " +
+        "Set PUBSUB_EMULATOR_HOST for local dev or GOOGLE_APPLICATION_CREDENTIALS for production.",
+      );
+      return;
+    }
+
     const projectId = process.env.GCP_PROJECT_ID || 'resonate-local';
     this.pubsub = new PubSub({ projectId });
     this.logger.log(`PubSub initialized with project: ${projectId}, emulator: ${process.env.PUBSUB_EMULATOR_HOST || 'NOT SET'}`);
@@ -102,6 +111,10 @@ export class StemPubSubPublisher implements OnModuleInit {
    * Returns immediately — worker picks it up asynchronously.
    */
   async publishSeparationJob(message: StemSeparateMessage): Promise<string> {
+    if (!this.separateTopic) {
+      this.logger.warn("Pub/Sub publisher not initialized — cannot publish separation job");
+      return "pubsub-disabled";
+    }
     const data = Buffer.from(JSON.stringify(message));
     const messageId = await this.separateTopic.publishMessage({
       data,

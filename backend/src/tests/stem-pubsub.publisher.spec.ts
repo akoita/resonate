@@ -39,7 +39,13 @@ describe("StemPubSubPublisher", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // Set emulator host so the graceful-skip guard doesn't trigger
+    process.env.PUBSUB_EMULATOR_HOST = "localhost:8085";
     publisher = new StemPubSubPublisher();
+  });
+
+  afterEach(() => {
+    delete process.env.PUBSUB_EMULATOR_HOST;
   });
 
   describe("onModuleInit", () => {
