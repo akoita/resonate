@@ -102,55 +102,6 @@ export class WalletService {
     this.paymasterService.resetUser(userId);
   }
 
-  async deploySmartAccount(input: { userId: string }) {
-    const wallet = (await this.getOrCreate(input.userId, "erc4337")) as any;
-    if (wallet.deploymentTxHash) {
-      return wallet;
-    }
-
-    try {
-      this.logger.log(`Deploying smart account for user ${input.userId}`);
-
-      // Use KernelAccountService — it handles:
-      //   - Deterministic signer creation from userId
-      //   - Kernel account creation (counterfactual)
-      //   - Account deployment via initCode if not yet on-chain
-      //   - Gas estimation + bundler submission
-      //   - Falls back to direct EOA send on local Anvil if bundler fails
-      const { account, kernelClient } = await this.kernelAccountService.createKernelClient(input.userId);
-
-      // Send a 0-value self-send to force deployment
-      // The SDK includes initCode automatically if the account isn't deployed yet
-      const txHash = await (kernelClient as any).sendTransaction({
-        to: account.address,
-        data: "0x" as `0x${string}`,
-        value: BigInt(0),
-      });
-
-      this.logger.log(`Smart account deployed at ${account.address}, tx: ${txHash}`);
-
-      // Update wallet record with real smart account address and deployment info
-      return prisma.wallet.update({
-        where: { id: wallet.id },
-        data: {
-          address: account.address,
-          deploymentTxHash: txHash,
-          accountType: "kernel",
-        } as any,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Smart account deployment failed: ${message}`);
-
-      if (message.includes("fetch") || message.includes("ECONNREFUSED")) {
-        throw new Error(
-          "Bundler not reachable. Ensure the AA bundler is running at " +
-          (process.env.AA_BUNDLER || "http://localhost:4337")
-        );
-      }
-      throw new Error(`Smart account deployment failed: ${message}`);
-    }
-  }
 
   async spend(userId: string, amountUsd: number) {
     const wallet = await this.getOrCreate(userId);
@@ -239,14 +190,6 @@ export class WalletService {
       } as any,
     });
 
-    // Auto-deploy smart account in the background for AA wallets
-    if (selected === "erc4337" && !(wallet as any).deploymentTxHash) {
-      this.deploySmartAccount({ userId }).catch((err) => {
-        this.logger.warn(
-          `Auto-deploy of smart account for ${userId} failed (will retry on next explicit deploy): ${err instanceof Error ? err.message : String(err)}`,
-        );
-      });
-    }
 
     return wallet;
   }
