@@ -75,50 +75,59 @@ make web-dev-fork
 | `SEPOLIA_RPC_URL`    | Sepolia RPC endpoint  | Yes                                     |
 | `BLOCK_EXPLORER_URL` | Explorer for tx links | No (defaults to `sepolia.etherscan.io`) |
 
-### Session Key Workflow (Self-Custodial)
+### Agent-Owned Key Workflow
 
-In forked Sepolia mode, the user holds the root key (passkey/EOA) and grants a **delegated session key** to the backend agent. All constraints are enforced on-chain by the smart account.
+In forked Sepolia mode, the **backend generates and owns the agent's ECDSA key**. The user holds the root key (passkey) and grants on-chain permissions to the agent's public address.
 
 ```
-┌─────────────┐    1. Sign grant tx    ┌─────────────┐
-│  Frontend   │ ──────────────────────▶│  Smart Acct │
-│ (useSession │    (ZeroDev SDK)       │  (on-chain) │
-│   Key hook) │◀──────────────────────│             │
-│             │    2. Serialized key   └─────────────┘
-│             │                              │
-│             │    3. POST /register         │
-│             │ ─────────┐                   │
-│             │           ▼                  │
-│             │    ┌─────────────┐            │
-└─────────────┘    │  Backend    │   4. Uses  │
-                   │  (stores    │   key for  │
-                   │   key only) │   purchases│
-                   └─────────────┘            │
+┌─────────────┐    1. POST /agent/enable   ┌─────────────┐
+│  Frontend   │ ──────────────────────────▶│  Backend    │
+│ (useSession │                            │  (generates │
+│   Key hook) │◀──────────────────────────│   keypair)  │
+│             │    2. {agentAddress}        └─────────────┘
+│             │                                  │
+│  3. Build   │    4. Sign grant tx               │
+│  permission │ ──────────────────▶┌─────────────┐│
+│  validator  │                    │  Smart Acct ││
+│  around     │◀──────────────────│  (on-chain) ││
+│  agentAddr  │    5. approvalData └─────────────┘│
+│             │                                  │
+│  6. POST    │    7. Store approval              │
+│  /activate  │ ──────────────────────────▶│  Backend    │
+│             │                            │  uses key   │
+└─────────────┘                            │  for buys   │
+                                           └─────────────┘
 ```
 
 **Key points:**
 
-- The backend **never creates or holds** the root key
-- Session keys have on-chain enforced policies: call policy, value cap, rate limit, expiry
+- The backend **generates and encrypts** the agent key (AES-256-GCM or GCP KMS)
+- The user grants on-chain permissions via their passkey
+- Agent uses the decrypted key only for the duration of a transaction, then zeros it
+- Every key access is audit-logged (`KeyAuditLog` table)
 - The user can revoke at any time via the frontend
-- Agent purchases always submit real UserOps via the bundler using the session key
-- The session key is deserialized on the backend and used to create a scoped Kernel client
 
 **Backend endpoints:**
 | Endpoint | Method | Description |
-| ------------------------------------- | -------- | -------------------------------- |
-| `/wallet/agent/session-key/register` | `POST` | Register user-granted session key|
+| ----------------------------------------------- | -------- | -------------------------------------------------- |
+| `/wallet/agent/enable` | `POST` | Generate agent keypair, encrypt, store in DB |
+| `/wallet/agent/session-key/activate` | `POST` | Store user's on-chain approval data |
 | `/wallet/agent/session-key` | `DELETE` | Revoke session key |
-| `/wallet/agent/enable` | `POST` | Enable agent wallet |
-| `/wallet/agent/status` | `GET` | Get wallet + session key status |
+| `/wallet/agent/rotate` | `POST` | Rotate agent key (new keypair, revoke old) |
+| `/wallet/agent/status` | `GET` | Get agent wallet + session key status |
 
 ---
 
-### Passkey Testing in Forked Sepolia
+### Passkey Auth in Forked Sepolia
 
-When a `ZERODEV_PROJECT_ID` is configured, the frontend uses real WebAuthn Passkeys instead of mock ECDSA signers. This closes the auth gap between forked mode and production.
+Passkeys work in **all modes** — local, forked Sepolia, and production. The only difference is the passkey server:
 
-**Setup:**
+| Setup                        | Passkey Server                           | Configured via                           |
+| ---------------------------- | ---------------------------------------- | ---------------------------------------- |
+| Without `ZERODEV_PROJECT_ID` | Self-hosted (`/api/zerodev/self-hosted`) | Default (no config needed)               |
+| With `ZERODEV_PROJECT_ID`    | ZeroDev hosted                           | `NEXT_PUBLIC_ZERODEV_PROJECT_ID` env var |
+
+**Optional ZeroDev setup** (for their hosted passkey server):
 
 1. Get a ZeroDev Project ID from [dashboard.zerodev.app](https://dashboard.zerodev.app)
 2. Set it in both environments:
@@ -132,7 +141,6 @@ NEXT_PUBLIC_ZERODEV_PROJECT_ID=your-project-id
 ```
 
 3. Restart services: `make backend-dev` + `make web-dev-fork`
-4. The "Sign up" / "Connect" flow now uses Passkeys via WebAuthn
 
 > **Note:** Passkeys require HTTPS in some browsers. Use a local HTTPS proxy (e.g. `mkcert` + `local-ssl-proxy`) if your browser rejects WebAuthn on `http://localhost`.
 
@@ -307,28 +315,25 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 # NEXT_PUBLIC_CHAIN_ID=11155111
 # NEXT_PUBLIC_RPC_URL=http://localhost:8545
 
-# ZeroDev not needed for local dev
+# ZeroDev not needed for local dev — passkeys work with self-hosted server
 # NEXT_PUBLIC_ZERODEV_PROJECT_ID=
 ```
 
-## Local Dev Auth (Sign-in with AA Wallet)
+## Local Dev Auth (Passkey Sign-In)
 
-On chain **31337** with no ZeroDev project ID, the app uses a **mock ECDSA signer** so you can sign in without Passkey/ZeroDev:
+On all chains, the app uses **WebAuthn Passkeys** for authentication:
 
 1. **Frontend** (`AuthProvider`):
-   - Generates a random EOA (private key) and builds a Kernel smart account with the local ECDSA validator.
-   - Requests a nonce for the **smart account address**.
-   - Signs the auth message with the **EOA** (not the smart account), so the backend can verify via standard `ecrecover`.
-   - Sends to `/auth/verify`: `address` = smart account, `signerAddress` = EOA, `message`, `signature`.
+   - If `NEXT_PUBLIC_ZERODEV_PROJECT_ID` is set, uses ZeroDev's hosted passkey server.
+   - Otherwise, uses the **self-hosted passkey server** on the NestJS backend (`/api/zerodev/self-hosted`).
+   - Creates a Kernel v3 smart account from the passkey validator.
+   - Requests a nonce and signs an auth challenge with the smart account.
 
 2. **Backend** (`auth.controller`):
-   - When `chainId === 31337` and `signerAddress` is present, verifies the **EOA** signature with `verifyMessage(signerAddress, message, signature)`.
-   - Consumes the nonce for `address` (smart account) and issues a JWT for the **smart account address**.
-   - The session identity is the smart account, so Wallet and AA flows use the same address.
+   - Verifies the smart account signature via ERC-1271, or falls back to `ecrecover`.
+   - Issues a JWT for the **smart account address**.
 
-3. **Result**: You can "Sign up" / "Connect" locally and get a session tied to your local smart account; no Passkey or ZeroDev required.
-
-On other chains (e.g. Sepolia), the app uses ZeroDev Passkey and the backend verifies either the smart account (ERC-1271) or, if that fails, recovers the EOA from the signature and issues the token for the recovered address.
+3. **Result**: You can "Sign up" / "Connect" locally with real Passkeys — the same auth path as production. No mock keys or workarounds.
 
 ## Deploying Your Contracts
 
@@ -432,7 +437,7 @@ Next.js bakes `NEXT_PUBLIC_*` env vars into the build cache (`web/.next/`). Both
 
 2. **Open the app** at http://localhost:3000 (or the port your frontend uses, e.g. 3001).
 
-3. **Sign in**: Click "Sign up" or "Connect" in the top bar. With chainId 31337 and no ZeroDev project ID, the app uses the mock ECDSA signer and creates a local smart account; the backend verifies the EOA signature and issues a JWT for the smart account address (see [Local Dev Auth](#local-dev-auth-sign-in-with-aa-wallet)).
+3. **Sign in**: Click "Sign up" or "Connect" in the top bar. The app uses WebAuthn Passkeys (self-hosted on the NestJS backend) to create a Kernel v3 smart account and authenticate (see [Local Dev Auth](#local-dev-auth-passkey-sign-in)).
 
 4. **Go to Wallet page** and click "Enable Smart Account".
 
