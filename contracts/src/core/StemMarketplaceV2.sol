@@ -8,6 +8,9 @@ import {
     SafeERC20
 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {
+    ReentrancyGuard
+} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title StemMarketplaceV2
@@ -21,7 +24,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
  *
  * @custom:version 2.0.0
  */
-contract StemMarketplaceV2 is Ownable {
+contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // ============ Structs ============
@@ -77,6 +80,8 @@ contract StemMarketplaceV2 is Ownable {
     error InsufficientAmount();
     error TransferFailed();
     error InvalidFee();
+    error InvalidRecipient();
+    error MarketplaceNotApproved();
     error CannotBuyOwnListing();
 
     // ============ Constructor ============
@@ -106,6 +111,10 @@ contract StemMarketplaceV2 is Ownable {
             stemNFT.balanceOf(msg.sender, tokenId) >= amount,
             "Insufficient balance"
         );
+        // Verify marketplace approval
+        if (!stemNFT.isApprovedForAll(msg.sender, address(this))) {
+            revert MarketplaceNotApproved();
+        }
 
         listingId = ++_listingId;
         listings[listingId] = Listing({
@@ -129,10 +138,13 @@ contract StemMarketplaceV2 is Ownable {
 
     // ============ Buying (Enforced Royalties) ============
 
-    function buy(uint256 listingId, uint256 amount) external payable {
+    function buy(
+        uint256 listingId,
+        uint256 amount
+    ) external payable nonReentrant {
         Listing storage listing = listings[listingId];
 
-        // Validate
+        // Validate (Checks)
         if (listing.seller == address(0)) revert InvalidListing();
         if (listing.seller == msg.sender) revert CannotBuyOwnListing();
         if (block.timestamp > listing.expiry) revert Expired();
@@ -152,7 +164,13 @@ contract StemMarketplaceV2 is Ownable {
         uint256 protocolFee = (totalPrice * protocolFeeBps) / BPS;
         uint256 sellerAmount = totalPrice - royaltyAmount - protocolFee;
 
-        // Collect payment
+        // Update listing state BEFORE external calls (Effects)
+        listing.amount -= amount;
+        if (listing.amount == 0) {
+            delete listings[listingId];
+        }
+
+        // Collect payment (Interactions)
         _collectPayment(paymentToken, totalPrice);
 
         // Distribute (royalties enforced!)
@@ -164,12 +182,6 @@ contract StemMarketplaceV2 is Ownable {
             _pay(paymentToken, protocolFeeRecipient, protocolFee);
         }
         _pay(paymentToken, seller, sellerAmount);
-
-        // Update listing
-        listing.amount -= amount;
-        if (listing.amount == 0) {
-            delete listings[listingId];
-        }
 
         // Transfer NFT (using cached values)
         stemNFT.safeTransferFrom(seller, msg.sender, tokenId, amount, "");
@@ -185,6 +197,7 @@ contract StemMarketplaceV2 is Ownable {
     }
 
     function setFeeRecipient(address recipient) external onlyOwner {
+        if (recipient == address(0)) revert InvalidRecipient();
         protocolFeeRecipient = recipient;
     }
 
@@ -236,14 +249,7 @@ contract StemMarketplaceV2 is Ownable {
 
     function _collectPayment(address token, uint256 amount) internal {
         if (token == address(0)) {
-            if (msg.value < amount) revert InsufficientPayment();
-            // Refund excess
-            if (msg.value > amount) {
-                (bool ok, ) = payable(msg.sender).call{
-                    value: msg.value - amount
-                }("");
-                if (!ok) revert TransferFailed();
-            }
+            if (msg.value != amount) revert InsufficientPayment();
         } else {
             IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         }
@@ -259,4 +265,13 @@ contract StemMarketplaceV2 is Ownable {
     }
 
     receive() external payable {}
+
+    /// @notice Withdraw ETH accidentally sent directly to the contract
+    function withdrawTrappedETH(address to) external onlyOwner {
+        if (to == address(0)) revert InvalidRecipient();
+        uint256 balance = address(this).balance;
+        if (balance == 0) return;
+        (bool ok, ) = payable(to).call{value: balance}("");
+        if (!ok) revert TransferFailed();
+    }
 }

@@ -22,10 +22,18 @@ contract StemMarketplaceFuzzTest is Test {
         vm.startPrank(admin);
         stemNFT = new StemNFT("https://api.resonate.fm/metadata/");
         validator = new TransferValidator();
-        marketplace = new StemMarketplaceV2(address(stemNFT), feeRecipient, 250);
-        
+        marketplace = new StemMarketplaceV2(
+            address(stemNFT),
+            feeRecipient,
+            250
+        );
+
         stemNFT.setTransferValidator(address(validator));
         validator.setWhitelist(address(marketplace), true);
+
+        // Grant minter role to test actors used in fuzz tests
+        stemNFT.grantRole(stemNFT.MINTER_ROLE(), makeAddr("seller"));
+        stemNFT.grantRole(stemNFT.MINTER_ROLE(), makeAddr("buyer"));
         vm.stopPrank();
     }
 
@@ -41,19 +49,35 @@ contract StemMarketplaceFuzzTest is Test {
         duration = bound(duration, 1 hours, 365 days);
 
         address seller = makeAddr("seller");
-        
+
         // Mint NFT
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        uint256 tokenId = stemNFT.mint(seller, amount, "ipfs://test", address(0), 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            seller,
+            amount,
+            "ipfs://test",
+            address(0),
+            500,
+            true,
+            parentIds
+        );
 
         // Approve and list
         vm.startPrank(seller);
         stemNFT.setApprovalForAll(address(marketplace), true);
-        uint256 listingId = marketplace.list(tokenId, amount, pricePerUnit, address(0), duration);
+        uint256 listingId = marketplace.list(
+            tokenId,
+            amount,
+            pricePerUnit,
+            address(0),
+            duration
+        );
         vm.stopPrank();
 
-        StemMarketplaceV2.Listing memory listing = marketplace.getListing(listingId);
+        StemMarketplaceV2.Listing memory listing = marketplace.getListing(
+            listingId
+        );
         assertEq(listing.seller, seller);
         assertEq(listing.tokenId, tokenId);
         assertEq(listing.amount, amount);
@@ -82,11 +106,25 @@ contract StemMarketplaceFuzzTest is Test {
         // Setup
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        uint256 tokenId = stemNFT.mint(seller, mintAmount, "ipfs://test", royaltyReceiver, royaltyBps, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            seller,
+            mintAmount,
+            "ipfs://test",
+            royaltyReceiver,
+            royaltyBps,
+            true,
+            parentIds
+        );
 
         vm.startPrank(seller);
         stemNFT.setApprovalForAll(address(marketplace), true);
-        uint256 listingId = marketplace.list(tokenId, mintAmount, pricePerUnit, address(0), 7 days);
+        uint256 listingId = marketplace.list(
+            tokenId,
+            mintAmount,
+            pricePerUnit,
+            address(0),
+            7 days
+        );
         vm.stopPrank();
 
         uint256 totalPrice = buyAmount * pricePerUnit;
@@ -114,7 +152,7 @@ contract StemMarketplaceFuzzTest is Test {
         assertEq(seller.balance - sellerBefore, expectedSeller);
     }
 
-    function testFuzz_Buy_RefundsExcess(
+    function testFuzz_Buy_RevertExcessPayment(
         uint256 price,
         uint256 excessAmount
     ) public {
@@ -127,23 +165,34 @@ contract StemMarketplaceFuzzTest is Test {
         // Setup
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        uint256 tokenId = stemNFT.mint(seller, 100, "ipfs://test", address(0), 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            seller,
+            100,
+            "ipfs://test",
+            address(0),
+            500,
+            true,
+            parentIds
+        );
 
         vm.startPrank(seller);
         stemNFT.setApprovalForAll(address(marketplace), true);
-        uint256 listingId = marketplace.list(tokenId, 100, price, address(0), 7 days);
+        uint256 listingId = marketplace.list(
+            tokenId,
+            100,
+            price,
+            address(0),
+            7 days
+        );
         vm.stopPrank();
 
         uint256 totalSent = price + excessAmount;
         vm.deal(buyer, totalSent);
 
-        uint256 buyerBefore = buyer.balance;
-        
+        // Excess ETH should revert
         vm.prank(buyer);
+        vm.expectRevert(StemMarketplaceV2.InsufficientPayment.selector);
         marketplace.buy{value: totalSent}(listingId, 1);
-
-        // Buyer should only spend exact price
-        assertEq(buyerBefore - buyer.balance, price);
     }
 
     // ============ Quote Fuzz Tests ============
@@ -163,11 +212,25 @@ contract StemMarketplaceFuzzTest is Test {
         // Setup
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        uint256 tokenId = stemNFT.mint(seller, 1000, "ipfs://test", royaltyReceiver, royaltyBps, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            seller,
+            1000,
+            "ipfs://test",
+            royaltyReceiver,
+            royaltyBps,
+            true,
+            parentIds
+        );
 
         vm.startPrank(seller);
         stemNFT.setApprovalForAll(address(marketplace), true);
-        uint256 listingId = marketplace.list(tokenId, 1000, pricePerUnit, address(0), 7 days);
+        uint256 listingId = marketplace.list(
+            tokenId,
+            1000,
+            pricePerUnit,
+            address(0),
+            7 days
+        );
         vm.stopPrank();
 
         // Quote
@@ -181,7 +244,7 @@ contract StemMarketplaceFuzzTest is Test {
         // Verify consistency
         assertEq(totalPrice, amount * pricePerUnit);
         assertEq(totalPrice, royaltyAmount + protocolFee + sellerAmount);
-        
+
         // Verify caps
         assertLe(royaltyAmount, (totalPrice * 2500) / 10000); // Max 25%
         assertLe(protocolFee, (totalPrice * 500) / 10000); // Max 5%
@@ -212,7 +275,7 @@ contract StemMarketplaceFuzzTest is Test {
         uint256[3] memory buyAmounts
     ) public {
         uint256 totalListed = 1000;
-        
+
         address seller = makeAddr("seller");
         address buyer = makeAddr("buyer");
         uint256 price = 1 ether;
@@ -220,11 +283,25 @@ contract StemMarketplaceFuzzTest is Test {
         // Setup
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        uint256 tokenId = stemNFT.mint(seller, totalListed, "ipfs://test", address(0), 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            seller,
+            totalListed,
+            "ipfs://test",
+            address(0),
+            500,
+            true,
+            parentIds
+        );
 
         vm.startPrank(seller);
         stemNFT.setApprovalForAll(address(marketplace), true);
-        uint256 listingId = marketplace.list(tokenId, totalListed, price, address(0), 7 days);
+        uint256 listingId = marketplace.list(
+            tokenId,
+            totalListed,
+            price,
+            address(0),
+            7 days
+        );
         vm.stopPrank();
 
         // Bound and sum purchases
@@ -232,19 +309,23 @@ contract StemMarketplaceFuzzTest is Test {
         for (uint256 i = 0; i < 3; i++) {
             buyAmounts[i] = bound(buyAmounts[i], 1, 300);
         }
-        
+
         vm.deal(buyer, 1000 ether);
 
         // Make partial purchases
         for (uint256 i = 0; i < 3; i++) {
-            StemMarketplaceV2.Listing memory listing = marketplace.getListing(listingId);
+            StemMarketplaceV2.Listing memory listing = marketplace.getListing(
+                listingId
+            );
             if (listing.amount == 0) break;
-            
-            uint256 buyAmount = buyAmounts[i] > listing.amount ? listing.amount : buyAmounts[i];
-            
+
+            uint256 buyAmount = buyAmounts[i] > listing.amount
+                ? listing.amount
+                : buyAmounts[i];
+
             vm.prank(buyer);
             marketplace.buy{value: buyAmount * price}(listingId, buyAmount);
-            
+
             totalBought += buyAmount;
         }
 

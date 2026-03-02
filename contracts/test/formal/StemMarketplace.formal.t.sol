@@ -16,19 +16,27 @@ contract StemMarketplaceFormalTest is Test, SymTest {
     StemNFT public stemNFT;
     StemMarketplaceV2 public marketplace;
     TransferValidator public validator;
-    
+
     address public feeRecipient;
     uint256 public constant PROTOCOL_FEE_BPS = 250;
 
     function setUp() public {
         feeRecipient = address(0xFEE);
-        
+
         stemNFT = new StemNFT("https://api.resonate.fm/metadata/");
         validator = new TransferValidator();
-        marketplace = new StemMarketplaceV2(address(stemNFT), feeRecipient, PROTOCOL_FEE_BPS);
-        
+        marketplace = new StemMarketplaceV2(
+            address(stemNFT),
+            feeRecipient,
+            PROTOCOL_FEE_BPS
+        );
+
         stemNFT.setTransferValidator(address(validator));
         validator.setWhitelist(address(marketplace), true);
+
+        // Grant MINTER_ROLE to test actors
+        stemNFT.grantRole(stemNFT.MINTER_ROLE(), address(0x1));
+        stemNFT.grantRole(stemNFT.MINTER_ROLE(), address(0x2));
     }
 
     // ============ Payment Distribution Properties ============
@@ -50,13 +58,27 @@ contract StemMarketplaceFormalTest is Test, SymTest {
         // Setup
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        uint256 tokenId = stemNFT.mint(seller, 1000, "test", royaltyReceiver, royaltyBps, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            seller,
+            1000,
+            "test",
+            royaltyReceiver,
+            royaltyBps,
+            true,
+            parentIds
+        );
 
         vm.prank(seller);
         stemNFT.setApprovalForAll(address(marketplace), true);
-        
+
         vm.prank(seller);
-        uint256 listingId = marketplace.list(tokenId, 1000, pricePerUnit, address(0), 7 days);
+        uint256 listingId = marketplace.list(
+            tokenId,
+            1000,
+            pricePerUnit,
+            address(0),
+            7 days
+        );
 
         // Get quote
         (
@@ -79,20 +101,34 @@ contract StemMarketplaceFormalTest is Test, SymTest {
         vm.assume(royaltyBps <= 1000);
 
         address seller = address(0x1);
-        
+
         // Setup with royalty
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        uint256 tokenId = stemNFT.mint(seller, 100, "test", address(0x3), royaltyBps, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            seller,
+            100,
+            "test",
+            address(0x3),
+            royaltyBps,
+            true,
+            parentIds
+        );
 
         vm.prank(seller);
         stemNFT.setApprovalForAll(address(marketplace), true);
-        
+
         vm.prank(seller);
-        uint256 listingId = marketplace.list(tokenId, 100, salePrice, address(0), 7 days);
+        uint256 listingId = marketplace.list(
+            tokenId,
+            100,
+            salePrice,
+            address(0),
+            7 days
+        );
 
         // Get quote
-        (, uint256 royaltyAmount,,) = marketplace.quoteBuy(listingId, 1);
+        (, uint256 royaltyAmount, , ) = marketplace.quoteBuy(listingId, 1);
 
         // Prove: royalty capped at 25%
         uint256 maxRoyalty = (salePrice * 2500) / 10000;
@@ -104,13 +140,13 @@ contract StemMarketplaceFormalTest is Test, SymTest {
         if (feeBps > marketplace.MAX_PROTOCOL_FEE()) {
             vm.expectRevert();
         }
-        
+
         StemMarketplaceV2 newMarketplace = new StemMarketplaceV2(
             address(stemNFT),
             feeRecipient,
             feeBps
         );
-        
+
         if (feeBps <= marketplace.MAX_PROTOCOL_FEE()) {
             assert(newMarketplace.protocolFeeBps() == feeBps);
         }
@@ -131,14 +167,22 @@ contract StemMarketplaceFormalTest is Test, SymTest {
         // Setup
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        uint256 tokenId = stemNFT.mint(seller, amount, "test", address(0), 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            seller,
+            amount,
+            "test",
+            address(0),
+            500,
+            true,
+            parentIds
+        );
 
         uint256 balanceBefore = stemNFT.balanceOf(seller, tokenId);
 
         // List
         vm.prank(seller);
         stemNFT.setApprovalForAll(address(marketplace), true);
-        
+
         vm.prank(seller);
         marketplace.list(tokenId, amount, price, address(0), 7 days);
 
@@ -151,25 +195,39 @@ contract StemMarketplaceFormalTest is Test, SymTest {
     /// @notice Proves only seller can cancel
     function check_cancel_onlySeller(address caller) public {
         address seller = address(0x1);
-        
+
         // Setup
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        uint256 tokenId = stemNFT.mint(seller, 100, "test", address(0), 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            seller,
+            100,
+            "test",
+            address(0),
+            500,
+            true,
+            parentIds
+        );
 
         vm.prank(seller);
         stemNFT.setApprovalForAll(address(marketplace), true);
-        
+
         vm.prank(seller);
-        uint256 listingId = marketplace.list(tokenId, 100, 1 ether, address(0), 7 days);
+        uint256 listingId = marketplace.list(
+            tokenId,
+            100,
+            1 ether,
+            address(0),
+            7 days
+        );
 
         // Try cancel
         vm.prank(caller);
-        
+
         if (caller != seller) {
             vm.expectRevert();
         }
-        
+
         marketplace.cancel(listingId);
     }
 
@@ -189,13 +247,27 @@ contract StemMarketplaceFormalTest is Test, SymTest {
         // Setup
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        uint256 tokenId = stemNFT.mint(seller, mintAmount, "test", address(0), 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            seller,
+            mintAmount,
+            "test",
+            address(0),
+            500,
+            true,
+            parentIds
+        );
 
         vm.prank(seller);
         stemNFT.setApprovalForAll(address(marketplace), true);
-        
+
         vm.prank(seller);
-        uint256 listingId = marketplace.list(tokenId, mintAmount, 1 ether, address(0), 7 days);
+        uint256 listingId = marketplace.list(
+            tokenId,
+            mintAmount,
+            1 ether,
+            address(0),
+            7 days
+        );
 
         uint256 sellerBefore = stemNFT.balanceOf(seller, tokenId);
         uint256 buyerBefore = stemNFT.balanceOf(buyer, tokenId);
@@ -220,13 +292,27 @@ contract StemMarketplaceFormalTest is Test, SymTest {
         // Setup
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        uint256 tokenId = stemNFT.mint(seller, 100, "test", address(0), 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            seller,
+            100,
+            "test",
+            address(0),
+            500,
+            true,
+            parentIds
+        );
 
         vm.prank(seller);
         stemNFT.setApprovalForAll(address(marketplace), true);
-        
+
         vm.prank(seller);
-        uint256 listingId = marketplace.list(tokenId, 100, 1 ether, address(0), 7 days);
+        uint256 listingId = marketplace.list(
+            tokenId,
+            100,
+            1 ether,
+            address(0),
+            7 days
+        );
 
         // Warp past expiry
         vm.warp(block.timestamp + 7 days + timeAfterExpiry);
@@ -252,13 +338,27 @@ contract StemMarketplaceFormalTest is Test, SymTest {
         // Setup
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        uint256 tokenId = stemNFT.mint(seller, 100, "test", address(0), 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            seller,
+            100,
+            "test",
+            address(0),
+            500,
+            true,
+            parentIds
+        );
 
         vm.prank(seller);
         stemNFT.setApprovalForAll(address(marketplace), true);
-        
+
         vm.prank(seller);
-        uint256 listingId = marketplace.list(tokenId, 100, price, address(0), 7 days);
+        uint256 listingId = marketplace.list(
+            tokenId,
+            100,
+            price,
+            address(0),
+            7 days
+        );
 
         // Buy with insufficient payment should revert
         vm.deal(buyer, payment);
@@ -274,9 +374,9 @@ contract StemMarketplaceFormalTest is Test, SymTest {
         if (newFee > marketplace.MAX_PROTOCOL_FEE()) {
             vm.expectRevert();
         }
-        
+
         marketplace.setProtocolFee(newFee);
-        
+
         if (newFee <= marketplace.MAX_PROTOCOL_FEE()) {
             assert(marketplace.protocolFeeBps() == newFee);
         }

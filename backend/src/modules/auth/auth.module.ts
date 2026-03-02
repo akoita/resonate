@@ -38,7 +38,9 @@ function getChainFromRpc(rpcUrl: string | undefined): { chain: Chain; transport:
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
         const secret = config.get<string>("JWT_SECRET") || "dev-secret";
-        console.log(`[Auth] Registering JwtModule with secret starting with: ${secret.substring(0, 3)}...`);
+        if (!config.get<string>("JWT_SECRET") && process.env.NODE_ENV === 'production') {
+          throw new Error('JWT_SECRET must be set in production');
+        }
         return {
           secret,
           signOptions: { expiresIn: "7d" },

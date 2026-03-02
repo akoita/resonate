@@ -9,7 +9,7 @@ import {TransferValidator} from "../../src/modules/TransferValidator.sol";
 /**
  * @title Protocol Invariant Tests
  * @notice Tests that verify protocol-wide properties hold under all conditions
- * 
+ *
  * Key Invariants:
  * 1. NFT supply never decreases (no burning)
  * 2. Royalty BPS never exceeds MAX_ROYALTY_BPS
@@ -27,13 +27,23 @@ contract ProtocolInvariantTest is Test {
         // Deploy protocol
         stemNFT = new StemNFT("https://api.resonate.fm/metadata/");
         validator = new TransferValidator();
-        marketplace = new StemMarketplaceV2(address(stemNFT), address(this), 250);
-        
+        marketplace = new StemMarketplaceV2(
+            address(stemNFT),
+            address(this),
+            250
+        );
+
         stemNFT.setTransferValidator(address(validator));
         validator.setWhitelist(address(marketplace), true);
 
         // Deploy handler
         handler = new Handler(stemNFT, marketplace);
+
+        // Grant MINTER_ROLE to all handler actors
+        address[] memory handlerActors = handler.getActors();
+        for (uint256 i = 0; i < handlerActors.length; i++) {
+            stemNFT.grantRole(stemNFT.MINTER_ROLE(), handlerActors[i]);
+        }
 
         // Target the handler
         targetContract(address(handler));
@@ -43,11 +53,10 @@ contract ProtocolInvariantTest is Test {
         selectors[0] = Handler.mintStem.selector;
         selectors[1] = Handler.listStem.selector;
         selectors[2] = Handler.buyStem.selector;
-        
-        targetSelector(FuzzSelector({
-            addr: address(handler),
-            selectors: selectors
-        }));
+
+        targetSelector(
+            FuzzSelector({addr: address(handler), selectors: selectors})
+        );
     }
 
     // ============ NFT Invariants ============
@@ -61,7 +70,7 @@ contract ProtocolInvariantTest is Test {
     function invariant_royaltyBpsWithinBounds() public view {
         uint256[] memory tokenIds = handler.getTokenIds();
         for (uint256 i = 0; i < tokenIds.length; i++) {
-            (,, uint96 royaltyBps,, bool exists) = stemNFT.stems(tokenIds[i]);
+            (, , uint96 royaltyBps, , bool exists) = stemNFT.stems(tokenIds[i]);
             if (exists) {
                 assertLe(royaltyBps, stemNFT.MAX_ROYALTY_BPS());
             }
@@ -72,7 +81,7 @@ contract ProtocolInvariantTest is Test {
     function invariant_creatorImmutable() public view {
         uint256[] memory tokenIds = handler.getTokenIds();
         address[] memory expectedCreators = handler.getCreators();
-        
+
         for (uint256 i = 0; i < tokenIds.length; i++) {
             assertEq(stemNFT.getCreator(tokenIds[i]), expectedCreators[i]);
         }
@@ -89,27 +98,27 @@ contract ProtocolInvariantTest is Test {
     function invariant_paymentsAddUp() public view {
         // Check handler's recorded payments
         uint256 totalPaid = handler.totalPaid();
-        uint256 totalReceived = handler.sellerReceived() + 
-                                handler.royaltyReceived() + 
-                                handler.feeReceived();
+        uint256 totalReceived = handler.sellerReceived() +
+            handler.royaltyReceived() +
+            handler.feeReceived();
         assertEq(totalPaid, totalReceived);
     }
 
     /// @notice NFT balances are conserved
     function invariant_balanceConservation() public view {
         uint256[] memory tokenIds = handler.getTokenIds();
-        
+
         for (uint256 i = 0; i < tokenIds.length; i++) {
             uint256 tokenId = tokenIds[i];
             uint256 totalMinted = handler.getTotalMinted(tokenId);
-            
+
             // Sum all balances
             uint256 totalBalances;
             address[] memory holders = handler.getHolders(tokenId);
             for (uint256 j = 0; j < holders.length; j++) {
                 totalBalances += stemNFT.balanceOf(holders[j], tokenId);
             }
-            
+
             assertEq(totalBalances, totalMinted);
         }
     }
@@ -138,7 +147,7 @@ contract Handler is Test {
     address[] public creators;
     mapping(uint256 => uint256) public totalMinted;
     mapping(uint256 => address[]) public holders;
-    
+
     uint256 public minStemCount;
     uint256 public mintCount;
     uint256 public listCount;
@@ -185,7 +194,7 @@ contract Handler is Test {
         royaltyBps = uint96(bound(royaltyBps, 1, 1000));
 
         uint256[] memory parentIds = new uint256[](0);
-        
+
         uint256 tokenId = stemNFT.mint(
             currentActor,
             amount,
@@ -201,7 +210,7 @@ contract Handler is Test {
         creators.push(currentActor);
         totalMinted[tokenId] = amount;
         holders[tokenId].push(currentActor);
-        
+
         minStemCount++;
         mintCount++;
     }
@@ -213,7 +222,7 @@ contract Handler is Test {
         uint256 price
     ) external useActor(actorSeed) {
         if (tokenIds.length == 0) return;
-        
+
         uint256 tokenId = tokenIds[tokenIdSeed % tokenIds.length];
         uint256 balance = stemNFT.balanceOf(currentActor, tokenId);
         if (balance == 0) return;
@@ -222,8 +231,14 @@ contract Handler is Test {
         price = bound(price, 0.01 ether, 10 ether);
 
         stemNFT.setApprovalForAll(address(marketplace), true);
-        uint256 listingId = marketplace.list(tokenId, amount, price, address(0), 7 days);
-        
+        uint256 listingId = marketplace.list(
+            tokenId,
+            amount,
+            price,
+            address(0),
+            7 days
+        );
+
         activeListings.push(listingId);
         listCount++;
     }
@@ -234,10 +249,12 @@ contract Handler is Test {
         uint256 amount
     ) external useActor(actorSeed) {
         if (activeListings.length == 0) return;
-        
+
         uint256 listingId = activeListings[listingSeed % activeListings.length];
-        StemMarketplaceV2.Listing memory listing = marketplace.getListing(listingId);
-        
+        StemMarketplaceV2.Listing memory listing = marketplace.getListing(
+            listingId
+        );
+
         if (listing.seller == address(0) || listing.amount == 0) return;
         if (block.timestamp > listing.expiry) return;
 
@@ -245,11 +262,12 @@ contract Handler is Test {
         uint256 totalPrice = amount * listing.pricePerUnit;
 
         // Get quote
-        (,uint256 royalty, uint256 fee, uint256 sellerAmt) = marketplace.quoteBuy(listingId, amount);
+        (, uint256 royalty, uint256 fee, uint256 sellerAmt) = marketplace
+            .quoteBuy(listingId, amount);
 
         // Record balances before
         uint256 sellerBefore = listing.seller.balance;
-        
+
         // Buy
         marketplace.buy{value: totalPrice}(listingId, amount);
 
@@ -289,7 +307,13 @@ contract Handler is Test {
         return totalMinted[tokenId];
     }
 
-    function getHolders(uint256 tokenId) external view returns (address[] memory) {
+    function getHolders(
+        uint256 tokenId
+    ) external view returns (address[] memory) {
         return holders[tokenId];
+    }
+
+    function getActors() external view returns (address[] memory) {
+        return actors;
     }
 }

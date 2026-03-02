@@ -12,7 +12,7 @@ import {LibClone} from "solady/utils/LibClone.sol";
  */
 contract KernelFactory {
     // ============ Errors ============
-    
+
     error InitializeError();
     error ImplementationNotDeployed();
 
@@ -39,18 +39,21 @@ contract KernelFactory {
      * @param data Initialization calldata
      * @param salt Salt for deterministic deployment
      * @return account The deployed account address
+     * @dev msg.value is intentionally forwarded to createDeterministicERC1967
+     *      for implementations that require ETH during proxy deployment.
+     *      The initialization call does not forward value separately.
      */
     function createAccount(
         bytes calldata data,
         bytes32 salt
     ) public payable returns (address account) {
         bytes32 actualSalt = keccak256(abi.encodePacked(data, salt));
-        
+
         (bool alreadyDeployed, address deployed) = LibClone
             .createDeterministicERC1967(msg.value, implementation, actualSalt);
-        
+
         account = deployed;
-        
+
         if (!alreadyDeployed) {
             (bool success, ) = account.call(data);
             if (!success) {
@@ -71,10 +74,11 @@ contract KernelFactory {
         bytes32 salt
     ) public view returns (address) {
         bytes32 actualSalt = keccak256(abi.encodePacked(data, salt));
-        return LibClone.predictDeterministicAddressERC1967(
-            implementation,
-            actualSalt,
-            address(this)
-        );
+        return
+            LibClone.predictDeterministicAddressERC1967(
+                implementation,
+                actualSalt,
+                address(this)
+            );
     }
 }

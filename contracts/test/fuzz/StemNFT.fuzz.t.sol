@@ -10,7 +10,7 @@ import {StemNFT} from "../../src/core/StemNFT.sol";
  */
 contract StemNFTFuzzTest is Test {
     StemNFT public stemNFT;
-    
+
     address public admin = makeAddr("admin");
 
     function setUp() public {
@@ -26,12 +26,14 @@ contract StemNFTFuzzTest is Test {
         uint96 royaltyBps
     ) public {
         // Use makeAddr to generate deterministic EOA (avoids contract receiver issues)
-        address recipient = makeAddr(string(abi.encodePacked("recipient", recipientSeed)));
+        address recipient = makeAddr(
+            string(abi.encodePacked("recipient", recipientSeed))
+        );
         amount = bound(amount, 1, 1000000);
         royaltyBps = uint96(bound(royaltyBps, 1, 1000)); // 0.01% to 10%
 
         uint256[] memory parentIds = new uint256[](0);
-        
+
         vm.prank(admin);
         uint256 tokenId = stemNFT.mint(
             recipient,
@@ -44,8 +46,11 @@ contract StemNFTFuzzTest is Test {
         );
 
         assertEq(stemNFT.balanceOf(recipient, tokenId), amount);
-        
-        (address receiver, uint256 royaltyAmount) = stemNFT.royaltyInfo(tokenId, 10000);
+
+        (address receiver, uint256 royaltyAmount) = stemNFT.royaltyInfo(
+            tokenId,
+            10000
+        );
         assertEq(receiver, admin);
         assertEq(royaltyAmount, royaltyBps);
     }
@@ -54,9 +59,11 @@ contract StemNFTFuzzTest is Test {
         vm.assume(royaltyBps > 1000); // > 10%
 
         uint256[] memory parentIds = new uint256[](0);
-        
+
         vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSelector(StemNFT.InvalidRoyalty.selector, royaltyBps));
+        vm.expectRevert(
+            abi.encodeWithSelector(StemNFT.InvalidRoyalty.selector, royaltyBps)
+        );
         stemNFT.mint(
             makeAddr("recipient"),
             100,
@@ -81,9 +88,33 @@ contract StemNFTFuzzTest is Test {
         address recipient = makeAddr("recipient");
 
         vm.startPrank(admin);
-        uint256 tokenId1 = stemNFT.mint(recipient, amount1, "ipfs://1", address(0), 500, true, parentIds);
-        uint256 tokenId2 = stemNFT.mint(recipient, amount2, "ipfs://2", address(0), 500, true, parentIds);
-        uint256 tokenId3 = stemNFT.mint(recipient, amount3, "ipfs://3", address(0), 500, true, parentIds);
+        uint256 tokenId1 = stemNFT.mint(
+            recipient,
+            amount1,
+            "ipfs://1",
+            address(0),
+            500,
+            true,
+            parentIds
+        );
+        uint256 tokenId2 = stemNFT.mint(
+            recipient,
+            amount2,
+            "ipfs://2",
+            address(0),
+            500,
+            true,
+            parentIds
+        );
+        uint256 tokenId3 = stemNFT.mint(
+            recipient,
+            amount3,
+            "ipfs://3",
+            address(0),
+            500,
+            true,
+            parentIds
+        );
         vm.stopPrank();
 
         assertEq(stemNFT.totalSupply(tokenId1), amount1);
@@ -115,7 +146,10 @@ contract StemNFTFuzzTest is Test {
             parentIds
         );
 
-        (address receiver, uint256 amount) = stemNFT.royaltyInfo(tokenId, salePrice);
+        (address receiver, uint256 amount) = stemNFT.royaltyInfo(
+            tokenId,
+            salePrice
+        );
 
         assertEq(receiver, royaltyReceiver);
         assertEq(amount, (salePrice * royaltyBps) / 10000);
@@ -127,7 +161,7 @@ contract StemNFTFuzzTest is Test {
         numParents = uint8(bound(numParents, 1, 5));
 
         uint256[] memory noParents = new uint256[](0);
-        
+
         // Create original stems
         vm.startPrank(admin);
         uint256[] memory parentIds = new uint256[](numParents);
@@ -175,9 +209,17 @@ contract StemNFTFuzzTest is Test {
         transferAmount = bound(transferAmount, 1, mintAmount);
 
         uint256[] memory parentIds = new uint256[](0);
-        
+
         vm.prank(admin);
-        uint256 tokenId = stemNFT.mint(from, mintAmount, "ipfs://test", address(0), 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            from,
+            mintAmount,
+            "ipfs://test",
+            address(0),
+            500,
+            true,
+            parentIds
+        );
 
         vm.prank(from);
         stemNFT.safeTransferFrom(from, to, tokenId, transferAmount, "");
@@ -199,12 +241,26 @@ contract StemNFTFuzzTest is Test {
         address recipient = makeAddr("recipient");
 
         vm.startPrank(admin);
-        uint256 tokenId = stemNFT.mint(recipient, initialAmount, "ipfs://test", address(0), 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            recipient,
+            initialAmount,
+            "ipfs://test",
+            address(0),
+            500,
+            true,
+            parentIds
+        );
         stemNFT.mintMore(recipient, tokenId, additionalAmount);
         vm.stopPrank();
 
-        assertEq(stemNFT.totalSupply(tokenId), initialAmount + additionalAmount);
-        assertEq(stemNFT.balanceOf(recipient, tokenId), initialAmount + additionalAmount);
+        assertEq(
+            stemNFT.totalSupply(tokenId),
+            initialAmount + additionalAmount
+        );
+        assertEq(
+            stemNFT.balanceOf(recipient, tokenId),
+            initialAmount + additionalAmount
+        );
     }
 
     // ============ Royalty Update Fuzz Tests ============
@@ -213,9 +269,17 @@ contract StemNFTFuzzTest is Test {
         newBps = uint96(bound(newBps, 0, 1000));
 
         uint256[] memory parentIds = new uint256[](0);
-        
+
         vm.prank(admin);
-        uint256 tokenId = stemNFT.mint(admin, 100, "ipfs://test", address(0), 500, true, parentIds);
+        uint256 tokenId = stemNFT.mint(
+            admin,
+            100,
+            "ipfs://test",
+            address(0),
+            500,
+            true,
+            parentIds
+        );
 
         vm.prank(admin);
         stemNFT.setRoyaltyBps(tokenId, newBps);

@@ -24,6 +24,7 @@ export class PaymentsController {
     return this.paymentsService.splitPayment(body);
   }
 
+  @UseGuards(AuthGuard("jwt"))
   @Post("confirm")
   confirm(@Body() body: { paymentId: string }) {
     return this.paymentsService.confirmOnChain(body.paymentId);
