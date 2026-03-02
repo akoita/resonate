@@ -439,11 +439,9 @@ Next.js bakes `NEXT_PUBLIC_*` env vars into the build cache (`web/.next/`). Both
 
 3. **Sign in**: Click "Sign up" or "Connect" in the top bar. The app uses WebAuthn Passkeys (self-hosted on the NestJS backend) to create a Kernel v3 smart account and authenticate (see [Local Dev Auth](#local-dev-auth-passkey-sign-in)).
 
-4. **Go to Wallet page** and click "Enable Smart Account".
+4. **Smart account is created automatically** during passkey sign-in — no manual deployment needed.
 
-5. **Click "Deploy Smart Account"** – the smart account is deployed on Anvil.
-
-6. **Fund the account** if you need to send UserOperations (see [Funding Smart Accounts](#funding-smart-accounts)).
+5. **Fund the account** if you need to send UserOperations (see [Funding Smart Accounts](#funding-smart-accounts)).
 
 ## Docker Compose Services
 
