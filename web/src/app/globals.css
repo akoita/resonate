@@ -7948,6 +7948,14 @@ tr[draggable="true"]:hover {
   opacity: 0.5;
 }
 
+.awc-tx-hash.tx-failed {
+  color: #f87171;
+  opacity: 0.9;
+  cursor: help;
+  text-decoration: underline dotted rgba(248, 113, 113, 0.4);
+  text-underline-offset: 2px;
+}
+
 .awc-tx-stem {
   font-size: 11px;
   font-weight: 500;

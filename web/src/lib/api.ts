@@ -640,6 +640,7 @@ export type AgentTransaction = {
   status: "pending" | "confirmed" | "failed" | "curated";
   txHash: string | null;
   userOpHash: string | null;
+  errorMessage: string | null;
   createdAt: string;
   confirmedAt: string | null;
   stemName: string | null;

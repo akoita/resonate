@@ -270,8 +270,14 @@ export default function AgentBudgetCard({
                                             </div>
                                             <div className="awc-tx-right">
                                                 <span className="awc-tx-time">{formatRelativeTime(tx.createdAt)}</span>
-                                                <span className="awc-tx-hash mono">
-                                                    {tx.txHash ? `${tx.txHash.slice(0, 10)}…` : "pending"}
+                                                <span className={`awc-tx-hash mono ${tx.status === "failed" ? "tx-failed" : ""}`}
+                                                    title={tx.status === "failed" && tx.errorMessage ? tx.errorMessage : undefined}
+                                                >
+                                                    {tx.txHash
+                                                        ? `${tx.txHash.slice(0, 10)}…`
+                                                        : tx.status === "failed"
+                                                            ? "failed"
+                                                            : tx.status}
                                                 </span>
                                             </div>
                                         </div>
