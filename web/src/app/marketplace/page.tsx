@@ -6,7 +6,7 @@ import { useWebSockets, type MarketplaceUpdate } from "../../hooks/useWebSockets
 import { useBuyStem } from "../../hooks/useContracts";
 import { useToast } from "../../components/ui/Toast";
 import { useAuth } from "../../components/auth/AuthProvider";
-import { useZeroDev } from "../../components/auth/ZeroDevProviderClient";
+import { getReleaseArtworkUrl } from "../../lib/api";
 import { ExpiryBadge } from "../../components/marketplace/ExpiryBadge";
 import { LicenseBadges } from "../../components/marketplace/LicenseBadges";
 import { BuyModal } from "../../components/marketplace/BuyModal";
@@ -14,6 +14,13 @@ import "./marketplace.css";
 import "../../styles/license-badges.css";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+
+/** Resolve a potentially-relative backend path to a full URL */
+function resolveUrl(path?: string | null): string | undefined {
+  if (!path) return undefined;
+  if (path.startsWith("http")) return path;
+  return `${API_BASE}${path}`;
+}
 
 interface ListingData {
     listingId: string;
@@ -94,25 +101,15 @@ export default function MarketplacePage() {
 
     const { pending: buyPending } = useBuyStem();
     const { addToast } = useToast();
-    const { address: walletAddress } = useAuth();
-    const { chainId } = useZeroDev();
+    const { address: walletAddress, smartAccountAddress } = useAuth();
 
-    // Resolve the actual on-chain signer address.
-    // In local dev (chainId 31337 or forked Sepolia 11155111), sendLocalTransaction
-    // derives a different EOA from the auth address via keccak256(salt + address).
-    // The listing's sellerAddress is this derived address, NOT the auth address.
+    // Use the smart account address (on-chain identity) as the signer address.
+    // In the unified AA path, the Kernel account IS the on-chain identity.
     const [signerAddress, setSignerAddress] = useState<string | null>(null);
     useEffect(() => {
-        if (!walletAddress) { setSignerAddress(null); return; }
-        const isLocalOrFork = chainId === 31337 || (chainId === 11155111 && process.env.NODE_ENV === "development");
-        if (isLocalOrFork) {
-            import("../../lib/localAA").then(({ getLocalSignerAddress }) => {
-                setSignerAddress(getLocalSignerAddress(walletAddress as `0x${string}`).toLowerCase());
-            }).catch(() => setSignerAddress(walletAddress.toLowerCase()));
-        } else {
-            setSignerAddress(walletAddress.toLowerCase());
-        }
-    }, [walletAddress, chainId]);
+        const addr = smartAccountAddress || walletAddress;
+        setSignerAddress(addr ? addr.toLowerCase() : null);
+    }, [walletAddress, smartAccountAddress]);
 
     // ---- Search debounce ----
     useEffect(() => {
@@ -495,8 +492,8 @@ export default function MarketplacePage() {
                             >
                                 {/* Artwork */}
                                 <div className="stem-card__artwork">
-                                    {listing.stem?.artworkUrl ? (
-                                        <img src={listing.stem.artworkUrl} alt={listing.stem.title || "Stem"} />
+                                    {(listing.stem?.releaseId || listing.stem?.artworkUrl) ? (
+                                        <img src={listing.stem.releaseId ? getReleaseArtworkUrl(listing.stem.releaseId) : resolveUrl(listing.stem.artworkUrl)} alt={listing.stem.title || "Stem"} />
                                     ) : (
                                         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%", background: "rgba(255,255,255,0.02)" }}>
                                             <span style={{ fontSize: 40, opacity: 0.15 }}>🎵</span>
@@ -528,7 +525,7 @@ export default function MarketplacePage() {
 
                                     {/* Play overlay */}
                                     {listing.stem?.uri && (
-                                        <div className="stem-card__play-overlay" onClick={() => togglePlay(listing.listingId, listing.stem!.uri!)}>
+                                        <div className="stem-card__play-overlay" onClick={() => togglePlay(listing.listingId, resolveUrl(listing.stem!.uri)!)}>
                                             <div className="stem-card__play-btn">
                                                 {playingId === listing.listingId ? "⏸" : "▶"}
                                             </div>

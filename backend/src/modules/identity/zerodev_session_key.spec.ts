@@ -7,6 +7,9 @@ jest.mock("../../db/prisma", () => ({
       update: jest.fn(),
       updateMany: jest.fn(),
     },
+    keyAuditLog: {
+      create: jest.fn(),
+    },
   },
 }));
 
@@ -16,20 +19,21 @@ import { ZeroDevSessionKeyService } from "./zerodev_session_key.service";
 const mockPrismaSessionKey = (prisma as any).sessionKey;
 
 const mockConfig = {
-  get: jest.fn((key: string) => {
-    if (key === "AA_SKIP_BUNDLER") return "false";
-    return undefined;
-  }),
+  get: jest.fn(() => undefined),
 };
 
-const mockSessionKeyService = {
-  issue: jest.fn(),
-  validate: jest.fn(),
-  revoke: jest.fn(),
+const mockCryptoService = {
+  encrypt: jest.fn(async (val: string) => `enc:${val}`),
+  decrypt: jest.fn(async (val: string) => val.startsWith('enc:') ? val.slice(4) : val),
+  isEnabled: true,
+};
+
+const mockKeyAuditService = {
+  log: jest.fn(async () => {}),
 };
 
 function createService(): ZeroDevSessionKeyService {
-  return new (ZeroDevSessionKeyService as any)(mockConfig, mockSessionKeyService);
+  return new (ZeroDevSessionKeyService as any)(mockConfig, mockCryptoService, mockKeyAuditService);
 }
 
 const samplePermissions = {
@@ -45,26 +49,24 @@ beforeEach(() => {
 });
 
 describe("ZeroDevSessionKeyService", () => {
-  describe("registerSessionKey", () => {
-    it("should revoke existing keys and create a new one", async () => {
+  describe("createPendingSession", () => {
+    it("should revoke existing keys and create a new one with agent key", async () => {
       mockPrismaSessionKey.updateMany.mockResolvedValue({ count: 1 });
       mockPrismaSessionKey.create.mockResolvedValue({
         id: "sk-1",
         userId: "user-1",
-        serializedKey: "ser_key_data",
+        agentPrivateKey: "0xfake_private_key",
+        agentAddress: "0xAgentAddr",
         permissions: samplePermissions,
         validUntil: new Date("2030-01-01"),
-        txHash: "0xabc",
         createdAt: new Date(),
       });
 
       const service = createService();
-      const result = await service.registerSessionKey(
+      const result = await service.createPendingSession(
         "user-1",
-        "ser_key_data",
         samplePermissions,
         new Date("2030-01-01"),
-        "0xabc",
       );
 
       // Should revoke all existing active keys first
@@ -73,51 +75,72 @@ describe("ZeroDevSessionKeyService", () => {
         data: expect.objectContaining({ revokedAt: expect.any(Date) }),
       });
 
-      // Should create the new key
+      // Should create the new key with agent key fields
       expect(mockPrismaSessionKey.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           userId: "user-1",
-          serializedKey: "ser_key_data",
+          agentPrivateKey: expect.any(String),
+          agentAddress: expect.any(String),
+          permissions: samplePermissions,
           validUntil: new Date("2030-01-01"),
-          txHash: "0xabc",
         }),
       });
 
       expect(result.id).toBe("sk-1");
-      expect(result.permissions).toEqual(samplePermissions);
+      expect(result.agentAddress).toBeDefined();
     });
+  });
 
-    it("should handle missing txHash", async () => {
-      mockPrismaSessionKey.updateMany.mockResolvedValue({ count: 0 });
-      mockPrismaSessionKey.create.mockResolvedValue({
-        id: "sk-2",
-        userId: "user-2",
-        serializedKey: "data",
+  describe("activateSessionKey", () => {
+    it("should store approval data on a pending session key", async () => {
+      mockPrismaSessionKey.findFirst.mockResolvedValue({
+        id: "sk-pending",
+        userId: "user-1",
+        agentPrivateKey: "0xkey",
+        agentAddress: "0xAddr",
+        approvalData: null,
+      });
+      mockPrismaSessionKey.update.mockResolvedValue({
+        id: "sk-pending",
+        userId: "user-1",
+        agentAddress: "0xAddr",
+        agentPrivateKey: "0xkey",
+        approvalData: "serialized_approval",
         permissions: samplePermissions,
         validUntil: new Date("2030-01-01"),
-        txHash: null,
+        txHash: "0xgrant",
         createdAt: new Date(),
       });
 
       const service = createService();
-      const result = await service.registerSessionKey(
-        "user-2",
-        "data",
-        samplePermissions,
-        new Date("2030-01-01"),
-        // no txHash
+      const result = await service.activateSessionKey(
+        "user-1",
+        "serialized_approval",
+        "0xgrant",
       );
 
-      expect(result.txHash).toBeNull();
+      expect(result.id).toBe("sk-pending");
+      expect(result.agentAddress).toBe("0xAddr");
+    });
+
+    it("should throw when no pending session exists", async () => {
+      mockPrismaSessionKey.findFirst.mockResolvedValue(null);
+
+      const service = createService();
+      await expect(
+        service.activateSessionKey("user-missing", "data"),
+      ).rejects.toThrow("No pending session key found");
     });
   });
 
   describe("getActiveSessionKey", () => {
-    it("should return the most recent non-revoked, non-expired key", async () => {
+    it("should return the most recent activated, non-revoked, non-expired key", async () => {
       const mockKey = {
         id: "sk-3",
         userId: "user-3",
-        serializedKey: "key_data",
+        agentPrivateKey: "0xkey",
+        agentAddress: "0xAddr",
+        approvalData: "approval_data",
         validUntil: new Date("2030-01-01"),
         revokedAt: null,
       };
@@ -131,6 +154,7 @@ describe("ZeroDevSessionKeyService", () => {
         where: {
           userId: "user-3",
           revokedAt: null,
+          approvalData: { not: null },
           validUntil: { gt: expect.any(Date) },
         },
         orderBy: { createdAt: "desc" },
@@ -152,6 +176,7 @@ describe("ZeroDevSessionKeyService", () => {
       mockPrismaSessionKey.findFirst.mockResolvedValue({
         id: "sk-4",
         userId: "user-4",
+        approvalData: "data",
       });
       mockPrismaSessionKey.update.mockResolvedValue({});
 
@@ -183,6 +208,7 @@ describe("ZeroDevSessionKeyService", () => {
         validUntil: new Date("2030-01-01"),
         txHash: "0xtx",
         permissions: samplePermissions,
+        approvalData: "data",
       });
 
       const service = createService();
@@ -190,7 +216,6 @@ describe("ZeroDevSessionKeyService", () => {
 
       expect(result).toEqual({
         valid: true,
-        mock: false,
         id: "sk-5",
         permissions: samplePermissions,
         validUntil: new Date("2030-01-01"),
@@ -206,44 +231,38 @@ describe("ZeroDevSessionKeyService", () => {
 
       expect(result).toBeNull();
     });
-
-    it("should return mock valid when skipBundler is true", async () => {
-      const mockConfigSkip = {
-        get: jest.fn((key: string) => {
-          if (key === "AA_SKIP_BUNDLER") return "true";
-          return undefined;
-        }),
-      };
-      const service = new (ZeroDevSessionKeyService as any)(
-        mockConfigSkip,
-        mockSessionKeyService,
-      );
-
-      const result = await service.validateSessionKey("user-any");
-      expect(result).toEqual({ valid: true, mock: true });
-    });
   });
 
-  describe("getSerializedKey", () => {
-    it("should return the serialized key data", async () => {
+  describe("getAgentKeyData", () => {
+    it("should return the agent key data for sending transactions", async () => {
       mockPrismaSessionKey.findFirst.mockResolvedValue({
         id: "sk-6",
-        serializedKey: "the_serialized_key",
+        agentPrivateKey: "0xprivate_key",
+        agentAddress: "0xAgentAddr",
+        approvalData: "the_approval_data",
         validUntil: new Date("2030-01-01"),
         revokedAt: null,
       });
 
       const service = createService();
-      const result = await service.getSerializedKey("user-6");
+      const result = await service.getAgentKeyData("user-6");
 
-      expect(result).toBe("the_serialized_key");
+      expect(result).not.toBeNull();
+      expect(result!.agentPrivateKey.toString()).toBe("0xprivate_key");
+      expect(result!.agentAddress).toBe("0xAgentAddr");
+      expect(result!.approvalData).toBe("the_approval_data");
+
+      // Verify zero-after-use pattern
+      result!.agentPrivateKey.zero();
+      expect(result!.agentPrivateKey.isZeroed).toBe(true);
+      expect(() => result!.agentPrivateKey.toString()).toThrow("zeroed");
     });
 
     it("should return null when no active key", async () => {
       mockPrismaSessionKey.findFirst.mockResolvedValue(null);
 
       const service = createService();
-      const result = await service.getSerializedKey("user-none");
+      const result = await service.getAgentKeyData("user-none");
 
       expect(result).toBeNull();
     });

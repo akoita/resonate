@@ -339,7 +339,9 @@ model AgentConfig {
 model SessionKey {
   id              String    @id @default(uuid())
   userId          String
-  serializedKey   String    @db.Text
+  agentPrivateKey String    @db.Text   // Agent-owned ECDSA private key (never leaves backend)
+  agentAddress    String               // Public address of the agent's key
+  approvalData    String?   @db.Text   // Serialized permission approval from user's passkey
   permissions     Json      // {target, function, totalCap, perTxCap, rateLimit}
   validUntil      DateTime
   revokedAt       DateTime?
@@ -390,4 +392,33 @@ model LibraryTrack {
   @@unique([userId, sourcePath, fileSize])
   @@unique([userId, catalogTrackId])
   @@index([userId])
+}
+
+model WebAuthnCredential {
+  id               String   @id @default(cuid())
+  credentialId     String   @unique
+  publicKey        Bytes
+  counter          BigInt   @default(0)
+  transports       String[]
+  userId           String   // internal user identifier (random UUID per registration)
+  passkeyName      String
+  rpId             String
+  createdAt        DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ============ Key Audit Log (append-only) ============
+
+model KeyAuditLog {
+  id           String   @id @default(uuid())
+  userId       String
+  action       String   // decrypt, sign, rotate, revoke, enable, activate
+  agentAddress String?
+  context      Json?    // {txHash, listingId, reason, ...}
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
 }

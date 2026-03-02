@@ -235,6 +235,34 @@ async def separate_audio(
 
 # ─── Pub/Sub consumer (Phase 2 event-driven) ──────────────────────────
 
+
+async def download_audio(uri: str, dest_path: Path):
+    """Download audio from GCS, HTTP URL, or shared volume."""
+    if uri.startswith("gs://") or uri.startswith("https://storage.googleapis.com/"):
+        # GCS download (production)
+        download_from_gcs(uri, dest_path)
+    elif uri.startswith("http://") or uri.startswith("https://"):
+        # HTTP download (local dev — fetch from backend API)
+        # Replace localhost with host.docker.internal for Docker networking
+        download_url = uri.replace("localhost", "host.docker.internal").replace("127.0.0.1", "host.docker.internal")
+        logger.info(f"[PubSub] HTTP download from {download_url}")
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.get(download_url)
+            response.raise_for_status()
+            dest_path.write_bytes(response.content)
+    else:
+        # Try as a local file path (shared volume /outputs)
+        local_candidates = [
+            Path(uri),
+            OUTPUT_BASE_DIR / uri,
+            OUTPUT_BASE_DIR / Path(uri).name,
+        ]
+        for candidate in local_candidates:
+            if candidate.exists():
+                shutil.copy2(str(candidate), str(dest_path))
+                return
+        raise FileNotFoundError(f"Could not find audio at any of: {[str(c) for c in local_candidates]}")
+
 async def process_pubsub_message(message_data: dict):
     """Process a single Pub/Sub separation job."""
     job_id = message_data.get("jobId", "unknown")
@@ -249,11 +277,11 @@ async def process_pubsub_message(message_data: dict):
     logger.info(f"[PubSub] Processing job {job_id}: release={release_id}, track={track_id}, callback={callback_url}")
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Download original audio from GCS
+        # Download original audio
         ext = ".mp3" if "mp3" in mime_type else ".wav"
         input_path = Path(temp_dir) / f"track_{track_id}{ext}"
         logger.info(f"[PubSub] Downloading audio from {original_stem_uri}")
-        download_from_gcs(original_stem_uri, input_path)
+        await download_audio(original_stem_uri, input_path)
 
         # Run separation (with progress callbacks if callbackUrl provided)
         results = await run_demucs_separation(input_path, temp_dir, release_id, track_id, callback_url)
@@ -346,7 +374,26 @@ def pubsub_consumer_loop():
     except Exception as e:
         logger.error(f"[PubSub] Consumer error: {e}")
         streaming_pull_future.cancel()
-        streaming_pull_future.result()
+        try:
+            streaming_pull_future.result(timeout=5)
+        except Exception:
+            pass
+        raise  # Re-raise so retry wrapper can catch and retry
+
+
+def pubsub_consumer_with_retry():
+    """Retry wrapper for pubsub_consumer_loop — handles startup race conditions."""
+    max_retries = 30
+    for attempt in range(max_retries):
+        try:
+            pubsub_consumer_loop()
+            break  # If it returns cleanly, stop
+        except Exception as e:
+            wait = min(2 ** attempt, 30)
+            logger.warning(f"[PubSub] Consumer failed (attempt {attempt + 1}/{max_retries}): {e}")
+            logger.info(f"[PubSub] Retrying in {wait}s...")
+            import time
+            time.sleep(wait)
 
 
 @app.on_event("startup")
@@ -355,7 +402,7 @@ async def startup_event():
     if PROCESSING_MODE == "pubsub":
         logger.info("[PubSub] Starting consumer thread (PROCESSING_MODE=pubsub)")
         executor = ThreadPoolExecutor(max_workers=1)
-        executor.submit(pubsub_consumer_loop)
+        executor.submit(pubsub_consumer_with_retry)
     else:
         logger.info("[HTTP] Running in HTTP-only mode (PROCESSING_MODE=http)")
 

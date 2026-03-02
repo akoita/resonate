@@ -69,15 +69,13 @@ export function MintStemButton({
     
     metadataUri,
 }: MintStemButtonProps) {
-    const { address, status, kernelAccount } = useAuth();
+    const { address, status } = useAuth();
     const { mint, pending: mintPending } = useMintStem();
     const { list, pending: listPending } = useListStem();
     const { mintAndList, pending: mintAndListPending } = useMintAndListStem();
     const { addToast } = useToast();
 
-    // Determine if we should use the single-click AA flow
     const currentChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
-    const isLocalDev = currentChainId === "31337" || (process.env.NEXT_PUBLIC_RPC_URL || "").includes("localhost");
 
     // State machine: "idle" -> "minted" -> "listed"
     // "confirming_mint" and "confirming_list" are transient states while polling the backend
@@ -171,7 +169,7 @@ export function MintStemButton({
             const currentChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
             const tokenUri = metadataUri || `${window.location.protocol}//${window.location.host}/api/metadata/${currentChainId}/stem/${stemId}`;
 
-            const hash = await mint({
+            await mint({
                 to: address as Address,
                 amount: BigInt(1),
                 tokenURI: tokenUri,
@@ -222,7 +220,7 @@ export function MintStemButton({
             // List for 0.01 ETH, 1 unit, 7 days
             const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
 
-            const hash = await list({
+            await list({
                 tokenId: mintedTokenId,
                 pricePerUnit: BigInt("10000000000000000"), // 0.01 ETH
                 amount: BigInt(1),
@@ -274,7 +272,7 @@ export function MintStemButton({
 
             setState("confirming_mint");
 
-            const { expectedTokenId } = await mintAndList({
+            const { hash, expectedTokenId } = await mintAndList({
                 amount: BigInt(1),
                 tokenURI: tokenUri,
                 royaltyBps: 500,
@@ -299,16 +297,26 @@ export function MintStemButton({
                 message: `${stemType} stem (Token #${expectedTokenId}) is now on the marketplace for 0.01 ETH`,
             });
 
-            // Notify all connected clients via WebSocket for instant marketplace refresh
-            // This bypasses the indexer lag — other users see the new listing immediately
-            fetch("/api/contracts/notify-listing", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    tokenId: expectedTokenId.toString(),
-                    seller: address,
-                }),
-            }).catch(() => { /* best-effort, non-blocking */ });
+            // Notify backend to create listing in DB + broadcast WebSocket
+            // Wrapped in its own try-catch so failures here don't corrupt state
+            try {
+                await fetch("/api/contracts/notify-listing", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        tokenId: expectedTokenId.toString(),
+                        seller: address,
+                        price: "10000000000000000", // 0.01 ETH — must match pricePerUnit above
+                        amount: "1",
+                        paymentToken: "0x0000000000000000000000000000000000000000",
+                        durationSeconds: String(7 * 24 * 60 * 60),
+                        transactionHash: hash,
+                        stemId,
+                    }),
+                });
+            } catch {
+                // Best-effort — indexer will catch up eventually
+            }
 
             // Kick off background indexer poll (non-blocking) so the
             // marketplace page picks up the listing faster
@@ -316,6 +324,9 @@ export function MintStemButton({
         } catch (error) {
             console.error("Mint & List failed:", error);
             setState("idle");
+            // Clear stale localStorage so failed txs don't persist as "listed"
+            localStorage.removeItem(`stem_status_${stemId}`);
+            localStorage.removeItem(`stem_token_id_${stemId}`);
             addToast({
                 type: "error",
                 title: "Transaction Failed",
@@ -383,7 +394,7 @@ export function MintStemButton({
                     opacity: 0.8,
                 }}
             >
-                {state === "confirming_mint" ? (!isLocalDev ? "Confirming transaction..." : "Confirming mint...") : "Confirming listing..."}
+                {state === "confirming_mint" ? "Confirming transaction..." : "Confirming listing..."}
             </button>
         );
     }
@@ -411,47 +422,24 @@ export function MintStemButton({
         );
     }
 
-    if (!isLocalDev) {
-        return (
-            <button
-                onClick={handleMintAndList}
-                disabled={mintAndListPending}
-                style={{
-                    width: "100%",
-                    padding: "8px 12px",
-                    background: mintAndListPending ? "#3f3f46" : "#8b5cf6",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: 8,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: mintAndListPending ? "wait" : "pointer",
-                    opacity: mintAndListPending ? 0.7 : 1,
-                }}
-            >
-                {mintAndListPending ? "Processing..." : "Mint & List"}
-            </button>
-        );
-    }
-
     return (
         <button
-            onClick={handleMint}
-            disabled={mintPending}
+            onClick={handleMintAndList}
+            disabled={mintAndListPending}
             style={{
                 width: "100%",
                 padding: "8px 12px",
-                background: mintPending ? "#3f3f46" : "#10b981",
+                background: mintAndListPending ? "#3f3f46" : "#8b5cf6",
                 color: "#fff",
                 border: "none",
                 borderRadius: 8,
                 fontSize: 13,
                 fontWeight: 600,
-                cursor: mintPending ? "wait" : "pointer",
-                opacity: mintPending ? 0.7 : 1,
+                cursor: mintAndListPending ? "wait" : "pointer",
+                opacity: mintAndListPending ? 0.7 : 1,
             }}
         >
-            {mintPending ? "Minting..." : "Mint as NFT"}
+            {mintAndListPending ? "Processing..." : "Mint & List"}
         </button>
     );
 }

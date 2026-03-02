@@ -1,21 +1,28 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useZeroDev } from "../components/auth/ZeroDevProviderClient";
+import { useState, useEffect, useCallback } from "react";
+
+/** RPC URL for direct eth_getCode calls (bypasses Viem cache) */
+const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545";
 
 /**
  * Check whether a smart account contract is deployed on-chain.
- * Uses `getCode` — if bytecode exists at the address, the account is deployed.
- * ZeroDev auto-deploys Kernel accounts with the first UserOperation,
- * so this is more reliable than checking `deploymentTxHash` in the DB.
+ * Uses a direct RPC call (bypassing Viem's request cache) to ensure
+ * fresh results after deployment.
  */
 export function useIsDeployed(address: string | null | undefined) {
-  const { publicClient } = useZeroDev();
   const [isDeployed, setIsDeployed] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [tick, setTick] = useState(0);
+
+  /** Force a re-check of deployment status */
+  const recheck = useCallback(() => {
+    // Small delay to ensure the TX has been mined on Anvil
+    setTimeout(() => setTick((t) => t + 1), 1500);
+  }, []);
 
   useEffect(() => {
-    if (!address || !publicClient) {
+    if (!address) {
       setIsDeployed(false);
       return;
     }
@@ -25,12 +32,23 @@ export function useIsDeployed(address: string | null | undefined) {
     const check = async () => {
       setLoading(true);
       try {
-        const code = await publicClient.getCode({
-          address: address as `0x${string}`,
+        const resp = await fetch(RPC_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            method: "eth_getCode",
+            params: [address, "latest"],
+            id: Date.now(),
+          }),
         });
-        // getCode returns undefined or "0x" for EOAs / undeployed counterfactual accounts
-        if (!cancelled) setIsDeployed(!!code && code !== "0x");
-      } catch {
+        const json = await resp.json();
+        const code = json?.result as string | undefined;
+        const deployed = !!code && code !== "0x" && code !== "0x0";
+        console.log(`[useIsDeployed] address=${address.slice(0, 10)}… code=${code?.slice(0, 20)}… deployed=${deployed}`);
+        if (!cancelled) setIsDeployed(deployed);
+      } catch (err) {
+        console.error("[useIsDeployed] RPC error:", err);
         if (!cancelled) setIsDeployed(false);
       } finally {
         if (!cancelled) setLoading(false);
@@ -40,7 +58,7 @@ export function useIsDeployed(address: string | null | undefined) {
     check();
 
     return () => { cancelled = true; };
-  }, [address, publicClient]);
+  }, [address, tick]);
 
-  return { isDeployed, loading };
+  return { isDeployed, loading, recheck };
 }

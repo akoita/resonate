@@ -20,6 +20,7 @@ import {
     getTrack as getCatalogTrack,
     getReleaseArtworkUrl,
 } from "./api";
+import { sanitizeStemUrl } from "./urlUtils";
 
 // Configure localforage stores (blobs + artwork + player only)
 const trackStore = localforage.createInstance({
@@ -262,14 +263,15 @@ export async function saveTracksMetadata(
 export async function getTrack(id: string): Promise<LocalTrack | null> {
     // Try IndexedDB first (fast, works offline)
     const localTrack = await trackStore.getItem<LocalTrack>(id);
-    if (localTrack) return localTrack;
+    if (localTrack) return enrichStemTrackUrl(localTrack);
 
     // Fallback 1: try Library API
     const token = getToken();
     if (token) {
         try {
             const apiTrack = await getLibraryTrackAPI(id, token);
-            return apiTrackToLocal(apiTrack);
+            const track = apiTrackToLocal(apiTrack);
+            return enrichStemTrackUrl(track);
         } catch {
             // not in user's library — try catalog next
         }
@@ -309,6 +311,55 @@ export async function getTrack(id: string): Promise<LocalTrack | null> {
 }
 
 /**
+ * For stem library tracks (e.g. Sonic Radar purchases) that have stemType
+ * but no remoteUrl, resolve the preview URL by looking up the actual stem
+ * from the catalog API. This self-heals entries saved without URLs.
+ */
+async function enrichStemTrackUrl(track: LocalTrack): Promise<LocalTrack> {
+    // Only enrich if it's a stem track without a playable URL
+    if (!track.stemType || track.remoteUrl || track.previewUrl || track.blobKey) {
+        return track;
+    }
+
+    // Extract the track ID from the synthetic stem library ID
+    // Format: stem_trk_<timestamp>_<hash>_<stemType> → trk_<timestamp>_<hash>
+    const stemTypeSlug = track.stemType.toLowerCase().replace(/\s+/g, '_');
+    const suffixToRemove = `_${stemTypeSlug}`;
+    const prefixToRemove = 'stem_';
+    let catalogTrackId: string | null = null;
+
+    if (track.id.startsWith(prefixToRemove) && track.id.endsWith(suffixToRemove)) {
+        catalogTrackId = track.id.slice(prefixToRemove.length, -suffixToRemove.length);
+    }
+
+    if (!catalogTrackId) return track;
+
+    try {
+        const token = getToken();
+        const catalogTrack = await getCatalogTrack(catalogTrackId, token);
+        if (catalogTrack?.stems) {
+            const matchingStem = catalogTrack.stems.find(
+                s => s.type.toLowerCase() === stemTypeSlug
+            );
+            if (matchingStem) {
+                const { API_BASE } = await import("./api");
+                const url = `${API_BASE}/catalog/stems/${matchingStem.id}/preview`;
+                track.remoteUrl = url;
+                track.previewUrl = url;
+                // Also set duration if available
+                if (!track.duration && matchingStem.durationSeconds) {
+                    track.duration = matchingStem.durationSeconds;
+                }
+            }
+        }
+    } catch (err) {
+        console.warn('[Library] Failed to enrich stem track URL:', err);
+    }
+
+    return track;
+}
+
+/**
  * Get the audio blob for a track
  */
 export async function getTrackBlob(blobKey: string): Promise<Blob | null> {
@@ -323,7 +374,8 @@ const trackUrlCache = new Map<string, string>();
  * Uses in-memory cache to avoid recreating URLs on each call
  */
 export async function getTrackUrl(track: LocalTrack): Promise<string | null> {
-    if (track.remoteUrl) return track.remoteUrl;
+    if (track.remoteUrl) return sanitizeStemUrl(track.remoteUrl) || track.remoteUrl;
+    if (track.previewUrl) return sanitizeStemUrl(track.previewUrl) || track.previewUrl;
     if (!track.blobKey) return null;
 
     // Check cache first

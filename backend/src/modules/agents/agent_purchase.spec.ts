@@ -8,10 +8,12 @@ const mockWalletService = {
 
 const mockAgentWalletService = {
   validateSessionKey: jest.fn(),
+  getSerializedSessionKey: jest.fn(),
+  checkAndEmitBudgetAlert: jest.fn(),
 };
 
 const mockKernelAccountService = {
-  sendTransaction: jest.fn(),
+  sendSessionKeyTransaction: jest.fn(),
   getSmartAccountAddress: jest.fn(),
 };
 
@@ -46,17 +48,12 @@ function createService(): AgentPurchaseService {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  process.env.AA_SKIP_BUNDLER = "true"; // default to mock mode for tests
-});
-
-afterAll(() => {
-  delete process.env.AA_SKIP_BUNDLER;
 });
 
 describe("AgentPurchaseService", () => {
   describe("purchase – session key validation", () => {
     it("should reject when session key is invalid", async () => {
-      mockAgentWalletService.validateSessionKey.mockReturnValue(false);
+      mockAgentWalletService.validateSessionKey.mockResolvedValue(false);
 
       const service = createService();
       const result = await service.purchase({
@@ -76,7 +73,7 @@ describe("AgentPurchaseService", () => {
 
   describe("purchase – budget exceeded", () => {
     it("should reject when budget is exceeded", async () => {
-      mockAgentWalletService.validateSessionKey.mockReturnValue(true);
+      mockAgentWalletService.validateSessionKey.mockResolvedValue(true);
       mockWalletService.spend.mockResolvedValue({ allowed: false, remaining: 0 });
 
       const service = createService();
@@ -95,10 +92,12 @@ describe("AgentPurchaseService", () => {
     });
   });
 
-  describe("purchase – mock mode success", () => {
-    it("should succeed in mock mode (AA_SKIP_BUNDLER=true)", async () => {
-      mockAgentWalletService.validateSessionKey.mockReturnValue(true);
+  describe("purchase – session key transaction success", () => {
+    it("should succeed via session key UserOp through bundler", async () => {
+      mockAgentWalletService.validateSessionKey.mockResolvedValue(true);
+      mockAgentWalletService.getSerializedSessionKey.mockResolvedValue("serialized_key_data");
       mockWalletService.spend.mockResolvedValue({ allowed: true, remaining: 45 });
+      mockWalletService.getWallet.mockResolvedValue({ spentUsd: 5, monthlyCapUsd: 50 });
       (prisma.agentTransaction.create as jest.Mock).mockResolvedValue({
         id: "tx-1",
         status: "pending",
@@ -106,8 +105,8 @@ describe("AgentPurchaseService", () => {
       (prisma.agentTransaction.update as jest.Mock).mockResolvedValue({
         id: "tx-1",
         status: "confirmed",
-        txHash: "mock_tx_hash",
       });
+      mockKernelAccountService.sendSessionKeyTransaction.mockResolvedValue("0xreal_onchain_hash");
 
       const service = createService();
       const result = await service.purchase({
@@ -121,9 +120,82 @@ describe("AgentPurchaseService", () => {
       });
 
       expect(result.success).toBe(true);
-      expect((result as any).mode).toBe("mock");
+      expect((result as any).mode).toBe("onchain");
+      expect((result as any).txHash).toBe("0xreal_onchain_hash");
+      expect(mockKernelAccountService.sendSessionKeyTransaction).toHaveBeenCalledWith(
+        "serialized_key_data",
+        expect.any(String), // marketplace address
+        expect.any(String), // calldata
+        BigInt("3000000"),
+      );
       expect(mockEventBus.publish).toHaveBeenCalledWith(
         expect.objectContaining({ eventName: "agent.purchase_completed" })
+      );
+    });
+
+    it("should fail when no serialized session key is found", async () => {
+      mockAgentWalletService.validateSessionKey.mockResolvedValue(true);
+      mockAgentWalletService.getSerializedSessionKey.mockResolvedValue(null);
+      mockWalletService.spend.mockResolvedValue({ allowed: true, remaining: 45 });
+      (prisma.agentTransaction.create as jest.Mock).mockResolvedValue({
+        id: "tx-2",
+        status: "pending",
+      });
+      (prisma.agentTransaction.update as jest.Mock).mockResolvedValue({
+        id: "tx-2",
+        status: "failed",
+      });
+
+      const service = createService();
+      const result = await service.purchase({
+        sessionId: "s4",
+        userId: "u4",
+        listingId: BigInt(4),
+        tokenId: BigInt(400),
+        amount: BigInt(1),
+        totalPriceWei: "4000000",
+        priceUsd: 5,
+      });
+
+      expect(result.success).toBe(false);
+      expect((result as any).reason).toBe("transaction_failed");
+      expect((result as any).message).toContain("serialized session key");
+    });
+  });
+
+  describe("purchase – transaction failure", () => {
+    it("should handle bundler transaction failure gracefully", async () => {
+      mockAgentWalletService.validateSessionKey.mockResolvedValue(true);
+      mockAgentWalletService.getSerializedSessionKey.mockResolvedValue("serialized_key_data");
+      mockWalletService.spend.mockResolvedValue({ allowed: true, remaining: 45 });
+      (prisma.agentTransaction.create as jest.Mock).mockResolvedValue({
+        id: "tx-3",
+        status: "pending",
+      });
+      (prisma.agentTransaction.update as jest.Mock).mockResolvedValue({
+        id: "tx-3",
+        status: "failed",
+      });
+      mockKernelAccountService.sendSessionKeyTransaction.mockRejectedValue(
+        new Error("Bundler rejected UserOp")
+      );
+
+      const service = createService();
+      const result = await service.purchase({
+        sessionId: "s5",
+        userId: "u5",
+        listingId: BigInt(5),
+        tokenId: BigInt(500),
+        amount: BigInt(1),
+        totalPriceWei: "5000000",
+        priceUsd: 5,
+      });
+
+      expect(result.success).toBe(false);
+      expect((result as any).reason).toBe("transaction_failed");
+      expect((result as any).message).toContain("Bundler rejected UserOp");
+      expect(mockEventBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ eventName: "agent.purchase_failed" })
       );
     });
   });

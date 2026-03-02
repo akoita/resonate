@@ -13,9 +13,17 @@ import {
     LocalTrack,
 } from "../../lib/localLibrary";
 import { getMyGenerations, getGenerationAnalytics, type GenerationListItem, type GenerationAnalytics, API_BASE } from "../../lib/api";
+
+/** Resolve a potentially-relative backend path to a full URL */
+function resolveUrl(path?: string | null): string | undefined {
+  if (!path) return undefined;
+  if (path.startsWith("http")) return path;
+  return `${API_BASE}${path}`;
+}
+
 import { useAuth } from "../../components/auth/AuthProvider";
 import { useZeroDev } from "../../components/auth/ZeroDevProviderClient";
-import { type Address } from "viem";
+import { type Address } from "viem"; // eslint-disable-line @typescript-eslint/no-unused-vars
 import {
     Playlist,
     listPlaylists,
@@ -71,7 +79,7 @@ export default function LibraryPage() {
     const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
     const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(new Set());
     const lastClickedTrackIdRef = useRef<string | null>(null);
-    const { address, token } = useAuth();
+    const { address, token, smartAccountAddress } = useAuth();
     const { chainId } = useZeroDev();
     
     // Remote collection state
@@ -154,18 +162,11 @@ export default function LibraryPage() {
         if (!address) return;
         setIsCollectionLoading(true);
         try {
-            // For local Anvil (31337) or Sepolia Fork (11155111) in dev mode,
-            // we need to check BOTH the connected EOA (for manual purchases)
-            // and the derived AA signer (for agent/automated purchases).
             const addressesToQuery = new Set<string>([address]);
-            
-            // Allow derivation on Sepolia if we are in dev mode (handling local fork)
-            const isLocalOrFork = chainId === 31337 || (chainId === 11155111 && process.env.NODE_ENV === "development");
 
-            if (isLocalOrFork) {
-                const { getLocalSignerAddress } = await import("../../lib/localAA");
-                const derived = getLocalSignerAddress(address as Address);
-                addressesToQuery.add(derived);
+            // Include the smart account address (on-chain identity) for collection queries
+            if (smartAccountAddress && smartAccountAddress !== address) {
+                addressesToQuery.add(smartAccountAddress);
             }
 
             // Minimal type for stem response to avoid 'any'
@@ -220,9 +221,9 @@ export default function LibraryPage() {
                 listingId: stem.activeListingId,
                 purchaseDate: stem.purchasedAt,
                 isOwned: true,
-                remoteUrl: stem.uri,
-                remoteArtworkUrl: stem.artworkUrl,
-                previewUrl: stem.previewUrl,
+                remoteUrl: resolveUrl(stem.uri),
+                remoteArtworkUrl: resolveUrl(stem.artworkUrl),
+                previewUrl: resolveUrl(stem.previewUrl),
             }));
 
             setOwnedStems(mappedStems);
@@ -242,7 +243,7 @@ export default function LibraryPage() {
         } finally {
             setIsCollectionLoading(false);
         }
-    }, [address, chainId, addToast]);
+    }, [address, addToast, smartAccountAddress]);
 
 
     useEffect(() => {
@@ -368,9 +369,7 @@ export default function LibraryPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     stemId: stem.id,
-                    walletAddress: chainId === 31337
-                        ? (await import("../../lib/localAA")).getLocalSignerAddress(address as Address)
-                        : address,
+                    walletAddress: smartAccountAddress || address,
                 }),
             });
 

@@ -194,11 +194,11 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         }
 
         const gap = indexerState.lastBlockNumber - currentBlock;
-        if (gap > 1000n) {
-          // Large gap — actual chain reset (e.g. Anvil restart).
-          // Jump to near chain tip rather than re-scanning from 0.
-          const safeBlock = currentBlock > 50n ? currentBlock - 50n : 0n;
-          this.logger.warn(`Chain reset detected: last indexed ${indexerState.lastBlockNumber} >> current ${currentBlock}. Resetting to ${safeBlock}`);
+      if (gap > 10n) {
+        // Chain reset detected (e.g., Anvil fork restarted with different tip).
+        // Jump to near chain tip rather than re-scanning from 0.
+        const safeBlock = currentBlock > 50n ? currentBlock - 50n : 0n;
+        this.logger.warn(`Chain reset detected: last indexed ${indexerState.lastBlockNumber} >> current ${currentBlock}. Resetting to ${safeBlock}`);
           await prisma.indexerState.update({
             where: { chainId },
             data: { lastBlockNumber: safeBlock },

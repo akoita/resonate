@@ -143,39 +143,49 @@ stateDiagram-v2
 
 ---
 
-## Session Keys (Self-Custodial Agent Delegation)
+## Session Keys (Agent-Owned Key Model)
 
-Session keys allow the AI agent to make purchases **on behalf of the user** without holding the root key.
+The AI agent owns an ECDSA keypair. The private key **never leaves the backend**. The user grants on-chain permissions to the agent's public address via their passkey.
 
-### Grant & Revoke Flow
+> **Security**: The private key is encrypted at rest (AES-256-GCM or GCP Cloud KMS), wrapped in a `SensitiveBuffer` during use (zeroed after signing), and every access is audit-logged. See [Agent Wallet Security](agent-wallet-security.md) for full details.
+
+### Agent-Owned Key Flow
 
 ```mermaid
 sequenceDiagram
     participant U as User (root key holder)
     participant F as Frontend (useSessionKey)
-    participant SA as Smart Account (on-chain)
     participant B as Backend
+    participant SA as Smart Account (on-chain)
 
-    Note over U,SA: Grant Session Key
+    Note over U,B: Enable Agent Wallet
     U->>F: Click "Enable Agent"
-    F->>F: Construct policies (call, value, rate, expiry)
-    F->>SA: Sign grant tx (passkey / mock EOA)
-    SA-->>F: Serialized session key + txHash
-    F->>B: POST /agent/session-key/register
-    B->>B: Store in SessionKey table
-    B-->>F: ✅ registered
+    F->>B: POST /agent/enable {permissions}
+    B->>B: Generate ECDSA keypair
+    B->>B: Encrypt private key → store in DB
+    B-->>F: {agentAddress}
 
-    Note over U,B: Agent Uses Key
-    B->>SA: Submit UserOp (signed with session key)
+    Note over F,SA: Grant Permissions On-Chain
+    F->>F: Build permission validator around agentAddress
+    F->>SA: Sign grant tx (passkey)
+    SA-->>F: approvalData
+    F->>B: POST /agent/session-key/activate {approvalData, txHash}
+    B->>B: Store approval data
+    B-->>F: ✅ activated
+
+    Note over B,SA: Agent Uses Key
+    B->>B: Decrypt private key (SensitiveBuffer)
+    B->>SA: Submit UserOp (signed with agent key + approval)
     SA->>SA: Validate against on-chain policies
     SA-->>B: Execution result
+    B->>B: Zero private key from memory
 
     Note over U,SA: Revoke Session Key
     U->>F: Click "Revoke"
     F->>SA: Sign revocation tx
     SA-->>F: revokeTxHash
     F->>B: DELETE /agent/session-key {revokeTxHash}
-    B->>B: Mark SessionKey as revoked
+    B->>B: Mark SessionKey as revoked + audit log
     B-->>F: ✅ revoked
 ```
 
@@ -194,31 +204,42 @@ Session keys use ZeroDev Kernel v3's permission plugin stack:
 
 ```
 SessionKey
-├── id              (CUID)
+├── id              (UUID)
 ├── userId          (FK → User)
-├── serializedKey   (ZeroDev serialized session key data)
+├── agentPrivateKey (AES-256-GCM encrypted — never sent to frontend)
+├── agentAddress    (public address of the agent's key)
+├── approvalData    (serialized permission approval from user's passkey)
 ├── permissions     (JSON — policies enforced on-chain)
 ├── validUntil      (expiry timestamp)
 ├── txHash          (grant transaction hash)
 ├── revokedAt       (null if active)
-├── revokedTxHash   (revocation transaction hash)
+├── revokeTxHash    (revocation transaction hash)
 ├── createdAt
 └── updatedAt
+
+KeyAuditLog (append-only)
+├── id              (UUID)
+├── userId          (who)
+├── action          (decrypt, sign, rotate, revoke, enable, activate)
+├── agentAddress    (which key)
+├── context         (JSON — txHash, listingId, reason, etc.)
+└── createdAt       (when)
 ```
 
 ### Flow
 
 | Step | Actor           | Action                                                                     |
 | ---- | --------------- | -------------------------------------------------------------------------- |
-| 1    | User (frontend) | Clicks "Enable Agent" → `useSessionKey.grant()`                            |
-| 2    | Frontend        | Constructs session key with policies via ZeroDev SDK                       |
-| 3    | User            | Signs the grant transaction (passkey / mock EOA)                           |
-| 4    | Frontend        | Sends serialized key to `POST /wallet/agent/session-key/register`          |
-| 5    | Backend         | Stores in `SessionKey` table (never creates keys itself)                   |
-| 6    | Agent           | Uses stored key for `AgentPurchaseService.purchase()`                      |
-| 7    | User (frontend) | Clicks "Revoke" → signs revocation tx → `DELETE /wallet/agent/session-key` |
+| 1    | User (frontend) | Clicks "Enable Agent" → `useAgentWallet.enable()`                          |
+| 2    | Backend         | Generates ECDSA keypair, encrypts private key, stores in DB                |
+| 3    | Backend         | Returns `agentAddress` to frontend                                         |
+| 4    | Frontend        | Builds permission validator around `agentAddress` via ZeroDev SDK          |
+| 5    | User            | Signs the grant transaction (passkey)                                      |
+| 6    | Frontend        | Sends `approvalData` to `POST /wallet/agent/session-key/activate`          |
+| 7    | Agent           | Uses decrypted key for `AgentPurchaseService.purchase()`, then zeros it    |
+| 8    | User (frontend) | Clicks "Revoke" → signs revocation tx → `DELETE /wallet/agent/session-key` |
 
-> **Source:** Frontend [`useSessionKey.ts`](../web/src/hooks/useSessionKey.ts) · Backend [`zerodev_session_key.service.ts`](../backend/src/modules/identity/zerodev_session_key.service.ts)
+> **Source:** Frontend [`useSessionKey.ts`](../web/src/hooks/useSessionKey.ts) · Backend [`zerodev_session_key.service.ts`](../backend/src/modules/identity/zerodev_session_key.service.ts) · Security [`agent-wallet-security.md`](agent-wallet-security.md)
 
 ---
 
@@ -247,21 +268,19 @@ sequenceDiagram
     end
     APS->>APS: encodeBuyCalldata(listingId, amount)
 
-    alt Mock Mode (AA_SKIP_BUNDLER=true)
-        APS->>APS: Generate mock tx hash
-        APS-->>A: ✅ {txHash, mode: "mock"}
-    else Real Mode
-        APS->>KAS: sendTransaction(userId, marketplace, callData, value)
-        KAS->>KAS: createKernelAccount (ECDSA validator, auto-fund signer)
-        KAS->>B: sendTransaction → UserOp
-        B->>EP: handleOps
-        EP-->>B: receipt
-        KAS-->>APS: txHash
-        APS-->>A: ✅ {txHash, mode: "onchain"}
-    end
+    APS->>AWS: getAgentKeyData(userId)
+    Note over APS: Returns SensitiveBuffer (private key)
+    APS->>KAS: sendSessionKeyTransaction(key.toString(), approvalData, ...)
+    KAS->>KAS: Reconstruct permission account from agent key + approval data
+    KAS->>B: sendTransaction → UserOp (session-key-scoped)
+    B->>EP: handleOps (validates on-chain policies)
+    EP-->>B: receipt
+    KAS-->>APS: txHash
+    APS->>APS: key.zero() — wipe key from memory
+    APS-->>A: ✅ {txHash, mode: "onchain"}
 ```
 
-> The `KernelAccountService` uses `@zerodev/sdk` to create Kernel v3.1 accounts with deterministic ECDSA signers. The SDK handles nonce management, gas estimation, UserOp signing, and account deployment (initCode) automatically.
+> The `KernelAccountService` reconstructs the permission account from the agent's private key + user's approval data. The session key carries on-chain policies, so the bundler enforces constraints automatically.
 
 > **Source:** [`agent_purchase.service.ts`](../backend/src/modules/agents/agent_purchase.service.ts)
 
@@ -284,14 +303,15 @@ All endpoints are under `/wallet` and require JWT authentication.
 
 ### Agent Wallet
 
-| Method   | Endpoint                             | Description                                          |
-| -------- | ------------------------------------ | ---------------------------------------------------- |
-| `POST`   | `/wallet/agent/enable`               | Enable agent wallet (issues mock session key in dev) |
-| `POST`   | `/wallet/agent/session-key/register` | Register user-granted session key                    |
-| `DELETE` | `/wallet/agent/session-key`          | Revoke session key (accepts `revokeTxHash`)          |
-| `GET`    | `/wallet/agent/status`               | Get agent wallet + session key status                |
-| `GET`    | `/wallet/agent/transactions`         | Get agent purchase history                           |
-| `POST`   | `/wallet/agent/purchase`             | Execute agent purchase                               |
+| Method   | Endpoint                             | Description                                              |
+| -------- | ------------------------------------ | -------------------------------------------------------- |
+| `POST`   | `/wallet/agent/enable`               | Enable agent wallet — generates agent keypair on backend |
+| `POST`   | `/wallet/agent/session-key/activate` | Store user's on-chain approval data for the agent key    |
+| `DELETE` | `/wallet/agent/session-key`          | Revoke session key (accepts `revokeTxHash`)              |
+| `POST`   | `/wallet/agent/rotate`               | Rotate agent key — new keypair, revoke old, re-approve   |
+| `GET`    | `/wallet/agent/status`               | Get agent wallet + session key status                    |
+| `GET`    | `/wallet/agent/transactions`         | Get agent purchase history                               |
+| `POST`   | `/wallet/agent/purchase`             | Execute agent purchase                                   |
 
 ### Paymaster (Admin)
 
@@ -309,20 +329,25 @@ All endpoints are under `/wallet` and require JWT authentication.
 
 ### Backend (`backend/.env`)
 
-| Variable             | Purpose                       | Default                                |
-| -------------------- | ----------------------------- | -------------------------------------- |
-| `AA_ENTRY_POINT`     | EntryPoint v0.7 address       | Set by deploy script                   |
-| `AA_FACTORY`         | KernelFactory address         | Set by deploy script                   |
-| `AA_KERNEL`          | Kernel implementation address | Set by deploy script                   |
-| `AA_ECDSA_VALIDATOR` | ECDSA validator address       | Set by deploy script                   |
-| `AA_SIG_VALIDATOR`   | ERC-6492 sig validator        | Set by deploy script                   |
-| `AA_CHAIN_ID`        | Chain ID                      | `31337` (local) / `11155111` (Sepolia) |
-| `AA_BUNDLER`         | Bundler URL                   | `http://localhost:4337` / ZeroDev URL  |
-| `AA_PAYMASTER`       | Paymaster URL                 | Optional                               |
-| `AA_SKIP_BUNDLER`    | Skip bundler (mock mode)      | `true`                                 |
-| `ZERODEV_PROJECT_ID` | ZeroDev dashboard project ID  | Required for forked Sepolia            |
-| `SEPOLIA_RPC_URL`    | Sepolia RPC endpoint          | Required for forked Sepolia            |
-| `BLOCK_EXPLORER_URL` | Block explorer for tx links   | `https://sepolia.etherscan.io`         |
+| Variable                   | Purpose                                                               | Default                                |
+| -------------------------- | --------------------------------------------------------------------- | -------------------------------------- |
+| `AA_ENTRY_POINT`           | EntryPoint v0.7 address                                               | Set by deploy script                   |
+| `AA_FACTORY`               | KernelFactory address                                                 | Set by deploy script                   |
+| `AA_KERNEL`                | Kernel implementation address                                         | Set by deploy script                   |
+| `AA_ECDSA_VALIDATOR`       | ECDSA validator address                                               | Set by deploy script                   |
+| `AA_SIG_VALIDATOR`         | ERC-6492 sig validator                                                | Set by deploy script                   |
+| `AA_CHAIN_ID`              | Chain ID                                                              | `31337` (local) / `11155111` (Sepolia) |
+| `AA_BUNDLER`               | Bundler URL                                                           | `http://localhost:4337` / ZeroDev URL  |
+| `AA_PAYMASTER`             | Paymaster URL                                                         | Optional                               |
+| `AA_SKIP_BUNDLER`          | Skip bundler for non-session-key txs (deprecated for agent purchases) | `false`                                |
+| `AA_STRICT_BUNDLER`        | Throw on bundler failure                                              | `false`                                |
+| `AA_STRICT_MODE`           | No fallbacks, mocks, or auto-funding                                  | `false`                                |
+| `ZERODEV_PROJECT_ID`       | ZeroDev dashboard project ID                                          | Required for forked Sepolia            |
+| `SEPOLIA_RPC_URL`          | Sepolia RPC endpoint                                                  | Required for forked Sepolia            |
+| `BLOCK_EXPLORER_URL`       | Block explorer for tx links                                           | `https://sepolia.etherscan.io`         |
+| `KMS_PROVIDER`             | Agent key encryption provider: `local` or `gcp-kms`                   | `local`                                |
+| `AGENT_KEY_ENCRYPTION_KEY` | 64-char hex key for local AES-256-GCM encryption                      | Required when `KMS_PROVIDER=local`     |
+| `GCP_KMS_KEY_NAME`         | Full GCP KMS CryptoKey resource name                                  | Required when `KMS_PROVIDER=gcp-kms`   |
 
 ### Frontend (`web/.env.local`)
 
@@ -336,11 +361,11 @@ All endpoints are under `/wallet` and require JWT authentication.
 
 ## Development Modes
 
-| Mode               | Chain      | AA Infra                          | Bundler        | Auth       | Use Case                      |
-| ------------------ | ---------- | --------------------------------- | -------------- | ---------- | ----------------------------- |
-| **Local-Only**     | `31337`    | Deployed by `DeployLocalAA.s.sol` | Alto (Docker)  | Mock ECDSA | Offline, contract development |
-| **Forked Sepolia** | `11155111` | Already on Sepolia (via fork)     | Alto (Docker)  | Mock ECDSA | Session keys, full AA testing |
-| **Production**     | `11155111` | Sepolia mainnet                   | ZeroDev hosted | Passkeys   | Live environment              |
+| Mode               | Chain      | AA Infra                          | Bundler        | Auth                          | Paymaster          | Use Case                      |
+| ------------------ | ---------- | --------------------------------- | -------------- | ----------------------------- | ------------------ | ----------------------------- |
+| **Local-Only**     | `31337`    | Deployed by `DeployLocalAA.s.sol` | Alto (Docker)  | Mock ECDSA                    | ❌ None            | Offline, contract development |
+| **Forked Sepolia** | `11155111` | Already on Sepolia (via fork)     | Alto (Docker)  | Mock ECDSA / Passkeys (w/ ZD) | ✅ ZeroDev testnet | Session keys, full AA testing |
+| **Production**     | `11155111` | Sepolia mainnet                   | ZeroDev hosted | Passkeys                      | ✅ ZeroDev         | Live environment              |
 
 See [Local AA Development](local-aa-development.md) for setup instructions.
 
@@ -358,13 +383,18 @@ See [Local AA Development](local-aa-development.md) for setup instructions.
 | `backend/src/modules/identity/wallet.controller.ts`                        | Backend   | REST API (20+ endpoints)                                 |
 | `backend/src/modules/identity/wallet.service.ts`                           | Backend   | Wallet CRUD, budget tracking, deployment                 |
 | `backend/src/modules/identity/wallet_providers/erc4337_wallet_provider.ts` | Backend   | ERC-4337 address generation                              |
-| `backend/src/modules/identity/zerodev_session_key.service.ts`              | Backend   | Session key storage + retrieval                          |
+| `backend/src/modules/identity/zerodev_session_key.service.ts`              | Backend   | Agent-owned key management + key rotation                |
 | `backend/src/modules/identity/kernel_account.service.ts`                   | Backend   | ZeroDev Kernel account creation + tx sending via bundler |
-| `backend/src/modules/agents/agent_wallet.service.ts`                       | Backend   | Agent wallet enable/disable, session key registration    |
-| `backend/src/modules/agents/agent_purchase.service.ts`                     | Backend   | Agent purchase execution via KernelAccountService        |
+| `backend/src/modules/agents/agent_wallet.service.ts`                       | Backend   | Agent wallet enable/disable, key rotation                |
+| `backend/src/modules/agents/agent_purchase.service.ts`                     | Backend   | Agent purchase execution with zero-after-use keys        |
+| `backend/src/modules/shared/crypto.service.ts`                             | Backend   | AES-256-GCM / GCP KMS encryption for agent keys          |
+| `backend/src/modules/shared/sensitive_buffer.ts`                           | Backend   | Zero-after-use key wrapper                               |
+| `backend/src/modules/shared/key_audit.service.ts`                          | Backend   | Append-only audit log for key access                     |
 | `backend/src/modules/identity/erc4337/erc4337_client.ts`                   | Backend   | Bundler JSON-RPC client (low-level)                      |
 | `backend/src/modules/identity/paymaster.service.ts`                        | Backend   | Gas sponsorship                                          |
 | `contracts/script/DeployLocalAA.s.sol`                                     | Contracts | Deploy AA infra to local Anvil                           |
 | `contracts/src/aa/KernelFactory.sol`                                       | Contracts | Smart account factory                                    |
 | `contracts/src/aa/UniversalSigValidator.sol`                               | Contracts | ERC-6492 signature validation                            |
 | `scripts/update-aa-config.sh`                                              | Infra     | Auto-configure `.env` from deployed contracts            |
+| `scripts/generate-agent-encryption-key.sh`                                 | Infra     | Generate AES-256 encryption key for agent keys           |
+| `docs/agent-wallet-security.md`                                            | Docs      | Agent key security architecture                          |

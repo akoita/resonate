@@ -349,6 +349,7 @@ export interface AgentWalletEnabledEvent extends BaseEvent {
   eventName: "agent.wallet_enabled";
   userId: string;
   walletAddress: string;
+  agentAddress: string;
 }
 
 export interface AgentWalletDisabledEvent extends BaseEvent {

@@ -105,6 +105,7 @@ if [[ "$MODE" == "fork" ]]; then
     update_env_var "AA_CHAIN_ID" "11155111" "$BACKEND_ENV"
     update_env_var "AA_BUNDLER" "$BUNDLER_URL" "$BACKEND_ENV"
     update_env_var "BLOCK_EXPLORER_URL" "https://sepolia.etherscan.io" "$BACKEND_ENV"
+    # AA_SKIP_BUNDLER removed — agent purchases always use session key UserOps
 
     echo ""
     echo -e "${GREEN}✓ backend/.env updated for forked Sepolia${NC}"
@@ -222,6 +223,7 @@ update_env_var "AA_ECDSA_VALIDATOR" "$ECDSA_VALIDATOR" "$BACKEND_ENV"
 update_env_var "AA_SIG_VALIDATOR" "$SIG_VALIDATOR" "$BACKEND_ENV"
 update_env_var "AA_CHAIN_ID" "31337" "$BACKEND_ENV"
 update_env_var "AA_BUNDLER" "http://localhost:4337" "$BACKEND_ENV"
+# AA_SKIP_BUNDLER removed — agent purchases always use session key UserOps
 
 echo -e "${GREEN}✓ backend/.env updated${NC}"
 

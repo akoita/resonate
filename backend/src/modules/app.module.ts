@@ -26,6 +26,7 @@ import { ContractsModule } from "./contracts/contracts.module";
 import { StemPricingModule } from "./pricing/stem-pricing.module";
 import { LibraryModule } from "./library/library.module";
 import { GenerationModule } from "./generation/generation.module";
+import { WebAuthnModule } from "./webauthn/webauthn.module";
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { GenerationModule } from "./generation/generation.module";
     ContractsModule,
     StemPricingModule,
     GenerationModule,
+    WebAuthnModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

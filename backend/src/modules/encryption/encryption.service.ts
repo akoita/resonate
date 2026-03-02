@@ -45,6 +45,20 @@ export class EncryptionService {
         this.logger.log(`Encryption Service initialized with provider: ${this.provider.providerName}`);
     }
 
+    /**
+     * Resolve a URI for server-side fetch.
+     * Relative paths (e.g. /catalog/stems/...) are prefixed with the backend's own base URL
+     * because Node.js fetch() requires absolute URLs.
+     */
+    private resolveUri(uri: string): string {
+        if (uri.startsWith('http://') || uri.startsWith('https://')) {
+            return uri;
+        }
+        const port = this.configService.get('PORT') || process.env.PORT || '3000';
+        const baseUrl = `http://localhost:${port}`;
+        return `${baseUrl}${uri.startsWith('/') ? '' : '/'}${uri}`;
+    }
+
     get isReady(): boolean {
         return this.provider.isReady();
     }
@@ -128,8 +142,9 @@ export class EncryptionService {
         }
 
         // Fetch encrypted data from URI
-        this.logger.log(`[Decrypt] Fetching encrypted data from: ${uri}`);
-        const response = await fetch(uri);
+        const resolvedUri = this.resolveUri(uri);
+        this.logger.log(`[Decrypt] Fetching encrypted data from: ${resolvedUri}`);
+        const response = await fetch(resolvedUri);
         if (!response.ok) {
             throw new Error(`Failed to fetch encrypted data: ${response.status}`);
         }
@@ -162,7 +177,7 @@ export class EncryptionService {
     ): Promise<Buffer> {
         // For unencrypted content (provider = 'none'), just fetch
         if (this.provider.providerName === 'none') {
-            const response = await fetch(uri);
+            const response = await fetch(this.resolveUri(uri));
             if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
             return Buffer.from(await response.arrayBuffer());
         }
@@ -170,7 +185,7 @@ export class EncryptionService {
         // If no metadata or empty metadata, fall back to raw fetch
         // This handles: unencrypted tracks, old Lit tracks we can't decrypt
         if (!metadata || metadata === '{}' || metadata.trim() === '') {
-            const response = await fetch(uri);
+            const response = await fetch(this.resolveUri(uri));
             if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
             return Buffer.from(await response.arrayBuffer());
         }
@@ -181,14 +196,14 @@ export class EncryptionService {
             // Check if it's AES metadata (has iv, authTag, keyId)
             if (!parsed.iv || !parsed.authTag || !parsed.keyId) {
                 this.logger.log(`[Decrypt] Metadata is not AES format, fetching raw: ${uri}`);
-                const response = await fetch(uri);
+                const response = await fetch(this.resolveUri(uri));
                 if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
                 return Buffer.from(await response.arrayBuffer());
             }
         } catch (e) {
             // Invalid JSON, fall back to raw
             this.logger.log(`[Decrypt] Invalid metadata JSON, fetching raw: ${uri}`);
-            const response = await fetch(uri);
+            const response = await fetch(this.resolveUri(uri));
             if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
             return Buffer.from(await response.arrayBuffer());
         }

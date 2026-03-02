@@ -19,7 +19,7 @@ export class LocalStorageProvider extends StorageProvider {
         writeFileSync(absolutePath, data);
 
         return {
-            uri: `${process.env.BACKEND_URL || 'http://localhost:3000'}/catalog/stems/${filename}/blob`, // Mock URL
+            uri: `/catalog/stems/${filename}/blob`, // Relative path — consumers prepend their base URL
             provider: 'local',
             metadata: { path: absolutePath }
         };

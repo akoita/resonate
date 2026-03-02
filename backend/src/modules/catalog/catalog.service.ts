@@ -789,6 +789,11 @@ export class CatalogService implements OnModuleInit {
 
     if (!stem.uri && !stem.data) throw new BadRequestException("Stem has no source URI or data");
 
+    // Resolve relative paths to absolute for server-side fetch/decrypt
+    // Use localhost (not BACKEND_URL which may be host.docker.internal)
+    const selfBase = `http://localhost:${process.env.PORT || 3000}`;
+    const resolvedUri = stem.uri && !stem.uri.startsWith('http') ? `${selfBase}${stem.uri}` : stem.uri;
+
     // Handle encrypted content from IPFS/Lighthouse
     // We prioritize this over stem.data because stem.data might contain the encrypted blob
     if (stem.encryptionMetadata) {
@@ -800,7 +805,7 @@ export class CatalogService implements OnModuleInit {
       };
 
       const decryptedBuffer = await this.encryptionService.decrypt(
-        stem.uri,
+        resolvedUri,
         stem.encryptionMetadata,
         [], // No specific access conditions for public preview if we want to bypass Lit checks on backend
         authSig,
@@ -810,7 +815,7 @@ export class CatalogService implements OnModuleInit {
     }
 
     // Unencrypted external content
-    const response = await fetch(stem.uri);
+    const response = await fetch(resolvedUri);
     if (!response.ok) throw new Error(`Failed to fetch stem content: ${response.status}`);
     const buffer = Buffer.from(await response.arrayBuffer());
 

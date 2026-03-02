@@ -45,9 +45,11 @@ export class StemsProcessor extends WorkerHost {
             }
 
             // If the original stem has inline data but no URI, we need to upload it first
-            // so the worker can download it from GCS
+            // so the worker can download it.
+            // In local dev, the URI may be a localhost URL — that's fine, the worker
+            // handles it via HTTP download with host.docker.internal mapping.
             let originalStemUri = originalStem.uri;
-            if (!originalStemUri || originalStemUri.includes("localhost:3000")) {
+            if (!originalStemUri) {
                 if (originalStem.data) {
                     const buffer = originalStem.data instanceof Buffer
                         ? originalStem.data
@@ -72,7 +74,10 @@ export class StemsProcessor extends WorkerHost {
                 trackId: track.id,
                 trackTitle: track.title,
                 trackPosition: track.position,
-                originalStemUri,
+                // Resolve relative URIs for the Docker worker (BACKEND_URL = host.docker.internal)
+                originalStemUri: originalStemUri.startsWith('http')
+                    ? originalStemUri
+                    : `${process.env.BACKEND_URL || 'http://host.docker.internal:3000'}${originalStemUri}`,
                 mimeType: originalStem.mimeType || "audio/mpeg",
                 callbackUrl: process.env.BACKEND_URL || undefined,
                 originalStemMeta: {

@@ -97,14 +97,18 @@ Two AA modes are available — see [AA Integration](docs/account-abstraction.md)
 export SEPOLIA_RPC_URL=https://sepolia.drpc.org
 
 # 2. Start infrastructure (Postgres, Redis, Pub/Sub emulator, Demucs worker)
-make dev-up
+make dev-up                     # use `make dev-up-build` after worker code changes
+                                # check the container status summary — all should show ✅
 make local-aa-fork              # Forks Sepolia, configures .env (AA infra already on-chain)
-make deploy-contracts           # Deploy StemNFT + Marketplace + TransferValidator
+make deploy-contracts           # Configures .env with Sepolia contract addresses
+                                # (contracts already exist on the fork — no new deployment)
 
 # 3. Start services (separate terminals)
-make backend-dev     # NestJS API on port 3001
-make web-dev-fork    # Next.js on port 3000 (chainId 11155111, local RPC)
+make backend-dev     # NestJS API on port 3000
+make web-dev-fork    # Next.js on port 3001 (chainId 11155111, local RPC)
 ```
+
+> **Note:** On a Sepolia fork, `make deploy-contracts` detects the fork and uses the existing Sepolia deployment addresses from `contracts/deployments/sepolia.json` — no new contracts are deployed. For local-only mode (chain 31337), it deploys fresh contracts via Forge.
 
 #### Local-Only (offline, no internet required)
 
@@ -115,8 +119,8 @@ make dev-up
 make contracts-deploy-local  # Deploys AA + StemNFT + Marketplace + TransferValidator
 
 # 2. Start services (separate terminals)
-make backend-dev     # NestJS API on port 3001
-make web-dev-local   # Next.js on port 3000 (chainId 31337)
+make backend-dev     # NestJS API on port 3000
+make web-dev-local   # Next.js on port 3001 (chainId 31337)
 
 # 3. (Optional) View Demucs worker logs
 docker compose logs -f demucs-worker
@@ -180,13 +184,15 @@ make worker-quick-build
 
 ### ⚡ GPU Prerequisites
 
-Since GPU is the default, ensure these are installed:
+`make dev-up` attempts GPU mode first. If the worker fails to start (no NVIDIA runtime), it **automatically falls back to CPU mode** — no manual intervention needed. CPU mode works but stem separation takes ~3min instead of ~30s.
+
+To enable GPU acceleration:
 
 1. **NVIDIA GPU** with CUDA support
 2. **[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)**
 
 <details>
-<summary>📋 NVIDIA Container Toolkit Installation (Ubuntu/Debian)</summary>
+<summary>📋 NVIDIA Container Toolkit Installation (Ubuntu/Debian/WSL2)</summary>
 
 ```bash
 # Add NVIDIA package repository
@@ -216,24 +222,36 @@ docker compose exec demucs-worker nvidia-smi
 
 **Troubleshooting:**
 
+- Worker stays in "Created" state → Run `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`
 - `nvidia-smi` fails → Reinstall NVIDIA Container Toolkit
 - WSL2 users → Use NVIDIA driver for WSL, not native Linux driver
 - Build hangs on apt-get → Rebuild with `make worker-rebuild` (fixed via `DEBIAN_FRONTEND=noninteractive`)
 
 See [`workers/demucs/README.md`](workers/demucs/README.md) for full worker documentation.
 
+### 🔧 Troubleshooting
+
+| Symptom                                  | Cause                                                          | Fix                                                                          |
+| ---------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Container shows "Created" (not "Up")     | Port conflict — another container or process is using the port | Run `docker ps` to find the conflicting container, then `docker stop <name>` |
+| Redis won't start (port 6379)            | Stale Redis from another project                               | `docker stop <old-redis-container>` then `make dev-up`                       |
+| Track stuck at "🟡 Separating..."        | Demucs worker not running                                      | Check `make worker-health` and `docker compose ps demucs-worker`             |
+| No progress % during separation          | Worker can't POST progress back to backend                     | Verify `BACKEND_URL=http://host.docker.internal:3000` in `backend/.env`      |
+| `SEPOLIA_RPC_URL` warning in Docker logs | Env var not exported in current shell                          | Run `export SEPOLIA_RPC_URL=https://sepolia.drpc.org` before `make dev-up`   |
+
 ---
 
 ## 📖 Documentation
 
-| Document                                                          | Description                                   |
-| ----------------------------------------------------------------- | --------------------------------------------- |
-| [Project Specification](docs/RESONATE_SPECS.md)                   | Vision, architecture, and roadmap             |
-| [Local AA Development](docs/local-aa-development.md)              | Account abstraction setup guide               |
-| [Demucs Worker](workers/demucs/README.md)                         | GPU stem separation setup and troubleshooting |
-| [Core Contracts](docs/phase5/core_contracts.md)                   | Stem NFT and marketplace contracts            |
-| [Marketplace Integration](docs/phase5/marketplace_integration.md) | Frontend/backend integration                  |
-| [Contributing](CONTRIBUTING.md)                                   | Contribution guidelines                       |
+| Document                                                          | Description                                    |
+| ----------------------------------------------------------------- | ---------------------------------------------- |
+| [Project Specification](docs/RESONATE_SPECS.md)                   | Vision, architecture, and roadmap              |
+| [Deployment Guide](docs/deployment.md)                            | Infrastructure, storage, and environment setup |
+| [Local AA Development](docs/local-aa-development.md)              | Account abstraction setup guide                |
+| [Demucs Worker](workers/demucs/README.md)                         | GPU stem separation setup and troubleshooting  |
+| [Core Contracts](docs/phase5/core_contracts.md)                   | Stem NFT and marketplace contracts             |
+| [Marketplace Integration](docs/phase5/marketplace_integration.md) | Frontend/backend integration                   |
+| [Contributing](CONTRIBUTING.md)                                   | Contribution guidelines                        |
 
 ---
 
@@ -251,4 +269,4 @@ See [`workers/demucs/README.md`](workers/demucs/README.md) for full worker docum
 
 ## 📄 License
 
-MIT © 2024-2025
+MIT © 2024-2026

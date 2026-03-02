@@ -59,7 +59,9 @@ export class StemPubSubPublisher implements OnModuleInit {
   private resultsTopic!: Topic;
 
   async onModuleInit() {
-    this.pubsub = new PubSub();
+    const projectId = process.env.GCP_PROJECT_ID || 'resonate-local';
+    this.pubsub = new PubSub({ projectId });
+    this.logger.log(`PubSub initialized with project: ${projectId}, emulator: ${process.env.PUBSUB_EMULATOR_HOST || 'NOT SET'}`);
     this.separateTopic = this.pubsub.topic(TOPIC_SEPARATE);
     this.resultsTopic = this.pubsub.topic(TOPIC_RESULTS);
 
@@ -75,6 +77,17 @@ export class StemPubSubPublisher implements OnModuleInit {
       if (!resExists) {
         await this.pubsub.createTopic(TOPIC_RESULTS);
         this.logger.log(`Created Pub/Sub topic: ${TOPIC_RESULTS}`);
+      }
+
+      // Ensure the worker subscription exists on the separate topic
+      const workerSubName = 'stem-separate-worker';
+      const workerSub = this.pubsub.subscription(workerSubName);
+      const [workerSubExists] = await workerSub.exists();
+      if (!workerSubExists) {
+        await this.separateTopic.createSubscription(workerSubName, {
+          ackDeadlineSeconds: 600,  // 10min — stem separation is slow
+        });
+        this.logger.log(`Created Pub/Sub subscription: ${workerSubName}`);
       }
     } catch (err) {
       // In emulator mode or if topics already exist, this is expected

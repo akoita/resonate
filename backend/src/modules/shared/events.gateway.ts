@@ -217,6 +217,22 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
             }
         });
 
+        // Notification-only event from notifyListingCreated endpoint.
+        // Broadcasts a WebSocket event for instant UI refresh WITHOUT creating a DB listing.
+        // The indexer will create the authoritative listing from the on-chain event.
+        this.eventBus.subscribe('marketplace.listing_notify', (event: any) => {
+            console.log(`[EventsGateway] Listing notify: tokenId=${event.tokenId}, broadcasting...`);
+            if (this.server) {
+                this.server.emit('marketplace.listing_created', {
+                    listingId: event.listingId || 'pending',
+                    tokenId: event.tokenId,
+                    seller: event.sellerAddress,
+                    price: event.pricePerUnit,
+                    amount: event.amount,
+                });
+            }
+        });
+
         this.eventBus.subscribe('contract.stem_sold', (event: any) => {
             console.log(`[EventsGateway] Stem sold: listingId=${event.listingId}, broadcasting...`);
             if (this.server) {

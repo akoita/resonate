@@ -90,10 +90,9 @@ export class SessionsService {
     const wallet = await this.walletService.getWallet(session.userId);
     const isOnChain =
       (wallet as any)?.accountType === "erc4337" &&
-      process.env.AA_SKIP_BUNDLER !== "true" &&
       input.listingId !== undefined;
 
-    if (isOnChain || (input.listingId !== undefined && process.env.AA_SKIP_BUNDLER === "true")) {
+    if (isOnChain) {
       // Delegate to AgentPurchaseService for on-chain (or mock on-chain) purchase
       const result = await this.agentPurchaseService.purchase({
         sessionId: input.sessionId,

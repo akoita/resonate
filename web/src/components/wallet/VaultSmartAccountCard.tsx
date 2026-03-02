@@ -1,18 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import {
-    deploySmartAccountSelf,
     enableSmartAccount,
     refreshSmartAccount,
 } from "../../lib/api";
 import { WalletRecord } from "../../lib/api";
-import { useIsDeployed } from "../../hooks/useIsDeployed";
+import { useZeroDev } from "../auth/ZeroDevProviderClient";
 
 type Props = {
     wallet: WalletRecord | null;
     address: string | null;
+    isDeployed: boolean;
+    recheck: () => void;
 };
 
 const EXPLORER_URL = "https://sepolia.etherscan.io";
@@ -90,11 +91,17 @@ function AddressValue({ value, href, badge }: {
     );
 }
 
-export default function VaultSmartAccountCard({ wallet, address }: Props) {
-    const { token, refreshWallet } = useAuth();
+/** Detect if the RPC is a local Anvil instance */
+function isLocalRpc(): boolean {
+    const rpc = process.env.NEXT_PUBLIC_RPC_URL || "";
+    return rpc.includes("localhost") || rpc.includes("127.0.0.1");
+}
+
+export default function VaultSmartAccountCard({ wallet, address, isDeployed, recheck }: Props) {
+    const { token, refreshWallet, webAuthnKey } = useAuth();
+    const { publicClient } = useZeroDev();
     const [status, setStatus] = useState<string | null>(null);
     const [pending, setPending] = useState(false);
-    const { isDeployed } = useIsDeployed(address);
 
     const run = async (action: () => Promise<void>) => {
         if (!address || !token) {
@@ -106,6 +113,7 @@ export default function VaultSmartAccountCard({ wallet, address }: Props) {
             setStatus(null);
             await action();
             await refreshWallet();
+            recheck(); // re-check on-chain deployment status
             setStatus("✓ Updated");
         } catch (err) {
             setStatus((err as Error).message);
@@ -113,6 +121,119 @@ export default function VaultSmartAccountCard({ wallet, address }: Props) {
             setPending(false);
         }
     };
+
+    /**
+     * Fund account via Anvil's anvil_setBalance.
+     * Same effect as a faucet, but instant and offline.
+     * In production, the user gets ETH from a real faucet or bridge.
+     */
+    const fundFromAnvil = useCallback(async () => {
+        if (!address) return;
+        const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545";
+        const res = await fetch(rpcUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                jsonrpc: "2.0",
+                method: "anvil_setBalance",
+                params: [address, "0x8AC7230489E80000"], // 10 ETH in hex
+                id: 1,
+            }),
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error.message);
+    }, [address]);
+
+    /**
+     * Deploy the smart account by sending a 0-value self-send UserOp.
+     * Uses the webAuthnKey stored during signup/login — no re-authentication needed.
+     * The SDK auto-includes initCode on the first UserOp — same as production.
+     */
+    const deployFromFrontend = useCallback(async () => {
+        if (!address || !publicClient) {
+            throw new Error("No account or public client available. Please sign in first.");
+        }
+
+        if (!webAuthnKey) {
+            throw new Error(
+                "No Passkey key available. This happens after a page refresh. " +
+                "Please sign out and sign back in, then try Deploy again."
+            );
+        }
+
+        // Check if already deployed
+        const code = await publicClient.getCode({ address: address as `0x${string}` });
+        if (code && code !== "0x") {
+            return; // Already deployed
+        }
+
+        // Build the Kernel account from the STORED webAuthnKey (same key used at signup)
+        const { toPasskeyValidator, PasskeyValidatorContractVersion } = await import("@zerodev/passkey-validator");
+        const { createKernelAccount, createKernelAccountClient } = await import("@zerodev/sdk");
+        const { http, parseGwei } = await import("viem");
+        const { sepolia } = await import("viem/chains");
+        const { KERNEL_V3_1 } = await import("@zerodev/sdk/constants");
+
+        const bundlerUrl = process.env.NEXT_PUBLIC_BUNDLER_URL || "/api/bundler";
+
+        // Build the Passkey validator from the stored webAuthnKey
+        const validator = await toPasskeyValidator(publicClient, {
+            webAuthnKey,
+            kernelVersion: KERNEL_V3_1,
+            validatorContractVersion: PasskeyValidatorContractVersion.V0_0_1_UNPATCHED,
+            entryPoint: {
+                address: "0x0000000071727De22E5E9d8BAf0edAc6f37da032" as `0x${string}`,
+                version: "0.7",
+            },
+        });
+
+        const account = await createKernelAccount(publicClient, {
+            plugins: { sudo: validator },
+            kernelVersion: KERNEL_V3_1,
+            entryPoint: {
+                address: "0x0000000071727De22E5E9d8BAf0edAc6f37da032" as `0x${string}`,
+                version: "0.7",
+            },
+        });
+
+        // Validate: the rebuilt account must match the UI's expected address
+        const rebuiltAddress = account.address.toLowerCase();
+        const expectedAddress = address.toLowerCase();
+        if (rebuiltAddress !== expectedAddress) {
+            console.warn(`[Deploy] Address mismatch! Rebuilt: ${account.address}, Expected: ${address}`);
+            throw new Error(
+                `Account address mismatch (${account.address.slice(0, 10)}… vs ${address.slice(0, 10)}…). ` +
+                `Please sign out and register again.`
+            );
+        }
+
+        // Create a Kernel client with local-compatible gas estimation
+        const kernelClient = createKernelAccountClient({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            account: account as any,
+            chain: sepolia,
+            bundlerTransport: http(bundlerUrl),
+            // Override gas estimation to avoid ZeroDev-specific RPC calls
+            userOperation: {
+                estimateFeesPerGas: async () => ({
+                    maxFeePerGas: parseGwei("2"),
+                    maxPriorityFeePerGas: parseGwei("1"),
+                }),
+            },
+        });
+
+        // Send 0-value self-send to trigger deployment via initCode
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const txHash = await (kernelClient as any).sendTransaction({
+            to: account.address as `0x${string}`,
+            data: "0x" as `0x${string}`,
+            value: BigInt(0),
+        });
+
+        console.log(`[Deploy] Smart account deployed at ${account.address}, tx: ${txHash}`);
+    }, [address, publicClient, webAuthnKey]);
+
+    const isLocal = isLocalRpc();
 
     return (
         <div className="vault-card">
@@ -214,24 +335,37 @@ export default function VaultSmartAccountCard({ wallet, address }: Props) {
                         <button
                             className="vault-btn vault-btn--primary vault-btn--sm"
                             disabled={pending}
-                            onClick={() => run(async () => { await deploySmartAccountSelf(token!); })}
+                            onClick={() => run(async () => { await deployFromFrontend(); })}
                         >
                             Deploy
                         </button>
                     </>
                 )}
-                <a
-                    href={FAUCET_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="vault-btn vault-btn--ghost vault-btn--sm"
-                    style={{ textDecoration: "none" }}
-                >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M12 2v20M2 12h20" />
-                    </svg>
-                    Get Test ETH
-                </a>
+                {isLocal ? (
+                    <button
+                        className="vault-btn vault-btn--ghost vault-btn--sm"
+                        disabled={pending}
+                        onClick={() => run(async () => { await fundFromAnvil(); })}
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 2v20M2 12h20" />
+                        </svg>
+                        Fund 10 ETH
+                    </button>
+                ) : (
+                    <a
+                        href={FAUCET_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="vault-btn vault-btn--ghost vault-btn--sm"
+                        style={{ textDecoration: "none" }}
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 2v20M2 12h20" />
+                        </svg>
+                        Get Test ETH
+                    </a>
+                )}
             </div>
 
             {/* Status Message */}
@@ -243,3 +377,4 @@ export default function VaultSmartAccountCard({ wallet, address }: Props) {
         </div>
     );
 }
+

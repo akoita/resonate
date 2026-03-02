@@ -12,7 +12,7 @@ import {
 } from "../lib/api";
 
 export function useAgentWallet() {
-  const { status: authStatus, token } = useAuth();
+  const { status: authStatus, token, kernelAccount, login } = useAuth();
   const {
     grantSessionKey,
     revokeSessionKey,
@@ -56,20 +56,33 @@ export function useAgentWallet() {
   }, [fetchStatus, fetchTransactions]);
 
   /**
-   * Enable agent wallet — self-custodial flow:
-   * 1. Enable the ERC-4337 wallet on the backend
-   * 2. Grant a session key (user signs tx)
-   * 3. Refresh status
+   * Enable agent wallet — agent-owned key flow:
+   * 1. Backend generates the agent's keypair and returns the public address
+   * 2. User signs the permission grant via passkey
+   * 3. Frontend sends approval data to backend (NOT the private key)
+   * 4. Refresh status
    */
   const enable = useCallback(
-    async (config?: SessionKeyConfig) => {
+    async (config?: Partial<SessionKeyConfig>) => {
       if (!token) return;
       setIsEnabling(true);
       try {
-        // Step 1: Ensure ERC-4337 wallet is set up
-        await enableAgentWallet(token);
+        // Step 0: Reconnect Kernel account if lost (e.g. after page refresh)
+        let account = kernelAccount;
+        if (!account) {
+          account = await login();
+        }
+
+        // Step 1: Enable wallet — backend generates agent keypair and returns the address
+        const { agentAddress } = await enableAgentWallet(token);
+
         // Step 2: User signs session key grant tx
-        await grantSessionKey(config);
+        // Pass the agent's address so the permission validator is built around it
+        await grantSessionKey(
+          { agentAddress, ...config },
+          account,
+        );
+
         // Step 3: Refresh status from backend
         await fetchStatus();
         return walletStatus;
@@ -77,7 +90,7 @@ export function useAgentWallet() {
         setIsEnabling(false);
       }
     },
-    [token, grantSessionKey, fetchStatus, walletStatus]
+    [token, kernelAccount, login, grantSessionKey, fetchStatus, walletStatus]
   );
 
   /**

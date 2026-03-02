@@ -8,7 +8,7 @@ import { useAuth } from "../../components/auth/AuthProvider";
 import { useUIStore } from "../../lib/uiStore";
 import { type LocalTrack, saveTracksMetadata } from "../../lib/localLibrary";
 import type { AgentSessionLicense, AgentTransaction } from "../../lib/api";
-import { getReleaseArtworkUrl } from "../../lib/api";
+import { getReleaseArtworkUrl, getTrack as getCatalogTrack, API_BASE } from "../../lib/api";
 
 type GroupedSession = {
     date: string;
@@ -80,12 +80,34 @@ export default function SonicRadarPage() {
         // Build a lookup from trackId → license (for artwork)
         const licByTrack = new Map(group.licenses.map(l => [l.trackId, l]));
 
+        // Fetch catalog data for each unique track to get real stem IDs
+        const uniqueTrackIds = [...new Set(confirmedTxs.map(tx => tx.trackId!).filter(Boolean))];
+        const stemLookup = new Map<string, Map<string, string>>();  // trackId → Map<stemType → stemId>
+        await Promise.all(uniqueTrackIds.map(async (trackId) => {
+            try {
+                const catalogTrack = await getCatalogTrack(trackId);
+                if (catalogTrack?.stems) {
+                    const typeMap = new Map<string, string>();
+                    for (const stem of catalogTrack.stems) {
+                        typeMap.set(stem.type.toLowerCase(), stem.id);
+                    }
+                    stemLookup.set(trackId, typeMap);
+                }
+            } catch (err) {
+                console.warn(`[SonicRadar] Failed to fetch catalog track ${trackId}:`, err);
+            }
+        }));
+
         // Create one LocalTrack per stem transaction
         const stemTracks: LocalTrack[] = confirmedTxs.map(tx => {
             const stemSlug = tx.stemName?.toLowerCase().replace(/\s+/g, '_') || 'unknown';
             const lic = licByTrack.get(tx.trackId!);
             const artworkUrl = lic?.track.release?.artworkUrl
                 || (lic?.track.release?.artworkMimeType ? getReleaseArtworkUrl(lic.track.release.id) : undefined);
+
+            // Resolve the actual stem ID from catalog data
+            const realStemId = stemLookup.get(tx.trackId!)?.get(stemSlug);
+            const previewUrl = realStemId ? `${API_BASE}/catalog/stems/${realStemId}/preview` : undefined;
 
             return {
                 id: `stem_${tx.trackId}_${stemSlug}`,
@@ -100,6 +122,8 @@ export default function SonicRadarPage() {
                 source: "remote" as const,
                 stemType: tx.stemName || undefined,
                 remoteArtworkUrl: artworkUrl,
+                remoteUrl: previewUrl,
+                previewUrl: previewUrl,
             };
         });
 

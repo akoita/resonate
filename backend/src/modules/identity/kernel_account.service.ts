@@ -47,6 +47,8 @@ export class KernelAccountService {
   private readonly chainId: number;
   private readonly entryPointAddress: string;
   private readonly skipBundler: boolean;
+  private readonly strictBundler: boolean;
+  private readonly strictMode: boolean;
 
   constructor(private readonly config: ConfigService) {
     this.rpcUrl = this.config.get<string>("RPC_URL") || "http://localhost:8545";
@@ -57,6 +59,8 @@ export class KernelAccountService {
       this.config.get<string>("AA_ENTRY_POINT") ||
       "0x0000000071727De22E5E9d8BAf0edAc6f37da032";
     this.skipBundler = this.config.get<string>("AA_SKIP_BUNDLER") === "true";
+    this.strictBundler = this.config.get<string>("AA_STRICT_BUNDLER") === "true";
+    this.strictMode = this.config.get<string>("AA_STRICT_MODE") === "true";
   }
 
   /**
@@ -97,12 +101,20 @@ export class KernelAccountService {
   /**
    * Fund an address from Anvil's pre-funded account 0 if balance is low.
    * Only works on local Anvil instances.
+   * Disabled in AA_STRICT_MODE to match production gas behavior.
    */
   private async fundAccountIfNeeded(
     address: Address,
     label: string,
     minEth: string = "0.5",
   ): Promise<void> {
+    if (this.strictMode) {
+      this.logger.warn(
+        `Skipping auto-fund for ${label} ${address} (AA_STRICT_MODE=true — manage gas manually)`,
+      );
+      return;
+    }
+
     const chain = this.getChain();
     const publicClient = createPublicClient({
       chain,
@@ -277,19 +289,115 @@ export class KernelAccountService {
       return txHash;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      // specific error suppression for known local dev issues
-      const isLocal = this.chainId === 31337 || this.chainId === 11155111;
-      
-      if (isLocal) {
-        this.logger.debug(`Bundler path failed (expected in local dev): ${message}`);
-        this.logger.log(`Falling back to direct signer EOA send`);
-      } else {
-        this.logger.warn(`Bundler path failed: ${message}`);
-        this.logger.warn(`Falling back to direct signer EOA send`);
+      this.logger.warn(`Bundler path failed: ${message}`);
+
+      if (this.strictBundler || this.strictMode) {
+        throw new Error(`Bundler transaction failed (strict mode): ${message}`);
       }
 
-      // Direct send from the signer EOA (bypasses ERC-4337)
+      this.logger.warn(
+        `Falling back to direct signer EOA send (set AA_STRICT_BUNDLER=true to disable fallback)`,
+      );
       return this.sendDirectTransaction(userId, to, data, value);
+    }
+  }
+
+  /**
+   * Send a transaction using the agent's own session key.
+   * Agent-owned key model:
+   *   - The agent's private key was generated and stored server-side
+   *   - The approval data was signed by the user on the frontend
+   *   - We reconstruct the permission account from both
+   */
+  async sendSessionKeyTransaction(
+    agentPrivateKey: string,
+    approvalData: string,
+    to: Address,
+    data: Hex,
+    value: bigint = BigInt(0),
+  ): Promise<string> {
+    const sdk = await getZeroDevSdk();
+    const { deserializePermissionAccount } = await import("@zerodev/permissions");
+
+    const chain = this.getChain();
+    const publicClient = createPublicClient({
+      chain,
+      transport: http(this.rpcUrl),
+    });
+
+    const entryPoint = sdk.constants.getEntryPoint("0.7");
+    const kernelVersion = sdk.constants.KERNEL_V3_1;
+
+    this.logger.log(`Building session key client from agent-owned key`);
+
+    // Deserialize the permission account using the approval data
+    // The approval data contains the serialized permission account
+    // with the agent's private key embedded during serialization
+    const permissionAccount = await deserializePermissionAccount(
+      publicClient,
+      entryPoint,
+      kernelVersion,
+      approvalData,
+    );
+
+    // Fund the smart account if needed (local Anvil only)
+    await this.fundAccountIfNeeded(permissionAccount.address, "session-key-account", "1");
+
+    this.logger.log(
+      `Session key account: ${permissionAccount.address}, sending tx to ${to}`,
+    );
+
+    // Custom gas price fetcher (same as createKernelClient)
+    const estimateFeesPerGas = async () => {
+      try {
+        const response = await fetch(this.bundlerUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "pimlico_getUserOperationGasPrice",
+            params: [],
+          }),
+        });
+        const json = await response.json();
+        if (json.result) {
+          return {
+            maxFeePerGas: BigInt(json.result.fast.maxFeePerGas),
+            maxPriorityFeePerGas: BigInt(json.result.fast.maxPriorityFeePerGas),
+          };
+        }
+      } catch {
+        // fallback below
+      }
+      return {
+        maxFeePerGas: BigInt("2000000000"),
+        maxPriorityFeePerGas: BigInt("1500000000"),
+      };
+    };
+
+    // Create a Kernel client scoped to the session key
+    const sessionKeyClient = sdk.createKernelAccountClient({
+      account: permissionAccount,
+      chain,
+      bundlerTransport: http(this.bundlerUrl),
+      userOperation: { estimateFeesPerGas },
+    });
+
+    try {
+      const txHash = await (sessionKeyClient as any).sendTransaction({
+        to,
+        data,
+        value,
+      });
+
+      this.logger.log(`Session key transaction confirmed: ${txHash}`);
+      return txHash;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Session key transaction failed: ${message}`);
+
+      throw new Error(`Session key transaction failed: ${message}`);
     }
   }
 

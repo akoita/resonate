@@ -1,16 +1,11 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
 import { WalletService } from "../identity/wallet.service";
-import { SessionKeyService } from "../identity/session_key.service";
 import {
   ZeroDevSessionKeyService,
   type SessionKeyPermissions,
 } from "../identity/zerodev_session_key.service";
-
-const AGENT_SESSION_KEY_SCOPE = "agent:purchase";
-const AGENT_SESSION_KEY_TTL = 3600; // 1 hour default (mock mode only)
 
 export interface AgentWalletStatus {
   enabled: boolean;
@@ -31,46 +26,40 @@ export interface AgentWalletStatus {
 @Injectable()
 export class AgentWalletService {
   private readonly logger = new Logger(AgentWalletService.name);
-  private activeSessionKeys = new Map<string, string>(); // userId → token (mock mode)
-  private readonly skipBundler: boolean;
   private readonly explorerUrl: string;
 
   constructor(
     private readonly walletService: WalletService,
-    private readonly sessionKeyService: SessionKeyService,
     private readonly zeroDevSessionKeyService: ZeroDevSessionKeyService,
     private readonly eventBus: EventBus,
-    private readonly config: ConfigService,
   ) {
-    this.skipBundler =
-      this.config.get<string>("AA_SKIP_BUNDLER") === "true";
     this.explorerUrl =
-      this.config.get<string>("BLOCK_EXPLORER_URL") ||
-      "https://sepolia.etherscan.io";
+      process.env.BLOCK_EXPLORER_URL ?? "https://sepolia.etherscan.io";
   }
 
   /**
-   * Enable agent wallet (mock mode only).
-   * In self-custodial mode, session keys are registered via registerSessionKey()
-   * after the user signs the grant tx on the frontend.
+   * Enable agent wallet and generate the agent's keypair.
+   * Returns the agent's public address so the frontend can build
+   * the permission validator around it.
    */
-  async enable(userId: string): Promise<AgentWalletStatus> {
+  async enable(
+    userId: string,
+    permissions: SessionKeyPermissions,
+    validityHours: number = 24,
+  ): Promise<{ agentAddress: string; status: AgentWalletStatus }> {
     // Ensure user has an ERC-4337 wallet
     const wallet = await this.walletService.refreshWallet({
       userId,
       provider: "erc4337",
     });
 
-    if (this.skipBundler) {
-      // Mock mode: issue in-memory session key (backward compat)
-      const sessionKey = this.sessionKeyService.issue({
-        userId,
-        scope: AGENT_SESSION_KEY_SCOPE,
-        ttlSeconds: AGENT_SESSION_KEY_TTL,
-      });
-      this.activeSessionKeys.set(userId, sessionKey.token);
-    }
-    // In self-custodial mode, the frontend calls registerSessionKey() separately
+    // Generate the agent's keypair and create a pending session
+    const validUntil = new Date(Date.now() + validityHours * 60 * 60 * 1000);
+    const { agentAddress } = await this.zeroDevSessionKeyService.createPendingSession(
+      userId,
+      permissions,
+      validUntil,
+    );
 
     this.eventBus.publish({
       eventName: "agent.wallet_enabled",
@@ -78,45 +67,39 @@ export class AgentWalletService {
       occurredAt: new Date().toISOString(),
       userId,
       walletAddress: (wallet as any).address,
+      agentAddress,
     });
 
-    return this.getStatus(userId);
+    const status = await this.getStatus(userId);
+    return { agentAddress, status };
   }
 
   /**
-   * Register a session key that the user granted from the frontend.
-   * Called after the user signs the session key registration tx on-chain.
+   * Activate the session key after the user signs the approval on-chain.
+   * The frontend sends the approval data (NOT the private key).
    */
-  async registerSessionKey(
+  async activateSessionKey(
     userId: string,
-    serializedKey: string,
-    permissions: SessionKeyPermissions,
-    validUntil: Date,
+    approvalData: string,
     txHash?: string,
   ) {
-    return this.zeroDevSessionKeyService.registerSessionKey(
+    return this.zeroDevSessionKeyService.activateSessionKey(
       userId,
-      serializedKey,
-      permissions,
-      validUntil,
+      approvalData,
       txHash,
     );
   }
 
   /**
    * Disable agent wallet.
-   * In self-custodial mode, the frontend signs the on-chain revocation first,
+   * The frontend signs the on-chain revocation first,
    * then calls this to mark it revoked in the DB.
    */
   async disable(
     userId: string,
     revokeTxHash?: string,
   ): Promise<{ status: string }> {
-    if (this.skipBundler) {
-      this.activeSessionKeys.delete(userId);
-    } else {
-      await this.zeroDevSessionKeyService.markRevoked(userId, revokeTxHash);
-    }
+    await this.zeroDevSessionKeyService.markRevoked(userId, revokeTxHash);
 
     this.eventBus.publish({
       eventName: "agent.wallet_disabled",
@@ -152,29 +135,14 @@ export class AgentWalletService {
     let sessionKeyTxHash: string | null = null;
     let sessionKeyPermissions: SessionKeyPermissions | null = null;
 
-    if (this.skipBundler) {
-      // Mock mode: check in-memory session key
-      const token = this.activeSessionKeys.get(userId);
-      if (token) {
-        const validation = this.sessionKeyService.validate(
-          token,
-          AGENT_SESSION_KEY_SCOPE,
-        );
-        sessionKeyValid = validation.valid;
-        if (validation.valid) {
-          sessionKeyExpiresAt = Date.now() + AGENT_SESSION_KEY_TTL * 1000;
-        }
-      }
-    } else {
-      // Self-custodial: check on-chain session key from DB
-      const validation =
-        await this.zeroDevSessionKeyService.validateSessionKey(userId);
-      if (validation && validation.valid && !validation.mock) {
-        sessionKeyValid = true;
-        sessionKeyExpiresAt = validation.validUntil?.getTime() ?? null;
-        sessionKeyTxHash = validation.txHash ?? null;
-        sessionKeyPermissions = validation.permissions ?? null;
-      }
+    // Validate on-chain session key from DB
+    const validation =
+      await this.zeroDevSessionKeyService.validateSessionKey(userId);
+    if (validation && validation.valid) {
+      sessionKeyValid = true;
+      sessionKeyExpiresAt = validation.validUntil?.getTime() ?? null;
+      sessionKeyTxHash = validation.txHash ?? null;
+      sessionKeyPermissions = validation.permissions ?? null;
     }
 
     // Read budget from AgentConfig
@@ -214,21 +182,38 @@ export class AgentWalletService {
     };
   }
 
-  validateSessionKey(userId: string): boolean | Promise<boolean> {
-    if (this.skipBundler) {
-      const token = this.activeSessionKeys.get(userId);
-      if (!token) return false;
-      const result = this.sessionKeyService.validate(
-        token,
-        AGENT_SESSION_KEY_SCOPE,
-      );
-      return result.valid;
-    }
+  /**
+   * Validate the session key for a user.
+   */
+  async validateSessionKey(userId: string): Promise<boolean> {
+    const validation = await this.zeroDevSessionKeyService.validateSessionKey(userId);
+    return validation?.valid ?? false;
+  }
 
-    // Self-custodial: async validation
-    return this.zeroDevSessionKeyService
-      .validateSessionKey(userId)
-      .then((v) => v?.valid ?? false);
+  /**
+   * Get the agent's key data for sending session-key-scoped transactions.
+   * Used by AgentPurchaseService.
+   */
+  async getAgentKeyData(userId: string) {
+    return this.zeroDevSessionKeyService.getAgentKeyData(userId);
+  }
+
+  /**
+   * Rotate the agent's key — generates a new keypair, revokes old.
+   * Returns the new agent address; frontend must re-approve permissions.
+   */
+  async rotateKey(
+    userId: string,
+    permissions: SessionKeyPermissions,
+    validityHours: number = 24,
+  ): Promise<{ agentAddress: string; oldAgentAddress: string | null }> {
+    const result = await this.zeroDevSessionKeyService.rotateAgentKey(
+      userId,
+      permissions,
+      validityHours,
+    );
+
+    return result;
   }
 
   computeAlertLevel(

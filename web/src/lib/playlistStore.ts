@@ -192,6 +192,39 @@ export async function movePlaylistToFolder(
  * List all playlists
  */
 export async function listPlaylists(): Promise<Playlist[]> {
+    // Try backend API first (authoritative source)
+    const token = getToken();
+    if (token) {
+        try {
+            const apiPlaylists = await listPlaylistsAPI(token);
+            // Sync into local IndexedDB cache
+            for (const p of apiPlaylists) {
+                const playlist: Playlist = {
+                    id: p.id,
+                    name: p.name,
+                    trackIds: p.trackIds,
+                    folderId: p.folderId ?? null,
+                    createdAt: p.createdAt,
+                    updatedAt: p.updatedAt,
+                };
+                await playlistStore.setItem(p.id, playlist);
+            }
+            return apiPlaylists.map(p => ({
+                id: p.id,
+                name: p.name,
+                trackIds: p.trackIds,
+                folderId: p.folderId ?? null,
+                createdAt: p.createdAt,
+                updatedAt: p.updatedAt,
+            })).sort(
+                (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
+        } catch (err) {
+            console.warn("[Playlists] Failed to list from API, falling back to IndexedDB:", err);
+        }
+    }
+
+    // Fallback: read from IndexedDB (offline / unauthenticated)
     const playlists: Playlist[] = [];
     await playlistStore.iterate<Playlist, void>((value) => {
         playlists.push(value);

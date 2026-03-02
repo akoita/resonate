@@ -1,5 +1,6 @@
 "use client";
 import { getAddress } from "viem";
+import { sanitizeStemUrl } from "./urlUtils";
 
 // Simple Mutex for synchronization
 class Mutex {
@@ -150,7 +151,7 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
     // 1. Handle Decryption and Object URLs
     useEffect(() => {
         let active = true;
-        const currentUri = stem.uri;
+        const currentUri = sanitizeStemUrl(stem.uri) || stem.uri;
 
         const loadAudio = async () => {
             // Check if we already have a cached blob URL
