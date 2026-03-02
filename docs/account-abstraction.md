@@ -82,14 +82,17 @@ sequenceDiagram
     B-->>F: {accessToken (JWT)}
 ```
 
-### Development (Mock ECDSA)
+### Development (Self-Hosted Passkeys)
 
-When `NEXT_PUBLIC_ZERODEV_PROJECT_ID` is absent or `chainId === 31337`:
+When `NEXT_PUBLIC_ZERODEV_PROJECT_ID` is absent:
 
-1. Frontend generates a random EOA private key (persisted in `localStorage` as `mock_pk`)
-2. Uses the **EOA address directly** as the user identity (no smart account deployment needed)
-3. Backend verifies the EOA signature with standard `ecrecover` (since localhost is unreachable for ERC-1271)
-4. JWT is issued for the EOA address
+1. Frontend uses the **same WebAuthn Passkey flow** as production
+2. Passkey server URL switches from ZeroDev hosted to **self-hosted on the NestJS backend** (`/api/zerodev/self-hosted`)
+3. A real Kernel v3 smart account is created from the passkey validator
+4. Backend verifies the smart account signature (ERC-1271) or falls back to `ecrecover`
+5. JWT is issued for the smart account address
+
+> **Key change (PR #382):** The old "Mock ECDSA" flow (`mock_pk` in localStorage, random EOA) has been removed. Local dev now validates the same auth path as production — only the passkey server URL differs.
 
 > **Source:** [`AuthProvider.tsx`](../web/src/components/auth/AuthProvider.tsx) — `getOrConnectAccount()` function
 
@@ -351,21 +354,21 @@ All endpoints are under `/wallet` and require JWT authentication.
 
 ### Frontend (`web/.env.local`)
 
-| Variable                         | Purpose                               | Default          |
-| -------------------------------- | ------------------------------------- | ---------------- |
-| `NEXT_PUBLIC_CHAIN_ID`           | Target chain ID                       | `31337`          |
-| `NEXT_PUBLIC_ZERODEV_PROJECT_ID` | ZeroDev project ID (enables passkeys) | None (mock mode) |
-| `NEXT_PUBLIC_RPC_URL`            | RPC override (forked Sepolia)         | Chain default    |
+| Variable                         | Purpose                                                         | Default                        |
+| -------------------------------- | --------------------------------------------------------------- | ------------------------------ |
+| `NEXT_PUBLIC_CHAIN_ID`           | Target chain ID                                                 | `31337`                        |
+| `NEXT_PUBLIC_ZERODEV_PROJECT_ID` | ZeroDev project ID — if set, uses ZeroDev hosted passkey server | None (uses self-hosted server) |
+| `NEXT_PUBLIC_RPC_URL`            | RPC override (forked Sepolia)                                   | Chain default                  |
 
 ---
 
 ## Development Modes
 
-| Mode               | Chain      | AA Infra                          | Bundler        | Auth                          | Paymaster          | Use Case                      |
-| ------------------ | ---------- | --------------------------------- | -------------- | ----------------------------- | ------------------ | ----------------------------- |
-| **Local-Only**     | `31337`    | Deployed by `DeployLocalAA.s.sol` | Alto (Docker)  | Mock ECDSA                    | ❌ None            | Offline, contract development |
-| **Forked Sepolia** | `11155111` | Already on Sepolia (via fork)     | Alto (Docker)  | Mock ECDSA / Passkeys (w/ ZD) | ✅ ZeroDev testnet | Session keys, full AA testing |
-| **Production**     | `11155111` | Sepolia mainnet                   | ZeroDev hosted | Passkeys                      | ✅ ZeroDev         | Live environment              |
+| Mode               | Chain      | AA Infra                          | Bundler        | Auth                         | Paymaster          | Use Case                      |
+| ------------------ | ---------- | --------------------------------- | -------------- | ---------------------------- | ------------------ | ----------------------------- |
+| **Local-Only**     | `31337`    | Deployed by `DeployLocalAA.s.sol` | Alto (Docker)  | Passkeys (self-hosted)       | ❌ None            | Offline, contract development |
+| **Forked Sepolia** | `11155111` | Already on Sepolia (via fork)     | Alto (Docker)  | Passkeys (self-hosted or ZD) | ✅ ZeroDev testnet | Session keys, full AA testing |
+| **Production**     | `11155111` | Sepolia mainnet                   | ZeroDev hosted | Passkeys (ZeroDev)           | ✅ ZeroDev         | Live environment              |
 
 See [Local AA Development](local-aa-development.md) for setup instructions.
 
