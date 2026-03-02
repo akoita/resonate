@@ -10,10 +10,6 @@ jest.mock("viem", () => ({
     sendTransaction: async () => "0xdirect_hash",
   }),
   http: () => ({}),
-  keccak256: (data: any) =>
-    "0x" + "ab".repeat(32),
-  toBytes: (s: string) => Buffer.from(s),
-  concat: (arr: any[]) => Buffer.concat(arr.map((x: any) => Buffer.from(x))),
 }));
 
 jest.mock("viem/accounts", () => ({
@@ -57,6 +53,7 @@ describe("KernelAccountService strict mode", () => {
     const svc = makeService({
       AA_CHAIN_ID: "31337",
       AA_SKIP_BUNDLER: "false",
+      AGENT_SIGNER_KEY: "ab".repeat(32),
     });
 
     // sendTransaction should NOT throw — it falls back to direct EOA send
@@ -74,6 +71,7 @@ describe("KernelAccountService strict mode", () => {
       AA_CHAIN_ID: "31337",
       AA_SKIP_BUNDLER: "false",
       AA_STRICT_BUNDLER: "true",
+      AGENT_SIGNER_KEY: "ab".repeat(32),
     });
 
     await expect(
@@ -86,6 +84,7 @@ describe("KernelAccountService strict mode", () => {
       AA_CHAIN_ID: "31337",
       AA_SKIP_BUNDLER: "false",
       AA_STRICT_MODE: "true",
+      AGENT_SIGNER_KEY: "ab".repeat(32),
     });
 
     await expect(
@@ -97,6 +96,7 @@ describe("KernelAccountService strict mode", () => {
     const svc = makeService({
       AA_CHAIN_ID: "31337",
       AA_SKIP_BUNDLER: "true",
+      AGENT_SIGNER_KEY: "ab".repeat(32),
     });
 
     const hash = await svc.sendTransaction(

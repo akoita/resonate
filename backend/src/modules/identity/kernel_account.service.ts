@@ -4,9 +4,6 @@ import {
   createPublicClient,
   createWalletClient,
   http,
-  keccak256,
-  toBytes,
-  concat,
   type Address,
   type Hex,
   type Chain,
@@ -28,7 +25,9 @@ async function getEcdsaValidator() {
   return _ecdsaCache;
 }
 
-const LOCAL_DEV_SALT = "resonate-local-dev-do-not-use-in-production";
+// Anvil account 0 — default funder for local dev auto-funding
+const DEFAULT_ANVIL_FUNDER_KEY =
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 
 /**
  * KernelAccountService — Creates real ZeroDev Kernel smart accounts
@@ -49,6 +48,8 @@ export class KernelAccountService {
   private readonly skipBundler: boolean;
   private readonly strictBundler: boolean;
   private readonly strictMode: boolean;
+  private readonly agentSignerKey: Hex | null;
+  private readonly funderKey: Hex;
 
   constructor(private readonly config: ConfigService) {
     this.rpcUrl = this.config.get<string>("RPC_URL") || "http://localhost:8545";
@@ -61,24 +62,47 @@ export class KernelAccountService {
     this.skipBundler = this.config.get<string>("AA_SKIP_BUNDLER") === "true";
     this.strictBundler = this.config.get<string>("AA_STRICT_BUNDLER") === "true";
     this.strictMode = this.config.get<string>("AA_STRICT_MODE") === "true";
+
+    // Server-side signer key for wallet deployment operations.
+    // In production: loaded from GCP Secret Manager.
+    // In local dev: generate with `openssl rand -hex 32`.
+    const signerKey = this.config.get<string>("AGENT_SIGNER_KEY");
+    this.agentSignerKey = signerKey ? (`0x${signerKey.replace(/^0x/, '')}` as Hex) : null;
+    if (!this.agentSignerKey) {
+      this.logger.warn(
+        "AGENT_SIGNER_KEY not set — wallet deployment will fail. " +
+        "Generate one with: openssl rand -hex 32",
+      );
+    }
+
+    // Funder key for local Anvil auto-funding (not used in production).
+    const funder = this.config.get<string>("AA_FUNDER_KEY");
+    this.funderKey = funder
+      ? (`0x${funder.replace(/^0x/, '')}` as Hex)
+      : (DEFAULT_ANVIL_FUNDER_KEY as Hex);
   }
 
   /**
-   * Derive a deterministic private key from a userId.
-   * Same approach as the frontend localAA.ts for consistency.
-   * WARNING: Local dev only — keys are predictable!
+   * Get the server-side signer private key.
+   * This is a single server-controlled key used for wallet deployment
+   * and non-session-key operations. Agent purchases use the per-user
+   * encrypted key via sendSessionKeyTransaction() instead.
    */
-  private getSignerPrivateKey(userId: string): Hex {
-    return keccak256(
-      concat([toBytes(LOCAL_DEV_SALT), toBytes(userId.toLowerCase())]),
-    );
+  private getServerSignerKey(): Hex {
+    if (!this.agentSignerKey) {
+      throw new Error(
+        "AGENT_SIGNER_KEY is not configured. " +
+        "Set it in your .env or mount from GCP Secret Manager.",
+      );
+    }
+    return this.agentSignerKey;
   }
 
   /**
-   * Get the signer EOA address for a user (useful for funding checks).
+   * Get the server signer's EOA address (useful for funding checks).
    */
-  getSignerAddress(userId: string): Address {
-    const pk = this.getSignerPrivateKey(userId);
+  getSignerAddress(): Address {
+    const pk = this.getServerSignerKey();
     return privateKeyToAccount(pk).address;
   }
 
@@ -130,10 +154,7 @@ export class KernelAccountService {
       `Funding ${label} ${address} (balance: ${balance} wei, min: ${minEth} ETH)`,
     );
 
-    // Anvil account 0
-    const funderPk =
-      "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as Hex;
-    const funder = privateKeyToAccount(funderPk);
+    const funder = privateKeyToAccount(this.funderKey);
 
     const walletClient = createWalletClient({
       account: funder,
@@ -171,8 +192,8 @@ export class KernelAccountService {
       transport: http(this.rpcUrl),
     });
 
-    // Create signer from deterministic private key
-    const privateKey = this.getSignerPrivateKey(userId);
+    // Create signer from server-controlled key
+    const privateKey = this.getServerSignerKey();
     const signer = privateKeyToAccount(privateKey);
 
     // Fund signer if needed (for Anvil)
@@ -412,7 +433,7 @@ export class KernelAccountService {
     value: bigint,
   ): Promise<string> {
     const chain = this.getChain();
-    const privateKey = this.getSignerPrivateKey(userId);
+    const privateKey = this.getServerSignerKey();
     const signer = privateKeyToAccount(privateKey);
 
     // Ensure signer has funds
