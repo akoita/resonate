@@ -14,7 +14,7 @@ test.describe("AI DJ Agent Page", () => {
         // Without auth, the AuthGate renders with "Connect Wallet" button
         const authPanel = page.locator(".auth-panel");
         const connectBtn = page.getByText("Connect Wallet");
-        await expect(authPanel.or(connectBtn)).toBeVisible({ timeout: 10000 });
+        await expect(authPanel.or(connectBtn).first()).toBeVisible({ timeout: 10000 });
     });
 
     test("agent page auth gate has correct prompt", async ({ page }) => {
