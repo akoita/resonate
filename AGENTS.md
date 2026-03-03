@@ -107,12 +107,17 @@ Backend tests use **Testcontainers** to spin up real infrastructure in Docker. N
 
 ### File Naming
 
-| Pattern                 | Purpose                                                         | Runner                     |
-| ----------------------- | --------------------------------------------------------------- | -------------------------- |
-| `*.integration.spec.ts` | Tests against real containers (Postgres, Redis, Anvil, Pub/Sub) | `npm run test:integration` |
-| `*.spec.ts`             | Pure unit tests — no DB, no containers, no Prisma               | `npm run test`             |
+| Pattern                     | Purpose                                                         | Runner                       |
+| --------------------------- | --------------------------------------------------------------- | ---------------------------- |
+| `*.spec.ts`                 | Pure unit tests — no DB, no containers, no Prisma               | `npm run test`               |
+| `*.controller.spec.ts`      | Controller unit tests — mock service, test logic/shaping        | `npm run test`               |
+| `*.controller.http.spec.ts` | Controller HTTP contract — routing, guards, status codes        | `npm run test`               |
+| `*.integration.spec.ts`     | Tests against real containers (Postgres, Redis, Anvil, Pub/Sub) | `npm run test:integration`   |
+| `*.external.spec.ts`        | External service tests — only with cloud credentials            | manual / staging CI          |
+| `*.flow.spec.ts`            | Multi-module event-driven flow tests                            | `npm run test:flow` (future) |
+| `*.test.ts`                 | Frontend tests (Vitest)                                         | `npx vitest run`             |
 
-All test files live in `backend/src/tests/`.
+All backend test files live in `backend/src/tests/`. See `backend/TESTING.md` for the full strategy.
 
 ### Rules
 
@@ -191,4 +196,4 @@ npx jest --runInBand --config jest.integration.config.js --testPathPattern='cata
 - Run `npm run lint` in both `backend/` and `web/` before committing
 - Prisma schema changes require `npx prisma generate` and migration
 - Use `window.confirm()` sparingly — prefer `ConfirmDialog` React component for UX consistency
-- Test files go in `backend/src/tests/` — use `.integration.spec.ts` for DB-dependent tests, `.spec.ts` for pure unit tests
+- Test files go in `backend/src/tests/` — use `.integration.spec.ts` for DB-dependent tests, `.controller.http.spec.ts` for HTTP contract tests, `.spec.ts` for pure unit tests

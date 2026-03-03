@@ -1,5 +1,5 @@
 /**
- * Jest configuration for Infrastructure-backed Tests.
+ * Jest configuration for Integration Tests.
  *
  * Uses Testcontainers for self-contained Postgres + Redis.
  * Only Docker is required — no `make dev-up` needed.
@@ -9,7 +9,7 @@
 module.exports = {
   preset: "ts-jest",
   testEnvironment: "node",
-  testMatch: ["**/*.infra.spec.ts"],
+  testMatch: ["**/*.integration.spec.ts"],
   moduleFileExtensions: ["ts", "js", "json"],
   rootDir: "src",
   moduleNameMapper: {
