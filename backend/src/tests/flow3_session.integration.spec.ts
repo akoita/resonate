@@ -6,7 +6,8 @@
  *
  * Real WalletService (setBudget writes to real Postgres via prisma.wallet).
  * Real SessionsService, real AgentOrchestrationService.
- * Only AgentPurchaseService is a lightweight stub (blockchain tx execution).
+ * Real AgentPurchaseService (full dep chain: KernelAccountService → Anvil,
+ *   ZeroDevSessionKeyService → CryptoService + KeyAuditService).
  *
  * See: backend/CHOREOGRAPHY.md (Flow 3) for sequence diagrams.
  * Run: npm run test:integration
@@ -17,6 +18,13 @@ import { EventBus } from '../modules/shared/event_bus';
 import { WalletService } from '../modules/identity/wallet.service';
 import { SessionsService } from '../modules/sessions/sessions.service';
 import { AgentOrchestrationService } from '../modules/sessions/agent_orchestration.service';
+import { AgentPurchaseService } from '../modules/agents/agent_purchase.service';
+import { AgentWalletService } from '../modules/agents/agent_wallet.service';
+import { KernelAccountService } from '../modules/identity/kernel_account.service';
+import { ZeroDevSessionKeyService } from '../modules/identity/zerodev_session_key.service';
+import { CryptoService } from '../modules/shared/crypto.service';
+import { KeyAuditService } from '../modules/shared/key_audit.service';
+import { ConfigService } from '@nestjs/config';
 import type { ResonateEvent } from '../events/event_types';
 
 const P = `cf3_${Date.now()}_`;
@@ -70,16 +78,33 @@ describe('Choreography Flow 3: Agent Session Lifecycle', () => {
         }),
       }),
     };
+
+    // Real ConfigService — RPC_URL defaults to Anvil (Testcontainers)
+    const configService = new ConfigService({
+      RPC_URL: process.env.ANVIL_RPC_URL || 'http://localhost:8545',
+      ENCRYPTION_SECRET: process.env.ENCRYPTION_SECRET || 'test-encryption-secret',
+    });
+
     walletService = new WalletService(
       eventBus as any,
       providerRegistry as any,
       {} as any,  // Erc4337Client — not called in setBudget/getOrCreate path
       {} as any,  // PaymasterService — not called in setBudget/getOrCreate path
-      {} as any,  // KernelAccountService — not called in setBudget/getOrCreate path
+      new KernelAccountService(configService),
     );
+
     agentService = new AgentOrchestrationService(eventBus as any);
-    // AgentPurchaseService stub — blockchain tx execution is external
-    const agentPurchaseService = { purchase: jest.fn() } as any;
+
+    // Real AgentPurchaseService — full dep chain, no external calls in constructor
+    // purchase() is never invoked in this test (session choreography only)
+    const cryptoService = new CryptoService(configService);
+    const keyAuditService = new KeyAuditService();
+    const zeroDevService = new ZeroDevSessionKeyService(configService, cryptoService, keyAuditService);
+    const agentWalletService = new AgentWalletService(walletService, zeroDevService, eventBus);
+    const kernelAccountService = new KernelAccountService(configService);
+    const agentPurchaseService = new AgentPurchaseService(
+      walletService, agentWalletService, kernelAccountService, eventBus,
+    );
 
     sessionsService = new SessionsService(walletService, eventBus as any, agentService, agentPurchaseService);
   });
