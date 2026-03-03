@@ -183,7 +183,7 @@ describe('Prisma + Postgres Integration', () => {
     ).rejects.toThrow();
   });
 
-  it('cascades delete from Release to Tracks', async () => {
+  it('enforces FK constraint and allows ordered deletion', async () => {
     if (!dbAvailable) return;
     const userId = `${TEST_PREFIX}user_casc`;
     const artistId = `${TEST_PREFIX}artist_casc`;
@@ -205,13 +205,19 @@ describe('Prisma + Postgres Integration', () => {
       data: { id: releaseId, title: 'Cascade Test', artistId, status: 'draft' },
     });
     await prisma.track.create({
-      data: { id: trackId, title: 'Cascade Track', releaseId, position: 1 },
+      data: { id: trackId, title: 'Constraint Track', releaseId, position: 1 },
     });
 
-    // Delete release — tracks should cascade
+    // Schema does NOT have onDelete: Cascade — delete should fail with FK violation
+    await expect(
+      prisma.release.delete({ where: { id: releaseId } }),
+    ).rejects.toThrow();
+
+    // Proper cleanup: delete tracks first, then release
+    await prisma.track.delete({ where: { id: trackId } });
     await prisma.release.delete({ where: { id: releaseId } });
 
-    const orphanTrack = await prisma.track.findUnique({ where: { id: trackId } });
-    expect(orphanTrack).toBeNull();
+    const deletedRelease = await prisma.release.findUnique({ where: { id: releaseId } });
+    expect(deletedRelease).toBeNull();
   });
 });
