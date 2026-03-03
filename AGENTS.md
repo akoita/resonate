@@ -77,6 +77,10 @@ Document any new env var in `docs/smart-contracts/deployment.md` and the relevan
 
 5. **Clean up after merge** — delete the feature branch (local + remote) and align local `main`.
 
+6. **Use the `/start-issue` workflow** when beginning work on any issue or task (features, fixes, improvements, etc.). Run the steps in `.agent/workflows/start-issue.md` to create the branch, track work, and open the PR scaffold.
+
+7. **Use the `/finish-issue` workflow** when completing work on an issue. Run the steps in `.agent/workflows/finish-issue.md` to verify, test, commit, push, create PR, merge, and clean up. This ensures security scans are executed and no steps are skipped.
+
 ---
 
 ## Architecture Conventions

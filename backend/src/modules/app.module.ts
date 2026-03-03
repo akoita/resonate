@@ -27,6 +27,7 @@ import { StemPricingModule } from "./pricing/stem-pricing.module";
 import { LibraryModule } from "./library/library.module";
 import { GenerationModule } from "./generation/generation.module";
 import { WebAuthnModule } from "./webauthn/webauthn.module";
+import { X402Module } from "./x402/x402.module";
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { WebAuthnModule } from "./webauthn/webauthn.module";
     StemPricingModule,
     GenerationModule,
     WebAuthnModule,
+    X402Module,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -45,7 +45,7 @@ Check the changed files (`git diff --name-only main`) and run the appropriate se
 - **If neither changed**, skip this step.
 - Commit the updated scan reports alongside the code changes.
 
-## 6. Update documentation (if convenient)
+## 6. Update documentation
 
 - Check if the change affects any existing docs (READMEs, RFCs, specs, API docs)
 - If so, update them in the same branch — keep docs close to the code they describe
@@ -55,7 +55,7 @@ Check the changed files (`git diff --name-only main`) and run the appropriate se
   - Inline JSDoc / NatSpec for code-level APIs
 - Skip this step if the change is trivial or purely internal refactoring
 
-## 7. Update architecture docs (if the architecture evolved)
+## 7. Update architecture docs
 
 - Think about whether this change introduces or modifies **architectural patterns** — new services, data flows, module boundaries, smart contract interactions, event flows, etc.
 - If the architecture has evolved:
