@@ -2,6 +2,7 @@ module.exports = {
   preset: "ts-jest",
   testEnvironment: "node",
   testMatch: ["**/*.spec.ts"],
+  testPathIgnorePatterns: ["\\.integration\\.spec\\.ts$"],
   moduleFileExtensions: ["ts", "js", "json"],
   rootDir: "src",
   moduleNameMapper: {
