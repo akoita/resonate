@@ -73,8 +73,8 @@ jobs:
         run: forge test -vvv --no-match-path "test/formal/*"
         working-directory: contracts
 
-  backend-unit-tests:
-    name: Backend Unit Tests
+  backend-logic-tests:
+    name: Logic Tests
     runs-on: ubuntu-latest
     needs: lint
     steps:
@@ -103,8 +103,8 @@ jobs:
           JWT_SECRET: ci-test-secret
           ENCRYPTION_SECRET: ci-test-encryption-secret
 
-  backend-integration-tests:
-    name: Backend Integration Tests
+  backend-infra-tests:
+    name: Infra-backed Tests
     runs-on: ubuntu-latest
     needs: lint
     services:
