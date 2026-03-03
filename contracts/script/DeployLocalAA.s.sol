@@ -54,6 +54,18 @@ contract DeployLocalAA is Script {
         ECDSAValidator ecdsaValidator = new ECDSAValidator();
         console.log("ECDSAValidator deployed at:", address(ecdsaValidator));
 
+        // V-002: Whitelist KernelFactory in the signature validator
+        sigValidator.setAllowedFactory(address(factory), true);
+        // V-004: Whitelist only createAccount selector on the factory
+        sigValidator.setAllowedSelector(
+            address(factory),
+            factory.createAccount.selector,
+            true
+        );
+        console.log(
+            "KernelFactory whitelisted in UniversalSigValidator (factory + selector)"
+        );
+
         vm.stopBroadcast();
 
         console.log("");

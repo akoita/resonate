@@ -107,6 +107,37 @@ contract StemMarketplaceTest is Test {
         new StemMarketplaceV2(address(stemNFT), feeRecipient, 501); // > 5%
     }
 
+    // V-003: Zero fee recipient with non-zero fee must revert
+    function test_Constructor_RevertZeroFeeRecipientWithFee() public {
+        vm.prank(admin);
+        vm.expectRevert(StemMarketplaceV2.InvalidRecipient.selector);
+        new StemMarketplaceV2(address(stemNFT), address(0), 250);
+    }
+
+    // V-003: Zero fee recipient with zero fee is allowed (no fees charged)
+    function test_Constructor_AllowsZeroRecipientWithZeroFee() public {
+        vm.prank(admin);
+        StemMarketplaceV2 m = new StemMarketplaceV2(
+            address(stemNFT),
+            address(0),
+            0
+        );
+        assertEq(m.protocolFeeBps(), 0);
+    }
+
+    // V-003: setProtocolFee rejects non-zero fee when recipient is address(0)
+    function test_SetProtocolFee_RevertWhenRecipientZero() public {
+        vm.prank(admin);
+        StemMarketplaceV2 m = new StemMarketplaceV2(
+            address(stemNFT),
+            address(0),
+            0
+        );
+        vm.prank(admin);
+        vm.expectRevert(StemMarketplaceV2.InvalidRecipient.selector);
+        m.setProtocolFee(250);
+    }
+
     // ============ Listing Tests ============
 
     function test_List_CreatesListing() public {
@@ -585,5 +616,45 @@ contract StemMarketplaceTest is Test {
         vm.prank(admin);
         vm.expectRevert(StemMarketplaceV2.InvalidRecipient.selector);
         marketplace.withdrawTrappedETH(address(0));
+    }
+
+    // ============ V-001 Regression: ETH Rejection on ERC20 Buy ============
+
+    /// @notice evmbench V-001: buy() must reject msg.value when listing uses ERC20 payment token
+    function test_Buy_RevertETHWithERC20Listing() public {
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(
+            1,
+            50,
+            100e18,
+            address(paymentToken),
+            LISTING_DURATION
+        );
+
+        // Attempt to send ETH alongside an ERC20 purchase — must revert
+        vm.prank(buyer);
+        vm.expectRevert(StemMarketplaceV2.UnexpectedETH.selector);
+        marketplace.buy{value: 1 ether}(listingId, 10);
+
+        // Verify no ETH was trapped
+        assertEq(address(marketplace).balance, 0);
+    }
+
+    /// @notice Ensure normal ERC20 buy (no ETH) still works after the fix
+    function test_Buy_ERC20WithoutETH_StillWorks() public {
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(
+            1,
+            50,
+            100e18,
+            address(paymentToken),
+            LISTING_DURATION
+        );
+
+        vm.prank(buyer);
+        marketplace.buy(listingId, 10);
+
+        assertEq(stemNFT.balanceOf(buyer, 1), 10);
+        assertEq(address(marketplace).balance, 0);
     }
 }
