@@ -1,8 +1,8 @@
 /**
  * Generation Service — Integration Test (Testcontainers)
  *
- * Tests GenerationService against real Postgres for artist/release creation.
- * External services (Lyria AI, storage, BullMQ) stay mocked per policy.
+ * Tests GenerationService against real Postgres and real BullMQ/Redis.
+ * LyriaClient stays mocked — external Google AI service (no local container).
  *
  * Run: npm run test:integration
  */
@@ -12,6 +12,7 @@ import { EventBus } from '../modules/shared/event_bus';
 import { GenerationService } from '../modules/generation/generation.service';
 import { LocalStorageProvider } from '../modules/storage/local_storage_provider';
 import { ConfigService } from '@nestjs/config';
+import { Queue } from 'bullmq';
 
 const TEST_PREFIX = `gen_${Date.now()}_`;
 
@@ -29,12 +30,6 @@ const mockLyriaClient = {
   }),
 };
 
-// BullMQ Queue must stay mocked — infrastructure scheduling
-const mockQueue = {
-  add: jest.fn().mockResolvedValue({ id: 'job-1' }),
-  getJob: jest.fn(),
-};
-
 // Real ConfigService with test defaults
 const configService = new ConfigService({
   STRIKE_RATE_LIMIT: 5,
@@ -43,6 +38,7 @@ const configService = new ConfigService({
 describe('GenerationService (integration)', () => {
   let service: GenerationService;
   let eventBus: EventBus;
+  let generationQueue: Queue;
 
   beforeAll(async () => {
     // Seed user + artist for generation tests
@@ -62,19 +58,32 @@ describe('GenerationService (integration)', () => {
     await prisma.release.deleteMany({ where: { artistId: `${TEST_PREFIX}artist` } }).catch(() => {});
     await prisma.artist.delete({ where: { id: `${TEST_PREFIX}artist` } }).catch(() => {});
     await prisma.user.delete({ where: { id: `${TEST_PREFIX}user` } }).catch(() => {});
+    // Close the real BullMQ queue connection
+    if (generationQueue) await generationQueue.close();
   });
 
   beforeEach(() => {
     jest.clearAllMocks();
     eventBus = new EventBus();
+
+    // Real BullMQ Queue backed by Testcontainers Redis
+    const redisUrl = new URL(process.env.REDIS_URL || 'redis://localhost:6379');
+    generationQueue = new Queue(`generation_test_${Date.now()}`, {
+      connection: { host: redisUrl.hostname, port: parseInt(redisUrl.port || '6379') },
+    });
+
     service = new GenerationService(
       eventBus,
       storageProvider as any,
       {} as any,  // CatalogService — not called in create/process paths
       mockLyriaClient as any,
       configService as any,
-      mockQueue as any,
+      generationQueue as any,
     );
+  });
+
+  afterEach(async () => {
+    if (generationQueue) await generationQueue.close();
   });
 
   describe('createGeneration', () => {
@@ -85,7 +94,10 @@ describe('GenerationService (integration)', () => {
       );
       expect(result.jobId).toBeDefined();
       expect(typeof result.jobId).toBe('string');
-      expect(mockQueue.add).toHaveBeenCalledTimes(1);
+
+      // Verify job was actually enqueued in real Redis
+      const job = await generationQueue.getJob(result.jobId);
+      expect(job).not.toBeNull();
     });
 
     it('emits generation.started event', async () => {
@@ -172,19 +184,19 @@ describe('GenerationService (integration)', () => {
   });
 
   describe('getStatus', () => {
-    it('returns job status from BullMQ', async () => {
-      mockQueue.getJob.mockResolvedValueOnce({
-        getState: jest.fn().mockResolvedValue('completed'),
-        timestamp: Date.now(),
-        returnvalue: { trackId: 'track-1', releaseId: 'release-1' },
-      });
+    it('returns job status from real BullMQ', async () => {
+      // Enqueue a real job first
+      const result = await service.createGeneration(
+        { prompt: 'Status check track', artistId: `${TEST_PREFIX}artist` },
+        `${TEST_PREFIX}user`,
+      );
 
-      const status = await service.getStatus('job-1');
-      expect(status.status).toBe('completed');
+      const status = await service.getStatus(result.jobId);
+      // Job is waiting (no worker to process it)
+      expect(['waiting', 'delayed', 'active', 'queued']).toContain(status.status);
     });
 
     it('returns failed status for unknown job', async () => {
-      mockQueue.getJob.mockResolvedValueOnce(null);
       const status = await service.getStatus('nonexistent');
       expect(status.status).toBe('failed');
       expect(status.error).toBe('Job not found');
