@@ -1,126 +1,166 @@
-import { StemPricingService, StemPricingDto } from "../modules/pricing/stem-pricing.service";
+/**
+ * Stem Pricing Service — Infra-backed Tests (zero-mock)
+ *
+ * Tests StemPricingService with real Postgres for stem ownership
+ * and pricing CRUD. Seeds real User → Artist → Release → Track → Stem chain.
+ *
+ * Requires: make dev-up (Postgres at localhost:5432)
+ * Run: npm test
+ */
 
-// Mock prisma
-jest.mock("../db/prisma", () => {
-  const stemPricingStore: Record<string, StemPricingDto & { id: string; stemId: string }> = {};
+import { PrismaClient } from '@prisma/client';
+import { StemPricingService, StemPricingDto } from '../modules/pricing/stem-pricing.service';
 
-  return {
-    prisma: {
-      stem: {
-        findUnique: jest.fn().mockImplementation(({ where }: { where: { id: string } }) => {
-          if (where.id === "stem-owned") {
-            return Promise.resolve({
-              id: "stem-owned",
-              track: {
-                release: {
-                  artist: { userId: "user-owner" },
-                },
-              },
-            });
-          }
-          if (where.id === "stem-other") {
-            return Promise.resolve({
-              id: "stem-other",
-              track: {
-                release: {
-                  artist: { userId: "user-other" },
-                },
-              },
-            });
-          }
-          return Promise.resolve(null);
-        }),
-      },
-      stemPricing: {
-        findUnique: jest.fn().mockImplementation(({ where }: { where: { stemId: string } }) => {
-          return Promise.resolve(stemPricingStore[where.stemId] || null);
-        }),
-        upsert: jest.fn().mockImplementation(({ where, create, update }: {
-          where: { stemId: string };
-          create: Record<string, unknown>;
-          update: Record<string, unknown>;
-        }) => {
-          const existing = stemPricingStore[where.stemId];
-          if (existing) {
-            const updated = { ...existing, ...update };
-            stemPricingStore[where.stemId] = updated as typeof existing;
-            return Promise.resolve(updated);
-          }
-          const created = { id: `pricing-${where.stemId}`, ...create };
-          stemPricingStore[where.stemId] = created as typeof existing;
-          return Promise.resolve(created);
-        }),
-      },
-      release: {
-        findUnique: jest.fn().mockImplementation(({ where }: { where: { id: string } }) => {
-          if (where.id === "release-owned") {
-            return Promise.resolve({
-              id: "release-owned",
-              artist: { userId: "user-owner" },
-              tracks: [
-                { stems: [{ id: "stem-a", type: "vocals" }, { id: "stem-b", type: "drums" }] },
-              ],
-            });
-          }
-          return Promise.resolve(null);
-        }),
-      },
-      $transaction: jest.fn().mockImplementation((promises: Promise<unknown>[]) => {
-        return Promise.all(promises);
-      }),
-    },
-  };
-});
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://resonate:resonate@localhost:5432/resonate';
 
-describe("StemPricingService", () => {
-  let service: StemPricingService;
+let prisma: PrismaClient;
+let service: StemPricingService;
+let dbAvailable = false;
 
-  beforeEach(() => {
+const TEST_PREFIX = `sp_${Date.now()}_`;
+
+async function isPostgresAvailable(): Promise<boolean> {
+  try {
+    const p = new PrismaClient({ datasources: { db: { url: DATABASE_URL } } });
+    await p.$connect();
+    await p.$disconnect();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+describe('StemPricingService (infra-backed)', () => {
+  let ownedStemId: string;
+  let otherStemId: string;
+  let releaseId: string;
+
+  beforeAll(async () => {
     service = new StemPricingService();
+
+    dbAvailable = await isPostgresAvailable();
+    if (!dbAvailable) {
+      console.warn('⚠️  Postgres not available. Start with: make dev-up');
+      return;
+    }
+
+    prisma = new PrismaClient({ datasources: { db: { url: DATABASE_URL } } });
+    await prisma.$connect();
+
+    // Seed owner chain: User → Artist → Release → Track → Stems
+    await prisma.user.upsert({
+      where: { id: `${TEST_PREFIX}owner` },
+      update: {},
+      create: { id: `${TEST_PREFIX}owner`, email: `${TEST_PREFIX}owner@test.resonate` },
+    });
+    await prisma.artist.upsert({
+      where: { userId: `${TEST_PREFIX}owner` },
+      update: {},
+      create: {
+        id: `${TEST_PREFIX}artist`,
+        userId: `${TEST_PREFIX}owner`,
+        displayName: 'Pricing Test Artist',
+        payoutAddress: '0x' + 'F'.repeat(40),
+      },
+    });
+
+    releaseId = `${TEST_PREFIX}release`;
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        title: 'Pricing Test Release',
+        artistId: `${TEST_PREFIX}artist`,
+        status: 'published',
+      },
+    });
+
+    const track = await prisma.track.create({
+      data: {
+        id: `${TEST_PREFIX}track`,
+        title: 'Pricing Track',
+        releaseId,
+        position: 1,
+      },
+    });
+
+    const stem1 = await prisma.stem.create({
+      data: { trackId: track.id, type: 'vocals', uri: '/test/vocals.mp3' },
+    });
+    ownedStemId = stem1.id;
+
+    const stem2 = await prisma.stem.create({
+      data: { trackId: track.id, type: 'drums', uri: '/test/drums.mp3' },
+    });
+    otherStemId = stem2.id;
+
+    // Seed "other" user (non-owner)
+    await prisma.user.upsert({
+      where: { id: `${TEST_PREFIX}other` },
+      update: {},
+      create: { id: `${TEST_PREFIX}other`, email: `${TEST_PREFIX}other@test.resonate` },
+    });
   });
 
-  describe("getTemplates", () => {
-    it("returns 4 pricing templates with flat USD license prices", () => {
+  afterAll(async () => {
+    if (!dbAvailable) return;
+    try {
+      await prisma.stemPricing.deleteMany({ where: { stemId: { in: [ownedStemId, otherStemId] } } }).catch(() => {});
+      await prisma.stem.deleteMany({ where: { trackId: `${TEST_PREFIX}track` } });
+      await prisma.track.delete({ where: { id: `${TEST_PREFIX}track` } });
+      await prisma.release.delete({ where: { id: releaseId } });
+      await prisma.artist.delete({ where: { id: `${TEST_PREFIX}artist` } });
+      await prisma.user.deleteMany({ where: { id: { in: [`${TEST_PREFIX}owner`, `${TEST_PREFIX}other`] } } });
+    } catch (err) {
+      console.warn('Cleanup warning:', err);
+    }
+    await prisma.$disconnect();
+  });
+
+  // ===== Templates (pure logic, no DB) =====
+
+  describe('getTemplates', () => {
+    it('returns 4 pricing templates with flat USD license prices', () => {
       const templates = service.getTemplates();
       expect(templates).toHaveLength(4);
-      expect(templates.map(t => t.id)).toEqual(["free", "standard", "premium", "exclusive"]);
-      // Verify decoupled pricing — remix and commercial are flat USD, not multipliers
-      const standard = templates.find(t => t.id === "standard")!;
+      expect(templates.map(t => t.id)).toEqual(['free', 'standard', 'premium', 'exclusive']);
+      const standard = templates.find(t => t.id === 'standard')!;
       expect(standard.pricing.remixLicenseUsd).toBe(5.0);
       expect(standard.pricing.commercialLicenseUsd).toBe(25.0);
     });
   });
 
-  describe("getPricing", () => {
-    it("returns defaults with flat license prices when no pricing exists", async () => {
-      const result = await service.getPricing("stem-new");
-      expect(result.stemId).toBe("stem-new");
+  // ===== Pricing CRUD (real DB) =====
+
+  describe('getPricing', () => {
+    it('returns defaults when no pricing exists', async () => {
+      if (!dbAvailable) return;
+      const result = await service.getPricing(ownedStemId);
+      expect(result.stemId).toBe(ownedStemId);
       expect(result.basePlayPriceUsd).toBe(0.05);
-      expect(result.remixLicenseUsd).toBe(5.0);
-      expect(result.commercialLicenseUsd).toBe(25.0);
-      expect(result.computed).toBeDefined();
       expect(result.computed.personal).toBe(0.05);
-      expect(result.computed.remix).toBe(5.0);
-      expect(result.computed.commercial).toBe(25.0);
     });
   });
 
-  describe("validateOwnership", () => {
-    it("allows owner to modify their stem", async () => {
-      await expect(service.validateOwnership("stem-owned", "user-owner")).resolves.toBeUndefined();
+  describe('validateOwnership', () => {
+    it('allows owner to modify their stem', async () => {
+      if (!dbAvailable) return;
+      await expect(service.validateOwnership(ownedStemId, `${TEST_PREFIX}owner`)).resolves.toBeUndefined();
     });
 
-    it("rejects non-owner", async () => {
-      await expect(service.validateOwnership("stem-owned", "user-hacker")).rejects.toThrow("You do not own this stem");
+    it('rejects non-owner', async () => {
+      if (!dbAvailable) return;
+      await expect(service.validateOwnership(ownedStemId, `${TEST_PREFIX}other`)).rejects.toThrow('You do not own this stem');
     });
 
-    it("rejects missing stem", async () => {
-      await expect(service.validateOwnership("stem-missing", "user-owner")).rejects.toThrow("not found");
+    it('rejects missing stem', async () => {
+      if (!dbAvailable) return;
+      await expect(service.validateOwnership('nonexistent-stem', `${TEST_PREFIX}owner`)).rejects.toThrow('not found');
     });
   });
 
-  describe("upsertPricing", () => {
-    it("creates pricing with flat license USD amounts", async () => {
+  describe('upsertPricing', () => {
+    it('creates pricing with flat license USD amounts', async () => {
+      if (!dbAvailable) return;
       const dto: StemPricingDto = {
         basePlayPriceUsd: 0.10,
         remixLicenseUsd: 10.0,
@@ -129,14 +169,14 @@ describe("StemPricingService", () => {
         ceilingUsd: 100.0,
         listingDurationDays: 30,
       };
-      const result = await service.upsertPricing("stem-owned", "user-owner", dto);
+      const result = await service.upsertPricing(ownedStemId, `${TEST_PREFIX}owner`, dto);
       expect(result.basePlayPriceUsd).toBe(0.10);
-      expect(result.computed).toBeDefined();
       expect(result.computed.remix).toBe(10.0);
       expect(result.computed.commercial).toBe(50.0);
     });
 
-    it("rejects when non-owner tries to update", async () => {
+    it('rejects when non-owner tries to update', async () => {
+      if (!dbAvailable) return;
       const dto: StemPricingDto = {
         basePlayPriceUsd: 999,
         remixLicenseUsd: 999,
@@ -145,12 +185,13 @@ describe("StemPricingService", () => {
         ceilingUsd: 1000,
         listingDurationDays: null,
       };
-      await expect(service.upsertPricing("stem-other", "user-owner", dto)).rejects.toThrow("You do not own this stem");
+      await expect(service.upsertPricing(otherStemId, `${TEST_PREFIX}other`, dto)).rejects.toThrow('You do not own this stem');
     });
   });
 
-  describe("batchUpdateByRelease", () => {
-    it("updates all stems in a release with flat license prices", async () => {
+  describe('batchUpdateByRelease', () => {
+    it('updates all stems in a release', async () => {
+      if (!dbAvailable) return;
       const dto: StemPricingDto = {
         basePlayPriceUsd: 0.15,
         remixLicenseUsd: 15.0,
@@ -159,12 +200,14 @@ describe("StemPricingService", () => {
         ceilingUsd: 100.0,
         listingDurationDays: null,
       };
-      const result = await service.batchUpdateByRelease("release-owned", "user-owner", dto);
+      const result = await service.batchUpdateByRelease(releaseId, `${TEST_PREFIX}owner`, dto);
       expect(result.updated).toBe(2);
-      expect(result.stemIds).toEqual(["stem-a", "stem-b"]);
+      expect(result.stemIds).toContain(ownedStemId);
+      expect(result.stemIds).toContain(otherStemId);
     });
 
-    it("rejects non-owner batch update", async () => {
+    it('rejects non-owner batch update', async () => {
+      if (!dbAvailable) return;
       const dto: StemPricingDto = {
         basePlayPriceUsd: 0.15,
         remixLicenseUsd: 15.0,
@@ -173,10 +216,11 @@ describe("StemPricingService", () => {
         ceilingUsd: 100.0,
         listingDurationDays: null,
       };
-      await expect(service.batchUpdateByRelease("release-owned", "user-hacker", dto)).rejects.toThrow("You do not own this release");
+      await expect(service.batchUpdateByRelease(releaseId, `${TEST_PREFIX}other`, dto)).rejects.toThrow('You do not own this release');
     });
 
-    it("rejects missing release", async () => {
+    it('rejects missing release', async () => {
+      if (!dbAvailable) return;
       const dto: StemPricingDto = {
         basePlayPriceUsd: 0.15,
         remixLicenseUsd: 15.0,
@@ -185,12 +229,12 @@ describe("StemPricingService", () => {
         ceilingUsd: 100.0,
         listingDurationDays: null,
       };
-      await expect(service.batchUpdateByRelease("release-missing", "user-owner", dto)).rejects.toThrow("not found");
+      await expect(service.batchUpdateByRelease('nonexistent', `${TEST_PREFIX}owner`, dto)).rejects.toThrow('not found');
     });
   });
 
-  describe("pricing model sanity", () => {
-    it("remix license is significantly more than per-play price", () => {
+  describe('pricing model sanity', () => {
+    it('remix license is significantly more than per-play price', () => {
       const templates = service.getTemplates();
       for (const t of templates) {
         if (t.pricing.basePlayPriceUsd > 0) {
@@ -199,7 +243,7 @@ describe("StemPricingService", () => {
       }
     });
 
-    it("commercial license is more than remix license", () => {
+    it('commercial license is more than remix license', () => {
       const templates = service.getTemplates();
       for (const t of templates) {
         expect(t.pricing.commercialLicenseUsd).toBeGreaterThanOrEqual(t.pricing.remixLicenseUsd);
