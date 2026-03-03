@@ -1,7 +1,14 @@
 # Choreography Test Scenarios
 
-> **Purpose**: Document the event-driven choreography flows tested by `choreography.integration.spec.ts`.
+> **Purpose**: Document the event-driven choreography flows tested by the `flow*_*.integration.spec.ts` files.
 > After any change to an EventBus publisher or subscriber, check this document to determine if a choreography test needs updating.
+>
+> | File                                   | Flow                        | Mocks                           |
+> | -------------------------------------- | --------------------------- | ------------------------------- |
+> | `flow1_ingestion.integration.spec.ts`  | Release Ingestion Pipeline  | **None**                        |
+> | `flow2_contracts.integration.spec.ts`  | Contract Indexing Lifecycle | **None**                        |
+> | `flow3_session.integration.spec.ts`    | Agent Session Lifecycle     | 1 infra stub (providerRegistry) |
+> | `flow4_generation.integration.spec.ts` | AI Generation Pipeline      | LyriaClient, Storage (external) |
 
 ---
 
