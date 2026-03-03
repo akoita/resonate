@@ -18,6 +18,43 @@ npm test                          # Jest (backend)
 npx vitest run                    # Vitest (frontend)
 ```
 
+### 1b. Controller Tests (Two-Layer Strategy)
+
+Controllers have their own constraints that can only be tested directly — a service can be correct but the controller exposing it can still break the feature. We test controllers with **two complementary layers**, avoiding duplication with service tests:
+
+| Layer    | File pattern               | Tooling                                  | Focus                                         |
+| -------- | -------------------------- | ---------------------------------------- | --------------------------------------------- |
+| **Unit** | `*.controller.spec.ts`     | `new Controller(mockService)`            | Logic, method calls, arg transformations      |
+| **E2E**  | `*.controller.e2e.spec.ts` | `Test.createTestingModule` + `supertest` | Routing, HTTP status codes, guard enforcement |
+
+**Unit tests** mock the service and test only what the controller adds:
+
+- Request parsing (JSON string → object, range headers, limit NaN fallback)
+- Controller-level branching (auth verify 5-path flow)
+- Error wrapping (`try/catch` → `{ status: "error" }`)
+- Response shaping (userId extraction, BigInt conversions)
+
+**E2E tests** use a lightweight NestJS test module (no Docker, no DB) and test the HTTP contract:
+
+- Route correctness (`POST /auth/verify` → 201)
+- Guard enforcement (no JWT → 401)
+- Response headers (`Content-Type`, `Accept-Ranges`)
+- 404 on missing resources
+
+Shared helper: `e2e-helpers.ts` provides `authToken()` and `createControllerTestApp()` for consistent JWT + app setup across all e2e tests.
+
+```typescript
+// e2e test example
+const app = await createControllerTestApp(CatalogController, [
+  { provide: CatalogService, useValue: mockService },
+]);
+await request(app.getHttpServer()).get("/catalog/me").expect(401); // no JWT → guard blocks
+await request(app.getHttpServer())
+  .get("/catalog/me")
+  .set("Authorization", `Bearer ${authToken("user-1")}`)
+  .expect(200); // valid JWT → success
+```
+
 ### 2. Infrastructure-backed Tests
 
 Functions that rely directly or indirectly on **real infrastructure** — database queries, file I/O, message queues, blockchain calls.
@@ -133,11 +170,14 @@ Lint ──┬── Logic Tests              (no infra, ~1m)
 ## Naming Convention
 
 ```
-*.spec.ts           — All backend tests (logic + infra-backed)
-*.full.spec.ts      — Full external service tests (only with credentials)
-*.e2e.spec.ts       — End-to-end API tests
-*.orch.spec.ts      — Orchestration tests (multi-module flows)
-*.test.ts           — Frontend tests (Vitest)
+*.spec.ts                — Service/logic tests (no infra)
+*.controller.spec.ts     — Controller unit tests (mock service, test logic)
+*.controller.e2e.spec.ts — Controller e2e tests (Test.createTestingModule + supertest)
+*.integration.spec.ts    — Infrastructure-backed tests (DB, Redis, Anvil)
+*.full.spec.ts           — Full external service tests (only with credentials)
+*.e2e.spec.ts            — End-to-end API tests
+*.orch.spec.ts           — Orchestration tests (multi-module flows)
+*.test.ts                — Frontend tests (Vitest)
 ```
 
 > Tests that need infrastructure skip gracefully when it's not running.
