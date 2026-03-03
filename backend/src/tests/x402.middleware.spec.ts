@@ -1,9 +1,9 @@
-import { X402Middleware } from './x402.middleware';
-import { X402Config } from './x402.config';
+import { X402Middleware } from '../modules/x402/x402.middleware';
+import { X402Config } from '../modules/x402/x402.config';
 import { Request, Response, NextFunction } from 'express';
 
 // Mock prisma
-jest.mock('../../db/prisma', () => ({
+jest.mock('../db/prisma', () => ({
   prisma: {
     stemListing: {
       findFirst: jest.fn().mockResolvedValue(null),

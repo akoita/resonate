@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { X402Config } from './x402.config';
+import { X402Config } from '../modules/x402/x402.config';
 
 function createConfig(overrides: Record<string, string> = {}): X402Config {
   const config = new ConfigService({
