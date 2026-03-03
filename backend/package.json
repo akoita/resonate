@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "prisma generate && jest --runInBand",
+    "test:integration": "prisma generate && jest --runInBand --config jest.integration.config.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "db:seed": "npx prisma db seed"
