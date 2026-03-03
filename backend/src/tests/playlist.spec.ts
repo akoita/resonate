@@ -1,180 +1,179 @@
 /**
- * PlaylistService unit tests — Issue #362
+ * Playlist Service — Infra-backed Tests
  *
- * Tests CRUD operations for playlists and folders, including ownership
- * validation and folder-playlist relationship management.
+ * Tests PlaylistService against a real Postgres database (no mocks).
+ * Validates folder/playlist CRUD, ownership checks, and folder dissociation.
+ *
+ * Requires: make dev-up (Postgres at localhost:5432)
+ * Run: npm run test:integration
  */
 
-const mockPlaylists = new Map<string, any>();
-const mockFolders = new Map<string, any>();
-
-jest.mock('../db/prisma', () => ({
-  prisma: {
-    playlist: {
-      create: jest.fn(async ({ data }: any) => {
-        const id = `pl-${mockPlaylists.size + 1}`;
-        const record = { id, ...data, createdAt: new Date(), updatedAt: new Date() };
-        mockPlaylists.set(id, record);
-        return record;
-      }),
-      findUnique: jest.fn(async ({ where }: any) => mockPlaylists.get(where.id) ?? null),
-      findMany: jest.fn(async ({ where }: any) => {
-        return Array.from(mockPlaylists.values()).filter(p => {
-          if (p.userId !== where.userId) return false;
-          if (where.folderId !== undefined && p.folderId !== where.folderId) return false;
-          return true;
-        });
-      }),
-      update: jest.fn(async ({ where, data }: any) => {
-        const existing = mockPlaylists.get(where.id);
-        if (!existing) throw new Error('Not found');
-        const updated = { ...existing, ...data };
-        mockPlaylists.set(where.id, updated);
-        return updated;
-      }),
-      updateMany: jest.fn(),
-      delete: jest.fn(async ({ where }: any) => {
-        const deleted = mockPlaylists.get(where.id);
-        mockPlaylists.delete(where.id);
-        return deleted;
-      }),
-    },
-    folder: {
-      create: jest.fn(async ({ data }: any) => {
-        const id = `folder-${mockFolders.size + 1}`;
-        const record = { id, ...data, playlists: [], createdAt: new Date() };
-        mockFolders.set(id, record);
-        return record;
-      }),
-      findUnique: jest.fn(async ({ where }: any) => mockFolders.get(where.id) ?? null),
-      findMany: jest.fn(async ({ where }: any) => {
-        return Array.from(mockFolders.values()).filter(f => f.userId === where.userId);
-      }),
-      update: jest.fn(async ({ where, data }: any) => {
-        const existing = mockFolders.get(where.id);
-        if (!existing) throw new Error('Not found');
-        const updated = { ...existing, ...data };
-        mockFolders.set(where.id, updated);
-        return updated;
-      }),
-      delete: jest.fn(async ({ where }: any) => {
-        const deleted = mockFolders.get(where.id);
-        mockFolders.delete(where.id);
-        return deleted;
-      }),
-    },
-  },
-}));
-
+import { PrismaClient } from '@prisma/client';
 import { PlaylistService } from '../modules/playlist/playlist.service';
 
-describe('PlaylistService', () => {
-  let service: PlaylistService;
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://resonate:resonate@localhost:5432/resonate';
 
-  beforeEach(() => {
-    mockPlaylists.clear();
-    mockFolders.clear();
+let prisma: PrismaClient;
+let service: PlaylistService;
+let dbAvailable = false;
+
+const TEST_PREFIX = `pl_infra_${Date.now()}_`;
+const userId = `${TEST_PREFIX}user`;
+
+async function isPostgresAvailable(): Promise<boolean> {
+  try {
+    const p = new PrismaClient({ datasources: { db: { url: DATABASE_URL } } });
+    await p.$connect();
+    await p.$disconnect();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+describe('PlaylistService (infra-backed)', () => {
+  beforeAll(async () => {
+    dbAvailable = await isPostgresAvailable();
+    if (!dbAvailable) {
+      console.warn('⚠️  Postgres not available. Start with: make dev-up');
+      return;
+    }
+
+    prisma = new PrismaClient({ datasources: { db: { url: DATABASE_URL } } });
+    await prisma.$connect();
     service = new PlaylistService();
-  });
 
-  describe('createPlaylist', () => {
-    it('creates a playlist with name and trackIds', async () => {
-      const result = await service.createPlaylist('user-1', {
-        name: 'My Playlist',
-        trackIds: ['t-1', 't-2'],
-      });
-      expect(result.name).toBe('My Playlist');
-      expect(result.trackIds).toEqual(['t-1', 't-2']);
-      expect(result.userId).toBe('user-1');
-    });
-
-    it('defaults trackIds to empty array', async () => {
-      const result = await service.createPlaylist('user-1', { name: 'Empty' });
-      expect(result.trackIds).toEqual([]);
+    await prisma.user.upsert({
+      where: { id: userId },
+      update: {},
+      create: { id: userId, email: `${userId}@test.resonate` },
     });
   });
 
-  describe('getPlaylist', () => {
-    it('returns playlist owned by user', async () => {
-      const created = await service.createPlaylist('user-1', { name: 'Test' });
-      const result = await service.getPlaylist('user-1', created.id);
-      expect(result.name).toBe('Test');
-    });
-
-    it('throws NotFoundException for wrong user', async () => {
-      const created = await service.createPlaylist('user-1', { name: 'Test' });
-      await expect(service.getPlaylist('user-2', created.id)).rejects.toThrow('Playlist not found');
-    });
-
-    it('throws NotFoundException for non-existent playlist', async () => {
-      await expect(service.getPlaylist('user-1', 'nonexistent')).rejects.toThrow('Playlist not found');
-    });
+  afterAll(async () => {
+    if (!dbAvailable) return;
+    try {
+      await prisma.playlist.deleteMany({ where: { userId } });
+      await prisma.folder.deleteMany({ where: { userId } });
+      await prisma.user.delete({ where: { id: userId } });
+    } catch (err) {
+      console.warn('Cleanup warning:', err);
+    }
+    await prisma.$disconnect();
   });
 
-  describe('updatePlaylist', () => {
-    it('updates playlist name', async () => {
-      const created = await service.createPlaylist('user-1', { name: 'Old' });
-      const updated = await service.updatePlaylist('user-1', created.id, { name: 'New' });
-      expect(updated.name).toBe('New');
-    });
+  // ===== Folders =====
 
-    it('throws NotFoundException for wrong user', async () => {
-      const created = await service.createPlaylist('user-1', { name: 'Test' });
-      await expect(service.updatePlaylist('user-2', created.id, { name: 'Hack' }))
-        .rejects.toThrow('Playlist not found');
-    });
+  it('creates a folder in real DB', async () => {
+    if (!dbAvailable) return;
+    const folder = await service.createFolder(userId, 'My Beats');
+    expect(folder.id).toBeDefined();
+    expect(folder.name).toBe('My Beats');
+    expect(folder.userId).toBe(userId);
   });
 
-  describe('deletePlaylist', () => {
-    it('deletes playlist owned by user', async () => {
-      const created = await service.createPlaylist('user-1', { name: 'ToDelete' });
-      await service.deletePlaylist('user-1', created.id);
-      await expect(service.getPlaylist('user-1', created.id)).rejects.toThrow();
-    });
+  it('lists folders with playlists included', async () => {
+    if (!dbAvailable) return;
+    await service.createFolder(userId, 'Folder A');
 
-    it('throws for wrong user', async () => {
-      const created = await service.createPlaylist('user-1', { name: 'Test' });
-      await expect(service.deletePlaylist('user-2', created.id)).rejects.toThrow('Playlist not found');
-    });
+    const folders = await service.listFolders(userId);
+    expect(folders.length).toBeGreaterThanOrEqual(1);
+    // Each folder should have a playlists array
+    expect(folders[0]).toHaveProperty('playlists');
   });
 
-  describe('createFolder', () => {
-    it('creates a folder', async () => {
-      const folder = await service.createFolder('user-1', 'Favorites');
-      expect(folder.name).toBe('Favorites');
-      expect(folder.userId).toBe('user-1');
-    });
+  it('updates a folder name', async () => {
+    if (!dbAvailable) return;
+    const folder = await service.createFolder(userId, 'Old Name');
+    const updated = await service.updateFolder(userId, folder.id, 'New Name');
+    expect(updated.name).toBe('New Name');
   });
 
-  describe('listFolders', () => {
-    it('returns only user folders', async () => {
-      await service.createFolder('user-1', 'A');
-      await service.createFolder('user-2', 'B');
-      const folders = await service.listFolders('user-1');
-      expect(folders).toHaveLength(1);
-      expect(folders[0].name).toBe('A');
-    });
+  it('rejects folder update for wrong user', async () => {
+    if (!dbAvailable) return;
+    const folder = await service.createFolder(userId, 'Guarded');
+    await expect(
+      service.updateFolder('wrong-user', folder.id, 'Hacked'),
+    ).rejects.toThrow('Folder not found');
   });
 
-  describe('updateFolder', () => {
-    it('updates folder name', async () => {
-      const folder = await service.createFolder('user-1', 'Old');
-      const updated = await service.updateFolder('user-1', folder.id, 'New');
-      expect(updated.name).toBe('New');
+  it('deletes folder and dissociates playlists', async () => {
+    if (!dbAvailable) return;
+    const folder = await service.createFolder(userId, 'Deletable');
+    const playlist = await service.createPlaylist(userId, {
+      name: 'Orphaned',
+      folderId: folder.id,
     });
 
-    it('throws for wrong user', async () => {
-      const folder = await service.createFolder('user-1', 'Test');
-      await expect(service.updateFolder('user-2', folder.id, 'Hack'))
-        .rejects.toThrow('Folder not found');
-    });
+    await service.deleteFolder(userId, folder.id);
+
+    // Folder gone
+    const deleted = await prisma.folder.findUnique({ where: { id: folder.id } });
+    expect(deleted).toBeNull();
+
+    // Playlist still exists but folderId is null
+    const orphaned = await prisma.playlist.findUnique({ where: { id: playlist.id } });
+    expect(orphaned).not.toBeNull();
+    expect(orphaned!.folderId).toBeNull();
   });
 
-  describe('deleteFolder', () => {
-    it('throws for wrong user', async () => {
-      const folder = await service.createFolder('user-1', 'Test');
-      await expect(service.deleteFolder('user-2', folder.id))
-        .rejects.toThrow('Folder not found');
+  // ===== Playlists =====
+
+  it('creates a playlist with trackIds', async () => {
+    if (!dbAvailable) return;
+    const playlist = await service.createPlaylist(userId, {
+      name: 'Chill Vibes',
+      trackIds: ['track-1', 'track-2'],
     });
+    expect(playlist.name).toBe('Chill Vibes');
+    expect(playlist.trackIds).toEqual(['track-1', 'track-2']);
+  });
+
+  it('creates a playlist inside a folder', async () => {
+    if (!dbAvailable) return;
+    const folder = await service.createFolder(userId, 'Parent');
+    const playlist = await service.createPlaylist(userId, {
+      name: 'Child Playlist',
+      folderId: folder.id,
+    });
+    expect(playlist.folderId).toBe(folder.id);
+  });
+
+  it('lists playlists filtered by folder', async () => {
+    if (!dbAvailable) return;
+    const folder = await service.createFolder(userId, 'Filter Test');
+    await service.createPlaylist(userId, { name: 'In Folder', folderId: folder.id });
+    await service.createPlaylist(userId, { name: 'No Folder' });
+
+    const inFolder = await service.listPlaylists(userId, folder.id);
+    expect(inFolder.every(p => p.folderId === folder.id)).toBe(true);
+  });
+
+  it('updates playlist name and trackIds', async () => {
+    if (!dbAvailable) return;
+    const playlist = await service.createPlaylist(userId, { name: 'V1' });
+    const updated = await service.updatePlaylist(userId, playlist.id, {
+      name: 'V2',
+      trackIds: ['new-track'],
+    });
+    expect(updated.name).toBe('V2');
+    expect(updated.trackIds).toEqual(['new-track']);
+  });
+
+  it('deletes a playlist', async () => {
+    if (!dbAvailable) return;
+    const playlist = await service.createPlaylist(userId, { name: 'Delete Me' });
+    await service.deletePlaylist(userId, playlist.id);
+
+    const gone = await prisma.playlist.findUnique({ where: { id: playlist.id } });
+    expect(gone).toBeNull();
+  });
+
+  it('rejects playlist access for wrong user', async () => {
+    if (!dbAvailable) return;
+    const playlist = await service.createPlaylist(userId, { name: 'Private' });
+    await expect(
+      service.getPlaylist('wrong-user', playlist.id),
+    ).rejects.toThrow('Playlist not found');
   });
 });

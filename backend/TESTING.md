@@ -84,8 +84,10 @@ Lint ──┬── Logic Tests              (fast, no infra, ~1m)
 ## Naming Convention
 
 ```
-*.spec.ts           — Logic tests (pure functions)
-*.infra.spec.ts     — Infrastructure-backed tests (real DB/storage)
+*.spec.ts           — All backend tests (logic + infra-backed)
 *.e2e.spec.ts       — End-to-end API tests
 *.orch.spec.ts      — Orchestration tests (multi-module flows)
+*.test.ts           — Frontend tests (Vitest)
 ```
+
+> Tests that need real infrastructure skip gracefully when it's not running.

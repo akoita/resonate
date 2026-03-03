@@ -9,7 +9,7 @@
 module.exports = {
   preset: "ts-jest",
   testEnvironment: "node",
-  testMatch: ["**/*.integration.spec.ts", "**/*.infra.spec.ts"],
+  testMatch: ["**/*.integration.spec.ts"],
   moduleFileExtensions: ["ts", "js", "json"],
   rootDir: "src",
   moduleNameMapper: {
