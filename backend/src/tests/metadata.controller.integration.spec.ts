@@ -3,8 +3,8 @@
  * Metadata Controller — Integration Test (Testcontainers)
  *
  * Tests MetadataController response formatting against real Postgres
- * for stemNftMint queries. ContractsService is mocked since we test
- * controller-level formatting, not service logic.
+ * for stemNftMint queries. Uses real ContractsService (all query methods
+ * hit real Postgres).
  *
  * Run: npm run test:integration
  */
@@ -12,30 +12,14 @@
 import { prisma } from '../db/prisma';
 import { MetadataController } from '../modules/contracts/metadata.controller';
 import { ContractsService } from '../modules/contracts/contracts.service';
+import { EventBus } from '../modules/shared/event_bus';
 import { NotFoundException } from '@nestjs/common';
 
 const TEST_PREFIX = `meta_${Date.now()}_`;
 
-function createMockContractsService(): jest.Mocked<ContractsService> {
-  return {
-    onModuleInit: jest.fn(),
-    getListings: jest.fn().mockResolvedValue([]),
-    getListingById: jest.fn().mockResolvedValue(null),
-    getStemNftData: jest.fn().mockResolvedValue(null),
-    getRoyaltyPayments: jest.fn().mockResolvedValue([]),
-    getArtistEarnings: jest.fn().mockResolvedValue({
-      totalWei: '0',
-      totalPayments: 0,
-      payments: [],
-    }),
-    getStemData: jest.fn().mockResolvedValue(null),
-    getStemsByOwner: jest.fn().mockResolvedValue([]),
-  } as any;
-}
-
 describe('MetadataController (integration)', () => {
   let controller: MetadataController;
-  let contractsService: jest.Mocked<ContractsService>;
+  let contractsService: ContractsService;
   let stemId: string;
 
   beforeAll(async () => {
@@ -70,6 +54,11 @@ describe('MetadataController (integration)', () => {
         mintedAt: new Date(),
       },
     });
+
+    // Real ContractsService — all query methods use real Postgres
+    const eventBus = new EventBus();
+    contractsService = new ContractsService(eventBus as any);
+    controller = new MetadataController(contractsService);
   });
 
   afterAll(async () => {
@@ -81,10 +70,6 @@ describe('MetadataController (integration)', () => {
     await prisma.user.delete({ where: { id: `${TEST_PREFIX}user` } }).catch(() => {});
   });
 
-  beforeEach(() => {
-    contractsService = createMockContractsService();
-    controller = new MetadataController(contractsService);
-  });
 
   // ===== getStemNftInfo — uses real Prisma =====
 
@@ -117,11 +102,13 @@ describe('MetadataController (integration)', () => {
   // ===== getListings =====
 
   describe('getListings', () => {
-    it('defaults limit to 20 and offset to 0', async () => {
-      await controller.getListings();
-      expect(contractsService.getListings).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 20, offset: 0 }),
-      );
+    it('returns empty listings when none are seeded', async () => {
+      const result = await controller.getListings();
+      expect(result.listings).toBeDefined();
+      expect(result.listings.length).toBe(0);
+      expect(result.total).toBe(0);
+      expect(result.limit).toBe(20);
+      expect(result.offset).toBe(0);
     });
   });
 

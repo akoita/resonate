@@ -10,15 +10,15 @@
 import { prisma } from '../db/prisma';
 import { EventBus } from '../modules/shared/event_bus';
 import { GenerationService } from '../modules/generation/generation.service';
+import { LocalStorageProvider } from '../modules/storage/local_storage_provider';
+import { ConfigService } from '@nestjs/config';
 
 const TEST_PREFIX = `gen_${Date.now()}_`;
 
-const mockStorageProvider = {
-  upload: jest.fn().mockResolvedValue({ uri: 'local://generated-test.wav', provider: 'local' }),
-  download: jest.fn(),
-  delete: jest.fn(),
-};
+// Real storage provider — writes to local filesystem (no external deps)
+const storageProvider = new LocalStorageProvider();
 
+// LyriaClient must stay mocked — external Google AI service (no local container)
 const mockLyriaClient = {
   generate: jest.fn().mockResolvedValue({
     audioBytes: Buffer.from('fake-audio-data'),
@@ -29,19 +29,16 @@ const mockLyriaClient = {
   }),
 };
 
-const mockCatalogService = {} as any;
-
+// BullMQ Queue must stay mocked — infrastructure scheduling
 const mockQueue = {
   add: jest.fn().mockResolvedValue({ id: 'job-1' }),
   getJob: jest.fn(),
 };
 
-const mockConfigService = {
-  get: jest.fn().mockImplementation((key: string, defaultValue: any) => {
-    if (key === 'STRIKE_RATE_LIMIT') return 5;
-    return defaultValue;
-  }),
-};
+// Real ConfigService with test defaults
+const configService = new ConfigService({
+  STRIKE_RATE_LIMIT: 5,
+});
 
 describe('GenerationService (integration)', () => {
   let service: GenerationService;
@@ -72,10 +69,10 @@ describe('GenerationService (integration)', () => {
     eventBus = new EventBus();
     service = new GenerationService(
       eventBus,
-      mockStorageProvider as any,
-      mockCatalogService,
+      storageProvider as any,
+      {} as any,  // CatalogService — not called in create/process paths
       mockLyriaClient as any,
-      mockConfigService as any,
+      configService as any,
       mockQueue as any,
     );
   });
@@ -138,7 +135,6 @@ describe('GenerationService (integration)', () => {
       });
 
       expect(mockLyriaClient.generate).toHaveBeenCalled();
-      expect(mockStorageProvider.upload).toHaveBeenCalled();
 
       const progressEvents = events.filter(e => e.eventName === 'generation.progress');
       expect(progressEvents.length).toBe(3);

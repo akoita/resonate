@@ -9,6 +9,7 @@
 
 import { prisma } from '../db/prisma';
 import { WalletService } from '../modules/identity/wallet.service';
+import { EventBus } from '../modules/shared/event_bus';
 
 const TEST_PREFIX = `wal_${Date.now()}_`;
 
@@ -20,8 +21,9 @@ describe('WalletService (integration)', () => {
       data: { id: `${TEST_PREFIX}user`, email: `${TEST_PREFIX}user@test.resonate` },
     });
 
+    const eventBus = new EventBus();
     wallet = new WalletService(
-      { publish: () => {} } as any,
+      eventBus as any,
       {
         getProvider: () => ({
           getAccount: () => ({
