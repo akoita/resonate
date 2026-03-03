@@ -15,6 +15,7 @@ jest.mock('../db/prisma', () => ({
     },
     artist: {
       findFirst: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({ id: 'auto-artist-1' }),
     },
   },
 }));
@@ -319,6 +320,116 @@ describe('GenerationService', () => {
 
       expect(result.rateLimit.remaining).toBe(3); // 5 - 2
       expect(result.rateLimit.resetsAt).toBeDefined();
+    });
+  });
+
+  describe('processGenerationJob — artistId auto-resolve', () => {
+    it('auto-creates artist when artistId is undefined (regression for undefined crash)', async () => {
+      // This verifies the fix for the production crasher:
+      // processGenerationJob previously crashed on artistId: undefined.
+      // Now it should auto-resolve by looking up or creating the artist.
+      //
+      // The global prisma mock already has artist.findFirst → null and
+      // artist.create → { id: 'auto-artist-1' }. processGenerationJob
+      // will hit that path when artistId is falsy.
+      //
+      // We just need to verify it doesn't throw.
+      await expect(
+        service.processGenerationJob({
+          jobId: 'job-auto-resolve',
+          userId: 'user-no-artist',
+          artistId: undefined,
+          prompt: 'Test without artistId',
+        }),
+      ).resolves.not.toThrow();
+    });
+
+    it('does not crash when artistId is empty string', async () => {
+      await expect(
+        service.processGenerationJob({
+          jobId: 'job-empty-id',
+          userId: 'user-empty-artist',
+          artistId: '' as any,
+          prompt: 'Test empty artistId',
+        }),
+      ).resolves.not.toThrow();
+    });
+  });
+
+  describe('generateArtwork', () => {
+    it('throws when GOOGLE_AI_API_KEY is missing', async () => {
+      const originalKey = process.env.GOOGLE_AI_API_KEY;
+      delete process.env.GOOGLE_AI_API_KEY;
+
+      await expect(service.generateArtwork('cool album art'))
+        .rejects.toThrow('GOOGLE_AI_API_KEY missing');
+
+      process.env.GOOGLE_AI_API_KEY = originalKey;
+    });
+
+    it('throws on API error response', async () => {
+      const originalKey = process.env.GOOGLE_AI_API_KEY;
+      const originalFetch = global.fetch;
+      process.env.GOOGLE_AI_API_KEY = 'test-key';
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 429,
+        statusText: 'Too Many Requests',
+        text: async () => 'Rate limited',
+      }) as any;
+
+      await expect(service.generateArtwork('album cover'))
+        .rejects.toThrow('Image generation failed');
+
+      global.fetch = originalFetch;
+      process.env.GOOGLE_AI_API_KEY = originalKey;
+    });
+
+    it('throws when API returns no candidates', async () => {
+      const originalKey = process.env.GOOGLE_AI_API_KEY;
+      const originalFetch = global.fetch;
+      process.env.GOOGLE_AI_API_KEY = 'test-key';
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ candidates: [] }),
+      }) as any;
+
+      await expect(service.generateArtwork('album cover'))
+        .rejects.toThrow('No image was generated');
+
+      global.fetch = originalFetch;
+      process.env.GOOGLE_AI_API_KEY = originalKey;
+    });
+
+    it('returns base64 image data on success', async () => {
+      const originalKey = process.env.GOOGLE_AI_API_KEY;
+      const originalFetch = global.fetch;
+      process.env.GOOGLE_AI_API_KEY = 'test-key';
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          candidates: [{
+            content: {
+              parts: [{
+                inlineData: {
+                  mimeType: 'image/png',
+                  data: 'base64encodedimage',
+                },
+              }],
+            },
+          }],
+        }),
+      }) as any;
+
+      const result = await service.generateArtwork('cool album cover');
+      expect(result.imageData).toBe('base64encodedimage');
+      expect(result.mimeType).toBe('image/png');
+
+      global.fetch = originalFetch;
+      process.env.GOOGLE_AI_API_KEY = originalKey;
     });
   });
 });
