@@ -399,4 +399,4 @@ See [Local AA Development](local-aa-development.md) for setup instructions.
 | `contracts/src/aa/UniversalSigValidator.sol`                               | Contracts | ERC-6492 signature validation                            |
 | `scripts/update-aa-config.sh`                                              | Infra     | Auto-configure `.env` from deployed contracts            |
 | `scripts/generate-agent-encryption-key.sh`                                 | Infra     | Generate AES-256 encryption key for agent keys           |
-| `docs/agent-wallet-security.md`                                            | Docs      | Agent key security architecture                          |
+| `docs/security/agent-wallet-security.md`                                   | Docs      | Agent key security architecture                          |
