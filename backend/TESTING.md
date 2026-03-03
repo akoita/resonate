@@ -55,13 +55,13 @@ await request(app.getHttpServer())
   .expect(200); // valid JWT → success
 ```
 
-### 2. Infrastructure-backed Tests
+### 2. Infrastructure-backed Tests (`.infra.spec.ts`)
 
-Functions that rely directly or indirectly on **real infrastructure** — database queries, file I/O, message queues, blockchain calls.
+Service-level tests that rely on **real infrastructure** — database queries, file I/O, message queues, blockchain calls. These are **not** called "integration tests" because controller e2e tests (§1b) are closer to the true integration boundary.
 
 ```bash
 # Requires: make dev-up (Postgres, Redis, RabbitMQ, Anvil)
-npm run test:integration
+npm run test:infra
 ```
 
 - Real Prisma + Postgres (no mocked Prisma)
@@ -173,7 +173,7 @@ Lint ──┬── Logic Tests              (no infra, ~1m)
 *.spec.ts                — Service/logic tests (no infra)
 *.controller.spec.ts     — Controller unit tests (mock service, test logic)
 *.controller.e2e.spec.ts — Controller e2e tests (Test.createTestingModule + supertest)
-*.integration.spec.ts    — Infrastructure-backed tests (DB, Redis, Anvil)
+*.infra.spec.ts          — Infrastructure-backed service tests (DB, Redis, Anvil)
 *.full.spec.ts           — Full external service tests (only with credentials)
 *.e2e.spec.ts            — End-to-end API tests
 *.orch.spec.ts           — Orchestration tests (multi-module flows)
