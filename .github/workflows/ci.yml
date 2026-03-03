@@ -77,29 +77,8 @@ jobs:
     name: Backend Tests
     runs-on: ubuntu-latest
     needs: lint
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: resonate
-          POSTGRES_PASSWORD: resonate
-          POSTGRES_DB: resonate
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U resonate"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    # No service containers needed — Testcontainers handles all infrastructure
+    # (Postgres, Redis, Anvil, Pub/Sub) with isolated containers on random ports
     steps:
       - uses: actions/checkout@v4
 
@@ -126,18 +105,14 @@ jobs:
           JWT_SECRET: ci-test-secret
           ENCRYPTION_SECRET: ci-test-encryption-secret
 
-      - name: Sync database schema
-        run: npx prisma db push --skip-generate
-        working-directory: backend
-        env:
-          DATABASE_URL: postgresql://resonate:resonate@localhost:5432/resonate
+      # No 'prisma db push' needed — Testcontainers globalSetup handles schema sync
 
       - name: Run integration tests
         run: npm run test:integration
         working-directory: backend
         env:
-          DATABASE_URL: postgresql://resonate:resonate@localhost:5432/resonate
-          REDIS_URL: redis://localhost:6379
+          # Testcontainers sets DATABASE_URL, REDIS_URL, ANVIL_RPC_URL, PUBSUB_EMULATOR_HOST
+          # via globalSetup.js → .testcontainers.env.json
           STEM_PROCESSING_MODE: sync
           JWT_SECRET: ci-test-secret
           ENCRYPTION_SECRET: ci-test-encryption-secret
