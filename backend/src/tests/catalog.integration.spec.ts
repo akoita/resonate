@@ -11,6 +11,9 @@ import { prisma } from '../db/prisma';
 import { CatalogService } from '../modules/catalog/catalog.service';
 import { EventBus } from '../modules/shared/event_bus';
 import { LocalStorageProvider } from '../modules/storage/local_storage_provider';
+import { EncryptionService } from '../modules/encryption/encryption.service';
+import { AesEncryptionProvider } from '../modules/encryption/providers/aes_encryption_provider';
+import { ConfigService } from '@nestjs/config';
 
 const TEST_PREFIX = `cat_${Date.now()}_`;
 
@@ -21,14 +24,15 @@ describe('CatalogService (integration)', () => {
   beforeAll(async () => {
     eventBus = new EventBus();
     const storage = new LocalStorageProvider();
-    const mockEncryption = {
-      encrypt: jest.fn().mockResolvedValue(null),
-      get isReady() { return false; },
-      get providerName() { return 'mock'; },
-      verifyAccess: jest.fn().mockResolvedValue(true),
-    };
 
-    catalog = new CatalogService(eventBus, mockEncryption as any, storage);
+    // Real encryption: AES-256-GCM with ENCRYPTION_SECRET from env
+    const configService = new ConfigService({
+      ENCRYPTION_SECRET: process.env.ENCRYPTION_SECRET || 'test-encryption-secret-for-integration',
+    });
+    const aesProvider = new AesEncryptionProvider(configService);
+    const encryption = new EncryptionService(aesProvider as any, configService);
+
+    catalog = new CatalogService(eventBus, encryption as any, storage);
 
     // Seed prerequisite data
     await prisma.user.create({
