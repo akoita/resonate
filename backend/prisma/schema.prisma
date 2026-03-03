@@ -8,11 +8,11 @@ datasource db {
 }
 
 model User {
-  id          String       @id @default(uuid())
-  email       String       @unique
-  createdAt   DateTime     @default(now())
-  artist      Artist?
-  agentConfig AgentConfig?
+  id            String         @id @default(uuid())
+  email         String         @unique
+  createdAt     DateTime       @default(now())
+  artist        Artist?
+  agentConfig   AgentConfig?
   folders       Folder[]
   libraryTracks LibraryTrack[]
   playlists     Playlist[]
@@ -71,21 +71,20 @@ model Release {
 }
 
 model Track {
-  id               String    @id @default(uuid())
-  title            String
-  isrc             String?
-  explicit         Boolean   @default(false)
-  createdAt        DateTime  @default(now())
-  position         Int       @default(1)
-  releaseId        String
-  artist           String?
-  processingStatus String    @default("pending") // pending, processing, complete, failed
-  generationMetadata Json?   // { provider, prompt, negativePrompt, seed, generatedAt, synthIdPresent, durationSeconds, sampleRate, cost }
-  licenses         License[]
-  stems            Stem[]
-  release          Release   @relation(fields: [releaseId], references: [id])
+  id                 String    @id @default(uuid())
+  title              String
+  isrc               String?
+  explicit           Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  position           Int       @default(1)
+  releaseId          String
+  artist             String?
+  processingStatus   String    @default("pending") // pending, processing, complete, failed
+  generationMetadata Json? // { provider, prompt, negativePrompt, seed, generatedAt, synthIdPresent, durationSeconds, sampleRate, cost }
+  licenses           License[]
+  stems              Stem[]
+  release            Release   @relation(fields: [releaseId], references: [id])
 }
-
 
 model Stem {
   id                 String        @id @default(uuid())
@@ -110,17 +109,17 @@ model Stem {
 }
 
 model StemPricing {
-  id                       String   @id @default(uuid())
-  stemId                   String   @unique
-  basePlayPriceUsd         Float    @default(0.05)
-  remixLicenseUsd          Float    @default(5.0)
-  commercialLicenseUsd     Float    @default(25.0)
-  floorUsd                 Float    @default(0.01)
-  ceilingUsd               Float    @default(50.0)
-  listingDurationDays      Int?
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
-  stem                     Stem     @relation(fields: [stemId], references: [id])
+  id                   String   @id @default(uuid())
+  stemId               String   @unique
+  basePlayPriceUsd     Float    @default(0.05)
+  remixLicenseUsd      Float    @default(5.0)
+  commercialLicenseUsd Float    @default(25.0)
+  floorUsd             Float    @default(0.01)
+  ceilingUsd           Float    @default(50.0)
+  listingDurationDays  Int?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  stem                 Stem     @relation(fields: [stemId], references: [id])
 }
 
 model StemNftMint {
@@ -339,10 +338,10 @@ model AgentConfig {
 model SessionKey {
   id              String    @id @default(uuid())
   userId          String
-  agentPrivateKey String    @db.Text   // Agent-owned ECDSA private key (never leaves backend)
-  agentAddress    String               // Public address of the agent's key
-  approvalData    String?   @db.Text   // Serialized permission approval from user's passkey
-  permissions     Json      // {target, function, totalCap, perTxCap, rateLimit}
+  agentPrivateKey String    @db.Text // Agent-owned ECDSA private key (never leaves backend)
+  agentAddress    String // Public address of the agent's key
+  approvalData    String?   @db.Text // Serialized permission approval from user's passkey
+  permissions     Json // {target, function, totalCap, perTxCap, rateLimit}
   validUntil      DateTime
   revokedAt       DateTime?
   txHash          String?
@@ -355,22 +354,22 @@ model SessionKey {
 }
 
 model LibraryTrack {
-  id               String    @id @default(uuid())
-  userId           String
-  source           String    @default("local") // "local" | "remote"
+  id     String @id @default(uuid())
+  userId String
+  source String @default("local") // "local" | "remote"
 
   // Core metadata
-  title            String
-  artist           String?
-  albumArtist      String?
-  album            String?
-  year             Int?
-  genre            String?
-  duration         Float?
+  title       String
+  artist      String?
+  albumArtist String?
+  album       String?
+  year        Int?
+  genre       String?
+  duration    Float?
 
   // Local source fields
-  sourcePath       String?
-  fileSize         Int?
+  sourcePath String?
+  fileSize   Int?
 
   // Remote source fields
   catalogTrackId   String?
@@ -378,16 +377,16 @@ model LibraryTrack {
   remoteArtworkUrl String?
 
   // Stem ownership
-  stemType         String?
-  tokenId          String?
-  listingId        String?
-  purchaseDate     DateTime?
-  isOwned          Boolean   @default(false)
-  previewUrl       String?
+  stemType     String?
+  tokenId      String?
+  listingId    String?
+  purchaseDate DateTime?
+  isOwned      Boolean   @default(false)
+  previewUrl   String?
 
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  user             User      @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, sourcePath, fileSize])
   @@unique([userId, catalogTrackId])
@@ -395,15 +394,15 @@ model LibraryTrack {
 }
 
 model WebAuthnCredential {
-  id               String   @id @default(cuid())
-  credentialId     String   @unique
-  publicKey        Bytes
-  counter          BigInt   @default(0)
-  transports       String[]
-  userId           String   // internal user identifier (random UUID per registration)
-  passkeyName      String
-  rpId             String
-  createdAt        DateTime @default(now())
+  id           String   @id @default(cuid())
+  credentialId String   @unique
+  publicKey    Bytes
+  counter      BigInt   @default(0)
+  transports   String[]
+  userId       String // internal user identifier (random UUID per registration)
+  passkeyName  String
+  rpId         String
+  createdAt    DateTime @default(now())
 
   @@index([userId])
 }
@@ -413,9 +412,9 @@ model WebAuthnCredential {
 model KeyAuditLog {
   id           String   @id @default(uuid())
   userId       String
-  action       String   // decrypt, sign, rotate, revoke, enable, activate
+  action       String // decrypt, sign, rotate, revoke, enable, activate
   agentAddress String?
-  context      Json?    // {txHash, listingId, reason, ...}
+  context      Json? // {txHash, listingId, reason, ...}
   createdAt    DateTime @default(now())
 
   @@index([userId])
