@@ -107,8 +107,8 @@ jobs:
 
       # No 'prisma db push' needed — Testcontainers globalSetup handles schema sync
 
-      - name: Run infra tests
-        run: npm run test:infra
+      - name: Run integration tests
+        run: npm run test:integration
         working-directory: backend
         env:
           # Testcontainers sets DATABASE_URL, REDIS_URL, ANVIL_RPC_URL, PUBSUB_EMULATOR_HOST

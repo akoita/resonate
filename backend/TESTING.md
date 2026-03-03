@@ -22,10 +22,10 @@ npx vitest run                    # Vitest (frontend)
 
 Controllers have their own constraints that can only be tested directly — a service can be correct but the controller exposing it can still break the feature. We test controllers with **two complementary layers**, avoiding duplication with service tests:
 
-| Layer    | File pattern               | Tooling                                  | Focus                                         |
-| -------- | -------------------------- | ---------------------------------------- | --------------------------------------------- |
-| **Unit** | `*.controller.spec.ts`     | `new Controller(mockService)`            | Logic, method calls, arg transformations      |
-| **E2E**  | `*.controller.e2e.spec.ts` | `Test.createTestingModule` + `supertest` | Routing, HTTP status codes, guard enforcement |
+| Layer    | File pattern                | Tooling                                  | Focus                                         |
+| -------- | --------------------------- | ---------------------------------------- | --------------------------------------------- |
+| **Unit** | `*.controller.spec.ts`      | `new Controller(mockService)`            | Logic, method calls, arg transformations      |
+| **HTTP** | `*.controller.http.spec.ts` | `Test.createTestingModule` + `supertest` | Routing, HTTP status codes, guard enforcement |
 
 **Unit tests** mock the service and test only what the controller adds:
 
@@ -34,17 +34,17 @@ Controllers have their own constraints that can only be tested directly — a se
 - Error wrapping (`try/catch` → `{ status: "error" }`)
 - Response shaping (userId extraction, BigInt conversions)
 
-**E2E tests** use a lightweight NestJS test module (no Docker, no DB) and test the HTTP contract:
+**HTTP tests** use a lightweight NestJS test module (no Docker, no DB) and test the HTTP contract:
 
 - Route correctness (`POST /auth/verify` → 201)
 - Guard enforcement (no JWT → 401)
 - Response headers (`Content-Type`, `Accept-Ranges`)
 - 404 on missing resources
 
-Shared helper: `e2e-helpers.ts` provides `authToken()` and `createControllerTestApp()` for consistent JWT + app setup across all e2e tests.
+Shared helper: `e2e-helpers.ts` provides `authToken()` and `createControllerTestApp()` for consistent JWT + app setup across all HTTP tests.
 
 ```typescript
-// e2e test example
+// HTTP test example
 const app = await createControllerTestApp(CatalogController, [
   { provide: CatalogService, useValue: mockService },
 ]);
@@ -55,13 +55,13 @@ await request(app.getHttpServer())
   .expect(200); // valid JWT → success
 ```
 
-### 2. Infrastructure-backed Tests (`.infra.spec.ts`)
+### 2. Integration Tests (`.integration.spec.ts`)
 
-Service-level tests that rely on **real infrastructure** — database queries, file I/O, message queues, blockchain calls. These are **not** called "integration tests" because controller e2e tests (§1b) are closer to the true integration boundary.
+Service-level tests that rely on **real infrastructure** — database queries, file I/O, message queues, blockchain calls.
 
 ```bash
 # Requires: make dev-up (Postgres, Redis, RabbitMQ, Anvil)
-npm run test:infra
+npm run test:integration
 ```
 
 - Real Prisma + Postgres (no mocked Prisma)
@@ -80,7 +80,7 @@ npm run test:e2e                  # Backend E2E (future)
 cd web && npm run test:e2e        # Frontend E2E (Playwright)
 ```
 
-### 4. Orchestration Tests ⭐
+### 4. Flow Tests ⭐
 
 **Highest value.** Multi-module scenarios covering event-driven flows and choreography.
 
@@ -91,7 +91,7 @@ Examples:
 - User action → event → secondary module reacts → state propagates
 
 ```bash
-npm run test:orchestration        # (future)
+npm run test:flow                 # (future)
 ```
 
 ## Local Infrastructure
@@ -109,22 +109,22 @@ npm run test:orchestration        # (future)
 For services that **cannot be emulated locally** (AI APIs, cloud billing):
 
 ```
-service.spec.ts       ← Mocked version: always runs, uses test doubles
-service.full.spec.ts  ← Full version: only runs when env is available
+service.spec.ts           ← Mocked version: always runs, uses test doubles
+service.external.spec.ts  ← Full version: only runs when env is available
 ```
 
 The mocked version validates logic and interface contracts.
 The full version validates real integration — runs in staging/CI with credentials.
 
 ```typescript
-// service.full.spec.ts
+// service.external.spec.ts
 const API_KEY = process.env.VERTEX_AI_KEY;
 const canRun = !!API_KEY;
 
-describe("LyriaClient (full)", () => {
+describe("LyriaClient (external)", () => {
   beforeAll(() => {
     if (!canRun) {
-      console.warn("⚠️  VERTEX_AI_KEY not set. Skipping full tests.");
+      console.warn("⚠️  VERTEX_AI_KEY not set. Skipping external tests.");
     }
   });
 
@@ -137,14 +137,14 @@ describe("LyriaClient (full)", () => {
 
 ### Which services get dual versions?
 
-| Service             | Mocked `.spec.ts` | Full `.full.spec.ts` | Why                    |
-| ------------------- | ----------------- | -------------------- | ---------------------- |
-| Vertex AI (Lyria)   | ✅                | ✅                   | Billable, rate-limited |
-| Gemini (artwork)    | ✅                | ✅                   | Billable, rate-limited |
-| GCS / Cloud Storage | ✅                | ✅                   | Billable               |
-| Blockchain RPCs     | ❌ Use Anvil      | N/A                  | Anvil emulates locally |
-| Pub/Sub             | ❌ Use emulator   | N/A                  | Emulator available     |
-| Redis               | ❌ Use real       | N/A                  | Testcontainers/Docker  |
+| Service             | Mocked `.spec.ts` | External `.external.spec.ts` | Why                    |
+| ------------------- | ----------------- | ---------------------------- | ---------------------- |
+| Vertex AI (Lyria)   | ✅                | ✅                           | Billable, rate-limited |
+| Gemini (artwork)    | ✅                | ✅                           | Billable, rate-limited |
+| GCS / Cloud Storage | ✅                | ✅                           | Billable               |
+| Blockchain RPCs     | ❌ Use Anvil      | N/A                          | Anvil emulates locally |
+| Pub/Sub             | ❌ Use emulator   | N/A                          | Emulator available     |
+| Redis               | ❌ Use real       | N/A                          | Testcontainers/Docker  |
 
 ## When to Use Mocks
 
@@ -155,14 +155,14 @@ describe("LyriaClient (full)", () => {
 | Local file storage  | ❌ Never          | Real filesystem                          |
 | Pub/Sub messaging   | ❌ Never          | Google Pub/Sub emulator                  |
 | Blockchain RPCs     | ❌ Never          | Anvil (Foundry local node)               |
-| Vertex AI / Gemini  | ✅ Mocked version | + `.full.spec.ts` when env available     |
-| GCS / Cloud Storage | ✅ Mocked version | + `.full.spec.ts` when env available     |
+| Vertex AI / Gemini  | ✅ Mocked version | + `.external.spec.ts` when env available |
+| GCS / Cloud Storage | ✅ Mocked version | + `.external.spec.ts` when env available |
 
 ## CI Pipeline
 
 ```
 Lint ──┬── Logic Tests              (no infra, ~1m)
-       ├── Infra-backed Tests       (Postgres + Redis + Anvil, ~3m)
+       ├── Integration Tests        (Postgres + Redis + Anvil, ~3m)
        ├── Smart Contract Tests     (Foundry, ~45s)
        └── Build ── E2E Tests       (Playwright, ~2m)
 ```
@@ -170,14 +170,14 @@ Lint ──┬── Logic Tests              (no infra, ~1m)
 ## Naming Convention
 
 ```
-*.spec.ts                — Service/logic tests (no infra)
-*.controller.spec.ts     — Controller unit tests (mock service, test logic)
-*.controller.e2e.spec.ts — Controller e2e tests (Test.createTestingModule + supertest)
-*.infra.spec.ts          — Infrastructure-backed service tests (DB, Redis, Anvil)
-*.full.spec.ts           — Full external service tests (only with credentials)
-*.e2e.spec.ts            — End-to-end API tests
-*.orch.spec.ts           — Orchestration tests (multi-module flows)
-*.test.ts                — Frontend tests (Vitest)
+*.spec.ts                    — Service/logic tests (no infra)
+*.controller.spec.ts         — Controller unit tests (mock service, test logic)
+*.controller.http.spec.ts    — Controller HTTP tests (Test.createTestingModule + supertest)
+*.integration.spec.ts        — Integration tests (DB, Redis, Anvil — real infra)
+*.external.spec.ts           — External service tests (only with cloud credentials)
+*.e2e.spec.ts                — End-to-end API tests
+*.flow.spec.ts               — Flow tests (multi-module event-driven scenarios)
+*.test.ts                    — Frontend tests (Vitest)
 ```
 
 > Tests that need infrastructure skip gracefully when it's not running.
