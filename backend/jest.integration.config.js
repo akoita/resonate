@@ -1,8 +1,8 @@
 /**
- * Jest configuration for Tier 2 Integration Tests.
+ * Jest configuration for Infrastructure-backed Tests.
  *
- * These tests use REAL infrastructure (Postgres, Redis, local storage)
- * started by `make dev-up`. They skip gracefully when infra isn't running.
+ * Uses Testcontainers for self-contained Postgres + Redis.
+ * Only Docker is required — no `make dev-up` needed.
  *
  * Run: npm run test:integration
  */
@@ -16,6 +16,10 @@ module.exports = {
     "^@google/adk(.*)$": "<rootDir>/../jest.stubs/google-adk.js",
     "^@google/genai(.*)$": "<rootDir>/../jest.stubs/google-genai.js",
   },
-  // Longer timeout for real DB/network operations
-  testTimeout: 30000,
+  // Testcontainers lifecycle
+  globalSetup: "<rootDir>/tests/globalSetup.js",
+  globalTeardown: "<rootDir>/tests/globalTeardown.js",
+  setupFiles: ["<rootDir>/tests/testcontainers.setup.ts"],
+  // Container startup can be slow on first pull
+  testTimeout: 60000,
 };

@@ -1,61 +1,52 @@
 /**
- * RedisIoAdapter — Infra-backed Tests (zero-mock)
+ * Redis Adapter — Testcontainers Tests
  *
- * Tests Redis adapter with real Redis connection.
- * Verifies client creation, pub/sub duplication, and env var handling.
+ * Tests real Redis operations against a self-contained Redis container.
+ * No external dependencies — only Docker is required.
  *
- * Requires: Redis at localhost:6379 (make dev-up or Docker)
- * Run: npm test
+ * Run: npm run test:integration
  */
 
+import { getTestRedis, isDockerAvailable } from './testcontainers.setup';
 import { createClient } from 'redis';
 
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+let connectionUrl: string;
+let dockerAvailable = false;
+let teardown: () => Promise<void>;
 
-let redisAvailable = false;
-
-async function isRedisAvailable(): Promise<boolean> {
-  try {
-    const client = createClient({ url: REDIS_URL });
-    await client.connect();
-    await client.ping();
-    await client.disconnect();
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-describe('RedisIoAdapter (infra-backed)', () => {
+describe('RedisIoAdapter (testcontainers)', () => {
   beforeAll(async () => {
-    redisAvailable = await isRedisAvailable();
-    if (!redisAvailable) {
-      console.warn('⚠️  Redis not available. Start with: make dev-up');
+    dockerAvailable = await isDockerAvailable();
+    if (!dockerAvailable) {
+      console.warn('⚠️  Docker not available. Skipping Testcontainers tests.');
+      return;
     }
+
+    const redis = await getTestRedis();
+    connectionUrl = redis.connectionUrl;
+    teardown = redis.teardown;
+  }, 60_000);
+
+  afterAll(async () => {
+    if (!dockerAvailable) return;
+    await teardown();
   });
 
-  it('connects to real Redis and verifies PING', async () => {
-    if (!redisAvailable) return;
-
-    const client = createClient({ url: REDIS_URL });
+  it('connects and PINGs', async () => {
+    if (!dockerAvailable) return;
+    const client = createClient({ url: connectionUrl });
     await client.connect();
-
-    const pong = await client.ping();
-    expect(pong).toBe('PONG');
-
+    expect(await client.ping()).toBe('PONG');
     await client.disconnect();
   });
 
   it('creates pub/sub client pair via duplicate', async () => {
-    if (!redisAvailable) return;
-
-    const pubClient = createClient({ url: REDIS_URL });
+    if (!dockerAvailable) return;
+    const pubClient = createClient({ url: connectionUrl });
     await pubClient.connect();
-
     const subClient = pubClient.duplicate();
     await subClient.connect();
 
-    // Both should be able to ping
     expect(await pubClient.ping()).toBe('PONG');
     expect(await subClient.ping()).toBe('PONG');
 
@@ -63,40 +54,44 @@ describe('RedisIoAdapter (infra-backed)', () => {
     await subClient.disconnect();
   });
 
-  it('publishes and receives messages via Redis pub/sub', async () => {
-    if (!redisAvailable) return;
-
-    const pubClient = createClient({ url: REDIS_URL });
-    const subClient = createClient({ url: REDIS_URL });
+  it('publishes and receives messages via pub/sub', async () => {
+    if (!dockerAvailable) return;
+    const pubClient = createClient({ url: connectionUrl });
+    const subClient = createClient({ url: connectionUrl });
     await pubClient.connect();
     await subClient.connect();
 
     const received: string[] = [];
-    const channel = `test-channel-${Date.now()}`;
+    const channel = `test-${Date.now()}`;
 
-    await subClient.subscribe(channel, (message) => {
-      received.push(message);
-    });
-
-    // Small delay for subscription to register
+    await subClient.subscribe(channel, (msg) => received.push(msg));
     await new Promise(r => setTimeout(r, 100));
 
-    await pubClient.publish(channel, 'hello from test');
+    await pubClient.publish(channel, 'hello');
     await new Promise(r => setTimeout(r, 100));
 
-    expect(received).toContain('hello from test');
+    expect(received).toContain('hello');
 
     await subClient.unsubscribe(channel);
     await pubClient.disconnect();
     await subClient.disconnect();
   });
 
-  it('respects REDIS_HOST and REDIS_PORT env vars for URL construction', () => {
-    // Logic test — no Redis needed
+  it('sets and gets values', async () => {
+    if (!dockerAvailable) return;
+    const client = createClient({ url: connectionUrl });
+    await client.connect();
+
+    await client.set('test-key', 'test-value');
+    expect(await client.get('test-key')).toBe('test-value');
+
+    await client.disconnect();
+  });
+
+  it('respects REDIS_HOST env var for URL construction', () => {
+    // Logic test — always runs
     const host = process.env.REDIS_HOST || 'localhost';
     const port = process.env.REDIS_PORT || '6379';
-    const url = `redis://${host}:${port}`;
-
-    expect(url).toMatch(/^redis:\/\/.+:\d+$/);
+    expect(`redis://${host}:${port}`).toMatch(/^redis:\/\/.+:\d+$/);
   });
 });

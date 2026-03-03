@@ -1,38 +1,24 @@
 /**
- * Catalog Service — Testcontainers Tests
+ * Catalog Service — Testcontainers Integration Test
  *
  * Tests CatalogService against a self-contained Postgres container.
- * No external dependencies — only Docker is required.
+ * The container is managed by Jest globalSetup/globalTeardown.
  *
  * Run: npm run test:integration
  */
 
-import { getTestPostgres, isDockerAvailable } from './testcontainers.setup';
+import { prisma } from '../db/prisma';
 import { CatalogService } from '../modules/catalog/catalog.service';
 import { EventBus } from '../modules/shared/event_bus';
 import { LocalStorageProvider } from '../modules/storage/local_storage_provider';
-import { PrismaClient } from '@prisma/client';
 
-let prisma: PrismaClient;
+const TEST_PREFIX = `cat_${Date.now()}_`;
+
 let catalog: CatalogService;
 let eventBus: EventBus;
-let dockerAvailable = false;
-let teardown: () => Promise<void>;
 
-const TEST_PREFIX = `cat_tc_${Date.now()}_`;
-
-describe('CatalogService (testcontainers)', () => {
+describe('CatalogService (integration)', () => {
   beforeAll(async () => {
-    dockerAvailable = await isDockerAvailable();
-    if (!dockerAvailable) {
-      console.warn('⚠️  Docker not available. Skipping Testcontainers tests.');
-      return;
-    }
-
-    const pg = await getTestPostgres();
-    prisma = pg.prisma;
-    teardown = pg.teardown;
-
     eventBus = new EventBus();
     const storage = new LocalStorageProvider();
     const mockEncryption = {
@@ -56,22 +42,17 @@ describe('CatalogService (testcontainers)', () => {
         payoutAddress: '0x' + 'A'.repeat(40),
       },
     });
-  }, 120_000); // Container startup timeout
+  });
 
   afterAll(async () => {
-    if (!dockerAvailable) return;
-    try {
-      await prisma.stem.deleteMany({ where: { track: { release: { artistId: `${TEST_PREFIX}artist` } } } });
-      await prisma.track.deleteMany({ where: { release: { artistId: `${TEST_PREFIX}artist` } } });
-      await prisma.release.deleteMany({ where: { artistId: `${TEST_PREFIX}artist` } });
-      await prisma.artist.delete({ where: { id: `${TEST_PREFIX}artist` } });
-      await prisma.user.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
-    } catch {}
-    if (teardown) await teardown();
+    await prisma.stem.deleteMany({ where: { track: { release: { artistId: `${TEST_PREFIX}artist` } } } });
+    await prisma.track.deleteMany({ where: { release: { artistId: `${TEST_PREFIX}artist` } } });
+    await prisma.release.deleteMany({ where: { artistId: `${TEST_PREFIX}artist` } });
+    await prisma.artist.delete({ where: { id: `${TEST_PREFIX}artist` } }).catch(() => {});
+    await prisma.user.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
   });
 
   it('creates a release with tracks', async () => {
-    if (!dockerAvailable) return;
     const result = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'TC Test Album',
@@ -87,7 +68,6 @@ describe('CatalogService (testcontainers)', () => {
   });
 
   it('retrieves a release with full relations', async () => {
-    if (!dockerAvailable) return;
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Retrieval Test',
@@ -100,19 +80,17 @@ describe('CatalogService (testcontainers)', () => {
   });
 
   it('updates release title and status', async () => {
-    if (!dockerAvailable) return;
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
-      title: 'Before',
+      title: 'Before Update',
       tracks: [{ title: 'T', position: 1 }],
     });
-    const updated = await catalog.updateRelease(created.id, { title: 'After', status: 'published' });
-    expect(updated.title).toBe('After');
+    const updated = await catalog.updateRelease(created.id, { title: 'After Update', status: 'published' });
+    expect(updated.title).toBe('After Update');
     expect(updated.status).toBe('published');
   });
 
-  it('rejects release for non-artist user', async () => {
-    if (!dockerAvailable) return;
+  it('rejects release creation for non-artist user', async () => {
     const noArtist = `${TEST_PREFIX}noartist`;
     await prisma.user.create({ data: { id: noArtist, email: `${noArtist}@test.resonate` } });
     await expect(
@@ -121,7 +99,6 @@ describe('CatalogService (testcontainers)', () => {
   });
 
   it('deletes release with manual cascade', async () => {
-    if (!dockerAvailable) return;
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Delete Target',
@@ -136,7 +113,6 @@ describe('CatalogService (testcontainers)', () => {
   });
 
   it('rejects delete for wrong user', async () => {
-    if (!dockerAvailable) return;
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Protected',
@@ -146,7 +122,6 @@ describe('CatalogService (testcontainers)', () => {
   });
 
   it('returns null for non-existent release', async () => {
-    if (!dockerAvailable) return;
     expect(await catalog.getRelease('nonexistent')).toBeNull();
   });
 });
