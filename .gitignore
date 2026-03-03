@@ -61,3 +61,6 @@ backend/parse-*.js
 web/check-*.cjs
 web/lint_output.txt
 
+
+# evmbench contract archive (generated)
+resonate-contracts.zip

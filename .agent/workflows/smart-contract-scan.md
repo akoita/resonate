@@ -106,7 +106,7 @@ For each confirmed finding, output:
 **Recommendation:** Specific fix.
 ```
 
-Write the report to `scv-scan-report.md` and print a summary table:
+Write the report to `audit/scv-scan-report.md` (create the `audit/` directory if it doesn't exist) and print a summary table:
 
 | Severity | Count |
 | -------- | ----- |

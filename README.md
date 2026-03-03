@@ -88,7 +88,7 @@ graph TB
 
 ### Run Locally
 
-Two AA modes are available — see [AA Integration](docs/account-abstraction.md) for architecture and [Local AA Development](docs/local-aa-development.md) for setup.
+Two AA modes are available — see [AA Integration](docs/account-abstraction/account-abstraction.md) for architecture and [Local AA Development](docs/account-abstraction/local-aa-development.md) for setup.
 
 #### Forked Sepolia (recommended — session keys, full AA)
 
@@ -243,15 +243,15 @@ See [`workers/demucs/README.md`](workers/demucs/README.md) for full worker docum
 
 ## 📖 Documentation
 
-| Document                                                          | Description                                    |
-| ----------------------------------------------------------------- | ---------------------------------------------- |
-| [Project Specification](docs/RESONATE_SPECS.md)                   | Vision, architecture, and roadmap              |
-| [Deployment Guide](docs/deployment.md)                            | Infrastructure, storage, and environment setup |
-| [Local AA Development](docs/local-aa-development.md)              | Account abstraction setup guide                |
-| [Demucs Worker](workers/demucs/README.md)                         | GPU stem separation setup and troubleshooting  |
-| [Core Contracts](docs/phase5/core_contracts.md)                   | Stem NFT and marketplace contracts             |
-| [Marketplace Integration](docs/phase5/marketplace_integration.md) | Frontend/backend integration                   |
-| [Contributing](CONTRIBUTING.md)                                   | Contribution guidelines                        |
+| Document                                                                   | Description                                    |
+| -------------------------------------------------------------------------- | ---------------------------------------------- |
+| [Project Specification](docs/rfc/RESONATE_SPECS.md)                        | Vision, architecture, and roadmap              |
+| [Deployment Guide](docs/smart-contracts/deployment.md)                     | Infrastructure, storage, and environment setup |
+| [Local AA Development](docs/account-abstraction/local-aa-development.md)   | Account abstraction setup guide                |
+| [Demucs Worker](workers/demucs/README.md)                                  | GPU stem separation setup and troubleshooting  |
+| [Core Contracts](docs/smart-contracts/core_contracts.md)                   | Stem NFT and marketplace contracts             |
+| [Marketplace Integration](docs/smart-contracts/marketplace_integration.md) | Frontend/backend integration                   |
+| [Contributing](CONTRIBUTING.md)                                            | Contribution guidelines                        |
 
 ---
 

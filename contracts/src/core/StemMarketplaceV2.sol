@@ -83,6 +83,7 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
     error InvalidRecipient();
     error MarketplaceNotApproved();
     error CannotBuyOwnListing();
+    error UnexpectedETH();
 
     // ============ Constructor ============
 
@@ -92,8 +93,11 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
         uint256 _feeBps
     ) Ownable(msg.sender) {
         stemNFT = IERC1155(_stemNFT);
-        protocolFeeRecipient = _feeRecipient;
+        // V-003: Reject zero fee recipient when fees are enabled
+        if (_feeBps > 0 && _feeRecipient == address(0))
+            revert InvalidRecipient();
         if (_feeBps > MAX_PROTOCOL_FEE) revert InvalidFee();
+        protocolFeeRecipient = _feeRecipient;
         protocolFeeBps = _feeBps;
     }
 
@@ -193,6 +197,9 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
 
     function setProtocolFee(uint256 feeBps) external onlyOwner {
         if (feeBps > MAX_PROTOCOL_FEE) revert InvalidFee();
+        // V-003: Prevent setting non-zero fee when recipient is still address(0)
+        if (feeBps > 0 && protocolFeeRecipient == address(0))
+            revert InvalidRecipient();
         protocolFeeBps = feeBps;
     }
 
@@ -251,6 +258,7 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
         if (token == address(0)) {
             if (msg.value != amount) revert InsufficientPayment();
         } else {
+            if (msg.value != 0) revert UnexpectedETH();
             IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         }
     }

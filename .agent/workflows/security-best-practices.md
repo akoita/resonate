@@ -78,7 +78,7 @@ For each finding:
 
 ### 4. Produce report
 
-Write the report to `security_best_practices_report.md`:
+Write the report to `audit/security_best_practices_report.md` (create the `audit/` directory if it doesn't exist):
 
 ```markdown
 # Security Best Practices Report

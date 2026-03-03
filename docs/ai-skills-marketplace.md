@@ -33,11 +33,12 @@ The three highest-priority security skills have been ported to `.agent/workflows
 
 ### ⭐ Critical — Smart Contract Security
 
-| Plugin                           | What it does                          | Why we need it                                                                                          |
-| -------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `scv-scan`                       | Smart contract vulnerability scanning | Directly scans our Solidity contracts (`StemNFT`, `StemMarketplaceV2`) for known vulnerability patterns |
-| `openai-security-best-practices` | General security best practices       | Enforces secure coding patterns across backend and frontend                                             |
-| `openai-security-threat-model`   | Threat modeling assistance            | Valuable for our account abstraction layer, agent-owned keys, and wallet security                       |
+| Plugin                           | What it does                          | Why we need it                                                                                                                         |
+| -------------------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `scv-scan`                       | Smart contract vulnerability scanning | Directly scans our Solidity contracts (`StemNFT`, `StemMarketplaceV2`) for known vulnerability patterns                                |
+| `evmbench`                       | AI-driven smart contract auditing     | OpenAI × Paradigm benchmark — deep semantic analysis complementing pattern-based scans ([evaluation](../audit/evmbench-evaluation.md)) |
+| `openai-security-best-practices` | General security best practices       | Enforces secure coding patterns across backend and frontend                                                                            |
+| `openai-security-threat-model`   | Threat modeling assistance            | Valuable for our account abstraction layer, agent-owned keys, and wallet security                                                      |
 
 ### 👍 Recommended — Development Workflow
 

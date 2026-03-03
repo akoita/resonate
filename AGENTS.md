@@ -53,7 +53,7 @@ environment-dependent values directly in source code.
 
 ### Required Environment Variables
 
-Document any new env var in `docs/deployment.md` and the relevant Terraform config
+Document any new env var in `docs/smart-contracts/deployment.md` and the relevant Terraform config
 (`infra/terraform/backend-service.tf` or `infra/terraform/frontend-service.tf`).
 
 ---
