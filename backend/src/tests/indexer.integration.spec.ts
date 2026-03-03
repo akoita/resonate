@@ -53,13 +53,19 @@ describe('IndexerService (integration)', () => {
 
     // Retry to handle Anvil still starting
     let blockNumber: bigint | undefined;
-    for (let attempt = 0; attempt < 5; attempt++) {
+    for (let attempt = 0; attempt < 10; attempt++) {
       try {
         blockNumber = await client.getBlockNumber();
         break;
       } catch {
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 3000));
       }
+    }
+    if (blockNumber === undefined) {
+      throw new Error(
+        `Could not connect to Anvil at ${anvilUrl()} after 10 attempts (30s). ` +
+        `Ensure the Anvil Testcontainer started correctly.`,
+      );
     }
     expect(blockNumber).toBeGreaterThanOrEqual(0n);
   });
