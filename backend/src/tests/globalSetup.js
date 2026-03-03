@@ -53,13 +53,30 @@ module.exports = async function globalSetup() {
   // ===== Anvil (Foundry local Ethereum node) =====
   try {
     const anvilContainer = await new GenericContainer('ghcr.io/foundry-rs/foundry:latest')
-      .withCommand(['anvil', '--host', '0.0.0.0', '--chain-id', '31337'])
+      .withEntrypoint(['anvil'])
+      .withCommand(['--host', '0.0.0.0', '--chain-id', '31337'])
       .withExposedPorts(8545)
-      .withWaitStrategy(Wait.forLogMessage('Listening on'))
+      .withWaitStrategy(Wait.forLogMessage('Listening on 0.0.0.0:8545'))
       .withStartupTimeout(60000)
       .start();
 
     env.ANVIL_RPC_URL = 'http://' + anvilContainer.getHost() + ':' + anvilContainer.getMappedPort(8545);
+
+    // Health-check: poll JSON-RPC until Anvil is truly accepting requests
+    let rpcReady = false;
+    for (let i = 0; i < 15 && !rpcReady; i++) {
+      try {
+        const res = await fetch(env.ANVIL_RPC_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_blockNumber', params: [], id: 1 }),
+        });
+        if (res.ok) rpcReady = true;
+      } catch { /* retry */ }
+      if (!rpcReady) await new Promise(r => setTimeout(r, 2000));
+    }
+    if (!rpcReady) throw new Error('Anvil RPC not responding after 30s');
+
     global.__TC_ANVIL__ = anvilContainer;
     console.log('✅ Anvil: ' + env.ANVIL_RPC_URL);
   } catch (err) {
