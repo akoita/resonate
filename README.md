@@ -28,6 +28,7 @@ Resonate is a decentralized music streaming protocol where artists monetize audi
 
 - **🎛️ Stem-Level IP** — Artists upload stems as ERC-1155 NFTs with granular licensing
 - **🤖 AI Agent Wallets** — ERC-4337 smart accounts with autonomous micro-payment capabilities
+- **💳 x402 Payments** — AI agents purchase stems via HTTP using USDC — no account required
 - **💰 Transparent Royalties** — On-chain payment splitting with real-time analytics
 - **🔀 Remix Engine** — Composable smart contracts for derivative works
 
@@ -251,6 +252,7 @@ See [`workers/demucs/README.md`](workers/demucs/README.md) for full worker docum
 | [Demucs Worker](workers/demucs/README.md)                                  | GPU stem separation setup and troubleshooting  |
 | [Core Contracts](docs/smart-contracts/core_contracts.md)                   | Stem NFT and marketplace contracts             |
 | [Marketplace Integration](docs/smart-contracts/marketplace_integration.md) | Frontend/backend integration                   |
+| [x402 Payments](docs/architecture/x402_payments.md)                        | Machine-to-machine stem purchases via x402     |
 | [Contributing](CONTRIBUTING.md)                                            | Contribution guidelines                        |
 
 ---
