@@ -176,4 +176,41 @@ describe("catalog", () => {
             expect(results[0].status).toBe("ready");
         });
     });
+
+    describe("getTrackStream", () => {
+        it("returns null for non-existent track", async () => {
+            const result = await service.getTrackStream("nonexistent-track");
+            expect(result).toBeNull();
+        });
+    });
+
+    describe("getRelease", () => {
+        it("returns release with tracks", async () => {
+            const created = await service.createRelease({
+                userId: "user-rel",
+                title: "Test Release",
+            });
+            const release = await service.getRelease(created.id);
+            expect(release).not.toBeNull();
+            expect(release!.title).toBe("Test Release");
+        });
+
+        it("returns null for non-existent release", async () => {
+            const release = await service.getRelease("nonexistent-id");
+            expect(release).toBeNull();
+        });
+    });
+
+    describe("updateRelease", () => {
+        it("updates release title", async () => {
+            const created = await service.createRelease({
+                userId: "user-upd",
+                title: "Original Title",
+            });
+            const updated = await service.updateRelease(created.id, {
+                title: "Updated Title",
+            });
+            expect(updated.title).toBe("Updated Title");
+        });
+    });
 });
