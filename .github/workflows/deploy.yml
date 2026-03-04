@@ -1,19 +1,15 @@
 # =============================================================================
 # Deploy to GCP — Build, push, and deploy Docker images to Cloud Run
 # =============================================================================
-# Triggers on push to main (after CI passes)
+# Triggers on tag creation (v*) on main
 # Uses Workload Identity Federation (keyless auth — no service account keys)
 
 name: Deploy to GCP
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "backend/**"
-      - "web/**"
-      - "docker-compose.prod.yml"
-      - ".github/workflows/deploy.yml"
+    tags:
+      - "v*"
   workflow_dispatch: # Allow manual trigger
 
 concurrency:
