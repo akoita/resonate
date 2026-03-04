@@ -1,23 +1,43 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
 import { ResonateEvent } from "../../events/event_types";
-import { randomUUID } from "crypto";
+import { Subject, Subscription, filter } from "rxjs";
 
 type Handler<T extends ResonateEvent> = (event: T) => void;
 
 @Injectable()
-export class EventBus {
-  private handlers: { [key: string]: Handler<ResonateEvent>[] } = {};
+export class EventBus implements OnModuleDestroy {
+  private readonly logger = new Logger(EventBus.name);
+  private readonly subject = new Subject<ResonateEvent>();
 
-  publish(event: ResonateEvent) {
-    const handlers = this.handlers[event.eventName] ?? [];
-    handlers.forEach((handler) => handler(event));
+  publish(event: ResonateEvent): void {
+    this.subject.next(event);
   }
 
-  subscribe<T extends ResonateEvent>(eventName: T["eventName"], handler: Handler<T>) {
-    if (!this.handlers[eventName]) {
-      this.handlers[eventName] = [];
-    }
-    this.handlers[eventName].push(handler as Handler<ResonateEvent>);
-    console.log(`[EventBus] Subscribed to ${eventName}. Total handlers: ${this.handlers[eventName].length}`);
+  subscribe<T extends ResonateEvent>(
+    eventName: T["eventName"],
+    handler: Handler<T>,
+  ): Subscription {
+    return this.subject
+      .pipe(filter((e): e is T => e.eventName === eventName))
+      .subscribe({
+        next: (event) => {
+          try {
+            handler(event);
+          } catch (err) {
+            this.logger.error(
+              `Subscriber error on "${eventName}": ${(err as Error).message}`,
+              (err as Error).stack,
+            );
+          }
+        },
+      });
+  }
+
+  destroy(): void {
+    this.subject.complete();
+  }
+
+  onModuleDestroy(): void {
+    this.destroy();
   }
 }
