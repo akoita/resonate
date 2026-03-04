@@ -434,6 +434,17 @@ export interface RealtimeDisconnectedEvent extends BaseEvent {
   reason: string;
 }
 
+// ============ Marketplace Notification Events ============
+
+export interface MarketplaceListingNotifyEvent extends BaseEvent {
+  eventName: "marketplace.listing_notify";
+  listingId?: string;
+  tokenId: string;
+  sellerAddress: string;
+  pricePerUnit: string;
+  amount: string;
+}
+
 export type ResonateEvent =
   | StemsUploadedEvent
   | StemsProcessedEvent
@@ -479,5 +490,6 @@ export type ResonateEvent =
   | GenerationCompletedEvent
   | GenerationFailedEvent
   | RealtimeAudioEvent
-  | RealtimeDisconnectedEvent;
+  | RealtimeDisconnectedEvent
+  | MarketplaceListingNotifyEvent;
 

@@ -1,7 +1,7 @@
 /**
- * EventBus unit tests — Issue #362
+ * EventBus unit tests — Issue #411
  *
- * Tests the central EventBus used for cross-module communication.
+ * Tests the RxJS-based EventBus used for cross-module communication.
  * Uses real event names from event_types.ts for type safety.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -13,6 +13,10 @@ describe('EventBus', () => {
 
   beforeEach(() => {
     bus = new EventBus();
+  });
+
+  afterEach(() => {
+    bus.destroy();
   });
 
   it('delivers events to subscribers', () => {
@@ -60,7 +64,6 @@ describe('EventBus', () => {
     expect(count).toBe(2);
   });
 
-
   it('delivers catalog track status events correctly', () => {
     const stages: string[] = [];
 
@@ -80,10 +83,36 @@ describe('EventBus', () => {
     expect(stages).toEqual(events);
   });
 
-  it('propagates subscriber errors (fail-fast for debugging)', () => {
+  it('supports unsubscribe via returned Subscription', () => {
+    const received: any[] = [];
+    const sub = bus.subscribe('stems.uploaded', (e: any) => received.push(e));
+
+    bus.publish({ eventName: 'stems.uploaded' } as any);
+    expect(received).toHaveLength(1);
+
+    sub.unsubscribe();
+
+    bus.publish({ eventName: 'stems.uploaded' } as any);
+    expect(received).toHaveLength(1); // no new delivery after unsubscribe
+  });
+
+  it('stops delivering after destroy()', () => {
+    const received: any[] = [];
+    bus.subscribe('stems.uploaded', (e: any) => received.push(e));
+
+    bus.publish({ eventName: 'stems.uploaded' } as any);
+    expect(received).toHaveLength(1);
+
+    bus.destroy();
+
+    bus.publish({ eventName: 'stems.uploaded' } as any);
+    expect(received).toHaveLength(1); // no delivery after destroy
+  });
+
+  it('catches subscriber errors instead of crashing the publisher', () => {
     bus.subscribe('stems.uploaded', () => { throw new Error('subscriber crash'); });
 
-    // EventBus lets errors propagate — correct for fail-fast debugging
-    expect(() => bus.publish({ eventName: 'stems.uploaded' } as any)).toThrow('subscriber crash');
+    // RxJS Subject catches errors — publish does NOT throw (safe for the publisher)
+    expect(() => bus.publish({ eventName: 'stems.uploaded' } as any)).not.toThrow();
   });
 });

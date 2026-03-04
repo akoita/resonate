@@ -9,10 +9,18 @@ import {
     ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { EventBus } from './event_bus';
-import { CatalogReleaseReadyEvent, CatalogTrackStatusEvent, StemsUploadedEvent, GenerationStartedEvent, GenerationProgressEvent, GenerationCompletedEvent, GenerationFailedEvent, RealtimeAudioEvent, RealtimeDisconnectedEvent } from '../../events/event_types';
+import {
+    CatalogReleaseReadyEvent, CatalogTrackStatusEvent, StemsUploadedEvent, StemsProgressEvent,
+    StemsFailedEvent, GenerationStartedEvent, GenerationProgressEvent, GenerationCompletedEvent,
+    GenerationFailedEvent, RealtimeAudioEvent, RealtimeDisconnectedEvent, MarketplaceListingNotifyEvent,
+    SessionStartedEvent, SessionEndedEvent, AgentSelectionEvent, AgentMixPlannedEvent,
+    AgentNegotiatedEvent, AgentDecisionMadeEvent, ContractStemListedEvent, ContractStemSoldEvent,
+    ContractListingCancelledEvent,
+} from '../../events/event_types';
 import { LyriaRealtimeService } from '../generation/lyria_realtime.service';
+import { Subscription } from 'rxjs';
 
 @WebSocketGateway({
     cors: {
@@ -21,11 +29,12 @@ import { LyriaRealtimeService } from '../generation/lyria_realtime.service';
     transports: ['websocket', 'polling'],
 })
 @Injectable()
-export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
+export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
     @WebSocketServer() server!: Server;
     private readonly logger = new Logger(EventsGateway.name);
     /** Maps sessionId → client socket id for targeted audio delivery */
     private readonly sessionClients = new Map<string, string>();
+    private readonly subscriptions: Subscription[] = [];
 
     constructor(
         private readonly eventBus: EventBus,
@@ -37,7 +46,7 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
     onModuleInit() { }
 
     private subscribeToEvents() {
-        this.eventBus.subscribe('stems.progress' as any, (event: any) => {
+        this.subscriptions.push(this.eventBus.subscribe('stems.progress', (event: StemsProgressEvent) => {
             if (this.server) {
                 this.server.emit('release.progress', {
                     releaseId: event.releaseId,
@@ -45,11 +54,11 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                     progress: event.progress,
                 });
             }
-        });
+        }));
 
-        this.eventBus.subscribe('stems.uploaded', (event: StemsUploadedEvent) => {
+        this.subscriptions.push(this.eventBus.subscribe('stems.uploaded', (event: StemsUploadedEvent) => {
             const connectedCount = this.server?.sockets?.sockets?.size ?? 0;
-            console.log(`[EventsGateway] Received stems.uploaded for ${event.releaseId}, broadcasting to ${connectedCount} clients...`);
+            this.logger.log(`Received stems.uploaded for ${event.releaseId}, broadcasting to ${connectedCount} clients...`);
             if (this.server) {
                 this.server.emit('release.status', {
                     releaseId: event.releaseId,
@@ -57,14 +66,14 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                     title: event.metadata?.title || 'Unknown Release',
                     status: 'processing',
                 });
-                console.log(`[EventsGateway] Emitted release.status (processing) for ${event.releaseId}`);
+                this.logger.log(`Emitted release.status (processing) for ${event.releaseId}`);
             } else {
-                console.warn('[EventsGateway] Server not initialized, cannot broadcast stems.uploaded');
+                this.logger.warn('Server not initialized, cannot broadcast stems.uploaded');
             }
-        });
+        }));
 
-        this.eventBus.subscribe('catalog.release_ready', (event: CatalogReleaseReadyEvent) => {
-            console.log(`[EventsGateway] Received catalog.release_ready for ${event.releaseId}, broadcasting...`);
+        this.subscriptions.push(this.eventBus.subscribe('catalog.release_ready', (event: CatalogReleaseReadyEvent) => {
+            this.logger.log(`Received catalog.release_ready for ${event.releaseId}, broadcasting...`);
             if (this.server) {
                 this.server.emit('release.status', {
                     releaseId: event.releaseId,
@@ -73,12 +82,12 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                     status: 'ready',
                 });
             } else {
-                console.warn('[EventsGateway] Server not initialized, cannot broadcast catalog.release_ready');
+                this.logger.warn('Server not initialized, cannot broadcast catalog.release_ready');
             }
-        });
+        }));
 
-        this.eventBus.subscribe('stems.failed', (event: any) => {
-            console.log(`[EventsGateway] Received stems.failed for ${event.releaseId}, broadcasting...`);
+        this.subscriptions.push(this.eventBus.subscribe('stems.failed', (event: StemsFailedEvent) => {
+            this.logger.log(`Received stems.failed for ${event.releaseId}, broadcasting...`);
             if (this.server) {
                 this.server.emit('release.error', {
                     releaseId: event.releaseId,
@@ -87,10 +96,10 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                     status: 'failed',
                 });
             }
-        });
+        }));
 
-        this.eventBus.subscribe('catalog.track_status', (event: CatalogTrackStatusEvent) => {
-            console.log(`[EventsGateway] Received catalog.track_status for track ${event.trackId}: ${event.status}`);
+        this.subscriptions.push(this.eventBus.subscribe('catalog.track_status', (event: CatalogTrackStatusEvent) => {
+            this.logger.log(`Received catalog.track_status for track ${event.trackId}: ${event.status}`);
             if (this.server) {
                 this.server.emit('track.status', {
                     releaseId: event.releaseId,
@@ -98,12 +107,12 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                     status: event.status,
                 });
             }
-        });
+        }));
 
         // ---- Agent events → broadcast as 'agent.event' ----
 
-        this.eventBus.subscribe('session.started', (event: any) => {
-            console.log(`[EventsGateway] Agent session started: ${event.sessionId}`);
+        this.subscriptions.push(this.eventBus.subscribe('session.started', (event: SessionStartedEvent) => {
+            this.logger.log(`Agent session started: ${event.sessionId}`);
             if (this.server) {
                 this.server.emit('agent.event', {
                     id: `${event.sessionId}-started`,
@@ -113,10 +122,10 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                     timestamp: event.occurredAt,
                 });
             }
-        });
+        }));
 
-        this.eventBus.subscribe('session.ended', (event: any) => {
-            console.log(`[EventsGateway] Agent session ended: ${event.sessionId}`);
+        this.subscriptions.push(this.eventBus.subscribe('session.ended', (event: SessionEndedEvent) => {
+            this.logger.log(`Agent session ended: ${event.sessionId}`);
             if (this.server) {
                 this.server.emit('agent.event', {
                     id: `${event.sessionId}-ended`,
@@ -126,9 +135,9 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                     timestamp: event.occurredAt,
                 });
             }
-        });
+        }));
 
-        this.eventBus.subscribe('agent.selection', (event: any) => {
+        this.subscriptions.push(this.eventBus.subscribe('agent.selection', (event: AgentSelectionEvent) => {
             if (this.server) {
                 const count = event.count ?? 1;
                 const total = event.candidates?.length ?? 0;
@@ -141,9 +150,9 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                     detail: `Selected ${count} from ${total} candidates`,
                 });
             }
-        });
+        }));
 
-        this.eventBus.subscribe('agent.mix_planned', (event: any) => {
+        this.subscriptions.push(this.eventBus.subscribe('agent.mix_planned', (event: AgentMixPlannedEvent) => {
             if (this.server) {
                 const title = event.trackTitle ?? event.trackId;
                 this.server.emit('agent.event', {
@@ -154,9 +163,9 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                     timestamp: event.occurredAt,
                 });
             }
-        });
+        }));
 
-        this.eventBus.subscribe('agent.negotiated', (event: any) => {
+        this.subscriptions.push(this.eventBus.subscribe('agent.negotiated', (event: AgentNegotiatedEvent) => {
             if (this.server) {
                 const title = event.trackTitle ?? event.trackId;
                 this.server.emit('agent.event', {
@@ -167,9 +176,9 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                     timestamp: event.occurredAt,
                 });
             }
-        });
+        }));
 
-        this.eventBus.subscribe('agent.decision_made', (event: any) => {
+        this.subscriptions.push(this.eventBus.subscribe('agent.decision_made', (event: AgentDecisionMadeEvent) => {
             if (this.server) {
                 let msg: string;
                 if (event.reason === 'no_tracks') {
@@ -177,7 +186,6 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                 } else if (event.reason === 'error') {
                     msg = 'Curation encountered an error';
                 } else if (event.reasoning || event.latencyMs != null) {
-                    // LLM adapter result — single track with reasoning
                     const latency = event.latencyMs != null ? ` (${(event.latencyMs / 1000).toFixed(1)}s)` : '';
                     const price = event.priceUsd != null ? ` — $${Number(event.priceUsd).toFixed(2)}` : '';
                     msg = event.trackId
@@ -187,7 +195,6 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                         msg += `: ${event.reasoning}`;
                     }
                 } else {
-                    // Orchestrator pipeline result — batch of tracks
                     const count = event.trackCount ?? 0;
                     const spend = event.totalSpend != null ? `$${event.totalSpend.toFixed(2)}` : '';
                     msg = `Curation complete: ${count} track${count !== 1 ? 's' : ''} selected${spend ? `, ${spend} total` : ''}`;
@@ -200,12 +207,12 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                     timestamp: event.occurredAt,
                 });
             }
-        });
+        }));
 
         // ---- Marketplace events → broadcast for real-time UI updates ----
 
-        this.eventBus.subscribe('contract.stem_listed', (event: any) => {
-            console.log(`[EventsGateway] Stem listed: listingId=${event.listingId}, broadcasting...`);
+        this.subscriptions.push(this.eventBus.subscribe('contract.stem_listed', (event: ContractStemListedEvent) => {
+            this.logger.log(`Stem listed: listingId=${event.listingId}, broadcasting...`);
             if (this.server) {
                 this.server.emit('marketplace.listing_created', {
                     listingId: event.listingId,
@@ -215,13 +222,13 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                     amount: event.amount,
                 });
             }
-        });
+        }));
 
         // Notification-only event from notifyListingCreated endpoint.
         // Broadcasts a WebSocket event for instant UI refresh WITHOUT creating a DB listing.
         // The indexer will create the authoritative listing from the on-chain event.
-        this.eventBus.subscribe('marketplace.listing_notify', (event: any) => {
-            console.log(`[EventsGateway] Listing notify: tokenId=${event.tokenId}, broadcasting...`);
+        this.subscriptions.push(this.eventBus.subscribe('marketplace.listing_notify', (event: MarketplaceListingNotifyEvent) => {
+            this.logger.log(`Listing notify: tokenId=${event.tokenId}, broadcasting...`);
             if (this.server) {
                 this.server.emit('marketplace.listing_created', {
                     listingId: event.listingId || 'pending',
@@ -231,10 +238,10 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                     amount: event.amount,
                 });
             }
-        });
+        }));
 
-        this.eventBus.subscribe('contract.stem_sold', (event: any) => {
-            console.log(`[EventsGateway] Stem sold: listingId=${event.listingId}, broadcasting...`);
+        this.subscriptions.push(this.eventBus.subscribe('contract.stem_sold', (event: ContractStemSoldEvent) => {
+            this.logger.log(`Stem sold: listingId=${event.listingId}, broadcasting...`);
             if (this.server) {
                 this.server.emit('marketplace.listing_sold', {
                     listingId: event.listingId,
@@ -242,21 +249,21 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                     amount: event.amount,
                 });
             }
-        });
+        }));
 
-        this.eventBus.subscribe('contract.listing_cancelled', (event: any) => {
-            console.log(`[EventsGateway] Listing cancelled: listingId=${event.listingId}, broadcasting...`);
+        this.subscriptions.push(this.eventBus.subscribe('contract.listing_cancelled', (event: ContractListingCancelledEvent) => {
+            this.logger.log(`Listing cancelled: listingId=${event.listingId}, broadcasting...`);
             if (this.server) {
                 this.server.emit('marketplace.listing_cancelled', {
                     listingId: event.listingId,
                 });
             }
-        });
+        }));
 
         // ---- Generation events → broadcast real-time generation status ----
 
-        this.eventBus.subscribe('generation.started', (event: GenerationStartedEvent) => {
-            console.log(`[EventsGateway] Generation started: jobId=${event.jobId}`);
+        this.subscriptions.push(this.eventBus.subscribe('generation.started', (event: GenerationStartedEvent) => {
+            this.logger.log(`Generation started: jobId=${event.jobId}`);
             if (this.server) {
                 this.server.emit('generation.status', {
                     jobId: event.jobId,
@@ -264,19 +271,19 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                     prompt: event.prompt,
                 });
             }
-        });
+        }));
 
-        this.eventBus.subscribe('generation.progress', (event: GenerationProgressEvent) => {
+        this.subscriptions.push(this.eventBus.subscribe('generation.progress', (event: GenerationProgressEvent) => {
             if (this.server) {
                 this.server.emit('generation.progress', {
                     jobId: event.jobId,
                     phase: event.phase,
                 });
             }
-        });
+        }));
 
-        this.eventBus.subscribe('generation.completed', (event: GenerationCompletedEvent) => {
-            console.log(`[EventsGateway] Generation completed: jobId=${event.jobId}, trackId=${event.trackId}`);
+        this.subscriptions.push(this.eventBus.subscribe('generation.completed', (event: GenerationCompletedEvent) => {
+            this.logger.log(`Generation completed: jobId=${event.jobId}, trackId=${event.trackId}`);
             if (this.server) {
                 this.server.emit('generation.status', {
                     jobId: event.jobId,
@@ -285,21 +292,21 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                     releaseId: event.releaseId,
                 });
             }
-        });
+        }));
 
-        this.eventBus.subscribe('generation.failed', (event: GenerationFailedEvent) => {
-            console.log(`[EventsGateway] Generation failed: jobId=${event.jobId}: ${event.error}`);
+        this.subscriptions.push(this.eventBus.subscribe('generation.failed', (event: GenerationFailedEvent) => {
+            this.logger.log(`Generation failed: jobId=${event.jobId}: ${event.error}`);
             if (this.server) {
                 this.server.emit('generation.error', {
                     jobId: event.jobId,
                     error: event.error,
                 });
             }
-        });
+        }));
 
         // ============ Realtime Events ============
 
-        this.eventBus.subscribe('realtime.audio', (event: RealtimeAudioEvent) => {
+        this.subscriptions.push(this.eventBus.subscribe('realtime.audio', (event: RealtimeAudioEvent) => {
             const clientId = this.sessionClients.get(event.sessionId);
             if (clientId && this.server) {
                 this.server.to(clientId).emit('realtime:audio', {
@@ -308,9 +315,9 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                     timestamp: event.timestamp,
                 });
             }
-        });
+        }));
 
-        this.eventBus.subscribe('realtime.disconnected', (event: RealtimeDisconnectedEvent) => {
+        this.subscriptions.push(this.eventBus.subscribe('realtime.disconnected', (event: RealtimeDisconnectedEvent) => {
             const clientId = this.sessionClients.get(event.sessionId);
             if (clientId && this.server) {
                 this.server.to(clientId).emit('realtime:disconnected', {
@@ -319,20 +326,24 @@ export class EventsGateway implements OnModuleInit, OnGatewayInit, OnGatewayConn
                 });
             }
             this.sessionClients.delete(event.sessionId);
-        });
+        }));
     }
 
+    onModuleDestroy(): void {
+        this.subscriptions.forEach(s => s.unsubscribe());
+        this.subscriptions.length = 0;
+    }
 
     afterInit(server: Server) {
-        console.log('[EventsGateway] Initialized');
+        this.logger.log('Initialized');
     }
 
     handleConnection(client: Socket) {
-        console.log(`[EventsGateway] Client connected: ${client.id}`);
+        this.logger.log(`Client connected: ${client.id}`);
     }
 
     handleDisconnect(client: Socket) {
-        console.log(`[EventsGateway] Client disconnected: ${client.id}`);
+        this.logger.log(`Client disconnected: ${client.id}`);
         // Clean up any realtime sessions owned by this client
         for (const [sessionId, socketId] of this.sessionClients.entries()) {
             if (socketId === client.id) {
