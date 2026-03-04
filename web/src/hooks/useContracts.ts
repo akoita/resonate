@@ -718,6 +718,219 @@ export function useMintAndListStem() {
   return { mintAndList, pending, error, txHash };
 }
 
+// ============ Batch Mint & List ============
+
+export interface BatchStemItem {
+  stemId: string;
+  stemType: string;
+  trackTitle: string;
+  metadataUri?: string;
+}
+
+export type BatchStemStatus = "pending" | "processing" | "done" | "failed";
+
+export interface BatchStemResult {
+  stemId: string;
+  status: BatchStemStatus;
+  tokenId?: bigint;
+  error?: string;
+}
+
+/**
+ * Hook to batch mint & list multiple stems in a single UserOperation.
+ *
+ * Builds N×3 calls (mint + approve + list per stem) and sends them
+ * as one batch UserOp via sendBatchContractTransactions — one passkey
+ * prompt total.
+ */
+export function useBatchMintAndList() {
+  const { publicClient, chainId } = useZeroDev();
+  const { address, status, kernelAccount } = useAuth();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const [results, setResults] = useState<BatchStemResult[]>([]);
+
+  const executeBatch = useCallback(
+    async (
+      stems: BatchStemItem[],
+      options?: {
+        pricePerUnit?: bigint;
+        durationSeconds?: bigint;
+        onProgress?: (results: BatchStemResult[]) => void;
+      }
+    ) => {
+      if (status !== "authenticated" || !address) {
+        throw new Error("Wallet not connected");
+      }
+      if (stems.length === 0) return [];
+
+      setPending(true);
+      setError(null);
+
+      const pricePerUnit = options?.pricePerUnit ?? BigInt("10000000000000000"); // 0.01 ETH
+      const durationSeconds = options?.durationSeconds ?? BigInt(7 * 24 * 60 * 60); // 7 days
+      const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
+
+      // Initialize all stems as pending
+      const initialResults: BatchStemResult[] = stems.map(s => ({
+        stemId: s.stemId,
+        status: "pending" as BatchStemStatus,
+      }));
+      setResults(initialResults);
+      options?.onProgress?.(initialResults);
+
+      try {
+        const addresses = getContractAddresses(chainId);
+        const currentChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
+
+        // 1. Read current totalStems to predict token IDs
+        const currentTotal = await publicClient.readContract({
+          address: addresses.stemNFT as Address,
+          abi: StemNFTABI,
+          functionName: "totalStems",
+        }) as bigint;
+
+        // 2. Build N×3 calls array
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const calls: { to: Address; data: Hex | ((addr: Address) => Hex); value?: bigint }[] = [];
+        const expectedTokenIds: bigint[] = [];
+
+        for (let i = 0; i < stems.length; i++) {
+          const stem = stems[i];
+          const expectedTokenId = currentTotal + BigInt(i + 1);
+          expectedTokenIds.push(expectedTokenId);
+
+          const tokenUri = stem.metadataUri ||
+            `${typeof window !== "undefined" ? window.location.protocol + "//" + window.location.host : ""}/api/metadata/${currentChainId}/stem/${stem.stemId}`;
+
+          // Mint call
+          calls.push({
+            to: addresses.stemNFT as Address,
+            data: (resolvedAddress: Address) => encodeFunctionData({
+              abi: StemNFTABI,
+              functionName: "mint",
+              args: [
+                resolvedAddress,
+                BigInt(1),
+                tokenUri,
+                resolvedAddress,
+                BigInt(500), // 5% royalty
+                true, // remixable
+                [], // no parent IDs
+              ],
+            }),
+          });
+
+          // Approve call (idempotent — setApprovalForAll is safe to call multiple times)
+          calls.push({
+            to: addresses.stemNFT as Address,
+            data: encodeFunctionData({
+              abi: StemNFTABI,
+              functionName: "setApprovalForAll",
+              args: [addresses.marketplace as Address, true],
+            }),
+          });
+
+          // List call
+          calls.push({
+            to: addresses.marketplace as Address,
+            data: encodeFunctionData({
+              abi: StemMarketplaceABI,
+              functionName: "list",
+              args: [
+                expectedTokenId,
+                BigInt(1),
+                pricePerUnit,
+                ZERO_ADDRESS,
+                durationSeconds,
+              ],
+            }),
+          });
+        }
+
+        // Mark all as processing
+        const processingResults: BatchStemResult[] = stems.map(s => ({
+          stemId: s.stemId,
+          status: "processing" as BatchStemStatus,
+        }));
+        setResults(processingResults);
+        options?.onProgress?.(processingResults);
+
+        // 3. Send as a single batch UserOperation
+        const hash = await sendBatchContractTransactions(
+          publicClient,
+          chainId,
+          calls,
+          address as Address,
+          kernelAccount
+        );
+
+        // 4. All succeeded — mark as done with token IDs
+        const doneResults: BatchStemResult[] = stems.map((s, i) => ({
+          stemId: s.stemId,
+          status: "done" as BatchStemStatus,
+          tokenId: expectedTokenIds[i],
+        }));
+        setResults(doneResults);
+        options?.onProgress?.(doneResults);
+
+        // 5. Persist to localStorage (same format as MintStemButton)
+        for (let i = 0; i < stems.length; i++) {
+          const stemId = stems[i].stemId;
+          const tokenId = expectedTokenIds[i];
+          localStorage.setItem(
+            `stem_status_${stemId}`,
+            JSON.stringify({ status: "listed", timestamp: Date.now() })
+          );
+          localStorage.setItem(
+            `stem_token_id_${stemId}`,
+            tokenId.toString()
+          );
+        }
+
+        // 6. Notify backend for each stem (best-effort, non-blocking)
+        for (let i = 0; i < stems.length; i++) {
+          fetch("/api/contracts/notify-listing", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tokenId: expectedTokenIds[i].toString(),
+              seller: address,
+              price: pricePerUnit.toString(),
+              amount: "1",
+              paymentToken: ZERO_ADDRESS,
+              durationSeconds: durationSeconds.toString(),
+              transactionHash: hash,
+              stemId: stems[i].stemId,
+            }),
+          }).catch(() => { /* indexer will catch up */ });
+        }
+
+        return doneResults;
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        setError(error);
+
+        // Mark all as failed
+        const failedResults: BatchStemResult[] = stems.map(s => ({
+          stemId: s.stemId,
+          status: "failed" as BatchStemStatus,
+          error: error.message,
+        }));
+        setResults(failedResults);
+        options?.onProgress?.(failedResults);
+
+        throw error;
+      } finally {
+        setPending(false);
+      }
+    },
+    [publicClient, address, status, chainId, kernelAccount]
+  );
+
+  return { executeBatch, pending, error, results };
+}
+
 // Helper to send batch transactions via Kernel client (unified path)
 async function sendBatchContractTransactions(
   publicClient: PublicClient,

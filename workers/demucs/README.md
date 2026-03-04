@@ -17,18 +17,24 @@ This worker separates audio files into 6 stems:
 
 The worker supports two processing modes, controlled by `PROCESSING_MODE`:
 
-| Mode     | Description                                                   | Use Case             |
-| -------- | ------------------------------------------------------------- | -------------------- |
-| `http`   | Legacy HTTP endpoint — backend sends file, waits for response | Phase 1 / local dev  |
-| `pubsub` | GCP Pub/Sub event-driven — worker pulls jobs from topic       | Phase 2 / production |
+| Mode     | Description                                                   | Use Case                          |
+| -------- | ------------------------------------------------------------- | --------------------------------- |
+| `http`   | Legacy HTTP endpoint — backend sends file, waits for response | Simple local dev without Pub/Sub  |
+| `pubsub` | GCP Pub/Sub event-driven — worker pulls jobs from topic       | Local dev (emulator) & production |
 
 In **pubsub mode**, the worker:
 
-1. Subscribes to the `stem-separate` Pub/Sub topic
-2. Downloads audio from GCS using the URI in the message
+1. Subscribes to the `stem-separate` Pub/Sub topic (or emulator)
+2. Downloads audio from GCS or the backend HTTP URI in the message
 3. Runs Demucs separation + ffmpeg compression
-4. Uploads stems to GCS
+4. Uploads stems to GCS (or local `/outputs` volume)
 5. Publishes results to `stem-results` topic
+6. POSTs real-time progress callbacks to `{callbackUrl}/ingestion/progress/{releaseId}/{trackId}`
+
+> **Local dev:** Set `PUBSUB_EMULATOR_HOST=localhost:8085` and `GCP_PROJECT_ID=resonate-local`
+> in the backend `.env`. The `docker-compose.yml` includes a `pubsub-emulator` service
+> that provides a local Pub/Sub instance. The worker must have `google-cloud-pubsub`
+> installed (see [Troubleshooting](#no-module-named-google) if this fails).
 
 ## Quick Start
 
@@ -162,6 +168,36 @@ Health check endpoint. Returns processing mode and storage mode.
 ```
 
 ## Troubleshooting
+
+### "No module named 'google'"
+
+The PubSub consumer fails with `No module named 'google'` when the Docker image was built
+from a cached layer that predates the addition of `google-cloud-pubsub` to `requirements.txt`.
+
+**Symptoms:**
+
+- Worker logs show: `[PubSub] Consumer failed (attempt N/30): No module named 'google'`
+- Tracks stuck at "Separating..." with no progress percentage
+- Health check still returns OK (the HTTP server runs fine, only the PubSub thread fails)
+
+**Quick fix** (hotfix into the running container):
+
+```bash
+docker exec resonate-demucs-worker-1 pip install google-cloud-pubsub
+docker restart resonate-demucs-worker-1
+```
+
+**Permanent fix** (rebuild the image so deps are baked in):
+
+```bash
+make dev-up-build
+# or: docker compose build demucs-worker && docker compose up -d demucs-worker
+```
+
+> **Why this happens:** Docker caches the `pip install -r requirements.txt` layer by
+> content hash. If `requirements.txt` was modified but the image was built before that
+> change, the old cached layer (without the new package) is reused. Use `--no-cache`
+> or `make dev-up-build` to force a fresh install.
 
 ### "No audio I/O backend is available"
 

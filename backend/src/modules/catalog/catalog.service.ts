@@ -684,12 +684,12 @@ export class CatalogService implements OnModuleInit {
   }
 
   async getTrackStream(trackId: string) {
-    // Find the track's stems, preferring the 'master' stem for generated tracks
+    // Find the track's stems, preferring unencrypted playable audio
     const track = await prisma.track.findUnique({
       where: { id: trackId },
       select: {
         stems: {
-          select: { id: true, type: true },
+          select: { id: true, type: true, isEncrypted: true },
           orderBy: { type: 'asc' },
         },
       },
@@ -697,9 +697,15 @@ export class CatalogService implements OnModuleInit {
 
     if (!track || track.stems.length === 0) return null;
 
-    // Prefer master stem, fall back to first stem
-    const masterStem = track.stems.find(s => s.type === 'master') || track.stems[0];
-    return this.getStemBlob(masterStem.id);
+    // Priority: original → master → first unencrypted → first stem
+    // Without this, alphabetical sort picks 'bass' (encrypted) before 'original'
+    const preferredStem =
+      track.stems.find(s => s.type === 'original') ||
+      track.stems.find(s => s.type === 'master') ||
+      track.stems.find(s => !s.isEncrypted) ||
+      track.stems[0];
+
+    return this.getStemBlob(preferredStem.id);
   }
 
   async getStemBlob(stemId: string) {
@@ -797,18 +803,21 @@ export class CatalogService implements OnModuleInit {
     // Handle encrypted content from IPFS/Lighthouse
     // We prioritize this over stem.data because stem.data might contain the encrypted blob
     if (stem.encryptionMetadata) {
-      // For preview, we use a public/mock authSig or bypass check if backend is allowed
-      const authSig = {
+      // Use internal service credential (SBPR-004) for backend-initiated decryption.
+      // The AES provider's verifyAccess() recognizes the sentinel zero-address + internalKey
+      // combo and grants access without requiring a user wallet signature.
+      const internalAuthSig = {
         address: "0x0000000000000000000000000000000000000000",
         sig: "preview-authorized",
         signedMessage: "Marketplace preview authorization",
+        internalKey: process.env.INTERNAL_SERVICE_KEY,
       };
 
       const decryptedBuffer = await this.encryptionService.decrypt(
         resolvedUri,
         stem.encryptionMetadata,
         [], // No specific access conditions for public preview if we want to bypass Lit checks on backend
-        authSig,
+        internalAuthSig,
       );
 
       return { data: decryptedBuffer, mimeType: stem.mimeType || "audio/mpeg" };

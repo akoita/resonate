@@ -13,8 +13,10 @@ import { useToast } from "../../../components/ui/Toast";
 // import { addTracksByCriteria } from "../../../lib/playlistStore";
 import { formatDuration } from "../../../lib/metadataExtractor";
 import { useAuth } from "../../../components/auth/AuthProvider";
-import { sanitizeStemUrl } from "../../../lib/urlUtils";
+import { buildTrackStreamUrl } from "../../../lib/urlUtils";
 import { MintStemButton } from "../../../components/marketplace/MintStemButton";
+import { BatchMintListModal } from "../../../components/marketplace/BatchMintListModal";
+import type { BatchStemItem } from "../../../hooks/useContracts";
 import { TrackActionMenu } from "../../../components/ui/TrackActionMenu";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressUpdate } from "../../../hooks/useWebSockets";
@@ -51,6 +53,8 @@ export default function ReleaseDetails() {
   const [recentlyCompletedTracks, setRecentlyCompletedTracks] = useState<Set<string>>(new Set());
   const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; variant: "danger" | "warning" | "default"; confirmLabel: string; onConfirm: () => Promise<void> } | null>(null);
   const [trackProgress, setTrackProgress] = useState<Record<string, number>>({});
+  const [selectedNftStems, setSelectedNftStems] = useState<Set<string>>(new Set());
+  const [batchModalStems, setBatchModalStems] = useState<BatchStemItem[] | null>(null);
 
   // Handle real-time track progress updates via WebSocket
   const handleProgressUpdate = useCallback((data: ReleaseProgressUpdate) => {
@@ -190,12 +194,15 @@ export default function ReleaseDetails() {
         || t.stems?.find(s => s.type === 'master')
         || t.stems?.[0]; // fallback to first stem
 
-      // Construct stream URL: prefer stem URI, fall back to catalog stream endpoint
+      // Use catalog stream endpoint (serves audio with proper Content-Type)
+      // The raw stem.uri is a storage path not directly playable by the browser
       const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-      const rawUrl = originalStem?.uri
-        || (release.id && t.id ? `${apiBase}/catalog/releases/${release.id}/tracks/${t.id}/stream` : undefined);
-      // Sanitize: replace Docker-internal hostnames and resolve relative paths
-      const streamUrl = sanitizeStemUrl(rawUrl, apiBase);
+      const streamUrl = buildTrackStreamUrl({
+        releaseId: release.id,
+        trackId: t.id,
+        stemUri: originalStem?.uri,
+        apiBase,
+      });
 
       return {
         id: t.id,
@@ -260,6 +267,13 @@ export default function ReleaseDetails() {
     const originalStem = t.stems?.find(
       (s: { type?: string }) => s.type?.toUpperCase() === "ORIGINAL",
     );
+    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+    const streamUrl = buildTrackStreamUrl({
+      releaseId: release?.id,
+      trackId: t.id,
+      stemUri: originalStem?.uri,
+      apiBase,
+    });
     return {
       id: t.id,
       title: t.title,
@@ -270,7 +284,7 @@ export default function ReleaseDetails() {
       genre: release?.genre || null,
       duration: getTrackDuration(t),
       createdAt: t.createdAt ? new Date(t.createdAt).toISOString() : new Date().toISOString(),
-      remoteUrl: originalStem?.uri,
+      remoteUrl: streamUrl,
       remoteArtworkUrl: release?.artworkUrl || undefined,
       stems: t.stems,
     };
@@ -834,6 +848,49 @@ export default function ReleaseDetails() {
                     });
                   };
 
+                  // Batch selection helpers for this track
+                  const trackStemIds = mintableStems.map(s => s.id);
+                  const selectedInTrack = trackStemIds.filter(id => selectedNftStems.has(id));
+                  const allSelectedInTrack = selectedInTrack.length === trackStemIds.length;
+                  const someSelectedInTrack = selectedInTrack.length > 0;
+
+                  const toggleSelectAllTrackStems = () => {
+                    setSelectedNftStems(prev => {
+                      const next = new Set(prev);
+                      if (allSelectedInTrack) {
+                        trackStemIds.forEach(id => next.delete(id));
+                      } else {
+                        trackStemIds.forEach(id => next.add(id));
+                      }
+                      return next;
+                    });
+                  };
+
+                  const toggleStemSelection = (stemId: string) => {
+                    setSelectedNftStems(prev => {
+                      const next = new Set(prev);
+                      if (next.has(stemId)) {
+                        next.delete(stemId);
+                      } else {
+                        next.add(stemId);
+                      }
+                      return next;
+                    });
+                  };
+
+                  const handleBatchMintSelected = () => {
+                    const selected = mintableStems
+                      .filter(s => selectedNftStems.has(s.id))
+                      .map(s => ({
+                        stemId: s.id,
+                        stemType: s.type,
+                        trackTitle: track.title,
+                      }));
+                    if (selected.length > 0) {
+                      setBatchModalStems(selected);
+                    }
+                  };
+
                   return (
                     <div key={track.id} className={`nft-track-group ${isExpanded ? 'expanded' : ''}`}>
                       <button className="nft-track-header" onClick={toggleExpand}>
@@ -845,28 +902,62 @@ export default function ReleaseDetails() {
                       </button>
 
                       {isExpanded && (
-                        <div className="nft-stems-grid">
-                          {mintableStems.map(stem => (
-                            <div key={stem.id} className="nft-stem-chip">
-                              <span className="nft-stem-emoji">
-                                {stem.type === "vocals" ? "🎤" :
-                                  stem.type === "drums" ? "🥁" :
-                                    stem.type === "bass" ? "🎸" :
-                                      stem.type === "piano" ? "🎹" :
-                                        stem.type === "guitar" ? "🎸" : "🎵"}
-                              </span>
-                              <span className="nft-stem-name">
-                                {stem.type.charAt(0).toUpperCase() + stem.type.slice(1)}
-                              </span>
-                              <MintStemButton
-                                stemId={stem.id}
-                                stemTitle={`${stem.type} - ${track.title}`}
-                                stemType={stem.type}
-                                trackTitle={track.title}
+                        <>
+                          {/* Batch action bar */}
+                          <div className="nft-batch-bar" onClick={(e) => e.stopPropagation()}>
+                            <label className="nft-select-all-label">
+                              <input
+                                type="checkbox"
+                                checked={allSelectedInTrack}
+                                ref={(el) => { if (el) el.indeterminate = someSelectedInTrack && !allSelectedInTrack; }}
+                                onChange={toggleSelectAllTrackStems}
+                                className="nft-batch-checkbox"
                               />
-                            </div>
-                          ))}
-                        </div>
+                              <span>{allSelectedInTrack ? 'Deselect All' : 'Select All'}</span>
+                            </label>
+                            {someSelectedInTrack && (
+                              <button
+                                className="nft-batch-btn"
+                                onClick={handleBatchMintSelected}
+                              >
+                                Mint & List Selected ({selectedInTrack.length})
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="nft-stems-grid">
+                            {mintableStems.map(stem => {
+                              const isStemSelected = selectedNftStems.has(stem.id);
+                              return (
+                                <div key={stem.id} className={`nft-stem-chip ${isStemSelected ? 'nft-stem-selected' : ''}`}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isStemSelected}
+                                    onChange={() => toggleStemSelection(stem.id)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="nft-stem-checkbox"
+                                  />
+                                  <span className="nft-stem-emoji">
+                                    {stem.type === "vocals" ? "🎤" :
+                                      stem.type === "drums" ? "🥁" :
+                                        stem.type === "bass" ? "🎸" :
+                                          stem.type === "piano" ? "🎹" :
+                                            stem.type === "guitar" ? "🎸" : "🎵"}
+                                  </span>
+                                  <span className="nft-stem-name">
+                                    {stem.type.charAt(0).toUpperCase() + stem.type.slice(1)}
+                                  </span>
+                                  <MintStemButton
+                                    stemId={stem.id}
+                                    stemTitle={`${stem.type} - ${track.title}`}
+                                    stemType={stem.type}
+                                    trackTitle={track.title}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
                       )}
                     </div>
                   );
@@ -888,6 +979,23 @@ export default function ReleaseDetails() {
           </section>
         )
       }
+
+      {/* Batch Mint & List Modal */}
+      {batchModalStems && batchModalStems.length > 0 && (
+        <BatchMintListModal
+          stems={batchModalStems}
+          onClose={() => {
+            setBatchModalStems(null);
+            setSelectedNftStems(new Set());
+          }}
+          onComplete={() => {
+            // Refresh release to pick up new NFT status
+            if (token && id) {
+              getRelease(token, id as string).then(r => setRelease(r)).catch(() => {});
+            }
+          }}
+        />
+      )}
 
       {/* Stem Pricing Panel - Only for owners with stems */}
       {isOwner && release.tracks && (() => {
@@ -1457,6 +1565,62 @@ export default function ReleaseDetails() {
           background: #27272a;
           padding: 4px 10px;
           border-radius: 12px;
+        }
+
+        .nft-batch-bar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px 20px;
+          border-bottom: 1px solid #27272a;
+          animation: fadeSlideIn 0.2s ease;
+        }
+
+        .nft-select-all-label {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 13px;
+          color: #a1a1aa;
+          cursor: pointer;
+          user-select: none;
+          transition: color 0.15s;
+        }
+
+        .nft-select-all-label:hover {
+          color: #fff;
+        }
+
+        .nft-batch-checkbox,
+        .nft-stem-checkbox {
+          width: 16px;
+          height: 16px;
+          accent-color: #8b5cf6;
+          cursor: pointer;
+          flex-shrink: 0;
+        }
+
+        .nft-batch-btn {
+          padding: 6px 16px;
+          background: #8b5cf6;
+          border: none;
+          border-radius: 8px;
+          color: #fff;
+          font-size: 13px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s;
+          white-space: nowrap;
+        }
+
+        .nft-batch-btn:hover {
+          background: #7c3aed;
+          transform: translateY(-1px);
+        }
+
+        .nft-stem-selected {
+          border-color: #8b5cf6 !important;
+          background: rgba(139, 92, 246, 0.1) !important;
         }
 
         .nft-stems-grid {

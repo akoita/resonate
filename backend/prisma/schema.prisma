@@ -132,12 +132,13 @@ model StemNftMint {
   royaltyBps      Int
   remixable       Boolean
   metadataUri     String
-  transactionHash String   @unique
+  transactionHash String
   blockNumber     BigInt
   mintedAt        DateTime
   createdAt       DateTime @default(now())
   stem            Stem     @relation(fields: [stemId], references: [id])
 
+  @@unique([transactionHash, tokenId], name: "transactionHash_tokenId")
   @@index([tokenId, chainId])
   @@index([creatorAddress])
 }
@@ -154,7 +155,7 @@ model StemListing {
   amount          BigInt
   paymentToken    String
   expiresAt       DateTime
-  transactionHash String         @unique
+  transactionHash String
   blockNumber     BigInt
   status          String         @default("active")
   listedAt        DateTime
@@ -164,6 +165,7 @@ model StemListing {
   stem            Stem?          @relation(fields: [stemId], references: [id])
   purchases       StemPurchase[]
 
+  @@unique([transactionHash, listingId], name: "transactionHash_listingId")
   @@index([listingId, chainId])
   @@index([sellerAddress])
   @@index([tokenId, chainId])

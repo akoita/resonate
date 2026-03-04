@@ -249,7 +249,12 @@ export class ContractsService implements OnModuleInit {
         createData.stem = { connect: { id: stem.id } };
 
         await prisma.stemNftMint.upsert({
-          where: { transactionHash: event.transactionHash },
+          where: {
+            transactionHash_tokenId: {
+              transactionHash: event.transactionHash,
+              tokenId: BigInt(event.tokenId),
+            },
+          },
           create: createData,
           update: {},
         });
@@ -334,7 +339,12 @@ export class ContractsService implements OnModuleInit {
         });
 
         await prisma.stemListing.upsert({
-          where: { transactionHash: event.transactionHash },
+          where: {
+            transactionHash_listingId: {
+              transactionHash: event.transactionHash,
+              listingId: BigInt(event.listingId),
+            },
+          },
           create: listingData,
           update: {},
         });

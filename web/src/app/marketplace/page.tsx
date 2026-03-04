@@ -525,7 +525,7 @@ export default function MarketplacePage() {
 
                                     {/* Play overlay */}
                                     {listing.stem?.uri && (
-                                        <div className="stem-card__play-overlay" onClick={() => togglePlay(listing.listingId, resolveUrl(listing.stem!.uri)!)}>
+                                        <div className="stem-card__play-overlay" onClick={() => togglePlay(listing.listingId, `${API_BASE}/catalog/stems/${listing.stem!.id}/preview`)}>
                                             <div className="stem-card__play-btn">
                                                 {playingId === listing.listingId ? "⏸" : "▶"}
                                             </div>
