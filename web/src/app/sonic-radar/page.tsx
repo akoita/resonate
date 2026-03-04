@@ -318,7 +318,7 @@ export default function SonicRadarPage() {
                                                             {allTxForTrack.map((tx, i) => (
                                                                 <span
                                                                     key={i}
-                                                                    className={`sonic-radar-stem-badge sonic-radar-stem-badge--${tx.status === 'submitted' ? 'pending' : tx.status}`}
+                                                                    className={`sonic-radar-stem-badge sonic-radar-stem-badge--${tx.status === 'curated' ? 'pending' : tx.status}`}
                                                                     title={tx.status === 'failed' ? friendlyError(tx.errorMessage) : undefined}
                                                                 >
                                                                     {statusIcon(tx.status)} {tx.stemName || "stem"}
