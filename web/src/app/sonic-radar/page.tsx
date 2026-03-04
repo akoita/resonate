@@ -246,8 +246,24 @@ export default function SonicRadarPage() {
                                 </div>
                                 <div className="sonic-radar-grid">
                                     {group.licenses.map((lic) => {
-                                        const storedTx = group.transactions.filter(t => t.trackId === lic.track.id && t.status === 'confirmed');
-                                        const purchasedStems = storedTx.map(t => t.stemName).filter(Boolean);
+                                        const allTxForTrack = group.transactions.filter(t => t.trackId === lic.track.id);
+                                        const hasAnyTx = allTxForTrack.length > 0;
+
+                                        // Helper for human-readable error reasons
+                                        const friendlyError = (msg: string | null) => {
+                                            if (!msg) return "Transaction failed";
+                                            if (msg.includes("AA23")) return "Session key expired — re-enable agent wallet";
+                                            if (msg.includes("budget")) return "Budget limit reached";
+                                            if (msg.includes("session_key_invalid")) return "Session key invalid — re-enable agent wallet";
+                                            if (msg.length > 100) return msg.slice(0, 100) + "…";
+                                            return msg;
+                                        };
+
+                                        const statusIcon = (status: string) => {
+                                            if (status === "confirmed") return "✅";
+                                            if (status === "failed") return "❌";
+                                            return "⏳";
+                                        };
 
                                         return (
                                             <div
@@ -297,13 +313,27 @@ export default function SonicRadarPage() {
                                                     <span className="sonic-radar-card-artist">
                                                         {lic.track.artist || lic.track.release?.title || "Unknown Artist"}
                                                     </span>
-                                                    {purchasedStems.length > 0 && (
+                                                    {hasAnyTx && (
                                                         <div className="sonic-radar-stems">
-                                                            {purchasedStems.map((stem, i) => (
-                                                                <span key={i} className="sonic-radar-stem-badge">
-                                                                    {stem}
+                                                            {allTxForTrack.map((tx, i) => (
+                                                                <span
+                                                                    key={i}
+                                                                    className={`sonic-radar-stem-badge sonic-radar-stem-badge--${tx.status === 'curated' ? 'pending' : tx.status}`}
+                                                                    title={tx.status === 'failed' ? friendlyError(tx.errorMessage) : undefined}
+                                                                >
+                                                                    {statusIcon(tx.status)} {tx.stemName || "stem"}
+                                                                    {tx.status === 'failed' && tx.errorMessage && (
+                                                                        <span className="sonic-radar-error-tooltip">
+                                                                            {friendlyError(tx.errorMessage)}
+                                                                        </span>
+                                                                    )}
                                                                 </span>
                                                             ))}
+                                                        </div>
+                                                    )}
+                                                    {!hasAnyTx && (
+                                                        <div className="sonic-radar-stems">
+                                                            <span className="sonic-radar-stem-badge">📡 Discovered</span>
                                                         </div>
                                                     )}
                                                 </div>

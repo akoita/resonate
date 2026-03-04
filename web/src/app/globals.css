@@ -8799,6 +8799,70 @@ tr[draggable="true"]:hover {
   border-radius: 4px;
   text-transform: capitalize;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  position: relative;
+  cursor: default;
+}
+
+.sonic-radar-stem-badge--confirmed {
+  background: rgba(34, 197, 94, 0.12);
+  color: rgba(34, 197, 94, 0.9);
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+.sonic-radar-stem-badge--failed {
+  background: rgba(239, 68, 68, 0.12);
+  color: rgba(239, 68, 68, 0.9);
+  border-color: rgba(239, 68, 68, 0.2);
+  cursor: help;
+}
+
+.sonic-radar-stem-badge--pending {
+  background: rgba(234, 179, 8, 0.12);
+  color: rgba(234, 179, 8, 0.9);
+  border-color: rgba(234, 179, 8, 0.2);
+}
+
+/* Failure reason tooltip */
+.sonic-radar-stem-badge--failed .sonic-radar-error-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20, 20, 30, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.85);
+  width: max-content;
+  max-width: 280px;
+  min-width: 160px;
+  white-space: normal;
+  word-break: break-word;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.sonic-radar-stem-badge--failed .sonic-radar-error-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: rgba(239, 68, 68, 0.3);
+}
+
+.sonic-radar-stem-badge--failed:hover .sonic-radar-error-tooltip {
+  display: block;
 }
 
 .sonic-radar-card-footer {
