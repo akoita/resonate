@@ -20,8 +20,16 @@ export class EventBus implements OnModuleDestroy {
     return this.subject
       .pipe(filter((e): e is T => e.eventName === eventName))
       .subscribe({
-        next: (event) => handler(event),
-        error: (err) => this.logger.error(`Subscriber error on ${eventName}`, err),
+        next: (event) => {
+          try {
+            handler(event);
+          } catch (err) {
+            this.logger.error(
+              `Subscriber error on "${eventName}": ${(err as Error).message}`,
+              (err as Error).stack,
+            );
+          }
+        },
       });
   }
 
