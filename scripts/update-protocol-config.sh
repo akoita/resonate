@@ -130,6 +130,11 @@ update_env_var "NEXT_PUBLIC_MARKETPLACE_ADDRESS" "$MARKETPLACE" "$WEB_ENV_LOCAL"
 update_env_var "NEXT_PUBLIC_CHAIN_ID" "$CHAIN_ID" "$WEB_ENV_LOCAL"
 echo -e "${GREEN}✓ web/.env.local updated${NC}"
 
+# --- Ensure database schema is up-to-date ---
+echo ""
+echo "Applying database migrations..."
+cd "$PROJECT_ROOT/backend" && npx prisma migrate deploy 2>/dev/null && echo -e "${GREEN}✓ Database migrations applied${NC}" || echo -e "${YELLOW}Warning: Could not apply migrations (database may not be ready)${NC}"
+
 # --- Reset indexer to near-current block ---
 echo ""
 echo "Resetting indexer state to current block..."
