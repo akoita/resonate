@@ -21,10 +21,10 @@ WORKDIR /app
 
 # Install Demucs and dependencies (PyTorch already included in base image)
 COPY requirements.txt patch_demucs.py ./
-# Install demucs and other dependencies, then patch for torchaudio 2.x compatibility
+# Install all dependencies from requirements.txt (google-cloud-pubsub, etc.)
+# then patch demucs for torchaudio 2.x compatibility
 # soundfile provides the audio I/O backend for torchaudio 2.x
-RUN pip install --no-cache-dir fastapi uvicorn python-multipart httpx "numpy<2.0.0" soundfile \
-    && pip install --no-cache-dir git+https://github.com/adefossez/demucs.git \
+RUN pip install --no-cache-dir -r requirements.txt soundfile \
     && python patch_demucs.py
 
 # Create models directory
