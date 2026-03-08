@@ -236,7 +236,7 @@ See [`workers/demucs/README.md`](workers/demucs/README.md) for full worker docum
 | ---------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Container shows "Created" (not "Up")     | Port conflict — another container or process is using the port | Run `docker ps` to find the conflicting container, then `docker stop <name>` |
 | Redis won't start (port 6379)            | Stale Redis from another project                               | `docker stop <old-redis-container>` then `make dev-up`                       |
-| Track stuck at "🟡 Separating..."        | Demucs worker not running                                      | Check `make worker-health` and `docker compose ps demucs-worker`             |
+| Track stuck at "🟡 Separating..."        | Demucs worker not running or import errors                     | Check `make worker-logs` for errors; rebuild with `make worker-rebuild`      |
 | No progress % during separation          | Worker can't POST progress back to backend                     | Verify `BACKEND_URL=http://host.docker.internal:3000` in `backend/.env`      |
 | `SEPOLIA_RPC_URL` warning in Docker logs | Env var not exported in current shell                          | Run `export SEPOLIA_RPC_URL=https://sepolia.drpc.org` before `make dev-up`   |
 
