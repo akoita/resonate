@@ -179,6 +179,8 @@ graph LR
 | **Auth**            | JWT tokens, passkey verification, role guards            | `auth.service.ts`, `roles.guard.ts`                                                                   |
 | **Identity**        | User profiles, wallet linking, artist onboarding         | `identity.service.ts`                                                                                 |
 | **Contracts**       | On-chain StemNFT minting, marketplace ops, event indexer | `contracts.service.ts`, `indexer.service.ts`                                                          |
+| **Trust**           | Creator trust tiers, stake requirements, clean history   | `trust.service.ts`, `trust.controller.ts`                                                             |
+| **Fingerprint**     | Audio fingerprinting for content protection              | `fingerprint.service.ts`, `fingerprint.controller.ts`                                                 |
 | **Storage**         | Abstraction over Local / Lighthouse IPFS providers       | `storage_provider.ts`, `local_storage_provider.ts`                                                    |
 | **Encryption**      | Stem-level encryption with access control metadata       | `encryption.service.ts`                                                                               |
 | **Sessions**        | WebSocket gateway for real-time progress & events        | `events.gateway.ts`                                                                                   |
@@ -266,10 +268,25 @@ make deploy-sepolia
 The script will:
 
 1. Check deployer wallet balance
-2. Deploy TransferValidator, StemNFT, and StemMarketplaceV2
-3. Verify contracts on Etherscan
-4. Save addresses to `contracts/deployments/sepolia.json`
-5. Update `backend/.env` and `web/.env.local` with new addresses
+2. Deploy TransferValidator (module)
+3. Deploy ContentProtection as UUPS proxy (implementation + ERC1967Proxy)
+4. Deploy RevenueEscrow (with escrow period)
+5. Deploy StemNFT and StemMarketplaceV2 (core)
+6. Configure: link modules (validator ↔ StemNFT, ContentProtection ↔ StemNFT, ContentProtection ↔ TransferValidator, marketplace whitelist)
+7. Verify contracts on Etherscan
+8. Save addresses to `contracts/deployments/sepolia.json`
+9. Update `backend/.env` and `web/.env.local` with new addresses
+
+**Environment variables** (set before deploy):
+
+| Variable           | Default      | Description                             |
+| ------------------ | ------------ | --------------------------------------- |
+| `STAKE_AMOUNT`     | `0.01 ether` | Default stake for new creators          |
+| `ESCROW_PERIOD`    | `30 days`    | Revenue escrow hold duration            |
+| `FEE_RECIPIENT`    | Deployer     | Protocol fee + slash treasury recipient |
+| `PROTOCOL_FEE_BPS` | `250` (2.5%) | Marketplace fee in basis points         |
+
+See [contracts/README.md](../../contracts/README.md) for full env vars, `cast` admin commands, and upgrade instructions.
 
 ---
 
