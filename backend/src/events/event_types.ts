@@ -343,6 +343,85 @@ export interface ContractListingCancelledEvent extends BaseEvent {
   blockNumber: string;
 }
 
+// ============ Content Protection Phase 2 Events ============
+
+export interface ContractContentAttestedEvent extends BaseEvent {
+  eventName: "contract.content_attested";
+  tokenId: string;
+  attesterAddress: string;
+  contentHash: string;
+  fingerprintHash: string;
+  metadataURI: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
+export interface ContractStakeDepositedEvent extends BaseEvent {
+  eventName: "contract.stake_deposited";
+  tokenId: string;
+  stakerAddress: string;
+  amount: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
+export interface ContractStakeSlashedEvent extends BaseEvent {
+  eventName: "contract.stake_slashed";
+  tokenId: string;
+  reporterAddress: string;
+  reporterAmount: string;
+  treasuryAmount: string;
+  burnedAmount: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
+export interface ContractEscrowReleasedEvent extends BaseEvent {
+  eventName: "contract.escrow_released";
+  tokenId: string;
+  beneficiaryAddress: string;
+  amount: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
+export interface ContractEscrowFrozenEvent extends BaseEvent {
+  eventName: "contract.escrow_frozen";
+  tokenId: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
+export interface ContractEscrowRedirectedEvent extends BaseEvent {
+  eventName: "contract.escrow_redirected";
+  tokenId: string;
+  newRecipient: string;
+  amount: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
+export interface ContractAddressBlacklistedEvent extends BaseEvent {
+  eventName: "contract.address_blacklisted";
+  account: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
 // ============ Agent Wallet Events ============
 
 export interface AgentWalletEnabledEvent extends BaseEvent {
@@ -479,6 +558,13 @@ export type ResonateEvent =
   | ContractStemSoldEvent
   | ContractRoyaltyPaidEvent
   | ContractListingCancelledEvent
+  | ContractContentAttestedEvent
+  | ContractStakeDepositedEvent
+  | ContractStakeSlashedEvent
+  | ContractEscrowReleasedEvent
+  | ContractEscrowFrozenEvent
+  | ContractEscrowRedirectedEvent
+  | ContractAddressBlacklistedEvent
   | AgentWalletEnabledEvent
   | AgentWalletDisabledEvent
   | AgentBudgetAlertEvent

@@ -30,6 +30,7 @@ import { WebAuthnModule } from "./webauthn/webauthn.module";
 import { X402Module } from "./x402/x402.module";
 import { FingerprintModule } from "./fingerprint/fingerprint.module";
 import { DmcaModule } from "./dmca/dmca.module";
+import { TrustModule } from "./trust/trust.module";
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { DmcaModule } from "./dmca/dmca.module";
     X402Module,
     FingerprintModule,
     DmcaModule,
+    TrustModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

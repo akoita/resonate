@@ -194,18 +194,14 @@ local-aa-deploy:
 	@echo "Updating configuration files..."
 	./scripts/update-aa-config.sh
 
-# Deploy protocol contracts (StemNFT, Marketplace, TransferValidator)
-# On a Sepolia fork, contracts already exist — only .env config is updated.
-# On local-only (chain 31337), contracts are deployed fresh via forge.
+# Deploy protocol contracts (StemNFT, Marketplace, TransferValidator, ContentProtection, RevenueEscrow)
+# On a Sepolia fork, the on-chain StemNFT predates Phase 2 (missing setContentProtection),
+# so we deploy all contracts fresh and update config with the new local addresses.
+# On local-only (chain 31337), all contracts are deployed fresh via forge.
 deploy-contracts:
-	@if docker compose --profile fork-aa ps anvil-fork --format '{{.Status}}' 2>/dev/null | grep -q 'Up'; then \
-		echo "Sepolia fork detected — contracts already deployed on Sepolia."; \
-		echo "Updating .env files with existing Sepolia deployment addresses..."; \
-	else \
-		echo "Deploying Resonate Protocol contracts..."; \
-		cd contracts && forge script script/DeployProtocol.s.sol --rpc-url http://localhost:8545 --broadcast; \
-		echo ""; \
-	fi
+	@echo "Deploying Resonate Protocol contracts..."
+	cd contracts && forge script script/DeployProtocol.s.sol --rpc-url http://localhost:8545 --broadcast
+	@echo ""
 	@echo "Updating configuration files..."
 	./scripts/update-protocol-config.sh
 	@echo "Clearing Next.js cache (env vars are baked at build time)..."

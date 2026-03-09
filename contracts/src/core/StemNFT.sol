@@ -9,6 +9,7 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC2981} from "@openzeppelin/contracts/interfaces/IERC2981.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {ITransferValidator} from "../interfaces/ITransferValidator.sol";
+import {IContentProtection} from "../interfaces/IContentProtection.sol";
 
 /**
  * @title StemNFT
@@ -62,6 +63,9 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
     /// @notice Optional transfer validator module
     ITransferValidator public transferValidator;
 
+    /// @notice Optional content protection module (attestation gate)
+    IContentProtection public contentProtection;
+
     // ============ Events ============
     event StemMinted(
         uint256 indexed tokenId,
@@ -71,6 +75,7 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
     );
 
     event TransferValidatorSet(address indexed validator);
+    event ContentProtectionSet(address indexed protection);
     event RoyaltyUpdated(uint256 indexed tokenId, address receiver, uint96 bps);
 
     // ============ Errors ============
@@ -79,6 +84,7 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
     error InvalidRoyalty(uint96 bps);
     error TransferNotAllowed();
     error ParentNotRemixable(uint256 parentId);
+    error NotAttested(uint256 tokenId);
 
     // ============ Constructor ============
     constructor(string memory baseUri) ERC1155(baseUri) {
@@ -113,6 +119,17 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
             : royaltyBps;
         if (effectiveRoyalty > MAX_ROYALTY_BPS)
             revert InvalidRoyalty(royaltyBps);
+
+        // Content protection gate: require attestation if module is set
+        // Note: tokenId is assigned below, so attestation uses the next ID.
+        // The caller must pre-attest with the correct tokenId (_tokenIdCounter + 1).
+        uint256 nextId = _tokenIdCounter + 1;
+        if (
+            address(contentProtection) != address(0) &&
+            !contentProtection.isAttested(nextId)
+        ) {
+            revert NotAttested(nextId);
+        }
 
         // Validate parent stems (if remix)
         for (uint256 i; i < parentIds.length; ++i) {
@@ -212,6 +229,17 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         transferValidator = ITransferValidator(validator);
         emit TransferValidatorSet(validator);
+    }
+
+    /**
+     * @notice Set content protection module (attestation gate on mint)
+     * @param protection Address of ContentProtection contract (address(0) to disable)
+     */
+    function setContentProtection(
+        address protection
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        contentProtection = IContentProtection(protection);
+        emit ContentProtectionSet(protection);
     }
 
     // ============ View Functions ============

@@ -1,0 +1,316 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.28;
+
+import {
+    UUPSUpgradeable
+} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import {
+    Initializable
+} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {
+    ReentrancyGuard
+} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+/**
+ * @title ContentProtection
+ * @notice On-chain attestation, staking, slashing, and blacklisting for content integrity.
+ *
+ * Design:
+ *   - Creators attest ownership of content before minting stems
+ *   - Stake is required per tokenId — slashed on confirmed theft
+ *   - Slash split: 60% reporter · 30% treasury · 10% burned
+ *   - UUPS upgradeable for parameter tuning (stake amounts, escrow periods)
+ *
+ * @custom:version 1.0.0
+ */
+contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
+    // ============ Structs ============
+
+    struct Attestation {
+        bytes32 contentHash;
+        bytes32 fingerprintHash;
+        string metadataURI;
+        address attester;
+        uint256 timestamp;
+        bool valid;
+    }
+
+    struct StakeInfo {
+        uint256 amount;
+        uint256 depositedAt;
+        bool active;
+    }
+
+    // ============ State ============
+
+    address public owner;
+    address public treasury;
+
+    uint256 public stakeAmount; // Default: 0.01 ETH (adjustable by owner)
+    uint256 public nextTokenId; // Counter for attestation-assigned token IDs
+
+    mapping(uint256 => Attestation) public attestations;
+    mapping(uint256 => StakeInfo) public stakes;
+    mapping(address => bool) internal _blacklisted;
+
+    // Slash distribution (basis points, must sum to 10000)
+    uint256 public constant SLASH_REPORTER_BPS = 6000; // 60%
+    uint256 public constant SLASH_TREASURY_BPS = 3000; // 30%
+    // Remaining 10% is burned (sent to address(0) equivalent — kept in contract then swept)
+    uint256 public constant BPS = 10000;
+
+    // ============ Events ============
+
+    event ContentAttested(
+        uint256 indexed tokenId,
+        address indexed attester,
+        bytes32 contentHash,
+        bytes32 fingerprintHash,
+        string metadataURI
+    );
+
+    event StakeDeposited(
+        uint256 indexed tokenId,
+        address indexed staker,
+        uint256 amount
+    );
+
+    event StakeSlashed(
+        uint256 indexed tokenId,
+        address indexed reporter,
+        uint256 reporterAmount,
+        uint256 treasuryAmount,
+        uint256 burnedAmount
+    );
+
+    event StakeRefunded(
+        uint256 indexed tokenId,
+        address indexed staker,
+        uint256 amount
+    );
+
+    event Blacklisted(address indexed account);
+    event BlacklistRemoved(address indexed account);
+    event StakeAmountUpdated(uint256 oldAmount, uint256 newAmount);
+    event TreasuryUpdated(address oldTreasury, address newTreasury);
+    event OwnershipTransferred(
+        address indexed previousOwner,
+        address indexed newOwner
+    );
+
+    // ============ Errors ============
+
+    error NotOwner();
+    error AlreadyAttested();
+    error NotAttested();
+    error AlreadyStaked();
+    error NotStaked();
+    error InsufficientStake();
+    error IsBlacklisted();
+    error NotBlacklisted();
+    error TransferFailed();
+    error ZeroAddress();
+
+    // ============ Modifiers ============
+
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert NotOwner();
+        _;
+    }
+
+    // ============ Initializer (UUPS) ============
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
+        address _owner,
+        address _treasury,
+        uint256 _stakeAmount
+    ) external initializer {
+        if (_owner == address(0)) revert ZeroAddress();
+        if (_treasury == address(0)) revert ZeroAddress();
+
+        owner = _owner;
+        treasury = _treasury;
+        stakeAmount = _stakeAmount;
+    }
+
+    // ============ Attestation ============
+
+    /**
+     * @notice Attest ownership of content. Must be called before StemNFT.mint().
+     * @param tokenId The token ID that will be minted in StemNFT
+     * @param contentHash SHA-256 hash of the audio content
+     * @param fingerprintHash Chromaprint fingerprint hash
+     * @param metadataURI IPFS URI or URL pointing to attestation metadata
+     */
+    function attest(
+        uint256 tokenId,
+        bytes32 contentHash,
+        bytes32 fingerprintHash,
+        string calldata metadataURI
+    ) external {
+        if (_blacklisted[msg.sender]) revert IsBlacklisted();
+        if (attestations[tokenId].valid) revert AlreadyAttested();
+
+        attestations[tokenId] = Attestation({
+            contentHash: contentHash,
+            fingerprintHash: fingerprintHash,
+            metadataURI: metadataURI,
+            attester: msg.sender,
+            timestamp: block.timestamp,
+            valid: true
+        });
+
+        emit ContentAttested(
+            tokenId,
+            msg.sender,
+            contentHash,
+            fingerprintHash,
+            metadataURI
+        );
+    }
+
+    // ============ Staking ============
+
+    /**
+     * @notice Stake ETH when publishing content. Required before minting.
+     * @param tokenId The token ID to stake for (must be attested first)
+     */
+    function stake(uint256 tokenId) external payable nonReentrant {
+        if (_blacklisted[msg.sender]) revert IsBlacklisted();
+        if (!attestations[tokenId].valid) revert NotAttested();
+        if (attestations[tokenId].attester != msg.sender) revert NotOwner();
+        if (stakes[tokenId].active) revert AlreadyStaked();
+        if (msg.value < stakeAmount) revert InsufficientStake();
+
+        stakes[tokenId] = StakeInfo({
+            amount: msg.value,
+            depositedAt: block.timestamp,
+            active: true
+        });
+
+        emit StakeDeposited(tokenId, msg.sender, msg.value);
+    }
+
+    /**
+     * @notice Slash a creator's stake on confirmed content theft.
+     *         60% to reporter, 30% to treasury, 10% burned.
+     * @param tokenId The token ID to slash
+     * @param reporter The address that reported the theft
+     */
+    function slash(
+        uint256 tokenId,
+        address reporter
+    ) external onlyOwner nonReentrant {
+        if (!stakes[tokenId].active) revert NotStaked();
+        if (reporter == address(0)) revert ZeroAddress();
+
+        uint256 total = stakes[tokenId].amount;
+        address attester = attestations[tokenId].attester;
+
+        // Invalidate
+        stakes[tokenId].active = false;
+        attestations[tokenId].valid = false;
+
+        // Calculate split (Checks-Effects-Interactions)
+        uint256 reporterAmount = (total * SLASH_REPORTER_BPS) / BPS;
+        uint256 treasuryAmount = (total * SLASH_TREASURY_BPS) / BPS;
+        uint256 burnedAmount = total - reporterAmount - treasuryAmount;
+
+        // Transfer (Interactions last — CEI pattern)
+        (bool ok1, ) = payable(reporter).call{value: reporterAmount}("");
+        if (!ok1) revert TransferFailed();
+
+        (bool ok2, ) = payable(treasury).call{value: treasuryAmount}("");
+        if (!ok2) revert TransferFailed();
+
+        // Burned amount stays in contract (can be swept to treasury later)
+
+        // Auto-blacklist the attester
+        if (!_blacklisted[attester]) {
+            _blacklisted[attester] = true;
+            emit Blacklisted(attester);
+        }
+
+        emit StakeSlashed(
+            tokenId,
+            reporter,
+            reporterAmount,
+            treasuryAmount,
+            burnedAmount
+        );
+    }
+
+    /**
+     * @notice Refund stake to creator (admin action, e.g., after escrow period).
+     * @param tokenId The token ID to refund stake for
+     */
+    function refundStake(uint256 tokenId) external onlyOwner nonReentrant {
+        if (!stakes[tokenId].active) revert NotStaked();
+
+        address attester = attestations[tokenId].attester;
+        uint256 amount = stakes[tokenId].amount;
+
+        stakes[tokenId].active = false;
+
+        (bool ok, ) = payable(attester).call{value: amount}("");
+        if (!ok) revert TransferFailed();
+
+        emit StakeRefunded(tokenId, attester, amount);
+    }
+
+    // ============ Blacklist ============
+
+    function blacklist(address account) external onlyOwner {
+        if (account == address(0)) revert ZeroAddress();
+        _blacklisted[account] = true;
+        emit Blacklisted(account);
+    }
+
+    function removeBlacklist(address account) external onlyOwner {
+        if (!_blacklisted[account]) revert NotBlacklisted();
+        _blacklisted[account] = false;
+        emit BlacklistRemoved(account);
+    }
+
+    function isBlacklisted(address account) external view returns (bool) {
+        return _blacklisted[account];
+    }
+
+    // ============ Admin ============
+
+    function setStakeAmount(uint256 newAmount) external onlyOwner {
+        emit StakeAmountUpdated(stakeAmount, newAmount);
+        stakeAmount = newAmount;
+    }
+
+    function setTreasury(address newTreasury) external onlyOwner {
+        if (newTreasury == address(0)) revert ZeroAddress();
+        emit TreasuryUpdated(treasury, newTreasury);
+        treasury = newTreasury;
+    }
+
+    function transferOwnership(address newOwner) external onlyOwner {
+        if (newOwner == address(0)) revert ZeroAddress();
+        emit OwnershipTransferred(owner, newOwner);
+        owner = newOwner;
+    }
+
+    // ============ UUPS ============
+
+    function _authorizeUpgrade(address) internal override onlyOwner {}
+
+    // ============ Views ============
+
+    function isAttested(uint256 tokenId) external view returns (bool) {
+        return attestations[tokenId].valid;
+    }
+
+    function isStaked(uint256 tokenId) external view returns (bool) {
+        return stakes[tokenId].active;
+    }
+}

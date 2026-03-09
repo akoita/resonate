@@ -1,68 +1,43 @@
 # Security Best Practices Report
 
-**Repository:** akoita/resonate  
-**Date:** 2026-03-02 (Post-Remediation)  
-**Scope:** Backend (`backend/src/`), Frontend (`web/src/`)
+**Date:** 2026-03-09
+**Scope:** Backend (trust module, indexer events) and Frontend (staking flow)
+**Issue:** #406 — Content Protection Phase 2
 
 ## Executive Summary
 
-All 12 findings from the initial scan have been **remediated or confirmed mitigated**. The hardcoded encryption fallback, unguarded endpoints, magic-string auth bypasses, unsafe SQL, and excessive logging have all been fixed. The frontend remains clean.
+The Phase 2 backend and frontend changes follow security best practices overall. One critical finding was identified and fixed: the trust verification endpoint was missing authentication guards.
 
----
+## Critical Findings
 
-## Summary
+### SBPR-001: Missing Auth Guard on Trust Verify Endpoint [FIXED]
 
-| Severity  | Count (Original) | Count (Current) |
-| --------- | :--------------: | :-------------: |
-| Critical  |        1         |      0 ✅       |
-| High      |        4         |      0 ✅       |
-| Medium    |        5         |      0 ✅       |
-| Low       |        2         |      0 ✅       |
-| **Total** |      **12**      |      **0**      |
+**File:** `backend/src/modules/trust/trust.controller.ts` L32-35
+**Impact:** Anyone could call `POST /api/trust/:artistId/verify` to set any artist as "verified" tier, completely bypassing staking requirements.
+**Fix Applied:** Added `@UseGuards(AuthGuard("jwt"), RolesGuard)` and `@Roles("admin")` to the verify endpoint. GET endpoint now requires JWT auth.
 
----
+## High Findings
 
-## Remediation Status
+None.
 
-### Critical
+## Medium Findings
 
-| #   | Finding                              | Status   | Fix                                                                           |
-| --- | ------------------------------------ | -------- | ----------------------------------------------------------------------------- |
-| 001 | Hardcoded fallback encryption secret | ✅ Fixed | Removed fallback; throws at startup if `ENCRYPTION_SECRET`/`JWT_SECRET` unset |
+None.
 
-### High
+## Low Findings
 
-| #   | Finding                              | Status   | Fix                                              |
-| --- | ------------------------------------ | -------- | ------------------------------------------------ |
-| 002 | Unguarded `POST /payments/confirm`   | ✅ Fixed | Added `@UseGuards(AuthGuard("jwt"))`             |
-| 003 | Fully unguarded analytics controller | ✅ Fixed | Added class-level `@UseGuards(AuthGuard("jwt"))` |
-| 004 | Auth bypass via magic strings        | ✅ Fixed | Gated behind `INTERNAL_SERVICE_KEY` env var      |
-| 005 | `$executeRawUnsafe` in bootstrap     | ✅ Fixed | Replaced with `$executeRaw` tagged template      |
+### SBPR-002: Trust GET Endpoint Returns Internal Counters
 
-### Medium
+**File:** `backend/src/modules/trust/trust.controller.ts` L15-26
+**Impact:** Exposes `totalUploads`, `cleanHistory`, `disputesLost` which are internal metrics. Low risk since endpoint now requires auth, but consider limiting the response shape for non-admin callers.
+**Recommendation:** Return only `tier`, `stakeAmountWei`, `escrowDays` to the artist. Expose full details only to admins.
 
-| #   | Finding                                       | Status      | Fix                                                         |
-| --- | --------------------------------------------- | ----------- | ----------------------------------------------------------- |
-| 006 | JWT secret prefix logged at startup           | ✅ Fixed    | Logging removed from `auth.module.ts` and `jwt.strategy.ts` |
-| 007 | Full JWT payload logged on every auth         | ✅ Fixed    | All `console.log` calls removed from `validate()`           |
-| 008 | Auth header partial logging                   | ✅ Fixed    | `authHeader` field removed from request middleware          |
-| 009 | Hardcoded Sepolia chain in EIP-1271           | ✅ Fixed    | Uses `ConfigService` for `CHAIN_NAME`/`RPC_URL`             |
-| 010 | Direct `process.env` instead of ConfigService | ⚠️ Deferred | Code quality only — no direct vulnerability                 |
+## Scan Results
 
-### Low
-
-| #   | Finding                           | Status               | Fix                                                            |
-| --- | --------------------------------- | -------------------- | -------------------------------------------------------------- |
-| 011 | `JSON.parse` without try-catch    | ✅ Already mitigated | All 3 call sites already have try-catch guards                 |
-| 012 | Hardcoded dev-secret JWT fallback | ✅ Fixed             | Throws error when `NODE_ENV=production` and `JWT_SECRET` unset |
-
----
-
-## Frontend Assessment
-
-The Next.js frontend (`web/src/`) passed all scans cleanly:
-
-- ✅ No `dangerouslySetInnerHTML` or `innerHTML` usage
-- ✅ No `NEXT_PUBLIC_*SECRET/*KEY/*PASSWORD` exposed to the browser
-- ✅ No direct `document.cookie` manipulation
-- ✅ No insecure cookie settings
+| Category                 | Pattern                                     | Matches | Status |
+| ------------------------ | ------------------------------------------- | ------- | ------ |
+| Hardcoded secrets        | `password\|secret\|api_key\|private_key`    | 0       | Clean  |
+| Raw queries              | `rawQuery\|executeRaw\|\$queryRaw`          | 0       | Clean  |
+| XSS vectors              | `dangerouslySetInnerHTML\|innerHTML`        | 0       | Clean  |
+| Unsafe deserialization   | `JSON.parse\|eval(`                         | 0       | Clean  |
+| Missing input validation | `@Body()\|@Query()\|@Param()` without pipes | 0       | Clean  |
