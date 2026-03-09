@@ -584,24 +584,23 @@ export default function ArtistUploadPage() {
                     </select>
                   </label>
 
-                  <div className="artwork-manual-upload" style={{ marginBottom: "var(--space-6)" }}>
-                    <div className="studio-label" style={{ marginBottom: "12px", display: "flex", justifyContent: "space-between" }}>
+                  <div className="artwork-manual-upload" style={{ marginBottom: "var(--space-3)" }}>
+                    <div className="studio-label" style={{ marginBottom: "8px", display: "flex", justifyContent: "space-between" }}>
                       <span>Release Artwork</span>
                       {!formData.artworkUrl && <span style={{ color: "var(--color-error)", fontSize: "10px" }}>⚠️ Required for visibility</span>}
                     </div>
-                    <div style={{ display: "flex", gap: "32px", alignItems: "flex-start" }}>
-                      <div className="upload-item-artwork" style={{ width: "160px", height: "160px", margin: 0, borderRadius: "12px" }}>
+                    <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+                      <div className="upload-item-artwork" style={{ width: "80px", height: "80px", margin: 0, borderRadius: "8px" }}>
                         {formData.artworkUrl ? (
                           /* eslint-disable-next-line @next/next/no-img-element */
                           <img src={formData.artworkUrl} alt="Artwork" />
                         ) : (
-                          <div className="artwork-placeholder" style={{ fontSize: "40px" }}>🖼️</div>
+                          <div className="artwork-placeholder" style={{ fontSize: "28px" }}>🖼️</div>
                         )}
                       </div>
-                      <div style={{ flex: 1, paddingTop: "8px" }}>
-                        <p style={{ fontSize: "14px", fontWeight: 500, marginBottom: "8px", color: "#fff" }}>Cover Image</p>
-                        <p style={{ fontSize: "12px", opacity: 0.5, marginBottom: "20px", lineHeight: "1.5" }}>
-                          {formData.artworkUrl ? "Artwork detected from metadata. You can override it with a higher quality file." : "No artwork found. Please upload a high-resolution square cover (min 1500x1500px)."}
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontSize: "12px", opacity: 0.5, marginBottom: "8px", lineHeight: "1.4" }}>
+                          {formData.artworkUrl ? "Artwork detected. Override if needed." : "No artwork found. Upload a square cover (min 1500×1500px)."}
                         </p>
                         <input
                           type="file"
@@ -614,7 +613,7 @@ export default function ArtistUploadPage() {
                           variant="ghost"
                           onClick={() => artworkInputRef.current?.click()}
                           style={{
-                            padding: "6px 14px",
+                            padding: "4px 12px",
                             fontSize: "11px",
                             height: "auto",
                             borderColor: "rgba(255,255,255,0.1)",

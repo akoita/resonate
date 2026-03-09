@@ -89,18 +89,21 @@ const CHAIN_CONFIGS: Record<number, { chain: any; rpcUrl: string }> = {
 
 // Contract addresses by chain
 // For forked Sepolia, SEPOLIA_* vars may not be set — fall back to generic STEM_NFT_ADDRESS/MARKETPLACE_ADDRESS
-const CONTRACT_ADDRESSES: Record<number, { stemNFT: Address; marketplace: Address }> = {
+const CONTRACT_ADDRESSES: Record<number, { stemNFT: Address; marketplace: Address; contentProtection: Address }> = {
   31337: {
     stemNFT: (process.env.STEM_NFT_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
     marketplace: (process.env.MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
+    contentProtection: (process.env.CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
   },
   11155111: {
     stemNFT: (process.env.SEPOLIA_STEM_NFT_ADDRESS || process.env.STEM_NFT_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
     marketplace: (process.env.SEPOLIA_MARKETPLACE_ADDRESS || process.env.MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
+    contentProtection: (process.env.SEPOLIA_CONTENT_PROTECTION_ADDRESS || process.env.CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
   },
   84532: {
     stemNFT: (process.env.BASE_SEPOLIA_STEM_NFT_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
     marketplace: (process.env.BASE_SEPOLIA_MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
+    contentProtection: (process.env.BASE_SEPOLIA_CONTENT_PROTECTION_ADDRESS || process.env.CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
   },
 };
 
@@ -253,8 +256,18 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           toBlock: effectiveToBlock,
         });
 
+        // Fetch logs for ContentProtection contract
+        let contentProtectionLogs: any[] = [];
+        if (addresses.contentProtection && addresses.contentProtection !== "0x0000000000000000000000000000000000000000") {
+          contentProtectionLogs = await client.getLogs({
+            address: addresses.contentProtection,
+            fromBlock,
+            toBlock: effectiveToBlock,
+          });
+        }
+
         // Process all logs
-        for (const log of [...stemNftLogs, ...marketplaceLogs]) {
+        for (const log of [...stemNftLogs, ...marketplaceLogs, ...contentProtectionLogs]) {
           await this.processLog(log, chainId);
         }
 
@@ -264,7 +277,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           data: { lastBlockNumber: effectiveToBlock },
         });
 
-        totalEvents += stemNftLogs.length + marketplaceLogs.length;
+        totalEvents += stemNftLogs.length + marketplaceLogs.length + contentProtectionLogs.length;
         fromBlock = effectiveToBlock + 1n;
         batchCount++;
       }
@@ -302,7 +315,26 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
       // Decode event using viem
       const { eventName, decodedArgs } = this.decodeEvent(log);
 
-      // Store raw event
+      // Store raw event — sanitize BigInt values that Prisma can't serialize to JSON
+      const sanitizeArgs = (obj: any): any => {
+        if (obj === null || obj === undefined) return obj;
+        if (typeof obj === "bigint") return obj.toString();
+        if (Array.isArray(obj)) return obj.map(sanitizeArgs);
+        if (typeof obj === "object") {
+          const result: any = {};
+          for (const [k, v] of Object.entries(obj)) {
+            result[k] = sanitizeArgs(v);
+          }
+          return result;
+        }
+        return obj;
+      };
+
+      const safeArgs = sanitizeArgs(decodedArgs || {
+        topics: topics.map((t) => t.toString()),
+        data: data,
+      });
+
       await prisma.contractEvent.create({
         data: {
           eventName: eventName || "Unknown",
@@ -312,10 +344,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           logIndex: logIndex!,
           blockNumber: blockNumber!,
           blockHash: blockHash!,
-          args: decodedArgs || {
-            topics: topics.map((t) => t.toString()),
-            data: data,
-          },
+          args: safeArgs,
         },
       });
 

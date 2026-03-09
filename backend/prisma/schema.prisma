@@ -475,3 +475,40 @@ model CreatorTrust {
   updatedAt      DateTime @updatedAt
   artist         Artist   @relation(fields: [artistId], references: [id])
 }
+
+model ContentProtectionStake {
+  id              String    @id @default(uuid())
+  tokenId         String
+  chainId         Int
+  stakerAddress   String
+  amount          String // wei string
+  active          Boolean   @default(true)
+  depositedAt     DateTime
+  refundedAt      DateTime?
+  slashedAt       DateTime?
+  transactionHash String
+  blockNumber     BigInt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([tokenId, chainId])
+  @@index([stakerAddress])
+  @@index([active])
+}
+
+model ContentAttestation {
+  id              String   @id @default(uuid())
+  tokenId         String
+  chainId         Int
+  attesterAddress String
+  contentHash     String
+  fingerprintHash String
+  metadataURI     String
+  transactionHash String
+  blockNumber     BigInt
+  attestedAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@unique([tokenId, chainId])
+  @@index([attesterAddress])
+}

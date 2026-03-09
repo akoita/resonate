@@ -709,6 +709,204 @@ export function useAttestAndStake() {
   return { attestAndStake, pending, error, txHash };
 }
 
+// ============ Content Protection Read Hooks ============
+
+export interface StakeInfoData {
+  amount: bigint;
+  depositedAt: bigint;
+  active: boolean;
+}
+
+/**
+ * Hook to read stake info for a token from ContentProtection.stakes(tokenId).
+ * Returns raw on-chain data plus derived status and escrow info.
+ */
+export function useStakeInfo(tokenId: bigint | undefined) {
+  const { publicClient, chainId } = useZeroDev();
+  const [data, setData] = useState<StakeInfoData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  useEffect(() => {
+    if (tokenId === undefined) {
+      setLoading(false);
+      return;
+    }
+
+    const fetchStake = async () => {
+      try {
+        const { getAddresses, ContentProtectionABI } = await import("../contracts_abi/index");
+        const addresses = getAddresses(chainId);
+
+        if (addresses.contentProtection === "0x0000000000000000000000000000000000000000") {
+          if (mountedRef.current) { setLoading(false); }
+          return;
+        }
+
+        const result = await publicClient.readContract({
+          address: addresses.contentProtection as Address,
+          abi: ContentProtectionABI,
+          functionName: "stakes",
+          args: [tokenId],
+        }) as [bigint, bigint, boolean];
+
+        if (mountedRef.current) {
+          setData({ amount: result[0], depositedAt: result[1], active: result[2] });
+          setLoading(false);
+        }
+      } catch (err) {
+        if (mountedRef.current) {
+          setError(err instanceof Error ? err : new Error(String(err)));
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchStake();
+  }, [publicClient, chainId, tokenId]);
+
+  return { data, loading, error };
+}
+
+export interface AttestationInfoData {
+  contentHash: string;
+  fingerprintHash: string;
+  metadataURI: string;
+  attester: string;
+  timestamp: bigint;
+  valid: boolean;
+}
+
+/**
+ * Hook to read attestation info for a token from ContentProtection.attestations(tokenId).
+ */
+export function useAttestationInfo(tokenId: bigint | undefined) {
+  const { publicClient, chainId } = useZeroDev();
+  const [data, setData] = useState<AttestationInfoData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  useEffect(() => {
+    if (tokenId === undefined) {
+      setLoading(false);
+      return;
+    }
+
+    const fetchAttestation = async () => {
+      try {
+        const { getAddresses, ContentProtectionABI } = await import("../contracts_abi/index");
+        const addresses = getAddresses(chainId);
+
+        if (addresses.contentProtection === "0x0000000000000000000000000000000000000000") {
+          if (mountedRef.current) { setLoading(false); }
+          return;
+        }
+
+        const result = await publicClient.readContract({
+          address: addresses.contentProtection as Address,
+          abi: ContentProtectionABI,
+          functionName: "attestations",
+          args: [tokenId],
+        }) as [string, string, string, string, bigint, boolean];
+
+        if (mountedRef.current) {
+          setData({
+            contentHash: result[0],
+            fingerprintHash: result[1],
+            metadataURI: result[2],
+            attester: result[3],
+            timestamp: result[4],
+            valid: result[5],
+          });
+          setLoading(false);
+        }
+      } catch (err) {
+        if (mountedRef.current) {
+          setError(err instanceof Error ? err : new Error(String(err)));
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchAttestation();
+  }, [publicClient, chainId, tokenId]);
+
+  return { data, loading, error };
+}
+
+/**
+ * Hook to refund a stake after the escrow period has elapsed.
+ * Calls ContentProtection.refundStake(tokenId).
+ */
+export function useStakeRefund() {
+  const { publicClient, chainId } = useZeroDev();
+  const { address, status, kernelAccount } = useAuth();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const [txHash, setTxHash] = useState<string | null>(null);
+
+  const refund = useCallback(
+    async (tokenId: bigint) => {
+      if (status !== "authenticated" || !address) {
+        throw new Error("Wallet not connected");
+      }
+
+      setPending(true);
+      setError(null);
+      setTxHash(null);
+
+      try {
+        const { getAddresses, ContentProtectionABI } = await import("../contracts_abi/index");
+        const addresses = getAddresses(chainId);
+
+        if (addresses.contentProtection === "0x0000000000000000000000000000000000000000") {
+          throw new Error("ContentProtection contract not deployed on this chain");
+        }
+
+        const data = encodeFunctionData({
+          abi: ContentProtectionABI,
+          functionName: "refundStake",
+          args: [tokenId],
+        });
+
+        const hash = await sendContractTransaction(
+          publicClient,
+          chainId,
+          addresses.contentProtection as Address,
+          data,
+          BigInt(0),
+          address as Address,
+          kernelAccount
+        );
+
+        setTxHash(hash);
+        return hash;
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        setError(error);
+        throw error;
+      } finally {
+        setPending(false);
+      }
+    },
+    [publicClient, address, status, chainId, kernelAccount]
+  );
+
+  return { refund, pending, error, txHash };
+}
+
 /**
  * Hook to atomically mint and list a stem in a single UserOperation
  */

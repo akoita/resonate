@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
 import { ResonateEvent } from "../../events/event_types";
 import { Subject, Subscription, filter } from "rxjs";
 
-type Handler<T extends ResonateEvent> = (event: T) => void;
+type Handler<T extends ResonateEvent> = (event: T) => void | Promise<void> | unknown;
 
 @Injectable()
 export class EventBus implements OnModuleDestroy {
@@ -22,7 +22,16 @@ export class EventBus implements OnModuleDestroy {
       .subscribe({
         next: (event) => {
           try {
-            handler(event);
+            const result = handler(event);
+            // If handler returns a Promise (async), catch its rejections
+            if (result && typeof (result as any).catch === 'function') {
+              (result as any).catch((err: Error) => {
+                this.logger.error(
+                  `Async subscriber error on "${eventName}": ${err.message}`,
+                  err.stack,
+                );
+              });
+            }
           } catch (err) {
             this.logger.error(
               `Subscriber error on "${eventName}": ${(err as Error).message}`,

@@ -1395,6 +1395,22 @@ a {
   display: grid;
   grid-template-columns: 1fr 500px;
   gap: var(--space-10);
+  height: calc(100vh - 100px);
+  align-items: stretch;
+}
+
+.upload-grid > .ui-card {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.upload-grid > .ui-card > .ui-card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .upload-drop {
@@ -1411,8 +1427,34 @@ a {
 }
 
 .upload-panel {
-  display: grid;
-  gap: var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.upload-panel > .settings-group {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: var(--space-2);
+}
+
+/* Slim scrollbar for settings panel */
+.upload-panel > .settings-group::-webkit-scrollbar {
+  width: 4px;
+}
+.upload-panel > .settings-group::-webkit-scrollbar-track {
+  background: transparent;
+}
+.upload-panel > .settings-group::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+.upload-panel > .settings-group::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .upload-list {

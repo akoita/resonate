@@ -268,6 +268,85 @@ export class MetadataController {
     };
   }
 
+  // ============ CONTENT PROTECTION ROUTES ============
+
+  /**
+   * Get all stakes for a wallet address
+   * GET /api/metadata/stakes/:owner
+   */
+  @Get("stakes/:owner")
+  async getStakesByOwner(@Param("owner") owner: string) {
+    const stakes = await this.contractsService.getStakesByOwner(owner);
+
+    return {
+      owner: owner.toLowerCase(),
+      total: stakes.length,
+      stakes: stakes.map((s) => ({
+        tokenId: s.tokenId.toString(),
+        chainId: s.chainId,
+        amount: s.amount,
+        active: s.active,
+        depositedAt: s.depositedAt.toISOString(),
+        refundedAt: s.refundedAt?.toISOString() || null,
+        slashedAt: s.slashedAt?.toISOString() || null,
+        transactionHash: s.transactionHash,
+        releaseTitle: (s as any).releaseTitle || null,
+      })),
+    };
+  }
+
+  /**
+   * Get aggregate staking analytics for an owner
+   * GET /api/metadata/stakes/analytics/:owner
+   */
+  @Get("stakes/analytics/:owner")
+  async getStakeAnalytics(@Param("owner") owner: string) {
+    const stakes = await this.contractsService.getStakesByOwner(owner);
+
+    const active = stakes.filter(s => s.active);
+    const slashed = stakes.filter(s => !!(s as any).slashedAt);
+    const refunded = stakes.filter(s => !!(s as any).refundedAt);
+
+    // Sum amounts (wei strings)
+    const totalStakedWei = active.reduce((sum, s) => sum + BigInt(s.amount), 0n);
+    const totalSlashedWei = slashed.reduce((sum, s) => sum + BigInt(s.amount), 0n);
+
+    return {
+      owner: owner.toLowerCase(),
+      totalStaked: totalStakedWei.toString(),
+      totalSlashed: totalSlashedWei.toString(),
+      counts: {
+        total: stakes.length,
+        active: active.length,
+        slashed: slashed.length,
+        refunded: refunded.length,
+      },
+      stakes: stakes.map((s) => ({
+        releaseTitle: (s as any).releaseTitle || null,
+        amount: s.amount,
+        active: s.active,
+        depositedAt: s.depositedAt.toISOString(),
+        slashedAt: s.slashedAt?.toISOString() || null,
+        refundedAt: s.refundedAt?.toISOString() || null,
+      })),
+    };
+  }
+
+  /**
+   * Get content protection status for a release
+   * GET /api/metadata/content-protection/release/:releaseId
+   */
+  @Get("content-protection/release/:releaseId")
+  async getContentProtectionByRelease(@Param("releaseId") releaseId: string) {
+    const result = await this.contractsService.getContentProtectionByRelease(releaseId);
+
+    if (!result) {
+      throw new NotFoundException(`Release ${releaseId} not found`);
+    }
+
+    return result;
+  }
+
   // ============ PARAMETERIZED ROUTES (must come after static routes) ============
 
   /**
