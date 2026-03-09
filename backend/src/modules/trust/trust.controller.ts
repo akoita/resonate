@@ -1,4 +1,7 @@
 import { Controller, Get, Param, Post, UseGuards, Logger } from "@nestjs/common";
+import { AuthGuard } from "@nestjs/passport";
+import { RolesGuard } from "../auth/roles.guard";
+import { Roles } from "../auth/roles.decorator";
 import { TrustService } from "./trust.service";
 
 @Controller("api/trust")
@@ -12,6 +15,7 @@ export class TrustController {
    * Returns the trust tier and stake requirement for the given artist.
    */
   @Get(":artistId")
+  @UseGuards(AuthGuard("jwt"))
   async getTrustTier(@Param("artistId") artistId: string) {
     const trust = await this.trustService.getStakeRequirement(artistId);
     return {
@@ -30,6 +34,8 @@ export class TrustController {
    * Admin: manually set an artist as "verified" tier.
    */
   @Post(":artistId/verify")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
   async setVerified(@Param("artistId") artistId: string) {
     const trust = await this.trustService.setVerified(artistId);
     return { artistId: trust.artistId, tier: trust.tier };
