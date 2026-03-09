@@ -28,6 +28,8 @@ import { LibraryModule } from "./library/library.module";
 import { GenerationModule } from "./generation/generation.module";
 import { WebAuthnModule } from "./webauthn/webauthn.module";
 import { X402Module } from "./x402/x402.module";
+import { FingerprintModule } from "./fingerprint/fingerprint.module";
+import { DmcaModule } from "./dmca/dmca.module";
 
 @Module({
   imports: [
@@ -65,6 +67,8 @@ import { X402Module } from "./x402/x402.module";
     GenerationModule,
     WebAuthnModule,
     X402Module,
+    FingerprintModule,
+    DmcaModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
