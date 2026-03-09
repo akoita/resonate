@@ -270,6 +270,20 @@ export async function getArtistMe(token: string) {
   return apiRequest<ArtistProfile | null>("/artists/me", { silentErrorCodes: [401] }, token);
 }
 
+export type TrustTier = {
+  artistId: string;
+  tier: string;
+  stakeAmountWei: string;
+  escrowDays: number;
+  totalUploads: number;
+  cleanHistory: number;
+  disputesLost: number;
+};
+
+export async function getTrustTier(artistId: string, token: string) {
+  return apiRequest<TrustTier>(`/api/trust/${artistId}`, { silentErrorCodes: [404] }, token);
+}
+
 export async function getArtistPublic(artistId: string) {
   return apiRequest<ArtistProfile>(`/artists/${artistId}`, {});
 }

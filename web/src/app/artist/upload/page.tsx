@@ -12,6 +12,9 @@ import { useToast } from "../../../components/ui/Toast";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { getArtistMe, uploadStems } from "../../../lib/api";
 import { extractMetadata } from "../../../lib/metadataExtractor";
+import { useTrustTier } from "../../../hooks/useTrustTier";
+import { useAttestAndStake } from "../../../hooks/useContracts";
+import StakeDepositCard from "../../../components/upload/StakeDepositCard";
 
 const MAX_FILE_SIZE_MB = 200;
 const MAX_TOTAL_SIZE_MB = 500;
@@ -51,6 +54,13 @@ export default function ArtistUploadPage() {
   const [isPublishing, setIsPublishing] = useState(false);
   const { addToast } = useToast();
   const artworkInputRef = useRef<HTMLInputElement>(null);
+  const { trustTier, loading: trustLoading } = useTrustTier();
+  const [stakeAcknowledged, setStakeAcknowledged] = useState(false);
+  const { attestAndStake, pending: stakePending } = useAttestAndStake();
+
+  // Stake is required unless tier is verified (waived) or trust data is still loading
+  const stakeRequired = !trustLoading && trustTier && trustTier.stakeAmountWei !== "0";
+  const stakeReady = !stakeRequired || stakeAcknowledged;
 
   // Form state
   const [formData, setFormData] = useState({
@@ -122,8 +132,52 @@ export default function ArtistUploadPage() {
         throw new Error("Not authenticated");
       }
 
-      // artistId is now derived from the authenticated user in the backend
-      // Using uploadStems to trigger the full ingestion flow
+      // Step 1: On-chain attest + stake (if required by trust tier)
+      if (stakeRequired && trustTier) {
+        addToast({
+          type: "info",
+          title: "Content Protection",
+          message: `Depositing ${Number(trustTier.stakeAmountWei) / 1e18} ETH stake. You'll be prompted to sign with your passkey.`,
+          duration: 5000,
+        });
+
+        // Compute contentHash from all audio files
+        const fileBuffers = await Promise.all(
+          stems.filter(s => s.file).map(s => s.file!.arrayBuffer())
+        );
+        const combined = new Uint8Array(
+          fileBuffers.reduce((total, buf) => total + buf.byteLength, 0)
+        );
+        let offset = 0;
+        for (const buf of fileBuffers) {
+          combined.set(new Uint8Array(buf), offset);
+          offset += buf.byteLength;
+        }
+        const hashBuffer = await crypto.subtle.digest('SHA-256', combined);
+        const contentHash = ('0x' + Array.from(new Uint8Array(hashBuffer))
+          .map(b => b.toString(16).padStart(2, '0')).join('')) as `0x${string}`;
+
+        // Use contentHash as fingerprintHash placeholder (real fingerprint computed server-side)
+        const fingerprintHash = contentHash;
+
+        const metadataURI = `resonate://release/${formData.releaseTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+
+        await attestAndStake({
+          contentHash,
+          fingerprintHash,
+          metadataURI,
+          stakeAmountWei: BigInt(trustTier.stakeAmountWei),
+        });
+
+        addToast({
+          type: "success",
+          title: "Stake deposited!",
+          message: `${Number(trustTier.stakeAmountWei) / 1e18} ETH staked. Now uploading release...`,
+          duration: 5000,
+        });
+      }
+
+      // Step 2: Submit to backend for processing
       const artist = await getArtistMe(token);
       if (!artist) throw new Error("Artist profile not found");
 
@@ -765,10 +819,30 @@ export default function ArtistUploadPage() {
                 </div>
               )}
 
-              <div style={{ marginTop: "2rem" }}>
+              <StakeDepositCard trustTier={trustTier} loading={trustLoading} onStakeAcknowledged={() => setStakeAcknowledged(true)} />
+
+              {!stakeReady && allReady && (
+                <div style={{
+                  marginTop: "1rem",
+                  padding: "12px 16px",
+                  background: "rgba(245, 158, 11, 0.1)",
+                  border: "1px solid rgba(245, 158, 11, 0.3)",
+                  borderRadius: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  fontSize: "13px",
+                  color: "#f59e0b",
+                }}>
+                  <span style={{ fontSize: "18px" }}>🔒</span>
+                  <span>Deposit your <strong>{trustTier ? (Number(trustTier.stakeAmountWei) / 1e18) : '...'} ETH</strong> stake above to unlock publishing.</span>
+                </div>
+              )}
+
+              <div style={{ marginTop: "1rem" }}>
                 <Button
-                  variant={allReady ? "primary" : "ghost"}
-                  disabled={!allReady || isPublishing}
+                  variant={allReady && stakeReady ? "primary" : "ghost"}
+                  disabled={!allReady || isPublishing || !stakeReady || stakePending}
                   onClick={handlePublish}
                   className="w-full"
                 >

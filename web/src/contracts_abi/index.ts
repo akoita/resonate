@@ -364,11 +364,132 @@ export const TransferValidatorABI = [
   },
 ] as const;
 
+// ============ ContentProtection (Phase 2) ============
+export const ContentProtectionABI = [
+  {
+    name: "attest",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "contentHash", type: "bytes32" },
+      { name: "fingerprintHash", type: "bytes32" },
+      { name: "metadataURI", type: "string" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "stake",
+    type: "function",
+    stateMutability: "payable",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    name: "refundStake",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    name: "stakeAmount",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "nextTokenId",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "attestations",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [
+      { name: "contentHash", type: "bytes32" },
+      { name: "fingerprintHash", type: "bytes32" },
+      { name: "metadataURI", type: "string" },
+      { name: "attester", type: "address" },
+      { name: "timestamp", type: "uint256" },
+      { name: "valid", type: "bool" },
+    ],
+  },
+  {
+    name: "stakes",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [
+      { name: "amount", type: "uint256" },
+      { name: "depositedAt", type: "uint256" },
+      { name: "active", type: "bool" },
+    ],
+  },
+  {
+    name: "isAttested",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "isStaked",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "isBlacklisted",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  // Events
+  {
+    name: "ContentAttested",
+    type: "event",
+    inputs: [
+      { name: "tokenId", type: "uint256", indexed: true },
+      { name: "attester", type: "address", indexed: true },
+      { name: "contentHash", type: "bytes32", indexed: false },
+      { name: "fingerprintHash", type: "bytes32", indexed: false },
+      { name: "metadataURI", type: "string", indexed: false },
+    ],
+  },
+  {
+    name: "StakeDeposited",
+    type: "event",
+    inputs: [
+      { name: "tokenId", type: "uint256", indexed: true },
+      { name: "staker", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    name: "StakeRefunded",
+    type: "event",
+    inputs: [
+      { name: "tokenId", type: "uint256", indexed: true },
+      { name: "staker", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+] as const;
+
 // ============ Contract Addresses (per network) ============
 export interface ContractAddresses {
   stemNFT: `0x${string}`;
   marketplace: `0x${string}`;
   transferValidator: `0x${string}`;
+  contentProtection: `0x${string}`;
 }
 
 // Deployed addresses by chain ID
@@ -378,24 +499,28 @@ export const ADDRESSES: Record<number, ContractAddresses> = {
     stemNFT: (process.env.NEXT_PUBLIC_STEM_NFT_ADDRESS || "0x0165878a594ca255338adfa4d48449f69242eb8f") as `0x${string}`,
     marketplace: (process.env.NEXT_PUBLIC_MARKETPLACE_ADDRESS || "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853") as `0x${string}`,
     transferValidator: (process.env.NEXT_PUBLIC_TRANSFER_VALIDATOR_ADDRESS || "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707") as `0x${string}`,
+    contentProtection: (process.env.NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
   },
   // Sepolia
   11155111: {
     stemNFT: (process.env.NEXT_PUBLIC_SEPOLIA_STEM_NFT_ADDRESS || process.env.NEXT_PUBLIC_STEM_NFT_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     marketplace: (process.env.NEXT_PUBLIC_SEPOLIA_MARKETPLACE_ADDRESS || process.env.NEXT_PUBLIC_MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     transferValidator: (process.env.NEXT_PUBLIC_SEPOLIA_TRANSFER_VALIDATOR_ADDRESS || process.env.NEXT_PUBLIC_TRANSFER_VALIDATOR_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
+    contentProtection: (process.env.NEXT_PUBLIC_SEPOLIA_CONTENT_PROTECTION_ADDRESS || process.env.NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
   },
   // Base Sepolia
   84532: {
     stemNFT: (process.env.NEXT_PUBLIC_BASE_SEPOLIA_STEM_NFT_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     marketplace: (process.env.NEXT_PUBLIC_BASE_SEPOLIA_MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     transferValidator: (process.env.NEXT_PUBLIC_BASE_SEPOLIA_TRANSFER_VALIDATOR_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
+    contentProtection: (process.env.NEXT_PUBLIC_BASE_SEPOLIA_CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
   },
   // Arbitrum Sepolia
   421614: {
     stemNFT: (process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_STEM_NFT_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     marketplace: (process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     transferValidator: (process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_TRANSFER_VALIDATOR_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
+    contentProtection: (process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
   },
 };
 

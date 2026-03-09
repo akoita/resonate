@@ -31,11 +31,11 @@ function isLocalDevEnvironment(): boolean {
   return rpcOverride.includes("localhost") || rpcOverride.includes("127.0.0.1");
 }
 
-// Get the bundler URL — local Alto (via Next.js proxy) or Pimlico cloud
+// Get the bundler URL — local Alto (via /api/bundler proxy) or Pimlico cloud
 function getBundlerUrl(chainId: number): string {
   const override = process.env.NEXT_PUBLIC_AA_BUNDLER;
   if (override) return override;
-  if (isLocalDevEnvironment()) return "http://localhost:3001/api/bundler";
+  if (isLocalDevEnvironment()) return "/api/bundler";
   const pimlicoApiKey = process.env.NEXT_PUBLIC_PIMLICO_API_KEY || "";
   return `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${pimlicoApiKey}`;
 }
@@ -615,6 +615,98 @@ export function useMintStem() {
   );
 
   return { mint, pending, error, txHash };
+}
+
+/**
+ * Hook to attest and stake for content protection in a single atomic batch UserOp.
+ *
+ * Flow: attest(tokenId, contentHash, fingerprintHash, metadataURI) + stake(tokenId)
+ * Both calls are sent as one batch UserOp — if either fails, nothing happens.
+ */
+export function useAttestAndStake() {
+  const { publicClient, chainId } = useZeroDev();
+  const { address, status, kernelAccount } = useAuth();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const [txHash, setTxHash] = useState<string | null>(null);
+
+  const attestAndStake = useCallback(
+    async (params: {
+      contentHash: Hex;         // keccak256 of the audio file(s)
+      fingerprintHash: Hex;     // keccak256 of a client-side fingerprint (or placeholder)
+      metadataURI: string;      // Release metadata URI (e.g., IPFS or API endpoint)
+      stakeAmountWei: bigint;   // Amount to stake (from trust tier)
+    }) => {
+      if (status !== "authenticated" || !address) {
+        throw new Error("Wallet not connected");
+      }
+
+      setPending(true);
+      setError(null);
+      setTxHash(null);
+
+      try {
+        const { getAddresses, ContentProtectionABI } = await import("../contracts_abi/index");
+        const addresses = getAddresses(chainId);
+
+        if (addresses.contentProtection === "0x0000000000000000000000000000000000000000") {
+          throw new Error("ContentProtection contract not deployed on this chain");
+        }
+
+        const cpAddress = addresses.contentProtection as Address;
+
+        // Generate a deterministic tokenId from address + contentHash
+        // This ensures uniqueness without needing an on-chain counter
+        const { keccak256: viemKeccak256, encodePacked } = await import("viem");
+        const tokenId = BigInt(
+          viemKeccak256(encodePacked(["address", "bytes32"], [address as Address, params.contentHash]))
+        );
+
+        // Build batch: attest + stake (atomic — one passkey prompt)
+        const calls: { to: Address; data: Hex; value?: bigint }[] = [
+          {
+            // attest(tokenId, contentHash, fingerprintHash, metadataURI)
+            to: cpAddress,
+            data: encodeFunctionData({
+              abi: ContentProtectionABI,
+              functionName: "attest",
+              args: [tokenId, params.contentHash, params.fingerprintHash, params.metadataURI],
+            }),
+          },
+          {
+            // stake(tokenId) with ETH value
+            to: cpAddress,
+            data: encodeFunctionData({
+              abi: ContentProtectionABI,
+              functionName: "stake",
+              args: [tokenId],
+            }),
+            value: params.stakeAmountWei,
+          },
+        ];
+
+        const hash = await sendBatchContractTransactions(
+          publicClient,
+          chainId,
+          calls,
+          address as Address,
+          kernelAccount
+        );
+
+        setTxHash(hash);
+        return { hash, tokenId };
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        setError(error);
+        throw error;
+      } finally {
+        setPending(false);
+      }
+    },
+    [publicClient, address, status, chainId, kernelAccount]
+  );
+
+  return { attestAndStake, pending, error, txHash };
 }
 
 /**
