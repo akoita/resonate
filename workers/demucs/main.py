@@ -3,12 +3,13 @@ import os
 import shutil
 import asyncio
 import subprocess
+import hashlib
 from pathlib import Path
 import tempfile
 import logging
 import httpx
 import json
-from typing import Optional
+from typing import Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor
 
 # Configure logging
@@ -35,6 +36,58 @@ RESULTS_TOPIC = os.getenv("PUBSUB_RESULTS_TOPIC", "stem-results")
 
 # Lazy-loaded GCS client (only imported when needed)
 _gcs_client = None
+
+
+def generate_fingerprint(audio_path: Path) -> Tuple[float, str, str]:
+    """Generate a Chromaprint fingerprint for an audio file.
+
+    Returns (duration, raw_fingerprint, fingerprint_hash).
+    The fingerprint_hash is a SHA-256 of the raw fingerprint for fast DB comparison.
+    """
+    try:
+        result = subprocess.run(
+            ["fpcalc", "-raw", "-json", str(audio_path)],
+            capture_output=True, text=True, timeout=120
+        )
+        if result.returncode != 0:
+            logger.error(f"fpcalc failed: {result.stderr}")
+            raise RuntimeError(f"fpcalc failed with exit code {result.returncode}")
+
+        data = json.loads(result.stdout)
+        duration = data.get("duration", 0.0)
+        raw_fingerprint = ",".join(str(v) for v in data.get("fingerprint", []))
+        fingerprint_hash = hashlib.sha256(raw_fingerprint.encode()).hexdigest()
+
+        logger.info(f"Fingerprint generated: duration={duration:.1f}s, hash={fingerprint_hash[:16]}...")
+        return duration, raw_fingerprint, fingerprint_hash
+    except FileNotFoundError:
+        logger.warning("fpcalc not found — skipping fingerprint generation")
+        return 0.0, "", ""
+    except subprocess.TimeoutExpired:
+        logger.warning("fpcalc timed out — skipping fingerprint generation")
+        return 0.0, "", ""
+
+
+async def submit_fingerprint(callback_url: str, release_id: str, track_id: str,
+                              duration: float, fingerprint: str, fingerprint_hash: str) -> dict:
+    """Submit fingerprint to the backend and check for duplicate/quarantine."""
+    url = f"{callback_url}/ingestion/fingerprint/{release_id}/{track_id}"
+    payload = {
+        "duration": duration,
+        "fingerprint": fingerprint,
+        "fingerprintHash": fingerprint_hash,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, json=payload)
+            if response.status_code == 200 or response.status_code == 201:
+                return response.json()
+            else:
+                logger.warning(f"Fingerprint submission returned {response.status_code}: {response.text}")
+                return {"quarantined": False}
+    except Exception as e:
+        logger.warning(f"Failed to submit fingerprint: {e}")
+        return {"quarantined": False}  # Don't block separation on fingerprint failures
 
 def get_gcs_client():
     global _gcs_client
@@ -282,6 +335,38 @@ async def process_pubsub_message(message_data: dict):
         input_path = Path(temp_dir) / f"track_{track_id}{ext}"
         logger.info(f"[PubSub] Downloading audio from {original_stem_uri}")
         await download_audio(original_stem_uri, input_path)
+
+        # ─── Fingerprint full track BEFORE separation ─────────────────
+        duration, fingerprint, fingerprint_hash = generate_fingerprint(input_path)
+        if fingerprint and callback_url:
+            logger.info(f"[PubSub] Submitting fingerprint for {track_id}")
+            fp_result = await submit_fingerprint(
+                callback_url, release_id, track_id,
+                duration, fingerprint, fingerprint_hash
+            )
+            if fp_result.get("quarantined"):
+                logger.warning(f"[PubSub] Track {track_id} QUARANTINED — skipping separation")
+                # Publish quarantine result instead of stems
+                from google.cloud import pubsub_v1
+                publisher = pubsub_v1.PublisherClient()
+                topic_path = publisher.topic_path(PUBSUB_PROJECT, RESULTS_TOPIC)
+                quarantine_msg = {
+                    "jobId": job_id,
+                    "releaseId": release_id,
+                    "artistId": artist_id,
+                    "trackId": track_id,
+                    "status": "quarantined",
+                    "reason": fp_result.get("reason", "Duplicate fingerprint detected"),
+                }
+                future = publisher.publish(
+                    topic_path,
+                    json.dumps(quarantine_msg).encode("utf-8"),
+                    jobId=job_id,
+                    releaseId=release_id,
+                )
+                future.result()
+                logger.info(f"[PubSub] Published quarantine result for job {job_id}")
+                return  # Skip Demucs entirely
 
         # Run separation (with progress callbacks if callbackUrl provided)
         results = await run_demucs_separation(input_path, temp_dir, release_id, track_id, callback_url)

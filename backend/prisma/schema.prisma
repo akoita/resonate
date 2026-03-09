@@ -51,39 +51,44 @@ model Artist {
 }
 
 model Release {
-  id              String    @id @default(uuid())
-  artistId        String
-  title           String
-  status          String    @default("processing")
-  type            String    @default("single")
-  primaryArtist   String?
-  featuredArtists String?
-  genre           String?
-  label           String?
-  releaseDate     DateTime?
-  explicit        Boolean   @default(false)
-  createdAt       DateTime  @default(now())
-  artworkUrl      String?
-  artworkData     Bytes?
-  artworkMimeType String?
-  artist          Artist    @relation(fields: [artistId], references: [id])
-  tracks          Track[]
+  id                   String    @id @default(uuid())
+  artistId             String
+  title                String
+  status               String    @default("processing")
+  type                 String    @default("single")
+  primaryArtist        String?
+  featuredArtists      String?
+  genre                String?
+  label                String?
+  releaseDate          DateTime?
+  explicit             Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  artworkUrl           String?
+  artworkData          Bytes?
+  artworkMimeType      String?
+  attestation          String?   @db.Text // JSON: {contentHash, isOriginalWork, sourceCredits[]}
+  attestationSignature String?   @db.Text // Wallet signature of the attestation
+  artist               Artist    @relation(fields: [artistId], references: [id])
+  tracks               Track[]
 }
 
 model Track {
-  id                 String    @id @default(uuid())
+  id                 String            @id @default(uuid())
   title              String
   isrc               String?
-  explicit           Boolean   @default(false)
-  createdAt          DateTime  @default(now())
-  position           Int       @default(1)
+  explicit           Boolean           @default(false)
+  createdAt          DateTime          @default(now())
+  position           Int               @default(1)
   releaseId          String
   artist             String?
-  processingStatus   String    @default("pending") // pending, processing, complete, failed
+  processingStatus   String            @default("pending") // pending, processing, complete, failed
+  contentStatus      String            @default("clean") // clean, quarantined, dmca_removed
   generationMetadata Json? // { provider, prompt, negativePrompt, seed, generatedAt, synthIdPresent, durationSeconds, sampleRate, cost }
   licenses           License[]
   stems              Stem[]
-  release            Release   @relation(fields: [releaseId], references: [id])
+  fingerprint        AudioFingerprint?
+  dmcaReports        DmcaReport[]
+  release            Release           @relation(fields: [releaseId], references: [id])
 }
 
 model Stem {
@@ -422,4 +427,36 @@ model KeyAuditLog {
   @@index([userId])
   @@index([action])
   @@index([createdAt])
+}
+
+// ============ Content Protection ============
+
+model AudioFingerprint {
+  id              String   @id @default(uuid())
+  trackId         String   @unique
+  fingerprint     String   @db.Text // Chromaprint raw fingerprint
+  fingerprintHash String // SHA-256 for fast dedup comparison
+  duration        Float // Audio duration in seconds
+  source          String   @default("upload") // "upload" | "stem"
+  createdAt       DateTime @default(now())
+  track           Track    @relation(fields: [trackId], references: [id])
+
+  @@index([fingerprintHash])
+}
+
+model DmcaReport {
+  id              String    @id @default(uuid())
+  trackId         String
+  claimantName    String
+  claimantEmail   String
+  originalWorkUrl String
+  reason          String    @db.Text
+  status          String    @default("pending") // pending, upheld, rejected, countered
+  counterNotice   String?   @db.Text
+  resolvedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  track           Track     @relation(fields: [trackId], references: [id])
+
+  @@index([trackId])
+  @@index([status])
 }

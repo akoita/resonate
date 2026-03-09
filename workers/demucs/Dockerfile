@@ -7,6 +7,7 @@ ARG CACHE_MODEL=1
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     libsndfile1 \
+    libchromaprint-tools \
     git \
     && rm -rf /var/lib/apt/lists/*
 
