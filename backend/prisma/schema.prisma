@@ -42,12 +42,13 @@ model Wallet {
 }
 
 model Artist {
-  id            String    @id @default(uuid())
-  userId        String    @unique
+  id            String        @id @default(uuid())
+  userId        String        @unique
   displayName   String
   payoutAddress String
-  user          User      @relation(fields: [userId], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
   releases      Release[]
+  creatorTrust  CreatorTrust?
 }
 
 model Release {
@@ -459,4 +460,18 @@ model DmcaReport {
 
   @@index([trackId])
   @@index([status])
+}
+
+model CreatorTrust {
+  id             String   @id @default(uuid())
+  artistId       String   @unique
+  tier           String   @default("new") // new, established, trusted, verified
+  totalUploads   Int      @default(0)
+  cleanHistory   Int      @default(0) // uploads with no disputes
+  disputesLost   Int      @default(0)
+  accountAgeDays Int      @default(0)
+  stakeAmountWei String   @default("10000000000000000") // 0.01 ETH in wei
+  escrowDays     Int      @default(30)
+  updatedAt      DateTime @updatedAt
+  artist         Artist   @relation(fields: [artistId], references: [id])
 }

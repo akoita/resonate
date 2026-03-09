@@ -27,6 +27,25 @@ const TRANSFER_BATCH_EVENT = parseAbiItem(
   "event TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values)"
 );
 
+// Content Protection Phase 2 events
+const CONTENT_ATTESTED_EVENT = parseAbiItem(
+  "event ContentAttested(uint256 indexed tokenId, address indexed attester, bytes32 contentHash, bytes32 fingerprintHash, string metadataURI)"
+);
+const STAKE_DEPOSITED_EVENT = parseAbiItem(
+  "event StakeDeposited(uint256 indexed tokenId, address indexed staker, uint256 amount)"
+);
+const STAKE_SLASHED_EVENT = parseAbiItem(
+  "event StakeSlashed(uint256 indexed tokenId, address indexed reporter, uint256 reporterAmount, uint256 treasuryAmount, uint256 burnedAmount)"
+);
+const ESCROW_RELEASED_EVENT = parseAbiItem(
+  "event EscrowReleased(uint256 indexed tokenId, address indexed beneficiary, uint256 amount)"
+);
+const ESCROW_FROZEN_EVENT = parseAbiItem("event EscrowFrozen(uint256 indexed tokenId)");
+const ESCROW_REDIRECTED_EVENT = parseAbiItem(
+  "event EscrowRedirected(uint256 indexed tokenId, address indexed newRecipient, uint256 amount)"
+);
+const BLACKLISTED_EVENT = parseAbiItem("event Blacklisted(address indexed account)");
+
 // ABI for querying on-chain listing state (to get actual expiry)
 const MARKETPLACE_GET_LISTING_ABI = [
   {
@@ -318,7 +337,14 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
       ROYALTY_PAID_EVENT,
       CANCELLED_EVENT,
       TRANSFER_SINGLE_EVENT,
-      TRANSFER_BATCH_EVENT
+      TRANSFER_BATCH_EVENT,
+      CONTENT_ATTESTED_EVENT,
+      STAKE_DEPOSITED_EVENT,
+      STAKE_SLASHED_EVENT,
+      ESCROW_RELEASED_EVENT,
+      ESCROW_FROZEN_EVENT,
+      ESCROW_REDIRECTED_EVENT,
+      BLACKLISTED_EVENT,
     ];
 
     for (const abiItem of ABIs) {
@@ -504,6 +530,113 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           eventVersion: 1,
           occurredAt,
           listingId: decodedArgs.listingId,
+          chainId,
+          contractAddress: address,
+          transactionHash: transactionHash!,
+          blockNumber: blockNumber!.toString(),
+        });
+        break;
+
+      // ============ Content Protection Phase 2 Events ============
+
+      case "ContentAttested":
+        this.eventBus.publish({
+          eventName: "contract.content_attested",
+          eventVersion: 1,
+          occurredAt,
+          tokenId: decodedArgs.tokenId?.toString(),
+          attesterAddress: decodedArgs.attester,
+          contentHash: decodedArgs.contentHash,
+          fingerprintHash: decodedArgs.fingerprintHash,
+          metadataURI: decodedArgs.metadataURI,
+          chainId,
+          contractAddress: address,
+          transactionHash: transactionHash!,
+          blockNumber: blockNumber!.toString(),
+        });
+        break;
+
+      case "StakeDeposited":
+        this.eventBus.publish({
+          eventName: "contract.stake_deposited",
+          eventVersion: 1,
+          occurredAt,
+          tokenId: decodedArgs.tokenId?.toString(),
+          stakerAddress: decodedArgs.staker,
+          amount: decodedArgs.amount?.toString(),
+          chainId,
+          contractAddress: address,
+          transactionHash: transactionHash!,
+          blockNumber: blockNumber!.toString(),
+        });
+        break;
+
+      case "StakeSlashed":
+        this.eventBus.publish({
+          eventName: "contract.stake_slashed",
+          eventVersion: 1,
+          occurredAt,
+          tokenId: decodedArgs.tokenId?.toString(),
+          reporterAddress: decodedArgs.reporter,
+          reporterAmount: decodedArgs.reporterAmount?.toString(),
+          treasuryAmount: decodedArgs.treasuryAmount?.toString(),
+          burnedAmount: decodedArgs.burnedAmount?.toString(),
+          chainId,
+          contractAddress: address,
+          transactionHash: transactionHash!,
+          blockNumber: blockNumber!.toString(),
+        });
+        break;
+
+      case "EscrowReleased":
+        this.eventBus.publish({
+          eventName: "contract.escrow_released",
+          eventVersion: 1,
+          occurredAt,
+          tokenId: decodedArgs.tokenId?.toString(),
+          beneficiaryAddress: decodedArgs.beneficiary,
+          amount: decodedArgs.amount?.toString(),
+          chainId,
+          contractAddress: address,
+          transactionHash: transactionHash!,
+          blockNumber: blockNumber!.toString(),
+        });
+        break;
+
+      case "EscrowFrozen":
+        this.eventBus.publish({
+          eventName: "contract.escrow_frozen",
+          eventVersion: 1,
+          occurredAt,
+          tokenId: decodedArgs.tokenId?.toString(),
+          chainId,
+          contractAddress: address,
+          transactionHash: transactionHash!,
+          blockNumber: blockNumber!.toString(),
+        });
+        break;
+
+      case "EscrowRedirected":
+        this.eventBus.publish({
+          eventName: "contract.escrow_redirected",
+          eventVersion: 1,
+          occurredAt,
+          tokenId: decodedArgs.tokenId?.toString(),
+          newRecipient: decodedArgs.newRecipient,
+          amount: decodedArgs.amount?.toString(),
+          chainId,
+          contractAddress: address,
+          transactionHash: transactionHash!,
+          blockNumber: blockNumber!.toString(),
+        });
+        break;
+
+      case "Blacklisted":
+        this.eventBus.publish({
+          eventName: "contract.address_blacklisted",
+          eventVersion: 1,
+          occurredAt,
+          account: decodedArgs.account,
           chainId,
           contractAddress: address,
           transactionHash: transactionHash!,
