@@ -125,13 +125,19 @@ Includes a **reputation badge** showing score, successful flags, and rejected fl
 
 | Layer     | Tests                                                        | Result      |
 | --------- | ------------------------------------------------------------ | ----------- |
-| Contracts | 33 Foundry tests (18 DisputeResolution + 15 CurationRewards) | ✅ Pass     |
+| Contracts | 40 Foundry tests (25 DisputeResolution + 15 CurationRewards) | ✅ Pass     |
 | Backend   | `tsc --noEmit`                                               | ✅ Clean    |
 | Frontend  | `npm run lint`                                               | ✅ 0 errors |
 
+## Sprint 2 (Complete)
+
+- ✅ Appeal process (max 2 appeals, 2× stake, losing-party-only)
+- ✅ Indexer integration for `DisputeFiled`/`DisputeResolved`/`DisputeAppealed`/`BountyClaimed`
+- ✅ Admin dispute queue (`GET /disputes/pending`, `PATCH /:id/review`)
+- ✅ Curator leaderboard (`/disputes/leaderboard`)
+- ✅ Frontend: AdminDisputeQueue, CuratorLeaderboard, appeal button in DisputeDashboard
+
 ## Future Sprints
 
-- **Sprint 2:** Indexer integration for `ContentReported`/`DisputeResolved` events
-- **Sprint 3:** Appeal process (max 2 appeals per dispute)
-- **Sprint 4:** Kleros/DAO jury for decentralized arbitration
-- **Sprint 5:** Public curation leaderboard, proof-of-humanity gate
+- **Sprint 3:** Kleros/DAO jury for decentralized arbitration
+- **Sprint 4:** Proof-of-humanity gate, enhanced reputation system

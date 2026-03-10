@@ -422,6 +422,69 @@ export interface ContractAddressBlacklistedEvent extends BaseEvent {
   blockNumber: string;
 }
 
+// ============ Community Curation Phase 3 Events ============
+
+export interface ContractDisputeFiledEvent extends BaseEvent {
+  eventName: "contract.dispute_filed";
+  disputeId: string;
+  tokenId: string;
+  reporterAddress: string;
+  creatorAddress: string;
+  evidenceURI: string;
+  counterStake: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
+export interface ContractDisputeResolvedEvent extends BaseEvent {
+  eventName: "contract.dispute_resolved";
+  disputeId: string;
+  tokenId: string;
+  outcome: string;
+  resolverAddress: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
+export interface ContractDisputeAppealedEvent extends BaseEvent {
+  eventName: "contract.dispute_appealed";
+  disputeId: string;
+  appealerAddress: string;
+  appealNumber: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
+export interface ContractContentReportedEvent extends BaseEvent {
+  eventName: "contract.content_reported";
+  disputeId: string;
+  tokenId: string;
+  reporterAddress: string;
+  counterStake: string;
+  evidenceURI: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
+export interface ContractBountyClaimedEvent extends BaseEvent {
+  eventName: "contract.bounty_claimed";
+  disputeId: string;
+  reporterAddress: string;
+  amount: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
 // ============ Agent Wallet Events ============
 
 export interface AgentWalletEnabledEvent extends BaseEvent {
@@ -565,6 +628,11 @@ export type ResonateEvent =
   | ContractEscrowFrozenEvent
   | ContractEscrowRedirectedEvent
   | ContractAddressBlacklistedEvent
+  | ContractDisputeFiledEvent
+  | ContractDisputeResolvedEvent
+  | ContractDisputeAppealedEvent
+  | ContractContentReportedEvent
+  | ContractBountyClaimedEvent
   | AgentWalletEnabledEvent
   | AgentWalletDisabledEvent
   | AgentBudgetAlertEvent

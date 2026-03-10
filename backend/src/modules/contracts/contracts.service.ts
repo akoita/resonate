@@ -555,6 +555,128 @@ export class ContractsService implements OnModuleInit {
       }
     });
 
+    // ============ Community Curation Phase 3 Events ============
+
+    // Handle DisputeFiled → create/update dispute in DB
+    this.eventBus.subscribe("contract.dispute_filed", async (event: any) => {
+      this.logger.log(`Processing DisputeFiled: disputeId=${event.disputeId}, tokenId=${event.tokenId}`);
+      try {
+        await prisma.dispute.upsert({
+          where: { id: `dispute_${event.disputeId}_${event.chainId}` },
+          create: {
+            id: `dispute_${event.disputeId}_${event.chainId}`,
+            disputeIdOnChain: event.disputeId,
+            tokenId: event.tokenId,
+            reporterAddr: event.reporterAddress?.toLowerCase(),
+            creatorAddr: event.creatorAddress?.toLowerCase(),
+            evidenceURI: event.evidenceURI || "",
+            counterStake: event.counterStake || "0",
+            status: "FILED",
+            chainId: event.chainId,
+            transactionHash: event.transactionHash,
+          },
+          update: {
+            status: "FILED",
+            transactionHash: event.transactionHash,
+          },
+        });
+        this.logger.log(`Stored DisputeFiled: disputeId=${event.disputeId}`);
+      } catch (error) {
+        this.logger.error(`Failed to process DisputeFiled: ${error}`);
+      }
+    });
+
+    // Handle DisputeResolved → update status/outcome, update reputation
+    this.eventBus.subscribe("contract.dispute_resolved", async (event: any) => {
+      this.logger.log(`Processing DisputeResolved: disputeId=${event.disputeId}, outcome=${event.outcome}`);
+      try {
+        const outcomeMap: Record<string, string> = { "1": "UPHELD", "2": "REJECTED", "3": "INCONCLUSIVE" };
+        const outcome = outcomeMap[event.outcome] || "INCONCLUSIVE";
+
+        await prisma.dispute.updateMany({
+          where: { disputeIdOnChain: event.disputeId },
+          data: {
+            status: "RESOLVED",
+            outcome,
+            resolvedAt: new Date(),
+          },
+        });
+
+        // Update curator reputation based on outcome
+        const dispute = await prisma.dispute.findFirst({
+          where: { disputeIdOnChain: event.disputeId },
+        });
+
+        if (dispute?.reporterAddr) {
+          const delta = outcome === "UPHELD" ? 10 : outcome === "REJECTED" ? -15 : 0;
+          if (delta !== 0) {
+            await prisma.curatorReputation.upsert({
+              where: { walletAddress: dispute.reporterAddr },
+              create: {
+                walletAddress: dispute.reporterAddr,
+                score: delta,
+                successfulFlags: outcome === "UPHELD" ? 1 : 0,
+                rejectedFlags: outcome === "REJECTED" ? 1 : 0,
+                totalBounties: 0,
+              },
+              update: {
+                score: { increment: delta },
+                ...(outcome === "UPHELD" ? { successfulFlags: { increment: 1 } } : {}),
+                ...(outcome === "REJECTED" ? { rejectedFlags: { increment: 1 } } : {}),
+              },
+            });
+          }
+        }
+
+        this.logger.log(`Resolved dispute ${event.disputeId}: ${outcome}`);
+      } catch (error) {
+        this.logger.error(`Failed to process DisputeResolved: ${error}`);
+      }
+    });
+
+    // Handle DisputeAppealed → update dispute status
+    this.eventBus.subscribe("contract.dispute_appealed", async (event: any) => {
+      this.logger.log(`Processing DisputeAppealed: disputeId=${event.disputeId}`);
+      try {
+        await prisma.dispute.updateMany({
+          where: { disputeIdOnChain: event.disputeId },
+          data: {
+            status: "APPEALED",
+            outcome: null,
+            resolvedAt: null,
+          },
+        });
+        this.logger.log(`Appealed dispute ${event.disputeId}`);
+      } catch (error) {
+        this.logger.error(`Failed to process DisputeAppealed: ${error}`);
+      }
+    });
+
+    // Handle BountyClaimed → update total bounties
+    this.eventBus.subscribe("contract.bounty_claimed", async (event: any) => {
+      this.logger.log(`Processing BountyClaimed: disputeId=${event.disputeId}, amount=${event.amount}`);
+      try {
+        if (event.reporterAddress) {
+          await prisma.curatorReputation.upsert({
+            where: { walletAddress: event.reporterAddress.toLowerCase() },
+            create: {
+              walletAddress: event.reporterAddress.toLowerCase(),
+              score: 0,
+              successfulFlags: 0,
+              rejectedFlags: 0,
+              totalBounties: 1,
+            },
+            update: {
+              totalBounties: { increment: 1 },
+            },
+          });
+        }
+        this.logger.log(`Updated bounties for ${event.reporterAddress}`);
+      } catch (error) {
+        this.logger.error(`Failed to process BountyClaimed: ${error}`);
+      }
+    });
+
     this.logger.log("Subscribed to contract events");
   }
 
@@ -1101,6 +1223,31 @@ export class ContractsService implements OnModuleInit {
     }
 
     return dispute;
+  }
+
+  async getPendingDisputes(limit: number) {
+    return prisma.dispute.findMany({
+      where: {
+        status: { in: ["filed", "evidence", "review", "FILED", "EVIDENCE", "APPEALED"] },
+      },
+      include: { evidences: true },
+      orderBy: { createdAt: "asc" },
+      take: limit,
+    });
+  }
+
+  async getDisputeById(disputeId: string) {
+    return prisma.dispute.findUnique({
+      where: { id: disputeId },
+      include: { evidences: { orderBy: { createdAt: "asc" } } },
+    });
+  }
+
+  async markDisputeUnderReview(disputeId: string) {
+    return prisma.dispute.update({
+      where: { id: disputeId },
+      data: { status: "review" },
+    });
   }
 
   async getCuratorReputation(walletAddress: string) {

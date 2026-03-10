@@ -21,7 +21,7 @@ import {IDisputeResolution} from "../interfaces/IDisputeResolution.sol";
  *   - Bounty split: 60% reporter, 30% treasury, 10% burned
  *     (matches ContentProtection.slash() distribution)
  *
- * @custom:version 1.0.0
+ * @custom:version 2.0.0
  */
 contract CurationRewards is Ownable, ReentrancyGuard {
     // ============ State ============
@@ -41,6 +41,12 @@ contract CurationRewards is Ownable, ReentrancyGuard {
 
     /// @notice disputeId → bounty claimed?
     mapping(uint256 => bool) public bountyClaimed;
+
+    /// @notice disputeId → appeal stake deposited by appealer
+    mapping(uint256 => uint256) public appealStakes;
+
+    /// @notice disputeId → appealer address
+    mapping(uint256 => address) public appealers;
 
     /// @notice reporter → reputation score
     mapping(address => int256) public reputationScores;
@@ -83,6 +89,25 @@ contract CurationRewards is Ownable, ReentrancyGuard {
         uint256 amount
     );
 
+    event AppealStakeDeposited(
+        uint256 indexed disputeId,
+        address indexed appealer,
+        uint256 amount
+    );
+
+    event AppealStakeSlashed(
+        uint256 indexed disputeId,
+        address indexed appealer,
+        address indexed winner,
+        uint256 amount
+    );
+
+    event AppealStakeRefunded(
+        uint256 indexed disputeId,
+        address indexed appealer,
+        uint256 amount
+    );
+
     event ReputationUpdated(
         address indexed curator,
         int256 oldScore,
@@ -99,6 +124,8 @@ contract CurationRewards is Ownable, ReentrancyGuard {
     error NotUpheld();
     error TransferFailed();
     error ZeroAddress();
+    error InsufficientAppealStake();
+    error NotDisputeParty();
 
     // ============ Constructor ============
 
@@ -263,6 +290,84 @@ contract CurationRewards is Ownable, ReentrancyGuard {
         }
 
         emit CounterStakeRefunded(disputeId, reporter, counterStake);
+    }
+
+    // ============ Appeals ============
+
+    /**
+     * @notice Appeal a resolved dispute. Only the losing party can appeal.
+     *         Requires 2x the original counter-stake as appeal deposit.
+     * @param disputeId The resolved dispute to appeal
+     */
+    function appealDispute(uint256 disputeId) external payable nonReentrant {
+        IDisputeResolution.Dispute memory d = disputeResolution.getDispute(
+            disputeId
+        );
+
+        // Verify caller is a party to the dispute
+        if (msg.sender != d.reporter && msg.sender != d.creator)
+            revert NotDisputeParty();
+
+        // Require 2x original counter-stake
+        uint256 requiredAppealStake = counterStakes[disputeId] * 2;
+        if (msg.value < requiredAppealStake) revert InsufficientAppealStake();
+
+        // Store appeal stake
+        appealStakes[disputeId] += msg.value;
+        appealers[disputeId] = msg.sender;
+
+        // Reset processing flag so new outcome can be handled
+        bountyClaimed[disputeId] = false;
+
+        // Trigger appeal on DisputeResolution (checks losing party, max appeals)
+        disputeResolution.appeal(disputeId, msg.sender);
+
+        emit AppealStakeDeposited(disputeId, msg.sender, msg.value);
+    }
+
+    /**
+     * @notice Process appeal outcome — returns or slashes appeal stake.
+     *         Called after a re-resolved dispute (post-appeal).
+     * @param disputeId The dispute that was re-resolved after appeal
+     */
+    function processAppealOutcome(uint256 disputeId) external nonReentrant {
+        IDisputeResolution.Dispute memory d = disputeResolution.getDispute(
+            disputeId
+        );
+        if (d.status != IDisputeResolution.DisputeStatus.Resolved)
+            revert DisputeNotResolved();
+
+        uint256 stake = appealStakes[disputeId];
+        if (stake == 0) return; // No appeal stake to process
+
+        address appealer = appealers[disputeId];
+        appealStakes[disputeId] = 0;
+        appealers[disputeId] = address(0);
+
+        // Determine if the appealer won on re-review
+        bool appealerWon;
+        if (appealer == d.creator) {
+            // Creator appealed → they won if the dispute was rejected this time
+            appealerWon =
+                d.outcome == IDisputeResolution.Outcome.Rejected ||
+                d.outcome == IDisputeResolution.Outcome.Inconclusive;
+        } else {
+            // Reporter appealed → they won if the dispute was upheld this time
+            appealerWon = d.outcome == IDisputeResolution.Outcome.Upheld;
+        }
+
+        if (appealerWon) {
+            // Refund appeal stake to appealer
+            (bool ok, ) = payable(appealer).call{value: stake}("");
+            if (!ok) revert TransferFailed();
+            emit AppealStakeRefunded(disputeId, appealer, stake);
+        } else {
+            // Slash appeal stake → send to the other party
+            address winner = appealer == d.creator ? d.reporter : d.creator;
+            (bool ok, ) = payable(winner).call{value: stake}("");
+            if (!ok) revert TransferFailed();
+            emit AppealStakeSlashed(disputeId, appealer, winner, stake);
+        }
     }
 
     // ============ Internal ============

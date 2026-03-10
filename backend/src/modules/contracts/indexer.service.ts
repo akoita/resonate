@@ -46,6 +46,23 @@ const ESCROW_REDIRECTED_EVENT = parseAbiItem(
 );
 const BLACKLISTED_EVENT = parseAbiItem("event Blacklisted(address indexed account)");
 
+// Community Curation Phase 3 events
+const DISPUTE_FILED_EVENT = parseAbiItem(
+  "event DisputeFiled(uint256 indexed disputeId, uint256 indexed tokenId, address indexed reporter, address creator, string evidenceURI, uint256 counterStake)"
+);
+const DISPUTE_RESOLVED_EVENT = parseAbiItem(
+  "event DisputeResolved(uint256 indexed disputeId, uint256 indexed tokenId, uint8 outcome, address resolver)"
+);
+const DISPUTE_APPEALED_EVENT = parseAbiItem(
+  "event DisputeAppealed(uint256 indexed disputeId, address indexed appealer, uint8 appealNumber)"
+);
+const CONTENT_REPORTED_EVENT = parseAbiItem(
+  "event ContentReported(uint256 indexed disputeId, uint256 indexed tokenId, address indexed reporter, uint256 counterStake, string evidenceURI)"
+);
+const BOUNTY_CLAIMED_EVENT = parseAbiItem(
+  "event BountyClaimed(uint256 indexed disputeId, address indexed reporter, uint256 amount)"
+);
+
 // ABI for querying on-chain listing state (to get actual expiry)
 const MARKETPLACE_GET_LISTING_ABI = [
   {
@@ -89,21 +106,27 @@ const CHAIN_CONFIGS: Record<number, { chain: any; rpcUrl: string }> = {
 
 // Contract addresses by chain
 // For forked Sepolia, SEPOLIA_* vars may not be set — fall back to generic STEM_NFT_ADDRESS/MARKETPLACE_ADDRESS
-const CONTRACT_ADDRESSES: Record<number, { stemNFT: Address; marketplace: Address; contentProtection: Address }> = {
+const CONTRACT_ADDRESSES: Record<number, { stemNFT: Address; marketplace: Address; contentProtection: Address; disputeResolution: Address; curationRewards: Address }> = {
   31337: {
     stemNFT: (process.env.STEM_NFT_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
     marketplace: (process.env.MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
     contentProtection: (process.env.CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
+    disputeResolution: (process.env.DISPUTE_RESOLUTION_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
+    curationRewards: (process.env.CURATION_REWARDS_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
   },
   11155111: {
     stemNFT: (process.env.SEPOLIA_STEM_NFT_ADDRESS || process.env.STEM_NFT_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
     marketplace: (process.env.SEPOLIA_MARKETPLACE_ADDRESS || process.env.MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
     contentProtection: (process.env.SEPOLIA_CONTENT_PROTECTION_ADDRESS || process.env.CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
+    disputeResolution: (process.env.SEPOLIA_DISPUTE_RESOLUTION_ADDRESS || process.env.DISPUTE_RESOLUTION_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
+    curationRewards: (process.env.SEPOLIA_CURATION_REWARDS_ADDRESS || process.env.CURATION_REWARDS_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
   },
   84532: {
     stemNFT: (process.env.BASE_SEPOLIA_STEM_NFT_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
     marketplace: (process.env.BASE_SEPOLIA_MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
     contentProtection: (process.env.BASE_SEPOLIA_CONTENT_PROTECTION_ADDRESS || process.env.CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
+    disputeResolution: (process.env.BASE_SEPOLIA_DISPUTE_RESOLUTION_ADDRESS || process.env.DISPUTE_RESOLUTION_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
+    curationRewards: (process.env.BASE_SEPOLIA_CURATION_REWARDS_ADDRESS || process.env.CURATION_REWARDS_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
   },
 };
 
@@ -266,8 +289,28 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           });
         }
 
+        // Fetch logs for DisputeResolution contract
+        let disputeResolutionLogs: any[] = [];
+        if (addresses.disputeResolution && addresses.disputeResolution !== "0x0000000000000000000000000000000000000000") {
+          disputeResolutionLogs = await client.getLogs({
+            address: addresses.disputeResolution,
+            fromBlock,
+            toBlock: effectiveToBlock,
+          });
+        }
+
+        // Fetch logs for CurationRewards contract
+        let curationRewardsLogs: any[] = [];
+        if (addresses.curationRewards && addresses.curationRewards !== "0x0000000000000000000000000000000000000000") {
+          curationRewardsLogs = await client.getLogs({
+            address: addresses.curationRewards,
+            fromBlock,
+            toBlock: effectiveToBlock,
+          });
+        }
+
         // Process all logs
-        for (const log of [...stemNftLogs, ...marketplaceLogs, ...contentProtectionLogs]) {
+        for (const log of [...stemNftLogs, ...marketplaceLogs, ...contentProtectionLogs, ...disputeResolutionLogs, ...curationRewardsLogs]) {
           await this.processLog(log, chainId);
         }
 
@@ -277,7 +320,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           data: { lastBlockNumber: effectiveToBlock },
         });
 
-        totalEvents += stemNftLogs.length + marketplaceLogs.length + contentProtectionLogs.length;
+        totalEvents += stemNftLogs.length + marketplaceLogs.length + contentProtectionLogs.length + disputeResolutionLogs.length + curationRewardsLogs.length;
         fromBlock = effectiveToBlock + 1n;
         batchCount++;
       }
@@ -374,6 +417,11 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
       ESCROW_FROZEN_EVENT,
       ESCROW_REDIRECTED_EVENT,
       BLACKLISTED_EVENT,
+      DISPUTE_FILED_EVENT,
+      DISPUTE_RESOLVED_EVENT,
+      DISPUTE_APPEALED_EVENT,
+      CONTENT_REPORTED_EVENT,
+      BOUNTY_CLAIMED_EVENT,
     ];
 
     for (const abiItem of ABIs) {
@@ -666,6 +714,89 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           eventVersion: 1,
           occurredAt,
           account: decodedArgs.account,
+          chainId,
+          contractAddress: address,
+          transactionHash: transactionHash!,
+          blockNumber: blockNumber!.toString(),
+        });
+        break;
+
+      // ============ Community Curation Phase 3 Events ============
+
+      case "DisputeFiled":
+        this.eventBus.publish({
+          eventName: "contract.dispute_filed",
+          eventVersion: 1,
+          occurredAt,
+          disputeId: decodedArgs.disputeId?.toString(),
+          tokenId: decodedArgs.tokenId?.toString(),
+          reporterAddress: decodedArgs.reporter,
+          creatorAddress: decodedArgs.creator,
+          evidenceURI: decodedArgs.evidenceURI,
+          counterStake: decodedArgs.counterStake?.toString(),
+          chainId,
+          contractAddress: address,
+          transactionHash: transactionHash!,
+          blockNumber: blockNumber!.toString(),
+        });
+        break;
+
+      case "DisputeResolved":
+        this.eventBus.publish({
+          eventName: "contract.dispute_resolved",
+          eventVersion: 1,
+          occurredAt,
+          disputeId: decodedArgs.disputeId?.toString(),
+          tokenId: decodedArgs.tokenId?.toString(),
+          outcome: decodedArgs.outcome?.toString(),
+          resolverAddress: decodedArgs.resolver,
+          chainId,
+          contractAddress: address,
+          transactionHash: transactionHash!,
+          blockNumber: blockNumber!.toString(),
+        });
+        break;
+
+      case "DisputeAppealed":
+        this.eventBus.publish({
+          eventName: "contract.dispute_appealed",
+          eventVersion: 1,
+          occurredAt,
+          disputeId: decodedArgs.disputeId?.toString(),
+          appealerAddress: decodedArgs.appealer,
+          appealNumber: decodedArgs.appealNumber?.toString(),
+          chainId,
+          contractAddress: address,
+          transactionHash: transactionHash!,
+          blockNumber: blockNumber!.toString(),
+        });
+        break;
+
+      case "ContentReported":
+        this.eventBus.publish({
+          eventName: "contract.content_reported",
+          eventVersion: 1,
+          occurredAt,
+          disputeId: decodedArgs.disputeId?.toString(),
+          tokenId: decodedArgs.tokenId?.toString(),
+          reporterAddress: decodedArgs.reporter,
+          counterStake: decodedArgs.counterStake?.toString(),
+          evidenceURI: decodedArgs.evidenceURI,
+          chainId,
+          contractAddress: address,
+          transactionHash: transactionHash!,
+          blockNumber: blockNumber!.toString(),
+        });
+        break;
+
+      case "BountyClaimed":
+        this.eventBus.publish({
+          eventName: "contract.bounty_claimed",
+          eventVersion: 1,
+          occurredAt,
+          disputeId: decodedArgs.disputeId?.toString(),
+          reporterAddress: decodedArgs.reporter,
+          amount: decodedArgs.amount?.toString(),
           chainId,
           contractAddress: address,
           transactionHash: transactionHash!,
