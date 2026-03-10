@@ -485,6 +485,18 @@ export interface ContractBountyClaimedEvent extends BaseEvent {
   blockNumber: string;
 }
 
+// ============ Notification Events ============
+
+export interface NotificationCreatedEvent extends BaseEvent {
+  eventName: "notification.created";
+  walletAddress: string;
+  notificationId: string;
+  type: string;
+  title: string;
+  message: string;
+  disputeId: string;
+}
+
 // ============ Agent Wallet Events ============
 
 export interface AgentWalletEnabledEvent extends BaseEvent {
@@ -645,5 +657,6 @@ export type ResonateEvent =
   | GenerationFailedEvent
   | RealtimeAudioEvent
   | RealtimeDisconnectedEvent
-  | MarketplaceListingNotifyEvent;
+  | MarketplaceListingNotifyEvent
+  | NotificationCreatedEvent;
 

@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Patch, Param, Query, Body, NotFoundException, BadRequestException, Logger } from "@nestjs/common";
 import { ContractsService } from "./contracts.service";
 import { IndexerService } from "./indexer.service";
+import { NotificationService } from "../notifications/notification.service";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
 import { keccak256, toHex } from "viem";
@@ -19,6 +20,7 @@ export class MetadataController {
   constructor(
     private readonly contractsService: ContractsService,
     private readonly indexerService: IndexerService,
+    private readonly notificationService: NotificationService,
     private readonly eventBus: EventBus,
   ) { }
 
@@ -458,6 +460,66 @@ export class MetadataController {
   @Patch("disputes/:id/review")
   async markDisputeUnderReview(@Param("id") id: string) {
     return this.contractsService.markDisputeUnderReview(id);
+  }
+
+  // ============ NOTIFICATION ENDPOINTS ============
+
+  /**
+   * Get notifications for a wallet
+   * GET /api/metadata/notifications/:address
+   */
+  @Get("notifications/:address")
+  async getNotifications(
+    @Param("address") address: string,
+    @Query("limit") limitStr?: string,
+    @Query("offset") offsetStr?: string,
+  ) {
+    const limit = Math.min(parseInt(limitStr || "20"), 100);
+    const offset = parseInt(offsetStr || "0");
+    const [notifications, unreadCount] = await Promise.all([
+      this.notificationService.getNotifications(address.toLowerCase(), limit, offset),
+      this.notificationService.getUnreadCount(address.toLowerCase()),
+    ]);
+    return { notifications, unreadCount };
+  }
+
+  /**
+   * Mark notification as read
+   * PATCH /api/metadata/notifications/:id/read
+   */
+  @Patch("notifications/:id/read")
+  async markNotificationRead(@Param("id") id: string) {
+    return this.notificationService.markAsRead(id);
+  }
+
+  /**
+   * Mark all notifications as read for a wallet
+   * PATCH /api/metadata/notifications/:address/read-all
+   */
+  @Patch("notifications/:address/read-all")
+  async markAllNotificationsRead(@Param("address") address: string) {
+    return this.notificationService.markAllAsRead(address.toLowerCase());
+  }
+
+  /**
+   * Get notification preferences
+   * GET /api/metadata/notifications/:address/preferences
+   */
+  @Get("notifications/:address/preferences")
+  async getNotificationPreferences(@Param("address") address: string) {
+    return this.notificationService.getPreferences(address.toLowerCase());
+  }
+
+  /**
+   * Update notification preferences
+   * PATCH /api/metadata/notifications/:address/preferences
+   */
+  @Patch("notifications/:address/preferences")
+  async updateNotificationPreferences(
+    @Param("address") address: string,
+    @Body() body: { disputeFiled?: boolean; disputeResolved?: boolean; disputeAppealed?: boolean; evidenceSubmitted?: boolean },
+  ) {
+    return this.notificationService.updatePreferences(address.toLowerCase(), body);
   }
 
   /**

@@ -17,7 +17,8 @@ import {
     GenerationFailedEvent, RealtimeAudioEvent, RealtimeDisconnectedEvent, MarketplaceListingNotifyEvent,
     SessionStartedEvent, SessionEndedEvent, AgentSelectionEvent, AgentMixPlannedEvent,
     AgentNegotiatedEvent, AgentDecisionMadeEvent, ContractStemListedEvent, ContractStemSoldEvent,
-    ContractListingCancelledEvent,
+    ContractListingCancelledEvent, NotificationCreatedEvent,
+    ContractDisputeFiledEvent, ContractDisputeResolvedEvent, ContractDisputeAppealedEvent,
 } from '../../events/event_types';
 import { LyriaRealtimeService } from '../generation/lyria_realtime.service';
 import { Subscription } from 'rxjs';
@@ -260,6 +261,61 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
             }
         }));
 
+        // ---- Dispute notification events → targeted to wallet rooms ----
+
+        this.subscriptions.push(this.eventBus.subscribe('contract.dispute_filed', (event: ContractDisputeFiledEvent) => {
+            this.logger.log(`Dispute filed: tokenId=${event.tokenId}, broadcasting...`);
+            if (this.server) {
+                this.server.emit('dispute.status', {
+                    type: 'filed',
+                    disputeId: event.disputeId,
+                    tokenId: event.tokenId,
+                    reporterAddress: event.reporterAddress,
+                    timestamp: event.occurredAt,
+                });
+            }
+        }));
+
+        this.subscriptions.push(this.eventBus.subscribe('contract.dispute_resolved', (event: ContractDisputeResolvedEvent) => {
+            this.logger.log(`Dispute resolved: disputeId=${event.disputeId}, broadcasting...`);
+            if (this.server) {
+                this.server.emit('dispute.status', {
+                    type: 'resolved',
+                    disputeId: event.disputeId,
+                    tokenId: event.tokenId,
+                    outcome: event.outcome,
+                    timestamp: event.occurredAt,
+                });
+            }
+        }));
+
+        this.subscriptions.push(this.eventBus.subscribe('contract.dispute_appealed', (event: ContractDisputeAppealedEvent) => {
+            this.logger.log(`Dispute appealed: disputeId=${event.disputeId}, broadcasting...`);
+            if (this.server) {
+                this.server.emit('dispute.status', {
+                    type: 'appealed',
+                    disputeId: event.disputeId,
+                    appealerAddress: event.appealerAddress,
+                    appealNumber: event.appealNumber,
+                    timestamp: event.occurredAt,
+                });
+            }
+        }));
+
+        // Targeted notification delivery to specific wallet rooms
+        this.subscriptions.push(this.eventBus.subscribe('notification.created', (event: NotificationCreatedEvent) => {
+            if (this.server) {
+                this.server.to(`wallet:${event.walletAddress}`).emit('notification.new', {
+                    id: event.notificationId,
+                    type: event.type,
+                    title: event.title,
+                    message: event.message,
+                    disputeId: event.disputeId,
+                    timestamp: event.occurredAt,
+                });
+            }
+        }));
+
         // ---- Generation events → broadcast real-time generation status ----
 
         this.subscriptions.push(this.eventBus.subscribe('generation.started', (event: GenerationStartedEvent) => {
@@ -340,6 +396,23 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
 
     handleConnection(client: Socket) {
         this.logger.log(`Client connected: ${client.id}`);
+
+        // Allow clients to join their wallet room for targeted notifications
+        client.on('wallet:join', (walletAddress: string) => {
+            if (walletAddress && typeof walletAddress === 'string') {
+                const room = `wallet:${walletAddress.toLowerCase()}`;
+                client.join(room);
+                this.logger.log(`Client ${client.id} joined room ${room}`);
+            }
+        });
+
+        client.on('wallet:leave', (walletAddress: string) => {
+            if (walletAddress && typeof walletAddress === 'string') {
+                const room = `wallet:${walletAddress.toLowerCase()}`;
+                client.leave(room);
+                this.logger.log(`Client ${client.id} left room ${room}`);
+            }
+        });
     }
 
     handleDisconnect(client: Socket) {
