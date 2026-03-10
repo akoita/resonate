@@ -15,6 +15,7 @@ import { formatRoyaltyBps, isZeroAddress } from "../../../lib/contracts";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { ListStemModal } from "../../../components/marketplace/ListStemModal";
 import { StemNftBadge } from "../../../components/marketplace/StemNftBadge";
+import ContentProtectionBadge from "../../../components/content-protection/ContentProtectionBadge";
 import { type Address } from "viem";
 
 // Chain-aware block explorer URLs
@@ -268,6 +269,11 @@ export default function StemDetailPage() {
                             </div>
                         )}
                     </div>
+
+                    {/* Content Protection */}
+                    {tokenId && (
+                      <ContentProtectionBadge tokenId={tokenId} expanded />
+                    )}
                 </div>
 
                 {/* Owner Actions */}

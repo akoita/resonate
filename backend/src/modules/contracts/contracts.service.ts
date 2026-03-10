@@ -9,6 +9,9 @@ import type {
   ContractStemSoldEvent,
   ContractRoyaltyPaidEvent,
   ContractListingCancelledEvent,
+  ContractContentAttestedEvent,
+  ContractStakeDepositedEvent,
+  ContractStakeSlashedEvent,
 } from "../../events/event_types";
 
 // ABI for the marketplace getListing view function
@@ -461,6 +464,97 @@ export class ContractsService implements OnModuleInit {
       }
     });
 
+    // ============ Content Protection Event Handlers ============
+
+    // Handle ContentAttested events
+    this.eventBus.subscribe("contract.content_attested", async (event: ContractContentAttestedEvent) => {
+      this.logger.log(`Processing ContentAttested: tokenId=${event.tokenId}, tx=${event.transactionHash}`);
+
+      try {
+        await prisma.contentAttestation.upsert({
+          where: {
+            tokenId_chainId: {
+              tokenId: event.tokenId.toString(),
+              chainId: event.chainId,
+            },
+          },
+          create: {
+            tokenId: event.tokenId.toString(),
+            chainId: event.chainId,
+            attesterAddress: event.attesterAddress.toLowerCase(),
+            contentHash: event.contentHash,
+            fingerprintHash: event.fingerprintHash,
+            metadataURI: event.metadataURI,
+            transactionHash: event.transactionHash,
+            blockNumber: BigInt(event.blockNumber),
+            attestedAt: new Date(event.occurredAt),
+          },
+          update: {},
+        });
+
+        this.logger.log(`Stored ContentAttestation: tokenId=${event.tokenId}`);
+      } catch (error) {
+        this.logger.error(`Failed to process ContentAttested: ${error}`);
+      }
+    });
+
+    // Handle StakeDeposited events
+    this.eventBus.subscribe("contract.stake_deposited", async (event: ContractStakeDepositedEvent) => {
+      this.logger.log(`Processing StakeDeposited: tokenId=${event.tokenId}, amount=${event.amount}, tx=${event.transactionHash}`);
+
+      try {
+        await prisma.contentProtectionStake.upsert({
+          where: {
+            tokenId_chainId: {
+              tokenId: event.tokenId.toString(),
+              chainId: event.chainId,
+            },
+          },
+          create: {
+            tokenId: event.tokenId.toString(),
+            chainId: event.chainId,
+            stakerAddress: event.stakerAddress.toLowerCase(),
+            amount: event.amount,
+            active: true,
+            depositedAt: new Date(event.occurredAt),
+            transactionHash: event.transactionHash,
+            blockNumber: BigInt(event.blockNumber),
+          },
+          update: {
+            amount: event.amount,
+            active: true,
+            stakerAddress: event.stakerAddress.toLowerCase(),
+          },
+        });
+
+        this.logger.log(`Stored ContentProtectionStake: tokenId=${event.tokenId}, amount=${event.amount}`);
+      } catch (error) {
+        this.logger.error(`Failed to process StakeDeposited: ${error}`);
+      }
+    });
+
+    // Handle StakeSlashed events
+    this.eventBus.subscribe("contract.stake_slashed", async (event: ContractStakeSlashedEvent) => {
+      this.logger.log(`Processing StakeSlashed: tokenId=${event.tokenId}, tx=${event.transactionHash}`);
+
+      try {
+        await prisma.contentProtectionStake.updateMany({
+          where: {
+            tokenId: event.tokenId.toString(),
+            chainId: event.chainId,
+          },
+          data: {
+            active: false,
+            slashedAt: new Date(event.occurredAt),
+          },
+        });
+
+        this.logger.log(`Slashed stake: tokenId=${event.tokenId}`);
+      } catch (error) {
+        this.logger.error(`Failed to process StakeSlashed: ${error}`);
+      }
+    });
+
     this.logger.log("Subscribed to contract events");
   }
 
@@ -816,5 +910,83 @@ export class ContractsService implements OnModuleInit {
     }
 
     return Array.from(stemMap.values());
+  }
+
+  // ============ Content Protection Query Methods ============
+
+  async getStakesByOwner(ownerAddress: string) {
+    const stakes = await prisma.contentProtectionStake.findMany({
+      where: { stakerAddress: ownerAddress.toLowerCase() },
+      orderBy: { depositedAt: "desc" },
+    });
+
+    // Enrich with release title from attestation metadataURI
+    const tokenIds = stakes.map(s => s.tokenId);
+    const attestations = await prisma.contentAttestation.findMany({
+      where: { tokenId: { in: tokenIds } },
+      select: { tokenId: true, metadataURI: true },
+    });
+    const uriMap = new Map(attestations.map(a => [a.tokenId, a.metadataURI]));
+
+    return stakes.map(s => {
+      const uri = uriMap.get(s.tokenId) || "";
+      // metadataURI format: "resonate://release/my-slug" → "My Slug"
+      const slug = uri.replace(/^resonate:\/\/release\//, "");
+      const releaseTitle = slug
+        ? slug.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+        : undefined;
+      return { ...s, releaseTitle };
+    });
+  }
+
+  async getContentProtectionByRelease(releaseId: string) {
+    // Look up the release's artist to get the trust tier
+    const release = await prisma.release.findUnique({
+      where: { id: releaseId },
+      include: {
+        artist: {
+          include: { creatorTrust: true },
+        },
+      },
+    });
+
+    if (!release) return null;
+
+    const trust = release.artist.creatorTrust;
+    const tier = trust?.tier || "new";
+    const stakeAmountWei = trust?.stakeAmountWei || "10000000000000000"; // 0.01 ETH
+    const escrowDays = trust?.escrowDays || 30;
+
+    // Check if there are any stakes by this artist
+    const artistAddress = release.artist.payoutAddress?.toLowerCase();
+    const stakes = artistAddress
+      ? await prisma.contentProtectionStake.findMany({
+          where: { stakerAddress: artistAddress, active: true },
+          orderBy: { depositedAt: "desc" },
+          take: 1,
+        })
+      : [];
+
+    const attestations = artistAddress
+      ? await prisma.contentAttestation.findMany({
+          where: { attesterAddress: artistAddress },
+          orderBy: { attestedAt: "desc" },
+          take: 1,
+        })
+      : [];
+
+    const stake = stakes[0];
+    const attestation = attestations[0];
+
+    return {
+      staked: !!stake,
+      attested: !!attestation,
+      stakeAmount: stake?.amount || stakeAmountWei,
+      depositedAt: stake?.depositedAt?.toISOString() || "",
+      active: stake?.active ?? false,
+      escrowDays,
+      trustTier: tier,
+      attestedAt: attestation?.attestedAt?.toISOString() || "",
+    };
   }
 }

@@ -1,5 +1,8 @@
+"use client";
+
 import AuthGate from "../../../components/auth/AuthGate";
 import { Card } from "../../../components/ui/Card";
+import StakingOverview from "../../../components/analytics/StakingOverview";
 
 const tracks = [
   { name: "Neon Drift", plays: 4820, payout: 320.5 },
@@ -81,6 +84,9 @@ export default function ArtistAnalyticsPage() {
             </tbody>
           </table>
         </Card>
+
+        {/* Content Protection Staking */}
+        <StakingOverview />
       </main>
     </AuthGate>
   );

@@ -5,6 +5,7 @@ import { useAuth } from "../../components/auth/AuthProvider";
 import VaultHero from "../../components/wallet/VaultHero";
 import VaultSmartAccountCard from "../../components/wallet/VaultSmartAccountCard";
 import VaultSecurityCard from "../../components/wallet/VaultSecurityCard";
+import MyStakesCard from "../../components/wallet/MyStakesCard";
 import { useIsDeployed } from "../../hooks/useIsDeployed";
 
 export default function WalletPage() {
@@ -42,6 +43,9 @@ export default function WalletPage() {
         <VaultSmartAccountCard wallet={wallet} address={saAddress} isDeployed={isDeployed} recheck={recheck} />
         <VaultSecurityCard />
       </div>
+
+      {/* Content Protection Stakes */}
+      <MyStakesCard />
     </main>
   );
 }

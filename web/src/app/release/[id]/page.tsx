@@ -22,6 +22,7 @@ import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressUpdate } from "../../../hooks/useWebSockets";
 import { StemPricingPanel } from "../../../components/release/StemPricingPanel";
 import { LicensingInfoSection } from "../../../components/release/LicensingInfoSection";
+import ReleaseContentProtection from "../../../components/content-protection/ReleaseContentProtection";
 import "../../../styles/license-badges.css";
 
 // Helper to get duration from track's first stem
@@ -996,6 +997,9 @@ export default function ReleaseDetails() {
           }}
         />
       )}
+
+      {/* Content Protection — visible to ALL users */}
+      <ReleaseContentProtection releaseId={release.id} />
 
       {/* Stem Pricing Panel - Only for owners with stems */}
       {isOwner && release.tracks && (() => {
