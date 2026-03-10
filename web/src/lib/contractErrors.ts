@@ -28,6 +28,11 @@ export const knownContractErrorAbi = [
     name: "MarketplaceNotApproved",
     inputs: [],
   },
+  {
+    type: "error",
+    name: "NoRecentMint",
+    inputs: [],
+  },
 ] as const;
 
 // ─── Pure helpers ────────────────────────────────────────────────────
@@ -90,6 +95,10 @@ export function normalizeContractWriteError(error: unknown): Error {
 
       if (decoded.errorName === "MarketplaceNotApproved") {
         return new Error("Marketplace approval is missing for this Stem NFT.");
+      }
+
+      if (decoded.errorName === "NoRecentMint") {
+        return new Error("The marketplace could not find a stem minted in this transaction. Please retry the mint and list flow.");
       }
     } catch {
       // Fall back to the trimmed bundler error below.

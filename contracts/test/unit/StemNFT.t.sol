@@ -75,6 +75,8 @@ contract StemNFTTest is Test {
         assertEq(stemNFT.uri(tokenId), TOKEN_URI);
         assertEq(stemNFT.getCreator(tokenId), minter);
         assertFalse(stemNFT.isRemix(tokenId));
+        assertEq(stemNFT.lastMintedTokenIdByOwner(alice), tokenId);
+        assertEq(stemNFT.lastMintedBlockByOwner(alice), block.number);
     }
 
     function test_Mint_Remix() public {
