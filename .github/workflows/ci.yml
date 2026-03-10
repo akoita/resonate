@@ -62,8 +62,8 @@ jobs:
           forge install nomad-xyz/ExcessivelySafeCall --no-git
           forge install eth-infinitism/account-abstraction --no-git
           forge install a16z/halmos-cheatcodes --no-git
-          # Init kernel's I4337 nested submodule (needed for Kernel.sol imports)
-          cd lib/kernel && git submodule update --init lib/I4337
+          # Clone kernel's I4337 dependency (forge install --no-git strips git metadata)
+          git clone --depth 1 https://github.com/leekt/I4337 lib/kernel/lib/I4337
         working-directory: contracts
 
       - name: Run Forge build
