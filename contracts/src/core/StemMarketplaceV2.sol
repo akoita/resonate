@@ -12,6 +12,14 @@ import {
     ReentrancyGuard
 } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+interface IStemNFTWithMintTracking is IERC1155 {
+    function lastMintedTokenIdByOwner(
+        address owner
+    ) external view returns (uint256);
+
+    function lastMintedBlockByOwner(address owner) external view returns (uint64);
+}
+
 /**
  * @title StemMarketplaceV2
  * @author Resonate Protocol
@@ -84,6 +92,7 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
     error MarketplaceNotApproved();
     error CannotBuyOwnListing();
     error UnexpectedETH();
+    error NoRecentMint();
 
     // ============ Constructor ============
 
@@ -110,19 +119,63 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
         address paymentToken,
         uint256 duration
     ) external returns (uint256 listingId) {
+        listingId = _createListing(
+            msg.sender,
+            tokenId,
+            amount,
+            pricePerUnit,
+            paymentToken,
+            duration
+        );
+    }
+
+    function listLastMint(
+        uint256 amount,
+        uint256 pricePerUnit,
+        address paymentToken,
+        uint256 duration
+    ) external returns (uint256 listingId) {
+        IStemNFTWithMintTracking trackedStemNFT = IStemNFTWithMintTracking(
+            address(stemNFT)
+        );
+        if (trackedStemNFT.lastMintedBlockByOwner(msg.sender) != block.number) {
+            revert NoRecentMint();
+        }
+
+        uint256 tokenId = trackedStemNFT.lastMintedTokenIdByOwner(msg.sender);
+        if (tokenId == 0) revert NoRecentMint();
+
+        listingId = _createListing(
+            msg.sender,
+            tokenId,
+            amount,
+            pricePerUnit,
+            paymentToken,
+            duration
+        );
+    }
+
+    function _createListing(
+        address seller,
+        uint256 tokenId,
+        uint256 amount,
+        uint256 pricePerUnit,
+        address paymentToken,
+        uint256 duration
+    ) internal returns (uint256 listingId) {
         // Verify ownership
         require(
-            stemNFT.balanceOf(msg.sender, tokenId) >= amount,
+            stemNFT.balanceOf(seller, tokenId) >= amount,
             "Insufficient balance"
         );
         // Verify marketplace approval
-        if (!stemNFT.isApprovedForAll(msg.sender, address(this))) {
+        if (!stemNFT.isApprovedForAll(seller, address(this))) {
             revert MarketplaceNotApproved();
         }
 
         listingId = ++_listingId;
         listings[listingId] = Listing({
-            seller: msg.sender,
+            seller: seller,
             tokenId: tokenId,
             amount: amount,
             pricePerUnit: pricePerUnit,
@@ -130,7 +183,7 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
             expiry: uint40(block.timestamp + duration)
         });
 
-        emit Listed(listingId, msg.sender, tokenId, amount, pricePerUnit);
+        emit Listed(listingId, seller, tokenId, amount, pricePerUnit);
     }
 
     function cancel(uint256 listingId) external {

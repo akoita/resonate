@@ -60,6 +60,10 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
     /// @notice Token URIs (IPFS CIDs or full URIs)
     mapping(uint256 => string) private _tokenURIs;
 
+    /// @notice Latest token minted to an owner in the current/most recent tx flow
+    mapping(address => uint256) public lastMintedTokenIdByOwner;
+    mapping(address => uint64) public lastMintedBlockByOwner;
+
     /// @notice Optional transfer validator module
     ITransferValidator public transferValidator;
 
@@ -166,6 +170,8 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
 
         // Mint
         _mint(to, tokenId, amount, "");
+        lastMintedTokenIdByOwner[to] = tokenId;
+        lastMintedBlockByOwner[to] = uint64(block.number);
 
         emit StemMinted(tokenId, msg.sender, parentIds, tokenURI_);
     }

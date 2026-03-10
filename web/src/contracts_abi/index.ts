@@ -86,6 +86,20 @@ export const StemNFTABI = [
     inputs: [{ name: "id", type: "uint256" }],
     outputs: [{ name: "", type: "uint256" }],
   },
+  {
+    name: "lastMintedTokenIdByOwner",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "lastMintedBlockByOwner",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ name: "", type: "uint64" }],
+  },
   // Write functions
   {
     name: "mint",
@@ -246,6 +260,18 @@ export const StemMarketplaceABI = [
     stateMutability: "nonpayable",
     inputs: [
       { name: "tokenId", type: "uint256" },
+      { name: "amount", type: "uint256" },
+      { name: "pricePerUnit", type: "uint256" },
+      { name: "paymentToken", type: "address" },
+      { name: "duration", type: "uint256" },
+    ],
+    outputs: [{ name: "listingId", type: "uint256" }],
+  },
+  {
+    name: "listLastMint",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
       { name: "amount", type: "uint256" },
       { name: "pricePerUnit", type: "uint256" },
       { name: "paymentToken", type: "address" },

@@ -184,6 +184,45 @@ contract StemMarketplaceTest is Test {
         marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
     }
 
+    function test_ListLastMint_CreatesListingForLatestMint() public {
+        uint256[] memory parentIds = new uint256[](0);
+
+        vm.startPrank(seller);
+        stemNFT.mint(
+            seller,
+            1,
+            "ipfs://latest",
+            royaltyReceiver,
+            uint96(ROYALTY_BPS),
+            true,
+            parentIds
+        );
+
+        uint256 listingId = marketplace.listLastMint(
+            1,
+            0.25 ether,
+            address(0),
+            LISTING_DURATION
+        );
+        vm.stopPrank();
+
+        StemMarketplaceV2.Listing memory listing = marketplace.getListing(
+            listingId
+        );
+        assertEq(listing.tokenId, 2);
+        assertEq(listing.seller, seller);
+        assertEq(listing.amount, 1);
+        assertEq(listing.pricePerUnit, 0.25 ether);
+    }
+
+    function test_ListLastMint_RevertWhenMintIsNotRecent() public {
+        vm.roll(block.number + 1);
+
+        vm.prank(seller);
+        vm.expectRevert(StemMarketplaceV2.NoRecentMint.selector);
+        marketplace.listLastMint(1, 1 ether, address(0), LISTING_DURATION);
+    }
+
     function test_List_RevertInsufficientBalance() public {
         address noTokens = makeAddr("noTokens");
         vm.prank(noTokens);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { type Address, encodeFunctionData, type Hex, http, type PublicClient } from "viem";
+import { decodeEventLog, type Address, encodeFunctionData, type Hex, http, type PublicClient } from "viem";
 import { useZeroDev } from "../components/auth/ZeroDevProviderClient";
 import { useAuth } from "../components/auth/AuthProvider";
 import {
@@ -24,6 +24,7 @@ import {
   StemNFTABI,
   StemMarketplaceABI,
 } from "../lib/contracts";
+import { normalizeContractWriteError } from "../lib/contractErrors";
 
 // Detect whether we're running against a local RPC (Anvil / forked Sepolia)
 function isLocalDevEnvironment(): boolean {
@@ -58,6 +59,95 @@ function createMappedTransport(bundlerUrl: string): (opts: any) => any {
     };
     return transport;
   };
+}
+
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
+
+const stemContentProtectionReadAbi = [
+  {
+    type: "function",
+    name: "contentProtection",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+] as const;
+
+const contentProtectionReadAbi = [
+  {
+    type: "function",
+    name: "isAttested",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const;
+
+async function assertMintTokenIdsAttested(
+  publicClient: PublicClient,
+  chainId: number,
+  tokenIds: bigint[]
+): Promise<void> {
+  if (tokenIds.length === 0) return;
+
+  const addresses = getContractAddresses(chainId);
+  const contentProtectionAddress = await publicClient.readContract({
+    address: addresses.stemNFT as Address,
+    abi: stemContentProtectionReadAbi,
+    functionName: "contentProtection",
+  }) as Address;
+
+  if (!contentProtectionAddress || contentProtectionAddress === ZERO_ADDRESS) {
+    return;
+  }
+
+  const attestedFlags = await Promise.all(
+    tokenIds.map((tokenId) =>
+      publicClient.readContract({
+        address: contentProtectionAddress,
+        abi: contentProtectionReadAbi,
+        functionName: "isAttested",
+        args: [tokenId],
+      }) as Promise<boolean>
+    )
+  );
+
+  const missingTokenIds = tokenIds.filter((_, index) => !attestedFlags[index]);
+  if (missingTokenIds.length === 0) return;
+
+  const formattedIds = missingTokenIds.map((id) => `#${id.toString()}`).join(", ");
+  throw new Error(
+    `Content Protection is enabled on this chain, and stem token ${formattedIds} must be attested before minting. The current marketplace flow cannot mint unattested stem IDs yet.`
+  );
+}
+
+async function getStemMintedTokenIdsForTransaction(
+  publicClient: PublicClient,
+  transactionHash: string
+): Promise<bigint[]> {
+  const receipt = await publicClient.getTransactionReceipt({
+    hash: transactionHash as Hex,
+  });
+
+  const tokenIds: bigint[] = [];
+
+  for (const log of receipt.logs) {
+    try {
+      const decoded = decodeEventLog({
+        abi: StemNFTABI,
+        data: log.data,
+        topics: log.topics,
+      });
+
+      if (decoded.eventName === "StemMinted") {
+        tokenIds.push(decoded.args.tokenId as bigint);
+      }
+    } catch {
+      // Ignore logs from other contracts/events in the same receipt.
+    }
+  }
+
+  return tokenIds;
 }
 
 /**
@@ -157,13 +247,18 @@ async function sendContractTransaction(
   const kernelClient = await createKernelAccountClient(clientOpts);
   const finalData = typeof data === 'function' ? data(account.address as Address) : data;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const hash = await (kernelClient as any).sendTransaction({
-    to,
-    data: finalData,
-    value,
-    chain: publicClient.chain,
-  });
+  let hash: string;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    hash = await (kernelClient as any).sendTransaction({
+      to,
+      data: finalData,
+      value,
+      chain: publicClient.chain,
+    });
+  } catch (error) {
+    throw normalizeContractWriteError(error);
+  }
 
   console.log("[AA] Transaction submitted! Hash:", hash);
   return hash;
@@ -577,6 +672,13 @@ export function useMintStem() {
 
       try {
         const addresses = getContractAddresses(chainId);
+        const currentTotal = await publicClient.readContract({
+          address: addresses.stemNFT as Address,
+          abi: StemNFTABI,
+          functionName: "totalStems",
+        }) as bigint;
+        const expectedTokenId = currentTotal + BigInt(1);
+        await assertMintTokenIdsAttested(publicClient, chainId, [expectedTokenId]);
 
         // Send transaction via ZeroDev kernel client
         const hash = await sendContractTransaction(
@@ -931,13 +1033,14 @@ export function useMintAndListStem() {
       try {
         const addresses = getContractAddresses(chainId);
 
-        // 1. Predict the Token ID by reading the current total stems natively
+        // 1. Preflight attestation against the currently predicted next token ID.
         const currentTotal = await publicClient.readContract({
           address: addresses.stemNFT as Address,
           abi: StemNFTABI,
           functionName: "totalStems",
         });
         const expectedTokenId = (currentTotal as bigint) + BigInt(1);
+        await assertMintTokenIdsAttested(publicClient, chainId, [expectedTokenId]);
 
         // 2. Prepare Mint Call
         const mintCall = {
@@ -972,9 +1075,8 @@ export function useMintAndListStem() {
           to: addresses.marketplace as Address,
           data: encodeFunctionData({
             abi: StemMarketplaceABI,
-            functionName: "list",
+            functionName: "listLastMint",
             args: [
-              expectedTokenId,
               params.amount,
               params.pricePerUnit,
               params.paymentToken,
@@ -992,8 +1094,11 @@ export function useMintAndListStem() {
           kernelAccount
         );
 
+        const mintedTokenIds = await getStemMintedTokenIdsForTransaction(publicClient, hash);
+        const tokenId = mintedTokenIds[0];
+
         setTxHash(hash);
-        return { hash, expectedTokenId };
+        return { hash, tokenId };
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         setError(error);
@@ -1029,7 +1134,7 @@ export interface BatchStemResult {
 /**
  * Hook to batch mint & list multiple stems in a single UserOperation.
  *
- * Builds N×3 calls (mint + approve + list per stem) and sends them
+ * Builds one approval plus N×2 calls (mint + list-last-mint per stem) and sends them
  * as one batch UserOp via sendBatchContractTransactions — one passkey
  * prompt total.
  */
@@ -1059,7 +1164,6 @@ export function useBatchMintAndList() {
 
       const pricePerUnit = options?.pricePerUnit ?? BigInt("10000000000000000"); // 0.01 ETH
       const durationSeconds = options?.durationSeconds ?? BigInt(7 * 24 * 60 * 60); // 7 days
-      const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
 
       // Initialize all stems as pending
       const initialResults: BatchStemResult[] = stems.map(s => ({
@@ -1073,17 +1177,26 @@ export function useBatchMintAndList() {
         const addresses = getContractAddresses(chainId);
         const currentChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
 
-        // 1. Read current totalStems to predict token IDs
+        // 1. Read current totalStems only for attestation preflight.
         const currentTotal = await publicClient.readContract({
           address: addresses.stemNFT as Address,
           abi: StemNFTABI,
           functionName: "totalStems",
         }) as bigint;
 
-        // 2. Build N×3 calls array
+        // 2. Build approval + N×2 calls array
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const calls: { to: Address; data: Hex | ((addr: Address) => Hex); value?: bigint }[] = [];
         const expectedTokenIds: bigint[] = [];
+
+        calls.push({
+          to: addresses.stemNFT as Address,
+          data: encodeFunctionData({
+            abi: StemNFTABI,
+            functionName: "setApprovalForAll",
+            args: [addresses.marketplace as Address, true],
+          }),
+        });
 
         for (let i = 0; i < stems.length; i++) {
           const stem = stems[i];
@@ -1111,24 +1224,13 @@ export function useBatchMintAndList() {
             }),
           });
 
-          // Approve call (idempotent — setApprovalForAll is safe to call multiple times)
-          calls.push({
-            to: addresses.stemNFT as Address,
-            data: encodeFunctionData({
-              abi: StemNFTABI,
-              functionName: "setApprovalForAll",
-              args: [addresses.marketplace as Address, true],
-            }),
-          });
-
           // List call
           calls.push({
             to: addresses.marketplace as Address,
             data: encodeFunctionData({
               abi: StemMarketplaceABI,
-              functionName: "list",
+              functionName: "listLastMint",
               args: [
-                expectedTokenId,
                 BigInt(1),
                 pricePerUnit,
                 ZERO_ADDRESS,
@@ -1137,6 +1239,8 @@ export function useBatchMintAndList() {
             }),
           });
         }
+
+        await assertMintTokenIdsAttested(publicClient, chainId, expectedTokenIds);
 
         // Mark all as processing
         const processingResults: BatchStemResult[] = stems.map(s => ({
@@ -1155,11 +1259,13 @@ export function useBatchMintAndList() {
           kernelAccount
         );
 
-        // 4. All succeeded — mark as done with token IDs
+        const actualTokenIds = await getStemMintedTokenIdsForTransaction(publicClient, hash);
+
+        // 4. All succeeded — mark as done with actual token IDs when available
         const doneResults: BatchStemResult[] = stems.map((s, i) => ({
           stemId: s.stemId,
           status: "done" as BatchStemStatus,
-          tokenId: expectedTokenIds[i],
+          tokenId: actualTokenIds[i],
         }));
         setResults(doneResults);
         options?.onProgress?.(doneResults);
@@ -1167,7 +1273,8 @@ export function useBatchMintAndList() {
         // 5. Persist to localStorage (same format as MintStemButton)
         for (let i = 0; i < stems.length; i++) {
           const stemId = stems[i].stemId;
-          const tokenId = expectedTokenIds[i];
+          const tokenId = actualTokenIds[i];
+          if (tokenId == null) continue;
           localStorage.setItem(
             `stem_status_${stemId}`,
             JSON.stringify({ status: "listed", timestamp: Date.now() })
@@ -1180,11 +1287,13 @@ export function useBatchMintAndList() {
 
         // 6. Notify backend for each stem (best-effort, non-blocking)
         for (let i = 0; i < stems.length; i++) {
+          const tokenId = actualTokenIds[i];
+          if (tokenId == null) continue;
           fetch("/api/contracts/notify-listing", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              tokenId: expectedTokenIds[i].toString(),
+              tokenId: tokenId.toString(),
               seller: address,
               price: pricePerUnit.toString(),
               amount: "1",
@@ -1293,19 +1402,29 @@ async function sendBatchContractTransactions(
   const kernelClient = await createKernelAccountClient(clientOpts);
 
   // Send batch as a single UserOperation
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const userOpHash = await (kernelClient as any).sendUserOperation({
-    calls: calls.map(c => ({
-      to: c.to,
-      data: typeof c.data === 'function' ? c.data(account.address as Address) : c.data,
-      value: c.value || BigInt(0),
-    })),
-  });
+  let userOpHash: string;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    userOpHash = await (kernelClient as any).sendUserOperation({
+      calls: calls.map(c => ({
+        to: c.to,
+        data: typeof c.data === 'function' ? c.data(account.address as Address) : c.data,
+        value: c.value || BigInt(0),
+      })),
+    });
+  } catch (error) {
+    throw normalizeContractWriteError(error);
+  }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const receipt = await (kernelClient as unknown as any).waitForUserOperationReceipt({
-    hash: userOpHash,
-  });
+  let receipt: { receipt: { transactionHash: string } };
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    receipt = await (kernelClient as unknown as any).waitForUserOperationReceipt({
+      hash: userOpHash,
+    });
+  } catch (error) {
+    throw normalizeContractWriteError(error);
+  }
 
   const hash = receipt.receipt.transactionHash;
   console.log("[AA] Batch Transaction submitted! Hash:", hash);

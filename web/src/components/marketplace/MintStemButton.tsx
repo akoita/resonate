@@ -272,7 +272,7 @@ export function MintStemButton({
 
             setState("confirming_mint");
 
-            const { hash, expectedTokenId } = await mintAndList({
+            const { hash, tokenId } = await mintAndList({
                 amount: BigInt(1),
                 tokenURI: tokenUri,
                 royaltyBps: 500,
@@ -283,18 +283,20 @@ export function MintStemButton({
                 durationSeconds: BigInt(7 * 24 * 60 * 60),
             });
 
+            const actualTokenId = tokenId ?? await pollForMintedTokenId(stemId);
+
             // Tx confirmed on-chain (mint + approve + list).
             // The batch UserOp waited for receipt, so listing is confirmed.
             // Mark as "listed" immediately — on-chain receipt is proof.
-            setMintedTokenId(expectedTokenId);
+            setMintedTokenId(actualTokenId);
             setState("listed");
             localStorage.setItem(`stem_status_${stemId}`, JSON.stringify({ status: "listed", timestamp: Date.now() }));
-            localStorage.setItem(`stem_token_id_${stemId}`, expectedTokenId.toString());
+            localStorage.setItem(`stem_token_id_${stemId}`, actualTokenId.toString());
 
             addToast({
                 type: "success",
                 title: "Minted & Listed!",
-                message: `${stemType} stem (Token #${expectedTokenId}) is now on the marketplace for 0.01 ETH`,
+                message: `${stemType} stem (Token #${actualTokenId}) is now on the marketplace for 0.01 ETH`,
             });
 
             // Notify backend to create listing in DB + broadcast WebSocket
@@ -304,7 +306,7 @@ export function MintStemButton({
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        tokenId: expectedTokenId.toString(),
+                        tokenId: actualTokenId.toString(),
                         seller: address,
                         price: "10000000000000000", // 0.01 ETH — must match pricePerUnit above
                         amount: "1",
