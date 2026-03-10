@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 import {EntryPoint} from "@account-abstraction/core/EntryPoint.sol";
-import {IEntryPoint} from "kernel/interfaces/IEntryPoint.sol";
+import {IEntryPoint} from "I4337/interfaces/IEntryPoint.sol";
 import {Kernel} from "kernel/Kernel.sol";
 import {KernelFactory} from "../src/aa/KernelFactory.sol";
 import {ECDSAValidator} from "kernel/validator/ECDSAValidator.sol";
