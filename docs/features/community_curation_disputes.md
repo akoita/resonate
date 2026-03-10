@@ -137,7 +137,18 @@ Includes a **reputation badge** showing score, successful flags, and rejected fl
 - ✅ Curator leaderboard (`/disputes/leaderboard`)
 - ✅ Frontend: AdminDisputeQueue, CuratorLeaderboard, appeal button in DisputeDashboard
 
+## Sprint 3 (Complete)
+
+- ✅ `NotificationService` — event bus → persist → WebSocket emit
+- ✅ `Notification` + `NotificationPreference` Prisma models
+- ✅ 5 REST endpoints (list, read, read-all, get/update preferences)
+- ✅ WebSocket gateway: 4 dispute event subscriptions + wallet room targeting
+- ✅ `useDisputeNotifications` hook, `NotificationBell`, `NotificationPreferences`
+- ✅ Real-time auto-refresh in `DisputeDashboard`
+
 ## Future Sprints
 
-- **Sprint 3:** Kleros/DAO jury for decentralized arbitration
-- **Sprint 4:** Proof-of-humanity gate, enhanced reputation system
+- **Sprint 4:** Kleros/DAO jury for decentralized arbitration
+- **Sprint 5:** Proof-of-humanity gate, enhanced reputation system
+- **Sprint 6:** E2E testing, security audit, deployment
+- **Sprint 7:** Public analytics, anti-abuse hardening

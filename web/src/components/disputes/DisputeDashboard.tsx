@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../auth/AuthProvider";
+import { useDisputeNotifications } from "../../hooks/useDisputeNotifications";
 
 interface Dispute {
   id: string;
@@ -30,6 +31,7 @@ type Tab = "reporter" | "creator";
 
 export default function DisputeDashboard() {
   const { address } = useAuth();
+  const { disputeUpdate } = useDisputeNotifications(address ?? undefined);
   const [tab, setTab] = useState<Tab>("reporter");
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [loading, setLoading] = useState(false);
@@ -75,6 +77,13 @@ export default function DisputeDashboard() {
   useEffect(() => {
     fetchReputation();
   }, [fetchReputation]);
+
+  // Real-time: auto-refresh when dispute status changes via WebSocket
+  useEffect(() => {
+    if (disputeUpdate) {
+      fetchDisputes();
+    }
+  }, [disputeUpdate, fetchDisputes]);
 
   const statusColor = (status: string) => {
     switch (status.toLowerCase()) {

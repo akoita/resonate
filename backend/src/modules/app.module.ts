@@ -31,6 +31,7 @@ import { X402Module } from "./x402/x402.module";
 import { FingerprintModule } from "./fingerprint/fingerprint.module";
 import { DmcaModule } from "./dmca/dmca.module";
 import { TrustModule } from "./trust/trust.module";
+import { NotificationModule } from "./notifications/notification.module";
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { TrustModule } from "./trust/trust.module";
     FingerprintModule,
     DmcaModule,
     TrustModule,
+    NotificationModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

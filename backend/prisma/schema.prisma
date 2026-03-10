@@ -560,3 +560,25 @@ model CuratorReputation {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
+
+model Notification {
+  id            String   @id @default(uuid())
+  walletAddress String
+  type          String // dispute_filed|dispute_resolved|dispute_appealed|evidence_submitted
+  title         String
+  message       String
+  disputeId     String?
+  read          Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@index([walletAddress, read])
+  @@index([walletAddress, createdAt])
+}
+
+model NotificationPreference {
+  walletAddress     String  @id
+  disputeFiled      Boolean @default(true)
+  disputeResolved   Boolean @default(true)
+  disputeAppealed   Boolean @default(true)
+  evidenceSubmitted Boolean @default(true)
+}
