@@ -63,64 +63,6 @@ function createMappedTransport(bundlerUrl: string): (opts: any) => any {
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
 
-const stemContentProtectionReadAbi = [
-  {
-    type: "function",
-    name: "contentProtection",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "address" }],
-  },
-] as const;
-
-const contentProtectionReadAbi = [
-  {
-    type: "function",
-    name: "isAttested",
-    stateMutability: "view",
-    inputs: [{ name: "tokenId", type: "uint256" }],
-    outputs: [{ name: "", type: "bool" }],
-  },
-] as const;
-
-async function assertMintTokenIdsAttested(
-  publicClient: PublicClient,
-  chainId: number,
-  tokenIds: bigint[]
-): Promise<void> {
-  if (tokenIds.length === 0) return;
-
-  const addresses = getContractAddresses(chainId);
-  const contentProtectionAddress = await publicClient.readContract({
-    address: addresses.stemNFT as Address,
-    abi: stemContentProtectionReadAbi,
-    functionName: "contentProtection",
-  }) as Address;
-
-  if (!contentProtectionAddress || contentProtectionAddress === ZERO_ADDRESS) {
-    return;
-  }
-
-  const attestedFlags = await Promise.all(
-    tokenIds.map((tokenId) =>
-      publicClient.readContract({
-        address: contentProtectionAddress,
-        abi: contentProtectionReadAbi,
-        functionName: "isAttested",
-        args: [tokenId],
-      }) as Promise<boolean>
-    )
-  );
-
-  const missingTokenIds = tokenIds.filter((_, index) => !attestedFlags[index]);
-  if (missingTokenIds.length === 0) return;
-
-  const formattedIds = missingTokenIds.map((id) => `#${id.toString()}`).join(", ");
-  throw new Error(
-    `Content Protection is enabled on this chain, and stem token ${formattedIds} must be attested before minting. The current marketplace flow cannot mint unattested stem IDs yet.`
-  );
-}
-
 async function getStemMintedTokenIdsForTransaction(
   publicClient: PublicClient,
   transactionHash: string
@@ -672,13 +614,6 @@ export function useMintStem() {
 
       try {
         const addresses = getContractAddresses(chainId);
-        const currentTotal = await publicClient.readContract({
-          address: addresses.stemNFT as Address,
-          abi: StemNFTABI,
-          functionName: "totalStems",
-        }) as bigint;
-        const expectedTokenId = currentTotal + BigInt(1);
-        await assertMintTokenIdsAttested(publicClient, chainId, [expectedTokenId]);
 
         // Send transaction via ZeroDev kernel client
         const hash = await sendContractTransaction(
@@ -1033,16 +968,7 @@ export function useMintAndListStem() {
       try {
         const addresses = getContractAddresses(chainId);
 
-        // 1. Preflight attestation against the currently predicted next token ID.
-        const currentTotal = await publicClient.readContract({
-          address: addresses.stemNFT as Address,
-          abi: StemNFTABI,
-          functionName: "totalStems",
-        });
-        const expectedTokenId = (currentTotal as bigint) + BigInt(1);
-        await assertMintTokenIdsAttested(publicClient, chainId, [expectedTokenId]);
-
-        // 2. Prepare Mint Call
+        // 1. Prepare Mint Call
         const mintCall = {
           to: addresses.stemNFT as Address,
           data: (resolvedAddress: Address) => encodeFunctionData({
@@ -1060,7 +986,7 @@ export function useMintAndListStem() {
           }),
         };
 
-        // 3. Prepare Approve Call
+        // 2. Prepare Approve Call
         const approveCall = {
           to: addresses.stemNFT as Address,
           data: encodeFunctionData({
@@ -1070,7 +996,7 @@ export function useMintAndListStem() {
           }),
         };
 
-        // 4. Prepare List Call
+        // 3. Prepare List Call
         const listCall = {
           to: addresses.marketplace as Address,
           data: encodeFunctionData({
@@ -1085,7 +1011,7 @@ export function useMintAndListStem() {
           }),
         };
 
-        // 5. Send as a single batch UserOperation
+        // 4. Send as a single batch UserOperation
         const hash = await sendBatchContractTransactions(
           publicClient,
           chainId,
@@ -1177,17 +1103,9 @@ export function useBatchMintAndList() {
         const addresses = getContractAddresses(chainId);
         const currentChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
 
-        // 1. Read current totalStems only for attestation preflight.
-        const currentTotal = await publicClient.readContract({
-          address: addresses.stemNFT as Address,
-          abi: StemNFTABI,
-          functionName: "totalStems",
-        }) as bigint;
-
-        // 2. Build approval + N×2 calls array
+        // 1. Build approval + N×2 calls array
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const calls: { to: Address; data: Hex | ((addr: Address) => Hex); value?: bigint }[] = [];
-        const expectedTokenIds: bigint[] = [];
 
         calls.push({
           to: addresses.stemNFT as Address,
@@ -1200,9 +1118,6 @@ export function useBatchMintAndList() {
 
         for (let i = 0; i < stems.length; i++) {
           const stem = stems[i];
-          const expectedTokenId = currentTotal + BigInt(i + 1);
-          expectedTokenIds.push(expectedTokenId);
-
           const tokenUri = stem.metadataUri ||
             `${typeof window !== "undefined" ? window.location.protocol + "//" + window.location.host : ""}/api/metadata/${currentChainId}/stem/${stem.stemId}`;
 
@@ -1240,8 +1155,6 @@ export function useBatchMintAndList() {
           });
         }
 
-        await assertMintTokenIdsAttested(publicClient, chainId, expectedTokenIds);
-
         // Mark all as processing
         const processingResults: BatchStemResult[] = stems.map(s => ({
           stemId: s.stemId,
@@ -1250,7 +1163,7 @@ export function useBatchMintAndList() {
         setResults(processingResults);
         options?.onProgress?.(processingResults);
 
-        // 3. Send as a single batch UserOperation
+        // 2. Send as a single batch UserOperation
         const hash = await sendBatchContractTransactions(
           publicClient,
           chainId,
@@ -1261,7 +1174,7 @@ export function useBatchMintAndList() {
 
         const actualTokenIds = await getStemMintedTokenIdsForTransaction(publicClient, hash);
 
-        // 4. All succeeded — mark as done with actual token IDs when available
+        // 3. All succeeded — mark as done with actual token IDs when available
         const doneResults: BatchStemResult[] = stems.map((s, i) => ({
           stemId: s.stemId,
           status: "done" as BatchStemStatus,
@@ -1270,7 +1183,7 @@ export function useBatchMintAndList() {
         setResults(doneResults);
         options?.onProgress?.(doneResults);
 
-        // 5. Persist to localStorage (same format as MintStemButton)
+        // 4. Persist to localStorage (same format as MintStemButton)
         for (let i = 0; i < stems.length; i++) {
           const stemId = stems[i].stemId;
           const tokenId = actualTokenIds[i];
@@ -1285,7 +1198,7 @@ export function useBatchMintAndList() {
           );
         }
 
-        // 6. Notify backend for each stem (best-effort, non-blocking)
+        // 5. Notify backend for each stem (best-effort, non-blocking)
         for (let i = 0; i < stems.length; i++) {
           const tokenId = actualTokenIds[i];
           if (tokenId == null) continue;

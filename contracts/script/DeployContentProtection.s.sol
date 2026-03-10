@@ -6,12 +6,8 @@ import {ContentProtection} from "../src/core/ContentProtection.sol";
 import {RevenueEscrow} from "../src/core/RevenueEscrow.sol";
 import {StemNFT} from "../src/core/StemNFT.sol";
 import {TransferValidator} from "../src/modules/TransferValidator.sol";
-import {
-    IAccessControl
-} from "@openzeppelin/contracts/access/IAccessControl.sol";
-import {
-    ERC1967Proxy
-} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title DeployContentProtection
@@ -36,12 +32,8 @@ import {
  */
 contract DeployContentProtection is Script {
     function run() external {
-        uint256 deployerKey = vm.envOr(
-            "PRIVATE_KEY",
-            uint256(
-                0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-            )
-        );
+        uint256 deployerKey =
+            vm.envOr("PRIVATE_KEY", uint256(0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80));
         address deployer = vm.addr(deployerKey);
 
         // Existing contract addresses (REQUIRED)
@@ -69,19 +61,16 @@ contract DeployContentProtection is Script {
 
         // 1. Deploy ContentProtection (UUPS proxy)
         ContentProtection cpImpl = new ContentProtection();
-        bytes memory cpInit = abi.encodeCall(
-            ContentProtection.initialize,
-            (deployer, feeRecipient, stakeAmountWei)
-        );
+        bytes memory cpInit = abi.encodeCall(ContentProtection.initialize, (deployer, feeRecipient, stakeAmountWei));
         ERC1967Proxy cpProxy = new ERC1967Proxy(address(cpImpl), cpInit);
-        ContentProtection contentProtection = ContentProtection(
-            address(cpProxy)
-        );
+        ContentProtection contentProtection = ContentProtection(address(cpProxy));
         console.log("ContentProtection (proxy):", address(contentProtection));
 
         // 2. Deploy RevenueEscrow
         RevenueEscrow escrow = new RevenueEscrow(deployer, escrowPeriod);
         console.log("RevenueEscrow:", address(escrow));
+        escrow.setContentProtection(address(contentProtection));
+        console.log("  -> ContentProtection linked to RevenueEscrow");
 
         vm.stopBroadcast();
 

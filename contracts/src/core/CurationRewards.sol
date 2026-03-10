@@ -2,9 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {
-    ReentrancyGuard
-} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IContentProtection} from "../interfaces/IContentProtection.sol";
 import {IDisputeResolution} from "../interfaces/IDisputeResolution.sol";
 
@@ -70,49 +68,23 @@ contract CurationRewards is Ownable, ReentrancyGuard {
         string evidenceURI
     );
 
-    event BountyClaimed(
-        uint256 indexed disputeId,
-        address indexed reporter,
-        uint256 amount
-    );
+    event BountyClaimed(uint256 indexed disputeId, address indexed reporter, uint256 amount);
 
     event CounterStakeSlashed(
-        uint256 indexed disputeId,
-        address indexed reporter,
-        address indexed creator,
-        uint256 amount
+        uint256 indexed disputeId, address indexed reporter, address indexed creator, uint256 amount
     );
 
-    event CounterStakeRefunded(
-        uint256 indexed disputeId,
-        address indexed reporter,
-        uint256 amount
-    );
+    event CounterStakeRefunded(uint256 indexed disputeId, address indexed reporter, uint256 amount);
 
-    event AppealStakeDeposited(
-        uint256 indexed disputeId,
-        address indexed appealer,
-        uint256 amount
-    );
+    event AppealStakeDeposited(uint256 indexed disputeId, address indexed appealer, uint256 amount);
 
     event AppealStakeSlashed(
-        uint256 indexed disputeId,
-        address indexed appealer,
-        address indexed winner,
-        uint256 amount
+        uint256 indexed disputeId, address indexed appealer, address indexed winner, uint256 amount
     );
 
-    event AppealStakeRefunded(
-        uint256 indexed disputeId,
-        address indexed appealer,
-        uint256 amount
-    );
+    event AppealStakeRefunded(uint256 indexed disputeId, address indexed appealer, uint256 amount);
 
-    event ReputationUpdated(
-        address indexed curator,
-        int256 oldScore,
-        int256 newScore
-    );
+    event ReputationUpdated(address indexed curator, int256 oldScore, int256 newScore);
 
     // ============ Errors ============
 
@@ -129,12 +101,9 @@ contract CurationRewards is Ownable, ReentrancyGuard {
 
     // ============ Constructor ============
 
-    constructor(
-        address _owner,
-        address _contentProtection,
-        address _disputeResolution,
-        address _treasury
-    ) Ownable(_owner) {
+    constructor(address _owner, address _contentProtection, address _disputeResolution, address _treasury)
+        Ownable(_owner)
+    {
         if (_contentProtection == address(0)) revert ZeroAddress();
         if (_disputeResolution == address(0)) revert ZeroAddress();
         if (_treasury == address(0)) revert ZeroAddress();
@@ -152,14 +121,16 @@ contract CurationRewards is Ownable, ReentrancyGuard {
      * @param evidenceURI IPFS URI to evidence supporting the claim
      * @return disputeId The created dispute's ID
      */
-    function reportContent(
-        uint256 tokenId,
-        string calldata evidenceURI
-    ) external payable nonReentrant returns (uint256 disputeId) {
+    function reportContent(uint256 tokenId, string calldata evidenceURI)
+        external
+        payable
+        nonReentrant
+        returns (uint256 disputeId)
+    {
+        uint256 targetId = contentProtection.resolveProtectionTarget(tokenId);
+
         // Get creator from attestation
-        (, , , address creator, , bool valid) = contentProtection.attestations(
-            tokenId
-        );
+        (,,, address creator,, bool valid) = contentProtection.attestations(targetId);
         if (!valid) revert NotStaked();
 
         // Reporter cannot be the creator
@@ -170,24 +141,13 @@ contract CurationRewards is Ownable, ReentrancyGuard {
         if (msg.value < requiredStake) revert InsufficientCounterStake();
 
         // File dispute on DisputeResolution
-        disputeId = disputeResolution.fileDispute{value: 0}(
-            tokenId,
-            msg.sender,
-            creator,
-            evidenceURI
-        );
+        disputeId = disputeResolution.fileDispute{value: 0}(targetId, msg.sender, creator, evidenceURI);
 
         // Track counter-stake and reporter
         counterStakes[disputeId] = msg.value;
         reporters[disputeId] = msg.sender;
 
-        emit ContentReported(
-            disputeId,
-            tokenId,
-            msg.sender,
-            msg.value,
-            evidenceURI
-        );
+        emit ContentReported(disputeId, targetId, msg.sender, msg.value, evidenceURI);
     }
 
     // ============ Claim Bounty ============
@@ -202,11 +162,10 @@ contract CurationRewards is Ownable, ReentrancyGuard {
         if (bountyClaimed[disputeId]) revert AlreadyClaimed();
         if (reporters[disputeId] != msg.sender) revert NotUpheld();
 
-        IDisputeResolution.Dispute memory d = disputeResolution.getDispute(
-            disputeId
-        );
-        if (d.status != IDisputeResolution.DisputeStatus.Resolved)
+        IDisputeResolution.Dispute memory d = disputeResolution.getDispute(disputeId);
+        if (d.status != IDisputeResolution.DisputeStatus.Resolved) {
             revert DisputeNotResolved();
+        }
         if (d.outcome != IDisputeResolution.Outcome.Upheld) revert NotUpheld();
 
         bountyClaimed[disputeId] = true;
@@ -220,7 +179,7 @@ contract CurationRewards is Ownable, ReentrancyGuard {
 
         // Transfer counter-stake refund
         if (counterStake > 0) {
-            (bool ok, ) = payable(msg.sender).call{value: counterStake}("");
+            (bool ok,) = payable(msg.sender).call{value: counterStake}("");
             if (!ok) revert TransferFailed();
         }
 
@@ -235,13 +194,13 @@ contract CurationRewards is Ownable, ReentrancyGuard {
      * @param disputeId The resolved dispute
      */
     function processRejection(uint256 disputeId) external nonReentrant {
-        IDisputeResolution.Dispute memory d = disputeResolution.getDispute(
-            disputeId
-        );
-        if (d.status != IDisputeResolution.DisputeStatus.Resolved)
+        IDisputeResolution.Dispute memory d = disputeResolution.getDispute(disputeId);
+        if (d.status != IDisputeResolution.DisputeStatus.Resolved) {
             revert DisputeNotResolved();
-        if (d.outcome != IDisputeResolution.Outcome.Rejected)
+        }
+        if (d.outcome != IDisputeResolution.Outcome.Rejected) {
             revert NotUpheld();
+        }
         if (bountyClaimed[disputeId]) revert AlreadyClaimed();
 
         bountyClaimed[disputeId] = true; // prevent double-processing
@@ -255,7 +214,7 @@ contract CurationRewards is Ownable, ReentrancyGuard {
 
         // Send counter-stake to creator as compensation
         if (counterStake > 0) {
-            (bool ok, ) = payable(d.creator).call{value: counterStake}("");
+            (bool ok,) = payable(d.creator).call{value: counterStake}("");
             if (!ok) revert TransferFailed();
         }
 
@@ -269,13 +228,13 @@ contract CurationRewards is Ownable, ReentrancyGuard {
      * @param disputeId The resolved dispute
      */
     function processInconclusive(uint256 disputeId) external nonReentrant {
-        IDisputeResolution.Dispute memory d = disputeResolution.getDispute(
-            disputeId
-        );
-        if (d.status != IDisputeResolution.DisputeStatus.Resolved)
+        IDisputeResolution.Dispute memory d = disputeResolution.getDispute(disputeId);
+        if (d.status != IDisputeResolution.DisputeStatus.Resolved) {
             revert DisputeNotResolved();
-        if (d.outcome != IDisputeResolution.Outcome.Inconclusive)
+        }
+        if (d.outcome != IDisputeResolution.Outcome.Inconclusive) {
             revert NotUpheld();
+        }
         if (bountyClaimed[disputeId]) revert AlreadyClaimed();
 
         bountyClaimed[disputeId] = true;
@@ -285,7 +244,7 @@ contract CurationRewards is Ownable, ReentrancyGuard {
 
         // Refund counter-stake — no reputation change
         if (counterStake > 0) {
-            (bool ok, ) = payable(reporter).call{value: counterStake}("");
+            (bool ok,) = payable(reporter).call{value: counterStake}("");
             if (!ok) revert TransferFailed();
         }
 
@@ -300,13 +259,12 @@ contract CurationRewards is Ownable, ReentrancyGuard {
      * @param disputeId The resolved dispute to appeal
      */
     function appealDispute(uint256 disputeId) external payable nonReentrant {
-        IDisputeResolution.Dispute memory d = disputeResolution.getDispute(
-            disputeId
-        );
+        IDisputeResolution.Dispute memory d = disputeResolution.getDispute(disputeId);
 
         // Verify caller is a party to the dispute
-        if (msg.sender != d.reporter && msg.sender != d.creator)
+        if (msg.sender != d.reporter && msg.sender != d.creator) {
             revert NotDisputeParty();
+        }
 
         // Require 2x original counter-stake
         uint256 requiredAppealStake = counterStakes[disputeId] * 2;
@@ -331,11 +289,10 @@ contract CurationRewards is Ownable, ReentrancyGuard {
      * @param disputeId The dispute that was re-resolved after appeal
      */
     function processAppealOutcome(uint256 disputeId) external nonReentrant {
-        IDisputeResolution.Dispute memory d = disputeResolution.getDispute(
-            disputeId
-        );
-        if (d.status != IDisputeResolution.DisputeStatus.Resolved)
+        IDisputeResolution.Dispute memory d = disputeResolution.getDispute(disputeId);
+        if (d.status != IDisputeResolution.DisputeStatus.Resolved) {
             revert DisputeNotResolved();
+        }
 
         uint256 stake = appealStakes[disputeId];
         if (stake == 0) return; // No appeal stake to process
@@ -349,8 +306,7 @@ contract CurationRewards is Ownable, ReentrancyGuard {
         if (appealer == d.creator) {
             // Creator appealed → they won if the dispute was rejected this time
             appealerWon =
-                d.outcome == IDisputeResolution.Outcome.Rejected ||
-                d.outcome == IDisputeResolution.Outcome.Inconclusive;
+                d.outcome == IDisputeResolution.Outcome.Rejected || d.outcome == IDisputeResolution.Outcome.Inconclusive;
         } else {
             // Reporter appealed → they won if the dispute was upheld this time
             appealerWon = d.outcome == IDisputeResolution.Outcome.Upheld;
@@ -358,13 +314,13 @@ contract CurationRewards is Ownable, ReentrancyGuard {
 
         if (appealerWon) {
             // Refund appeal stake to appealer
-            (bool ok, ) = payable(appealer).call{value: stake}("");
+            (bool ok,) = payable(appealer).call{value: stake}("");
             if (!ok) revert TransferFailed();
             emit AppealStakeRefunded(disputeId, appealer, stake);
         } else {
             // Slash appeal stake → send to the other party
             address winner = appealer == d.creator ? d.reporter : d.creator;
-            (bool ok, ) = payable(winner).call{value: stake}("");
+            (bool ok,) = payable(winner).call{value: stake}("");
             if (!ok) revert TransferFailed();
             emit AppealStakeSlashed(disputeId, appealer, winner, stake);
         }

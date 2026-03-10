@@ -85,7 +85,7 @@ export function normalizeContractWriteError(error: unknown): Error {
       if (decoded.errorName === "NotAttested") {
         const tokenId = decoded.args?.[0];
         return new Error(
-          `Content Protection blocked minting for token #${tokenId?.toString() || "?"}. This chain requires that exact stem token ID to be attested on-chain before minting.`
+          `Content Protection blocked this action because content record #${tokenId?.toString() || "?"} has not been attested on-chain yet.`
         );
       }
 

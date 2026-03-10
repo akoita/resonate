@@ -5,9 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {CurationRewards} from "../../src/core/CurationRewards.sol";
 import {DisputeResolution} from "../../src/core/DisputeResolution.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
-import {
-    ERC1967Proxy
-} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IDisputeResolution} from "../../src/interfaces/IDisputeResolution.sol";
 
 /**
@@ -35,32 +33,18 @@ contract CurationRewardsTest is Test {
         string evidenceURI
     );
 
-    event BountyClaimed(
-        uint256 indexed disputeId,
-        address indexed reporter,
-        uint256 amount
-    );
+    event BountyClaimed(uint256 indexed disputeId, address indexed reporter, uint256 amount);
 
     event CounterStakeSlashed(
-        uint256 indexed disputeId,
-        address indexed reporter,
-        address indexed creator,
-        uint256 amount
+        uint256 indexed disputeId, address indexed reporter, address indexed creator, uint256 amount
     );
 
-    event CounterStakeRefunded(
-        uint256 indexed disputeId,
-        address indexed reporter,
-        uint256 amount
-    );
+    event CounterStakeRefunded(uint256 indexed disputeId, address indexed reporter, uint256 amount);
 
     function setUp() public {
         // Deploy ContentProtection (UUPS proxy)
         ContentProtection impl = new ContentProtection();
-        bytes memory initData = abi.encodeCall(
-            ContentProtection.initialize,
-            (admin, treasury, STAKE_AMOUNT)
-        );
+        bytes memory initData = abi.encodeCall(ContentProtection.initialize, (admin, treasury, STAKE_AMOUNT));
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         cp = ContentProtection(address(proxy));
 
@@ -86,10 +70,7 @@ contract CurationRewardsTest is Test {
         vm.expectEmit(true, true, true, true);
         emit ContentReported(1, 1, reporter, COUNTER_STAKE, "ipfs://evidence");
 
-        uint256 id = cr.reportContent{value: COUNTER_STAKE}(
-            1,
-            "ipfs://evidence"
-        );
+        uint256 id = cr.reportContent{value: COUNTER_STAKE}(1, "ipfs://evidence");
         assertEq(id, 1);
         assertEq(cr.counterStakes(1), COUNTER_STAKE);
         assertEq(cr.reporters(1), reporter);
@@ -112,6 +93,30 @@ contract CurationRewardsTest is Test {
     function test_ReportContent_RequiredStakeCalc() public view {
         uint256 required = cr.getRequiredCounterStake();
         assertEq(required, COUNTER_STAKE); // 20% of 0.01 ether
+    }
+
+    function test_ReportContent_StemResolvesToCanonicalTrack() public {
+        vm.prank(creator);
+        cp.attest(10, keccak256("release"), keccak256("release-fp"), "release");
+
+        vm.prank(admin);
+        cp.registerTrack(10, 1);
+
+        vm.prank(admin);
+        cp.registerStem(1, 99);
+
+        vm.deal(reporter, 1 ether);
+        vm.prank(reporter);
+        vm.expectEmit(true, true, true, true);
+        emit ContentReported(1, 1, reporter, COUNTER_STAKE, "ipfs://stem-evidence");
+
+        uint256 disputeId = cr.reportContent{value: COUNTER_STAKE}(99, "ipfs://stem-evidence");
+
+        assertEq(disputeId, 1);
+
+        IDisputeResolution.Dispute memory dispute = dr.getDispute(disputeId);
+        assertEq(dispute.tokenId, 1);
+        assertEq(dispute.creator, creator);
     }
 
     // ============ Bounty Claim (Upheld) ============

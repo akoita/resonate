@@ -1,23 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {
-    UUPSUpgradeable
-} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
-import {
-    Initializable
-} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
-import {
-    ReentrancyGuard
-} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title ContentProtection
  * @notice On-chain attestation, staking, slashing, and blacklisting for content integrity.
  *
  * Design:
- *   - Creators attest ownership of content before minting stems
- *   - Stake is required per tokenId — slashed on confirmed theft
+ *   - Creators attest ownership of protected content / release records
+ *   - Stake is required per protected record — slashed on confirmed theft
  *   - Slash split: 60% reporter · 30% treasury · 10% burned
  *   - UUPS upgradeable for parameter tuning (stake amounts, escrow periods)
  *
@@ -52,6 +46,11 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     mapping(uint256 => Attestation) public attestations;
     mapping(uint256 => StakeInfo) public stakes;
     mapping(address => bool) internal _blacklisted;
+    mapping(address => bool) public registrars;
+    mapping(uint256 => uint256[]) private _releaseToTracks;
+    mapping(uint256 => uint256[]) private _trackToStems;
+    mapping(uint256 => uint256) public stemToCanonicalTrack;
+    mapping(uint256 => uint256) public trackToParentRelease;
 
     // Slash distribution (basis points, must sum to 10000)
     uint256 public constant SLASH_REPORTER_BPS = 6000; // 60%
@@ -69,11 +68,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         string metadataURI
     );
 
-    event StakeDeposited(
-        uint256 indexed tokenId,
-        address indexed staker,
-        uint256 amount
-    );
+    event StakeDeposited(uint256 indexed tokenId, address indexed staker, uint256 amount);
 
     event StakeSlashed(
         uint256 indexed tokenId,
@@ -83,20 +78,18 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         uint256 burnedAmount
     );
 
-    event StakeRefunded(
-        uint256 indexed tokenId,
-        address indexed staker,
-        uint256 amount
-    );
+    event StakeRefunded(uint256 indexed tokenId, address indexed staker, uint256 amount);
 
     event Blacklisted(address indexed account);
     event BlacklistRemoved(address indexed account);
     event StakeAmountUpdated(uint256 oldAmount, uint256 newAmount);
     event TreasuryUpdated(address oldTreasury, address newTreasury);
-    event OwnershipTransferred(
-        address indexed previousOwner,
-        address indexed newOwner
-    );
+    event RegistrarUpdated(address indexed registrar, bool allowed);
+    event TrackRegistered(uint256 indexed releaseId, uint256 indexed trackId);
+    event StemRegistered(uint256 indexed trackId, uint256 indexed stemTokenId);
+    event TrackRevoked(uint256 indexed trackId);
+    event ReleaseRevoked(uint256 indexed releaseId);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     // ============ Errors ============
 
@@ -108,6 +101,9 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     error InsufficientStake();
     error IsBlacklisted();
     error NotBlacklisted();
+    error NotRegistrar();
+    error InvalidParent();
+    error RegistrationConflict();
     error TransferFailed();
     error ZeroAddress();
 
@@ -118,6 +114,11 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         _;
     }
 
+    modifier onlyRegistrarOrOwner() {
+        if (msg.sender != owner && !registrars[msg.sender]) revert NotRegistrar();
+        _;
+    }
+
     // ============ Initializer (UUPS) ============
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -125,11 +126,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         _disableInitializers();
     }
 
-    function initialize(
-        address _owner,
-        address _treasury,
-        uint256 _stakeAmount
-    ) external initializer {
+    function initialize(address _owner, address _treasury, uint256 _stakeAmount) external initializer {
         if (_owner == address(0)) revert ZeroAddress();
         if (_treasury == address(0)) revert ZeroAddress();
 
@@ -141,18 +138,15 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     // ============ Attestation ============
 
     /**
-     * @notice Attest ownership of content. Must be called before StemNFT.mint().
-     * @param tokenId The token ID that will be minted in StemNFT
+     * @notice Attest ownership of protected content for staking / provenance.
+     * @param tokenId Identifier for the protected asset or release record
      * @param contentHash SHA-256 hash of the audio content
      * @param fingerprintHash Chromaprint fingerprint hash
      * @param metadataURI IPFS URI or URL pointing to attestation metadata
      */
-    function attest(
-        uint256 tokenId,
-        bytes32 contentHash,
-        bytes32 fingerprintHash,
-        string calldata metadataURI
-    ) external {
+    function attest(uint256 tokenId, bytes32 contentHash, bytes32 fingerprintHash, string calldata metadataURI)
+        external
+    {
         if (_blacklisted[msg.sender]) revert IsBlacklisted();
         if (attestations[tokenId].valid) revert AlreadyAttested();
 
@@ -165,20 +159,14 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
             valid: true
         });
 
-        emit ContentAttested(
-            tokenId,
-            msg.sender,
-            contentHash,
-            fingerprintHash,
-            metadataURI
-        );
+        emit ContentAttested(tokenId, msg.sender, contentHash, fingerprintHash, metadataURI);
     }
 
     // ============ Staking ============
 
     /**
-     * @notice Stake ETH when publishing content. Required before minting.
-     * @param tokenId The token ID to stake for (must be attested first)
+     * @notice Stake ETH when publishing protected content.
+     * @param tokenId The attested content or release identifier to stake for
      */
     function stake(uint256 tokenId) external payable nonReentrant {
         if (_blacklisted[msg.sender]) revert IsBlacklisted();
@@ -187,11 +175,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         if (stakes[tokenId].active) revert AlreadyStaked();
         if (msg.value < stakeAmount) revert InsufficientStake();
 
-        stakes[tokenId] = StakeInfo({
-            amount: msg.value,
-            depositedAt: block.timestamp,
-            active: true
-        });
+        stakes[tokenId] = StakeInfo({amount: msg.value, depositedAt: block.timestamp, active: true});
 
         emit StakeDeposited(tokenId, msg.sender, msg.value);
     }
@@ -202,10 +186,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
      * @param tokenId The token ID to slash
      * @param reporter The address that reported the theft
      */
-    function slash(
-        uint256 tokenId,
-        address reporter
-    ) external onlyOwner nonReentrant {
+    function slash(uint256 tokenId, address reporter) external onlyOwner nonReentrant {
         if (!stakes[tokenId].active) revert NotStaked();
         if (reporter == address(0)) revert ZeroAddress();
 
@@ -222,10 +203,10 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         uint256 burnedAmount = total - reporterAmount - treasuryAmount;
 
         // Transfer (Interactions last — CEI pattern)
-        (bool ok1, ) = payable(reporter).call{value: reporterAmount}("");
+        (bool ok1,) = payable(reporter).call{value: reporterAmount}("");
         if (!ok1) revert TransferFailed();
 
-        (bool ok2, ) = payable(treasury).call{value: treasuryAmount}("");
+        (bool ok2,) = payable(treasury).call{value: treasuryAmount}("");
         if (!ok2) revert TransferFailed();
 
         // Burned amount stays in contract (can be swept to treasury later)
@@ -236,13 +217,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
             emit Blacklisted(attester);
         }
 
-        emit StakeSlashed(
-            tokenId,
-            reporter,
-            reporterAmount,
-            treasuryAmount,
-            burnedAmount
-        );
+        emit StakeSlashed(tokenId, reporter, reporterAmount, treasuryAmount, burnedAmount);
     }
 
     /**
@@ -257,7 +232,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
 
         stakes[tokenId].active = false;
 
-        (bool ok, ) = payable(attester).call{value: amount}("");
+        (bool ok,) = payable(attester).call{value: amount}("");
         if (!ok) revert TransferFailed();
 
         emit StakeRefunded(tokenId, attester, amount);
@@ -283,6 +258,12 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
 
     // ============ Admin ============
 
+    function setRegistrar(address registrar, bool allowed) external onlyOwner {
+        if (registrar == address(0)) revert ZeroAddress();
+        registrars[registrar] = allowed;
+        emit RegistrarUpdated(registrar, allowed);
+    }
+
     function setStakeAmount(uint256 newAmount) external onlyOwner {
         emit StakeAmountUpdated(stakeAmount, newAmount);
         stakeAmount = newAmount;
@@ -306,11 +287,100 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
 
     // ============ Views ============
 
+    function registerTrack(uint256 releaseId, uint256 trackId) external onlyRegistrarOrOwner {
+        if (!_hasAttestation(releaseId) || !_hasAttestation(trackId)) {
+            revert NotAttested();
+        }
+        if (releaseId == trackId) revert InvalidParent();
+
+        uint256 currentReleaseId = trackToParentRelease[trackId];
+        if (currentReleaseId == releaseId) return;
+        if (currentReleaseId != 0) revert RegistrationConflict();
+
+        trackToParentRelease[trackId] = releaseId;
+        _releaseToTracks[releaseId].push(trackId);
+
+        emit TrackRegistered(releaseId, trackId);
+    }
+
+    function registerStem(uint256 trackId, uint256 stemTokenId) external onlyRegistrarOrOwner {
+        if (!_hasAttestation(trackId)) revert NotAttested();
+        if (trackId == stemTokenId) revert InvalidParent();
+
+        uint256 currentTrackId = stemToCanonicalTrack[stemTokenId];
+        if (currentTrackId == trackId) return;
+        if (currentTrackId != 0) revert RegistrationConflict();
+
+        stemToCanonicalTrack[stemTokenId] = trackId;
+        _trackToStems[trackId].push(stemTokenId);
+
+        emit StemRegistered(trackId, stemTokenId);
+    }
+
+    function revokeTrack(uint256 trackId) external onlyOwner {
+        attestations[trackId].valid = false;
+        emit TrackRevoked(trackId);
+    }
+
+    function revokeRelease(uint256 releaseId) external onlyOwner {
+        attestations[releaseId].valid = false;
+
+        uint256[] storage trackIds = _releaseToTracks[releaseId];
+        for (uint256 i; i < trackIds.length; ++i) {
+            uint256 trackId = trackIds[i];
+            attestations[trackId].valid = false;
+            emit TrackRevoked(trackId);
+        }
+
+        emit ReleaseRevoked(releaseId);
+    }
+
+    function getReleaseTracks(uint256 releaseId) external view returns (uint256[] memory) {
+        return _releaseToTracks[releaseId];
+    }
+
+    function getTrackStems(uint256 trackId) external view returns (uint256[] memory) {
+        return _trackToStems[trackId];
+    }
+
     function isAttested(uint256 tokenId) external view returns (bool) {
         return attestations[tokenId].valid;
     }
 
+    function isReleaseVerified(uint256 releaseId) external view returns (bool) {
+        return attestations[releaseId].valid;
+    }
+
+    function isTrackVerified(uint256 trackId) external view returns (bool) {
+        return _isTrackVerified(trackId);
+    }
+
+    function isStemVerified(uint256 stemTokenId) external view returns (bool) {
+        uint256 canonicalTrackId = stemToCanonicalTrack[stemTokenId];
+        if (canonicalTrackId == 0) return false;
+
+        return _isTrackVerified(canonicalTrackId);
+    }
+
     function isStaked(uint256 tokenId) external view returns (bool) {
         return stakes[tokenId].active;
+    }
+
+    function resolveCanonicalTrack(uint256 stemTokenId) external view returns (uint256) {
+        return stemToCanonicalTrack[stemTokenId];
+    }
+
+    function resolveProtectionTarget(uint256 tokenId) external view returns (uint256) {
+        uint256 canonicalTrackId = stemToCanonicalTrack[tokenId];
+        return canonicalTrackId == 0 ? tokenId : canonicalTrackId;
+    }
+
+    function _hasAttestation(uint256 tokenId) internal view returns (bool) {
+        return attestations[tokenId].attester != address(0);
+    }
+
+    function _isTrackVerified(uint256 trackId) internal view returns (bool) {
+        uint256 releaseId = trackToParentRelease[trackId];
+        return releaseId != 0 && attestations[trackId].valid && attestations[releaseId].valid;
     }
 }

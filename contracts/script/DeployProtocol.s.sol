@@ -7,9 +7,7 @@ import {StemMarketplaceV2} from "../src/core/StemMarketplaceV2.sol";
 import {ContentProtection} from "../src/core/ContentProtection.sol";
 import {RevenueEscrow} from "../src/core/RevenueEscrow.sol";
 import {TransferValidator} from "../src/modules/TransferValidator.sol";
-import {
-    ERC1967Proxy
-} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title DeployProtocol
@@ -28,19 +26,12 @@ import {
  */
 contract DeployProtocol is Script {
     function run() external {
-        uint256 deployerKey = vm.envOr(
-            "PRIVATE_KEY",
-            uint256(
-                0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-            )
-        );
+        uint256 deployerKey =
+            vm.envOr("PRIVATE_KEY", uint256(0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80));
         address deployer = vm.addr(deployerKey);
 
         // Config
-        string memory baseUri = vm.envOr(
-            "BASE_URI",
-            string("https://api.resonate.fm/metadata/")
-        );
+        string memory baseUri = vm.envOr("BASE_URI", string("https://api.resonate.fm/metadata/"));
         address feeRecipient = vm.envOr("FEE_RECIPIENT", deployer);
         uint256 protocolFeeBps = vm.envOr("PROTOCOL_FEE_BPS", uint256(250)); // 2.5%
         uint256 stakeAmountWei = vm.envOr("STAKE_AMOUNT", uint256(0.01 ether)); // Default 0.01 ETH
@@ -58,14 +49,9 @@ contract DeployProtocol is Script {
 
         // 2. Deploy ContentProtection (UUPS proxy)
         ContentProtection cpImpl = new ContentProtection();
-        bytes memory cpInit = abi.encodeCall(
-            ContentProtection.initialize,
-            (deployer, feeRecipient, stakeAmountWei)
-        );
+        bytes memory cpInit = abi.encodeCall(ContentProtection.initialize, (deployer, feeRecipient, stakeAmountWei));
         ERC1967Proxy cpProxy = new ERC1967Proxy(address(cpImpl), cpInit);
-        ContentProtection contentProtection = ContentProtection(
-            address(cpProxy)
-        );
+        ContentProtection contentProtection = ContentProtection(address(cpProxy));
         console.log("ContentProtection (proxy):", address(contentProtection));
 
         // 3. Deploy RevenueEscrow
@@ -77,11 +63,7 @@ contract DeployProtocol is Script {
         console.log("StemNFT:", address(stemNFT));
 
         // 5. Deploy StemMarketplaceV2 (core)
-        StemMarketplaceV2 marketplace = new StemMarketplaceV2(
-            address(stemNFT),
-            feeRecipient,
-            protocolFeeBps
-        );
+        StemMarketplaceV2 marketplace = new StemMarketplaceV2(address(stemNFT), feeRecipient, protocolFeeBps);
         console.log("StemMarketplaceV2:", address(marketplace));
 
         // 6. Configure
@@ -96,6 +78,9 @@ contract DeployProtocol is Script {
 
         validator.setContentProtection(address(contentProtection));
         console.log("  -> ContentProtection linked to TransferValidator");
+
+        escrow.setContentProtection(address(contentProtection));
+        console.log("  -> ContentProtection linked to RevenueEscrow");
 
         vm.stopBroadcast();
 

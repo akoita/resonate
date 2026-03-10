@@ -458,10 +458,45 @@ export const ContentProtectionABI = [
     ],
   },
   {
+    name: "getReleaseTracks",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "releaseId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256[]" }],
+  },
+  {
+    name: "getTrackStems",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "trackId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256[]" }],
+  },
+  {
     name: "isAttested",
     type: "function",
     stateMutability: "view",
     inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "isReleaseVerified",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "releaseId", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "isTrackVerified",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "trackId", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "isStemVerified",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "stemTokenId", type: "uint256" }],
     outputs: [{ name: "", type: "bool" }],
   },
   {
@@ -470,6 +505,34 @@ export const ContentProtectionABI = [
     stateMutability: "view",
     inputs: [{ name: "tokenId", type: "uint256" }],
     outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "resolveCanonicalTrack",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "stemTokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "resolveProtectionTarget",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "stemToCanonicalTrack",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "stemTokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "trackToParentRelease",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "trackId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
   },
   {
     name: "isBlacklisted",
@@ -506,6 +569,22 @@ export const ContentProtectionABI = [
       { name: "tokenId", type: "uint256", indexed: true },
       { name: "staker", type: "address", indexed: true },
       { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    name: "TrackRegistered",
+    type: "event",
+    inputs: [
+      { name: "releaseId", type: "uint256", indexed: true },
+      { name: "trackId", type: "uint256", indexed: true },
+    ],
+  },
+  {
+    name: "StemRegistered",
+    type: "event",
+    inputs: [
+      { name: "trackId", type: "uint256", indexed: true },
+      { name: "stemTokenId", type: "uint256", indexed: true },
     ],
   },
 ] as const;

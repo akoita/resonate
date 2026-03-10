@@ -5,6 +5,16 @@ import {Test, console} from "forge-std/Test.sol";
 import {StemNFT} from "../../src/core/StemNFT.sol";
 import {TransferValidator} from "../../src/modules/TransferValidator.sol";
 
+contract MockContentProtection {
+    function isAttested(uint256) external pure returns (bool) {
+        return false;
+    }
+
+    function isBlacklisted(address) external pure returns (bool) {
+        return false;
+    }
+}
+
 /**
  * @title StemNFT Unit Tests
  * @notice Comprehensive unit tests for the StemNFT contract
@@ -199,6 +209,29 @@ contract StemNFTTest is Test {
             true,
             parentIds
         );
+    }
+
+    function test_Mint_SucceedsWhenContentProtectionIsConfigured() public {
+        MockContentProtection protection = new MockContentProtection();
+
+        vm.prank(admin);
+        stemNFT.setContentProtection(address(protection));
+
+        uint256[] memory parentIds = new uint256[](0);
+
+        vm.prank(minter);
+        uint256 tokenId = stemNFT.mint(
+            alice,
+            1,
+            TOKEN_URI,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds
+        );
+
+        assertEq(tokenId, 1);
+        assertEq(stemNFT.balanceOf(alice, tokenId), 1);
     }
 
     function test_Mint_EmitsEvent() public {

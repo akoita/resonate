@@ -81,7 +81,6 @@ export function MintStemButton({
     // "confirming_mint" and "confirming_list" are transient states while polling the backend
     const [state, setState] = useState<"idle" | "confirming_mint" | "minted" | "confirming_list" | "listed">("idle");
     const [mintedTokenId, setMintedTokenId] = useState<bigint | null>(null);
-
     // Persistence check on mount
     useEffect(() => {
         const checkStatus = async () => {

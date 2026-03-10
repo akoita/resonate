@@ -15,9 +15,7 @@ interface IContentProtection {
         bool valid;
     }
 
-    function attestations(
-        uint256 tokenId
-    )
+    function attestations(uint256 tokenId)
         external
         view
         returns (
@@ -31,13 +29,29 @@ interface IContentProtection {
 
     function isBlacklisted(address account) external view returns (bool);
 
-    function stakes(
-        uint256 tokenId
-    ) external view returns (uint256 amount, uint256 depositedAt, bool active);
+    function stakes(uint256 tokenId) external view returns (uint256 amount, uint256 depositedAt, bool active);
+
+    function getReleaseTracks(uint256 releaseId) external view returns (uint256[] memory);
+
+    function getTrackStems(uint256 trackId) external view returns (uint256[] memory);
 
     function isAttested(uint256 tokenId) external view returns (bool);
 
+    function isReleaseVerified(uint256 releaseId) external view returns (bool);
+
+    function isTrackVerified(uint256 trackId) external view returns (bool);
+
+    function isStemVerified(uint256 stemTokenId) external view returns (bool);
+
     function isStaked(uint256 tokenId) external view returns (bool);
 
+    function resolveCanonicalTrack(uint256 stemTokenId) external view returns (uint256);
+
+    function resolveProtectionTarget(uint256 tokenId) external view returns (uint256);
+
     function stakeAmount() external view returns (uint256);
+
+    function stemToCanonicalTrack(uint256 stemTokenId) external view returns (uint256);
+
+    function trackToParentRelease(uint256 trackId) external view returns (uint256);
 }

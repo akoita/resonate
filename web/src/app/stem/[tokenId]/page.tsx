@@ -49,15 +49,22 @@ export default function StemDetailPage() {
 
     const [showListModal, setShowListModal] = useState(false);
     const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
+    const [parentTrackId, setParentTrackId] = useState<bigint | undefined>(undefined);
 
     // Fetch artwork from metadata service
     useEffect(() => {
         if (!tokenId || !chainId) return;
+        setArtworkUrl(null);
+        setParentTrackId(undefined);
         const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
         fetch(`${backendUrl}/api/metadata/${chainId}/${tokenId.toString()}`)
             .then(r => r.ok ? r.json() : null)
             .then(data => {
                 if (data?.image) setArtworkUrl(data.image);
+                const rawTrackId = data?.properties?.trackId;
+                if (rawTrackId !== undefined && rawTrackId !== null) {
+                    setParentTrackId(BigInt(rawTrackId));
+                }
             })
             .catch(() => { /* ignore — will show fallback */ });
     }, [tokenId, chainId]);
@@ -272,7 +279,11 @@ export default function StemDetailPage() {
 
                     {/* Content Protection */}
                     {tokenId && (
-                      <ContentProtectionBadge tokenId={tokenId} expanded />
+                      <ContentProtectionBadge
+                          tokenId={tokenId}
+                          parentTrackId={parentTrackId}
+                          expanded
+                      />
                     )}
                 </div>
 

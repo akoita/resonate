@@ -125,13 +125,14 @@ validator.setContentProtection(address(contentProtection));
 
 UUPS-upgradeable contract for anti-piracy enforcement:
 
-- **Attestation** — Creators register content + fingerprint hashes before minting
+- **Attestation** — Creators register release / content provenance on-chain
 - **Staking** — ETH deposit required per tokenId (anti-spam deterrent)
 - **Slashing** — On confirmed infringement: 60% reporter, 30% treasury, 10% burned
 - **Blacklisting** — Repeat offenders blocked from all protocol operations
+- **Hierarchy** — Releases and tracks are directly protected; stems inherit verification from a canonical parent track
 
 ```solidity
-// 1. Attest content before minting
+// 1. Attest the release / protected content record
 contentProtection.attest(
     tokenId,
     contentHash,      // keccak256 of audio
@@ -139,7 +140,7 @@ contentProtection.attest(
     "ipfs://Qm..."    // metadata URI
 );
 
-// 2. Stake ETH (required before StemNFT.mint)
+// 2. Stake ETH for the protected release / content record
 contentProtection.stake{value: 0.01 ether}(tokenId);
 
 // 3. Admin: slash on confirmed theft
@@ -148,6 +149,14 @@ contentProtection.slash(tokenId, reporterAddress);
 // 4. Admin: refund stake after clean escrow period
 contentProtection.refundStake(tokenId);
 ```
+
+Hierarchy model:
+
+- releases and tracks are the directly attested protection records
+- each stem token is linked to one canonical parent track via `registerStem(trackId, stemTokenId)`
+- `isTrackVerified(trackId)` requires both the track attestation and its parent release attestation to remain valid
+- `isStemVerified(stemTokenId)` resolves the canonical track and inherits that verification status
+- disputes reported against a stem resolve to its canonical `trackId`, which allows escrow freezing and slashing to cascade across derived stems
 
 ### RevenueEscrow.sol (Phase 2)
 

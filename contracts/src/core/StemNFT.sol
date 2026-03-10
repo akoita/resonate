@@ -67,7 +67,7 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
     /// @notice Optional transfer validator module
     ITransferValidator public transferValidator;
 
-    /// @notice Optional content protection module (attestation gate)
+    /// @notice Optional content protection module for blacklist / future policy checks
     IContentProtection public contentProtection;
 
     // ============ Events ============
@@ -88,8 +88,6 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
     error InvalidRoyalty(uint96 bps);
     error TransferNotAllowed();
     error ParentNotRemixable(uint256 parentId);
-    error NotAttested(uint256 tokenId);
-
     // ============ Constructor ============
     constructor(string memory baseUri) ERC1155(baseUri) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -123,17 +121,6 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
             : royaltyBps;
         if (effectiveRoyalty > MAX_ROYALTY_BPS)
             revert InvalidRoyalty(royaltyBps);
-
-        // Content protection gate: require attestation if module is set
-        // Note: tokenId is assigned below, so attestation uses the next ID.
-        // The caller must pre-attest with the correct tokenId (_tokenIdCounter + 1).
-        uint256 nextId = _tokenIdCounter + 1;
-        if (
-            address(contentProtection) != address(0) &&
-            !contentProtection.isAttested(nextId)
-        ) {
-            revert NotAttested(nextId);
-        }
 
         // Validate parent stems (if remix)
         for (uint256 i; i < parentIds.length; ++i) {
@@ -238,7 +225,7 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
     }
 
     /**
-     * @notice Set content protection module (attestation gate on mint)
+     * @notice Set content protection module for blacklist / future policy checks
      * @param protection Address of ContentProtection contract (address(0) to disable)
      */
     function setContentProtection(
