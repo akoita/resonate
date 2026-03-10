@@ -7,3 +7,4 @@ solady/=lib/solady/src/
 ExcessivelySafeCall/=lib/ExcessivelySafeCall/src/
 openzeppelin-contracts/=lib/openzeppelin-contracts/contracts/
 halmos-cheatcodes/=lib/halmos-cheatcodes/src/
+I4337/=lib/kernel/lib/I4337/src/

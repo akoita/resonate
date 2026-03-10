@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, "feat/*"]
+    branches: [main, develop, "feat/*", "fix/*", "docs/*"]
   pull_request:
-    branches: [main, develop, "feat/*"]
+    branches: [main, develop, "feat/*", "fix/*", "docs/*"]
 
 jobs:
   lint:
@@ -47,8 +47,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
@@ -56,13 +54,7 @@ jobs:
           version: nightly
 
       - name: Install dependencies
-        run: |
-          forge install foundry-rs/forge-std --no-git
-          forge install openzeppelin/openzeppelin-contracts --no-git
-          forge install zerodevapp/kernel --no-git
-          forge install vectorized/solady --no-git
-          forge install nomad-xyz/ExcessivelySafeCall --no-git
-          forge install eth-infinitism/account-abstraction --no-git
+        run: ./scripts/install-deps.sh
         working-directory: contracts
 
       - name: Run Forge build

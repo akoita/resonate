@@ -20,8 +20,11 @@ Solidity contracts powering the Resonate music platform: NFT stems, marketplace,
 
 ```bash
 curl -L https://foundry.paradigm.xyz | bash && foundryup
-cd contracts && forge install
+cd contracts && ./scripts/install-deps.sh
 ```
+
+This bootstrap script installs the pinned Forge libraries and the Kernel `I4337`
+nested dependency that CI also relies on.
 
 ### Local (Anvil)
 
