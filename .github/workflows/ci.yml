@@ -47,8 +47,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
@@ -63,6 +61,7 @@ jobs:
           forge install vectorized/solady --no-git
           forge install nomad-xyz/ExcessivelySafeCall --no-git
           forge install eth-infinitism/account-abstraction --no-git
+          forge install a16z/halmos-cheatcodes --no-git
           # Init kernel's I4337 nested submodule (needed for Kernel.sol imports)
           cd lib/kernel && git submodule update --init lib/I4337
         working-directory: contracts
