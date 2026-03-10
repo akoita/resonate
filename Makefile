@@ -1,4 +1,7 @@
+SEPOLIA_RPC_URL ?= https://sepolia.drpc.org
+
 dev-up:
+	@mkdir -p backend/uploads/stems backend/uploads/decrypted_cache
 	@# Pre-check for port conflicts that silently break docker compose up
 	@for port_info in "6379:Redis" "5432:Postgres" "8000:Demucs worker" "8085:PubSub emulator"; do \
 		port=$$(echo $$port_info | cut -d: -f1); \
@@ -43,6 +46,7 @@ dev-up:
 	@echo ""
 
 dev-up-build:
+	@mkdir -p backend/uploads/stems backend/uploads/decrypted_cache
 	docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build -d
 	@sleep 3
 	@if ! docker compose ps demucs-worker --format '{{.Status}}' 2>/dev/null | grep -q 'Up'; then \
@@ -239,14 +243,10 @@ local-aa-logs:
 # Forked Sepolia AA Development (ZeroDev)
 # ============================================
 # Uses anvil --fork-url to fork Sepolia where ZeroDev contracts
-# are already deployed. Requires SEPOLIA_RPC_URL in .env.
+# are already deployed. Uses SEPOLIA_RPC_URL or falls back to dRPC.
 
 # Start Anvil forking Sepolia (ZeroDev contracts available)
 anvil-fork:
-	@if [ -z "$(SEPOLIA_RPC_URL)" ]; then \
-		echo "Error: SEPOLIA_RPC_URL not set. Export it or add to .env at project root."; \
-		exit 1; \
-	fi
 	SEPOLIA_RPC_URL=$(SEPOLIA_RPC_URL) docker compose --profile fork-aa up -d anvil-fork alto-bundler-fork
 
 # Full forked Sepolia setup: anvil fork + configure .env
