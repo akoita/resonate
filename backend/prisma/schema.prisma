@@ -512,3 +512,48 @@ model ContentAttestation {
   @@unique([tokenId, chainId])
   @@index([attesterAddress])
 }
+
+model Dispute {
+  id               String            @id @default(uuid())
+  disputeIdOnChain Int?              @unique
+  tokenId          String
+  reporterAddr     String
+  creatorAddr      String
+  status           String            @default("filed") // filed|evidence|review|resolved
+  outcome          String? // upheld|rejected|inconclusive
+  evidenceURI      String
+  counterStake     String // wei
+  resolvedAt       DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  evidences        DisputeEvidence[]
+
+  @@index([tokenId])
+  @@index([reporterAddr])
+  @@index([creatorAddr])
+  @@index([status])
+}
+
+model DisputeEvidence {
+  id          String   @id @default(uuid())
+  disputeId   String
+  submitter   String // wallet address
+  party       String // reporter|creator
+  evidenceURI String
+  description String?
+  createdAt   DateTime @default(now())
+  dispute     Dispute  @relation(fields: [disputeId], references: [id])
+
+  @@index([disputeId])
+}
+
+model CuratorReputation {
+  id              String   @id @default(uuid())
+  walletAddress   String   @unique
+  score           Int      @default(0)
+  successfulFlags Int      @default(0)
+  rejectedFlags   Int      @default(0)
+  totalBounties   String   @default("0") // wei
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

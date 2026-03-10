@@ -38,4 +38,6 @@ interface IContentProtection {
     function isAttested(uint256 tokenId) external view returns (bool);
 
     function isStaked(uint256 tokenId) external view returns (bool);
+
+    function stakeAmount() external view returns (uint256);
 }
