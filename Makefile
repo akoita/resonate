@@ -157,6 +157,13 @@ infra-destroy:
 
 
 backend-dev: dev-clean
+	@# Ensure PubSub emulator env is set for the NestJS process
+	@if ! grep -q '^PUBSUB_EMULATOR_HOST' backend/.env 2>/dev/null; then \
+		echo 'PUBSUB_EMULATOR_HOST=localhost:8085' >> backend/.env; \
+		echo 'GCP_PROJECT_ID=resonate-local' >> backend/.env; \
+		echo 'STEM_PROCESSING_MODE=pubsub' >> backend/.env; \
+		echo "✅ Added PubSub emulator config to backend/.env"; \
+	fi
 	cd backend && npm run prisma:generate && npm run prisma:migrate && npm run start:dev
 
 web-dev: dev-clean
@@ -257,6 +264,24 @@ local-aa-fork:
 web-dev-fork:
 	@rm -rf web/.next
 	cd web && NEXT_PUBLIC_API_URL=http://localhost:3000 NEXT_PUBLIC_ZERODEV_PROJECT_ID= NEXT_PUBLIC_CHAIN_ID=11155111 NEXT_PUBLIC_RPC_URL=http://localhost:8545 npm run dev
+
+# ============================================
+# PubSub Emulator Helpers
+# ============================================
+
+# Manually create PubSub topics/subscriptions (recovery when emulator state is lost)
+pubsub-init:
+	@echo "Creating PubSub topics and subscriptions on emulator..."
+	@curl -sf -X PUT http://localhost:8085/v1/projects/resonate-local/topics/stem-separate > /dev/null 2>&1 || true
+	@curl -sf -X PUT http://localhost:8085/v1/projects/resonate-local/topics/stem-results > /dev/null 2>&1 || true
+	@curl -sf -X PUT http://localhost:8085/v1/projects/resonate-local/subscriptions/stem-separate-worker \
+		-H 'Content-Type: application/json' \
+		-d '{"topic":"projects/resonate-local/topics/stem-separate","ackDeadlineSeconds":600}' > /dev/null 2>&1 || true
+	@curl -sf -X PUT http://localhost:8085/v1/projects/resonate-local/subscriptions/stem-results-backend \
+		-H 'Content-Type: application/json' \
+		-d '{"topic":"projects/resonate-local/topics/stem-results","ackDeadlineSeconds":600}' > /dev/null 2>&1 || true
+	@echo "✅ PubSub topics: stem-separate, stem-results"
+	@echo "✅ PubSub subscriptions: stem-separate-worker, stem-results-backend"
 
 # ============================================
 # Demucs AI Stem Separation Worker
