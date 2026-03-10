@@ -48,7 +48,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: true
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
@@ -59,10 +59,12 @@ jobs:
         run: |
           forge install foundry-rs/forge-std --no-git
           forge install openzeppelin/openzeppelin-contracts --no-git
-          forge install zerodevapp/kernel --no-git
+          forge install zerodevapp/kernel@v2.4 --no-git
           forge install vectorized/solady --no-git
           forge install nomad-xyz/ExcessivelySafeCall --no-git
           forge install eth-infinitism/account-abstraction --no-git
+          # Init kernel's I4337 nested submodule (needed for Kernel.sol imports)
+          cd lib/kernel && git submodule update --init lib/I4337
         working-directory: contracts
 
       - name: Run Forge build
