@@ -141,10 +141,22 @@ update_env_var "NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS" "$CONTENT_PROTECTION" "$
 update_env_var "NEXT_PUBLIC_CHAIN_ID" "$CHAIN_ID" "$WEB_ENV_LOCAL"
 echo -e "${GREEN}✓ web/.env.local updated${NC}"
 
+# Prisma-backed steps are optional during clean-clone setup.
+BACKEND_PRISMA_CLIENT="$PROJECT_ROOT/backend/node_modules/@prisma/client"
+BACKEND_GENERATED_PRISMA="$PROJECT_ROOT/backend/node_modules/.prisma/client"
+
 # --- Ensure database schema is up-to-date ---
 echo ""
 echo "Applying database migrations..."
-cd "$PROJECT_ROOT/backend" && npx prisma migrate deploy 2>/dev/null && echo -e "${GREEN}✓ Database migrations applied${NC}" || echo -e "${YELLOW}Warning: Could not apply migrations (database may not be ready)${NC}"
+if [[ -d "$BACKEND_PRISMA_CLIENT" ]]; then
+    if cd "$PROJECT_ROOT/backend" && npx --no-install prisma migrate deploy 2>/dev/null; then
+        echo -e "${GREEN}✓ Database migrations applied${NC}"
+    else
+        echo -e "${YELLOW}Warning: Could not apply migrations (database may not be ready)${NC}"
+    fi
+else
+    echo -e "${YELLOW}Warning: Skipping migrations because backend dependencies are not installed yet${NC}"
+fi
 
 # --- Reset indexer to near-current block ---
 echo ""
@@ -160,9 +172,9 @@ else
     CURRENT_BLOCK=0
 fi
 
-if [[ "$CURRENT_BLOCK" -gt 0 ]]; then
+if [[ "$CURRENT_BLOCK" -gt 0 ]] && [[ -d "$BACKEND_PRISMA_CLIENT" ]] && [[ -d "$BACKEND_GENERATED_PRISMA" ]]; then
     RESET_BLOCK=$((CURRENT_BLOCK - 1))
-    cd "$PROJECT_ROOT/backend" && node -e "
+    if cd "$PROJECT_ROOT/backend" && node -e "
 const { PrismaClient } = require('@prisma/client');
 const p = new PrismaClient();
 p.indexerState.upsert({
@@ -172,7 +184,13 @@ p.indexerState.upsert({
 }).then(() => { console.log('Indexer reset to block ${RESET_BLOCK}'); return p.\$disconnect(); })
   .catch(e => { console.error('Failed to reset indexer:', e.message); process.exit(1); });
 "
-    echo -e "${GREEN}✓ Indexer state reset to block ${RESET_BLOCK} (chain ${CHAIN_ID})${NC}"
+    then
+        echo -e "${GREEN}✓ Indexer state reset to block ${RESET_BLOCK} (chain ${CHAIN_ID})${NC}"
+    else
+        echo -e "${YELLOW}Warning: Could not reset indexer state (database may not be ready)${NC}"
+    fi
+elif [[ "$CURRENT_BLOCK" -gt 0 ]]; then
+    echo -e "${YELLOW}Warning: Skipping indexer reset because backend dependencies are not installed yet${NC}"
 else
     echo -e "${YELLOW}Warning: Could not get current block, skipping indexer reset${NC}"
 fi

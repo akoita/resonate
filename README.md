@@ -94,6 +94,12 @@ Two AA modes are available — see [AA Integration](docs/account-abstraction/acc
 #### Forked Sepolia (recommended — session keys, full AA)
 
 ```bash
+# 0. Install dependencies (once per clone)
+cd contracts && ./scripts/install-deps.sh
+cd ../backend && npm ci
+cd ../web && npm ci --legacy-peer-deps
+cd ..
+
 # 1. Set env vars
 export SEPOLIA_RPC_URL=https://sepolia.drpc.org
 
@@ -101,15 +107,14 @@ export SEPOLIA_RPC_URL=https://sepolia.drpc.org
 make dev-up                     # use `make dev-up-build` after worker code changes
                                 # check the container status summary — all should show ✅
 make local-aa-fork              # Forks Sepolia, configures .env (AA infra already on-chain)
-make deploy-contracts           # Configures .env with Sepolia contract addresses
-                                # (contracts already exist on the fork — no new deployment)
+make deploy-contracts           # Deploys fresh protocol contracts to the fork and updates .env
 
 # 3. Start services (separate terminals)
 make backend-dev     # NestJS API on port 3000
 make web-dev-fork    # Next.js on port 3001 (chainId 11155111, local RPC)
 ```
 
-> **Note:** On a Sepolia fork, `make deploy-contracts` detects the fork and uses the existing Sepolia deployment addresses from `contracts/deployments/sepolia.json` — no new contracts are deployed. For local-only mode (chain 31337), it deploys fresh contracts via Forge.
+> **Note:** On a Sepolia fork, `make deploy-contracts` deploys a fresh copy of the Resonate protocol contracts to the local fork, then updates `backend/.env` and `web/.env.local` with those fork-local addresses. If backend dependencies are not installed yet, the config script now skips the optional Prisma migration/indexer reset steps and `make backend-dev` will handle them later.
 
 #### Local-Only (offline, no internet required)
 

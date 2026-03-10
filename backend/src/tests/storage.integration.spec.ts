@@ -91,4 +91,18 @@ describe('LocalStorageProvider Integration', () => {
     expect(readBack![0]).toBe(0x52); // R
     expect(readBack![4]).toBe(0x24); // file size byte
   });
+
+  it('recreates the storage directory if it is deleted after startup', async () => {
+    const filename = 'recreate-dir.mp3';
+    const data = Buffer.from('recreate me');
+
+    fs.rmSync(testDir, { recursive: true, force: true });
+    expect(fs.existsSync(testDir)).toBe(false);
+
+    const result = await storage.upload(data, filename, 'audio/mpeg');
+
+    expect(fs.existsSync(testDir)).toBe(true);
+    const readBack = await storage.download(result.uri);
+    expect(readBack).toEqual(data);
+  });
 });

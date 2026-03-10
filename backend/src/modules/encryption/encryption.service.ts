@@ -39,10 +39,14 @@ export class EncryptionService {
         @Inject('ENCRYPTION_PROVIDER') private readonly provider: EncryptionProvider,
         private readonly configService: ConfigService,
     ) {
+        this.ensureCacheDir();
+        this.logger.log(`Encryption Service initialized with provider: ${this.provider.providerName}`);
+    }
+
+    private ensureCacheDir(): void {
         if (!existsSync(this.cacheDir)) {
             mkdirSync(this.cacheDir, { recursive: true });
         }
-        this.logger.log(`Encryption Service initialized with provider: ${this.provider.providerName}`);
     }
 
     /**
@@ -123,6 +127,7 @@ export class EncryptionService {
         // Check cache first
         const cacheKey = createHash('sha256').update(uri).digest('hex');
         const cachePath = join(this.cacheDir, `${cacheKey}.mp3`);
+        this.ensureCacheDir();
 
         if (existsSync(cachePath)) {
             this.logger.log(`[Cache] Hit for URI: ${uri}`);

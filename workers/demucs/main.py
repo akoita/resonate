@@ -97,6 +97,12 @@ def get_gcs_client():
     return _gcs_client
 
 
+def ensure_output_base_dir() -> None:
+    """Recreate the local output directory if it was removed after startup."""
+    if STORAGE_MODE == "local":
+        OUTPUT_BASE_DIR.mkdir(parents=True, exist_ok=True)
+
+
 def upload_to_gcs(local_path: Path, gcs_key: str) -> str:
     """Upload a file to GCS and return a public HTTPS URL."""
     client = get_gcs_client()
@@ -136,6 +142,8 @@ def download_from_gcs(gcs_uri: str, dest_path: Path) -> Path:
 
 async def run_demucs_separation(input_path: Path, temp_dir: str, release_id: str, track_id: str, callback_url: Optional[str] = None) -> dict:
     """Run Demucs separation and return stems dict. Shared by HTTP and Pub/Sub paths."""
+    ensure_output_base_dir()
+
     # Output directory for this specific track
     if STORAGE_MODE == "local":
         final_output_dir = OUTPUT_BASE_DIR / release_id / track_id
@@ -291,6 +299,8 @@ async def separate_audio(
 
 async def download_audio(uri: str, dest_path: Path):
     """Download audio from GCS, HTTP URL, or shared volume."""
+    ensure_output_base_dir()
+
     if uri.startswith("gs://") or uri.startswith("https://storage.googleapis.com/"):
         # GCS download (production)
         download_from_gcs(uri, dest_path)

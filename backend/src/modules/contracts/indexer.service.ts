@@ -88,6 +88,7 @@ const MARKETPLACE_GET_LISTING_ABI = [
 // Chain configurations
 // Global override: when set, routes ALL chains through this RPC (e.g., local Anvil fork)
 const RPC_OVERRIDE = process.env.RPC_URL || "";
+const DEFAULT_SEPOLIA_RPC_URL = "https://sepolia.drpc.org";
 
 const CHAIN_CONFIGS: Record<number, { chain: any; rpcUrl: string }> = {
   31337: {
@@ -96,7 +97,11 @@ const CHAIN_CONFIGS: Record<number, { chain: any; rpcUrl: string }> = {
   },
   11155111: {
     chain: sepolia,
-    rpcUrl: RPC_OVERRIDE || process.env.SEPOLIA_RPC_URL || `https://sepolia.infura.io/v3/${process.env.INFURA_KEY}`,
+    rpcUrl:
+      RPC_OVERRIDE ||
+      process.env.LOCAL_RPC_URL ||
+      process.env.SEPOLIA_RPC_URL ||
+      DEFAULT_SEPOLIA_RPC_URL,
   },
   84532: {
     chain: baseSepolia,
