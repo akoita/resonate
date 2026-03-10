@@ -8,6 +8,7 @@ import {
   type BatchStemResult,
   type BatchStemStatus,
 } from "../../hooks/useContracts";
+import { formatBatchErrorMessage } from "../../lib/contractErrors";
 
 interface BatchMintListModalProps {
   stems: BatchStemItem[];
@@ -46,7 +47,11 @@ export function BatchMintListModal({ stems, onClose, onComplete }: BatchMintList
       });
       onComplete?.();
     } catch (err) {
-      setBatchError(err instanceof Error ? err.message : "Batch transaction failed");
+      setBatchError(
+        err instanceof Error
+          ? formatBatchErrorMessage(err.message)
+          : "Batch transaction failed"
+      );
     }
   }, [stems, executeBatch, onComplete]);
 
@@ -71,7 +76,9 @@ export function BatchMintListModal({ stems, onClose, onComplete }: BatchMintList
         },
       });
     } catch (err) {
-      setBatchError(err instanceof Error ? err.message : "Retry failed");
+      setBatchError(
+        err instanceof Error ? formatBatchErrorMessage(err.message) : "Retry failed"
+      );
     }
   }, [stems, results, executeBatch]);
 
