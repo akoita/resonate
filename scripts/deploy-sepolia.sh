@@ -4,7 +4,7 @@
 # Prerequisites:
 #   - Foundry installed (forge, cast)
 #   - PRIVATE_KEY env var set (deployer wallet private key)
-#   - SEPOLIA_RPC_URL env var set (e.g. https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY)
+#   - SEPOLIA_RPC_URL env var set (e.g. https://sepolia.drpc.org)
 #   - ETHERSCAN_API_KEY env var set (for contract verification)
 #   - Deployer wallet funded with Sepolia ETH (>= 0.05 ETH recommended)
 #
@@ -44,7 +44,7 @@ fi
 
 if [[ -z "${SEPOLIA_RPC_URL:-}" ]]; then
     echo -e "${RED}Error: SEPOLIA_RPC_URL env var not set${NC}"
-    echo "  export SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY"
+    echo "  export SEPOLIA_RPC_URL=https://sepolia.drpc.org"
     exit 1
 fi
 

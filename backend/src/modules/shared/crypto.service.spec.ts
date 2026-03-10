@@ -1,24 +1,40 @@
 import { CryptoService } from "./crypto.service";
 
-function createLocalService(keyHex?: string): CryptoService {
+type ConfigOverrides = {
+  keyHex?: string;
+  provider?: string;
+  nodeEnv?: string;
+  allowPlaintext?: string;
+};
+
+function createService({
+  keyHex,
+  provider = "local",
+  nodeEnv,
+  allowPlaintext,
+}: ConfigOverrides = {}): CryptoService {
   const mockConfig = {
     get: jest.fn((key: string) => {
       if (key === "AGENT_KEY_ENCRYPTION_KEY") return keyHex;
-      if (key === "KMS_PROVIDER") return "local";
+      if (key === "KMS_PROVIDER") return provider;
+      if (key === "NODE_ENV") return nodeEnv;
+      if (key === "ALLOW_PLAINTEXT_AGENT_KEYS") return allowPlaintext;
       return undefined;
     }),
   };
   const service = new (CryptoService as any)(mockConfig);
+  return service;
+}
+
+function createLocalService(keyHex?: string, overrides: Omit<ConfigOverrides, "keyHex" | "provider"> = {}): CryptoService {
+  const service = createService({ keyHex, provider: "local", ...overrides });
   // initLocal is sync so we can call onModuleInit synchronously for "local" provider
   (service as any).initLocal();
   return service;
 }
 
-function createNoKeyService(): CryptoService {
-  const mockConfig = {
-    get: jest.fn(() => undefined),
-  };
-  return new (CryptoService as any)(mockConfig);
+function createNoKeyService(overrides: Omit<ConfigOverrides, "keyHex"> = {}): CryptoService {
+  return createService({ keyHex: undefined, ...overrides });
   // Don't call init — provider stays "none"
 }
 
@@ -122,6 +138,35 @@ describe("CryptoService", () => {
       expect(() => createLocalService("tooshort")).toThrow(
         "must be exactly 64 hex characters",
       );
+    });
+
+    it("should refuse plaintext fallback outside development and test", () => {
+      expect(() => createLocalService(undefined, { nodeEnv: "production" })).toThrow(
+        "Refusing to store agent private keys in plaintext outside development/test",
+      );
+    });
+
+    it("should allow explicit plaintext fallback override outside development and test", () => {
+      expect(() =>
+        createLocalService(undefined, {
+          nodeEnv: "production",
+          allowPlaintext: "true",
+        }),
+      ).not.toThrow();
+    });
+  });
+
+  describe("provider validation", () => {
+    it("should reject unknown providers outside development and test", async () => {
+      const service = createService({ provider: "bogus", nodeEnv: "production" });
+      await expect(service.onModuleInit()).rejects.toThrow(
+        "Unknown KMS_PROVIDER",
+      );
+    });
+
+    it("should warn but allow unknown providers in development", async () => {
+      const service = createService({ provider: "bogus", nodeEnv: "development" });
+      await expect(service.onModuleInit()).resolves.toBeUndefined();
     });
   });
 

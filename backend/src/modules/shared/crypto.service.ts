@@ -55,11 +55,35 @@ export class CryptoService implements OnModuleInit {
     } else if (provider === "local") {
       this.initLocal();
     } else {
+      this.ensurePlaintextFallbackAllowed(
+        `Unknown KMS_PROVIDER "${provider}" configured for agent key encryption.`,
+      );
       this.logger.warn(
         `Unknown KMS_PROVIDER "${provider}" — falling back to plaintext. ` +
         `Set KMS_PROVIDER to "local" or "gcp-kms".`,
       );
     }
+  }
+
+  private isPlaintextFallbackAllowed(): boolean {
+    if (this.config.get<string>("ALLOW_PLAINTEXT_AGENT_KEYS") === "true") {
+      return true;
+    }
+
+    const nodeEnv = (this.config.get<string>("NODE_ENV") || "development").toLowerCase();
+    return nodeEnv === "development" || nodeEnv === "test";
+  }
+
+  private ensurePlaintextFallbackAllowed(reason: string): void {
+    if (this.isPlaintextFallbackAllowed()) {
+      return;
+    }
+
+    throw new Error(
+      `${reason} Refusing to store agent private keys in plaintext outside development/test. ` +
+      `Configure KMS_PROVIDER=local with AGENT_KEY_ENCRYPTION_KEY, or KMS_PROVIDER=gcp-kms with GCP_KMS_KEY_NAME. ` +
+      `To bypass intentionally, set ALLOW_PLAINTEXT_AGENT_KEYS=true.`,
+    );
   }
 
   /**
@@ -68,6 +92,9 @@ export class CryptoService implements OnModuleInit {
   private initLocal(): void {
     const keyHex = this.config.get<string>("AGENT_KEY_ENCRYPTION_KEY");
     if (!keyHex) {
+      this.ensurePlaintextFallbackAllowed(
+        "AGENT_KEY_ENCRYPTION_KEY not set for KMS_PROVIDER=local.",
+      );
       this.logger.warn(
         "AGENT_KEY_ENCRYPTION_KEY not set — agent private keys will be stored in PLAINTEXT. " +
         "Set this env var to a 64-character hex string for production use.",

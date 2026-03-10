@@ -24,13 +24,19 @@ Fork Sepolia so that ZeroDev's deployed contracts (Kernel v3, session key plugin
 ### Quick Start
 
 ```bash
+# 0. Install dependencies (once per clone)
+cd contracts && ./scripts/install-deps.sh
+cd ../backend && npm ci
+cd ../web && npm ci --legacy-peer-deps
+cd ..
+
 # 1. Set env vars
-export SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/YOUR_KEY
+export SEPOLIA_RPC_URL=https://sepolia.drpc.org
 
 # 2. Start infrastructure
 make dev-up                  # Postgres, Redis, Pub/Sub, Demucs worker
 make local-aa-fork           # Forks Sepolia, configures AA .env vars
-make deploy-contracts        # Configures .env with existing Sepolia contract addresses
+make deploy-contracts        # Deploys fresh protocol contracts to the fork and updates .env
 
 # 3. Start backend (in separate terminal)
 make backend-dev
@@ -39,7 +45,7 @@ make backend-dev
 make web-dev-fork
 ```
 
-> **Important:** On a Sepolia fork, `deploy-contracts` does NOT deploy new contracts. It reads the existing Sepolia deployment addresses from `contracts/deployments/sepolia.json` and updates `.env` files. The contracts (StemNFT, Marketplace, TransferValidator) already exist on the fork from the real Sepolia state.
+> **Important:** On a Sepolia fork, `deploy-contracts` deploys a fresh copy of the Resonate protocol contracts to the local fork and writes those addresses into `backend/.env` and `web/.env.local`. If `backend/node_modules` is not installed yet, the script skips the optional Prisma migration/indexer reset steps and `make backend-dev` performs them later.
 
 ### Architecture (Forked Sepolia)
 
@@ -237,7 +243,7 @@ That's it! The deployment script automatically updates all `.env` files with the
 | ----------------------- | ------------------------------------------------------------------ |
 | `make anvil-fork`       | Start Anvil (Docker) forking Sepolia                               |
 | `make local-aa-fork`    | Start Docker fork + wait for health + configure .env               |
-| `make deploy-contracts` | Configure .env with Sepolia contract addresses (no new deployment) |
+| `make deploy-contracts` | Deploy fresh protocol contracts to the fork and update `.env`      |
 | `make local-aa-down`    | Stop local-aa and fork-aa Docker services                          |
 | `make web-dev-fork`     | Start frontend with chainId 11155111 (clears `.next` cache first)  |
 
@@ -294,7 +300,7 @@ AA_STRICT_MODE=       # Set true for full parity: no fallbacks, no auto-funding
 # AA_CHAIN_ID=11155111
 # AA_BUNDLER=https://rpc.zerodev.app/api/v2/bundler/YOUR_PROJECT_ID
 # ZERODEV_PROJECT_ID=your-project-id
-# SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/YOUR_KEY
+# SEPOLIA_RPC_URL=https://sepolia.drpc.org
 # BLOCK_EXPLORER_URL=https://sepolia.etherscan.io
 
 # Other backend config

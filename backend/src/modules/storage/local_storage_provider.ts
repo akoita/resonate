@@ -5,16 +5,21 @@ import { writeFileSync, existsSync, mkdirSync, unlinkSync, readFileSync } from '
 
 @Injectable()
 export class LocalStorageProvider extends StorageProvider {
-    private readonly uploadDir = join(process.cwd(), 'uploads', 'stems');
+    private readonly uploadDir = process.env.LOCAL_STORAGE_PATH || join(process.cwd(), 'uploads', 'stems');
 
     constructor() {
         super();
+        this.ensureUploadDir();
+    }
+
+    private ensureUploadDir(): void {
         if (!existsSync(this.uploadDir)) {
             mkdirSync(this.uploadDir, { recursive: true });
         }
     }
 
     async upload(data: Buffer, filename: string, mimeType: string): Promise<StorageResult> {
+        this.ensureUploadDir();
         const absolutePath = join(this.uploadDir, filename);
         writeFileSync(absolutePath, data);
 
@@ -26,6 +31,7 @@ export class LocalStorageProvider extends StorageProvider {
     }
 
     async delete(uri: string): Promise<void> {
+        this.ensureUploadDir();
         // Extract filename from URI
         const parts = uri.split('/');
         const filename = parts[parts.length - 2];
@@ -37,6 +43,7 @@ export class LocalStorageProvider extends StorageProvider {
     }
 
     async download(uri: string): Promise<Buffer | null> {
+        this.ensureUploadDir();
         // Extract filename from URI (format: http://localhost:3000/catalog/stems/{filename}/blob)
         const parts = uri.split('/');
         const filename = parts[parts.length - 2];

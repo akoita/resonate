@@ -12,6 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 BROADCAST_FILE="$PROJECT_ROOT/contracts/broadcast/DeployLocalAA.s.sol/31337/run-latest.json"
 BACKEND_ENV="$PROJECT_ROOT/backend/.env"
+DEFAULT_SEPOLIA_RPC_URL="https://sepolia.drpc.org"
 
 # Colors
 GREEN='\033[0;32m'
@@ -104,6 +105,9 @@ if [[ "$MODE" == "fork" ]]; then
     update_env_var "AA_ECDSA_VALIDATOR" "$ECDSA_VALIDATOR" "$BACKEND_ENV"
     update_env_var "AA_CHAIN_ID" "11155111" "$BACKEND_ENV"
     update_env_var "AA_BUNDLER" "$BUNDLER_URL" "$BACKEND_ENV"
+    update_env_var "SEPOLIA_RPC_URL" "${SEPOLIA_RPC_URL:-$DEFAULT_SEPOLIA_RPC_URL}" "$BACKEND_ENV"
+    update_env_var "RPC_URL" "http://localhost:8545" "$BACKEND_ENV"
+    update_env_var "LOCAL_RPC_URL" "http://localhost:8545" "$BACKEND_ENV"
     update_env_var "BLOCK_EXPLORER_URL" "https://sepolia.etherscan.io" "$BACKEND_ENV"
     # AA_SKIP_BUNDLER removed — agent purchases always use session key UserOps
 
@@ -116,6 +120,7 @@ if [[ "$MODE" == "fork" ]]; then
         touch "$WEB_ENV_LOCAL"
     fi
     update_env_var "NEXT_PUBLIC_CHAIN_ID" "11155111" "$WEB_ENV_LOCAL"
+    update_env_var "NEXT_PUBLIC_RPC_URL" "http://localhost:8545" "$WEB_ENV_LOCAL"
     echo -e "${GREEN}✓ web/.env.local NEXT_PUBLIC_CHAIN_ID set to 11155111${NC}"
 
     echo ""
@@ -223,6 +228,8 @@ update_env_var "AA_ECDSA_VALIDATOR" "$ECDSA_VALIDATOR" "$BACKEND_ENV"
 update_env_var "AA_SIG_VALIDATOR" "$SIG_VALIDATOR" "$BACKEND_ENV"
 update_env_var "AA_CHAIN_ID" "31337" "$BACKEND_ENV"
 update_env_var "AA_BUNDLER" "http://localhost:4337" "$BACKEND_ENV"
+update_env_var "RPC_URL" "http://localhost:8545" "$BACKEND_ENV"
+update_env_var "LOCAL_RPC_URL" "http://localhost:8545" "$BACKEND_ENV"
 # AA_SKIP_BUNDLER removed — agent purchases always use session key UserOps
 
 echo -e "${GREEN}✓ backend/.env updated${NC}"
@@ -239,6 +246,7 @@ if [[ ! -f "$WEB_ENV_LOCAL" ]]; then
 
 # Chain ID for local Anvil
 NEXT_PUBLIC_CHAIN_ID=31337
+NEXT_PUBLIC_RPC_URL=http://localhost:8545
 
 # Disable ZeroDev for local development
 # NEXT_PUBLIC_ZERODEV_PROJECT_ID=
