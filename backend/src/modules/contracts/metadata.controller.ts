@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Query, Body, NotFoundException, Logger } from "@nestjs/common";
+import { Controller, Get, Post, Patch, Param, Query, Body, NotFoundException, BadRequestException, Logger } from "@nestjs/common";
 import { ContractsService } from "./contracts.service";
 import { IndexerService } from "./indexer.service";
 import { EventBus } from "../shared/event_bus";
@@ -345,6 +345,110 @@ export class MetadataController {
     }
 
     return result;
+  }
+
+  // ============ DISPUTE & CURATION ROUTES ============
+
+  /**
+   * Get disputes for a token
+   * GET /api/metadata/disputes/token/:tokenId
+   */
+  @Get("disputes/token/:tokenId")
+  async getDisputesByToken(@Param("tokenId") tokenId: string) {
+    return this.contractsService.getDisputesByToken(tokenId);
+  }
+
+  /**
+   * Get disputes filed by a reporter
+   * GET /api/metadata/disputes/reporter/:address
+   */
+  @Get("disputes/reporter/:address")
+  async getDisputesByReporter(@Param("address") address: string) {
+    return this.contractsService.getDisputesByReporter(address.toLowerCase());
+  }
+
+  /**
+   * Get disputes against a creator
+   * GET /api/metadata/disputes/creator/:address
+   */
+  @Get("disputes/creator/:address")
+  async getDisputesByCreator(@Param("address") address: string) {
+    return this.contractsService.getDisputesByCreator(address.toLowerCase());
+  }
+
+  /**
+   * File a new dispute
+   * POST /api/metadata/disputes
+   */
+  @Post("disputes")
+  async fileDispute(
+    @Body()
+    body: {
+      tokenId: string;
+      reporterAddr: string;
+      evidenceURI: string;
+      counterStake: string;
+    },
+  ) {
+    if (!body.tokenId || !body.reporterAddr || !body.evidenceURI) {
+      throw new BadRequestException("Missing required fields");
+    }
+    return this.contractsService.createDispute(body);
+  }
+
+  /**
+   * Submit evidence to a dispute
+   * POST /api/metadata/disputes/:id/evidence
+   */
+  @Post("disputes/:id/evidence")
+  async submitEvidence(
+    @Param("id") id: string,
+    @Body()
+    body: {
+      submitter: string;
+      party: string;
+      evidenceURI: string;
+      description?: string;
+    },
+  ) {
+    if (!body.submitter || !body.party || !body.evidenceURI) {
+      throw new BadRequestException("Missing required fields");
+    }
+    return this.contractsService.submitDisputeEvidence(id, body);
+  }
+
+  /**
+   * Resolve a dispute (admin)
+   * PATCH /api/metadata/disputes/:id/resolve
+   */
+  @Patch("disputes/:id/resolve")
+  async resolveDispute(
+    @Param("id") id: string,
+    @Body() body: { outcome: string },
+  ) {
+    if (!body.outcome || !["upheld", "rejected", "inconclusive"].includes(body.outcome)) {
+      throw new BadRequestException("Invalid outcome. Must be: upheld, rejected, or inconclusive");
+    }
+    return this.contractsService.resolveDispute(id, body.outcome);
+  }
+
+  /**
+   * Get curator reputation
+   * GET /api/metadata/curators/:address
+   */
+  @Get("curators/:address")
+  async getCuratorReputation(@Param("address") address: string) {
+    return this.contractsService.getCuratorReputation(address.toLowerCase());
+  }
+
+  /**
+   * Get curator leaderboard
+   * GET /api/metadata/curators/leaderboard
+   */
+  @Get("curators/leaderboard")
+  async getCuratorLeaderboard(@Query("limit") limitStr?: string) {
+    const limit = Math.min(parseInt(limitStr || "20"), 100);
+    return this.contractsService.getCuratorLeaderboard(limit);
   }
 
   // ============ PARAMETERIZED ROUTES (must come after static routes) ============

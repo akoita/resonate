@@ -23,6 +23,7 @@ import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressU
 import { StemPricingPanel } from "../../../components/release/StemPricingPanel";
 import { LicensingInfoSection } from "../../../components/release/LicensingInfoSection";
 import ReleaseContentProtection from "../../../components/content-protection/ReleaseContentProtection";
+import ReportContentModal from "../../../components/disputes/ReportContentModal";
 import "../../../styles/license-badges.css";
 
 // Helper to get duration from track's first stem
@@ -56,6 +57,7 @@ export default function ReleaseDetails() {
   const [trackProgress, setTrackProgress] = useState<Record<string, number>>({});
   const [selectedNftStems, setSelectedNftStems] = useState<Set<string>>(new Set());
   const [batchModalStems, setBatchModalStems] = useState<BatchStemItem[] | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   // Handle real-time track progress updates via WebSocket
   const handleProgressUpdate = useCallback((data: ReleaseProgressUpdate) => {
@@ -1000,6 +1002,48 @@ export default function ReleaseDetails() {
 
       {/* Content Protection — visible to ALL users */}
       <ReleaseContentProtection releaseId={release.id} />
+
+      {/* Report Button — visible to non-owners only */}
+      {!isOwner && (
+        <button
+          onClick={() => setShowReportModal(true)}
+          style={{
+            background: 'rgba(239, 68, 68, 0.06)',
+            border: '1px solid rgba(239, 68, 68, 0.15)',
+            borderRadius: '10px',
+            padding: '10px 18px',
+            color: '#ef4444',
+            fontSize: '13px',
+            fontWeight: 500,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            margin: '12px 0',
+            transition: 'all 0.2s',
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.06)';
+          }}
+        >
+          🚩 Report stolen content
+        </button>
+      )}
+
+      {/* Report Modal */}
+      {showReportModal && release.tracks?.[0] && (
+        <ReportContentModal
+          tokenId={release.tracks[0].id}
+          creatorAddr={release.artist?.userId || ''}
+          onClose={() => setShowReportModal(false)}
+          onSubmitted={() => {
+            addToast({ type: 'success', title: 'Report Filed', message: 'Your dispute has been submitted for review.' });
+          }}
+        />
+      )}
 
       {/* Stem Pricing Panel - Only for owners with stems */}
       {isOwner && release.tracks && (() => {

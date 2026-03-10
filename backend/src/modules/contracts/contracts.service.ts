@@ -989,4 +989,132 @@ export class ContractsService implements OnModuleInit {
       attestedAt: attestation?.attestedAt?.toISOString() || "",
     };
   }
+
+  // ============ DISPUTES & CURATION ============
+
+  async getDisputesByToken(tokenId: string) {
+    return prisma.dispute.findMany({
+      where: { tokenId },
+      include: { evidences: true },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async getDisputesByReporter(reporterAddr: string) {
+    return prisma.dispute.findMany({
+      where: { reporterAddr },
+      include: { evidences: true },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async getDisputesByCreator(creatorAddr: string) {
+    return prisma.dispute.findMany({
+      where: { creatorAddr },
+      include: { evidences: true },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async createDispute(data: {
+    tokenId: string;
+    reporterAddr: string;
+    evidenceURI: string;
+    counterStake: string;
+  }) {
+    // Look up creator from attestation
+    const attestation = await prisma.contentAttestation.findFirst({
+      where: { tokenId: data.tokenId },
+    });
+
+    return prisma.dispute.create({
+      data: {
+        tokenId: data.tokenId,
+        reporterAddr: data.reporterAddr.toLowerCase(),
+        creatorAddr: attestation?.attesterAddress?.toLowerCase() || "",
+        evidenceURI: data.evidenceURI,
+        counterStake: data.counterStake || "0",
+        status: "filed",
+      },
+    });
+  }
+
+  async submitDisputeEvidence(
+    disputeId: string,
+    data: {
+      submitter: string;
+      party: string;
+      evidenceURI: string;
+      description?: string;
+    },
+  ) {
+    // Update dispute status to "evidence" if still "filed"
+    const dispute = await prisma.dispute.findUnique({
+      where: { id: disputeId },
+    });
+
+    if (dispute && dispute.status === "filed") {
+      await prisma.dispute.update({
+        where: { id: disputeId },
+        data: { status: "evidence" },
+      });
+    }
+
+    return prisma.disputeEvidence.create({
+      data: {
+        disputeId,
+        submitter: data.submitter.toLowerCase(),
+        party: data.party,
+        evidenceURI: data.evidenceURI,
+        description: data.description || null,
+      },
+    });
+  }
+
+  async resolveDispute(disputeId: string, outcome: string) {
+    const dispute = await prisma.dispute.update({
+      where: { id: disputeId },
+      data: {
+        status: "resolved",
+        outcome,
+        resolvedAt: new Date(),
+      },
+    });
+
+    // Update curator reputation
+    const reputationDelta = outcome === "upheld" ? 10 : outcome === "rejected" ? -15 : 0;
+    if (reputationDelta !== 0) {
+      await prisma.curatorReputation.upsert({
+        where: { walletAddress: dispute.reporterAddr },
+        create: {
+          walletAddress: dispute.reporterAddr,
+          score: Math.max(0, reputationDelta),
+          successfulFlags: outcome === "upheld" ? 1 : 0,
+          rejectedFlags: outcome === "rejected" ? 1 : 0,
+        },
+        update: {
+          score: { increment: reputationDelta },
+          ...(outcome === "upheld" && { successfulFlags: { increment: 1 } }),
+          ...(outcome === "rejected" && { rejectedFlags: { increment: 1 } }),
+        },
+      });
+    }
+
+    return dispute;
+  }
+
+  async getCuratorReputation(walletAddress: string) {
+    const rep = await prisma.curatorReputation.findUnique({
+      where: { walletAddress },
+    });
+    return rep || { walletAddress, score: 0, successfulFlags: 0, rejectedFlags: 0, totalBounties: "0" };
+  }
+
+  async getCuratorLeaderboard(limit: number) {
+    return prisma.curatorReputation.findMany({
+      orderBy: { score: "desc" },
+      take: limit,
+    });
+  }
 }
+
