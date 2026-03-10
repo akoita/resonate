@@ -10,7 +10,8 @@ interface IDisputeResolution {
         Filed,
         Evidence,
         UnderReview,
-        Resolved
+        Resolved,
+        Appealed
     }
 
     enum Outcome {
@@ -30,6 +31,7 @@ interface IDisputeResolution {
         Outcome outcome;
         uint256 filedAt;
         uint256 resolvedAt;
+        uint8 appealCount;
     }
 
     function fileDispute(
@@ -38,6 +40,8 @@ interface IDisputeResolution {
         address creator,
         string calldata evidenceURI
     ) external payable returns (uint256 disputeId);
+
+    function appeal(uint256 disputeId, address appealer) external;
 
     function getDispute(
         uint256 disputeId

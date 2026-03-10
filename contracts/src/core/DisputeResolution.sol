@@ -9,20 +9,22 @@ import {IDisputeResolution} from "../interfaces/IDisputeResolution.sol";
 
 /**
  * @title DisputeResolution
- * @notice On-chain dispute lifecycle: filed → evidence → review → resolved.
+ * @notice On-chain dispute lifecycle: filed → evidence → review → resolved → (appeal).
  *
  * Design:
  *   - Disputes reference a tokenId and track reporter vs creator
  *   - Evidence submitted by either party (max 5 per party)
  *   - Admin resolves in Phase 1 (Kleros/DAO jury in future phases)
  *   - Resolution triggers slash or counter-stake refund via CurationRewards
+ *   - Losing party may appeal up to 2 times (RFC §5.4)
  *
- * @custom:version 1.0.0
+ * @custom:version 2.0.0
  */
 contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
     // ============ Constants ============
 
     uint256 public constant MAX_EVIDENCE_PER_PARTY = 5;
+    uint8 public constant MAX_APPEALS = 2;
 
     // ============ State ============
 
@@ -82,6 +84,12 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         address resolver
     );
 
+    event DisputeAppealed(
+        uint256 indexed disputeId,
+        address indexed appealer,
+        uint8 appealNumber
+    );
+
     // ============ Errors ============
 
     error DisputeNotFound();
@@ -91,6 +99,9 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
     error InvalidOutcome();
     error DisputeNotUnderReview();
     error ActiveDisputeExists();
+    error DisputeNotResolved();
+    error MaxAppealsReached();
+    error NotLosingParty();
 
     // ============ Constructor ============
 
@@ -126,7 +137,8 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
             status: DisputeStatus.Filed,
             outcome: Outcome.Pending,
             filedAt: block.timestamp,
-            resolvedAt: 0
+            resolvedAt: 0,
+            appealCount: 0
         });
 
         activeDisputeByToken[tokenId] = disputeId;
@@ -161,8 +173,11 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         if (evidenceCounts[disputeId][msg.sender] >= MAX_EVIDENCE_PER_PARTY)
             revert MaxEvidenceReached();
 
-        // Transition to Evidence status if still Filed
-        if (d.status == DisputeStatus.Filed) {
+        // Transition to Evidence status if still Filed or Appealed
+        if (
+            d.status == DisputeStatus.Filed ||
+            d.status == DisputeStatus.Appealed
+        ) {
             DisputeStatus old = d.status;
             d.status = DisputeStatus.Evidence;
             emit DisputeStatusChanged(disputeId, old, d.status);
@@ -222,6 +237,40 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         activeDisputeByToken[d.tokenId] = 0;
 
         emit DisputeResolved(disputeId, d.tokenId, outcome, msg.sender);
+    }
+
+    // ============ Appeals ============
+
+    /**
+     * @notice Appeal a resolved dispute. Only the losing party may appeal.
+     *         Max 2 appeals per dispute (RFC §5.4).
+     *         Reopens the dispute so new evidence can be submitted and
+     *         the admin re-reviews.
+     * @param disputeId The dispute to appeal
+     * @param appealer The address appealing (validated as the losing party)
+     */
+    function appeal(uint256 disputeId, address appealer) external {
+        Dispute storage d = disputes[disputeId];
+        if (d.filedAt == 0) revert DisputeNotFound();
+        if (d.status != DisputeStatus.Resolved) revert DisputeNotResolved();
+        if (d.appealCount >= MAX_APPEALS) revert MaxAppealsReached();
+
+        // Only the losing party can appeal
+        address loser = d.outcome == Outcome.Upheld
+            ? d.creator // dispute upheld = creator lost
+            : d.reporter; // dispute rejected = reporter lost
+        if (d.outcome == Outcome.Inconclusive) revert InvalidOutcome();
+        if (appealer != loser) revert NotLosingParty();
+
+        d.appealCount++;
+        d.status = DisputeStatus.Appealed;
+        d.outcome = Outcome.Pending;
+        d.resolvedAt = 0;
+
+        // Re-activate the dispute for this token
+        activeDisputeByToken[d.tokenId] = disputeId;
+
+        emit DisputeAppealed(disputeId, appealer, d.appealCount);
     }
 
     // ============ Views ============

@@ -515,14 +515,16 @@ model ContentAttestation {
 
 model Dispute {
   id               String            @id @default(uuid())
-  disputeIdOnChain Int?              @unique
+  disputeIdOnChain String?           @unique
   tokenId          String
   reporterAddr     String
   creatorAddr      String
-  status           String            @default("filed") // filed|evidence|review|resolved
+  status           String            @default("filed") // filed|evidence|review|resolved|appealed
   outcome          String? // upheld|rejected|inconclusive
   evidenceURI      String
   counterStake     String // wei
+  chainId          Int?
+  transactionHash  String?
   resolvedAt       DateTime?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
@@ -532,6 +534,7 @@ model Dispute {
   @@index([reporterAddr])
   @@index([creatorAddr])
   @@index([status])
+  @@index([disputeIdOnChain, chainId])
 }
 
 model DisputeEvidence {
@@ -553,7 +556,7 @@ model CuratorReputation {
   score           Int      @default(0)
   successfulFlags Int      @default(0)
   rejectedFlags   Int      @default(0)
-  totalBounties   String   @default("0") // wei
+  totalBounties   Int      @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }

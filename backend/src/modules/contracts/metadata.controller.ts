@@ -433,6 +433,34 @@ export class MetadataController {
   }
 
   /**
+   * Get pending disputes (admin queue)
+   * GET /api/metadata/disputes/pending
+   */
+  @Get("disputes/pending")
+  async getPendingDisputes(@Query("limit") limitStr?: string) {
+    const limit = Math.min(parseInt(limitStr || "20"), 100);
+    return this.contractsService.getPendingDisputes(limit);
+  }
+
+  /**
+   * Get single dispute detail with all evidence
+   * GET /api/metadata/disputes/detail/:id
+   */
+  @Get("disputes/detail/:id")
+  async getDisputeDetail(@Param("id") id: string) {
+    return this.contractsService.getDisputeById(id);
+  }
+
+  /**
+   * Mark dispute as under review (admin)
+   * PATCH /api/metadata/disputes/:id/review
+   */
+  @Patch("disputes/:id/review")
+  async markDisputeUnderReview(@Param("id") id: string) {
+    return this.contractsService.markDisputeUnderReview(id);
+  }
+
+  /**
    * Get curator reputation
    * GET /api/metadata/curators/:address
    */

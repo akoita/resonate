@@ -268,4 +268,110 @@ contract DisputeResolutionTest is Test {
         assertEq(id2, 2);
         assertEq(dr.getActiveDispute(42), 2);
     }
+
+    // ============ Appeals ============
+
+    function test_Appeal_CreatorAppealsUpheld() public {
+        dr.fileDispute(42, reporter, creator, "ipfs://e1");
+        vm.prank(admin);
+        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+
+        // Creator is the loser when dispute is upheld
+        dr.appeal(1, creator);
+
+        IDisputeResolution.Dispute memory d = dr.getDispute(1);
+        assertEq(
+            uint256(d.status),
+            uint256(IDisputeResolution.DisputeStatus.Appealed)
+        );
+        assertEq(
+            uint256(d.outcome),
+            uint256(IDisputeResolution.Outcome.Pending)
+        );
+        assertEq(d.appealCount, 1);
+        assertEq(d.resolvedAt, 0);
+        // Active dispute should be restored
+        assertEq(dr.getActiveDispute(42), 1);
+    }
+
+    function test_Appeal_ReporterAppealsRejected() public {
+        dr.fileDispute(42, reporter, creator, "ipfs://e1");
+        vm.prank(admin);
+        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
+
+        // Reporter is the loser when dispute is rejected
+        dr.appeal(1, reporter);
+
+        IDisputeResolution.Dispute memory d = dr.getDispute(1);
+        assertEq(d.appealCount, 1);
+        assertEq(
+            uint256(d.status),
+            uint256(IDisputeResolution.DisputeStatus.Appealed)
+        );
+    }
+
+    function test_Appeal_MaxTwoAppeals() public {
+        dr.fileDispute(42, reporter, creator, "ipfs://e1");
+
+        // First resolve + appeal
+        vm.prank(admin);
+        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        dr.appeal(1, creator);
+
+        // Re-resolve + second appeal
+        vm.prank(admin);
+        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        dr.appeal(1, creator);
+
+        // Third appeal should revert
+        vm.prank(admin);
+        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        vm.expectRevert(DisputeResolution.MaxAppealsReached.selector);
+        dr.appeal(1, creator);
+    }
+
+    function test_Appeal_RevertNotLosingParty() public {
+        dr.fileDispute(42, reporter, creator, "ipfs://e1");
+        vm.prank(admin);
+        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+
+        // Reporter (winner) tries to appeal
+        vm.expectRevert(DisputeResolution.NotLosingParty.selector);
+        dr.appeal(1, reporter);
+    }
+
+    function test_Appeal_RevertInconclusive() public {
+        dr.fileDispute(42, reporter, creator, "ipfs://e1");
+        vm.prank(admin);
+        dr.resolve(1, IDisputeResolution.Outcome.Inconclusive);
+
+        // Inconclusive disputes cannot be appealed
+        vm.expectRevert(DisputeResolution.InvalidOutcome.selector);
+        dr.appeal(1, creator);
+    }
+
+    function test_Appeal_RevertNotResolved() public {
+        dr.fileDispute(42, reporter, creator, "ipfs://e1");
+
+        // Can't appeal a dispute that hasn't been resolved
+        vm.expectRevert(DisputeResolution.DisputeNotResolved.selector);
+        dr.appeal(1, creator);
+    }
+
+    function test_Appeal_CanSubmitEvidenceAfter() public {
+        dr.fileDispute(42, reporter, creator, "ipfs://e1");
+
+        vm.prank(admin);
+        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+
+        // Appeal
+        dr.appeal(1, creator);
+
+        // Both parties can submit new evidence after appeal
+        vm.prank(creator);
+        dr.submitEvidence(1, "ipfs://new-defense");
+
+        vm.prank(reporter);
+        dr.submitEvidence(1, "ipfs://more-proof");
+    }
 }

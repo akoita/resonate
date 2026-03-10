@@ -77,7 +77,7 @@ export default function DisputeDashboard() {
   }, [fetchReputation]);
 
   const statusColor = (status: string) => {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case "filed":
         return "#f59e0b";
       case "evidence":
@@ -86,6 +86,8 @@ export default function DisputeDashboard() {
         return "#8b5cf6";
       case "resolved":
         return "#10b981";
+      case "appealed":
+        return "#f97316";
       default:
         return "#6b7280";
     }
@@ -238,6 +240,29 @@ export default function DisputeDashboard() {
                   </span>
                 </div>
               </div>
+
+              {/* Appeal button for resolved disputes */}
+              {d.status.toLowerCase() === "resolved" && d.outcome && d.outcome !== "inconclusive" && (
+                <div style={{ marginTop: "10px" }}>
+                  <button
+                    style={{
+                      background: "none",
+                      border: "1px solid #f97316",
+                      borderRadius: "8px",
+                      padding: "6px 14px",
+                      color: "#f97316",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                    }}
+                    onClick={() => window.alert("Appeal requires submitting a 2x counter-stake via the smart contract. Use the Contract UI or CLI.")}
+                  >
+                    ⚠️ Appeal Decision
+                  </button>
+                  <span style={{ fontSize: "11px", opacity: 0.4, marginLeft: "8px" }}>Requires 2× stake</span>
+                </div>
+              )}
             </div>
           ))}
         </div>
