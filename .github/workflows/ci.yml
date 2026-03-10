@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, "feat/*"]
+    branches: [main, develop, "feat/*", "fix/*", "docs/*"]
   pull_request:
-    branches: [main, develop, "feat/*"]
+    branches: [main, develop, "feat/*", "fix/*", "docs/*"]
 
 jobs:
   lint:
@@ -54,16 +54,7 @@ jobs:
           version: nightly
 
       - name: Install dependencies
-        run: |
-          forge install foundry-rs/forge-std --no-git
-          forge install openzeppelin/openzeppelin-contracts --no-git
-          forge install zerodevapp/kernel@v2.4 --no-git
-          forge install vectorized/solady --no-git
-          forge install nomad-xyz/ExcessivelySafeCall --no-git
-          forge install eth-infinitism/account-abstraction --no-git
-          forge install a16z/halmos-cheatcodes --no-git
-          # Clone kernel's I4337 dependency (forge install --no-git strips git metadata)
-          git clone --depth 1 https://github.com/leekt/I4337 lib/kernel/lib/I4337
+        run: ./scripts/install-deps.sh
         working-directory: contracts
 
       - name: Run Forge build
