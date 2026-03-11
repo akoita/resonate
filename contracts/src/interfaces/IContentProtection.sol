@@ -56,9 +56,17 @@ interface IContentProtection {
 
     function resolveProtectionTarget(uint256 tokenId) external view returns (uint256);
 
+    function resolveStakeRoot(uint256 tokenId) external view returns (uint256);
+
     function stakeAmount() external view returns (uint256);
 
+    function maxPriceMultiplier() external view returns (uint256);
+
+    function getMaxListingPrice(uint256 tokenId) external view returns (uint256);
+
     function stakeForRelease(uint256 releaseId) external payable;
+
+    function registerStemProtectionRoot(uint256 releaseId, uint256 stemTokenId) external;
 
     function stemToCanonicalTrack(uint256 stemTokenId) external view returns (uint256);
 

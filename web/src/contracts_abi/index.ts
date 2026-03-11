@@ -305,6 +305,7 @@ export const StemMarketplaceABI = [
       { name: "pricePerUnit", type: "uint256" },
       { name: "paymentToken", type: "address" },
       { name: "duration", type: "uint256" },
+      { name: "releaseId", type: "uint256" },
     ],
     outputs: [{ name: "listingId", type: "uint256" }],
   },
