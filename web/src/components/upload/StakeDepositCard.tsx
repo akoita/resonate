@@ -23,6 +23,13 @@ function formatEth(wei: string): string {
   return `${eth} ETH`;
 }
 
+function formatMaxListingPrice(trustTier: TrustTier): string {
+  if (trustTier.maxListingPriceUncapped || !trustTier.maxListingPriceWei) {
+    return "Uncapped";
+  }
+  return formatEth(trustTier.maxListingPriceWei);
+}
+
 interface StakeDepositCardProps {
   trustTier: TrustTier | null;
   loading: boolean;
@@ -56,6 +63,7 @@ export default function StakeDepositCard({ trustTier, loading, onStakeAcknowledg
   const tierLabel = TIER_LABELS[trustTier.tier] || trustTier.tier;
   const tierColor = TIER_COLORS[trustTier.tier] || "#888";
   const stakeEth = formatEth(trustTier.stakeAmountWei);
+  const maxListingPrice = formatMaxListingPrice(trustTier);
   const isWaived = trustTier.stakeAmountWei === "0";
 
   return (
@@ -87,6 +95,16 @@ export default function StakeDepositCard({ trustTier, loading, onStakeAcknowledg
         <span style={{ fontWeight: 500, fontSize: "13px" }}>{trustTier.escrowDays} days</span>
       </div>
 
+      <div style={rowStyle}>
+        <span
+          style={{ opacity: 0.6, fontSize: "12px" }}
+          title="Your maximum listing price per unit is derived from the active Content Protection stake for this release."
+        >
+          Max Listing Price
+        </span>
+        <span style={{ fontWeight: 500, fontSize: "13px" }}>{maxListingPrice}</span>
+      </div>
+
       <div style={{
         marginTop: "12px",
         padding: "10px 12px",
@@ -97,11 +115,11 @@ export default function StakeDepositCard({ trustTier, loading, onStakeAcknowledg
         opacity: 0.5,
       }}>
         {isWaived ? (
-          <>Your verified status waives the stake requirement. Revenue is held in escrow for {trustTier.escrowDays} days.</>
+          <>Your verified status waives the stake requirement. Revenue is held in escrow for {trustTier.escrowDays} days, and listings remain uncapped unless a stake is later configured.</>
         ) : (
           <>A refundable stake of <strong style={{ color: "#f59e0b" }}>{stakeEth}</strong> will be deposited
             on publish to protect against copyright violations. Revenue is held in escrow for {trustTier.escrowDays} days.
-            As you build clean history, your stake decreases.</>
+            Your current max listing price per unit is <strong>{maxListingPrice}</strong>. As you build clean history, your stake decreases.</>
         )}
       </div>
 

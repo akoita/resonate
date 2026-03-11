@@ -275,6 +275,9 @@ export type TrustTier = {
   tier: string;
   stakeAmountWei: string;
   escrowDays: number;
+  maxPriceMultiplier: number;
+  maxListingPriceWei: string | null;
+  maxListingPriceUncapped: boolean;
   totalUploads: number;
   cleanHistory: number;
   disputesLost: number;

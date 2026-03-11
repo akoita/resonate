@@ -6,6 +6,7 @@ import {StemNFT} from "../../src/core/StemNFT.sol";
 import {StemMarketplaceV2} from "../../src/core/StemMarketplaceV2.sol";
 import {TransferValidator} from "../../src/modules/TransferValidator.sol";
 import {SymTest} from "halmos-cheatcodes/SymTest.sol";
+import {MockContentProtectionMarketplace} from "../mocks/MockContentProtectionMarketplace.sol";
 
 /**
  * @title StemMarketplaceV2 Formal Verification Tests
@@ -16,6 +17,7 @@ contract StemMarketplaceFormalTest is Test, SymTest {
     StemNFT public stemNFT;
     StemMarketplaceV2 public marketplace;
     TransferValidator public validator;
+    MockContentProtectionMarketplace public contentProtection;
 
     address public feeRecipient;
     uint256 public constant PROTOCOL_FEE_BPS = 250;
@@ -25,8 +27,10 @@ contract StemMarketplaceFormalTest is Test, SymTest {
 
         stemNFT = new StemNFT("https://api.resonate.fm/metadata/");
         validator = new TransferValidator();
+        contentProtection = new MockContentProtectionMarketplace();
         marketplace = new StemMarketplaceV2(
             address(stemNFT),
+            address(contentProtection),
             feeRecipient,
             PROTOCOL_FEE_BPS
         );
@@ -143,6 +147,7 @@ contract StemMarketplaceFormalTest is Test, SymTest {
 
         StemMarketplaceV2 newMarketplace = new StemMarketplaceV2(
             address(stemNFT),
+            address(contentProtection),
             feeRecipient,
             feeBps
         );

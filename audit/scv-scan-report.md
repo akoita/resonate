@@ -1,41 +1,66 @@
-# Smart Contract Vulnerability Scan — Issue #440
+# SCV Scan Report — Issue #420: Stake-to-Price Proportionality
 
 **Date:** 2026-03-11
-**Branch:** `feat/440-content-protection-hierarchy`
-**Changed contracts:** `ContentProtection.sol`, `StemNFT.sol`, `CurationRewards.sol`, `RevenueEscrow.sol`
+**Scope:** Changes in `ContentProtection.sol`, `StemMarketplaceV2.sol`, `IContentProtection.sol`
+**Methodology:** 4-phase audit (Recon → Codebase Sweep → Deep Validation → Report)
 
 ## Summary
 
-| Severity | Count |
-| -------- | ----- |
-| Critical | 0     |
-| High     | 0     |
-| Medium   | 0     |
-| Low      | 0     |
-| Info     | 1     |
-
-## Findings
-
-### ~~Unbounded Loop in revokeRelease~~ — FIXED
-
-**Status:** Resolved. `revokeRelease()` now caps at 50 tracks (reverts above). A new `revokeReleaseBatch(releaseId, offset, limit)` handles large releases with paginated revocation.
+| Severity      | Count |
+| ------------- | ----- |
+| Critical      | 0     |
+| High          | 0     |
+| Medium        | 0     |
+| Low           | 0     |
+| Informational | 2     |
 
 ---
 
-### EIP-712 Domain Hardcoded in Constructor
+### ~~[Low] Emit-before-state in `setMaxPriceMultiplier`~~ — FIXED
 
-**File:** `StemNFT.sol` constructor
+**File:** `contracts/src/core/ContentProtection.sol` L362-367
+**Severity:** Low → **Resolved**
+
+**Fix applied:** Cached old value before state update, emit after assignment.
+
+```solidity
+function setMaxPriceMultiplier(uint256 newMultiplier) external onlyOwner {
+    if (newMultiplier == 0) revert InvalidMultiplier();
+    uint256 oldMultiplier = maxPriceMultiplier;
+    maxPriceMultiplier = newMultiplier;
+    emit MaxPriceMultiplierUpdated(oldMultiplier, newMultiplier);
+}
+```
+
+---
+
+### [Informational] `getMaxListingPrice` returns `type(uint256).max` when no stake is active
+
+**File:** `contracts/src/core/ContentProtection.sol` L551-558
 **Severity:** Informational
 
-**Description:** The EIP-712 domain name/version are hardcoded as `"Resonate StemNFT"` / `"1"`. This is standard practice but means proxy deployments sharing the same implementation would share the domain separator.
+**Description:** When the resolved stake root has no active stake, `getMaxListingPrice` returns `type(uint256).max`, effectively uncapping the listing. This is by design (allows unstaked stems to be listed without restriction) but should be clearly documented so integrators understand the fallback behavior.
 
-**Recommendation:** No action needed — `StemNFT` is not behind a proxy.
+**Recommendation:** Add NatSpec documenting the uncapped fallback.
 
-## Scan Details
+---
 
-- **Reentrancy:** All `.call{value}` uses follow CEI + `nonReentrant` ✅
-- **Access control:** All state-changing functions gated by `onlyOwner` or `onlyRegistrarOrOwner` ✅
-- **Dangerous patterns:** No `selfdestruct`, `delegatecall`, or `tx.origin` ✅
-- **Replay protection:** `mintAuthorized` uses per-minter nonce tracking ✅
-- **Signature validation:** Uses OpenZeppelin's `ECDSA.recover` + `EIP712._hashTypedDataV4` ✅
-- **Loop bounds:** `revokeRelease` capped at 50; paginated `revokeReleaseBatch` for larger sets ✅
+### [Informational] `listLastMint` calls external `contentProtection.registerStemProtectionRoot` before internal `_createListing`
+
+**File:** `contracts/src/core/StemMarketplaceV2.sol` L156-157
+**Severity:** Informational
+
+**Description:** The external call to `contentProtection.registerStemProtectionRoot()` happens before `_createListing()`. Since `ContentProtection.registerStemProtectionRoot` is a state-only function (no ETH transfers, no callbacks) guarded by `onlyRegistrarOrOwner`, and the marketplace is a registered registrar, there is no reentrancy risk. The ordering is necessary because `_createListing` reads `getMaxListingPrice`, which depends on the stem-to-root mapping being set.
+
+**Recommendation:** No action required. Ordering is correct for the price-cap check.
+
+---
+
+## Validation Notes
+
+- All new state-changing functions are access-controlled (`onlyOwner`, `onlyRegistrarOrOwner`, `reinitializer(2)`)
+- No `selfdestruct`, `delegatecall`, or `tx.origin` usage in any contract
+- All `.call{value}` patterns follow CEI with `nonReentrant` guard
+- `unchecked` / `assembly` only in `UniversalSigValidator.sol` (unchanged)
+- Overflow in `stakes[stakeRoot].amount * maxPriceMultiplier` (L557) is safe: `amount` is bounded by ETH supply (~1.2×10^26 wei) and `maxPriceMultiplier` is admin-set; product stays well within `uint256` range
+- 94 tests pass (37 CP unit + 43 Marketplace unit + 7 fuzz + 7 invariant)

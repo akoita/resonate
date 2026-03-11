@@ -1383,6 +1383,7 @@ export function useMintAndListStem() {
               params.pricePerUnit,
               params.paymentToken,
               params.durationSeconds,
+              authorization?.protectionId ?? BigInt(0),
             ],
           }),
         };
@@ -1552,6 +1553,7 @@ export function useBatchMintAndList() {
                 pricePerUnit,
                 ZERO_ADDRESS,
                 durationSeconds,
+                authorization.protectionId,
               ],
             }),
           });

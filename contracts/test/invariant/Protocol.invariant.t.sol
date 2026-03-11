@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {StemNFT} from "../../src/core/StemNFT.sol";
 import {StemMarketplaceV2} from "../../src/core/StemMarketplaceV2.sol";
 import {TransferValidator} from "../../src/modules/TransferValidator.sol";
+import {MockContentProtectionMarketplace} from "../mocks/MockContentProtectionMarketplace.sol";
 
 /**
  * @title Protocol Invariant Tests
@@ -21,14 +22,17 @@ contract ProtocolInvariantTest is Test {
     StemNFT public stemNFT;
     StemMarketplaceV2 public marketplace;
     TransferValidator public validator;
+    MockContentProtectionMarketplace public contentProtection;
     Handler public handler;
 
     function setUp() public {
         // Deploy protocol
         stemNFT = new StemNFT("https://api.resonate.fm/metadata/");
         validator = new TransferValidator();
+        contentProtection = new MockContentProtectionMarketplace();
         marketplace = new StemMarketplaceV2(
             address(stemNFT),
+            address(contentProtection),
             address(this),
             250
         );

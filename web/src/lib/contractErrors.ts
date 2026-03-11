@@ -35,6 +35,11 @@ export const knownContractErrorAbi = [
   },
   {
     type: "error",
+    name: "PriceExceedsStakeCap",
+    inputs: [],
+  },
+  {
+    type: "error",
     name: "AlreadyAttested",
     inputs: [],
   },
@@ -139,6 +144,10 @@ export function normalizeContractWriteError(error: unknown): Error {
 
       if (decoded.errorName === "NoRecentMint") {
         return new Error("The marketplace could not find a stem minted in this transaction. Please retry the mint and list flow.");
+      }
+
+      if (decoded.errorName === "PriceExceedsStakeCap") {
+        return new Error("Listing price exceeds the maximum allowed by the current Content Protection stake for this release.");
       }
 
       if (decoded.errorName === "AlreadyAttested") {
