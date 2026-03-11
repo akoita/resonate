@@ -266,11 +266,34 @@ export class IngestionService {
     // Persist processing status in DB synchronously so the API returns it immediately.
     // This must happen BEFORE the HTTP response — the frontend navigates to the release
     // page right after upload, and the BullMQ job runs asynchronously.
+    // RACE CONDITION FIX: The CatalogService creates the release via EventBus subscriber.
+    // That async upsert may not have committed yet, so we poll until the record exists.
     try {
-      await prisma.release.update({
-        where: { id: releaseId },
-        data: { status: "processing" },
-      });
+      const MAX_RETRIES = 10;
+      const RETRY_DELAY = 300;
+      let releaseFound = false;
+
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        const existing = await prisma.release.findUnique({
+          where: { id: releaseId },
+          select: { id: true },
+        });
+        if (existing) {
+          await prisma.release.update({
+            where: { id: releaseId },
+            data: { status: "processing" },
+          });
+          releaseFound = true;
+          break;
+        }
+        console.warn(`[Ingestion] Release ${releaseId} not in DB yet (attempt ${attempt}/${MAX_RETRIES}), waiting ${RETRY_DELAY}ms...`);
+        await new Promise((r) => setTimeout(r, RETRY_DELAY));
+      }
+
+      if (!releaseFound) {
+        console.warn(`[Ingestion] Release ${releaseId} never appeared after ${MAX_RETRIES} attempts — status not updated`);
+      }
+
       const trackIds = tracks.map((t: any) => t.id);
       if (trackIds.length > 0) {
         await prisma.track.updateMany({
@@ -278,7 +301,9 @@ export class IngestionService {
           data: { processingStatus: "separating" },
         });
       }
-      console.log(`[Ingestion] Updated release ${releaseId} to 'processing', tracks to 'separating'`);
+      if (releaseFound) {
+        console.log(`[Ingestion] Updated release ${releaseId} to 'processing', tracks to 'separating'`);
+      }
     } catch (err: any) {
       console.warn(`[Ingestion] Failed to update processing status: ${err?.message}`);
     }

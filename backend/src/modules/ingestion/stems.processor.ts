@@ -94,19 +94,49 @@ export class StemsProcessor extends WorkerHost {
 
         // Update DB status so the API returns the correct state immediately.
         // WebSocket events are ephemeral and can be missed if the client connects late.
+        // RACE CONDITION FIX: The CatalogService creates the release record asynchronously
+        // via the EventBus 'stems.uploaded' subscriber. The BullMQ job can execute before
+        // that upsert completes, so we poll until the record exists.
         try {
             const { prisma } = await import("../../db/prisma");
-            await prisma.release.update({
-                where: { id: releaseId },
-                data: { status: "processing" },
-            });
+            const MAX_RETRIES = 10;
+            const RETRY_DELAY = 300; // ms
+            let releaseFound = false;
+
+            for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+                const existing = await prisma.release.findUnique({
+                    where: { id: releaseId },
+                    select: { id: true },
+                });
+                if (existing) {
+                    await prisma.release.update({
+                        where: { id: releaseId },
+                        data: { status: "processing" },
+                    });
+                    releaseFound = true;
+                    break;
+                }
+                this.logger.warn(
+                    `[StemsProcessor] Release ${releaseId} not in DB yet (attempt ${attempt}/${MAX_RETRIES}), waiting ${RETRY_DELAY}ms...`,
+                );
+                await new Promise((r) => setTimeout(r, RETRY_DELAY));
+            }
+
+            if (!releaseFound) {
+                this.logger.warn(
+                    `[StemsProcessor] Release ${releaseId} never appeared in DB after ${MAX_RETRIES} attempts — status not updated`,
+                );
+            }
+
             for (const track of tracks) {
                 await prisma.track.updateMany({
                     where: { id: track.id },
                     data: { processingStatus: "separating" },
                 });
             }
-            this.logger.log(`[StemsProcessor] Updated release ${releaseId} to 'processing' and tracks to 'separating'`);
+            if (releaseFound) {
+                this.logger.log(`[StemsProcessor] Updated release ${releaseId} to 'processing' and tracks to 'separating'`);
+            }
         } catch (err: any) {
             this.logger.warn(`[StemsProcessor] Failed to update DB status: ${err?.message}`);
         }
