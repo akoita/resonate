@@ -48,8 +48,8 @@ if [[ "$MODE" == "fork" ]]; then
 
     # Canonical Sepolia addresses for ZeroDev / ERC-4337 v0.7
     ENTRY_POINT="0x0000000071727De22E5E9d8BAf0edAc6f37da032"
-    # ZeroDev Kernel v3 factory (Sepolia)
-    KERNEL_FACTORY="0x5de4839a76cf55d0c90e2061ef4386d962E15ae3"
+    # ZeroDev Kernel v3.1 factory (Sepolia / EntryPoint v0.7)
+    KERNEL_FACTORY="0xaac5D4240AF87249B3f71BC8E4A2cae074A3E419"
     ECDSA_VALIDATOR="0xd9AB5096a832b9ce79914329DAEE236f8Eea0390"
 
     # Source .env for ZERODEV_PROJECT_ID

@@ -2,9 +2,8 @@
 pragma solidity ^0.8.28;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {
-    ReentrancyGuard
-} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {IContentProtection} from "../interfaces/IContentProtection.sol";
 
 /**
  * @title RevenueEscrow
@@ -38,29 +37,19 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
     /// @notice Token ID → Escrow info
     mapping(uint256 => EscrowInfo) public escrows;
 
+    /// @notice Optional content protection module for dispute cascades
+    IContentProtection public contentProtection;
+
     // ============ Events ============
 
-    event RevenueDeposited(
-        uint256 indexed tokenId,
-        address indexed depositor,
-        uint256 amount,
-        uint256 newBalance
-    );
+    event RevenueDeposited(uint256 indexed tokenId, address indexed depositor, uint256 amount, uint256 newBalance);
 
     event EscrowFrozen(uint256 indexed tokenId);
     event EscrowUnfrozen(uint256 indexed tokenId);
 
-    event EscrowReleased(
-        uint256 indexed tokenId,
-        address indexed beneficiary,
-        uint256 amount
-    );
+    event EscrowReleased(uint256 indexed tokenId, address indexed beneficiary, uint256 amount);
 
-    event EscrowRedirected(
-        uint256 indexed tokenId,
-        address indexed newRecipient,
-        uint256 amount
-    );
+    event EscrowRedirected(uint256 indexed tokenId, address indexed newRecipient, uint256 amount);
 
     event EscrowPeriodUpdated(uint256 oldPeriod, uint256 newPeriod);
 
@@ -72,6 +61,7 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
     error EscrowNotExpired();
     error ZeroAmount();
     error ZeroAddress();
+    error ContentProtectionNotSet();
     error TransferFailed();
 
     // ============ Constructor ============
@@ -154,7 +144,7 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
         info.balance = 0;
 
         // Interactions
-        (bool ok, ) = payable(beneficiary).call{value: amount}("");
+        (bool ok,) = payable(beneficiary).call{value: amount}("");
         if (!ok) revert TransferFailed();
 
         emit EscrowReleased(tokenId, beneficiary, amount);
@@ -168,10 +158,7 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
      * @param tokenId The token ID whose escrow to redirect
      * @param recipient The rightful owner who should receive the funds
      */
-    function redirect(
-        uint256 tokenId,
-        address recipient
-    ) external onlyOwner nonReentrant {
+    function redirect(uint256 tokenId, address recipient) external onlyOwner nonReentrant {
         if (recipient == address(0)) revert ZeroAddress();
 
         EscrowInfo storage info = escrows[tokenId];
@@ -186,7 +173,7 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
         info.beneficiary = recipient; // Update for future deposits
 
         // Interactions
-        (bool ok, ) = payable(recipient).call{value: amount}("");
+        (bool ok,) = payable(recipient).call{value: amount}("");
         if (!ok) revert TransferFailed();
 
         emit EscrowRedirected(tokenId, recipient, amount);
@@ -194,40 +181,53 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
 
     // ============ Admin ============
 
+    function setContentProtection(address cp) external onlyOwner {
+        if (cp == address(0)) revert ZeroAddress();
+        contentProtection = IContentProtection(cp);
+    }
+
     function setDefaultEscrowPeriod(uint256 newPeriod) external onlyOwner {
         emit EscrowPeriodUpdated(defaultEscrowPeriod, newPeriod);
         defaultEscrowPeriod = newPeriod;
     }
 
+    function freezeByTrack(uint256 trackId) external onlyOwner {
+        if (address(contentProtection) == address(0)) {
+            revert ContentProtectionNotSet();
+        }
+
+        _freezeEscrow(trackId);
+
+        uint256[] memory stemIds = contentProtection.getTrackStems(trackId);
+        for (uint256 i; i < stemIds.length; ++i) {
+            _freezeEscrow(stemIds[i]);
+        }
+    }
+
     // ============ Views ============
 
-    function getEscrow(
-        uint256 tokenId
-    )
+    function getEscrow(uint256 tokenId)
         external
         view
-        returns (
-            address beneficiary,
-            uint256 balance,
-            uint256 escrowEndTime,
-            bool frozen
-        )
+        returns (address beneficiary, uint256 balance, uint256 escrowEndTime, bool frozen)
     {
         EscrowInfo storage info = escrows[tokenId];
-        return (
-            info.beneficiary,
-            info.balance,
-            info.escrowEndTime,
-            info.frozen
-        );
+        return (info.beneficiary, info.balance, info.escrowEndTime, info.frozen);
     }
 
     function isReleasable(uint256 tokenId) external view returns (bool) {
         EscrowInfo storage info = escrows[tokenId];
-        return
-            info.beneficiary != address(0) &&
-            !info.frozen &&
-            block.timestamp >= info.escrowEndTime &&
-            info.balance > 0;
+        return info.beneficiary != address(0) && !info.frozen && block.timestamp >= info.escrowEndTime
+            && info.balance > 0;
+    }
+
+    function _freezeEscrow(uint256 tokenId) internal {
+        EscrowInfo storage info = escrows[tokenId];
+        if (info.beneficiary == address(0) || info.frozen) {
+            return;
+        }
+
+        info.frozen = true;
+        emit EscrowFrozen(tokenId);
     }
 }

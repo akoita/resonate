@@ -49,15 +49,22 @@ export default function StemDetailPage() {
 
     const [showListModal, setShowListModal] = useState(false);
     const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
+    const [parentTrackId, setParentTrackId] = useState<bigint | undefined>(undefined);
 
     // Fetch artwork from metadata service
     useEffect(() => {
         if (!tokenId || !chainId) return;
+        setArtworkUrl(null);
+        setParentTrackId(undefined);
         const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
         fetch(`${backendUrl}/api/metadata/${chainId}/${tokenId.toString()}`)
             .then(r => r.ok ? r.json() : null)
             .then(data => {
                 if (data?.image) setArtworkUrl(data.image);
+                const rawTrackId = data?.properties?.trackId;
+                if (rawTrackId !== undefined && rawTrackId !== null) {
+                    setParentTrackId(BigInt(rawTrackId));
+                }
             })
             .catch(() => { /* ignore — will show fallback */ });
     }, [tokenId, chainId]);
@@ -94,7 +101,7 @@ export default function StemDetailPage() {
         );
     }
 
-    const isOwner = address && stemData.creator.toLowerCase() === address.toLowerCase();
+    const _isOwner = address && stemData.creator.toLowerCase() === address.toLowerCase();
     const canList = balance > 0n;
 
     return (
@@ -113,6 +120,7 @@ export default function StemDetailPage() {
                         {/* Token Image */}
                         <div className="w-32 h-32 bg-zinc-800 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
                             {artworkUrl ? (
+                                /* eslint-disable-next-line @next/next/no-img-element */
                                 <img
                                     src={artworkUrl}
                                     alt={`Stem #${tokenId.toString()}`}
@@ -272,7 +280,11 @@ export default function StemDetailPage() {
 
                     {/* Content Protection */}
                     {tokenId && (
-                      <ContentProtectionBadge tokenId={tokenId} expanded />
+                      <ContentProtectionBadge
+                          tokenId={tokenId}
+                          parentTrackId={parentTrackId}
+                          expanded
+                      />
                     )}
                 </div>
 

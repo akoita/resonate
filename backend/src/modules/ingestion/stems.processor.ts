@@ -79,7 +79,7 @@ export class StemsProcessor extends WorkerHost {
                     ? originalStemUri
                     : `${process.env.BACKEND_URL || 'http://host.docker.internal:3000'}${originalStemUri}`,
                 mimeType: originalStem.mimeType || "audio/mpeg",
-                callbackUrl: process.env.BACKEND_URL || undefined,
+                callbackUrl: process.env.BACKEND_URL || 'http://host.docker.internal:3000',
                 originalStemMeta: {
                     id: originalStem.id,
                     durationSeconds: originalStem.durationSeconds,

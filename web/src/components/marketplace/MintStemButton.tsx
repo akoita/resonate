@@ -51,10 +51,7 @@ async function pollForListing(
 
 interface MintStemButtonProps {
     stemId: string;
-    stemTitle: string;
     stemType: string;
-    trackTitle: string;
-    metadataUri?: string;
 }
 
 // TTL for localStorage "listed" hint: 1 hour.
@@ -64,24 +61,17 @@ const LISTED_TTL_MS = 60 * 60 * 1000;
 
 export function MintStemButton({
     stemId,
-    
     stemType,
-    
-    metadataUri,
 }: MintStemButtonProps) {
-    const { address, status } = useAuth();
+    const { address, status, smartAccountAddress } = useAuth();
     const { mint, pending: mintPending } = useMintStem();
     const { list, pending: listPending } = useListStem();
     const { mintAndList, pending: mintAndListPending } = useMintAndListStem();
     const { addToast } = useToast();
-
-    const currentChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
-
     // State machine: "idle" -> "minted" -> "listed"
     // "confirming_mint" and "confirming_list" are transient states while polling the backend
     const [state, setState] = useState<"idle" | "confirming_mint" | "minted" | "confirming_list" | "listed">("idle");
     const [mintedTokenId, setMintedTokenId] = useState<bigint | null>(null);
-
     // Persistence check on mount
     useEffect(() => {
         const checkStatus = async () => {
@@ -166,13 +156,10 @@ export function MintStemButton({
         }
 
         try {
-            const currentChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
-            const tokenUri = metadataUri || `${window.location.protocol}//${window.location.host}/api/metadata/${currentChainId}/stem/${stemId}`;
-
             await mint({
+                stemId,
                 to: address as Address,
                 amount: BigInt(1),
-                tokenURI: tokenUri,
                 royaltyReceiver: address as Address,
                 royaltyBps: 500,
                 remixable: true,
@@ -267,14 +254,13 @@ export function MintStemButton({
         }
 
         try {
-            const tokenUri = metadataUri || `${window.location.protocol}//${window.location.host}/api/metadata/${currentChainId}/stem/${stemId}`;
             const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
 
             setState("confirming_mint");
 
             const { hash, tokenId } = await mintAndList({
+                stemId,
                 amount: BigInt(1),
-                tokenURI: tokenUri,
                 royaltyBps: 500,
                 remixable: true,
                 parentIds: [],
@@ -307,7 +293,7 @@ export function MintStemButton({
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         tokenId: actualTokenId.toString(),
-                        seller: address,
+                        seller: smartAccountAddress || address,
                         price: "10000000000000000", // 0.01 ETH — must match pricePerUnit above
                         amount: "1",
                         paymentToken: "0x0000000000000000000000000000000000000000",

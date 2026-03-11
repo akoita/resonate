@@ -125,29 +125,40 @@ validator.setContentProtection(address(contentProtection));
 
 UUPS-upgradeable contract for anti-piracy enforcement:
 
-- **Attestation** — Creators register content + fingerprint hashes before minting
+- **Attestation** — Creators register release / content provenance on-chain
 - **Staking** — ETH deposit required per tokenId (anti-spam deterrent)
 - **Slashing** — On confirmed infringement: 60% reporter, 30% treasury, 10% burned
 - **Blacklisting** — Repeat offenders blocked from all protocol operations
+- **Hierarchy** — Releases and tracks are directly protected; stems inherit verification from a canonical parent track
 
 ```solidity
-// 1. Attest content before minting
-contentProtection.attest(
-    tokenId,
+// 1. Attest the release root / protected content record
+contentProtection.attestRelease(
+    releaseId,
     contentHash,      // keccak256 of audio
     fingerprintHash,  // acoustic fingerprint hash
     "ipfs://Qm..."    // metadata URI
 );
 
-// 2. Stake ETH (required before StemNFT.mint)
-contentProtection.stake{value: 0.01 ether}(tokenId);
+// 2. Stake ETH for the protected release root
+contentProtection.stakeForRelease{value: 0.01 ether}(releaseId);
 
 // 3. Admin: slash on confirmed theft
-contentProtection.slash(tokenId, reporterAddress);
+contentProtection.slash(releaseId, reporterAddress);
 
 // 4. Admin: refund stake after clean escrow period
-contentProtection.refundStake(tokenId);
+contentProtection.refundStake(releaseId);
 ```
+
+Hierarchy model:
+
+- releases are the canonical protected roots that publish flow attests and stakes
+- tracks are directly attested only when they need their own disputeable provenance record
+- each stem token is linked to one canonical parent track via `registerStem(trackId, stemTokenId)`
+- `isTrackVerified(trackId)` requires both the track attestation and its parent release attestation to remain valid
+- `isStemVerified(stemTokenId)` resolves the canonical track and inherits that verification status
+- mint authorization checks the signed `protectionId` release root, not a freshly minted stem token
+- disputes reported against a stem resolve to its canonical `trackId`, which allows escrow freezing and slashing to cascade across derived stems
 
 ### RevenueEscrow.sol (Phase 2)
 

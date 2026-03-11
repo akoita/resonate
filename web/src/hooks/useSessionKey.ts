@@ -8,6 +8,7 @@ import {
   disableAgentWallet,
   type SessionKeyPermissions,
 } from "../lib/api";
+import { getKernelAccountConfig } from "../lib/accountAbstraction";
 import type { Address } from "viem";
 
 /**
@@ -55,7 +56,7 @@ export interface SessionKeyConfig {
  */
 export function useSessionKey() {
   const { token, kernelAccount } = useAuth();
-  const { publicClient } = useZeroDev();
+  const { publicClient, chainId } = useZeroDev();
   const [isGranting, setIsGranting] = useState(false);
   const [isRevoking, setIsRevoking] = useState(false);
   const [sessionKeyTxHash, setSessionKeyTxHash] = useState<string | null>(null);
@@ -153,7 +154,7 @@ export function useSessionKey() {
         });
 
         // 3. Build policies
-        const entryPoint = sdk.constants.getEntryPoint("0.7");
+        const { entryPoint, factoryAddress } = getKernelAccountConfig(chainId);
         const kernelVersion = sdk.constants.KERNEL_V3_1;
 
         const callPolicy = toCallPolicy({
@@ -190,6 +191,7 @@ export function useSessionKey() {
           },
           entryPoint,
           kernelVersion,
+          factoryAddress,
         });
 
         // 6. Serialize the permission account (embeds the session private key)
@@ -218,7 +220,7 @@ export function useSessionKey() {
         setIsGranting(false);
       }
     },
-    [token, kernelAccount, publicClient]
+    [token, kernelAccount, publicClient, chainId]
   );
 
   /**

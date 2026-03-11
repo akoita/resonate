@@ -1,54 +1,8 @@
-# Smart Contract Vulnerability Scan Report
+# Smart Contract Vulnerability Scan — Issue #440
 
-**Date:** 2026-03-09
-**Scope:** `contracts/src/core/ContentProtection.sol`, `contracts/src/core/RevenueEscrow.sol`
-**Issue:** #406 — Content Protection Phase 2
-
-## Reconnaissance
-
-| File                    | Pragma  | Dependencies                                       |
-| ----------------------- | ------- | -------------------------------------------------- |
-| `ContentProtection.sol` | ^0.8.28 | OZ UUPSUpgradeable, Initializable, ReentrancyGuard |
-| `RevenueEscrow.sol`     | ^0.8.28 | OZ Ownable, ReentrancyGuard                        |
-
-## Syntactic Scan Results
-
-| Pattern        | Matches              | Assessment                            |
-| -------------- | -------------------- | ------------------------------------- |
-| `.call{`       | 5                    | All protected by `nonReentrant` + CEI |
-| `selfdestruct` | 0                    | Clean                                 |
-| `delegatecall` | 0                    | Clean                                 |
-| `tx.origin`    | 0                    | Clean                                 |
-| `unchecked`    | 0                    | Clean                                 |
-| `assembly`     | 0 (in new contracts) | Clean                                 |
-
-## Validated Findings
-
-### SCV-001: Burned Amount Locked in Contract
-
-**File:** `ContentProtection.sol` L231
-**Severity:** Low
-
-**Description:** During slash, 10% is "burned" by leaving it in the contract. There is no sweep function to recover these funds.
-
-**Code:**
-
-```solidity
-// Burned amount stays in contract (can be swept to treasury later)
-```
-
-**Recommendation:** Add a `sweepBurned()` admin function to recover accumulated burned funds, or send to `address(0)`.
-
----
-
-### SCV-002: No Upper Bound on Stake Amount
-
-**File:** `ContentProtection.sol` L287
-**Severity:** Informational
-
-**Description:** `setStakeAmount()` has no upper bound check. Admin could set an unreasonably high stake.
-
-**Recommendation:** Add a maximum cap (e.g., 1 ETH) as a sanity check: `if (newAmount > 1 ether) revert StakeTooHigh();`
+**Date:** 2026-03-11
+**Branch:** `feat/440-content-protection-hierarchy`
+**Changed contracts:** `ContentProtection.sol`, `StemNFT.sol`, `CurationRewards.sol`, `RevenueEscrow.sol`
 
 ## Summary
 
@@ -57,7 +11,31 @@
 | Critical | 0     |
 | High     | 0     |
 | Medium   | 0     |
-| Low      | 1     |
+| Low      | 0     |
 | Info     | 1     |
 
-**Overall:** The contracts follow security best practices. CEI pattern is consistently applied. ReentrancyGuard on all ETH transfer functions. UUPS proxy pattern correctly implemented with `_disableInitializers()` in constructor. Access control via `onlyOwner` on all admin functions.
+## Findings
+
+### ~~Unbounded Loop in revokeRelease~~ — FIXED
+
+**Status:** Resolved. `revokeRelease()` now caps at 50 tracks (reverts above). A new `revokeReleaseBatch(releaseId, offset, limit)` handles large releases with paginated revocation.
+
+---
+
+### EIP-712 Domain Hardcoded in Constructor
+
+**File:** `StemNFT.sol` constructor
+**Severity:** Informational
+
+**Description:** The EIP-712 domain name/version are hardcoded as `"Resonate StemNFT"` / `"1"`. This is standard practice but means proxy deployments sharing the same implementation would share the domain separator.
+
+**Recommendation:** No action needed — `StemNFT` is not behind a proxy.
+
+## Scan Details
+
+- **Reentrancy:** All `.call{value}` uses follow CEI + `nonReentrant` ✅
+- **Access control:** All state-changing functions gated by `onlyOwner` or `onlyRegistrarOrOwner` ✅
+- **Dangerous patterns:** No `selfdestruct`, `delegatecall`, or `tx.origin` ✅
+- **Replay protection:** `mintAuthorized` uses per-minter nonce tracking ✅
+- **Signature validation:** Uses OpenZeppelin's `ECDSA.recover` + `EIP712._hashTypedDataV4` ✅
+- **Loop bounds:** `revokeRelease` capped at 50; paginated `revokeReleaseBatch` for larger sets ✅

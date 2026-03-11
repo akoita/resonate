@@ -80,7 +80,7 @@ export default function LibraryPage() {
     const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(new Set());
     const lastClickedTrackIdRef = useRef<string | null>(null);
     const { address, token, smartAccountAddress } = useAuth();
-    const { chainId } = useZeroDev();
+    const { chainId: _chainId } = useZeroDev();
     
     // Remote collection state
     const [ownedStems, setOwnedStems] = useState<LocalTrack[]>([]);

@@ -105,6 +105,7 @@ export default function AgentHistoryCard({ sessions, isLoading }: Props) {
                                         >
                                             <div className="agent-history-license-art">
                                                 {lic.track.release?.artworkUrl ? (
+                                                    /* eslint-disable-next-line @next/next/no-img-element */
                                                     <img
                                                         src={lic.track.release.artworkUrl}
                                                         alt=""

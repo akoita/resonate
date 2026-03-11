@@ -16,6 +16,8 @@ import {
 interface ContentProtectionBadgeProps {
   /** The on-chain tokenId to look up stake / attestation for. */
   tokenId: bigint;
+  /** Optional canonical track to inherit protection from for stem views. */
+  parentTrackId?: bigint;
   /** Optional: show the full card with attestation details (default: compact badge). */
   expanded?: boolean;
 }
@@ -32,9 +34,15 @@ interface TrustTierInfo {
  * status, amount, trust tier, and escrow countdown. Visible to all users
  * on release / stem detail pages.
  */
-export default function ContentProtectionBadge({ tokenId, expanded = false }: ContentProtectionBadgeProps) {
-  const { data: stakeData, loading: stakeLoading } = useStakeInfo(tokenId);
-  const { data: attestData, loading: attestLoading } = useAttestationInfo(tokenId);
+export default function ContentProtectionBadge({
+  tokenId,
+  parentTrackId,
+  expanded = false,
+}: ContentProtectionBadgeProps) {
+  const protectionId = parentTrackId ?? tokenId;
+  const inheritedProtection = parentTrackId !== undefined && parentTrackId !== tokenId;
+  const { data: stakeData, loading: stakeLoading } = useStakeInfo(protectionId);
+  const { data: attestData, loading: attestLoading } = useAttestationInfo(protectionId);
 
   // Fetch trust tier from backend (best-effort)
   const [trustTier, setTrustTier] = useState<TrustTierInfo | null>(null);
@@ -154,7 +162,7 @@ export default function ContentProtectionBadge({ tokenId, expanded = false }: Co
           fontSize: "11px",
           color: "#10b981",
         }}>
-          ✓ Content attested on-chain
+          ✓ {inheritedProtection ? `Protection inherited from track #${protectionId.toString()}` : "Content attested on-chain"}
           {attestData.timestamp > 0n && (
             <span style={{ opacity: 0.6, marginLeft: "8px" }}>
               {new Date(Number(attestData.timestamp) * 1000).toLocaleDateString()}

@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { getRelease, Release, updateReleaseArtwork, getReleaseArtworkUrl } from "../../../lib/api";
+import { getRelease, Release, updateReleaseArtwork, getReleaseArtworkUrl, waitForReleaseAvailability } from "../../../lib/api";
 import { LocalTrack, saveTracksMetadata } from "../../../lib/localLibrary";
 import { Button } from "../../../components/ui/Button";
 import { usePlayer } from "../../../lib/playerContext";
@@ -58,6 +58,7 @@ export default function ReleaseDetails() {
   const [selectedNftStems, setSelectedNftStems] = useState<Set<string>>(new Set());
   const [batchModalStems, setBatchModalStems] = useState<BatchStemItem[] | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
+  const shouldWaitForPendingRelease = searchParams.get("pending") === "1";
 
   // Handle real-time track progress updates via WebSocket
   const handleProgressUpdate = useCallback((data: ReleaseProgressUpdate) => {
@@ -152,7 +153,11 @@ export default function ReleaseDetails() {
 
   useEffect(() => {
     if (typeof id === "string") {
-      getRelease(id)
+      const loadRelease = shouldWaitForPendingRelease
+        ? waitForReleaseAvailability(id, { token, timeoutMs: 15000, intervalMs: 500 })
+        : getRelease(id, token);
+
+      loadRelease
         .then((r) => {
           if (r) {
             // If a ?rev= param is present (e.g. from post-publish toast), bust artwork cache
@@ -166,7 +171,7 @@ export default function ReleaseDetails() {
         .catch(console.error)
         .finally(() => setLoading(false));
     }
-  }, [id, searchParams]);
+  }, [id, searchParams, shouldWaitForPendingRelease, token]);
 
   // Auto-enable mixer mode when navigating from Quick Mix CTA (?mixer=true&stem=vocals)
   useEffect(() => {
@@ -189,6 +194,7 @@ export default function ReleaseDetails() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [release?.id]);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handlePlayTrack = (trackIndex: number, _specificStem?: string) => {
     if (!release?.tracks) return;
     const playableTracks: LocalTrack[] = (release.tracks || []).map((t) => {
@@ -401,10 +407,10 @@ export default function ReleaseDetails() {
           title={isOwner ? "Click to change artwork, drag to add to playlist" : "Drag to add entire album to playlist"}
         >
           {release.artworkUrl ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={release.artworkUrl}
               alt={release.title}
-              /* eslint-disable-next-line @next/next/no-img-element */
               className={`header-artwork ${isUpdatingArtwork ? 'opacity-50' : ''}`}
               draggable="false"
             />
@@ -952,9 +958,7 @@ export default function ReleaseDetails() {
                                   </span>
                                   <MintStemButton
                                     stemId={stem.id}
-                                    stemTitle={`${stem.type} - ${track.title}`}
                                     stemType={stem.type}
-                                    trackTitle={track.title}
                                   />
                                 </div>
                               );
@@ -993,8 +997,8 @@ export default function ReleaseDetails() {
           }}
           onComplete={() => {
             // Refresh release to pick up new NFT status
-            if (token && id) {
-              getRelease(token, id as string).then(r => setRelease(r)).catch(() => {});
+            if (id) {
+              getRelease(id as string, token).then(r => setRelease(r)).catch(() => {});
             }
           }}
         />
@@ -1034,13 +1038,18 @@ export default function ReleaseDetails() {
       )}
 
       {/* Report Modal */}
-      {showReportModal && release.tracks?.[0] && (
+      {showReportModal && (
         <ReportContentModal
-          tokenId={release.tracks[0].id}
-          creatorAddr={release.artist?.userId || ''}
+          releaseId={release.id}
           onClose={() => setShowReportModal(false)}
-          onSubmitted={() => {
-            addToast({ type: 'success', title: 'Report Filed', message: 'Your dispute has been submitted for review.' });
+          onSubmitted={(result) => {
+            addToast({
+              type: 'success',
+              title: 'Report Filed',
+              message: result.disputeId
+                ? `Dispute #${result.disputeId} was filed on-chain with a ${result.counterStakeEth} counter-stake.`
+                : `Your report was submitted on-chain with a ${result.counterStakeEth} counter-stake.`,
+            });
           }}
         />
       )}

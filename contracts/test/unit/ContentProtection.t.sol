@@ -3,9 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
-import {
-    ERC1967Proxy
-} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title ContentProtection Unit Tests
@@ -16,6 +14,7 @@ contract ContentProtectionTest is Test {
 
     address public admin = makeAddr("admin");
     address public treasury = makeAddr("treasury");
+    address public registrar = makeAddr("registrar");
     address public alice = makeAddr("alice");
     address public bob = makeAddr("bob");
     address public reporter = makeAddr("reporter");
@@ -29,11 +28,7 @@ contract ContentProtectionTest is Test {
         bytes32 fingerprintHash,
         string metadataURI
     );
-    event StakeDeposited(
-        uint256 indexed tokenId,
-        address indexed staker,
-        uint256 amount
-    );
+    event StakeDeposited(uint256 indexed tokenId, address indexed staker, uint256 amount);
     event StakeSlashed(
         uint256 indexed tokenId,
         address indexed reporter,
@@ -41,21 +36,19 @@ contract ContentProtectionTest is Test {
         uint256 treasuryAmount,
         uint256 burnedAmount
     );
-    event StakeRefunded(
-        uint256 indexed tokenId,
-        address indexed staker,
-        uint256 amount
-    );
+    event StakeRefunded(uint256 indexed tokenId, address indexed staker, uint256 amount);
     event Blacklisted(address indexed account);
     event BlacklistRemoved(address indexed account);
+    event RegistrarUpdated(address indexed registrar, bool allowed);
+    event TrackRegistered(uint256 indexed releaseId, uint256 indexed trackId);
+    event StemRegistered(uint256 indexed trackId, uint256 indexed stemTokenId);
+    event TrackRevoked(uint256 indexed trackId);
+    event ReleaseRevoked(uint256 indexed releaseId);
 
     function setUp() public {
         // Deploy implementation + proxy
         ContentProtection impl = new ContentProtection();
-        bytes memory initData = abi.encodeCall(
-            ContentProtection.initialize,
-            (admin, treasury, STAKE_AMOUNT)
-        );
+        bytes memory initData = abi.encodeCall(ContentProtection.initialize, (admin, treasury, STAKE_AMOUNT));
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         cp = ContentProtection(address(proxy));
     }
@@ -85,6 +78,19 @@ contract ContentProtectionTest is Test {
         cp.attest(1, contentHash, fpHash, "ipfs://meta");
 
         assertTrue(cp.isAttested(1));
+    }
+
+    function test_AttestRelease() public {
+        bytes32 contentHash = keccak256("release_audio_content");
+        bytes32 fpHash = keccak256("release_fingerprint");
+
+        vm.prank(alice);
+        vm.expectEmit(true, true, false, true);
+        emit ContentAttested(100, alice, contentHash, fpHash, "ipfs://release-meta");
+        cp.attestRelease(100, contentHash, fpHash, "ipfs://release-meta");
+
+        assertTrue(cp.isAttested(100));
+        assertTrue(cp.isReleaseVerified(100));
     }
 
     function test_Attest_RevertAlreadyAttested() public {
@@ -120,6 +126,19 @@ contract ContentProtectionTest is Test {
         cp.stake{value: STAKE_AMOUNT}(1);
 
         assertTrue(cp.isStaked(1));
+    }
+
+    function test_StakeForRelease() public {
+        vm.prank(alice);
+        cp.attestRelease(100, keccak256("release"), keccak256("release-fp"), "release-uri");
+
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        vm.expectEmit(true, true, false, true);
+        emit StakeDeposited(100, alice, STAKE_AMOUNT);
+        cp.stakeForRelease{value: STAKE_AMOUNT}(100);
+
+        assertTrue(cp.isStaked(100));
     }
 
     function test_Stake_RevertNotAttested() public {
@@ -254,5 +273,177 @@ contract ContentProtectionTest is Test {
         vm.prank(admin);
         cp.transferOwnership(bob);
         assertEq(cp.owner(), bob);
+    }
+
+    function test_SetRegistrar() public {
+        vm.prank(admin);
+        vm.expectEmit(true, false, false, true);
+        emit RegistrarUpdated(registrar, true);
+        cp.setRegistrar(registrar, true);
+
+        assertTrue(cp.registrars(registrar));
+    }
+
+    function test_RegisterTrack_ByRegistrar() public {
+        _attestReleaseAndTrack(100, 200);
+
+        vm.prank(admin);
+        cp.setRegistrar(registrar, true);
+
+        vm.prank(registrar);
+        vm.expectEmit(true, true, false, false);
+        emit TrackRegistered(100, 200);
+        cp.registerTrack(100, 200);
+
+        uint256[] memory trackIds = cp.getReleaseTracks(100);
+        assertEq(trackIds.length, 1);
+        assertEq(trackIds[0], 200);
+        assertEq(cp.trackToParentRelease(200), 100);
+    }
+
+    function test_RegisterTrack_Idempotent() public {
+        _attestReleaseAndTrack(100, 200);
+
+        vm.prank(admin);
+        cp.registerTrack(100, 200);
+
+        vm.prank(admin);
+        cp.registerTrack(100, 200);
+
+        uint256[] memory trackIds = cp.getReleaseTracks(100);
+        assertEq(trackIds.length, 1);
+    }
+
+    function test_RegisterTrack_RevertConflict() public {
+        _attestReleaseAndTrack(100, 200);
+
+        vm.prank(alice);
+        cp.attest(101, keccak256("release2"), keccak256("fp2"), "release-2");
+
+        vm.prank(admin);
+        cp.registerTrack(100, 200);
+
+        vm.prank(admin);
+        vm.expectRevert(ContentProtection.RegistrationConflict.selector);
+        cp.registerTrack(101, 200);
+    }
+
+    function test_RegisterTrack_RevertNotRegistrar() public {
+        _attestReleaseAndTrack(100, 200);
+
+        vm.prank(bob);
+        vm.expectRevert(ContentProtection.NotRegistrar.selector);
+        cp.registerTrack(100, 200);
+    }
+
+    function test_RegisterStem_ByRegistrar() public {
+        _attestReleaseAndTrack(100, 200);
+
+        vm.prank(admin);
+        cp.setRegistrar(registrar, true);
+        vm.prank(admin);
+        cp.registerTrack(100, 200);
+
+        vm.prank(registrar);
+        vm.expectEmit(true, true, false, false);
+        emit StemRegistered(200, 300);
+        cp.registerStem(200, 300);
+
+        uint256[] memory stemIds = cp.getTrackStems(200);
+        assertEq(stemIds.length, 1);
+        assertEq(stemIds[0], 300);
+        assertEq(cp.stemToCanonicalTrack(300), 200);
+    }
+
+    function test_VerificationHierarchy() public {
+        _attestReleaseAndTrack(100, 200);
+
+        vm.startPrank(admin);
+        cp.registerTrack(100, 200);
+        cp.registerStem(200, 300);
+        vm.stopPrank();
+
+        assertTrue(cp.isReleaseVerified(100));
+        assertTrue(cp.isTrackVerified(200));
+        assertTrue(cp.isStemVerified(300));
+        assertEq(cp.resolveCanonicalTrack(300), 200);
+        assertEq(cp.resolveProtectionTarget(300), 200);
+        assertEq(cp.resolveProtectionTarget(200), 200);
+    }
+
+    function test_IsTrackVerified_FalseAfterTrackSlash() public {
+        _attestReleaseAndTrack(100, 200);
+
+        vm.startPrank(admin);
+        cp.registerTrack(100, 200);
+        cp.registerStem(200, 300);
+        vm.stopPrank();
+
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        cp.stake{value: STAKE_AMOUNT}(200);
+
+        vm.prank(admin);
+        cp.slash(200, reporter);
+
+        assertTrue(cp.isReleaseVerified(100));
+        assertFalse(cp.isTrackVerified(200));
+        assertFalse(cp.isStemVerified(300));
+    }
+
+    function test_RevokeTrack_InvalidatesDerivedStemVerification() public {
+        _attestReleaseAndTrack(100, 200);
+
+        vm.startPrank(admin);
+        cp.registerTrack(100, 200);
+        cp.registerStem(200, 300);
+        vm.expectEmit(true, false, false, false);
+        emit TrackRevoked(200);
+        cp.revokeTrack(200);
+        vm.stopPrank();
+
+        assertFalse(cp.isTrackVerified(200));
+        assertFalse(cp.isStemVerified(300));
+    }
+
+    function test_RevokeRelease_CascadesToTracksAndStems() public {
+        _attestReleaseAndTrack(100, 200);
+
+        vm.prank(bob);
+        cp.attest(201, keccak256("track2"), keccak256("tfp2"), "track-2");
+
+        vm.startPrank(admin);
+        cp.registerTrack(100, 200);
+        cp.registerTrack(100, 201);
+        cp.registerStem(200, 300);
+        cp.registerStem(201, 301);
+        vm.expectEmit(true, false, false, false);
+        emit ReleaseRevoked(100);
+        cp.revokeRelease(100);
+        vm.stopPrank();
+
+        assertFalse(cp.isReleaseVerified(100));
+        assertFalse(cp.isTrackVerified(200));
+        assertFalse(cp.isTrackVerified(201));
+        assertFalse(cp.isStemVerified(300));
+        assertFalse(cp.isStemVerified(301));
+    }
+
+    function _attestReleaseAndTrack(uint256 releaseId, uint256 trackId) internal {
+        vm.prank(alice);
+        cp.attestRelease(
+            releaseId,
+            keccak256(abi.encodePacked("release", releaseId)),
+            keccak256(abi.encodePacked("release-fp", releaseId)),
+            "release"
+        );
+
+        vm.prank(alice);
+        cp.attest(
+            trackId,
+            keccak256(abi.encodePacked("track", trackId)),
+            keccak256(abi.encodePacked("track-fp", trackId)),
+            "track"
+        );
     }
 }

@@ -14,6 +14,7 @@ import {
 } from "../../lib/stakeConstants";
 
 interface ReleaseProtectionData {
+  tokenId?: string | null;
   staked: boolean;
   attested: boolean;
   stakeAmount: string;
@@ -237,4 +238,3 @@ const statLabelStyle: React.CSSProperties = {
   textTransform: "uppercase",
   letterSpacing: "0.5px",
 };
-

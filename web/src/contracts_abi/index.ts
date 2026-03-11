@@ -100,6 +100,16 @@ export const StemNFTABI = [
     inputs: [{ name: "owner", type: "address" }],
     outputs: [{ name: "", type: "uint64" }],
   },
+  {
+    name: "usedMintAuthorizationNonces",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "minter", type: "address" },
+      { name: "nonce", type: "bytes32" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
   // Write functions
   {
     name: "mint",
@@ -113,6 +123,25 @@ export const StemNFTABI = [
       { name: "royaltyBps", type: "uint96" },
       { name: "remixable", type: "bool" },
       { name: "parentIds", type: "uint256[]" },
+    ],
+    outputs: [{ name: "tokenId", type: "uint256" }],
+  },
+  {
+    name: "mintAuthorized",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" },
+      { name: "tokenURI_", type: "string" },
+      { name: "protectionId", type: "uint256" },
+      { name: "royaltyReceiver", type: "address" },
+      { name: "royaltyBps", type: "uint96" },
+      { name: "remixable", type: "bool" },
+      { name: "parentIds", type: "uint256[]" },
+      { name: "deadline", type: "uint256" },
+      { name: "nonce", type: "bytes32" },
+      { name: "signature", type: "bytes" },
     ],
     outputs: [{ name: "tokenId", type: "uint256" }],
   },
@@ -393,6 +422,18 @@ export const TransferValidatorABI = [
 // ============ ContentProtection (Phase 2) ============
 export const ContentProtectionABI = [
   {
+    name: "attestRelease",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "releaseId", type: "uint256" },
+      { name: "contentHash", type: "bytes32" },
+      { name: "fingerprintHash", type: "bytes32" },
+      { name: "metadataURI", type: "string" },
+    ],
+    outputs: [],
+  },
+  {
     name: "attest",
     type: "function",
     stateMutability: "nonpayable",
@@ -402,6 +443,13 @@ export const ContentProtectionABI = [
       { name: "fingerprintHash", type: "bytes32" },
       { name: "metadataURI", type: "string" },
     ],
+    outputs: [],
+  },
+  {
+    name: "stakeForRelease",
+    type: "function",
+    stateMutability: "payable",
+    inputs: [{ name: "releaseId", type: "uint256" }],
     outputs: [],
   },
   {
@@ -458,10 +506,45 @@ export const ContentProtectionABI = [
     ],
   },
   {
+    name: "getReleaseTracks",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "releaseId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256[]" }],
+  },
+  {
+    name: "getTrackStems",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "trackId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256[]" }],
+  },
+  {
     name: "isAttested",
     type: "function",
     stateMutability: "view",
     inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "isReleaseVerified",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "releaseId", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "isTrackVerified",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "trackId", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "isStemVerified",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "stemTokenId", type: "uint256" }],
     outputs: [{ name: "", type: "bool" }],
   },
   {
@@ -470,6 +553,34 @@ export const ContentProtectionABI = [
     stateMutability: "view",
     inputs: [{ name: "tokenId", type: "uint256" }],
     outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "resolveCanonicalTrack",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "stemTokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "resolveProtectionTarget",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "stemToCanonicalTrack",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "stemTokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "trackToParentRelease",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "trackId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
   },
   {
     name: "isBlacklisted",
@@ -508,6 +619,75 @@ export const ContentProtectionABI = [
       { name: "amount", type: "uint256", indexed: false },
     ],
   },
+  {
+    name: "TrackRegistered",
+    type: "event",
+    inputs: [
+      { name: "releaseId", type: "uint256", indexed: true },
+      { name: "trackId", type: "uint256", indexed: true },
+    ],
+  },
+  {
+    name: "StemRegistered",
+    type: "event",
+    inputs: [
+      { name: "trackId", type: "uint256", indexed: true },
+      { name: "stemTokenId", type: "uint256", indexed: true },
+    ],
+  },
+] as const;
+
+export const DisputeResolutionABI = [
+  {
+    name: "getActiveDispute",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "DisputeFiled",
+    type: "event",
+    inputs: [
+      { name: "disputeId", type: "uint256", indexed: true },
+      { name: "tokenId", type: "uint256", indexed: true },
+      { name: "reporter", type: "address", indexed: true },
+      { name: "creator", type: "address", indexed: false },
+      { name: "evidenceURI", type: "string", indexed: false },
+      { name: "counterStake", type: "uint256", indexed: false },
+    ],
+  },
+] as const;
+
+export const CurationRewardsABI = [
+  {
+    name: "reportContent",
+    type: "function",
+    stateMutability: "payable",
+    inputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "evidenceURI", type: "string" },
+    ],
+    outputs: [{ name: "disputeId", type: "uint256" }],
+  },
+  {
+    name: "getRequiredCounterStake",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "ContentReported",
+    type: "event",
+    inputs: [
+      { name: "disputeId", type: "uint256", indexed: true },
+      { name: "tokenId", type: "uint256", indexed: true },
+      { name: "reporter", type: "address", indexed: true },
+      { name: "counterStake", type: "uint256", indexed: false },
+      { name: "evidenceURI", type: "string", indexed: false },
+    ],
+  },
 ] as const;
 
 // ============ Contract Addresses (per network) ============
@@ -516,6 +696,8 @@ export interface ContractAddresses {
   marketplace: `0x${string}`;
   transferValidator: `0x${string}`;
   contentProtection: `0x${string}`;
+  disputeResolution: `0x${string}`;
+  curationRewards: `0x${string}`;
 }
 
 // Deployed addresses by chain ID
@@ -526,6 +708,8 @@ export const ADDRESSES: Record<number, ContractAddresses> = {
     marketplace: (process.env.NEXT_PUBLIC_MARKETPLACE_ADDRESS || "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853") as `0x${string}`,
     transferValidator: (process.env.NEXT_PUBLIC_TRANSFER_VALIDATOR_ADDRESS || "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707") as `0x${string}`,
     contentProtection: (process.env.NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
+    disputeResolution: (process.env.NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
+    curationRewards: (process.env.NEXT_PUBLIC_CURATION_REWARDS_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
   },
   // Sepolia
   11155111: {
@@ -533,6 +717,8 @@ export const ADDRESSES: Record<number, ContractAddresses> = {
     marketplace: (process.env.NEXT_PUBLIC_SEPOLIA_MARKETPLACE_ADDRESS || process.env.NEXT_PUBLIC_MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     transferValidator: (process.env.NEXT_PUBLIC_SEPOLIA_TRANSFER_VALIDATOR_ADDRESS || process.env.NEXT_PUBLIC_TRANSFER_VALIDATOR_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     contentProtection: (process.env.NEXT_PUBLIC_SEPOLIA_CONTENT_PROTECTION_ADDRESS || process.env.NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
+    disputeResolution: (process.env.NEXT_PUBLIC_SEPOLIA_DISPUTE_RESOLUTION_ADDRESS || process.env.NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
+    curationRewards: (process.env.NEXT_PUBLIC_SEPOLIA_CURATION_REWARDS_ADDRESS || process.env.NEXT_PUBLIC_CURATION_REWARDS_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
   },
   // Base Sepolia
   84532: {
@@ -540,6 +726,8 @@ export const ADDRESSES: Record<number, ContractAddresses> = {
     marketplace: (process.env.NEXT_PUBLIC_BASE_SEPOLIA_MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     transferValidator: (process.env.NEXT_PUBLIC_BASE_SEPOLIA_TRANSFER_VALIDATOR_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     contentProtection: (process.env.NEXT_PUBLIC_BASE_SEPOLIA_CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
+    disputeResolution: (process.env.NEXT_PUBLIC_BASE_SEPOLIA_DISPUTE_RESOLUTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
+    curationRewards: (process.env.NEXT_PUBLIC_BASE_SEPOLIA_CURATION_REWARDS_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
   },
   // Arbitrum Sepolia
   421614: {
@@ -547,6 +735,8 @@ export const ADDRESSES: Record<number, ContractAddresses> = {
     marketplace: (process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     transferValidator: (process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_TRANSFER_VALIDATOR_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     contentProtection: (process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
+    disputeResolution: (process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_DISPUTE_RESOLUTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
+    curationRewards: (process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_CURATION_REWARDS_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
   },
 };
 

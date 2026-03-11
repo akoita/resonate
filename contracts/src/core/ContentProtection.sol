@@ -16,8 +16,8 @@ import {
  * @notice On-chain attestation, staking, slashing, and blacklisting for content integrity.
  *
  * Design:
- *   - Creators attest ownership of content before minting stems
- *   - Stake is required per tokenId — slashed on confirmed theft
+ *   - Creators attest ownership of protected content / release records
+ *   - Stake is required per protected record — slashed on confirmed theft
  *   - Slash split: 60% reporter · 30% treasury · 10% burned
  *   - UUPS upgradeable for parameter tuning (stake amounts, escrow periods)
  *
@@ -52,6 +52,11 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     mapping(uint256 => Attestation) public attestations;
     mapping(uint256 => StakeInfo) public stakes;
     mapping(address => bool) internal _blacklisted;
+    mapping(address => bool) public registrars;
+    mapping(uint256 => uint256[]) private _releaseToTracks;
+    mapping(uint256 => uint256[]) private _trackToStems;
+    mapping(uint256 => uint256) public stemToCanonicalTrack;
+    mapping(uint256 => uint256) public trackToParentRelease;
 
     // Slash distribution (basis points, must sum to 10000)
     uint256 public constant SLASH_REPORTER_BPS = 6000; // 60%
@@ -93,6 +98,11 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     event BlacklistRemoved(address indexed account);
     event StakeAmountUpdated(uint256 oldAmount, uint256 newAmount);
     event TreasuryUpdated(address oldTreasury, address newTreasury);
+    event RegistrarUpdated(address indexed registrar, bool allowed);
+    event TrackRegistered(uint256 indexed releaseId, uint256 indexed trackId);
+    event StemRegistered(uint256 indexed trackId, uint256 indexed stemTokenId);
+    event TrackRevoked(uint256 indexed trackId);
+    event ReleaseRevoked(uint256 indexed releaseId);
     event OwnershipTransferred(
         address indexed previousOwner,
         address indexed newOwner
@@ -108,6 +118,9 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     error InsufficientStake();
     error IsBlacklisted();
     error NotBlacklisted();
+    error NotRegistrar();
+    error InvalidParent();
+    error RegistrationConflict();
     error TransferFailed();
     error ZeroAddress();
 
@@ -115,6 +128,12 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
+        _;
+    }
+
+    modifier onlyRegistrarOrOwner() {
+        if (msg.sender != owner && !registrars[msg.sender])
+            revert NotRegistrar();
         _;
     }
 
@@ -141,8 +160,8 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     // ============ Attestation ============
 
     /**
-     * @notice Attest ownership of content. Must be called before StemNFT.mint().
-     * @param tokenId The token ID that will be minted in StemNFT
+     * @notice Attest ownership of protected content for staking / provenance.
+     * @param tokenId Identifier for the protected asset or release record
      * @param contentHash SHA-256 hash of the audio content
      * @param fingerprintHash Chromaprint fingerprint hash
      * @param metadataURI IPFS URI or URL pointing to attestation metadata
@@ -153,6 +172,28 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         bytes32 fingerprintHash,
         string calldata metadataURI
     ) external {
+        _attest(tokenId, contentHash, fingerprintHash, metadataURI);
+    }
+
+    /**
+     * @notice Canonical release-first attestation entrypoint.
+     * @dev Wraps the generic attestation flow while making the protected root explicit.
+     */
+    function attestRelease(
+        uint256 releaseId,
+        bytes32 contentHash,
+        bytes32 fingerprintHash,
+        string calldata metadataURI
+    ) external {
+        _attest(releaseId, contentHash, fingerprintHash, metadataURI);
+    }
+
+    function _attest(
+        uint256 tokenId,
+        bytes32 contentHash,
+        bytes32 fingerprintHash,
+        string calldata metadataURI
+    ) internal {
         if (_blacklisted[msg.sender]) revert IsBlacklisted();
         if (attestations[tokenId].valid) revert AlreadyAttested();
 
@@ -177,10 +218,22 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     // ============ Staking ============
 
     /**
-     * @notice Stake ETH when publishing content. Required before minting.
-     * @param tokenId The token ID to stake for (must be attested first)
+     * @notice Stake ETH when publishing protected content.
+     * @param tokenId The attested content or release identifier to stake for
      */
     function stake(uint256 tokenId) external payable nonReentrant {
+        _stake(tokenId);
+    }
+
+    /**
+     * @notice Canonical release-first staking entrypoint.
+     * @dev Keeps the external API aligned with the hierarchical release-root model.
+     */
+    function stakeForRelease(uint256 releaseId) external payable nonReentrant {
+        _stake(releaseId);
+    }
+
+    function _stake(uint256 tokenId) internal {
         if (_blacklisted[msg.sender]) revert IsBlacklisted();
         if (!attestations[tokenId].valid) revert NotAttested();
         if (attestations[tokenId].attester != msg.sender) revert NotOwner();
@@ -283,6 +336,12 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
 
     // ============ Admin ============
 
+    function setRegistrar(address registrar, bool allowed) external onlyOwner {
+        if (registrar == address(0)) revert ZeroAddress();
+        registrars[registrar] = allowed;
+        emit RegistrarUpdated(registrar, allowed);
+    }
+
     function setStakeAmount(uint256 newAmount) external onlyOwner {
         emit StakeAmountUpdated(stakeAmount, newAmount);
         stakeAmount = newAmount;
@@ -306,11 +365,144 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
 
     // ============ Views ============
 
+    function registerTrack(
+        uint256 releaseId,
+        uint256 trackId
+    ) external onlyRegistrarOrOwner {
+        if (!_hasAttestation(releaseId) || !_hasAttestation(trackId)) {
+            revert NotAttested();
+        }
+        if (releaseId == trackId) revert InvalidParent();
+
+        uint256 currentReleaseId = trackToParentRelease[trackId];
+        if (currentReleaseId == releaseId) return;
+        if (currentReleaseId != 0) revert RegistrationConflict();
+
+        trackToParentRelease[trackId] = releaseId;
+        _releaseToTracks[releaseId].push(trackId);
+
+        emit TrackRegistered(releaseId, trackId);
+    }
+
+    function registerStem(
+        uint256 trackId,
+        uint256 stemTokenId
+    ) external onlyRegistrarOrOwner {
+        if (!_hasAttestation(trackId)) revert NotAttested();
+        if (trackId == stemTokenId) revert InvalidParent();
+
+        uint256 currentTrackId = stemToCanonicalTrack[stemTokenId];
+        if (currentTrackId == trackId) return;
+        if (currentTrackId != 0) revert RegistrationConflict();
+
+        stemToCanonicalTrack[stemTokenId] = trackId;
+        _trackToStems[trackId].push(stemTokenId);
+
+        emit StemRegistered(trackId, stemTokenId);
+    }
+
+    function revokeTrack(uint256 trackId) external onlyOwner {
+        attestations[trackId].valid = false;
+        emit TrackRevoked(trackId);
+    }
+
+    /// @notice Revoke a release and all its registered tracks.
+    ///         Reverts if > 50 tracks — use revokeReleaseBatch() instead.
+    function revokeRelease(uint256 releaseId) external onlyOwner {
+        uint256[] storage trackIds = _releaseToTracks[releaseId];
+        if (trackIds.length > 50) revert InvalidParent(); // too many tracks — use batch
+
+        attestations[releaseId].valid = false;
+
+        for (uint256 i; i < trackIds.length; ++i) {
+            uint256 trackId = trackIds[i];
+            attestations[trackId].valid = false;
+            emit TrackRevoked(trackId);
+        }
+
+        emit ReleaseRevoked(releaseId);
+    }
+
+    /// @notice Paginated release revocation for releases with many tracks.
+    /// @param offset Start index in the release's track array
+    /// @param limit  Max tracks to process in this call
+    function revokeReleaseBatch(
+        uint256 releaseId,
+        uint256 offset,
+        uint256 limit
+    ) external onlyOwner {
+        attestations[releaseId].valid = false;
+
+        uint256[] storage trackIds = _releaseToTracks[releaseId];
+        uint256 end = offset + limit;
+        if (end > trackIds.length) end = trackIds.length;
+
+        for (uint256 i = offset; i < end; ++i) {
+            uint256 trackId = trackIds[i];
+            attestations[trackId].valid = false;
+            emit TrackRevoked(trackId);
+        }
+
+        emit ReleaseRevoked(releaseId);
+    }
+
+    function getReleaseTracks(
+        uint256 releaseId
+    ) external view returns (uint256[] memory) {
+        return _releaseToTracks[releaseId];
+    }
+
+    function getTrackStems(
+        uint256 trackId
+    ) external view returns (uint256[] memory) {
+        return _trackToStems[trackId];
+    }
+
     function isAttested(uint256 tokenId) external view returns (bool) {
         return attestations[tokenId].valid;
     }
 
+    function isReleaseVerified(uint256 releaseId) external view returns (bool) {
+        return attestations[releaseId].valid;
+    }
+
+    function isTrackVerified(uint256 trackId) external view returns (bool) {
+        return _isTrackVerified(trackId);
+    }
+
+    function isStemVerified(uint256 stemTokenId) external view returns (bool) {
+        uint256 canonicalTrackId = stemToCanonicalTrack[stemTokenId];
+        if (canonicalTrackId == 0) return false;
+
+        return _isTrackVerified(canonicalTrackId);
+    }
+
     function isStaked(uint256 tokenId) external view returns (bool) {
         return stakes[tokenId].active;
+    }
+
+    function resolveCanonicalTrack(
+        uint256 stemTokenId
+    ) external view returns (uint256) {
+        return stemToCanonicalTrack[stemTokenId];
+    }
+
+    function resolveProtectionTarget(
+        uint256 tokenId
+    ) external view returns (uint256) {
+        uint256 canonicalTrackId = stemToCanonicalTrack[tokenId];
+        return canonicalTrackId == 0 ? tokenId : canonicalTrackId;
+    }
+
+    function _hasAttestation(uint256 tokenId) internal view returns (bool) {
+        return attestations[tokenId].attester != address(0);
+    }
+
+    function _isTrackVerified(uint256 trackId) internal view returns (bool) {
+        uint256 releaseId = trackToParentRelease[trackId];
+        return
+            releaseId != 0 &&
+            attestations[trackId].valid &&
+            attestations[releaseId].valid;
     }
 }

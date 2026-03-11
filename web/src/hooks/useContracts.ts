@@ -24,10 +24,18 @@ import {
   StemNFTABI,
   StemMarketplaceABI,
 } from "../lib/contracts";
+import {
+  createBatchStemMintAuthorizations,
+  createStemMintAuthorization,
+  type StemMintAuthorization,
+} from "../lib/api";
+import { CurationRewardsABI, DisputeResolutionABI } from "../contracts_abi/index";
 import { normalizeContractWriteError } from "../lib/contractErrors";
+import { getKernelAccountConfig } from "../lib/accountAbstraction";
 
 // Detect whether we're running against a local RPC (Anvil / forked Sepolia)
-function isLocalDevEnvironment(): boolean {
+function isLocalDevEnvironment(chainId?: number): boolean {
+  if (chainId === 31337) return true;
   const rpcOverride = process.env.NEXT_PUBLIC_RPC_URL || "";
   return rpcOverride.includes("localhost") || rpcOverride.includes("127.0.0.1");
 }
@@ -36,7 +44,7 @@ function isLocalDevEnvironment(): boolean {
 function getBundlerUrl(chainId: number): string {
   const override = process.env.NEXT_PUBLIC_AA_BUNDLER;
   if (override) return override;
-  if (isLocalDevEnvironment()) return "/api/bundler";
+  if (isLocalDevEnvironment(chainId)) return "/api/bundler";
   const pimlicoApiKey = process.env.NEXT_PUBLIC_PIMLICO_API_KEY || "";
   return `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${pimlicoApiKey}`;
 }
@@ -62,64 +70,6 @@ function createMappedTransport(bundlerUrl: string): (opts: any) => any {
 }
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
-
-const stemContentProtectionReadAbi = [
-  {
-    type: "function",
-    name: "contentProtection",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "address" }],
-  },
-] as const;
-
-const contentProtectionReadAbi = [
-  {
-    type: "function",
-    name: "isAttested",
-    stateMutability: "view",
-    inputs: [{ name: "tokenId", type: "uint256" }],
-    outputs: [{ name: "", type: "bool" }],
-  },
-] as const;
-
-async function assertMintTokenIdsAttested(
-  publicClient: PublicClient,
-  chainId: number,
-  tokenIds: bigint[]
-): Promise<void> {
-  if (tokenIds.length === 0) return;
-
-  const addresses = getContractAddresses(chainId);
-  const contentProtectionAddress = await publicClient.readContract({
-    address: addresses.stemNFT as Address,
-    abi: stemContentProtectionReadAbi,
-    functionName: "contentProtection",
-  }) as Address;
-
-  if (!contentProtectionAddress || contentProtectionAddress === ZERO_ADDRESS) {
-    return;
-  }
-
-  const attestedFlags = await Promise.all(
-    tokenIds.map((tokenId) =>
-      publicClient.readContract({
-        address: contentProtectionAddress,
-        abi: contentProtectionReadAbi,
-        functionName: "isAttested",
-        args: [tokenId],
-      }) as Promise<boolean>
-    )
-  );
-
-  const missingTokenIds = tokenIds.filter((_, index) => !attestedFlags[index]);
-  if (missingTokenIds.length === 0) return;
-
-  const formattedIds = missingTokenIds.map((id) => `#${id.toString()}`).join(", ");
-  throw new Error(
-    `Content Protection is enabled on this chain, and stem token ${formattedIds} must be attested before minting. The current marketplace flow cannot mint unattested stem IDs yet.`
-  );
-}
 
 async function getStemMintedTokenIdsForTransaction(
   publicClient: PublicClient,
@@ -150,6 +100,130 @@ async function getStemMintedTokenIdsForTransaction(
   return tokenIds;
 }
 
+async function getReportedDisputeForTransaction(
+  publicClient: PublicClient,
+  transactionHash: string
+): Promise<{
+  disputeId?: bigint;
+  tokenId?: bigint;
+  counterStake?: bigint;
+}> {
+  const receipt = await publicClient.getTransactionReceipt({
+    hash: transactionHash as Hex,
+  });
+
+  for (const log of receipt.logs) {
+    try {
+      const decoded = decodeEventLog({
+        abi: CurationRewardsABI,
+        data: log.data,
+        topics: log.topics,
+      });
+
+      if (decoded.eventName === "ContentReported") {
+        return {
+          disputeId: decoded.args.disputeId as bigint,
+          tokenId: decoded.args.tokenId as bigint,
+          counterStake: decoded.args.counterStake as bigint,
+        };
+      }
+    } catch {
+      // Ignore logs from other contracts/events in the same receipt.
+    }
+
+    try {
+      const decoded = decodeEventLog({
+        abi: DisputeResolutionABI,
+        data: log.data,
+        topics: log.topics,
+      });
+
+      if (decoded.eventName === "DisputeFiled") {
+        return {
+          disputeId: decoded.args.disputeId as bigint,
+          tokenId: decoded.args.tokenId as bigint,
+          counterStake: decoded.args.counterStake as bigint,
+        };
+      }
+    } catch {
+      // Ignore logs from other contracts/events in the same receipt.
+    }
+  }
+
+  return {};
+}
+
+function toAuthorizedMintParams(
+  authorization: StemMintAuthorization
+): NonNullable<MintParams["authorization"]> {
+  return {
+    tokenURI: authorization.tokenURI,
+    to: authorization.authorization.to as Address,
+    amount: BigInt(authorization.authorization.amount),
+    protectionId: BigInt(authorization.authorization.protectionId),
+    royaltyReceiver: authorization.authorization.royaltyReceiver as Address,
+    royaltyBps: authorization.authorization.royaltyBps,
+    remixable: authorization.authorization.remixable,
+    parentIds: authorization.authorization.parentIds.map((id) => BigInt(id)),
+    deadline: BigInt(authorization.authorization.deadline),
+    nonce: authorization.authorization.nonce,
+    signature: authorization.signature,
+  };
+}
+
+async function assertMintAuthorizationSupported(
+  publicClient: PublicClient,
+  stemNftAddress: Address,
+  callerAddress: Address
+): Promise<void> {
+  try {
+    await publicClient.readContract({
+      address: stemNftAddress,
+      abi: StemNFTABI,
+      functionName: "usedMintAuthorizationNonces",
+      args: [
+        callerAddress,
+        "0x0000000000000000000000000000000000000000000000000000000000000000",
+      ],
+    });
+  } catch {
+    throw new Error(
+      "The current StemNFT deployment does not support mintAuthorized(). Redeploy protocol contracts and run ./scripts/update-protocol-config.sh, then restart the frontend."
+    );
+  }
+}
+
+async function resolveMintAuthorization(
+  token: string | null,
+  chainId: number,
+  callerAddress: Address,
+  params: MintParams
+): Promise<NonNullable<MintParams["authorization"]> | undefined> {
+  if (params.authorization) {
+    return params.authorization;
+  }
+  if (!params.stemId) {
+    return undefined;
+  }
+  if (!token) {
+    throw new Error("Not authenticated");
+  }
+
+  const authorization = await createStemMintAuthorization(token, {
+    stemId: params.stemId,
+    chainId,
+    minterAddress: callerAddress,
+    to: (params.to || callerAddress) as string,
+    amount: params.amount.toString(),
+    royaltyReceiver: (params.royaltyReceiver || callerAddress) as string,
+    royaltyBps: params.royaltyBps,
+    remixable: params.remixable,
+    parentIds: params.parentIds.map((id) => id.toString()),
+  });
+
+  return toAuthorizedMintParams(authorization);
+}
+
 /**
  * Auto-fund a smart account from Anvil when running locally.
  */
@@ -158,7 +232,7 @@ async function ensureLocalFunding(
   smartAccountAddress: Address,
   value: bigint
 ): Promise<void> {
-  if (!isLocalDevEnvironment()) return;
+  if (!isLocalDevEnvironment(publicClient.chain?.id)) return;
   const balance = await publicClient.getBalance({ address: smartAccountAddress });
   const needed = value + BigInt("500000000000000000");
   if (balance >= needed) return;
@@ -194,7 +268,7 @@ async function sendContractTransaction(
     const passkey = await import("@zerodev/passkey-validator");
     const { toPasskeyValidator, toWebAuthnKey, PasskeyValidatorContractVersion } = passkey;
 
-    const entryPoint = constants.getEntryPoint("0.7");
+    const { entryPoint, factoryAddress } = getKernelAccountConfig(chainId);
     const kernelVersion = constants.KERNEL_V3_1;
 
     const passkeyServerUrl = projectId
@@ -219,6 +293,7 @@ async function sendContractTransaction(
       plugins: { sudo: passkeyValidator },
       entryPoint,
       kernelVersion,
+      factoryAddress,
     });
   }
 
@@ -236,7 +311,7 @@ async function sendContractTransaction(
   };
 
   // Only use paymaster on non-local environments (local dev is self-funded)
-  if (!isLocalDevEnvironment()) {
+  if (!isLocalDevEnvironment(chainId)) {
     const { createZeroDevPaymasterClient } = await import("@zerodev/sdk");
     clientOpts.paymaster = createZeroDevPaymasterClient({
       chain: publicClient.chain,
@@ -655,7 +730,7 @@ export function useContractAddresses() {
  */
 export function useMintStem() {
   const { publicClient, chainId } = useZeroDev();
-  const { address, status, kernelAccount } = useAuth();
+  const { address, status, token, kernelAccount, smartAccountAddress } = useAuth();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -672,13 +747,38 @@ export function useMintStem() {
 
       try {
         const addresses = getContractAddresses(chainId);
-        const currentTotal = await publicClient.readContract({
-          address: addresses.stemNFT as Address,
-          abi: StemNFTABI,
-          functionName: "totalStems",
-        }) as bigint;
-        const expectedTokenId = currentTotal + BigInt(1);
-        await assertMintTokenIdsAttested(publicClient, chainId, [expectedTokenId]);
+        const callerAddress =
+          (kernelAccount?.address as Address | undefined) ||
+          (smartAccountAddress as Address | undefined) ||
+          (address as Address);
+        const authorization = await resolveMintAuthorization(
+          token,
+          chainId,
+          callerAddress,
+          params
+        );
+        if (authorization) {
+          await assertMintAuthorizationSupported(
+            publicClient,
+            addresses.stemNFT as Address,
+            callerAddress
+          );
+        }
+
+        const tokenURI = authorization?.tokenURI || params.tokenURI;
+        const to = authorization?.to || params.to || callerAddress;
+        const amount = authorization?.amount || params.amount;
+        const royaltyReceiver =
+          authorization?.royaltyReceiver ||
+          params.royaltyReceiver ||
+          callerAddress;
+        const royaltyBps = authorization?.royaltyBps ?? params.royaltyBps;
+        const remixable = authorization?.remixable ?? params.remixable;
+        const parentIds = authorization?.parentIds || params.parentIds;
+
+        if (!tokenURI) {
+          throw new Error("tokenURI is required when no mint authorization is provided");
+        }
 
         // Send transaction via ZeroDev kernel client
         const hash = await sendContractTransaction(
@@ -687,16 +787,30 @@ export function useMintStem() {
           addresses.stemNFT,
           (resolvedAddress: Address) => encodeFunctionData({
             abi: StemNFTABI,
-            functionName: "mint",
-            args: [
-              params.to || resolvedAddress,
-              params.amount,
-              params.tokenURI,
-              params.royaltyReceiver || resolvedAddress,
-              BigInt(params.royaltyBps),
-              params.remixable,
-              params.parentIds,
-            ],
+            functionName: authorization ? "mintAuthorized" : "mint",
+            args: authorization
+              ? [
+                to,
+                amount,
+                tokenURI,
+                authorization.protectionId,
+                royaltyReceiver,
+                BigInt(royaltyBps),
+                remixable,
+                parentIds,
+                authorization.deadline,
+                authorization.nonce,
+                authorization.signature,
+              ]
+              : [
+                to || resolvedAddress,
+                amount,
+                tokenURI,
+                royaltyReceiver || resolvedAddress,
+                BigInt(royaltyBps),
+                remixable,
+                parentIds,
+              ],
           }),
           BigInt(0),
           address as Address,
@@ -713,21 +827,22 @@ export function useMintStem() {
         setPending(false);
       }
     },
-    [publicClient, address, status, chainId, kernelAccount]
+    [publicClient, address, status, token, chainId, kernelAccount, smartAccountAddress]
   );
 
   return { mint, pending, error, txHash };
 }
 
 /**
- * Hook to attest and stake for content protection in a single atomic batch UserOp.
+ * Hook to attest and stake a release root for content protection in a single atomic batch UserOp.
  *
- * Flow: attest(tokenId, contentHash, fingerprintHash, metadataURI) + stake(tokenId)
+ * Flow: attestRelease(releaseId, contentHash, fingerprintHash, metadataURI)
+ *    + stakeForRelease(releaseId)
  * Both calls are sent as one batch UserOp — if either fails, nothing happens.
  */
 export function useAttestAndStake() {
   const { publicClient, chainId } = useZeroDev();
-  const { address, status, kernelAccount } = useAuth();
+  const { address, status, kernelAccount, smartAccountAddress } = useAuth();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -756,36 +871,75 @@ export function useAttestAndStake() {
         }
 
         const cpAddress = addresses.contentProtection as Address;
+        const callerAddress =
+          (kernelAccount?.address as Address | undefined) ||
+          (smartAccountAddress as Address | undefined) ||
+          (address as Address);
 
-        // Generate a deterministic tokenId from address + contentHash
-        // This ensures uniqueness without needing an on-chain counter
+        // Generate a deterministic release protection id from address + contentHash.
+        // This remains the canonical release root that tracks and stems inherit from.
         const { keccak256: viemKeccak256, encodePacked } = await import("viem");
-        const tokenId = BigInt(
-          viemKeccak256(encodePacked(["address", "bytes32"], [address as Address, params.contentHash]))
+        const releaseId = BigInt(
+          viemKeccak256(encodePacked(["address", "bytes32"], [callerAddress, params.contentHash]))
         );
 
-        // Build batch: attest + stake (atomic — one passkey prompt)
-        const calls: { to: Address; data: Hex; value?: bigint }[] = [
-          {
-            // attest(tokenId, contentHash, fingerprintHash, metadataURI)
+        const [attestation, stakeInfo] = await Promise.all([
+          publicClient.readContract({
+            address: cpAddress,
+            abi: ContentProtectionABI,
+            functionName: "attestations",
+            args: [releaseId],
+          }),
+          publicClient.readContract({
+            address: cpAddress,
+            abi: ContentProtectionABI,
+            functionName: "stakes",
+            args: [releaseId],
+          }),
+        ]);
+
+        const existingAttester = attestation[3] as Address;
+        const attestationValid = Boolean(attestation[5]);
+        const stakeActive = Boolean(stakeInfo[2]);
+
+        if (
+          attestationValid &&
+          existingAttester !== "0x0000000000000000000000000000000000000000" &&
+          existingAttester.toLowerCase() !== callerAddress.toLowerCase()
+        ) {
+          throw new Error(
+            `This release is already attested by ${existingAttester} on-chain.`
+          );
+        }
+
+        const calls: { to: Address; data: Hex; value?: bigint }[] = [];
+
+        if (!attestationValid) {
+          calls.push({
             to: cpAddress,
             data: encodeFunctionData({
               abi: ContentProtectionABI,
-              functionName: "attest",
-              args: [tokenId, params.contentHash, params.fingerprintHash, params.metadataURI],
+              functionName: "attestRelease",
+              args: [releaseId, params.contentHash, params.fingerprintHash, params.metadataURI],
             }),
-          },
-          {
-            // stake(tokenId) with ETH value
+          });
+        }
+
+        if (!stakeActive) {
+          calls.push({
             to: cpAddress,
             data: encodeFunctionData({
               abi: ContentProtectionABI,
-              functionName: "stake",
-              args: [tokenId],
+              functionName: "stakeForRelease",
+              args: [releaseId],
             }),
             value: params.stakeAmountWei,
-          },
-        ];
+          });
+        }
+
+        if (calls.length === 0) {
+          return { hash: "", tokenId: releaseId };
+        }
 
         const hash = await sendBatchContractTransactions(
           publicClient,
@@ -796,16 +950,16 @@ export function useAttestAndStake() {
         );
 
         setTxHash(hash);
-        return { hash, tokenId };
+        return { hash, tokenId: releaseId };
       } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
+        const error = normalizeContractWriteError(err);
         setError(error);
         throw error;
       } finally {
         setPending(false);
       }
     },
-    [publicClient, address, status, chainId, kernelAccount]
+    [publicClient, address, status, chainId, kernelAccount, smartAccountAddress]
   );
 
   return { attestAndStake, pending, error, txHash };
@@ -1009,12 +1163,127 @@ export function useStakeRefund() {
   return { refund, pending, error, txHash };
 }
 
+export interface ReportContentResult {
+  hash: string;
+  disputeId?: bigint;
+  tokenId?: bigint;
+  counterStake: bigint;
+}
+
+/**
+ * Hook to file a real on-chain dispute via CurationRewards.reportContent().
+ *
+ * The report is submitted from the authenticated smart account and requires the
+ * current counter-stake returned by the contract.
+ */
+export function useReportContent() {
+  const { publicClient, chainId } = useZeroDev();
+  const { address, status, kernelAccount, smartAccountAddress } = useAuth();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const [txHash, setTxHash] = useState<string | null>(null);
+
+  const report = useCallback(
+    async (params: { tokenId: bigint; evidenceURI: string }) => {
+      if (status !== "authenticated" || !address) {
+        throw new Error("Wallet not connected");
+      }
+
+      setPending(true);
+      setError(null);
+      setTxHash(null);
+
+      try {
+        const addresses = getContractAddresses(chainId);
+
+        if (addresses.curationRewards === ZERO_ADDRESS) {
+          throw new Error(
+            "CurationRewards is not deployed on this chain. Redeploy protocol contracts and update env config."
+          );
+        }
+
+        if (addresses.disputeResolution === ZERO_ADDRESS) {
+          throw new Error(
+            "DisputeResolution is not deployed on this chain. Redeploy protocol contracts and update env config."
+          );
+        }
+
+        const [counterStake, activeDispute] = await Promise.all([
+          publicClient.readContract({
+            address: addresses.curationRewards as Address,
+            abi: CurationRewardsABI,
+            functionName: "getRequiredCounterStake",
+          }) as Promise<bigint>,
+          publicClient.readContract({
+            address: addresses.disputeResolution as Address,
+            abi: DisputeResolutionABI,
+            functionName: "getActiveDispute",
+            args: [params.tokenId],
+          }) as Promise<bigint>,
+        ]);
+
+        if (activeDispute !== 0n) {
+          throw new Error("An active dispute already exists for this content record.");
+        }
+
+        const hash = await sendContractTransaction(
+          publicClient,
+          chainId,
+          addresses.curationRewards as Address,
+          encodeFunctionData({
+            abi: CurationRewardsABI,
+            functionName: "reportContent",
+            args: [params.tokenId, params.evidenceURI],
+          }),
+          counterStake,
+          ((kernelAccount?.address as Address | undefined) ||
+            (smartAccountAddress as Address | undefined) ||
+            (address as Address)),
+          kernelAccount
+        );
+
+        setTxHash(hash);
+        const receiptInfo = await getReportedDisputeForTransaction(publicClient, hash);
+
+        return {
+          hash,
+          disputeId: receiptInfo.disputeId,
+          tokenId: receiptInfo.tokenId ?? params.tokenId,
+          counterStake: receiptInfo.counterStake ?? counterStake,
+        } satisfies ReportContentResult;
+      } catch (err) {
+        const normalized = normalizeContractWriteError(err);
+        setError(normalized);
+        throw normalized;
+      } finally {
+        setPending(false);
+      }
+    },
+    [publicClient, chainId, address, status, kernelAccount, smartAccountAddress]
+  );
+
+  const getRequiredCounterStake = useCallback(async () => {
+    const addresses = getContractAddresses(chainId);
+    if (addresses.curationRewards === ZERO_ADDRESS) {
+      throw new Error("CurationRewards is not deployed on this chain.");
+    }
+
+    return publicClient.readContract({
+      address: addresses.curationRewards as Address,
+      abi: CurationRewardsABI,
+      functionName: "getRequiredCounterStake",
+    }) as Promise<bigint>;
+  }, [publicClient, chainId]);
+
+  return { report, getRequiredCounterStake, pending, error, txHash };
+}
+
 /**
  * Hook to atomically mint and list a stem in a single UserOperation
  */
 export function useMintAndListStem() {
   const { publicClient, chainId } = useZeroDev();
-  const { address, status, kernelAccount } = useAuth();
+  const { address, status, token, kernelAccount, smartAccountAddress } = useAuth();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -1032,35 +1301,68 @@ export function useMintAndListStem() {
 
       try {
         const addresses = getContractAddresses(chainId);
+        const callerAddress =
+          (kernelAccount?.address as Address | undefined) ||
+          (smartAccountAddress as Address | undefined) ||
+          (address as Address);
+        const authorization = await resolveMintAuthorization(
+          token,
+          chainId,
+          callerAddress,
+          params
+        );
+        if (authorization) {
+          await assertMintAuthorizationSupported(
+            publicClient,
+            addresses.stemNFT as Address,
+            callerAddress
+          );
+        }
 
-        // 1. Preflight attestation against the currently predicted next token ID.
-        const currentTotal = await publicClient.readContract({
-          address: addresses.stemNFT as Address,
-          abi: StemNFTABI,
-          functionName: "totalStems",
-        });
-        const expectedTokenId = (currentTotal as bigint) + BigInt(1);
-        await assertMintTokenIdsAttested(publicClient, chainId, [expectedTokenId]);
+        const tokenURI = authorization?.tokenURI || params.tokenURI;
+        const royaltyReceiver =
+          authorization?.royaltyReceiver || callerAddress;
+        const mintAmount = authorization?.amount || params.amount;
+        const remixable = authorization?.remixable ?? params.remixable;
+        const parentIds = authorization?.parentIds || params.parentIds;
 
-        // 2. Prepare Mint Call
+        if (!tokenURI) {
+          throw new Error("tokenURI is required when no mint authorization is provided");
+        }
+
+        // 1. Prepare Mint Call
         const mintCall = {
           to: addresses.stemNFT as Address,
           data: (resolvedAddress: Address) => encodeFunctionData({
             abi: StemNFTABI,
-            functionName: "mint",
-            args: [
-              resolvedAddress, // to
-              params.amount,
-              params.tokenURI,
-              resolvedAddress, // royaltyReceiver
-              BigInt(params.royaltyBps),
-              params.remixable,
-              params.parentIds,
-            ],
+            functionName: authorization ? "mintAuthorized" : "mint",
+            args: authorization
+              ? [
+                authorization.to,
+                mintAmount,
+                tokenURI,
+                authorization.protectionId,
+                royaltyReceiver,
+                BigInt(authorization.royaltyBps),
+                remixable,
+                parentIds,
+                authorization.deadline,
+                authorization.nonce,
+                authorization.signature,
+              ]
+              : [
+                resolvedAddress,
+                mintAmount,
+                tokenURI,
+                resolvedAddress,
+                BigInt(params.royaltyBps),
+                remixable,
+                parentIds,
+              ],
           }),
         };
 
-        // 3. Prepare Approve Call
+        // 2. Prepare Approve Call
         const approveCall = {
           to: addresses.stemNFT as Address,
           data: encodeFunctionData({
@@ -1070,14 +1372,14 @@ export function useMintAndListStem() {
           }),
         };
 
-        // 4. Prepare List Call
+        // 3. Prepare List Call
         const listCall = {
           to: addresses.marketplace as Address,
           data: encodeFunctionData({
             abi: StemMarketplaceABI,
             functionName: "listLastMint",
             args: [
-              params.amount,
+              mintAmount,
               params.pricePerUnit,
               params.paymentToken,
               params.durationSeconds,
@@ -1085,7 +1387,7 @@ export function useMintAndListStem() {
           }),
         };
 
-        // 5. Send as a single batch UserOperation
+        // 4. Send as a single batch UserOperation
         const hash = await sendBatchContractTransactions(
           publicClient,
           chainId,
@@ -1107,7 +1409,7 @@ export function useMintAndListStem() {
         setPending(false);
       }
     },
-    [publicClient, address, status, chainId, kernelAccount]
+    [publicClient, address, status, token, chainId, kernelAccount, smartAccountAddress]
   );
 
   return { mintAndList, pending, error, txHash };
@@ -1140,7 +1442,7 @@ export interface BatchStemResult {
  */
 export function useBatchMintAndList() {
   const { publicClient, chainId } = useZeroDev();
-  const { address, status, kernelAccount } = useAuth();
+  const { address, status, token, kernelAccount, smartAccountAddress } = useAuth();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [results, setResults] = useState<BatchStemResult[]>([]);
@@ -1175,19 +1477,35 @@ export function useBatchMintAndList() {
 
       try {
         const addresses = getContractAddresses(chainId);
-        const currentChainId = process.env.NEXT_PUBLIC_CHAIN_ID || "31337";
+        const callerAddress =
+          (kernelAccount?.address as Address | undefined) ||
+          (smartAccountAddress as Address | undefined) ||
+          (address as Address);
+        if (!token) {
+          throw new Error("Not authenticated");
+        }
 
-        // 1. Read current totalStems only for attestation preflight.
-        const currentTotal = await publicClient.readContract({
-          address: addresses.stemNFT as Address,
-          abi: StemNFTABI,
-          functionName: "totalStems",
-        }) as bigint;
-
-        // 2. Build approval + N×2 calls array
+        // 1. Build approval + N×2 calls array
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const calls: { to: Address; data: Hex | ((addr: Address) => Hex); value?: bigint }[] = [];
-        const expectedTokenIds: bigint[] = [];
+        const { authorizations } = await createBatchStemMintAuthorizations(token, {
+          authorizations: stems.map((stem) => ({
+            stemId: stem.stemId,
+            chainId,
+            minterAddress: callerAddress,
+            to: callerAddress,
+            amount: "1",
+            royaltyReceiver: callerAddress,
+            royaltyBps: 500,
+            remixable: true,
+            parentIds: [],
+          })),
+        });
+        await assertMintAuthorizationSupported(
+          publicClient,
+          addresses.stemNFT as Address,
+          callerAddress
+        );
 
         calls.push({
           to: addresses.stemNFT as Address,
@@ -1199,27 +1517,26 @@ export function useBatchMintAndList() {
         });
 
         for (let i = 0; i < stems.length; i++) {
-          const stem = stems[i];
-          const expectedTokenId = currentTotal + BigInt(i + 1);
-          expectedTokenIds.push(expectedTokenId);
-
-          const tokenUri = stem.metadataUri ||
-            `${typeof window !== "undefined" ? window.location.protocol + "//" + window.location.host : ""}/api/metadata/${currentChainId}/stem/${stem.stemId}`;
+          const authorization = toAuthorizedMintParams(authorizations[i]);
 
           // Mint call
           calls.push({
             to: addresses.stemNFT as Address,
-            data: (resolvedAddress: Address) => encodeFunctionData({
+            data: () => encodeFunctionData({
               abi: StemNFTABI,
-              functionName: "mint",
+              functionName: "mintAuthorized",
               args: [
-                resolvedAddress,
-                BigInt(1),
-                tokenUri,
-                resolvedAddress,
-                BigInt(500), // 5% royalty
-                true, // remixable
-                [], // no parent IDs
+                authorization.to,
+                authorization.amount,
+                authorization.tokenURI,
+                authorization.protectionId,
+                authorization.royaltyReceiver,
+                BigInt(authorization.royaltyBps),
+                authorization.remixable,
+                authorization.parentIds,
+                authorization.deadline,
+                authorization.nonce,
+                authorization.signature,
               ],
             }),
           });
@@ -1240,8 +1557,6 @@ export function useBatchMintAndList() {
           });
         }
 
-        await assertMintTokenIdsAttested(publicClient, chainId, expectedTokenIds);
-
         // Mark all as processing
         const processingResults: BatchStemResult[] = stems.map(s => ({
           stemId: s.stemId,
@@ -1250,7 +1565,7 @@ export function useBatchMintAndList() {
         setResults(processingResults);
         options?.onProgress?.(processingResults);
 
-        // 3. Send as a single batch UserOperation
+        // 2. Send as a single batch UserOperation
         const hash = await sendBatchContractTransactions(
           publicClient,
           chainId,
@@ -1261,7 +1576,7 @@ export function useBatchMintAndList() {
 
         const actualTokenIds = await getStemMintedTokenIdsForTransaction(publicClient, hash);
 
-        // 4. All succeeded — mark as done with actual token IDs when available
+        // 3. All succeeded — mark as done with actual token IDs when available
         const doneResults: BatchStemResult[] = stems.map((s, i) => ({
           stemId: s.stemId,
           status: "done" as BatchStemStatus,
@@ -1270,7 +1585,7 @@ export function useBatchMintAndList() {
         setResults(doneResults);
         options?.onProgress?.(doneResults);
 
-        // 5. Persist to localStorage (same format as MintStemButton)
+        // 4. Persist to localStorage (same format as MintStemButton)
         for (let i = 0; i < stems.length; i++) {
           const stemId = stems[i].stemId;
           const tokenId = actualTokenIds[i];
@@ -1285,7 +1600,7 @@ export function useBatchMintAndList() {
           );
         }
 
-        // 6. Notify backend for each stem (best-effort, non-blocking)
+        // 5. Notify backend for each stem (best-effort, non-blocking)
         for (let i = 0; i < stems.length; i++) {
           const tokenId = actualTokenIds[i];
           if (tokenId == null) continue;
@@ -1294,7 +1609,7 @@ export function useBatchMintAndList() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               tokenId: tokenId.toString(),
-              seller: address,
+              seller: callerAddress,
               price: pricePerUnit.toString(),
               amount: "1",
               paymentToken: ZERO_ADDRESS,
@@ -1324,7 +1639,7 @@ export function useBatchMintAndList() {
         setPending(false);
       }
     },
-    [publicClient, address, status, chainId, kernelAccount]
+    [publicClient, address, status, token, chainId, kernelAccount, smartAccountAddress]
   );
 
   return { executeBatch, pending, error, results };
@@ -1349,7 +1664,7 @@ async function sendBatchContractTransactions(
     const passkey = await import("@zerodev/passkey-validator");
     const { toPasskeyValidator, toWebAuthnKey, PasskeyValidatorContractVersion } = passkey;
 
-    const entryPoint = constants.getEntryPoint("0.7");
+    const { entryPoint, factoryAddress } = getKernelAccountConfig(chainId);
     const kernelVersion = constants.KERNEL_V3_1;
 
     const passkeyServerUrl = projectId
@@ -1374,6 +1689,7 @@ async function sendBatchContractTransactions(
       plugins: { sudo: passkeyValidator },
       entryPoint,
       kernelVersion,
+      factoryAddress,
     });
   }
 
@@ -1391,7 +1707,7 @@ async function sendBatchContractTransactions(
     bundlerTransport: mappedTransport,
   };
 
-  if (!isLocalDevEnvironment()) {
+  if (!isLocalDevEnvironment(chainId)) {
     const { createZeroDevPaymasterClient } = await import("@zerodev/sdk");
     clientOpts.paymaster = createZeroDevPaymasterClient({
       chain: publicClient.chain,

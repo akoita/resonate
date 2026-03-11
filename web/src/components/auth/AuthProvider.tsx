@@ -5,26 +5,8 @@ import { fetchNonce, fetchWallet, verifySignature, type WalletRecord } from "../
 import { clearEmbeddedAccount } from "../../lib/embedded_wallet";
 import { syncPlaylists } from "../../lib/playlistStore";
 import { useZeroDev } from "./ZeroDevProviderClient";
+import { getKernelAccountConfig } from "../../lib/accountAbstraction";
 import type { WebAuthnMode } from "@zerodev/passkey-validator";
-
-// Local AA contacts for Anvil (deployed by DeployLocalAA.s.sol)
-const LOCAL_ENTRY_POINT = "0x5FbDB2315678afecb367f032d93F642f64180aa3" as const;
-
-/**
- * Get the correct EntryPoint based on chain ID
- * - Local (31337): Use locally deployed EntryPoint
- * - Other chains: Use canonical v0.7 EntryPoint
- */
-async function getLocalEntryPoint(chainId: number) {
-  const { constants } = await import("@zerodev/sdk");
-  if (chainId === 31337) {
-    return {
-      address: LOCAL_ENTRY_POINT,
-      version: "0.7" as const,
-    };
-  }
-  return constants.getEntryPoint("0.7");
-}
 
 type AuthState = {
   status: "idle" | "loading" | "authenticated" | "error";
@@ -90,6 +72,14 @@ function decodeAuthClaims(jwt: string | null) {
   } catch {
     return { role: null, userId: null };
   }
+}
+
+function isExistingPasskeyRegistrationError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("previously registered") ||
+    message.includes("already registered with the relying party")
+  );
 }
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -168,7 +158,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     // This ensures local dev validates the same auth path as production.
 
     // Path 2 & 3: Real Passkeys (either self-hosted or ZeroDev)
-    const entryPoint = await getLocalEntryPoint(chainId);
+    const { entryPoint, factoryAddress } = getKernelAccountConfig(chainId);
     const kernelVersion = constants.KERNEL_V3_1;
 
     // Determine passkey server URL:
@@ -182,28 +172,53 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       console.log("[Auth] Using self-hosted Passkey server (no ZeroDev Project ID)");
     }
 
-    const webAuthnKey = await toWebAuthnKey({
-      passkeyName: "Resonate",
-      passkeyServerUrl,
-      mode,
-      rpID: typeof window !== "undefined" ? window.location.hostname : undefined,
-    });
+    const buildAccount = async (webAuthnMode: WebAuthnMode) => {
+      const webAuthnKey = await toWebAuthnKey({
+        passkeyName: "Resonate",
+        passkeyServerUrl,
+        mode: webAuthnMode,
+        rpID: typeof window !== "undefined" ? window.location.hostname : undefined,
+      });
 
-    const passkeyValidator = await toPasskeyValidator(publicClient, {
-      webAuthnKey,
-      entryPoint,
-      kernelVersion,
-      validatorContractVersion: PasskeyValidatorContractVersion.V0_0_1_UNPATCHED,
-    });
+      const passkeyValidator = await toPasskeyValidator(publicClient, {
+        webAuthnKey,
+        entryPoint,
+        kernelVersion,
+        validatorContractVersion: PasskeyValidatorContractVersion.V0_0_1_UNPATCHED,
+      });
 
-    const account = await createKernelAccount(publicClient, {
-      plugins: { sudo: passkeyValidator },
-      entryPoint,
-      kernelVersion,
-    });
+      const account = await createKernelAccount(publicClient, {
+        plugins: { sudo: passkeyValidator },
+        entryPoint,
+        kernelVersion,
+        factoryAddress,
+      });
 
-    setActiveAccount(account);
-    return { account, webAuthnKey };
+      return { account, webAuthnKey };
+    };
+
+    let result;
+    try {
+      result = await buildAccount(mode);
+    } catch (error) {
+      if (mode === passkey.WebAuthnMode.Register && isExistingPasskeyRegistrationError(error)) {
+        console.warn("[Auth] Passkey is already registered; retrying in login mode.");
+        result = await buildAccount(passkey.WebAuthnMode.Login);
+      } else {
+        throw error;
+      }
+    }
+
+    if (
+      mode === passkey.WebAuthnMode.Register &&
+      (result.account as Record<string, unknown>).address === "0x0000000000000000000000000000000000000000"
+    ) {
+      console.warn("[Auth] Register-mode passkey derivation returned zero address; retrying with login-mode credential lookup.");
+      result = await buildAccount(passkey.WebAuthnMode.Login);
+    }
+
+    setActiveAccount(result.account);
+    return result;
 
   }, [projectId, publicClient, chainId, activeAccount]);
 

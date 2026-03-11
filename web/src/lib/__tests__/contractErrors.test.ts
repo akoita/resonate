@@ -100,7 +100,7 @@ describe("normalizeContractWriteError", () => {
       `UserOp failed simulation with reason: ${notAttestedData} Request Arguments: { to: 0x… }`
     );
     const result = normalizeContractWriteError(raw);
-    expect(result.message).toContain("Content Protection blocked minting for token #1");
+    expect(result.message).toContain("release protection record #1");
     expect(result.message).toContain("attested on-chain");
   });
 

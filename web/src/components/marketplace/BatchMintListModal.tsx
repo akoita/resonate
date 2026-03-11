@@ -8,7 +8,6 @@ import {
   type BatchStemResult,
   type BatchStemStatus,
 } from "../../hooks/useContracts";
-import { formatBatchErrorMessage } from "../../lib/contractErrors";
 
 interface BatchMintListModalProps {
   stems: BatchStemItem[];
@@ -39,8 +38,8 @@ export function BatchMintListModal({ stems, onClose, onComplete }: BatchMintList
   const [batchError, setBatchError] = useState<string | null>(null);
 
   const handleConfirm = useCallback(async () => {
-    setPhase("progress");
     setBatchError(null);
+    setPhase("progress");
     try {
       await executeBatch(stems, {
         onProgress: (r) => setResults([...r]),
@@ -48,9 +47,7 @@ export function BatchMintListModal({ stems, onClose, onComplete }: BatchMintList
       onComplete?.();
     } catch (err) {
       setBatchError(
-        err instanceof Error
-          ? formatBatchErrorMessage(err.message)
-          : "Batch transaction failed"
+        err instanceof Error ? err.message : "Batch transaction failed"
       );
     }
   }, [stems, executeBatch, onComplete]);
@@ -77,7 +74,7 @@ export function BatchMintListModal({ stems, onClose, onComplete }: BatchMintList
       });
     } catch (err) {
       setBatchError(
-        err instanceof Error ? formatBatchErrorMessage(err.message) : "Retry failed"
+        err instanceof Error ? err.message : "Retry failed"
       );
     }
   }, [stems, results, executeBatch]);

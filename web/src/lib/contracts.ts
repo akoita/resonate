@@ -5,6 +5,7 @@ import {
   type PublicClient,
   getContract,
   type Address,
+  type Hex,
   formatEther,
   parseEther,
 } from 'viem';
@@ -46,13 +47,27 @@ export interface BuyQuote {
 }
 
 export interface MintParams {
-  to: Address;
+  stemId?: string;
+  to?: Address;
   amount: bigint;
-  tokenURI: string;
-  royaltyReceiver: Address;
+  tokenURI?: string;
+  royaltyReceiver?: Address;
   royaltyBps: number;
   remixable: boolean;
   parentIds: bigint[];
+  authorization?: {
+    tokenURI: string;
+    to: Address;
+    amount: bigint;
+    protectionId: bigint;
+    royaltyReceiver: Address;
+    royaltyBps: number;
+    remixable: boolean;
+    parentIds: bigint[];
+    deadline: bigint;
+    nonce: Hex;
+    signature: Hex;
+  };
 }
 
 export interface ListParams {
