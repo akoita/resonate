@@ -6,8 +6,18 @@ import {StemNFT} from "../../src/core/StemNFT.sol";
 import {TransferValidator} from "../../src/modules/TransferValidator.sol";
 
 contract MockContentProtection {
-    function isAttested(uint256) external pure returns (bool) {
-        return false;
+    mapping(uint256 => bool) public attested;
+
+    function setAttested(uint256 tokenId, bool value) external {
+        attested[tokenId] = value;
+    }
+
+    function isAttested(uint256 tokenId) external view returns (bool) {
+        return attested[tokenId];
+    }
+
+    function isReleaseVerified(uint256 releaseId) external view returns (bool) {
+        return attested[releaseId];
     }
 
     function isBlacklisted(address) external pure returns (bool) {
@@ -23,11 +33,13 @@ contract StemNFTTest is Test {
     StemNFT public stemNFT;
     TransferValidator public validator;
 
+    uint256 public authorizerKey = 0xA11CE;
     address public admin = makeAddr("admin");
     address public minter = makeAddr("minter");
     address public alice = makeAddr("alice");
     address public bob = makeAddr("bob");
     address public royaltyReceiver = makeAddr("royaltyReceiver");
+    address public authorizer;
 
     string constant BASE_URI = "https://api.resonate.fm/metadata/";
     string constant TOKEN_URI = "ipfs://QmTest123";
@@ -42,6 +54,8 @@ contract StemNFTTest is Test {
     event RoyaltyUpdated(uint256 indexed tokenId, address receiver, uint96 bps);
 
     function setUp() public {
+        authorizer = vm.addr(authorizerKey);
+
         vm.startPrank(admin);
         stemNFT = new StemNFT(BASE_URI);
         validator = new TransferValidator();
@@ -49,6 +63,7 @@ contract StemNFTTest is Test {
         // Grant minter role
         stemNFT.grantRole(stemNFT.MINTER_ROLE(), minter);
         stemNFT.grantRole(stemNFT.MINTER_ROLE(), alice);
+        stemNFT.grantRole(stemNFT.MINT_AUTHORIZER_ROLE(), authorizer);
         vm.stopPrank();
     }
 
@@ -217,6 +232,8 @@ contract StemNFTTest is Test {
         vm.prank(admin);
         stemNFT.setContentProtection(address(protection));
 
+        protection.setAttested(1, true);
+
         uint256[] memory parentIds = new uint256[](0);
 
         vm.prank(minter);
@@ -251,6 +268,269 @@ contract StemNFTTest is Test {
         );
     }
 
+    function test_MintAuthorized_OriginalStem() public {
+        uint256[] memory parentIds = new uint256[](0);
+        uint256 protectionId = 0;
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes32 nonce = keccak256("stem-auth-1");
+        bytes memory signature = _signMintAuthorization(
+            alice,
+            alice,
+            1,
+            TOKEN_URI,
+            protectionId,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds,
+            deadline,
+            nonce
+        );
+
+        vm.prank(alice);
+        uint256 tokenId = stemNFT.mintAuthorized(
+            alice,
+            1,
+            TOKEN_URI,
+            protectionId,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds,
+            deadline,
+            nonce,
+            signature
+        );
+
+        assertEq(tokenId, 1);
+        assertEq(stemNFT.balanceOf(alice, tokenId), 1);
+        assertEq(stemNFT.getCreator(tokenId), alice);
+        assertTrue(stemNFT.usedMintAuthorizationNonces(alice, nonce));
+    }
+
+    function test_MintAuthorized_RevertReplay() public {
+        uint256[] memory parentIds = new uint256[](0);
+        uint256 protectionId = 0;
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes32 nonce = keccak256("stem-auth-replay");
+        bytes memory signature = _signMintAuthorization(
+            alice,
+            alice,
+            1,
+            TOKEN_URI,
+            protectionId,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds,
+            deadline,
+            nonce
+        );
+
+        vm.prank(alice);
+        stemNFT.mintAuthorized(
+            alice,
+            1,
+            TOKEN_URI,
+            protectionId,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds,
+            deadline,
+            nonce,
+            signature
+        );
+
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                StemNFT.MintAuthorizationAlreadyUsed.selector,
+                alice,
+                nonce
+            )
+        );
+        stemNFT.mintAuthorized(
+            alice,
+            1,
+            TOKEN_URI,
+            protectionId,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds,
+            deadline,
+            nonce,
+            signature
+        );
+    }
+
+    function test_MintAuthorized_RevertExpired() public {
+        uint256[] memory parentIds = new uint256[](0);
+        uint256 protectionId = 0;
+        uint256 deadline = block.timestamp - 1;
+        bytes32 nonce = keccak256("stem-auth-expired");
+        bytes memory signature = _signMintAuthorization(
+            alice,
+            alice,
+            1,
+            TOKEN_URI,
+            protectionId,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds,
+            deadline,
+            nonce
+        );
+
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                StemNFT.MintAuthorizationExpired.selector,
+                deadline
+            )
+        );
+        stemNFT.mintAuthorized(
+            alice,
+            1,
+            TOKEN_URI,
+            protectionId,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds,
+            deadline,
+            nonce,
+            signature
+        );
+    }
+
+    function test_MintAuthorized_RevertInvalidSigner() public {
+        uint256[] memory parentIds = new uint256[](0);
+        uint256 protectionId = 0;
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes32 nonce = keccak256("stem-auth-invalid");
+        bytes32 digest = stemNFT.hashMintAuthorization(
+            alice,
+            alice,
+            1,
+            TOKEN_URI,
+            protectionId,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds,
+            deadline,
+            nonce
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(0xB0B, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        vm.prank(alice);
+        vm.expectRevert(StemNFT.InvalidMintAuthorization.selector);
+        stemNFT.mintAuthorized(
+            alice,
+            1,
+            TOKEN_URI,
+            protectionId,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds,
+            deadline,
+            nonce,
+            signature
+        );
+    }
+
+    function test_MintAuthorized_SucceedsWhenReleaseIsVerified() public {
+        MockContentProtection protection = new MockContentProtection();
+        uint256[] memory parentIds = new uint256[](0);
+        uint256 protectionId = 42;
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes32 nonce = keccak256("stem-auth-protected");
+
+        vm.prank(admin);
+        stemNFT.setContentProtection(address(protection));
+
+        protection.setAttested(protectionId, true);
+
+        bytes memory signature = _signMintAuthorization(
+            alice,
+            alice,
+            1,
+            TOKEN_URI,
+            protectionId,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds,
+            deadline,
+            nonce
+        );
+
+        vm.prank(alice);
+        uint256 tokenId = stemNFT.mintAuthorized(
+            alice,
+            1,
+            TOKEN_URI,
+            protectionId,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds,
+            deadline,
+            nonce,
+            signature
+        );
+
+        assertEq(tokenId, 1);
+    }
+
+    function test_MintAuthorized_RevertWhenReleaseIsNotVerified() public {
+        MockContentProtection protection = new MockContentProtection();
+        uint256[] memory parentIds = new uint256[](0);
+        uint256 protectionId = 42;
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes32 nonce = keccak256("stem-auth-unprotected");
+
+        vm.prank(admin);
+        stemNFT.setContentProtection(address(protection));
+
+        bytes memory signature = _signMintAuthorization(
+            alice,
+            alice,
+            1,
+            TOKEN_URI,
+            protectionId,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds,
+            deadline,
+            nonce
+        );
+
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(StemNFT.NotAttested.selector, protectionId)
+        );
+        stemNFT.mintAuthorized(
+            alice,
+            1,
+            TOKEN_URI,
+            protectionId,
+            royaltyReceiver,
+            500,
+            true,
+            parentIds,
+            deadline,
+            nonce,
+            signature
+        );
+    }
+
     // ============ MintMore Tests ============
 
     function test_MintMore_ByCreator() public {
@@ -271,6 +551,36 @@ contract StemNFTTest is Test {
 
         assertEq(stemNFT.balanceOf(bob, tokenId), 50);
         assertEq(stemNFT.totalSupply(tokenId), 150);
+    }
+
+    function _signMintAuthorization(
+        address authMinter,
+        address to,
+        uint256 amount,
+        string memory tokenURI_,
+        uint256 protectionId,
+        address authRoyaltyReceiver,
+        uint96 authRoyaltyBps,
+        bool authRemixable,
+        uint256[] memory parentIds,
+        uint256 deadline,
+        bytes32 nonce
+    ) internal returns (bytes memory) {
+        bytes32 digest = stemNFT.hashMintAuthorization(
+            authMinter,
+            to,
+            amount,
+            tokenURI_,
+            protectionId,
+            authRoyaltyReceiver,
+            authRoyaltyBps,
+            authRemixable,
+            parentIds,
+            deadline,
+            nonce
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(authorizerKey, digest);
+        return abi.encodePacked(r, s, v);
     }
 
     function test_MintMore_RevertNotCreator() public {

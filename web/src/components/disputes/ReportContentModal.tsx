@@ -1,26 +1,73 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
+import { useReportContent } from "../../hooks/useContracts";
+import { formatEth } from "../../lib/stakeConstants";
 
 interface ReportContentModalProps {
-  tokenId: string;
-  creatorAddr: string;
+  releaseId: string;
   onClose: () => void;
-  onSubmitted?: () => void;
+  onSubmitted?: (result: { disputeId?: string; txHash: string; tokenId?: string; counterStakeEth: string }) => void;
+}
+
+interface ReleaseProtectionData {
+  tokenId: string | null;
+  staked: boolean;
+  attested: boolean;
 }
 
 export default function ReportContentModal({
-  tokenId,
-  creatorAddr: _creatorAddr,
+  releaseId,
   onClose,
   onSubmitted,
 }: ReportContentModalProps) {
   const { address } = useAuth();
+  const { report, getRequiredCounterStake, pending } = useReportContent();
   const [evidenceURL, setEvidenceURL] = useState("");
   const [description, setDescription] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [protection, setProtection] = useState<ReleaseProtectionData | null>(null);
+  const [counterStake, setCounterStake] = useState<bigint | null>(null);
+  const [loadingProtection, setLoadingProtection] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadProtection = async () => {
+      try {
+        setLoadingProtection(true);
+        const [protectionRes, counterStakeWei] = await Promise.all([
+          fetch(`/api/metadata/content-protection/release/${releaseId}`),
+          getRequiredCounterStake(),
+        ]);
+
+        if (!protectionRes.ok) {
+          throw new Error("Could not load the content protection record for this release.");
+        }
+
+        const protectionData = (await protectionRes.json()) as ReleaseProtectionData;
+        if (!cancelled) {
+          setProtection(protectionData);
+          setCounterStake(counterStakeWei);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load report prerequisites.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingProtection(false);
+        }
+      }
+    };
+
+    void loadProtection();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [releaseId, getRequiredCounterStake]);
 
   const handleSubmit = async () => {
     if (!address) return;
@@ -29,28 +76,27 @@ export default function ReportContentModal({
       return;
     }
 
-    setSubmitting(true);
     setError(null);
 
     try {
-      const res = await fetch("/api/metadata/disputes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tokenId,
-          reporterAddr: address,
-          evidenceURI: evidenceURL.trim(),
-          counterStake: "0", // On-chain counter-stake handled by wallet tx
-        }),
+      if (!protection?.tokenId || !protection.attested) {
+        throw new Error("This release does not have an attested on-chain protection record to dispute yet.");
+      }
+
+      const result = await report({
+        tokenId: BigInt(protection.tokenId),
+        evidenceURI: evidenceURL.trim(),
       });
 
-      if (!res.ok) throw new Error("Failed to file dispute");
-      onSubmitted?.();
+      onSubmitted?.({
+        disputeId: result.disputeId?.toString(),
+        txHash: result.hash,
+        tokenId: result.tokenId?.toString(),
+        counterStakeEth: formatEth(result.counterStake),
+      });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -80,8 +126,22 @@ export default function ReportContentModal({
 
         {/* Token info */}
         <div style={fieldGroupStyle}>
-          <label style={labelStyle}>Token ID</label>
-          <div style={readOnlyFieldStyle}>{tokenId}</div>
+          <label style={labelStyle}>Protection Record</label>
+          <div style={readOnlyFieldStyle}>
+            {loadingProtection
+              ? "Loading..."
+              : protection?.tokenId || "Unavailable"}
+          </div>
+        </div>
+
+        <div style={fieldGroupStyle}>
+          <label style={labelStyle}>Counter-Stake</label>
+          <div style={readOnlyFieldStyle}>
+            {counterStake != null ? formatEth(counterStake) : "Loading..."}
+          </div>
+          <span style={hintStyle}>
+            This deposit is sent on-chain with your report and follows the contract-configured requirement.
+          </span>
         </div>
 
         {/* Evidence URL */}
@@ -122,13 +182,26 @@ export default function ReportContentModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={submitting || !evidenceURL.trim()}
+            disabled={
+              pending ||
+              loadingProtection ||
+              !evidenceURL.trim() ||
+              !protection?.tokenId ||
+              !protection.attested
+            }
             style={{
               ...submitBtnStyle,
-              opacity: submitting || !evidenceURL.trim() ? 0.5 : 1,
+              opacity:
+                pending ||
+                loadingProtection ||
+                !evidenceURL.trim() ||
+                !protection?.tokenId ||
+                !protection.attested
+                  ? 0.5
+                  : 1,
             }}
           >
-            {submitting ? "Submitting..." : "🚩 File Report"}
+            {pending ? "Submitting..." : "🚩 File Report"}
           </button>
         </div>
       </div>

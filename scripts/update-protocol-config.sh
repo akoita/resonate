@@ -3,7 +3,8 @@
 #
 # Reads the latest DeployProtocol (or DeployContentProtection) broadcast JSON
 # and updates backend/.env and web/.env.local with StemNFT, StemMarketplaceV2,
-# TransferValidator, ContentProtection, and RevenueEscrow contract addresses.
+# TransferValidator, ContentProtection, DisputeResolution, CurationRewards,
+# and RevenueEscrow contract addresses.
 #
 # Auto-detects chain ID from the local RPC so it works on both plain Anvil
 # (chainId 31337) and forked Sepolia (chainId 11155111).
@@ -63,6 +64,8 @@ if [[ -f "$BROADCAST_FILE" ]]; then
     MARKETPLACE=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemMarketplaceV2") | .contractAddress' "$BROADCAST_FILE")
     TRANSFER_VALIDATOR=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "TransferValidator") | .contractAddress' "$BROADCAST_FILE")
     CONTENT_PROTECTION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "ERC1967Proxy") | .contractAddress' "$BROADCAST_FILE" | head -1)
+    DISPUTE_RESOLUTION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "DisputeResolution") | .contractAddress' "$BROADCAST_FILE")
+    CURATION_REWARDS=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "CurationRewards") | .contractAddress' "$BROADCAST_FILE")
     REVENUE_ESCROW=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "RevenueEscrow") | .contractAddress' "$BROADCAST_FILE")
 
 elif [[ "$CHAIN_ID" == "11155111" && -f "$SEPOLIA_DEPLOY_FILE" ]]; then
@@ -71,6 +74,8 @@ elif [[ "$CHAIN_ID" == "11155111" && -f "$SEPOLIA_DEPLOY_FILE" ]]; then
     MARKETPLACE=$(jq -r '.contracts.StemMarketplaceV2' "$SEPOLIA_DEPLOY_FILE")
     TRANSFER_VALIDATOR=$(jq -r '.contracts.TransferValidator' "$SEPOLIA_DEPLOY_FILE")
     CONTENT_PROTECTION=""
+    DISPUTE_RESOLUTION=""
+    CURATION_REWARDS=""
     REVENUE_ESCROW=""
     echo -e "${YELLOW}Warning: sepolia.json has no ContentProtection. Run 'make deploy-contracts' to deploy Phase 2.${NC}"
 
@@ -87,6 +92,8 @@ echo "  StemNFT:             $STEM_NFT"
 echo "  StemMarketplaceV2:   $MARKETPLACE"
 echo "  TransferValidator:   $TRANSFER_VALIDATOR"
 echo "  ContentProtection:   ${CONTENT_PROTECTION:-(not deployed)}"
+echo "  DisputeResolution:   ${DISPUTE_RESOLUTION:-(not deployed)}"
+echo "  CurationRewards:     ${CURATION_REWARDS:-(not deployed)}"
 echo "  RevenueEscrow:       ${REVENUE_ESCROW:-(not deployed)}"
 echo ""
 
@@ -124,6 +131,8 @@ update_env_var "STEM_NFT_ADDRESS" "$STEM_NFT" "$BACKEND_ENV"
 update_env_var "MARKETPLACE_ADDRESS" "$MARKETPLACE" "$BACKEND_ENV"
 update_env_var "TRANSFER_VALIDATOR_ADDRESS" "$TRANSFER_VALIDATOR" "$BACKEND_ENV"
 update_env_var "CONTENT_PROTECTION_ADDRESS" "$CONTENT_PROTECTION" "$BACKEND_ENV"
+update_env_var "DISPUTE_RESOLUTION_ADDRESS" "$DISPUTE_RESOLUTION" "$BACKEND_ENV"
+update_env_var "CURATION_REWARDS_ADDRESS" "$CURATION_REWARDS" "$BACKEND_ENV"
 update_env_var "REVENUE_ESCROW_ADDRESS" "$REVENUE_ESCROW" "$BACKEND_ENV"
 update_env_var "ENABLE_CONTRACT_INDEXER" "true" "$BACKEND_ENV"
 echo -e "${GREEN}✓ backend/.env updated${NC}"
@@ -138,6 +147,8 @@ echo "Updating $WEB_ENV_LOCAL..."
 update_env_var "NEXT_PUBLIC_STEM_NFT_ADDRESS" "$STEM_NFT" "$WEB_ENV_LOCAL"
 update_env_var "NEXT_PUBLIC_MARKETPLACE_ADDRESS" "$MARKETPLACE" "$WEB_ENV_LOCAL"
 update_env_var "NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS" "$CONTENT_PROTECTION" "$WEB_ENV_LOCAL"
+update_env_var "NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS" "$DISPUTE_RESOLUTION" "$WEB_ENV_LOCAL"
+update_env_var "NEXT_PUBLIC_CURATION_REWARDS_ADDRESS" "$CURATION_REWARDS" "$WEB_ENV_LOCAL"
 update_env_var "NEXT_PUBLIC_CHAIN_ID" "$CHAIN_ID" "$WEB_ENV_LOCAL"
 echo -e "${GREEN}✓ web/.env.local updated${NC}"
 
@@ -203,10 +214,10 @@ echo ""
 echo "Chain ID: $CHAIN_ID"
 echo ""
 echo "Backend .env protocol vars:"
-grep -E "^(STEM_NFT|MARKETPLACE|TRANSFER_VALIDATOR|CONTENT_PROTECTION|REVENUE_ESCROW|ENABLE_CONTRACT)_?" "$BACKEND_ENV" 2>/dev/null | sed 's/^/  /' || echo "  (none found)"
+grep -E "^(STEM_NFT|MARKETPLACE|TRANSFER_VALIDATOR|CONTENT_PROTECTION|DISPUTE_RESOLUTION|CURATION_REWARDS|REVENUE_ESCROW|ENABLE_CONTRACT)_?" "$BACKEND_ENV" 2>/dev/null | sed 's/^/  /' || echo "  (none found)"
 echo ""
 echo "Web .env.local protocol vars:"
-grep -E "^NEXT_PUBLIC_(STEM_NFT|MARKETPLACE|CONTENT_PROTECTION|CHAIN_ID)_?" "$WEB_ENV_LOCAL" 2>/dev/null | sed 's/^/  /' || echo "  (none found)"
+grep -E "^NEXT_PUBLIC_(STEM_NFT|MARKETPLACE|CONTENT_PROTECTION|DISPUTE_RESOLUTION|CURATION_REWARDS|CHAIN_ID)_?" "$WEB_ENV_LOCAL" 2>/dev/null | sed 's/^/  /' || echo "  (none found)"
 echo ""
 echo -e "${GREEN}Remember to restart services to pick up new config:${NC}"
 echo "  • Backend: make backend-dev"

@@ -33,8 +33,8 @@ interface StakeDepositCardProps {
 /**
  * Informational card showing the content protection stake requirements.
  *
- * The actual attest() + stake() calls happen during the publish flow
- * (after the backend assigns a tokenId and content hashes), not here.
+ * The actual attestRelease() + stakeForRelease() calls happen during the publish flow
+ * (after the backend assigns the release protection id and content hashes), not here.
  * This card is a visual gate that shows the user what will be required.
  */
 export default function StakeDepositCard({ trustTier, loading, onStakeAcknowledged }: StakeDepositCardProps) {

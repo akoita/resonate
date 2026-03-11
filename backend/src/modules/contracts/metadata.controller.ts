@@ -3,8 +3,99 @@ import { ContractsService } from "./contracts.service";
 import { IndexerService } from "./indexer.service";
 import { NotificationService } from "../notifications/notification.service";
 import { EventBus } from "../shared/event_bus";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
-import { keccak256, toHex } from "viem";
+import { createPublicClient, http, keccak256, toHex, type Address, type Chain } from "viem";
+import { foundry, sepolia, baseSepolia } from "viem/chains";
+
+const DEFAULT_SEPOLIA_RPC_URL = "https://sepolia.drpc.org";
+const DIAGNOSTIC_CHAIN_CONFIGS: Record<number, { chain: Chain; rpcUrl: string }> = {
+  31337: {
+    chain: foundry,
+    rpcUrl: process.env.RPC_URL || process.env.LOCAL_RPC_URL || "http://localhost:8545",
+  },
+  11155111: {
+    chain: sepolia,
+    rpcUrl:
+      process.env.RPC_URL ||
+      process.env.LOCAL_RPC_URL ||
+      process.env.SEPOLIA_RPC_URL ||
+      DEFAULT_SEPOLIA_RPC_URL,
+  },
+  84532: {
+    chain: baseSepolia,
+    rpcUrl: process.env.RPC_URL || process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org",
+  },
+};
+
+const releaseDiagnosticsArgs = {
+  include: {
+    artist: {
+      select: {
+        id: true,
+        payoutAddress: true,
+        userId: true,
+      },
+    },
+    tracks: {
+      select: {
+        id: true,
+        title: true,
+        processingStatus: true,
+        stems: {
+          select: {
+            id: true,
+            uri: true,
+            isEncrypted: true,
+            encryptionMetadata: true,
+            nftMint: {
+              select: {
+                tokenId: true,
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+} satisfies Prisma.ReleaseDefaultArgs;
+
+type ReleaseDiagnosticsPayload = Prisma.ReleaseGetPayload<typeof releaseDiagnosticsArgs>;
+
+const CONTENT_PROTECTION_DIAGNOSTIC_ABI = [
+  {
+    name: "attestations",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [
+      { name: "contentHash", type: "bytes32" },
+      { name: "fingerprintHash", type: "bytes32" },
+      { name: "metadataURI", type: "string" },
+      { name: "attester", type: "address" },
+      { name: "timestamp", type: "uint256" },
+      { name: "valid", type: "bool" },
+    ],
+  },
+  {
+    name: "stakes",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [
+      { name: "amount", type: "uint256" },
+      { name: "depositedAt", type: "uint256" },
+      { name: "active", type: "bool" },
+    ],
+  },
+  {
+    name: "stakeAmount",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
 
 /**
  * NFT Metadata Controller
@@ -47,6 +138,186 @@ export class MetadataController {
       creator: mint.creatorAddress,
       transactionHash: mint.transactionHash,
       mintedAt: mint.mintedAt.toISOString(),
+    };
+  }
+
+  /**
+   * Diagnose local publish/content-protection consistency for a release.
+   * GET /metadata/diagnostics/release/:releaseId
+   */
+  @Get("diagnostics/release/:releaseId")
+  async diagnoseReleasePublish(@Param("releaseId") releaseId: string) {
+    const release: ReleaseDiagnosticsPayload | null = await prisma.release.findUnique({
+      where: { id: releaseId },
+      ...releaseDiagnosticsArgs,
+    });
+
+    if (!release) {
+      throw new NotFoundException("Release not found");
+    }
+
+    const chainId = Number(
+      process.env.AA_CHAIN_ID || process.env.CHAIN_ID || process.env.INDEXER_CHAIN_ID || "11155111",
+    );
+    const config = DIAGNOSTIC_CHAIN_CONFIGS[chainId];
+    if (!config) {
+      throw new BadRequestException(`Unsupported diagnostic chain ${chainId}`);
+    }
+
+    const contentProtectionAddress = this.resolveContentProtectionAddress(chainId);
+    const publicClient = createPublicClient({
+      chain: config.chain,
+      transport: http(config.rpcUrl),
+    });
+    const [liveChainId, latestBlock, indexerStatus] = await Promise.all([
+      publicClient.getChainId(),
+      publicClient.getBlockNumber(),
+      this.indexerService.getStatus(),
+    ]);
+
+    const releaseSlug = this.slugifyReleaseTitle(release.title);
+    const metadataURI = `resonate://release/${releaseSlug}`;
+    const payoutAddress = release.artist?.payoutAddress?.toLowerCase() || null;
+
+    const dbAttestation = payoutAddress
+      ? await prisma.contentAttestation.findFirst({
+          where: {
+            chainId,
+            attesterAddress: payoutAddress,
+            metadataURI,
+          },
+          orderBy: { attestedAt: "desc" },
+        })
+      : null;
+
+    const dbStake = dbAttestation
+      ? await prisma.contentProtectionStake.findFirst({
+          where: {
+            chainId,
+            tokenId: dbAttestation.tokenId,
+          },
+          orderBy: { depositedAt: "desc" },
+        })
+      : null;
+
+    let onChainAttestation: {
+      contentHash: string;
+      fingerprintHash: string;
+      metadataURI: string;
+      attester: string;
+      timestamp: string;
+      valid: boolean;
+    } | null = null;
+    let onChainStake: {
+      amount: string;
+      depositedAt: string;
+      active: boolean;
+    } | null = null;
+    let configuredStakeAmount: string | null = null;
+
+    if (contentProtectionAddress !== "0x0000000000000000000000000000000000000000") {
+      configuredStakeAmount = (
+        await publicClient.readContract({
+          address: contentProtectionAddress,
+          abi: CONTENT_PROTECTION_DIAGNOSTIC_ABI,
+          functionName: "stakeAmount",
+        })
+      ).toString();
+
+      if (dbAttestation?.tokenId) {
+        const tokenId = BigInt(dbAttestation.tokenId);
+        const [attestation, stake] = await Promise.all([
+          publicClient.readContract({
+            address: contentProtectionAddress,
+            abi: CONTENT_PROTECTION_DIAGNOSTIC_ABI,
+            functionName: "attestations",
+            args: [tokenId],
+          }),
+          publicClient.readContract({
+            address: contentProtectionAddress,
+            abi: CONTENT_PROTECTION_DIAGNOSTIC_ABI,
+            functionName: "stakes",
+            args: [tokenId],
+          }),
+        ]);
+
+        onChainAttestation = {
+          contentHash: attestation[0],
+          fingerprintHash: attestation[1],
+          metadataURI: attestation[2],
+          attester: attestation[3],
+          timestamp: attestation[4].toString(),
+          valid: attestation[5],
+        };
+        onChainStake = {
+          amount: stake[0].toString(),
+          depositedAt: stake[1].toString(),
+          active: stake[2],
+        };
+      }
+    }
+
+    const indexerChain = indexerStatus.chains.find((entry) => entry.chainId === chainId);
+    const indexedBlock = indexerChain ? BigInt(indexerChain.lastBlockNumber) : null;
+
+    return {
+      release: {
+        id: release.id,
+        title: release.title,
+        status: release.status,
+        artistId: release.artistId,
+        payoutAddress: release.artist?.payoutAddress || null,
+        metadataURI,
+      },
+      chain: {
+        configuredChainId: chainId,
+        liveChainId,
+        latestBlock: latestBlock.toString(),
+        rpcUrl: config.rpcUrl,
+      },
+      contracts: {
+        stemNft: this.resolveEnvAddress(chainId, "STEM_NFT"),
+        marketplace: this.resolveEnvAddress(chainId, "MARKETPLACE"),
+        contentProtection: contentProtectionAddress,
+      },
+      indexer: {
+        enabled: indexerStatus.enabled,
+        lastIndexedBlock: indexedBlock?.toString() || null,
+        lagBlocks: indexedBlock !== null ? (latestBlock - indexedBlock).toString() : null,
+      },
+      contentProtection: {
+        configuredStakeAmount,
+        dbAttestation: dbAttestation
+          ? {
+              tokenId: dbAttestation.tokenId,
+              attesterAddress: dbAttestation.attesterAddress,
+              metadataURI: dbAttestation.metadataURI,
+              attestedAt: dbAttestation.attestedAt.toISOString(),
+            }
+          : null,
+        dbStake: dbStake
+          ? {
+              tokenId: dbStake.tokenId,
+              amount: dbStake.amount,
+              active: dbStake.active,
+              depositedAt: dbStake.depositedAt.toISOString(),
+            }
+          : null,
+        onChainAttestation,
+        onChainStake,
+      },
+      tracks: release.tracks.map((track) => ({
+        id: track.id,
+        title: track.title,
+        processingStatus: track.processingStatus,
+        stems: track.stems.map((stem) => ({
+          id: stem.id,
+          tokenId: stem.nftMint?.tokenId?.toString() || null,
+          uri: stem.uri,
+          isEncrypted: stem.isEncrypted,
+          hasEncryptionMetadata: !!stem.encryptionMetadata,
+        })),
+      })),
     };
   }
 
@@ -711,6 +982,31 @@ export class MetadataController {
 
     // Prepend BACKEND_URL for relative paths
     return `${process.env.BACKEND_URL || "http://localhost:3000"}${relative}`;
+  }
+
+  private slugifyReleaseTitle(title: string): string {
+    return title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  private resolveContentProtectionAddress(chainId: number): Address {
+    return this.resolveEnvAddress(chainId, "CONTENT_PROTECTION");
+  }
+
+  private resolveEnvAddress(chainId: number, prefix: "STEM_NFT" | "MARKETPLACE" | "CONTENT_PROTECTION"): Address {
+    const keyPrefix =
+      chainId === 11155111
+        ? "SEPOLIA_"
+        : chainId === 84532
+          ? "BASE_SEPOLIA_"
+          : "";
+    const value =
+      process.env[`${keyPrefix}${prefix}_ADDRESS`] ||
+      process.env[`${prefix}_ADDRESS`] ||
+      "0x0000000000000000000000000000000000000000";
+    return value as Address;
   }
 
   private buildDescription(stem: any, track: any, release: any): string {

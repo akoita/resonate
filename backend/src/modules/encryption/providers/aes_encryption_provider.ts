@@ -144,12 +144,12 @@ export class AesEncryptionProvider extends EncryptionProvider {
 
             // Internal bypasses gated by INTERNAL_SERVICE_KEY (SBPR-004)
             const internalKey = this.configService.get<string>('INTERNAL_SERVICE_KEY');
+            const isPreviewBypass =
+                context.authSig.address === '0x0000000000000000000000000000000000000000' &&
+                context.authSig.sig === 'preview-authorized';
             if (internalKey) {
                 // Special case: allow preview address (used by backend to proxy previews)
-                if (
-                    context.authSig.address === '0x0000000000000000000000000000000000000000' &&
-                    (context.authSig as any).internalKey === internalKey
-                ) {
+                if (isPreviewBypass && (context.authSig as any).internalKey === internalKey) {
                     this.logger.log('[AES] Access granted for internal preview request');
                     return true;
                 }
@@ -162,6 +162,17 @@ export class AesEncryptionProvider extends EncryptionProvider {
                     this.logger.log(`[AES] Access granted via ownership verification for ${context.authSig.address}`);
                     return true;
                 }
+            }
+
+            if (
+                isPreviewBypass &&
+                !internalKey &&
+                this.configService.get<string>('NODE_ENV') !== 'production'
+            ) {
+                this.logger.warn(
+                    '[AES] INTERNAL_SERVICE_KEY is not set; allowing marketplace preview bypass in non-production environment',
+                );
+                return true;
             }
 
             // Check if requester is the content owner (skip sig verification)

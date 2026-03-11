@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
-import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {
+    UUPSUpgradeable
+} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import {
+    Initializable
+} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {
+    ReentrancyGuard
+} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title ContentProtection
@@ -68,7 +74,11 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         string metadataURI
     );
 
-    event StakeDeposited(uint256 indexed tokenId, address indexed staker, uint256 amount);
+    event StakeDeposited(
+        uint256 indexed tokenId,
+        address indexed staker,
+        uint256 amount
+    );
 
     event StakeSlashed(
         uint256 indexed tokenId,
@@ -78,7 +88,11 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         uint256 burnedAmount
     );
 
-    event StakeRefunded(uint256 indexed tokenId, address indexed staker, uint256 amount);
+    event StakeRefunded(
+        uint256 indexed tokenId,
+        address indexed staker,
+        uint256 amount
+    );
 
     event Blacklisted(address indexed account);
     event BlacklistRemoved(address indexed account);
@@ -89,7 +103,10 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     event StemRegistered(uint256 indexed trackId, uint256 indexed stemTokenId);
     event TrackRevoked(uint256 indexed trackId);
     event ReleaseRevoked(uint256 indexed releaseId);
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event OwnershipTransferred(
+        address indexed previousOwner,
+        address indexed newOwner
+    );
 
     // ============ Errors ============
 
@@ -115,7 +132,8 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     }
 
     modifier onlyRegistrarOrOwner() {
-        if (msg.sender != owner && !registrars[msg.sender]) revert NotRegistrar();
+        if (msg.sender != owner && !registrars[msg.sender])
+            revert NotRegistrar();
         _;
     }
 
@@ -126,7 +144,11 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         _disableInitializers();
     }
 
-    function initialize(address _owner, address _treasury, uint256 _stakeAmount) external initializer {
+    function initialize(
+        address _owner,
+        address _treasury,
+        uint256 _stakeAmount
+    ) external initializer {
         if (_owner == address(0)) revert ZeroAddress();
         if (_treasury == address(0)) revert ZeroAddress();
 
@@ -144,9 +166,34 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
      * @param fingerprintHash Chromaprint fingerprint hash
      * @param metadataURI IPFS URI or URL pointing to attestation metadata
      */
-    function attest(uint256 tokenId, bytes32 contentHash, bytes32 fingerprintHash, string calldata metadataURI)
-        external
-    {
+    function attest(
+        uint256 tokenId,
+        bytes32 contentHash,
+        bytes32 fingerprintHash,
+        string calldata metadataURI
+    ) external {
+        _attest(tokenId, contentHash, fingerprintHash, metadataURI);
+    }
+
+    /**
+     * @notice Canonical release-first attestation entrypoint.
+     * @dev Wraps the generic attestation flow while making the protected root explicit.
+     */
+    function attestRelease(
+        uint256 releaseId,
+        bytes32 contentHash,
+        bytes32 fingerprintHash,
+        string calldata metadataURI
+    ) external {
+        _attest(releaseId, contentHash, fingerprintHash, metadataURI);
+    }
+
+    function _attest(
+        uint256 tokenId,
+        bytes32 contentHash,
+        bytes32 fingerprintHash,
+        string calldata metadataURI
+    ) internal {
         if (_blacklisted[msg.sender]) revert IsBlacklisted();
         if (attestations[tokenId].valid) revert AlreadyAttested();
 
@@ -159,7 +206,13 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
             valid: true
         });
 
-        emit ContentAttested(tokenId, msg.sender, contentHash, fingerprintHash, metadataURI);
+        emit ContentAttested(
+            tokenId,
+            msg.sender,
+            contentHash,
+            fingerprintHash,
+            metadataURI
+        );
     }
 
     // ============ Staking ============
@@ -169,13 +222,29 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
      * @param tokenId The attested content or release identifier to stake for
      */
     function stake(uint256 tokenId) external payable nonReentrant {
+        _stake(tokenId);
+    }
+
+    /**
+     * @notice Canonical release-first staking entrypoint.
+     * @dev Keeps the external API aligned with the hierarchical release-root model.
+     */
+    function stakeForRelease(uint256 releaseId) external payable nonReentrant {
+        _stake(releaseId);
+    }
+
+    function _stake(uint256 tokenId) internal {
         if (_blacklisted[msg.sender]) revert IsBlacklisted();
         if (!attestations[tokenId].valid) revert NotAttested();
         if (attestations[tokenId].attester != msg.sender) revert NotOwner();
         if (stakes[tokenId].active) revert AlreadyStaked();
         if (msg.value < stakeAmount) revert InsufficientStake();
 
-        stakes[tokenId] = StakeInfo({amount: msg.value, depositedAt: block.timestamp, active: true});
+        stakes[tokenId] = StakeInfo({
+            amount: msg.value,
+            depositedAt: block.timestamp,
+            active: true
+        });
 
         emit StakeDeposited(tokenId, msg.sender, msg.value);
     }
@@ -186,7 +255,10 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
      * @param tokenId The token ID to slash
      * @param reporter The address that reported the theft
      */
-    function slash(uint256 tokenId, address reporter) external onlyOwner nonReentrant {
+    function slash(
+        uint256 tokenId,
+        address reporter
+    ) external onlyOwner nonReentrant {
         if (!stakes[tokenId].active) revert NotStaked();
         if (reporter == address(0)) revert ZeroAddress();
 
@@ -203,10 +275,10 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         uint256 burnedAmount = total - reporterAmount - treasuryAmount;
 
         // Transfer (Interactions last — CEI pattern)
-        (bool ok1,) = payable(reporter).call{value: reporterAmount}("");
+        (bool ok1, ) = payable(reporter).call{value: reporterAmount}("");
         if (!ok1) revert TransferFailed();
 
-        (bool ok2,) = payable(treasury).call{value: treasuryAmount}("");
+        (bool ok2, ) = payable(treasury).call{value: treasuryAmount}("");
         if (!ok2) revert TransferFailed();
 
         // Burned amount stays in contract (can be swept to treasury later)
@@ -217,7 +289,13 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
             emit Blacklisted(attester);
         }
 
-        emit StakeSlashed(tokenId, reporter, reporterAmount, treasuryAmount, burnedAmount);
+        emit StakeSlashed(
+            tokenId,
+            reporter,
+            reporterAmount,
+            treasuryAmount,
+            burnedAmount
+        );
     }
 
     /**
@@ -232,7 +310,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
 
         stakes[tokenId].active = false;
 
-        (bool ok,) = payable(attester).call{value: amount}("");
+        (bool ok, ) = payable(attester).call{value: amount}("");
         if (!ok) revert TransferFailed();
 
         emit StakeRefunded(tokenId, attester, amount);
@@ -287,7 +365,10 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
 
     // ============ Views ============
 
-    function registerTrack(uint256 releaseId, uint256 trackId) external onlyRegistrarOrOwner {
+    function registerTrack(
+        uint256 releaseId,
+        uint256 trackId
+    ) external onlyRegistrarOrOwner {
         if (!_hasAttestation(releaseId) || !_hasAttestation(trackId)) {
             revert NotAttested();
         }
@@ -303,7 +384,10 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         emit TrackRegistered(releaseId, trackId);
     }
 
-    function registerStem(uint256 trackId, uint256 stemTokenId) external onlyRegistrarOrOwner {
+    function registerStem(
+        uint256 trackId,
+        uint256 stemTokenId
+    ) external onlyRegistrarOrOwner {
         if (!_hasAttestation(trackId)) revert NotAttested();
         if (trackId == stemTokenId) revert InvalidParent();
 
@@ -322,10 +406,14 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         emit TrackRevoked(trackId);
     }
 
+    /// @notice Revoke a release and all its registered tracks.
+    ///         Reverts if > 50 tracks — use revokeReleaseBatch() instead.
     function revokeRelease(uint256 releaseId) external onlyOwner {
+        uint256[] storage trackIds = _releaseToTracks[releaseId];
+        if (trackIds.length > 50) revert InvalidParent(); // too many tracks — use batch
+
         attestations[releaseId].valid = false;
 
-        uint256[] storage trackIds = _releaseToTracks[releaseId];
         for (uint256 i; i < trackIds.length; ++i) {
             uint256 trackId = trackIds[i];
             attestations[trackId].valid = false;
@@ -335,11 +423,38 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         emit ReleaseRevoked(releaseId);
     }
 
-    function getReleaseTracks(uint256 releaseId) external view returns (uint256[] memory) {
+    /// @notice Paginated release revocation for releases with many tracks.
+    /// @param offset Start index in the release's track array
+    /// @param limit  Max tracks to process in this call
+    function revokeReleaseBatch(
+        uint256 releaseId,
+        uint256 offset,
+        uint256 limit
+    ) external onlyOwner {
+        attestations[releaseId].valid = false;
+
+        uint256[] storage trackIds = _releaseToTracks[releaseId];
+        uint256 end = offset + limit;
+        if (end > trackIds.length) end = trackIds.length;
+
+        for (uint256 i = offset; i < end; ++i) {
+            uint256 trackId = trackIds[i];
+            attestations[trackId].valid = false;
+            emit TrackRevoked(trackId);
+        }
+
+        emit ReleaseRevoked(releaseId);
+    }
+
+    function getReleaseTracks(
+        uint256 releaseId
+    ) external view returns (uint256[] memory) {
         return _releaseToTracks[releaseId];
     }
 
-    function getTrackStems(uint256 trackId) external view returns (uint256[] memory) {
+    function getTrackStems(
+        uint256 trackId
+    ) external view returns (uint256[] memory) {
         return _trackToStems[trackId];
     }
 
@@ -366,11 +481,15 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         return stakes[tokenId].active;
     }
 
-    function resolveCanonicalTrack(uint256 stemTokenId) external view returns (uint256) {
+    function resolveCanonicalTrack(
+        uint256 stemTokenId
+    ) external view returns (uint256) {
         return stemToCanonicalTrack[stemTokenId];
     }
 
-    function resolveProtectionTarget(uint256 tokenId) external view returns (uint256) {
+    function resolveProtectionTarget(
+        uint256 tokenId
+    ) external view returns (uint256) {
         uint256 canonicalTrackId = stemToCanonicalTrack[tokenId];
         return canonicalTrackId == 0 ? tokenId : canonicalTrackId;
     }
@@ -381,6 +500,9 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
 
     function _isTrackVerified(uint256 trackId) internal view returns (bool) {
         uint256 releaseId = trackToParentRelease[trackId];
-        return releaseId != 0 && attestations[trackId].valid && attestations[releaseId].valid;
+        return
+            releaseId != 0 &&
+            attestations[trackId].valid &&
+            attestations[releaseId].valid;
     }
 }

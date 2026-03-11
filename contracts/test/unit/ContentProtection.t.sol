@@ -80,6 +80,19 @@ contract ContentProtectionTest is Test {
         assertTrue(cp.isAttested(1));
     }
 
+    function test_AttestRelease() public {
+        bytes32 contentHash = keccak256("release_audio_content");
+        bytes32 fpHash = keccak256("release_fingerprint");
+
+        vm.prank(alice);
+        vm.expectEmit(true, true, false, true);
+        emit ContentAttested(100, alice, contentHash, fpHash, "ipfs://release-meta");
+        cp.attestRelease(100, contentHash, fpHash, "ipfs://release-meta");
+
+        assertTrue(cp.isAttested(100));
+        assertTrue(cp.isReleaseVerified(100));
+    }
+
     function test_Attest_RevertAlreadyAttested() public {
         vm.prank(alice);
         cp.attest(1, keccak256("a"), keccak256("b"), "uri");
@@ -113,6 +126,19 @@ contract ContentProtectionTest is Test {
         cp.stake{value: STAKE_AMOUNT}(1);
 
         assertTrue(cp.isStaked(1));
+    }
+
+    function test_StakeForRelease() public {
+        vm.prank(alice);
+        cp.attestRelease(100, keccak256("release"), keccak256("release-fp"), "release-uri");
+
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        vm.expectEmit(true, true, false, true);
+        emit StakeDeposited(100, alice, STAKE_AMOUNT);
+        cp.stakeForRelease{value: STAKE_AMOUNT}(100);
+
+        assertTrue(cp.isStaked(100));
     }
 
     function test_Stake_RevertNotAttested() public {
@@ -405,7 +431,7 @@ contract ContentProtectionTest is Test {
 
     function _attestReleaseAndTrack(uint256 releaseId, uint256 trackId) internal {
         vm.prank(alice);
-        cp.attest(
+        cp.attestRelease(
             releaseId,
             keccak256(abi.encodePacked("release", releaseId)),
             keccak256(abi.encodePacked("release-fp", releaseId)),

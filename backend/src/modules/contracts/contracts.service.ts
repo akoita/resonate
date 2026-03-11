@@ -36,6 +36,34 @@ const MARKETPLACE_ABI = [
   },
 ] as const;
 
+const CONTENT_PROTECTION_ABI = [
+  {
+    name: "attestations",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [
+      { name: "contentHash", type: "bytes32" },
+      { name: "fingerprintHash", type: "bytes32" },
+      { name: "metadataURI", type: "string" },
+      { name: "attester", type: "address" },
+      { name: "timestamp", type: "uint256" },
+      { name: "valid", type: "bool" },
+    ],
+  },
+  {
+    name: "stakes",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [
+      { name: "amount", type: "uint256" },
+      { name: "depositedAt", type: "uint256" },
+      { name: "active", type: "bool" },
+    ],
+  },
+] as const;
+
 // Chain configurations (shared with indexer)
 // Global override: when set, routes ALL chains through this RPC (e.g., local Anvil fork)
 const RPC_OVERRIDE = process.env.RPC_URL || "";
@@ -58,6 +86,20 @@ const MARKETPLACE_ADDRESSES: Record<number, Address> = {
   31337: (process.env.MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
   11155111: (process.env.SEPOLIA_MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
   84532: (process.env.BASE_SEPOLIA_MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
+};
+
+const CONTENT_PROTECTION_ADDRESSES: Record<number, Address> = {
+  31337: (process.env.CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
+  11155111: (
+    process.env.SEPOLIA_CONTENT_PROTECTION_ADDRESS ||
+    process.env.CONTENT_PROTECTION_ADDRESS ||
+    "0x0000000000000000000000000000000000000000"
+  ) as Address,
+  84532: (
+    process.env.BASE_SEPOLIA_CONTENT_PROTECTION_ADDRESS ||
+    process.env.CONTENT_PROTECTION_ADDRESS ||
+    "0x0000000000000000000000000000000000000000"
+  ) as Address,
 };
 
 @Injectable()
@@ -594,6 +636,37 @@ export class ContractsService implements OnModuleInit {
       }
     });
 
+    // Handle ContentReported → preserve the real counter-stake amount from CurationRewards
+    this.eventBus.subscribe("contract.content_reported", async (event: any) => {
+      this.logger.log(`Processing ContentReported: disputeId=${event.disputeId}, counterStake=${event.counterStake}`);
+      try {
+        await prisma.dispute.upsert({
+          where: { id: `dispute_${event.disputeId}_${event.chainId}` },
+          create: {
+            id: `dispute_${event.disputeId}_${event.chainId}`,
+            disputeIdOnChain: event.disputeId,
+            tokenId: event.tokenId,
+            reporterAddr: event.reporterAddress?.toLowerCase(),
+            creatorAddr: "",
+            evidenceURI: event.evidenceURI || "",
+            counterStake: event.counterStake || "0",
+            status: "FILED",
+            chainId: event.chainId,
+            transactionHash: event.transactionHash,
+          },
+          update: {
+            reporterAddr: event.reporterAddress?.toLowerCase(),
+            evidenceURI: event.evidenceURI || "",
+            counterStake: event.counterStake || "0",
+            transactionHash: event.transactionHash,
+          },
+        });
+        this.logger.log(`Stored ContentReported: disputeId=${event.disputeId}`);
+      } catch (error) {
+        this.logger.error(`Failed to process ContentReported: ${error}`);
+      }
+    });
+
     // Handle DisputeResolved → update status/outcome, update reputation
     this.eventBus.subscribe("contract.dispute_resolved", async (event: any) => {
       this.logger.log(`Processing DisputeResolved: disputeId=${event.disputeId}, outcome=${event.outcome}`);
@@ -1086,37 +1159,99 @@ export class ContractsService implements OnModuleInit {
     const tier = trust?.tier || "new";
     const stakeAmountWei = trust?.stakeAmountWei || "10000000000000000"; // 0.01 ETH
     const escrowDays = trust?.escrowDays || 30;
-
-    // Check if there are any stakes by this artist
+    const chainId = Number(
+      process.env.AA_CHAIN_ID || process.env.CHAIN_ID || process.env.INDEXER_CHAIN_ID || "11155111",
+    );
     const artistAddress = release.artist.payoutAddress?.toLowerCase();
-    const stakes = artistAddress
-      ? await prisma.contentProtectionStake.findMany({
-          where: { stakerAddress: artistAddress, active: true },
-          orderBy: { depositedAt: "desc" },
-          take: 1,
-        })
-      : [];
+    const releaseSlug = release.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    const releaseMetadataUri = `resonate://release/${releaseSlug}`;
 
-    const attestations = artistAddress
-      ? await prisma.contentAttestation.findMany({
-          where: { attesterAddress: artistAddress },
+    const attestation = artistAddress
+      ? await prisma.contentAttestation.findFirst({
+          where: {
+            chainId,
+            attesterAddress: artistAddress,
+            metadataURI: releaseMetadataUri,
+          },
           orderBy: { attestedAt: "desc" },
-          take: 1,
         })
-      : [];
+      : null;
 
-    const stake = stakes[0];
-    const attestation = attestations[0];
+    let stake = attestation
+      ? await prisma.contentProtectionStake.findFirst({
+          where: {
+            chainId,
+            stakerAddress: artistAddress,
+            tokenId: attestation.tokenId,
+          },
+          orderBy: { depositedAt: "desc" },
+        })
+      : null;
+
+    let currentAttestation = attestation;
+    const contentProtectionAddress = CONTENT_PROTECTION_ADDRESSES[chainId];
+    const chainConfig = CHAIN_CONFIGS[chainId];
+
+    if (
+      currentAttestation?.tokenId &&
+      chainConfig &&
+      contentProtectionAddress &&
+      contentProtectionAddress !== "0x0000000000000000000000000000000000000000"
+    ) {
+      try {
+        const client = createPublicClient({
+          chain: chainConfig.chain,
+          transport: http(chainConfig.rpcUrl),
+        });
+
+        const onChainAttestation = await client.readContract({
+          address: contentProtectionAddress,
+          abi: CONTENT_PROTECTION_ABI,
+          functionName: "attestations",
+          args: [BigInt(currentAttestation.tokenId)],
+        });
+
+        const onChainValid = Boolean(onChainAttestation[5]);
+        const onChainMetadataUri = onChainAttestation[2];
+        const onChainAttester = String(onChainAttestation[3]).toLowerCase();
+
+        if (
+          !onChainValid ||
+          onChainMetadataUri !== releaseMetadataUri ||
+          onChainAttester !== artistAddress
+        ) {
+          currentAttestation = null;
+          stake = null;
+        } else if (stake) {
+          const onChainStake = await client.readContract({
+            address: contentProtectionAddress,
+            abi: CONTENT_PROTECTION_ABI,
+            functionName: "stakes",
+            args: [BigInt(stake.tokenId)],
+          });
+
+          if (!Boolean(onChainStake[2])) {
+            stake = null;
+          }
+        }
+      } catch (error) {
+        this.logger.warn(`Failed to validate content protection release state on-chain: ${error}`);
+      }
+    }
 
     return {
+      tokenId: currentAttestation?.tokenId || null,
       staked: !!stake,
-      attested: !!attestation,
+      attested: !!currentAttestation,
       stakeAmount: stake?.amount || stakeAmountWei,
       depositedAt: stake?.depositedAt?.toISOString() || "",
       active: stake?.active ?? false,
       escrowDays,
       trustTier: tier,
-      attestedAt: attestation?.attestedAt?.toISOString() || "",
+      attestedAt: currentAttestation?.attestedAt?.toISOString() || "",
     };
   }
 

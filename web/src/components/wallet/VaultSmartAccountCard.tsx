@@ -7,6 +7,7 @@ import {
     refreshSmartAccount,
 } from "../../lib/api";
 import { WalletRecord } from "../../lib/api";
+import { getKernelAccountConfig } from "../../lib/accountAbstraction";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
 
 type Props = {
@@ -173,6 +174,8 @@ export default function VaultSmartAccountCard({ wallet, address, isDeployed, rec
         const { http, parseGwei } = await import("viem");
         const { sepolia } = await import("viem/chains");
         const { KERNEL_V3_1 } = await import("@zerodev/sdk/constants");
+        const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 11155111);
+        const { entryPoint, factoryAddress } = getKernelAccountConfig(chainId);
 
         const bundlerUrl = process.env.NEXT_PUBLIC_BUNDLER_URL || "/api/bundler";
 
@@ -181,19 +184,14 @@ export default function VaultSmartAccountCard({ wallet, address, isDeployed, rec
             webAuthnKey,
             kernelVersion: KERNEL_V3_1,
             validatorContractVersion: PasskeyValidatorContractVersion.V0_0_1_UNPATCHED,
-            entryPoint: {
-                address: "0x0000000071727De22E5E9d8BAf0edAc6f37da032" as `0x${string}`,
-                version: "0.7",
-            },
+            entryPoint,
         });
 
         const account = await createKernelAccount(publicClient, {
             plugins: { sudo: validator },
             kernelVersion: KERNEL_V3_1,
-            entryPoint: {
-                address: "0x0000000071727De22E5E9d8BAf0edAc6f37da032" as `0x${string}`,
-                version: "0.7",
-            },
+            entryPoint,
+            factoryAddress,
         });
 
         // Validate: the rebuilt account must match the UI's expected address
@@ -377,4 +375,3 @@ export default function VaultSmartAccountCard({ wallet, address, isDeployed, rec
         </div>
     );
 }
-

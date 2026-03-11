@@ -10,7 +10,7 @@ import { Input } from "../../../components/ui/Input";
 import { FileDropZone } from "../../../components/ui/FileDropZone";
 import { useToast } from "../../../components/ui/Toast";
 import { useAuth } from "../../../components/auth/AuthProvider";
-import { getArtistMe, uploadStems } from "../../../lib/api";
+import { getArtistMe, uploadStems, waitForReleaseAvailability } from "../../../lib/api";
 import { extractMetadata } from "../../../lib/metadataExtractor";
 import { useTrustTier } from "../../../hooks/useTrustTier";
 import { useAttestAndStake } from "../../../hooks/useContracts";
@@ -234,9 +234,14 @@ export default function ArtistUploadPage() {
         title: "Release submitted!",
         message: `"${formData.releaseTitle}" has been queued for processing. Click to view or it will appear on your dashboard shortly.`,
         duration: 10000,
-        onClick: () => {
+        onClick: async () => {
           if (result && result.releaseId) {
-            router.push(`/release/${result.releaseId}`);
+            try {
+              await waitForReleaseAvailability(result.releaseId, { token, timeoutMs: 4000 });
+            } catch {
+              // The release page will continue polling while the catalog record settles.
+            }
+            router.push(`/release/${result.releaseId}?pending=1`);
           }
         }
       });
@@ -263,7 +268,7 @@ export default function ArtistUploadPage() {
     } catch (err) {
       const msg = (err as Error).message || "";
       let title = "Failed to publish";
-      let message = "An error occurred while publishing. Please try again.";
+      let message = msg || "An error occurred while publishing. Please try again.";
 
       if (msg.includes("Total upload size") || msg.includes("File too large")) {
         title = "Upload too large";
@@ -274,6 +279,14 @@ export default function ArtistUploadPage() {
       } else if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("CORS")) {
         title = "Network error";
         message = "Could not reach the server. Please check your connection and try again.";
+      } else if (msg.includes("already been attested")) {
+        title = "Already attested";
+      } else if (msg.includes("already been deposited")) {
+        title = "Already staked";
+      } else if (msg.includes("does not own this Content Protection record")) {
+        title = "Wrong wallet";
+      } else if (msg.includes("blacklisted")) {
+        title = "Publishing blocked";
       }
 
       addToast({
@@ -855,4 +868,3 @@ export default function ArtistUploadPage() {
     </AuthGate>
   );
 }
-

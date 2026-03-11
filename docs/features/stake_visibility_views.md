@@ -19,13 +19,13 @@ Surface Content Protection stake information to **two audiences**:
 
 ## Architecture
 
-Staking is **atomic with publishing**. When an artist publishes a release, the `useAttestAndStake` hook batches `ContentProtection.attest()` + `ContentProtection.stake()` into a single UserOperation signed by the artist's passkey. This means **every published release has a stake deposited on-chain**.
+Staking is **atomic with publishing**. When an artist publishes a release, the `useAttestAndStake` hook batches `ContentProtection.attestRelease()` + `ContentProtection.stakeForRelease()` into a single UserOperation signed by the artist's passkey. This means **every published release has a stake deposited on-chain at the release root that tracks and stems inherit from**.
 
 ```
-Upload → Process (Demucs) → Publish → attest() + stake() (single UserOp) → Live
-                                           │
-                                   ContentProtection contract
-                                   stores: { amount, depositedAt, active }
+Upload → Process (Demucs) → Publish → attestRelease() + stakeForRelease() (single UserOp) → Live
+                                                        │
+                                                ContentProtection contract
+                                                stores release-root stake + attestation
 ```
 
 ### Contract Interface (Read)

@@ -328,6 +328,34 @@ export async function getRelease(releaseId: string, token?: string | null) {
   return release;
 }
 
+export async function waitForReleaseAvailability(
+  releaseId: string,
+  options: {
+    token?: string | null;
+    timeoutMs?: number;
+    intervalMs?: number;
+  } = {}
+) {
+  const timeoutMs = options.timeoutMs ?? 10000;
+  const intervalMs = options.intervalMs ?? 500;
+  const deadline = Date.now() + timeoutMs;
+  let lastError: Error | null = null;
+
+  while (Date.now() < deadline) {
+    try {
+      return await getRelease(releaseId, options.token);
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.startsWith("API 404:")) {
+        throw error;
+      }
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+
+  throw lastError ?? new Error(`Release ${releaseId} is not available yet`);
+}
+
 export async function getTrack(trackId: string, token?: string | null) {
   const track = await apiRequest<Track>(`/catalog/tracks/${trackId}`, {}, token);
   if (track && track.release && track.release.artworkMimeType) {
@@ -522,6 +550,70 @@ export async function getStemNftInfo(stemId: string) {
     transactionHash: string;
     mintedAt: string;
   }>(`/metadata/stem/${stemId}`, { silentErrorCodes: [404] });
+}
+
+export type StemMintAuthorization = {
+  stemId: string;
+  chainId: number;
+  contractAddress: `0x${string}`;
+  tokenURI: string;
+  authorization: {
+    minter: `0x${string}`;
+    to: `0x${string}`;
+    amount: string;
+    protectionId: string;
+    royaltyReceiver: `0x${string}`;
+    royaltyBps: number;
+    remixable: boolean;
+    parentIds: string[];
+    deadline: string;
+    nonce: `0x${string}`;
+  };
+  signature: `0x${string}`;
+};
+
+export async function createStemMintAuthorization(
+  token: string,
+  input: {
+    stemId: string;
+    chainId: number;
+    minterAddress: string;
+    to?: string;
+    amount?: string;
+    royaltyReceiver?: string;
+    royaltyBps?: number;
+    remixable?: boolean;
+    parentIds?: string[];
+  }
+) {
+  return apiRequest<StemMintAuthorization>(
+    "/contracts/mint-authorizations",
+    { method: "POST", body: JSON.stringify(input) },
+    token
+  );
+}
+
+export async function createBatchStemMintAuthorizations(
+  token: string,
+  input: {
+    authorizations: Array<{
+      stemId: string;
+      chainId: number;
+      minterAddress: string;
+      to?: string;
+      amount?: string;
+      royaltyReceiver?: string;
+      royaltyBps?: number;
+      remixable?: boolean;
+      parentIds?: string[];
+    }>;
+  }
+) {
+  return apiRequest<{ authorizations: StemMintAuthorization[] }>(
+    "/contracts/mint-authorizations/batch",
+    { method: "POST", body: JSON.stringify(input) },
+    token
+  );
 }
 
 // ========== Agent Config API ==========

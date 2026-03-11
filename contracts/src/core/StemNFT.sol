@@ -6,6 +6,8 @@ import {
     ERC1155Supply
 } from "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Supply.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {IERC2981} from "@openzeppelin/contracts/interfaces/IERC2981.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {ITransferValidator} from "../interfaces/ITransferValidator.sol";
@@ -23,11 +25,27 @@ import {IContentProtection} from "../interfaces/IContentProtection.sol";
  *
  * @custom:version 2.0.0
  */
-contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
+contract StemNFT is ERC1155, ERC1155Supply, AccessControl, EIP712, IERC2981 {
     // ============ Roles ============
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
+    bytes32 public constant MINT_AUTHORIZER_ROLE =
+        keccak256("MINT_AUTHORIZER_ROLE");
 
     // ============ Structs ============
+
+    struct MintAuthorization {
+        address minter;
+        address to;
+        uint256 amount;
+        bytes32 tokenURIHash;
+        uint256 protectionId;
+        address royaltyReceiver;
+        uint96 royaltyBps;
+        bool remixable;
+        bytes32 parentIdsHash;
+        uint256 deadline;
+        bytes32 nonce;
+    }
 
     /// @notice On-chain stem data (minimal - metadata in tokenURI)
     struct StemData {
@@ -47,6 +65,10 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
     // ============ Constants ============
     uint96 public constant MAX_ROYALTY_BPS = 1000; // 10%
     uint96 public constant DEFAULT_ROYALTY_BPS = 500; // 5%
+    bytes32 private constant _MINT_AUTHORIZATION_TYPEHASH =
+        keccak256(
+            "MintAuthorization(address minter,address to,uint256 amount,bytes32 tokenURIHash,uint256 protectionId,address royaltyReceiver,uint96 royaltyBps,bool remixable,bytes32 parentIdsHash,uint256 deadline,bytes32 nonce)"
+        );
 
     // ============ State ============
     uint256 private _tokenIdCounter;
@@ -63,6 +85,7 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
     /// @notice Latest token minted to an owner in the current/most recent tx flow
     mapping(address => uint256) public lastMintedTokenIdByOwner;
     mapping(address => uint64) public lastMintedBlockByOwner;
+    mapping(address => mapping(bytes32 => bool)) public usedMintAuthorizationNonces;
 
     /// @notice Optional transfer validator module
     ITransferValidator public transferValidator;
@@ -88,10 +111,18 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
     error InvalidRoyalty(uint96 bps);
     error TransferNotAllowed();
     error ParentNotRemixable(uint256 parentId);
+    error NotAttested(uint256 tokenId);
+    error MintAuthorizationExpired(uint256 deadline);
+    error MintAuthorizationAlreadyUsed(address minter, bytes32 nonce);
+    error InvalidMintAuthorization();
     // ============ Constructor ============
-    constructor(string memory baseUri) ERC1155(baseUri) {
+    constructor(string memory baseUri)
+        ERC1155(baseUri)
+        EIP712("Resonate StemNFT", "1")
+    {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(MINTER_ROLE, msg.sender);
+        _grantRole(MINT_AUTHORIZER_ROLE, msg.sender);
     }
 
     // ============ Minting ============
@@ -115,52 +146,76 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
         bool remixable,
         uint256[] calldata parentIds
     ) external onlyRole(MINTER_ROLE) returns (uint256 tokenId) {
-        // Validate royalty
-        uint96 effectiveRoyalty = royaltyBps == 0
-            ? DEFAULT_ROYALTY_BPS
-            : royaltyBps;
-        if (effectiveRoyalty > MAX_ROYALTY_BPS)
-            revert InvalidRoyalty(royaltyBps);
+        return
+            _mintStem(
+                msg.sender,
+                to,
+                amount,
+                tokenURI_,
+                0,
+                royaltyReceiver,
+                royaltyBps,
+                remixable,
+                parentIds,
+                false
+            );
+    }
 
-        // Validate parent stems (if remix)
-        for (uint256 i; i < parentIds.length; ++i) {
-            if (!stems[parentIds[i]].exists) revert StemNotFound(parentIds[i]);
-            if (!stems[parentIds[i]].remixable)
-                revert ParentNotRemixable(parentIds[i]);
+    function mintAuthorized(
+        address to,
+        uint256 amount,
+        string calldata tokenURI_,
+        uint256 protectionId,
+        address royaltyReceiver,
+        uint96 royaltyBps,
+        bool remixable,
+        uint256[] calldata parentIds,
+        uint256 deadline,
+        bytes32 nonce,
+        bytes calldata signature
+    ) external returns (uint256 tokenId) {
+        if (deadline < block.timestamp) {
+            revert MintAuthorizationExpired(deadline);
+        }
+        if (usedMintAuthorizationNonces[msg.sender][nonce]) {
+            revert MintAuthorizationAlreadyUsed(msg.sender, nonce);
         }
 
-        tokenId = ++_tokenIdCounter;
-
-        // Store minimal on-chain data
-        // Note: creator = msg.sender (the minting account, e.g. backend service).
-        // This may differ from the artist; use royaltyReceiver for payment routing.
-        stems[tokenId] = StemData({
-            creator: msg.sender,
-            royaltyReceiver: royaltyReceiver == address(0)
-                ? msg.sender
-                : royaltyReceiver,
-            royaltyBps: effectiveRoyalty,
+        MintAuthorization memory authorization = MintAuthorization({
+            minter: msg.sender,
+            to: to,
+            amount: amount,
+            tokenURIHash: keccak256(bytes(tokenURI_)),
+            protectionId: protectionId,
+            royaltyReceiver: royaltyReceiver,
+            royaltyBps: royaltyBps,
             remixable: remixable,
-            exists: true
+            parentIdsHash: keccak256(abi.encode(parentIds)),
+            deadline: deadline,
+            nonce: nonce
         });
 
-        // Store remix info if this is a remix
-        if (parentIds.length > 0) {
-            remixes[tokenId] = RemixInfo({
-                parentIds: parentIds,
-                createdAt: uint40(block.timestamp)
-            });
+        bytes32 digest = _hashMintAuthorization(authorization);
+        address recoveredSigner = ECDSA.recover(digest, signature);
+        if (!hasRole(MINT_AUTHORIZER_ROLE, recoveredSigner)) {
+            revert InvalidMintAuthorization();
         }
 
-        // Store token URI
-        _tokenURIs[tokenId] = tokenURI_;
+        usedMintAuthorizationNonces[msg.sender][nonce] = true;
 
-        // Mint
-        _mint(to, tokenId, amount, "");
-        lastMintedTokenIdByOwner[to] = tokenId;
-        lastMintedBlockByOwner[to] = uint64(block.number);
-
-        emit StemMinted(tokenId, msg.sender, parentIds, tokenURI_);
+        return
+            _mintStem(
+                msg.sender,
+                to,
+                amount,
+                tokenURI_,
+                protectionId,
+                royaltyReceiver,
+                royaltyBps,
+                remixable,
+                parentIds,
+                true
+            );
     }
 
     /**
@@ -268,6 +323,37 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
         return stems[tokenId].creator;
     }
 
+    function hashMintAuthorization(
+        address minter,
+        address to,
+        uint256 amount,
+        string calldata tokenURI_,
+        uint256 protectionId,
+        address royaltyReceiver,
+        uint96 royaltyBps,
+        bool remixable,
+        uint256[] calldata parentIds,
+        uint256 deadline,
+        bytes32 nonce
+    ) external view returns (bytes32) {
+        return
+            _hashMintAuthorization(
+                MintAuthorization({
+                    minter: minter,
+                    to: to,
+                    amount: amount,
+                    tokenURIHash: keccak256(bytes(tokenURI_)),
+                    protectionId: protectionId,
+                    royaltyReceiver: royaltyReceiver,
+                    royaltyBps: royaltyBps,
+                    remixable: remixable,
+                    parentIdsHash: keccak256(abi.encode(parentIds)),
+                    deadline: deadline,
+                    nonce: nonce
+                })
+            );
+    }
+
     // ============ EIP-2981 ============
 
     function royaltyInfo(
@@ -310,5 +396,89 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, IERC2981 {
         return
             interfaceId == type(IERC2981).interfaceId ||
             super.supportsInterface(interfaceId);
+    }
+
+    function _mintStem(
+        address creator,
+        address to,
+        uint256 amount,
+        string memory tokenURI_,
+        uint256 protectionId,
+        address royaltyReceiver,
+        uint96 royaltyBps,
+        bool remixable,
+        uint256[] memory parentIds,
+        bool enforceProtection
+    ) internal returns (uint256 tokenId) {
+        uint96 effectiveRoyalty = royaltyBps == 0
+            ? DEFAULT_ROYALTY_BPS
+            : royaltyBps;
+        if (effectiveRoyalty > MAX_ROYALTY_BPS)
+            revert InvalidRoyalty(royaltyBps);
+
+        if (
+            enforceProtection &&
+            address(contentProtection) != address(0) &&
+            !contentProtection.isReleaseVerified(protectionId)
+        ) {
+            revert NotAttested(protectionId);
+        }
+
+        for (uint256 i; i < parentIds.length; ++i) {
+            if (!stems[parentIds[i]].exists) revert StemNotFound(parentIds[i]);
+            if (!stems[parentIds[i]].remixable)
+                revert ParentNotRemixable(parentIds[i]);
+        }
+
+        tokenId = ++_tokenIdCounter;
+
+        stems[tokenId] = StemData({
+            creator: creator,
+            royaltyReceiver: royaltyReceiver == address(0)
+                ? creator
+                : royaltyReceiver,
+            royaltyBps: effectiveRoyalty,
+            remixable: remixable,
+            exists: true
+        });
+
+        if (parentIds.length > 0) {
+            remixes[tokenId] = RemixInfo({
+                parentIds: parentIds,
+                createdAt: uint40(block.timestamp)
+            });
+        }
+
+        _tokenURIs[tokenId] = tokenURI_;
+
+        _mint(to, tokenId, amount, "");
+        lastMintedTokenIdByOwner[to] = tokenId;
+        lastMintedBlockByOwner[to] = uint64(block.number);
+
+        emit StemMinted(tokenId, creator, parentIds, tokenURI_);
+    }
+
+    function _hashMintAuthorization(
+        MintAuthorization memory authorization
+    ) internal view returns (bytes32) {
+        return
+            _hashTypedDataV4(
+                keccak256(
+                    abi.encode(
+                        _MINT_AUTHORIZATION_TYPEHASH,
+                        authorization.minter,
+                        authorization.to,
+                        authorization.amount,
+                        authorization.tokenURIHash,
+                        authorization.protectionId,
+                        authorization.royaltyReceiver,
+                        authorization.royaltyBps,
+                        authorization.remixable,
+                        authorization.parentIdsHash,
+                        authorization.deadline,
+                        authorization.nonce
+                    )
+                )
+            );
     }
 }

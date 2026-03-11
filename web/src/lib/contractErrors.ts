@@ -33,6 +33,46 @@ export const knownContractErrorAbi = [
     name: "NoRecentMint",
     inputs: [],
   },
+  {
+    type: "error",
+    name: "AlreadyAttested",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "AlreadyStaked",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "InsufficientStake",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "NotOwner",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "IsBlacklisted",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "SelfReport",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "InsufficientCounterStake",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "ActiveDisputeExists",
+    inputs: [],
+  },
 ] as const;
 
 // ─── Pure helpers ────────────────────────────────────────────────────
@@ -85,7 +125,7 @@ export function normalizeContractWriteError(error: unknown): Error {
       if (decoded.errorName === "NotAttested") {
         const tokenId = decoded.args?.[0];
         return new Error(
-          `Content Protection blocked this action because content record #${tokenId?.toString() || "?"} has not been attested on-chain yet.`
+          `Content Protection blocked this action because release protection record #${tokenId?.toString() || "?"} has not been attested on-chain yet.`
         );
       }
 
@@ -99,6 +139,38 @@ export function normalizeContractWriteError(error: unknown): Error {
 
       if (decoded.errorName === "NoRecentMint") {
         return new Error("The marketplace could not find a stem minted in this transaction. Please retry the mint and list flow.");
+      }
+
+      if (decoded.errorName === "AlreadyAttested") {
+        return new Error("This release has already been attested on-chain.");
+      }
+
+      if (decoded.errorName === "AlreadyStaked") {
+        return new Error("Stake has already been deposited for this release.");
+      }
+
+      if (decoded.errorName === "InsufficientStake") {
+        return new Error("The stake amount sent is below the current Content Protection requirement.");
+      }
+
+      if (decoded.errorName === "NotOwner") {
+        return new Error("The connected smart account does not own this Content Protection record.");
+      }
+
+      if (decoded.errorName === "IsBlacklisted") {
+        return new Error("This wallet is blacklisted from Content Protection actions on the current chain.");
+      }
+
+      if (decoded.errorName === "SelfReport") {
+        return new Error("You cannot report content that was published by your own smart account.");
+      }
+
+      if (decoded.errorName === "InsufficientCounterStake") {
+        return new Error("The report counter-stake sent is below the current requirement.");
+      }
+
+      if (decoded.errorName === "ActiveDisputeExists") {
+        return new Error("An active dispute already exists for this content record.");
       }
     } catch {
       // Fall back to the trimmed bundler error below.

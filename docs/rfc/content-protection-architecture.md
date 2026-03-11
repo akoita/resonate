@@ -610,7 +610,7 @@ This prevents abuse of the DMCA process (e.g., false takedowns to suppress compe
 | Existing Contract     | Integration Point                                                                     |
 | --------------------- | ------------------------------------------------------------------------------------- |
 | **Release** (backend) | Upload creates a Release → triggers `ContentProtection.attestRelease()`               |
-| `StemNFT`             | `mint()` requires parent track's attestation to be verified (inheritance)             |
+| `StemNFT`             | `mintAuthorized()` requires a signed release `protectionId` that is verified on-chain |
 | `StemMarketplaceV2`   | Sales revenue (stem licensing) routed through `RevenueEscrow` during challenge period |
 | `TransferValidator`   | Checks `ContentProtection.isBlacklisted()` before allowing transfers                  |
 
@@ -619,6 +619,7 @@ This prevents abuse of the DMCA process (e.g., false takedowns to suppress compe
 ```solidity
 // ContentProtection.sol
 function attestRelease(uint256 releaseId, bytes32 contentHash, bytes32 fingerprintHash, string memory metadataURI) external;
+function stakeForRelease(uint256 releaseId) external payable;
 function isReleaseVerified(uint256 releaseId) external view returns (bool);
 function isTrackVerified(uint256 trackId) external view returns (bool); // delegates to parent release
 function isStemVerified(uint256 stemTokenId) external view returns (bool); // delegates to parent track → release

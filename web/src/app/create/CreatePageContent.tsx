@@ -6,7 +6,7 @@ import Link from "next/link";
 import AuthGate from "../../components/auth/AuthGate";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { useGeneration } from "../../hooks/useGeneration";
-import { getArtistMe, uploadStems, getReleaseArtworkUrl, saveLibraryTrackAPI, getGenerationAnalytics, GenerationAnalytics, publishAiGeneration } from "../../lib/api";
+import { getArtistMe, uploadStems, getReleaseArtworkUrl, saveLibraryTrackAPI, getGenerationAnalytics, GenerationAnalytics, publishAiGeneration, waitForReleaseAvailability } from "../../lib/api";
 import { AICreationPublishModal, PublishMetadata } from "../../components/create/AICreationPublishModal";
 import { DuplicatePublishWarningModal } from "../../components/create/DuplicatePublishWarningModal";
 import { useToast } from "../../components/ui/Toast";
@@ -219,7 +219,14 @@ export default function CreatePageContent() {
         title: `Track ${actionLabel}!`,
         message: "Click here to view your release →",
         duration: 8000,
-        onClick: () => router.push(`/release/${targetReleaseId}?rev=${Date.now()}`),
+        onClick: async () => {
+          try {
+            await waitForReleaseAvailability(targetReleaseId, { token, timeoutMs: 4000 });
+          } catch {
+            // The release page can continue polling if the catalog write is still settling.
+          }
+          router.push(`/release/${targetReleaseId}?pending=1&rev=${Date.now()}`);
+        },
       });
     } catch (err) {
       console.error(err);

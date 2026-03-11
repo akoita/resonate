@@ -31,6 +31,13 @@ interface IContentProtection {
 
     function stakes(uint256 tokenId) external view returns (uint256 amount, uint256 depositedAt, bool active);
 
+    function attestRelease(
+        uint256 releaseId,
+        bytes32 contentHash,
+        bytes32 fingerprintHash,
+        string calldata metadataURI
+    ) external;
+
     function getReleaseTracks(uint256 releaseId) external view returns (uint256[] memory);
 
     function getTrackStems(uint256 trackId) external view returns (uint256[] memory);
@@ -50,6 +57,8 @@ interface IContentProtection {
     function resolveProtectionTarget(uint256 tokenId) external view returns (uint256);
 
     function stakeAmount() external view returns (uint256);
+
+    function stakeForRelease(uint256 releaseId) external payable;
 
     function stemToCanonicalTrack(uint256 stemTokenId) external view returns (uint256);
 
