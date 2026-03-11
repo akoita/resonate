@@ -144,8 +144,11 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    // Emit 'encrypting' stage
+    // Emit 'encrypting' stage — visible in UI as "🟠 Encrypting..."
     await this.emitTrackStage(result.releaseId, result.trackId, "encrypting");
+
+    let encryptedCount = 0;
+    const totalStems = Object.keys(result.stems!).length;
 
     // Process each AI-generated stem
     for (const [type, stemUri] of Object.entries(result.stems!)) {
@@ -204,6 +207,12 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
           }
         } catch (encErr) {
           this.logger.warn(`Encryption failed for ${type}, using plaintext: ${encErr}`);
+        }
+
+        // Emit 'storing' stage on first stem upload — visible in UI as "🟢 Storing..."
+        encryptedCount++;
+        if (encryptedCount === 1) {
+          await this.emitTrackStage(result.releaseId, result.trackId, "storing");
         }
 
         // Upload encrypted stem
