@@ -493,6 +493,7 @@ export default function MarketplacePage() {
                                 {/* Artwork */}
                                 <div className="stem-card__artwork">
                                     {(listing.stem?.releaseId || listing.stem?.artworkUrl) ? (
+                                        /* eslint-disable-next-line @next/next/no-img-element */
                                         <img src={listing.stem.releaseId ? getReleaseArtworkUrl(listing.stem.releaseId) : resolveUrl(listing.stem.artworkUrl)} alt={listing.stem.title || "Stem"} />
                                     ) : (
                                         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%", background: "rgba(255,255,255,0.02)" }}>

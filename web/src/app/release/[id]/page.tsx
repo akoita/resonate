@@ -194,6 +194,7 @@ export default function ReleaseDetails() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [release?.id]);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handlePlayTrack = (trackIndex: number, _specificStem?: string) => {
     if (!release?.tracks) return;
     const playableTracks: LocalTrack[] = (release.tracks || []).map((t) => {
@@ -406,10 +407,10 @@ export default function ReleaseDetails() {
           title={isOwner ? "Click to change artwork, drag to add to playlist" : "Drag to add entire album to playlist"}
         >
           {release.artworkUrl ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={release.artworkUrl}
               alt={release.title}
-              /* eslint-disable-next-line @next/next/no-img-element */
               className={`header-artwork ${isUpdatingArtwork ? 'opacity-50' : ''}`}
               draggable="false"
             />

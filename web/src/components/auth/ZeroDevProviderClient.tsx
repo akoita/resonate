@@ -80,7 +80,8 @@ export default function ZeroDevProviderClient({
                 transport: http(rpcUrl),
             });
         },
-        [chain.id] // Use ID to stabilize
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [chain.id] // chain is module-level constant, ID used to stabilize
     );
 
     const value = useMemo(

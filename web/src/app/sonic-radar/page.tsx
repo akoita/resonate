@@ -40,7 +40,7 @@ function licenseLabel(type: string) {
 
 export default function SonicRadarPage() {
     const { sessions, isLoading } = useAgentHistory();
-    const { status } = useAuth();
+    const { status: _status } = useAuth();
     const router = useRouter();
     const { setTracksToAddToPlaylist } = useUIStore();
 
@@ -286,6 +286,7 @@ export default function SonicRadarPage() {
                                             >
                                                 <div className="sonic-radar-card-art">
                                                     {lic.track.release?.artworkUrl ? (
+                                                        /* eslint-disable-next-line @next/next/no-img-element */
                                                         <img
                                                             src={lic.track.release.artworkUrl}
                                                             alt={lic.track.title}

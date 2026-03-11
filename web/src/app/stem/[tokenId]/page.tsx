@@ -101,7 +101,7 @@ export default function StemDetailPage() {
         );
     }
 
-    const isOwner = address && stemData.creator.toLowerCase() === address.toLowerCase();
+    const _isOwner = address && stemData.creator.toLowerCase() === address.toLowerCase();
     const canList = balance > 0n;
 
     return (
@@ -120,6 +120,7 @@ export default function StemDetailPage() {
                         {/* Token Image */}
                         <div className="w-32 h-32 bg-zinc-800 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
                             {artworkUrl ? (
+                                /* eslint-disable-next-line @next/next/no-img-element */
                                 <img
                                     src={artworkUrl}
                                     alt={`Stem #${tokenId.toString()}`}
