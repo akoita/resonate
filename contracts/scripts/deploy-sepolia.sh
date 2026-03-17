@@ -12,14 +12,14 @@
 #   export PRIVATE_KEY=<your-deployer-private-key>
 #   export SEPOLIA_RPC_URL=<your-sepolia-rpc-url>
 #   export ETHERSCAN_API_KEY=<your-etherscan-api-key>
-#   ./scripts/deploy-sepolia.sh
+#   ./contracts/scripts/deploy-sepolia.sh
 #
 # ⚠️  NEVER commit private keys — this script reads from env vars only
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CONTRACTS_DIR="$PROJECT_ROOT/contracts"
 DEPLOYMENTS_DIR="$CONTRACTS_DIR/deployments"
 

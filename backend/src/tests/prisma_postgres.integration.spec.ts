@@ -2,7 +2,7 @@
  * Tier 2 Integration Test — Prisma + Postgres
  *
  * Tests real database operations (no mocked Prisma).
- * Requires: make dev-up (Postgres at localhost:5432)
+ * Requires: Postgres at localhost:5432, typically from Testcontainers or resonate-iac
  *
  * Run: npm run test:integration
  */
@@ -32,7 +32,7 @@ describe('Prisma + Postgres Integration', () => {
   beforeAll(async () => {
     dbAvailable = await isPostgresAvailable();
     if (!dbAvailable) {
-      console.warn('⚠️  Postgres not available. Start with: make dev-up');
+      console.warn('⚠️  Postgres not available. Start Postgres via Testcontainers or the resonate-iac stack.');
       return;
     }
     prisma = new PrismaClient({ datasources: { db: { url: DATABASE_URL } } });

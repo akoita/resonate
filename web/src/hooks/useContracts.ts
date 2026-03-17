@@ -188,7 +188,7 @@ async function assertMintAuthorizationSupported(
     });
   } catch {
     throw new Error(
-      "The current StemNFT deployment does not support mintAuthorized(). Redeploy protocol contracts and run ./scripts/update-protocol-config.sh, then restart the frontend."
+      "The current StemNFT deployment does not support mintAuthorized(). Redeploy protocol contracts and run ./contracts/scripts/update-protocol-config.sh, then restart the frontend."
     );
   }
 }

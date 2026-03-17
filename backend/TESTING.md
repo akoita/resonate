@@ -60,13 +60,13 @@ await request(app.getHttpServer())
 Service-level tests that rely on **real infrastructure** — database queries, file I/O, message queues, blockchain calls.
 
 ```bash
-# Requires: make dev-up (Postgres, Redis, RabbitMQ, Anvil)
+# Requires: Docker for Testcontainers, or an equivalent local stack from resonate-iac
 npm run test:integration
 ```
 
 - Real Prisma + Postgres (no mocked Prisma)
 - Real `LocalStorageProvider` file I/O
-- Real Redis (via Testcontainers or `make dev-up`)
+- Real Redis (via Testcontainers or a local `resonate-iac` stack)
 - Real Pub/Sub emulator
 - Anvil for blockchain RPC (local Ethereum node via Docker)
 - Skip gracefully when infra isn't running
@@ -98,10 +98,10 @@ npm run test:flow                 # (future)
 
 | Service        | Emulator                 | Setup                         |
 | -------------- | ------------------------ | ----------------------------- |
-| Postgres       | Native (Docker)          | `make dev-up` / CI service    |
-| Redis          | Testcontainers or Docker | `make dev-up` / CI service    |
-| Pub/Sub        | Google Pub/Sub emulator  | `docker run` or `make dev-up` |
-| Blockchain RPC | **Anvil** (Foundry)      | `docker run` or `make dev-up` |
+| Postgres       | Native (Docker)          | Testcontainers / `resonate-iac` / CI service |
+| Redis          | Testcontainers or Docker | Testcontainers / `resonate-iac` / CI service |
+| Pub/Sub        | Google Pub/Sub emulator  | `docker run` or `resonate-iac` |
+| Blockchain RPC | **Anvil** (Foundry)      | `docker run` or `resonate-iac` |
 | File storage   | Real filesystem          | No setup needed               |
 
 ## Dual-Version Pattern (External Services)
@@ -150,7 +150,7 @@ describe("LyriaClient (external)", () => {
 
 | Scenario            | Mock?             | Alternative                              |
 | ------------------- | ----------------- | ---------------------------------------- |
-| Postgres queries    | ❌ Never          | Real DB via `make dev-up` or CI services |
+| Postgres queries    | ❌ Never          | Real DB via Testcontainers, `resonate-iac`, or CI services |
 | Redis operations    | ❌ Never          | Testcontainers or Docker                 |
 | Local file storage  | ❌ Never          | Real filesystem                          |
 | Pub/Sub messaging   | ❌ Never          | Google Pub/Sub emulator                  |
