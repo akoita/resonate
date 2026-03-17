@@ -98,14 +98,14 @@ resource "google_cloud_run_v2_service" "backend" {
         value = "adk"
       }
 
-      # Lyria music generation (Vertex AI)
+      # SynthID watermark verification (Vertex AI — separate from Lyria SDK)
       env {
-        name  = "LYRIA_PROJECT_ID"
+        name  = "SYNTHID_PROJECT_ID"
         value = var.project_id
       }
 
       env {
-        name  = "LYRIA_LOCATION"
+        name  = "SYNTHID_LOCATION"
         value = "us-central1"
       }
 

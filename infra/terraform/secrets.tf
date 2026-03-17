@@ -58,7 +58,7 @@ resource "google_project_iam_member" "cloud_run_sql" {
   member  = "serviceAccount:${google_service_account.cloud_run.email}"
 }
 
-# Grant Cloud Run SA permission to call Vertex AI (Lyria music generation)
+# Grant Cloud Run SA permission to call Vertex AI (SynthID watermark verification)
 resource "google_project_iam_member" "cloud_run_aiplatform" {
   project = var.project_id
   role    = "roles/aiplatform.user"
