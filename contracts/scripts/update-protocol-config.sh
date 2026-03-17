@@ -9,12 +9,12 @@
 # Auto-detects chain ID from the local RPC so it works on both plain Anvil
 # (chainId 31337) and forked Sepolia (chainId 11155111).
 #
-# Usage: ./scripts/update-protocol-config.sh
+# Usage: ./contracts/scripts/update-protocol-config.sh
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BACKEND_ENV="$PROJECT_ROOT/backend/.env"
 WEB_ENV_LOCAL="$PROJECT_ROOT/web/.env.local"
 

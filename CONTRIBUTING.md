@@ -14,13 +14,25 @@ If you're exploring the codebase, here's how it's organized:
 - **`workers/`** — Microservices (Demucs AI stem separation)
 - **`docs/`** — Project specifications and guides
 
-## Running the Stack
+## Infrastructure
+
+Infrastructure-as-code and the local Dockerized stack now live in
+[`akoita/resonate-iac`](https://github.com/akoita/resonate-iac).
+
+- Use `resonate-iac` for local stack startup/shutdown, Docker logs, deploy workflows,
+  and infra changes.
+- Use this repo for backend, frontend, contract, and app-local configuration work.
+
+## Running the App
 
 ```bash
-make dev-up          # Start Docker services (PostgreSQL, Redis, Demucs)
 make backend-dev     # Start NestJS API
 make web-dev         # Start Next.js frontend
-make worker-logs     # View Demucs worker logs
+make worker-health   # Check the Demucs worker started from resonate-iac
+make pubsub-init     # Recreate local Pub/Sub emulator topics if needed
 ```
+
+Start the supporting local services from `resonate-iac` first, then use the commands
+above from this repo.
 
 See [README.md](README.md) for detailed setup instructions.

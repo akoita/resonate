@@ -397,6 +397,6 @@ See [Local AA Development](local-aa-development.md) for setup instructions.
 | `contracts/script/DeployLocalAA.s.sol`                                     | Contracts | Deploy AA infra to local Anvil                           |
 | `contracts/src/aa/KernelFactory.sol`                                       | Contracts | Smart account factory                                    |
 | `contracts/src/aa/UniversalSigValidator.sol`                               | Contracts | ERC-6492 signature validation                            |
-| `scripts/update-aa-config.sh`                                              | Infra     | Auto-configure `.env` from deployed contracts            |
-| `scripts/generate-agent-encryption-key.sh`                                 | Infra     | Generate AES-256 encryption key for agent keys           |
+| `contracts/scripts/update-aa-config.sh`                                    | Contracts | Auto-configure `.env` from deployed contracts            |
+| `backend/scripts/generate-agent-encryption-key.sh`                         | Backend   | Generate AES-256 encryption key for agent keys           |
 | `docs/security/agent-wallet-security.md`                                   | Docs      | Agent key security architecture                          |

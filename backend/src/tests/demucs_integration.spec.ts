@@ -62,7 +62,7 @@ describe("Demucs Integration", () => {
     workerAvailable = await isDemucsWorkerAvailable();
     if (!workerAvailable) {
       console.warn(
-        "⚠️  Demucs worker not available. Start it with: docker compose up -d demucs-worker"
+        "⚠️  Demucs worker not available. Start it from the resonate-iac infrastructure stack."
       );
     }
   });

@@ -2,18 +2,23 @@
 # Wipe all releases from the dev environment.
 #
 # Usage:
-#   ./scripts/wipe-releases-remote.sh                  # uses .env.deploy.dev
-#   API_URL=http://localhost:3001 TOKEN=... ./scripts/wipe-releases-remote.sh   # custom
+#   ./backend/scripts/wipe-releases-remote.sh
+#   API_URL=http://localhost:3001 TOKEN=... ./backend/scripts/wipe-releases-remote.sh
 #
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Source deploy env if available
-if [[ -f "$ROOT_DIR/.env.deploy.dev" ]]; then
-  set -a; source "$ROOT_DIR/.env.deploy.dev" 2>/dev/null; set +a
-fi
+# Load local env files when present so NEXT_PUBLIC_API_URL and GCS_STEMS_BUCKET resolve.
+for env_file in "$PROJECT_ROOT/backend/.env" "$PROJECT_ROOT/web/.env.local"; do
+  if [[ -f "$env_file" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$env_file" 2>/dev/null || true
+    set +a
+  fi
+done
 
 API_URL="${NEXT_PUBLIC_API_URL:-${API_URL:-http://localhost:3001}}"
 
@@ -53,11 +58,14 @@ RESULT=$(curl -s -X DELETE "$API_URL/admin/wipe-releases" \
 
 echo "$RESULT" | python3 -m json.tool 2>/dev/null || echo "$RESULT"
 
-# Also clean GCS
-BUCKET="${GCS_STEMS_BUCKET:-resonate-stems-dev}"
 echo ""
-echo "🪣 Cleaning GCS: gs://$BUCKET/stems/..."
-gsutil -m rm -r "gs://$BUCKET/stems/" 2>/dev/null && echo "   Done." || echo "   Bucket already clean or gsutil unavailable."
+if [[ -n "${GCS_STEMS_BUCKET:-${BUCKET:-}}" ]]; then
+  BUCKET_NAME="${GCS_STEMS_BUCKET:-${BUCKET:-}}"
+  echo "🪣 Cleaning GCS: gs://$BUCKET_NAME/stems/..."
+  gsutil -m rm -r "gs://$BUCKET_NAME/stems/" 2>/dev/null && echo "   Done." || echo "   Bucket already clean or gsutil unavailable."
+else
+  echo "🪣 Skipping GCS cleanup. Set GCS_STEMS_BUCKET to remove remote stem objects."
+fi
 
 echo ""
 echo "🎉 Wipe complete!"
