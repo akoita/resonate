@@ -133,7 +133,7 @@ export class AdkAdapter implements AgentRuntimeAdapter {
       }
     }
 
-    // Parse GENERATED: lines — AI-generated content via Lyria
+    // Parse GENERATED: lines — AI-generated content via Lyria RealTime
     const genPattern =
       /GENERATED:\s*(.+?)\s*\|\s*COST:\s*\$?([\d.]+)\s*\|\s*PROMPT:\s*(.+)/gi;
     const generationPicks: LlmGenerationPick[] = [];

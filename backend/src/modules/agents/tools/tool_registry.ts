@@ -154,7 +154,7 @@ export class ToolRegistry {
     });
 
     // -----------------------------------------------------------------------
-    // Lyria Generation Tools — new for #335
+    // Lyria RealTime Generation Tools — new for #335
     // -----------------------------------------------------------------------
 
     this.register({
