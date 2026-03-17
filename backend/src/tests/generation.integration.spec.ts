@@ -38,7 +38,24 @@ const configService = new ConfigService({
 describe('GenerationService (integration)', () => {
   let service: GenerationService;
   let eventBus: EventBus;
-  let generationQueue: Queue;
+  let generationQueue: Queue | null = null;
+
+  const isIgnorableQueueError = (error: Error) =>
+    error.message.includes('Connection is closed') ||
+    error.message.includes('ECONNREFUSED');
+
+  const cleanupQueue = async () => {
+    if (!generationQueue) return;
+
+    const queue = generationQueue;
+    generationQueue = null;
+
+    await queue.disconnect().catch((error: Error) => {
+      if (!isIgnorableQueueError(error)) {
+        throw error;
+      }
+    });
+  };
 
   beforeAll(async () => {
     // Seed user + artist for generation tests
@@ -58,8 +75,7 @@ describe('GenerationService (integration)', () => {
     await prisma.release.deleteMany({ where: { artistId: `${TEST_PREFIX}artist` } }).catch(() => {});
     await prisma.artist.delete({ where: { id: `${TEST_PREFIX}artist` } }).catch(() => {});
     await prisma.user.delete({ where: { id: `${TEST_PREFIX}user` } }).catch(() => {});
-    // Close the real BullMQ queue connection
-    if (generationQueue) await generationQueue.close();
+    await cleanupQueue();
   });
 
   beforeEach(() => {
@@ -70,6 +86,12 @@ describe('GenerationService (integration)', () => {
     const redisUrl = new URL(process.env.REDIS_URL || 'redis://localhost:6379');
     generationQueue = new Queue(`generation_test_${Date.now()}`, {
       connection: { host: redisUrl.hostname, port: parseInt(redisUrl.port || '6379') },
+    });
+    generationQueue.on('error', (error) => {
+      if (!isIgnorableQueueError(error)) {
+        // Surface unexpected BullMQ failures without crashing Jest teardown.
+        console.error(error);
+      }
     });
 
     service = new GenerationService(
@@ -83,7 +105,7 @@ describe('GenerationService (integration)', () => {
   });
 
   afterEach(async () => {
-    if (generationQueue) await generationQueue.close();
+    await cleanupQueue();
   });
 
   describe('createGeneration', () => {
@@ -96,7 +118,8 @@ describe('GenerationService (integration)', () => {
       expect(typeof result.jobId).toBe('string');
 
       // Verify job was actually enqueued in real Redis
-      const job = await generationQueue.getJob(result.jobId);
+      expect(generationQueue).not.toBeNull();
+      const job = await generationQueue!.getJob(result.jobId);
       expect(job).not.toBeNull();
     });
 
