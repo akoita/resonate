@@ -72,20 +72,20 @@ contract DeployLocalAA is Script {
         console.log("=== Deployment Complete ===");
         console.log("");
         console.log(
-            "IMPORTANT: Update docker-compose.yml ENTRY_POINTS with:",
+            "IMPORTANT: Update the local Alto ENTRY_POINTS setting in resonate-iac with:",
             address(entryPoint)
         );
         console.log("");
         console.log("Next steps:");
         console.log(
-            "1. Stop alto-bundler: docker compose --profile local-aa stop alto-bundler"
+            "1. Stop the local bundler in resonate-iac"
         );
         console.log(
-            "2. Update ENTRY_POINTS in docker-compose.yml to:",
+            "2. Update its ENTRY_POINTS setting to:",
             address(entryPoint)
         );
         console.log(
-            "3. Restart alto-bundler: docker compose --profile local-aa up -d alto-bundler"
+            "3. Restart the bundler stack from resonate-iac"
         );
     }
 }

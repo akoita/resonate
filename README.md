@@ -83,11 +83,12 @@ graph TB
 | --------------------------------------- | ------------------------------------------------------------- |
 | **Node.js** 18+                         | [nodejs.org](https://nodejs.org/) or `nvm install 18`         |
 | **Docker**                              | [docker.com/get-started](https://www.docker.com/get-started/) |
-| **Redis**                               | Starts via Docker (port 6379)                                 |
 | **Make**                                | Pre-installed on macOS/Linux; Windows: use WSL                |
 | **Foundry** _(for contract deployment)_ | [getfoundry.sh](https://getfoundry.sh/)                       |
 
 ### Run Locally
+
+Infrastructure assets now live in [`akoita/resonate-iac`](https://github.com/akoita/resonate-iac). Start Postgres, Redis, Pub/Sub, Demucs, Anvil, and Alto from that repo, then use this repo for contracts, backend, and frontend workflows.
 
 Two AA modes are available — see [AA Integration](docs/account-abstraction/account-abstraction.md) for architecture and [Local AA Development](docs/account-abstraction/local-aa-development.md) for setup.
 
@@ -103,13 +104,14 @@ cd ..
 # 1. Set env vars
 export SEPOLIA_RPC_URL=https://sepolia.drpc.org
 
-# 2. Start infrastructure (Postgres, Redis, Pub/Sub emulator, Demucs worker)
-make dev-up                     # use `make dev-up-build` after worker code changes
-                                # check the container status summary — all should show ✅
-make local-aa-fork              # Forks Sepolia, configures .env (AA infra already on-chain)
-make deploy-contracts           # Deploys fresh protocol contracts to the fork and updates .env
+# 2. Start infrastructure from resonate-iac
+#    See: https://github.com/akoita/resonate-iac
 
-# 3. Start services (separate terminals)
+# 3. Configure this repo against the running fork and deploy protocol contracts
+make local-aa-fork
+make deploy-contracts
+
+# 4. Start services (separate terminals)
 make backend-dev     # NestJS API on port 3000
 make web-dev-fork    # Next.js on port 3001 (chainId 11155111, local RPC)
 ```
@@ -119,25 +121,19 @@ make web-dev-fork    # Next.js on port 3001 (chainId 11155111, local RPC)
 #### Local-Only (offline, no internet required)
 
 ```bash
-# 1. Deploy everything (Docker + Anvil + all contracts)
-# This starts Postgres, Redis, Pub/Sub emulator, and Demucs worker
-make dev-up
+# 1. Start local infra from resonate-iac, then deploy contracts here
 make contracts-deploy-local  # Deploys AA + StemNFT + Marketplace + TransferValidator
 
 # 2. Start services (separate terminals)
 make backend-dev     # NestJS API on port 3000
 make web-dev-local   # Next.js on port 3001 (chainId 31337)
-
-# 3. (Optional) View Demucs worker logs
-docker compose logs -f demucs-worker
 ```
 
 ### Stop & Clean
 
 ```bash
 make db-reset        # Reset database (requires Docker running)
-make dev-down        # Stop Docker containers
-make local-aa-down   # Stop Anvil + bundler
+# Stop local infra from the resonate-iac repo when you're done
 ```
 
 ### 📤 Upload Processing Flow
@@ -164,7 +160,7 @@ The release page displays track status in real-time, with stems appearing as the
 
 The Demucs worker uses Facebook's [htdemucs_6s](https://github.com/facebookresearch/demucs) model to separate audio into 6 stems: **vocals, drums, bass, guitar, piano, other**.
 
-> **GPU acceleration is enabled by default** — `make dev-up` launches the worker with NVIDIA GPU support via `docker-compose.gpu.yml`.
+> **GPU acceleration is enabled by default** in the infrastructure stack managed by [`resonate-iac`](https://github.com/akoita/resonate-iac).
 
 **Performance comparison:**
 | Hardware | 3-min song | Notes |
@@ -175,22 +171,13 @@ The Demucs worker uses Facebook's [htdemucs_6s](https://github.com/facebookresea
 **Model caching:** The ~52MB htdemucs_6s model is pre-downloaded during Docker build.
 
 ```bash
-# View worker logs
-make worker-logs
-
 # Check worker health
 make worker-health
-
-# Rebuild worker (after code changes)
-make worker-rebuild
-
-# Quick build (skip model pre-cache, downloads on first use)
-make worker-quick-build
 ```
 
 ### ⚡ GPU Prerequisites
 
-`make dev-up` attempts GPU mode first. If the worker fails to start (no NVIDIA runtime), it **automatically falls back to CPU mode** — no manual intervention needed. CPU mode works but stem separation takes ~3min instead of ~30s.
+The `resonate-iac` infrastructure stack attempts GPU mode first. If the worker falls back to CPU mode, stem separation takes ~3min instead of ~30s.
 
 To enable GPU acceleration:
 
@@ -223,7 +210,8 @@ docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 **Verify GPU in worker:**
 
 ```bash
-docker compose exec demucs-worker nvidia-smi
+# Run against the worker container started from resonate-iac
+docker exec <demucs-container> nvidia-smi
 ```
 
 **Troubleshooting:**
@@ -231,7 +219,7 @@ docker compose exec demucs-worker nvidia-smi
 - Worker stays in "Created" state → Run `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`
 - `nvidia-smi` fails → Reinstall NVIDIA Container Toolkit
 - WSL2 users → Use NVIDIA driver for WSL, not native Linux driver
-- Build hangs on apt-get → Rebuild with `make worker-rebuild` (fixed via `DEBIAN_FRONTEND=noninteractive`)
+- Build hangs on apt-get → Rebuild the worker image from `resonate-iac` (fixed via `DEBIAN_FRONTEND=noninteractive`)
 
 See [`workers/demucs/README.md`](workers/demucs/README.md) for full worker documentation.
 
@@ -240,12 +228,12 @@ See [`workers/demucs/README.md`](workers/demucs/README.md) for full worker docum
 | Symptom                                    | Cause                                                          | Fix                                                                          |
 | ------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Container shows "Created" (not "Up")       | Port conflict — another container or process is using the port | Run `docker ps` to find the conflicting container, then `docker stop <name>` |
-| Redis won't start (port 6379)              | Stale Redis from another project                               | `docker stop <old-redis-container>` then `make dev-up`                       |
+| Redis won't start (port 6379)              | Stale Redis from another project                               | Stop the conflicting container, then restart the local stack from `resonate-iac` |
 | Track stuck at "🔵 Pending" forever        | `PUBSUB_EMULATOR_HOST` missing from `backend/.env`             | Run `make pubsub-init` then restart backend; `make backend-dev` auto-adds it |
-| Worker logs: "Subscription does not exist" | PubSub emulator has no topics (emulator restarted)             | Run `make pubsub-init` then `docker restart resonate2-demucs-worker-1`       |
-| Track stuck at "🟡 Separating..."          | Demucs worker not running or import errors                     | Check `make worker-logs` for errors; rebuild with `make worker-rebuild`      |
+| Worker logs: "Subscription does not exist" | PubSub emulator has no topics (emulator restarted)             | Run `make pubsub-init`, then restart the worker from `resonate-iac`          |
+| Track stuck at "🟡 Separating..."          | Demucs worker not running or import errors                     | Check worker logs in `resonate-iac`, then rebuild/restart that stack if needed |
 | No progress % during separation            | Worker can't POST progress back to backend                     | Verify `BACKEND_URL=http://host.docker.internal:3000` in `backend/.env`      |
-| `SEPOLIA_RPC_URL` warning in Docker logs   | Env var not exported in current shell                          | Run `export SEPOLIA_RPC_URL=https://sepolia.drpc.org` before `make dev-up`   |
+| `SEPOLIA_RPC_URL` warning in Docker logs   | Env var not exported in the infra shell                        | Export `SEPOLIA_RPC_URL=https://sepolia.drpc.org` before starting the fork stack in `resonate-iac` |
 
 ---
 
@@ -254,7 +242,7 @@ See [`workers/demucs/README.md`](workers/demucs/README.md) for full worker docum
 | Document                                                                   | Description                                    |
 | -------------------------------------------------------------------------- | ---------------------------------------------- |
 | [Project Specification](docs/rfc/RESONATE_SPECS.md)                        | Vision, architecture, and roadmap              |
-| [Deployment Guide](docs/smart-contracts/deployment.md)                     | Infrastructure, storage, and environment setup |
+| [Deployment Guide](docs/smart-contracts/deployment.md)                     | Repo split, contract deploys, and app environment setup |
 | [Local AA Development](docs/account-abstraction/local-aa-development.md)   | Account abstraction setup guide                |
 | [Demucs Worker](workers/demucs/README.md)                                  | GPU stem separation setup and troubleshooting  |
 | [Core Contracts](docs/smart-contracts/core_contracts.md)                   | Stem NFT and marketplace contracts             |

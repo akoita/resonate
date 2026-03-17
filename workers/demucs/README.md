@@ -32,7 +32,7 @@ In **pubsub mode**, the worker:
 6. POSTs real-time progress callbacks to `{callbackUrl}/ingestion/progress/{releaseId}/{trackId}`
 
 > **Local dev:** Set `PUBSUB_EMULATOR_HOST=localhost:8085` and `GCP_PROJECT_ID=resonate-local`
-> in the backend `.env`. The `docker-compose.yml` includes a `pubsub-emulator` service
+> in the backend `.env`. The local infrastructure stack in `resonate-iac` includes a Pub/Sub emulator service
 > that provides a local Pub/Sub instance. The worker must have `google-cloud-pubsub`
 > installed (see [Troubleshooting](#no-module-named-google) if this fails).
 
@@ -41,13 +41,13 @@ In **pubsub mode**, the worker:
 ### CPU Mode (Default)
 
 ```bash
-docker compose up -d demucs-worker
+# Start the worker from the resonate-iac infrastructure repo
 ```
 
 ### GPU Mode (Recommended)
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d demucs-worker
+# Start the worker from the resonate-iac infrastructure repo
 ```
 
 **Performance:**
@@ -190,21 +190,20 @@ docker restart resonate-demucs-worker-1
 **Permanent fix** (rebuild the image so deps are baked in):
 
 ```bash
-make dev-up-build
-# or: docker compose build demucs-worker && docker compose up -d demucs-worker
+# Rebuild and restart the worker from the resonate-iac infrastructure repo
 ```
 
 > **Why this happens:** Docker caches the `pip install -r requirements.txt` layer by
 > content hash. If `requirements.txt` was modified but the image was built before that
-> change, the old cached layer (without the new package) is reused. Use `--no-cache`
-> or `make dev-up-build` to force a fresh install.
+> change, the old cached layer (without the new package) is reused. Force a no-cache
+> rebuild in the `resonate-iac` worker stack to refresh the image.
 
 ### "No audio I/O backend is available"
 
 The soundfile package is required for torchaudio 2.x. Rebuild the container:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build demucs-worker
+# Rebuild and restart the worker from the resonate-iac infrastructure repo
 ```
 
 ### "got an unexpected keyword argument 'encoding'"
@@ -215,7 +214,7 @@ The patch_demucs.py script fixes this. If you see this error, rebuild the contai
 
 1. Verify NVIDIA drivers: `nvidia-smi`
 2. Verify container toolkit: `docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi`
-3. Check docker-compose.gpu.yml has `deploy.resources.reservations.devices`
+3. Check the `resonate-iac` GPU compose override reserves NVIDIA devices
 
 ### Build stuck during apt-get
 
