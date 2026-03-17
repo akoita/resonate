@@ -57,7 +57,7 @@ export class AgentMixerService {
   }
 
   /**
-   * Generative mix plan — generates transition audio and fill stems via Lyria.
+   * Generative mix plan — generates transition audio and fill stems via Lyria RealTime.
    * Falls back to metadata-only plan if budget is exhausted or generation fails.
    */
   async generate(input: AgentMixerGenerateInput): Promise<GenerativeMixPlan> {

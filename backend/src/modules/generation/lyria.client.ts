@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { GoogleGenAI } from '@google/genai';
 
 export interface LyriaGenerationResult {
   audioBytes: Buffer;
@@ -16,26 +17,28 @@ export interface LyriaGenerationParams {
 }
 
 /**
- * Wrapper service for Google Vertex AI Lyria 002 model.
+ * Wrapper service for Google AI Lyria music generation.
  *
- * Uses the Vertex AI REST API with `google-auth-library` for authentication.
- * The Lyria model generates 30-second 48kHz WAV clips from text prompts.
+ * Uses the @google/genai SDK with a Google AI Studio API key.
+ * The Lyria model generates 30-second 48kHz stereo WAV clips from text prompts.
  */
 @Injectable()
 export class LyriaClient {
   private readonly logger = new Logger(LyriaClient.name);
-  private readonly projectId: string;
-  private readonly location: string;
-  private readonly modelId: string;
+  private readonly client: GoogleGenAI;
+  private readonly generationWaitMs: number;
 
   constructor(private readonly configService: ConfigService) {
-    this.projectId = this.configService.get<string>('LYRIA_PROJECT_ID', '');
-    this.location = this.configService.get<string>('LYRIA_LOCATION', 'us-central1');
-    this.modelId = this.configService.get<string>('LYRIA_MODEL_ID', 'lyria-002');
+    const apiKey = this.configService.get<string>('GOOGLE_AI_API_KEY', '');
+    this.client = new GoogleGenAI({ apiKey, apiVersion: 'v1alpha' });
+    this.generationWaitMs = this.configService.get<number>('LYRIA_GENERATION_WAIT_MS', 32_000);
   }
 
   /**
-   * Generate music from a text prompt via Vertex AI Lyria 002.
+   * Generate music from a text prompt via the Lyria model.
+   *
+   * Uses a one-shot Lyria RealTime session: connect → prompt → collect
+   * audio chunks → stop. Returns concatenated PCM wrapped in caller context.
    *
    * @returns WAV audio bytes and generation metadata
    */
@@ -45,78 +48,63 @@ export class LyriaClient {
 
     this.logger.log(`Generating audio: prompt="${prompt.substring(0, 50)}..." seed=${actualSeed}`);
 
-    const endpoint = `https://${this.location}-aiplatform.googleapis.com/v1/projects/${this.projectId}/locations/${this.location}/publishers/google/models/${this.modelId}:predict`;
+    // Collect audio chunks from the realtime session
+    const audioChunks: Buffer[] = [];
 
-    // Obtain access token via google-auth-library
-    const { GoogleAuth } = await import('google-auth-library');
-    const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
-    const client = await auth.getClient();
-    const accessToken = (await client.getAccessToken()).token;
-
-    if (!accessToken) {
-      throw new Error('Failed to obtain GCP access token for Lyria API');
-    }
-
-    const requestBody = {
-      instances: [
-        {
-          prompt,
-          ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
-          seed: actualSeed,
+    const session = await this.client.live.music.connect({
+      model: 'models/lyria-realtime-exp',
+      callbacks: {
+        onmessage: (message: any) => {
+          if (message.serverContent?.audioChunks) {
+            for (const chunk of message.serverContent.audioChunks) {
+              audioChunks.push(Buffer.from(chunk.data, 'base64'));
+            }
+          }
         },
-      ],
-      parameters: {
-        sampleRate: 48000,
-        durationSeconds: 30,
+        onerror: (error: any) => {
+          this.logger.error(`Lyria session error: ${error}`);
+        },
+        onclose: () => {
+          this.logger.debug('Lyria session closed');
+        },
       },
-    };
-
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
     });
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      this.logger.error(`Lyria API error ${response.status}: ${errorBody}`);
-      throw new Error(`Lyria API returned ${response.status}: ${errorBody}`);
+    // Build weighted prompts
+    const weightedPrompts: Array<{ text: string; weight: number }> = [
+      { text: prompt, weight: 1.0 },
+    ];
+    if (negativePrompt) {
+      weightedPrompts.push({ text: negativePrompt, weight: -1.0 });
     }
 
-    const responseData = await response.json() as any;
+    await session.setWeightedPrompts({ weightedPrompts });
 
-    // Log response structure for debugging
-    this.logger.debug(`Lyria API response keys: ${JSON.stringify(Object.keys(responseData))}`);
-    const prediction = responseData.predictions?.[0];
-    if (prediction) {
-      this.logger.debug(`Prediction keys: ${JSON.stringify(Object.keys(prediction))}`);
-    } else {
-      this.logger.warn(`No predictions array. Full response: ${JSON.stringify(responseData).substring(0, 500)}`);
+    await session.setMusicGenerationConfig({
+      musicGenerationConfig: {
+        bpm: 120,
+        temperature: 1.0,
+      },
+    });
+
+    // Start generation and collect for ~30 seconds
+    await session.play();
+
+    // Wait for audio generation to complete
+    await new Promise<void>((resolve) => setTimeout(resolve, this.generationWaitMs));
+
+    await session.stop();
+
+    if (audioChunks.length === 0) {
+      throw new Error('Lyria API returned no audio chunks');
     }
 
-    // Extract audio bytes — try multiple possible field names
-    const audioB64 =
-      prediction?.audioContent ??
-      prediction?.audio_content ??
-      prediction?.bytesBase64Encoded ??
-      prediction?.audio?.audioContent ??
-      prediction?.generatedAudio ??
-      // Gemini-style response
-      responseData?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-
-    if (!audioB64) {
-      throw new Error(`Lyria API response missing audioContent. Response shape: ${JSON.stringify(responseData).substring(0, 500)}`);
-    }
-
-    const audioBytes = Buffer.from(audioB64, 'base64');
-    this.logger.log(`Generated ${audioBytes.length} bytes of audio`);
+    const audioBytes = Buffer.concat(audioChunks);
+    this.logger.log(`Generated ${audioBytes.length} bytes of audio (${audioChunks.length} chunks)`);
 
     return {
       audioBytes,
-      synthIdPresent: prediction.synthIdPresent ?? true,
+      synthIdPresent: true, // Lyria always embeds SynthID
       seed: actualSeed,
       durationSeconds: 30,
       sampleRate: 48000,

@@ -92,16 +92,20 @@ export function useLyriaRealtime(): UseLyriaRealtimeReturn {
         bytes[i] = binaryStr.charCodeAt(i);
       }
 
-      // Convert 16-bit PCM to Float32 for Web Audio
+      // Convert interleaved 16-bit stereo PCM to two Float32 channels
       const int16 = new Int16Array(bytes.buffer);
-      const float32 = new Float32Array(int16.length);
-      for (let i = 0; i < int16.length; i++) {
-        float32[i] = int16[i] / 32768;
+      const samplesPerChannel = int16.length / 2;
+      const left = new Float32Array(samplesPerChannel);
+      const right = new Float32Array(samplesPerChannel);
+      for (let i = 0; i < samplesPerChannel; i++) {
+        left[i] = int16[i * 2] / 32768;
+        right[i] = int16[i * 2 + 1] / 32768;
       }
 
-      // Create AudioBuffer (48kHz mono)
-      const audioBuffer = ctx.createBuffer(1, float32.length, 48000);
-      audioBuffer.getChannelData(0).set(float32);
+      // Create AudioBuffer (48kHz stereo)
+      const audioBuffer = ctx.createBuffer(2, samplesPerChannel, 48000);
+      audioBuffer.getChannelData(0).set(left);
+      audioBuffer.getChannelData(1).set(right);
 
       // Schedule for gapless playback
       const source = ctx.createBufferSource();

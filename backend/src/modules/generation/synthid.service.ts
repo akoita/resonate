@@ -31,8 +31,8 @@ export class SynthIdService {
   private readonly location: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.projectId = this.configService.get<string>('LYRIA_PROJECT_ID', '');
-    this.location = this.configService.get<string>('LYRIA_LOCATION', 'us-central1');
+    this.projectId = this.configService.get<string>('SYNTHID_PROJECT_ID', '');
+    this.location = this.configService.get<string>('SYNTHID_LOCATION', 'us-central1');
   }
 
   /**
