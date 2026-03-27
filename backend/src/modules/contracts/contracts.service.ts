@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit, Logger } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException, OnModuleInit, Logger } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
 import { createPublicClient, http, type Address } from "viem";
@@ -1258,25 +1258,55 @@ export class ContractsService implements OnModuleInit {
   // ============ DISPUTES & CURATION ============
 
   async getDisputesByToken(tokenId: string) {
-    return prisma.dispute.findMany({
+    const prismaDb = prisma as any;
+    return prismaDb.dispute.findMany({
       where: { tokenId },
-      include: { evidences: true },
+      include: {
+        evidences: true,
+        juryAssignments: { orderBy: { assignedAt: "asc" } },
+      },
       orderBy: { createdAt: "desc" },
     });
   }
 
   async getDisputesByReporter(reporterAddr: string) {
-    return prisma.dispute.findMany({
+    const prismaDb = prisma as any;
+    return prismaDb.dispute.findMany({
       where: { reporterAddr },
-      include: { evidences: true },
+      include: {
+        evidences: true,
+        juryAssignments: { orderBy: { assignedAt: "asc" } },
+      },
       orderBy: { createdAt: "desc" },
     });
   }
 
   async getDisputesByCreator(creatorAddr: string) {
-    return prisma.dispute.findMany({
+    const prismaDb = prisma as any;
+    return prismaDb.dispute.findMany({
       where: { creatorAddr },
-      include: { evidences: true },
+      include: {
+        evidences: true,
+        juryAssignments: { orderBy: { assignedAt: "asc" } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async getDisputesForJuror(jurorAddr: string) {
+    const prismaDb = prisma as any;
+    return prismaDb.dispute.findMany({
+      where: {
+        juryAssignments: {
+          some: {
+            jurorAddr,
+          },
+        },
+      },
+      include: {
+        evidences: true,
+        juryAssignments: { orderBy: { assignedAt: "asc" } },
+      },
       orderBy: { createdAt: "desc" },
     });
   }
@@ -1369,20 +1399,39 @@ export class ContractsService implements OnModuleInit {
   }
 
   async getPendingDisputes(limit: number) {
-    return prisma.dispute.findMany({
+    const prismaDb = prisma as any;
+    return prismaDb.dispute.findMany({
       where: {
-        status: { in: ["filed", "evidence", "review", "FILED", "EVIDENCE", "APPEALED"] },
+        status: {
+          in: [
+            "filed",
+            "evidence",
+            "review",
+            "escalated",
+            "jury_voting",
+            "FILED",
+            "EVIDENCE",
+            "APPEALED",
+          ],
+        },
       },
-      include: { evidences: true },
+      include: {
+        evidences: true,
+        juryAssignments: { orderBy: { assignedAt: "asc" } },
+      },
       orderBy: { createdAt: "asc" },
       take: limit,
     });
   }
 
   async getDisputeById(disputeId: string) {
-    return prisma.dispute.findUnique({
+    const prismaDb = prisma as any;
+    return prismaDb.dispute.findUnique({
       where: { id: disputeId },
-      include: { evidences: { orderBy: { createdAt: "asc" } } },
+      include: {
+        evidences: { orderBy: { createdAt: "asc" } },
+        juryAssignments: { orderBy: { assignedAt: "asc" } },
+      },
     });
   }
 
@@ -1391,6 +1440,195 @@ export class ContractsService implements OnModuleInit {
       where: { id: disputeId },
       data: { status: "review" },
     });
+  }
+
+  async escalateDisputeToJury(
+    disputeId: string,
+    body: { jurors: string[]; deadlineHours?: number },
+  ) {
+    const prismaDb = prisma as any;
+    const jurors = Array.from(
+      new Set(
+        (body.jurors || [])
+          .map((juror) => juror.toLowerCase())
+          .filter(Boolean),
+      ),
+    );
+    if (jurors.length < 3) {
+      throw new BadRequestException("At least 3 jurors are required");
+    }
+
+    const dispute = await prismaDb.dispute.findUnique({
+      where: { id: disputeId },
+    });
+    if (!dispute) {
+      throw new NotFoundException("Dispute not found");
+    }
+
+    const now = new Date();
+    const deadlineHours = Math.max(24, Math.min(body.deadlineHours || 168, 24 * 30));
+    const juryDeadlineAt = new Date(now.getTime() + deadlineHours * 60 * 60 * 1000);
+
+    const updated = await prismaDb.dispute.update({
+      where: { id: disputeId },
+      data: {
+        status: "escalated",
+        outcome: null,
+        resolvedAt: null,
+        escalatedToJuryAt: now,
+        juryDeadlineAt,
+        jurySize: jurors.length,
+        juryVotesForReporter: 0,
+        juryVotesForCreator: 0,
+        juryFinalizedAt: null,
+        juryAssignments: {
+          deleteMany: {},
+          create: jurors.map((jurorAddr) => ({
+            jurorAddr,
+          })),
+        },
+      },
+      include: {
+        evidences: { orderBy: { createdAt: "asc" } },
+        juryAssignments: { orderBy: { assignedAt: "asc" } },
+      },
+    });
+
+    await Promise.all(
+      jurors.map((jurorAddr) =>
+        prismaDb.notification.create({
+          data: {
+            walletAddress: jurorAddr,
+            type: "jury_assignment",
+            title: "Jury Duty Assigned",
+            message: `You were assigned to dispute ${disputeId} for token #${dispute.tokenId}. Voting closes ${juryDeadlineAt.toISOString()}.`,
+            disputeId,
+          },
+        }),
+      ),
+    );
+
+    return updated;
+  }
+
+  async castJuryVote(
+    disputeId: string,
+    body: { jurorAddr: string; vote: "reporter" | "creator" },
+  ) {
+    const prismaDb = prisma as any;
+    const jurorAddr = body.jurorAddr.toLowerCase();
+    const vote = body.vote;
+    if (!["reporter", "creator"].includes(vote)) {
+      throw new BadRequestException("Invalid vote");
+    }
+
+    const dispute = await prismaDb.dispute.findUnique({
+      where: { id: disputeId },
+      include: { juryAssignments: true },
+    });
+    if (!dispute) {
+      throw new NotFoundException("Dispute not found");
+    }
+    if (!["escalated", "jury_voting"].includes(dispute.status.toLowerCase())) {
+      throw new BadRequestException("Dispute is not in jury arbitration");
+    }
+
+    const assignment = dispute.juryAssignments.find((entry: { jurorAddr: string; vote?: string | null }) => entry.jurorAddr === jurorAddr);
+    if (!assignment) {
+      throw new BadRequestException("Juror is not assigned to this dispute");
+    }
+    if (assignment.vote) {
+      throw new BadRequestException("Juror has already voted");
+    }
+
+    const votedAt = new Date();
+
+    const [, updatedDispute] = await prismaDb.$transaction([
+      prismaDb.disputeJurorAssignment.update({
+        where: {
+          disputeId_jurorAddr: {
+            disputeId,
+            jurorAddr,
+          },
+        },
+        data: {
+          vote,
+          votedAt,
+        },
+      }),
+      prismaDb.dispute.update({
+        where: { id: disputeId },
+        data: {
+          status: "jury_voting",
+          ...(vote === "reporter" ? { juryVotesForReporter: { increment: 1 } } : {}),
+          ...(vote === "creator" ? { juryVotesForCreator: { increment: 1 } } : {}),
+        },
+        include: {
+          evidences: { orderBy: { createdAt: "asc" } },
+          juryAssignments: { orderBy: { assignedAt: "asc" } },
+        },
+      }),
+    ]);
+
+    return updatedDispute;
+  }
+
+  async finalizeJuryDecision(disputeId: string) {
+    const prismaDb = prisma as any;
+    const dispute = await prismaDb.dispute.findUnique({
+      where: { id: disputeId },
+      include: { juryAssignments: true },
+    });
+    if (!dispute) {
+      throw new NotFoundException("Dispute not found");
+    }
+
+    const reporterVotes = dispute.juryVotesForReporter;
+    const creatorVotes = dispute.juryVotesForCreator;
+    const jurySize = dispute.jurySize || dispute.juryAssignments.length;
+    const majority = Math.floor(jurySize / 2) + 1;
+    const deadlinePassed = dispute.juryDeadlineAt ? dispute.juryDeadlineAt <= new Date() : false;
+
+    if (reporterVotes < majority && creatorVotes < majority && !deadlinePassed) {
+      throw new BadRequestException("Jury vote is still pending");
+    }
+
+    const outcome =
+      reporterVotes >= majority ? "upheld" : creatorVotes >= majority ? "rejected" : "inconclusive";
+
+    const resolved = await prismaDb.dispute.update({
+      where: { id: disputeId },
+      data: {
+        status: "resolved",
+        outcome,
+        resolvedAt: new Date(),
+        juryFinalizedAt: new Date(),
+      },
+      include: {
+        evidences: { orderBy: { createdAt: "asc" } },
+        juryAssignments: { orderBy: { assignedAt: "asc" } },
+      },
+    });
+
+    const reputationDelta = outcome === "upheld" ? 10 : outcome === "rejected" ? -15 : 0;
+    if (reputationDelta !== 0) {
+      await prisma.curatorReputation.upsert({
+        where: { walletAddress: resolved.reporterAddr },
+        create: {
+          walletAddress: resolved.reporterAddr,
+          score: reputationDelta,
+          successfulFlags: outcome === "upheld" ? 1 : 0,
+          rejectedFlags: outcome === "rejected" ? 1 : 0,
+        },
+        update: {
+          score: { increment: reputationDelta },
+          ...(outcome === "upheld" ? { successfulFlags: { increment: 1 } } : {}),
+          ...(outcome === "rejected" ? { rejectedFlags: { increment: 1 } } : {}),
+        },
+      });
+    }
+
+    return resolved;
   }
 
   async getCuratorReputation(walletAddress: string) {

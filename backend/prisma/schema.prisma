@@ -519,16 +519,23 @@ model Dispute {
   tokenId          String
   reporterAddr     String
   creatorAddr      String
-  status           String            @default("filed") // filed|evidence|review|resolved|appealed
+  status           String            @default("filed") // filed|evidence|review|escalated|jury_voting|resolved|appealed
   outcome          String? // upheld|rejected|inconclusive
   evidenceURI      String
   counterStake     String // wei
   chainId          Int?
   transactionHash  String?
   resolvedAt       DateTime?
+  escalatedToJuryAt DateTime?
+  juryDeadlineAt   DateTime?
+  jurySize         Int?
+  juryVotesForReporter Int @default(0)
+  juryVotesForCreator  Int @default(0)
+  juryFinalizedAt  DateTime?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   evidences        DisputeEvidence[]
+  juryAssignments  DisputeJurorAssignment[]
 
   @@index([tokenId])
   @@index([reporterAddr])
@@ -547,6 +554,20 @@ model DisputeEvidence {
   createdAt   DateTime @default(now())
   dispute     Dispute  @relation(fields: [disputeId], references: [id])
 
+  @@index([disputeId])
+}
+
+model DisputeJurorAssignment {
+  id          String   @id @default(uuid())
+  disputeId   String
+  jurorAddr   String
+  vote        String? // reporter|creator
+  assignedAt  DateTime @default(now())
+  votedAt     DateTime?
+  dispute     Dispute  @relation(fields: [disputeId], references: [id])
+
+  @@unique([disputeId, jurorAddr])
+  @@index([jurorAddr])
   @@index([disputeId])
 }
 
