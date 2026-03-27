@@ -650,6 +650,15 @@ export class MetadataController {
   }
 
   /**
+   * Get disputes assigned to a juror
+   * GET /api/metadata/disputes/juror/:address
+   */
+  @Get("disputes/juror/:address")
+  async getDisputesForJuror(@Param("address") address: string) {
+    return this.contractsService.getDisputesForJuror(address.toLowerCase());
+  }
+
+  /**
    * File a new dispute
    * POST /api/metadata/disputes
    */
@@ -731,6 +740,45 @@ export class MetadataController {
   @Patch("disputes/:id/review")
   async markDisputeUnderReview(@Param("id") id: string) {
     return this.contractsService.markDisputeUnderReview(id);
+  }
+
+  /**
+   * Escalate dispute into DAO jury arbitration
+   * PATCH /api/metadata/disputes/:id/escalate-jury
+   */
+  @Patch("disputes/:id/escalate-jury")
+  async escalateDisputeToJury(
+    @Param("id") id: string,
+    @Body() body: { jurors: string[]; deadlineHours?: number },
+  ) {
+    if (!Array.isArray(body.jurors) || body.jurors.length < 3) {
+      throw new BadRequestException("At least 3 jurors are required");
+    }
+    return this.contractsService.escalateDisputeToJury(id, body);
+  }
+
+  /**
+   * Cast a jury vote on a dispute
+   * PATCH /api/metadata/disputes/:id/jury-vote
+   */
+  @Patch("disputes/:id/jury-vote")
+  async castJuryVote(
+    @Param("id") id: string,
+    @Body() body: { jurorAddr: string; vote: "reporter" | "creator" },
+  ) {
+    if (!body.jurorAddr || !["reporter", "creator"].includes(body.vote)) {
+      throw new BadRequestException("Body must include jurorAddr and vote=reporter|creator");
+    }
+    return this.contractsService.castJuryVote(id, body);
+  }
+
+  /**
+   * Finalize jury decision once majority or deadline is reached
+   * PATCH /api/metadata/disputes/:id/finalize-jury
+   */
+  @Patch("disputes/:id/finalize-jury")
+  async finalizeJuryDecision(@Param("id") id: string) {
+    return this.contractsService.finalizeJuryDecision(id);
   }
 
   // ============ NOTIFICATION ENDPOINTS ============

@@ -46,21 +46,25 @@ Reporter spots stolen content
 
 ### DisputeResolution.sol
 
-Manages the dispute lifecycle with four states:
+Manages the dispute lifecycle with six states:
 
-| State         | Transition                       |
-| ------------- | -------------------------------- |
-| `Filed`       | Initial state on `fileDispute()` |
-| `Evidence`    | First `submitEvidence()` call    |
-| `UnderReview` | Admin `markUnderReview()`        |
-| `Resolved`    | Admin `resolve(outcome)`         |
+| State         | Transition                                            |
+| ------------- | ----------------------------------------------------- |
+| `Filed`       | Initial state on `fileDispute()`                      |
+| `Evidence`    | First `submitEvidence()` call                         |
+| `UnderReview` | Admin `markUnderReview()`                             |
+| `Escalated`   | Admin `escalateToJury()` — jurors assigned            |
+| `JuryVoting`  | First `castJuryVote()` — voting in progress           |
+| `Resolved`    | Admin `resolve()` or `finalizeJuryDecision()`         |
 
 Key constraints:
 
 - One active dispute per `tokenId`
 - Max 5 evidence submissions per party
 - Only reporter or creator may submit evidence
-- Only contract owner resolves (Phase 1 — Kleros/DAO jury in future sprints)
+- Admin resolves directly, or escalates to DAO jury for decentralized arbitration
+- Jury uses pseudo-random selection from staked juror pool (`prevrandao`)
+- Supermajority voting (⌊n/2⌋ + 1) with 7-day deadline
 
 ### CurationRewards.sol
 
@@ -89,6 +93,10 @@ Base path: `/api/metadata/`
 | POST   | `disputes`                | File new dispute                                   |
 | POST   | `disputes/:id/evidence`   | Submit evidence                                    |
 | PATCH  | `disputes/:id/resolve`    | Admin resolve (`upheld`/`rejected`/`inconclusive`) |
+| GET    | `disputes/juror/:addr`    | Disputes assigned to juror                         |
+| PATCH  | `disputes/:id/escalate-jury` | Escalate dispute to DAO jury arbitration        |
+| PATCH  | `disputes/:id/jury-vote`  | Cast jury vote (`reporter`/`creator`)              |
+| PATCH  | `disputes/:id/finalize-jury` | Finalize jury decision                          |
 | GET    | `curators/:address`       | Get curator reputation                             |
 | GET    | `curators/leaderboard`    | Top curators by score                              |
 
@@ -96,11 +104,13 @@ Base path: `/api/metadata/`
 
 ```
 Dispute ──< DisputeEvidence
+       ──< DisputeJurorAssignment
 CuratorReputation (per wallet)
 ```
 
-- `Dispute`: tokenId, reporterAddr, creatorAddr, status, outcome, evidenceURI, counterStake
+- `Dispute`: tokenId, reporterAddr, creatorAddr, status, outcome, evidenceURI, counterStake, escalatedToJuryAt, juryDeadlineAt, jurySize, juryVotesForReporter, juryVotesForCreator, juryFinalizedAt
 - `DisputeEvidence`: submitter, party (reporter/creator), evidenceURI, description
+- `DisputeJurorAssignment`: disputeId, jurorAddr, vote, assignedAt, votedAt (unique on disputeId+jurorAddr)
 - `CuratorReputation`: score, successfulFlags, rejectedFlags, totalBounties
 
 ## Frontend
@@ -146,9 +156,21 @@ Includes a **reputation badge** showing score, successful flags, and rejected fl
 - ✅ `useDisputeNotifications` hook, `NotificationBell`, `NotificationPreferences`
 - ✅ Real-time auto-refresh in `DisputeDashboard`
 
+## Sprint 4 (Complete)
+
+- ✅ `DisputeResolution.sol`: juror pool management (`registerJuror`, `removeJuror`)
+- ✅ `escalateToJury()` — pseudo-random jury selection from staked pool
+- ✅ `castJuryVote()` — assigned jurors vote Reporter or Creator
+- ✅ `finalizeJuryDecision()` — supermajority resolution or deadline-based Inconclusive
+- ✅ Appeal clears jury state for re-escalation
+- ✅ Backend: `escalateDisputeToJury()`, `castJuryVote()`, `finalizeJuryDecision()` with Prisma transactions
+- ✅ `DisputeJurorAssignment` model with unique `(disputeId, jurorAddr)` constraint
+- ✅ Jury duty notifications sent on escalation
+- ✅ Frontend: arbitration timeline, jury panel with vote counts, inline vote buttons
+- ✅ 30 Foundry tests (5 new jury arbitration tests)
+
 ## Future Sprints
 
-- **Sprint 4:** Kleros/DAO jury for decentralized arbitration
 - **Sprint 5:** Proof-of-humanity gate, enhanced reputation system
 - **Sprint 6:** E2E testing, security audit, deployment
 - **Sprint 7:** Public analytics, anti-abuse hardening

@@ -25,6 +25,8 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
 
     uint256 public constant MAX_EVIDENCE_PER_PARTY = 5;
     uint8 public constant MAX_APPEALS = 2;
+    uint8 public constant DEFAULT_JURY_SIZE = 3;
+    uint256 public constant DEFAULT_JURY_VOTING_PERIOD = 7 days;
 
     // ============ State ============
 
@@ -44,6 +46,21 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
 
     /// @notice tokenId → active disputeId (0 = no active dispute)
     mapping(uint256 => uint256) public activeDisputeByToken;
+
+    /// @notice eligible juror set managed from the current staked-curator pool
+    mapping(address => bool) public eligibleJurors;
+
+    /// @notice pool of eligible jurors used for pseudo-random assignment
+    address[] public jurorPool;
+
+    /// @notice disputeId → assigned jurors
+    mapping(uint256 => address[]) private _assignedJurors;
+
+    /// @notice disputeId → juror → assigned?
+    mapping(uint256 => mapping(address => bool)) public isAssignedJuror;
+
+    /// @notice disputeId → juror → vote
+    mapping(uint256 => mapping(address => JuryVote)) public juryVotes;
 
     // ============ Structs ============
 
@@ -90,6 +107,25 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         uint8 appealNumber
     );
 
+    event JurorRegistered(address indexed juror);
+    event JurorRemoved(address indexed juror);
+    event DisputeEscalatedToJury(
+        uint256 indexed disputeId,
+        uint8 jurySize,
+        uint256 juryDeadlineAt
+    );
+    event JuryVoteCast(
+        uint256 indexed disputeId,
+        address indexed juror,
+        JuryVote vote
+    );
+    event JuryResolved(
+        uint256 indexed disputeId,
+        Outcome outcome,
+        uint8 votesForReporter,
+        uint8 votesForCreator
+    );
+
     // ============ Errors ============
 
     error DisputeNotFound();
@@ -102,6 +138,14 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
     error DisputeNotResolved();
     error MaxAppealsReached();
     error NotLosingParty();
+    error InvalidDisputeStatus();
+    error ZeroAddress();
+    error JurorAlreadyRegistered();
+    error JurorNotRegistered();
+    error InsufficientJurors();
+    error NotAssignedJuror();
+    error AlreadyVoted();
+    error JuryVotePending();
 
     // ============ Constructor ============
 
@@ -138,7 +182,12 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
             outcome: Outcome.Pending,
             filedAt: block.timestamp,
             resolvedAt: 0,
-            appealCount: 0
+            appealCount: 0,
+            escalatedAt: 0,
+            juryDeadlineAt: 0,
+            jurorCount: 0,
+            votesForReporter: 0,
+            votesForCreator: 0
         });
 
         activeDisputeByToken[tokenId] = disputeId;
@@ -227,6 +276,10 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         Dispute storage d = disputes[disputeId];
         if (d.filedAt == 0) revert DisputeNotFound();
         if (d.status == DisputeStatus.Resolved) revert DisputeAlreadyResolved();
+        if (
+            d.status == DisputeStatus.Escalated ||
+            d.status == DisputeStatus.JuryVoting
+        ) revert InvalidDisputeStatus();
         if (outcome == Outcome.Pending) revert InvalidOutcome();
 
         d.status = DisputeStatus.Resolved;
@@ -237,6 +290,131 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         activeDisputeByToken[d.tokenId] = 0;
 
         emit DisputeResolved(disputeId, d.tokenId, outcome, msg.sender);
+    }
+
+    // ============ Jury Management ============
+
+    function registerJuror(address juror) external onlyOwner {
+        if (juror == address(0)) revert ZeroAddress();
+        if (eligibleJurors[juror]) revert JurorAlreadyRegistered();
+
+        eligibleJurors[juror] = true;
+        jurorPool.push(juror);
+
+        emit JurorRegistered(juror);
+    }
+
+    function removeJuror(address juror) external onlyOwner {
+        if (!eligibleJurors[juror]) revert JurorNotRegistered();
+
+        eligibleJurors[juror] = false;
+
+        uint256 length = jurorPool.length;
+        for (uint256 i = 0; i < length; i++) {
+            if (jurorPool[i] == juror) {
+                jurorPool[i] = jurorPool[length - 1];
+                jurorPool.pop();
+                emit JurorRemoved(juror);
+                return;
+            }
+        }
+
+        revert JurorNotRegistered();
+    }
+
+    function escalateToJury(uint256 disputeId) external onlyOwner {
+        Dispute storage d = disputes[disputeId];
+        if (d.filedAt == 0) revert DisputeNotFound();
+        if (
+            d.status != DisputeStatus.UnderReview &&
+            d.status != DisputeStatus.Appealed
+        ) revert InvalidDisputeStatus();
+        if (jurorPool.length < DEFAULT_JURY_SIZE) revert InsufficientJurors();
+
+        delete _assignedJurors[disputeId];
+
+        d.status = DisputeStatus.Escalated;
+        d.outcome = Outcome.Pending;
+        d.resolvedAt = 0;
+        d.escalatedAt = block.timestamp;
+        d.juryDeadlineAt = block.timestamp + DEFAULT_JURY_VOTING_PERIOD;
+        d.jurorCount = DEFAULT_JURY_SIZE;
+        d.votesForReporter = 0;
+        d.votesForCreator = 0;
+
+        _assignJurors(disputeId, DEFAULT_JURY_SIZE);
+
+        emit DisputeEscalatedToJury(
+            disputeId,
+            DEFAULT_JURY_SIZE,
+            d.juryDeadlineAt
+        );
+    }
+
+    function castJuryVote(uint256 disputeId, JuryVote vote) external {
+        Dispute storage d = disputes[disputeId];
+        if (
+            d.status != DisputeStatus.Escalated &&
+            d.status != DisputeStatus.JuryVoting
+        ) revert InvalidDisputeStatus();
+        if (!isAssignedJuror[disputeId][msg.sender]) revert NotAssignedJuror();
+        if (vote != JuryVote.Reporter && vote != JuryVote.Creator) {
+            revert InvalidOutcome();
+        }
+        if (juryVotes[disputeId][msg.sender] != JuryVote.None) {
+            revert AlreadyVoted();
+        }
+
+        if (d.status == DisputeStatus.Escalated) {
+            d.status = DisputeStatus.JuryVoting;
+        }
+
+        juryVotes[disputeId][msg.sender] = vote;
+
+        if (vote == JuryVote.Reporter) {
+            d.votesForReporter++;
+        } else {
+            d.votesForCreator++;
+        }
+
+        emit JuryVoteCast(disputeId, msg.sender, vote);
+    }
+
+    function finalizeJuryDecision(uint256 disputeId) external {
+        Dispute storage d = disputes[disputeId];
+        if (
+            d.status != DisputeStatus.Escalated &&
+            d.status != DisputeStatus.JuryVoting
+        ) revert InvalidDisputeStatus();
+
+        uint8 majority = (d.jurorCount / 2) + 1;
+        bool reporterWon = d.votesForReporter >= majority;
+        bool creatorWon = d.votesForCreator >= majority;
+        bool deadlinePassed = block.timestamp >= d.juryDeadlineAt;
+
+        if (!reporterWon && !creatorWon && !deadlinePassed) {
+            revert JuryVotePending();
+        }
+
+        if (reporterWon) {
+            d.outcome = Outcome.Upheld;
+        } else if (creatorWon) {
+            d.outcome = Outcome.Rejected;
+        } else {
+            d.outcome = Outcome.Inconclusive;
+        }
+
+        d.status = DisputeStatus.Resolved;
+        d.resolvedAt = block.timestamp;
+        activeDisputeByToken[d.tokenId] = 0;
+
+        emit JuryResolved(
+            disputeId,
+            d.outcome,
+            d.votesForReporter,
+            d.votesForCreator
+        );
+        emit DisputeResolved(disputeId, d.tokenId, d.outcome, msg.sender);
     }
 
     // ============ Appeals ============
@@ -266,6 +444,12 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         d.status = DisputeStatus.Appealed;
         d.outcome = Outcome.Pending;
         d.resolvedAt = 0;
+        d.escalatedAt = 0;
+        d.juryDeadlineAt = 0;
+        d.jurorCount = 0;
+        d.votesForReporter = 0;
+        d.votesForCreator = 0;
+        _clearAssignedJurors(disputeId);
 
         // Re-activate the dispute for this token
         activeDisputeByToken[d.tokenId] = disputeId;
@@ -281,6 +465,12 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         return disputes[disputeId];
     }
 
+    function getAssignedJurors(
+        uint256 disputeId
+    ) external view returns (address[] memory) {
+        return _assignedJurors[disputeId];
+    }
+
     function getEvidence(
         uint256 disputeId,
         uint256 index
@@ -294,5 +484,47 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
 
     function getActiveDispute(uint256 tokenId) external view returns (uint256) {
         return activeDisputeByToken[tokenId];
+    }
+
+    function _assignJurors(uint256 disputeId, uint8 count) internal {
+        uint256 poolSize = jurorPool.length;
+        uint256 nonce = 0;
+
+        while (_assignedJurors[disputeId].length < count) {
+            uint256 index = uint256(
+                keccak256(
+                    abi.encodePacked(
+                        block.prevrandao,
+                        block.timestamp,
+                        disputeId,
+                        nonce
+                    )
+                )
+            ) % poolSize;
+            address juror = jurorPool[index];
+            nonce++;
+
+            if (
+                juror == disputes[disputeId].reporter ||
+                juror == disputes[disputeId].creator ||
+                isAssignedJuror[disputeId][juror]
+            ) {
+                continue;
+            }
+
+            isAssignedJuror[disputeId][juror] = true;
+            _assignedJurors[disputeId].push(juror);
+        }
+    }
+
+    function _clearAssignedJurors(uint256 disputeId) internal {
+        address[] storage assigned = _assignedJurors[disputeId];
+        uint256 length = assigned.length;
+        for (uint256 i = 0; i < length; i++) {
+            address juror = assigned[i];
+            isAssignedJuror[disputeId][juror] = false;
+            juryVotes[disputeId][juror] = JuryVote.None;
+        }
+        delete _assignedJurors[disputeId];
     }
 }

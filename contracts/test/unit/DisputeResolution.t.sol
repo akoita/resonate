@@ -15,6 +15,10 @@ contract DisputeResolutionTest is Test {
     address public admin = makeAddr("admin");
     address public reporter = makeAddr("reporter");
     address public creator = makeAddr("creator");
+    address public juror1 = makeAddr("juror1");
+    address public juror2 = makeAddr("juror2");
+    address public juror3 = makeAddr("juror3");
+    address public juror4 = makeAddr("juror4");
 
     event DisputeFiled(
         uint256 indexed disputeId,
@@ -41,6 +45,13 @@ contract DisputeResolutionTest is Test {
 
     function setUp() public {
         dr = new DisputeResolution(admin);
+
+        vm.startPrank(admin);
+        dr.registerJuror(juror1);
+        dr.registerJuror(juror2);
+        dr.registerJuror(juror3);
+        dr.registerJuror(juror4);
+        vm.stopPrank();
     }
 
     // ============ Filing ============
@@ -254,6 +265,103 @@ contract DisputeResolutionTest is Test {
         vm.prank(reporter);
         vm.expectRevert();
         dr.markUnderReview(1);
+    }
+
+    // ============ Jury Arbitration ============
+
+    function test_EscalateToJury_AssignsJurors() public {
+        dr.fileDispute(42, reporter, creator, "ipfs://e1");
+
+        vm.prank(admin);
+        dr.markUnderReview(1);
+
+        vm.prank(admin);
+        dr.escalateToJury(1);
+
+        IDisputeResolution.Dispute memory d = dr.getDispute(1);
+        assertEq(
+            uint256(d.status),
+            uint256(IDisputeResolution.DisputeStatus.Escalated)
+        );
+        assertEq(d.jurorCount, 3);
+        assertTrue(d.escalatedAt > 0);
+        assertTrue(d.juryDeadlineAt > d.escalatedAt);
+
+        address[] memory assigned = dr.getAssignedJurors(1);
+        assertEq(assigned.length, 3);
+    }
+
+    function test_EscalateToJury_RevertWithoutReview() public {
+        dr.fileDispute(42, reporter, creator, "ipfs://e1");
+
+        vm.prank(admin);
+        vm.expectRevert(DisputeResolution.InvalidDisputeStatus.selector);
+        dr.escalateToJury(1);
+    }
+
+    function test_CastJuryVote_AndFinalizeReporterWin() public {
+        dr.fileDispute(42, reporter, creator, "ipfs://e1");
+
+        vm.startPrank(admin);
+        dr.markUnderReview(1);
+        dr.escalateToJury(1);
+        vm.stopPrank();
+
+        address[] memory assigned = dr.getAssignedJurors(1);
+
+        vm.prank(assigned[0]);
+        dr.castJuryVote(1, IDisputeResolution.JuryVote.Reporter);
+        vm.prank(assigned[1]);
+        dr.castJuryVote(1, IDisputeResolution.JuryVote.Reporter);
+
+        dr.finalizeJuryDecision(1);
+
+        IDisputeResolution.Dispute memory d = dr.getDispute(1);
+        assertEq(
+            uint256(d.status),
+            uint256(IDisputeResolution.DisputeStatus.Resolved)
+        );
+        assertEq(
+            uint256(d.outcome),
+            uint256(IDisputeResolution.Outcome.Upheld)
+        );
+        assertEq(d.votesForReporter, 2);
+        assertEq(dr.getActiveDispute(42), 0);
+    }
+
+    function test_FinalizeJuryDecision_RevertUntilMajorityOrDeadline() public {
+        dr.fileDispute(42, reporter, creator, "ipfs://e1");
+
+        vm.startPrank(admin);
+        dr.markUnderReview(1);
+        dr.escalateToJury(1);
+        vm.stopPrank();
+
+        address[] memory assigned = dr.getAssignedJurors(1);
+
+        vm.prank(assigned[0]);
+        dr.castJuryVote(1, IDisputeResolution.JuryVote.Reporter);
+
+        vm.expectRevert(DisputeResolution.JuryVotePending.selector);
+        dr.finalizeJuryDecision(1);
+    }
+
+    function test_FinalizeJuryDecision_InconclusiveAfterDeadline() public {
+        dr.fileDispute(42, reporter, creator, "ipfs://e1");
+
+        vm.startPrank(admin);
+        dr.markUnderReview(1);
+        dr.escalateToJury(1);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 8 days);
+        dr.finalizeJuryDecision(1);
+
+        IDisputeResolution.Dispute memory d = dr.getDispute(1);
+        assertEq(
+            uint256(d.outcome),
+            uint256(IDisputeResolution.Outcome.Inconclusive)
+        );
     }
 
     // ============ Can Re-file After Resolution ============

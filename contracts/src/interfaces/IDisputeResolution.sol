@@ -10,6 +10,8 @@ interface IDisputeResolution {
         Filed,
         Evidence,
         UnderReview,
+        Escalated,
+        JuryVoting,
         Resolved,
         Appealed
     }
@@ -19,6 +21,12 @@ interface IDisputeResolution {
         Upheld,
         Rejected,
         Inconclusive
+    }
+
+    enum JuryVote {
+        None,
+        Reporter,
+        Creator
     }
 
     struct Dispute {
@@ -32,6 +40,11 @@ interface IDisputeResolution {
         uint256 filedAt;
         uint256 resolvedAt;
         uint8 appealCount;
+        uint256 escalatedAt;
+        uint256 juryDeadlineAt;
+        uint8 jurorCount;
+        uint8 votesForReporter;
+        uint8 votesForCreator;
     }
 
     function fileDispute(
@@ -46,6 +59,10 @@ interface IDisputeResolution {
     function getDispute(
         uint256 disputeId
     ) external view returns (Dispute memory);
+
+    function getAssignedJurors(
+        uint256 disputeId
+    ) external view returns (address[] memory);
 
     function disputeCount() external view returns (uint256);
 }
