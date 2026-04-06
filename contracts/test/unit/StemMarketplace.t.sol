@@ -18,12 +18,14 @@ contract StemMarketplaceTest is Test {
     TransferValidator public validator;
     ERC20Mock public paymentToken;
     MockContentProtectionMarketplace public contentProtection;
+    uint256 public authorizerKey = 0xA11CE;
 
     address public admin = makeAddr("admin");
     address public feeRecipient = makeAddr("feeRecipient");
     address public royaltyReceiver = makeAddr("royaltyReceiver");
     address public seller = makeAddr("seller");
     address public buyer = makeAddr("buyer");
+    address public authorizer;
 
     uint256 constant PROTOCOL_FEE_BPS = 250; // 2.5%
     uint256 constant ROYALTY_BPS = 500; // 5%
@@ -50,6 +52,7 @@ contract StemMarketplaceTest is Test {
     );
 
     function setUp() public {
+        authorizer = vm.addr(authorizerKey);
         vm.startPrank(admin);
 
         // Deploy contracts
@@ -70,6 +73,8 @@ contract StemMarketplaceTest is Test {
 
         // Grant minter role to seller so they can call mint()
         stemNFT.grantRole(stemNFT.MINTER_ROLE(), seller);
+        stemNFT.grantRole(stemNFT.MINT_AUTHORIZER_ROLE(), authorizer);
+        stemNFT.setContentProtection(address(contentProtection));
 
         vm.stopPrank();
 
@@ -279,6 +284,55 @@ contract StemMarketplaceTest is Test {
             listingId
         );
         assertEq(listing.pricePerUnit, 1 ether);
+    }
+
+    function test_List_ProtectedMint_RevertPriceExceedsStakeCapWithoutManualRootRegistration()
+        public
+    {
+        uint256[] memory parentIds = new uint256[](0);
+        uint256 releaseId = 77;
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes32 nonce = keccak256("stake-cap-auto-root");
+
+        contentProtection.setAttested(releaseId, true);
+        contentProtection.setMaxListingPrice(releaseId, 1 ether);
+
+        bytes32 digest = stemNFT.hashMintAuthorization(
+            seller,
+            seller,
+            1,
+            "ipfs://protected-stem",
+            releaseId,
+            royaltyReceiver,
+            uint96(ROYALTY_BPS),
+            true,
+            parentIds,
+            deadline,
+            nonce
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(authorizerKey, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        vm.prank(seller);
+        uint256 tokenId = stemNFT.mintAuthorized(
+            seller,
+            1,
+            "ipfs://protected-stem",
+            releaseId,
+            royaltyReceiver,
+            uint96(ROYALTY_BPS),
+            true,
+            parentIds,
+            deadline,
+            nonce,
+            signature
+        );
+
+        assertEq(contentProtection.stemToReleaseRoot(tokenId), releaseId);
+
+        vm.prank(seller);
+        vm.expectRevert(StemMarketplaceV2.PriceExceedsStakeCap.selector);
+        marketplace.list(tokenId, 1, 2 ether, address(0), LISTING_DURATION);
     }
 
     function test_List_RevertInsufficientBalance() public {

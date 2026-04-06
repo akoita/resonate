@@ -98,6 +98,9 @@ contract DeployProtocol is Script {
         stemNFT.setContentProtection(address(contentProtection));
         console.log("  -> ContentProtection linked to StemNFT");
 
+        contentProtection.setRegistrar(address(stemNFT), true);
+        console.log("  -> StemNFT granted ContentProtection registrar role");
+
         contentProtection.setRegistrar(address(marketplace), true);
         console.log("  -> Marketplace granted ContentProtection registrar role");
 

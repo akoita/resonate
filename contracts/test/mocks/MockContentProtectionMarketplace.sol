@@ -4,8 +4,17 @@ pragma solidity ^0.8.28;
 contract MockContentProtectionMarketplace {
     uint256 public constant DEFAULT_MAX_PRICE = type(uint256).max;
 
+    mapping(uint256 => bool) public attested;
     mapping(uint256 => uint256) public stemToReleaseRoot;
     mapping(uint256 => uint256) public releaseMaxListingPrice;
+
+    function setAttested(uint256 tokenId, bool value) external {
+        attested[tokenId] = value;
+    }
+
+    function isReleaseVerified(uint256 releaseId) external view returns (bool) {
+        return attested[releaseId];
+    }
 
     function registerStemProtectionRoot(
         uint256 releaseId,

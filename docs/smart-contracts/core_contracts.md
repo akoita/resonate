@@ -172,7 +172,9 @@ Hierarchy model:
 - releases are the canonical protected roots that publish flow attests and stakes
 - tracks are directly attested only when they need their own disputeable provenance record
 - each stem token is linked to one canonical parent track via `registerStem(trackId, stemTokenId)`
-- stems can also be **directly linked** to a release root via `registerStemProtectionRoot(releaseId, stemTokenId)` — used by `listLastMint()` to establish the stake-to-price relationship
+- stems can also be **directly linked** to a release root via `registerStemProtectionRoot(releaseId, stemTokenId)`
+- protected mints now register that release-root link during `StemNFT` minting, so later resale listings through `list()` still enforce the same stake cap
+- `listLastMint()` also registers the release-root link before creating the listing, which preserves enforcement for mint-and-list flows
 - `resolveStakeRoot(tokenId)` walks the hierarchy (direct root → canonical track → parent release → self) to find the active stake
 - `getMaxListingPrice(tokenId)` returns `stake × maxPriceMultiplier`, or `type(uint256).max` if no active stake exists
 - `isTrackVerified(trackId)` requires both the track attestation and its parent release attestation to remain valid

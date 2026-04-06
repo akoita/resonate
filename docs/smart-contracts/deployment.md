@@ -50,6 +50,8 @@ make deploy-sepolia
 
 This runs [`contracts/scripts/deploy-sepolia.sh`](../../contracts/scripts/deploy-sepolia.sh), writes a deployment record to `contracts/deployments/sepolia.json`, and refreshes local app config via `contracts/scripts/update-protocol-config.sh`.
 
+The protocol deploy script also grants both `StemMarketplaceV2` and `StemNFT` registrar access in `ContentProtection` so protected mint flows and later marketplace listings resolve the correct stake root.
+
 ### Refresh local contract config
 
 Use these commands after deploying to a local Anvil or a local Sepolia fork:
