@@ -87,15 +87,25 @@ Native marketplace with enforced royalties:
 - Automatically routes royalties on every sale
 - Caps royalties at 25% to prevent abuse
 - Protocol fee (configurable, max 5%)
+- **Stake-to-price enforcement** — listing price per unit cannot exceed `maxPriceMultiplier × stake` (via `ContentProtection.getMaxListingPrice()`)
 
 ```solidity
-// List stems for sale
+// List stems for sale (price must be within stake cap)
 uint256 listingId = marketplace.list(
     tokenId,        // stem to sell
     amount,         // quantity
-    pricePerUnit,   // ETH price per unit
+    pricePerUnit,   // ETH price per unit (capped by stake)
     address(0),     // payment token (0 = ETH)
     7 days          // duration
+);
+
+// List immediately after minting (links stem to release for price cap)
+uint256 listingId = marketplace.listLastMint(
+    amount,         // quantity
+    pricePerUnit,   // ETH price per unit
+    address(0),     // payment token (0 = ETH)
+    7 days,         // duration
+    releaseId       // release root for stake-to-price resolution
 );
 
 // Buy from listing (royalties enforced automatically)
@@ -130,6 +140,7 @@ UUPS-upgradeable contract for anti-piracy enforcement:
 - **Slashing** — On confirmed infringement: 60% reporter, 30% treasury, 10% burned
 - **Blacklisting** — Repeat offenders blocked from all protocol operations
 - **Hierarchy** — Releases and tracks are directly protected; stems inherit verification from a canonical parent track
+- **Stake-to-price proportionality** — `maxPriceMultiplier` (default 10×) caps listing price relative to staked amount, preventing high-price listings with minimal stakes
 
 ```solidity
 // 1. Attest the release root / protected content record
@@ -143,10 +154,16 @@ contentProtection.attestRelease(
 // 2. Stake ETH for the protected release root
 contentProtection.stakeForRelease{value: 0.01 ether}(releaseId);
 
-// 3. Admin: slash on confirmed theft
+// 3. Query the max listing price for a stem (stake × multiplier)
+uint256 maxPrice = contentProtection.getMaxListingPrice(stemTokenId);
+
+// 4. Admin: set the price multiplier (governance)
+contentProtection.setMaxPriceMultiplier(15); // 15× stake
+
+// 5. Admin: slash on confirmed theft
 contentProtection.slash(releaseId, reporterAddress);
 
-// 4. Admin: refund stake after clean escrow period
+// 6. Admin: refund stake after clean escrow period
 contentProtection.refundStake(releaseId);
 ```
 
@@ -155,6 +172,11 @@ Hierarchy model:
 - releases are the canonical protected roots that publish flow attests and stakes
 - tracks are directly attested only when they need their own disputeable provenance record
 - each stem token is linked to one canonical parent track via `registerStem(trackId, stemTokenId)`
+- stems can also be **directly linked** to a release root via `registerStemProtectionRoot(releaseId, stemTokenId)`
+- protected mints now register that release-root link during `StemNFT` minting, so later resale listings through `list()` still enforce the same stake cap
+- `listLastMint()` also registers the release-root link before creating the listing, which preserves enforcement for mint-and-list flows
+- `resolveStakeRoot(tokenId)` walks the hierarchy (direct root → canonical track → parent release → self) to find the active stake
+- `getMaxListingPrice(tokenId)` returns `stake × maxPriceMultiplier`, or `type(uint256).max` if no active stake exists
 - `isTrackVerified(trackId)` requires both the track attestation and its parent release attestation to remain valid
 - `isStemVerified(stemTokenId)` resolves the canonical track and inherits that verification status
 - mint authorization checks the signed `protectionId` release root, not a freshly minted stem token
@@ -287,3 +309,5 @@ forge test --match-path "test/fuzz/*" --fuzz-runs 1024
 6. **Transfer validation** - Whitelist + blacklist enforcement
 7. **UUPS upgrade safety** - Only owner can authorize ContentProtection upgrades
 8. **Blacklist propagation** - TransferValidator checks ContentProtection blacklist on every transfer
+9. **Stake-to-price cap** - `PriceExceedsStakeCap` revert prevents listings with price > `stake × maxPriceMultiplier`
+10. **Upgrade continuity** - `reinitializeV2()` seeds `maxPriceMultiplier = 10` on existing deployments via UUPS upgrade

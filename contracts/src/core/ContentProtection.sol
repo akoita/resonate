@@ -47,6 +47,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     address public treasury;
 
     uint256 public stakeAmount; // Default: 0.01 ETH (adjustable by owner)
+    uint256 public maxPriceMultiplier; // Default: 10x stake per unit
     uint256 public nextTokenId; // Counter for attestation-assigned token IDs
 
     mapping(uint256 => Attestation) public attestations;
@@ -56,6 +57,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     mapping(uint256 => uint256[]) private _releaseToTracks;
     mapping(uint256 => uint256[]) private _trackToStems;
     mapping(uint256 => uint256) public stemToCanonicalTrack;
+    mapping(uint256 => uint256) public stemToProtectionRoot;
     mapping(uint256 => uint256) public trackToParentRelease;
 
     // Slash distribution (basis points, must sum to 10000)
@@ -97,10 +99,18 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     event Blacklisted(address indexed account);
     event BlacklistRemoved(address indexed account);
     event StakeAmountUpdated(uint256 oldAmount, uint256 newAmount);
+    event MaxPriceMultiplierUpdated(
+        uint256 oldMultiplier,
+        uint256 newMultiplier
+    );
     event TreasuryUpdated(address oldTreasury, address newTreasury);
     event RegistrarUpdated(address indexed registrar, bool allowed);
     event TrackRegistered(uint256 indexed releaseId, uint256 indexed trackId);
     event StemRegistered(uint256 indexed trackId, uint256 indexed stemTokenId);
+    event StemProtectionRootRegistered(
+        uint256 indexed releaseId,
+        uint256 indexed stemTokenId
+    );
     event TrackRevoked(uint256 indexed trackId);
     event ReleaseRevoked(uint256 indexed releaseId);
     event OwnershipTransferred(
@@ -123,6 +133,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     error RegistrationConflict();
     error TransferFailed();
     error ZeroAddress();
+    error InvalidMultiplier();
 
     // ============ Modifiers ============
 
@@ -155,6 +166,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         owner = _owner;
         treasury = _treasury;
         stakeAmount = _stakeAmount;
+        maxPriceMultiplier = 10;
     }
 
     // ============ Attestation ============
@@ -347,6 +359,13 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         stakeAmount = newAmount;
     }
 
+    function setMaxPriceMultiplier(uint256 newMultiplier) external onlyOwner {
+        if (newMultiplier == 0) revert InvalidMultiplier();
+        uint256 oldMultiplier = maxPriceMultiplier;
+        maxPriceMultiplier = newMultiplier;
+        emit MaxPriceMultiplierUpdated(oldMultiplier, newMultiplier);
+    }
+
     function setTreasury(address newTreasury) external onlyOwner {
         if (newTreasury == address(0)) revert ZeroAddress();
         emit TreasuryUpdated(treasury, newTreasury);
@@ -362,6 +381,12 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     // ============ UUPS ============
 
     function _authorizeUpgrade(address) internal override onlyOwner {}
+
+    function reinitializeV2() external reinitializer(2) {
+        if (maxPriceMultiplier == 0) {
+            maxPriceMultiplier = 10;
+        }
+    }
 
     // ============ Views ============
 
@@ -399,6 +424,22 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         _trackToStems[trackId].push(stemTokenId);
 
         emit StemRegistered(trackId, stemTokenId);
+    }
+
+    function registerStemProtectionRoot(
+        uint256 releaseId,
+        uint256 stemTokenId
+    ) external onlyRegistrarOrOwner {
+        if (!_hasAttestation(releaseId)) revert NotAttested();
+        if (releaseId == stemTokenId) revert InvalidParent();
+
+        uint256 currentReleaseId = stemToProtectionRoot[stemTokenId];
+        if (currentReleaseId == releaseId) return;
+        if (currentReleaseId != 0) revert RegistrationConflict();
+
+        stemToProtectionRoot[stemTokenId] = releaseId;
+
+        emit StemProtectionRootRegistered(releaseId, stemTokenId);
     }
 
     function revokeTrack(uint256 trackId) external onlyOwner {
@@ -492,6 +533,29 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     ) external view returns (uint256) {
         uint256 canonicalTrackId = stemToCanonicalTrack[tokenId];
         return canonicalTrackId == 0 ? tokenId : canonicalTrackId;
+    }
+
+    function resolveStakeRoot(uint256 tokenId) public view returns (uint256) {
+        uint256 directReleaseId = stemToProtectionRoot[tokenId];
+        if (directReleaseId != 0) return directReleaseId;
+
+        uint256 canonicalTrackId = stemToCanonicalTrack[tokenId];
+        if (canonicalTrackId != 0) {
+            uint256 parentReleaseId = trackToParentRelease[canonicalTrackId];
+            return parentReleaseId != 0 ? parentReleaseId : canonicalTrackId;
+        }
+
+        uint256 releaseId = trackToParentRelease[tokenId];
+        return releaseId != 0 ? releaseId : tokenId;
+    }
+
+    function getMaxListingPrice(
+        uint256 tokenId
+    ) external view returns (uint256) {
+        uint256 stakeRoot = resolveStakeRoot(tokenId);
+        if (!stakes[stakeRoot].active) return type(uint256).max;
+
+        return stakes[stakeRoot].amount * maxPriceMultiplier;
     }
 
     function _hasAttestation(uint256 tokenId) internal view returns (bool) {

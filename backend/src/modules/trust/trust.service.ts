@@ -1,5 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { prisma } from "../../db/prisma";
+import { createPublicClient, http, type Address } from "viem";
+import { foundry, sepolia, baseSepolia } from "viem/chains";
 
 /**
  * Trust tier thresholds per issue #406:
@@ -14,6 +17,12 @@ interface TrustTierInfo {
   escrowDays: number;
 }
 
+type TrustRequirement = Awaited<ReturnType<typeof prisma.creatorTrust.upsert>> & {
+  maxPriceMultiplier: number;
+  maxListingPriceWei: string | null;
+  maxListingPriceUncapped: boolean;
+};
+
 const TIERS: Record<string, TrustTierInfo> = {
   verified: { tier: "verified", stakeAmountWei: "0", escrowDays: 3 },
   trusted: { tier: "trusted", stakeAmountWei: "1000000000000000", escrowDays: 7 }, // 0.001 ETH
@@ -21,9 +30,26 @@ const TIERS: Record<string, TrustTierInfo> = {
   new: { tier: "new", stakeAmountWei: "10000000000000000", escrowDays: 30 }, // 0.01 ETH
 };
 
+const CONTENT_PROTECTION_CONFIG_ABI = [
+  {
+    name: "maxPriceMultiplier",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
+
+const DEFAULT_MAX_PRICE_MULTIPLIER = 10n;
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const DEFAULT_SEPOLIA_RPC_URL = "https://sepolia.drpc.org";
+
 @Injectable()
 export class TrustService {
   private readonly logger = new Logger(TrustService.name);
+  private maxPriceMultiplierCache: { value: bigint; expiresAt: number } | null = null;
+
+  constructor(private readonly config: ConfigService) {}
 
   /**
    * Calculate the trust tier for an artist based on their upload and dispute history.
@@ -82,7 +108,7 @@ export class TrustService {
   /**
    * Get or create trust record for an artist, calculating tier from history.
    */
-  async getStakeRequirement(artistId: string) {
+  async getStakeRequirement(artistId: string): Promise<TrustRequirement> {
     const tierInfo = await this.calculateTier(artistId);
 
     // Upsert the trust record
@@ -101,7 +127,18 @@ export class TrustService {
       },
     });
 
-    return trust;
+    const maxPriceMultiplier = await this.getMaxPriceMultiplier();
+    const stakeAmountWei = BigInt(trust.stakeAmountWei || "0");
+    const maxListingPriceUncapped = stakeAmountWei === 0n;
+
+    return {
+      ...trust,
+      maxPriceMultiplier: Number(maxPriceMultiplier),
+      maxListingPriceWei: maxListingPriceUncapped
+        ? null
+        : (stakeAmountWei * maxPriceMultiplier).toString(),
+      maxListingPriceUncapped,
+    };
   }
 
   /**
@@ -152,5 +189,108 @@ export class TrustService {
         escrowDays: TIERS.new.escrowDays,
       },
     });
+  }
+
+  private async getMaxPriceMultiplier(): Promise<bigint> {
+    const now = Date.now();
+    if (this.maxPriceMultiplierCache && this.maxPriceMultiplierCache.expiresAt > now) {
+      return this.maxPriceMultiplierCache.value;
+    }
+
+    const chainId = Number(
+      this.config.get<string>("INDEXER_CHAIN_ID") ||
+        this.config.get<string>("CHAIN_ID") ||
+        this.config.get<string>("AA_CHAIN_ID") ||
+        "31337",
+    );
+    const address = this.resolveContentProtectionAddress(chainId);
+
+    if (!address || address === ZERO_ADDRESS) {
+      return DEFAULT_MAX_PRICE_MULTIPLIER;
+    }
+
+    const client = createPublicClient({
+      chain: this.resolveChain(chainId),
+      transport: http(this.resolveRpcUrl(chainId)),
+    });
+
+    try {
+      const value = (await client.readContract({
+        address: address as Address,
+        abi: CONTENT_PROTECTION_CONFIG_ABI,
+        functionName: "maxPriceMultiplier",
+      })) as bigint;
+
+      this.maxPriceMultiplierCache = {
+        value,
+        expiresAt: now + 60 * 60 * 1000,
+      };
+
+      return value;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to read ContentProtection.maxPriceMultiplier for chain ${chainId}: ${error}`,
+      );
+      return DEFAULT_MAX_PRICE_MULTIPLIER;
+    }
+  }
+
+  private resolveContentProtectionAddress(chainId: number): string {
+    switch (chainId) {
+      case 11155111:
+        return (
+          this.config.get<string>("SEPOLIA_CONTENT_PROTECTION_ADDRESS") ||
+          this.config.get<string>("CONTENT_PROTECTION_ADDRESS") ||
+          ZERO_ADDRESS
+        );
+      case 84532:
+        return (
+          this.config.get<string>("BASE_SEPOLIA_CONTENT_PROTECTION_ADDRESS") ||
+          this.config.get<string>("CONTENT_PROTECTION_ADDRESS") ||
+          ZERO_ADDRESS
+        );
+      case 31337:
+      default:
+        return (
+          this.config.get<string>("CONTENT_PROTECTION_ADDRESS") ||
+          ZERO_ADDRESS
+        );
+    }
+  }
+
+  private resolveRpcUrl(chainId: number): string {
+    const override = this.config.get<string>("RPC_URL");
+    if (override) return override;
+
+    switch (chainId) {
+      case 11155111:
+        return (
+          this.config.get<string>("LOCAL_RPC_URL") ||
+          this.config.get<string>("SEPOLIA_RPC_URL") ||
+          DEFAULT_SEPOLIA_RPC_URL
+        );
+      case 84532:
+        return (
+          this.config.get<string>("BASE_SEPOLIA_RPC_URL") ||
+          "https://sepolia.base.org"
+        );
+      case 31337:
+      default:
+        return (
+          this.config.get<string>("LOCAL_RPC_URL") || "http://localhost:8545"
+        );
+    }
+  }
+
+  private resolveChain(chainId: number) {
+    switch (chainId) {
+      case 11155111:
+        return sepolia;
+      case 84532:
+        return baseSepolia;
+      case 31337:
+      default:
+        return foundry;
+    }
   }
 }

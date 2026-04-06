@@ -7,6 +7,7 @@ import {TransferValidator} from "../../src/modules/TransferValidator.sol";
 
 contract MockContentProtection {
     mapping(uint256 => bool) public attested;
+    mapping(uint256 => uint256) public stemToReleaseRoot;
 
     function setAttested(uint256 tokenId, bool value) external {
         attested[tokenId] = value;
@@ -22,6 +23,13 @@ contract MockContentProtection {
 
     function isBlacklisted(address) external pure returns (bool) {
         return false;
+    }
+
+    function registerStemProtectionRoot(
+        uint256 releaseId,
+        uint256 stemTokenId
+    ) external {
+        stemToReleaseRoot[stemTokenId] = releaseId;
     }
 }
 
@@ -486,6 +494,7 @@ contract StemNFTTest is Test {
         );
 
         assertEq(tokenId, 1);
+        assertEq(protection.stemToReleaseRoot(tokenId), protectionId);
     }
 
     function test_MintAuthorized_RevertWhenReleaseIsNotVerified() public {

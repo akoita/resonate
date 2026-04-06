@@ -244,6 +244,10 @@ To publish content on Resonate, the creator must **lock a stake per release** (n
 3. If no disputes → stake returned in full after challenge period ends
 4. If dispute upheld on any track in the release → stake slashed for entire release
 
+**Stake-to-price proportionality (#420):**
+
+The stake amount **caps maximum listing price** through a configurable multiplier (default: `10×`). A creator who stakes 0.01 ETH can list stems at most 0.1 ETH per unit. This prevents abuse where a low-stake creator lists at high prices, making the economic deterrent meaningless. The cap is enforced on-chain in `StemMarketplaceV2._createListing()`. If the creator has no active stake, the listing price is uncapped.
+
 **Slash distribution:**
 
 - 60% → Reporter (bounty incentive)
@@ -607,12 +611,12 @@ This prevents abuse of the DMCA process (e.g., false takedowns to suppress compe
 
 ### 9.2 Integration with Existing Contracts
 
-| Existing Contract     | Integration Point                                                                     |
-| --------------------- | ------------------------------------------------------------------------------------- |
-| **Release** (backend) | Upload creates a Release → triggers `ContentProtection.attestRelease()`               |
-| `StemNFT`             | `mintAuthorized()` requires a signed release `protectionId` that is verified on-chain |
-| `StemMarketplaceV2`   | Sales revenue (stem licensing) routed through `RevenueEscrow` during challenge period |
-| `TransferValidator`   | Checks `ContentProtection.isBlacklisted()` before allowing transfers                  |
+| Existing Contract     | Integration Point                                                                                                                                                                 |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Release** (backend) | Upload creates a Release → triggers `ContentProtection.attestRelease()`                                                                                                           |
+| `StemNFT`             | `mintAuthorized()` requires a signed release `protectionId` that is verified on-chain                                                                                             |
+| `StemMarketplaceV2`   | `_createListing()` calls `ContentProtection.getMaxListingPrice()` to enforce price cap; `listLastMint()` calls `registerStemProtectionRoot()` to link new stems to release stakes |
+| `TransferValidator`   | Checks `ContentProtection.isBlacklisted()` before allowing transfers                                                                                                              |
 
 **Protection inheritance model in contracts:**
 

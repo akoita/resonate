@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {StemNFT} from "../../src/core/StemNFT.sol";
 import {StemMarketplaceV2} from "../../src/core/StemMarketplaceV2.sol";
 import {TransferValidator} from "../../src/modules/TransferValidator.sol";
+import {MockContentProtectionMarketplace} from "../mocks/MockContentProtectionMarketplace.sol";
 
 /**
  * @title StemMarketplaceV2 Fuzz Tests
@@ -14,6 +15,7 @@ contract StemMarketplaceFuzzTest is Test {
     StemNFT public stemNFT;
     StemMarketplaceV2 public marketplace;
     TransferValidator public validator;
+    MockContentProtectionMarketplace public contentProtection;
 
     address public admin = makeAddr("admin");
     address public feeRecipient = makeAddr("feeRecipient");
@@ -22,8 +24,10 @@ contract StemMarketplaceFuzzTest is Test {
         vm.startPrank(admin);
         stemNFT = new StemNFT("https://api.resonate.fm/metadata/");
         validator = new TransferValidator();
+        contentProtection = new MockContentProtectionMarketplace();
         marketplace = new StemMarketplaceV2(
             address(stemNFT),
+            address(contentProtection),
             feeRecipient,
             250
         );

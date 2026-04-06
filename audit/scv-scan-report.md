@@ -1,48 +1,45 @@
-# Smart Contract Vulnerability Scan — Issue #432
+# Smart Contract Vulnerability Scan
 
-**Date:** 2026-03-27
-**Scope:** `contracts/src/core/DisputeResolution.sol`, `contracts/src/interfaces/IDisputeResolution.sol`
+**Date:** 2026-04-07
+**Scope:** `contracts/src/core/ContentProtection.sol`, `contracts/src/core/StemMarketplaceV2.sol`, `contracts/src/core/StemNFT.sol`, related deployment wiring and unit-test coverage
 **Version:** Solidity ^0.8.28
 
 ## Executive Summary
 
-The jury arbitration extension to `DisputeResolution.sol` follows established patterns from the existing codebase. No critical or high-severity vulnerabilities were identified. Two low/informational findings are noted below.
+The current branch enforces stake-based listing caps for protected stems across both mint-and-list and later resale listing flows. No Critical or High severity vulnerabilities were identified in the modified contract paths after the mint-time protection-root registration fix.
 
 ## Findings
 
-### SCV-001: Weak Randomness in Juror Selection
+### SCV-001: Uncapped fallback when no active stake exists
 
-**File:** `contracts/src/core/DisputeResolution.sol` L489-L517
-**Severity:** Low
+**File:** `contracts/src/core/ContentProtection.sol` L552-L558
+**Severity:** Informational
 
-**Description:** `_assignJurors()` uses `block.prevrandao`, `block.timestamp`, `disputeId`, and a nonce to pseudo-randomly select jurors from the pool. On PoS Ethereum, `prevrandao` is weakly random — validators can influence it within a 1-bit bias per slot. This could allow a validator-juror to marginally bias their selection probability.
+**Description:** `getMaxListingPrice()` returns `type(uint256).max` when the resolved protection root has no active stake. That behavior is consistent with the intended policy for unstaked content, but it makes stake enforcement depend entirely on correct root registration and active stake state.
 
-**Code:**
-```solidity
-uint256 index = uint256(
-    keccak256(
-        abi.encodePacked(
-            block.prevrandao,
-            block.timestamp,
-            disputeId,
-            nonce
-        )
-    )
-) % poolSize;
-```
-
-**Recommendation:** Acceptable for Phase 1 with an admin-managed juror pool. For future phases, integrate Chainlink VRF or commit-reveal for provably fair selection.
+**Recommendation:** Keep this behavior, but document it clearly in contract NatSpec and integration docs so listing clients understand that inactive or missing stake roots intentionally remove the cap.
 
 ---
 
-### SCV-002: Unbounded Loop in `_assignJurors`
+### SCV-002: External registrar call before marketplace state write
 
-**File:** `contracts/src/core/DisputeResolution.sol` L493
+**File:** `contracts/src/core/StemMarketplaceV2.sol` L156-L157
 **Severity:** Informational
 
-**Description:** The `while` loop in `_assignJurors` skips jurors who are the dispute reporter, creator, or already assigned. If the juror pool is small and contains many conflicted parties, the loop could iterate many times. With `DEFAULT_JURY_SIZE = 3` and pool size ≥ 4 (including non-party members), this is bounded in practice.
+**Description:** `listLastMint()` calls `contentProtection.registerStemProtectionRoot()` before `_createListing()`. This ordering is necessary because `_createListing()` reads `getMaxListingPrice()`. The called function is restricted to owner/registrars and performs a direct mapping write, so this is not a reentrancy issue in the current design.
 
-**Recommendation:** Consider adding a `nonce` upper bound (e.g., `count * 10`) to prevent theoretical infinite loops, though this is not exploitable with current pool management.
+**Recommendation:** No code change required. Preserve this ordering and keep registrar permissions narrowly scoped.
+
+## Resolved During Review
+
+### Protected stem resale path could bypass the stake cap
+
+**Files:** `contracts/src/core/StemNFT.sol`, `contracts/src/core/StemMarketplaceV2.sol`
+**Severity:** High -> Resolved on this branch
+
+**Description:** Before the fix, protected stems only registered their protection root during `listLastMint()`. A protected stem minted in one transaction and listed later through ordinary `list()` could bypass the stake cap because `getMaxListingPrice()` had no registered root to resolve.
+
+**Fix:** `StemNFT._mintStem()` now registers the protection root at mint time for protected mints, and the deployment script grants `StemNFT` registrar access in `ContentProtection`.
 
 ## Summary
 
@@ -51,13 +48,14 @@ uint256 index = uint256(
 | Critical      | 0     |
 | High          | 0     |
 | Medium        | 0     |
-| Low           | 1     |
-| Informational | 1     |
+| Low           | 0     |
+| Informational | 2     |
 
-## Notes
+## Validation Notes
 
-- No reentrancy vectors found (no external calls, no ETH transfers in new functions)
-- Access control properly enforced on all admin functions (`onlyOwner`)
-- CEI pattern followed throughout
-- `ReentrancyGuard` inherited from OpenZeppelin
-- Solidity ^0.8.28 provides built-in overflow protection
+- Access control remains enforced on the new write path via `onlyRegistrarOrOwner`
+- No `delegatecall`, `selfdestruct`, or `tx.origin` usage in the modified scope
+- The new regression test covers the previously missing protected-mint then later `list()` path
+- Targeted verification passed:
+  - `forge test --match-path test/unit/StemNFT.t.sol -vvv`
+  - `forge test --match-path test/unit/StemMarketplace.t.sol -vvv`

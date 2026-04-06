@@ -455,6 +455,14 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, EIP712, IERC2981 {
         lastMintedTokenIdByOwner[to] = tokenId;
         lastMintedBlockByOwner[to] = uint64(block.number);
 
+        if (
+            enforceProtection &&
+            protectionId != 0 &&
+            address(contentProtection) != address(0)
+        ) {
+            contentProtection.registerStemProtectionRoot(protectionId, tokenId);
+        }
+
         emit StemMinted(tokenId, creator, parentIds, tokenURI_);
     }
 

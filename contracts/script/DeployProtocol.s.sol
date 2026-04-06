@@ -77,7 +77,13 @@ contract DeployProtocol is Script {
         console.log("StemNFT:", address(stemNFT));
 
         // 7. Deploy StemMarketplaceV2 (core)
-        StemMarketplaceV2 marketplace = new StemMarketplaceV2(address(stemNFT), feeRecipient, protocolFeeBps);
+        StemMarketplaceV2 marketplace =
+            new StemMarketplaceV2(
+                address(stemNFT),
+                address(contentProtection),
+                feeRecipient,
+                protocolFeeBps
+            );
         console.log("StemMarketplaceV2:", address(marketplace));
 
         // 8. Configure
@@ -91,6 +97,12 @@ contract DeployProtocol is Script {
 
         stemNFT.setContentProtection(address(contentProtection));
         console.log("  -> ContentProtection linked to StemNFT");
+
+        contentProtection.setRegistrar(address(stemNFT), true);
+        console.log("  -> StemNFT granted ContentProtection registrar role");
+
+        contentProtection.setRegistrar(address(marketplace), true);
+        console.log("  -> Marketplace granted ContentProtection registrar role");
 
         validator.setWhitelist(address(marketplace), true);
         console.log("  -> Marketplace whitelisted in validator");

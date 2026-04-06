@@ -11,6 +11,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {
     ReentrancyGuard
 } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {IContentProtection} from "../interfaces/IContentProtection.sol";
 
 interface IStemNFTWithMintTracking is IERC1155 {
     function lastMintedTokenIdByOwner(
@@ -53,6 +54,7 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
 
     // ============ State ============
     IERC1155 public immutable stemNFT;
+    IContentProtection public immutable contentProtection;
     address public protocolFeeRecipient;
     uint256 public protocolFeeBps;
 
@@ -93,15 +95,20 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
     error CannotBuyOwnListing();
     error UnexpectedETH();
     error NoRecentMint();
+    error PriceExceedsStakeCap();
+    error ZeroAddress();
 
     // ============ Constructor ============
 
     constructor(
         address _stemNFT,
+        address _contentProtection,
         address _feeRecipient,
         uint256 _feeBps
     ) Ownable(msg.sender) {
+        if (_contentProtection == address(0)) revert ZeroAddress();
         stemNFT = IERC1155(_stemNFT);
+        contentProtection = IContentProtection(_contentProtection);
         // V-003: Reject zero fee recipient when fees are enabled
         if (_feeBps > 0 && _feeRecipient == address(0))
             revert InvalidRecipient();
@@ -133,7 +140,8 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
         uint256 amount,
         uint256 pricePerUnit,
         address paymentToken,
-        uint256 duration
+        uint256 duration,
+        uint256 releaseId
     ) external returns (uint256 listingId) {
         IStemNFTWithMintTracking trackedStemNFT = IStemNFTWithMintTracking(
             address(stemNFT)
@@ -144,6 +152,10 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
 
         uint256 tokenId = trackedStemNFT.lastMintedTokenIdByOwner(msg.sender);
         if (tokenId == 0) revert NoRecentMint();
+
+        if (releaseId != 0) {
+            contentProtection.registerStemProtectionRoot(releaseId, tokenId);
+        }
 
         listingId = _createListing(
             msg.sender,
@@ -172,6 +184,9 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
         if (!stemNFT.isApprovedForAll(seller, address(this))) {
             revert MarketplaceNotApproved();
         }
+
+        uint256 maxPrice = contentProtection.getMaxListingPrice(tokenId);
+        if (pricePerUnit > maxPrice) revert PriceExceedsStakeCap();
 
         listingId = ++_listingId;
         listings[listingId] = Listing({

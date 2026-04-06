@@ -30,20 +30,22 @@ Upload → Process (Demucs) → Publish → attestRelease() + stakeForRelease() 
 
 ### Contract Interface (Read)
 
-| Function                | Returns                                                                                                               | Used By                   |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| `stakes(tokenId)`       | `(uint256 amount, uint256 depositedAt, bool active)`                                                                  | `useStakeInfo` hook       |
-| `attestations(tokenId)` | `(bytes32 contentHash, bytes32 fingerprintHash, string metadataURI, address attester, uint256 timestamp, bool valid)` | `useAttestationInfo` hook |
-| `refundStake(tokenId)`  | — (write)                                                                                                             | `useStakeRefund` hook     |
+| Function                      | Returns                                                                                                               | Used By                                    |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `stakes(tokenId)`             | `(uint256 amount, uint256 depositedAt, bool active)`                                                                  | `useStakeInfo` hook                        |
+| `attestations(tokenId)`       | `(bytes32 contentHash, bytes32 fingerprintHash, string metadataURI, address attester, uint256 timestamp, bool valid)` | `useAttestationInfo` hook                  |
+| `getMaxListingPrice(tokenId)` | `uint256` — max allowed listing price per unit (`stake × maxPriceMultiplier`, or `type(uint256).max` if unstaked)     | `StakeDepositCard`, backend `TrustService` |
+| `maxPriceMultiplier()`        | `uint256` — current global multiplier (default: 10)                                                                   | Backend `TrustService`                     |
+| `refundStake(tokenId)`        | — (write)                                                                                                             | `useStakeRefund` hook                      |
 
 ### Trust Tiers & Defaults
 
-| Tier        | Stake     | Escrow Period |
-| ----------- | --------- | ------------- |
-| New Creator | 0.01 ETH  | 30 days       |
-| Established | 0.005 ETH | 14 days       |
-| Trusted     | 0.001 ETH | 7 days        |
-| Verified    | Waived    | 3 days        |
+| Tier        | Stake     | Escrow Period | Max Listing Price (at 10× multiplier) |
+| ----------- | --------- | ------------- | ------------------------------------- |
+| New Creator | 0.01 ETH  | 30 days       | 0.1 ETH per unit                      |
+| Established | 0.005 ETH | 14 days       | 0.05 ETH per unit                     |
+| Trusted     | 0.001 ETH | 7 days        | 0.01 ETH per unit                     |
+| Verified    | Waived    | 3 days        | Uncapped                              |
 
 ## Components
 

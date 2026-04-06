@@ -40,8 +40,16 @@ contract ContentProtectionTest is Test {
     event Blacklisted(address indexed account);
     event BlacklistRemoved(address indexed account);
     event RegistrarUpdated(address indexed registrar, bool allowed);
+    event MaxPriceMultiplierUpdated(
+        uint256 oldMultiplier,
+        uint256 newMultiplier
+    );
     event TrackRegistered(uint256 indexed releaseId, uint256 indexed trackId);
     event StemRegistered(uint256 indexed trackId, uint256 indexed stemTokenId);
+    event StemProtectionRootRegistered(
+        uint256 indexed releaseId,
+        uint256 indexed stemTokenId
+    );
     event TrackRevoked(uint256 indexed trackId);
     event ReleaseRevoked(uint256 indexed releaseId);
 
@@ -59,6 +67,7 @@ contract ContentProtectionTest is Test {
         assertEq(cp.owner(), admin);
         assertEq(cp.treasury(), treasury);
         assertEq(cp.stakeAmount(), STAKE_AMOUNT);
+        assertEq(cp.maxPriceMultiplier(), 10);
     }
 
     function test_Initialize_RevertDoubleInit() public {
@@ -262,6 +271,21 @@ contract ContentProtectionTest is Test {
         assertEq(cp.stakeAmount(), 0.05 ether);
     }
 
+    function test_SetMaxPriceMultiplier() public {
+        vm.prank(admin);
+        vm.expectEmit(false, false, false, true);
+        emit MaxPriceMultiplierUpdated(10, 12);
+        cp.setMaxPriceMultiplier(12);
+
+        assertEq(cp.maxPriceMultiplier(), 12);
+    }
+
+    function test_SetMaxPriceMultiplier_RevertZero() public {
+        vm.prank(admin);
+        vm.expectRevert(ContentProtection.InvalidMultiplier.selector);
+        cp.setMaxPriceMultiplier(0);
+    }
+
     function test_SetTreasury() public {
         address newTreasury = makeAddr("newTreasury");
         vm.prank(admin);
@@ -355,6 +379,26 @@ contract ContentProtectionTest is Test {
         assertEq(cp.stemToCanonicalTrack(300), 200);
     }
 
+    function test_RegisterStemProtectionRoot_ByRegistrar() public {
+        vm.prank(alice);
+        cp.attestRelease(
+            100,
+            keccak256(abi.encodePacked("release", uint256(100))),
+            keccak256(abi.encodePacked("release-fp", uint256(100))),
+            "release"
+        );
+
+        vm.prank(admin);
+        cp.setRegistrar(registrar, true);
+
+        vm.prank(registrar);
+        vm.expectEmit(true, true, false, false);
+        emit StemProtectionRootRegistered(100, 300);
+        cp.registerStemProtectionRoot(100, 300);
+
+        assertEq(cp.stemToProtectionRoot(300), 100);
+    }
+
     function test_VerificationHierarchy() public {
         _attestReleaseAndTrack(100, 200);
 
@@ -369,6 +413,57 @@ contract ContentProtectionTest is Test {
         assertEq(cp.resolveCanonicalTrack(300), 200);
         assertEq(cp.resolveProtectionTarget(300), 200);
         assertEq(cp.resolveProtectionTarget(200), 200);
+    }
+
+    function test_ResolveStakeRoot_ViaDirectStemRoot() public {
+        vm.prank(alice);
+        cp.attestRelease(
+            100,
+            keccak256(abi.encodePacked("release", uint256(100))),
+            keccak256(abi.encodePacked("release-fp", uint256(100))),
+            "release"
+        );
+
+        vm.prank(admin);
+        cp.registerStemProtectionRoot(100, 300);
+
+        assertEq(cp.resolveStakeRoot(300), 100);
+    }
+
+    function test_ResolveStakeRoot_ViaTrackHierarchy() public {
+        _attestReleaseAndTrack(100, 200);
+
+        vm.startPrank(admin);
+        cp.registerTrack(100, 200);
+        cp.registerStem(200, 300);
+        vm.stopPrank();
+
+        assertEq(cp.resolveStakeRoot(300), 100);
+        assertEq(cp.resolveStakeRoot(200), 100);
+        assertEq(cp.resolveStakeRoot(100), 100);
+    }
+
+    function test_GetMaxListingPrice_UsesReleaseStake() public {
+        vm.prank(alice);
+        cp.attestRelease(
+            100,
+            keccak256(abi.encodePacked("release", uint256(100))),
+            keccak256(abi.encodePacked("release-fp", uint256(100))),
+            "release"
+        );
+
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        cp.stakeForRelease{value: STAKE_AMOUNT}(100);
+
+        vm.prank(admin);
+        cp.registerStemProtectionRoot(100, 300);
+
+        assertEq(cp.getMaxListingPrice(300), STAKE_AMOUNT * 10);
+    }
+
+    function test_GetMaxListingPrice_NoStake() public view {
+        assertEq(cp.getMaxListingPrice(999), type(uint256).max);
     }
 
     function test_IsTrackVerified_FalseAfterTrackSlash() public {
