@@ -26,6 +26,52 @@ export interface DisputeStatusUpdate {
   timestamp: string;
 }
 
+export interface IncomingNotificationEvent {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  disputeId?: string;
+  timestamp?: string;
+}
+
+export function normalizeIncomingNotification(data: IncomingNotificationEvent): DisputeNotification {
+  return {
+    id: data.id,
+    type: data.type,
+    title: data.title,
+    message: data.message,
+    disputeId: data.disputeId,
+    read: false,
+    createdAt: data.timestamp || new Date().toISOString(),
+  };
+}
+
+export function registerDisputeNotificationSocketHandlers(
+  socket: Pick<Socket, "on" | "emit">,
+  options: {
+    walletAddress: string;
+    refetch: () => void | Promise<void>;
+    onNotification: (notification: DisputeNotification) => void;
+    onDisputeStatus: (update: DisputeStatusUpdate) => void;
+  },
+) {
+  const normalizedWallet = options.walletAddress.toLowerCase();
+
+  socket.on("connect", () => {
+    socket.emit("wallet:join", normalizedWallet);
+    void options.refetch();
+  });
+
+  socket.on("notification.new", (data: IncomingNotificationEvent) => {
+    options.onNotification(normalizeIncomingNotification(data));
+  });
+
+  socket.on("dispute.status", (data: DisputeStatusUpdate) => {
+    options.onDisputeStatus(data);
+  });
+}
+
 export function useDisputeNotifications(walletAddress?: string) {
   const [notifications, setNotifications] = useState<DisputeNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -100,23 +146,14 @@ export function useDisputeNotifications(walletAddress?: string) {
     });
     socketRef.current = socket;
 
-    socket.on("connect", () => {
-      // Join wallet room for targeted notifications
-      socket.emit("wallet:join", walletAddress.toLowerCase());
-    });
-
-    // Targeted notification for this wallet
-    socket.on("notification.new", (data: Omit<DisputeNotification, "read" | "createdAt">) => {
-      setNotifications((prev) => [
-        { ...data, read: false, createdAt: new Date().toISOString() } as DisputeNotification,
-        ...prev,
-      ]);
-      setUnreadCount((prev) => prev + 1);
-    });
-
-    // Global dispute status updates (for dashboard refresh)
-    socket.on("dispute.status", (data: DisputeStatusUpdate) => {
-      setDisputeUpdate(data);
+    registerDisputeNotificationSocketHandlers(socket, {
+      walletAddress,
+      refetch: fetchNotifications,
+      onNotification: (notification) => {
+        setNotifications((prev) => [notification, ...prev]);
+        setUnreadCount((prev) => prev + 1);
+      },
+      onDisputeStatus: setDisputeUpdate,
     });
 
     return () => {
@@ -126,7 +163,7 @@ export function useDisputeNotifications(walletAddress?: string) {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [walletAddress]);
+  }, [walletAddress, fetchNotifications]);
 
   return {
     notifications,

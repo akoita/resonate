@@ -39,7 +39,12 @@ jest.mock("@prisma/client", () => {
 
 // Get mock references
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { __mockNotification, __mockPreference } = require("@prisma/client");
+const { __mockNotification, __mockPreference, __mockDispute } = require("@prisma/client");
+
+function getSubscribedHandler(eventName: string) {
+  const call = (mockEventBus.subscribe as jest.Mock).mock.calls.find(([name]) => name === eventName);
+  return call?.[1];
+}
 
 function createService(): NotificationService {
   return new NotificationService(mockEventBus);
@@ -233,6 +238,150 @@ describe("NotificationService", () => {
       expect(mockEventBus.subscribe).toHaveBeenCalledWith(
         "contract.dispute_appealed",
         expect.any(Function),
+      );
+    });
+
+    it("creates a creator notification for dispute_filed events", async () => {
+      __mockPreference.findUnique.mockResolvedValue(null);
+      __mockNotification.create.mockResolvedValue({
+        id: "notif-filed",
+        walletAddress: "0xcreator",
+        type: "dispute_filed",
+      });
+
+      const service = createService();
+      service.onModuleInit();
+      const handler = getSubscribedHandler("contract.dispute_filed");
+
+      await handler({
+        eventName: "contract.dispute_filed",
+        eventVersion: 1,
+        occurredAt: "2026-04-07T10:00:00.000Z",
+        disputeId: "123",
+        tokenId: "77",
+        reporterAddress: "0xreporter",
+        creatorAddress: "0xCreator",
+        counterStake: "1000",
+        evidenceURI: "ipfs://evidence",
+        chainId: 31337,
+        contractAddress: "0xcontract",
+        transactionHash: "0xtx",
+        blockNumber: "1",
+      });
+
+      expect(__mockNotification.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          walletAddress: "0xcreator",
+          type: "dispute_filed",
+          disputeId: "123",
+        }),
+      });
+      expect(mockEventBus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName: "notification.created",
+          walletAddress: "0xcreator",
+        }),
+      );
+    });
+
+    it("creates reporter and creator notifications for dispute_resolved events", async () => {
+      __mockPreference.findUnique.mockResolvedValue(null);
+      __mockDispute.findFirst.mockResolvedValue({
+        disputeIdOnChain: "456",
+        tokenId: "88",
+        reporterAddr: "0xreporter",
+        creatorAddr: "0xcreator",
+      });
+      __mockNotification.create
+        .mockResolvedValueOnce({ id: "notif-reporter" })
+        .mockResolvedValueOnce({ id: "notif-creator" });
+
+      const service = createService();
+      service.onModuleInit();
+      const handler = getSubscribedHandler("contract.dispute_resolved");
+
+      await handler({
+        eventName: "contract.dispute_resolved",
+        eventVersion: 1,
+        occurredAt: "2026-04-07T10:05:00.000Z",
+        disputeId: "456",
+        tokenId: "88",
+        outcome: "1",
+        chainId: 31337,
+        contractAddress: "0xcontract",
+        transactionHash: "0xtx",
+        blockNumber: "2",
+      });
+
+      expect(__mockDispute.findFirst).toHaveBeenCalledWith({
+        where: { disputeIdOnChain: "456" },
+      });
+      expect(__mockNotification.create).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          data: expect.objectContaining({
+            walletAddress: "0xreporter",
+            type: "dispute_resolved",
+          }),
+        }),
+      );
+      expect(__mockNotification.create).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          data: expect.objectContaining({
+            walletAddress: "0xcreator",
+            type: "dispute_resolved",
+          }),
+        }),
+      );
+    });
+
+    it("creates confirmation and counterparty notifications for dispute_appealed events", async () => {
+      __mockPreference.findUnique.mockResolvedValue(null);
+      __mockDispute.findFirst.mockResolvedValue({
+        disputeIdOnChain: "789",
+        tokenId: "99",
+        reporterAddr: "0xreporter",
+        creatorAddr: "0xcreator",
+      });
+      __mockNotification.create
+        .mockResolvedValueOnce({ id: "notif-other-party" })
+        .mockResolvedValueOnce({ id: "notif-appealer" });
+
+      const service = createService();
+      service.onModuleInit();
+      const handler = getSubscribedHandler("contract.dispute_appealed");
+
+      await handler({
+        eventName: "contract.dispute_appealed",
+        eventVersion: 1,
+        occurredAt: "2026-04-07T10:10:00.000Z",
+        disputeId: "789",
+        appealerAddress: "0xReporter",
+        appealNumber: "2",
+        chainId: 31337,
+        contractAddress: "0xcontract",
+        transactionHash: "0xtx",
+        blockNumber: "3",
+      });
+
+      expect(__mockNotification.create).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          data: expect.objectContaining({
+            walletAddress: "0xcreator",
+            type: "dispute_appealed",
+          }),
+        }),
+      );
+      expect(__mockNotification.create).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          data: expect.objectContaining({
+            walletAddress: "0xreporter",
+            type: "dispute_appealed",
+          }),
+        }),
       );
     });
   });
