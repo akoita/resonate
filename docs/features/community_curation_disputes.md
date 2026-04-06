@@ -149,6 +149,8 @@ Includes a **reputation badge** showing score, successful flags, and rejected fl
 
 ## Sprint 3 (Complete)
 
+Delivered across PRs #436 (notification infrastructure), #461 (mounted notification UI), and #462 (end-to-end hardening and reconnect/test coverage).
+
 - ✅ `NotificationService` — event bus → persist → WebSocket emit
 - ✅ `Notification` + `NotificationPreference` Prisma models
 - ✅ 5 REST endpoints (list, read, read-all, get/update preferences)
