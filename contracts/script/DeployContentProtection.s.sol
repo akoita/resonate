@@ -110,7 +110,7 @@ contract DeployContentProtection is Script {
         console.log("  Treasury:", feeRecipient);
         console.log("");
         console.log("Next steps:");
-        console.log("  1. Run: ./scripts/update-protocol-config.sh");
+        console.log("  1. Run: ./contracts/scripts/update-protocol-config.sh");
         console.log("  2. Restart frontend: make web-dev-fork");
     }
 }

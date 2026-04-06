@@ -64,7 +64,7 @@ owner: "@akoita"
 
 - **Demucs Worker** for stem separation (containerized FastAPI + Pub/Sub consumer).
   - Model: `htdemucs_6s` (6-stem: vocals, drums, bass, guitar, piano, other)
-  - GPU support available via `docker-compose.gpu.yml`
+  - GPU-enabled local/runtime infrastructure is managed in `resonate-iac`
   - Model pre-cached in Docker image (~1GB)
 - **GCP Pub/Sub** for event-driven job dispatch (Phase 2).
   - Topics: `stem-separate` (jobs), `stem-results` (completions), `stem-dlq` (dead letters)

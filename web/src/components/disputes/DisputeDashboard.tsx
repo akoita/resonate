@@ -4,6 +4,23 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { useDisputeNotifications } from "../../hooks/useDisputeNotifications";
 
+interface DisputeEvidence {
+  id: string;
+  submitter: string;
+  party: string;
+  evidenceURI: string;
+  description: string | null;
+  createdAt: string;
+}
+
+interface JuryAssignment {
+  id: string;
+  jurorAddr: string;
+  vote: "reporter" | "creator" | null;
+  assignedAt: string;
+  votedAt: string | null;
+}
+
 interface Dispute {
   id: string;
   tokenId: string;
@@ -15,19 +32,17 @@ interface Dispute {
   counterStake: string;
   resolvedAt: string | null;
   createdAt: string;
+  escalatedToJuryAt?: string | null;
+  juryDeadlineAt?: string | null;
+  jurySize?: number | null;
+  juryVotesForReporter?: number;
+  juryVotesForCreator?: number;
+  juryFinalizedAt?: string | null;
   evidences: DisputeEvidence[];
+  juryAssignments: JuryAssignment[];
 }
 
-interface DisputeEvidence {
-  id: string;
-  submitter: string;
-  party: string;
-  evidenceURI: string;
-  description: string | null;
-  createdAt: string;
-}
-
-type Tab = "reporter" | "creator";
+type Tab = "reporter" | "creator" | "juror";
 
 export default function DisputeDashboard() {
   const { address } = useAuth();
@@ -35,6 +50,7 @@ export default function DisputeDashboard() {
   const [tab, setTab] = useState<Tab>("reporter");
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [loading, setLoading] = useState(false);
+  const [votePendingId, setVotePendingId] = useState<string | null>(null);
   const [reputation, setReputation] = useState({
     score: 0,
     successfulFlags: 0,
@@ -48,7 +64,9 @@ export default function DisputeDashboard() {
       const endpoint =
         tab === "reporter"
           ? `/api/metadata/disputes/reporter/${address}`
-          : `/api/metadata/disputes/creator/${address}`;
+          : tab === "creator"
+            ? `/api/metadata/disputes/creator/${address}`
+            : `/api/metadata/disputes/juror/${address}`;
       const res = await fetch(endpoint);
       if (res.ok) {
         setDisputes(await res.json());
@@ -78,12 +96,35 @@ export default function DisputeDashboard() {
     fetchReputation();
   }, [fetchReputation]);
 
-  // Real-time: auto-refresh when dispute status changes via WebSocket
   useEffect(() => {
     if (disputeUpdate) {
       fetchDisputes();
     }
   }, [disputeUpdate, fetchDisputes]);
+
+  const castJuryVote = useCallback(
+    async (disputeId: string, vote: "reporter" | "creator") => {
+      if (!address) return;
+      setVotePendingId(disputeId);
+      try {
+        const res = await fetch(`/api/metadata/disputes/${disputeId}/jury-vote`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jurorAddr: address,
+            vote,
+          }),
+        });
+        if (!res.ok) throw new Error("Vote failed");
+        await fetchDisputes();
+      } catch {
+        window.alert("Unable to submit jury vote.");
+      } finally {
+        setVotePendingId(null);
+      }
+    },
+    [address, fetchDisputes],
+  );
 
   const statusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -93,6 +134,10 @@ export default function DisputeDashboard() {
         return "#3b82f6";
       case "review":
         return "#8b5cf6";
+      case "escalated":
+        return "#ec4899";
+      case "jury_voting":
+        return "#14b8a6";
       case "resolved":
         return "#10b981";
       case "appealed":
@@ -127,12 +172,10 @@ export default function DisputeDashboard() {
 
   return (
     <div style={containerStyle}>
-      {/* Header */}
       <div style={headerStyle}>
         <h1 style={{ margin: 0, fontSize: "24px", fontWeight: 700 }}>
           ⚖️ Dispute Center
         </h1>
-        {/* Reputation badge */}
         <div style={repBadgeStyle}>
           <span style={{ fontSize: "12px", opacity: 0.6 }}>Reputation</span>
           <span
@@ -150,36 +193,27 @@ export default function DisputeDashboard() {
         </div>
       </div>
 
-      {/* Tabs */}
       <div style={tabBarStyle}>
-        <button
-          onClick={() => setTab("reporter")}
-          style={{
-            ...tabStyle,
-            ...(tab === "reporter" ? activeTabStyle : {}),
-          }}
-        >
+        <button onClick={() => setTab("reporter")} style={{ ...tabStyle, ...(tab === "reporter" ? activeTabStyle : {}) }}>
           📣 My Reports
         </button>
-        <button
-          onClick={() => setTab("creator")}
-          style={{
-            ...tabStyle,
-            ...(tab === "creator" ? activeTabStyle : {}),
-          }}
-        >
+        <button onClick={() => setTab("creator")} style={{ ...tabStyle, ...(tab === "creator" ? activeTabStyle : {}) }}>
           🛡️ Against My Content
+        </button>
+        <button onClick={() => setTab("juror")} style={{ ...tabStyle, ...(tab === "juror" ? activeTabStyle : {}) }}>
+          🗳️ Jury Duty
         </button>
       </div>
 
-      {/* Content */}
       {loading ? (
         <div style={emptyStyle}>Loading disputes...</div>
       ) : disputes.length === 0 ? (
         <div style={emptyStyle}>
           {tab === "reporter"
             ? "You haven't filed any disputes yet"
-            : "No disputes filed against your content"}
+            : tab === "creator"
+              ? "No disputes filed against your content"
+              : "No jury assignments yet"}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -187,9 +221,7 @@ export default function DisputeDashboard() {
             <div key={d.id} style={cardStyle}>
               <div style={cardHeaderStyle}>
                 <div>
-                  <span style={{ fontWeight: 600, fontSize: "14px" }}>
-                    Token #{d.tokenId}
-                  </span>
+                  <span style={{ fontWeight: 600, fontSize: "14px" }}>Token #{d.tokenId}</span>
                   <span
                     style={{
                       ...statusBadgeStyle,
@@ -197,7 +229,7 @@ export default function DisputeDashboard() {
                       color: statusColor(d.status),
                     }}
                   >
-                    {d.status.toUpperCase()}
+                    {d.status.replaceAll("_", " ").toUpperCase()}
                   </span>
                   {d.outcome && (
                     <span
@@ -217,14 +249,8 @@ export default function DisputeDashboard() {
                 </span>
               </div>
 
-              {/* Evidence */}
               <div style={{ marginTop: "8px" }}>
-                <a
-                  href={d.evidenceURI}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={linkStyle}
-                >
+                <a href={d.evidenceURI} target="_blank" rel="noopener noreferrer" style={linkStyle}>
                   📎 Initial Evidence
                 </a>
                 {d.evidences.length > 0 && (
@@ -234,23 +260,99 @@ export default function DisputeDashboard() {
                 )}
               </div>
 
-              {/* Parties */}
+              <div style={timelineStyle}>
+                <div style={timelineTitleStyle}>Arbitration Timeline</div>
+                <div style={timelineRowStyle}>
+                  <span>Filed</span>
+                  <span>{new Date(d.createdAt).toLocaleString()}</span>
+                </div>
+                {d.escalatedToJuryAt && (
+                  <div style={timelineRowStyle}>
+                    <span>Escalated to jury</span>
+                    <span>{new Date(d.escalatedToJuryAt).toLocaleString()}</span>
+                  </div>
+                )}
+                {d.juryDeadlineAt && (
+                  <div style={timelineRowStyle}>
+                    <span>Voting deadline</span>
+                    <span>{new Date(d.juryDeadlineAt).toLocaleString()}</span>
+                  </div>
+                )}
+                {d.juryFinalizedAt && (
+                  <div style={timelineRowStyle}>
+                    <span>Jury finalized</span>
+                    <span>{new Date(d.juryFinalizedAt).toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+
+              {d.juryAssignments.length > 0 && (
+                <div style={juryPanelStyle}>
+                  <div style={juryHeaderStyle}>
+                    <span style={{ fontWeight: 600, fontSize: "13px" }}>Jury Panel</span>
+                    <span style={{ fontSize: "11px", opacity: 0.5 }}>
+                      {d.juryVotesForReporter || 0} reporter · {d.juryVotesForCreator || 0} creator
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {d.juryAssignments.map((assignment) => {
+                      const isMe = assignment.jurorAddr.toLowerCase() === address.toLowerCase();
+                      const canVote =
+                        isMe &&
+                        !assignment.vote &&
+                        ["escalated", "jury_voting"].includes(d.status.toLowerCase());
+
+                      return (
+                        <div key={assignment.id} style={juryRowStyle}>
+                          <div>
+                            <div style={{ fontSize: "12px", fontFamily: "monospace" }}>
+                              {assignment.jurorAddr.slice(0, 6)}...{assignment.jurorAddr.slice(-4)}
+                              {isMe ? " (you)" : ""}
+                            </div>
+                            <div style={{ fontSize: "11px", opacity: 0.45 }}>
+                              {assignment.vote ? `Voted ${assignment.vote}` : "Awaiting vote"}
+                            </div>
+                          </div>
+                          {canVote ? (
+                            <div style={{ display: "flex", gap: "8px" }}>
+                              <button
+                                style={{ ...voteButtonStyle, borderColor: "#10b981", color: "#10b981" }}
+                                disabled={votePendingId === d.id}
+                                onClick={() => castJuryVote(d.id, "reporter")}
+                              >
+                                Uphold
+                              </button>
+                              <button
+                                style={{ ...voteButtonStyle, borderColor: "#ef4444", color: "#ef4444" }}
+                                disabled={votePendingId === d.id}
+                                onClick={() => castJuryVote(d.id, "creator")}
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: "11px", opacity: 0.5 }}>
+                              {assignment.vote ? "Recorded" : "Pending"}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div style={partiesStyle}>
                 <div>
                   <span style={partyLabelStyle}>Reporter</span>
-                  <span style={addressStyle}>
-                    {d.reporterAddr.slice(0, 6)}...{d.reporterAddr.slice(-4)}
-                  </span>
+                  <span style={addressStyle}>{d.reporterAddr.slice(0, 6)}...{d.reporterAddr.slice(-4)}</span>
                 </div>
                 <div>
                   <span style={partyLabelStyle}>Creator</span>
-                  <span style={addressStyle}>
-                    {d.creatorAddr.slice(0, 6)}...{d.creatorAddr.slice(-4)}
-                  </span>
+                  <span style={addressStyle}>{d.creatorAddr.slice(0, 6)}...{d.creatorAddr.slice(-4)}</span>
                 </div>
               </div>
 
-              {/* Appeal button for resolved disputes */}
               {d.status.toLowerCase() === "resolved" && d.outcome && d.outcome !== "inconclusive" && (
                 <div style={{ marginTop: "10px" }}>
                   <button
@@ -279,8 +381,6 @@ export default function DisputeDashboard() {
     </div>
   );
 }
-
-// ---- Styles ----
 
 const containerStyle: React.CSSProperties = {
   maxWidth: "800px",
@@ -387,4 +487,62 @@ const addressStyle: React.CSSProperties = {
   fontFamily: "monospace",
   fontSize: "11px",
   opacity: 0.7,
+};
+
+const timelineStyle: React.CSSProperties = {
+  marginTop: "12px",
+  padding: "10px 12px",
+  borderRadius: "10px",
+  background: "rgba(255,255,255,0.02)",
+  border: "1px solid rgba(255,255,255,0.05)",
+};
+
+const timelineTitleStyle: React.CSSProperties = {
+  fontSize: "12px",
+  fontWeight: 600,
+  marginBottom: "8px",
+};
+
+const timelineRowStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "12px",
+  fontSize: "11px",
+  opacity: 0.65,
+  marginBottom: "4px",
+};
+
+const juryPanelStyle: React.CSSProperties = {
+  marginTop: "12px",
+  padding: "12px",
+  borderRadius: "10px",
+  background: "rgba(20,184,166,0.06)",
+  border: "1px solid rgba(20,184,166,0.2)",
+};
+
+const juryHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: "10px",
+};
+
+const juryRowStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
+  padding: "8px 10px",
+  borderRadius: "8px",
+  background: "rgba(255,255,255,0.03)",
+};
+
+const voteButtonStyle: React.CSSProperties = {
+  background: "none",
+  border: "1px solid",
+  borderRadius: "8px",
+  padding: "6px 10px",
+  fontSize: "11px",
+  fontWeight: 600,
+  cursor: "pointer",
 };

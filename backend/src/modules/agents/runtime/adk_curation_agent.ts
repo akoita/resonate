@@ -100,13 +100,13 @@ function buildTools(tools: ToolRegistry, userId: string): FunctionTool[] {
   });
 
   // -------------------------------------------------------------------------
-  // Lyria Generation Tools — new for #335
+  // Lyria RealTime Generation Tools — new for #335
   // -------------------------------------------------------------------------
 
   const generateTrack = new FunctionTool({
     name: "generate_track",
     description:
-      "Generate a new 30-second track matching a mood/genre/description using Lyria 3. " +
+      "Generate a new 30-second track matching a mood/genre/description using Lyria RealTime. " +
       "Costs $0.06 per generation. Use this when the catalog is sparse for the desired vibe. " +
       "Returns a jobId that can be tracked. The generated track will be stored automatically.",
     parameters: z.object({
@@ -184,7 +184,7 @@ function buildSystemPrompt(): string {
     "Your job is to find and create the best possible music session for the user.",
     "",
     "You have access to tools to search the catalog, check pricing, get analytics,",
-    "rank tracks by similarity, AND generate new audio content using Lyria 3.",
+    "rank tracks by similarity, AND generate new audio content using Lyria RealTime.",
     "",
     "Guidelines:",
     "- Use catalog_search to find tracks matching EACH of the user's genre/mood preferences.",

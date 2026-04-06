@@ -33,7 +33,7 @@ Generate a key:
 
 ```bash
 # Using the utility script
-./scripts/generate-agent-encryption-key.sh
+./backend/scripts/generate-agent-encryption-key.sh
 
 # Or manually
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
@@ -194,7 +194,7 @@ const { agentAddress, oldAgentAddress } = await rotateAgentKey(token);
 | [`key_audit.service.ts`](../backend/src/modules/shared/key_audit.service.ts)                       | Append-only audit logger              |
 | [`zerodev_session_key.service.ts`](../backend/src/modules/identity/zerodev_session_key.service.ts) | Agent key lifecycle management        |
 | [`restrict_agent_key_column.sql`](../backend/prisma/sql/restrict_agent_key_column.sql)             | Column-level DB restriction           |
-| [`generate-agent-encryption-key.sh`](../scripts/generate-agent-encryption-key.sh)                  | Key generation utility                |
+| [`generate-agent-encryption-key.sh`](../backend/scripts/generate-agent-encryption-key.sh)          | Key generation utility                |
 
 ## Environment Variables
 

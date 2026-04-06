@@ -1,5 +1,5 @@
 # GPU-enabled Demucs worker using NVIDIA CUDA
-# Use with: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up demucs-worker
+# Use via the GPU-enabled local infrastructure stack in resonate-iac
 
 FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
 

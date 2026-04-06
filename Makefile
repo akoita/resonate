@@ -1,64 +1,20 @@
 SEPOLIA_RPC_URL ?= https://sepolia.drpc.org
+RESONATE_IAC_REPO ?= https://github.com/akoita/resonate-iac
+
+define moved_to_resonate_iac
+	@echo "This target moved to $(RESONATE_IAC_REPO)."
+	@echo "Start or deploy infrastructure from resonate-iac, then return to this repo for app-local commands."
+	@exit 1
+endef
 
 dev-up:
-	@mkdir -p backend/uploads/stems backend/uploads/decrypted_cache
-	@# Pre-check for port conflicts that silently break docker compose up
-	@for port_info in "6379:Redis" "5432:Postgres" "8000:Demucs worker" "8085:PubSub emulator"; do \
-		port=$$(echo $$port_info | cut -d: -f1); \
-		svc=$$(echo $$port_info | cut -d: -f2); \
-		pid=$$(lsof -ti :$$port 2>/dev/null | head -1); \
-		if [ -n "$$pid" ]; then \
-			container=$$(docker ps --filter "publish=$$port" --format '{{.Names}}' 2>/dev/null | head -1); \
-			if [ -n "$$container" ] && echo "$$container" | grep -q "^resonate-"; then continue; fi; \
-			echo ""; \
-			echo "⚠️  Port $$port ($$svc) is already in use by: $${container:-PID $$pid}"; \
-			echo "   Stop it first:  docker stop $$container  OR  kill $$pid"; \
-			echo ""; \
-		fi; \
-	done
-	docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
-	@sleep 3
-	@if ! docker compose ps demucs-worker 2>/dev/null | grep -q 'Up'; then \
-		echo ""; \
-		echo "⚠️  WARNING: demucs-worker failed to start (GPU mode)."; \
-		echo "   Falling back to CPU-only mode..."; \
-		docker compose up -d demucs-worker 2>&1; \
-		sleep 3; \
-		if docker compose ps demucs-worker 2>/dev/null | grep -q 'Up'; then \
-			echo "   ✅ Worker started in CPU mode."; \
-		else \
-			echo "   ❌ Worker failed to start. Check: docker compose logs demucs-worker"; \
-		fi; \
-	fi
-	@# Final health check summary
-	@echo ""
-	@echo "━━━ Container Status ━━━"
-	@for svc in postgres redis pubsub-emulator demucs-worker; do \
-		status=$$(docker compose ps $$svc --format '{{.Status}}' 2>/dev/null); \
-		if echo "$$status" | grep -q 'Up'; then \
-			echo "  ✅ $$svc: $$status"; \
-		elif [ -z "$$status" ]; then \
-			echo "  ⚪ $$svc: not created"; \
-		else \
-			echo "  ❌ $$svc: $$status"; \
-		fi; \
-	done
-	@echo ""
+	$(moved_to_resonate_iac)
 
 dev-up-build:
-	@mkdir -p backend/uploads/stems backend/uploads/decrypted_cache
-	docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build -d
-	@sleep 3
-	@if ! docker compose ps demucs-worker --format '{{.Status}}' 2>/dev/null | grep -q 'Up'; then \
-		echo ""; \
-		echo "⚠️  WARNING: demucs-worker failed to start (GPU mode)."; \
-		echo "   Falling back to CPU-only mode..."; \
-		docker compose up --build -d demucs-worker; \
-		echo "   ✅ Worker started in CPU mode."; \
-	fi
+	$(moved_to_resonate_iac)
 
 dev-down:
-	docker compose down -v
+	$(moved_to_resonate_iac)
 
 # ============================================
 # Docker Production Builds
@@ -81,82 +37,43 @@ docker-build-cloud:
 		--build-arg NEXT_PUBLIC_MARKETPLACE_ADDRESS=$(NEXT_PUBLIC_MARKETPLACE_ADDRESS) \
 		./web
 
-# ============================================
-# Cloud Deployment (per-environment)
-# ============================================
-# Usage:  make deploy-all ENV=dev
-#         make deploy-backend ENV=dev
-#         make deploy-frontend ENV=dev
-#
-# Requires: .env.deploy.<ENV> (copy from .env.deploy.example)
-
-ENV ?= dev
--include .env.deploy.$(ENV)
-export
-
 deploy-backend:
-	@test -f .env.deploy.$(ENV) || (echo "Error: .env.deploy.$(ENV) not found. Copy .env.deploy.example" && exit 1)
-	docker build -t $(REGISTRY)/backend:latest -f backend/Dockerfile backend/
-	docker push $(REGISTRY)/backend:latest
-	gcloud run services update resonate-$(ENV)-backend \
-		--image=$(REGISTRY)/backend:latest \
-		--region=$(GCP_REGION)
+	$(moved_to_resonate_iac)
 
 deploy-frontend:
-	@test -f .env.deploy.$(ENV) || (echo "Error: .env.deploy.$(ENV) not found. Copy .env.deploy.example" && exit 1)
-	docker build -t $(REGISTRY)/frontend:latest \
-		--build-arg NEXT_PUBLIC_API_URL=$(NEXT_PUBLIC_API_URL) \
-		--build-arg NEXT_PUBLIC_ZERODEV_PROJECT_ID=$(NEXT_PUBLIC_ZERODEV_PROJECT_ID) \
-		--build-arg NEXT_PUBLIC_CHAIN_ID=$(NEXT_PUBLIC_CHAIN_ID) \
-		--build-arg NEXT_PUBLIC_STEM_NFT_ADDRESS=$(NEXT_PUBLIC_STEM_NFT_ADDRESS) \
-		--build-arg NEXT_PUBLIC_MARKETPLACE_ADDRESS=$(NEXT_PUBLIC_MARKETPLACE_ADDRESS) \
-		--build-arg NEXT_PUBLIC_PIMLICO_API_KEY=$(NEXT_PUBLIC_PIMLICO_API_KEY) \
-		-f web/Dockerfile web/
-	docker push $(REGISTRY)/frontend:latest
-	gcloud run services update resonate-$(ENV)-frontend \
-		--image=$(REGISTRY)/frontend:latest \
-		--region=$(GCP_REGION)
+	$(moved_to_resonate_iac)
 
 deploy-demucs:
-	@test -f .env.deploy.$(ENV) || (echo "Error: .env.deploy.$(ENV) not found. Copy .env.deploy.example" && exit 1)
-	docker build -t $(REGISTRY)/demucs-worker:latest -f workers/demucs/Dockerfile workers/demucs/
-	docker push $(REGISTRY)/demucs-worker:latest
-	gcloud run services update resonate-$(ENV)-demucs \
-		--image=$(REGISTRY)/demucs-worker:latest \
-		--region=$(GCP_REGION)
+	$(moved_to_resonate_iac)
 
 deploy-all: deploy-backend deploy-frontend deploy-demucs
 
 # Start production-like stack (backend + web + postgres + redis)
 docker-up:
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+	$(moved_to_resonate_iac)
 
 # Stop production stack
 docker-down:
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml down
+	$(moved_to_resonate_iac)
 
 # ============================================
 # Sepolia Contract Deployment
 # ============================================
 
 deploy-sepolia:
-	./scripts/deploy-sepolia.sh
-
-# ============================================
-# GCP Infrastructure (Terraform)
-# ============================================
+	./contracts/scripts/deploy-sepolia.sh
 
 infra-init:
-	cd infra/terraform && terraform init
+	$(moved_to_resonate_iac)
 
 infra-plan:
-	cd infra/terraform && terraform plan
+	$(moved_to_resonate_iac)
 
 infra-apply:
-	cd infra/terraform && terraform apply
+	$(moved_to_resonate_iac)
 
 infra-destroy:
-	cd infra/terraform && terraform destroy
+	$(moved_to_resonate_iac)
 
 
 
@@ -188,22 +105,18 @@ dev-clean:
 
 # Start Anvil chain and Alto bundler
 local-aa-up:
-	docker compose --profile local-aa up -d
-	@echo "Waiting for services to start..."
-	@sleep 3
-	@echo "Anvil running at http://localhost:8545"
-	@echo "Alto bundler running at http://localhost:4337"
+	$(moved_to_resonate_iac)
 
 # Stop local AA infrastructure
 local-aa-down:
-	docker compose --profile local-aa --profile fork-aa down
+	$(moved_to_resonate_iac)
 
 # Deploy AA contracts to local Anvil
 local-aa-deploy:
 	cd contracts && forge script script/DeployLocalAA.s.sol --rpc-url http://localhost:8545 --broadcast
 	@echo ""
 	@echo "Updating configuration files..."
-	./scripts/update-aa-config.sh
+	./contracts/scripts/update-aa-config.sh
 
 # Deploy protocol contracts (StemNFT, Marketplace, TransferValidator, ContentProtection, RevenueEscrow)
 # On a Sepolia fork, the on-chain StemNFT predates Phase 2 (missing setContentProtection),
@@ -214,21 +127,20 @@ deploy-contracts:
 	cd contracts && forge script script/DeployProtocol.s.sol --rpc-url http://localhost:8545 --broadcast
 	@echo ""
 	@echo "Updating configuration files..."
-	./scripts/update-protocol-config.sh
+	./contracts/scripts/update-protocol-config.sh
 	@echo "Clearing Next.js cache (env vars are baked at build time)..."
 	@rm -rf web/.next
 	@echo "✓ Done — restart frontend to use contract addresses"
 
-# Full local setup: infra + AA contracts + protocol contracts
-contracts-deploy-local: local-aa-up
-	@sleep 2
+# Full local contract/config setup once infrastructure is already running
+contracts-deploy-local:
 	$(MAKE) local-aa-deploy
 	@sleep 1
 	$(MAKE) deploy-contracts
 
 # Update .env files with deployed AA contract addresses
 local-aa-config:
-	./scripts/update-aa-config.sh
+	./contracts/scripts/update-aa-config.sh
 
 # Start web frontend in local AA mode
 web-dev-local:
@@ -237,7 +149,7 @@ web-dev-local:
 
 # View local AA logs
 local-aa-logs:
-	docker compose --profile local-aa logs -f
+	$(moved_to_resonate_iac)
 
 # ============================================
 # Forked Sepolia AA Development (ZeroDev)
@@ -247,18 +159,13 @@ local-aa-logs:
 
 # Start Anvil forking Sepolia (ZeroDev contracts available)
 anvil-fork:
-	SEPOLIA_RPC_URL=$(SEPOLIA_RPC_URL) docker compose --profile fork-aa up -d anvil-fork alto-bundler-fork
+	$(moved_to_resonate_iac)
 
-# Full forked Sepolia setup: anvil fork + configure .env
+# Configure forked Sepolia env against an already-running local fork/bundler
 local-aa-fork:
-	@echo "Starting Anvil (forked Sepolia) in Docker..."
-	$(MAKE) anvil-fork
-	@echo "Waiting for Anvil to be healthy..."
-	@docker compose --profile fork-aa exec anvil-fork sh -c \
-		'for i in $$(seq 1 15); do cast block-number --rpc-url http://localhost:8545 > /dev/null 2>&1 && exit 0; sleep 1; done; exit 1'
-	./scripts/update-aa-config.sh --mode fork
+	./contracts/scripts/update-aa-config.sh --mode fork
 	@echo ""
-	@echo "Forked Sepolia ready! Anvil (localhost:8545) + Alto bundler (localhost:4337)"
+	@echo "Forked Sepolia env updated. Start the fork/bundler stack from $(RESONATE_IAC_REPO) if it is not already running."
 
 # Start web frontend in forked Sepolia mode
 web-dev-fork:
@@ -289,18 +196,15 @@ pubsub-init:
 
 # View Demucs worker logs
 worker-logs:
-	docker compose logs -f demucs-worker
+	$(moved_to_resonate_iac)
 
 # Start Demucs worker with GPU acceleration (requires NVIDIA GPU + Container Toolkit)
 worker-gpu:
-	docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d demucs-worker
-	@echo "Demucs worker started with GPU acceleration"
-	@echo "Verify GPU: docker compose exec demucs-worker nvidia-smi"
+	$(moved_to_resonate_iac)
 
 # Rebuild Demucs worker with GPU support (useful after Dockerfile changes)
 worker-rebuild:
-	docker compose -f docker-compose.yml -f docker-compose.gpu.yml build --no-cache demucs-worker
-	docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d demucs-worker
+	$(moved_to_resonate_iac)
 
 # Check Demucs worker health
 worker-health:
@@ -308,4 +212,4 @@ worker-health:
 
 # Skip model pre-caching for faster builds (model downloads on first use)
 worker-quick-build:
-	docker compose -f docker-compose.yml -f docker-compose.gpu.yml build --build-arg CACHE_MODEL=0 demucs-worker
+	$(moved_to_resonate_iac)

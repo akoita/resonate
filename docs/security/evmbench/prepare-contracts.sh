@@ -7,8 +7,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-OUTPUT_FILE="$PROJECT_ROOT/resonate-contracts.zip"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+OUTPUT_FILE="$SCRIPT_DIR/resonate-contracts.zip"
 
 echo "📦 Packaging Resonate contracts for evmbench..."
 echo "   Project root: $PROJECT_ROOT"

@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { GoogleGenAI } from '@google/genai';
 import { EventBus } from '../shared/event_bus';
 import { RealtimeAudioEvent, RealtimeDisconnectedEvent } from '../../events/event_types';
 
@@ -26,7 +27,7 @@ interface RealtimeSession {
   id: string;
   userId: string;
   trackId: string;
-  ws: WebSocket | null;
+  sdkSession: any | null; // @google/genai music session
   controls: Required<RealtimeControlUpdate>;
   chunks: Buffer[];
   isRecording: boolean;
@@ -36,14 +37,15 @@ interface RealtimeSession {
 }
 
 /**
- * Manages Lyria RealTime WebSocket sessions for live AI music generation.
- * 
- * Each session opens a WebSocket to the Lyria RealTime API and streams
- * audio chunks back to the frontend via the EventBus. The service handles:
- * - Session lifecycle (start/stop/timeout)
+ * Manages Lyria RealTime sessions for live AI music generation.
+ *
+ * Uses the @google/genai SDK's `client.live.music.connect()` to establish
+ * WebSocket sessions with the Lyria RealTime API. Streams audio chunks
+ * back to the frontend via the EventBus. The service handles:
+ * - Session lifecycle (start/stop/timeout) via SDK session controls
  * - Control mapping (BPM, key, density, brightness)
  * - Session recording (concatenate chunks into WAV)
- * 
+ *
  * EXPERIMENTAL: Lyria RealTime API may change. The service degrades
  * gracefully if the API is unavailable.
  */
@@ -51,16 +53,16 @@ interface RealtimeSession {
 export class LyriaRealtimeService implements OnModuleDestroy {
   private readonly logger = new Logger(LyriaRealtimeService.name);
   private readonly sessions = new Map<string, RealtimeSession>();
-  private readonly projectId: string;
-  private readonly location: string;
+  private readonly client: GoogleGenAI;
+  private readonly apiKey: string;
   private readonly idleTimeoutMs = 60_000; // 60s idle timeout
 
   constructor(
     private readonly configService: ConfigService,
     private readonly eventBus: EventBus,
   ) {
-    this.projectId = this.configService.get<string>('LYRIA_PROJECT_ID', '');
-    this.location = this.configService.get<string>('LYRIA_LOCATION', 'us-central1');
+    this.apiKey = this.configService.get<string>('GOOGLE_AI_API_KEY', '');
+    this.client = new GoogleGenAI({ apiKey: this.apiKey, apiVersion: 'v1alpha' });
   }
 
   onModuleDestroy() {
@@ -74,27 +76,27 @@ export class LyriaRealtimeService implements OnModuleDestroy {
    * Check whether the Lyria RealTime API is configured and available.
    */
   isAvailable(): boolean {
-    return !!this.projectId;
+    return !!this.apiKey;
   }
 
   /**
    * Start a new realtime generation session.
-   * 
-   * Opens a WebSocket to the Lyria RealTime API and begins streaming
-   * audio chunks. Emits `realtime.audio` events via EventBus.
+   *
+   * Connects to the Lyria RealTime API via the @google/genai SDK and
+   * begins streaming audio chunks. Emits `realtime.audio` events via EventBus.
    */
   async startSession(params: RealtimeSessionParams): Promise<string> {
     const sessionId = `rt_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
     if (!this.isAvailable()) {
-      this.logger.warn('Lyria RealTime API not configured, creating mock session');
+      this.logger.warn('Lyria RealTime API not configured (no API key), creating mock session');
     }
 
     const session: RealtimeSession = {
       id: sessionId,
       userId: params.userId,
       trackId: params.trackId,
-      ws: null,
+      sdkSession: null,
       controls: {
         bpm: params.bpm ?? 120,
         key: params.key ?? 'C major',
@@ -109,13 +111,13 @@ export class LyriaRealtimeService implements OnModuleDestroy {
 
     this.sessions.set(sessionId, session);
 
-    // Attempt to connect to Lyria RealTime API
+    // Attempt to connect via SDK
     try {
-      await this.connectWebSocket(session);
+      await this.connectSession(session);
       this.logger.log(`Started realtime session ${sessionId} for user ${params.userId}`);
     } catch (error) {
       this.logger.warn(`Failed to connect to Lyria RealTime API: ${error}. Session ${sessionId} in degraded mode.`);
-      // Session stays active but in degraded mode (no WebSocket)
+      // Session stays active but in degraded mode (no SDK session)
       // Frontend can still use existing stems
     }
 
@@ -135,6 +137,9 @@ export class LyriaRealtimeService implements OnModuleDestroy {
     }
 
     // Merge updates
+    const bpmChanged = update.bpm !== undefined && update.bpm !== session.controls.bpm;
+    const keyChanged = update.key !== undefined && update.key !== session.controls.key;
+
     if (update.bpm !== undefined) session.controls.bpm = Math.max(60, Math.min(200, update.bpm));
     if (update.key !== undefined) session.controls.key = update.key;
     if (update.density !== undefined) session.controls.density = Math.max(0, Math.min(100, update.density));
@@ -143,19 +148,27 @@ export class LyriaRealtimeService implements OnModuleDestroy {
     session.lastActivity = Date.now();
     this.resetIdleTimeout(session);
 
-    // Send control update to Lyria RealTime API
-    if (session.ws && session.ws.readyState === WebSocket.OPEN) {
-      const controlMessage = JSON.stringify({
-        type: 'control_update',
-        params: {
-          bpm: session.controls.bpm,
-          scale: session.controls.key,
-          note_density: session.controls.density / 100,
-          spectral_brightness: session.controls.brightness / 100,
-        },
-      });
-      session.ws.send(controlMessage);
-      this.logger.debug(`Sent control update to session ${sessionId}: ${controlMessage}`);
+    // Send control update to Lyria RealTime via SDK
+    if (session.sdkSession) {
+      try {
+        await session.sdkSession.setMusicGenerationConfig({
+          musicGenerationConfig: {
+            bpm: session.controls.bpm,
+            density: session.controls.density / 100,
+            brightness: session.controls.brightness / 100,
+          },
+        });
+
+        // BPM or key changes require context reset for the model to adapt
+        if (bpmChanged || keyChanged) {
+          await session.sdkSession.resetContext();
+          this.logger.debug(`Reset context for session ${sessionId} (BPM/key change)`);
+        }
+
+        this.logger.debug(`Sent control update to session ${sessionId}`);
+      } catch (error) {
+        this.logger.error(`Failed to update controls for session ${sessionId}: ${error}`);
+      }
     }
   }
 
@@ -185,8 +198,8 @@ export class LyriaRealtimeService implements OnModuleDestroy {
     session.isRecording = false;
     const pcmData = Buffer.concat(session.chunks);
 
-    // Wrap PCM data in WAV header (48kHz, 16-bit, mono)
-    const wavBuffer = this.createWavHeader(pcmData, 48000, 1, 16);
+    // Wrap PCM data in WAV header (48kHz, 16-bit, stereo)
+    const wavBuffer = this.createWavHeader(pcmData, 48000, 2, 16);
     this.logger.log(`Stopped recording session ${sessionId}: ${wavBuffer.length} bytes`);
 
     session.chunks = [];
@@ -202,14 +215,14 @@ export class LyriaRealtimeService implements OnModuleDestroy {
 
     session.isActive = false;
 
-    // Close WebSocket
-    if (session.ws) {
+    // Stop SDK session
+    if (session.sdkSession) {
       try {
-        session.ws.close(1000, 'Session ended');
+        session.sdkSession.stop();
       } catch (e) {
-        // Ignore close errors
+        // Ignore stop errors
       }
-      session.ws = null;
+      session.sdkSession = null;
     }
 
     // Clear timeout
@@ -237,109 +250,86 @@ export class LyriaRealtimeService implements OnModuleDestroy {
   // ============ Private Helpers ============
 
   /**
-   * Connect to the Lyria RealTime WebSocket API.
+   * Connect to the Lyria RealTime API via @google/genai SDK.
    */
-  private async connectWebSocket(session: RealtimeSession): Promise<void> {
-    if (!this.projectId) {
-      // No API configured — session works in degraded mode
+  private async connectSession(session: RealtimeSession): Promise<void> {
+    if (!this.apiKey) {
+      // No API key configured — session works in degraded mode
       return;
     }
 
-    // Obtain access token
-    const { GoogleAuth } = await import('google-auth-library');
-    const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
-    const client = await auth.getClient();
-    const accessToken = (await client.getAccessToken()).token;
+    const sdkSession = await this.client.live.music.connect({
+      model: 'models/lyria-realtime-exp',
+      callbacks: {
+        onmessage: (message: any) => {
+          if (message.serverContent?.audioChunks) {
+            for (const chunk of message.serverContent.audioChunks) {
+              const audioBuffer = Buffer.from(chunk.data, 'base64');
 
-    if (!accessToken) {
-      throw new Error('Failed to obtain GCP access token for Lyria RealTime');
-    }
+              // Store for recording
+              if (session.isRecording) {
+                session.chunks.push(audioBuffer);
+              }
 
-    const wsUrl = `wss://${this.location}-aiplatform.googleapis.com/ws/v1/projects/${this.projectId}/locations/${this.location}/publishers/google/models/lyria-realtime:streamGenerate`;
+              // Emit to frontend via EventBus
+              this.eventBus.publish({
+                eventName: 'realtime.audio',
+                eventVersion: 1,
+                occurredAt: new Date().toISOString(),
+                sessionId: session.id,
+                userId: session.userId,
+                chunk: chunk.data, // Keep as base64 for Socket.IO transport
+                timestamp: Date.now(),
+              } satisfies RealtimeAudioEvent);
 
-    const ws = new WebSocket(wsUrl, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-      },
-    } as any);
-
-    session.ws = ws;
-
-    ws.onopen = () => {
-      this.logger.log(`WebSocket connected for session ${session.id}`);
-
-      // Send initial configuration
-      const initMessage = JSON.stringify({
-        type: 'init',
-        params: {
-          bpm: session.controls.bpm,
-          scale: session.controls.key,
-          note_density: session.controls.density / 100,
-          spectral_brightness: session.controls.brightness / 100,
-          sample_rate: 48000,
-          channels: 1,
-          bit_depth: 16,
-        },
-      });
-      ws.send(initMessage);
-    };
-
-    ws.onmessage = (event: MessageEvent) => {
-      try {
-        const data = typeof event.data === 'string'
-          ? JSON.parse(event.data)
-          : event.data;
-
-        if (data.type === 'audio_chunk' && data.audio) {
-          const chunk = Buffer.from(data.audio, 'base64');
-
-          // Store for recording
-          if (session.isRecording) {
-            session.chunks.push(chunk);
+              session.lastActivity = Date.now();
+            }
           }
+        },
+        onerror: (error: any) => {
+          this.logger.error(`Lyria RealTime error in session ${session.id}: ${error}`);
+        },
+        onclose: () => {
+          this.logger.log(`Lyria RealTime closed for session ${session.id}`);
+          session.sdkSession = null;
 
-          // Emit to frontend via EventBus
-          this.eventBus.publish({
-            eventName: 'realtime.audio',
-            eventVersion: 1,
-            occurredAt: new Date().toISOString(),
-            sessionId: session.id,
-            userId: session.userId,
-            chunk: data.audio, // Keep as base64 for Socket.IO transport
-            timestamp: Date.now(),
-          } satisfies RealtimeAudioEvent);
+          // Auto-cleanup on unexpected close
+          if (session.isActive) {
+            this.logger.warn(`Unexpected close for session ${session.id}, marking inactive`);
+            session.isActive = false;
+            this.eventBus.publish({
+              eventName: 'realtime.disconnected',
+              eventVersion: 1,
+              occurredAt: new Date().toISOString(),
+              sessionId: session.id,
+              userId: session.userId,
+              reason: 'Connection lost',
+            } satisfies RealtimeDisconnectedEvent);
+          }
+        },
+      },
+    });
 
-          session.lastActivity = Date.now();
-        } else if (data.type === 'error') {
-          this.logger.error(`Lyria RealTime error in session ${session.id}: ${data.message}`);
-        }
-      } catch (err) {
-        this.logger.error(`Failed to process WebSocket message: ${err}`);
-      }
-    };
+    session.sdkSession = sdkSession;
 
-    ws.onerror = (error: Event) => {
-      this.logger.error(`WebSocket error in session ${session.id}: ${error}`);
-    };
+    // Set initial prompt based on track context
+    await sdkSession.setWeightedPrompts({
+      weightedPrompts: [
+        { text: `${session.controls.key} music`, weight: 1.0 },
+      ],
+    });
 
-    ws.onclose = (event: CloseEvent) => {
-      this.logger.log(`WebSocket closed for session ${session.id}: code=${event.code} reason=${event.reason}`);
-      session.ws = null;
+    // Set initial configuration
+    await sdkSession.setMusicGenerationConfig({
+      musicGenerationConfig: {
+        bpm: session.controls.bpm,
+        density: session.controls.density / 100,
+        brightness: session.controls.brightness / 100,
+      },
+    });
 
-      // Auto-cleanup if unexpected close
-      if (session.isActive && event.code !== 1000) {
-        this.logger.warn(`Unexpected WebSocket close for session ${session.id}, marking inactive`);
-        session.isActive = false;
-        this.eventBus.publish({
-          eventName: 'realtime.disconnected',
-          eventVersion: 1,
-          occurredAt: new Date().toISOString(),
-          sessionId: session.id,
-          userId: session.userId,
-          reason: event.reason || 'Connection lost',
-        } satisfies RealtimeDisconnectedEvent);
-      }
-    };
+    // Start playback
+    await sdkSession.play();
   }
 
   /**

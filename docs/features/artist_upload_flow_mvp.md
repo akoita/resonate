@@ -36,7 +36,7 @@ and registers the resulting assets in the catalog.
 ## Dependencies
 
 - Storage provider configuration (Local/IPFS/GCS).
-- Demucs worker running (`make dev-up` starts it with GPU by default).
+- Demucs worker running from the local infrastructure stack in `resonate-iac`.
 - Redis for BullMQ job queue.
 - Catalog service CRUD endpoints.
 
@@ -61,6 +61,6 @@ The stem separation is handled by a containerized Demucs worker using the `htdem
 6. `stems.processed` event emitted with stem URIs
 
 ### GPU Acceleration
-GPU is enabled by default via `make dev-up`. Requires NVIDIA GPU + Container Toolkit.
+GPU is enabled by default in the `resonate-iac` stack. Requires NVIDIA GPU + Container Toolkit.
 
 See [`workers/demucs/README.md`](../../workers/demucs/README.md) for full setup and troubleshooting.
