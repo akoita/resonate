@@ -1,33 +1,33 @@
-# Security Best Practices Report — Issue #432
+# Security Best Practices Report — Issue #457
 
-**Date:** 2026-03-27
-**Scope:** Backend changes in `contracts.service.ts`, `metadata.controller.ts`, `schema.prisma`
+**Date:** 2026-04-07
+**Scope:** Backend dispute notification flow and frontend websocket notification hook
 
 ## Executive Summary
 
-The backend jury arbitration endpoints follow existing patterns for input validation, Prisma usage, and error handling. No critical or high-severity vulnerabilities were identified.
+The `#457` changes harden realtime dispute notifications by improving reconnect behavior and adding automated coverage around backend event delivery. No Critical or High findings were identified in the changed files.
 
 ## Findings
 
-### SBPR-001: Missing Auth Guard on Jury Endpoints (Pre-existing Pattern)
+### SBPR-001: Wallet-room delivery depends on client-provided wallet join
 
-**File:** `backend/src/modules/contracts/metadata.controller.ts`
+**File:** `backend/src/modules/shared/events.gateway.ts`
 **Severity:** Low
 
-**Description:** The new jury endpoints (`escalate-jury`, `jury-vote`, `finalize-jury`) follow the same pattern as existing dispute endpoints — no explicit auth guard decorator. This is the pre-existing pattern across the `MetadataController`; authentication is handled at a higher level by the module configuration. No regression introduced.
+**Description:** Targeted `notification.new` delivery relies on the client joining its own wallet room by emitting `wallet:join`. This is sufficient for the current unauthenticated websocket design, but room membership is not server-authenticated.
 
-**Recommendation:** No action needed for this PR. A future hardening pass could add explicit `@UseGuards()` decorators for admin-only operations like `escalate-jury`.
+**Recommendation:** Keep the current design for this issue. In a future hardening pass, bind websocket room joins to authenticated session identity rather than trusting a raw wallet string from the client.
 
 ---
 
-### SBPR-002: Input Validation on Jury Vote
+### SBPR-002: Reconnect refetch closes missed-event gap
 
-**File:** `backend/src/modules/contracts/contracts.service.ts` (castJuryVote)
+**File:** `web/src/hooks/useDisputeNotifications.ts`
 **Severity:** Informational
 
-**Description:** The `castJuryVote` method validates the vote value against `["reporter", "creator"]` and checks juror assignment. The controller also validates at the HTTP layer. Defense-in-depth is properly applied.
+**Description:** Before this issue, a disconnected client could miss `notification.new` events and retain stale unread state after reconnect. The updated hook now rejoins the wallet room and refetches notifications on socket `connect`, which closes the missed-event window for the current polling-plus-websocket design.
 
-**Recommendation:** No action needed.
+**Recommendation:** No further action required in this issue.
 
 ## Summary
 
@@ -41,8 +41,8 @@ The backend jury arbitration endpoints follow existing patterns for input valida
 
 ## Scans Performed
 
-- [x] Hardcoded secrets — none found in changed files
-- [x] Raw SQL queries — none (all Prisma ORM)
-- [x] XSS vectors — none in frontend changes
-- [x] Input validation — present at controller and service layers
-- [x] Unsafe deserialization — none
+- [x] Hardcoded secret scan on backend sources relevant to the change
+- [x] Raw SQL scan on backend sources
+- [x] XSS scan on frontend sources
+- [x] Client-exposed secret pattern scan on frontend sources
+- [x] Manual review of changed websocket and notification code paths
