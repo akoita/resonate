@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import AuthGate from "../../components/auth/AuthGate";
+import NotificationPreferences from "../../components/notifications/NotificationPreferences";
 import { useToast } from "../../components/ui/Toast";
 import {
     getLibrarySourceHandles,
@@ -329,6 +330,16 @@ export default function SettingsPage() {
                             />
                             <span>Automatically scan for new files when app loads</span>
                         </label>
+                    </div>
+
+                    <div className="settings-section">
+                        <h3 className="settings-section-title">Notifications</h3>
+                        <p className="home-subtitle">
+                            Manage dispute alerts, unread badges, and realtime notification delivery for your connected wallet.
+                        </p>
+                        <div className="settings-source" style={{ marginTop: "12px" }}>
+                            <NotificationPreferences />
+                        </div>
                     </div>
                 </Card>
             </main>

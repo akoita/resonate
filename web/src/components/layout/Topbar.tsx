@@ -2,6 +2,7 @@
 
 import type React from "react";
 import ConnectButton from "../auth/ConnectButton";
+import NotificationBell from "../notifications/NotificationBell";
 import { useUIStore } from "../../lib/uiStore";
 
 export type TopbarProps = {
@@ -26,6 +27,7 @@ export default function Topbar({ title, actions }: TopbarProps) {
             <line x1="15" y1="3" x2="15" y2="21"></line>
           </svg>
         </button>
+        <NotificationBell />
         {actions ?? <ConnectButton />}
       </div>
     </div>
