@@ -1,5 +1,6 @@
 SEPOLIA_RPC_URL ?= https://sepolia.drpc.org
 RESONATE_IAC_REPO ?= https://github.com/akoita/resonate-iac
+LOCAL_INFRA_COMPOSE_FILE ?= docker/docker-compose.local.yml
 
 define moved_to_resonate_iac
 	@echo "This target moved to $(RESONATE_IAC_REPO)."
@@ -8,13 +9,25 @@ define moved_to_resonate_iac
 endef
 
 dev-up:
-	$(moved_to_resonate_iac)
+	docker compose -f $(LOCAL_INFRA_COMPOSE_FILE) up -d
+	@echo "Waiting for Postgres on localhost:5432..."
+	@until nc -z localhost 5432 >/dev/null 2>&1; do sleep 1; done
+	@echo "Waiting for PubSub emulator on localhost:8085..."
+	@until nc -z localhost 8085 >/dev/null 2>&1; do sleep 1; done
+	@$(MAKE) pubsub-init
+	@echo "✅ Local infra is ready: Postgres, Redis, PubSub emulator"
 
 dev-up-build:
-	$(moved_to_resonate_iac)
+	docker compose -f $(LOCAL_INFRA_COMPOSE_FILE) up -d --build
+	@echo "Waiting for Postgres on localhost:5432..."
+	@until nc -z localhost 5432 >/dev/null 2>&1; do sleep 1; done
+	@echo "Waiting for PubSub emulator on localhost:8085..."
+	@until nc -z localhost 8085 >/dev/null 2>&1; do sleep 1; done
+	@$(MAKE) pubsub-init
+	@echo "✅ Local infra is ready: Postgres, Redis, PubSub emulator"
 
 dev-down:
-	$(moved_to_resonate_iac)
+	docker compose -f $(LOCAL_INFRA_COMPOSE_FILE) down
 
 # ============================================
 # Docker Production Builds
@@ -84,6 +97,12 @@ backend-dev: dev-clean
 		echo 'GCP_PROJECT_ID=resonate-local' >> backend/.env; \
 		echo 'STEM_PROCESSING_MODE=pubsub' >> backend/.env; \
 		echo "✅ Added PubSub emulator config to backend/.env"; \
+	fi
+	@if ! nc -z localhost 5432 >/dev/null 2>&1; then \
+		echo "❌ Postgres is not reachable on localhost:5432"; \
+		echo "Run 'make dev-up' in this repo to start local Postgres, Redis, and PubSub, then retry make backend-dev."; \
+		echo "backend/.env currently points DATABASE_URL at localhost:5432."; \
+		exit 1; \
 	fi
 	cd backend && npm run prisma:generate && npm run prisma:migrate && npm run start:dev
 

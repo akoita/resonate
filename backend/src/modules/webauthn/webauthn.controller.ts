@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Logger } from "@nestjs/common";
+import { Controller, Post, Body, Logger, Headers } from "@nestjs/common";
 import { WebAuthnService } from "./webauthn.service";
 
 /**
@@ -28,6 +28,7 @@ export class WebAuthnController {
 
   @Post("register/verify")
   async registerVerify(
+    @Headers("origin") origin: string | undefined,
     @Body() body: { userId: string; username?: string; cred: any; rpID?: string },
   ) {
     this.logger.log(`Register verify for userId: ${body.userId}`);
@@ -36,6 +37,7 @@ export class WebAuthnController {
       body.username || "Resonate",
       body.cred,
       body.rpID,
+      origin,
     );
   }
 
@@ -47,12 +49,14 @@ export class WebAuthnController {
 
   @Post("login/verify")
   async loginVerify(
+    @Headers("origin") origin: string | undefined,
     @Body() body: { cred: any; rpID?: string },
   ) {
     this.logger.log("Login verify requested");
     return this.webAuthnService.verifyAuthentication(
       body.cred,
       body.rpID,
+      origin,
     );
   }
 }

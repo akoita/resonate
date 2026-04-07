@@ -12,7 +12,7 @@ This repository keeps the application code, smart contracts, and app-local helpe
 
 ## Local App Workflow
 
-1. Start local infrastructure from `resonate-iac`.
+1. Start local app-runtime infrastructure from this repo with `make dev-up`.
 2. Install app dependencies in this repo.
 3. Run app-local commands from this repo:
 
@@ -23,8 +23,10 @@ cd ../web && npm ci --legacy-peer-deps
 cd ..
 
 make backend-dev
-make web-dev
+make web-dev-local   # or make web-dev-fork when targeting a Sepolia fork on localhost:8545
 ```
+
+`make dev-up` starts local Postgres, Redis, and the Pub/Sub emulator. `make backend-dev` expects those services on `localhost` and exits early with a targeted message if Postgres is missing.
 
 Useful app-local targets that still live here:
 

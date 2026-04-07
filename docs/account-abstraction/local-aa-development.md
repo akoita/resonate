@@ -7,7 +7,8 @@ The local infrastructure stack that used to live here now lives in [`akoita/reso
 
 | Concern | Repository |
 | --- | --- |
-| Anvil, Alto bundler, Postgres, Redis, Pub/Sub emulator, Demucs worker | `resonate-iac` |
+| Postgres, Redis, Pub/Sub emulator | `resonate` |
+| Anvil, Alto bundler, Demucs worker | environment-specific / see local runtime notes |
 | AA contracts, protocol contracts, backend, frontend, env refresh helpers | `resonate` |
 
 ## Prerequisites
@@ -16,7 +17,7 @@ The local infrastructure stack that used to live here now lives in [`akoita/reso
 - Node.js 20+
 - Foundry (`forge`, `cast`)
 - `jq`
-- A running local infrastructure stack from `resonate-iac`
+- Local runtime basics started with `make dev-up` from `resonate`
 
 ## Install App Dependencies
 
@@ -29,14 +30,16 @@ cd ..
 
 ## Forked Sepolia Mode
 
-Use this mode when your local infrastructure repo is already running:
+Use this mode when you already have:
 
 - a Sepolia fork on `http://localhost:8545`
 - a bundler on `http://localhost:4337`
+- local Postgres / Redis / PubSub started via `make dev-up`
 
 ```bash
 export SEPOLIA_RPC_URL=https://sepolia.drpc.org
 
+make dev-up
 make local-aa-fork
 make deploy-contracts
 
@@ -44,13 +47,14 @@ make backend-dev
 make web-dev-fork
 ```
 
-`make local-aa-fork` only refreshes local `.env` files. It no longer starts Docker services from this repo.
+`make local-aa-fork` only refreshes local `.env` files for fork mode. Keep using `make web-dev-fork` afterward so the frontend stays on chain `11155111`.
 
 ## Local-Only Mode
 
-Use this mode when your local infrastructure repo is already running a plain local Anvil + bundler:
+Use this mode when you already have a plain local Anvil + bundler:
 
 ```bash
+make dev-up
 make contracts-deploy-local
 
 make backend-dev

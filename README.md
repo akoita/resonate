@@ -88,7 +88,7 @@ graph TB
 
 ### Run Locally
 
-Infrastructure assets now live in [`akoita/resonate-iac`](https://github.com/akoita/resonate-iac). Start Postgres, Redis, Pub/Sub, Demucs, Anvil, and Alto from that repo, then use this repo for contracts, backend, and frontend workflows.
+Cloud/deployment infrastructure lives in [`akoita/resonate-iac`](https://github.com/akoita/resonate-iac). Local developer runtime basics now live in this repo: `make dev-up` starts Postgres, Redis, and the Pub/Sub emulator used by `make backend-dev`.
 
 Two AA modes are available — see [AA Integration](docs/account-abstraction/account-abstraction.md) for architecture and [Local AA Development](docs/account-abstraction/local-aa-development.md) for setup.
 
@@ -104,28 +104,29 @@ cd ..
 # 1. Set env vars
 export SEPOLIA_RPC_URL=https://sepolia.drpc.org
 
-# 2. Start infrastructure from resonate-iac
-#    See: https://github.com/akoita/resonate-iac
+# 2. Start local runtime dependencies in this repo
+make dev-up
 
 # 3. Configure this repo against the running fork and deploy protocol contracts
 make local-aa-fork
 make deploy-contracts
 
 # 4. Start services (separate terminals)
-make backend-dev     # NestJS API on port 3000
+make backend-dev     # NestJS API on port 3000; expects Postgres/Redis/PubSub from make dev-up
 make web-dev-fork    # Next.js on port 3001 (chainId 11155111, local RPC)
 ```
 
-> **Note:** On a Sepolia fork, `make deploy-contracts` deploys a fresh copy of the Resonate protocol contracts to the local fork, then updates `backend/.env` and `web/.env.local` with those fork-local addresses. If backend dependencies are not installed yet, the config script now skips the optional Prisma migration/indexer reset steps and `make backend-dev` will handle them later.
+> **Note:** On a Sepolia fork, `make deploy-contracts` deploys a fresh copy of the Resonate protocol contracts to the local fork, then updates `backend/.env` and `web/.env.local` with those fork-local addresses. `make web-dev-fork` is the correct frontend command for this mode because it targets chain `11155111` while still using your local RPC at `localhost:8545`.
 
 #### Local-Only (offline, no internet required)
 
 ```bash
-# 1. Start local infra from resonate-iac, then deploy contracts here
+# 1. Start local runtime dependencies, then deploy contracts here
+make dev-up
 make contracts-deploy-local  # Deploys AA + StemNFT + Marketplace + TransferValidator
 
 # 2. Start services (separate terminals)
-make backend-dev     # NestJS API on port 3000
+make backend-dev     # NestJS API on port 3000; expects Postgres/Redis/PubSub from make dev-up
 make web-dev-local   # Next.js on port 3001 (chainId 31337)
 ```
 
@@ -133,7 +134,7 @@ make web-dev-local   # Next.js on port 3001 (chainId 31337)
 
 ```bash
 make db-reset        # Reset database (requires Docker running)
-# Stop local infra from the resonate-iac repo when you're done
+make dev-down        # Stop local Postgres, Redis, and Pub/Sub emulator
 ```
 
 ### 📤 Upload Processing Flow

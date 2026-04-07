@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: resonate-postgres
+    environment:
+      POSTGRES_USER: resonate
+      POSTGRES_PASSWORD: resonate
+      POSTGRES_DB: resonate
+    ports:
+      - "5432:5432"
+    volumes:
+      - resonate_pg:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: resonate-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  pubsub-emulator:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    container_name: resonate-pubsub
+    command: gcloud beta emulators pubsub start --host-port=0.0.0.0:8085 --project=${GCP_PROJECT_ID:-resonate-local}
+    ports:
+      - "8085:8085"
+    restart: unless-stopped
+
+volumes:
+  resonate_pg:
