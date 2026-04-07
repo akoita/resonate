@@ -30,6 +30,8 @@ cd ..
 
 ## Forked Sepolia Mode
 
+This is the preferred development workflow.
+
 Use this mode when you already have:
 
 - a Sepolia fork on `http://localhost:8545`
@@ -50,6 +52,8 @@ make web-dev-fork
 `make local-aa-fork` only refreshes local `.env` files for fork mode. Keep using `make web-dev-fork` afterward so the frontend stays on chain `11155111`.
 
 ## Local-Only Mode
+
+Use this only when you explicitly want a plain `31337` local environment or need offline development.
 
 Use this mode when you already have a plain local Anvil + bundler:
 

@@ -92,7 +92,7 @@ Cloud/deployment infrastructure lives in [`akoita/resonate-iac`](https://github.
 
 Two AA modes are available — see [AA Integration](docs/account-abstraction/account-abstraction.md) for architecture and [Local AA Development](docs/account-abstraction/local-aa-development.md) for setup.
 
-#### Forked Sepolia (recommended — session keys, full AA)
+#### Forked Sepolia (recommended default — session keys, full AA)
 
 ```bash
 # 0. Install dependencies (once per clone)
@@ -118,7 +118,9 @@ make web-dev-fork    # Next.js on port 3001 (chainId 11155111, local RPC)
 
 > **Note:** On a Sepolia fork, `make deploy-contracts` deploys a fresh copy of the Resonate protocol contracts to the local fork, then updates `backend/.env` and `web/.env.local` with those fork-local addresses. `make web-dev-fork` is the correct frontend command for this mode because it targets chain `11155111` while still using your local RPC at `localhost:8545`.
 
-#### Local-Only (offline, no internet required)
+> **Recommendation:** Prefer this forked workflow for day-to-day development unless you specifically need isolated `31337` local-only behavior. It is the closest path to the intended production AA setup.
+
+#### Local-Only (fallback / offline development)
 
 ```bash
 # 1. Start local runtime dependencies, then deploy contracts here

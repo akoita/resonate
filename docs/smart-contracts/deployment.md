@@ -14,7 +14,7 @@ This repository keeps the application code, smart contracts, and app-local helpe
 
 1. Start local app-runtime infrastructure from this repo with `make dev-up`.
 2. Install app dependencies in this repo.
-3. Run app-local commands from this repo:
+3. Run app-local commands from this repo. For AA development, prefer the forked Sepolia flow and use `make web-dev-fork` after `make local-aa-fork` + `make deploy-contracts`.
 
 ```bash
 cd contracts && ./scripts/install-deps.sh
