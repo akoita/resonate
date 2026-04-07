@@ -137,7 +137,7 @@ contract CurationRewards is Ownable, ReentrancyGuard {
         if (msg.sender == creator) revert SelfReport();
 
         // Verify counter-stake amount
-        uint256 requiredStake = _getRequiredCounterStake();
+        uint256 requiredStake = _getRequiredCounterStake(msg.sender);
         if (msg.value < requiredStake) revert InsufficientCounterStake();
 
         // File dispute on DisputeResolution
@@ -328,9 +328,17 @@ contract CurationRewards is Ownable, ReentrancyGuard {
 
     // ============ Internal ============
 
-    function _getRequiredCounterStake() internal view returns (uint256) {
+    function _getCounterStakeBpsForScore(int256 score) internal view returns (uint256) {
+        if (score >= 50) return 1000;
+        if (score >= 20) return 1500;
+        if (score < 0) return 3000;
+        return counterStakeBps;
+    }
+
+    function _getRequiredCounterStake(address curator) internal view returns (uint256) {
         uint256 stakeAmount = contentProtection.stakeAmount();
-        return (stakeAmount * counterStakeBps) / 10000;
+        uint256 applicableBps = _getCounterStakeBpsForScore(reputationScores[curator]);
+        return (stakeAmount * applicableBps) / 10000;
     }
 
     function _updateReputation(address curator, int256 delta) internal {
@@ -353,7 +361,11 @@ contract CurationRewards is Ownable, ReentrancyGuard {
     // ============ Views ============
 
     function getRequiredCounterStake() external view returns (uint256) {
-        return _getRequiredCounterStake();
+        return _getRequiredCounterStake(msg.sender);
+    }
+
+    function getRequiredCounterStakeFor(address curator) external view returns (uint256) {
+        return _getRequiredCounterStake(curator);
     }
 
     function getReputation(address curator) external view returns (int256) {

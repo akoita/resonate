@@ -679,6 +679,13 @@ export const CurationRewardsABI = [
     outputs: [{ name: "", type: "uint256" }],
   },
   {
+    name: "getRequiredCounterStakeFor",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "curator", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
     name: "ContentReported",
     type: "event",
     inputs: [

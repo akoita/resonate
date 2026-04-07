@@ -1183,6 +1183,36 @@ export function useReportContent() {
   const [error, setError] = useState<Error | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
+  const readRequiredCounterStake = useCallback(async () => {
+    const addresses = getContractAddresses(chainId);
+    if (addresses.curationRewards === ZERO_ADDRESS) {
+      throw new Error("CurationRewards is not deployed on this chain.");
+    }
+
+    if (!address) {
+      return publicClient.readContract({
+        address: addresses.curationRewards as Address,
+        abi: CurationRewardsABI,
+        functionName: "getRequiredCounterStake",
+      }) as Promise<bigint>;
+    }
+
+    try {
+      return await (publicClient.readContract({
+        address: addresses.curationRewards as Address,
+        abi: CurationRewardsABI,
+        functionName: "getRequiredCounterStakeFor",
+        args: [address as Address],
+      }) as Promise<bigint>);
+    } catch {
+      return publicClient.readContract({
+        address: addresses.curationRewards as Address,
+        abi: CurationRewardsABI,
+        functionName: "getRequiredCounterStake",
+      }) as Promise<bigint>;
+    }
+  }, [address, chainId, publicClient]);
+
   const report = useCallback(
     async (params: { tokenId: bigint; evidenceURI: string }) => {
       if (status !== "authenticated" || !address) {
@@ -1209,11 +1239,7 @@ export function useReportContent() {
         }
 
         const [counterStake, activeDispute] = await Promise.all([
-          publicClient.readContract({
-            address: addresses.curationRewards as Address,
-            abi: CurationRewardsABI,
-            functionName: "getRequiredCounterStake",
-          }) as Promise<bigint>,
+          readRequiredCounterStake(),
           publicClient.readContract({
             address: addresses.disputeResolution as Address,
             abi: DisputeResolutionABI,
@@ -1259,21 +1285,12 @@ export function useReportContent() {
         setPending(false);
       }
     },
-    [publicClient, chainId, address, status, kernelAccount, smartAccountAddress]
+    [publicClient, chainId, address, status, kernelAccount, smartAccountAddress, readRequiredCounterStake]
   );
 
   const getRequiredCounterStake = useCallback(async () => {
-    const addresses = getContractAddresses(chainId);
-    if (addresses.curationRewards === ZERO_ADDRESS) {
-      throw new Error("CurationRewards is not deployed on this chain.");
-    }
-
-    return publicClient.readContract({
-      address: addresses.curationRewards as Address,
-      abi: CurationRewardsABI,
-      functionName: "getRequiredCounterStake",
-    }) as Promise<bigint>;
-  }, [publicClient, chainId]);
+    return readRequiredCounterStake();
+  }, [readRequiredCounterStake]);
 
   return { report, getRequiredCounterStake, pending, error, txHash };
 }
@@ -1487,7 +1504,6 @@ export function useBatchMintAndList() {
         }
 
         // 1. Build approval + N×2 calls array
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const calls: { to: Address; data: Hex | ((addr: Address) => Hex); value?: bigint }[] = [];
         const { authorizations } = await createBatchStemMintAuthorizations(token, {
           authorizations: stems.map((stem) => ({

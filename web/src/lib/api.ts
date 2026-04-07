@@ -283,6 +283,58 @@ export type TrustTier = {
   disputesLost: number;
 };
 
+export type HumanVerificationStatus = {
+  verified: boolean;
+  provider: string | null;
+  status: string;
+  score: number | null;
+  threshold: number | null;
+  verifiedAt: string | null;
+  expiresAt: string | null;
+  requiredAfterReports: number;
+};
+
+export type CuratorStakeTier = {
+  key: string;
+  label: string;
+  description: string;
+  multiplierBps: number;
+};
+
+export type CuratorBadge = {
+  key: string;
+  label: string;
+  tone: "neutral" | "success" | "warning";
+  description: string;
+};
+
+export type CuratorProfile = {
+  walletAddress: string;
+  score: number;
+  effectiveScore: number;
+  decayPenalty: number;
+  successfulFlags: number;
+  rejectedFlags: number;
+  totalBounties: number;
+  reportsFiled: number;
+  activeReports: number;
+  resolutionRate: number | null;
+  lastActiveAt: string | null;
+  stakeTier: CuratorStakeTier;
+  humanVerification: HumanVerificationStatus;
+  requiresHumanVerification: boolean;
+  badges: CuratorBadge[];
+};
+
+export type CuratorReportingPolicy = {
+  walletAddress: string;
+  reportsFiled: number;
+  requiresHumanVerification: boolean;
+  message: string;
+  stakeTier: CuratorStakeTier;
+  humanVerification: HumanVerificationStatus;
+};
+
 export async function getTrustTier(artistId: string, token: string) {
   return apiRequest<TrustTier>(`/api/trust/${artistId}`, { silentErrorCodes: [404] }, token);
 }
@@ -300,6 +352,32 @@ export async function createArtist(
     { method: "POST", body: JSON.stringify(input) },
     token
   );
+}
+
+export async function getCuratorProfile(address: string) {
+  return apiRequest<CuratorProfile>(`/metadata/curators/${address.toLowerCase()}`);
+}
+
+export async function getCuratorLeaderboard(limit = 20) {
+  return apiRequest<CuratorProfile[]>(`/metadata/curators/leaderboard?limit=${limit}`);
+}
+
+export async function getCuratorReportingPolicy(address: string) {
+  return apiRequest<CuratorReportingPolicy>(`/metadata/curators/${address.toLowerCase()}/reporting-policy`);
+}
+
+export async function getHumanVerificationStatus(address: string) {
+  return apiRequest<HumanVerificationStatus>(`/metadata/curators/${address.toLowerCase()}/verification`);
+}
+
+export async function submitHumanVerification(
+  address: string,
+  input: { provider?: string; proof?: string },
+) {
+  return apiRequest<CuratorProfile>(`/metadata/curators/${address.toLowerCase()}/verification`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function createRelease(

@@ -77,9 +77,14 @@ Orchestrates the economic layer:
 | `processRejection()`    | Slashes counter-stake → creator after `Rejected` |
 | `processInconclusive()` | Refunds counter-stake after `Inconclusive`       |
 
-Counter-stake defaults to **20% of the creator's stake** (`counterStakeBps = 2000`, admin-configurable).
+Counter-stake starts at **20% of the creator's stake** (`counterStakeBps = 2000`, admin-configurable), then shifts by curator reputation tier:
 
-On-chain reputation tracks `successfulReports` and `rejectedReports` per curator.
+- negative score: **30%**
+- neutral / new: **20%**
+- trusted (`score >= 20`): **15%**
+- elite (`score >= 50`): **10%**
+
+On-chain reputation tracks `successfulReports` and `rejectedReports` per curator, while the backend adds decay, badges, and proof-of-humanity state for higher-volume reporters.
 
 ## Backend API
 
@@ -98,6 +103,9 @@ Base path: `/api/metadata/`
 | PATCH  | `disputes/:id/jury-vote`  | Cast jury vote (`reporter`/`creator`)              |
 | PATCH  | `disputes/:id/finalize-jury` | Finalize jury decision                          |
 | GET    | `curators/:address`       | Get curator reputation                             |
+| GET    | `curators/:address/reporting-policy` | Get reporting gate + stake tier policy |
+| GET    | `curators/:address/verification` | Get proof-of-humanity status |
+| POST   | `curators/:address/verification` | Verify via Passport / World ID / mock |
 | GET    | `curators/leaderboard`    | Top curators by score                              |
 
 ### Data Models (Prisma)
@@ -111,7 +119,7 @@ CuratorReputation (per wallet)
 - `Dispute`: tokenId, reporterAddr, creatorAddr, status, outcome, evidenceURI, counterStake, escalatedToJuryAt, juryDeadlineAt, jurySize, juryVotesForReporter, juryVotesForCreator, juryFinalizedAt
 - `DisputeEvidence`: submitter, party (reporter/creator), evidenceURI, description
 - `DisputeJurorAssignment`: disputeId, jurorAddr, vote, assignedAt, votedAt (unique on disputeId+jurorAddr)
-- `CuratorReputation`: score, successfulFlags, rejectedFlags, totalBounties
+- `CuratorReputation`: score, successfulFlags, rejectedFlags, totalBounties, reportsFiled, lastActiveAt, proof-of-humanity state
 
 ## Frontend
 
@@ -171,8 +179,15 @@ Delivered across PRs #436 (notification infrastructure), #461 (mounted notificat
 - ✅ Frontend: arbitration timeline, jury panel with vote counts, inline vote buttons
 - ✅ 30 Foundry tests (5 new jury arbitration tests)
 
+## Sprint 5 (Implemented)
+
+- ✅ Proof-of-humanity gate after configurable high-volume report threshold
+- ✅ Curator profile page with badges, decay-adjusted effective score, and stake tier visibility
+- ✅ Gitcoin Passport / World ID verification abstraction with backend normalization
+- ✅ Onboarding verification card for connected wallets
+- ✅ Reputation-aware counter-stake tiers in `CurationRewards`
+
 ## Future Sprints
 
-- **Sprint 5:** Proof-of-humanity gate, enhanced reputation system
 - **Sprint 6:** E2E testing, security audit, deployment
 - **Sprint 7:** Public analytics, anti-abuse hardening

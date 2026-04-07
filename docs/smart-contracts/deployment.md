@@ -89,3 +89,16 @@ Core app-side variables:
 | `RPC_URL` | Backend | RPC endpoint used by contract-aware backend flows |
 | `SEPOLIA_RPC_URL` | Contracts / backend | Required for Sepolia deploys and forked workflows |
 | `AGENT_KEY_ENCRYPTION_KEY` | Backend | Generate with `./backend/scripts/generate-agent-encryption-key.sh` for local KMS mode |
+| `HUMAN_VERIFICATION_PROVIDER` | Backend | `mock`, `passport`, or `worldcoin`; defaults to `mock` locally |
+| `HUMAN_VERIFICATION_REQUIRED_REPORTS` | Backend | Report count threshold that triggers proof-of-humanity gating |
+| `CURATOR_REPUTATION_DECAY_DAYS` | Backend | Days per inactivity decay window for curator effective score |
+| `CURATOR_REPUTATION_DECAY_POINTS` | Backend | Reputation points removed per decay window |
+| `GITCOIN_PASSPORT_API_KEY` | Backend | API key for Passport score lookups |
+| `GITCOIN_PASSPORT_SCORER_ID` | Backend | Passport scorer used for curator verification |
+| `GITCOIN_PASSPORT_THRESHOLD` | Backend | Minimum Passport score treated as verified |
+| `WORLD_ID_APP_ID` | Backend | World ID app identifier for verify calls |
+| `WORLD_ID_ACTION` | Backend | World ID action string used by the verification payload |
+| `WORLD_ID_API_URL` | Backend | Optional override for the World ID verification base URL |
+| `WORLD_ID_VERIFICATION_LEVEL` | Backend | Optional verification level such as `orb` |
+
+If these variables are deployed through infrastructure, define them in `resonate-iac` alongside the backend service environment configuration.

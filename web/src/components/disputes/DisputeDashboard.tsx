@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useAuth } from "../auth/AuthProvider";
 import { useDisputeNotifications } from "../../hooks/useDisputeNotifications";
 
@@ -53,8 +54,10 @@ export default function DisputeDashboard() {
   const [votePendingId, setVotePendingId] = useState<string | null>(null);
   const [reputation, setReputation] = useState({
     score: 0,
+    effectiveScore: 0,
     successfulFlags: 0,
     rejectedFlags: 0,
+    requiresHumanVerification: false,
   });
 
   const fetchDisputes = useCallback(async () => {
@@ -176,21 +179,28 @@ export default function DisputeDashboard() {
         <h1 style={{ margin: 0, fontSize: "24px", fontWeight: 700 }}>
           ⚖️ Dispute Center
         </h1>
+        <Link href={`/curators/${address}${reputation.requiresHumanVerification ? "?verify=1" : ""}`} style={{ textDecoration: "none" }}>
         <div style={repBadgeStyle}>
           <span style={{ fontSize: "12px", opacity: 0.6 }}>Reputation</span>
           <span
             style={{
               fontSize: "20px",
               fontWeight: 700,
-              color: reputation.score > 0 ? "#10b981" : reputation.score < 0 ? "#ef4444" : "#6b7280",
+              color: reputation.effectiveScore > 0 ? "#10b981" : reputation.score < 0 ? "#ef4444" : "#6b7280",
             }}
           >
-            {reputation.score}
+            {reputation.effectiveScore}
           </span>
           <div style={{ fontSize: "11px", opacity: 0.5, marginTop: "2px" }}>
             ✅ {reputation.successfulFlags} · ❌ {reputation.rejectedFlags}
           </div>
+          {reputation.requiresHumanVerification && (
+            <div style={{ fontSize: "11px", color: "#f59e0b", marginTop: "4px" }}>
+              Verification required
+            </div>
+          )}
         </div>
+        </Link>
       </div>
 
       <div style={tabBarStyle}>

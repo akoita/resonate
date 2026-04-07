@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { useReportContent } from "../../hooks/useContracts";
 import { formatEth } from "../../lib/stakeConstants";
+import { getCuratorReportingPolicy, type CuratorReportingPolicy } from "../../lib/api";
 
 interface ReportContentModalProps {
   releaseId: string;
@@ -29,6 +30,7 @@ export default function ReportContentModal({
   const [error, setError] = useState<string | null>(null);
   const [protection, setProtection] = useState<ReleaseProtectionData | null>(null);
   const [counterStake, setCounterStake] = useState<bigint | null>(null);
+  const [reportingPolicy, setReportingPolicy] = useState<CuratorReportingPolicy | null>(null);
   const [loadingProtection, setLoadingProtection] = useState(true);
 
   useEffect(() => {
@@ -37,9 +39,10 @@ export default function ReportContentModal({
     const loadProtection = async () => {
       try {
         setLoadingProtection(true);
-        const [protectionRes, counterStakeWei] = await Promise.all([
+        const [protectionRes, counterStakeWei, policy] = await Promise.all([
           fetch(`/api/metadata/content-protection/release/${releaseId}`),
           getRequiredCounterStake(),
+          address ? getCuratorReportingPolicy(address) : Promise.resolve(null),
         ]);
 
         if (!protectionRes.ok) {
@@ -50,6 +53,7 @@ export default function ReportContentModal({
         if (!cancelled) {
           setProtection(protectionData);
           setCounterStake(counterStakeWei);
+          setReportingPolicy(policy);
         }
       } catch (err) {
         if (!cancelled) {
@@ -67,7 +71,7 @@ export default function ReportContentModal({
     return () => {
       cancelled = true;
     };
-  }, [releaseId, getRequiredCounterStake]);
+  }, [releaseId, getRequiredCounterStake, address]);
 
   const handleSubmit = async () => {
     if (!address) return;
@@ -81,6 +85,9 @@ export default function ReportContentModal({
     try {
       if (!protection?.tokenId || !protection.attested) {
         throw new Error("This release does not have an attested on-chain protection record to dispute yet.");
+      }
+      if (reportingPolicy?.requiresHumanVerification) {
+        throw new Error("Proof-of-humanity is required before you can file more disputes.");
       }
 
       const result = await report({
@@ -142,7 +149,21 @@ export default function ReportContentModal({
           <span style={hintStyle}>
             This deposit is sent on-chain with your report and follows the contract-configured requirement.
           </span>
+          {reportingPolicy && (
+            <span style={hintStyle}>
+              {reportingPolicy.stakeTier.label}: {reportingPolicy.message}
+            </span>
+          )}
         </div>
+
+        {reportingPolicy?.requiresHumanVerification && address && (
+          <div style={warningStyle}>
+            Proof-of-humanity is required before you can submit another report.
+            <a href={`/curators/${address}?verify=1`} style={{ color: "#fde68a", marginLeft: "6px" }}>
+              Verify this wallet
+            </a>
+          </div>
+        )}
 
         {/* Evidence URL */}
         <div style={fieldGroupStyle}>
@@ -187,7 +208,8 @@ export default function ReportContentModal({
               loadingProtection ||
               !evidenceURL.trim() ||
               !protection?.tokenId ||
-              !protection.attested
+              !protection.attested ||
+              reportingPolicy?.requiresHumanVerification
             }
             style={{
               ...submitBtnStyle,
@@ -196,7 +218,8 @@ export default function ReportContentModal({
                 loadingProtection ||
                 !evidenceURL.trim() ||
                 !protection?.tokenId ||
-                !protection.attested
+                !protection.attested ||
+                reportingPolicy?.requiresHumanVerification
                   ? 0.5
                   : 1,
             }}
@@ -255,6 +278,17 @@ const infoBoxStyle: React.CSSProperties = {
   borderRadius: "10px",
   padding: "12px",
   marginBottom: "20px",
+};
+
+const warningStyle: React.CSSProperties = {
+  background: "rgba(245, 158, 11, 0.12)",
+  border: "1px solid rgba(245, 158, 11, 0.28)",
+  borderRadius: "10px",
+  padding: "12px",
+  marginBottom: "18px",
+  color: "#fef3c7",
+  fontSize: "13px",
+  lineHeight: 1.5,
 };
 
 const fieldGroupStyle: React.CSSProperties = {

@@ -95,6 +95,45 @@ contract CurationRewardsTest is Test {
         assertEq(required, COUNTER_STAKE); // 20% of 0.01 ether
     }
 
+    function test_ReportContent_TrustedCuratorGetsReducedStake() public {
+        vm.prank(creator);
+        cp.attest(2, keccak256("audio-2"), keccak256("fp-2"), "ipfs://meta-2");
+        vm.deal(creator, 1 ether);
+        vm.prank(creator);
+        cp.stake{value: STAKE_AMOUNT}(2);
+
+        vm.deal(reporter, 2 ether);
+
+        vm.prank(reporter);
+        cr.reportContent{value: COUNTER_STAKE}(1, "ipfs://evidence-1");
+        vm.prank(admin);
+        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        vm.prank(reporter);
+        cr.claimBounty(1);
+
+        vm.prank(reporter);
+        cr.reportContent{value: COUNTER_STAKE}(2, "ipfs://evidence-2");
+        vm.prank(admin);
+        dr.resolve(2, IDisputeResolution.Outcome.Upheld);
+        vm.prank(reporter);
+        cr.claimBounty(2);
+
+        uint256 reducedStake = cr.getRequiredCounterStakeFor(reporter);
+        assertEq(reducedStake, 0.0015 ether);
+    }
+
+    function test_ReportContent_HighRiskCuratorPaysMore() public {
+        vm.deal(reporter, 1 ether);
+        vm.prank(reporter);
+        cr.reportContent{value: COUNTER_STAKE}(1, "ipfs://evidence");
+        vm.prank(admin);
+        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
+        cr.processRejection(1);
+
+        uint256 increasedStake = cr.getRequiredCounterStakeFor(reporter);
+        assertEq(increasedStake, 0.003 ether);
+    }
+
     function test_ReportContent_StemResolvesToCanonicalTrack() public {
         vm.prank(creator);
         cp.attest(10, keccak256("release"), keccak256("release-fp"), "release");
