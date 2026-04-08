@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, OnModuleInit, NotFoundException } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
 import { EncryptionService } from "../encryption/encryption.service";
@@ -9,6 +10,7 @@ import {
   StemsProcessedEvent,
   StemsUploadedEvent,
 } from "../../events/event_types";
+import { UploadRightsRoutingService } from "../rights/upload-rights-routing.service";
 
 @Injectable()
 export class CatalogService implements OnModuleInit {
@@ -22,6 +24,7 @@ export class CatalogService implements OnModuleInit {
     private readonly eventBus: EventBus,
     private readonly encryptionService: EncryptionService,
     private readonly storageProvider: StorageProvider,
+    private readonly uploadRightsRoutingService: UploadRightsRoutingService,
   ) { }
 
   onModuleInit() {
@@ -34,6 +37,7 @@ export class CatalogService implements OnModuleInit {
           update: {
             artistId: event.artistId,
             status: "processing",
+            rightsSourceType: event.sourceType || "direct_upload",
             artworkData: event.artworkData,
             artworkMimeType: event.artworkMimeType,
             title: event.metadata?.title ?? undefined,
@@ -56,6 +60,7 @@ export class CatalogService implements OnModuleInit {
             artistId: event.artistId,
             title: event.metadata?.title || "Untitled Release",
             status: "processing",
+            rightsSourceType: event.sourceType || "direct_upload",
             type: event.metadata?.type || "single",
             primaryArtist: event.metadata?.primaryArtist,
             featuredArtists: event.metadata?.featuredArtists?.join(", "),
@@ -86,6 +91,13 @@ export class CatalogService implements OnModuleInit {
               })),
             },
           },
+        });
+        await this.uploadRightsRoutingService.evaluateAndPersistInitialDecision({
+          releaseId: event.releaseId,
+          artistId: event.artistId,
+          title: event.metadata?.title,
+          primaryArtist: event.metadata?.primaryArtist,
+          sourceType: event.sourceType,
         });
         console.log(`[Catalog] Created/Updated release ${event.releaseId} with ${event.metadata?.tracks?.length} tracks`);
       } catch (err) {
@@ -126,12 +138,22 @@ export class CatalogService implements OnModuleInit {
                 artist: trackData.artist,
                 position: trackData.position,
                 processingStatus: "complete", // Mark as complete when processed
+                rightsRoute: release.rightsRoute,
+                rightsFlags: (release.rightsFlags ?? undefined) as Prisma.InputJsonValue | undefined,
+                rightsReason: release.rightsReason,
+                rightsPolicyVersion: release.rightsPolicyVersion,
+                rightsEvaluatedAt: release.rightsEvaluatedAt,
               },
               update: {
                 title: trackData.title,
                 artist: trackData.artist,
                 position: trackData.position,
                 processingStatus: "complete", // Mark as complete when processed
+                rightsRoute: release.rightsRoute,
+                rightsFlags: (release.rightsFlags ?? undefined) as Prisma.InputJsonValue | undefined,
+                rightsReason: release.rightsReason,
+                rightsPolicyVersion: release.rightsPolicyVersion,
+                rightsEvaluatedAt: release.rightsEvaluatedAt,
               },
             });
 
@@ -270,6 +292,10 @@ export class CatalogService implements OnModuleInit {
     return prisma.release.findMany({
       where: {
         status: { in: ['ready', 'published'] },
+        OR: [
+          { rightsRoute: null },
+          { rightsRoute: { in: ["LIMITED_MONITORING", "STANDARD_ESCROW", "TRUSTED_FAST_PATH"] } },
+        ],
         ...(primaryArtist && {
           primaryArtist: { equals: primaryArtist, mode: 'insensitive' as const },
         }),
@@ -287,6 +313,12 @@ export class CatalogService implements OnModuleInit {
         releaseDate: true,
         explicit: true,
         createdAt: true,
+        rightsRoute: true,
+        rightsFlags: true,
+        rightsReason: true,
+        rightsPolicyVersion: true,
+        rightsSourceType: true,
+        rightsEvaluatedAt: true,
         artworkMimeType: true, // Useful for frontend to know, but DATA must be excluded
         artist: {
           select: { id: true, displayName: true, userId: true, payoutAddress: true }
@@ -302,6 +334,12 @@ export class CatalogService implements OnModuleInit {
             isrc: true,
             createdAt: true,
             processingStatus: true,
+            contentStatus: true,
+            rightsRoute: true,
+            rightsFlags: true,
+            rightsReason: true,
+            rightsPolicyVersion: true,
+            rightsEvaluatedAt: true,
             stems: {
               select: {
                 id: true,
@@ -387,6 +425,13 @@ export class CatalogService implements OnModuleInit {
         explicit: true,
         isrc: true,
         createdAt: true,
+        processingStatus: true,
+        contentStatus: true,
+        rightsRoute: true,
+        rightsFlags: true,
+        rightsReason: true,
+        rightsPolicyVersion: true,
+        rightsEvaluatedAt: true,
         stems: {
           select: {
             id: true,
@@ -404,6 +449,12 @@ export class CatalogService implements OnModuleInit {
             id: true,
             title: true,
             primaryArtist: true,
+            rightsRoute: true,
+            rightsFlags: true,
+            rightsReason: true,
+            rightsPolicyVersion: true,
+            rightsSourceType: true,
+            rightsEvaluatedAt: true,
             artworkMimeType: true,
             artist: { select: { id: true, displayName: true, userId: true } }
           }
@@ -428,6 +479,12 @@ export class CatalogService implements OnModuleInit {
         releaseDate: true,
         explicit: true,
         createdAt: true,
+        rightsRoute: true,
+        rightsFlags: true,
+        rightsReason: true,
+        rightsPolicyVersion: true,
+        rightsSourceType: true,
+        rightsEvaluatedAt: true,
         artworkMimeType: true,
         artist: {
           select: { id: true, displayName: true, userId: true }
@@ -443,6 +500,12 @@ export class CatalogService implements OnModuleInit {
             isrc: true,
             createdAt: true,
             processingStatus: true,
+            contentStatus: true,
+            rightsRoute: true,
+            rightsFlags: true,
+            rightsReason: true,
+            rightsPolicyVersion: true,
+            rightsEvaluatedAt: true,
             stems: {
               select: {
                 id: true,
@@ -481,6 +544,12 @@ export class CatalogService implements OnModuleInit {
         releaseDate: true,
         explicit: true,
         createdAt: true,
+        rightsRoute: true,
+        rightsFlags: true,
+        rightsReason: true,
+        rightsPolicyVersion: true,
+        rightsSourceType: true,
+        rightsEvaluatedAt: true,
         artworkMimeType: true,
         tracks: {
           orderBy: { position: "asc" },
@@ -490,6 +559,12 @@ export class CatalogService implements OnModuleInit {
             position: true,
             explicit: true,
             processingStatus: true,
+            contentStatus: true,
+            rightsRoute: true,
+            rightsFlags: true,
+            rightsReason: true,
+            rightsPolicyVersion: true,
+            rightsEvaluatedAt: true,
             stems: {
               select: {
                 id: true,

@@ -6,9 +6,10 @@ import { MetadataController } from "./metadata.controller";
 import { NotificationModule } from "../notifications/notification.module";
 import { MintAuthorizationController } from "./mint-authorization.controller";
 import { MintAuthorizationService } from "./mint-authorization.service";
+import { RightsModule } from "../rights/rights.module";
 
 @Module({
-  imports: [SharedModule, NotificationModule],
+  imports: [SharedModule, NotificationModule, RightsModule],
   controllers: [MetadataController, MintAuthorizationController],
   providers: [ContractsService, IndexerService, MintAuthorizationService],
   exports: [ContractsService, IndexerService, MintAuthorizationService],

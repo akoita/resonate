@@ -9,6 +9,7 @@ export interface StemsUploadedEvent extends BaseEvent {
   releaseId: string;
   artistId: string;
   checksum: string;
+  sourceType?: string;
   artworkData?: Buffer;
   artworkMimeType?: string;
   metadata?: {
@@ -659,4 +660,3 @@ export type ResonateEvent =
   | RealtimeDisconnectedEvent
   | MarketplaceListingNotifyEvent
   | NotificationCreatedEvent;
-

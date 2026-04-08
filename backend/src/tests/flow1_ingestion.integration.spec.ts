@@ -13,6 +13,7 @@
 import { prisma } from '../db/prisma';
 import { EventBus } from '../modules/shared/event_bus';
 import { CatalogService } from '../modules/catalog/catalog.service';
+import { UploadRightsRoutingService } from '../modules/rights/upload-rights-routing.service';
 import type {
   StemsUploadedEvent,
   StemsProcessedEvent,
@@ -46,7 +47,12 @@ describe('Choreography Flow 1: Release Ingestion Pipeline', () => {
 
     // Real EventBus → real CatalogService (no mocks)
     eventBus = new EventBus();
-    catalogService = new CatalogService(eventBus as any, {} as any, {} as any);
+    catalogService = new CatalogService(
+      eventBus as any,
+      {} as any,
+      {} as any,
+      new UploadRightsRoutingService(),
+    );
     catalogService.onModuleInit();
   });
 

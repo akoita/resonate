@@ -41,6 +41,7 @@ export class IngestionController {
       artwork: files?.artwork?.[0],
       metadata,
       catalogTrackId: body.trackId,
+      sourceType: body.source,
     });
   }
 

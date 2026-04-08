@@ -73,6 +73,7 @@ export class IngestionService {
     artwork?: Express.Multer.File;
     metadata?: any;
     catalogTrackId?: string;
+    sourceType?: string;
   }) {
     // Resolve artistId: from body, or lookup from userId
     let artistId = input.artistId;
@@ -214,6 +215,7 @@ export class IngestionService {
       releaseId,
       artistId: resolvedArtistId,
       checksum: "completed",
+      sourceType: input.sourceType || "direct_upload",
       artworkData,
       artworkMimeType,
       metadata: finalMetadata,

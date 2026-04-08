@@ -14,6 +14,7 @@ import { LocalStorageProvider } from '../modules/storage/local_storage_provider'
 import { EncryptionService } from '../modules/encryption/encryption.service';
 import { AesEncryptionProvider } from '../modules/encryption/providers/aes_encryption_provider';
 import { ConfigService } from '@nestjs/config';
+import { UploadRightsRoutingService } from '../modules/rights/upload-rights-routing.service';
 
 const TEST_PREFIX = `cat_${Date.now()}_`;
 
@@ -32,7 +33,12 @@ describe('CatalogService (integration)', () => {
     const aesProvider = new AesEncryptionProvider(configService);
     const encryption = new EncryptionService(aesProvider as any, configService);
 
-    catalog = new CatalogService(eventBus, encryption as any, storage);
+    catalog = new CatalogService(
+      eventBus,
+      encryption as any,
+      storage,
+      new UploadRightsRoutingService(),
+    );
 
     // Seed prerequisite data
     await prisma.user.create({

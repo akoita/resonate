@@ -1,9 +1,14 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
+import { UploadRightsRoutingService } from "../rights/upload-rights-routing.service";
 
 @Injectable()
 export class DmcaService {
   private readonly logger = new Logger(DmcaService.name);
+
+  constructor(
+    private readonly uploadRightsRoutingService: UploadRightsRoutingService,
+  ) {}
 
   /**
    * File a DMCA takedown report against a track.
@@ -93,6 +98,7 @@ export class DmcaService {
         where: { id: report.trackId },
         data: { contentStatus: "dmca_removed" },
       });
+      await this.uploadRightsRoutingService.syncTrackRightsFromContentStatus(report.trackId);
 
       // Delist all derived stems by clearing their URIs
       // (keeping records for audit trail but making them inaccessible)

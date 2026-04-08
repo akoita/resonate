@@ -1,9 +1,14 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
+import { UploadRightsRoutingService } from "../rights/upload-rights-routing.service";
 
 @Injectable()
 export class FingerprintService {
   private readonly logger = new Logger(FingerprintService.name);
+
+  constructor(
+    private readonly uploadRightsRoutingService: UploadRightsRoutingService,
+  ) {}
 
   /**
    * Register a fingerprint for a track and check for duplicates.
@@ -89,6 +94,7 @@ export class FingerprintService {
       where: { id: trackId },
       data: { contentStatus: "quarantined" },
     });
+    await this.uploadRightsRoutingService.syncTrackRightsFromContentStatus(trackId);
 
     // Notify the original uploader(s) — TODO: implement notification system
     const originalArtists = [...new Set(duplicates.map((d) => d.track.release.artist.displayName))];
