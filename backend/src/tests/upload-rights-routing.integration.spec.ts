@@ -30,6 +30,8 @@ describe("UploadRightsRoutingService (integration)", () => {
   const conflictExistingReleaseId = `${P}release_conflict_existing`;
   const conflictIncomingReleaseId = `${P}release_conflict_incoming`;
   const blockedReleaseId = `${P}release_blocked`;
+  const blockedSiblingTrackId = `${P}track_blocked_sibling`;
+  const blockedSiblingStemId = `${P}stem_blocked_sibling`;
 
   const trackIds = {
     limited: `${P}track_limited`,
@@ -154,7 +156,22 @@ describe("UploadRightsRoutingService (integration)", () => {
           title: "Blocked Upload",
           rightsRoute: "BLOCKED",
         },
+        {
+          id: blockedSiblingTrackId,
+          releaseId: blockedReleaseId,
+          title: "Blocked Upload Sibling",
+          rightsRoute: "STANDARD_ESCROW",
+        },
       ],
+    });
+
+    await prisma.stem.create({
+      data: {
+        id: blockedSiblingStemId,
+        trackId: blockedSiblingTrackId,
+        type: "vocals",
+        uri: "/blocked-sibling.wav",
+      },
     });
   });
 
@@ -164,8 +181,11 @@ describe("UploadRightsRoutingService (integration)", () => {
     await prisma.creatorTrust.deleteMany({
       where: { artistId: { in: [verifiedArtistId] } },
     }).catch(() => {});
+    await prisma.stem.deleteMany({
+      where: { id: { in: [blockedSiblingStemId] } },
+    }).catch(() => {});
     await prisma.track.deleteMany({
-      where: { id: { in: Object.values(trackIds) } },
+      where: { id: { in: [...Object.values(trackIds), blockedSiblingTrackId] } },
     }).catch(() => {});
     await prisma.release.deleteMany({
       where: {
@@ -269,5 +289,11 @@ describe("UploadRightsRoutingService (integration)", () => {
     expect(releaseIds).toContain(trustedReleaseId);
     expect(releaseIds).not.toContain(conflictIncomingReleaseId);
     expect(releaseIds).not.toContain(blockedReleaseId);
+  });
+
+  it("uses the stricter release route when deciding marketplace access for a stem", async () => {
+    await expect(
+      routing.assertMarketplaceAllowedForStem(blockedSiblingStemId),
+    ).rejects.toThrow("Marketplace minting is disabled");
   });
 });

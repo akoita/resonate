@@ -134,4 +134,60 @@ describe('CatalogService (integration)', () => {
   it('returns null for non-existent release', async () => {
     expect(await catalog.getRelease('nonexistent')).toBeNull();
   });
+
+  it('hides restricted releases from public catalog reads and streams', async () => {
+    const restrictedReleaseId = `${TEST_PREFIX}restricted_release`;
+    const restrictedTrackId = `${TEST_PREFIX}restricted_track`;
+    const restrictedStemId = `${TEST_PREFIX}restricted_stem`;
+
+    await prisma.release.create({
+      data: {
+        id: restrictedReleaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Restricted Release',
+        status: 'ready',
+        rightsRoute: 'QUARANTINED_REVIEW',
+        artworkData: Buffer.from('artwork'),
+        artworkMimeType: 'image/png',
+      },
+    });
+    await prisma.track.create({
+      data: {
+        id: restrictedTrackId,
+        releaseId: restrictedReleaseId,
+        title: 'Restricted Track',
+        rightsRoute: 'QUARANTINED_REVIEW',
+      },
+    });
+    await prisma.stem.create({
+      data: {
+        id: restrictedStemId,
+        trackId: restrictedTrackId,
+        type: 'original',
+        uri: '/restricted.wav',
+        data: Buffer.from('restricted-audio'),
+        mimeType: 'audio/wav',
+      },
+    });
+
+    expect(await catalog.getRelease(restrictedReleaseId)).toBeNull();
+    expect(await catalog.getTrack(restrictedTrackId)).toBeNull();
+    expect(await catalog.getReleaseArtwork(restrictedReleaseId)).toBeNull();
+    expect(await catalog.getTrackStream(restrictedTrackId)).toBeNull();
+    expect(await catalog.getStemBlob(restrictedStemId)).toBeNull();
+    await expect(catalog.getStemPreview(restrictedStemId)).rejects.toThrow('Stem not found');
+
+    const publicArtistReleases = await catalog.listByArtist(`${TEST_PREFIX}artist`);
+    expect(publicArtistReleases.some((release) => release.id === restrictedReleaseId)).toBe(false);
+
+    const ownerReleases = await catalog.listByUserId(`${TEST_PREFIX}user`);
+    expect(ownerReleases.some((release) => release.id === restrictedReleaseId)).toBe(true);
+
+    const searchResults = await catalog.search('Restricted Release');
+    expect(searchResults.items.some((release: any) => release.id === restrictedReleaseId)).toBe(false);
+
+    await prisma.stem.delete({ where: { id: restrictedStemId } });
+    await prisma.track.delete({ where: { id: restrictedTrackId } });
+    await prisma.release.delete({ where: { id: restrictedReleaseId } });
+  });
 });

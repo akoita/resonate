@@ -11,6 +11,17 @@ import {
   StemsUploadedEvent,
 } from "../../events/event_types";
 import { UploadRightsRoutingService } from "../rights/upload-rights-routing.service";
+import {
+  compareRouteSeverity,
+  getUploadRightsActions,
+  type UploadRightsRoute,
+} from "../rights/upload-rights-policy";
+
+const PUBLIC_RELEASE_ROUTES: UploadRightsRoute[] = [
+  "LIMITED_MONITORING",
+  "STANDARD_ESCROW",
+  "TRUSTED_FAST_PATH",
+];
 
 @Injectable()
 export class CatalogService implements OnModuleInit {
@@ -294,7 +305,7 @@ export class CatalogService implements OnModuleInit {
         status: { in: ['ready', 'published'] },
         OR: [
           { rightsRoute: null },
-          { rightsRoute: { in: ["LIMITED_MONITORING", "STANDARD_ESCROW", "TRUSTED_FAST_PATH"] } },
+          { rightsRoute: { in: PUBLIC_RELEASE_ROUTES } },
         ],
         ...(primaryArtist && {
           primaryArtist: { equals: primaryArtist, mode: 'insensitive' as const },
@@ -415,7 +426,7 @@ export class CatalogService implements OnModuleInit {
   }
 
   async getTrack(trackId: string) {
-    return prisma.track.findUnique({
+    const track = await prisma.track.findUnique({
       where: { id: trackId },
       select: {
         id: true,
@@ -461,10 +472,24 @@ export class CatalogService implements OnModuleInit {
         }
       }
     });
+
+    if (!track) {
+      return null;
+    }
+
+    const effectiveRoute = this.getMostRestrictiveRoute(
+      track.rightsRoute,
+      track.release.rightsRoute,
+    );
+    if (!this.isPubliclyVisible(effectiveRoute)) {
+      return null;
+    }
+
+    return track;
   }
 
   async getRelease(releaseId: string) {
-    return prisma.release.findUnique({
+    const release = await prisma.release.findUnique({
       where: { id: releaseId },
       select: {
         id: true,
@@ -523,11 +548,31 @@ export class CatalogService implements OnModuleInit {
         }
       }
     });
+
+    if (!release) {
+      return null;
+    }
+
+    if (!this.isPubliclyVisible(release.rightsRoute)) {
+      return null;
+    }
+
+    return release;
   }
 
-  async listByArtist(artistId: string) {
+  async listByArtist(artistId: string, options?: { includeRestricted?: boolean }) {
     return prisma.release.findMany({
-      where: { artistId },
+      where: {
+        artistId,
+        ...(options?.includeRestricted
+          ? {}
+          : {
+              OR: [
+                { rightsRoute: null },
+                { rightsRoute: { in: PUBLIC_RELEASE_ROUTES } },
+              ],
+            }),
+      },
       select: {
         id: true,
         artistId: true,
@@ -587,7 +632,7 @@ export class CatalogService implements OnModuleInit {
       where: { userId },
     });
     if (!artist) return [];
-    return this.listByArtist(artist.id);
+    return this.listByArtist(artist.id, { includeRestricted: true });
   }
 
   async updateRelease(
@@ -696,14 +741,24 @@ export class CatalogService implements OnModuleInit {
     // Search releases by title OR tracks by title
     const items = await prisma.release.findMany({
       where: {
-        OR: [
-          { title: { contains: query, mode: "insensitive" } },
-          { primaryArtist: { contains: query, mode: "insensitive" } },
-          { featuredArtists: { contains: query, mode: "insensitive" } },
-          { tracks: { some: { title: { contains: query, mode: "insensitive" } } } },
-          { tracks: { some: { artist: { contains: query, mode: "insensitive" } } } }
+        AND: [
+          {
+            OR: [
+              { title: { contains: query, mode: "insensitive" } },
+              { primaryArtist: { contains: query, mode: "insensitive" } },
+              { featuredArtists: { contains: query, mode: "insensitive" } },
+              { tracks: { some: { title: { contains: query, mode: "insensitive" } } } },
+              { tracks: { some: { artist: { contains: query, mode: "insensitive" } } } }
+            ],
+          },
+          {
+            OR: [
+              { rightsRoute: null },
+              { rightsRoute: { in: PUBLIC_RELEASE_ROUTES } },
+            ],
+          },
         ],
-        status: "ready"
+        status: "ready",
       },
       select: {
         id: true,
@@ -752,9 +807,11 @@ export class CatalogService implements OnModuleInit {
   async getReleaseArtwork(releaseId: string) {
     const release = await prisma.release.findUnique({
       where: { id: releaseId },
-      select: { artworkData: true, artworkMimeType: true },
+      select: { artworkData: true, artworkMimeType: true, rightsRoute: true },
     });
-    if (!release || !release.artworkData) return null;
+    if (!release || !release.artworkData || !this.isPubliclyVisible(release.rightsRoute)) {
+      return null;
+    }
     return { data: release.artworkData, mimeType: release.artworkMimeType || "image/jpeg" };
   }
 
@@ -763,6 +820,12 @@ export class CatalogService implements OnModuleInit {
     const track = await prisma.track.findUnique({
       where: { id: trackId },
       select: {
+        rightsRoute: true,
+        release: {
+          select: {
+            rightsRoute: true,
+          },
+        },
         stems: {
           select: { id: true, type: true, isEncrypted: true },
           orderBy: { type: 'asc' },
@@ -771,6 +834,14 @@ export class CatalogService implements OnModuleInit {
     });
 
     if (!track || track.stems.length === 0) return null;
+
+    const effectiveRoute = this.getMostRestrictiveRoute(
+      track.rightsRoute,
+      track.release.rightsRoute,
+    );
+    if (!this.isStreamingAllowed(effectiveRoute)) {
+      return null;
+    }
 
     // Priority: original → master → first unencrypted → first stem
     // Without this, alphabetical sort picks 'bass' (encrypted) before 'original'
@@ -787,18 +858,58 @@ export class CatalogService implements OnModuleInit {
     // Try finding by exact ID first
     let stem = await prisma.stem.findUnique({
       where: { id: stemId },
-      select: { id: true, data: true, mimeType: true, uri: true, storageProvider: true },
+      select: {
+        id: true,
+        data: true,
+        mimeType: true,
+        uri: true,
+        storageProvider: true,
+        track: {
+          select: {
+            rightsRoute: true,
+            release: {
+              select: {
+                rightsRoute: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     // Fallback: if stemId looks like a filename (e.g. from a mockup URI), try searching by URI
     if (!stem) {
       stem = await prisma.stem.findFirst({
         where: { uri: { contains: stemId } },
-        select: { id: true, data: true, mimeType: true, uri: true, storageProvider: true },
+        select: {
+          id: true,
+          data: true,
+          mimeType: true,
+          uri: true,
+          storageProvider: true,
+          track: {
+            select: {
+              rightsRoute: true,
+              release: {
+                select: {
+                  rightsRoute: true,
+                },
+              },
+            },
+          },
+        },
       });
     }
 
     if (!stem) return null;
+
+    const effectiveRoute = this.getMostRestrictiveRoute(
+      stem.track.rightsRoute,
+      stem.track.release.rightsRoute,
+    );
+    if (!this.isStreamingAllowed(effectiveRoute)) {
+      return null;
+    }
 
     // 1. Data is stored in DB
     if (stem.data) {
@@ -863,10 +974,35 @@ export class CatalogService implements OnModuleInit {
   async getStemPreview(stemId: string) {
     const stem = await prisma.stem.findUnique({
       where: { id: stemId },
-      select: { uri: true, encryptionMetadata: true, data: true, mimeType: true },
+      select: {
+        uri: true,
+        encryptionMetadata: true,
+        data: true,
+        mimeType: true,
+        track: {
+          select: {
+            rightsRoute: true,
+            release: {
+              select: {
+                rightsRoute: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!stem) throw new NotFoundException("Stem not found");
+    if (
+      !this.isStreamingAllowed(
+        this.getMostRestrictiveRoute(
+          stem.track.rightsRoute,
+          stem.track.release.rightsRoute,
+        ),
+      )
+    ) {
+      throw new NotFoundException("Stem not found");
+    }
 
     if (!stem.uri && !stem.data) throw new BadRequestException("Stem has no source URI or data");
 
@@ -908,5 +1044,47 @@ export class CatalogService implements OnModuleInit {
 
   private clearCache() {
     this.searchCache.clear();
+  }
+
+  private parseRightsRoute(value?: string | null): UploadRightsRoute | null {
+    if (!value) {
+      return null;
+    }
+
+    return value as UploadRightsRoute;
+  }
+
+  private getMostRestrictiveRoute(...routes: Array<string | null | undefined>): UploadRightsRoute | null {
+    let strictestRoute: UploadRightsRoute | null = null;
+
+    for (const rawRoute of routes) {
+      const route = this.parseRightsRoute(rawRoute);
+      if (!route) {
+        continue;
+      }
+      if (!strictestRoute || compareRouteSeverity(route, strictestRoute) > 0) {
+        strictestRoute = route;
+      }
+    }
+
+    return strictestRoute;
+  }
+
+  private isPubliclyVisible(route?: string | null): boolean {
+    const parsedRoute = this.parseRightsRoute(route);
+    if (!parsedRoute) {
+      return true;
+    }
+
+    return getUploadRightsActions(parsedRoute).publicVisible;
+  }
+
+  private isStreamingAllowed(route?: string | null): boolean {
+    const parsedRoute = this.parseRightsRoute(route);
+    if (!parsedRoute) {
+      return true;
+    }
+
+    return getUploadRightsActions(parsedRoute).streamingAllowed;
   }
 }

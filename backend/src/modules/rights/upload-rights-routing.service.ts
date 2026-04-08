@@ -153,9 +153,10 @@ export class UploadRightsRoutingService {
       throw new NotFoundException(`Stem ${stemId} not found`);
     }
 
-    const route =
-      this.parseRoute(stem.track.rightsRoute) ||
-      this.parseRoute(stem.track.release.rightsRoute);
+    const route = this.getMostRestrictiveRoute(
+      stem.track.rightsRoute,
+      stem.track.release.rightsRoute,
+    );
 
     if (!route) {
       return;
@@ -276,6 +277,24 @@ export class UploadRightsRoutingService {
     return compareRouteSeverity(nextRoute, currentRoute) >= 0
       ? nextRoute
       : currentRoute;
+  }
+
+  private getMostRestrictiveRoute(
+    ...routes: Array<string | null | undefined>
+  ): UploadRightsRoute | null {
+    let strictestRoute: UploadRightsRoute | null = null;
+
+    for (const rawRoute of routes) {
+      const route = this.parseRoute(rawRoute);
+      if (!route) {
+        continue;
+      }
+      if (!strictestRoute || compareRouteSeverity(route, strictestRoute) > 0) {
+        strictestRoute = route;
+      }
+    }
+
+    return strictestRoute;
   }
 
   private parseFlags(value: Prisma.JsonValue | null): UploadRightsFlag[] {
