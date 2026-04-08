@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 /**
  * Bundler proxy – forwards ERC-4337 JSON-RPC requests to the local Alto
- * bundler running at localhost:4337 (started by `make local-aa-fork`).
+ * bundler running at localhost:4337 (started by `make local-aa-fork` or `make local-aa-up`).
  *
  * This avoids CORS issues when the browser (localhost:3001) calls
  * the bundler (localhost:4337) directly.

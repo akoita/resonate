@@ -1,14 +1,15 @@
 # Resonate Deployment Guide
 
 Infrastructure-as-code for Resonate now lives in [`akoita/resonate-iac`](https://github.com/akoita/resonate-iac).
-This repository keeps the application code, smart contracts, and app-local helper scripts.
+This repository keeps the application code, smart contracts, and local development helpers.
 
 ## Ownership Split
 
 | Area | Repository |
 | --- | --- |
-| GCP Terraform, Cloud Run deploys, Docker Compose stacks, deploy env files, GitHub deploy workflow | `resonate-iac` |
-| Backend, frontend, workers, smart contracts, contract deployment/config helpers | `resonate` |
+| GCP Terraform, Cloud Run deploys, deploy env files, GitHub deploy workflow | `resonate-iac` |
+| Backend, frontend, AA local runtime, smart contracts, contract deployment/config helpers | `resonate` |
+| Demucs worker infrastructure | `resonate-iac` |
 
 ## Local App Workflow
 
@@ -26,7 +27,7 @@ make backend-dev
 make web-dev-local   # or make web-dev-fork when targeting a Sepolia fork on localhost:8545
 ```
 
-`make dev-up` starts local Postgres, Redis, and the Pub/Sub emulator. `make backend-dev` expects those services on `localhost` and exits early with a targeted message if Postgres is missing.
+`make dev-up` starts local Postgres, Redis, and the Pub/Sub emulator. `make local-aa-fork` starts the Sepolia fork plus local Alto bundler, and `make local-aa-up` starts the plain `31337` Anvil + bundler pair. `make backend-dev` expects the app-side services on `localhost` and exits early with a targeted message if Postgres is missing.
 
 Useful app-local targets that still live here:
 
@@ -34,6 +35,9 @@ Useful app-local targets that still live here:
 | --- | --- |
 | `make backend-dev` | Start the NestJS API on port `3000` |
 | `make web-dev` | Start the Next.js frontend on port `3001` |
+| `make local-aa-fork` | Start the recommended Sepolia fork + local Alto bundler and refresh fork-mode env |
+| `make local-aa-up` | Start a plain local `31337` Anvil + local Alto bundler |
+| `make local-aa-down` | Stop the local AA runtime |
 | `make db-reset` | Reset the local Prisma database |
 | `make pubsub-init` | Recreate emulator topics/subscriptions on `localhost:8085` |
 | `make worker-health` | Check the Demucs worker health endpoint on `localhost:8000` |
@@ -61,9 +65,9 @@ Use these commands after deploying to a local Anvil or a local Sepolia fork:
 | Command | Purpose |
 | --- | --- |
 | `make local-aa-config` | Refresh AA addresses from the latest `DeployLocalAA` broadcast |
-| `make local-aa-fork` | Configure `.env` files for a running Sepolia fork on `localhost:8545` |
+| `make local-aa-fork` | Start a Sepolia fork on `localhost:8545`, start the local bundler on `localhost:4337`, and refresh fork-mode `.env` files |
 | `make deploy-contracts` | Deploy protocol contracts to the local RPC and refresh app config |
-| `make contracts-deploy-local` | Run AA deploy + protocol deploy against an already-running local stack |
+| `make contracts-deploy-local` | Start local AA infra, then run AA deploy + protocol deploy against it |
 
 ## Infrastructure and Cloud Deployment
 
@@ -71,7 +75,6 @@ Use `resonate-iac` for all of the following:
 
 - Terraform init/plan/apply/destroy
 - Cloud Run deployment
-- Docker Compose startup/shutdown
 - GPU Demucs worker lifecycle
 - Deploy environment files such as `.env.deploy.*`
 - GitHub Actions deployment workflow configuration

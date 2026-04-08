@@ -5,6 +5,8 @@ import { useAuth } from "../auth/AuthProvider";
 import { useStakeRefund } from "../../hooks/useContracts";
 import {
   formatEth,
+  formatOptionalDate,
+  parseDateToEpochSeconds,
   deriveStakeStatus,
   deriveEscrowStatus,
   STAKE_STATUS_LABELS,
@@ -18,7 +20,7 @@ interface StakeRecord {
   tokenId: string;
   releaseTitle?: string;
   amount: string;       // wei string
-  depositedAt: string;  // seconds epoch string
+  depositedAt: string;  // ISO timestamp from backend
   active: boolean;
   escrowDays: number;
 }
@@ -57,21 +59,28 @@ export default function MyStakesCard() {
       .then((resp: { stakes: StakeRecord[] }) => {
         const data = resp.stakes || [];
         const derived = data.map(s => {
-          // depositedAt from backend is ISO string — convert to epoch seconds for BigInt
-          const depositedEpoch = Math.floor(new Date(s.depositedAt).getTime() / 1000);
+          const depositedEpoch = parseDateToEpochSeconds(s.depositedAt);
+          const hasDepositedAt = depositedEpoch > 0n;
+
           return {
             ...s,
-            status: deriveStakeStatus(
-              s.active,
-              BigInt(s.amount),
-              BigInt(depositedEpoch),
-              s.escrowDays || 30,
-            ),
-            escrow: deriveEscrowStatus(
-              s.active,
-              BigInt(depositedEpoch),
-              s.escrowDays || 30,
-            ),
+            status: hasDepositedAt
+              ? deriveStakeStatus(
+                  s.active,
+                  BigInt(s.amount),
+                  depositedEpoch,
+                  s.escrowDays || 30,
+                )
+              : s.active
+                ? "active"
+                : "refunded",
+            escrow: hasDepositedAt
+              ? deriveEscrowStatus(
+                  s.active,
+                  depositedEpoch,
+                  s.escrowDays || 30,
+                )
+              : { status: s.active ? "locked" as const : "released" as const, daysRemaining: 0 },
           };
         });
         setStakes(derived);
@@ -177,7 +186,7 @@ export default function MyStakesCard() {
                   </td>
                   <td style={tdStyle}>
                     <span style={{ fontSize: "12px", opacity: 0.7 }}>
-                      {new Date(stake.depositedAt).toLocaleDateString()}
+                      {formatOptionalDate(stake.depositedAt)}
                     </span>
                   </td>
                   <td style={tdStyle}>

@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   formatEth,
+  parseDateToEpochSeconds,
+  formatOptionalDate,
   deriveStakeStatus,
   deriveEscrowStatus,
   STAKE_STATUS_LABELS,
@@ -26,6 +28,28 @@ describe("formatEth", () => {
 
   it("accepts string input", () => {
     expect(formatEth("10000000000000000")).toBe("0.01 ETH");
+  });
+});
+
+// ============ date helpers ============
+
+describe("parseDateToEpochSeconds", () => {
+  it("returns epoch seconds for a valid ISO date", () => {
+    expect(parseDateToEpochSeconds("2024-01-02T03:04:05.000Z")).toBe(1704164645n);
+  });
+
+  it("returns 0 for missing or invalid dates", () => {
+    expect(parseDateToEpochSeconds("")).toBe(0n);
+    expect(parseDateToEpochSeconds("not-a-date")).toBe(0n);
+    expect(parseDateToEpochSeconds(null)).toBe(0n);
+  });
+});
+
+describe("formatOptionalDate", () => {
+  it("returns a fallback for missing or invalid dates", () => {
+    expect(formatOptionalDate("")).toBe("—");
+    expect(formatOptionalDate("not-a-date")).toBe("—");
+    expect(formatOptionalDate(undefined)).toBe("—");
   });
 });
 

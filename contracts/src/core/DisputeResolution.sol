@@ -47,6 +47,9 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
     /// @notice tokenId → active disputeId (0 = no active dispute)
     mapping(uint256 => uint256) public activeDisputeByToken;
 
+    /// @notice tokenId → reporter → whether this wallet has already reported the token
+    mapping(uint256 => mapping(address => bool)) public hasReportedByToken;
+
     /// @notice eligible juror set managed from the current staked-curator pool
     mapping(address => bool) public eligibleJurors;
 
@@ -135,6 +138,7 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
     error InvalidOutcome();
     error DisputeNotUnderReview();
     error ActiveDisputeExists();
+    error AlreadyReported();
     error DisputeNotResolved();
     error MaxAppealsReached();
     error NotLosingParty();
@@ -168,6 +172,7 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         string calldata evidenceURI
     ) external payable returns (uint256 disputeId) {
         if (activeDisputeByToken[tokenId] != 0) revert ActiveDisputeExists();
+        if (hasReportedByToken[tokenId][reporter]) revert AlreadyReported();
 
         _disputeCount++;
         disputeId = _disputeCount;
@@ -191,6 +196,7 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         });
 
         activeDisputeByToken[tokenId] = disputeId;
+        hasReportedByToken[tokenId][reporter] = true;
 
         emit DisputeFiled(
             disputeId,

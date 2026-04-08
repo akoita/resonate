@@ -1,7 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { useMintStem, useListStem, useMintAndListStem } from "../../hooks/useContracts";
 import { getListingsByStem, getStemNftInfo } from "../../lib/api";
+import {
+    clearStemMarketplaceStatus,
+    persistStemMarketplaceStatus,
+    STEM_MARKETPLACE_STATUS_EVENT,
+    type StemMarketplaceStatusEventDetail,
+} from "../../lib/stemMarketplaceStatus";
 import { useToast } from "../ui/Toast";
 import { type Address } from "viem";
 
@@ -72,78 +78,121 @@ export function MintStemButton({
     // "confirming_mint" and "confirming_list" are transient states while polling the backend
     const [state, setState] = useState<"idle" | "confirming_mint" | "minted" | "confirming_list" | "listed">("idle");
     const [mintedTokenId, setMintedTokenId] = useState<bigint | null>(null);
-    // Persistence check on mount
-    useEffect(() => {
-        const checkStatus = async () => {
-            try {
-                const localData = localStorage.getItem(`stem_status_${stemId}`);
-                let localStatus: string | null = null;
-                let localTimestamp: number | null = null;
+    const applyStatusDetail = useCallback((detail: StemMarketplaceStatusEventDetail) => {
+        if (detail.stemId !== stemId) return;
 
-                // Parse localStorage: supports both legacy string ("listed") and new JSON format
-                if (localData) {
-                    try {
-                        const parsed = JSON.parse(localData);
-                        localStatus = parsed.status;
-                        localTimestamp = parsed.timestamp;
-                    } catch {
-                        // Legacy format: plain string "listed" or "minted"
-                        localStatus = localData;
-                    }
+        if (detail.tokenId) {
+            setMintedTokenId(BigInt(detail.tokenId));
+        } else if (detail.status === "idle") {
+            setMintedTokenId(null);
+        }
+
+        if (detail.status === "idle") {
+            setState("idle");
+            return;
+        }
+
+        setState(detail.status);
+    }, [stemId]);
+
+    const checkStatus = useCallback(async () => {
+        try {
+            const localData = localStorage.getItem(`stem_status_${stemId}`);
+            let localStatus: string | null = null;
+            let localTimestamp: number | null = null;
+
+            // Parse localStorage: supports both legacy string ("listed") and new JSON format
+            if (localData) {
+                try {
+                    const parsed = JSON.parse(localData);
+                    localStatus = parsed.status;
+                    localTimestamp = parsed.timestamp;
+                } catch {
+                    // Legacy format: plain string "listed" or "minted"
+                    localStatus = localData;
                 }
+            }
 
-                // If localStorage says "listed" and it's within TTL, trust it immediately.
-                // The on-chain tx receipt already proved the listing was created.
-                if (localStatus === "listed" && localTimestamp && (Date.now() - localTimestamp < LISTED_TTL_MS)) {
-                    const localId = localStorage.getItem(`stem_token_id_${stemId}`);
-                    if (localId) {
-                        setMintedTokenId(BigInt(localId));
-                        setState("listed");
-                        return; // Trust the recent on-chain confirmation
-                    }
-                }
-
-                // For "minted" hint or stale/legacy "listed", show minted while we verify
-                if (localStatus === "minted" || localStatus === "listed") {
-                    const localId = localStorage.getItem(`stem_token_id_${stemId}`);
-                    if (localId) {
-                        setMintedTokenId(BigInt(localId));
-                        setState("minted"); // Start at minted, backend may upgrade to listed
-                    }
-                }
-
-                // Verify with backend API (source of truth)
-                const listings = await getListingsByStem(stemId);
-                if (listings && listings.length > 0) {
+            // If localStorage says "listed" and it's within TTL, trust it immediately.
+            // The on-chain tx receipt already proved the listing was created.
+            if (localStatus === "listed" && localTimestamp && (Date.now() - localTimestamp < LISTED_TTL_MS)) {
+                const localId = localStorage.getItem(`stem_token_id_${stemId}`);
+                if (localId) {
+                    setMintedTokenId(BigInt(localId));
                     setState("listed");
-                    localStorage.setItem(`stem_status_${stemId}`, JSON.stringify({ status: "listed", timestamp: Date.now() }));
-                    return;
+                    return; // Trust the recent on-chain confirmation
                 }
+            }
 
-                // If not listed, check if at least minted
-                const nftInfo = await getStemNftInfo(stemId);
-                if (nftInfo) {
-                    const tid = BigInt(nftInfo.tokenId);
-                    setMintedTokenId(tid);
-                    setState("minted");
-                    localStorage.setItem(`stem_status_${stemId}`, JSON.stringify({ status: "minted", timestamp: Date.now() }));
-                    localStorage.setItem(`stem_token_id_${stemId}`, tid.toString());
-                } else {
-                    // Not minted — clear everything
-                    setState("idle");
-                    localStorage.removeItem(`stem_status_${stemId}`);
-                    localStorage.removeItem(`stem_token_id_${stemId}`);
+            // For "minted" hint or stale/legacy "listed", show minted while we verify
+            if (localStatus === "minted" || localStatus === "listed") {
+                const localId = localStorage.getItem(`stem_token_id_${stemId}`);
+                if (localId) {
+                    setMintedTokenId(BigInt(localId));
+                    setState("minted"); // Start at minted, backend may upgrade to listed
                 }
-            } catch (err) {
-                // Ignore API errors, stick with local hint if available
-                console.warn("Status check failed, falling back to local state", err);
+            }
+
+            // Verify with backend API (source of truth)
+            const listings = await getListingsByStem(stemId);
+            if (listings && listings.length > 0) {
+                persistStemMarketplaceStatus(stemId, "listed", mintedTokenId);
+                setState("listed");
+                return;
+            }
+
+            // If not listed, check if at least minted
+            const nftInfo = await getStemNftInfo(stemId);
+            if (nftInfo) {
+                const tid = BigInt(nftInfo.tokenId);
+                setMintedTokenId(tid);
+                setState("minted");
+                persistStemMarketplaceStatus(stemId, "minted", tid);
+            } else {
+                // Not minted — clear everything
+                setState("idle");
+                clearStemMarketplaceStatus(stemId);
+            }
+        } catch (err) {
+            // Ignore API errors, stick with local hint if available
+            console.warn("Status check failed, falling back to local state", err);
+        }
+    }, [mintedTokenId, stemId]);
+
+    // Persistence check on mount and sync with batch updates in the same tab
+    useEffect(() => {
+        if (!stemId || typeof window === "undefined") return;
+
+        const initialCheckId = window.setTimeout(() => {
+            void checkStatus();
+        }, 0);
+
+        const handleStatusUpdate = (event: Event) => {
+            const detail = (event as CustomEvent<StemMarketplaceStatusEventDetail>).detail;
+            if (detail) {
+                applyStatusDetail(detail);
             }
         };
 
-        if (stemId) {
-            checkStatus();
-        }
-    }, [stemId]);
+        const handleStorage = (event: StorageEvent) => {
+            if (
+                event.key === `stem_status_${stemId}` ||
+                event.key === `stem_token_id_${stemId}` ||
+                event.key === null
+            ) {
+                void checkStatus();
+            }
+        };
+
+        window.addEventListener(STEM_MARKETPLACE_STATUS_EVENT, handleStatusUpdate as EventListener);
+        window.addEventListener("storage", handleStorage);
+
+        return () => {
+            window.clearTimeout(initialCheckId);
+            window.removeEventListener(STEM_MARKETPLACE_STATUS_EVENT, handleStatusUpdate as EventListener);
+            window.removeEventListener("storage", handleStorage);
+        };
+    }, [applyStatusDetail, checkStatus, stemId]);
 
     const handleMint = async () => {
         if (!address) {
@@ -175,8 +224,7 @@ export function MintStemButton({
             setState("minted");
 
             // Persist to local storage
-            localStorage.setItem(`stem_status_${stemId}`, "minted");
-            localStorage.setItem(`stem_token_id_${stemId}`, actualTokenId.toString());
+            persistStemMarketplaceStatus(stemId, "minted", actualTokenId);
 
             addToast({
                 type: "success",
@@ -221,7 +269,7 @@ export function MintStemButton({
             const confirmed = await pollForListing(stemId);
             if (confirmed) {
                 setState("listed");
-                localStorage.setItem(`stem_status_${stemId}`, "listed");
+                persistStemMarketplaceStatus(stemId, "listed", mintedTokenId);
                 addToast({
                     type: "success",
                     title: "Listed for Sale!",
@@ -276,8 +324,7 @@ export function MintStemButton({
             // Mark as "listed" immediately — on-chain receipt is proof.
             setMintedTokenId(actualTokenId);
             setState("listed");
-            localStorage.setItem(`stem_status_${stemId}`, JSON.stringify({ status: "listed", timestamp: Date.now() }));
-            localStorage.setItem(`stem_token_id_${stemId}`, actualTokenId.toString());
+            persistStemMarketplaceStatus(stemId, "listed", actualTokenId);
 
             addToast({
                 type: "success",
@@ -313,8 +360,7 @@ export function MintStemButton({
             console.error("Mint & List failed:", error);
             setState("idle");
             // Clear stale localStorage so failed txs don't persist as "listed"
-            localStorage.removeItem(`stem_status_${stemId}`);
-            localStorage.removeItem(`stem_token_id_${stemId}`);
+            clearStemMarketplaceStatus(stemId);
             addToast({
                 type: "error",
                 title: "Transaction Failed",

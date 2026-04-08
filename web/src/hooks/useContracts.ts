@@ -32,6 +32,7 @@ import {
 import { CurationRewardsABI, DisputeResolutionABI } from "../contracts_abi/index";
 import { normalizeContractWriteError } from "../lib/contractErrors";
 import { getKernelAccountConfig } from "../lib/accountAbstraction";
+import { persistStemMarketplaceStatus } from "../lib/stemMarketplaceStatus";
 
 // Detect whether we're running against a local RPC (Anvil / forked Sepolia)
 function isLocalDevEnvironment(chainId?: number): boolean {
@@ -1603,19 +1604,12 @@ export function useBatchMintAndList() {
         setResults(doneResults);
         options?.onProgress?.(doneResults);
 
-        // 4. Persist to localStorage (same format as MintStemButton)
+        // 4. Persist locally and notify mounted buttons in the same tab
         for (let i = 0; i < stems.length; i++) {
           const stemId = stems[i].stemId;
           const tokenId = actualTokenIds[i];
           if (tokenId == null) continue;
-          localStorage.setItem(
-            `stem_status_${stemId}`,
-            JSON.stringify({ status: "listed", timestamp: Date.now() })
-          );
-          localStorage.setItem(
-            `stem_token_id_${stemId}`,
-            tokenId.toString()
-          );
+          persistStemMarketplaceStatus(stemId, "listed", tokenId);
         }
 
         // 5. Notify backend for each stem (best-effort, non-blocking)

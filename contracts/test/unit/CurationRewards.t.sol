@@ -158,6 +158,20 @@ contract CurationRewardsTest is Test {
         assertEq(dispute.creator, creator);
     }
 
+    function test_ReportContent_RevertRepeatReporterAfterResolution() public {
+        vm.deal(reporter, 1 ether);
+
+        vm.prank(reporter);
+        cr.reportContent{value: COUNTER_STAKE}(1, "ipfs://evidence");
+
+        vm.prank(admin);
+        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
+
+        vm.prank(reporter);
+        vm.expectRevert(DisputeResolution.AlreadyReported.selector);
+        cr.reportContent{value: COUNTER_STAKE}(1, "ipfs://evidence-2");
+    }
+
     // ============ Bounty Claim (Upheld) ============
 
     function test_ClaimBounty() public {

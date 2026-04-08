@@ -1,14 +1,15 @@
 # Local Account Abstraction Development
 
-This repository still owns the AA smart contracts, config update scripts, and app runtime.
-The local infrastructure stack that used to live here now lives in [`akoita/resonate-iac`](https://github.com/akoita/resonate-iac).
+This repository owns the AA smart contracts, local AA runtime, config update scripts, and app runtime.
+Cloud deployment infrastructure still lives in [`akoita/resonate-iac`](https://github.com/akoita/resonate-iac).
 
 ## What Runs Where
 
 | Concern | Repository |
 | --- | --- |
 | Postgres, Redis, Pub/Sub emulator | `resonate` |
-| Anvil, Alto bundler, Demucs worker | environment-specific / see local runtime notes |
+| Anvil, Alto bundler | `resonate` |
+| Demucs worker, cloud infra, deployment stack | `resonate-iac` |
 | AA contracts, protocol contracts, backend, frontend, env refresh helpers | `resonate` |
 
 ## Prerequisites
@@ -32,11 +33,11 @@ cd ..
 
 This is the preferred development workflow.
 
-Use this mode when you already have:
+Use this mode when you want this repo to start:
 
 - a Sepolia fork on `http://localhost:8545`
 - a bundler on `http://localhost:4337`
-- local Postgres / Redis / PubSub started via `make dev-up`
+- local Postgres / Redis / PubSub via `make dev-up`
 
 ```bash
 export SEPOLIA_RPC_URL=https://sepolia.drpc.org
@@ -49,13 +50,13 @@ make backend-dev
 make web-dev-fork
 ```
 
-`make local-aa-fork` only refreshes local `.env` files for fork mode. Keep using `make web-dev-fork` afterward so the frontend stays on chain `11155111`.
+`make local-aa-fork` now starts the Sepolia fork, starts the local Alto bundler, and refreshes local `.env` files for fork mode. Keep using `make web-dev-fork` afterward so the frontend stays on chain `11155111`.
 
 ## Local-Only Mode
 
 Use this only when you explicitly want a plain `31337` local environment or need offline development.
 
-Use this mode when you already have a plain local Anvil + bundler:
+This mode starts its own plain local Anvil + bundler:
 
 ```bash
 make dev-up
@@ -69,8 +70,6 @@ make web-dev-local
 
 1. `make local-aa-deploy`
 2. `make deploy-contracts`
-
-It assumes `localhost:8545` is already available.
 
 ## Config Refresh Helpers
 
@@ -123,4 +122,10 @@ make pubsub-init
 
 ### Infra lifecycle
 
-Start, stop, rebuild, and inspect the Dockerized local stack from `resonate-iac`, not from this repo.
+Use this repo for local lifecycle:
+
+- `make dev-up` / `make dev-down` for Postgres, Redis, Pub/Sub
+- `make local-aa-fork` / `make local-aa-down` for the recommended Sepolia fork workflow
+- `make local-aa-up` / `make local-aa-down` for local-only `31337`
+
+Use `resonate-iac` only for cloud-like deployment stacks and the Demucs worker infrastructure.

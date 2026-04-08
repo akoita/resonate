@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
 import { useDisputeNotifications, DisputeNotification } from "../../hooks/useDisputeNotifications";
 
@@ -29,6 +31,30 @@ export default function NotificationBell() {
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useDisputeNotifications(address ?? undefined);
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+
+  const getNotificationHref = (notification: DisputeNotification) => {
+    const query = new URLSearchParams();
+
+    if (notification.type === "dispute_filed") {
+      query.set("tab", "creator");
+    }
+
+    if (notification.disputeId) {
+      query.set("dispute", notification.disputeId);
+    }
+
+    const queryString = query.toString();
+    return queryString ? `/disputes?${queryString}` : "/disputes";
+  };
+
+  const handleNotificationClick = async (notification: DisputeNotification) => {
+    if (!notification.read) {
+      await markAsRead(notification.id);
+    }
+    setOpen(false);
+    router.push(getNotificationHref(notification));
+  };
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -63,11 +89,16 @@ export default function NotificationBell() {
         <div style={dropdownStyle}>
           <div style={dropdownHeaderStyle}>
             <span style={{ fontWeight: 600, fontSize: "14px" }}>Notifications</span>
-            {unreadCount > 0 && (
-              <button onClick={markAllAsRead} style={markAllBtnStyle}>
-                Mark all read
-              </button>
-            )}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <Link href="/disputes" onClick={() => setOpen(false)} style={openCenterLinkStyle}>
+                Open Dispute Center
+              </Link>
+              {unreadCount > 0 && (
+                <button onClick={markAllAsRead} style={markAllBtnStyle}>
+                  Mark all read
+                </button>
+              )}
+            </div>
           </div>
 
           {notifications.length === 0 ? (
@@ -77,20 +108,23 @@ export default function NotificationBell() {
               {notifications.slice(0, 20).map((n: DisputeNotification) => (
                 <div
                   key={n.id}
-                  onClick={() => !n.read && markAsRead(n.id)}
+                  onClick={() => { void handleNotificationClick(n); }}
                   style={{
                     ...itemStyle,
                     background: n.read ? "transparent" : "rgba(99, 102, 241, 0.06)",
-                    cursor: n.read ? "default" : "pointer",
+                    cursor: "pointer",
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div style={{ display: "flex", gap: "8px", flex: 1 }}>
+                    <div style={{ display: "flex", gap: "8px", flex: 1, minWidth: 0 }}>
                       <span style={{ fontSize: "14px" }}>{typeIcon(n.type)}</span>
-                      <div>
+                      <div style={{ minWidth: 0 }}>
                         <div style={{ fontWeight: 600, fontSize: "12px" }}>{n.title}</div>
-                        <div style={{ fontSize: "11px", opacity: 0.6, marginTop: "2px", lineHeight: "1.4" }}>
+                        <div style={{ ...messageStyle }}>
                           {n.message}
+                        </div>
+                        <div style={notificationActionHintStyle}>
+                          View in dispute center →
                         </div>
                       </div>
                     </div>
@@ -164,6 +198,13 @@ const markAllBtnStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
+const openCenterLinkStyle: React.CSSProperties = {
+  color: "#a78bfa",
+  fontSize: "11px",
+  fontWeight: 600,
+  textDecoration: "none",
+};
+
 const emptyStyle: React.CSSProperties = {
   textAlign: "center",
   padding: "30px 14px",
@@ -176,6 +217,22 @@ const itemStyle: React.CSSProperties = {
   borderBottom: "1px solid rgba(255,255,255,0.04)",
   position: "relative",
   transition: "background 0.15s",
+};
+
+const messageStyle: React.CSSProperties = {
+  fontSize: "11px",
+  opacity: 0.6,
+  marginTop: "2px",
+  lineHeight: "1.4",
+  overflowWrap: "anywhere",
+  wordBreak: "break-word",
+};
+
+const notificationActionHintStyle: React.CSSProperties = {
+  fontSize: "10px",
+  color: "#a78bfa",
+  marginTop: "6px",
+  fontWeight: 600,
 };
 
 const unreadDotStyle: React.CSSProperties = {

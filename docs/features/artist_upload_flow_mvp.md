@@ -12,6 +12,9 @@ issue: 20
 Ship an MVP upload flow that accepts artist audio, triggers stem separation,
 and registers the resulting assets in the catalog.
 
+> [!NOTE]
+> Rights handling for uploads should follow [Upload Rights Routing Policy](../architecture/upload_rights_routing_policy.md) and [Rights Verification & Copyright Enforcement Strategy](../rfc/rights-verification-strategy.md). Upload processing is not only a media pipeline; it is also a rights-verification decision point.
+
 ## Actions
 
 1. **Upload endpoint & staging**
