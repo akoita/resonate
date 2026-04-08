@@ -488,7 +488,7 @@ export class CatalogService implements OnModuleInit {
     return track;
   }
 
-  async getRelease(releaseId: string) {
+  async getRelease(releaseId: string, options?: { includeRestricted?: boolean }) {
     const release = await prisma.release.findUnique({
       where: { id: releaseId },
       select: {
@@ -553,11 +553,20 @@ export class CatalogService implements OnModuleInit {
       return null;
     }
 
-    if (!this.isPubliclyVisible(release.rightsRoute)) {
+    if (!options?.includeRestricted && !this.isPubliclyVisible(release.rightsRoute)) {
       return null;
     }
 
     return release;
+  }
+
+  async getReleaseForUser(releaseId: string, userId: string) {
+    const release = await this.getRelease(releaseId, { includeRestricted: true });
+    if (!release) {
+      return null;
+    }
+
+    return release.artist?.userId === userId ? release : null;
   }
 
   async listByArtist(artistId: string, options?: { includeRestricted?: boolean }) {
@@ -815,7 +824,7 @@ export class CatalogService implements OnModuleInit {
     return { data: release.artworkData, mimeType: release.artworkMimeType || "image/jpeg" };
   }
 
-  async getTrackStream(trackId: string) {
+  async getTrackStream(trackId: string, options?: { includeRestricted?: boolean }) {
     // Find the track's stems, preferring unencrypted playable audio
     const track = await prisma.track.findUnique({
       where: { id: trackId },
@@ -839,7 +848,7 @@ export class CatalogService implements OnModuleInit {
       track.rightsRoute,
       track.release.rightsRoute,
     );
-    if (!this.isStreamingAllowed(effectiveRoute)) {
+    if (!options?.includeRestricted && !this.isStreamingAllowed(effectiveRoute)) {
       return null;
     }
 
@@ -851,10 +860,10 @@ export class CatalogService implements OnModuleInit {
       track.stems.find(s => !s.isEncrypted) ||
       track.stems[0];
 
-    return this.getStemBlob(preferredStem.id);
+    return this.getStemBlob(preferredStem.id, options);
   }
 
-  async getStemBlob(stemId: string) {
+  async getStemBlob(stemId: string, options?: { includeRestricted?: boolean }) {
     // Try finding by exact ID first
     let stem = await prisma.stem.findUnique({
       where: { id: stemId },
@@ -907,7 +916,7 @@ export class CatalogService implements OnModuleInit {
       stem.track.rightsRoute,
       stem.track.release.rightsRoute,
     );
-    if (!this.isStreamingAllowed(effectiveRoute)) {
+    if (!options?.includeRestricted && !this.isStreamingAllowed(effectiveRoute)) {
       return null;
     }
 

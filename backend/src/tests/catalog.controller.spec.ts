@@ -20,6 +20,7 @@ const mockCatalogService = {
   getTrackStream: jest.fn(),
   getStemPreview: jest.fn(),
   listByUserId: jest.fn().mockResolvedValue([]),
+  getReleaseForUser: jest.fn().mockResolvedValue({ id: 'rel-1' }),
   createRelease: jest.fn().mockResolvedValue({ id: 'rel-1' }),
   listPublished: jest.fn().mockResolvedValue([]),
   getRelease: jest.fn().mockResolvedValue({ id: 'rel-1' }),
@@ -142,6 +143,16 @@ describe('CatalogController', () => {
       await ctrl.getReleaseArtwork('rel-1', res);
 
       expect(res.statusCode).toBe(404);
+    });
+  });
+
+  describe('getMyRelease', () => {
+    it('passes req.user.userId through to the service', async () => {
+      const ctrl = makeController();
+
+      await ctrl.getMyRelease('rel-1', { user: { userId: 'user-123' } });
+
+      expect(mockCatalogService.getReleaseForUser).toHaveBeenCalledWith('rel-1', 'user-123');
     });
   });
 

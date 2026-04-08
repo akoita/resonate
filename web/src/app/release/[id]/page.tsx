@@ -128,7 +128,7 @@ export default function ReleaseDetails() {
 
     if (data.status === 'ready') {
       // Refresh release data to get updated stems and tracks
-      getRelease(id as string).then(freshRelease => {
+      getRelease(id as string, token).then(freshRelease => {
         if (freshRelease) {
           setRelease(freshRelease);
           addToast({
@@ -146,7 +146,7 @@ export default function ReleaseDetails() {
         type: "error",
       });
     }
-  }, [id, addToast]);
+  }, [id, addToast, token]);
 
   // Subscribe to WebSocket events for real-time updates
   useWebSockets(handleReleaseStatusUpdate, handleProgressUpdate, handleTrackStatusUpdate);

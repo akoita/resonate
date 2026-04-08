@@ -168,6 +168,59 @@ describe('API Client', () => {
       );
     });
 
+    it('prefers the owner-scoped endpoint when a token is provided', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            id: 'rel-owner',
+            title: 'Restricted Release',
+            artworkMimeType: 'image/png',
+          }),
+      });
+
+      const release = await api.getRelease('rel-owner', 'jwt-token');
+
+      expect(release!.artworkUrl).toBe(
+        'http://test-api:3000/catalog/releases/rel-owner/artwork',
+      );
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch.mock.calls[0][0]).toBe(
+        'http://test-api:3000/catalog/me/releases/rel-owner',
+      );
+    });
+
+    it('falls back to the public endpoint when the owner-scoped read is not found', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        text: async () => 'Not found',
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            id: 'rel-public',
+            title: 'Public Release',
+            artworkMimeType: null,
+          }),
+      });
+
+      const release = await api.getRelease('rel-public', 'jwt-token');
+
+      expect(release!.id).toBe('rel-public');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch.mock.calls[0][0]).toBe(
+        'http://test-api:3000/catalog/me/releases/rel-public',
+      );
+      expect(mockFetch.mock.calls[1][0]).toBe(
+        'http://test-api:3000/catalog/releases/rel-public',
+      );
+    });
+
     it('does not set artworkUrl when artworkMimeType is null', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,

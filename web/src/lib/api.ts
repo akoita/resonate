@@ -402,7 +402,26 @@ export async function createRelease(
 }
 
 export async function getRelease(releaseId: string, token?: string | null) {
-  const release = await apiRequest<Release>(`/catalog/releases/${releaseId}`, {}, token);
+  let release: Release | null = null;
+
+  if (token) {
+    try {
+      release = await apiRequest<Release>(
+        `/catalog/me/releases/${releaseId}`,
+        {},
+        token,
+      );
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.startsWith("API 404:")) {
+        throw error;
+      }
+    }
+  }
+
+  if (!release) {
+    release = await apiRequest<Release>(`/catalog/releases/${releaseId}`, {}, token);
+  }
+
   if (release && release.artworkMimeType) {
     release.artworkUrl = getReleaseArtworkUrl(release.id);
   }

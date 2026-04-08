@@ -163,6 +163,15 @@ export class CatalogController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @Get("me/releases/:releaseId")
+  getMyRelease(
+    @Param("releaseId") releaseId: string,
+    @Request() req: any,
+  ) {
+    return this.catalogService.getReleaseForUser(releaseId, req.user.userId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
   @Post()
   create(
     @Request() req: any,

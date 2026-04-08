@@ -176,6 +176,18 @@ describe('CatalogService (integration)', () => {
     expect(await catalog.getTrackStream(restrictedTrackId)).toBeNull();
     expect(await catalog.getStemBlob(restrictedStemId)).toBeNull();
     await expect(catalog.getStemPreview(restrictedStemId)).rejects.toThrow('Stem not found');
+    expect(
+      await catalog.getRelease(restrictedReleaseId, { includeRestricted: true }),
+    ).not.toBeNull();
+    expect(
+      await catalog.getReleaseForUser(restrictedReleaseId, `${TEST_PREFIX}user`),
+    ).not.toBeNull();
+    expect(
+      await catalog.getTrackStream(restrictedTrackId, { includeRestricted: true }),
+    ).not.toBeNull();
+    expect(
+      await catalog.getStemBlob(restrictedStemId, { includeRestricted: true }),
+    ).not.toBeNull();
 
     const publicArtistReleases = await catalog.listByArtist(`${TEST_PREFIX}artist`);
     expect(publicArtistReleases.some((release) => release.id === restrictedReleaseId)).toBe(false);

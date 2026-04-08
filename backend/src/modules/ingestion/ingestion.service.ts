@@ -88,7 +88,9 @@ export class IngestionService {
 
     // If catalogTrackId is provided, fetch the audio from catalog
     if (input.catalogTrackId && input.files.length === 0) {
-      const trackStream = await this.catalogService.getTrackStream(input.catalogTrackId);
+      const trackStream = await this.catalogService.getTrackStream(input.catalogTrackId, {
+        includeRestricted: true,
+      });
       if (!trackStream) {
         throw new Error(`Track ${input.catalogTrackId} audio not found in catalog`);
       }
@@ -329,7 +331,9 @@ export class IngestionService {
     console.log(`[Ingestion] Starting real stem processing for release ${input.releaseId}`);
 
     // Guard: check if release is already ready (stems already processed)
-    const currentRelease = await this.catalogService.getRelease(input.releaseId);
+    const currentRelease = await this.catalogService.getRelease(input.releaseId, {
+      includeRestricted: true,
+    });
     if (currentRelease && currentRelease.status === 'ready') {
       console.log(`[Ingestion] Release ${input.releaseId} is already ready, skipping stem processing`);
       return;
@@ -674,7 +678,9 @@ export class IngestionService {
     console.log(`[Ingestion] Retrying release ${releaseId}`);
 
     // 1. Fetch release details from Catalog
-    const release = await this.catalogService.getRelease(releaseId);
+    const release = await this.catalogService.getRelease(releaseId, {
+      includeRestricted: true,
+    });
     if (!release) {
       throw new Error(`Release ${releaseId} not found`);
     }
@@ -728,7 +734,9 @@ export class IngestionService {
       const originalStem = t.stems.find(s => s.type === 'ORIGINAL' || s.type === 'original' || s.type === 'master');
       if (!originalStem) return null;
 
-      const dbStem = await this.catalogService.getStemBlob(originalStem.id);
+      const dbStem = await this.catalogService.getStemBlob(originalStem.id, {
+        includeRestricted: true,
+      });
       let buffer: Buffer;
 
       if (dbStem && dbStem.data) {
