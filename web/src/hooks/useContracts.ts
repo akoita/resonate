@@ -32,6 +32,7 @@ import {
 import { CurationRewardsABI, DisputeResolutionABI } from "../contracts_abi/index";
 import { normalizeContractWriteError } from "../lib/contractErrors";
 import { getKernelAccountConfig } from "../lib/accountAbstraction";
+import { persistStemMarketplaceStatus } from "../lib/stemMarketplaceStatus";
 
 // Detect whether we're running against a local RPC (Anvil / forked Sepolia)
 function isLocalDevEnvironment(chainId?: number): boolean {
@@ -1183,6 +1184,36 @@ export function useReportContent() {
   const [error, setError] = useState<Error | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
+  const readRequiredCounterStake = useCallback(async () => {
+    const addresses = getContractAddresses(chainId);
+    if (addresses.curationRewards === ZERO_ADDRESS) {
+      throw new Error("CurationRewards is not deployed on this chain.");
+    }
+
+    if (!address) {
+      return publicClient.readContract({
+        address: addresses.curationRewards as Address,
+        abi: CurationRewardsABI,
+        functionName: "getRequiredCounterStake",
+      }) as Promise<bigint>;
+    }
+
+    try {
+      return await (publicClient.readContract({
+        address: addresses.curationRewards as Address,
+        abi: CurationRewardsABI,
+        functionName: "getRequiredCounterStakeFor",
+        args: [address as Address],
+      }) as Promise<bigint>);
+    } catch {
+      return publicClient.readContract({
+        address: addresses.curationRewards as Address,
+        abi: CurationRewardsABI,
+        functionName: "getRequiredCounterStake",
+      }) as Promise<bigint>;
+    }
+  }, [address, chainId, publicClient]);
+
   const report = useCallback(
     async (params: { tokenId: bigint; evidenceURI: string }) => {
       if (status !== "authenticated" || !address) {
@@ -1209,11 +1240,7 @@ export function useReportContent() {
         }
 
         const [counterStake, activeDispute] = await Promise.all([
-          publicClient.readContract({
-            address: addresses.curationRewards as Address,
-            abi: CurationRewardsABI,
-            functionName: "getRequiredCounterStake",
-          }) as Promise<bigint>,
+          readRequiredCounterStake(),
           publicClient.readContract({
             address: addresses.disputeResolution as Address,
             abi: DisputeResolutionABI,
@@ -1259,21 +1286,12 @@ export function useReportContent() {
         setPending(false);
       }
     },
-    [publicClient, chainId, address, status, kernelAccount, smartAccountAddress]
+    [publicClient, chainId, address, status, kernelAccount, smartAccountAddress, readRequiredCounterStake]
   );
 
   const getRequiredCounterStake = useCallback(async () => {
-    const addresses = getContractAddresses(chainId);
-    if (addresses.curationRewards === ZERO_ADDRESS) {
-      throw new Error("CurationRewards is not deployed on this chain.");
-    }
-
-    return publicClient.readContract({
-      address: addresses.curationRewards as Address,
-      abi: CurationRewardsABI,
-      functionName: "getRequiredCounterStake",
-    }) as Promise<bigint>;
-  }, [publicClient, chainId]);
+    return readRequiredCounterStake();
+  }, [readRequiredCounterStake]);
 
   return { report, getRequiredCounterStake, pending, error, txHash };
 }
@@ -1487,7 +1505,6 @@ export function useBatchMintAndList() {
         }
 
         // 1. Build approval + N×2 calls array
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const calls: { to: Address; data: Hex | ((addr: Address) => Hex); value?: bigint }[] = [];
         const { authorizations } = await createBatchStemMintAuthorizations(token, {
           authorizations: stems.map((stem) => ({
@@ -1587,19 +1604,12 @@ export function useBatchMintAndList() {
         setResults(doneResults);
         options?.onProgress?.(doneResults);
 
-        // 4. Persist to localStorage (same format as MintStemButton)
+        // 4. Persist locally and notify mounted buttons in the same tab
         for (let i = 0; i < stems.length; i++) {
           const stemId = stems[i].stemId;
           const tokenId = actualTokenIds[i];
           if (tokenId == null) continue;
-          localStorage.setItem(
-            `stem_status_${stemId}`,
-            JSON.stringify({ status: "listed", timestamp: Date.now() })
-          );
-          localStorage.setItem(
-            `stem_token_id_${stemId}`,
-            tokenId.toString()
-          );
+          persistStemMarketplaceStatus(stemId, "listed", tokenId);
         }
 
         // 5. Notify backend for each stem (best-effort, non-blocking)

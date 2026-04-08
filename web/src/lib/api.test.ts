@@ -9,7 +9,7 @@
  * - 204 No Content handling
  * - FormData Content-Type passthrough
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // We need to mock fetch before importing the module
 const mockFetch = vi.fn();
@@ -205,6 +205,67 @@ describe('API Client', () => {
       expect(track!.release!.artworkUrl).toBe(
         'http://test-api:3000/catalog/releases/rel-1/artwork',
       );
+    });
+  });
+
+  describe('curator endpoints', () => {
+    it('loads curator reporting policy from metadata API', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            walletAddress: '0xabc',
+            reportsFiled: 4,
+            requiresHumanVerification: true,
+            message: 'Verification required',
+            stakeTier: { key: 'trusted', label: 'Trusted Curator', description: 'desc', multiplierBps: 1500 },
+            humanVerification: {
+              verified: false,
+              provider: null,
+              status: 'unverified',
+              score: null,
+              threshold: null,
+              verifiedAt: null,
+              expiresAt: null,
+              requiredAfterReports: 3,
+            },
+          }),
+      });
+
+      const result = await api.getCuratorReportingPolicy('0xABC');
+      expect(result.walletAddress).toBe('0xabc');
+
+      const [url] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/metadata/curators/0xabc/reporting-policy');
+    });
+
+    it('submits proof-of-humanity verification', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            walletAddress: '0xabc',
+            humanVerification: {
+              verified: true,
+              provider: 'mock',
+              status: 'verified',
+              score: 1,
+              threshold: 1,
+              verifiedAt: '2026-04-07T00:00:00.000Z',
+              expiresAt: null,
+              requiredAfterReports: 3,
+            },
+          }),
+      });
+
+      await api.submitHumanVerification('0xABC', { provider: 'mock', proof: 'resonate-human' });
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/metadata/curators/0xabc/verification');
+      expect(opts.method).toBe('POST');
+      expect(JSON.parse(opts.body)).toEqual({ provider: 'mock', proof: 'resonate-human' });
     });
   });
 });

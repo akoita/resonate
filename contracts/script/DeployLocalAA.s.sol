@@ -71,21 +71,7 @@ contract DeployLocalAA is Script {
         console.log("");
         console.log("=== Deployment Complete ===");
         console.log("");
-        console.log(
-            "IMPORTANT: Update the local Alto ENTRY_POINTS setting in resonate-iac with:",
-            address(entryPoint)
-        );
-        console.log("");
-        console.log("Next steps:");
-        console.log(
-            "1. Stop the local bundler in resonate-iac"
-        );
-        console.log(
-            "2. Update its ENTRY_POINTS setting to:",
-            address(entryPoint)
-        );
-        console.log(
-            "3. Restart the bundler stack from resonate-iac"
-        );
+        console.log("Local bundler entry point:", address(entryPoint));
+        console.log("Next step: run ./contracts/scripts/update-aa-config.sh");
     }
 }

@@ -572,14 +572,23 @@ model DisputeJurorAssignment {
 }
 
 model CuratorReputation {
-  id              String   @id @default(uuid())
-  walletAddress   String   @unique
-  score           Int      @default(0)
-  successfulFlags Int      @default(0)
-  rejectedFlags   Int      @default(0)
-  totalBounties   Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                         String    @id @default(uuid())
+  walletAddress              String    @unique
+  score                      Int       @default(0)
+  successfulFlags            Int       @default(0)
+  rejectedFlags              Int       @default(0)
+  totalBounties              Int       @default(0)
+  reportsFiled               Int       @default(0)
+  lastActiveAt               DateTime?
+  verifiedHuman              Boolean   @default(false)
+  humanVerificationProvider  String?
+  humanVerificationStatus    String    @default("unverified")
+  humanVerificationScore     Float?
+  humanVerificationThreshold Float?
+  humanVerifiedAt            DateTime?
+  humanVerificationExpiresAt DateTime?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
 }
 
 model Notification {

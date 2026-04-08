@@ -13,6 +13,7 @@ import type {
   ContractStakeDepositedEvent,
   ContractStakeSlashedEvent,
 } from "../../events/event_types";
+import { CuratorReputationService } from "./curator-reputation.service";
 
 // ABI for the marketplace getListing view function
 const MARKETPLACE_ABI = [
@@ -105,6 +106,7 @@ const CONTENT_PROTECTION_ADDRESSES: Record<number, Address> = {
 @Injectable()
 export class ContractsService implements OnModuleInit {
   private readonly logger = new Logger(ContractsService.name);
+  private readonly curatorReputationService = new CuratorReputationService();
 
   constructor(private readonly eventBus: EventBus) { }
 
@@ -661,6 +663,9 @@ export class ContractsService implements OnModuleInit {
             transactionHash: event.transactionHash,
           },
         });
+        if (event.reporterAddress) {
+          await this.curatorReputationService.noteReportFiled(event.reporterAddress);
+        }
         this.logger.log(`Stored ContentReported: disputeId=${event.disputeId}`);
       } catch (error) {
         this.logger.error(`Failed to process ContentReported: ${error}`);
@@ -689,24 +694,7 @@ export class ContractsService implements OnModuleInit {
         });
 
         if (dispute?.reporterAddr) {
-          const delta = outcome === "UPHELD" ? 10 : outcome === "REJECTED" ? -15 : 0;
-          if (delta !== 0) {
-            await prisma.curatorReputation.upsert({
-              where: { walletAddress: dispute.reporterAddr },
-              create: {
-                walletAddress: dispute.reporterAddr,
-                score: delta,
-                successfulFlags: outcome === "UPHELD" ? 1 : 0,
-                rejectedFlags: outcome === "REJECTED" ? 1 : 0,
-                totalBounties: 0,
-              },
-              update: {
-                score: { increment: delta },
-                ...(outcome === "UPHELD" ? { successfulFlags: { increment: 1 } } : {}),
-                ...(outcome === "REJECTED" ? { rejectedFlags: { increment: 1 } } : {}),
-              },
-            });
-          }
+          await this.curatorReputationService.recordDisputeOutcome(dispute.reporterAddr, outcome);
         }
 
         this.logger.log(`Resolved dispute ${event.disputeId}: ${outcome}`);
@@ -738,19 +726,7 @@ export class ContractsService implements OnModuleInit {
       this.logger.log(`Processing BountyClaimed: disputeId=${event.disputeId}, amount=${event.amount}`);
       try {
         if (event.reporterAddress) {
-          await prisma.curatorReputation.upsert({
-            where: { walletAddress: event.reporterAddress.toLowerCase() },
-            create: {
-              walletAddress: event.reporterAddress.toLowerCase(),
-              score: 0,
-              successfulFlags: 0,
-              rejectedFlags: 0,
-              totalBounties: 1,
-            },
-            update: {
-              totalBounties: { increment: 1 },
-            },
-          });
+          await this.curatorReputationService.noteBountyClaimed(event.reporterAddress);
         }
         this.logger.log(`Updated bounties for ${event.reporterAddress}`);
       } catch (error) {
@@ -1376,24 +1352,7 @@ export class ContractsService implements OnModuleInit {
       },
     });
 
-    // Update curator reputation
-    const reputationDelta = outcome === "upheld" ? 10 : outcome === "rejected" ? -15 : 0;
-    if (reputationDelta !== 0) {
-      await prisma.curatorReputation.upsert({
-        where: { walletAddress: dispute.reporterAddr },
-        create: {
-          walletAddress: dispute.reporterAddr,
-          score: Math.max(0, reputationDelta),
-          successfulFlags: outcome === "upheld" ? 1 : 0,
-          rejectedFlags: outcome === "rejected" ? 1 : 0,
-        },
-        update: {
-          score: { increment: reputationDelta },
-          ...(outcome === "upheld" && { successfulFlags: { increment: 1 } }),
-          ...(outcome === "rejected" && { rejectedFlags: { increment: 1 } }),
-        },
-      });
-    }
+    await this.curatorReputationService.recordDisputeOutcome(dispute.reporterAddr, outcome);
 
     return dispute;
   }
@@ -1610,38 +1569,16 @@ export class ContractsService implements OnModuleInit {
       },
     });
 
-    const reputationDelta = outcome === "upheld" ? 10 : outcome === "rejected" ? -15 : 0;
-    if (reputationDelta !== 0) {
-      await prisma.curatorReputation.upsert({
-        where: { walletAddress: resolved.reporterAddr },
-        create: {
-          walletAddress: resolved.reporterAddr,
-          score: reputationDelta,
-          successfulFlags: outcome === "upheld" ? 1 : 0,
-          rejectedFlags: outcome === "rejected" ? 1 : 0,
-        },
-        update: {
-          score: { increment: reputationDelta },
-          ...(outcome === "upheld" ? { successfulFlags: { increment: 1 } } : {}),
-          ...(outcome === "rejected" ? { rejectedFlags: { increment: 1 } } : {}),
-        },
-      });
-    }
+    await this.curatorReputationService.recordDisputeOutcome(resolved.reporterAddr, outcome);
 
     return resolved;
   }
 
   async getCuratorReputation(walletAddress: string) {
-    const rep = await prisma.curatorReputation.findUnique({
-      where: { walletAddress },
-    });
-    return rep || { walletAddress, score: 0, successfulFlags: 0, rejectedFlags: 0, totalBounties: "0" };
+    return this.curatorReputationService.getProfile(walletAddress);
   }
 
   async getCuratorLeaderboard(limit: number) {
-    return prisma.curatorReputation.findMany({
-      orderBy: { score: "desc" },
-      take: limit,
-    });
+    return this.curatorReputationService.getLeaderboard(limit);
   }
 }

@@ -93,6 +93,29 @@ contract DisputeResolutionTest is Test {
         assertEq(dr.getActiveDispute(2), 2);
     }
 
+    function test_FileDispute_RevertRepeatReporterAfterResolution() public {
+        dr.fileDispute(42, reporter, creator, "ipfs://e1");
+
+        vm.prank(admin);
+        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
+
+        vm.expectRevert(DisputeResolution.AlreadyReported.selector);
+        dr.fileDispute(42, reporter, creator, "ipfs://e2");
+    }
+
+    function test_FileDispute_AfterResolution_AllowsDifferentReporter() public {
+        address anotherReporter = makeAddr("anotherReporter");
+
+        dr.fileDispute(42, reporter, creator, "ipfs://e1");
+
+        vm.prank(admin);
+        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
+
+        uint256 id2 = dr.fileDispute(42, anotherReporter, creator, "ipfs://e2");
+        assertEq(id2, 2);
+        assertEq(dr.getActiveDispute(42), 2);
+    }
+
     // ============ Evidence ============
 
     function test_SubmitEvidence() public {
@@ -362,19 +385,6 @@ contract DisputeResolutionTest is Test {
             uint256(d.outcome),
             uint256(IDisputeResolution.Outcome.Inconclusive)
         );
-    }
-
-    // ============ Can Re-file After Resolution ============
-
-    function test_RefileAfterResolution() public {
-        dr.fileDispute(42, reporter, creator, "ipfs://e1");
-        vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
-
-        // Can file again
-        uint256 id2 = dr.fileDispute(42, reporter, creator, "ipfs://e2");
-        assertEq(id2, 2);
-        assertEq(dr.getActiveDispute(42), 2);
     }
 
     // ============ Appeals ============

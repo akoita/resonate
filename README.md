@@ -88,11 +88,16 @@ graph TB
 
 ### Run Locally
 
-Infrastructure assets now live in [`akoita/resonate-iac`](https://github.com/akoita/resonate-iac). Start Postgres, Redis, Pub/Sub, Demucs, Anvil, and Alto from that repo, then use this repo for contracts, backend, and frontend workflows.
+Cloud/deployment infrastructure lives in [`akoita/resonate-iac`](https://github.com/akoita/resonate-iac). Local developer runtime lives in this repo: `make dev-up` starts Postgres, Redis, and the Pub/Sub emulator, while `make local-aa-fork` or `make local-aa-up` start the local Anvil + Alto stack.
+
+> The default local workflow is expected to support release uploads with stem separation.
+> That means the standard local setup includes the Demucs worker, not just backend/web/infra.
+> The root README covers the important commands; the deeper worker-specific reference lives in
+> [`workers/demucs/README.md`](workers/demucs/README.md).
 
 Two AA modes are available — see [AA Integration](docs/account-abstraction/account-abstraction.md) for architecture and [Local AA Development](docs/account-abstraction/local-aa-development.md) for setup.
 
-#### Forked Sepolia (recommended — session keys, full AA)
+#### Forked Sepolia (recommended default — session keys, full AA)
 
 ```bash
 # 0. Install dependencies (once per clone)
@@ -104,28 +109,35 @@ cd ..
 # 1. Set env vars
 export SEPOLIA_RPC_URL=https://sepolia.drpc.org
 
-# 2. Start infrastructure from resonate-iac
-#    See: https://github.com/akoita/resonate-iac
+# 2. Start local runtime dependencies in this repo
+make dev-up
 
-# 3. Configure this repo against the running fork and deploy protocol contracts
+# 3. Start the local Demucs worker so uploads work end-to-end
+make worker-up
+
+# 4. Start the Sepolia fork + bundler in this repo, then deploy protocol contracts
 make local-aa-fork
 make deploy-contracts
 
-# 4. Start services (separate terminals)
-make backend-dev     # NestJS API on port 3000
+# 5. Start services (separate terminals)
+make backend-dev     # NestJS API on port 3000; expects Postgres/Redis/PubSub from make dev-up
 make web-dev-fork    # Next.js on port 3001 (chainId 11155111, local RPC)
 ```
 
-> **Note:** On a Sepolia fork, `make deploy-contracts` deploys a fresh copy of the Resonate protocol contracts to the local fork, then updates `backend/.env` and `web/.env.local` with those fork-local addresses. If backend dependencies are not installed yet, the config script now skips the optional Prisma migration/indexer reset steps and `make backend-dev` will handle them later.
+> **Note:** `make local-aa-fork` starts a Sepolia fork on `localhost:8545`, starts the local Alto bundler on `localhost:4337`, and refreshes AA env vars for fork mode. Then `make deploy-contracts` deploys a fresh copy of the Resonate protocol contracts to that local fork and updates `backend/.env` and `web/.env.local` with those fork-local addresses. `make web-dev-fork` is the correct frontend command for this mode because it targets chain `11155111` while still using your local RPC at `localhost:8545`.
 
-#### Local-Only (offline, no internet required)
+> **Recommendation:** Prefer this forked workflow for day-to-day development unless you specifically need isolated `31337` local-only behavior. It is the closest path to the intended production AA setup.
+
+#### Local-Only (fallback / offline development)
 
 ```bash
-# 1. Start local infra from resonate-iac, then deploy contracts here
+# 1. Start local runtime dependencies, then deploy contracts here
+make dev-up
+make worker-up
 make contracts-deploy-local  # Deploys AA + StemNFT + Marketplace + TransferValidator
 
 # 2. Start services (separate terminals)
-make backend-dev     # NestJS API on port 3000
+make backend-dev     # NestJS API on port 3000; expects Postgres/Redis/PubSub from make dev-up
 make web-dev-local   # Next.js on port 3001 (chainId 31337)
 ```
 
@@ -133,7 +145,8 @@ make web-dev-local   # Next.js on port 3001 (chainId 31337)
 
 ```bash
 make db-reset        # Reset database (requires Docker running)
-# Stop local infra from the resonate-iac repo when you're done
+make dev-down        # Stop local Postgres, Redis, Pub/Sub emulator, and Demucs worker
+make local-aa-down   # Stop the local Anvil + Alto runtime
 ```
 
 ### 📤 Upload Processing Flow
@@ -160,7 +173,29 @@ The release page displays track status in real-time, with stems appearing as the
 
 The Demucs worker uses Facebook's [htdemucs_6s](https://github.com/facebookresearch/demucs) model to separate audio into 6 stems: **vocals, drums, bass, guitar, piano, other**.
 
-> **GPU acceleration is enabled by default** in the infrastructure stack managed by [`resonate-iac`](https://github.com/akoita/resonate-iac).
+The Demucs worker is part of the default local app workflow. For the normal CPU path in this repo:
+
+```bash
+make worker-up
+make worker-health
+```
+
+Useful worker commands:
+
+- `make worker-up` auto-builds the CPU image if it does not exist yet
+- `make worker-logs` to stream logs
+- `make worker-rebuild` to force a no-cache rebuild when the image is stale
+- `make pubsub-init` only if the Pub/Sub emulator lost its topics/subscriptions after a reset
+
+GPU path:
+
+```bash
+make worker-gpu-build
+make worker-gpu
+```
+
+See [`workers/demucs/README.md`](workers/demucs/README.md) for the deeper Demucs-specific guide:
+image internals, direct `docker build` / `docker run`, HTTP smoke tests, and extended troubleshooting.
 
 **Performance comparison:**
 | Hardware | 3-min song | Notes |
@@ -177,7 +212,7 @@ make worker-health
 
 ### ⚡ GPU Prerequisites
 
-The `resonate-iac` infrastructure stack attempts GPU mode first. If the worker falls back to CPU mode, stem separation takes ~3min instead of ~30s.
+If you run the local worker in GPU mode, stem separation drops from minutes to well under a minute on a supported card.
 
 To enable GPU acceleration:
 
@@ -210,8 +245,8 @@ docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 **Verify GPU in worker:**
 
 ```bash
-# Run against the worker container started from resonate-iac
-docker exec <demucs-container> nvidia-smi
+# Run against the local worker container
+docker exec resonate-demucs-local nvidia-smi
 ```
 
 **Troubleshooting:**
@@ -219,21 +254,22 @@ docker exec <demucs-container> nvidia-smi
 - Worker stays in "Created" state → Run `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`
 - `nvidia-smi` fails → Reinstall NVIDIA Container Toolkit
 - WSL2 users → Use NVIDIA driver for WSL, not native Linux driver
-- Build hangs on apt-get → Rebuild the worker image from `resonate-iac` (fixed via `DEBIAN_FRONTEND=noninteractive`)
+- Build hangs on apt-get → Run `make worker-rebuild` or use the deeper rebuild steps in [`workers/demucs/README.md`](workers/demucs/README.md)
 
-See [`workers/demucs/README.md`](workers/demucs/README.md) for full worker documentation.
+See [`workers/demucs/README.md`](workers/demucs/README.md) for the full local worker guide, including
+repo-local `docker build`, `docker run`, stale-image recovery, and "stuck on Separating..." troubleshooting.
 
 ### 🔧 Troubleshooting
 
 | Symptom                                    | Cause                                                          | Fix                                                                          |
 | ------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Container shows "Created" (not "Up")       | Port conflict — another container or process is using the port | Run `docker ps` to find the conflicting container, then `docker stop <name>` |
-| Redis won't start (port 6379)              | Stale Redis from another project                               | Stop the conflicting container, then restart the local stack from `resonate-iac` |
+| Redis won't start (port 6379)              | Stale Redis from another project                               | Stop the conflicting container, then rerun `make dev-up` |
 | Track stuck at "🔵 Pending" forever        | `PUBSUB_EMULATOR_HOST` missing from `backend/.env`             | Run `make pubsub-init` then restart backend; `make backend-dev` auto-adds it |
-| Worker logs: "Subscription does not exist" | PubSub emulator has no topics (emulator restarted)             | Run `make pubsub-init`, then restart the worker from `resonate-iac`          |
-| Track stuck at "🟡 Separating..."          | Demucs worker not running or import errors                     | Check worker logs in `resonate-iac`, then rebuild/restart that stack if needed |
-| No progress % during separation            | Worker can't POST progress back to backend                     | Verify `BACKEND_URL=http://host.docker.internal:3000` in `backend/.env`      |
-| `SEPOLIA_RPC_URL` warning in Docker logs   | Env var not exported in the infra shell                        | Export `SEPOLIA_RPC_URL=https://sepolia.drpc.org` before starting the fork stack in `resonate-iac` |
+| Worker logs: "Subscription does not exist" | PubSub emulator has no topics (emulator restarted)             | Run `make pubsub-init`, then restart the worker with `make worker-up` |
+| Track stuck at "🟡 Separating..."          | Demucs worker not running, stale image, or import errors       | Check `make worker-health`, then `make worker-logs`, then `make worker-rebuild` if needed |
+| No progress % during separation            | Worker can't POST progress back to backend                     | Leave `BACKEND_URL` unset for local fallback or set it to a Docker-reachable backend URL |
+| `SEPOLIA_RPC_URL` warning in Docker logs   | Env var not exported in the shell running the AA stack         | Export `SEPOLIA_RPC_URL=https://sepolia.drpc.org` before `make local-aa-fork` |
 
 ---
 

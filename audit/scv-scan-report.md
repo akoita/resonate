@@ -1,61 +1,59 @@
-# Smart Contract Vulnerability Scan
+## Smart Contract Scan Report
 
-**Date:** 2026-04-07
-**Scope:** `contracts/src/core/ContentProtection.sol`, `contracts/src/core/StemMarketplaceV2.sol`, `contracts/src/core/StemNFT.sol`, related deployment wiring and unit-test coverage
-**Version:** Solidity ^0.8.28
+Scope reviewed on April 8, 2026:
 
-## Executive Summary
+- `contracts/src/core/DisputeResolution.sol`
+- `contracts/script/DeployLocalAA.s.sol`
+- `contracts/test/unit/DisputeResolution.t.sol`
+- `contracts/test/unit/CurationRewards.t.sol`
 
-The current branch enforces stake-based listing caps for protected stems across both mint-and-list and later resale listing flows. No Critical or High severity vulnerabilities were identified in the modified contract paths after the mint-time protection-root registration fix.
+### Reconnaissance
 
-## Findings
+- Solidity version: `0.8.28`
+- Key inherited dependencies:
+  - OpenZeppelin `Ownable`
+  - OpenZeppelin `ReentrancyGuard`
+- Change focus:
+  - prevent the same reporter wallet from re-filing the same token after resolution
+  - update local AA deployment operator instructions
 
-### SCV-001: Uncapped fallback when no active stake exists
+### Syntactic Sweep
 
-**File:** `contracts/src/core/ContentProtection.sol` L552-L558
-**Severity:** Informational
+Patterns reviewed:
 
-**Description:** `getMaxListingPrice()` returns `type(uint256).max` when the resolved protection root has no active stake. That behavior is consistent with the intended policy for unstaked content, but it makes stake enforcement depend entirely on correct root registration and active stake state.
+- access control via `onlyOwner`
+- state transitions around `fileDispute`, `resolve`, and `finalizeJuryDecision`
+- external-call and callback triggers such as `.call{}`, `delegatecall`, `_safeMint`, `safeTransferFrom`
+- unsafe primitives such as `tx.origin`, `selfdestruct`, `unchecked`, and `assembly`
 
-**Recommendation:** Keep this behavior, but document it clearly in contract NatSpec and integration docs so listing clients understand that inactive or missing stake roots intentionally remove the cap.
+Observed result:
 
----
+- no new external-call surfaces were introduced
+- no new unchecked arithmetic or inline assembly was introduced
+- the new `hasReportedByToken` guard only adds state validation before dispute creation
 
-### SCV-002: External registrar call before marketplace state write
+### Semantic Review
 
-**File:** `contracts/src/core/StemMarketplaceV2.sol` L156-L157
-**Severity:** Informational
+Reviewed the new `AlreadyReported` flow for:
 
-**Description:** `listLastMint()` calls `contentProtection.registerStemProtectionRoot()` before `_createListing()`. This ordering is necessary because `_createListing()` reads `getMaxListingPrice()`. The called function is restricted to owner/registrars and performs a direct mapping write, so this is not a reentrancy issue in the current design.
+- accidental permanent lock of unrelated reporters
+- bypass via appeal or jury flow
+- stale active-dispute state after resolution
 
-**Recommendation:** No code change required. Preserve this ordering and keep registrar permissions narrowly scoped.
+Conclusion:
 
-## Resolved During Review
+- the new mapping is keyed by `tokenId` and `reporter`, so it blocks only repeat filings by the same wallet for the same token
+- `activeDisputeByToken` is still cleared on resolution and jury finalization, so different reporters can still file later cases
+- the change does not alter fund-handling or access-control paths
 
-### Protected stem resale path could bypass the stake cap
+### Findings
 
-**Files:** `contracts/src/core/StemNFT.sol`, `contracts/src/core/StemMarketplaceV2.sol`
-**Severity:** High -> Resolved on this branch
+No confirmed Critical, High, Medium, Low, or Informational security findings were identified in the reviewed changes.
 
-**Description:** Before the fix, protected stems only registered their protection root during `listLastMint()`. A protected stem minted in one transaction and listed later through ordinary `list()` could bypass the stake cap because `getMaxListingPrice()` had no registered root to resolve.
-
-**Fix:** `StemNFT._mintStem()` now registers the protection root at mint time for protected mints, and the deployment script grants `StemNFT` registrar access in `ContentProtection`.
-
-## Summary
-
-| Severity      | Count |
-| ------------- | ----- |
-| Critical      | 0     |
-| High          | 0     |
-| Medium        | 0     |
-| Low           | 0     |
-| Informational | 2     |
-
-## Validation Notes
-
-- Access control remains enforced on the new write path via `onlyRegistrarOrOwner`
-- No `delegatecall`, `selfdestruct`, or `tx.origin` usage in the modified scope
-- The new regression test covers the previously missing protected-mint then later `list()` path
-- Targeted verification passed:
-  - `forge test --match-path test/unit/StemNFT.t.sol -vvv`
-  - `forge test --match-path test/unit/StemMarketplace.t.sol -vvv`
+| Severity | Count |
+| -------- | ----- |
+| Critical | 0 |
+| High     | 0 |
+| Medium   | 0 |
+| Low      | 0 |
+| Info     | 0 |

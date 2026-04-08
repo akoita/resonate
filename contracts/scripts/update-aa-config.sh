@@ -121,6 +121,8 @@ if [[ "$MODE" == "fork" ]]; then
     fi
     update_env_var "NEXT_PUBLIC_CHAIN_ID" "11155111" "$WEB_ENV_LOCAL"
     update_env_var "NEXT_PUBLIC_RPC_URL" "http://localhost:8545" "$WEB_ENV_LOCAL"
+    update_env_var "NEXT_PUBLIC_AA_ENTRY_POINT" "$ENTRY_POINT" "$WEB_ENV_LOCAL"
+    update_env_var "NEXT_PUBLIC_AA_FACTORY" "$KERNEL_FACTORY" "$WEB_ENV_LOCAL"
     echo -e "${GREEN}✓ web/.env.local NEXT_PUBLIC_CHAIN_ID set to 11155111${NC}"
 
     echo ""
@@ -258,6 +260,13 @@ EOF
 else
     echo -e "${YELLOW}web/.env.local already exists, not overwriting${NC}"
 fi
+
+# Always refresh AA-related frontend env vars so the client does not rely on stale defaults
+update_env_var "NEXT_PUBLIC_CHAIN_ID" "31337" "$WEB_ENV_LOCAL"
+update_env_var "NEXT_PUBLIC_RPC_URL" "http://localhost:8545" "$WEB_ENV_LOCAL"
+update_env_var "NEXT_PUBLIC_AA_ENTRY_POINT" "$ENTRY_POINT" "$WEB_ENV_LOCAL"
+update_env_var "NEXT_PUBLIC_AA_FACTORY" "$KERNEL_FACTORY" "$WEB_ENV_LOCAL"
+echo -e "${GREEN}✓ web/.env.local AA config updated${NC}"
 echo ""
 
 # Print summary

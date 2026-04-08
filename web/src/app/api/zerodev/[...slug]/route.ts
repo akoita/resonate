@@ -46,6 +46,16 @@ async function proxyRequest(req: NextRequest, { params }: { params: Promise<{ sl
         "Content-Type": req.headers.get("content-type") || "application/json",
     };
 
+    const originHeader = req.headers.get("origin");
+    if (originHeader) {
+        headers["Origin"] = originHeader;
+    }
+
+    const hostHeader = req.headers.get("host");
+    if (hostHeader) {
+        headers["X-Forwarded-Host"] = hostHeader;
+    }
+
     const authHeader = req.headers.get("authorization");
     if (authHeader) {
         headers["Authorization"] = authHeader;

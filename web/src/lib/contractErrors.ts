@@ -78,6 +78,11 @@ export const knownContractErrorAbi = [
     name: "ActiveDisputeExists",
     inputs: [],
   },
+  {
+    type: "error",
+    name: "AlreadyReported",
+    inputs: [],
+  },
 ] as const;
 
 // ─── Pure helpers ────────────────────────────────────────────────────
@@ -180,6 +185,10 @@ export function normalizeContractWriteError(error: unknown): Error {
 
       if (decoded.errorName === "ActiveDisputeExists") {
         return new Error("An active dispute already exists for this content record.");
+      }
+
+      if (decoded.errorName === "AlreadyReported") {
+        return new Error("This wallet has already reported this content record. Use the existing dispute or appeal flow instead.");
       }
     } catch {
       // Fall back to the trimmed bundler error below.

@@ -8,6 +8,7 @@ import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 import { useToast } from "../../../components/ui/Toast";
 import AuthGate from "../../../components/auth/AuthGate";
+import HumanVerificationCard from "../../../components/disputes/HumanVerificationCard";
 
 export default function ArtistOnboardingPage() {
   const { token, address } = useAuth();
@@ -162,6 +163,12 @@ export default function ArtistOnboardingPage() {
               </span>
             </Button>
           </form>
+
+          {address && (
+            <div style={{ marginTop: "2rem" }}>
+              <HumanVerificationCard walletAddress={address} compact />
+            </div>
+          )}
         </div>
 
         {/* Decorative background elements */}

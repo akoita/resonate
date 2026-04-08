@@ -1,5 +1,11 @@
 SEPOLIA_RPC_URL ?= https://sepolia.drpc.org
 RESONATE_IAC_REPO ?= https://github.com/akoita/resonate-iac
+LOCAL_INFRA_COMPOSE_FILE ?= docker/docker-compose.local.yml
+AA_INFRA_COMPOSE_FILE ?= docker/docker-compose.aa.yml
+DEMUCS_IMAGE_NAME ?= resonate-demucs:cpu
+DEMUCS_GPU_IMAGE_NAME ?= resonate-demucs:gpu
+DEMUCS_CONTAINER_NAME ?= resonate-demucs-local
+DEMUCS_OUTPUT_DIR ?= $(CURDIR)/backend/uploads/stems
 
 define moved_to_resonate_iac
 	@echo "This target moved to $(RESONATE_IAC_REPO)."
@@ -8,13 +14,26 @@ define moved_to_resonate_iac
 endef
 
 dev-up:
-	$(moved_to_resonate_iac)
+	docker compose -f $(LOCAL_INFRA_COMPOSE_FILE) up -d
+	@echo "Waiting for Postgres on localhost:5432..."
+	@until nc -z localhost 5432 >/dev/null 2>&1; do sleep 1; done
+	@echo "Waiting for PubSub emulator on localhost:8085..."
+	@until nc -z localhost 8085 >/dev/null 2>&1; do sleep 1; done
+	@$(MAKE) pubsub-init
+	@echo "✅ Local infra is ready: Postgres, Redis, PubSub emulator"
 
 dev-up-build:
-	$(moved_to_resonate_iac)
+	docker compose -f $(LOCAL_INFRA_COMPOSE_FILE) up -d --build
+	@echo "Waiting for Postgres on localhost:5432..."
+	@until nc -z localhost 5432 >/dev/null 2>&1; do sleep 1; done
+	@echo "Waiting for PubSub emulator on localhost:8085..."
+	@until nc -z localhost 8085 >/dev/null 2>&1; do sleep 1; done
+	@$(MAKE) pubsub-init
+	@echo "✅ Local infra is ready: Postgres, Redis, PubSub emulator"
 
 dev-down:
-	$(moved_to_resonate_iac)
+	-$(MAKE) worker-down
+	docker compose -f $(LOCAL_INFRA_COMPOSE_FILE) down
 
 # ============================================
 # Docker Production Builds
@@ -85,6 +104,12 @@ backend-dev: dev-clean
 		echo 'STEM_PROCESSING_MODE=pubsub' >> backend/.env; \
 		echo "✅ Added PubSub emulator config to backend/.env"; \
 	fi
+	@if ! nc -z localhost 5432 >/dev/null 2>&1; then \
+		echo "❌ Postgres is not reachable on localhost:5432"; \
+		echo "Run 'make dev-up' in this repo to start local Postgres, Redis, and PubSub, then retry make backend-dev."; \
+		echo "backend/.env currently points DATABASE_URL at localhost:5432."; \
+		exit 1; \
+	fi
 	cd backend && npm run prisma:generate && npm run prisma:migrate && npm run start:dev
 
 web-dev: dev-clean
@@ -103,13 +128,16 @@ dev-clean:
 # Local Account Abstraction Development
 # ============================================
 
-# Start Anvil chain and Alto bundler
 local-aa-up:
-	$(moved_to_resonate_iac)
+	docker compose -f $(AA_INFRA_COMPOSE_FILE) --profile local-aa up -d
+	@echo "Waiting for local Anvil on localhost:8545..."
+	@until nc -z localhost 8545 >/dev/null 2>&1; do sleep 1; done
+	@echo "Waiting for local Alto bundler on localhost:4337..."
+	@until nc -z localhost 4337 >/dev/null 2>&1; do sleep 1; done
+	@echo "✅ Local AA infra is ready: Anvil (31337), Alto bundler"
 
-# Stop local AA infrastructure
 local-aa-down:
-	$(moved_to_resonate_iac)
+	docker compose -f $(AA_INFRA_COMPOSE_FILE) --profile local-aa --profile fork-aa down
 
 # Deploy AA contracts to local Anvil
 local-aa-deploy:
@@ -132,8 +160,8 @@ deploy-contracts:
 	@rm -rf web/.next
 	@echo "✓ Done — restart frontend to use contract addresses"
 
-# Full local contract/config setup once infrastructure is already running
-contracts-deploy-local:
+# Full local contract/config setup in plain local 31337 mode
+contracts-deploy-local: local-aa-up
 	$(MAKE) local-aa-deploy
 	@sleep 1
 	$(MAKE) deploy-contracts
@@ -145,11 +173,20 @@ local-aa-config:
 # Start web frontend in local AA mode
 web-dev-local:
 	@rm -rf web/.next
-	cd web && NEXT_PUBLIC_API_URL=http://localhost:3000 NEXT_PUBLIC_CHAIN_ID=31337 npm run dev
+	@AA_ENTRY_POINT=$$(grep '^AA_ENTRY_POINT=' backend/.env 2>/dev/null | cut -d= -f2-); \
+	AA_FACTORY=$$(grep '^AA_FACTORY=' backend/.env 2>/dev/null | cut -d= -f2-); \
+	echo "Starting local web dev with chainId=31337, entryPoint=$$AA_ENTRY_POINT, factory=$$AA_FACTORY"; \
+	cd web && \
+	NEXT_PUBLIC_API_URL=http://localhost:3000 \
+	NEXT_PUBLIC_CHAIN_ID=31337 \
+	NEXT_PUBLIC_RPC_URL=http://localhost:8545 \
+	NEXT_PUBLIC_AA_ENTRY_POINT=$$AA_ENTRY_POINT \
+	NEXT_PUBLIC_AA_FACTORY=$$AA_FACTORY \
+	npm run dev
 
 # View local AA logs
 local-aa-logs:
-	$(moved_to_resonate_iac)
+	docker compose -f $(AA_INFRA_COMPOSE_FILE) --profile local-aa --profile fork-aa logs -f
 
 # ============================================
 # Forked Sepolia AA Development (ZeroDev)
@@ -157,20 +194,36 @@ local-aa-logs:
 # Uses anvil --fork-url to fork Sepolia where ZeroDev contracts
 # are already deployed. Uses SEPOLIA_RPC_URL or falls back to dRPC.
 
-# Start Anvil forking Sepolia (ZeroDev contracts available)
 anvil-fork:
-	$(moved_to_resonate_iac)
+	docker compose -f $(AA_INFRA_COMPOSE_FILE) --profile fork-aa up -d anvil-fork
+	@echo "Waiting for Sepolia fork on localhost:8545..."
+	@until nc -z localhost 8545 >/dev/null 2>&1; do sleep 1; done
+	@echo "✅ Forked Anvil is ready on localhost:8545"
 
-# Configure forked Sepolia env against an already-running local fork/bundler
 local-aa-fork:
+	docker compose -f $(AA_INFRA_COMPOSE_FILE) --profile fork-aa up -d
+	@echo "Waiting for Sepolia fork on localhost:8545..."
+	@until nc -z localhost 8545 >/dev/null 2>&1; do sleep 1; done
+	@echo "Waiting for forked Alto bundler on localhost:4337..."
+	@until nc -z localhost 4337 >/dev/null 2>&1; do sleep 1; done
 	./contracts/scripts/update-aa-config.sh --mode fork
 	@echo ""
-	@echo "Forked Sepolia env updated. Start the fork/bundler stack from $(RESONATE_IAC_REPO) if it is not already running."
+	@echo "✅ Forked Sepolia AA infra is ready: Anvil fork + Alto bundler"
 
 # Start web frontend in forked Sepolia mode
 web-dev-fork:
 	@rm -rf web/.next
-	cd web && NEXT_PUBLIC_API_URL=http://localhost:3000 NEXT_PUBLIC_ZERODEV_PROJECT_ID= NEXT_PUBLIC_CHAIN_ID=11155111 NEXT_PUBLIC_RPC_URL=http://localhost:8545 npm run dev
+	@AA_ENTRY_POINT=$$(grep '^AA_ENTRY_POINT=' backend/.env 2>/dev/null | cut -d= -f2-); \
+	AA_FACTORY=$$(grep '^AA_FACTORY=' backend/.env 2>/dev/null | cut -d= -f2-); \
+	echo "Starting forked web dev with chainId=11155111, entryPoint=$$AA_ENTRY_POINT, factory=$$AA_FACTORY"; \
+	cd web && \
+	NEXT_PUBLIC_API_URL=http://localhost:3000 \
+	NEXT_PUBLIC_ZERODEV_PROJECT_ID= \
+	NEXT_PUBLIC_CHAIN_ID=11155111 \
+	NEXT_PUBLIC_RPC_URL=http://localhost:8545 \
+	NEXT_PUBLIC_AA_ENTRY_POINT=$$AA_ENTRY_POINT \
+	NEXT_PUBLIC_AA_FACTORY=$$AA_FACTORY \
+	npm run dev
 
 # ============================================
 # PubSub Emulator Helpers
@@ -194,17 +247,88 @@ pubsub-init:
 # Demucs AI Stem Separation Worker
 # ============================================
 
+# Build local CPU Demucs worker image
+worker-build:
+	@mkdir -p "$(DEMUCS_OUTPUT_DIR)"
+	docker build \
+		-f workers/demucs/Dockerfile \
+		-t $(DEMUCS_IMAGE_NAME) \
+		workers/demucs
+
+# Start local CPU Demucs worker container
+worker-up:
+	@mkdir -p "$(DEMUCS_OUTPUT_DIR)"
+	@if ! docker image inspect $(DEMUCS_IMAGE_NAME) >/dev/null 2>&1; then \
+		echo "Demucs image $(DEMUCS_IMAGE_NAME) not found; building it first..."; \
+		$(MAKE) worker-build; \
+	fi
+	-$(MAKE) worker-down
+	docker run --rm -d \
+		--name $(DEMUCS_CONTAINER_NAME) \
+		-p 8000:8000 \
+		--add-host=host.docker.internal:host-gateway \
+		-e PROCESSING_MODE=pubsub \
+		-e STORAGE_MODE=local \
+		-e OUTPUT_DIR=/outputs \
+		-e GCP_PROJECT_ID=resonate-local \
+		-e PUBSUB_EMULATOR_HOST=host.docker.internal:8085 \
+		-e PUBSUB_SUBSCRIPTION=stem-separate-worker \
+		-e PUBSUB_RESULTS_TOPIC=stem-results \
+		-e TORCHAUDIO_USE_BACKEND_DISPATCHER=1 \
+		-v "$(DEMUCS_OUTPUT_DIR):/outputs" \
+		$(DEMUCS_IMAGE_NAME)
+	@echo "✅ Demucs worker is running as $(DEMUCS_CONTAINER_NAME) on localhost:8000"
+
+# Stop local Demucs worker container
+worker-down:
+	-docker rm -f $(DEMUCS_CONTAINER_NAME) >/dev/null 2>&1 || true
+
 # View Demucs worker logs
 worker-logs:
-	$(moved_to_resonate_iac)
+	docker logs -f $(DEMUCS_CONTAINER_NAME)
+
+# Build local GPU Demucs worker image
+worker-gpu-build:
+	@mkdir -p "$(DEMUCS_OUTPUT_DIR)"
+	docker build \
+		-f workers/demucs/Dockerfile.gpu \
+		-t $(DEMUCS_GPU_IMAGE_NAME) \
+		workers/demucs
 
 # Start Demucs worker with GPU acceleration (requires NVIDIA GPU + Container Toolkit)
 worker-gpu:
-	$(moved_to_resonate_iac)
+	@mkdir -p "$(DEMUCS_OUTPUT_DIR)"
+	@if ! docker image inspect $(DEMUCS_GPU_IMAGE_NAME) >/dev/null 2>&1; then \
+		echo "Demucs GPU image $(DEMUCS_GPU_IMAGE_NAME) not found; building it first..."; \
+		$(MAKE) worker-gpu-build; \
+	fi
+	-$(MAKE) worker-down
+	docker run --rm -d \
+		--name $(DEMUCS_CONTAINER_NAME) \
+		--gpus all \
+		-p 8000:8000 \
+		--add-host=host.docker.internal:host-gateway \
+		-e PROCESSING_MODE=pubsub \
+		-e STORAGE_MODE=local \
+		-e OUTPUT_DIR=/outputs \
+		-e GCP_PROJECT_ID=resonate-local \
+		-e PUBSUB_EMULATOR_HOST=host.docker.internal:8085 \
+		-e PUBSUB_SUBSCRIPTION=stem-separate-worker \
+		-e PUBSUB_RESULTS_TOPIC=stem-results \
+		-e NVIDIA_VISIBLE_DEVICES=all \
+		-e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+		-e TORCHAUDIO_USE_BACKEND_DISPATCHER=1 \
+		-v "$(DEMUCS_OUTPUT_DIR):/outputs" \
+		$(DEMUCS_GPU_IMAGE_NAME)
+	@echo "✅ GPU Demucs worker is running as $(DEMUCS_CONTAINER_NAME) on localhost:8000"
 
-# Rebuild Demucs worker with GPU support (useful after Dockerfile changes)
+# Rebuild local CPU Demucs worker image without cache
 worker-rebuild:
-	$(moved_to_resonate_iac)
+	@mkdir -p "$(DEMUCS_OUTPUT_DIR)"
+	docker build --no-cache \
+		-f workers/demucs/Dockerfile \
+		-t $(DEMUCS_IMAGE_NAME) \
+		workers/demucs
 
 # Check Demucs worker health
 worker-health:
@@ -212,4 +336,9 @@ worker-health:
 
 # Skip model pre-caching for faster builds (model downloads on first use)
 worker-quick-build:
-	$(moved_to_resonate_iac)
+	@mkdir -p "$(DEMUCS_OUTPUT_DIR)"
+	docker build \
+		--build-arg CACHE_MODEL=0 \
+		-f workers/demucs/Dockerfile \
+		-t $(DEMUCS_IMAGE_NAME) \
+		workers/demucs

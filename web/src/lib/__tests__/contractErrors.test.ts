@@ -95,6 +95,11 @@ describe("normalizeContractWriteError", () => {
     errorName: "MarketplaceNotApproved",
   });
 
+  const alreadyReportedData = encodeErrorResult({
+    abi: knownContractErrorAbi,
+    errorName: "AlreadyReported",
+  });
+
   it("decodes NotAttested and produces a human-readable message", () => {
     const raw = new Error(
       `UserOp failed simulation with reason: ${notAttestedData} Request Arguments: { to: 0x… }`
@@ -116,6 +121,14 @@ describe("normalizeContractWriteError", () => {
     const raw = new Error("Something went wrong Request Arguments: { gas: 1000 }");
     const result = normalizeContractWriteError(raw);
     expect(result.message).toBe("Something went wrong");
+  });
+
+  it("decodes AlreadyReported", () => {
+    const raw = new Error(
+      `Transaction reverted with reason: ${alreadyReportedData}`
+    );
+    const result = normalizeContractWriteError(raw);
+    expect(result.message).toBe("This wallet has already reported this content record. Use the existing dispute or appeal flow instead.");
   });
 
   it("falls back to 'Transaction failed' for an empty message", () => {

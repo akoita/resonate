@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import {
   formatEth,
+  parseDateToEpochSeconds,
   deriveStakeStatus,
   deriveEscrowStatus,
   STAKE_STATUS_LABELS,
@@ -119,12 +120,19 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
   }
 
   // Derive status from data
-  const depositedEpoch = BigInt(Math.floor(new Date(data.depositedAt).getTime() / 1000));
+  const depositedEpoch = parseDateToEpochSeconds(data.depositedAt);
+  const hasDepositedAt = depositedEpoch > 0n;
   const stakeStatus: StakeStatus = data.staked
-    ? deriveStakeStatus(data.active, BigInt(data.stakeAmount), depositedEpoch, data.escrowDays)
+    ? hasDepositedAt
+      ? deriveStakeStatus(data.active, BigInt(data.stakeAmount), depositedEpoch, data.escrowDays)
+      : data.active
+        ? "active"
+        : "refunded"
     : "not_staked";
   const escrow = data.staked
-    ? deriveEscrowStatus(data.active, depositedEpoch, data.escrowDays)
+    ? hasDepositedAt
+      ? deriveEscrowStatus(data.active, depositedEpoch, data.escrowDays)
+      : { status: data.active ? "locked" as const : "released" as const, daysRemaining: 0 }
     : { status: "none" as const, daysRemaining: 0 };
 
   const tierLabel = TIER_LABELS[data.trustTier] || data.trustTier;

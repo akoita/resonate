@@ -34,6 +34,31 @@ export function formatEth(wei: string | bigint): string {
   return `${eth} ETH`;
 }
 
+/**
+ * Parse an ISO date string from the backend into epoch seconds.
+ * Returns 0n for missing or invalid timestamps so UI code can degrade safely.
+ */
+export function parseDateToEpochSeconds(value?: string | null): bigint {
+  if (!value) return 0n;
+
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) return 0n;
+
+  return BigInt(Math.floor(timestamp / 1000));
+}
+
+/**
+ * Format an ISO date string for display, falling back to an em dash when absent.
+ */
+export function formatOptionalDate(value?: string | null): string {
+  if (!value) return "\u2014";
+
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) return "\u2014";
+
+  return new Date(timestamp).toLocaleDateString();
+}
+
 // ============ Status Derivation ============
 
 export type StakeStatus = "active" | "releasable" | "refunded" | "slashed" | "not_staked";

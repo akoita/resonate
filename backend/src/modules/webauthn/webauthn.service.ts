@@ -153,8 +153,15 @@ export class WebAuthnService {
     return requestedRpId || process.env.WEBAUTHN_RP_ID || "localhost";
   }
 
-  private getOrigin(): string {
-    return process.env.WEBAUTHN_ORIGIN || "http://localhost:3001";
+  private getOrigin(requestedOrigin?: string): string {
+    if (requestedOrigin) {
+      return requestedOrigin;
+    }
+    return (
+      process.env.WEBAUTHN_ORIGIN ||
+      process.env.FRONTEND_URL ||
+      "http://localhost:3001"
+    );
   }
 
   private storeChallenge(key: string, challenge: string) {
@@ -220,6 +227,7 @@ export class WebAuthnService {
     username: string,
     cred: any,
     rpID?: string,
+    origin?: string,
   ) {
     const rpId = this.getRpId(rpID);
     const expectedChallenge = this.consumeChallenge(`register:${rpId}`);
@@ -234,7 +242,7 @@ export class WebAuthnService {
       verification = await verifyRegistrationResponse({
         response: cred,
         expectedChallenge,
-        expectedOrigin: this.getOrigin(),
+        expectedOrigin: this.getOrigin(origin),
         expectedRPID: rpId,
         requireUserVerification: false,
       });
@@ -296,6 +304,7 @@ export class WebAuthnService {
   async verifyAuthentication(
     cred: any,
     rpID?: string,
+    origin?: string,
   ) {
     const rpId = this.getRpId(rpID);
 
@@ -322,7 +331,7 @@ export class WebAuthnService {
       verification = await verifyAuthenticationResponse({
         response: cred,
         expectedChallenge,
-        expectedOrigin: this.getOrigin(),
+        expectedOrigin: this.getOrigin(origin),
         expectedRPID: rpId,
         credential: {
           id: storedCred.credentialId,
@@ -355,4 +364,3 @@ export class WebAuthnService {
     return { verification: { verified: false }, pubkey: null };
   }
 }
-

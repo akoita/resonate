@@ -11,6 +11,9 @@ created: "2026-03-03"
 
 This RFC defines Resonate's defense system against unauthorized content publication. On a decentralized platform without intermediaries, the question _"does this uploader actually own this content?"_ cannot be delegated to a distributor. This document specifies a multi-layered, crypto-economically incentivized protection system that replaces centralized gatekeeping with verifiable proofs, economic deterrents, and community governance.
 
+> [!NOTE]
+> See [Rights Verification & Copyright Enforcement Strategy](./rights-verification-strategy.md) for an updated operational position on when to rely on automation, trusted source verification, platform review, and decentralized jury. That RFC narrows jury to ambiguous cases and treats obvious catalog theft as an automation + ops problem first.
+
 > [!IMPORTANT]
 > This is not a feature — it is a **platform pillar**. Without credible IP protection, Resonate cannot attract legitimate artists, and without legitimate artists, there is no platform. Every design decision in this RFC prioritizes _making theft economically irrational_ over _making theft technically impossible_ (which is unsolvable in any system, centralized or not).
 

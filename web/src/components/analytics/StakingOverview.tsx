@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "../auth/AuthProvider";
-import { formatEth } from "../../lib/stakeConstants";
+import { formatEth, formatOptionalDate } from "../../lib/stakeConstants";
 
 interface StakeAnalytics {
   totalStaked: string;
@@ -163,7 +163,7 @@ export default function StakingOverview() {
                       <td style={tdStyle}>{formatEth(s.amount)}</td>
                       <td style={tdStyle}>
                         <span style={{ fontSize: "12px", opacity: 0.7 }}>
-                          {new Date(s.depositedAt).toLocaleDateString()}
+                          {formatOptionalDate(s.depositedAt)}
                         </span>
                       </td>
                       <td style={tdStyle}>

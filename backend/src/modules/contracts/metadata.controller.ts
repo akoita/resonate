@@ -7,6 +7,8 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { createPublicClient, http, keccak256, toHex, type Address, type Chain } from "viem";
 import { foundry, sepolia, baseSepolia } from "viem/chains";
+import { CuratorReputationService } from "./curator-reputation.service";
+import { HumanVerificationService } from "./human-verification.service";
 
 const DEFAULT_SEPOLIA_RPC_URL = "https://sepolia.drpc.org";
 const DIAGNOSTIC_CHAIN_CONFIGS: Record<number, { chain: Chain; rpcUrl: string }> = {
@@ -107,6 +109,8 @@ const CONTENT_PROTECTION_DIAGNOSTIC_ABI = [
 @Controller("metadata")
 export class MetadataController {
   private readonly logger = new Logger(MetadataController.name);
+  private readonly curatorReputationService = new CuratorReputationService();
+  private readonly humanVerificationService = new HumanVerificationService();
 
   constructor(
     private readonly contractsService: ContractsService,
@@ -675,6 +679,7 @@ export class MetadataController {
     if (!body.tokenId || !body.reporterAddr || !body.evidenceURI) {
       throw new BadRequestException("Missing required fields");
     }
+    await this.curatorReputationService.assertCanFileDispute(body.reporterAddr.toLowerCase());
     return this.contractsService.createDispute(body);
   }
 
@@ -842,15 +847,6 @@ export class MetadataController {
   }
 
   /**
-   * Get curator reputation
-   * GET /api/metadata/curators/:address
-   */
-  @Get("curators/:address")
-  async getCuratorReputation(@Param("address") address: string) {
-    return this.contractsService.getCuratorReputation(address.toLowerCase());
-  }
-
-  /**
    * Get curator leaderboard
    * GET /api/metadata/curators/leaderboard
    */
@@ -858,6 +854,54 @@ export class MetadataController {
   async getCuratorLeaderboard(@Query("limit") limitStr?: string) {
     const limit = Math.min(parseInt(limitStr || "20"), 100);
     return this.contractsService.getCuratorLeaderboard(limit);
+  }
+
+  /**
+   * Get curator reporting policy
+   * GET /api/metadata/curators/:address/reporting-policy
+   */
+  @Get("curators/:address/reporting-policy")
+  async getCuratorReportingPolicy(@Param("address") address: string) {
+    return this.curatorReputationService.getReportingPolicy(address.toLowerCase());
+  }
+
+  /**
+   * Get human verification status
+   * GET /api/metadata/curators/:address/verification
+   */
+  @Get("curators/:address/verification")
+  async getCuratorVerificationStatus(@Param("address") address: string) {
+    const profile = await this.curatorReputationService.getProfile(address.toLowerCase());
+    return profile.humanVerification;
+  }
+
+  /**
+   * Submit proof-of-humanity verification
+   * POST /api/metadata/curators/:address/verification
+   */
+  @Post("curators/:address/verification")
+  async verifyCuratorHumanity(
+    @Param("address") address: string,
+    @Body() body: { provider?: string; proof?: string },
+  ) {
+    const normalized = address.toLowerCase();
+    const verification = await this.humanVerificationService.verify({
+      walletAddress: normalized,
+      provider: body.provider,
+      proof: body.proof,
+    });
+
+    await this.curatorReputationService.saveHumanVerificationStatus(normalized, verification);
+    return this.contractsService.getCuratorReputation(normalized);
+  }
+
+  /**
+   * Get curator reputation/profile
+   * GET /api/metadata/curators/:address
+   */
+  @Get("curators/:address")
+  async getCuratorReputation(@Param("address") address: string) {
+    return this.contractsService.getCuratorReputation(address.toLowerCase());
   }
 
   // ============ PARAMETERIZED ROUTES (must come after static routes) ============
