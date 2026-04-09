@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, OnModuleInit, NotFoundException } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
 import { EncryptionService } from "../encryption/encryption.service";
@@ -9,6 +10,18 @@ import {
   StemsProcessedEvent,
   StemsUploadedEvent,
 } from "../../events/event_types";
+import { UploadRightsRoutingService } from "../rights/upload-rights-routing.service";
+import {
+  compareRouteSeverity,
+  getUploadRightsActions,
+  type UploadRightsRoute,
+} from "../rights/upload-rights-policy";
+
+const PUBLIC_RELEASE_ROUTES: UploadRightsRoute[] = [
+  "LIMITED_MONITORING",
+  "STANDARD_ESCROW",
+  "TRUSTED_FAST_PATH",
+];
 
 @Injectable()
 export class CatalogService implements OnModuleInit {
@@ -22,6 +35,7 @@ export class CatalogService implements OnModuleInit {
     private readonly eventBus: EventBus,
     private readonly encryptionService: EncryptionService,
     private readonly storageProvider: StorageProvider,
+    private readonly uploadRightsRoutingService: UploadRightsRoutingService,
   ) { }
 
   onModuleInit() {
@@ -34,6 +48,7 @@ export class CatalogService implements OnModuleInit {
           update: {
             artistId: event.artistId,
             status: "processing",
+            rightsSourceType: event.sourceType || "direct_upload",
             artworkData: event.artworkData,
             artworkMimeType: event.artworkMimeType,
             title: event.metadata?.title ?? undefined,
@@ -56,6 +71,7 @@ export class CatalogService implements OnModuleInit {
             artistId: event.artistId,
             title: event.metadata?.title || "Untitled Release",
             status: "processing",
+            rightsSourceType: event.sourceType || "direct_upload",
             type: event.metadata?.type || "single",
             primaryArtist: event.metadata?.primaryArtist,
             featuredArtists: event.metadata?.featuredArtists?.join(", "),
@@ -86,6 +102,13 @@ export class CatalogService implements OnModuleInit {
               })),
             },
           },
+        });
+        await this.uploadRightsRoutingService.evaluateAndPersistInitialDecision({
+          releaseId: event.releaseId,
+          artistId: event.artistId,
+          title: event.metadata?.title,
+          primaryArtist: event.metadata?.primaryArtist,
+          sourceType: event.sourceType,
         });
         console.log(`[Catalog] Created/Updated release ${event.releaseId} with ${event.metadata?.tracks?.length} tracks`);
       } catch (err) {
@@ -126,12 +149,22 @@ export class CatalogService implements OnModuleInit {
                 artist: trackData.artist,
                 position: trackData.position,
                 processingStatus: "complete", // Mark as complete when processed
+                rightsRoute: release.rightsRoute,
+                rightsFlags: (release.rightsFlags ?? undefined) as Prisma.InputJsonValue | undefined,
+                rightsReason: release.rightsReason,
+                rightsPolicyVersion: release.rightsPolicyVersion,
+                rightsEvaluatedAt: release.rightsEvaluatedAt,
               },
               update: {
                 title: trackData.title,
                 artist: trackData.artist,
                 position: trackData.position,
                 processingStatus: "complete", // Mark as complete when processed
+                rightsRoute: release.rightsRoute,
+                rightsFlags: (release.rightsFlags ?? undefined) as Prisma.InputJsonValue | undefined,
+                rightsReason: release.rightsReason,
+                rightsPolicyVersion: release.rightsPolicyVersion,
+                rightsEvaluatedAt: release.rightsEvaluatedAt,
               },
             });
 
@@ -270,6 +303,10 @@ export class CatalogService implements OnModuleInit {
     return prisma.release.findMany({
       where: {
         status: { in: ['ready', 'published'] },
+        OR: [
+          { rightsRoute: null },
+          { rightsRoute: { in: PUBLIC_RELEASE_ROUTES } },
+        ],
         ...(primaryArtist && {
           primaryArtist: { equals: primaryArtist, mode: 'insensitive' as const },
         }),
@@ -287,6 +324,12 @@ export class CatalogService implements OnModuleInit {
         releaseDate: true,
         explicit: true,
         createdAt: true,
+        rightsRoute: true,
+        rightsFlags: true,
+        rightsReason: true,
+        rightsPolicyVersion: true,
+        rightsSourceType: true,
+        rightsEvaluatedAt: true,
         artworkMimeType: true, // Useful for frontend to know, but DATA must be excluded
         artist: {
           select: { id: true, displayName: true, userId: true, payoutAddress: true }
@@ -302,6 +345,12 @@ export class CatalogService implements OnModuleInit {
             isrc: true,
             createdAt: true,
             processingStatus: true,
+            contentStatus: true,
+            rightsRoute: true,
+            rightsFlags: true,
+            rightsReason: true,
+            rightsPolicyVersion: true,
+            rightsEvaluatedAt: true,
             stems: {
               select: {
                 id: true,
@@ -377,7 +426,7 @@ export class CatalogService implements OnModuleInit {
   }
 
   async getTrack(trackId: string) {
-    return prisma.track.findUnique({
+    const track = await prisma.track.findUnique({
       where: { id: trackId },
       select: {
         id: true,
@@ -387,6 +436,13 @@ export class CatalogService implements OnModuleInit {
         explicit: true,
         isrc: true,
         createdAt: true,
+        processingStatus: true,
+        contentStatus: true,
+        rightsRoute: true,
+        rightsFlags: true,
+        rightsReason: true,
+        rightsPolicyVersion: true,
+        rightsEvaluatedAt: true,
         stems: {
           select: {
             id: true,
@@ -404,16 +460,36 @@ export class CatalogService implements OnModuleInit {
             id: true,
             title: true,
             primaryArtist: true,
+            rightsRoute: true,
+            rightsFlags: true,
+            rightsReason: true,
+            rightsPolicyVersion: true,
+            rightsSourceType: true,
+            rightsEvaluatedAt: true,
             artworkMimeType: true,
             artist: { select: { id: true, displayName: true, userId: true } }
           }
         }
       }
     });
+
+    if (!track) {
+      return null;
+    }
+
+    const effectiveRoute = this.getMostRestrictiveRoute(
+      track.rightsRoute,
+      track.release.rightsRoute,
+    );
+    if (!this.isPubliclyVisible(effectiveRoute)) {
+      return null;
+    }
+
+    return track;
   }
 
-  async getRelease(releaseId: string) {
-    return prisma.release.findUnique({
+  async getRelease(releaseId: string, options?: { includeRestricted?: boolean }) {
+    const release = await prisma.release.findUnique({
       where: { id: releaseId },
       select: {
         id: true,
@@ -428,6 +504,12 @@ export class CatalogService implements OnModuleInit {
         releaseDate: true,
         explicit: true,
         createdAt: true,
+        rightsRoute: true,
+        rightsFlags: true,
+        rightsReason: true,
+        rightsPolicyVersion: true,
+        rightsSourceType: true,
+        rightsEvaluatedAt: true,
         artworkMimeType: true,
         artist: {
           select: { id: true, displayName: true, userId: true }
@@ -443,6 +525,12 @@ export class CatalogService implements OnModuleInit {
             isrc: true,
             createdAt: true,
             processingStatus: true,
+            contentStatus: true,
+            rightsRoute: true,
+            rightsFlags: true,
+            rightsReason: true,
+            rightsPolicyVersion: true,
+            rightsEvaluatedAt: true,
             stems: {
               select: {
                 id: true,
@@ -460,11 +548,40 @@ export class CatalogService implements OnModuleInit {
         }
       }
     });
+
+    if (!release) {
+      return null;
+    }
+
+    if (!options?.includeRestricted && !this.isPubliclyVisible(release.rightsRoute)) {
+      return null;
+    }
+
+    return release;
   }
 
-  async listByArtist(artistId: string) {
+  async getReleaseForUser(releaseId: string, userId: string) {
+    const release = await this.getRelease(releaseId, { includeRestricted: true });
+    if (!release) {
+      return null;
+    }
+
+    return release.artist?.userId === userId ? release : null;
+  }
+
+  async listByArtist(artistId: string, options?: { includeRestricted?: boolean }) {
     return prisma.release.findMany({
-      where: { artistId },
+      where: {
+        artistId,
+        ...(options?.includeRestricted
+          ? {}
+          : {
+              OR: [
+                { rightsRoute: null },
+                { rightsRoute: { in: PUBLIC_RELEASE_ROUTES } },
+              ],
+            }),
+      },
       select: {
         id: true,
         artistId: true,
@@ -481,6 +598,12 @@ export class CatalogService implements OnModuleInit {
         releaseDate: true,
         explicit: true,
         createdAt: true,
+        rightsRoute: true,
+        rightsFlags: true,
+        rightsReason: true,
+        rightsPolicyVersion: true,
+        rightsSourceType: true,
+        rightsEvaluatedAt: true,
         artworkMimeType: true,
         tracks: {
           orderBy: { position: "asc" },
@@ -490,6 +613,12 @@ export class CatalogService implements OnModuleInit {
             position: true,
             explicit: true,
             processingStatus: true,
+            contentStatus: true,
+            rightsRoute: true,
+            rightsFlags: true,
+            rightsReason: true,
+            rightsPolicyVersion: true,
+            rightsEvaluatedAt: true,
             stems: {
               select: {
                 id: true,
@@ -512,7 +641,7 @@ export class CatalogService implements OnModuleInit {
       where: { userId },
     });
     if (!artist) return [];
-    return this.listByArtist(artist.id);
+    return this.listByArtist(artist.id, { includeRestricted: true });
   }
 
   async updateRelease(
@@ -621,14 +750,24 @@ export class CatalogService implements OnModuleInit {
     // Search releases by title OR tracks by title
     const items = await prisma.release.findMany({
       where: {
-        OR: [
-          { title: { contains: query, mode: "insensitive" } },
-          { primaryArtist: { contains: query, mode: "insensitive" } },
-          { featuredArtists: { contains: query, mode: "insensitive" } },
-          { tracks: { some: { title: { contains: query, mode: "insensitive" } } } },
-          { tracks: { some: { artist: { contains: query, mode: "insensitive" } } } }
+        AND: [
+          {
+            OR: [
+              { title: { contains: query, mode: "insensitive" } },
+              { primaryArtist: { contains: query, mode: "insensitive" } },
+              { featuredArtists: { contains: query, mode: "insensitive" } },
+              { tracks: { some: { title: { contains: query, mode: "insensitive" } } } },
+              { tracks: { some: { artist: { contains: query, mode: "insensitive" } } } }
+            ],
+          },
+          {
+            OR: [
+              { rightsRoute: null },
+              { rightsRoute: { in: PUBLIC_RELEASE_ROUTES } },
+            ],
+          },
         ],
-        status: "ready"
+        status: "ready",
       },
       select: {
         id: true,
@@ -677,17 +816,47 @@ export class CatalogService implements OnModuleInit {
   async getReleaseArtwork(releaseId: string) {
     const release = await prisma.release.findUnique({
       where: { id: releaseId },
-      select: { artworkData: true, artworkMimeType: true },
+      select: { artworkData: true, artworkMimeType: true, rightsRoute: true },
     });
-    if (!release || !release.artworkData) return null;
+    if (!release || !release.artworkData || !this.isPubliclyVisible(release.rightsRoute)) {
+      return null;
+    }
     return { data: release.artworkData, mimeType: release.artworkMimeType || "image/jpeg" };
   }
 
-  async getTrackStream(trackId: string) {
+  async getReleaseArtworkForUser(releaseId: string, userId: string) {
+    const release = await prisma.release.findUnique({
+      where: { id: releaseId },
+      select: {
+        artworkData: true,
+        artworkMimeType: true,
+        artist: {
+          select: { userId: true },
+        },
+      },
+    });
+
+    if (!release || !release.artworkData || release.artist?.userId !== userId) {
+      return null;
+    }
+
+    return {
+      data: release.artworkData,
+      mimeType: release.artworkMimeType || "image/jpeg",
+    };
+  }
+
+  async getTrackStream(trackId: string, options?: { includeRestricted?: boolean }) {
     // Find the track's stems, preferring unencrypted playable audio
     const track = await prisma.track.findUnique({
       where: { id: trackId },
       select: {
+        rightsRoute: true,
+        release: {
+          select: {
+            rightsRoute: true,
+          },
+        },
         stems: {
           select: { id: true, type: true, isEncrypted: true },
           orderBy: { type: 'asc' },
@@ -697,6 +866,14 @@ export class CatalogService implements OnModuleInit {
 
     if (!track || track.stems.length === 0) return null;
 
+    const effectiveRoute = this.getMostRestrictiveRoute(
+      track.rightsRoute,
+      track.release.rightsRoute,
+    );
+    if (!options?.includeRestricted && !this.isStreamingAllowed(effectiveRoute)) {
+      return null;
+    }
+
     // Priority: original → master → first unencrypted → first stem
     // Without this, alphabetical sort picks 'bass' (encrypted) before 'original'
     const preferredStem =
@@ -705,25 +882,65 @@ export class CatalogService implements OnModuleInit {
       track.stems.find(s => !s.isEncrypted) ||
       track.stems[0];
 
-    return this.getStemBlob(preferredStem.id);
+    return this.getStemBlob(preferredStem.id, options);
   }
 
-  async getStemBlob(stemId: string) {
+  async getStemBlob(stemId: string, options?: { includeRestricted?: boolean }) {
     // Try finding by exact ID first
     let stem = await prisma.stem.findUnique({
       where: { id: stemId },
-      select: { id: true, data: true, mimeType: true, uri: true, storageProvider: true },
+      select: {
+        id: true,
+        data: true,
+        mimeType: true,
+        uri: true,
+        storageProvider: true,
+        track: {
+          select: {
+            rightsRoute: true,
+            release: {
+              select: {
+                rightsRoute: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     // Fallback: if stemId looks like a filename (e.g. from a mockup URI), try searching by URI
     if (!stem) {
       stem = await prisma.stem.findFirst({
         where: { uri: { contains: stemId } },
-        select: { id: true, data: true, mimeType: true, uri: true, storageProvider: true },
+        select: {
+          id: true,
+          data: true,
+          mimeType: true,
+          uri: true,
+          storageProvider: true,
+          track: {
+            select: {
+              rightsRoute: true,
+              release: {
+                select: {
+                  rightsRoute: true,
+                },
+              },
+            },
+          },
+        },
       });
     }
 
     if (!stem) return null;
+
+    const effectiveRoute = this.getMostRestrictiveRoute(
+      stem.track.rightsRoute,
+      stem.track.release.rightsRoute,
+    );
+    if (!options?.includeRestricted && !this.isStreamingAllowed(effectiveRoute)) {
+      return null;
+    }
 
     // 1. Data is stored in DB
     if (stem.data) {
@@ -788,10 +1005,35 @@ export class CatalogService implements OnModuleInit {
   async getStemPreview(stemId: string) {
     const stem = await prisma.stem.findUnique({
       where: { id: stemId },
-      select: { uri: true, encryptionMetadata: true, data: true, mimeType: true },
+      select: {
+        uri: true,
+        encryptionMetadata: true,
+        data: true,
+        mimeType: true,
+        track: {
+          select: {
+            rightsRoute: true,
+            release: {
+              select: {
+                rightsRoute: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!stem) throw new NotFoundException("Stem not found");
+    if (
+      !this.isStreamingAllowed(
+        this.getMostRestrictiveRoute(
+          stem.track.rightsRoute,
+          stem.track.release.rightsRoute,
+        ),
+      )
+    ) {
+      throw new NotFoundException("Stem not found");
+    }
 
     if (!stem.uri && !stem.data) throw new BadRequestException("Stem has no source URI or data");
 
@@ -833,5 +1075,47 @@ export class CatalogService implements OnModuleInit {
 
   private clearCache() {
     this.searchCache.clear();
+  }
+
+  private parseRightsRoute(value?: string | null): UploadRightsRoute | null {
+    if (!value) {
+      return null;
+    }
+
+    return value as UploadRightsRoute;
+  }
+
+  private getMostRestrictiveRoute(...routes: Array<string | null | undefined>): UploadRightsRoute | null {
+    let strictestRoute: UploadRightsRoute | null = null;
+
+    for (const rawRoute of routes) {
+      const route = this.parseRightsRoute(rawRoute);
+      if (!route) {
+        continue;
+      }
+      if (!strictestRoute || compareRouteSeverity(route, strictestRoute) > 0) {
+        strictestRoute = route;
+      }
+    }
+
+    return strictestRoute;
+  }
+
+  private isPubliclyVisible(route?: string | null): boolean {
+    const parsedRoute = this.parseRightsRoute(route);
+    if (!parsedRoute) {
+      return true;
+    }
+
+    return getUploadRightsActions(parsedRoute).publicVisible;
+  }
+
+  private isStreamingAllowed(route?: string | null): boolean {
+    const parsedRoute = this.parseRightsRoute(route);
+    if (!parsedRoute) {
+      return true;
+    }
+
+    return getUploadRightsActions(parsedRoute).streamingAllowed;
   }
 }

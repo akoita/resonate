@@ -16,8 +16,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
-
-const LOCAL_RPC_URL = "http://localhost:8545";
+import { getBrowserSafeRpcUrl, getRpcUrl } from "./rpc";
 
 /**
  * Get Anvil's pre-funded account 0 (10,000 ETH)
@@ -36,12 +35,13 @@ export async function fundSmartAccount(
     amount: bigint = BigInt("1000000000000000000") // 1 ETH default
 ): Promise<void> {
     const funder = getAnvilFunderAccount();
-    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || LOCAL_RPC_URL;
+    const rpcUrl = getBrowserSafeRpcUrl();
+    const chainRpcUrl = getRpcUrl();
     const chain = publicClient.chain || foundry;
 
     const walletClient = createWalletClient({
         account: funder,
-        chain: { ...chain, rpcUrls: { default: { http: [rpcUrl] }, public: { http: [rpcUrl] } } },
+        chain: { ...chain, rpcUrls: { default: { http: [chainRpcUrl] }, public: { http: [chainRpcUrl] } } },
         transport: http(rpcUrl),
     });
 

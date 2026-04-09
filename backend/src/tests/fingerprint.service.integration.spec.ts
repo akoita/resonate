@@ -9,6 +9,7 @@
 
 import { prisma } from "../db/prisma";
 import { FingerprintService } from "../modules/fingerprint/fingerprint.service";
+import { UploadRightsRoutingService } from "../modules/rights/upload-rights-routing.service";
 
 const P = `fp_${Date.now()}_`;
 
@@ -25,7 +26,7 @@ describe("FingerprintService (integration)", () => {
   const trackId3 = `${P}track3`;
 
   beforeAll(async () => {
-    service = new FingerprintService();
+    service = new FingerprintService(new UploadRightsRoutingService());
 
     // Seed: Two artists, each with a release and track
     await prisma.user.create({ data: { id: userId, email: `${P}@test.resonate` } });
@@ -39,10 +40,22 @@ describe("FingerprintService (integration)", () => {
     });
 
     await prisma.release.create({
-      data: { id: releaseId1, artistId: artistId1, title: "Release One" },
+      data: {
+        id: releaseId1,
+        artistId: artistId1,
+        title: "Release One",
+        rightsRoute: "LIMITED_MONITORING",
+        rightsSourceType: "direct_upload",
+      },
     });
     await prisma.release.create({
-      data: { id: releaseId2, artistId: artistId2, title: "Release Two" },
+      data: {
+        id: releaseId2,
+        artistId: artistId2,
+        title: "Release Two",
+        rightsRoute: "LIMITED_MONITORING",
+        rightsSourceType: "direct_upload",
+      },
     });
 
     await prisma.track.create({
@@ -120,5 +133,9 @@ describe("FingerprintService (integration)", () => {
     // Track should be quarantined
     const track = await prisma.track.findUnique({ where: { id: trackId3 } });
     expect(track!.contentStatus).toBe("quarantined");
+    expect(track!.rightsRoute).toBe("QUARANTINED_REVIEW");
+
+    const release = await prisma.release.findUnique({ where: { id: releaseId2 } });
+    expect(release!.rightsRoute).toBe("QUARANTINED_REVIEW");
   });
 });

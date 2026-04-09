@@ -20,6 +20,7 @@ const mockCatalogService = {
   getTrackStream: jest.fn(),
   getStemPreview: jest.fn(),
   listByUserId: jest.fn().mockResolvedValue([]),
+  getReleaseForUser: jest.fn(),
   createRelease: jest.fn().mockResolvedValue({ id: 'rel-1', title: 'Test' }),
   listPublished: jest.fn().mockResolvedValue([]),
   getRelease: jest.fn(),
@@ -83,6 +84,15 @@ describe('CatalogController (e2e)', () => {
   it('GET /catalog/me → 200 with JWT', async () => {
     await request(app.getHttpServer())
       .get('/catalog/me')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+  });
+
+  it('GET /catalog/me/releases/:id → 200 with JWT', async () => {
+    mockCatalogService.getReleaseForUser.mockResolvedValue({ id: 'rel-1', title: 'Mine' });
+
+    await request(app.getHttpServer())
+      .get('/catalog/me/releases/rel-1')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
   });

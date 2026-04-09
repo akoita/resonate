@@ -10,6 +10,7 @@
 import { prisma } from "../db/prisma";
 import { DmcaService } from "../modules/dmca/dmca.service";
 import { NotFoundException } from "@nestjs/common";
+import { UploadRightsRoutingService } from "../modules/rights/upload-rights-routing.service";
 
 const P = `dmca_${Date.now()}_`;
 
@@ -23,7 +24,7 @@ describe("DmcaService (integration)", () => {
   let reportId: string;
 
   beforeAll(async () => {
-    service = new DmcaService();
+    service = new DmcaService(new UploadRightsRoutingService());
 
     // Seed test data
     await prisma.user.create({ data: { id: userId, email: `${P}@test.resonate` } });
@@ -31,7 +32,13 @@ describe("DmcaService (integration)", () => {
       data: { id: artistId, userId, displayName: "DMCA Test Artist", payoutAddress: "0x" + "D".repeat(40) },
     });
     await prisma.release.create({
-      data: { id: releaseId, artistId, title: "DMCA Test Release" },
+      data: {
+        id: releaseId,
+        artistId,
+        title: "DMCA Test Release",
+        rightsRoute: "STANDARD_ESCROW",
+        rightsSourceType: "direct_upload",
+      },
     });
     await prisma.track.create({
       data: { id: trackId, title: "DMCA Test Track", releaseId },
@@ -109,6 +116,7 @@ describe("DmcaService (integration)", () => {
     // Track should be dmca_removed
     const track = await prisma.track.findUnique({ where: { id: trackId } });
     expect(track!.contentStatus).toBe("dmca_removed");
+    expect(track!.rightsRoute).toBe("BLOCKED");
 
     // All stems should have empty URIs (delisted)
     const stems = await prisma.stem.findMany({ where: { trackId } });
@@ -116,6 +124,9 @@ describe("DmcaService (integration)", () => {
     for (const stem of stems) {
       expect(stem.uri).toBe("");
     }
+
+    const release = await prisma.release.findUnique({ where: { id: releaseId } });
+    expect(release!.rightsRoute).toBe("BLOCKED");
   });
 
   it("resolves report as rejected — no cascade", async () => {

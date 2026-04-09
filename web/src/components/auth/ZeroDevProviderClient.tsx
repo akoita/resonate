@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useMemo } from "react";
 import { createPublicClient, http } from "viem";
 import { sepolia, foundry } from "viem/chains";
+import { getBrowserSafeRpcUrl, getRpcUrl } from "../../lib/rpc";
 
 type ZeroDevState = {
     projectId: string | null;
@@ -21,14 +22,15 @@ const ZeroDevContext = createContext<ZeroDevState | null>(null);
 function getChainConfig() {
     const chainId = process.env.NEXT_PUBLIC_CHAIN_ID;
     const rpcUrlOverride = process.env.NEXT_PUBLIC_RPC_URL;
+    const rpcUrl = getRpcUrl();
 
     if (chainId === "31337") {
         return {
             chain: {
                 ...foundry,
                 rpcUrls: {
-                    default: { http: ["http://localhost:8545"] },
-                    public: { http: ["http://localhost:8545"] },
+                    default: { http: [rpcUrl] },
+                    public: { http: [rpcUrl] },
                 },
             },
             bundlerUrl: "http://localhost:4337",
@@ -70,7 +72,7 @@ export default function ZeroDevProviderClient({
 
     const publicClient = useMemo(
         () => {
-            const rpcUrl = chain.rpcUrls.default.http[0];
+            const rpcUrl = getBrowserSafeRpcUrl();
             // Only log in dev and only when actually re-creating
             if (process.env.NODE_ENV === "development") {
                 console.log(`[ZeroDev] Initializing public client for chain ${chain.id} at ${rpcUrl}`);

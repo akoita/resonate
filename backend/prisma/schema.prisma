@@ -69,8 +69,16 @@ model Release {
   artworkMimeType      String?
   attestation          String?   @db.Text // JSON: {contentHash, isOriginalWork, sourceCredits[]}
   attestationSignature String?   @db.Text // Wallet signature of the attestation
+  rightsRoute          String?
+  rightsFlags          Json?
+  rightsReason         String?   @db.Text
+  rightsPolicyVersion  String?
+  rightsSourceType     String?
+  rightsEvaluatedAt    DateTime?
   artist               Artist    @relation(fields: [artistId], references: [id])
   tracks               Track[]
+
+  @@index([rightsRoute])
 }
 
 model Track {
@@ -90,6 +98,13 @@ model Track {
   fingerprint        AudioFingerprint?
   dmcaReports        DmcaReport[]
   release            Release           @relation(fields: [releaseId], references: [id])
+  rightsRoute        String?
+  rightsFlags        Json?
+  rightsReason       String?           @db.Text
+  rightsPolicyVersion String?
+  rightsEvaluatedAt  DateTime?
+
+  @@index([rightsRoute])
 }
 
 model Stem {

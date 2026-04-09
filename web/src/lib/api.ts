@@ -1,6 +1,18 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
-export function getReleaseArtworkUrl(releaseId: string) {
+const PUBLIC_RELEASE_ROUTES = new Set([
+  "LIMITED_MONITORING",
+  "STANDARD_ESCROW",
+  "TRUSTED_FAST_PATH",
+]);
+
+export function getReleaseArtworkUrl(
+  releaseId: string,
+  options?: { ownerScoped?: boolean },
+) {
+  if (options?.ownerScoped) {
+    return `${API_BASE}/catalog/me/releases/${releaseId}/artwork`;
+  }
   return `${API_BASE}/catalog/releases/${releaseId}/artwork`;
 }
 
@@ -26,6 +38,72 @@ export type WalletRecord = {
 type AuthVerifyResponse =
   | { accessToken: string; address?: string }
   | { status: "invalid_signature" | "invalid_nonce" };
+
+function formatApiErrorMessage(status: number, statusText: string, detail: string) {
+  const trimmedDetail = detail.trim();
+  if (!trimmedDetail) {
+    return `API ${status}: ${statusText}`;
+  }
+
+  try {
+    const payload = JSON.parse(trimmedDetail) as { message?: string | string[]; error?: string };
+    const message = Array.isArray(payload.message)
+      ? payload.message.join(", ")
+      : payload.message || payload.error;
+
+    if (message) {
+      return `API ${status}: ${message}`;
+    }
+  } catch {
+    // Fall back to the raw response body when the server returned plain text.
+  }
+
+  return `API ${status}: ${trimmedDetail}`;
+}
+
+function isApiStatusError(
+  error: unknown,
+  allowedStatuses: number[],
+): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return allowedStatuses.some((status) =>
+    error.message.startsWith(`API ${status}:`),
+  );
+}
+
+function isPublicReleaseRoute(route?: string | null) {
+  return !route || PUBLIC_RELEASE_ROUTES.has(route);
+}
+
+async function getOwnerScopedArtworkObjectUrl(
+  releaseId: string,
+  token: string,
+): Promise<string | undefined> {
+  if (
+    typeof window === "undefined" ||
+    typeof URL.createObjectURL !== "function"
+  ) {
+    return undefined;
+  }
+
+  const response = await fetch(getReleaseArtworkUrl(releaseId, { ownerScoped: true }), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    return undefined;
+  }
+
+  const contentType =
+    response.headers.get("Content-Type") || "application/octet-stream";
+  const body = await response.arrayBuffer();
+  return URL.createObjectURL(new Blob([body], { type: contentType }));
+}
 
 async function apiRequest<T>(
   path: string,
@@ -62,7 +140,7 @@ async function apiRequest<T>(
       console.error(`[API] Error ${response.status} ${path}`, errorDetail);
     }
 
-    throw new Error(`API ${response.status}: ${errorDetail || response.statusText}`);
+    throw new Error(formatApiErrorMessage(response.status, response.statusText, errorDetail));
   }
 
   // Handle No Content (204) or empty body
@@ -196,6 +274,12 @@ export type Release = {
   createdAt: string;
   artworkUrl?: string | null;
   artworkMimeType?: string | null;
+  rightsRoute?: string | null;
+  rightsFlags?: string[] | null;
+  rightsReason?: string | null;
+  rightsPolicyVersion?: string | null;
+  rightsSourceType?: string | null;
+  rightsEvaluatedAt?: string | null;
   tracks?: Track[];
   artist?: {
     id: string;
@@ -214,6 +298,12 @@ export type Track = {
   createdAt: string;
   artworkMimeType?: string | null;
   processingStatus?: "pending" | "separating" | "encrypting" | "storing" | "complete" | "failed";
+  contentStatus?: string | null;
+  rightsRoute?: string | null;
+  rightsFlags?: string[] | null;
+  rightsReason?: string | null;
+  rightsPolicyVersion?: string | null;
+  rightsEvaluatedAt?: string | null;
   stems?: Array<{
     id: string;
     trackId: string;
@@ -292,6 +382,8 @@ export type HumanVerificationStatus = {
   verifiedAt: string | null;
   expiresAt: string | null;
   requiredAfterReports: number;
+  availableProviders?: Array<"mock" | "passport" | "worldcoin">;
+  defaultProvider?: "mock" | "passport" | "worldcoin";
 };
 
 export type CuratorStakeTier = {
@@ -335,6 +427,18 @@ export type CuratorReportingPolicy = {
   humanVerification: HumanVerificationStatus;
 };
 
+export type ReleaseContentProtectionData = {
+  tokenId?: string | null;
+  staked: boolean;
+  attested: boolean;
+  stakeAmount: string;
+  depositedAt: string;
+  active: boolean;
+  escrowDays: number;
+  trustTier: string;
+  attestedAt: string;
+};
+
 export async function getTrustTier(artistId: string, token: string) {
   return apiRequest<TrustTier>(`/api/trust/${artistId}`, { silentErrorCodes: [404] }, token);
 }
@@ -370,6 +474,18 @@ export async function getHumanVerificationStatus(address: string) {
   return apiRequest<HumanVerificationStatus>(`/metadata/curators/${address.toLowerCase()}/verification`);
 }
 
+export async function getReleaseContentProtectionStatus(releaseId: string) {
+  const response = await fetch(`${API_BASE}/metadata/content-protection/release/${releaseId}`);
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`API ${response.status}: ${detail || response.statusText}`);
+  }
+  return response.json() as Promise<ReleaseContentProtectionData>;
+}
+
 export async function submitHumanVerification(
   address: string,
   input: { provider?: string; proof?: string },
@@ -402,9 +518,40 @@ export async function createRelease(
 }
 
 export async function getRelease(releaseId: string, token?: string | null) {
-  const release = await apiRequest<Release>(`/catalog/releases/${releaseId}`, {}, token);
+  let release: Release | null = null;
+  let usedOwnerScopedEndpoint = false;
+
+  if (token) {
+    try {
+      release = await apiRequest<Release>(
+        `/catalog/me/releases/${releaseId}`,
+        {},
+        token,
+      );
+      usedOwnerScopedEndpoint = !!release;
+    } catch (error) {
+      if (!isApiStatusError(error, [401, 403, 404])) {
+        throw error;
+      }
+    }
+  }
+
+  if (!release) {
+    release = await apiRequest<Release>(`/catalog/releases/${releaseId}`, {}, token);
+  }
+
   if (release && release.artworkMimeType) {
-    release.artworkUrl = getReleaseArtworkUrl(release.id);
+    if (
+      token &&
+      usedOwnerScopedEndpoint &&
+      !isPublicReleaseRoute(release.rightsRoute)
+    ) {
+      release.artworkUrl =
+        (await getOwnerScopedArtworkObjectUrl(release.id, token)) ||
+        undefined;
+    } else {
+      release.artworkUrl = getReleaseArtworkUrl(release.id);
+    }
   }
   return release;
 }

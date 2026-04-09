@@ -1,5 +1,7 @@
 import { BadRequestException, InternalServerErrorException } from "@nestjs/common";
 
+export type HumanVerificationProvider = "mock" | "passport" | "worldcoin";
+
 type VerificationResult = {
   provider: string;
   status: string;
@@ -13,10 +15,69 @@ type VerificationResult = {
 
 const DEFAULT_GITCOIN_API_URL = "https://api.passport.xyz";
 const DEFAULT_WORLD_API_URL = "https://developer.worldcoin.org/api/v2";
+const SUPPORTED_PROVIDERS: HumanVerificationProvider[] = ["passport", "worldcoin", "mock"];
 
 export class HumanVerificationService {
   private getProvider() {
-    return (process.env.HUMAN_VERIFICATION_PROVIDER || "mock").toLowerCase();
+    const provider = (process.env.HUMAN_VERIFICATION_PROVIDER || "mock").toLowerCase();
+    return SUPPORTED_PROVIDERS.includes(provider as HumanVerificationProvider)
+      ? (provider as HumanVerificationProvider)
+      : "mock";
+  }
+
+  private getTimeoutMs() {
+    return Number(process.env.HUMAN_VERIFICATION_TIMEOUT_MS || "10000");
+  }
+
+  private async fetchJson(
+    url: string,
+    init?: RequestInit,
+    providerLabel = "Verification provider",
+  ) {
+    try {
+      const response = await fetch(url, {
+        ...init,
+        signal: AbortSignal.timeout(this.getTimeoutMs()),
+      });
+
+      let payload: any = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+
+      return { response, payload };
+    } catch (error) {
+      if (error instanceof Error && error.name === "TimeoutError") {
+        throw new BadRequestException(`${providerLabel} timed out. Please try again.`);
+      }
+      throw error;
+    }
+  }
+
+  private isProviderConfigured(provider: HumanVerificationProvider) {
+    if (provider === "mock") {
+      return true;
+    }
+
+    if (provider === "passport") {
+      return Boolean(process.env.GITCOIN_PASSPORT_SCORER_ID && process.env.GITCOIN_PASSPORT_API_KEY);
+    }
+
+    return Boolean(process.env.WORLD_ID_APP_ID && process.env.WORLD_ID_ACTION);
+  }
+
+  getClientConfig() {
+    const availableProviders = SUPPORTED_PROVIDERS.filter((provider) => this.isProviderConfigured(provider));
+    const configuredProvider = this.getProvider();
+
+    return {
+      availableProviders,
+      defaultProvider: this.isProviderConfigured(configuredProvider)
+        ? configuredProvider
+        : (availableProviders[0] ?? "mock"),
+    };
   }
 
   async verify(input: {
@@ -63,19 +124,16 @@ export class HumanVerificationService {
       throw new BadRequestException("Gitcoin Passport is not configured.");
     }
 
-    const response = await fetch(`${apiUrl}/v2/stamps/${encodeURIComponent(scorerId)}/score/${walletAddress.toLowerCase()}`, {
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": apiKey,
+    const { response, payload } = await this.fetchJson(
+      `${apiUrl}/v2/stamps/${encodeURIComponent(scorerId)}/score/${walletAddress.toLowerCase()}`,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": apiKey,
+        },
       },
-    });
-
-    let payload: any = null;
-    try {
-      payload = await response.json();
-    } catch {
-      payload = null;
-    }
+      "Gitcoin Passport",
+    );
 
     if (!response.ok) {
       throw new BadRequestException(payload?.detail || payload?.message || "Gitcoin Passport verification failed.");
@@ -117,25 +175,22 @@ export class HumanVerificationService {
       throw new BadRequestException("World ID proof must be valid JSON.");
     }
 
-    const response = await fetch(`${apiUrl}/verify/${encodeURIComponent(appId)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action,
-        signal: walletAddress.toLowerCase(),
-        proof: parsedProof.proof,
-        merkle_root: parsedProof.merkle_root ?? parsedProof.merkleRoot,
-        nullifier_hash: parsedProof.nullifier_hash ?? parsedProof.nullifierHash,
-        verification_level: parsedProof.verification_level ?? parsedProof.verificationLevel ?? verificationLevel,
-      }),
-    });
-
-    let payload: any = null;
-    try {
-      payload = await response.json();
-    } catch {
-      payload = null;
-    }
+    const { response, payload } = await this.fetchJson(
+      `${apiUrl}/verify/${encodeURIComponent(appId)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          signal: walletAddress.toLowerCase(),
+          proof: parsedProof.proof,
+          merkle_root: parsedProof.merkle_root ?? parsedProof.merkleRoot,
+          nullifier_hash: parsedProof.nullifier_hash ?? parsedProof.nullifierHash,
+          verification_level: parsedProof.verification_level ?? parsedProof.verificationLevel ?? verificationLevel,
+        }),
+      },
+      "World ID",
+    );
 
     if (!response.ok) {
       throw new BadRequestException(payload?.detail || payload?.code || "World ID verification failed.");

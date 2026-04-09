@@ -9,6 +9,7 @@ import {
 import { WalletRecord } from "../../lib/api";
 import { getKernelAccountConfig } from "../../lib/accountAbstraction";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
+import { getBrowserSafeRpcUrl, isLocalRpcUrl } from "../../lib/rpc";
 
 type Props = {
     wallet: WalletRecord | null;
@@ -94,8 +95,7 @@ function AddressValue({ value, href, badge }: {
 
 /** Detect if the RPC is a local Anvil instance */
 function isLocalRpc(): boolean {
-    const rpc = process.env.NEXT_PUBLIC_RPC_URL || "";
-    return rpc.includes("localhost") || rpc.includes("127.0.0.1");
+    return isLocalRpcUrl();
 }
 
 export default function VaultSmartAccountCard({ wallet, address, isDeployed, recheck }: Props) {
@@ -130,7 +130,7 @@ export default function VaultSmartAccountCard({ wallet, address, isDeployed, rec
      */
     const fundFromAnvil = useCallback(async () => {
         if (!address) return;
-        const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545";
+        const rpcUrl = getBrowserSafeRpcUrl();
         const res = await fetch(rpcUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },

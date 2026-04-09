@@ -2,7 +2,15 @@
 
 import { useRef, useEffect, useState, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { getRelease, Release, updateReleaseArtwork, getReleaseArtworkUrl, waitForReleaseAvailability } from "../../../lib/api";
+import {
+  getRelease,
+  Release,
+  updateReleaseArtwork,
+  getReleaseArtworkUrl,
+  waitForReleaseAvailability,
+  getReleaseContentProtectionStatus,
+  type ReleaseContentProtectionData,
+} from "../../../lib/api";
 import { LocalTrack, saveTracksMetadata } from "../../../lib/localLibrary";
 import { Button } from "../../../components/ui/Button";
 import { usePlayer } from "../../../lib/playerContext";
@@ -29,6 +37,63 @@ import "../../../styles/license-badges.css";
 // Helper to get duration from track's first stem
 const getTrackDuration = (track: { stems?: Array<{ durationSeconds?: number | null }> }): number => {
   return track.stems?.[0]?.durationSeconds ?? 0;
+};
+
+const formatRightsLabel = (value?: string | null): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+};
+
+const getRightsTone = (route?: string | null) => {
+  switch (route) {
+    case "BLOCKED":
+      return {
+        border: "rgba(239, 68, 68, 0.35)",
+        background: "rgba(127, 29, 29, 0.18)",
+        color: "#fca5a5",
+        badgeBg: "rgba(239, 68, 68, 0.12)",
+        icon: "x-circle" as const,
+      };
+    case "QUARANTINED_REVIEW":
+      return {
+        border: "rgba(245, 158, 11, 0.35)",
+        background: "rgba(120, 53, 15, 0.18)",
+        color: "#fcd34d",
+        badgeBg: "rgba(245, 158, 11, 0.12)",
+        icon: "alert-triangle" as const,
+      };
+    case "LIMITED_MONITORING":
+      return {
+        border: "rgba(96, 165, 250, 0.35)",
+        background: "rgba(30, 64, 175, 0.18)",
+        color: "#93c5fd",
+        badgeBg: "rgba(96, 165, 250, 0.12)",
+        icon: "eye" as const,
+      };
+    case "TRUSTED_FAST_PATH":
+      return {
+        border: "rgba(16, 185, 129, 0.35)",
+        background: "rgba(6, 78, 59, 0.18)",
+        color: "#6ee7b7",
+        badgeBg: "rgba(16, 185, 129, 0.12)",
+        icon: "shield-check" as const,
+      };
+    default:
+      return {
+        border: "rgba(255, 255, 255, 0.12)",
+        background: "rgba(255, 255, 255, 0.04)",
+        color: "rgba(255,255,255,0.88)",
+        badgeBg: "rgba(255, 255, 255, 0.06)",
+        icon: "help-circle" as const,
+      };
+  }
 };
 
 export default function ReleaseDetails() {
@@ -58,7 +123,15 @@ export default function ReleaseDetails() {
   const [selectedNftStems, setSelectedNftStems] = useState<Set<string>>(new Set());
   const [batchModalStems, setBatchModalStems] = useState<BatchStemItem[] | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [releaseProtection, setReleaseProtection] = useState<ReleaseContentProtectionData | null>(null);
   const shouldWaitForPendingRelease = searchParams.get("pending") === "1";
+  const mintingBlockedReason =
+    releaseProtection && !releaseProtection.attested
+      ? "Minting opens after this release's Content Protection record has been attested on-chain."
+      : null;
+  const rightsTone = getRightsTone(release?.rightsRoute);
+  const rightsRouteLabel = formatRightsLabel(release?.rightsRoute) || "Not Evaluated";
+  const rightsSourceLabel = formatRightsLabel(release?.rightsSourceType);
 
   // Handle real-time track progress updates via WebSocket
   const handleProgressUpdate = useCallback((data: ReleaseProgressUpdate) => {
@@ -128,7 +201,7 @@ export default function ReleaseDetails() {
 
     if (data.status === 'ready') {
       // Refresh release data to get updated stems and tracks
-      getRelease(id as string).then(freshRelease => {
+      getRelease(id as string, token).then(freshRelease => {
         if (freshRelease) {
           setRelease(freshRelease);
           addToast({
@@ -146,7 +219,7 @@ export default function ReleaseDetails() {
         type: "error",
       });
     }
-  }, [id, addToast]);
+  }, [id, addToast, token]);
 
   // Subscribe to WebSocket events for real-time updates
   useWebSockets(handleReleaseStatusUpdate, handleProgressUpdate, handleTrackStatusUpdate);
@@ -172,6 +245,30 @@ export default function ReleaseDetails() {
         .finally(() => setLoading(false));
     }
   }, [id, searchParams, shouldWaitForPendingRelease, token]);
+
+  useEffect(() => {
+    if (!release?.id) {
+      setReleaseProtection(null);
+      return;
+    }
+
+    let cancelled = false;
+    getReleaseContentProtectionStatus(release.id)
+      .then((data) => {
+        if (!cancelled) {
+          setReleaseProtection(data);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setReleaseProtection(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [release?.id]);
 
   // Auto-enable mixer mode when navigating from Quick Mix CTA (?mixer=true&stem=vocals)
   useEffect(() => {
@@ -630,6 +727,103 @@ export default function ReleaseDetails() {
         </div>
       )}
 
+      <div
+        style={{
+          marginBottom: "var(--space-4)",
+          borderRadius: "10px",
+          border: "1px solid rgba(255,255,255,0.06)",
+          borderLeft: `3px solid ${rightsTone.color}`,
+          background: "rgba(255,255,255,0.02)",
+          padding: "14px 18px",
+        }}
+      >
+        {/* Primary row: icon + badge + metadata + flags */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          {/* Status icon */}
+          {rightsTone.icon === "shield-check" && (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={rightsTone.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9 12l2 2 4-4" />
+            </svg>
+          )}
+          {rightsTone.icon === "eye" && (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={rightsTone.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+            </svg>
+          )}
+          {rightsTone.icon === "alert-triangle" && (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={rightsTone.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+          )}
+          {rightsTone.icon === "x-circle" && (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={rightsTone.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
+            </svg>
+          )}
+          {rightsTone.icon === "help-circle" && (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={rightsTone.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+          )}
+
+          {/* Badge */}
+          <span style={{
+            display: "inline-flex",
+            alignItems: "center",
+            borderRadius: "6px",
+            padding: "3px 10px",
+            background: rightsTone.badgeBg,
+            color: rightsTone.color,
+            fontWeight: 700,
+            fontSize: "0.8rem",
+          }}>
+            {rightsRouteLabel}
+          </span>
+
+          {/* Inline metadata */}
+          {rightsSourceLabel && (
+            <span style={{ fontSize: "0.78rem", opacity: 0.5 }}>
+              {rightsSourceLabel}
+            </span>
+          )}
+          {release.rightsEvaluatedAt && (
+            <span style={{ fontSize: "0.72rem", opacity: 0.3, fontFamily: "monospace" }}>
+              {new Date(release.rightsEvaluatedAt).toLocaleString()}
+            </span>
+          )}
+
+          {/* Flags inline */}
+          {release.rightsFlags && release.rightsFlags.length > 0 && (
+            <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginLeft: "auto" }}>
+              {release.rightsFlags.map((flag) => (
+                <span key={flag} style={{
+                  borderRadius: "4px",
+                  padding: "2px 6px",
+                  background: "rgba(255,255,255,0.05)",
+                  fontSize: "0.68rem",
+                  opacity: 0.55,
+                  whiteSpace: "nowrap",
+                }}>
+                  {formatRightsLabel(flag)}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Reason (secondary line) */}
+        {release.rightsReason && (
+          <p style={{
+            margin: "8px 0 0 28px",
+            fontSize: "0.8rem",
+            opacity: 0.5,
+            lineHeight: 1.5,
+          }}>
+            {release.rightsReason}
+          </p>
+        )}
+      </div>
+
       <section className="tracklist-section glass-panel">
         <div className="tracklist-scroll-container">
           <table className="track-table">
@@ -888,6 +1082,14 @@ export default function ReleaseDetails() {
                   };
 
                   const handleBatchMintSelected = () => {
+                    if (mintingBlockedReason) {
+                      addToast({
+                        type: "warning",
+                        title: "Attestation Required",
+                        message: mintingBlockedReason,
+                      });
+                      return;
+                    }
                     const selected = mintableStems
                       .filter(s => selectedNftStems.has(s.id))
                       .map(s => ({
@@ -928,11 +1130,19 @@ export default function ReleaseDetails() {
                               <button
                                 className="nft-batch-btn"
                                 onClick={handleBatchMintSelected}
+                                disabled={!!mintingBlockedReason}
+                                title={mintingBlockedReason || undefined}
                               >
                                 Mint & List Selected ({selectedInTrack.length})
                               </button>
                             )}
                           </div>
+
+                          {mintingBlockedReason && (
+                            <div className="nft-attestation-notice">
+                              {mintingBlockedReason}
+                            </div>
+                          )}
 
                           <div className="nft-stems-grid">
                             {mintableStems.map(stem => {
@@ -959,6 +1169,8 @@ export default function ReleaseDetails() {
                                   <MintStemButton
                                     stemId={stem.id}
                                     stemType={stem.type}
+                                    disabled={!!mintingBlockedReason}
+                                    disabledReason={mintingBlockedReason || undefined}
                                   />
                                 </div>
                               );
@@ -1673,6 +1885,25 @@ export default function ReleaseDetails() {
         .nft-batch-btn:hover {
           background: #7c3aed;
           transform: translateY(-1px);
+        }
+
+        .nft-batch-btn:disabled {
+          background: #3f3f46;
+          color: #a1a1aa;
+          cursor: not-allowed;
+          transform: none;
+          opacity: 0.8;
+        }
+
+        .nft-attestation-notice {
+          margin: 0 20px 14px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          border: 1px solid rgba(245, 158, 11, 0.24);
+          background: rgba(245, 158, 11, 0.08);
+          color: #fbbf24;
+          font-size: 12px;
+          line-height: 1.5;
         }
 
         .nft-stem-selected {

@@ -44,6 +44,12 @@ describe('API Client', () => {
         'http://test-api:3000/catalog/releases/release-123/artwork',
       );
     });
+
+    it('constructs owner-scoped artwork URL when requested', () => {
+      expect(api.getReleaseArtworkUrl('release-123', { ownerScoped: true })).toBe(
+        'http://test-api:3000/catalog/me/releases/release-123/artwork',
+      );
+    });
   });
 
   describe('fetchNonce', () => {
@@ -93,6 +99,22 @@ describe('API Client', () => {
       });
 
       await expect(api.fetchNonce('0x1')).rejects.toThrow('API 401');
+    });
+
+    it('extracts readable messages from JSON error payloads', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        text: async () =>
+          JSON.stringify({
+            message: 'Gitcoin Passport is not configured.',
+            error: 'Bad Request',
+            statusCode: 400,
+          }),
+      });
+
+      await expect(api.fetchNonce('0x1')).rejects.toThrow('API 400: Gitcoin Passport is not configured.');
     });
 
     it('handles 204 No Content gracefully', async () => {
@@ -168,6 +190,134 @@ describe('API Client', () => {
       );
     });
 
+    it('prefers the owner-scoped endpoint when a token is provided', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            id: 'rel-owner',
+            title: 'Restricted Release',
+            artworkMimeType: 'image/png',
+          }),
+      });
+
+      const release = await api.getRelease('rel-owner', 'jwt-token');
+
+      expect(release!.artworkUrl).toBe(
+        'http://test-api:3000/catalog/releases/rel-owner/artwork',
+      );
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch.mock.calls[0][0]).toBe(
+        'http://test-api:3000/catalog/me/releases/rel-owner',
+      );
+    });
+
+    it('falls back to the public endpoint when the owner-scoped read is not found', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        text: async () => 'Not found',
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            id: 'rel-public',
+            title: 'Public Release',
+            artworkMimeType: null,
+          }),
+      });
+
+      const release = await api.getRelease('rel-public', 'jwt-token');
+
+      expect(release!.id).toBe('rel-public');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch.mock.calls[0][0]).toBe(
+        'http://test-api:3000/catalog/me/releases/rel-public',
+      );
+      expect(mockFetch.mock.calls[1][0]).toBe(
+        'http://test-api:3000/catalog/releases/rel-public',
+      );
+    });
+
+    it('falls back to the public endpoint when the owner-scoped read is unauthorized', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        text: async () => 'Expired token',
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            id: 'rel-public',
+            title: 'Public Release',
+            artworkMimeType: null,
+          }),
+      });
+
+      const release = await api.getRelease('rel-public', 'expired-token');
+
+      expect(release!.id).toBe('rel-public');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch.mock.calls[1][0]).toBe(
+        'http://test-api:3000/catalog/releases/rel-public',
+      );
+    });
+
+    it('loads restricted owner artwork through the owner-scoped artwork endpoint', async () => {
+      const originalCreateObjectURL = (URL as typeof URL & {
+        createObjectURL?: (blob: Blob) => string;
+      }).createObjectURL;
+      (URL as typeof URL & { createObjectURL: (blob: Blob) => string }).createObjectURL =
+        vi.fn(() => 'blob:owner-artwork');
+      vi.stubGlobal('window', {} as Window & typeof globalThis);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            id: 'rel-restricted',
+            title: 'Restricted Release',
+            rightsRoute: 'QUARANTINED_REVIEW',
+            artworkMimeType: 'image/png',
+          }),
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (key: string) => (key === 'Content-Type' ? 'image/png' : null),
+        },
+        arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+      });
+
+      const release = await api.getRelease('rel-restricted', 'jwt-token');
+
+      expect(release!.artworkUrl).toBe('blob:owner-artwork');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch.mock.calls[1][0]).toBe(
+        'http://test-api:3000/catalog/me/releases/rel-restricted/artwork',
+      );
+      expect((mockFetch.mock.calls[1][1] as RequestInit).headers).toEqual({
+        Authorization: 'Bearer jwt-token',
+      });
+
+      if (originalCreateObjectURL) {
+        (URL as typeof URL & { createObjectURL: (blob: Blob) => string }).createObjectURL =
+          originalCreateObjectURL;
+      } else {
+        delete (URL as typeof URL & { createObjectURL?: (blob: Blob) => string }).createObjectURL;
+      }
+      delete (globalThis as typeof globalThis & { window?: unknown }).window;
+    });
+
     it('does not set artworkUrl when artworkMimeType is null', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -229,6 +379,8 @@ describe('API Client', () => {
               verifiedAt: null,
               expiresAt: null,
               requiredAfterReports: 3,
+              availableProviders: ['mock'],
+              defaultProvider: 'mock',
             },
           }),
       });

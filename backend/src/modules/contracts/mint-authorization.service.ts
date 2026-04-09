@@ -22,6 +22,7 @@ import {
 import type { Prisma } from "@prisma/client";
 import { privateKeyToAccount } from "viem/accounts";
 import { prisma } from "../../db/prisma";
+import { UploadRightsRoutingService } from "../rights/upload-rights-routing.service";
 
 const MINT_AUTHORIZATION_DOMAIN = {
   name: "Resonate StemNFT",
@@ -109,7 +110,10 @@ export class MintAuthorizationService {
   private warnedPrivateKeyFallback = false;
   private warnedLocalRpcFallback = false;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly uploadRightsRoutingService: UploadRightsRoutingService,
+  ) {}
 
   async createAuthorization(
     userId: string,
@@ -191,6 +195,7 @@ export class MintAuthorizationService {
     if (!ownerUserId || ownerUserId !== userId) {
       throw new ForbiddenException("You do not own this stem");
     }
+    await this.uploadRightsRoutingService.assertMarketplaceAllowedForStem(input.stemId);
 
     const chainId = Number(input.chainId);
     if (!Number.isInteger(chainId) || chainId <= 0) {

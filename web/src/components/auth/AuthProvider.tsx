@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, useRef } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { fetchNonce, fetchWallet, verifySignature, type WalletRecord } from "../../lib/api";
 import { clearEmbeddedAccount } from "../../lib/embedded_wallet";
 import { syncPlaylists } from "../../lib/playlistStore";
@@ -341,24 +341,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     setStatus("idle");
     setActiveAccount(null);
   }, []);
-
-  // Auto-init mock account for pure local Anvil (chainId 31337)
-  // Passkey auth on forked Sepolia requires user gesture (click), so no auto-init there
-  const didInit = useRef(false);
-  useEffect(() => {
-    const isLocalAnvil = chainId === 31337;
-    // Skip if already authenticated via localStorage (e.g., E2E mock auth)
-    const hasStoredAuth = localStorage.getItem(TOKEN_KEY) && localStorage.getItem(ADDRESS_KEY);
-    // Only auto-login on local Anvil where mock ECDSA doesn't need user gesture
-    if (isLocalAnvil && !didInit.current && !hasStoredAuth && status === "idle") {
-      didInit.current = true;
-      console.log("Local Anvil detected, performing auto-login with mock account...");
-      login().catch(e => {
-        console.error("Mock login failed:", e);
-        didInit.current = false; // Reset on failure so we can try again if needed
-      });
-    }
-  }, [login, status, chainId]);
 
   const value = useMemo<AuthState>(
     () => ({

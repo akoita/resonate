@@ -1,48 +1,34 @@
-# Security Best Practices Report — Issue #457
-
-**Date:** 2026-04-07
-**Scope:** Backend dispute notification flow and frontend websocket notification hook
+# Security Best Practices Report
 
 ## Executive Summary
 
-The `#457` changes harden realtime dispute notifications by improving reconnect behavior and adding automated coverage around backend event delivery. No Critical or High findings were identified in the changed files.
+Reviewed the backend changes related to upload-rights routing, catalog visibility controls, and ingestion retry paths. No new Critical or High severity findings were identified in the touched code paths.
 
-## Findings
+## Scope Reviewed
 
-### SBPR-001: Wallet-room delivery depends on client-provided wallet join
+- `backend/src/modules/catalog/`
+- `backend/src/modules/ingestion/`
+- `backend/src/modules/rights/`
+- Related backend tests updated in this branch
 
-**File:** `backend/src/modules/shared/events.gateway.ts`
-**Severity:** Low
+## Critical Findings
 
-**Description:** Targeted `notification.new` delivery relies on the client joining its own wallet room by emitting `wallet:join`. This is sufficient for the current unauthenticated websocket design, but room membership is not server-authenticated.
+No critical findings identified.
 
-**Recommendation:** Keep the current design for this issue. In a future hardening pass, bind websocket room joins to authenticated session identity rather than trusting a raw wallet string from the client.
+## High Findings
 
----
+No high findings identified.
 
-### SBPR-002: Reconnect refetch closes missed-event gap
+## Medium Findings
 
-**File:** `web/src/hooks/useDisputeNotifications.ts`
-**Severity:** Informational
+No medium findings identified in the touched files.
 
-**Description:** Before this issue, a disconnected client could miss `notification.new` events and retain stale unread state after reconnect. The updated hook now rejoins the wallet room and refetches notifications on socket `connect`, which closes the missed-event window for the current polling-plus-websocket design.
+## Low Findings
 
-**Recommendation:** No further action required in this issue.
+No low findings identified in the touched files.
 
-## Summary
+## Notes
 
-| Severity      | Count |
-| ------------- | ----- |
-| Critical      | 0     |
-| High          | 0     |
-| Medium        | 0     |
-| Low           | 1     |
-| Informational | 1     |
-
-## Scans Performed
-
-- [x] Hardcoded secret scan on backend sources relevant to the change
-- [x] Raw SQL scan on backend sources
-- [x] XSS scan on frontend sources
-- [x] Client-exposed secret pattern scan on frontend sources
-- [x] Manual review of changed websocket and notification code paths
+- Verified that the new owner-scoped catalog route is protected by `AuthGuard("jwt")`.
+- Verified that the restricted-read bypasses added for ingestion are internal service calls, not newly exposed public endpoints.
+- Spot-checked the touched modules for hardcoded credentials, raw SQL usage, and unsafe dynamic evaluation; no new issues were introduced by this patch.

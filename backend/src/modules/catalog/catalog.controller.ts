@@ -163,6 +163,37 @@ export class CatalogController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @Get("me/releases/:releaseId")
+  getMyRelease(
+    @Param("releaseId") releaseId: string,
+    @Request() req: any,
+  ) {
+    return this.catalogService.getReleaseForUser(releaseId, req.user.userId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Get("me/releases/:releaseId/artwork")
+  async getMyReleaseArtwork(
+    @Param("releaseId") releaseId: string,
+    @Request() req: any,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const artwork = await this.catalogService.getReleaseArtworkForUser(
+      releaseId,
+      req.user.userId,
+    );
+    if (!artwork) {
+      res.status(404).send("Artwork not found");
+      return;
+    }
+    res.set({
+      "Content-Type": artwork.mimeType,
+      "Cache-Control": "no-cache",
+    });
+    return new StreamableFile(artwork.data);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
   @Post()
   create(
     @Request() req: any,

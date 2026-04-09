@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
@@ -26,8 +26,11 @@ const timeAgo = (dateStr: string) => {
   return `${Math.floor(hours / 24)}d ago`;
 };
 
+const subscribe = () => () => {};
+
 export default function NotificationBell() {
   const { address } = useAuth();
+  const hasMounted = useSyncExternalStore(subscribe, () => true, () => false);
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useDisputeNotifications(address ?? undefined);
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -67,7 +70,7 @@ export default function NotificationBell() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  if (!address) return null;
+  if (!hasMounted || !address) return null;
 
 
   return (

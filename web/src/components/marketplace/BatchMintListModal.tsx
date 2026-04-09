@@ -45,12 +45,13 @@ export function BatchMintListModal({ stems, onClose, onComplete }: BatchMintList
         onProgress: (r) => setResults([...r]),
       });
       onComplete?.();
+      onClose();
     } catch (err) {
       setBatchError(
         err instanceof Error ? err.message : "Batch transaction failed"
       );
     }
-  }, [stems, executeBatch, onComplete]);
+  }, [stems, executeBatch, onClose, onComplete]);
 
   const handleRetryFailed = useCallback(async () => {
     const failedStems = stems.filter(s =>
@@ -72,12 +73,14 @@ export function BatchMintListModal({ stems, onClose, onComplete }: BatchMintList
           });
         },
       });
+      onComplete?.();
+      onClose();
     } catch (err) {
       setBatchError(
         err instanceof Error ? err.message : "Retry failed"
       );
     }
-  }, [stems, results, executeBatch]);
+  }, [stems, results, executeBatch, onClose, onComplete]);
 
   const doneCount = results.filter(r => r.status === "done").length;
   const failedCount = results.filter(r => r.status === "failed").length;

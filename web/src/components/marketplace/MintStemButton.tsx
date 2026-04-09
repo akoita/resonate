@@ -58,6 +58,8 @@ async function pollForListing(
 interface MintStemButtonProps {
     stemId: string;
     stemType: string;
+    disabled?: boolean;
+    disabledReason?: string;
 }
 
 // TTL for localStorage "listed" hint: 1 hour.
@@ -68,6 +70,8 @@ const LISTED_TTL_MS = 60 * 60 * 1000;
 export function MintStemButton({
     stemId,
     stemType,
+    disabled = false,
+    disabledReason,
 }: MintStemButtonProps) {
     const { address, status, smartAccountAddress } = useAuth();
     const { mint, pending: mintPending } = useMintStem();
@@ -407,6 +411,29 @@ export function MintStemButton({
                 }}
             >
                 ✓ Listed
+            </button>
+        );
+    }
+
+    if (disabled) {
+        return (
+            <button
+                disabled
+                title={disabledReason}
+                style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    background: "#3f3f46",
+                    color: "#a1a1aa",
+                    border: "1px solid rgba(161, 161, 170, 0.25)",
+                    borderRadius: 8,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "not-allowed",
+                    opacity: 0.8,
+                }}
+            >
+                Attestation Required
             </button>
         );
     }

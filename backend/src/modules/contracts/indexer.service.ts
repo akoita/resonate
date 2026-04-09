@@ -135,6 +135,10 @@ const CONTRACT_ADDRESSES: Record<number, { stemNFT: Address; marketplace: Addres
   },
 };
 
+function isEphemeralLocalRpc(rpcUrl: string): boolean {
+  return /localhost|127\.0\.0\.1|host\.docker\.internal/i.test(rpcUrl);
+}
+
 @Injectable()
 export class IndexerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(IndexerService.name);
@@ -192,6 +196,51 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private async purgeEphemeralChainState(chainId: number) {
+    this.logger.warn(`Purging stale contract state for ephemeral local chain ${chainId}`);
+
+    const affectedStemIds = new Set<string>();
+
+    const [mintedStemIds, listedStemIds] = await Promise.all([
+      prisma.stemNftMint.findMany({
+        where: { chainId },
+        select: { stemId: true },
+      }),
+      prisma.stemListing.findMany({
+        where: { chainId, stemId: { not: null } },
+        select: { stemId: true },
+      }),
+    ]);
+
+    for (const record of mintedStemIds) {
+      affectedStemIds.add(record.stemId);
+    }
+    for (const record of listedStemIds) {
+      if (record.stemId) {
+        affectedStemIds.add(record.stemId);
+      }
+    }
+
+    await prisma.stemPurchase.deleteMany({
+      where: {
+        listing: { chainId },
+      },
+    });
+    await prisma.royaltyPayment.deleteMany({ where: { chainId } });
+    await prisma.stemListing.deleteMany({ where: { chainId } });
+    await prisma.stemNftMint.deleteMany({ where: { chainId } });
+    await prisma.contentProtectionStake.deleteMany({ where: { chainId } });
+    await prisma.contentAttestation.deleteMany({ where: { chainId } });
+    await prisma.contractEvent.deleteMany({ where: { chainId } });
+
+    if (affectedStemIds.size > 0) {
+      await prisma.stem.updateMany({
+        where: { id: { in: Array.from(affectedStemIds) } },
+        data: { ipnftId: null },
+      });
+    }
+  }
+
   private async runIndexCycle() {
     this.isIndexing = true;
 
@@ -244,11 +293,14 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         }
 
         const gap = indexerState.lastBlockNumber - currentBlock;
-      if (gap > 10n) {
-        // Chain reset detected (e.g., Anvil fork restarted with different tip).
-        // Jump to near chain tip rather than re-scanning from 0.
-        const safeBlock = currentBlock > 50n ? currentBlock - 50n : 0n;
-        this.logger.warn(`Chain reset detected: last indexed ${indexerState.lastBlockNumber} >> current ${currentBlock}. Resetting to ${safeBlock}`);
+        if (gap > 10n) {
+          // Chain reset detected (e.g., Anvil fork restarted with different tip).
+          // Jump to near chain tip rather than re-scanning from 0.
+          const safeBlock = currentBlock > 50n ? currentBlock - 50n : 0n;
+          if (isEphemeralLocalRpc(config.rpcUrl)) {
+            await this.purgeEphemeralChainState(chainId);
+          }
+          this.logger.warn(`Chain reset detected: last indexed ${indexerState.lastBlockNumber} >> current ${currentBlock}. Resetting to ${safeBlock}`);
           await prisma.indexerState.update({
             where: { chainId },
             data: { lastBlockNumber: safeBlock },
