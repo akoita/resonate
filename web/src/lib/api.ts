@@ -27,6 +27,28 @@ type AuthVerifyResponse =
   | { accessToken: string; address?: string }
   | { status: "invalid_signature" | "invalid_nonce" };
 
+function formatApiErrorMessage(status: number, statusText: string, detail: string) {
+  const trimmedDetail = detail.trim();
+  if (!trimmedDetail) {
+    return `API ${status}: ${statusText}`;
+  }
+
+  try {
+    const payload = JSON.parse(trimmedDetail) as { message?: string | string[]; error?: string };
+    const message = Array.isArray(payload.message)
+      ? payload.message.join(", ")
+      : payload.message || payload.error;
+
+    if (message) {
+      return `API ${status}: ${message}`;
+    }
+  } catch {
+    // Fall back to the raw response body when the server returned plain text.
+  }
+
+  return `API ${status}: ${trimmedDetail}`;
+}
+
 async function apiRequest<T>(
   path: string,
   options: RequestInit & { silentErrorCodes?: number[] } = {},
@@ -62,7 +84,7 @@ async function apiRequest<T>(
       console.error(`[API] Error ${response.status} ${path}`, errorDetail);
     }
 
-    throw new Error(`API ${response.status}: ${errorDetail || response.statusText}`);
+    throw new Error(formatApiErrorMessage(response.status, response.statusText, errorDetail));
   }
 
   // Handle No Content (204) or empty body
@@ -292,6 +314,8 @@ export type HumanVerificationStatus = {
   verifiedAt: string | null;
   expiresAt: string | null;
   requiredAfterReports: number;
+  availableProviders?: Array<"mock" | "passport" | "worldcoin">;
+  defaultProvider?: "mock" | "passport" | "worldcoin";
 };
 
 export type CuratorStakeTier = {

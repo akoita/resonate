@@ -11,6 +11,10 @@ type Props = {
   compact?: boolean;
 };
 
+type VerificationProvider = NonNullable<HumanVerificationStatus["defaultProvider"]>;
+
+const DEFAULT_MOCK_PROOF = "resonate-human";
+
 const DEFAULT_STATUS: HumanVerificationStatus = {
   verified: false,
   provider: null,
@@ -20,6 +24,8 @@ const DEFAULT_STATUS: HumanVerificationStatus = {
   verifiedAt: null,
   expiresAt: null,
   requiredAfterReports: 3,
+  availableProviders: ["mock", "passport", "worldcoin"],
+  defaultProvider: "mock",
 };
 
 /* ── Inline SVG Icons ──────────────────────────────────────────── */
@@ -123,7 +129,7 @@ const PROVIDERS = [
 
 export default function HumanVerificationCard({ walletAddress, onVerified, compact = false }: Props) {
   const [status, setStatus] = useState<HumanVerificationStatus>(DEFAULT_STATUS);
-  const [provider, setProvider] = useState("passport");
+  const [provider, setProvider] = useState<VerificationProvider>(DEFAULT_STATUS.defaultProvider ?? "mock");
   const [proof, setProof] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -138,9 +144,16 @@ export default function HumanVerificationCard({ walletAddress, onVerified, compa
         const next = await getHumanVerificationStatus(walletAddress);
         if (!cancelled) {
           setStatus(next);
-          if (next.provider) {
-            setProvider(next.provider);
-          }
+          const availableProviders: VerificationProvider[] = next.availableProviders?.length
+            ? next.availableProviders
+            : PROVIDERS.map((item) => item.id);
+          const preferredProvider: VerificationProvider = next.provider && availableProviders.includes(next.provider as VerificationProvider)
+            ? (next.provider as VerificationProvider)
+            : next.defaultProvider && availableProviders.includes(next.defaultProvider)
+              ? next.defaultProvider
+              : (availableProviders[0] ?? "mock");
+
+          setProvider(preferredProvider);
         }
       } catch (err) {
         if (!cancelled) {
@@ -159,6 +172,12 @@ export default function HumanVerificationCard({ walletAddress, onVerified, compa
     };
   }, [walletAddress]);
 
+  useEffect(() => {
+    if (provider === "mock" && !proof.trim()) {
+      setProof(DEFAULT_MOCK_PROOF);
+    }
+  }, [proof, provider]);
+
   const hint = useMemo(() => {
     if (provider === "passport") {
       return "Gitcoin Passport checks the connected wallet score on the backend. No pasted proof is required.";
@@ -166,18 +185,31 @@ export default function HumanVerificationCard({ walletAddress, onVerified, compa
     if (provider === "worldcoin") {
       return "Paste the World ID proof JSON payload from your verification client.";
     }
-    return "Use the local mock token for development environments.";
+    return `Use the local mock token for development environments. Default: ${DEFAULT_MOCK_PROOF}.`;
   }, [provider]);
 
+  const availableProviders: VerificationProvider[] = status.availableProviders?.length
+    ? status.availableProviders
+    : PROVIDERS.map((item) => item.id);
+  const providerAvailable = availableProviders.includes(provider);
+
   const handleVerify = async () => {
+    if (!providerAvailable) {
+      setError(`${PROVIDERS.find((item) => item.id === provider)?.label ?? "This provider"} is not configured in this environment.`);
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     try {
       const profile = await submitHumanVerification(walletAddress, {
         provider,
-        proof: provider === "passport" ? undefined : proof,
+        proof: provider === "passport" ? undefined : provider === "mock" ? (proof.trim() || DEFAULT_MOCK_PROOF) : proof,
       });
-      setStatus(profile.humanVerification);
+      setStatus((current) => ({
+        ...current,
+        ...profile.humanVerification,
+      }));
       onVerified?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Verification failed.");
@@ -240,15 +272,24 @@ export default function HumanVerificationCard({ walletAddress, onVerified, compa
           <div style={providerGridStyle}>
             {PROVIDERS.map((p) => {
               const isSelected = provider === p.id;
+              const isAvailable = availableProviders.includes(p.id);
               const Icon = p.icon;
               return (
                 <button
                   key={p.id}
-                  onClick={() => setProvider(p.id)}
+                  onClick={() => {
+                    if (isAvailable) {
+                      setProvider(p.id);
+                      setError(null);
+                    }
+                  }}
+                  disabled={!isAvailable}
                   style={{
                     ...providerCardStyle,
                     borderColor: isSelected ? "rgba(124,92,255,0.4)" : "rgba(255,255,255,0.08)",
                     background: isSelected ? "rgba(124,92,255,0.08)" : "rgba(255,255,255,0.02)",
+                    opacity: isAvailable ? 1 : 0.45,
+                    cursor: isAvailable ? "pointer" : "not-allowed",
                   }}
                 >
                   <div style={{ color: isSelected ? "#a78bfa" : "rgba(255,255,255,0.3)", marginBottom: "6px" }}>
@@ -266,7 +307,7 @@ export default function HumanVerificationCard({ walletAddress, onVerified, compa
                     color: "rgba(255,255,255,0.3)",
                     marginTop: "2px",
                   }}>
-                    {p.description}
+                    {isAvailable ? p.description : "Unavailable here"}
                   </div>
                 </button>
               );
@@ -291,7 +332,7 @@ export default function HumanVerificationCard({ walletAddress, onVerified, compa
               <Input
                 value={proof}
                 onChange={(e) => setProof(e.target.value)}
-                placeholder="resonate-human"
+                placeholder={DEFAULT_MOCK_PROOF}
               />
             )}
           </div>
@@ -335,7 +376,7 @@ export default function HumanVerificationCard({ walletAddress, onVerified, compa
           </div>
         )}
 
-        <Button type="button" onClick={handleVerify} disabled={submitting || loading} variant="primary">
+        <Button type="button" onClick={handleVerify} disabled={submitting || loading || !providerAvailable} variant="primary">
           {submitting ? "Verifying..." : status.verified ? (
             <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
               <IconRefresh size={14} /> Refresh Verification

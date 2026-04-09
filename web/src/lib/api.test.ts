@@ -95,6 +95,22 @@ describe('API Client', () => {
       await expect(api.fetchNonce('0x1')).rejects.toThrow('API 401');
     });
 
+    it('extracts readable messages from JSON error payloads', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        text: async () =>
+          JSON.stringify({
+            message: 'Gitcoin Passport is not configured.',
+            error: 'Bad Request',
+            statusCode: 400,
+          }),
+      });
+
+      await expect(api.fetchNonce('0x1')).rejects.toThrow('API 400: Gitcoin Passport is not configured.');
+    });
+
     it('handles 204 No Content gracefully', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -282,6 +298,8 @@ describe('API Client', () => {
               verifiedAt: null,
               expiresAt: null,
               requiredAfterReports: 3,
+              availableProviders: ['mock'],
+              defaultProvider: 'mock',
             },
           }),
       });

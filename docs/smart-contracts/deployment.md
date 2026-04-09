@@ -107,3 +107,71 @@ Core app-side variables:
 | `WORLD_ID_VERIFICATION_LEVEL` | Backend | Optional verification level such as `orb` |
 
 If these variables are deployed through infrastructure, define them in `resonate-iac` alongside the backend service environment configuration.
+
+## Enabling Proof-of-Humanity Providers
+
+The curator verification card enables providers dynamically from backend config. If a provider is missing required credentials, it is shown as disabled in the UI.
+
+### Local Development Defaults
+
+Local development defaults to `mock` mode:
+
+```env
+HUMAN_VERIFICATION_PROVIDER=mock
+HUMAN_VERIFICATION_MOCK_PROOF=resonate-human
+```
+
+This is why Gitcoin Passport and World ID appear disabled in an unconfigured local environment.
+
+### Enable Gitcoin Passport
+
+1. Create or identify the Passport scorer you want to query.
+2. Obtain the Passport API key for backend score lookups.
+3. Set these backend env vars:
+
+```env
+HUMAN_VERIFICATION_PROVIDER=passport
+GITCOIN_PASSPORT_API_KEY=...
+GITCOIN_PASSPORT_SCORER_ID=...
+GITCOIN_PASSPORT_THRESHOLD=20
+```
+
+4. Restart the backend.
+5. Refresh the curator verification UI. Gitcoin Passport should now be selectable.
+
+Notes:
+- Passport verification is backend-driven. The frontend does not ask the user to paste a proof payload.
+- The backend checks whether both `GITCOIN_PASSPORT_API_KEY` and `GITCOIN_PASSPORT_SCORER_ID` are present before exposing the provider.
+
+### Enable World ID
+
+1. Create a World ID app and action in the World developer dashboard.
+2. Set these backend env vars:
+
+```env
+HUMAN_VERIFICATION_PROVIDER=worldcoin
+WORLD_ID_APP_ID=...
+WORLD_ID_ACTION=...
+WORLD_ID_VERIFICATION_LEVEL=orb
+```
+
+3. Restart the backend.
+4. Refresh the curator verification UI. World ID should now be selectable.
+
+Notes:
+- World ID verification expects the frontend/client to submit a proof JSON payload.
+- The backend checks whether both `WORLD_ID_APP_ID` and `WORLD_ID_ACTION` are present before exposing the provider.
+
+### Troubleshooting Disabled Providers
+
+If a provider is shown as unavailable:
+
+- Gitcoin Passport requires both `GITCOIN_PASSPORT_API_KEY` and `GITCOIN_PASSPORT_SCORER_ID`
+- World ID requires both `WORLD_ID_APP_ID` and `WORLD_ID_ACTION`
+- `HUMAN_VERIFICATION_PROVIDER` only sets the preferred default; it does not force-enable an unconfigured provider
+- restart the backend after changing env vars
+- if upstream requests hang, check `HUMAN_VERIFICATION_TIMEOUT_MS`
+
+### Important Scope Note
+
+These providers support **proof-of-humanity / anti-sybil checks for curators**. They do **not** prove rights ownership for uploaded recordings.

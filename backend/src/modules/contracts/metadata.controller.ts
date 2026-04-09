@@ -872,7 +872,10 @@ export class MetadataController {
   @Get("curators/:address/verification")
   async getCuratorVerificationStatus(@Param("address") address: string) {
     const profile = await this.curatorReputationService.getProfile(address.toLowerCase());
-    return profile.humanVerification;
+    return {
+      ...profile.humanVerification,
+      ...this.humanVerificationService.getClientConfig(),
+    };
   }
 
   /**
