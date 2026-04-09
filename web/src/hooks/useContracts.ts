@@ -72,15 +72,20 @@ function createMappedTransport(bundlerUrl: string): (opts: any) => any {
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
 
-async function getStemMintedTokenIdsForTransaction(
+type StemMintedTransactionEvent = {
+  tokenId: bigint;
+  tokenURI: string;
+};
+
+async function getStemMintedEventsForTransaction(
   publicClient: PublicClient,
   transactionHash: string
-): Promise<bigint[]> {
+): Promise<StemMintedTransactionEvent[]> {
   const receipt = await publicClient.getTransactionReceipt({
     hash: transactionHash as Hex,
   });
 
-  const tokenIds: bigint[] = [];
+  const mintedEvents: StemMintedTransactionEvent[] = [];
 
   for (const log of receipt.logs) {
     try {
@@ -91,14 +96,17 @@ async function getStemMintedTokenIdsForTransaction(
       });
 
       if (decoded.eventName === "StemMinted") {
-        tokenIds.push(decoded.args.tokenId as bigint);
+        mintedEvents.push({
+          tokenId: decoded.args.tokenId as bigint,
+          tokenURI: decoded.args.tokenURI as string,
+        });
       }
     } catch {
       // Ignore logs from other contracts/events in the same receipt.
     }
   }
 
-  return tokenIds;
+  return mintedEvents;
 }
 
 async function getReportedDisputeForTransaction(
@@ -1415,8 +1423,8 @@ export function useMintAndListStem() {
           kernelAccount
         );
 
-        const mintedTokenIds = await getStemMintedTokenIdsForTransaction(publicClient, hash);
-        const tokenId = mintedTokenIds[0];
+        const mintedEvents = await getStemMintedEventsForTransaction(publicClient, hash);
+        const tokenId = mintedEvents[0]?.tokenId;
 
         setTxHash(hash);
         return { hash, tokenId };
@@ -1593,13 +1601,17 @@ export function useBatchMintAndList() {
           kernelAccount
         );
 
-        const actualTokenIds = await getStemMintedTokenIdsForTransaction(publicClient, hash);
+        const mintedEvents = await getStemMintedEventsForTransaction(publicClient, hash);
+        const tokenIdByTokenUri = new Map(
+          mintedEvents.map((event) => [event.tokenURI, event.tokenId] as const)
+        );
+        const fallbackTokenIds = mintedEvents.map((event) => event.tokenId);
 
         // 3. All succeeded — mark as done with actual token IDs when available
         const doneResults: BatchStemResult[] = stems.map((s, i) => ({
           stemId: s.stemId,
           status: "done" as BatchStemStatus,
-          tokenId: actualTokenIds[i],
+          tokenId: tokenIdByTokenUri.get(authorizations[i].tokenURI) ?? fallbackTokenIds[i],
         }));
         setResults(doneResults);
         options?.onProgress?.(doneResults);
@@ -1607,14 +1619,16 @@ export function useBatchMintAndList() {
         // 4. Persist locally and notify mounted buttons in the same tab
         for (let i = 0; i < stems.length; i++) {
           const stemId = stems[i].stemId;
-          const tokenId = actualTokenIds[i];
+          const tokenId =
+            tokenIdByTokenUri.get(authorizations[i].tokenURI) ?? fallbackTokenIds[i];
           if (tokenId == null) continue;
           persistStemMarketplaceStatus(stemId, "listed", tokenId);
         }
 
         // 5. Notify backend for each stem (best-effort, non-blocking)
         for (let i = 0; i < stems.length; i++) {
-          const tokenId = actualTokenIds[i];
+          const tokenId =
+            tokenIdByTokenUri.get(authorizations[i].tokenURI) ?? fallbackTokenIds[i];
           if (tokenId == null) continue;
           fetch("/api/contracts/notify-listing", {
             method: "POST",
