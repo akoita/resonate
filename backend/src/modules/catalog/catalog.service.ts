@@ -824,6 +824,28 @@ export class CatalogService implements OnModuleInit {
     return { data: release.artworkData, mimeType: release.artworkMimeType || "image/jpeg" };
   }
 
+  async getReleaseArtworkForUser(releaseId: string, userId: string) {
+    const release = await prisma.release.findUnique({
+      where: { id: releaseId },
+      select: {
+        artworkData: true,
+        artworkMimeType: true,
+        artist: {
+          select: { userId: true },
+        },
+      },
+    });
+
+    if (!release || !release.artworkData || release.artist?.userId !== userId) {
+      return null;
+    }
+
+    return {
+      data: release.artworkData,
+      mimeType: release.artworkMimeType || "image/jpeg",
+    };
+  }
+
   async getTrackStream(trackId: string, options?: { includeRestricted?: boolean }) {
     // Find the track's stems, preferring unencrypted playable audio
     const track = await prisma.track.findUnique({

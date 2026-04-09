@@ -1,6 +1,18 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
-export function getReleaseArtworkUrl(releaseId: string) {
+const PUBLIC_RELEASE_ROUTES = new Set([
+  "LIMITED_MONITORING",
+  "STANDARD_ESCROW",
+  "TRUSTED_FAST_PATH",
+]);
+
+export function getReleaseArtworkUrl(
+  releaseId: string,
+  options?: { ownerScoped?: boolean },
+) {
+  if (options?.ownerScoped) {
+    return `${API_BASE}/catalog/me/releases/${releaseId}/artwork`;
+  }
   return `${API_BASE}/catalog/releases/${releaseId}/artwork`;
 }
 
@@ -47,6 +59,50 @@ function formatApiErrorMessage(status: number, statusText: string, detail: strin
   }
 
   return `API ${status}: ${trimmedDetail}`;
+}
+
+function isApiStatusError(
+  error: unknown,
+  allowedStatuses: number[],
+): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return allowedStatuses.some((status) =>
+    error.message.startsWith(`API ${status}:`),
+  );
+}
+
+function isPublicReleaseRoute(route?: string | null) {
+  return !route || PUBLIC_RELEASE_ROUTES.has(route);
+}
+
+async function getOwnerScopedArtworkObjectUrl(
+  releaseId: string,
+  token: string,
+): Promise<string | undefined> {
+  if (
+    typeof window === "undefined" ||
+    typeof URL.createObjectURL !== "function"
+  ) {
+    return undefined;
+  }
+
+  const response = await fetch(getReleaseArtworkUrl(releaseId, { ownerScoped: true }), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    return undefined;
+  }
+
+  const contentType =
+    response.headers.get("Content-Type") || "application/octet-stream";
+  const body = await response.arrayBuffer();
+  return URL.createObjectURL(new Blob([body], { type: contentType }));
 }
 
 async function apiRequest<T>(
@@ -463,6 +519,7 @@ export async function createRelease(
 
 export async function getRelease(releaseId: string, token?: string | null) {
   let release: Release | null = null;
+  let usedOwnerScopedEndpoint = false;
 
   if (token) {
     try {
@@ -471,8 +528,9 @@ export async function getRelease(releaseId: string, token?: string | null) {
         {},
         token,
       );
+      usedOwnerScopedEndpoint = !!release;
     } catch (error) {
-      if (!(error instanceof Error) || !error.message.startsWith("API 404:")) {
+      if (!isApiStatusError(error, [401, 403, 404])) {
         throw error;
       }
     }
@@ -483,7 +541,17 @@ export async function getRelease(releaseId: string, token?: string | null) {
   }
 
   if (release && release.artworkMimeType) {
-    release.artworkUrl = getReleaseArtworkUrl(release.id);
+    if (
+      token &&
+      usedOwnerScopedEndpoint &&
+      !isPublicReleaseRoute(release.rightsRoute)
+    ) {
+      release.artworkUrl =
+        (await getOwnerScopedArtworkObjectUrl(release.id, token)) ||
+        undefined;
+    } else {
+      release.artworkUrl = getReleaseArtworkUrl(release.id);
+    }
   }
   return release;
 }
