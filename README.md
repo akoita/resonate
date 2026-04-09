@@ -113,7 +113,7 @@ export SEPOLIA_RPC_URL=https://sepolia.drpc.org
 make dev-up
 
 # 3. Start the local Demucs worker so uploads work end-to-end
-make worker-up
+make worker-gpu
 
 # 4. Start the Sepolia fork + bundler in this repo, then deploy protocol contracts
 make local-aa-fork
@@ -133,7 +133,7 @@ make web-dev-fork    # Next.js on port 3001 (chainId 11155111, local RPC)
 ```bash
 # 1. Start local runtime dependencies, then deploy contracts here
 make dev-up
-make worker-up
+make worker-gpu
 make contracts-deploy-local  # Deploys AA + StemNFT + Marketplace + TransferValidator
 
 # 2. Start services (separate terminals)
@@ -173,26 +173,20 @@ The release page displays track status in real-time, with stems appearing as the
 
 The Demucs worker uses Facebook's [htdemucs_6s](https://github.com/facebookresearch/demucs) model to separate audio into 6 stems: **vocals, drums, bass, guitar, piano, other**.
 
-The Demucs worker is part of the default local app workflow. For the normal CPU path in this repo:
+The Demucs worker is part of the default local app workflow. GPU is the default (10-15x faster):
 
 ```bash
-make worker-up
+make worker-gpu
 make worker-health
 ```
 
 Useful worker commands:
 
-- `make worker-up` auto-builds the CPU image if it does not exist yet
+- `make worker-gpu` auto-builds the GPU image if it does not exist yet (requires NVIDIA GPU + Container Toolkit)
+- `make worker-up` CPU-only fallback if no GPU is available
 - `make worker-logs` to stream logs
 - `make worker-rebuild` to force a no-cache rebuild when the image is stale
 - `make pubsub-init` only if the Pub/Sub emulator lost its topics/subscriptions after a reset
-
-GPU path:
-
-```bash
-make worker-gpu-build
-make worker-gpu
-```
 
 See [`workers/demucs/README.md`](workers/demucs/README.md) for the deeper Demucs-specific guide:
 image internals, direct `docker build` / `docker run`, HTTP smoke tests, and extended troubleshooting.
@@ -266,7 +260,7 @@ repo-local `docker build`, `docker run`, stale-image recovery, and "stuck on Sep
 | Container shows "Created" (not "Up")       | Port conflict — another container or process is using the port | Run `docker ps` to find the conflicting container, then `docker stop <name>` |
 | Redis won't start (port 6379)              | Stale Redis from another project                               | Stop the conflicting container, then rerun `make dev-up` |
 | Track stuck at "🔵 Pending" forever        | `PUBSUB_EMULATOR_HOST` missing from `backend/.env`             | Run `make pubsub-init` then restart backend; `make backend-dev` auto-adds it |
-| Worker logs: "Subscription does not exist" | PubSub emulator has no topics (emulator restarted)             | Run `make pubsub-init`, then restart the worker with `make worker-up` |
+| Worker logs: "Subscription does not exist" | PubSub emulator has no topics (emulator restarted)             | Run `make pubsub-init`, then restart the worker with `make worker-gpu` |
 | Track stuck at "🟡 Separating..."          | Demucs worker not running, stale image, or import errors       | Check `make worker-health`, then `make worker-logs`, then `make worker-rebuild` if needed |
 | No progress % during separation            | Worker can't POST progress back to backend                     | Leave `BACKEND_URL` unset for local fallback or set it to a Docker-reachable backend URL |
 | `SEPOLIA_RPC_URL` warning in Docker logs   | Env var not exported in the shell running the AA stack         | Export `SEPOLIA_RPC_URL=https://sepolia.drpc.org` before `make local-aa-fork` |

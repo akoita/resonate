@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-
-/** RPC URL for direct eth_getCode calls (bypasses Viem cache) */
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545";
+import { getBrowserSafeRpcUrl } from "../lib/rpc";
 
 /**
  * Check whether a smart account contract is deployed on-chain.
@@ -32,7 +30,7 @@ export function useIsDeployed(address: string | null | undefined) {
     const check = async () => {
       setLoading(true);
       try {
-        const resp = await fetch(RPC_URL, {
+        const resp = await fetch(getBrowserSafeRpcUrl(), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

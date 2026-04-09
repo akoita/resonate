@@ -218,6 +218,12 @@ export type Release = {
   createdAt: string;
   artworkUrl?: string | null;
   artworkMimeType?: string | null;
+  rightsRoute?: string | null;
+  rightsFlags?: string[] | null;
+  rightsReason?: string | null;
+  rightsPolicyVersion?: string | null;
+  rightsSourceType?: string | null;
+  rightsEvaluatedAt?: string | null;
   tracks?: Track[];
   artist?: {
     id: string;
@@ -236,6 +242,12 @@ export type Track = {
   createdAt: string;
   artworkMimeType?: string | null;
   processingStatus?: "pending" | "separating" | "encrypting" | "storing" | "complete" | "failed";
+  contentStatus?: string | null;
+  rightsRoute?: string | null;
+  rightsFlags?: string[] | null;
+  rightsReason?: string | null;
+  rightsPolicyVersion?: string | null;
+  rightsEvaluatedAt?: string | null;
   stems?: Array<{
     id: string;
     trackId: string;
@@ -359,6 +371,18 @@ export type CuratorReportingPolicy = {
   humanVerification: HumanVerificationStatus;
 };
 
+export type ReleaseContentProtectionData = {
+  tokenId?: string | null;
+  staked: boolean;
+  attested: boolean;
+  stakeAmount: string;
+  depositedAt: string;
+  active: boolean;
+  escrowDays: number;
+  trustTier: string;
+  attestedAt: string;
+};
+
 export async function getTrustTier(artistId: string, token: string) {
   return apiRequest<TrustTier>(`/api/trust/${artistId}`, { silentErrorCodes: [404] }, token);
 }
@@ -392,6 +416,18 @@ export async function getCuratorReportingPolicy(address: string) {
 
 export async function getHumanVerificationStatus(address: string) {
   return apiRequest<HumanVerificationStatus>(`/metadata/curators/${address.toLowerCase()}/verification`);
+}
+
+export async function getReleaseContentProtectionStatus(releaseId: string) {
+  const response = await fetch(`${API_BASE}/metadata/content-protection/release/${releaseId}`);
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`API ${response.status}: ${detail || response.statusText}`);
+  }
+  return response.json() as Promise<ReleaseContentProtectionData>;
 }
 
 export async function submitHumanVerification(
