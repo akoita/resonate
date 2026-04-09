@@ -18,6 +18,9 @@ backend/uploads/
 *.mp3
 test_audio.*
 
+# Codex
+.codex
+
 # Environment & Secrets
 .env
 .env.local
