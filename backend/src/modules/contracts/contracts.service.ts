@@ -14,6 +14,10 @@ import type {
   ContractStakeSlashedEvent,
 } from "../../events/event_types";
 import { CuratorReputationService } from "./curator-reputation.service";
+import {
+  deriveCreatorVerificationStates,
+  deriveReleaseVerificationStates,
+} from "../trust/verification-semantics";
 
 // ABI for the marketplace getListing view function
 const MARKETPLACE_ABI = [
@@ -1218,6 +1222,21 @@ export class ContractsService implements OnModuleInit {
       }
     }
 
+    const verification = deriveReleaseVerificationStates({
+      attested: !!currentAttestation,
+      rightsRoute: release.rightsRoute,
+    });
+    const curatorProfile = artistAddress
+      ? await this.curatorReputationService.getProfile(artistAddress)
+      : null;
+    const creatorVerification = deriveCreatorVerificationStates({
+      economicTier: tier,
+      humanVerificationStatus: curatorProfile?.humanVerification.status,
+      humanVerifiedAt: curatorProfile?.humanVerification.verifiedAt
+        ? new Date(curatorProfile.humanVerification.verifiedAt)
+        : null,
+    });
+
     return {
       tokenId: currentAttestation?.tokenId || null,
       staked: !!stake,
@@ -1227,7 +1246,13 @@ export class ContractsService implements OnModuleInit {
       active: stake?.active ?? false,
       escrowDays,
       trustTier: tier,
+      economicTrustTier: tier,
+      humanVerificationStatus: creatorVerification.humanVerificationStatus,
+      humanVerifiedAt: creatorVerification.humanVerifiedAt,
+      platformReviewStatus: creatorVerification.platformReviewStatus,
       attestedAt: currentAttestation?.attestedAt?.toISOString() || "",
+      provenanceStatus: verification.provenanceStatus,
+      rightsVerificationStatus: verification.rightsVerificationStatus,
     };
   }
 

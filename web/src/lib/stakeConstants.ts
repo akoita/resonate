@@ -11,7 +11,7 @@ export const TIER_LABELS: Record<string, string> = {
   new: "New Creator",
   established: "Established",
   trusted: "Trusted",
-  verified: "Verified ✓",
+  verified: "Verified Trust Tier",
 };
 
 export const TIER_COLORS: Record<string, string> = {

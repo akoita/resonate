@@ -181,8 +181,10 @@ export function normalizeSourceType(sourceType?: string | null): string {
 export function parseTrustedSourceTypes(raw: string | undefined): string[] {
   return (raw || "")
     .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
     .map((value) => normalizeSourceType(value))
-    .filter(Boolean);
+    .filter((value) => value !== "direct_upload");
 }
 
 export function dedupeFlags(

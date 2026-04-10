@@ -162,7 +162,7 @@ export default function ContentProtectionBadge({
           fontSize: "11px",
           color: "#10b981",
         }}>
-          ✓ {inheritedProtection ? `Protection inherited from track #${protectionId.toString()}` : "Content attested on-chain"}
+          ✓ {inheritedProtection ? `Self-attestation inherited from track #${protectionId.toString()}` : "Self-attested on-chain"}
           {attestData.timestamp > 0n && (
             <span style={{ opacity: 0.6, marginLeft: "8px" }}>
               {new Date(Number(attestData.timestamp) * 1000).toLocaleDateString()}

@@ -137,7 +137,7 @@ Suggested trust classes:
 | Creator Class | Description | Rights / Restrictions |
 | --- | --- | --- |
 | Unverified uploader | New wallet, no external proof | Private or limited visibility; no authoritative ownership presumption |
-| Verified independent | Passed proof-of-control checks | Public publishing with standard escrow and monitoring |
+| Proof-of-control verified independent | Passed proof-of-control checks | Public publishing with standard escrow and monitoring |
 | Trusted creator | Established clean history + verification | Lower friction, shorter holds, stronger credibility in disputes |
 | Trusted source account | Distributor / label / official catalog source | Highest ingestion confidence, still subject to audit and takedown |
 
