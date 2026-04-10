@@ -18,9 +18,14 @@ export class TrustController {
   @Get(":artistId")
   @UseGuards(AuthGuard("jwt"))
   async getTrustTier(@Param("artistId") artistId: string) {
-    const trust = await this.trustService.getStakeRequirement(artistId);
+    const [trust, creatorVerificationRecord] = await Promise.all([
+      this.trustService.getStakeRequirement(artistId),
+      this.trustService.getCreatorVerificationRecord(artistId),
+    ]);
     const verification = deriveCreatorVerificationStates({
       economicTier: trust.tier,
+      humanVerificationStatus: creatorVerificationRecord.humanVerificationStatus,
+      humanVerifiedAt: creatorVerificationRecord.humanVerifiedAt,
     });
 
     return {

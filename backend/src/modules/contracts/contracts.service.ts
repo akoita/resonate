@@ -1143,6 +1143,7 @@ export class ContractsService implements OnModuleInit {
       process.env.AA_CHAIN_ID || process.env.CHAIN_ID || process.env.INDEXER_CHAIN_ID || "11155111",
     );
     const artistAddress = release.artist.payoutAddress?.toLowerCase();
+    const creatorWalletAddress = release.artist.userId?.toLowerCase() || null;
     const releaseSlug = release.title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
@@ -1226,8 +1227,8 @@ export class ContractsService implements OnModuleInit {
       attested: !!currentAttestation,
       rightsRoute: release.rightsRoute,
     });
-    const curatorProfile = artistAddress
-      ? await this.curatorReputationService.getProfile(artistAddress)
+    const curatorProfile = creatorWalletAddress
+      ? await this.curatorReputationService.getProfile(creatorWalletAddress)
       : null;
     const creatorVerification = deriveCreatorVerificationStates({
       economicTier: tier,

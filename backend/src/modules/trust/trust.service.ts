@@ -23,6 +23,11 @@ type TrustRequirement = Awaited<ReturnType<typeof prisma.creatorTrust.upsert>> &
   maxListingPriceUncapped: boolean;
 };
 
+type CreatorVerificationRecord = {
+  humanVerificationStatus: string | null;
+  humanVerifiedAt: Date | null;
+};
+
 const TIERS: Record<string, TrustTierInfo> = {
   verified: { tier: "verified", stakeAmountWei: "0", escrowDays: 3 },
   trusted: { tier: "trusted", stakeAmountWei: "1000000000000000", escrowDays: 7 }, // 0.001 ETH
@@ -138,6 +143,35 @@ export class TrustService {
         ? null
         : (stakeAmountWei * maxPriceMultiplier).toString(),
       maxListingPriceUncapped,
+    };
+  }
+
+  async getCreatorVerificationRecord(
+    artistId: string,
+  ): Promise<CreatorVerificationRecord> {
+    const artist = await prisma.artist.findUnique({
+      where: { id: artistId },
+      select: { userId: true },
+    });
+
+    if (!artist?.userId) {
+      return {
+        humanVerificationStatus: null,
+        humanVerifiedAt: null,
+      };
+    }
+
+    const record = await prisma.curatorReputation.findUnique({
+      where: { walletAddress: artist.userId.toLowerCase() },
+      select: {
+        humanVerificationStatus: true,
+        humanVerifiedAt: true,
+      },
+    });
+
+    return {
+      humanVerificationStatus: record?.humanVerificationStatus ?? null,
+      humanVerifiedAt: record?.humanVerifiedAt ?? null,
     };
   }
 

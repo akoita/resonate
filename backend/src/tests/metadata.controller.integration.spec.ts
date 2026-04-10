@@ -21,12 +21,21 @@ describe('MetadataController (integration)', () => {
   let controller: MetadataController;
   let contractsService: ContractsService;
   let stemId: string;
+  const creatorWalletAddress = ("0x" + "1".repeat(40)).toLowerCase();
+  const payoutOnlyAddress = ("0x" + "2".repeat(40)).toLowerCase();
 
   beforeAll(async () => {
     // Seed: User → Artist → Release → Track → Stem → StemNftMint
-    await prisma.user.create({ data: { id: `${TEST_PREFIX}user`, email: `${TEST_PREFIX}@test.resonate` } });
+    await prisma.user.create({
+      data: { id: creatorWalletAddress, email: `${TEST_PREFIX}@test.resonate` },
+    });
     await prisma.artist.create({
-      data: { id: `${TEST_PREFIX}artist`, userId: `${TEST_PREFIX}user`, displayName: 'Meta Artist', payoutAddress: '0x' + 'M'.repeat(40) },
+      data: {
+        id: `${TEST_PREFIX}artist`,
+        userId: creatorWalletAddress,
+        displayName: 'Meta Artist',
+        payoutAddress: payoutOnlyAddress,
+      },
     });
     await prisma.release.create({
       data: { id: `${TEST_PREFIX}release`, title: 'Meta Release', artistId: `${TEST_PREFIX}artist`, status: 'published' },
@@ -59,15 +68,26 @@ describe('MetadataController (integration)', () => {
     const eventBus = new EventBus();
     contractsService = new ContractsService(eventBus as any);
     controller = new MetadataController(contractsService);
+
+    await prisma.curatorReputation.create({
+      data: {
+        walletAddress: creatorWalletAddress,
+        verifiedHuman: true,
+        humanVerificationProvider: "mock",
+        humanVerificationStatus: "verified",
+        humanVerifiedAt: new Date("2026-04-09T19:51:38.721Z"),
+      },
+    });
   });
 
   afterAll(async () => {
+    await prisma.curatorReputation.deleteMany({ where: { walletAddress: creatorWalletAddress } }).catch(() => {});
     await prisma.stemNftMint.deleteMany({ where: { stemId } }).catch(() => {});
     await prisma.stem.deleteMany({ where: { trackId: `${TEST_PREFIX}track` } }).catch(() => {});
     await prisma.track.deleteMany({ where: { releaseId: `${TEST_PREFIX}release` } }).catch(() => {});
     await prisma.release.delete({ where: { id: `${TEST_PREFIX}release` } }).catch(() => {});
     await prisma.artist.delete({ where: { id: `${TEST_PREFIX}artist` } }).catch(() => {});
-    await prisma.user.delete({ where: { id: `${TEST_PREFIX}user` } }).catch(() => {});
+    await prisma.user.delete({ where: { id: creatorWalletAddress } }).catch(() => {});
   });
 
 
@@ -138,6 +158,15 @@ describe('MetadataController (integration)', () => {
       expect(result.name).toBe('Resonate Stems');
       expect(result.description).toContain('Audio stem NFTs');
       expect(result.seller_fee_basis_points).toBe(500);
+    });
+  });
+
+  describe('getContentProtectionByRelease', () => {
+    it('uses the creator wallet identity instead of payout address for human verification', async () => {
+      const result = await contractsService.getContentProtectionByRelease(`${TEST_PREFIX}release`);
+      expect(result).not.toBeNull();
+      expect(result!.humanVerificationStatus).toBe('human_verified');
+      expect(result!.humanVerifiedAt).toBe('2026-04-09T19:51:38.721Z');
     });
   });
 
