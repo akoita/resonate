@@ -1,6 +1,6 @@
 ---
-title: "Community Curation & Dispute Resolution — Sprint 1"
-status: implemented
+title: "Community Curation & Dispute Resolution"
+status: partial
 owner: "@akoita"
 issue: 407
 depends_on: [content-protection-architecture, stake_visibility_views]
@@ -13,6 +13,15 @@ depends_on: [content-protection-architecture, stake_visibility_views]
 ## Goal
 
 Enable the community to flag stolen content and resolve disputes through a structured on-chain process: **flag → counter-stake → evidence → resolve → reward/slash**.
+
+## Current Status
+
+This feature area is only partially shipped.
+
+- Sprint 3 notification work is shipped.
+- Sprint 4 jury arbitration remains tracked in open issue [#432](https://github.com/akoita/resonate/issues/432).
+- Sprint 5 proof-of-humanity gate and advanced reputation remain tracked in open issue [#433](https://github.com/akoita/resonate/issues/433).
+- The repo contains backend and UI groundwork in several places, but the GitHub tracker is the source of truth for what is fully delivered versus still in progress.
 
 ## Flow
 
@@ -166,26 +175,27 @@ Delivered across PRs #436 (notification infrastructure), #461 (mounted notificat
 - ✅ `useDisputeNotifications` hook, `NotificationBell`, `NotificationPreferences`
 - ✅ Real-time auto-refresh in `DisputeDashboard`
 
-## Sprint 4 (Complete)
+## Sprint 4 (Planned / In Progress)
 
-- ✅ `DisputeResolution.sol`: juror pool management (`registerJuror`, `removeJuror`)
-- ✅ `escalateToJury()` — pseudo-random jury selection from staked pool
-- ✅ `castJuryVote()` — assigned jurors vote Reporter or Creator
-- ✅ `finalizeJuryDecision()` — supermajority resolution or deadline-based Inconclusive
-- ✅ Appeal clears jury state for re-escalation
-- ✅ Backend: `escalateDisputeToJury()`, `castJuryVote()`, `finalizeJuryDecision()` with Prisma transactions
-- ✅ `DisputeJurorAssignment` model with unique `(disputeId, jurorAddr)` constraint
-- ✅ Jury duty notifications sent on escalation
-- ✅ Frontend: arbitration timeline, jury panel with vote counts, inline vote buttons
-- ✅ 30 Foundry tests (5 new jury arbitration tests)
+Tracked by open issue [#432](https://github.com/akoita/resonate/issues/432).
 
-## Sprint 5 (Implemented)
+Target scope:
 
-- ✅ Proof-of-humanity gate after configurable high-volume report threshold
-- ✅ Curator profile page with badges, decay-adjusted effective score, and stake tier visibility
-- ✅ Gitcoin Passport / World ID verification abstraction with backend normalization
-- ✅ Onboarding verification card for connected wallets
-- ✅ Reputation-aware counter-stake tiers in `CurationRewards`
+- DAO jury or Kleros-style arbitration path after admin review
+- Jury assignment, voting, and finalization
+- Juror-facing dashboard and arbitration timeline
+- Integration with the existing dispute lifecycle
+
+## Sprint 5 (Planned / In Progress)
+
+Tracked by open issue [#433](https://github.com/akoita/resonate/issues/433).
+
+Target scope:
+
+- Proof-of-humanity gate for higher-volume reporters
+- Advanced reputation decay, tiers, and badges
+- Curator profile and verification UX
+- Reputation-aware counter-stake policy
 
 ## Future Sprints
 

@@ -233,7 +233,7 @@ export default function HumanVerificationCard({ walletAddress, onVerified, compa
           </div>
           <h3 style={{ margin: "8px 0 10px", fontSize: compact ? "18px" : "22px", fontWeight: 700 }}>Verification Status</h3>
           <p style={{ margin: 0, opacity: 0.55, lineHeight: 1.6, fontSize: "13px" }}>
-            Curators with {status.requiredAfterReports} or more reports need proof-of-humanity before they can keep filing disputes.
+            Curators with {status.requiredAfterReports} or more reports need proof-of-humanity before they can keep filing disputes. This checks personhood, not music ownership rights.
           </p>
         </div>
 
@@ -261,7 +261,7 @@ export default function HumanVerificationCard({ walletAddress, onVerified, compa
           ) : (
             <IconAlertTriangle size={14} />
           )}
-          {loading ? "Loading..." : status.verified ? "Verified" : "Unverified"}
+          {loading ? "Loading..." : status.verified ? "Human Verified" : "Not Human Verified"}
         </div>
       </div>
 
@@ -357,7 +357,7 @@ export default function HumanVerificationCard({ walletAddress, onVerified, compa
             )}
             {status.verifiedAt && (
               <div style={statCardStyle}>
-                <span style={statLabelStyle}>Verified</span>
+                <span style={statLabelStyle}>Human Verified</span>
                 <span style={{ fontSize: "13px", fontWeight: 600, color: "#60a5fa" }}>
                   {new Date(status.verifiedAt).toLocaleDateString()}
                 </span>

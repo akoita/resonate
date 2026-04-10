@@ -1,6 +1,7 @@
 import {
   evaluateUploadRightsDecision,
   getUploadRightsActions,
+  parseTrustedSourceTypes,
 } from "../modules/rights/upload-rights-policy";
 
 describe("upload rights policy", () => {
@@ -81,5 +82,17 @@ describe("upload rights policy", () => {
   it("uses stricter marketplace controls for limited monitoring than standard escrow", () => {
     expect(getUploadRightsActions("LIMITED_MONITORING").marketplaceAllowed).toBe(false);
     expect(getUploadRightsActions("STANDARD_ESCROW").marketplaceAllowed).toBe(true);
+  });
+
+  it("does not treat an empty trusted source env as direct upload", () => {
+    expect(parseTrustedSourceTypes(undefined)).toEqual([]);
+    expect(parseTrustedSourceTypes("")).toEqual([]);
+    expect(parseTrustedSourceTypes("   ,   ")).toEqual([]);
+  });
+
+  it("never treats direct upload as a trusted source type", () => {
+    expect(parseTrustedSourceTypes("direct_upload,trusted_distributor")).toEqual([
+      "trusted_distributor",
+    ]);
   });
 });

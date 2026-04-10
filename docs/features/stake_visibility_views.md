@@ -45,7 +45,9 @@ Upload → Process (Demucs) → Publish → attestRelease() + stakeForRelease() 
 | New Creator | 0.01 ETH  | 30 days       | 0.1 ETH per unit                      |
 | Established | 0.005 ETH | 14 days       | 0.05 ETH per unit                     |
 | Trusted     | 0.001 ETH | 7 days        | 0.01 ETH per unit                     |
-| Verified    | Waived    | 3 days        | Uncapped                              |
+| Verified Trust Tier | Waived | 3 days | Uncapped |
+
+The trust tier above is an economic control, not an independent rights-verification badge. It affects stake, escrow, and listing economics only.
 
 ## Components
 
@@ -62,7 +64,7 @@ All hooks handle the zero-address case (contract not deployed) gracefully.
 Renders on **stem detail pages** (`/stem/[tokenId]`). Two modes:
 
 - **Compact** — inline pill: `🛡️ Active ✓ (0.01 ETH)`
-- **Expanded** — full card with status, amount, trust tier, escrow countdown, attestation date
+- **Expanded** — full card with status, amount, economic trust tier, escrow countdown, and self-attestation date
 
 Reads live on-chain data via `useStakeInfo` + `useAttestationInfo`. Fetches trust tier from backend (`/api/trust-tier/{address}`).
 
@@ -72,7 +74,7 @@ Renders on **release detail pages** (`/release/[id]`) — visible to all users.
 
 - Fetches from backend indexer (`/api/content-protection/release/{id}`)
 - When indexer unavailable, shows program defaults (New Creator / 0.01 ETH / 30 days) — consistent with publish-time staking model
-- When data available, shows live status pill, stake amount, tier, escrow countdown, attestation
+- When data available, shows live status pill, stake amount, economic tier, escrow countdown, provenance status, and rights-review status
 
 ### 4. My Stakes Dashboard (`components/wallet/MyStakesCard.tsx`)
 

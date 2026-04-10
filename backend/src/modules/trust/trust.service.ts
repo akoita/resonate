@@ -9,7 +9,7 @@ import { foundry, sepolia, baseSepolia } from "viem/chains";
  *   New (0 uploads)       → 0.01 ETH, 30 days
  *   Established (5+)      → 0.005 ETH, 14 days
  *   Trusted (50+)         → 0.001 ETH, 7 days
- *   Verified (manual)     → waived, 3 days
+ *   Verified trust tier   → waived, 3 days
  */
 interface TrustTierInfo {
   tier: string;
@@ -21,6 +21,11 @@ type TrustRequirement = Awaited<ReturnType<typeof prisma.creatorTrust.upsert>> &
   maxPriceMultiplier: number;
   maxListingPriceWei: string | null;
   maxListingPriceUncapped: boolean;
+};
+
+type CreatorVerificationRecord = {
+  humanVerificationStatus: string | null;
+  humanVerifiedAt: Date | null;
 };
 
 const TIERS: Record<string, TrustTierInfo> = {
@@ -59,7 +64,7 @@ export class TrustService {
       where: { artistId },
     });
 
-    // Verified is set manually — if already verified, keep it
+    // Verified trust tier is set manually — if already present, keep it.
     if (trust?.tier === "verified") {
       return TIERS.verified;
     }
@@ -141,8 +146,37 @@ export class TrustService {
     };
   }
 
+  async getCreatorVerificationRecord(
+    artistId: string,
+  ): Promise<CreatorVerificationRecord> {
+    const artist = await prisma.artist.findUnique({
+      where: { id: artistId },
+      select: { userId: true },
+    });
+
+    if (!artist?.userId) {
+      return {
+        humanVerificationStatus: null,
+        humanVerifiedAt: null,
+      };
+    }
+
+    const record = await prisma.curatorReputation.findUnique({
+      where: { walletAddress: artist.userId.toLowerCase() },
+      select: {
+        humanVerificationStatus: true,
+        humanVerifiedAt: true,
+      },
+    });
+
+    return {
+      humanVerificationStatus: record?.humanVerificationStatus ?? null,
+      humanVerifiedAt: record?.humanVerifiedAt ?? null,
+    };
+  }
+
   /**
-   * Manually set an artist as verified (admin action).
+   * Manually set an artist to the verified trust tier (admin action).
    */
   async setVerified(artistId: string) {
     return prisma.creatorTrust.upsert({

@@ -2,20 +2,7 @@
 
 import { useState } from "react";
 import { type TrustTier } from "../../lib/api";
-
-const TIER_LABELS: Record<string, string> = {
-  new: "New Creator",
-  established: "Established",
-  trusted: "Trusted",
-  verified: "Verified ✓",
-};
-
-const TIER_COLORS: Record<string, string> = {
-  new: "#f59e0b",
-  established: "#3b82f6",
-  trusted: "#8b5cf6",
-  verified: "#10b981",
-};
+import { TIER_COLORS, TIER_LABELS } from "../../lib/stakeConstants";
 
 function formatEth(wei: string): string {
   const eth = Number(wei) / 1e18;
@@ -115,7 +102,7 @@ export default function StakeDepositCard({ trustTier, loading, onStakeAcknowledg
         opacity: 0.5,
       }}>
         {isWaived ? (
-          <>Your verified status waives the stake requirement. Revenue is held in escrow for {trustTier.escrowDays} days, and listings remain uncapped unless a stake is later configured.</>
+          <>Your verified trust tier waives the stake requirement. Revenue is held in escrow for {trustTier.escrowDays} days, and listings remain uncapped unless a stake is later configured.</>
         ) : (
           <>A refundable stake of <strong style={{ color: "#f59e0b" }}>{stakeEth}</strong> will be deposited
             on publish to protect against copyright violations. Revenue is held in escrow for {trustTier.escrowDays} days.

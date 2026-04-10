@@ -20,6 +20,7 @@ test_audio.*
 
 # Codex
 .codex
+.claude/
 
 # Environment & Secrets
 .env

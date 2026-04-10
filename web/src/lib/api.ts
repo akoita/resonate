@@ -363,6 +363,7 @@ export async function getArtistMe(token: string) {
 export type TrustTier = {
   artistId: string;
   tier: string;
+  economicTier?: string;
   stakeAmountWei: string;
   escrowDays: number;
   maxPriceMultiplier: number;
@@ -371,6 +372,9 @@ export type TrustTier = {
   totalUploads: number;
   cleanHistory: number;
   disputesLost: number;
+  humanVerificationStatus?: string;
+  humanVerifiedAt?: string | null;
+  platformReviewStatus?: string;
 };
 
 export type HumanVerificationStatus = {
@@ -436,7 +440,13 @@ export type ReleaseContentProtectionData = {
   active: boolean;
   escrowDays: number;
   trustTier: string;
+  economicTrustTier?: string;
+  humanVerificationStatus?: string;
+  humanVerifiedAt?: string | null;
+  platformReviewStatus?: string;
   attestedAt: string;
+  provenanceStatus?: string;
+  rightsVerificationStatus?: string;
 };
 
 export async function getTrustTier(artistId: string, token: string) {

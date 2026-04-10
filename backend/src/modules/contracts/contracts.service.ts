@@ -14,6 +14,10 @@ import type {
   ContractStakeSlashedEvent,
 } from "../../events/event_types";
 import { CuratorReputationService } from "./curator-reputation.service";
+import {
+  deriveCreatorVerificationStates,
+  deriveReleaseVerificationStates,
+} from "../trust/verification-semantics";
 
 // ABI for the marketplace getListing view function
 const MARKETPLACE_ABI = [
@@ -1139,6 +1143,7 @@ export class ContractsService implements OnModuleInit {
       process.env.AA_CHAIN_ID || process.env.CHAIN_ID || process.env.INDEXER_CHAIN_ID || "11155111",
     );
     const artistAddress = release.artist.payoutAddress?.toLowerCase();
+    const creatorWalletAddress = release.artist.userId?.toLowerCase() || null;
     const releaseSlug = release.title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
@@ -1218,6 +1223,21 @@ export class ContractsService implements OnModuleInit {
       }
     }
 
+    const verification = deriveReleaseVerificationStates({
+      attested: !!currentAttestation,
+      rightsRoute: release.rightsRoute,
+    });
+    const curatorProfile = creatorWalletAddress
+      ? await this.curatorReputationService.getProfile(creatorWalletAddress)
+      : null;
+    const creatorVerification = deriveCreatorVerificationStates({
+      economicTier: tier,
+      humanVerificationStatus: curatorProfile?.humanVerification.status,
+      humanVerifiedAt: curatorProfile?.humanVerification.verifiedAt
+        ? new Date(curatorProfile.humanVerification.verifiedAt)
+        : null,
+    });
+
     return {
       tokenId: currentAttestation?.tokenId || null,
       staked: !!stake,
@@ -1227,7 +1247,13 @@ export class ContractsService implements OnModuleInit {
       active: stake?.active ?? false,
       escrowDays,
       trustTier: tier,
+      economicTrustTier: tier,
+      humanVerificationStatus: creatorVerification.humanVerificationStatus,
+      humanVerifiedAt: creatorVerification.humanVerifiedAt,
+      platformReviewStatus: creatorVerification.platformReviewStatus,
       attestedAt: currentAttestation?.attestedAt?.toISOString() || "",
+      provenanceStatus: verification.provenanceStatus,
+      rightsVerificationStatus: verification.rightsVerificationStatus,
     };
   }
 

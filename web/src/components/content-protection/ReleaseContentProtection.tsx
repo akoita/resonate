@@ -23,7 +23,13 @@ interface ReleaseProtectionData {
   active: boolean;
   escrowDays: number;
   trustTier: string;
+  economicTrustTier?: string;
+  humanVerificationStatus?: string;
+  humanVerifiedAt?: string | null;
+  platformReviewStatus?: string;
   attestedAt: string;
+  provenanceStatus?: string;
+  rightsVerificationStatus?: string;
 }
 
 interface ReleaseContentProtectionProps {
@@ -135,8 +141,33 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
       : { status: data.active ? "locked" as const : "released" as const, daysRemaining: 0 }
     : { status: "none" as const, daysRemaining: 0 };
 
-  const tierLabel = TIER_LABELS[data.trustTier] || data.trustTier;
-  const tierColor = TIER_COLORS[data.trustTier] || "#888";
+  const economicTier = data.economicTrustTier || data.trustTier;
+  const isSelfAttested =
+    data.provenanceStatus === "self_attested" ||
+    (data.provenanceStatus == null && data.attested);
+  const tierLabel = TIER_LABELS[economicTier] || economicTier;
+  const tierColor = TIER_COLORS[economicTier] || "#888";
+  const humanVerificationLabel =
+    data.humanVerificationStatus === "human_verified"
+      ? "Human Verified"
+      : "Not Human Verified";
+  const humanVerificationColor =
+    data.humanVerificationStatus === "human_verified" ? "#10b981" : "#6b7280";
+  const provenanceLabel = isSelfAttested
+      ? "Self-attested on-chain"
+      : data.provenanceStatus === "fingerprint_cleared"
+        ? "Fingerprint cleared"
+        : "Not attested";
+  const rightsReviewLabel =
+    data.rightsVerificationStatus === "platform_review_pending"
+      ? "Review pending"
+      : data.rightsVerificationStatus === "platform_reviewed"
+        ? "Platform reviewed"
+        : data.rightsVerificationStatus === "rights_verified"
+          ? "Rights verified"
+          : data.rightsVerificationStatus === "rights_disputed"
+            ? "Rights disputed"
+            : "Not independently reviewed";
 
   return (
     <section style={sectionStyle}>
@@ -145,7 +176,7 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
         <div>
           <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 600 }}>Content Protection</h3>
           <p style={{ margin: 0, fontSize: "12px", opacity: 0.5 }}>
-            Stake-to-publish protection for this release
+            Economic trust, human verification, provenance, and release review signals for this release
           </p>
         </div>
         {/* Status pill */}
@@ -177,9 +208,22 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
 
         {/* Trust Tier */}
         <div style={statStyle}>
-          <span style={statLabelStyle}>Trust Tier</span>
+          <span style={statLabelStyle}>Economic Trust</span>
           <span style={{ fontWeight: 600, fontSize: "15px", color: tierColor }}>
             {tierLabel}
+          </span>
+        </div>
+
+        <div style={statStyle}>
+          <span style={statLabelStyle}>Human Verification</span>
+          <span
+            style={{
+              fontWeight: 500,
+              fontSize: "15px",
+              color: humanVerificationColor,
+            }}
+          >
+            {humanVerificationLabel}
           </span>
         </div>
 
@@ -196,13 +240,50 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
           </span>
         </div>
 
-        {/* Attestation */}
+        {/* Provenance */}
         <div style={statStyle}>
-          <span style={statLabelStyle}>Attestation</span>
-          <span style={{ fontWeight: 500, fontSize: "15px", color: data.attested ? "#10b981" : "#6b7280" }}>
-            {data.attested ? "✓ Verified" : "—"}
+          <span style={statLabelStyle}>Provenance</span>
+          <span
+            style={{
+              fontWeight: 500,
+              fontSize: "15px",
+              color: isSelfAttested ? "#10b981" : "#6b7280",
+            }}
+          >
+            {provenanceLabel}
           </span>
         </div>
+
+        <div style={statStyle}>
+          <span style={statLabelStyle}>Rights Review</span>
+          <span
+            style={{
+              fontWeight: 500,
+              fontSize: "15px",
+              color:
+                data.rightsVerificationStatus === "rights_disputed"
+                  ? "#ef4444"
+                  : data.rightsVerificationStatus === "platform_review_pending"
+                    ? "#f59e0b"
+                    : "#6b7280",
+            }}
+          >
+            {rightsReviewLabel}
+          </span>
+        </div>
+      </div>
+
+      <div
+        style={{
+          marginTop: "12px",
+          padding: "10px 14px",
+          background: "rgba(255,255,255,0.03)",
+          borderRadius: "10px",
+          fontSize: "12px",
+          opacity: 0.72,
+        }}
+      >
+        Economic trust tier, human verification, provenance, and release rights review are tracked separately. Human verification confirms the creator wallet passed a personhood check; it does not, by itself, mean the platform independently verified ownership rights.
       </div>
     </section>
   );
