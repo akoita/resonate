@@ -339,7 +339,7 @@ export default function ReleaseDetails() {
         apiBase,
       });
 
-      if (!isOwner || isPublicReleaseRoute(release.rightsRoute)) {
+      if (!isOwner || !token || isPublicReleaseRoute(release.rightsRoute)) {
         return publicUrl;
       }
 
