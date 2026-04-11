@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../auth/AuthProvider";
-import { useMintStem, useListStem, useMintAndListStem } from "../../hooks/useContracts";
+import { useListStem, useMintAndListStem } from "../../hooks/useContracts";
 import { getListingsByStem, getStemNftInfo } from "../../lib/api";
 import {
     clearStemMarketplaceStatus,
@@ -60,6 +60,7 @@ interface MintStemButtonProps {
     stemType: string;
     disabled?: boolean;
     disabledReason?: string;
+    disabledLabel?: string;
 }
 
 // TTL for localStorage "listed" hint: 1 hour.
@@ -72,9 +73,9 @@ export function MintStemButton({
     stemType,
     disabled = false,
     disabledReason,
+    disabledLabel,
 }: MintStemButtonProps) {
     const { address, status, smartAccountAddress } = useAuth();
-    const { mint, pending: mintPending } = useMintStem();
     const { list, pending: listPending } = useListStem();
     const { mintAndList, pending: mintAndListPending } = useMintAndListStem();
     const { addToast } = useToast();
@@ -197,53 +198,6 @@ export function MintStemButton({
             window.removeEventListener("storage", handleStorage);
         };
     }, [applyStatusDetail, checkStatus, stemId]);
-
-    const handleMint = async () => {
-        if (!address) {
-            addToast({
-                type: "error",
-                title: "Wallet Required",
-                message: "Connect your wallet to mint NFTs",
-            });
-            return;
-        }
-
-        try {
-            await mint({
-                stemId,
-                to: address as Address,
-                amount: BigInt(1),
-                royaltyReceiver: address as Address,
-                royaltyBps: 500,
-                remixable: true,
-                parentIds: [],
-            });
-
-            // Tx confirmed on-chain — now wait for backend indexer to process the event
-            // and give us the actual token ID (no more stale-counter guessing)
-            setState("confirming_mint");
-
-            const actualTokenId = await pollForMintedTokenId(stemId);
-            setMintedTokenId(actualTokenId);
-            setState("minted");
-
-            // Persist to local storage
-            persistStemMarketplaceStatus(stemId, "minted", actualTokenId);
-
-            addToast({
-                type: "success",
-                title: "NFT Minted!",
-                message: `${stemType} stem minted (Token #${actualTokenId}). Now list it for sale.`,
-            });
-        } catch (error) {
-            console.error("Mint failed:", error);
-            addToast({
-                type: "error",
-                title: "Mint Failed",
-                message: error instanceof Error ? error.message : "Transaction failed",
-            });
-        }
-    };
 
     const handleList = async () => {
         if (!address || !mintedTokenId) {
@@ -433,7 +387,7 @@ export function MintStemButton({
                     opacity: 0.8,
                 }}
             >
-                Attestation Required
+                {disabledLabel || "Attestation Required"}
             </button>
         );
     }

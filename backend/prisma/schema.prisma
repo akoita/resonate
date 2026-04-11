@@ -56,6 +56,7 @@ model Release {
   artistId             String
   title                String
   status               String    @default("processing")
+  processingError      String?   @db.Text
   type                 String    @default("single")
   primaryArtist        String?
   featuredArtists      String?
@@ -91,6 +92,7 @@ model Track {
   releaseId          String
   artist             String?
   processingStatus   String            @default("pending") // pending, processing, complete, failed
+  processingError    String?           @db.Text
   contentStatus      String            @default("clean") // clean, quarantined, dmca_removed
   generationMetadata Json? // { provider, prompt, negativePrompt, seed, generatedAt, synthIdPresent, durationSeconds, sampleRate, cost }
   licenses           License[]
@@ -557,6 +559,105 @@ model Dispute {
   @@index([creatorAddr])
   @@index([status])
   @@index([disputeIdOnChain, chainId])
+}
+
+enum RightsEvidenceSubjectType {
+  upload
+  release
+  track
+  dispute
+}
+
+enum RightsEvidenceRole {
+  reporter
+  creator
+  ops
+  trusted_source
+  system
+}
+
+enum RightsEvidenceKind {
+  trusted_catalog_reference
+  fingerprint_match
+  prior_publication
+  rights_metadata
+  proof_of_control
+  legal_notice
+  narrative_statement
+  internal_review_note
+}
+
+enum RightsEvidenceStrength {
+  low
+  medium
+  high
+  very_high
+}
+
+enum RightsEvidenceVerificationStatus {
+  unverified
+  verified
+  rejected
+  system_generated
+}
+
+enum RightsEvidenceBundlePurpose {
+  upload_review
+  dispute_report
+  creator_response
+  ops_review
+  jury_packet
+}
+
+model RightsEvidenceBundle {
+  id                 String                     @id @default(uuid())
+  subjectType        RightsEvidenceSubjectType
+  subjectId          String
+  submittedByRole    RightsEvidenceRole
+  submittedByAddress String?
+  purpose            RightsEvidenceBundlePurpose
+  summary            String?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+  evidences          RightsEvidence[]
+
+  @@index([subjectType, subjectId])
+  @@index([purpose])
+  @@index([submittedByRole])
+}
+
+model RightsEvidence {
+  id                  String                             @id @default(uuid())
+  bundleId            String?
+  subjectType         RightsEvidenceSubjectType
+  subjectId           String
+  submittedByRole     RightsEvidenceRole
+  submittedByAddress  String?
+  kind                RightsEvidenceKind
+  title               String
+  description         String?
+  sourceUrl           String?
+  sourceLabel         String?
+  claimedRightsholder String?
+  artistName          String?
+  releaseTitle        String?
+  publicationDate     DateTime?
+  isrc                String?
+  upc                 String?
+  fingerprintConfidence Float?
+  strength            RightsEvidenceStrength
+  verificationStatus  RightsEvidenceVerificationStatus  @default(unverified)
+  attachments         Json?
+  metadata            Json?
+  createdAt           DateTime                           @default(now())
+  updatedAt           DateTime                           @updatedAt
+  bundle              RightsEvidenceBundle?              @relation(fields: [bundleId], references: [id])
+
+  @@index([subjectType, subjectId])
+  @@index([bundleId])
+  @@index([submittedByRole])
+  @@index([kind])
+  @@index([verificationStatus])
 }
 
 model DisputeEvidence {

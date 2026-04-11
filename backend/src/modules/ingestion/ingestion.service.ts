@@ -265,6 +265,11 @@ export class IngestionService {
         data: undefined, // Remove Buffer - it's already uploaded to storage
       })),
     }));
+
+    await this.waitForCatalogRecords(
+      releaseId,
+      tracks.map((track: any) => track.id),
+    );
     await this.stemsQueue.add("process-stems", { releaseId, artistId: resolvedArtistId, tracks: serializableTracks });
 
     // Persist processing status in DB synchronously so the API returns it immediately.
@@ -637,7 +642,54 @@ export class IngestionService {
     return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
   }
 
-  private async emitTrackStage(releaseId: string, trackId: string, stage: 'pending' | 'separating' | 'encrypting' | 'storing' | 'complete' | 'failed') {
+  private async waitForCatalogRecords(releaseId: string, trackIds: string[]) {
+    const MAX_RETRIES = 10;
+    const RETRY_DELAY = 300;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      const release = await prisma.release.findUnique({
+        where: { id: releaseId },
+        select: {
+          id: true,
+          tracks: {
+            select: {
+              id: true,
+              stems: { select: { id: true } },
+            },
+          },
+        },
+      });
+
+      const hasAllTracks = trackIds.every((trackId) =>
+        release?.tracks.some((track) => track.id === trackId),
+      );
+      const hasOriginalStems = trackIds.every((trackId) => {
+        const track = release?.tracks.find((candidate) => candidate.id === trackId);
+        return (track?.stems.length ?? 0) > 0;
+      });
+
+      if (release && hasAllTracks && hasOriginalStems) {
+        return;
+      }
+
+      console.warn(
+        `[Ingestion] Release ${releaseId} catalog rows not ready yet ` +
+        `(attempt ${attempt}/${MAX_RETRIES}), waiting ${RETRY_DELAY}ms...`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
+    }
+
+    console.warn(
+      `[Ingestion] Release ${releaseId} catalog rows were not fully ready before queueing stems job`,
+    );
+  }
+
+  private async emitTrackStage(
+    releaseId: string,
+    trackId: string,
+    stage: 'pending' | 'separating' | 'encrypting' | 'storing' | 'complete' | 'failed',
+    error?: string | null,
+  ) {
     // Persist the status to database so it's available on page load
     // Retry logic to handle race condition where Track record may not exist yet
     const MAX_RETRIES = 5;
@@ -645,10 +697,18 @@ export class IngestionService {
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        await prisma.track.update({
+        const result = await prisma.track.updateMany({
           where: { id: trackId },
-          data: { processingStatus: stage }
+          data: {
+            processingStatus: stage,
+            processingError: stage === "failed" ? (error || "Processing failed") : null,
+          }
         });
+
+        if (result.count === 0) {
+          console.warn(`[Ingestion] Ignoring late ${stage} update for missing track ${trackId}`);
+          return;
+        }
         break; // Success
       } catch (err: any) {
         // P2025 = Record not found (Prisma error code)
@@ -670,6 +730,7 @@ export class IngestionService {
       releaseId,
       trackId,
       status: stage,
+      ...(stage === "failed" && error ? { error } : {}),
     } as any);
     console.log(`[Ingestion] Track ${trackId} stage: ${stage}`);
   }

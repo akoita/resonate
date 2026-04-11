@@ -106,6 +106,7 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
                     releaseId: event.releaseId,
                     trackId: event.trackId,
                     status: event.status,
+                    ...(event.error ? { error: event.error } : {}),
                 });
             }
         }));

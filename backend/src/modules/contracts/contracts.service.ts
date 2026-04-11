@@ -3,6 +3,7 @@ import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
 import { createPublicClient, http, type Address } from "viem";
 import { foundry, sepolia, baseSepolia } from "viem/chains";
+import type { Prisma } from "@prisma/client";
 import type {
   ContractStemMintedEvent,
   ContractStemListedEvent,
@@ -18,6 +19,15 @@ import {
   deriveCreatorVerificationStates,
   deriveReleaseVerificationStates,
 } from "../trust/verification-semantics";
+import type {
+  NormalizedRightsEvidenceBundle,
+  RightsEvidenceBundleInput,
+  RightsEvidenceDraftInput,
+} from "../rights/rights-evidence";
+import {
+  normalizeDisputeReportBundle,
+  normalizeEvidenceBundleInput,
+} from "../rights/rights-evidence";
 
 // ABI for the marketplace getListing view function
 const MARKETPLACE_ABI = [
@@ -1142,7 +1152,14 @@ export class ContractsService implements OnModuleInit {
     const chainId = Number(
       process.env.AA_CHAIN_ID || process.env.CHAIN_ID || process.env.INDEXER_CHAIN_ID || "11155111",
     );
-    const artistAddress = release.artist.payoutAddress?.toLowerCase();
+    const attesterCandidates = Array.from(
+      new Set(
+        [
+          release.artist.userId?.toLowerCase(),
+          release.artist.payoutAddress?.toLowerCase(),
+        ].filter(Boolean),
+      ),
+    );
     const creatorWalletAddress = release.artist.userId?.toLowerCase() || null;
     const releaseSlug = release.title
       .toLowerCase()
@@ -1150,11 +1167,11 @@ export class ContractsService implements OnModuleInit {
       .replace(/^-+|-+$/g, "");
     const releaseMetadataUri = `resonate://release/${releaseSlug}`;
 
-    const attestation = artistAddress
+    const attestation = attesterCandidates.length > 0
       ? await prisma.contentAttestation.findFirst({
           where: {
             chainId,
-            attesterAddress: artistAddress,
+            attesterAddress: { in: attesterCandidates },
             metadataURI: releaseMetadataUri,
           },
           orderBy: { attestedAt: "desc" },
@@ -1165,7 +1182,6 @@ export class ContractsService implements OnModuleInit {
       ? await prisma.contentProtectionStake.findFirst({
           where: {
             chainId,
-            stakerAddress: artistAddress,
             tokenId: attestation.tokenId,
           },
           orderBy: { depositedAt: "desc" },
@@ -1202,7 +1218,7 @@ export class ContractsService implements OnModuleInit {
         if (
           !onChainValid ||
           onChainMetadataUri !== releaseMetadataUri ||
-          onChainAttester !== artistAddress
+          !attesterCandidates.includes(onChainAttester)
         ) {
           currentAttestation = null;
           stake = null;
@@ -1259,9 +1275,139 @@ export class ContractsService implements OnModuleInit {
 
   // ============ DISPUTES & CURATION ============
 
+  private mapLegacyDisputeEvidence(evidence: any) {
+    return {
+      id: evidence.id,
+      submitter: evidence.submitter,
+      party: evidence.party,
+      submittedByRole: evidence.party,
+      submittedByAddress: evidence.submitter,
+      evidenceURI: evidence.evidenceURI,
+      sourceUrl: evidence.evidenceURI,
+      description: evidence.description,
+      title: evidence.description || evidence.evidenceURI || "Legacy evidence",
+      kind: "narrative_statement",
+      strength: "low",
+      verificationStatus: "unverified",
+      sourceLabel: null,
+      claimedRightsholder: null,
+      createdAt: evidence.createdAt instanceof Date ? evidence.createdAt.toISOString() : evidence.createdAt,
+    };
+  }
+
+  private mapTypedDisputeEvidence(evidence: any) {
+    return {
+      id: evidence.id,
+      submitter: evidence.submittedByAddress || "",
+      party: evidence.submittedByRole,
+      submittedByRole: evidence.submittedByRole,
+      submittedByAddress: evidence.submittedByAddress,
+      evidenceURI: evidence.sourceUrl || "",
+      sourceUrl: evidence.sourceUrl,
+      description: evidence.description,
+      title: evidence.title,
+      kind: evidence.kind,
+      strength: evidence.strength,
+      verificationStatus: evidence.verificationStatus,
+      sourceLabel: evidence.sourceLabel,
+      claimedRightsholder: evidence.claimedRightsholder,
+      createdAt: evidence.createdAt instanceof Date ? evidence.createdAt.toISOString() : evidence.createdAt,
+    };
+  }
+
+  private async hydrateDisputesWithTypedEvidence(disputes: any[] | any | null) {
+    if (!disputes) {
+      return disputes;
+    }
+
+    const disputeList = Array.isArray(disputes) ? disputes : [disputes];
+    if (disputeList.length === 0) {
+      return disputes;
+    }
+
+    const typedEvidence = await prisma.rightsEvidence.findMany({
+      where: {
+        subjectType: "dispute",
+        subjectId: { in: disputeList.map((dispute) => dispute.id) },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const typedBySubject = new Map<string, any[]>();
+    for (const evidence of typedEvidence) {
+      const current = typedBySubject.get(evidence.subjectId) || [];
+      current.push(this.mapTypedDisputeEvidence(evidence));
+      typedBySubject.set(evidence.subjectId, current);
+    }
+
+    const merged = disputeList.map((dispute) => {
+      const legacy = (dispute.evidences || []).map((evidence: any) =>
+        this.mapLegacyDisputeEvidence(evidence),
+      );
+      const typed = typedBySubject.get(dispute.id) || [];
+      const evidences = [...legacy, ...typed].sort(
+        (left, right) =>
+          new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+      );
+
+      return {
+        ...dispute,
+        evidences,
+      };
+    });
+
+    return Array.isArray(disputes) ? merged : merged[0];
+  }
+
+  private async persistEvidenceBundle(normalized: NormalizedRightsEvidenceBundle) {
+    return prisma.rightsEvidenceBundle.create({
+      data: {
+        subjectType: normalized.subjectType,
+        subjectId: normalized.subjectId,
+        submittedByRole: normalized.submittedByRole,
+        submittedByAddress: normalized.submittedByAddress,
+        purpose: normalized.purpose,
+        summary: normalized.summary,
+        evidences: {
+          create: normalized.evidences.map((evidence) => ({
+            subjectType: evidence.subjectType,
+            subjectId: evidence.subjectId,
+            submittedByRole: evidence.submittedByRole,
+            submittedByAddress: evidence.submittedByAddress,
+            kind: evidence.kind,
+            title: evidence.title,
+            description: evidence.description,
+            sourceUrl: evidence.sourceUrl,
+            sourceLabel: evidence.sourceLabel,
+            claimedRightsholder: evidence.claimedRightsholder,
+            artistName: evidence.artistName,
+            releaseTitle: evidence.releaseTitle,
+            publicationDate: evidence.publicationDate,
+            isrc: evidence.isrc,
+            upc: evidence.upc,
+            fingerprintConfidence: evidence.fingerprintConfidence,
+            strength: evidence.strength,
+            verificationStatus: evidence.verificationStatus,
+            attachments: (evidence.attachments as Prisma.InputJsonValue | undefined) ?? undefined,
+            metadata: (evidence.metadata as Prisma.InputJsonValue | undefined) ?? undefined,
+          })),
+        },
+      },
+      include: {
+        evidences: {
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+  }
+
+  async createEvidenceBundle(data: RightsEvidenceBundleInput) {
+    return this.persistEvidenceBundle(normalizeEvidenceBundleInput(data));
+  }
+
   async getDisputesByToken(tokenId: string) {
     const prismaDb = prisma as any;
-    return prismaDb.dispute.findMany({
+    const disputes = await prismaDb.dispute.findMany({
       where: { tokenId },
       include: {
         evidences: true,
@@ -1269,11 +1415,12 @@ export class ContractsService implements OnModuleInit {
       },
       orderBy: { createdAt: "desc" },
     });
+    return this.hydrateDisputesWithTypedEvidence(disputes);
   }
 
   async getDisputesByReporter(reporterAddr: string) {
     const prismaDb = prisma as any;
-    return prismaDb.dispute.findMany({
+    const disputes = await prismaDb.dispute.findMany({
       where: { reporterAddr },
       include: {
         evidences: true,
@@ -1281,11 +1428,12 @@ export class ContractsService implements OnModuleInit {
       },
       orderBy: { createdAt: "desc" },
     });
+    return this.hydrateDisputesWithTypedEvidence(disputes);
   }
 
   async getDisputesByCreator(creatorAddr: string) {
     const prismaDb = prisma as any;
-    return prismaDb.dispute.findMany({
+    const disputes = await prismaDb.dispute.findMany({
       where: { creatorAddr },
       include: {
         evidences: true,
@@ -1293,11 +1441,12 @@ export class ContractsService implements OnModuleInit {
       },
       orderBy: { createdAt: "desc" },
     });
+    return this.hydrateDisputesWithTypedEvidence(disputes);
   }
 
   async getDisputesForJuror(jurorAddr: string) {
     const prismaDb = prisma as any;
-    return prismaDb.dispute.findMany({
+    const disputes = await prismaDb.dispute.findMany({
       where: {
         juryAssignments: {
           some: {
@@ -1311,29 +1460,54 @@ export class ContractsService implements OnModuleInit {
       },
       orderBy: { createdAt: "desc" },
     });
+    return this.hydrateDisputesWithTypedEvidence(disputes);
   }
 
   async createDispute(data: {
     tokenId: string;
     reporterAddr: string;
-    evidenceURI: string;
+    evidenceURI?: string;
     counterStake: string;
+    narrativeSummary?: string;
+    primaryEvidence?: RightsEvidenceDraftInput;
   }) {
     // Look up creator from attestation
     const attestation = await prisma.contentAttestation.findFirst({
       where: { tokenId: data.tokenId },
     });
 
-    return prisma.dispute.create({
+    const evidenceURI =
+      data.primaryEvidence?.sourceUrl?.trim() ||
+      data.evidenceURI?.trim() ||
+      "";
+
+    const dispute = await prisma.dispute.create({
       data: {
         tokenId: data.tokenId,
         reporterAddr: data.reporterAddr.toLowerCase(),
         creatorAddr: attestation?.attesterAddress?.toLowerCase() || "",
-        evidenceURI: data.evidenceURI,
+        evidenceURI,
         counterStake: data.counterStake || "0",
         status: "filed",
       },
     });
+
+    if (data.primaryEvidence && data.narrativeSummary) {
+      await this.persistEvidenceBundle(
+        normalizeDisputeReportBundle(
+          {
+            tokenId: data.tokenId,
+            reporterAddr: data.reporterAddr,
+            counterStake: data.counterStake,
+            narrativeSummary: data.narrativeSummary,
+            primaryEvidence: data.primaryEvidence,
+          },
+          dispute.id,
+        ),
+      );
+    }
+
+    return this.getDisputeById(dispute.id);
   }
 
   async submitDisputeEvidence(
@@ -1385,7 +1559,7 @@ export class ContractsService implements OnModuleInit {
 
   async getPendingDisputes(limit: number) {
     const prismaDb = prisma as any;
-    return prismaDb.dispute.findMany({
+    const disputes = await prismaDb.dispute.findMany({
       where: {
         status: {
           in: [
@@ -1407,17 +1581,19 @@ export class ContractsService implements OnModuleInit {
       orderBy: { createdAt: "asc" },
       take: limit,
     });
+    return this.hydrateDisputesWithTypedEvidence(disputes);
   }
 
   async getDisputeById(disputeId: string) {
     const prismaDb = prisma as any;
-    return prismaDb.dispute.findUnique({
+    const dispute = await prismaDb.dispute.findUnique({
       where: { id: disputeId },
       include: {
         evidences: { orderBy: { createdAt: "asc" } },
         juryAssignments: { orderBy: { assignedAt: "asc" } },
       },
     });
+    return this.hydrateDisputesWithTypedEvidence(dispute);
   }
 
   async markDisputeUnderReview(disputeId: string) {

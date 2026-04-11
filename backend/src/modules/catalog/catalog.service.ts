@@ -48,6 +48,7 @@ export class CatalogService implements OnModuleInit {
           update: {
             artistId: event.artistId,
             status: "processing",
+            processingError: null,
             rightsSourceType: event.sourceType || "direct_upload",
             artworkData: event.artworkData,
             artworkMimeType: event.artworkMimeType,
@@ -62,7 +63,7 @@ export class CatalogService implements OnModuleInit {
             tracks: event.checksum === "retry" ? {
               updateMany: {
                 where: { releaseId: event.releaseId },
-                data: { processingStatus: "pending" }
+                data: { processingStatus: "pending", processingError: null }
               }
             } : undefined
           },
@@ -71,6 +72,7 @@ export class CatalogService implements OnModuleInit {
             artistId: event.artistId,
             title: event.metadata?.title || "Untitled Release",
             status: "processing",
+            processingError: null,
             rightsSourceType: event.sourceType || "direct_upload",
             type: event.metadata?.type || "single",
             primaryArtist: event.metadata?.primaryArtist,
@@ -149,6 +151,7 @@ export class CatalogService implements OnModuleInit {
                 artist: trackData.artist,
                 position: trackData.position,
                 processingStatus: "complete", // Mark as complete when processed
+                processingError: null,
                 rightsRoute: release.rightsRoute,
                 rightsFlags: (release.rightsFlags ?? undefined) as Prisma.InputJsonValue | undefined,
                 rightsReason: release.rightsReason,
@@ -160,6 +163,7 @@ export class CatalogService implements OnModuleInit {
                 artist: trackData.artist,
                 position: trackData.position,
                 processingStatus: "complete", // Mark as complete when processed
+                processingError: null,
                 rightsRoute: release.rightsRoute,
                 rightsFlags: (release.rightsFlags ?? undefined) as Prisma.InputJsonValue | undefined,
                 rightsReason: release.rightsReason,
@@ -224,7 +228,7 @@ export class CatalogService implements OnModuleInit {
 
         await prisma.release.update({
           where: { id: event.releaseId },
-          data: { status: "ready" },
+          data: { status: "ready", processingError: null },
         });
         console.log(`[Catalog] Release ${event.releaseId} updated to ready`);
 
@@ -260,10 +264,17 @@ export class CatalogService implements OnModuleInit {
       console.log(`[Catalog] Received stems.failed for release ${event.releaseId}: ${event.error}`);
       this.clearCache();
       try {
-        await prisma.release.update({
+        const releaseUpdate = await prisma.release.updateMany({
           where: { id: event.releaseId },
-          data: { status: "failed" },
+          data: { status: "failed", processingError: event.error || "Unknown processing error" },
         });
+
+        if (releaseUpdate.count === 0) {
+          console.warn(
+            `[Catalog] Ignoring late stems.failed for missing release ${event.releaseId}`,
+          );
+          return;
+        }
 
         // Also update all non-complete tracks to failed
         const tracksToFail = await prisma.track.findMany({
@@ -279,7 +290,10 @@ export class CatalogService implements OnModuleInit {
             releaseId: event.releaseId,
             processingStatus: { in: ["pending", "separating", "encrypting", "storing"] }
           },
-          data: { processingStatus: "failed" }
+          data: {
+            processingStatus: "failed",
+            processingError: event.error || "Unknown processing error",
+          }
         });
 
         // Emit status event for each failed track
@@ -291,6 +305,7 @@ export class CatalogService implements OnModuleInit {
             releaseId: event.releaseId,
             trackId: track.id,
             status: "failed",
+            error: event.error || "Unknown processing error",
           } as CatalogTrackStatusEvent);
         }
       } catch (err) {
@@ -316,6 +331,7 @@ export class CatalogService implements OnModuleInit {
         artistId: true,
         title: true,
         status: true,
+        processingError: true,
         type: true,
         primaryArtist: true,
         featuredArtists: true,
@@ -345,6 +361,7 @@ export class CatalogService implements OnModuleInit {
             isrc: true,
             createdAt: true,
             processingStatus: true,
+            processingError: true,
             contentStatus: true,
             rightsRoute: true,
             rightsFlags: true,
@@ -437,6 +454,7 @@ export class CatalogService implements OnModuleInit {
         isrc: true,
         createdAt: true,
         processingStatus: true,
+        processingError: true,
         contentStatus: true,
         rightsRoute: true,
         rightsFlags: true,
@@ -460,6 +478,7 @@ export class CatalogService implements OnModuleInit {
             id: true,
             title: true,
             primaryArtist: true,
+            processingError: true,
             rightsRoute: true,
             rightsFlags: true,
             rightsReason: true,
@@ -496,6 +515,7 @@ export class CatalogService implements OnModuleInit {
         artistId: true,
         title: true,
         status: true,
+        processingError: true,
         type: true,
         primaryArtist: true,
         featuredArtists: true,
@@ -525,6 +545,7 @@ export class CatalogService implements OnModuleInit {
             isrc: true,
             createdAt: true,
             processingStatus: true,
+            processingError: true,
             contentStatus: true,
             rightsRoute: true,
             rightsFlags: true,
@@ -590,6 +611,7 @@ export class CatalogService implements OnModuleInit {
         },
         title: true,
         status: true,
+        processingError: true,
         type: true,
         primaryArtist: true,
         featuredArtists: true,
@@ -613,6 +635,7 @@ export class CatalogService implements OnModuleInit {
             position: true,
             explicit: true,
             processingStatus: true,
+            processingError: true,
             contentStatus: true,
             rightsRoute: true,
             rightsFlags: true,
@@ -844,6 +867,36 @@ export class CatalogService implements OnModuleInit {
       data: release.artworkData,
       mimeType: release.artworkMimeType || "image/jpeg",
     };
+  }
+
+  async getTrackStreamForUser(
+    releaseId: string,
+    trackId: string,
+    userId: string,
+  ) {
+    const track = await prisma.track.findUnique({
+      where: { id: trackId },
+      select: {
+        releaseId: true,
+        release: {
+          select: {
+            artist: {
+              select: { userId: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (
+      !track ||
+      track.releaseId !== releaseId ||
+      track.release.artist?.userId !== userId
+    ) {
+      return null;
+    }
+
+    return this.getTrackStream(trackId, { includeRestricted: true });
   }
 
   async getTrackStream(trackId: string, options?: { includeRestricted?: boolean }) {

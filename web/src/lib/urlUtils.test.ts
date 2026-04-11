@@ -84,6 +84,16 @@ describe('buildTrackStreamUrl', () => {
     })).toBe('http://localhost:3000/catalog/releases/rel_123/tracks/trk_456/stream');
   });
 
+  it('uses owner-scoped catalog stream endpoint when requested', () => {
+    expect(buildTrackStreamUrl({
+      releaseId: 'rel_123',
+      trackId: 'trk_456',
+      stemUri: '/uploads/stems/abc/vocals.wav',
+      apiBase,
+      ownerScoped: true,
+    })).toBe('http://localhost:3000/catalog/me/releases/rel_123/tracks/trk_456/stream');
+  });
+
   it('REGRESSION: prefers stream endpoint over raw stem URI (prevents NotSupportedError)', () => {
     // This was the original bug: stem.uri is always non-null, so it was tried first.
     // The browser can't play raw storage paths → NotSupportedError.

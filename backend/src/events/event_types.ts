@@ -142,6 +142,7 @@ export interface CatalogTrackStatusEvent extends BaseEvent {
   releaseId: string;
   trackId: string;
   status: 'pending' | 'separating' | 'encrypting' | 'storing' | 'complete' | 'failed';
+  error?: string;
 }
 
 export interface SessionStartedEvent extends BaseEvent {

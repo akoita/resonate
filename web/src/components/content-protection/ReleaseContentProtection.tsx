@@ -202,7 +202,7 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
         <div style={statStyle}>
           <span style={statLabelStyle}>Stake</span>
           <span style={{ fontWeight: 600, fontSize: "15px" }}>
-            {data.staked ? formatEth(data.stakeAmount) : "—"}
+            {data.stakeAmount ? formatEth(data.stakeAmount) : "—"}
           </span>
         </div>
 
@@ -231,11 +231,19 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
         <div style={statStyle}>
           <span style={statLabelStyle}>Escrow</span>
           <span style={{ fontWeight: 500, fontSize: "15px" }}>
-            {ESCROW_STATUS_LABELS[escrow.status]}
-            {escrow.daysRemaining > 0 && (
-              <span style={{ opacity: 0.5, fontSize: "12px", marginLeft: "4px" }}>
-                ({escrow.daysRemaining}d)
-              </span>
+            {data.staked ? (
+              <>
+                {ESCROW_STATUS_LABELS[escrow.status]}
+                {escrow.daysRemaining > 0 && (
+                  <span style={{ opacity: 0.5, fontSize: "12px", marginLeft: "4px" }}>
+                    ({escrow.daysRemaining}d)
+                  </span>
+                )}
+              </>
+            ) : (
+              <>
+                {data.escrowDays}d policy
+              </>
             )}
           </span>
         </div>

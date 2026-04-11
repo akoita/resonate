@@ -8,6 +8,7 @@ export interface ReleaseStatusUpdate {
     artistId: string;
     title: string;
     status: string;
+    error?: string;
 }
 
 export interface ReleaseProgressUpdate {
@@ -20,6 +21,7 @@ export interface TrackStatusUpdate {
     releaseId: string;
     trackId: string;
     status: 'pending' | 'separating' | 'encrypting' | 'storing' | 'complete' | 'failed';
+    error?: string;
 }
 
 export interface MarketplaceListingCreated {
@@ -125,7 +127,7 @@ export function useWebSockets(
         newSocket.on('release.error', (data: ReleaseStatusUpdate & { error?: string }) => {
             console.log('[WebSocket] Received release.error:', data);
             if (statusHandlerRef.current) {
-                statusHandlerRef.current({ ...data, status: 'failed' });
+                statusHandlerRef.current({ ...data, status: 'failed', error: data.error });
             }
         });
 

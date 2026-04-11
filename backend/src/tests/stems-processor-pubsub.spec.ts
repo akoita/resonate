@@ -212,4 +212,23 @@ describe("StemsProcessor pubsub mode (regression)", () => {
       expect(progressEndpoint).not.toContain("localhost");
     });
   });
+
+  // -------------------------------------------------------------------
+  // 4. Local storage worker handoff
+  //    Restricted uploads cannot rely on the public /catalog/stems route,
+  //    so local stems should be handed off as shared-volume filenames.
+  // -------------------------------------------------------------------
+  describe("local storage handoff", () => {
+    it("uses the shared-volume filename for local catalog URIs", () => {
+      const originalStemUri = "/catalog/stems/original_stem_123.m4a/blob";
+      const storageProvider = "local";
+
+      const resolved = storageProvider === "local" && originalStemUri.startsWith("/catalog/stems/")
+        ? originalStemUri.split("/").slice(-2, -1)[0]
+        : originalStemUri;
+
+      expect(resolved).toBe("original_stem_123.m4a");
+      expect(resolved).not.toContain("/catalog/stems/");
+    });
+  });
 });

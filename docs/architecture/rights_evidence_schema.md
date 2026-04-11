@@ -1,6 +1,6 @@
 ---
 title: "Rights Evidence Schema"
-status: proposed
+status: implemented
 owner: "@akoita"
 related:
   - "./upload_rights_routing_policy.md"
@@ -22,6 +22,14 @@ Define a typed evidence model that can be reused across:
 - juror review.
 
 This replaces the current weak model of a single evidence URL plus optional free text.
+
+Current implementation status:
+
+- typed evidence bundles are persisted in the backend domain model
+- evidence supports strength and verification status
+- evidence can attach to `upload`, `release`, `track`, and `dispute` subjects
+- the dispute/report flow now submits typed evidence instead of relying on a raw URL alone
+- legacy dispute evidence remains readable while richer typed evidence is rolled out
 
 ## Design Principles
 

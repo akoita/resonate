@@ -48,12 +48,16 @@ export function buildTrackStreamUrl(
     trackId?: string | null;
     stemUri?: string | null;
     apiBase?: string;
+    ownerScoped?: boolean;
   },
 ): string | undefined {
   const base = opts.apiBase ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
   // Always prefer the catalog stream endpoint — it serves audio with proper Content-Type
   if (opts.releaseId && opts.trackId) {
+    if (opts.ownerScoped) {
+      return `${base}/catalog/me/releases/${opts.releaseId}/tracks/${opts.trackId}/stream`;
+    }
     return `${base}/catalog/releases/${opts.releaseId}/tracks/${opts.trackId}/stream`;
   }
 

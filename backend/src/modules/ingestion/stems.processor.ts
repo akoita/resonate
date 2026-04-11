@@ -36,6 +36,7 @@ export class StemsProcessor extends WorkerHost {
         this.logger.log(`[StemsProcessor] (pubsub mode) Publishing jobs for release ${job.data.releaseId}`);
 
         const { releaseId, artistId, tracks } = job.data;
+        const backendBaseUrl = process.env.BACKEND_URL || 'http://host.docker.internal:3000';
 
         for (const track of tracks) {
             const originalStem = track.stems?.[0];
@@ -67,6 +68,21 @@ export class StemsProcessor extends WorkerHost {
                 }
             }
 
+            const isLocalCatalogStem =
+                originalStem.storageProvider === "local" &&
+                typeof originalStemUri === "string" &&
+                originalStemUri.startsWith("/catalog/stems/");
+            if (isLocalCatalogStem) {
+                const parts = originalStemUri.split("/");
+                const filename = parts[parts.length - 2];
+                if (filename) {
+                    originalStemUri = filename;
+                    this.logger.log(
+                        `[StemsProcessor] Using shared-volume local stem for track ${track.id}: ${originalStemUri}`,
+                    );
+                }
+            }
+
             const message: StemSeparateMessage = {
                 jobId: `sep_${releaseId}_${track.id}`,
                 releaseId,
@@ -74,12 +90,12 @@ export class StemsProcessor extends WorkerHost {
                 trackId: track.id,
                 trackTitle: track.title,
                 trackPosition: track.position,
-                // Resolve relative URIs for the Docker worker (BACKEND_URL = host.docker.internal)
-                originalStemUri: originalStemUri.startsWith('http')
+                // Local storage uses the shared /outputs volume; remote URIs stay fetchable over HTTP.
+                originalStemUri: originalStemUri.startsWith('http') || !originalStemUri.startsWith('/')
                     ? originalStemUri
-                    : `${process.env.BACKEND_URL || 'http://host.docker.internal:3000'}${originalStemUri}`,
+                    : `${backendBaseUrl}${originalStemUri}`,
                 mimeType: originalStem.mimeType || "audio/mpeg",
-                callbackUrl: process.env.BACKEND_URL || 'http://host.docker.internal:3000',
+                callbackUrl: backendBaseUrl,
                 originalStemMeta: {
                     id: originalStem.id,
                     durationSeconds: originalStem.durationSeconds,
