@@ -469,11 +469,12 @@ describe('API Client', () => {
             strength: 'high',
           },
         ],
-      });
+      }, 'test-token');
 
       const [url, opts] = mockFetch.mock.calls[0];
       expect(url).toBe('http://test-api:3000/metadata/evidence/bundles');
       expect(opts.method).toBe('POST');
+      expect(opts.headers.get('Authorization')).toBe('Bearer test-token');
       expect(JSON.parse(opts.body)).toMatchObject({
         subjectType: 'dispute',
         subjectId: 'dispute_1_31337',

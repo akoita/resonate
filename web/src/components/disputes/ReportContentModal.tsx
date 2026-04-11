@@ -188,7 +188,7 @@ export default function ReportContentModal({
   onClose,
   onSubmitted,
 }: ReportContentModalProps) {
-  const { address } = useAuth();
+  const { address, token } = useAuth();
   const { chainId } = useZeroDev();
   const { report, getRequiredCounterStake, pending } = useReportContent();
   const [primaryEvidenceKind, setPrimaryEvidenceKind] = useState<RightsEvidenceKind>("prior_publication");
@@ -308,6 +308,10 @@ export default function ReportContentModal({
         evidenceURI: evidenceURL.trim(),
       });
 
+      if (!token) {
+        throw new Error("You must be signed in to submit typed evidence.");
+      }
+
       await submitRightsEvidenceBundle({
         subjectType: result.disputeId ? "dispute" : "release",
         subjectId: result.disputeId
@@ -327,7 +331,7 @@ export default function ReportContentModal({
             strength: evidenceStrength,
           },
         ],
-      });
+      }, token);
 
       onSubmitted?.({
         disputeId: result.disputeId?.toString(),

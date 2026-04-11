@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   getRelease,
   Release,
+  type Track,
   updateReleaseArtwork,
   getReleaseArtworkUrl,
   getOwnerScopedTrackStreamObjectUrl,
@@ -430,7 +431,7 @@ export default function ReleaseDetails() {
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mapToLocalTrack = (t: any): LocalTrack => {
+  const mapToLocalTrack = useCallback((t: any, remoteUrlOverride?: string): LocalTrack => {
     // Use ORIGINAL stem for playback URL (same as handlePlayTrack)
     // stems[0] is typically an encrypted separated stem, NOT the playable original
     const originalStem = t.stems?.find(
@@ -453,24 +454,35 @@ export default function ReleaseDetails() {
       genre: release?.genre || null,
       duration: getTrackDuration(t),
       createdAt: t.createdAt ? new Date(t.createdAt).toISOString() : new Date().toISOString(),
-      remoteUrl: streamUrl,
+      remoteUrl: remoteUrlOverride || streamUrl,
       remoteArtworkUrl: release?.artworkUrl || undefined,
       stems: t.stems,
     };
-  };
+  }, [release]);
+
+  const mapToPlayableLocalTrack = useCallback(
+    async (t: Track): Promise<LocalTrack> => {
+      const originalStem = t.stems?.find(
+        (s: { type?: string }) => s.type?.toUpperCase() === "ORIGINAL",
+      );
+      const streamUrl = await resolveTrackPlaybackUrl(t.id, originalStem?.uri);
+      return mapToLocalTrack(t, streamUrl);
+    },
+    [mapToLocalTrack, resolveTrackPlaybackUrl],
+  );
 
   const handlePlayAll = () => handlePlayTrack(0);
 
   const handleAddReleaseToPlaylist = async () => {
     if (!release?.tracks) return;
-    const allTracks = release.tracks.map((t) => mapToLocalTrack(t));
+    const allTracks = await Promise.all(release.tracks.map((t) => mapToPlayableLocalTrack(t)));
     setTracksToAddToPlaylist(allTracks);
   };
 
   const handleSaveToLibrary = async () => {
     if (!release?.tracks) return;
     try {
-      const allTracks = release.tracks.map((t) => mapToLocalTrack(t));
+      const allTracks = await Promise.all(release.tracks.map((t) => mapToPlayableLocalTrack(t)));
       await saveTracksMetadata(allTracks, "remote");
       addToast({
         title: "Success",
@@ -1122,7 +1134,13 @@ export default function ReleaseDetails() {
                     <td className="track-actions-cell">
                       <TrackActionMenu
                         actions={[
-                          { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist([mapToLocalTrack(track)]) },
+                          {
+                            label: "Add to Playlist",
+                            icon: "🎵",
+                            onClick: async () => {
+                              setTracksToAddToPlaylist([await mapToPlayableLocalTrack(track)]);
+                            },
+                          },
                         ]}
                       />
                     </td>

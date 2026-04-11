@@ -624,11 +624,14 @@ export async function submitHumanVerification(
   });
 }
 
-export async function submitRightsEvidenceBundle(input: RightsEvidenceBundleInput) {
+export async function submitRightsEvidenceBundle(
+  input: RightsEvidenceBundleInput,
+  token: string,
+) {
   return apiRequest<RightsEvidenceBundleRecord>("/metadata/evidence/bundles", {
     method: "POST",
     body: JSON.stringify(input),
-  });
+  }, token);
 }
 
 export async function createRelease(

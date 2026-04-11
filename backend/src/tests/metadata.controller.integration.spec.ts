@@ -13,7 +13,7 @@ import { prisma } from '../db/prisma';
 import { MetadataController } from '../modules/contracts/metadata.controller';
 import { ContractsService } from '../modules/contracts/contracts.service';
 import { EventBus } from '../modules/shared/event_bus';
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 
 const TEST_PREFIX = `meta_${Date.now()}_`;
 
@@ -222,26 +222,61 @@ describe('MetadataController (integration)', () => {
 
   describe('typed rights evidence', () => {
     it('creates an evidence bundle for a release before a formal dispute exists', async () => {
-      const bundle = await controller.createEvidenceBundle({
-        subjectType: 'release',
-        subjectId: `${TEST_PREFIX}release`,
-        submittedByRole: 'ops',
-        submittedByAddress: creatorWalletAddress,
-        purpose: 'upload_review',
-        summary: 'Ops review packet for upload screening.',
-        evidences: [
-          {
-            kind: 'internal_review_note',
-            title: 'Initial review note',
-            description: 'Flagged for manual rights follow-up.',
+      const bundle = await controller.createEvidenceBundle(
+        {
+          user: {
+            userId: creatorWalletAddress,
+            role: 'admin',
           },
-        ],
-      });
+        },
+        {
+          subjectType: 'release',
+          subjectId: `${TEST_PREFIX}release`,
+          submittedByRole: 'ops',
+          submittedByAddress: creatorWalletAddress,
+          purpose: 'upload_review',
+          summary: 'Ops review packet for upload screening.',
+          evidences: [
+            {
+              kind: 'internal_review_note',
+              title: 'Initial review note',
+              description: 'Flagged for manual rights follow-up.',
+            },
+          ],
+        },
+      );
 
       expect(bundle.subjectType).toBe('release');
       expect(bundle.subjectId).toBe(`${TEST_PREFIX}release`);
       expect(bundle.evidences).toHaveLength(1);
       expect(bundle.evidences[0].kind).toBe('internal_review_note');
+    });
+
+    it('rejects privileged evidence roles from non-admin callers', async () => {
+      await expect(
+        controller.createEvidenceBundle(
+          {
+            user: {
+              userId: creatorWalletAddress,
+              role: 'listener',
+            },
+          },
+          {
+            subjectType: 'release',
+            subjectId: `${TEST_PREFIX}release`,
+            submittedByRole: 'ops',
+            submittedByAddress: creatorWalletAddress,
+            purpose: 'upload_review',
+            evidences: [
+              {
+                kind: 'internal_review_note',
+                title: 'Unauthorized reviewer note',
+                description: 'This should be rejected.',
+              },
+            ],
+          },
+        ),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('files a dispute with typed evidence and returns hydrated evidence records', async () => {

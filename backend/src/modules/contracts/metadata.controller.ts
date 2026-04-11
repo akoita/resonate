@@ -1,4 +1,19 @@
-import { Controller, Get, Post, Patch, Param, Query, Body, NotFoundException, BadRequestException, Logger } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Param,
+  Query,
+  Body,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  Logger,
+  Request,
+  UseGuards,
+} from "@nestjs/common";
+import { AuthGuard } from "@nestjs/passport";
 import { ContractsService } from "./contracts.service";
 import { IndexerService } from "./indexer.service";
 import { NotificationService } from "../notifications/notification.service";
@@ -706,13 +721,38 @@ export class MetadataController {
    * tracks, or disputes before and after a formal dispute exists.
    * POST /api/metadata/evidence/bundles
    */
+  @UseGuards(AuthGuard("jwt"))
   @Post("evidence/bundles")
-  async createEvidenceBundle(@Body() body: RightsEvidenceBundleInput) {
+  async createEvidenceBundle(
+    @Request() req: any,
+    @Body() body: RightsEvidenceBundleInput,
+  ) {
     if (!body?.subjectType || !body?.subjectId || !body?.submittedByRole || !body?.purpose) {
       throw new BadRequestException("Missing required fields");
     }
 
-    return this.contractsService.createEvidenceBundle(body);
+    const callerAddress = String(req?.user?.userId || "").toLowerCase();
+    const callerRole = String(req?.user?.role || "listener").toLowerCase();
+    const requestedRole = body.submittedByRole;
+    const privilegedRoles = new Set(["ops", "system", "trusted_source"]);
+
+    if (privilegedRoles.has(requestedRole) && callerRole !== "admin") {
+      throw new ForbiddenException("Only admins can submit privileged evidence roles");
+    }
+
+    if (!privilegedRoles.has(requestedRole) && !["creator", "reporter"].includes(requestedRole)) {
+      throw new ForbiddenException("Unsupported evidence role for this account");
+    }
+
+    const submittedByAddress = (body.submittedByAddress || callerAddress).toLowerCase();
+    if (!privilegedRoles.has(requestedRole) && submittedByAddress !== callerAddress) {
+      throw new ForbiddenException("Evidence bundles can only be submitted for the authenticated wallet");
+    }
+
+    return this.contractsService.createEvidenceBundle({
+      ...body,
+      submittedByAddress,
+    });
   }
 
   /**
