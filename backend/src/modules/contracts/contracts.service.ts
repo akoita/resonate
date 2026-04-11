@@ -167,6 +167,32 @@ export class ContractsService implements OnModuleInit {
     "under_review",
   ] as const;
 
+  private getDerivedRightsVerificationStatus(input: {
+    rightsRoute?: string | null;
+    rightsUpgradeRequestStatus?: string | null;
+  }) {
+    return deriveReleaseVerificationStates({
+      attested: false,
+      rightsRoute: input.rightsRoute,
+      rightsUpgradeRequestStatus: input.rightsUpgradeRequestStatus,
+    }).rightsVerificationStatus;
+  }
+
+  private decorateReleaseRightsUpgradeRequest<
+    T extends {
+      status: string;
+      release?: { rightsRoute?: string | null } | null;
+    },
+  >(request: T): T & { derivedRightsVerificationStatus: string } {
+    return {
+      ...request,
+      derivedRightsVerificationStatus: this.getDerivedRightsVerificationStatus({
+        rightsRoute: request.release?.rightsRoute || null,
+        rightsUpgradeRequestStatus: request.status,
+      }),
+    };
+  }
+
   private sanitizeRequestedUpgradeRoute(
     route?: string | null,
   ): "STANDARD_ESCROW" | "TRUSTED_FAST_PATH" {
@@ -1464,6 +1490,7 @@ export class ContractsService implements OnModuleInit {
     const verification = deriveReleaseVerificationStates({
       attested: !!currentAttestation,
       rightsRoute: release.rightsRoute,
+      rightsUpgradeRequestStatus: latestRightsUpgradeRequest?.status || null,
     });
     const curatorProfile = creatorWalletAddress
       ? await this.curatorReputationService.getProfile(creatorWalletAddress)
@@ -1666,7 +1693,7 @@ export class ContractsService implements OnModuleInit {
       throw new ForbiddenException("You do not have access to this release review");
     }
 
-    return prisma.releaseRightsUpgradeRequest.findFirst({
+    const request = await prisma.releaseRightsUpgradeRequest.findFirst({
       where: { releaseId },
       include: {
         release: {
@@ -1691,6 +1718,8 @@ export class ContractsService implements OnModuleInit {
       },
       orderBy: { createdAt: "desc" },
     });
+
+    return request ? this.decorateReleaseRightsUpgradeRequest(request) : null;
   }
 
   async submitReleaseRightsUpgradeRequest(input: {
@@ -1806,7 +1835,7 @@ export class ContractsService implements OnModuleInit {
   }
 
   async listPendingReleaseRightsUpgradeRequests(limit: number) {
-    return prisma.releaseRightsUpgradeRequest.findMany({
+    const requests = await prisma.releaseRightsUpgradeRequest.findMany({
       where: {
         status: {
           in: [...this.releaseRightsUpgradePendingStatuses],
@@ -1836,10 +1865,13 @@ export class ContractsService implements OnModuleInit {
       orderBy: { createdAt: "asc" },
       take: limit,
     });
+
+    return requests.map((request) => this.decorateReleaseRightsUpgradeRequest(request));
   }
 
   async getReleaseRightsUpgradeRequestById(requestId: string) {
-    return this.getReleaseForRightsRequestAdmin(requestId);
+    const request = await this.getReleaseForRightsRequestAdmin(requestId);
+    return this.decorateReleaseRightsUpgradeRequest(request);
   }
 
   async reviewReleaseRightsUpgradeRequest(input: {
@@ -1878,7 +1910,7 @@ export class ContractsService implements OnModuleInit {
     const now = new Date();
 
     if (input.action === "under_review") {
-      return prisma.releaseRightsUpgradeRequest.update({
+      const updated = await prisma.releaseRightsUpgradeRequest.update({
         where: { id: request.id },
         data: {
           status: "under_review",
@@ -1908,10 +1940,11 @@ export class ContractsService implements OnModuleInit {
           },
         },
       });
+      return this.decorateReleaseRightsUpgradeRequest(updated);
     }
 
     if (input.action === "more_evidence_requested") {
-      return prisma.releaseRightsUpgradeRequest.update({
+      const updated = await prisma.releaseRightsUpgradeRequest.update({
         where: { id: request.id },
         data: {
           status: "more_evidence_requested",
@@ -1943,10 +1976,11 @@ export class ContractsService implements OnModuleInit {
           },
         },
       });
+      return this.decorateReleaseRightsUpgradeRequest(updated);
     }
 
     if (input.action === "denied") {
-      return prisma.releaseRightsUpgradeRequest.update({
+      const updated = await prisma.releaseRightsUpgradeRequest.update({
         where: { id: request.id },
         data: {
           status: "denied",
@@ -1978,6 +2012,7 @@ export class ContractsService implements OnModuleInit {
           },
         },
       });
+      return this.decorateReleaseRightsUpgradeRequest(updated);
     }
 
     const approvedRoute =
@@ -1996,7 +2031,7 @@ export class ContractsService implements OnModuleInit {
       decisionReason: approvalReason,
     });
 
-    return prisma.releaseRightsUpgradeRequest.update({
+    const updated = await prisma.releaseRightsUpgradeRequest.update({
       where: { id: request.id },
       data: {
         status:
@@ -2029,6 +2064,7 @@ export class ContractsService implements OnModuleInit {
         },
       },
     });
+    return this.decorateReleaseRightsUpgradeRequest(updated);
   }
 
   async getDisputesByToken(tokenId: string) {

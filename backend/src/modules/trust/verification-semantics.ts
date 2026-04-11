@@ -59,14 +59,28 @@ export function deriveCreatorVerificationStates(input: {
 export function deriveReleaseVerificationStates(input: {
   attested: boolean;
   rightsRoute?: string | null;
+  rightsUpgradeRequestStatus?: string | null;
 }) {
   const route = (input.rightsRoute || "").toUpperCase();
+  const requestStatus = (input.rightsUpgradeRequestStatus || "").toLowerCase();
   const provenanceStatus: ContentProvenanceState = input.attested
     ? "self_attested"
     : "unverified";
 
   let rightsVerificationStatus: RightsVerificationState = "not_reviewed";
-  if (route === "QUARANTINED_REVIEW") {
+  if (
+    requestStatus === "submitted" ||
+    requestStatus === "under_review" ||
+    requestStatus === "more_evidence_requested"
+  ) {
+    rightsVerificationStatus = "platform_review_pending";
+  } else if (requestStatus === "approved_standard_escrow") {
+    rightsVerificationStatus = "platform_reviewed";
+  } else if (requestStatus === "approved_trusted_fast_path") {
+    rightsVerificationStatus = "rights_verified";
+  } else if (requestStatus === "denied") {
+    rightsVerificationStatus = "rights_disputed";
+  } else if (route === "QUARANTINED_REVIEW") {
     rightsVerificationStatus = "platform_review_pending";
   } else if (route === "BLOCKED") {
     rightsVerificationStatus = "rights_disputed";

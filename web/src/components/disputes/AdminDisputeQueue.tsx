@@ -130,6 +130,32 @@ function formatRightsUpgradeStatusLabel(status: string) {
   }
 }
 
+function formatDerivedRightsStateLabel(status?: string | null) {
+  switch (status) {
+    case "platform_review_pending":
+      return "Review pending";
+    case "platform_reviewed":
+      return "Platform reviewed";
+    case "rights_verified":
+      return "Rights verified";
+    case "rights_disputed":
+      return "Rights disputed";
+    default:
+      return "Not independently reviewed";
+  }
+}
+
+function compactUrlLabel(value?: string | null) {
+  if (!value) return null;
+  try {
+    const parsed = new URL(value);
+    const path = parsed.pathname.length > 42 ? `${parsed.pathname.slice(0, 39)}…` : parsed.pathname;
+    return `${parsed.hostname}${path}`;
+  } catch {
+    return value.length > 48 ? `${value.slice(0, 45)}…` : value;
+  }
+}
+
 export default function AdminDisputeQueue() {
   const { token } = useAuth();
   const { addToast } = useToast();
@@ -140,8 +166,10 @@ export default function AdminDisputeQueue() {
   const [expandedEvidence, setExpandedEvidence] = useState<Set<string>>(new Set());
   const [confirmAction, setConfirmAction] = useState<{ id: string; outcome: string } | null>(null);
 
-  const fetchPending = useCallback(async () => {
-    setLoading(true);
+  const fetchPending = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setLoading(true);
+    }
     try {
       const [disputeRes, pendingRights] = await Promise.all([
         fetch("/api/metadata/disputes/pending?limit=50"),
@@ -151,7 +179,9 @@ export default function AdminDisputeQueue() {
       if (disputeRes.ok) setDisputes(await disputeRes.json());
       setRightsRequests(pendingRights);
     } finally {
-      setLoading(false);
+      if (!options?.silent) {
+        setLoading(false);
+      }
     }
   }, [token]);
 
@@ -159,20 +189,10 @@ export default function AdminDisputeQueue() {
     fetchPending();
   }, [fetchPending]);
 
-  useEffect(() => {
-    if (!token) return;
-
-    const interval = window.setInterval(() => {
-      fetchPending().catch(() => {});
-    }, 10000);
-
-    return () => window.clearInterval(interval);
-  }, [fetchPending, token]);
-
   const handleReleaseRightsRealtimeUpdate = useCallback((update: ReleaseRightsRequestUpdate) => {
     if (!token) return;
 
-    void fetchPending();
+    void fetchPending({ silent: true });
 
     if (update.status === "submitted") {
       addToast({
@@ -214,7 +234,7 @@ export default function AdminDisputeQueue() {
         title: "Review updated",
         message: `Release rights request is now ${formatRightsUpgradeStatusLabel(updatedRequest.status)}.`,
       });
-      await fetchPending();
+      await fetchPending({ silent: true });
     } catch (error) {
       addToast({
         type: "error",
@@ -359,6 +379,9 @@ export default function AdminDisputeQueue() {
                       Route request: {request.requestedRoute.replaceAll("_", " ")} · Current route:{" "}
                       {request.currentRouteAtSubmission?.replaceAll("_", " ") || "unknown"}
                     </div>
+                    <div style={{ marginTop: "4px", fontSize: "12px", color: "rgba(255,255,255,0.44)" }}>
+                      Derived review state: {formatDerivedRightsStateLabel(request.derivedRightsVerificationStatus)}
+                    </div>
                   </div>
                   <span style={{ fontSize: "12px", opacity: 0.35, whiteSpace: "nowrap" }}>
                     {new Date(request.createdAt).toLocaleDateString()}
@@ -366,46 +389,89 @@ export default function AdminDisputeQueue() {
                 </div>
 
                 {request.summary && (
-                  <div style={{ marginTop: "10px", fontSize: "13px", lineHeight: 1.55, color: "rgba(255,255,255,0.78)" }}>
-                    {request.summary}
+                  <div style={summaryBlockStyle}>
+                    <div style={sectionLabelStyle}>Creator summary</div>
+                    <div style={{ fontSize: "13px", lineHeight: 1.55, color: "rgba(255,255,255,0.78)" }}>
+                      {request.summary}
+                    </div>
                   </div>
                 )}
 
                 {request.decisionReason && (
-                  <div style={{ marginTop: "10px", fontSize: "12px", lineHeight: 1.5, color: "rgba(255,255,255,0.5)" }}>
-                    Reviewer note: {request.decisionReason}
+                  <div style={reviewerNoteStyle}>
+                    <div style={sectionLabelStyle}>Latest reviewer note</div>
+                    <div style={{ fontSize: "12px", lineHeight: 1.5, color: "rgba(255,255,255,0.64)" }}>
+                      {request.decisionReason}
+                    </div>
                   </div>
                 )}
 
                 {request.evidenceBundles && request.evidenceBundles.length > 0 && (
-                  <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                  <div style={{ marginTop: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <div style={sectionLabelStyle}>Evidence packet</div>
                     {request.evidenceBundles.flatMap((bundle) => bundle.evidences).slice(0, 4).map((evidence) => (
                       <div
                         key={evidence.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          flexWrap: "wrap",
-                          fontSize: "12px",
-                          color: "rgba(255,255,255,0.72)",
-                        }}
+                        style={evidenceCardStyle}
                       >
-                        <span style={{ ...badgeStyle, borderColor: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.68)" }}>
-                          {evidence.kind.replaceAll("_", " ")}
-                        </span>
-                        {evidence.sourceUrl ? (
-                          <a href={evidence.sourceUrl} target="_blank" rel="noopener noreferrer" style={linkStyle}>
-                            <IconLink />
-                            <span>{evidence.title}</span>
-                          </a>
-                        ) : (
-                          <span>{evidence.title}</span>
-                        )}
-                        {evidence.claimedRightsholder && (
-                          <span style={{ opacity: 0.48 }}>
-                            rightsholder: {evidence.claimedRightsholder}
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                          <span style={{ ...badgeStyle, borderColor: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.68)" }}>
+                            {evidence.kind.replaceAll("_", " ")}
                           </span>
+                          <span style={{ fontSize: "13px", fontWeight: 600, color: "rgba(255,255,255,0.88)" }}>
+                            {evidence.title}
+                          </span>
+                          {evidence.sourceUrl && (
+                            <a href={evidence.sourceUrl} target="_blank" rel="noopener noreferrer" style={linkStyle}>
+                              <IconLink />
+                              <span>{compactUrlLabel(evidence.sourceUrl)}</span>
+                            </a>
+                          )}
+                        </div>
+
+                        <div style={evidenceMetaGridStyle}>
+                          <div style={evidenceMetaItemStyle}>
+                            <span style={evidenceMetaLabelStyle}>Rightsholder</span>
+                            <span style={evidenceMetaValueStyle}>{evidence.claimedRightsholder || "—"}</span>
+                          </div>
+                          <div style={evidenceMetaItemStyle}>
+                            <span style={evidenceMetaLabelStyle}>Artist</span>
+                            <span style={evidenceMetaValueStyle}>{evidence.artistName || "—"}</span>
+                          </div>
+                          <div style={evidenceMetaItemStyle}>
+                            <span style={evidenceMetaLabelStyle}>Published</span>
+                            <span style={evidenceMetaValueStyle}>
+                              {evidence.publicationDate ? new Date(evidence.publicationDate).toLocaleDateString() : "—"}
+                            </span>
+                          </div>
+                          <div style={evidenceMetaItemStyle}>
+                            <span style={evidenceMetaLabelStyle}>Source</span>
+                            <span style={evidenceMetaValueStyle}>{evidence.sourceLabel || "—"}</span>
+                          </div>
+                          <div style={evidenceMetaItemStyle}>
+                            <span style={evidenceMetaLabelStyle}>ISRC</span>
+                            <span style={evidenceMetaValueStyle}>{evidence.isrc || "—"}</span>
+                          </div>
+                          <div style={evidenceMetaItemStyle}>
+                            <span style={evidenceMetaLabelStyle}>UPC</span>
+                            <span style={evidenceMetaValueStyle}>{evidence.upc || "—"}</span>
+                          </div>
+                          <div style={evidenceMetaItemStyle}>
+                            <span style={evidenceMetaLabelStyle}>Strength</span>
+                            <span style={evidenceMetaValueStyle}>{evidence.strength?.replaceAll("_", " ") || "—"}</span>
+                          </div>
+                          <div style={evidenceMetaItemStyle}>
+                            <span style={evidenceMetaLabelStyle}>Docs</span>
+                            <span style={evidenceMetaValueStyle}>
+                              {evidence.attachments && evidence.attachments.length > 0 ? String(evidence.attachments.length) : "0"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {evidence.description && (
+                          <div style={{ fontSize: "12px", lineHeight: 1.5, color: "rgba(255,255,255,0.62)" }}>
+                            {evidence.description}
+                          </div>
                         )}
                       </div>
                     ))}
@@ -438,7 +504,8 @@ export default function AdminDisputeQueue() {
                     </button>
                   </div>
 
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end" }}>
                     <button
                       className="adq-action-btn"
                       onClick={() =>
@@ -451,7 +518,7 @@ export default function AdminDisputeQueue() {
                       disabled={actionLoading === request.id}
                       style={{ ...actionBtnStyle, borderColor: "rgba(16,185,129,0.3)", color: "#10b981", background: "rgba(16,185,129,0.06)" }}
                     >
-                      {actionLoading === request.id ? "..." : "Approve Standard"}
+                      {actionLoading === request.id ? "..." : "Approve Standard Review"}
                     </button>
                     <button
                       className="adq-action-btn"
@@ -465,7 +532,7 @@ export default function AdminDisputeQueue() {
                       disabled={actionLoading === request.id}
                       style={{ ...actionBtnStyle, borderColor: "rgba(34,197,94,0.3)", color: "#4ade80", background: "rgba(34,197,94,0.06)" }}
                     >
-                      {actionLoading === request.id ? "..." : "Approve Fast Path"}
+                      {actionLoading === request.id ? "..." : "Mark Rights Verified"}
                     </button>
                     <button
                       className="adq-action-btn"
@@ -481,6 +548,10 @@ export default function AdminDisputeQueue() {
                     >
                       {actionLoading === request.id ? "..." : "Deny"}
                     </button>
+                    </div>
+                    <div style={actionHintStyle}>
+                      Standard review keeps marketplace access under escrow. Rights verified is the strongest approval state.
+                    </div>
                   </div>
                 </div>
               </div>
@@ -718,6 +789,68 @@ const cardStyle: React.CSSProperties = {
   transition: "border-color 0.2s, background 0.2s",
 };
 
+const sectionLabelStyle: React.CSSProperties = {
+  fontSize: "11px",
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+  color: "rgba(255,255,255,0.42)",
+  fontWeight: 600,
+};
+
+const summaryBlockStyle: React.CSSProperties = {
+  marginTop: "10px",
+  display: "flex",
+  flexDirection: "column",
+  gap: "6px",
+};
+
+const reviewerNoteStyle: React.CSSProperties = {
+  marginTop: "10px",
+  padding: "10px 12px",
+  borderRadius: "10px",
+  background: "rgba(255,255,255,0.03)",
+  border: "1px solid rgba(255,255,255,0.05)",
+  display: "flex",
+  flexDirection: "column",
+  gap: "4px",
+};
+
+const evidenceCardStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "10px",
+  padding: "12px",
+  borderRadius: "12px",
+  background: "rgba(255,255,255,0.02)",
+  border: "1px solid rgba(255,255,255,0.05)",
+};
+
+const evidenceMetaGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+  gap: "8px 12px",
+};
+
+const evidenceMetaItemStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "3px",
+  minWidth: 0,
+};
+
+const evidenceMetaLabelStyle: React.CSSProperties = {
+  fontSize: "10px",
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  color: "rgba(255,255,255,0.36)",
+};
+
+const evidenceMetaValueStyle: React.CSSProperties = {
+  fontSize: "12px",
+  color: "rgba(255,255,255,0.74)",
+  wordBreak: "break-word",
+};
+
 const badgeStyle: React.CSSProperties = {
   display: "inline-block",
   border: "1px solid",
@@ -781,4 +914,12 @@ const actionBtnStyle: React.CSSProperties = {
   cursor: "pointer",
   transition: "all 0.15s",
   opacity: 1,
+};
+
+const actionHintStyle: React.CSSProperties = {
+  maxWidth: "360px",
+  fontSize: "11px",
+  lineHeight: 1.45,
+  color: "rgba(255,255,255,0.42)",
+  textAlign: "right",
 };

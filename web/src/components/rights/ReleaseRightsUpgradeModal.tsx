@@ -44,6 +44,11 @@ const EVIDENCE_OPTIONS: Array<{
     label: "Trusted catalog reference",
     hint: "Label, distributor, or trusted catalog record that links you to this release.",
   },
+  {
+    value: "legal_notice",
+    label: "Signed declaration",
+    hint: "Signed declaration, authorization letter, or formal rights statement from the rightsholder.",
+  },
 ];
 
 const STRENGTH_OPTIONS: Array<{ value: RightsEvidenceStrength; label: string }> = [
@@ -68,6 +73,12 @@ export default function ReleaseRightsUpgradeModal({
   const [title, setTitle] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [claimedRightsholder, setClaimedRightsholder] = useState("");
+  const [sourceLabel, setSourceLabel] = useState("");
+  const [artistName, setArtistName] = useState("");
+  const [publicationDate, setPublicationDate] = useState("");
+  const [isrc, setIsrc] = useState("");
+  const [upc, setUpc] = useState("");
+  const [attachmentUrls, setAttachmentUrls] = useState("");
   const [description, setDescription] = useState("");
   const [strength, setStrength] = useState<RightsEvidenceStrength>("high");
   const [submitting, setSubmitting] = useState(false);
@@ -114,10 +125,19 @@ export default function ReleaseRightsUpgradeModal({
               kind: evidenceKind,
               title: title.trim(),
               sourceUrl: sourceUrl.trim(),
+              sourceLabel: sourceLabel.trim() || undefined,
               claimedRightsholder: claimedRightsholder.trim(),
+              artistName: artistName.trim() || undefined,
               description: description.trim() || undefined,
               releaseTitle,
+              publicationDate: publicationDate.trim() || undefined,
+              isrc: isrc.trim() || undefined,
+              upc: upc.trim() || undefined,
               strength,
+              attachments: attachmentUrls
+                .split("\n")
+                .map((value) => value.trim())
+                .filter(Boolean),
             },
           ],
         },
@@ -256,6 +276,28 @@ export default function ReleaseRightsUpgradeModal({
 
         <div style={gridStyle}>
           <label style={fieldStyle}>
+            <span style={labelStyle}>Source label</span>
+            <input
+              value={sourceLabel}
+              onChange={(event) => setSourceLabel(event.target.value)}
+              style={inputStyle}
+              placeholder="Spotify artist page, distributor portal, label letter"
+            />
+          </label>
+
+          <label style={fieldStyle}>
+            <span style={labelStyle}>Artist name</span>
+            <input
+              value={artistName}
+              onChange={(event) => setArtistName(event.target.value)}
+              style={inputStyle}
+              placeholder="Official artist name tied to this evidence"
+            />
+          </label>
+        </div>
+
+        <div style={gridStyle}>
+          <label style={fieldStyle}>
             <span style={labelStyle}>Evidence URL</span>
             <input
               value={sourceUrl}
@@ -278,6 +320,51 @@ export default function ReleaseRightsUpgradeModal({
                 </option>
               ))}
             </select>
+          </label>
+        </div>
+
+        <div style={gridStyle}>
+          <label style={fieldStyle}>
+            <span style={labelStyle}>Publication date</span>
+            <input
+              type="date"
+              value={publicationDate}
+              onChange={(event) => setPublicationDate(event.target.value)}
+              style={inputStyle}
+            />
+          </label>
+
+          <label style={fieldStyle}>
+            <span style={labelStyle}>ISRC</span>
+            <input
+              value={isrc}
+              onChange={(event) => setIsrc(event.target.value.toUpperCase())}
+              style={inputStyle}
+              placeholder="USRC17607839"
+            />
+          </label>
+        </div>
+
+        <div style={gridStyle}>
+          <label style={fieldStyle}>
+            <span style={labelStyle}>UPC</span>
+            <input
+              value={upc}
+              onChange={(event) => setUpc(event.target.value)}
+              style={inputStyle}
+              placeholder="012345678905"
+            />
+          </label>
+
+          <label style={fieldStyle}>
+            <span style={labelStyle}>Supporting document URLs</span>
+            <textarea
+              value={attachmentUrls}
+              onChange={(event) => setAttachmentUrls(event.target.value)}
+              rows={3}
+              style={{ ...inputStyle, resize: "vertical", minHeight: 88 }}
+              placeholder="One URL per line for letters, PDFs, split sheets, or supporting documents."
+            />
           </label>
         </div>
 
