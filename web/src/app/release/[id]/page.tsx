@@ -5,8 +5,10 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   getRelease,
   Release,
+  type Track,
   updateReleaseArtwork,
   getReleaseArtworkUrl,
+  getOwnerScopedTrackStreamObjectUrl,
   waitForReleaseAvailability,
   getReleaseContentProtectionStatus,
   type ReleaseContentProtectionData,
@@ -49,6 +51,14 @@ const formatRightsLabel = (value?: string | null): string | null => {
     .split("_")
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
     .join(" ");
+};
+
+const isPublicReleaseRoute = (route?: string | null): boolean => {
+  return !route || ["LIMITED_MONITORING", "STANDARD_ESCROW", "TRUSTED_FAST_PATH"].includes(route);
+};
+
+const isMarketplaceAllowedRoute = (route?: string | null): boolean => {
+  return !route || ["STANDARD_ESCROW", "TRUSTED_FAST_PATH"].includes(route);
 };
 
 const getRightsTone = (route?: string | null) => {
@@ -117,6 +127,7 @@ export default function ReleaseDetails() {
   const [trackStems, setTrackStems] = useState<Record<string, string>>({}); // trackId -> stemType (e.g. 'vocals')
   const [expandedNftTracks, setExpandedNftTracks] = useState<Set<string>>(new Set());
   const artworkInputRef = useRef<HTMLInputElement>(null);
+  const ownerScopedTrackUrlsRef = useRef<Record<string, string>>({});
   const [recentlyCompletedTracks, setRecentlyCompletedTracks] = useState<Set<string>>(new Set());
   const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; variant: "danger" | "warning" | "default"; confirmLabel: string; onConfirm: () => Promise<void> } | null>(null);
   const [trackProgress, setTrackProgress] = useState<Record<string, number>>({});
@@ -125,13 +136,17 @@ export default function ReleaseDetails() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [releaseProtection, setReleaseProtection] = useState<ReleaseContentProtectionData | null>(null);
   const shouldWaitForPendingRelease = searchParams.get("pending") === "1";
-  const mintingBlockedReason =
-    releaseProtection && !releaseProtection.attested
-      ? "Minting opens after this release's Content Protection record has been attested on-chain."
-      : null;
   const rightsTone = getRightsTone(release?.rightsRoute);
   const rightsRouteLabel = formatRightsLabel(release?.rightsRoute) || "Not Evaluated";
   const rightsSourceLabel = formatRightsLabel(release?.rightsSourceType);
+  const isOwner = release?.artist?.userId?.toLowerCase() === userId?.toLowerCase();
+  const marketplaceRestrictedByRights =
+    !!release?.rightsRoute && !isMarketplaceAllowedRoute(release.rightsRoute);
+  const mintingBlockedReason = marketplaceRestrictedByRights
+    ? `Marketplace minting is disabled while this release is routed as ${rightsRouteLabel}.`
+    : releaseProtection && !releaseProtection.attested
+      ? "Minting opens after this release's Content Protection record has been attested on-chain."
+      : null;
 
   // Handle real-time track progress updates via WebSocket
   const handleProgressUpdate = useCallback((data: ReleaseProgressUpdate) => {
@@ -166,7 +181,11 @@ export default function ReleaseDetails() {
         ...prev,
         tracks: prev.tracks.map(track =>
           track.id === data.trackId
-            ? { ...track, processingStatus: data.status }
+            ? {
+              ...track,
+              processingStatus: data.status,
+              processingError: data.status === "failed" ? (data.error || track.processingError || "Processing failed.") : null,
+            }
             : track
         ),
       };
@@ -212,10 +231,14 @@ export default function ReleaseDetails() {
         }
       }).catch(console.error);
     } else if (data.status === 'failed') {
-      setRelease(prev => prev ? { ...prev, status: 'failed' } : null);
+      setRelease(prev => prev ? {
+        ...prev,
+        status: 'failed',
+        processingError: data.error || prev.processingError || "There was an error processing this release.",
+      } : null);
       addToast({
         title: "Processing Failed",
-        message: "There was an error processing your release.",
+        message: data.error || "There was an error processing your release.",
         type: "error",
       });
     }
@@ -291,24 +314,65 @@ export default function ReleaseDetails() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [release?.id]);
 
+  useEffect(() => {
+    return () => {
+      Object.values(ownerScopedTrackUrlsRef.current).forEach((url) => {
+        if (url.startsWith("blob:")) {
+          URL.revokeObjectURL(url);
+        }
+      });
+      ownerScopedTrackUrlsRef.current = {};
+    };
+  }, []);
+
+  const resolveTrackPlaybackUrl = useCallback(
+    async (trackId: string, fallbackStemUri?: string | null) => {
+      if (!release?.id) {
+        return undefined;
+      }
+
+      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+      const publicUrl = buildTrackStreamUrl({
+        releaseId: release.id,
+        trackId,
+        stemUri: fallbackStemUri,
+        apiBase,
+      });
+
+      if (!isOwner || !token || isPublicReleaseRoute(release.rightsRoute)) {
+        return publicUrl;
+      }
+
+      const cached = ownerScopedTrackUrlsRef.current[trackId];
+      if (cached) {
+        return cached;
+      }
+
+      const ownerScopedUrl = await getOwnerScopedTrackStreamObjectUrl(
+        release.id,
+        trackId,
+        token,
+      );
+      if (ownerScopedUrl) {
+        ownerScopedTrackUrlsRef.current[trackId] = ownerScopedUrl;
+        return ownerScopedUrl;
+      }
+
+      return publicUrl;
+    },
+    [isOwner, release, token],
+  );
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handlePlayTrack = (trackIndex: number, _specificStem?: string) => {
+  const handlePlayTrack = async (trackIndex: number, _specificStem?: string) => {
     if (!release?.tracks) return;
-    const playableTracks: LocalTrack[] = (release.tracks || []).map((t) => {
+    const playableTracks: LocalTrack[] = await Promise.all((release.tracks || []).map(async (t) => {
       // Use ORIGINAL stem for uploaded tracks, or 'master' for AI-generated tracks
       const originalStem = t.stems?.find(s => s.type?.toUpperCase() === 'ORIGINAL')
         || t.stems?.find(s => s.type === 'master')
         || t.stems?.[0]; // fallback to first stem
 
-      // Use catalog stream endpoint (serves audio with proper Content-Type)
-      // The raw stem.uri is a storage path not directly playable by the browser
-      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-      const streamUrl = buildTrackStreamUrl({
-        releaseId: release.id,
-        trackId: t.id,
-        stemUri: originalStem?.uri,
-        apiBase,
-      });
+      const streamUrl = await resolveTrackPlaybackUrl(t.id, originalStem?.uri);
 
       return {
         id: t.id,
@@ -324,7 +388,7 @@ export default function ReleaseDetails() {
         remoteArtworkUrl: release.artworkUrl || undefined,
         stems: t.stems,
       };
-    });
+    }));
     void playQueue(playableTracks, trackIndex);
   };
 
@@ -367,7 +431,7 @@ export default function ReleaseDetails() {
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mapToLocalTrack = (t: any): LocalTrack => {
+  const mapToLocalTrack = useCallback((t: any, remoteUrlOverride?: string): LocalTrack => {
     // Use ORIGINAL stem for playback URL (same as handlePlayTrack)
     // stems[0] is typically an encrypted separated stem, NOT the playable original
     const originalStem = t.stems?.find(
@@ -390,24 +454,35 @@ export default function ReleaseDetails() {
       genre: release?.genre || null,
       duration: getTrackDuration(t),
       createdAt: t.createdAt ? new Date(t.createdAt).toISOString() : new Date().toISOString(),
-      remoteUrl: streamUrl,
+      remoteUrl: remoteUrlOverride || streamUrl,
       remoteArtworkUrl: release?.artworkUrl || undefined,
       stems: t.stems,
     };
-  };
+  }, [release]);
+
+  const mapToPlayableLocalTrack = useCallback(
+    async (t: Track): Promise<LocalTrack> => {
+      const originalStem = t.stems?.find(
+        (s: { type?: string }) => s.type?.toUpperCase() === "ORIGINAL",
+      );
+      const streamUrl = await resolveTrackPlaybackUrl(t.id, originalStem?.uri);
+      return mapToLocalTrack(t, streamUrl);
+    },
+    [mapToLocalTrack, resolveTrackPlaybackUrl],
+  );
 
   const handlePlayAll = () => handlePlayTrack(0);
 
   const handleAddReleaseToPlaylist = async () => {
     if (!release?.tracks) return;
-    const allTracks = release.tracks.map((t) => mapToLocalTrack(t));
+    const allTracks = await Promise.all(release.tracks.map((t) => mapToPlayableLocalTrack(t)));
     setTracksToAddToPlaylist(allTracks);
   };
 
   const handleSaveToLibrary = async () => {
     if (!release?.tracks) return;
     try {
-      const allTracks = release.tracks.map((t) => mapToLocalTrack(t));
+      const allTracks = await Promise.all(release.tracks.map((t) => mapToPlayableLocalTrack(t)));
       await saveTracksMetadata(allTracks, "remote");
       addToast({
         title: "Success",
@@ -466,8 +541,6 @@ export default function ReleaseDetails() {
       setIsUpdatingArtwork(false);
     }
   };
-
-  const isOwner = release?.artist?.userId?.toLowerCase() === userId?.toLowerCase();
 
   if (loading) return <div className="loading-state">Initializing Studio...</div>;
   if (!release) return <div className="error-state">Release not found.</div>;
@@ -593,7 +666,16 @@ export default function ReleaseDetails() {
                         const { retryRelease } = await import("../../../lib/api");
                         await retryRelease(token, release.id);
                         addToast({ type: "success", title: "Retrying...", message: "Processing restarted." });
-                        setRelease(prev => prev ? { ...prev, status: 'processing', tracks: prev.tracks?.map(t => ({ ...t, processingStatus: 'separating' as const })) } : null);
+                        setRelease(prev => prev ? {
+                          ...prev,
+                          status: 'processing',
+                          processingError: null,
+                          tracks: prev.tracks?.map(t => ({
+                            ...t,
+                            processingStatus: 'separating' as const,
+                            processingError: null,
+                          }))
+                        } : null);
                       } catch (e) {
                         console.error(e);
                         addToast({ type: "error", title: "Retry failed", message: "Could not restart processing." });
@@ -623,9 +705,10 @@ export default function ReleaseDetails() {
                         setRelease(prev => prev ? {
                           ...prev,
                           status: 'processing',
+                          processingError: null,
                           tracks: prev.tracks?.map(t =>
                             (!t.stems || t.stems.length <= 1)
-                              ? { ...t, processingStatus: 'separating' as const }
+                              ? { ...t, processingStatus: 'separating' as const, processingError: null }
                               : t
                           )
                         } : null);
@@ -676,7 +759,16 @@ export default function ReleaseDetails() {
                             const { cancelProcessing } = await import("../../../lib/api");
                             await cancelProcessing(token, release.id);
                             addToast({ type: "success", title: "Cancelled", message: "Processing has been stopped." });
-                            setRelease(prev => prev ? { ...prev, status: 'failed', tracks: prev.tracks?.map(t => ({ ...t, processingStatus: 'failed' as const })) } : null);
+                            setRelease(prev => prev ? {
+                              ...prev,
+                              status: 'failed',
+                              processingError: "Processing cancelled by user",
+                              tracks: prev.tracks?.map(t => ({
+                                ...t,
+                                processingStatus: 'failed' as const,
+                                processingError: "Processing cancelled by user",
+                              }))
+                            } : null);
                           } catch (e) {
                             console.error(e);
                             addToast({ type: "error", title: "Cancel failed", message: "Could not cancel processing." });
@@ -824,6 +916,26 @@ export default function ReleaseDetails() {
         )}
       </div>
 
+      {release.status === "failed" && release.processingError && (
+        <div
+          style={{
+            marginBottom: "var(--space-4)",
+            borderRadius: "10px",
+            border: "1px solid rgba(248, 113, 113, 0.28)",
+            background: "rgba(127, 29, 29, 0.16)",
+            padding: "12px 14px",
+            color: "#fecaca",
+          }}
+        >
+          <div style={{ fontSize: "0.78rem", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: "4px" }}>
+            Processing Failure
+          </div>
+          <div style={{ fontSize: "0.92rem", lineHeight: 1.5 }}>
+            {release.processingError}
+          </div>
+        </div>
+      )}
+
       <section className="tracklist-section glass-panel">
         <div className="tracklist-scroll-container">
           <table className="track-table">
@@ -943,6 +1055,7 @@ export default function ReleaseDetails() {
                       {(track.processingStatus && track.processingStatus !== "complete") || recentlyCompletedTracks.has(track.id) ? (
                         <span
                           className={`processing-badge processing-${recentlyCompletedTracks.has(track.id) ? 'complete' : track.processingStatus}`}
+                          title={track.processingStatus === "failed" ? (track.processingError || "Processing failed") : undefined}
                           style={{
                             display: "inline-flex",
                             alignItems: "center",
@@ -981,6 +1094,21 @@ export default function ReleaseDetails() {
                           {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "failed" && "🔴 Failed"}
                         </span>
                       ) : null}
+                      {track.processingStatus === "failed" && track.processingError && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            fontSize: 11,
+                            lineHeight: 1.35,
+                            color: "rgba(248, 113, 113, 0.9)",
+                            maxWidth: 260,
+                            whiteSpace: "normal",
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {track.processingError}
+                        </div>
+                      )}
                     </td>
                     <td
                       className="track-artist clickable"
@@ -1006,7 +1134,13 @@ export default function ReleaseDetails() {
                     <td className="track-actions-cell">
                       <TrackActionMenu
                         actions={[
-                          { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist([mapToLocalTrack(track)]) },
+                          {
+                            label: "Add to Playlist",
+                            icon: "🎵",
+                            onClick: async () => {
+                              setTracksToAddToPlaylist([await mapToPlayableLocalTrack(track)]);
+                            },
+                          },
                         ]}
                       />
                     </td>
@@ -1025,7 +1159,11 @@ export default function ReleaseDetails() {
             <div className="nft-header">
               <div>
                 <h3 className="nft-title">NFT Marketplace</h3>
-                <p className="nft-subtitle">Mint and list your stems as NFTs</p>
+                <p className="nft-subtitle">
+                  {marketplaceRestrictedByRights
+                    ? "Marketplace actions are currently restricted by this release's rights route"
+                    : "Mint and list your stems as NFTs"}
+                </p>
               </div>
               <a href="/marketplace" className="nft-link">
                 View Marketplace →
@@ -1085,7 +1223,7 @@ export default function ReleaseDetails() {
                     if (mintingBlockedReason) {
                       addToast({
                         type: "warning",
-                        title: "Attestation Required",
+                        title: marketplaceRestrictedByRights ? "Marketplace Restricted" : "Attestation Required",
                         message: mintingBlockedReason,
                       });
                       return;
@@ -1170,6 +1308,7 @@ export default function ReleaseDetails() {
                                     stemId={stem.id}
                                     stemType={stem.type}
                                     disabled={!!mintingBlockedReason}
+                                    disabledLabel={marketplaceRestrictedByRights ? "Marketplace Restricted" : "Attestation Required"}
                                     disabledReason={mintingBlockedReason || undefined}
                                   />
                                 </div>

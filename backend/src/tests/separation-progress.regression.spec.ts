@@ -165,7 +165,7 @@ describe("Stem Separation Progress (regression)", () => {
   // -------------------------------------------------------------------
   // 6. track status 'failed' is emitted when separation fails
   // -------------------------------------------------------------------
-  it("stems.failed produces catalog.track_status = failed", () => {
+  it("stems.failed produces catalog.track_status = failed with an error message", () => {
     // Simulate what IngestionService.emitTrackStage does on failure
     eventBus.subscribe("catalog.track_status", (event: any) => {
       capturedEvents.push({ name: "catalog.track_status", payload: event });
@@ -178,10 +178,12 @@ describe("Stem Separation Progress (regression)", () => {
       releaseId: "rel_fail",
       trackId: "trk_fail",
       status: "failed",
+      error: "Worker timeout",
     } as any);
 
     expect(capturedEvents).toHaveLength(1);
     expect(capturedEvents[0].payload.status).toBe("failed");
+    expect(capturedEvents[0].payload.error).toBe("Worker timeout");
   });
 
   // -------------------------------------------------------------------

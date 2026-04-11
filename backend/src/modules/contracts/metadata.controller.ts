@@ -1,4 +1,19 @@
-import { Controller, Get, Post, Patch, Param, Query, Body, NotFoundException, BadRequestException, Logger } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Param,
+  Query,
+  Body,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  Logger,
+  Request,
+  UseGuards,
+} from "@nestjs/common";
+import { AuthGuard } from "@nestjs/passport";
 import { ContractsService } from "./contracts.service";
 import { IndexerService } from "./indexer.service";
 import { NotificationService } from "../notifications/notification.service";
@@ -9,6 +24,10 @@ import { createPublicClient, http, keccak256, toHex, type Address, type Chain } 
 import { foundry, sepolia, baseSepolia } from "viem/chains";
 import { CuratorReputationService } from "./curator-reputation.service";
 import { HumanVerificationService } from "./human-verification.service";
+import type {
+  RightsEvidenceBundleInput,
+  RightsEvidenceDraftInput,
+} from "../rights/rights-evidence";
 
 const DEFAULT_SEPOLIA_RPC_URL = "https://sepolia.drpc.org";
 const DIAGNOSTIC_CHAIN_CONFIGS: Record<number, { chain: Chain; rpcUrl: string }> = {
@@ -181,13 +200,20 @@ export class MetadataController {
 
     const releaseSlug = this.slugifyReleaseTitle(release.title);
     const metadataURI = `resonate://release/${releaseSlug}`;
-    const payoutAddress = release.artist?.payoutAddress?.toLowerCase() || null;
+    const attesterCandidates = Array.from(
+      new Set(
+        [
+          release.artist?.userId?.toLowerCase(),
+          release.artist?.payoutAddress?.toLowerCase(),
+        ].filter(Boolean),
+      ),
+    );
 
-    const dbAttestation = payoutAddress
+    const dbAttestation = attesterCandidates.length > 0
       ? await prisma.contentAttestation.findFirst({
           where: {
             chainId,
-            attesterAddress: payoutAddress,
+            attesterAddress: { in: attesterCandidates },
             metadataURI,
           },
           orderBy: { attestedAt: "desc" },
@@ -271,6 +297,7 @@ export class MetadataController {
         status: release.status,
         artistId: release.artistId,
         payoutAddress: release.artist?.payoutAddress || null,
+        creatorWalletAddress: release.artist?.userId || null,
         metadataURI,
       },
       chain: {
@@ -672,15 +699,60 @@ export class MetadataController {
     body: {
       tokenId: string;
       reporterAddr: string;
-      evidenceURI: string;
+      evidenceURI?: string;
       counterStake: string;
+      narrativeSummary?: string;
+      primaryEvidence?: RightsEvidenceDraftInput;
     },
   ) {
-    if (!body.tokenId || !body.reporterAddr || !body.evidenceURI) {
+    if (
+      !body.tokenId ||
+      !body.reporterAddr ||
+      (!body.evidenceURI && !body.primaryEvidence)
+    ) {
       throw new BadRequestException("Missing required fields");
     }
     await this.curatorReputationService.assertCanFileDispute(body.reporterAddr.toLowerCase());
     return this.contractsService.createDispute(body);
+  }
+
+  /**
+   * Create a typed evidence bundle that can attach to uploads, releases,
+   * tracks, or disputes before and after a formal dispute exists.
+   * POST /api/metadata/evidence/bundles
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Post("evidence/bundles")
+  async createEvidenceBundle(
+    @Request() req: any,
+    @Body() body: RightsEvidenceBundleInput,
+  ) {
+    if (!body?.subjectType || !body?.subjectId || !body?.submittedByRole || !body?.purpose) {
+      throw new BadRequestException("Missing required fields");
+    }
+
+    const callerAddress = String(req?.user?.userId || "").toLowerCase();
+    const callerRole = String(req?.user?.role || "listener").toLowerCase();
+    const requestedRole = body.submittedByRole;
+    const privilegedRoles = new Set(["ops", "system", "trusted_source"]);
+
+    if (privilegedRoles.has(requestedRole) && callerRole !== "admin") {
+      throw new ForbiddenException("Only admins can submit privileged evidence roles");
+    }
+
+    if (!privilegedRoles.has(requestedRole) && !["creator", "reporter"].includes(requestedRole)) {
+      throw new ForbiddenException("Unsupported evidence role for this account");
+    }
+
+    const submittedByAddress = (body.submittedByAddress || callerAddress).toLowerCase();
+    if (!privilegedRoles.has(requestedRole) && submittedByAddress !== callerAddress) {
+      throw new ForbiddenException("Evidence bundles can only be submitted for the authenticated wallet");
+    }
+
+    return this.contractsService.createEvidenceBundle({
+      ...body,
+      submittedByAddress,
+    });
   }
 
   /**

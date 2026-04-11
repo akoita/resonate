@@ -265,7 +265,19 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
       `Separation failed for job ${result.jobId}: ${result.error}`
     );
 
-    await this.emitTrackStage(result.releaseId, result.trackId, "failed");
+    const failureReason = result.error || "Unknown worker error";
+    await this.emitTrackStage(result.releaseId, result.trackId, "failed", failureReason);
+
+    const releaseExists = await prisma.release.findUnique({
+      where: { id: result.releaseId },
+      select: { id: true },
+    });
+    if (!releaseExists) {
+      this.logger.warn(
+        `Ignoring failed result for deleted release ${result.releaseId} (job ${result.jobId})`,
+      );
+      return;
+    }
 
     this.eventBus.publish({
       eventName: "stems.failed",
@@ -273,24 +285,35 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
       occurredAt: new Date().toISOString(),
       releaseId: result.releaseId,
       artistId: result.artistId,
-      error: result.error || "Unknown worker error",
+      error: failureReason,
     });
   }
 
   private async emitTrackStage(
     releaseId: string,
     trackId: string,
-    stage: "pending" | "separating" | "encrypting" | "storing" | "complete" | "failed"
+    stage: "pending" | "separating" | "encrypting" | "storing" | "complete" | "failed",
+    error?: string | null,
   ) {
     const MAX_RETRIES = 5;
     const RETRY_DELAY = 500;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        await prisma.track.update({
+        const result = await prisma.track.updateMany({
           where: { id: trackId },
-          data: { processingStatus: stage },
+          data: {
+            processingStatus: stage,
+            processingError: stage === "failed" ? (error || "Processing failed") : null,
+          },
         });
+
+        if (result.count === 0) {
+          this.logger.warn(
+            `Ignoring late ${stage} update for missing track ${trackId} on release ${releaseId}`,
+          );
+          return;
+        }
 
         // Broadcast stage change via EventBus → WebSocket
         this.eventBus.publish({
@@ -300,6 +323,7 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
           releaseId,
           trackId,
           status: stage,
+          ...(stage === "failed" && error ? { error } : {}),
         } as any);
 
         break;

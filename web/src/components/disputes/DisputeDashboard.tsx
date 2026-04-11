@@ -11,7 +11,13 @@ interface DisputeEvidence {
   submitter: string;
   party: string;
   evidenceURI: string;
+  sourceUrl?: string | null;
   description: string | null;
+  title?: string | null;
+  kind?: string | null;
+  strength?: string | null;
+  verificationStatus?: string | null;
+  claimedRightsholder?: string | null;
   createdAt: string;
 }
 
@@ -152,7 +158,7 @@ const LIFECYCLE_INDEX: Record<string, number> = {
   appealed: 4,
 };
 
-function LifecycleStepper({ status, outcome }: { status: string; outcome: string | null }) {
+function LifecycleStepper({ status }: { status: string }) {
   const currentIdx = LIFECYCLE_INDEX[status.toLowerCase()] ?? 0;
   const isAppealed = status.toLowerCase() === "appealed";
 
@@ -768,7 +774,7 @@ export default function DisputeDashboard() {
                 }}
               >
                 {/* Lifecycle stepper */}
-                <LifecycleStepper status={d.status} outcome={d.outcome} />
+                <LifecycleStepper status={d.status} />
 
                 {/* Card header */}
                 <div style={cardHeaderStyle}>
@@ -811,10 +817,17 @@ export default function DisputeDashboard() {
 
                 {/* Evidence */}
                 <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                  <a href={d.evidenceURI} target="_blank" rel="noopener noreferrer" style={linkStyle}>
-                    <IconLink />
-                    <span>Initial Evidence</span>
-                  </a>
+                  {d.evidenceURI ? (
+                    <a href={d.evidenceURI} target="_blank" rel="noopener noreferrer" style={linkStyle}>
+                      <IconLink />
+                      <span>Initial Evidence</span>
+                    </a>
+                  ) : (
+                    <span style={{ ...linkStyle, opacity: 0.45 }}>
+                      <IconLink />
+                      <span>Initial Evidence Pending</span>
+                    </span>
+                  )}
                   {d.evidences.length > 0 && !isEvidenceExpanded && (
                     <button
                       onClick={() => toggleSet(expandedEvidence, setExpandedEvidence, d.id)}
@@ -852,9 +865,20 @@ export default function DisputeDashboard() {
                         }}>
                           {e.party === "reporter" ? "R" : "C"}
                         </span>
-                        <a href={e.evidenceURI} target="_blank" rel="noopener noreferrer" style={{ color: "#60a5fa", textDecoration: "none" }}>
-                          {e.description || "Evidence"}
-                        </a>
+                        {e.evidenceURI ? (
+                          <a href={e.evidenceURI} target="_blank" rel="noopener noreferrer" style={{ color: "#60a5fa", textDecoration: "none" }}>
+                            {e.title || e.description || "Evidence"}
+                          </a>
+                        ) : (
+                          <span style={{ color: "#cbd5e1" }}>
+                            {e.title || e.description || "Evidence"}
+                          </span>
+                        )}
+                        {e.kind && (
+                          <span style={{ opacity: 0.45, textTransform: "uppercase", letterSpacing: "0.3px" }}>
+                            {e.kind.replaceAll("_", " ")}
+                          </span>
+                        )}
                         <span style={{ opacity: 0.3, fontFamily: "monospace", fontSize: "11px" }}>
                           {e.submitter.slice(0, 6)}...{e.submitter.slice(-4)}
                         </span>

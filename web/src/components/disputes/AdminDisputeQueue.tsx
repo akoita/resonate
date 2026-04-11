@@ -14,7 +14,18 @@ interface Dispute {
   evidenceURI: string;
   counterStake: string;
   createdAt: string;
-  evidences: { id: string; submitter: string; party: string; evidenceURI: string; description: string | null }[];
+  evidences: Array<{
+    id: string;
+    submitter: string;
+    party: string;
+    evidenceURI: string;
+    sourceUrl?: string | null;
+    description: string | null;
+    title?: string | null;
+    kind?: string | null;
+    strength?: string | null;
+    verificationStatus?: string | null;
+  }>;
 }
 
 /* ── Inline SVG Icons ──────────────────────────────────────────── */
@@ -41,18 +52,6 @@ function IconCheckCircle({ size = 48 }: { size?: number }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
       <polyline points="22 4 12 14.01 9 11.01" />
-    </svg>
-  );
-}
-
-function IconChevron({ down = true, size = 14 }: { down?: boolean; size?: number }) {
-  return (
-    <svg
-      width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-      style={{ transition: "transform 0.2s", transform: down ? "rotate(0deg)" : "rotate(-90deg)" }}
-    >
-      <polyline points="6 9 12 15 18 9" />
     </svg>
   );
 }
@@ -257,10 +256,17 @@ export default function AdminDisputeQueue() {
 
                 {/* Evidence */}
                 <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
-                  <a href={d.evidenceURI} target="_blank" rel="noopener noreferrer" style={linkStyle}>
-                    <IconLink />
-                    <span>Initial Evidence</span>
-                  </a>
+                  {d.evidenceURI ? (
+                    <a href={d.evidenceURI} target="_blank" rel="noopener noreferrer" style={linkStyle}>
+                      <IconLink />
+                      <span>Initial Evidence</span>
+                    </a>
+                  ) : (
+                    <span style={{ ...linkStyle, opacity: 0.45 }}>
+                      <IconLink />
+                      <span>Initial Evidence Pending</span>
+                    </span>
+                  )}
                   {d.evidences.length > 0 && (
                     <button onClick={() => toggleEvidence(d.id)} style={expandBtnStyle}>
                       {isEvidenceExpanded ? "collapse" : `+${d.evidences.length} more`}
@@ -286,9 +292,20 @@ export default function AdminDisputeQueue() {
                         }}>
                           {e.party === "reporter" ? "R" : "C"}
                         </span>
-                        <a href={e.evidenceURI} target="_blank" rel="noopener noreferrer" style={{ color: "#60a5fa", textDecoration: "none" }}>
-                          {e.description || "Evidence"}
-                        </a>
+                        {e.evidenceURI ? (
+                          <a href={e.evidenceURI} target="_blank" rel="noopener noreferrer" style={{ color: "#60a5fa", textDecoration: "none" }}>
+                            {e.title || e.description || "Evidence"}
+                          </a>
+                        ) : (
+                          <span style={{ color: "#cbd5e1" }}>
+                            {e.title || e.description || "Evidence"}
+                          </span>
+                        )}
+                        {e.kind && (
+                          <span style={{ opacity: 0.45, textTransform: "uppercase", letterSpacing: "0.3px" }}>
+                            {e.kind.replaceAll("_", " ")}
+                          </span>
+                        )}
                         <span style={{ opacity: 0.3, fontFamily: "monospace", fontSize: "11px" }}>
                           {e.submitter.slice(0, 6)}...{e.submitter.slice(-4)}
                         </span>

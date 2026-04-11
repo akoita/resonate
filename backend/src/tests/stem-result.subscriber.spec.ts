@@ -46,7 +46,7 @@ jest.mock("../db/prisma", () => ({
     },
     track: {
       findUnique: jest.fn().mockResolvedValue({ id: "trk_1", releaseId: "rel_1" }),
-      update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     release: {
       findUnique: jest.fn().mockResolvedValue({ id: "rel_1", tracks: [{ id: "trk_1" }] }),

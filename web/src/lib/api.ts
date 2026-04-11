@@ -16,6 +16,17 @@ export function getReleaseArtworkUrl(
   return `${API_BASE}/catalog/releases/${releaseId}/artwork`;
 }
 
+export function getReleaseTrackStreamUrl(
+  releaseId: string,
+  trackId: string,
+  options?: { ownerScoped?: boolean },
+) {
+  if (options?.ownerScoped) {
+    return `${API_BASE}/catalog/me/releases/${releaseId}/tracks/${trackId}/stream`;
+  }
+  return `${API_BASE}/catalog/releases/${releaseId}/tracks/${trackId}/stream`;
+}
+
 export type WalletRecord = {
   id: string;
   userId: string;
@@ -101,6 +112,37 @@ async function getOwnerScopedArtworkObjectUrl(
 
   const contentType =
     response.headers.get("Content-Type") || "application/octet-stream";
+  const body = await response.arrayBuffer();
+  return URL.createObjectURL(new Blob([body], { type: contentType }));
+}
+
+export async function getOwnerScopedTrackStreamObjectUrl(
+  releaseId: string,
+  trackId: string,
+  token: string,
+): Promise<string | undefined> {
+  if (
+    typeof window === "undefined" ||
+    typeof URL.createObjectURL !== "function"
+  ) {
+    return undefined;
+  }
+
+  const response = await fetch(
+    getReleaseTrackStreamUrl(releaseId, trackId, { ownerScoped: true }),
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    return undefined;
+  }
+
+  const contentType =
+    response.headers.get("Content-Type") || "audio/mpeg";
   const body = await response.arrayBuffer();
   return URL.createObjectURL(new Blob([body], { type: contentType }));
 }
@@ -264,6 +306,7 @@ export type Release = {
   artistId: string;
   title: string;
   status: string;
+  processingError?: string | null;
   type: string; // SINGLE, EP, ALBUM
   primaryArtist?: string | null;
   featuredArtists?: string | null;
@@ -298,6 +341,7 @@ export type Track = {
   createdAt: string;
   artworkMimeType?: string | null;
   processingStatus?: "pending" | "separating" | "encrypting" | "storing" | "complete" | "failed";
+  processingError?: string | null;
   contentStatus?: string | null;
   rightsRoute?: string | null;
   rightsFlags?: string[] | null;
@@ -449,6 +493,80 @@ export type ReleaseContentProtectionData = {
   rightsVerificationStatus?: string;
 };
 
+export type RightsEvidenceSubjectType = "upload" | "release" | "track" | "dispute";
+export type RightsEvidenceRole = "reporter" | "creator" | "ops" | "trusted_source" | "system";
+export type RightsEvidenceKind =
+  | "trusted_catalog_reference"
+  | "fingerprint_match"
+  | "prior_publication"
+  | "rights_metadata"
+  | "proof_of_control"
+  | "legal_notice"
+  | "narrative_statement"
+  | "internal_review_note";
+export type RightsEvidenceStrength = "low" | "medium" | "high" | "very_high";
+export type RightsEvidenceVerificationStatus =
+  | "unverified"
+  | "verified"
+  | "rejected"
+  | "system_generated";
+export type RightsEvidenceBundlePurpose =
+  | "upload_review"
+  | "dispute_report"
+  | "creator_response"
+  | "ops_review"
+  | "jury_packet";
+
+export type RightsEvidenceInput = {
+  kind: RightsEvidenceKind;
+  title: string;
+  description?: string | null;
+  sourceUrl?: string | null;
+  sourceLabel?: string | null;
+  claimedRightsholder?: string | null;
+  artistName?: string | null;
+  releaseTitle?: string | null;
+  publicationDate?: string | null;
+  isrc?: string | null;
+  upc?: string | null;
+  fingerprintConfidence?: number | null;
+  strength?: RightsEvidenceStrength;
+  verificationStatus?: RightsEvidenceVerificationStatus;
+  attachments?: string[] | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+export type RightsEvidenceBundleInput = {
+  subjectType: RightsEvidenceSubjectType;
+  subjectId: string;
+  submittedByRole: RightsEvidenceRole;
+  submittedByAddress?: string | null;
+  purpose: RightsEvidenceBundlePurpose;
+  summary?: string | null;
+  evidences: RightsEvidenceInput[];
+};
+
+export type RightsEvidenceRecord = RightsEvidenceInput & {
+  id: string;
+  subjectType: RightsEvidenceSubjectType;
+  subjectId: string;
+  submittedByRole: RightsEvidenceRole;
+  submittedByAddress?: string | null;
+  createdAt: string;
+};
+
+export type RightsEvidenceBundleRecord = {
+  id: string;
+  subjectType: RightsEvidenceSubjectType;
+  subjectId: string;
+  submittedByRole: RightsEvidenceRole;
+  submittedByAddress?: string | null;
+  purpose: RightsEvidenceBundlePurpose;
+  summary?: string | null;
+  createdAt: string;
+  evidences: RightsEvidenceRecord[];
+};
+
 export async function getTrustTier(artistId: string, token: string) {
   return apiRequest<TrustTier>(`/api/trust/${artistId}`, { silentErrorCodes: [404] }, token);
 }
@@ -504,6 +622,16 @@ export async function submitHumanVerification(
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export async function submitRightsEvidenceBundle(
+  input: RightsEvidenceBundleInput,
+  token: string,
+) {
+  return apiRequest<RightsEvidenceBundleRecord>("/metadata/evidence/bundles", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, token);
 }
 
 export async function createRelease(

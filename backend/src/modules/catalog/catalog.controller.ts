@@ -25,6 +25,50 @@ import { CatalogService } from "./catalog.service";
 export class CatalogController {
   constructor(private readonly catalogService: CatalogService) { }
 
+  private sendAudioResponse(
+    stem: { data: Buffer; mimeType?: string | null },
+    range: string,
+    res: Response,
+  ) {
+    const fileSize = stem.data.length;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+      if (start >= fileSize) {
+        res.status(416).set({
+          "Content-Range": `bytes */${fileSize}`,
+        }).send();
+        return;
+      }
+
+      const chunksize = end - start + 1;
+      const file = stem.data.subarray(start, end + 1);
+
+      res.status(206).set({
+        "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+        "Accept-Ranges": "bytes",
+        "Content-Length": chunksize,
+        "Content-Type": stem.mimeType || "audio/mpeg",
+        "Cache-Control": "public, max-age=31536000",
+      });
+
+      res.end(file);
+      return;
+    }
+
+    res.set({
+      "Content-Length": fileSize,
+      "Content-Type": stem.mimeType || "audio/mpeg",
+      "Accept-Ranges": "bytes",
+      "Cache-Control": "public, max-age=31536000",
+    });
+
+    res.end(stem.data);
+  }
+
   @Get("releases/:releaseId/artwork")
   async getReleaseArtwork(@Param("releaseId") releaseId: string, @Res({ passthrough: true }) res: Response) {
     const artwork = await this.catalogService.getReleaseArtwork(releaseId);
@@ -102,41 +146,29 @@ export class CatalogController {
       return;
     }
 
-    const fileSize = streamData.data.length;
+    this.sendAudioResponse(streamData, range, res);
+  }
 
-    if (range) {
-      const parts = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-
-      if (start >= fileSize) {
-        res.status(416).set({ "Content-Range": `bytes */${fileSize}` }).send();
-        return;
-      }
-
-      const chunksize = end - start + 1;
-      const file = streamData.data.subarray(start, end + 1);
-
-      res.status(206).set({
-        "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-        "Accept-Ranges": "bytes",
-        "Content-Length": chunksize,
-        "Content-Type": streamData.mimeType || "audio/wav",
-        "Cache-Control": "public, max-age=31536000",
-      });
-
-      res.end(file);
+  @UseGuards(AuthGuard("jwt"))
+  @Get("me/releases/:releaseId/tracks/:trackId/stream")
+  async getMyTrackStream(
+    @Param("releaseId") releaseId: string,
+    @Param("trackId") trackId: string,
+    @Headers("range") range: string,
+    @Request() req: any,
+    @Res() res: Response,
+  ) {
+    const streamData = await this.catalogService.getTrackStreamForUser(
+      releaseId,
+      trackId,
+      req.user.userId,
+    );
+    if (!streamData) {
+      res.status(404).send("Track audio not found");
       return;
     }
 
-    res.set({
-      "Content-Length": fileSize,
-      "Content-Type": streamData.mimeType || "audio/wav",
-      "Accept-Ranges": "bytes",
-      "Cache-Control": "public, max-age=31536000",
-    });
-
-    res.end(streamData.data);
+    this.sendAudioResponse(streamData, range, res);
   }
 
   @Get("stems/:stemId/preview")

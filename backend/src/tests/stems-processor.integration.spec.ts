@@ -81,6 +81,7 @@ describe('StemsProcessor (integration)', () => {
             {
               id: 'stem_orig_1',
               uri: '/catalog/stems/original.m4a/blob',
+              storageProvider: 'local',
               mimeType: 'audio/mp4',
               durationSeconds: 180,
             },
@@ -92,11 +93,11 @@ describe('StemsProcessor (integration)', () => {
   });
 
   describe('URI resolution', () => {
-    it('resolves relative URI to absolute URL with BACKEND_URL', async () => {
+    it('uses the shared-volume filename for local catalog stems', async () => {
       await processor.process(makeJob() as any);
       expect(mockPublishSeparationJob).toHaveBeenCalledWith(
         expect.objectContaining({
-          originalStemUri: 'http://host.docker.internal:3000/catalog/stems/original.m4a/blob',
+          originalStemUri: 'original.m4a',
         }),
       );
     });

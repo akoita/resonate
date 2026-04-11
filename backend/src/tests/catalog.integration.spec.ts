@@ -39,6 +39,7 @@ describe('CatalogService (integration)', () => {
       storage,
       new UploadRightsRoutingService(),
     );
+    catalog.onModuleInit();
 
     // Seed prerequisite data
     await prisma.user.create({
@@ -98,6 +99,55 @@ describe('CatalogService (integration)', () => {
     const updated = await catalog.updateRelease(created.id, { title: 'After Update', status: 'published' });
     expect(updated.title).toBe('After Update');
     expect(updated.status).toBe('published');
+  });
+
+  it('persists processing errors on failed releases and tracks', async () => {
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Failure Capture',
+      tracks: [{ title: 'Broken Track', position: 1 }],
+    });
+
+    eventBus.publish({
+      eventName: 'stems.failed' as any,
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      releaseId: created.id,
+      artistId: `${TEST_PREFIX}artist`,
+      error: 'Demucs worker exited with code 1',
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const failedRelease = await catalog.getRelease(created.id, { includeRestricted: true });
+    expect(failedRelease).not.toBeNull();
+    expect(failedRelease!.status).toBe('failed');
+    expect(failedRelease!.processingError).toBe('Demucs worker exited with code 1');
+    expect(failedRelease!.tracks[0].processingStatus).toBe('failed');
+    expect(failedRelease!.tracks[0].processingError).toBe('Demucs worker exited with code 1');
+  });
+
+  it('ignores late failed events after a release has been deleted', async () => {
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Delete Race Target',
+      tracks: [{ title: 'Transient Track', position: 1 }],
+    });
+
+    await catalog.deleteRelease(created.id, `${TEST_PREFIX}user`);
+
+    eventBus.publish({
+      eventName: 'stems.failed' as any,
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      releaseId: created.id,
+      artistId: `${TEST_PREFIX}artist`,
+      error: 'Late worker callback',
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(await prisma.release.findUnique({ where: { id: created.id } })).toBeNull();
   });
 
   it('rejects release creation for non-artist user', async () => {

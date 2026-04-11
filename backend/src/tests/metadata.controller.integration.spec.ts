@@ -13,7 +13,7 @@ import { prisma } from '../db/prisma';
 import { MetadataController } from '../modules/contracts/metadata.controller';
 import { ContractsService } from '../modules/contracts/contracts.service';
 import { EventBus } from '../modules/shared/event_bus';
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 
 const TEST_PREFIX = `meta_${Date.now()}_`;
 
@@ -21,6 +21,7 @@ describe('MetadataController (integration)', () => {
   let controller: MetadataController;
   let contractsService: ContractsService;
   let stemId: string;
+  let typedDisputeId: string | null = null;
   const creatorWalletAddress = ("0x" + "1".repeat(40)).toLowerCase();
   const payoutOnlyAddress = ("0x" + "2".repeat(40)).toLowerCase();
 
@@ -78,9 +79,55 @@ describe('MetadataController (integration)', () => {
         humanVerifiedAt: new Date("2026-04-09T19:51:38.721Z"),
       },
     });
+
+    await prisma.contentAttestation.create({
+      data: {
+        tokenId: `${TEST_PREFIX}token`,
+        chainId: 11155111,
+        attesterAddress: creatorWalletAddress,
+        contentHash: "0x" + "a".repeat(64),
+        fingerprintHash: "0x" + "b".repeat(64),
+        metadataURI: "resonate://release/meta-release",
+        transactionHash: "0x" + "c".repeat(64),
+        blockNumber: 101n,
+        attestedAt: new Date("2026-04-09T20:00:00.000Z"),
+      },
+    });
+
+    await prisma.contentProtectionStake.create({
+      data: {
+        tokenId: `${TEST_PREFIX}token`,
+        chainId: 11155111,
+        stakerAddress: creatorWalletAddress,
+        amount: "10000000000000000",
+        active: true,
+        depositedAt: new Date("2026-04-09T20:00:00.000Z"),
+        transactionHash: "0x" + "d".repeat(64),
+        blockNumber: 102n,
+      },
+    });
   });
 
   afterAll(async () => {
+    await prisma.contentProtectionStake.deleteMany({ where: { tokenId: `${TEST_PREFIX}token` } }).catch(() => {});
+    await prisma.contentAttestation.deleteMany({ where: { tokenId: `${TEST_PREFIX}token` } }).catch(() => {});
+    await prisma.rightsEvidence.deleteMany({
+      where: {
+        OR: [
+          { subjectId: `${TEST_PREFIX}release` },
+          ...(typedDisputeId ? [{ subjectId: typedDisputeId }] : []),
+        ],
+      },
+    }).catch(() => {});
+    await prisma.rightsEvidenceBundle.deleteMany({
+      where: {
+        OR: [
+          { subjectId: `${TEST_PREFIX}release` },
+          ...(typedDisputeId ? [{ subjectId: typedDisputeId }] : []),
+        ],
+      },
+    }).catch(() => {});
+    await prisma.dispute.deleteMany({ where: { tokenId: `${TEST_PREFIX}typed-token` } }).catch(() => {});
     await prisma.curatorReputation.deleteMany({ where: { walletAddress: creatorWalletAddress } }).catch(() => {});
     await prisma.stemNftMint.deleteMany({ where: { stemId } }).catch(() => {});
     await prisma.stem.deleteMany({ where: { trackId: `${TEST_PREFIX}track` } }).catch(() => {});
@@ -162,11 +209,110 @@ describe('MetadataController (integration)', () => {
   });
 
   describe('getContentProtectionByRelease', () => {
-    it('uses the creator wallet identity instead of payout address for human verification', async () => {
+    it('uses the creator wallet identity instead of payout address for human verification and protection records', async () => {
       const result = await contractsService.getContentProtectionByRelease(`${TEST_PREFIX}release`);
       expect(result).not.toBeNull();
       expect(result!.humanVerificationStatus).toBe('human_verified');
       expect(result!.humanVerifiedAt).toBe('2026-04-09T19:51:38.721Z');
+      expect(result!.attested).toBe(true);
+      expect(result!.staked).toBe(true);
+      expect(result!.stakeAmount).toBe('10000000000000000');
+    });
+  });
+
+  describe('typed rights evidence', () => {
+    it('creates an evidence bundle for a release before a formal dispute exists', async () => {
+      const bundle = await controller.createEvidenceBundle(
+        {
+          user: {
+            userId: creatorWalletAddress,
+            role: 'admin',
+          },
+        },
+        {
+          subjectType: 'release',
+          subjectId: `${TEST_PREFIX}release`,
+          submittedByRole: 'ops',
+          submittedByAddress: creatorWalletAddress,
+          purpose: 'upload_review',
+          summary: 'Ops review packet for upload screening.',
+          evidences: [
+            {
+              kind: 'internal_review_note',
+              title: 'Initial review note',
+              description: 'Flagged for manual rights follow-up.',
+            },
+          ],
+        },
+      );
+
+      expect(bundle.subjectType).toBe('release');
+      expect(bundle.subjectId).toBe(`${TEST_PREFIX}release`);
+      expect(bundle.evidences).toHaveLength(1);
+      expect(bundle.evidences[0].kind).toBe('internal_review_note');
+    });
+
+    it('rejects privileged evidence roles from non-admin callers', async () => {
+      await expect(
+        controller.createEvidenceBundle(
+          {
+            user: {
+              userId: creatorWalletAddress,
+              role: 'listener',
+            },
+          },
+          {
+            subjectType: 'release',
+            subjectId: `${TEST_PREFIX}release`,
+            submittedByRole: 'ops',
+            submittedByAddress: creatorWalletAddress,
+            purpose: 'upload_review',
+            evidences: [
+              {
+                kind: 'internal_review_note',
+                title: 'Unauthorized reviewer note',
+                description: 'This should be rejected.',
+              },
+            ],
+          },
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('files a dispute with typed evidence and returns hydrated evidence records', async () => {
+      const dispute = await controller.fileDispute({
+        tokenId: `${TEST_PREFIX}typed-token`,
+        reporterAddr: creatorWalletAddress,
+        counterStake: '0',
+        narrativeSummary: 'The reporter published and controls the original release first.',
+        primaryEvidence: {
+          kind: 'prior_publication',
+          title: 'Canonical release page',
+          sourceUrl: 'https://example.com/releases/original',
+          claimedRightsholder: 'Meta Artist',
+          strength: 'high',
+        },
+      });
+
+      expect(dispute).not.toBeNull();
+      typedDisputeId = dispute.id;
+      expect(dispute.tokenId).toBe(`${TEST_PREFIX}typed-token`);
+      expect(dispute.evidenceURI).toBe('https://example.com/releases/original');
+      expect(dispute.evidences).toHaveLength(2);
+      expect(dispute.evidences[0].kind).toBe('prior_publication');
+      expect(dispute.evidences[0].title).toBe('Canonical release page');
+      expect(dispute.evidences[1].kind).toBe('narrative_statement');
+
+      const persistedEvidence = await prisma.rightsEvidence.findMany({
+        where: {
+          subjectType: 'dispute',
+          subjectId: dispute.id,
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      expect(persistedEvidence).toHaveLength(2);
+      expect(persistedEvidence[0].claimedRightsholder).toBe('Meta Artist');
     });
   });
 

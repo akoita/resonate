@@ -2,20 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
+import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { useReportContent } from "../../hooks/useContracts";
 import { formatEth } from "../../lib/stakeConstants";
-import { getCuratorReportingPolicy, type CuratorReportingPolicy } from "../../lib/api";
+import {
+  getCuratorReportingPolicy,
+  submitRightsEvidenceBundle,
+  type CuratorReportingPolicy,
+  type ReleaseContentProtectionData,
+  type RightsEvidenceKind,
+  type RightsEvidenceStrength,
+} from "../../lib/api";
 
 interface ReportContentModalProps {
   releaseId: string;
   onClose: () => void;
   onSubmitted?: (result: { disputeId?: string; txHash: string; tokenId?: string; counterStakeEth: string }) => void;
-}
-
-interface ReleaseProtectionData {
-  tokenId: string | null;
-  staked: boolean;
-  attested: boolean;
 }
 
 interface ReporterDispute {
@@ -87,6 +89,40 @@ function IconDiamond({ size = 14 }: { size?: number }) {
   );
 }
 
+const PRIMARY_EVIDENCE_OPTIONS: Array<{
+  value: RightsEvidenceKind;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: "prior_publication",
+    label: "Prior publication",
+    hint: "Official release page, streaming link, or canonical publication record.",
+  },
+  {
+    value: "trusted_catalog_reference",
+    label: "Trusted catalog reference",
+    hint: "Distributor, label, or trusted source catalog evidence.",
+  },
+  {
+    value: "rights_metadata",
+    label: "Rights metadata",
+    hint: "ISRC, UPC, metadata package, or registry-backed identifiers.",
+  },
+  {
+    value: "proof_of_control",
+    label: "Proof of control",
+    hint: "Official profile, domain, dashboard, or account-control proof.",
+  },
+];
+
+const STRENGTH_OPTIONS: Array<{ value: RightsEvidenceStrength; label: string }> = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "very_high", label: "Very High" },
+];
+
 /* ── Step Indicator ────────────────────────────────────────────── */
 
 function StepIndicator({ currentPhase }: { currentPhase: number }) {
@@ -152,19 +188,29 @@ export default function ReportContentModal({
   onClose,
   onSubmitted,
 }: ReportContentModalProps) {
-  const { address } = useAuth();
+  const { address, token } = useAuth();
+  const { chainId } = useZeroDev();
   const { report, getRequiredCounterStake, pending } = useReportContent();
+  const [primaryEvidenceKind, setPrimaryEvidenceKind] = useState<RightsEvidenceKind>("prior_publication");
+  const [primaryEvidenceTitle, setPrimaryEvidenceTitle] = useState("");
   const [evidenceURL, setEvidenceURL] = useState("");
-  const [description, setDescription] = useState("");
+  const [claimedRightsholder, setClaimedRightsholder] = useState("");
+  const [primaryEvidenceDescription, setPrimaryEvidenceDescription] = useState("");
+  const [narrativeSummary, setNarrativeSummary] = useState("");
+  const [evidenceStrength, setEvidenceStrength] = useState<RightsEvidenceStrength>("high");
   const [error, setError] = useState<string | null>(null);
-  const [protection, setProtection] = useState<ReleaseProtectionData | null>(null);
+  const [protection, setProtection] = useState<ReleaseContentProtectionData | null>(null);
   const [counterStake, setCounterStake] = useState<bigint | null>(null);
   const [reportingPolicy, setReportingPolicy] = useState<CuratorReportingPolicy | null>(null);
   const [alreadyReported, setAlreadyReported] = useState(false);
   const [loadingProtection, setLoadingProtection] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const currentPhase = !evidenceURL.trim() ? 1 : 2;
+  const hasPrimaryEvidence =
+    primaryEvidenceTitle.trim() &&
+    evidenceURL.trim() &&
+    claimedRightsholder.trim();
+  const currentPhase = !hasPrimaryEvidence ? 1 : !narrativeSummary.trim() ? 2 : 3;
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -195,7 +241,7 @@ export default function ReportContentModal({
           throw new Error("Could not load the content protection record for this release.");
         }
 
-        const protectionData = (await protectionRes.json()) as ReleaseProtectionData;
+        const protectionData = (await protectionRes.json()) as ReleaseContentProtectionData;
         const hasExistingReport = Boolean(
           protectionData.tokenId &&
           reporterDisputes.some((dispute) => dispute.tokenId === protectionData.tokenId)
@@ -227,8 +273,20 @@ export default function ReportContentModal({
 
   const handleSubmit = async () => {
     if (!address) return;
+    if (!primaryEvidenceTitle.trim()) {
+      setError("Evidence title is required");
+      return;
+    }
     if (!evidenceURL.trim()) {
       setError("Evidence URL is required");
+      return;
+    }
+    if (!claimedRightsholder.trim()) {
+      setError("Claimed rightsholder is required");
+      return;
+    }
+    if (!narrativeSummary.trim()) {
+      setError("A narrative summary is required");
       return;
     }
 
@@ -250,6 +308,31 @@ export default function ReportContentModal({
         evidenceURI: evidenceURL.trim(),
       });
 
+      if (!token) {
+        throw new Error("You must be signed in to submit typed evidence.");
+      }
+
+      await submitRightsEvidenceBundle({
+        subjectType: result.disputeId ? "dispute" : "release",
+        subjectId: result.disputeId
+          ? `dispute_${result.disputeId.toString()}_${chainId}`
+          : releaseId,
+        submittedByRole: "reporter",
+        submittedByAddress: address.toLowerCase(),
+        purpose: "dispute_report",
+        summary: narrativeSummary.trim(),
+        evidences: [
+          {
+            kind: primaryEvidenceKind,
+            title: primaryEvidenceTitle.trim(),
+            description: primaryEvidenceDescription.trim() || null,
+            sourceUrl: evidenceURL.trim(),
+            claimedRightsholder: claimedRightsholder.trim(),
+            strength: evidenceStrength,
+          },
+        ],
+      }, token);
+
       onSubmitted?.({
         disputeId: result.disputeId?.toString(),
         txHash: result.hash,
@@ -267,7 +350,10 @@ export default function ReportContentModal({
   const isDisabled =
     pending ||
     loadingProtection ||
+    !primaryEvidenceTitle.trim() ||
     !evidenceURL.trim() ||
+    !claimedRightsholder.trim() ||
+    !narrativeSummary.trim() ||
     !protection?.tokenId ||
     !protection.attested ||
     reportingPolicy?.requiresHumanVerification ||
@@ -421,6 +507,52 @@ export default function ReportContentModal({
           </div>
         )}
 
+        {/* Primary evidence kind */}
+        <div style={fieldGroupStyle}>
+          <label style={labelStyle}>Primary Evidence Type *</label>
+          <select
+            value={primaryEvidenceKind}
+            onChange={(e) => setPrimaryEvidenceKind(e.target.value as RightsEvidenceKind)}
+            disabled={!!alreadyReported}
+            style={inputStyle}
+          >
+            {PRIMARY_EVIDENCE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <span style={hintStyle}>
+            {PRIMARY_EVIDENCE_OPTIONS.find((option) => option.value === primaryEvidenceKind)?.hint}
+          </span>
+        </div>
+
+        {/* Evidence title */}
+        <div style={fieldGroupStyle}>
+          <label style={labelStyle}>Evidence Title *</label>
+          <input
+            type="text"
+            placeholder="Official release page, catalog match, account-control proof..."
+            value={primaryEvidenceTitle}
+            onChange={(e) => setPrimaryEvidenceTitle(e.target.value)}
+            disabled={!!alreadyReported}
+            style={inputStyle}
+          />
+        </div>
+
+        {/* Claimed rightsholder */}
+        <div style={fieldGroupStyle}>
+          <label style={labelStyle}>Claimed Rightsholder *</label>
+          <input
+            type="text"
+            placeholder="Artist, label, distributor, or rights owner"
+            value={claimedRightsholder}
+            onChange={(e) => setClaimedRightsholder(e.target.value)}
+            disabled={!!alreadyReported}
+            style={inputStyle}
+          />
+        </div>
+
         {/* Evidence URL */}
         <div style={fieldGroupStyle}>
           <label style={labelStyle}>Evidence URL *</label>
@@ -449,16 +581,48 @@ export default function ReportContentModal({
           </span>
         </div>
 
-        {/* Description */}
+        {/* Evidence strength */}
         <div style={fieldGroupStyle}>
-          <label style={labelStyle}>Description</label>
+          <label style={labelStyle}>Evidence Strength *</label>
+          <select
+            value={evidenceStrength}
+            onChange={(e) => setEvidenceStrength(e.target.value as RightsEvidenceStrength)}
+            disabled={!!alreadyReported}
+            style={inputStyle}
+          >
+            {STRENGTH_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Supporting detail */}
+        <div style={fieldGroupStyle}>
+          <label style={labelStyle}>Supporting Detail</label>
           <textarea
-            placeholder="Describe why you believe this content is stolen..."
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Optional notes about the linked evidence item..."
+            value={primaryEvidenceDescription}
+            onChange={(e) => setPrimaryEvidenceDescription(e.target.value)}
+            disabled={!!alreadyReported}
+            style={{ ...inputStyle, minHeight: "84px", resize: "vertical" }}
+          />
+        </div>
+
+        {/* Narrative summary */}
+        <div style={fieldGroupStyle}>
+          <label style={labelStyle}>Narrative Summary *</label>
+          <textarea
+            placeholder="Explain why this report matters, what right is being claimed, and how this evidence supports it..."
+            value={narrativeSummary}
+            onChange={(e) => setNarrativeSummary(e.target.value)}
             disabled={!!alreadyReported}
             style={{ ...inputStyle, minHeight: "100px", resize: "vertical" }}
           />
+          <span style={hintStyle}>
+            Reports need both a primary evidence record and a plain-language summary.
+          </span>
         </div>
 
         {/* Error */}

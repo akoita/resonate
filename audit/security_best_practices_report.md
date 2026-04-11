@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Reviewed the current copyright and content-protection branch with emphasis on the touched backend trust/contracts changes and related frontend verification surfaces. No new Critical or High findings were introduced by this branch.
+Reviewed the current copyright and content-protection branch with emphasis on the typed rights-evidence rollout, dispute-report changes, ingestion/result handling, and the restricted-release owner playback fixes. No new Critical or High findings were introduced by this branch.
 
 ## Critical Findings
 
@@ -34,5 +34,6 @@ None.
 
 ## Notes
 
-- The changed branch files under `backend/src/modules/trust/`, `backend/src/modules/contracts/contracts.service.ts`, and the touched frontend verification/copy surfaces did not present new auth, injection, or secret-handling regressions.
+- The changed branch files under `backend/src/modules/contracts/`, `backend/src/modules/rights/`, `backend/src/modules/ingestion/`, and the touched frontend release/dispute surfaces did not present new auth, injection, or secret-handling regressions.
 - Raw Prisma SQL usage found in `backend/src/main.ts` is parameterized template usage and was not treated as a SQL injection finding in this review.
+- The new typed evidence submission path stores structured metadata through Prisma creates/updates rather than raw SQL or dynamic code execution, and the new owner-scoped track stream path remains protected by JWT auth plus ownership checks.

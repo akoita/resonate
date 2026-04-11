@@ -52,6 +52,22 @@ describe('API Client', () => {
     });
   });
 
+  describe('getReleaseTrackStreamUrl', () => {
+    it('constructs correct public track stream URL', () => {
+      expect(api.getReleaseTrackStreamUrl('release-123', 'track-456')).toBe(
+        'http://test-api:3000/catalog/releases/release-123/tracks/track-456/stream',
+      );
+    });
+
+    it('constructs owner-scoped track stream URL when requested', () => {
+      expect(
+        api.getReleaseTrackStreamUrl('release-123', 'track-456', { ownerScoped: true }),
+      ).toBe(
+        'http://test-api:3000/catalog/me/releases/release-123/tracks/track-456/stream',
+      );
+    });
+  });
+
   describe('fetchNonce', () => {
     it('sends POST to /auth/nonce with address', async () => {
       mockFetch.mockResolvedValueOnce({
@@ -418,6 +434,53 @@ describe('API Client', () => {
       expect(url).toBe('http://test-api:3000/metadata/curators/0xabc/verification');
       expect(opts.method).toBe('POST');
       expect(JSON.parse(opts.body)).toEqual({ provider: 'mock', proof: 'resonate-human' });
+    });
+
+    it('submits a typed rights evidence bundle', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            id: 'bundle-1',
+            subjectType: 'dispute',
+            subjectId: 'dispute_1_31337',
+            submittedByRole: 'reporter',
+            submittedByAddress: '0xabc',
+            purpose: 'dispute_report',
+            summary: 'Original publication proof.',
+            evidences: [],
+          }),
+      });
+
+      await api.submitRightsEvidenceBundle({
+        subjectType: 'dispute',
+        subjectId: 'dispute_1_31337',
+        submittedByRole: 'reporter',
+        submittedByAddress: '0xabc',
+        purpose: 'dispute_report',
+        summary: 'Original publication proof.',
+        evidences: [
+          {
+            kind: 'prior_publication',
+            title: 'Canonical release page',
+            sourceUrl: 'https://example.com/original',
+            claimedRightsholder: 'Meta Artist',
+            strength: 'high',
+          },
+        ],
+      }, 'test-token');
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/metadata/evidence/bundles');
+      expect(opts.method).toBe('POST');
+      expect(opts.headers.get('Authorization')).toBe('Bearer test-token');
+      expect(JSON.parse(opts.body)).toMatchObject({
+        subjectType: 'dispute',
+        subjectId: 'dispute_1_31337',
+        submittedByRole: 'reporter',
+        purpose: 'dispute_report',
+      });
     });
   });
 });
