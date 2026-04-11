@@ -115,6 +115,13 @@ backend-dev: dev-clean
 web-dev: dev-clean
 	cd web && NEXT_PUBLIC_API_URL=http://localhost:3000 npm run dev
 
+grant-admin-dev:
+	@if [ -z "$(ADDRESS)" ]; then \
+		echo "Usage: make grant-admin-dev ADDRESS=0x..."; \
+		exit 1; \
+	fi
+	./backend/scripts/grant-admin-dev.sh "$(ADDRESS)"
+
 db-reset:
 	cd backend && npx prisma migrate reset --force
 

@@ -19,7 +19,7 @@ After adding the marketplace, use `/plugin menu` to browse and install individua
 
 ## Antigravity Workflows (Agent-Agnostic)
 
-The three highest-priority security skills have been ported to `.agent/workflows/` and work with **any** AI coding agent (Antigravity, Copilot, etc.):
+The three highest-priority security skills have been ported to `.agents/workflows/` and work with **any** AI coding agent (Antigravity, Copilot, etc.):
 
 | Slash command              | What it does                                                  | Source                           |
 | -------------------------- | ------------------------------------------------------------- | -------------------------------- |
@@ -53,7 +53,7 @@ The three highest-priority security skills have been ported to `.agent/workflows
 
 | Plugin                | What it does                      | When to use                                                                     |
 | --------------------- | --------------------------------- | ------------------------------------------------------------------------------- |
-| `planning-with-files` | Structured file-based planning    | Complex multi-phase features (we partially cover this with `.agent/workflows/`) |
+| `planning-with-files` | Structured file-based planning    | Complex multi-phase features (we partially cover this with `.agents/workflows/`) |
 | `openai-playwright`   | Playwright test generation        | When writing new E2E tests (we already use Playwright)                          |
 | `ffuf-web-fuzzing`    | Web fuzzing with ffuf             | Security audits on API endpoints                                                |
 | `humanizer`           | Humanize AI-generated text        | Documentation and content writing                                               |

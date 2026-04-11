@@ -52,6 +52,24 @@ const STEM_NFT_ADDRESSES: Record<number, () => string | undefined> = {
   84532: () => process.env.BASE_SEPOLIA_STEM_NFT_ADDRESS,
 };
 
+function getReleaseMetadataUriCandidates(title: string): string[] {
+  const canonicalSlug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const legacySlug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-");
+
+  return Array.from(
+    new Set(
+      [canonicalSlug, legacySlug]
+        .filter(Boolean)
+        .map((slug) => `resonate://release/${slug}`),
+    ),
+  );
+}
+
 type MintAuthorizationInput = {
   stemId: string;
   chainId: number;
@@ -274,17 +292,13 @@ export class MintAuthorizationService {
       );
     }
 
-    const releaseSlug = release.title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-    const metadataURI = `resonate://release/${releaseSlug}`;
+    const metadataUris = getReleaseMetadataUriCandidates(release.title);
 
     const attestation = await prisma.contentAttestation.findFirst({
       where: {
         chainId,
         attesterAddress: artistAddress,
-        metadataURI,
+        metadataURI: { in: metadataUris },
       },
       orderBy: { attestedAt: "desc" },
     });

@@ -49,6 +49,7 @@ model Artist {
   user          User          @relation(fields: [userId], references: [id])
   releases      Release[]
   creatorTrust  CreatorTrust?
+  rightsUpgradeRequests ReleaseRightsUpgradeRequest[]
 }
 
 model Release {
@@ -78,6 +79,7 @@ model Release {
   rightsEvaluatedAt    DateTime?
   artist               Artist    @relation(fields: [artistId], references: [id])
   tracks               Track[]
+  rightsUpgradeRequests ReleaseRightsUpgradeRequest[]
 
   @@index([rightsRoute])
 }
@@ -607,10 +609,35 @@ enum RightsEvidenceBundlePurpose {
   creator_response
   ops_review
   jury_packet
+  rights_upgrade_request
+}
+
+model ReleaseRightsUpgradeRequest {
+  id                       String   @id @default(uuid())
+  releaseId                String
+  artistId                 String
+  requestedByAddress       String
+  status                   String   @default("submitted")
+  requestedRoute           String   @default("STANDARD_ESCROW")
+  currentRouteAtSubmission String?
+  summary                  String?  @db.Text
+  decisionReason           String?  @db.Text
+  reviewedBy               String?
+  reviewedAt               DateTime?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+  release                  Release  @relation(fields: [releaseId], references: [id])
+  artist                   Artist   @relation(fields: [artistId], references: [id])
+  evidenceBundles          RightsEvidenceBundle[]
+
+  @@index([releaseId, createdAt])
+  @@index([artistId, createdAt])
+  @@index([status, createdAt])
 }
 
 model RightsEvidenceBundle {
   id                 String                     @id @default(uuid())
+  rightsUpgradeRequestId String?
   subjectType        RightsEvidenceSubjectType
   subjectId          String
   submittedByRole    RightsEvidenceRole
@@ -620,10 +647,12 @@ model RightsEvidenceBundle {
   createdAt          DateTime                   @default(now())
   updatedAt          DateTime                   @updatedAt
   evidences          RightsEvidence[]
+  rightsUpgradeRequest ReleaseRightsUpgradeRequest? @relation(fields: [rightsUpgradeRequestId], references: [id])
 
   @@index([subjectType, subjectId])
   @@index([purpose])
   @@index([submittedByRole])
+  @@index([rightsUpgradeRequestId])
 }
 
 model RightsEvidence {

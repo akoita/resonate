@@ -861,7 +861,8 @@ export function useAttestAndStake() {
       contentHash: Hex;         // keccak256 of the audio file(s)
       fingerprintHash: Hex;     // keccak256 of a client-side fingerprint (or placeholder)
       metadataURI: string;      // Release metadata URI (e.g., IPFS or API endpoint)
-      stakeAmountWei: bigint;   // Amount to stake (from trust tier)
+      stakeAmountWei?: bigint;  // Amount to stake (from trust tier)
+      includeStake?: boolean;   // Set false for attestation-only flows
     }) => {
       if (status !== "authenticated" || !address) {
         throw new Error("Wallet not connected");
@@ -910,6 +911,7 @@ export function useAttestAndStake() {
         const existingAttester = attestation[3] as Address;
         const attestationValid = Boolean(attestation[5]);
         const stakeActive = Boolean(stakeInfo[2]);
+        const shouldStake = params.includeStake ?? true;
 
         if (
           attestationValid &&
@@ -934,7 +936,7 @@ export function useAttestAndStake() {
           });
         }
 
-        if (!stakeActive) {
+        if (shouldStake && !stakeActive) {
           calls.push({
             to: cpAddress,
             data: encodeFunctionData({
@@ -942,7 +944,7 @@ export function useAttestAndStake() {
               functionName: "stakeForRelease",
               args: [releaseId],
             }),
-            value: params.stakeAmountWei,
+            value: params.stakeAmountWei ?? 0n,
           });
         }
 

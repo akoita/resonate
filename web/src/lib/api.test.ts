@@ -329,9 +329,9 @@ describe('API Client', () => {
         (URL as typeof URL & { createObjectURL: (blob: Blob) => string }).createObjectURL =
           originalCreateObjectURL;
       } else {
-        delete (URL as typeof URL & { createObjectURL?: (blob: Blob) => string }).createObjectURL;
+        Reflect.deleteProperty(URL as unknown as Record<string, unknown>, "createObjectURL");
       }
-      delete (globalThis as typeof globalThis & { window?: unknown }).window;
+      Reflect.deleteProperty(globalThis as unknown as Record<string, unknown>, "window");
     });
 
     it('does not set artworkUrl when artworkMimeType is null', async () => {
@@ -481,6 +481,82 @@ describe('API Client', () => {
         submittedByRole: 'reporter',
         purpose: 'dispute_report',
       });
+    });
+
+    it('submits a release rights-upgrade request', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            id: 'req-1',
+            releaseId: 'rel-1',
+            artistId: 'artist-1',
+            requestedByAddress: '0xabc',
+            status: 'submitted',
+            requestedRoute: 'STANDARD_ESCROW',
+            currentRouteAtSubmission: 'LIMITED_MONITORING',
+            summary: 'I control the official distributor dashboard.',
+            createdAt: '2026-04-11T00:00:00.000Z',
+            updatedAt: '2026-04-11T00:00:00.000Z',
+            evidenceBundles: [],
+          }),
+      });
+
+      await api.submitReleaseRightsUpgradeRequest(
+        'rel-1',
+        {
+          summary: 'I control the official distributor dashboard.',
+          requestedRoute: 'STANDARD_ESCROW',
+          evidences: [
+            {
+              kind: 'proof_of_control',
+              title: 'Distributor dashboard',
+              sourceUrl: 'https://example.com/dashboard',
+              claimedRightsholder: 'Meta Artist',
+              strength: 'high',
+            },
+          ],
+        },
+        'test-token',
+      );
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/metadata/release-rights/releases/rel-1/request');
+      expect(opts.method).toBe('POST');
+      expect(opts.headers.get('Authorization')).toBe('Bearer test-token');
+      expect(JSON.parse(opts.body)).toMatchObject({
+        summary: 'I control the official distributor dashboard.',
+        requestedRoute: 'STANDARD_ESCROW',
+      });
+    });
+
+    it('lists pending release rights-upgrade requests', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify([
+            {
+              id: 'req-1',
+              releaseId: 'rel-1',
+              artistId: 'artist-1',
+              requestedByAddress: '0xabc',
+              status: 'submitted',
+              requestedRoute: 'STANDARD_ESCROW',
+              currentRouteAtSubmission: 'LIMITED_MONITORING',
+              summary: 'Please review this release.',
+              createdAt: '2026-04-11T00:00:00.000Z',
+              updatedAt: '2026-04-11T00:00:00.000Z',
+            },
+          ]),
+      });
+
+      await api.listPendingReleaseRightsUpgradeRequests('test-token', 50);
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/metadata/release-rights/requests/pending?limit=50');
+      expect(opts.headers.get('Authorization')).toBe('Bearer test-token');
     });
   });
 });

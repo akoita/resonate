@@ -1,7 +1,9 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuth } from "../auth/AuthProvider";
 
 const PRIMARY_ITEMS = [
   {
@@ -138,6 +140,27 @@ const SECONDARY_ITEMS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { role } = useAuth();
+  const hydrated = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+
+  const adminItems = hydrated && role === "admin"
+    ? [
+        {
+          name: "Admin Review",
+          href: "/disputes/admin",
+          icon: (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7l7-4Z" />
+              <path d="m9 12 2 2 4-4" />
+            </svg>
+          )
+        },
+      ]
+    : [];
 
   return (
     <aside className="app-sidebar">
@@ -170,6 +193,19 @@ export default function Sidebar() {
       <nav className="sidebar-nav secondary">
         <div className="nav-divider" />
         {SECONDARY_ITEMS.map((item) => {
+          const isActive = pathname === item.href;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`sidebar-link ${isActive ? 'active' : ''}`}
+            >
+              <span className="link-icon">{item.icon}</span>
+              <span className="link-text">{item.name}</span>
+            </Link>
+          );
+        })}
+        {adminItems.map((item) => {
           const isActive = pathname === item.href;
           return (
             <Link

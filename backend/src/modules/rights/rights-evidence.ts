@@ -54,6 +54,7 @@ export const RIGHTS_EVIDENCE_BUNDLE_PURPOSES = [
   "creator_response",
   "ops_review",
   "jury_packet",
+  "rights_upgrade_request",
 ] as const satisfies readonly RightsEvidenceBundlePurpose[];
 
 const DISPUTE_REPORT_PRIMARY_KINDS = new Set<RightsEvidenceKind>([

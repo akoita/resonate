@@ -491,6 +491,10 @@ export type ReleaseContentProtectionData = {
   attestedAt: string;
   provenanceStatus?: string;
   rightsVerificationStatus?: string;
+  rightsUpgradeRequestStatus?: ReleaseRightsUpgradeRequestStatus | null;
+  rightsUpgradeRequestedRoute?: "STANDARD_ESCROW" | "TRUSTED_FAST_PATH" | null;
+  rightsUpgradeDecisionReason?: string | null;
+  rightsUpgradeReviewedAt?: string | null;
 };
 
 export type RightsEvidenceSubjectType = "upload" | "release" | "track" | "dispute";
@@ -515,7 +519,20 @@ export type RightsEvidenceBundlePurpose =
   | "dispute_report"
   | "creator_response"
   | "ops_review"
-  | "jury_packet";
+  | "jury_packet"
+  | "rights_upgrade_request";
+
+export type ReleaseRightsUpgradeRequestStatus =
+  | "submitted"
+  | "under_review"
+  | "more_evidence_requested"
+  | "approved_standard_escrow"
+  | "approved_trusted_fast_path"
+  | "denied";
+
+export type ReleaseRightsUpgradeRequestedRoute =
+  | "STANDARD_ESCROW"
+  | "TRUSTED_FAST_PATH";
 
 export type RightsEvidenceInput = {
   kind: RightsEvidenceKind;
@@ -557,6 +574,7 @@ export type RightsEvidenceRecord = RightsEvidenceInput & {
 
 export type RightsEvidenceBundleRecord = {
   id: string;
+  rightsUpgradeRequestId?: string | null;
   subjectType: RightsEvidenceSubjectType;
   subjectId: string;
   submittedByRole: RightsEvidenceRole;
@@ -565,6 +583,35 @@ export type RightsEvidenceBundleRecord = {
   summary?: string | null;
   createdAt: string;
   evidences: RightsEvidenceRecord[];
+};
+
+export type ReleaseRightsUpgradeRequestRecord = {
+  id: string;
+  releaseId: string;
+  artistId: string;
+  requestedByAddress: string;
+  status: ReleaseRightsUpgradeRequestStatus;
+  requestedRoute: ReleaseRightsUpgradeRequestedRoute;
+  currentRouteAtSubmission?: string | null;
+  summary?: string | null;
+  decisionReason?: string | null;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  release?: {
+    id: string;
+    title: string;
+    rightsRoute?: string | null;
+    rightsFlags?: string[] | null;
+    rightsReason?: string | null;
+    artist?: {
+      id: string;
+      userId: string;
+      displayName: string;
+    } | null;
+  } | null;
+  evidenceBundles?: RightsEvidenceBundleRecord[];
 };
 
 export async function getTrustTier(artistId: string, token: string) {
@@ -632,6 +679,78 @@ export async function submitRightsEvidenceBundle(
     method: "POST",
     body: JSON.stringify(input),
   }, token);
+}
+
+export async function getLatestReleaseRightsUpgradeRequest(
+  releaseId: string,
+  token: string,
+) {
+  return apiRequest<ReleaseRightsUpgradeRequestRecord | null>(
+    `/metadata/release-rights/releases/${releaseId}`,
+    {},
+    token,
+  );
+}
+
+export async function submitReleaseRightsUpgradeRequest(
+  releaseId: string,
+  input: {
+    summary: string;
+    requestedRoute?: ReleaseRightsUpgradeRequestedRoute;
+    evidences: RightsEvidenceInput[];
+  },
+  token: string,
+) {
+  return apiRequest<ReleaseRightsUpgradeRequestRecord>(
+    `/metadata/release-rights/releases/${releaseId}/request`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export async function listPendingReleaseRightsUpgradeRequests(
+  token: string,
+  limit = 20,
+) {
+  return apiRequest<ReleaseRightsUpgradeRequestRecord[]>(
+    `/metadata/release-rights/requests/pending?limit=${limit}`,
+    {},
+    token,
+  );
+}
+
+export async function getReleaseRightsUpgradeRequestById(
+  requestId: string,
+  token: string,
+) {
+  return apiRequest<ReleaseRightsUpgradeRequestRecord>(
+    `/metadata/release-rights/requests/${requestId}`,
+    {},
+    token,
+  );
+}
+
+export async function reviewReleaseRightsUpgradeRequest(
+  requestId: string,
+  input: {
+    action: ReleaseRightsUpgradeRequestStatus;
+    decisionReason?: string;
+    note?: string;
+    evidences?: RightsEvidenceInput[];
+  },
+  token: string,
+) {
+  return apiRequest<ReleaseRightsUpgradeRequestRecord>(
+    `/metadata/release-rights/requests/${requestId}/review`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
 }
 
 export async function createRelease(

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import type { ReleaseContentProtectionData } from "../../lib/api";
 import {
   formatEth,
   parseDateToEpochSeconds,
@@ -14,24 +15,6 @@ import {
   type StakeStatus,
 } from "../../lib/stakeConstants";
 
-interface ReleaseProtectionData {
-  tokenId?: string | null;
-  staked: boolean;
-  attested: boolean;
-  stakeAmount: string;
-  depositedAt: string;
-  active: boolean;
-  escrowDays: number;
-  trustTier: string;
-  economicTrustTier?: string;
-  humanVerificationStatus?: string;
-  humanVerifiedAt?: string | null;
-  platformReviewStatus?: string;
-  attestedAt: string;
-  provenanceStatus?: string;
-  rightsVerificationStatus?: string;
-}
-
 interface ReleaseContentProtectionProps {
   /** Release ID to look up content protection status via backend. */
   releaseId: string;
@@ -44,7 +27,7 @@ interface ReleaseContentProtectionProps {
  * Falls back gracefully if the endpoint is not available.
  */
 export default function ReleaseContentProtection({ releaseId }: ReleaseContentProtectionProps) {
-  const [data, setData] = useState<ReleaseProtectionData | null>(null);
+  const [data, setData] = useState<ReleaseContentProtectionData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -53,7 +36,7 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
         if (!r.ok) throw new Error("Not available");
         return r.json();
       })
-      .then((d: ReleaseProtectionData) => {
+      .then((d: ReleaseContentProtectionData) => {
         setData(d);
         setLoading(false);
       })
@@ -168,6 +151,33 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
           : data.rightsVerificationStatus === "rights_disputed"
             ? "Rights disputed"
             : "Not independently reviewed";
+  const rightsUpgradeLabel =
+    data.rightsUpgradeRequestStatus === "submitted"
+      ? "Submitted"
+      : data.rightsUpgradeRequestStatus === "under_review"
+        ? "Under review"
+        : data.rightsUpgradeRequestStatus === "more_evidence_requested"
+          ? "More evidence needed"
+          : data.rightsUpgradeRequestStatus === "approved_standard_escrow"
+            ? "Approved: Standard Escrow"
+            : data.rightsUpgradeRequestStatus === "approved_trusted_fast_path"
+              ? "Approved: Trusted Fast Path"
+              : data.rightsUpgradeRequestStatus === "denied"
+                ? "Denied"
+                : "No active request";
+  const rightsUpgradeActive =
+    data.rightsUpgradeRequestStatus === "submitted" ||
+    data.rightsUpgradeRequestStatus === "under_review" ||
+    data.rightsUpgradeRequestStatus === "more_evidence_requested";
+  const rightsUpgradeColor =
+    data.rightsUpgradeRequestStatus === "approved_standard_escrow" ||
+    data.rightsUpgradeRequestStatus === "approved_trusted_fast_path"
+      ? "#10b981"
+      : rightsUpgradeActive
+        ? "#f59e0b"
+        : data.rightsUpgradeRequestStatus === "denied"
+          ? "#ef4444"
+          : "#6b7280";
 
   return (
     <section style={sectionStyle}>
@@ -197,8 +207,8 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
         </div>
       </div>
 
+      {/* Top row: Economic signals */}
       <div style={gridStyle}>
-        {/* Stake Amount */}
         <div style={statStyle}>
           <span style={statLabelStyle}>Stake</span>
           <span style={{ fontWeight: 600, fontSize: "15px" }}>
@@ -206,7 +216,6 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
           </span>
         </div>
 
-        {/* Trust Tier */}
         <div style={statStyle}>
           <span style={statLabelStyle}>Economic Trust</span>
           <span style={{ fontWeight: 600, fontSize: "15px", color: tierColor }}>
@@ -214,20 +223,6 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
           </span>
         </div>
 
-        <div style={statStyle}>
-          <span style={statLabelStyle}>Human Verification</span>
-          <span
-            style={{
-              fontWeight: 500,
-              fontSize: "15px",
-              color: humanVerificationColor,
-            }}
-          >
-            {humanVerificationLabel}
-          </span>
-        </div>
-
-        {/* Escrow */}
         <div style={statStyle}>
           <span style={statLabelStyle}>Escrow</span>
           <span style={{ fontWeight: 500, fontSize: "15px" }}>
@@ -241,23 +236,27 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
                 )}
               </>
             ) : (
-              <>
-                {data.escrowDays}d policy
-              </>
+              <>{data.escrowDays}d policy</>
             )}
           </span>
         </div>
+      </div>
 
-        {/* Provenance */}
+      {/* Divider */}
+      <div style={{ height: "1px", background: "rgba(255,255,255,0.05)", margin: "4px 0" }} />
+
+      {/* Bottom row: Verification & rights signals */}
+      <div style={gridStyle}>
+        <div style={statStyle}>
+          <span style={statLabelStyle}>Human Verification</span>
+          <span style={{ fontWeight: 500, fontSize: "14px", color: humanVerificationColor }}>
+            {humanVerificationLabel}
+          </span>
+        </div>
+
         <div style={statStyle}>
           <span style={statLabelStyle}>Provenance</span>
-          <span
-            style={{
-              fontWeight: 500,
-              fontSize: "15px",
-              color: isSelfAttested ? "#10b981" : "#6b7280",
-            }}
-          >
+          <span style={{ fontWeight: 500, fontSize: "14px", color: isSelfAttested ? "#10b981" : "#6b7280" }}>
             {provenanceLabel}
           </span>
         </div>
@@ -267,7 +266,7 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
           <span
             style={{
               fontWeight: 500,
-              fontSize: "15px",
+              fontSize: "14px",
               color:
                 data.rightsVerificationStatus === "rights_disputed"
                   ? "#ef4444"
@@ -279,6 +278,18 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
             {rightsReviewLabel}
           </span>
         </div>
+
+        <div style={{
+          ...statStyle,
+          ...(rightsUpgradeActive
+            ? { border: `1px solid ${rightsUpgradeColor}22`, background: `${rightsUpgradeColor}08` }
+            : {}),
+        }}>
+          <span style={statLabelStyle}>Rights Upgrade</span>
+          <span style={{ fontWeight: 600, fontSize: "14px", color: rightsUpgradeColor }}>
+            {rightsUpgradeLabel}
+          </span>
+        </div>
       </div>
 
       <div
@@ -288,10 +299,11 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
           background: "rgba(255,255,255,0.03)",
           borderRadius: "10px",
           fontSize: "12px",
-          opacity: 0.72,
+          lineHeight: 1.55,
+          color: "rgba(255,255,255,0.48)",
         }}
       >
-        Economic trust tier, human verification, provenance, and release rights review are tracked separately. Human verification confirms the creator wallet passed a personhood check; it does not, by itself, mean the platform independently verified ownership rights.
+        These signals are tracked independently. Human verification confirms the creator wallet passed a personhood check — it does not mean the platform verified ownership rights.
       </div>
     </section>
   );
@@ -315,8 +327,8 @@ const headerStyle: React.CSSProperties = {
 
 const gridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-  gap: "16px",
+  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+  gap: "10px",
 };
 
 const statStyle: React.CSSProperties = {

@@ -28,6 +28,13 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+function slugifyReleaseTitle(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 type Stem = {
   id: string;
   name: string;
@@ -59,7 +66,7 @@ export default function ArtistUploadPage() {
   const { attestAndStake, pending: stakePending } = useAttestAndStake();
 
   // Stake is required unless tier is verified (waived) or trust data is still loading
-  const stakeRequired = !trustLoading && trustTier && trustTier.stakeAmountWei !== "0";
+  const stakeRequired = Boolean(!trustLoading && trustTier && trustTier.stakeAmountWei !== "0");
   const stakeReady = !stakeRequired || stakeAcknowledged;
 
   // Form state
@@ -132,12 +139,14 @@ export default function ArtistUploadPage() {
         throw new Error("Not authenticated");
       }
 
-      // Step 1: On-chain attest + stake (if required by trust tier)
-      if (stakeRequired && trustTier) {
+      // Step 1: Always attest on-chain; add stake only when the current trust tier requires it.
+      {
         addToast({
           type: "info",
           title: "Content Protection",
-          message: `Depositing ${Number(trustTier.stakeAmountWei) / 1e18} ETH stake. You'll be prompted to sign with your passkey.`,
+          message: stakeRequired && trustTier
+            ? `Attesting this release and depositing ${Number(trustTier.stakeAmountWei) / 1e18} ETH stake. You'll be prompted to sign with your passkey.`
+            : "Attesting this release on-chain before upload. You'll be prompted to sign with your passkey.",
           duration: 5000,
         });
 
@@ -160,19 +169,22 @@ export default function ArtistUploadPage() {
         // Use contentHash as fingerprintHash placeholder (real fingerprint computed server-side)
         const fingerprintHash = contentHash;
 
-        const metadataURI = `resonate://release/${formData.releaseTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+        const metadataURI = `resonate://release/${slugifyReleaseTitle(formData.releaseTitle)}`;
 
         await attestAndStake({
           contentHash,
           fingerprintHash,
           metadataURI,
-          stakeAmountWei: BigInt(trustTier.stakeAmountWei),
+          includeStake: stakeRequired,
+          stakeAmountWei: stakeRequired && trustTier ? BigInt(trustTier.stakeAmountWei) : 0n,
         });
 
         addToast({
           type: "success",
-          title: "Stake deposited!",
-          message: `${Number(trustTier.stakeAmountWei) / 1e18} ETH staked. Now uploading release...`,
+          title: stakeRequired ? "Stake deposited!" : "Content Protection attested!",
+          message: stakeRequired && trustTier
+            ? `${Number(trustTier.stakeAmountWei) / 1e18} ETH staked. Now uploading release...`
+            : "Release attested on-chain. Now uploading release...",
           duration: 5000,
         });
       }
