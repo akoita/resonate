@@ -126,8 +126,8 @@ describe("EventsGateway", () => {
     gateway.onModuleDestroy();
   });
 
-  it("broadcasts release rights request updates", () => {
-    const { gateway, eventBus, emit } = createGateway();
+  it("delivers release rights request updates only to targeted wallet rooms", () => {
+    const { gateway, eventBus, to, roomEmit } = createGateway();
 
     eventBus.publish({
       eventName: "release_rights.request_updated",
@@ -136,9 +136,12 @@ describe("EventsGateway", () => {
       requestId: "rr-1",
       releaseId: "rel-1",
       status: "submitted",
+      walletAddresses: ["0xabc", "0xdef"],
     });
 
-    expect(emit).toHaveBeenCalledWith(
+    expect(to).toHaveBeenNthCalledWith(1, "wallet:0xabc");
+    expect(to).toHaveBeenNthCalledWith(2, "wallet:0xdef");
+    expect(roomEmit).toHaveBeenCalledWith(
       "release_rights.request_updated",
       expect.objectContaining({
         requestId: "rr-1",

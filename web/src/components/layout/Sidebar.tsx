@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
@@ -141,26 +141,7 @@ const SECONDARY_ITEMS = [
 export default function Sidebar() {
   const pathname = usePathname();
   const { role } = useAuth();
-  const hydrated = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  );
-
-  const adminItems = hydrated && role === "admin"
-    ? [
-        {
-          name: "Admin Review",
-          href: "/disputes/admin",
-          icon: (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7l7-4Z" />
-              <path d="m9 12 2 2 4-4" />
-            </svg>
-          )
-        },
-      ]
-    : [];
+  const showAdminLink = role === "admin";
 
   return (
     <aside className="app-sidebar">
@@ -205,19 +186,21 @@ export default function Sidebar() {
             </Link>
           );
         })}
-        {adminItems.map((item) => {
-          const isActive = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`sidebar-link ${isActive ? 'active' : ''}`}
-            >
-              <span className="link-icon">{item.icon}</span>
-              <span className="link-text">{item.name}</span>
-            </Link>
-          );
-        })}
+        <Link
+          href="/disputes/admin"
+          className={`sidebar-link ${pathname === "/disputes/admin" ? 'active' : ''}`}
+          aria-hidden={!showAdminLink}
+          tabIndex={showAdminLink ? 0 : -1}
+          style={showAdminLink ? undefined : hiddenAdminLinkStyle}
+        >
+          <span className="link-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7l7-4Z" />
+              <path d="m9 12 2 2 4-4" />
+            </svg>
+          </span>
+          <span className="link-text">Admin Review</span>
+        </Link>
       </nav>
 
       <div className="sidebar-footer">
@@ -235,3 +218,15 @@ export default function Sidebar() {
     </aside>
   );
 }
+
+const hiddenAdminLinkStyle: CSSProperties = {
+  opacity: 0,
+  pointerEvents: "none",
+  maxHeight: 0,
+  overflow: "hidden",
+  paddingTop: 0,
+  paddingBottom: 0,
+  marginTop: 0,
+  marginBottom: 0,
+  border: "none",
+};

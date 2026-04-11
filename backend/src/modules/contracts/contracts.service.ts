@@ -11,7 +11,7 @@ import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
 import { createPublicClient, http, type Address } from "viem";
 import { foundry, sepolia, baseSepolia } from "viem/chains";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import type {
   ContractStemMintedEvent,
   ContractStemListedEvent,
@@ -165,7 +165,6 @@ export class ContractsService implements OnModuleInit {
   private readonly releaseRightsUpgradePendingStatuses = [
     "submitted",
     "under_review",
-    "more_evidence_requested",
   ] as const;
 
   private sanitizeRequestedUpgradeRoute(
@@ -1588,9 +1587,13 @@ export class ContractsService implements OnModuleInit {
 
   private async persistEvidenceBundle(
     normalized: NormalizedRightsEvidenceBundle,
-    options?: { rightsUpgradeRequestId?: string | null },
+    options?: {
+      rightsUpgradeRequestId?: string | null;
+      db?: Prisma.TransactionClient;
+    },
   ) {
-    return prisma.rightsEvidenceBundle.create({
+    const db = options?.db ?? prisma;
+    return db.rightsEvidenceBundle.create({
       data: {
         rightsUpgradeRequestId: options?.rightsUpgradeRequestId || null,
         subjectType: normalized.subjectType,
@@ -1724,40 +1727,42 @@ export class ContractsService implements OnModuleInit {
 
     const requestedRoute = this.sanitizeRequestedUpgradeRoute(input.requestedRoute);
 
-    const existingOpen = await prisma.releaseRightsUpgradeRequest.findFirst({
-      where: {
-        releaseId: input.releaseId,
-        status: {
-          in: [...this.releaseRightsUpgradeOpenStatuses],
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (existingOpen) {
-      throw new ConflictException("A rights-upgrade request for this release is already open");
-    }
-
-    const existingMoreEvidenceRequest = await prisma.releaseRightsUpgradeRequest.findFirst({
-      where: {
-        releaseId: input.releaseId,
-        status: "more_evidence_requested",
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
     const normalizedBundle = normalizeEvidenceBundleInput({
       subjectType: "release",
       subjectId: input.releaseId,
       submittedByRole: "creator",
       submittedByAddress: normalizedAddress,
-      purpose: existingMoreEvidenceRequest ? "creator_response" : "rights_upgrade_request",
+      purpose: "rights_upgrade_request",
       summary,
       evidences: input.evidences,
     });
 
     const request = await prisma.$transaction(async (tx) => {
-      return existingMoreEvidenceRequest
+      await tx.$queryRaw`SELECT id FROM "Release" WHERE id = ${input.releaseId} FOR UPDATE`;
+
+      const existingOpen = await tx.releaseRightsUpgradeRequest.findFirst({
+        where: {
+          releaseId: input.releaseId,
+          status: {
+            in: [...this.releaseRightsUpgradeOpenStatuses],
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (existingOpen) {
+        throw new ConflictException("A rights-upgrade request for this release is already open");
+      }
+
+      const existingMoreEvidenceRequest = await tx.releaseRightsUpgradeRequest.findFirst({
+        where: {
+          releaseId: input.releaseId,
+          status: "more_evidence_requested",
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const requestRecord = existingMoreEvidenceRequest
         ? await tx.releaseRightsUpgradeRequest.update({
             where: { id: existingMoreEvidenceRequest.id },
             data: {
@@ -1780,10 +1785,21 @@ export class ContractsService implements OnModuleInit {
               summary,
             },
           });
-    });
 
-    await this.persistEvidenceBundle(normalizedBundle, {
-      rightsUpgradeRequestId: request.id,
+      await this.persistEvidenceBundle(
+        {
+          ...normalizedBundle,
+          purpose: existingMoreEvidenceRequest ? "creator_response" : "rights_upgrade_request",
+        },
+        {
+          rightsUpgradeRequestId: requestRecord.id,
+          db: tx,
+        },
+      );
+
+      return requestRecord;
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
 
     return this.getLatestReleaseRightsUpgradeRequest(input.releaseId, normalizedAddress, "admin");

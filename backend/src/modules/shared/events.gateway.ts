@@ -320,12 +320,15 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
 
         this.subscriptions.push(this.eventBus.subscribe('release_rights.request_updated', (event: ReleaseRightsRequestUpdatedEvent) => {
             if (this.server) {
-                this.server.emit('release_rights.request_updated', {
-                    requestId: event.requestId,
-                    releaseId: event.releaseId,
-                    status: event.status,
-                    timestamp: event.occurredAt,
-                });
+                const recipients = Array.from(new Set((event.walletAddresses || []).map((value) => value.toLowerCase()).filter(Boolean)));
+                for (const walletAddress of recipients) {
+                    this.server.to(`wallet:${walletAddress}`).emit('release_rights.request_updated', {
+                        requestId: event.requestId,
+                        releaseId: event.releaseId,
+                        status: event.status,
+                        timestamp: event.occurredAt,
+                    });
+                }
             }
         }));
 

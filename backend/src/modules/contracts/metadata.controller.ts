@@ -169,10 +169,23 @@ export class MetadataController {
     );
   }
 
+  private getReleaseRightsRealtimeRecipients(request: {
+    requestedByAddress?: string | null;
+  }) {
+    return Array.from(
+      new Set(
+        [request.requestedByAddress, ...this.getAdminAddresses()]
+          .map((value) => String(value || "").trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    );
+  }
+
   private publishReleaseRightsRequestUpdated(request: {
     id: string;
     releaseId: string;
     status: string;
+    requestedByAddress?: string | null;
   }) {
     this.eventBus?.publish({
       eventName: "release_rights.request_updated" as const,
@@ -181,6 +194,7 @@ export class MetadataController {
       requestId: request.id,
       releaseId: request.releaseId,
       status: request.status,
+      walletAddresses: this.getReleaseRightsRealtimeRecipients(request),
     });
   }
 

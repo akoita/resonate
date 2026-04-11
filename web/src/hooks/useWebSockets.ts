@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { useAuth } from '../components/auth/AuthProvider';
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -76,6 +77,7 @@ export function useWebSockets(
     onGenerationProgress?: (data: GenerationProgressUpdate) => void,
     onReleaseRightsUpdate?: (data: ReleaseRightsRequestUpdate) => void
 ) {
+    const { address } = useAuth();
     const [socket, setSocket] = useState<Socket | null>(null);
     const statusHandlerRef = useRef(onStatusUpdate);
     const progressHandlerRef = useRef(onProgressUpdate);
@@ -127,6 +129,9 @@ export function useWebSockets(
 
         newSocket.on('connect', () => {
             console.log(`[WebSocket] Connected to backend: ${newSocket.id}`);
+            if (address) {
+                newSocket.emit('wallet:join', address.toLowerCase());
+            }
         });
 
         newSocket.on('release.status', (data: ReleaseStatusUpdate) => {
@@ -217,10 +222,13 @@ export function useWebSockets(
 
         return () => {
             console.log('[WebSocket] Cleaning up connection');
+            if (address) {
+                newSocket.emit('wallet:leave', address.toLowerCase());
+            }
             newSocket.disconnect();
             setSocket(null);
         };
-    }, []); // Empty dependency array means this only runs once on mount
+    }, [address]);
 
     return socket;
 }

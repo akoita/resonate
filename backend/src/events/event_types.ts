@@ -505,6 +505,7 @@ export interface ReleaseRightsRequestUpdatedEvent extends BaseEvent {
   requestId: string;
   releaseId: string;
   status: string;
+  walletAddresses: string[];
 }
 
 // ============ Agent Wallet Events ============
