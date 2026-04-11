@@ -739,10 +739,11 @@ model CuratorReputation {
 model Notification {
   id            String   @id @default(uuid())
   walletAddress String
-  type          String // dispute_filed|dispute_resolved|dispute_appealed|evidence_submitted
+  type          String // dispute_* | release_rights_*
   title         String
   message       String
   disputeId     String?
+  releaseId     String?
   read          Boolean  @default(false)
   createdAt     DateTime @default(now())
 

@@ -158,6 +158,118 @@ export class MetadataController {
     private readonly eventBus: EventBus,
   ) { }
 
+  private getAdminAddresses() {
+    return Array.from(
+      new Set(
+        (process.env.ADMIN_ADDRESSES ?? "")
+          .split(",")
+          .map((value) => value.trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    );
+  }
+
+  private publishReleaseRightsRequestUpdated(request: {
+    id: string;
+    releaseId: string;
+    status: string;
+  }) {
+    this.eventBus?.publish({
+      eventName: "release_rights.request_updated" as const,
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      requestId: request.id,
+      releaseId: request.releaseId,
+      status: request.status,
+    });
+  }
+
+  private async notifyAdminsOfReleaseRightsSubmission(request: {
+    id: string;
+    releaseId: string;
+    requestedByAddress: string;
+    release?: { title?: string | null };
+  }) {
+    if (!this.notificationService) {
+      return;
+    }
+
+    const releaseTitle = request.release?.title || "Release";
+    await Promise.all(
+      this.getAdminAddresses().map((walletAddress) =>
+        this.notificationService.createNotification({
+          walletAddress,
+          type: "release_rights_submitted",
+          title: "Marketplace rights request submitted",
+          message: `${releaseTitle} was submitted for marketplace-rights review.`,
+          releaseId: request.releaseId,
+        }),
+      ),
+    );
+  }
+
+  private async notifyCreatorOfReleaseRightsDecision(request: {
+    releaseId: string;
+    status: string;
+    requestedByAddress: string;
+    decisionReason?: string | null;
+    release?: { title?: string | null };
+  }) {
+    if (!this.notificationService) {
+      return;
+    }
+
+    const releaseTitle = request.release?.title || "Release";
+    const typeMap: Record<string, { type: string; title: string; message: string }> = {
+      under_review: {
+        type: "release_rights_under_review",
+        title: "Marketplace rights review started",
+        message: `${releaseTitle} is now under marketplace-rights review.`,
+      },
+      more_evidence_requested: {
+        type: "release_rights_more_evidence_requested",
+        title: "More marketplace-rights evidence requested",
+        message:
+          request.decisionReason ||
+          `${releaseTitle} needs stronger proof before marketplace access can be granted.`,
+      },
+      approved_standard_escrow: {
+        type: "release_rights_approved_standard_escrow",
+        title: "Marketplace rights approved",
+        message:
+          request.decisionReason ||
+          `${releaseTitle} now has marketplace access under the standard escrow route.`,
+      },
+      approved_trusted_fast_path: {
+        type: "release_rights_approved_trusted_fast_path",
+        title: "Marketplace rights approved",
+        message:
+          request.decisionReason ||
+          `${releaseTitle} now has marketplace access under the trusted fast path.`,
+      },
+      denied: {
+        type: "release_rights_denied",
+        title: "Marketplace rights request denied",
+        message:
+          request.decisionReason ||
+          `${releaseTitle} remains restricted because the submitted evidence was not sufficient.`,
+      },
+    };
+
+    const config = typeMap[request.status];
+    if (!config) {
+      return;
+    }
+
+    await this.notificationService.createNotification({
+      walletAddress: request.requestedByAddress,
+      type: config.type,
+      title: config.title,
+      message: config.message,
+      releaseId: request.releaseId,
+    });
+  }
+
   // ============ STATIC ROUTES (must come first) ============
 
   /**
@@ -808,13 +920,22 @@ export class MetadataController {
       evidences: RightsEvidenceDraftInput[];
     },
   ) {
-    return this.contractsService.submitReleaseRightsUpgradeRequest({
+    const request = await this.contractsService.submitReleaseRightsUpgradeRequest({
       releaseId,
       requesterAddress: String(req?.user?.userId || "").toLowerCase(),
       summary: body?.summary,
       requestedRoute: body?.requestedRoute,
       evidences: body?.evidences || [],
     });
+    if (!request) {
+      throw new NotFoundException("Release rights-upgrade request was not created");
+    }
+    const ensuredRequest = request as NonNullable<typeof request>;
+
+    this.publishReleaseRightsRequestUpdated(ensuredRequest);
+    await this.notifyAdminsOfReleaseRightsSubmission(ensuredRequest);
+
+    return ensuredRequest;
   }
 
   /**
@@ -867,7 +988,7 @@ export class MetadataController {
       throw new BadRequestException("Review action is required");
     }
 
-    return this.contractsService.reviewReleaseRightsUpgradeRequest({
+    const request = await this.contractsService.reviewReleaseRightsUpgradeRequest({
       requestId: id,
       action: body.action,
       reviewedBy: String(req?.user?.userId || "").toLowerCase(),
@@ -875,6 +996,15 @@ export class MetadataController {
       note: body.note,
       evidences: body.evidences,
     });
+    if (!request) {
+      throw new NotFoundException("Release rights-upgrade request was not found");
+    }
+    const ensuredRequest = request as NonNullable<typeof request>;
+
+    this.publishReleaseRightsRequestUpdated(ensuredRequest);
+    await this.notifyCreatorOfReleaseRightsDecision(ensuredRequest);
+
+    return ensuredRequest;
   }
 
   /**

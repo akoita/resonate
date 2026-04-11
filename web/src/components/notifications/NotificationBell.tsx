@@ -12,6 +12,12 @@ const typeIcon = (type: string) => {
     case "dispute_resolved": return "\u2696\ufe0f";
     case "dispute_appealed": return "\ud83d\udd04";
     case "evidence_submitted": return "\ud83d\udcce";
+    case "release_rights_submitted": return "\ud83d\udd13";
+    case "release_rights_under_review": return "\ud83d\udd0e";
+    case "release_rights_more_evidence_requested": return "\ud83d\udcc4";
+    case "release_rights_approved_standard_escrow": return "\u2705";
+    case "release_rights_approved_trusted_fast_path": return "\u26a1";
+    case "release_rights_denied": return "\u26d4";
     default: return "\ud83d\udd14";
   }
 };
@@ -29,7 +35,7 @@ const timeAgo = (dateStr: string) => {
 const subscribe = () => () => {};
 
 export default function NotificationBell() {
-  const { address } = useAuth();
+  const { address, role } = useAuth();
   const hasMounted = useSyncExternalStore(subscribe, () => true, () => false);
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useDisputeNotifications(address ?? undefined);
   const [open, setOpen] = useState(false);
@@ -37,6 +43,16 @@ export default function NotificationBell() {
   const router = useRouter();
 
   const getNotificationHref = (notification: DisputeNotification) => {
+    if (notification.type.startsWith("release_rights_")) {
+      if (notification.type === "release_rights_submitted" && role === "admin") {
+        return "/disputes/admin";
+      }
+
+      if (notification.releaseId) {
+        return `/release/${notification.releaseId}`;
+      }
+    }
+
     const query = new URLSearchParams();
 
     if (notification.type === "dispute_filed") {
@@ -49,6 +65,16 @@ export default function NotificationBell() {
 
     const queryString = query.toString();
     return queryString ? `/disputes?${queryString}` : "/disputes";
+  };
+
+  const getNotificationActionHint = (notification: DisputeNotification) => {
+    if (notification.type.startsWith("release_rights_")) {
+      return notification.type === "release_rights_submitted" && role === "admin"
+        ? "Open admin review →"
+        : "Open release →";
+    }
+
+    return "View in dispute center →";
   };
 
   const handleNotificationClick = async (notification: DisputeNotification) => {
@@ -127,7 +153,7 @@ export default function NotificationBell() {
                           {n.message}
                         </div>
                         <div style={notificationActionHintStyle}>
-                          View in dispute center →
+                          {getNotificationActionHint(n)}
                         </div>
                       </div>
                     </div>

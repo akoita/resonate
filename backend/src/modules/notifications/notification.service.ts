@@ -16,6 +16,7 @@ interface NotificationPayload {
   title: string;
   message: string;
   disputeId?: string;
+  releaseId?: string;
 }
 
 @Injectable()
@@ -153,6 +154,7 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
           title: payload.title,
           message: payload.message,
           disputeId: payload.disputeId,
+          releaseId: payload.releaseId,
         },
       });
 
@@ -166,7 +168,8 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
         type: payload.type,
         title: payload.title,
         message: payload.message,
-        disputeId: payload.disputeId || "",
+        disputeId: payload.disputeId,
+        releaseId: payload.releaseId,
       });
 
       this.logger.log(`Created notification ${notification.id} (${payload.type}) for ${payload.walletAddress}`);

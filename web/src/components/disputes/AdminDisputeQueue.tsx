@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { useToast } from "../ui/Toast";
 import { formatEth } from "../../lib/stakeConstants";
 import { useAuth } from "../auth/AuthProvider";
+import { useWebSockets, type ReleaseRightsRequestUpdate } from "../../hooks/useWebSockets";
 import {
   listPendingReleaseRightsUpgradeRequests,
   reviewReleaseRightsUpgradeRequest,
@@ -130,6 +132,7 @@ function formatRightsUpgradeStatusLabel(status: string) {
 
 export default function AdminDisputeQueue() {
   const { token } = useAuth();
+  const { addToast } = useToast();
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [rightsRequests, setRightsRequests] = useState<ReleaseRightsUpgradeRequestRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -156,6 +159,40 @@ export default function AdminDisputeQueue() {
     fetchPending();
   }, [fetchPending]);
 
+  useEffect(() => {
+    if (!token) return;
+
+    const interval = window.setInterval(() => {
+      fetchPending().catch(() => {});
+    }, 10000);
+
+    return () => window.clearInterval(interval);
+  }, [fetchPending, token]);
+
+  const handleReleaseRightsRealtimeUpdate = useCallback((update: ReleaseRightsRequestUpdate) => {
+    if (!token) return;
+
+    void fetchPending();
+
+    if (update.status === "submitted") {
+      addToast({
+        type: "info",
+        title: "New marketplace-rights request",
+        message: "A creator submitted a release for marketplace-rights review.",
+      });
+    }
+  }, [addToast, fetchPending, token]);
+
+  useWebSockets(
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    handleReleaseRightsRealtimeUpdate,
+  );
+
   const reviewRightsRequest = async (
     id: string,
     action: RightsUpgradeAction,
@@ -164,7 +201,7 @@ export default function AdminDisputeQueue() {
     if (!token) return;
     setActionLoading(id);
     try {
-      await reviewReleaseRightsUpgradeRequest(
+      const updatedRequest = await reviewReleaseRightsUpgradeRequest(
         id,
         {
           action: action as ReleaseRightsUpgradeRequestStatus,
@@ -172,7 +209,18 @@ export default function AdminDisputeQueue() {
         },
         token,
       );
+      addToast({
+        type: "success",
+        title: "Review updated",
+        message: `Release rights request is now ${formatRightsUpgradeStatusLabel(updatedRequest.status)}.`,
+      });
       await fetchPending();
+    } catch (error) {
+      addToast({
+        type: "error",
+        title: "Review failed",
+        message: error instanceof Error ? error.message : "Could not update the release-rights request.",
+      });
     } finally {
       setActionLoading(null);
     }

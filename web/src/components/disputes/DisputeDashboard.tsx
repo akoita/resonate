@@ -644,6 +644,24 @@ export default function DisputeDashboard() {
           50% { opacity: 1; }
           100% { opacity: 0.5; }
         }
+        .dd-card:hover {
+          border-color: rgba(255,255,255,0.1);
+          background: rgba(255,255,255,0.035);
+        }
+        .dd-evidence-item:hover {
+          background: rgba(255,255,255,0.04);
+        }
+        .dd-vote-btn:not(:disabled):hover {
+          filter: brightness(1.2);
+          transform: translateY(-1px);
+        }
+        .dd-vote-btn:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+        }
+        .dd-section-toggle:hover {
+          background: rgba(255,255,255,0.04);
+        }
       `}</style>
 
       {/* ── Header ────────────────────────────────────────────── */}
@@ -766,6 +784,7 @@ export default function DisputeDashboard() {
             return (
               <div
                 key={d.id}
+                className="dd-card"
                 ref={(node) => { if (isHighlighted) highlightedCardRef.current = node; }}
                 style={{
                   ...cardStyle,
@@ -848,38 +867,79 @@ export default function DisputeDashboard() {
 
                 {/* Expanded evidence */}
                 {isEvidenceExpanded && d.evidences.length > 0 && (
-                  <div style={{ marginTop: "8px", paddingLeft: "4px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <div style={{ marginTop: "10px", paddingLeft: "4px", display: "flex", flexDirection: "column", gap: "4px" }}>
                     {d.evidences.map((e) => (
-                      <div key={e.id} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px" }}>
+                      <div
+                        key={e.id}
+                        className="dd-evidence-item"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          fontSize: "12px",
+                          padding: "6px 8px",
+                          borderRadius: "8px",
+                          transition: "background 0.15s",
+                        }}
+                      >
                         <span style={{
                           display: "inline-flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          width: "20px",
-                          height: "20px",
-                          borderRadius: "4px",
+                          width: "22px",
+                          height: "22px",
+                          borderRadius: "6px",
                           background: e.party === "reporter" ? "rgba(245,158,11,0.1)" : "rgba(59,130,246,0.1)",
                           color: e.party === "reporter" ? "#f59e0b" : "#3b82f6",
                           fontSize: "10px",
                           fontWeight: 700,
+                          flexShrink: 0,
                         }}>
                           {e.party === "reporter" ? "R" : "C"}
                         </span>
-                        {e.evidenceURI ? (
-                          <a href={e.evidenceURI} target="_blank" rel="noopener noreferrer" style={{ color: "#60a5fa", textDecoration: "none" }}>
-                            {e.title || e.description || "Evidence"}
-                          </a>
-                        ) : (
-                          <span style={{ color: "#cbd5e1" }}>
-                            {e.title || e.description || "Evidence"}
-                          </span>
-                        )}
-                        {e.kind && (
-                          <span style={{ opacity: 0.45, textTransform: "uppercase", letterSpacing: "0.3px" }}>
-                            {e.kind.replaceAll("_", " ")}
-                          </span>
-                        )}
-                        <span style={{ opacity: 0.3, fontFamily: "monospace", fontSize: "11px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", flex: 1, minWidth: 0 }}>
+                          {e.evidenceURI ? (
+                            <a href={e.evidenceURI} target="_blank" rel="noopener noreferrer" style={{ color: "#60a5fa", textDecoration: "none" }}>
+                              {e.title || e.description || "Evidence"}
+                            </a>
+                          ) : (
+                            <span style={{ color: "#cbd5e1" }}>
+                              {e.title || e.description || "Evidence"}
+                            </span>
+                          )}
+                          {e.kind && (
+                            <span style={{
+                              padding: "1px 6px",
+                              borderRadius: "4px",
+                              background: "rgba(255,255,255,0.06)",
+                              fontSize: "10px",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.3px",
+                              opacity: 0.6,
+                              whiteSpace: "nowrap",
+                            }}>
+                              {e.kind.replaceAll("_", " ")}
+                            </span>
+                          )}
+                          {e.strength && (
+                            <span style={{
+                              padding: "1px 6px",
+                              borderRadius: "4px",
+                              background: e.strength === "very_high" || e.strength === "high"
+                                ? "rgba(16,185,129,0.08)"
+                                : "rgba(255,255,255,0.04)",
+                              color: e.strength === "very_high" || e.strength === "high"
+                                ? "#10b981"
+                                : "rgba(255,255,255,0.45)",
+                              fontSize: "10px",
+                              fontWeight: 600,
+                              whiteSpace: "nowrap",
+                            }}>
+                              {e.strength.replaceAll("_", " ")}
+                            </span>
+                          )}
+                        </div>
+                        <span style={{ opacity: 0.3, fontFamily: "monospace", fontSize: "11px", whiteSpace: "nowrap", flexShrink: 0 }}>
                           {e.submitter.slice(0, 6)}...{e.submitter.slice(-4)}
                         </span>
                       </div>
@@ -890,6 +950,7 @@ export default function DisputeDashboard() {
                 {/* Collapsible Timeline */}
                 <div style={sectionContainerStyle}>
                   <button
+                    className="dd-section-toggle"
                     onClick={() => toggleSet(expandedTimelines, setExpandedTimelines, d.id)}
                     style={sectionToggleStyle}
                   >
@@ -911,6 +972,7 @@ export default function DisputeDashboard() {
                     borderColor: "rgba(20,184,166,0.15)",
                   }}>
                     <button
+                      className="dd-section-toggle"
                       onClick={() => toggleSet(expandedJuryPanels, setExpandedJuryPanels, d.id)}
                       style={sectionToggleStyle}
                     >
@@ -963,6 +1025,7 @@ export default function DisputeDashboard() {
                                 {canVote ? (
                                   <div style={{ display: "flex", gap: "8px" }}>
                                     <button
+                                      className="dd-vote-btn"
                                       style={{
                                         ...voteButtonStyle,
                                         borderColor: "rgba(16,185,129,0.4)",
@@ -972,9 +1035,10 @@ export default function DisputeDashboard() {
                                       disabled={votePendingId === d.id}
                                       onClick={() => castJuryVote(d.id, "reporter")}
                                     >
-                                      Uphold
+                                      {votePendingId === d.id ? "..." : "Uphold"}
                                     </button>
                                     <button
+                                      className="dd-vote-btn"
                                       style={{
                                         ...voteButtonStyle,
                                         borderColor: "rgba(239,68,68,0.4)",
@@ -984,7 +1048,7 @@ export default function DisputeDashboard() {
                                       disabled={votePendingId === d.id}
                                       onClick={() => castJuryVote(d.id, "creator")}
                                     >
-                                      Reject
+                                      {votePendingId === d.id ? "..." : "Reject"}
                                     </button>
                                   </div>
                                 ) : (

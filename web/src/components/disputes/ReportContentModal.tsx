@@ -154,9 +154,9 @@ function StepIndicator({ currentPhase }: { currentPhase: number }) {
                 {isDone ? "\u2713" : i + 1}
               </div>
               <span style={{
-                fontSize: "9px",
+                fontSize: "10px",
                 fontWeight: isCurrent ? 700 : 500,
-                color: isCurrent ? "rgba(255,255,255,0.9)" : isDone ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.25)",
+                color: isCurrent ? "rgba(255,255,255,0.9)" : isDone ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.25)",
                 textTransform: "uppercase",
                 letterSpacing: "0.3px",
                 whiteSpace: "nowrap",
@@ -373,9 +373,29 @@ export default function ReportContentModal({
           from { opacity: 0; transform: scale(0.95) translateY(8px); }
           to { opacity: 1; transform: scale(1) translateY(0); }
         }
+        .rcm-modal input:focus, .rcm-modal select:focus, .rcm-modal textarea:focus {
+          border-color: rgba(239,68,68,0.4) !important;
+          box-shadow: 0 0 0 3px rgba(239,68,68,0.08) !important;
+        }
+        .rcm-modal input:disabled, .rcm-modal select:disabled, .rcm-modal textarea:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .rcm-close:hover {
+          background: rgba(255,255,255,0.1);
+          color: rgba(255,255,255,0.8);
+        }
+        .rcm-cancel:hover {
+          background: rgba(255,255,255,0.08);
+          border-color: rgba(255,255,255,0.15);
+        }
+        .rcm-submit:not(:disabled):hover {
+          filter: brightness(1.1);
+          transform: translateY(-1px);
+        }
       `}</style>
 
-      <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
+      <div className="rcm-modal" style={modalStyle} onClick={(e) => e.stopPropagation()}>
         {/* Top accent line */}
         <div style={{
           position: "absolute",
@@ -408,7 +428,7 @@ export default function ReportContentModal({
               Report Content
             </h2>
           </div>
-          <button onClick={onClose} style={closeBtnStyle}>
+          <button className="rcm-close" onClick={onClose} style={closeBtnStyle}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
             </svg>
@@ -620,9 +640,16 @@ export default function ReportContentModal({
             disabled={!!alreadyReported}
             style={{ ...inputStyle, minHeight: "100px", resize: "vertical" }}
           />
-          <span style={hintStyle}>
-            Reports need both a primary evidence record and a plain-language summary.
-          </span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "8px" }}>
+            <span style={hintStyle}>
+              Reports need both a primary evidence record and a plain-language summary.
+            </span>
+            {narrativeSummary.length > 0 && (
+              <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                {narrativeSummary.length} chars
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Error */}
@@ -637,10 +664,11 @@ export default function ReportContentModal({
 
         {/* Actions */}
         <div style={actionsStyle}>
-          <button onClick={onClose} style={cancelBtnStyle}>
+          <button className="rcm-cancel" onClick={onClose} style={cancelBtnStyle}>
             Cancel
           </button>
           <button
+            className="rcm-submit"
             onClick={handleSubmit}
             disabled={!!isDisabled}
             style={{
@@ -838,6 +866,6 @@ const submitBtnStyle: React.CSSProperties = {
   color: "#fff",
   fontSize: "13px",
   fontWeight: 600,
-  transition: "all 0.2s",
+  transition: "all 0.2s, transform 0.1s",
   boxShadow: "0 2px 12px rgba(239,68,68,0.25)",
 };

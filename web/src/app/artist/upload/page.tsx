@@ -15,6 +15,7 @@ import { extractMetadata } from "../../../lib/metadataExtractor";
 import { useTrustTier } from "../../../hooks/useTrustTier";
 import { useAttestAndStake } from "../../../hooks/useContracts";
 import StakeDepositCard from "../../../components/upload/StakeDepositCard";
+import { formatEth } from "../../../lib/stakeConstants";
 
 const MAX_FILE_SIZE_MB = 200;
 const MAX_TOTAL_SIZE_MB = 500;
@@ -145,7 +146,7 @@ export default function ArtistUploadPage() {
           type: "info",
           title: "Content Protection",
           message: stakeRequired && trustTier
-            ? `Attesting this release and depositing ${Number(trustTier.stakeAmountWei) / 1e18} ETH stake. You'll be prompted to sign with your passkey.`
+            ? "Attesting this release and depositing the required on-chain Content Protection stake. You'll be prompted to sign with your passkey."
             : "Attesting this release on-chain before upload. You'll be prompted to sign with your passkey.",
           duration: 5000,
         });
@@ -171,7 +172,7 @@ export default function ArtistUploadPage() {
 
         const metadataURI = `resonate://release/${slugifyReleaseTitle(formData.releaseTitle)}`;
 
-        await attestAndStake({
+        const attestationResult = await attestAndStake({
           contentHash,
           fingerprintHash,
           metadataURI,
@@ -183,7 +184,7 @@ export default function ArtistUploadPage() {
           type: "success",
           title: stakeRequired ? "Stake deposited!" : "Content Protection attested!",
           message: stakeRequired && trustTier
-            ? `${Number(trustTier.stakeAmountWei) / 1e18} ETH staked. Now uploading release...`
+            ? `${formatEth(attestationResult.stakeAmountWei || 0n)} staked. Now uploading release...`
             : "Release attested on-chain. Now uploading release...",
           duration: 5000,
         });

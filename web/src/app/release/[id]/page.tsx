@@ -32,7 +32,7 @@ import { BatchMintListModal } from "../../../components/marketplace/BatchMintLis
 import { useAttestAndStake, type BatchStemItem } from "../../../hooks/useContracts";
 import { TrackActionMenu } from "../../../components/ui/TrackActionMenu";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
-import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressUpdate } from "../../../hooks/useWebSockets";
+import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressUpdate, type ReleaseRightsRequestUpdate } from "../../../hooks/useWebSockets";
 import { StemPricingPanel } from "../../../components/release/StemPricingPanel";
 import { LicensingInfoSection } from "../../../components/release/LicensingInfoSection";
 import ReleaseContentProtection from "../../../components/content-protection/ReleaseContentProtection";
@@ -206,6 +206,7 @@ export default function ReleaseDetails() {
   const [expandedNftTracks, setExpandedNftTracks] = useState<Set<string>>(new Set());
   const artworkInputRef = useRef<HTMLInputElement>(null);
   const ownerScopedTrackUrlsRef = useRef<Record<string, string>>({});
+  const rightsUpgradeStatusRef = useRef<string | null>(null);
   const [recentlyCompletedTracks, setRecentlyCompletedTracks] = useState<Set<string>>(new Set());
   const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; variant: "danger" | "warning" | "default"; confirmLabel: string; onConfirm: () => Promise<void> } | null>(null);
   const [trackProgress, setTrackProgress] = useState<Record<string, number>>({});
@@ -241,6 +242,9 @@ export default function ReleaseDetails() {
       : rightsUpgradeStatus === "denied"
         ? "Resubmit Request"
         : "Unlock Marketplace Rights";
+  useEffect(() => {
+    rightsUpgradeStatusRef.current = rightsUpgradeStatus;
+  }, [rightsUpgradeStatus]);
   const needsAttestationForMinting =
     marketplaceApprovedByRights && !!releaseProtection && !releaseProtection.attested;
   const canCompleteAttestation =
@@ -351,8 +355,78 @@ export default function ReleaseDetails() {
     }
   }, [id, addToast, token]);
 
+  const handleReleaseRightsRealtimeUpdate = useCallback((data: ReleaseRightsRequestUpdate) => {
+    if (!release?.id || data.releaseId !== release.id) return;
+
+    const previousStatus = rightsUpgradeStatusRef.current;
+
+    void Promise.all([
+      getRelease(release.id, token).catch(() => null),
+      token && isOwner ? getLatestReleaseRightsUpgradeRequest(release.id, token).catch(() => null) : Promise.resolve(null),
+      getReleaseContentProtectionStatus(release.id).catch(() => null),
+    ]).then(([freshRelease, freshRequest, freshProtection]) => {
+      if (freshRelease) {
+        setRelease(freshRelease);
+      }
+      if (isOwner) {
+        setRightsUpgradeRequest(freshRequest);
+      }
+      setReleaseProtection(freshProtection);
+
+      if (data.status === previousStatus) {
+        return;
+      }
+
+      const toastMessageMap: Record<string, { title: string; message: string; type: "info" | "success" | "error" }> = {
+        submitted: {
+          title: "Request submitted",
+          message: "Your marketplace-rights request was submitted for review.",
+          type: "info",
+        },
+        under_review: {
+          title: "Under review",
+          message: "Marketplace-rights review has started for this release.",
+          type: "info",
+        },
+        more_evidence_requested: {
+          title: "More evidence requested",
+          message: freshRequest?.decisionReason || "The reviewer asked for stronger proof before approving marketplace access.",
+          type: "info",
+        },
+        approved_standard_escrow: {
+          title: "Marketplace rights approved",
+          message: "This release was approved under the standard escrow route.",
+          type: "success",
+        },
+        approved_trusted_fast_path: {
+          title: "Marketplace rights approved",
+          message: "This release was approved under the trusted fast path.",
+          type: "success",
+        },
+        denied: {
+          title: "Marketplace rights denied",
+          message: freshRequest?.decisionReason || "This release remains restricted because the submitted proof was not sufficient.",
+          type: "error",
+        },
+      };
+
+      const toast = toastMessageMap[data.status];
+      if (toast && isOwner) {
+        addToast(toast);
+      }
+    });
+  }, [addToast, isOwner, release?.id, token]);
+
   // Subscribe to WebSocket events for real-time updates
-  useWebSockets(handleReleaseStatusUpdate, handleProgressUpdate, handleTrackStatusUpdate);
+  useWebSockets(
+    handleReleaseStatusUpdate,
+    handleProgressUpdate,
+    handleTrackStatusUpdate,
+    undefined,
+    undefined,
+    undefined,
+    handleReleaseRightsRealtimeUpdate,
+  );
 
   useEffect(() => {
     if (typeof id === "string") {
@@ -423,6 +497,40 @@ export default function ReleaseDetails() {
       cancelled = true;
     };
   }, [isOwner, release?.id, token]);
+
+  useEffect(() => {
+    if (!release?.id || !token || !isOwner) return;
+
+    const shouldPollRights =
+      rightsUpgradeStatus === "submitted" || rightsUpgradeStatus === "under_review";
+
+    if (!shouldPollRights) return;
+
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const [request, protection] = await Promise.all([
+          getLatestReleaseRightsUpgradeRequest(release.id, token),
+          getReleaseContentProtectionStatus(release.id).catch(() => null),
+        ]);
+
+        if (cancelled) return;
+
+        setRightsUpgradeRequest(request);
+        setReleaseProtection(protection);
+      } catch {
+        // Ignore transient polling failures; the next interval will retry.
+      }
+    };
+
+    const interval = window.setInterval(poll, 10000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [isOwner, release?.id, rightsUpgradeStatus, token]);
 
   // Auto-enable mixer mode when navigating from Quick Mix CTA (?mixer=true&stem=vocals)
   useEffect(() => {

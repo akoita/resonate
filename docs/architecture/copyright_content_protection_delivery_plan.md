@@ -78,6 +78,10 @@ These areas already have concrete code-level support:
 - typed rights evidence bundles across disputes / releases
 - admin review queue for release rights-upgrade requests
 - creator-facing restricted-release rights-upgrade request flow
+- in-app realtime release-rights review notifications and live status updates for:
+  - admin queue intake,
+  - admin decision delivery,
+  - creator release-page state transitions
 - dispute reporting and curator reputation foundations
 - proof-of-humanity / anti-sybil integration path
 

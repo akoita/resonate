@@ -893,7 +893,7 @@ export function useAttestAndStake() {
           viemKeccak256(encodePacked(["address", "bytes32"], [callerAddress, params.contentHash]))
         );
 
-        const [attestation, stakeInfo] = await Promise.all([
+        const [attestation, stakeInfo, contractStakeAmount] = await Promise.all([
           publicClient.readContract({
             address: cpAddress,
             abi: ContentProtectionABI,
@@ -906,12 +906,22 @@ export function useAttestAndStake() {
             functionName: "stakes",
             args: [releaseId],
           }),
+          publicClient.readContract({
+            address: cpAddress,
+            abi: ContentProtectionABI,
+            functionName: "stakeAmount",
+          }),
         ]);
 
         const existingAttester = attestation[3] as Address;
         const attestationValid = Boolean(attestation[5]);
         const stakeActive = Boolean(stakeInfo[2]);
         const shouldStake = params.includeStake ?? true;
+        const effectiveStakeAmount = shouldStake && !stakeActive
+          ? ((params.stakeAmountWei ?? 0n) > (contractStakeAmount as bigint)
+              ? (params.stakeAmountWei ?? 0n)
+              : (contractStakeAmount as bigint))
+          : 0n;
 
         if (
           attestationValid &&
@@ -944,12 +954,12 @@ export function useAttestAndStake() {
               functionName: "stakeForRelease",
               args: [releaseId],
             }),
-            value: params.stakeAmountWei ?? 0n,
+            value: effectiveStakeAmount,
           });
         }
 
         if (calls.length === 0) {
-          return { hash: "", tokenId: releaseId };
+          return { hash: "", tokenId: releaseId, stakeAmountWei: 0n };
         }
 
         const hash = await sendBatchContractTransactions(
@@ -961,7 +971,7 @@ export function useAttestAndStake() {
         );
 
         setTxHash(hash);
-        return { hash, tokenId: releaseId };
+        return { hash, tokenId: releaseId, stakeAmountWei: effectiveStakeAmount };
       } catch (err) {
         const error = normalizeContractWriteError(err);
         setError(error);

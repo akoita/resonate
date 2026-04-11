@@ -60,13 +60,21 @@ export interface GenerationProgressUpdate {
     phase: 'generating' | 'storing' | 'finalizing';
 }
 
+export interface ReleaseRightsRequestUpdate {
+    requestId: string;
+    releaseId: string;
+    status: string;
+    timestamp: string;
+}
+
 export function useWebSockets(
     onStatusUpdate?: (data: ReleaseStatusUpdate) => void,
     onProgressUpdate?: (data: ReleaseProgressUpdate) => void,
     onTrackStatusUpdate?: (data: TrackStatusUpdate) => void,
     onMarketplaceUpdate?: (data: MarketplaceUpdate) => void,
     onGenerationStatus?: (data: GenerationStatusUpdate) => void,
-    onGenerationProgress?: (data: GenerationProgressUpdate) => void
+    onGenerationProgress?: (data: GenerationProgressUpdate) => void,
+    onReleaseRightsUpdate?: (data: ReleaseRightsRequestUpdate) => void
 ) {
     const [socket, setSocket] = useState<Socket | null>(null);
     const statusHandlerRef = useRef(onStatusUpdate);
@@ -75,6 +83,7 @@ export function useWebSockets(
     const marketplaceHandlerRef = useRef(onMarketplaceUpdate);
     const generationStatusHandlerRef = useRef(onGenerationStatus);
     const generationProgressHandlerRef = useRef(onGenerationProgress);
+    const releaseRightsHandlerRef = useRef(onReleaseRightsUpdate);
 
     // Update refs when handlers change without re-triggering effect
     useEffect(() => {
@@ -100,6 +109,10 @@ export function useWebSockets(
     useEffect(() => {
         generationProgressHandlerRef.current = onGenerationProgress;
     }, [onGenerationProgress]);
+
+    useEffect(() => {
+        releaseRightsHandlerRef.current = onReleaseRightsUpdate;
+    }, [onReleaseRightsUpdate]);
 
     useEffect(() => {
         // Initialize socket connection
@@ -184,6 +197,13 @@ export function useWebSockets(
             console.log('[WebSocket] Generation error:', data);
             if (generationStatusHandlerRef.current) {
                 generationStatusHandlerRef.current(data);
+            }
+        });
+
+        newSocket.on('release_rights.request_updated', (data: ReleaseRightsRequestUpdate) => {
+            console.log('[WebSocket] Release rights request updated:', data);
+            if (releaseRightsHandlerRef.current) {
+                releaseRightsHandlerRef.current(data);
             }
         });
 
