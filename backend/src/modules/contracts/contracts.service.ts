@@ -1,9 +1,17 @@
-import { BadRequestException, Injectable, NotFoundException, OnModuleInit, Logger } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  OnModuleInit,
+  Logger,
+} from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
 import { createPublicClient, http, type Address } from "viem";
 import { foundry, sepolia, baseSepolia } from "viem/chains";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import type {
   ContractStemMintedEvent,
   ContractStemListedEvent,
@@ -28,6 +36,13 @@ import {
   normalizeDisputeReportBundle,
   normalizeEvidenceBundleInput,
 } from "../rights/rights-evidence";
+import {
+  dedupeFlags,
+  getUploadRightsActions,
+  type UploadRightsFlag,
+  type UploadRightsRoute,
+  UPLOAD_RIGHTS_POLICY_VERSION,
+} from "../rights/upload-rights-policy";
 
 // ABI for the marketplace getListing view function
 const MARKETPLACE_ABI = [
@@ -117,12 +132,205 @@ const CONTENT_PROTECTION_ADDRESSES: Record<number, Address> = {
   ) as Address,
 };
 
+function getReleaseMetadataUriCandidates(title: string): string[] {
+  const canonicalSlug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const legacySlug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-");
+
+  return Array.from(
+    new Set(
+      [canonicalSlug, legacySlug]
+        .filter(Boolean)
+        .map((slug) => `resonate://release/${slug}`),
+    ),
+  );
+}
+
 @Injectable()
 export class ContractsService implements OnModuleInit {
   private readonly logger = new Logger(ContractsService.name);
   private readonly curatorReputationService = new CuratorReputationService();
 
   constructor(private readonly eventBus: EventBus) { }
+
+  private readonly releaseRightsUpgradeOpenStatuses = [
+    "submitted",
+    "under_review",
+  ] as const;
+
+  private readonly releaseRightsUpgradePendingStatuses = [
+    "submitted",
+    "under_review",
+  ] as const;
+
+  private sanitizeRequestedUpgradeRoute(
+    route?: string | null,
+  ): "STANDARD_ESCROW" | "TRUSTED_FAST_PATH" {
+    const normalized = (route || "STANDARD_ESCROW").toUpperCase();
+    if (normalized === "STANDARD_ESCROW" || normalized === "TRUSTED_FAST_PATH") {
+      return normalized;
+    }
+    throw new BadRequestException("Requested route must be STANDARD_ESCROW or TRUSTED_FAST_PATH");
+  }
+
+  private async getOwnedReleaseForRightsRequest(releaseId: string, requesterAddress: string) {
+    const release = await prisma.release.findUnique({
+      where: { id: releaseId },
+      include: {
+        artist: {
+          select: {
+            id: true,
+            userId: true,
+            displayName: true,
+          },
+        },
+      },
+    });
+
+    if (!release) {
+      throw new NotFoundException(`Release ${releaseId} not found`);
+    }
+
+    if (release.artist.userId.toLowerCase() !== requesterAddress.toLowerCase()) {
+      throw new ForbiddenException("You do not own this release");
+    }
+
+    return release;
+  }
+
+  private async getReleaseForRightsRequestAdmin(requestId: string) {
+    const request = await prisma.releaseRightsUpgradeRequest.findUnique({
+      where: { id: requestId },
+      include: {
+        release: {
+          include: {
+            artist: {
+              select: {
+                id: true,
+                userId: true,
+                displayName: true,
+              },
+            },
+          },
+        },
+        evidenceBundles: {
+          include: {
+            evidences: {
+              orderBy: { createdAt: "asc" },
+            },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+
+    if (!request) {
+      throw new NotFoundException(`Rights upgrade request ${requestId} not found`);
+    }
+
+    return request;
+  }
+
+  private sanitizeReleaseFlagsForApprovedRoute(
+    flags: readonly string[] | null | undefined,
+  ): UploadRightsFlag[] {
+    const removableFlags = new Set<UploadRightsFlag>([
+      "NEEDS_PROOF_OF_CONTROL",
+      "NEEDS_HUMAN_REVIEW",
+      "RESTRICT_MARKETPLACE",
+      "RESTRICT_PAYOUTS",
+    ]);
+
+    return dedupeFlags((flags || []).filter((flag) => !removableFlags.has(flag as UploadRightsFlag)));
+  }
+
+  private async applyApprovedReleaseRightsRoute(input: {
+    releaseId: string;
+    approvedRoute: "STANDARD_ESCROW" | "TRUSTED_FAST_PATH";
+    decisionReason: string;
+  }) {
+    const release = await prisma.release.findUnique({
+      where: { id: input.releaseId },
+      select: {
+        id: true,
+        rightsRoute: true,
+        rightsFlags: true,
+        rightsSourceType: true,
+      },
+    });
+
+    if (!release) {
+      throw new NotFoundException(`Release ${input.releaseId} not found`);
+    }
+
+    const nextFlags = this.sanitizeReleaseFlagsForApprovedRoute(
+      Array.isArray(release.rightsFlags) ? (release.rightsFlags as string[]) : [],
+    );
+
+    await prisma.release.update({
+      where: { id: input.releaseId },
+      data: {
+        rightsRoute: input.approvedRoute,
+        rightsFlags: nextFlags as Prisma.InputJsonValue,
+        rightsReason: input.decisionReason,
+        rightsPolicyVersion: UPLOAD_RIGHTS_POLICY_VERSION,
+        rightsSourceType: release.rightsSourceType || "direct_upload",
+        rightsEvaluatedAt: new Date(),
+      },
+    });
+
+    await prisma.track.updateMany({
+      where: { releaseId: input.releaseId },
+      data: {
+        rightsRoute: input.approvedRoute,
+        rightsFlags: nextFlags as Prisma.InputJsonValue,
+        rightsReason: input.decisionReason,
+        rightsPolicyVersion: UPLOAD_RIGHTS_POLICY_VERSION,
+        rightsEvaluatedAt: new Date(),
+      },
+    });
+  }
+
+  private async persistOpsReviewBundle(input: {
+    requestId: string;
+    releaseId: string;
+    reviewedBy: string;
+    note?: string | null;
+    evidences?: RightsEvidenceDraftInput[] | null;
+  }) {
+    const evidences = [...(input.evidences || [])];
+    const note = input.note?.trim();
+    if (note) {
+      evidences.unshift({
+        kind: "internal_review_note",
+        title: "Ops review note",
+        description: note,
+        strength: "medium",
+        verificationStatus: "verified",
+      });
+    }
+
+    if (evidences.length === 0) {
+      return null;
+    }
+
+    return this.persistEvidenceBundle(
+      normalizeEvidenceBundleInput({
+        subjectType: "release",
+        subjectId: input.releaseId,
+        submittedByRole: "ops",
+        submittedByAddress: input.reviewedBy.toLowerCase(),
+        purpose: "ops_review",
+        summary: note || null,
+        evidences,
+      }),
+      { rightsUpgradeRequestId: input.requestId },
+    );
+  }
 
   async onModuleInit() {
     this.subscribeToContractEvents();
@@ -858,8 +1066,20 @@ export class ContractsService implements OnModuleInit {
 
     const allDeduped = Array.from(dedupedMap.values());
 
+    const isE2eFixtureListing = (listing: typeof allDeduped[number]) => {
+      const stemId = listing.stem?.id ?? "";
+      const trackId = listing.stem?.track?.id ?? "";
+      const releaseId = listing.stem?.track?.release?.id ?? "";
+      return stemId.startsWith("e2e-") || trackId.startsWith("e2e-") || releaseId.startsWith("e2e-");
+    };
+
+    const hasRealListings = allDeduped.some((listing) => !isE2eFixtureListing(listing));
+    const withoutFixturePollution = hasRealListings
+      ? allDeduped.filter((listing) => !isE2eFixtureListing(listing))
+      : allDeduped;
+
     // Filter out orphan listings (no linked stem) — these have no useful metadata
-    const withStems = allDeduped.filter(l => l.stem !== null);
+    const withStems = withoutFixturePollution.filter(l => l.stem !== null);
 
     // Apply sorting after deduplication
     const sorted = this.sortListings(withStems, sortBy);
@@ -1161,18 +1381,15 @@ export class ContractsService implements OnModuleInit {
       ),
     );
     const creatorWalletAddress = release.artist.userId?.toLowerCase() || null;
-    const releaseSlug = release.title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-    const releaseMetadataUri = `resonate://release/${releaseSlug}`;
+    const releaseMetadataUris = getReleaseMetadataUriCandidates(release.title);
+    const releaseMetadataUri = releaseMetadataUris[0];
 
     const attestation = attesterCandidates.length > 0
       ? await prisma.contentAttestation.findFirst({
           where: {
             chainId,
             attesterAddress: { in: attesterCandidates },
-            metadataURI: releaseMetadataUri,
+            metadataURI: { in: releaseMetadataUris },
           },
           orderBy: { attestedAt: "desc" },
         })
@@ -1217,7 +1434,7 @@ export class ContractsService implements OnModuleInit {
 
         if (
           !onChainValid ||
-          onChainMetadataUri !== releaseMetadataUri ||
+          !releaseMetadataUris.includes(onChainMetadataUri) ||
           !attesterCandidates.includes(onChainAttester)
         ) {
           currentAttestation = null;
@@ -1238,6 +1455,11 @@ export class ContractsService implements OnModuleInit {
         this.logger.warn(`Failed to validate content protection release state on-chain: ${error}`);
       }
     }
+
+    const latestRightsUpgradeRequest = await prisma.releaseRightsUpgradeRequest.findFirst({
+      where: { releaseId },
+      orderBy: { createdAt: "desc" },
+    });
 
     const verification = deriveReleaseVerificationStates({
       attested: !!currentAttestation,
@@ -1270,6 +1492,10 @@ export class ContractsService implements OnModuleInit {
       attestedAt: currentAttestation?.attestedAt?.toISOString() || "",
       provenanceStatus: verification.provenanceStatus,
       rightsVerificationStatus: verification.rightsVerificationStatus,
+      rightsUpgradeRequestStatus: latestRightsUpgradeRequest?.status || null,
+      rightsUpgradeRequestedRoute: latestRightsUpgradeRequest?.requestedRoute || null,
+      rightsUpgradeDecisionReason: latestRightsUpgradeRequest?.decisionReason || null,
+      rightsUpgradeReviewedAt: latestRightsUpgradeRequest?.reviewedAt?.toISOString() || null,
     };
   }
 
@@ -1359,9 +1585,17 @@ export class ContractsService implements OnModuleInit {
     return Array.isArray(disputes) ? merged : merged[0];
   }
 
-  private async persistEvidenceBundle(normalized: NormalizedRightsEvidenceBundle) {
-    return prisma.rightsEvidenceBundle.create({
+  private async persistEvidenceBundle(
+    normalized: NormalizedRightsEvidenceBundle,
+    options?: {
+      rightsUpgradeRequestId?: string | null;
+      db?: Prisma.TransactionClient;
+    },
+  ) {
+    const db = options?.db ?? prisma;
+    return db.rightsEvidenceBundle.create({
       data: {
+        rightsUpgradeRequestId: options?.rightsUpgradeRequestId || null,
         subjectType: normalized.subjectType,
         subjectId: normalized.subjectId,
         submittedByRole: normalized.submittedByRole,
@@ -1403,6 +1637,398 @@ export class ContractsService implements OnModuleInit {
 
   async createEvidenceBundle(data: RightsEvidenceBundleInput) {
     return this.persistEvidenceBundle(normalizeEvidenceBundleInput(data));
+  }
+
+  async getLatestReleaseRightsUpgradeRequest(
+    releaseId: string,
+    requesterAddress: string,
+    role?: string,
+  ) {
+    const release = await prisma.release.findUnique({
+      where: { id: releaseId },
+      include: {
+        artist: {
+          select: {
+            id: true,
+            userId: true,
+            displayName: true,
+          },
+        },
+      },
+    });
+
+    if (!release) {
+      throw new NotFoundException(`Release ${releaseId} not found`);
+    }
+
+    const normalizedRequester = requesterAddress.toLowerCase();
+    if (role !== "admin" && release.artist.userId.toLowerCase() !== normalizedRequester) {
+      throw new ForbiddenException("You do not have access to this release review");
+    }
+
+    return prisma.releaseRightsUpgradeRequest.findFirst({
+      where: { releaseId },
+      include: {
+        release: {
+          include: {
+            artist: {
+              select: {
+                id: true,
+                userId: true,
+                displayName: true,
+              },
+            },
+          },
+        },
+        evidenceBundles: {
+          include: {
+            evidences: {
+              orderBy: { createdAt: "asc" },
+            },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async submitReleaseRightsUpgradeRequest(input: {
+    releaseId: string;
+    requesterAddress: string;
+    summary?: string | null;
+    requestedRoute?: string | null;
+    evidences: RightsEvidenceDraftInput[];
+  }) {
+    const normalizedAddress = input.requesterAddress.toLowerCase();
+    const release = await this.getOwnedReleaseForRightsRequest(input.releaseId, normalizedAddress);
+    const currentRoute = (release.rightsRoute || "").toUpperCase() as UploadRightsRoute | "";
+
+    if (!currentRoute) {
+      throw new BadRequestException("This release has not been routed yet");
+    }
+
+    if (currentRoute === "BLOCKED") {
+      throw new BadRequestException("Blocked releases cannot request marketplace-rights upgrades");
+    }
+
+    if (getUploadRightsActions(currentRoute).marketplaceAllowed) {
+      throw new BadRequestException("This release already has marketplace access");
+    }
+
+    if (!input.evidences?.length) {
+      throw new BadRequestException("At least one evidence item is required");
+    }
+
+    const summary = input.summary?.trim() || null;
+    if (!summary) {
+      throw new BadRequestException("A rights-upgrade summary is required");
+    }
+
+    const requestedRoute = this.sanitizeRequestedUpgradeRoute(input.requestedRoute);
+
+    const normalizedBundle = normalizeEvidenceBundleInput({
+      subjectType: "release",
+      subjectId: input.releaseId,
+      submittedByRole: "creator",
+      submittedByAddress: normalizedAddress,
+      purpose: "rights_upgrade_request",
+      summary,
+      evidences: input.evidences,
+    });
+
+    const request = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Release" WHERE id = ${input.releaseId} FOR UPDATE`;
+
+      const existingOpen = await tx.releaseRightsUpgradeRequest.findFirst({
+        where: {
+          releaseId: input.releaseId,
+          status: {
+            in: [...this.releaseRightsUpgradeOpenStatuses],
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (existingOpen) {
+        throw new ConflictException("A rights-upgrade request for this release is already open");
+      }
+
+      const existingMoreEvidenceRequest = await tx.releaseRightsUpgradeRequest.findFirst({
+        where: {
+          releaseId: input.releaseId,
+          status: "more_evidence_requested",
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const requestRecord = existingMoreEvidenceRequest
+        ? await tx.releaseRightsUpgradeRequest.update({
+            where: { id: existingMoreEvidenceRequest.id },
+            data: {
+              status: "submitted",
+              requestedRoute,
+              summary,
+              decisionReason: null,
+              reviewedBy: null,
+              reviewedAt: null,
+            },
+          })
+        : await tx.releaseRightsUpgradeRequest.create({
+            data: {
+              releaseId: input.releaseId,
+              artistId: release.artist.id,
+              requestedByAddress: normalizedAddress,
+              status: "submitted",
+              requestedRoute,
+              currentRouteAtSubmission: currentRoute,
+              summary,
+            },
+          });
+
+      await this.persistEvidenceBundle(
+        {
+          ...normalizedBundle,
+          purpose: existingMoreEvidenceRequest ? "creator_response" : "rights_upgrade_request",
+        },
+        {
+          rightsUpgradeRequestId: requestRecord.id,
+          db: tx,
+        },
+      );
+
+      return requestRecord;
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+
+    return this.getLatestReleaseRightsUpgradeRequest(input.releaseId, normalizedAddress, "admin");
+  }
+
+  async listPendingReleaseRightsUpgradeRequests(limit: number) {
+    return prisma.releaseRightsUpgradeRequest.findMany({
+      where: {
+        status: {
+          in: [...this.releaseRightsUpgradePendingStatuses],
+        },
+      },
+      include: {
+        release: {
+          include: {
+            artist: {
+              select: {
+                id: true,
+                userId: true,
+                displayName: true,
+              },
+            },
+          },
+        },
+        evidenceBundles: {
+          include: {
+            evidences: {
+              orderBy: { createdAt: "asc" },
+            },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+      take: limit,
+    });
+  }
+
+  async getReleaseRightsUpgradeRequestById(requestId: string) {
+    return this.getReleaseForRightsRequestAdmin(requestId);
+  }
+
+  async reviewReleaseRightsUpgradeRequest(input: {
+    requestId: string;
+    action:
+      | "under_review"
+      | "more_evidence_requested"
+      | "approved_standard_escrow"
+      | "approved_trusted_fast_path"
+      | "denied";
+    reviewedBy: string;
+    decisionReason?: string | null;
+    note?: string | null;
+    evidences?: RightsEvidenceDraftInput[] | null;
+  }) {
+    const reviewedBy = input.reviewedBy.toLowerCase();
+    const request = await this.getReleaseForRightsRequestAdmin(input.requestId);
+
+    if (
+      request.status === "approved_standard_escrow" ||
+      request.status === "approved_trusted_fast_path" ||
+      request.status === "denied"
+    ) {
+      throw new BadRequestException("This rights-upgrade request has already been finalized");
+    }
+
+    await this.persistOpsReviewBundle({
+      requestId: request.id,
+      releaseId: request.releaseId,
+      reviewedBy,
+      note: input.note,
+      evidences: input.evidences,
+    });
+
+    const decisionReason = input.decisionReason?.trim() || null;
+    const now = new Date();
+
+    if (input.action === "under_review") {
+      return prisma.releaseRightsUpgradeRequest.update({
+        where: { id: request.id },
+        data: {
+          status: "under_review",
+          decisionReason,
+          reviewedBy,
+          reviewedAt: now,
+        },
+        include: {
+          release: {
+            include: {
+              artist: {
+                select: {
+                  id: true,
+                  userId: true,
+                  displayName: true,
+                },
+              },
+            },
+          },
+          evidenceBundles: {
+            include: {
+              evidences: {
+                orderBy: { createdAt: "asc" },
+              },
+            },
+            orderBy: { createdAt: "asc" },
+          },
+        },
+      });
+    }
+
+    if (input.action === "more_evidence_requested") {
+      return prisma.releaseRightsUpgradeRequest.update({
+        where: { id: request.id },
+        data: {
+          status: "more_evidence_requested",
+          decisionReason:
+            decisionReason ||
+            "More evidence is needed to confirm control of this release before marketplace access can be granted.",
+          reviewedBy,
+          reviewedAt: now,
+        },
+        include: {
+          release: {
+            include: {
+              artist: {
+                select: {
+                  id: true,
+                  userId: true,
+                  displayName: true,
+                },
+              },
+            },
+          },
+          evidenceBundles: {
+            include: {
+              evidences: {
+                orderBy: { createdAt: "asc" },
+              },
+            },
+            orderBy: { createdAt: "asc" },
+          },
+        },
+      });
+    }
+
+    if (input.action === "denied") {
+      return prisma.releaseRightsUpgradeRequest.update({
+        where: { id: request.id },
+        data: {
+          status: "denied",
+          decisionReason:
+            decisionReason ||
+            "The submitted evidence was not sufficient to unlock marketplace access for this release.",
+          reviewedBy,
+          reviewedAt: now,
+        },
+        include: {
+          release: {
+            include: {
+              artist: {
+                select: {
+                  id: true,
+                  userId: true,
+                  displayName: true,
+                },
+              },
+            },
+          },
+          evidenceBundles: {
+            include: {
+              evidences: {
+                orderBy: { createdAt: "asc" },
+              },
+            },
+            orderBy: { createdAt: "asc" },
+          },
+        },
+      });
+    }
+
+    const approvedRoute =
+      input.action === "approved_trusted_fast_path"
+        ? "TRUSTED_FAST_PATH"
+        : "STANDARD_ESCROW";
+    const approvalReason =
+      decisionReason ||
+      (approvedRoute === "TRUSTED_FAST_PATH"
+        ? "Marketplace access was approved after release rights review and trusted-source quality evidence."
+        : "Marketplace access was approved after release rights review under the standard escrow path.");
+
+    await this.applyApprovedReleaseRightsRoute({
+      releaseId: request.releaseId,
+      approvedRoute,
+      decisionReason: approvalReason,
+    });
+
+    return prisma.releaseRightsUpgradeRequest.update({
+      where: { id: request.id },
+      data: {
+        status:
+          approvedRoute === "TRUSTED_FAST_PATH"
+            ? "approved_trusted_fast_path"
+            : "approved_standard_escrow",
+        decisionReason: approvalReason,
+        reviewedBy,
+        reviewedAt: now,
+      },
+      include: {
+        release: {
+          include: {
+            artist: {
+              select: {
+                id: true,
+                userId: true,
+                displayName: true,
+              },
+            },
+          },
+        },
+        evidenceBundles: {
+          include: {
+            evidences: {
+              orderBy: { createdAt: "asc" },
+            },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
   }
 
   async getDisputesByToken(tokenId: string) {

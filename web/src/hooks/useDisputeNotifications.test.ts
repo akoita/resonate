@@ -21,6 +21,7 @@ describe("useDisputeNotifications helpers", () => {
       title: "Content Flagged",
       message: "Flagged",
       disputeId: "d-1",
+      releaseId: "rel-1",
       timestamp: "2026-04-07T10:00:00.000Z",
     });
 
@@ -30,6 +31,7 @@ describe("useDisputeNotifications helpers", () => {
       title: "Content Flagged",
       message: "Flagged",
       disputeId: "d-1",
+      releaseId: "rel-1",
       read: false,
       createdAt: "2026-04-07T10:00:00.000Z",
     });

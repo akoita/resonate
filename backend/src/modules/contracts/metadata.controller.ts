@@ -14,6 +14,8 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { RolesGuard } from "../auth/roles.guard";
+import { Roles } from "../auth/roles.decorator";
 import { ContractsService } from "./contracts.service";
 import { IndexerService } from "./indexer.service";
 import { NotificationService } from "../notifications/notification.service";
@@ -118,6 +120,24 @@ const CONTENT_PROTECTION_DIAGNOSTIC_ABI = [
   },
 ] as const;
 
+function getReleaseMetadataUriCandidates(title: string): string[] {
+  const canonicalSlug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const legacySlug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-");
+
+  return Array.from(
+    new Set(
+      [canonicalSlug, legacySlug]
+        .filter(Boolean)
+        .map((slug) => `resonate://release/${slug}`),
+    ),
+  );
+}
+
 /**
  * NFT Metadata Controller
  * Serves ERC-1155 compliant metadata for StemNFT tokens
@@ -137,6 +157,132 @@ export class MetadataController {
     private readonly notificationService: NotificationService,
     private readonly eventBus: EventBus,
   ) { }
+
+  private getAdminAddresses() {
+    return Array.from(
+      new Set(
+        (process.env.ADMIN_ADDRESSES ?? "")
+          .split(",")
+          .map((value) => value.trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    );
+  }
+
+  private getReleaseRightsRealtimeRecipients(request: {
+    requestedByAddress?: string | null;
+  }) {
+    return Array.from(
+      new Set(
+        [request.requestedByAddress, ...this.getAdminAddresses()]
+          .map((value) => String(value || "").trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    );
+  }
+
+  private publishReleaseRightsRequestUpdated(request: {
+    id: string;
+    releaseId: string;
+    status: string;
+    requestedByAddress?: string | null;
+  }) {
+    this.eventBus?.publish({
+      eventName: "release_rights.request_updated" as const,
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      requestId: request.id,
+      releaseId: request.releaseId,
+      status: request.status,
+      walletAddresses: this.getReleaseRightsRealtimeRecipients(request),
+    });
+  }
+
+  private async notifyAdminsOfReleaseRightsSubmission(request: {
+    id: string;
+    releaseId: string;
+    requestedByAddress: string;
+    release?: { title?: string | null };
+  }) {
+    if (!this.notificationService) {
+      return;
+    }
+
+    const releaseTitle = request.release?.title || "Release";
+    await Promise.all(
+      this.getAdminAddresses().map((walletAddress) =>
+        this.notificationService.createNotification({
+          walletAddress,
+          type: "release_rights_submitted",
+          title: "Marketplace rights request submitted",
+          message: `${releaseTitle} was submitted for marketplace-rights review.`,
+          releaseId: request.releaseId,
+        }),
+      ),
+    );
+  }
+
+  private async notifyCreatorOfReleaseRightsDecision(request: {
+    releaseId: string;
+    status: string;
+    requestedByAddress: string;
+    decisionReason?: string | null;
+    release?: { title?: string | null };
+  }) {
+    if (!this.notificationService) {
+      return;
+    }
+
+    const releaseTitle = request.release?.title || "Release";
+    const typeMap: Record<string, { type: string; title: string; message: string }> = {
+      under_review: {
+        type: "release_rights_under_review",
+        title: "Marketplace rights review started",
+        message: `${releaseTitle} is now under marketplace-rights review.`,
+      },
+      more_evidence_requested: {
+        type: "release_rights_more_evidence_requested",
+        title: "More marketplace-rights evidence requested",
+        message:
+          request.decisionReason ||
+          `${releaseTitle} needs stronger proof before marketplace access can be granted.`,
+      },
+      approved_standard_escrow: {
+        type: "release_rights_approved_standard_escrow",
+        title: "Marketplace rights approved",
+        message:
+          request.decisionReason ||
+          `${releaseTitle} now has marketplace access under the standard escrow route.`,
+      },
+      approved_trusted_fast_path: {
+        type: "release_rights_approved_trusted_fast_path",
+        title: "Marketplace rights approved",
+        message:
+          request.decisionReason ||
+          `${releaseTitle} now has marketplace access under the trusted fast path.`,
+      },
+      denied: {
+        type: "release_rights_denied",
+        title: "Marketplace rights request denied",
+        message:
+          request.decisionReason ||
+          `${releaseTitle} remains restricted because the submitted evidence was not sufficient.`,
+      },
+    };
+
+    const config = typeMap[request.status];
+    if (!config) {
+      return;
+    }
+
+    await this.notificationService.createNotification({
+      walletAddress: request.requestedByAddress,
+      type: config.type,
+      title: config.title,
+      message: config.message,
+      releaseId: request.releaseId,
+    });
+  }
 
   // ============ STATIC ROUTES (must come first) ============
 
@@ -198,8 +344,8 @@ export class MetadataController {
       this.indexerService.getStatus(),
     ]);
 
-    const releaseSlug = this.slugifyReleaseTitle(release.title);
-    const metadataURI = `resonate://release/${releaseSlug}`;
+    const metadataUris = getReleaseMetadataUriCandidates(release.title);
+    const metadataURI = metadataUris[0];
     const attesterCandidates = Array.from(
       new Set(
         [
@@ -214,7 +360,7 @@ export class MetadataController {
           where: {
             chainId,
             attesterAddress: { in: attesterCandidates },
-            metadataURI,
+            metadataURI: { in: metadataUris },
           },
           orderBy: { attestedAt: "desc" },
         })
@@ -753,6 +899,126 @@ export class MetadataController {
       ...body,
       submittedByAddress,
     });
+  }
+
+  /**
+   * Get the latest release rights-upgrade request visible to the owner/admin.
+   * GET /api/metadata/release-rights/releases/:releaseId
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Get("release-rights/releases/:releaseId")
+  async getLatestReleaseRightsUpgradeRequest(
+    @Request() req: any,
+    @Param("releaseId") releaseId: string,
+  ) {
+    return this.contractsService.getLatestReleaseRightsUpgradeRequest(
+      releaseId,
+      String(req?.user?.userId || "").toLowerCase(),
+      String(req?.user?.role || "listener").toLowerCase(),
+    );
+  }
+
+  /**
+   * Submit or resubmit a creator rights-upgrade request for a restricted release.
+   * POST /api/metadata/release-rights/releases/:releaseId/request
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Post("release-rights/releases/:releaseId/request")
+  async submitReleaseRightsUpgradeRequest(
+    @Request() req: any,
+    @Param("releaseId") releaseId: string,
+    @Body()
+    body: {
+      summary?: string;
+      requestedRoute?: string;
+      evidences: RightsEvidenceDraftInput[];
+    },
+  ) {
+    const request = await this.contractsService.submitReleaseRightsUpgradeRequest({
+      releaseId,
+      requesterAddress: String(req?.user?.userId || "").toLowerCase(),
+      summary: body?.summary,
+      requestedRoute: body?.requestedRoute,
+      evidences: body?.evidences || [],
+    });
+    if (!request) {
+      throw new NotFoundException("Release rights-upgrade request was not created");
+    }
+    const ensuredRequest = request as NonNullable<typeof request>;
+
+    this.publishReleaseRightsRequestUpdated(ensuredRequest);
+    await this.notifyAdminsOfReleaseRightsSubmission(ensuredRequest);
+
+    return ensuredRequest;
+  }
+
+  /**
+   * Get pending release rights-upgrade requests (admin queue).
+   * GET /api/metadata/release-rights/requests/pending
+   */
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
+  @Get("release-rights/requests/pending")
+  async listPendingReleaseRightsUpgradeRequests(@Query("limit") limitStr?: string) {
+    const limit = Math.min(parseInt(limitStr || "20", 10) || 20, 100);
+    return this.contractsService.listPendingReleaseRightsUpgradeRequests(limit);
+  }
+
+  /**
+   * Get a single release rights-upgrade request with linked evidence (admin).
+   * GET /api/metadata/release-rights/requests/:id
+   */
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
+  @Get("release-rights/requests/:id")
+  async getReleaseRightsUpgradeRequest(@Param("id") id: string) {
+    return this.contractsService.getReleaseRightsUpgradeRequestById(id);
+  }
+
+  /**
+   * Review a release rights-upgrade request (admin).
+   * PATCH /api/metadata/release-rights/requests/:id/review
+   */
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
+  @Patch("release-rights/requests/:id/review")
+  async reviewReleaseRightsUpgradeRequest(
+    @Request() req: any,
+    @Param("id") id: string,
+    @Body()
+    body: {
+      action:
+        | "under_review"
+        | "more_evidence_requested"
+        | "approved_standard_escrow"
+        | "approved_trusted_fast_path"
+        | "denied";
+      decisionReason?: string;
+      note?: string;
+      evidences?: RightsEvidenceDraftInput[];
+    },
+  ) {
+    if (!body?.action) {
+      throw new BadRequestException("Review action is required");
+    }
+
+    const request = await this.contractsService.reviewReleaseRightsUpgradeRequest({
+      requestId: id,
+      action: body.action,
+      reviewedBy: String(req?.user?.userId || "").toLowerCase(),
+      decisionReason: body.decisionReason,
+      note: body.note,
+      evidences: body.evidences,
+    });
+    if (!request) {
+      throw new NotFoundException("Release rights-upgrade request was not found");
+    }
+    const ensuredRequest = request as NonNullable<typeof request>;
+
+    this.publishReleaseRightsRequestUpdated(ensuredRequest);
+    await this.notifyCreatorOfReleaseRightsDecision(ensuredRequest);
+
+    return ensuredRequest;
   }
 
   /**

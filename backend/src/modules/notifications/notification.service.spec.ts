@@ -74,6 +74,7 @@ describe("NotificationService", () => {
         title: "Content Flagged",
         message: "Your content has been flagged.",
         disputeId: "d-1",
+        releaseId: "rel-1",
       });
 
       expect(result).toBeTruthy();
@@ -81,6 +82,7 @@ describe("NotificationService", () => {
         data: expect.objectContaining({
           walletAddress: "0xabc",
           type: "dispute_filed",
+          releaseId: "rel-1",
         }),
       });
       expect(mockEventBus.publish).toHaveBeenCalledWith(
@@ -88,6 +90,7 @@ describe("NotificationService", () => {
           eventName: "notification.created",
           walletAddress: "0xabc",
           type: "dispute_filed",
+          releaseId: "rel-1",
         }),
       );
     });

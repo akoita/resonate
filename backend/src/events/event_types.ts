@@ -496,7 +496,16 @@ export interface NotificationCreatedEvent extends BaseEvent {
   type: string;
   title: string;
   message: string;
-  disputeId: string;
+  disputeId?: string;
+  releaseId?: string;
+}
+
+export interface ReleaseRightsRequestUpdatedEvent extends BaseEvent {
+  eventName: "release_rights.request_updated";
+  requestId: string;
+  releaseId: string;
+  status: string;
+  walletAddresses: string[];
 }
 
 // ============ Agent Wallet Events ============
@@ -660,4 +669,5 @@ export type ResonateEvent =
   | RealtimeAudioEvent
   | RealtimeDisconnectedEvent
   | MarketplaceListingNotifyEvent
+  | ReleaseRightsRequestUpdatedEvent
   | NotificationCreatedEvent;

@@ -109,6 +109,7 @@ describe("EventsGateway", () => {
       title: "Resolved",
       message: "Resolved",
       disputeId: "123",
+      releaseId: "rel-1",
     });
 
     expect(to).toHaveBeenCalledWith("wallet:0xabc");
@@ -118,6 +119,34 @@ describe("EventsGateway", () => {
         id: "notif-1",
         type: "dispute_resolved",
         disputeId: "123",
+        releaseId: "rel-1",
+      }),
+    );
+
+    gateway.onModuleDestroy();
+  });
+
+  it("delivers release rights request updates only to targeted wallet rooms", () => {
+    const { gateway, eventBus, to, roomEmit } = createGateway();
+
+    eventBus.publish({
+      eventName: "release_rights.request_updated",
+      eventVersion: 1,
+      occurredAt: "2026-04-11T12:00:00.000Z",
+      requestId: "rr-1",
+      releaseId: "rel-1",
+      status: "submitted",
+      walletAddresses: ["0xabc", "0xdef"],
+    });
+
+    expect(to).toHaveBeenNthCalledWith(1, "wallet:0xabc");
+    expect(to).toHaveBeenNthCalledWith(2, "wallet:0xdef");
+    expect(roomEmit).toHaveBeenCalledWith(
+      "release_rights.request_updated",
+      expect.objectContaining({
+        requestId: "rr-1",
+        releaseId: "rel-1",
+        status: "submitted",
       }),
     );
 

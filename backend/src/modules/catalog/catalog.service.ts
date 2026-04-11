@@ -31,6 +31,26 @@ export class CatalogService implements OnModuleInit {
   >();
   private readonly cacheTtlMs = 30_000;
 
+  private getLocalStemFilename(stem: { id: string; uri: string }) {
+    const trimmedUri = stem.uri.trim();
+    if (!trimmedUri) {
+      return stem.id;
+    }
+
+    // Bare local filenames are stored directly for original uploads.
+    if (!trimmedUri.includes("/")) {
+      return trimmedUri;
+    }
+
+    const parts = trimmedUri.split("/").filter(Boolean);
+    const blobIndex = parts.lastIndexOf("blob");
+    if (blobIndex > 0) {
+      return parts[blobIndex - 1];
+    }
+
+    return parts[parts.length - 1] || stem.id;
+  }
+
   constructor(
     private readonly eventBus: EventBus,
     private readonly encryptionService: EncryptionService,
@@ -1006,8 +1026,7 @@ export class CatalogService implements OnModuleInit {
         const { join } = await import("path");
         const { existsSync, readFileSync } = await import("fs");
 
-        // Extract filename from URI or ID
-        const filename = stem.uri.split("/").slice(-2, -1)[0] || stem.id;
+        const filename = this.getLocalStemFilename(stem);
         const uploadDir = join(process.cwd(), "uploads", "stems");
         const absolutePath = join(uploadDir, filename);
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { useAuth } from '../components/auth/AuthProvider';
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -60,14 +61,23 @@ export interface GenerationProgressUpdate {
     phase: 'generating' | 'storing' | 'finalizing';
 }
 
+export interface ReleaseRightsRequestUpdate {
+    requestId: string;
+    releaseId: string;
+    status: string;
+    timestamp: string;
+}
+
 export function useWebSockets(
     onStatusUpdate?: (data: ReleaseStatusUpdate) => void,
     onProgressUpdate?: (data: ReleaseProgressUpdate) => void,
     onTrackStatusUpdate?: (data: TrackStatusUpdate) => void,
     onMarketplaceUpdate?: (data: MarketplaceUpdate) => void,
     onGenerationStatus?: (data: GenerationStatusUpdate) => void,
-    onGenerationProgress?: (data: GenerationProgressUpdate) => void
+    onGenerationProgress?: (data: GenerationProgressUpdate) => void,
+    onReleaseRightsUpdate?: (data: ReleaseRightsRequestUpdate) => void
 ) {
+    const { address } = useAuth();
     const [socket, setSocket] = useState<Socket | null>(null);
     const statusHandlerRef = useRef(onStatusUpdate);
     const progressHandlerRef = useRef(onProgressUpdate);
@@ -75,6 +85,7 @@ export function useWebSockets(
     const marketplaceHandlerRef = useRef(onMarketplaceUpdate);
     const generationStatusHandlerRef = useRef(onGenerationStatus);
     const generationProgressHandlerRef = useRef(onGenerationProgress);
+    const releaseRightsHandlerRef = useRef(onReleaseRightsUpdate);
 
     // Update refs when handlers change without re-triggering effect
     useEffect(() => {
@@ -102,6 +113,10 @@ export function useWebSockets(
     }, [onGenerationProgress]);
 
     useEffect(() => {
+        releaseRightsHandlerRef.current = onReleaseRightsUpdate;
+    }, [onReleaseRightsUpdate]);
+
+    useEffect(() => {
         // Initialize socket connection
         const newSocket = io(SOCKET_URL, {
             transports: ['websocket', 'polling'], // Allow polling fallback
@@ -114,6 +129,9 @@ export function useWebSockets(
 
         newSocket.on('connect', () => {
             console.log(`[WebSocket] Connected to backend: ${newSocket.id}`);
+            if (address) {
+                newSocket.emit('wallet:join', address.toLowerCase());
+            }
         });
 
         newSocket.on('release.status', (data: ReleaseStatusUpdate) => {
@@ -187,6 +205,13 @@ export function useWebSockets(
             }
         });
 
+        newSocket.on('release_rights.request_updated', (data: ReleaseRightsRequestUpdate) => {
+            console.log('[WebSocket] Release rights request updated:', data);
+            if (releaseRightsHandlerRef.current) {
+                releaseRightsHandlerRef.current(data);
+            }
+        });
+
         newSocket.on('disconnect', (reason) => {
             console.log(`[WebSocket] Disconnected: ${reason}`);
         });
@@ -197,10 +222,13 @@ export function useWebSockets(
 
         return () => {
             console.log('[WebSocket] Cleaning up connection');
+            if (address) {
+                newSocket.emit('wallet:leave', address.toLowerCase());
+            }
             newSocket.disconnect();
             setSocket(null);
         };
-    }, []); // Empty dependency array means this only runs once on mount
+    }, [address]);
 
     return socket;
 }

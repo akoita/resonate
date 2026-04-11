@@ -6,9 +6,12 @@ import {
   getRelease,
   Release,
   type Track,
+  getLatestReleaseRightsUpgradeRequest,
+  type ReleaseRightsUpgradeRequestRecord,
   updateReleaseArtwork,
   getReleaseArtworkUrl,
   getOwnerScopedTrackStreamObjectUrl,
+  getReleaseTrackStreamUrl,
   waitForReleaseAvailability,
   getReleaseContentProtectionStatus,
   type ReleaseContentProtectionData,
@@ -26,20 +29,65 @@ import { useAuth } from "../../../components/auth/AuthProvider";
 import { buildTrackStreamUrl } from "../../../lib/urlUtils";
 import { MintStemButton } from "../../../components/marketplace/MintStemButton";
 import { BatchMintListModal } from "../../../components/marketplace/BatchMintListModal";
-import type { BatchStemItem } from "../../../hooks/useContracts";
+import { useAttestAndStake, type BatchStemItem } from "../../../hooks/useContracts";
 import { TrackActionMenu } from "../../../components/ui/TrackActionMenu";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
-import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressUpdate } from "../../../hooks/useWebSockets";
+import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressUpdate, type ReleaseRightsRequestUpdate } from "../../../hooks/useWebSockets";
 import { StemPricingPanel } from "../../../components/release/StemPricingPanel";
 import { LicensingInfoSection } from "../../../components/release/LicensingInfoSection";
 import ReleaseContentProtection from "../../../components/content-protection/ReleaseContentProtection";
 import ReportContentModal from "../../../components/disputes/ReportContentModal";
+import ReleaseRightsUpgradeModal from "../../../components/rights/ReleaseRightsUpgradeModal";
 import "../../../styles/license-badges.css";
 
 // Helper to get duration from track's first stem
 const getTrackDuration = (track: { stems?: Array<{ durationSeconds?: number | null }> }): number => {
   return track.stems?.[0]?.durationSeconds ?? 0;
 };
+
+function slugifyReleaseTitle(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+async function hashReleaseTracks(
+  releaseId: string,
+  trackIds: string[],
+  token: string,
+): Promise<`0x${string}`> {
+  const buffers = await Promise.all(
+    trackIds.map(async (trackId) => {
+      const response = await fetch(
+        getReleaseTrackStreamUrl(releaseId, trackId, { ownerScoped: true }),
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`Failed to fetch track audio for attestation (${trackId}).`);
+      }
+      return response.arrayBuffer();
+    }),
+  );
+
+  const combined = new Uint8Array(
+    buffers.reduce((total, buffer) => total + buffer.byteLength, 0),
+  );
+  let offset = 0;
+  for (const buffer of buffers) {
+    combined.set(new Uint8Array(buffer), offset);
+    offset += buffer.byteLength;
+  }
+
+  const digest = await crypto.subtle.digest("SHA-256", combined);
+  return `0x${Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")}` as `0x${string}`;
+}
 
 const formatRightsLabel = (value?: string | null): string | null => {
   if (!value) {
@@ -51,6 +99,35 @@ const formatRightsLabel = (value?: string | null): string | null => {
     .split("_")
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
     .join(" ");
+};
+
+const formatRightsUpgradeStatusLabel = (value?: string | null): string => {
+  switch (value) {
+    case "submitted":
+      return "Submitted";
+    case "under_review":
+      return "Under Review";
+    case "more_evidence_requested":
+      return "More Evidence Needed";
+    case "approved_standard_escrow":
+      return "Approved: Standard Escrow";
+    case "approved_trusted_fast_path":
+      return "Approved: Trusted Fast Path";
+    case "denied":
+      return "Denied";
+    default:
+      return "No Request Submitted";
+  }
+};
+
+const getRightsUpgradeStatusColor = (status?: string | null): { bg: string; fg: string } => {
+  if (status === "approved_standard_escrow" || status === "approved_trusted_fast_path")
+    return { bg: "rgba(16, 185, 129, 0.12)", fg: "#6ee7b7" };
+  if (status === "submitted" || status === "under_review" || status === "more_evidence_requested")
+    return { bg: "rgba(245, 158, 11, 0.12)", fg: "#fcd34d" };
+  if (status === "denied")
+    return { bg: "rgba(239, 68, 68, 0.12)", fg: "#fca5a5" };
+  return { bg: "rgba(96, 165, 250, 0.12)", fg: "#93c5fd" };
 };
 
 const isPublicReleaseRoute = (route?: string | null): boolean => {
@@ -119,6 +196,7 @@ export default function ReleaseDetails() {
   } = usePlayer();
   const { addToast } = useToast();
   const { token, userId } = useAuth();
+  const { attestAndStake, pending: attestationPending } = useAttestAndStake();
   const [release, setRelease] = useState<Release | null>(null);
   const [loading, setLoading] = useState(true);
   const [isUpdatingArtwork, setIsUpdatingArtwork] = useState(false);
@@ -128,13 +206,16 @@ export default function ReleaseDetails() {
   const [expandedNftTracks, setExpandedNftTracks] = useState<Set<string>>(new Set());
   const artworkInputRef = useRef<HTMLInputElement>(null);
   const ownerScopedTrackUrlsRef = useRef<Record<string, string>>({});
+  const rightsUpgradeStatusRef = useRef<string | null>(null);
   const [recentlyCompletedTracks, setRecentlyCompletedTracks] = useState<Set<string>>(new Set());
   const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; variant: "danger" | "warning" | "default"; confirmLabel: string; onConfirm: () => Promise<void> } | null>(null);
   const [trackProgress, setTrackProgress] = useState<Record<string, number>>({});
   const [selectedNftStems, setSelectedNftStems] = useState<Set<string>>(new Set());
   const [batchModalStems, setBatchModalStems] = useState<BatchStemItem[] | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [showRightsUpgradeModal, setShowRightsUpgradeModal] = useState(false);
   const [releaseProtection, setReleaseProtection] = useState<ReleaseContentProtectionData | null>(null);
+  const [rightsUpgradeRequest, setRightsUpgradeRequest] = useState<ReleaseRightsUpgradeRequestRecord | null>(null);
   const shouldWaitForPendingRelease = searchParams.get("pending") === "1";
   const rightsTone = getRightsTone(release?.rightsRoute);
   const rightsRouteLabel = formatRightsLabel(release?.rightsRoute) || "Not Evaluated";
@@ -142,10 +223,40 @@ export default function ReleaseDetails() {
   const isOwner = release?.artist?.userId?.toLowerCase() === userId?.toLowerCase();
   const marketplaceRestrictedByRights =
     !!release?.rightsRoute && !isMarketplaceAllowedRoute(release.rightsRoute);
+  const marketplaceApprovedByRights =
+    !!release?.rightsRoute && isMarketplaceAllowedRoute(release.rightsRoute);
+  const rightsUpgradeStatus =
+    rightsUpgradeRequest?.status || releaseProtection?.rightsUpgradeRequestStatus || null;
+  const rightsUpgradeStatusLabel = formatRightsUpgradeStatusLabel(rightsUpgradeStatus);
+  const rightsUpgradeDecisionReason =
+    rightsUpgradeRequest?.decisionReason || releaseProtection?.rightsUpgradeDecisionReason || null;
+  const canSubmitRightsUpgrade =
+    isOwner &&
+    marketplaceRestrictedByRights &&
+    (!rightsUpgradeStatus ||
+      rightsUpgradeStatus === "more_evidence_requested" ||
+      rightsUpgradeStatus === "denied");
+  const rightsUpgradeButtonLabel =
+    rightsUpgradeStatus === "more_evidence_requested"
+      ? "Submit More Evidence"
+      : rightsUpgradeStatus === "denied"
+        ? "Resubmit Request"
+        : "Unlock Marketplace Rights";
+  useEffect(() => {
+    rightsUpgradeStatusRef.current = rightsUpgradeStatus;
+  }, [rightsUpgradeStatus]);
+  const needsAttestationForMinting =
+    marketplaceApprovedByRights && !!releaseProtection && !releaseProtection.attested;
+  const canCompleteAttestation =
+    isOwner &&
+    needsAttestationForMinting &&
+    !!release?.id &&
+    !!release?.tracks?.length &&
+    !!token;
   const mintingBlockedReason = marketplaceRestrictedByRights
     ? `Marketplace minting is disabled while this release is routed as ${rightsRouteLabel}.`
-    : releaseProtection && !releaseProtection.attested
-      ? "Minting opens after this release's Content Protection record has been attested on-chain."
+    : needsAttestationForMinting
+      ? "Marketplace rights are approved. Complete the release's on-chain Content Protection attestation to mint and list stems."
       : null;
 
   // Handle real-time track progress updates via WebSocket
@@ -244,8 +355,78 @@ export default function ReleaseDetails() {
     }
   }, [id, addToast, token]);
 
+  const handleReleaseRightsRealtimeUpdate = useCallback((data: ReleaseRightsRequestUpdate) => {
+    if (!release?.id || data.releaseId !== release.id) return;
+
+    const previousStatus = rightsUpgradeStatusRef.current;
+
+    void Promise.all([
+      getRelease(release.id, token).catch(() => null),
+      token && isOwner ? getLatestReleaseRightsUpgradeRequest(release.id, token).catch(() => null) : Promise.resolve(null),
+      getReleaseContentProtectionStatus(release.id).catch(() => null),
+    ]).then(([freshRelease, freshRequest, freshProtection]) => {
+      if (freshRelease) {
+        setRelease(freshRelease);
+      }
+      if (isOwner) {
+        setRightsUpgradeRequest(freshRequest);
+      }
+      setReleaseProtection(freshProtection);
+
+      if (data.status === previousStatus) {
+        return;
+      }
+
+      const toastMessageMap: Record<string, { title: string; message: string; type: "info" | "success" | "error" }> = {
+        submitted: {
+          title: "Request submitted",
+          message: "Your marketplace-rights request was submitted for review.",
+          type: "info",
+        },
+        under_review: {
+          title: "Under review",
+          message: "Marketplace-rights review has started for this release.",
+          type: "info",
+        },
+        more_evidence_requested: {
+          title: "More evidence requested",
+          message: freshRequest?.decisionReason || "The reviewer asked for stronger proof before approving marketplace access.",
+          type: "info",
+        },
+        approved_standard_escrow: {
+          title: "Marketplace rights approved",
+          message: "This release was approved under the standard escrow route.",
+          type: "success",
+        },
+        approved_trusted_fast_path: {
+          title: "Marketplace rights approved",
+          message: "This release was approved under the trusted fast path.",
+          type: "success",
+        },
+        denied: {
+          title: "Marketplace rights denied",
+          message: freshRequest?.decisionReason || "This release remains restricted because the submitted proof was not sufficient.",
+          type: "error",
+        },
+      };
+
+      const toast = toastMessageMap[data.status];
+      if (toast && isOwner) {
+        addToast(toast);
+      }
+    });
+  }, [addToast, isOwner, release?.id, token]);
+
   // Subscribe to WebSocket events for real-time updates
-  useWebSockets(handleReleaseStatusUpdate, handleProgressUpdate, handleTrackStatusUpdate);
+  useWebSockets(
+    handleReleaseStatusUpdate,
+    handleProgressUpdate,
+    handleTrackStatusUpdate,
+    undefined,
+    undefined,
+    undefined,
+    handleReleaseRightsRealtimeUpdate,
+  );
 
   useEffect(() => {
     if (typeof id === "string") {
@@ -292,6 +473,64 @@ export default function ReleaseDetails() {
       cancelled = true;
     };
   }, [release?.id]);
+
+  useEffect(() => {
+    if (!release?.id || !token || !isOwner) {
+      setRightsUpgradeRequest(null);
+      return;
+    }
+
+    let cancelled = false;
+    getLatestReleaseRightsUpgradeRequest(release.id, token)
+      .then((data) => {
+        if (!cancelled) {
+          setRightsUpgradeRequest(data);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRightsUpgradeRequest(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOwner, release?.id, token]);
+
+  useEffect(() => {
+    if (!release?.id || !token || !isOwner) return;
+
+    const shouldPollRights =
+      rightsUpgradeStatus === "submitted" || rightsUpgradeStatus === "under_review";
+
+    if (!shouldPollRights) return;
+
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const [request, protection] = await Promise.all([
+          getLatestReleaseRightsUpgradeRequest(release.id, token),
+          getReleaseContentProtectionStatus(release.id).catch(() => null),
+        ]);
+
+        if (cancelled) return;
+
+        setRightsUpgradeRequest(request);
+        setReleaseProtection(protection);
+      } catch {
+        // Ignore transient polling failures; the next interval will retry.
+      }
+    };
+
+    const interval = window.setInterval(poll, 10000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [isOwner, release?.id, rightsUpgradeStatus, token]);
 
   // Auto-enable mixer mode when navigating from Quick Mix CTA (?mixer=true&stem=vocals)
   useEffect(() => {
@@ -499,6 +738,61 @@ export default function ReleaseDetails() {
     }
   };
 
+  const handleCompleteAttestation = useCallback(async () => {
+    if (!release?.id || !release.tracks?.length || !token) {
+      return;
+    }
+
+    try {
+      const orderedTrackIds = [...release.tracks]
+        .sort((left, right) => {
+          const leftPosition = left.position ?? Number.MAX_SAFE_INTEGER;
+          const rightPosition = right.position ?? Number.MAX_SAFE_INTEGER;
+          return leftPosition - rightPosition;
+        })
+        .map((track) => track.id);
+      const contentHash = await hashReleaseTracks(release.id, orderedTrackIds, token);
+      const metadataURI = `resonate://release/${slugifyReleaseTitle(release.title)}`;
+
+      addToast({
+        title: "Completing attestation",
+        message: "Submitting this release's Content Protection attestation on-chain.",
+        type: "info",
+      });
+
+      await attestAndStake({
+        contentHash,
+        fingerprintHash: contentHash,
+        metadataURI,
+        includeStake: false,
+      });
+
+      let refreshedProtection: ReleaseContentProtectionData | null = null;
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        refreshedProtection = await getReleaseContentProtectionStatus(release.id);
+        if (refreshedProtection?.attested) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      setReleaseProtection(refreshedProtection);
+      addToast({
+        title: "Attestation submitted",
+        message: refreshedProtection?.attested
+          ? "Content Protection attestation is complete. Minting is ready to proceed."
+          : "Content Protection attestation was submitted. Minting will unlock once the indexer reflects the on-chain update.",
+        type: "success",
+      });
+    } catch (error) {
+      console.error("Failed to complete release attestation", error);
+      addToast({
+        title: "Attestation failed",
+        message: error instanceof Error ? error.message : "Failed to complete the on-chain attestation.",
+        type: "error",
+      });
+    }
+  }, [addToast, attestAndStake, release, token]);
+
   const handleArtworkChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !release || !token) return;
@@ -546,6 +840,7 @@ export default function ReleaseDetails() {
   if (!release) return <div className="error-state">Release not found.</div>;
 
   return (
+    <>
     <div className="release-details-container fade-in-up">
       <div className="mesh-gradient-bg" />
 
@@ -810,6 +1105,79 @@ export default function ReleaseDetails() {
               />
             )}
           </div>
+
+          {/* Marketplace restriction CTA — inside header for prominence */}
+          {isOwner && marketplaceRestrictedByRights && (() => {
+            const upgradeColor = getRightsUpgradeStatusColor(rightsUpgradeStatus);
+            return (
+              <div
+                style={{
+                  marginTop: "16px",
+                  borderRadius: "14px",
+                  border: `1px solid ${upgradeColor.fg}22`,
+                  background: upgradeColor.bg,
+                  padding: "14px 18px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "16px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ minWidth: 0, flex: "1 1 280px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "6px" }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={upgradeColor.fg} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        padding: "3px 9px",
+                        borderRadius: "999px",
+                        background: "rgba(255,255,255,0.06)",
+                        color: upgradeColor.fg,
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        letterSpacing: "0.02em",
+                      }}
+                    >
+                      {rightsUpgradeStatusLabel}
+                    </span>
+                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.55)" }}>
+                      Marketplace access requires proof-of-control review.
+                    </span>
+                  </div>
+                  {rightsUpgradeDecisionReason && (
+                    <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.75)", lineHeight: 1.5 }}>
+                      {rightsUpgradeDecisionReason}
+                    </div>
+                  )}
+                </div>
+
+                {canSubmitRightsUpgrade && (
+                  <Button
+                    variant="primary"
+                    onClick={() => setShowRightsUpgradeModal(true)}
+                    style={{ whiteSpace: "nowrap", flexShrink: 0 }}
+                  >
+                    {rightsUpgradeButtonLabel}
+                  </Button>
+                )}
+                {!canSubmitRightsUpgrade && canCompleteAttestation && (
+                  <Button
+                    variant="primary"
+                    onClick={handleCompleteAttestation}
+                    disabled={attestationPending}
+                    style={{ whiteSpace: "nowrap", flexShrink: 0 }}
+                  >
+                    {attestationPending ? "Attesting..." : "Complete On-Chain Attestation"}
+                  </Button>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </header>
 
@@ -822,10 +1190,10 @@ export default function ReleaseDetails() {
       <div
         style={{
           marginBottom: "var(--space-4)",
-          borderRadius: "10px",
+          borderRadius: "14px",
           border: "1px solid rgba(255,255,255,0.06)",
           borderLeft: `3px solid ${rightsTone.color}`,
-          background: "rgba(255,255,255,0.02)",
+          background: rightsTone.background,
           padding: "14px 18px",
         }}
       >
@@ -884,21 +1252,31 @@ export default function ReleaseDetails() {
             </span>
           )}
 
-          {/* Flags inline */}
           {release.rightsFlags && release.rightsFlags.length > 0 && (
-            <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginLeft: "auto" }}>
-              {release.rightsFlags.map((flag) => (
-                <span key={flag} style={{
-                  borderRadius: "4px",
-                  padding: "2px 6px",
-                  background: "rgba(255,255,255,0.05)",
-                  fontSize: "0.68rem",
-                  opacity: 0.55,
-                  whiteSpace: "nowrap",
-                }}>
-                  {formatRightsLabel(flag)}
-                </span>
-              ))}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                flexWrap: "wrap",
+                marginLeft: "auto",
+                justifyContent: "flex-end",
+              }}
+            >
+              <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                {release.rightsFlags.map((flag) => (
+                  <span key={flag} style={{
+                    borderRadius: "4px",
+                    padding: "2px 6px",
+                    background: "rgba(255,255,255,0.05)",
+                    fontSize: "0.68rem",
+                    opacity: 0.55,
+                    whiteSpace: "nowrap",
+                  }}>
+                    {formatRightsLabel(flag)}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -1171,6 +1549,47 @@ export default function ReleaseDetails() {
             </div>
 
             <div className="nft-tracks-scroll-container">
+              {marketplaceRestrictedByRights && rightsUpgradeStatus && (() => {
+                const upgradeColor = getRightsUpgradeStatusColor(rightsUpgradeStatus);
+                return (
+                  <div
+                    style={{
+                      marginBottom: "12px",
+                      padding: "12px 14px",
+                      borderRadius: "12px",
+                      border: `1px solid ${upgradeColor.fg}18`,
+                      background: upgradeColor.bg,
+                      fontSize: "13px",
+                      lineHeight: 1.5,
+                      color: "rgba(255,255,255,0.74)",
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: "6px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: "inline-block",
+                        padding: "2px 8px",
+                        borderRadius: "6px",
+                        background: "rgba(255,255,255,0.06)",
+                        color: upgradeColor.fg,
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.04em",
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {rightsUpgradeStatusLabel}
+                    </span>
+                    <span>
+                      {rightsUpgradeDecisionReason || "Review in progress."}
+                    </span>
+                  </div>
+                );
+              })()}
               <div className="nft-tracks-accordion">
                 {release.tracks.map(track => {
                   const mintableStems = (track.stems || []).filter(s => s.type.toLowerCase() !== "original");
@@ -1278,7 +1697,18 @@ export default function ReleaseDetails() {
 
                           {mintingBlockedReason && (
                             <div className="nft-attestation-notice">
-                              {mintingBlockedReason}
+                              <div>{mintingBlockedReason}</div>
+                              {canCompleteAttestation && (
+                                <div style={{ marginTop: "10px" }}>
+                                  <Button
+                                    variant="primary"
+                                    onClick={handleCompleteAttestation}
+                                    disabled={attestationPending}
+                                  >
+                                    {attestationPending ? "Attesting..." : "Complete On-Chain Attestation"}
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                           )}
 
@@ -1360,50 +1790,39 @@ export default function ReleaseDetails() {
 
       {/* Report Button — visible to non-owners only */}
       {!isOwner && (
-        <button
-          onClick={() => setShowReportModal(true)}
-          style={{
-            background: 'rgba(239, 68, 68, 0.06)',
-            border: '1px solid rgba(239, 68, 68, 0.15)',
-            borderRadius: '10px',
-            padding: '10px 18px',
-            color: '#ef4444',
-            fontSize: '13px',
-            fontWeight: 500,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            margin: '12px 0',
-            transition: 'all 0.2s',
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.06)';
-          }}
-        >
-          🚩 Report stolen content
-        </button>
+        <>
+          <style>{`
+            .report-btn { background: rgba(239, 68, 68, 0.06); }
+            .report-btn:hover { background: rgba(239, 68, 68, 0.14); border-color: rgba(239, 68, 68, 0.3); }
+          `}</style>
+          <button
+            className="report-btn"
+            onClick={() => setShowReportModal(true)}
+            style={{
+              border: '1px solid rgba(239, 68, 68, 0.15)',
+              borderRadius: '10px',
+              padding: '10px 18px',
+              color: '#ef4444',
+              fontSize: '13px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              margin: '12px 0',
+              transition: 'all 0.2s',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+              <line x1="4" y1="22" x2="4" y2="15" />
+            </svg>
+            Report stolen content
+          </button>
+        </>
       )}
 
-      {/* Report Modal */}
-      {showReportModal && (
-        <ReportContentModal
-          releaseId={release.id}
-          onClose={() => setShowReportModal(false)}
-          onSubmitted={(result) => {
-            addToast({
-              type: 'success',
-              title: 'Report Filed',
-              message: result.disputeId
-                ? `Dispute #${result.disputeId} was filed on-chain with a ${result.counterStakeEth} counter-stake.`
-                : `Your report was submitted on-chain with a ${result.counterStakeEth} counter-stake.`,
-            });
-          }}
-        />
-      )}
+      {/* Modals rendered outside this container via fragment — see bottom of return */}
 
       {/* Stem Pricing Panel - Only for owners with stems */}
       {isOwner && release.tracks && (() => {
@@ -1444,11 +1863,6 @@ export default function ReleaseDetails() {
           </div>
         </div>
       </footer>
-
-      <AddToPlaylistModal
-        tracks={tracksToAddToPlaylist}
-        onClose={() => setTracksToAddToPlaylist(null)}
-      />
 
       <style jsx>{`
         .release-details-container {
@@ -2129,16 +2543,54 @@ export default function ReleaseDetails() {
         }
       `}</style>
 
-      {/* Confirm dialog for destructive actions */}
-      <ConfirmDialog
-        isOpen={!!confirmDialog}
-        title={confirmDialog?.title ?? ""}
-        message={confirmDialog?.message ?? ""}
-        variant={confirmDialog?.variant ?? "default"}
-        confirmLabel={confirmDialog?.confirmLabel ?? "Confirm"}
-        onConfirm={confirmDialog?.onConfirm ?? (() => {})}
-        onCancel={() => setConfirmDialog(null)}
+    </div>
+
+    {/* Modals rendered outside the transformed container so position:fixed works */}
+    <AddToPlaylistModal
+      tracks={tracksToAddToPlaylist}
+      onClose={() => setTracksToAddToPlaylist(null)}
+    />
+
+    {showReportModal && (
+      <ReportContentModal
+        releaseId={release.id}
+        onClose={() => setShowReportModal(false)}
+        onSubmitted={(result) => {
+          addToast({
+            type: 'success',
+            title: 'Report Filed',
+            message: result.disputeId
+              ? `Dispute #${result.disputeId} was filed on-chain with a ${result.counterStakeEth} counter-stake.`
+              : `Your report was submitted on-chain with a ${result.counterStakeEth} counter-stake.`,
+          });
+        }}
       />
-    </div >
+    )}
+
+    {showRightsUpgradeModal && (
+      <ReleaseRightsUpgradeModal
+        releaseId={release.id}
+        releaseTitle={release.title}
+        existingDecisionReason={rightsUpgradeDecisionReason}
+        onClose={() => setShowRightsUpgradeModal(false)}
+        onSubmitted={async (request) => {
+          setRightsUpgradeRequest(request);
+          setShowRightsUpgradeModal(false);
+          const updatedProtection = await getReleaseContentProtectionStatus(release.id).catch(() => null);
+          setReleaseProtection(updatedProtection);
+        }}
+      />
+    )}
+
+    <ConfirmDialog
+      isOpen={!!confirmDialog}
+      title={confirmDialog?.title ?? ""}
+      message={confirmDialog?.message ?? ""}
+      variant={confirmDialog?.variant ?? "default"}
+      confirmLabel={confirmDialog?.confirmLabel ?? "Confirm"}
+      onConfirm={confirmDialog?.onConfirm ?? (() => {})}
+      onCancel={() => setConfirmDialog(null)}
+    />
+    </>
   );
 }

@@ -861,7 +861,8 @@ export function useAttestAndStake() {
       contentHash: Hex;         // keccak256 of the audio file(s)
       fingerprintHash: Hex;     // keccak256 of a client-side fingerprint (or placeholder)
       metadataURI: string;      // Release metadata URI (e.g., IPFS or API endpoint)
-      stakeAmountWei: bigint;   // Amount to stake (from trust tier)
+      stakeAmountWei?: bigint;  // Amount to stake (from trust tier)
+      includeStake?: boolean;   // Set false for attestation-only flows
     }) => {
       if (status !== "authenticated" || !address) {
         throw new Error("Wallet not connected");
@@ -892,7 +893,7 @@ export function useAttestAndStake() {
           viemKeccak256(encodePacked(["address", "bytes32"], [callerAddress, params.contentHash]))
         );
 
-        const [attestation, stakeInfo] = await Promise.all([
+        const [attestation, stakeInfo, contractStakeAmount] = await Promise.all([
           publicClient.readContract({
             address: cpAddress,
             abi: ContentProtectionABI,
@@ -905,11 +906,22 @@ export function useAttestAndStake() {
             functionName: "stakes",
             args: [releaseId],
           }),
+          publicClient.readContract({
+            address: cpAddress,
+            abi: ContentProtectionABI,
+            functionName: "stakeAmount",
+          }),
         ]);
 
         const existingAttester = attestation[3] as Address;
         const attestationValid = Boolean(attestation[5]);
         const stakeActive = Boolean(stakeInfo[2]);
+        const shouldStake = params.includeStake ?? true;
+        const effectiveStakeAmount = shouldStake && !stakeActive
+          ? ((params.stakeAmountWei ?? 0n) > (contractStakeAmount as bigint)
+              ? (params.stakeAmountWei ?? 0n)
+              : (contractStakeAmount as bigint))
+          : 0n;
 
         if (
           attestationValid &&
@@ -934,7 +946,7 @@ export function useAttestAndStake() {
           });
         }
 
-        if (!stakeActive) {
+        if (shouldStake && !stakeActive) {
           calls.push({
             to: cpAddress,
             data: encodeFunctionData({
@@ -942,12 +954,12 @@ export function useAttestAndStake() {
               functionName: "stakeForRelease",
               args: [releaseId],
             }),
-            value: params.stakeAmountWei,
+            value: effectiveStakeAmount,
           });
         }
 
         if (calls.length === 0) {
-          return { hash: "", tokenId: releaseId };
+          return { hash: "", tokenId: releaseId, stakeAmountWei: 0n };
         }
 
         const hash = await sendBatchContractTransactions(
@@ -959,7 +971,7 @@ export function useAttestAndStake() {
         );
 
         setTxHash(hash);
-        return { hash, tokenId: releaseId };
+        return { hash, tokenId: releaseId, stakeAmountWei: effectiveStakeAmount };
       } catch (err) {
         const error = normalizeContractWriteError(err);
         setError(error);

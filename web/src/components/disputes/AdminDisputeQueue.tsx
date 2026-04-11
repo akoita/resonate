@@ -2,7 +2,16 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { useToast } from "../ui/Toast";
 import { formatEth } from "../../lib/stakeConstants";
+import { useAuth } from "../auth/AuthProvider";
+import { useWebSockets, type ReleaseRightsRequestUpdate } from "../../hooks/useWebSockets";
+import {
+  listPendingReleaseRightsUpgradeRequests,
+  reviewReleaseRightsUpgradeRequest,
+  type ReleaseRightsUpgradeRequestRecord,
+  type ReleaseRightsUpgradeRequestStatus,
+} from "../../lib/api";
 
 interface Dispute {
   id: string;
@@ -27,6 +36,13 @@ interface Dispute {
     verificationStatus?: string | null;
   }>;
 }
+
+type RightsUpgradeAction =
+  | "under_review"
+  | "more_evidence_requested"
+  | "approved_standard_escrow"
+  | "approved_trusted_fast_path"
+  | "denied";
 
 /* ── Inline SVG Icons ──────────────────────────────────────────── */
 
@@ -95,8 +111,30 @@ const outcomeConfig: Record<string, { label: string; variant: "danger" | "warnin
   inconclusive: { label: "Mark Inconclusive", variant: "warning", message: "This will mark the dispute as inconclusive. Neither party will be penalized." },
 };
 
+function formatRightsUpgradeStatusLabel(status: string) {
+  switch (status) {
+    case "submitted":
+      return "Submitted";
+    case "under_review":
+      return "Under Review";
+    case "more_evidence_requested":
+      return "More Evidence Needed";
+    case "approved_standard_escrow":
+      return "Approved: Standard Escrow";
+    case "approved_trusted_fast_path":
+      return "Approved: Trusted Fast Path";
+    case "denied":
+      return "Denied";
+    default:
+      return status.replaceAll("_", " ");
+  }
+}
+
 export default function AdminDisputeQueue() {
+  const { token } = useAuth();
+  const { addToast } = useToast();
   const [disputes, setDisputes] = useState<Dispute[]>([]);
+  const [rightsRequests, setRightsRequests] = useState<ReleaseRightsUpgradeRequestRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [expandedEvidence, setExpandedEvidence] = useState<Set<string>>(new Set());
@@ -105,16 +143,88 @@ export default function AdminDisputeQueue() {
   const fetchPending = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/metadata/disputes/pending?limit=50");
-      if (res.ok) setDisputes(await res.json());
+      const [disputeRes, pendingRights] = await Promise.all([
+        fetch("/api/metadata/disputes/pending?limit=50"),
+        token ? listPendingReleaseRightsUpgradeRequests(token, 50) : Promise.resolve([]),
+      ]);
+
+      if (disputeRes.ok) setDisputes(await disputeRes.json());
+      setRightsRequests(pendingRights);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     fetchPending();
   }, [fetchPending]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    const interval = window.setInterval(() => {
+      fetchPending().catch(() => {});
+    }, 10000);
+
+    return () => window.clearInterval(interval);
+  }, [fetchPending, token]);
+
+  const handleReleaseRightsRealtimeUpdate = useCallback((update: ReleaseRightsRequestUpdate) => {
+    if (!token) return;
+
+    void fetchPending();
+
+    if (update.status === "submitted") {
+      addToast({
+        type: "info",
+        title: "New marketplace-rights request",
+        message: "A creator submitted a release for marketplace-rights review.",
+      });
+    }
+  }, [addToast, fetchPending, token]);
+
+  useWebSockets(
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    handleReleaseRightsRealtimeUpdate,
+  );
+
+  const reviewRightsRequest = async (
+    id: string,
+    action: RightsUpgradeAction,
+    decisionReason?: string,
+  ) => {
+    if (!token) return;
+    setActionLoading(id);
+    try {
+      const updatedRequest = await reviewReleaseRightsUpgradeRequest(
+        id,
+        {
+          action: action as ReleaseRightsUpgradeRequestStatus,
+          decisionReason,
+        },
+        token,
+      );
+      addToast({
+        type: "success",
+        title: "Review updated",
+        message: `Release rights request is now ${formatRightsUpgradeStatusLabel(updatedRequest.status)}.`,
+      });
+      await fetchPending();
+    } catch (error) {
+      addToast({
+        type: "error",
+        title: "Review failed",
+        message: error instanceof Error ? error.message : "Could not update the release-rights request.",
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const markUnderReview = async (id: string) => {
     setActionLoading(id);
@@ -186,6 +296,18 @@ export default function AdminDisputeQueue() {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.4; }
         }
+        .adq-action-btn:not(:disabled):hover {
+          filter: brightness(1.2);
+          transform: translateY(-1px);
+        }
+        .adq-action-btn:disabled {
+          opacity: 0.45 !important;
+          cursor: not-allowed !important;
+          filter: grayscale(0.4);
+        }
+        .adq-card:hover {
+          border-color: rgba(255,255,255,0.1);
+        }
       `}</style>
 
       {/* Header */}
@@ -197,17 +319,178 @@ export default function AdminDisputeQueue() {
               Admin Dispute Queue
             </h1>
             <span style={pendingBadgeStyle}>
-              {disputes.length} pending
+              {disputes.length + rightsRequests.length} pending
             </span>
           </div>
           <p style={{ margin: 0, fontSize: "13px", color: "rgba(255,255,255,0.4)" }}>
-            Review and resolve pending content disputes
+            Review pending content disputes and release-rights upgrade requests
           </p>
         </div>
       </div>
 
+      {rightsRequests.length > 0 && (
+        <section style={{ marginBottom: "26px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700 }}>Release Rights Requests</h2>
+              <p style={{ margin: "4px 0 0", fontSize: "12px", color: "rgba(255,255,255,0.42)" }}>
+                Creator submissions requesting marketplace access for restricted releases.
+              </p>
+            </div>
+            <span style={{ ...pendingBadgeStyle, background: "rgba(124,92,255,0.12)", color: "#a78bfa" }}>
+              {rightsRequests.length} requests
+            </span>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            {rightsRequests.map((request) => (
+              <div key={request.id} className="adq-card" style={{ ...cardStyle, borderLeftColor: "#a78bfa" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "6px" }}>
+                      <span style={{ fontWeight: 700, fontSize: "14px" }}>
+                        {request.release?.title || request.releaseId}
+                      </span>
+                      <span style={{ ...badgeStyle, borderColor: "#a78bfa", color: "#a78bfa" }}>
+                        {formatRightsUpgradeStatusLabel(request.status)}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)" }}>
+                      Route request: {request.requestedRoute.replaceAll("_", " ")} · Current route:{" "}
+                      {request.currentRouteAtSubmission?.replaceAll("_", " ") || "unknown"}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: "12px", opacity: 0.35, whiteSpace: "nowrap" }}>
+                    {new Date(request.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+
+                {request.summary && (
+                  <div style={{ marginTop: "10px", fontSize: "13px", lineHeight: 1.55, color: "rgba(255,255,255,0.78)" }}>
+                    {request.summary}
+                  </div>
+                )}
+
+                {request.decisionReason && (
+                  <div style={{ marginTop: "10px", fontSize: "12px", lineHeight: 1.5, color: "rgba(255,255,255,0.5)" }}>
+                    Reviewer note: {request.decisionReason}
+                  </div>
+                )}
+
+                {request.evidenceBundles && request.evidenceBundles.length > 0 && (
+                  <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                    {request.evidenceBundles.flatMap((bundle) => bundle.evidences).slice(0, 4).map((evidence) => (
+                      <div
+                        key={evidence.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          flexWrap: "wrap",
+                          fontSize: "12px",
+                          color: "rgba(255,255,255,0.72)",
+                        }}
+                      >
+                        <span style={{ ...badgeStyle, borderColor: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.68)" }}>
+                          {evidence.kind.replaceAll("_", " ")}
+                        </span>
+                        {evidence.sourceUrl ? (
+                          <a href={evidence.sourceUrl} target="_blank" rel="noopener noreferrer" style={linkStyle}>
+                            <IconLink />
+                            <span>{evidence.title}</span>
+                          </a>
+                        ) : (
+                          <span>{evidence.title}</span>
+                        )}
+                        {evidence.claimedRightsholder && (
+                          <span style={{ opacity: 0.48 }}>
+                            rightsholder: {evidence.claimedRightsholder}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ ...actionsRowStyle, marginTop: "14px", flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    <button
+                      className="adq-action-btn"
+                      onClick={() => reviewRightsRequest(request.id, "under_review")}
+                      disabled={actionLoading === request.id}
+                      style={{ ...actionBtnStyle, borderColor: "rgba(139,92,246,0.3)", color: "#8b5cf6", background: "rgba(139,92,246,0.06)" }}
+                    >
+                      {actionLoading === request.id ? "..." : "Under Review"}
+                    </button>
+                    <button
+                      className="adq-action-btn"
+                      onClick={() =>
+                        reviewRightsRequest(
+                          request.id,
+                          "more_evidence_requested",
+                          "Please provide stronger proof linking this wallet to the official artist or release profile.",
+                        )
+                      }
+                      disabled={actionLoading === request.id}
+                      style={{ ...actionBtnStyle, borderColor: "rgba(245,158,11,0.3)", color: "#f59e0b", background: "rgba(245,158,11,0.06)" }}
+                    >
+                      {actionLoading === request.id ? "..." : "Need More Evidence"}
+                    </button>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    <button
+                      className="adq-action-btn"
+                      onClick={() =>
+                        reviewRightsRequest(
+                          request.id,
+                          "approved_standard_escrow",
+                          "Marketplace access approved under the standard escrow path after release rights review.",
+                        )
+                      }
+                      disabled={actionLoading === request.id}
+                      style={{ ...actionBtnStyle, borderColor: "rgba(16,185,129,0.3)", color: "#10b981", background: "rgba(16,185,129,0.06)" }}
+                    >
+                      {actionLoading === request.id ? "..." : "Approve Standard"}
+                    </button>
+                    <button
+                      className="adq-action-btn"
+                      onClick={() =>
+                        reviewRightsRequest(
+                          request.id,
+                          "approved_trusted_fast_path",
+                          "Marketplace access approved under the trusted fast path after release rights review.",
+                        )
+                      }
+                      disabled={actionLoading === request.id}
+                      style={{ ...actionBtnStyle, borderColor: "rgba(34,197,94,0.3)", color: "#4ade80", background: "rgba(34,197,94,0.06)" }}
+                    >
+                      {actionLoading === request.id ? "..." : "Approve Fast Path"}
+                    </button>
+                    <button
+                      className="adq-action-btn"
+                      onClick={() =>
+                        reviewRightsRequest(
+                          request.id,
+                          "denied",
+                          "The submitted proof was not sufficient to unlock marketplace access for this release.",
+                        )
+                      }
+                      disabled={actionLoading === request.id}
+                      style={{ ...actionBtnStyle, borderColor: "rgba(239,68,68,0.3)", color: "#ef4444", background: "rgba(239,68,68,0.06)" }}
+                    >
+                      {actionLoading === request.id ? "..." : "Deny"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Content */}
-      {disputes.length === 0 ? (
+      {disputes.length === 0 && rightsRequests.length === 0 ? (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "80px 20px", gap: "16px" }}>
           <div style={{
             width: "72px",
@@ -223,9 +506,9 @@ export default function AdminDisputeQueue() {
             <IconCheckCircle />
           </div>
           <div style={{ fontSize: "16px", fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>Queue cleared</div>
-          <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)" }}>No disputes require attention right now</div>
+          <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)" }}>No disputes or release-rights reviews require attention right now</div>
         </div>
-      ) : (
+      ) : disputes.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           {disputes.map((d) => {
             const isEvidenceExpanded = expandedEvidence.has(d.id);
@@ -237,7 +520,7 @@ export default function AdminDisputeQueue() {
             }
 
             return (
-              <div key={d.id} style={{ ...cardStyle, borderLeftColor: statusColor(d.status) }}>
+              <div key={d.id} className="adq-card" style={{ ...cardStyle, borderLeftColor: statusColor(d.status) }}>
                 {/* Header */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
@@ -341,6 +624,7 @@ export default function AdminDisputeQueue() {
                   <div>
                     {d.status.toLowerCase() !== "review" && (
                       <button
+                        className="adq-action-btn"
                         onClick={() => markUnderReview(d.id)}
                         disabled={actionLoading === d.id}
                         style={{ ...actionBtnStyle, borderColor: "rgba(139,92,246,0.3)", color: "#8b5cf6", background: "rgba(139,92,246,0.06)" }}
@@ -351,6 +635,7 @@ export default function AdminDisputeQueue() {
                   </div>
                   <div style={{ display: "flex", gap: "8px" }}>
                     <button
+                      className="adq-action-btn"
                       onClick={() => setConfirmAction({ id: d.id, outcome: "upheld" })}
                       disabled={actionLoading === d.id}
                       style={{ ...actionBtnStyle, borderColor: "rgba(16,185,129,0.3)", color: "#10b981", background: "rgba(16,185,129,0.06)" }}
@@ -358,6 +643,7 @@ export default function AdminDisputeQueue() {
                       Upheld
                     </button>
                     <button
+                      className="adq-action-btn"
                       onClick={() => setConfirmAction({ id: d.id, outcome: "rejected" })}
                       disabled={actionLoading === d.id}
                       style={{ ...actionBtnStyle, borderColor: "rgba(239,68,68,0.3)", color: "#ef4444", background: "rgba(239,68,68,0.06)" }}
@@ -365,6 +651,7 @@ export default function AdminDisputeQueue() {
                       Rejected
                     </button>
                     <button
+                      className="adq-action-btn"
                       onClick={() => setConfirmAction({ id: d.id, outcome: "inconclusive" })}
                       disabled={actionLoading === d.id}
                       style={{ ...actionBtnStyle, borderColor: "rgba(245,158,11,0.3)", color: "#f59e0b", background: "rgba(245,158,11,0.06)" }}
@@ -377,7 +664,7 @@ export default function AdminDisputeQueue() {
             );
           })}
         </div>
-      )}
+      ) : null}
 
       {/* Confirm Dialog */}
       {confirmAction && (
@@ -428,7 +715,7 @@ const cardStyle: React.CSSProperties = {
   borderLeft: "3px solid transparent",
   borderRadius: "14px",
   padding: "18px 20px",
-  transition: "border-color 0.2s",
+  transition: "border-color 0.2s, background 0.2s",
 };
 
 const badgeStyle: React.CSSProperties = {
@@ -493,4 +780,5 @@ const actionBtnStyle: React.CSSProperties = {
   fontWeight: 600,
   cursor: "pointer",
   transition: "all 0.15s",
+  opacity: 1,
 };

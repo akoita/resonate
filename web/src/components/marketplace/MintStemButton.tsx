@@ -334,10 +334,10 @@ export function MintStemButton({
                 style={{
                     width: "100%",
                     padding: "8px 12px",
-                    background: "#3f3f46",
+                    background: "rgba(63,63,70,0.5)",
                     color: "#71717a",
                     border: "none",
-                    borderRadius: 8,
+                    borderRadius: 10,
                     fontSize: 13,
                     fontWeight: 600,
                     cursor: "not-allowed",
@@ -355,13 +355,14 @@ export function MintStemButton({
                 style={{
                     width: "100%",
                     padding: "8px 12px",
-                    background: "#065f46",
+                    background: "rgba(16,185,129,0.12)",
                     color: "#10b981",
-                    border: "1px solid #10b981",
-                    borderRadius: 8,
+                    border: "1px solid rgba(16,185,129,0.3)",
+                    borderRadius: 10,
                     fontSize: 13,
                     fontWeight: 600,
                     cursor: "default",
+                    transition: "all 0.2s",
                 }}
             >
                 ✓ Listed
@@ -377,14 +378,14 @@ export function MintStemButton({
                 style={{
                     width: "100%",
                     padding: "8px 12px",
-                    background: "#3f3f46",
+                    background: "rgba(63,63,70,0.5)",
                     color: "#a1a1aa",
-                    border: "1px solid rgba(161, 161, 170, 0.25)",
-                    borderRadius: 8,
+                    border: "1px solid rgba(161, 161, 170, 0.15)",
+                    borderRadius: 10,
                     fontSize: 13,
                     fontWeight: 600,
                     cursor: "not-allowed",
-                    opacity: 0.8,
+                    opacity: 0.7,
                 }}
             >
                 {disabledLabel || "Attestation Required"}
@@ -399,16 +400,17 @@ export function MintStemButton({
                 style={{
                     width: "100%",
                     padding: "8px 12px",
-                    background: "#3f3f46",
-                    color: "#a1a1aa",
-                    border: "1px solid rgba(161, 161, 170, 0.3)",
-                    borderRadius: 8,
+                    background: "rgba(139,92,246,0.1)",
+                    color: "#a78bfa",
+                    border: "1px solid rgba(139,92,246,0.2)",
+                    borderRadius: 10,
                     fontSize: 13,
                     fontWeight: 600,
                     cursor: "wait",
-                    opacity: 0.8,
+                    animation: "mint-pulse 1.5s ease-in-out infinite",
                 }}
             >
+                <style>{`@keyframes mint-pulse { 0%,100% { opacity:0.7; } 50% { opacity:1; } }`}</style>
                 {state === "confirming_mint" ? "Confirming transaction..." : "Confirming listing..."}
             </button>
         );
@@ -422,14 +424,15 @@ export function MintStemButton({
                 style={{
                     width: "100%",
                     padding: "8px 12px",
-                    background: listPending ? "#3f3f46" : "#8b5cf6",
+                    background: listPending ? "rgba(63,63,70,0.5)" : "#8b5cf6",
                     color: "#fff",
                     border: "none",
-                    borderRadius: 8,
+                    borderRadius: 10,
                     fontSize: 13,
                     fontWeight: 600,
                     cursor: listPending ? "wait" : "pointer",
                     opacity: listPending ? 0.7 : 1,
+                    transition: "all 0.2s",
                 }}
             >
                 {listPending ? "Listing..." : "List for Sale"}
@@ -444,14 +447,15 @@ export function MintStemButton({
             style={{
                 width: "100%",
                 padding: "8px 12px",
-                background: mintAndListPending ? "#3f3f46" : "#8b5cf6",
+                background: mintAndListPending ? "rgba(63,63,70,0.5)" : "#8b5cf6",
                 color: "#fff",
                 border: "none",
-                borderRadius: 8,
+                borderRadius: 10,
                 fontSize: 13,
                 fontWeight: 600,
                 cursor: mintAndListPending ? "wait" : "pointer",
                 opacity: mintAndListPending ? 0.7 : 1,
+                transition: "all 0.2s",
             }}
         >
             {mintAndListPending ? "Processing..." : "Mint & List"}

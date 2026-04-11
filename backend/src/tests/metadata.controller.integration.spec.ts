@@ -39,7 +39,15 @@ describe('MetadataController (integration)', () => {
       },
     });
     await prisma.release.create({
-      data: { id: `${TEST_PREFIX}release`, title: 'Meta Release', artistId: `${TEST_PREFIX}artist`, status: 'published' },
+      data: {
+        id: `${TEST_PREFIX}release`,
+        title: 'Meta Release',
+        artistId: `${TEST_PREFIX}artist`,
+        status: 'published',
+        rightsRoute: 'LIMITED_MONITORING',
+        rightsFlags: ['NEEDS_PROOF_OF_CONTROL', 'RESTRICT_MARKETPLACE', 'RESTRICT_PAYOUTS'],
+        rightsReason: 'Uploader has not yet completed release control review.',
+      },
     });
     await prisma.track.create({
       data: { id: `${TEST_PREFIX}track`, title: 'Meta Track', releaseId: `${TEST_PREFIX}release`, position: 1 },
@@ -127,6 +135,7 @@ describe('MetadataController (integration)', () => {
         ],
       },
     }).catch(() => {});
+    await prisma.releaseRightsUpgradeRequest.deleteMany({ where: { releaseId: `${TEST_PREFIX}release` } }).catch(() => {});
     await prisma.dispute.deleteMany({ where: { tokenId: `${TEST_PREFIX}typed-token` } }).catch(() => {});
     await prisma.curatorReputation.deleteMany({ where: { walletAddress: creatorWalletAddress } }).catch(() => {});
     await prisma.stemNftMint.deleteMany({ where: { stemId } }).catch(() => {});
@@ -313,6 +322,98 @@ describe('MetadataController (integration)', () => {
 
       expect(persistedEvidence).toHaveLength(2);
       expect(persistedEvidence[0].claimedRightsholder).toBe('Meta Artist');
+    });
+  });
+
+  describe('release rights-upgrade workflow', () => {
+    it('creates a creator-submitted rights-upgrade request for a restricted release', async () => {
+      const request = await controller.submitReleaseRightsUpgradeRequest(
+        {
+          user: {
+            userId: creatorWalletAddress,
+            role: 'listener',
+          },
+        },
+        `${TEST_PREFIX}release`,
+        {
+          summary: 'I control the official distributor dashboard and prior publication for this release.',
+          requestedRoute: 'STANDARD_ESCROW',
+          evidences: [
+            {
+              kind: 'proof_of_control',
+              title: 'Official distributor dashboard',
+              sourceUrl: 'https://example.com/distributor/meta-release',
+              claimedRightsholder: 'Meta Artist',
+              description: 'Dashboard account that controls the release.',
+              strength: 'high',
+            },
+          ],
+        },
+      );
+
+      expect(request).not.toBeNull();
+      expect(request!.status).toBe('submitted');
+      expect(request!.requestedRoute).toBe('STANDARD_ESCROW');
+      expect(request!.evidenceBundles?.[0]?.purpose).toBe('rights_upgrade_request');
+      expect(request!.evidenceBundles?.[0]?.evidences).toHaveLength(1);
+    });
+
+    it('rejects release rights-upgrade submissions from non-owners', async () => {
+      await expect(
+        controller.submitReleaseRightsUpgradeRequest(
+          {
+            user: {
+              userId: ('0x' + '9'.repeat(40)).toLowerCase(),
+              role: 'listener',
+            },
+          },
+          `${TEST_PREFIX}release`,
+          {
+            summary: 'I should not be allowed to do this.',
+            requestedRoute: 'STANDARD_ESCROW',
+            evidences: [
+              {
+                kind: 'proof_of_control',
+                title: 'Fake proof',
+                sourceUrl: 'https://example.com/fake',
+                claimedRightsholder: 'Fake',
+                strength: 'medium',
+              },
+            ],
+          },
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('approves a rights-upgrade request and promotes the release route', async () => {
+      const pending = await prisma.releaseRightsUpgradeRequest.findFirst({
+        where: { releaseId: `${TEST_PREFIX}release` },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(pending).not.toBeNull();
+
+      const reviewed = await controller.reviewReleaseRightsUpgradeRequest(
+        {
+          user: {
+            userId: creatorWalletAddress,
+            role: 'admin',
+          },
+        },
+        pending!.id,
+        {
+          action: 'approved_standard_escrow',
+          decisionReason: 'Proof-of-control review passed for the release.',
+        },
+      );
+
+      expect(reviewed.status).toBe('approved_standard_escrow');
+
+      const release = await prisma.release.findUnique({
+        where: { id: `${TEST_PREFIX}release` },
+      });
+      expect(release?.rightsRoute).toBe('STANDARD_ESCROW');
+      expect(release?.rightsFlags).toEqual([]);
+      expect(release?.rightsReason).toBe('Proof-of-control review passed for the release.');
     });
   });
 

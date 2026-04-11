@@ -11,6 +11,7 @@ export interface DisputeNotification {
   title: string;
   message: string;
   disputeId?: string;
+  releaseId?: string;
   read: boolean;
   createdAt: string;
 }
@@ -32,6 +33,7 @@ export interface IncomingNotificationEvent {
   title: string;
   message: string;
   disputeId?: string;
+  releaseId?: string;
   timestamp?: string;
 }
 
@@ -42,6 +44,7 @@ export function normalizeIncomingNotification(data: IncomingNotificationEvent): 
     title: data.title,
     message: data.message,
     disputeId: data.disputeId,
+    releaseId: data.releaseId,
     read: false,
     createdAt: data.timestamp || new Date().toISOString(),
   };

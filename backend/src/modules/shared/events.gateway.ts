@@ -17,7 +17,7 @@ import {
     GenerationFailedEvent, RealtimeAudioEvent, RealtimeDisconnectedEvent, MarketplaceListingNotifyEvent,
     SessionStartedEvent, SessionEndedEvent, AgentSelectionEvent, AgentMixPlannedEvent,
     AgentNegotiatedEvent, AgentDecisionMadeEvent, ContractStemListedEvent, ContractStemSoldEvent,
-    ContractListingCancelledEvent, NotificationCreatedEvent,
+    ContractListingCancelledEvent, NotificationCreatedEvent, ReleaseRightsRequestUpdatedEvent,
     ContractDisputeFiledEvent, ContractDisputeResolvedEvent, ContractDisputeAppealedEvent,
 } from '../../events/event_types';
 import { LyriaRealtimeService } from '../generation/lyria_realtime.service';
@@ -312,8 +312,23 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
                     title: event.title,
                     message: event.message,
                     disputeId: event.disputeId,
+                    releaseId: event.releaseId,
                     timestamp: event.occurredAt,
                 });
+            }
+        }));
+
+        this.subscriptions.push(this.eventBus.subscribe('release_rights.request_updated', (event: ReleaseRightsRequestUpdatedEvent) => {
+            if (this.server) {
+                const recipients = Array.from(new Set((event.walletAddresses || []).map((value) => value.toLowerCase()).filter(Boolean)));
+                for (const walletAddress of recipients) {
+                    this.server.to(`wallet:${walletAddress}`).emit('release_rights.request_updated', {
+                        requestId: event.requestId,
+                        releaseId: event.releaseId,
+                        status: event.status,
+                        timestamp: event.occurredAt,
+                    });
+                }
             }
         }));
 
