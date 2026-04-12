@@ -68,7 +68,11 @@ export function deriveReleaseVerificationStates(input: {
     : "unverified";
 
   let rightsVerificationStatus: RightsVerificationState = "not_reviewed";
-  if (
+  if (route === "BLOCKED") {
+    rightsVerificationStatus = "rights_disputed";
+  } else if (route === "QUARANTINED_REVIEW") {
+    rightsVerificationStatus = "platform_review_pending";
+  } else if (
     requestStatus === "submitted" ||
     requestStatus === "under_review" ||
     requestStatus === "more_evidence_requested"
@@ -79,10 +83,6 @@ export function deriveReleaseVerificationStates(input: {
   } else if (requestStatus === "approved_trusted_fast_path") {
     rightsVerificationStatus = "rights_verified";
   } else if (requestStatus === "denied") {
-    rightsVerificationStatus = "rights_disputed";
-  } else if (route === "QUARANTINED_REVIEW") {
-    rightsVerificationStatus = "platform_review_pending";
-  } else if (route === "BLOCKED") {
     rightsVerificationStatus = "rights_disputed";
   }
 

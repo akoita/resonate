@@ -433,7 +433,7 @@ export default function AdminDisputeQueue() {
                 {request.evidenceBundles && request.evidenceBundles.length > 0 && (
                   <div style={{ marginTop: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
                     <div style={sectionLabelStyle}>Evidence packet</div>
-                    {request.evidenceBundles.flatMap((bundle) => bundle.evidences).slice(0, 4).map((evidence) => (
+                    {request.evidenceBundles.flatMap((bundle) => bundle.evidences).map((evidence) => (
                       <div
                         key={evidence.id}
                         className="adq-evidence-card"
@@ -1011,12 +1011,4 @@ const actionBtnStyle: React.CSSProperties = {
   cursor: "pointer",
   transition: "all 0.15s",
   opacity: 1,
-};
-
-const actionHintStyle: React.CSSProperties = {
-  maxWidth: "360px",
-  fontSize: "11px",
-  lineHeight: 1.45,
-  color: "rgba(255,255,255,0.42)",
-  textAlign: "right",
 };
