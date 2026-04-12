@@ -328,6 +328,10 @@ export default function AdminDisputeQueue() {
         .adq-card:hover {
           border-color: rgba(255,255,255,0.1);
         }
+        .adq-evidence-card:hover {
+          background: rgba(255,255,255,0.04);
+          border-color: rgba(255,255,255,0.1);
+        }
       `}</style>
 
       {/* Header */}
@@ -375,12 +379,32 @@ export default function AdminDisputeQueue() {
                         {formatRightsUpgradeStatusLabel(request.status)}
                       </span>
                     </div>
-                    <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)" }}>
-                      Route request: {request.requestedRoute.replaceAll("_", " ")} · Current route:{" "}
-                      {request.currentRouteAtSubmission?.replaceAll("_", " ") || "unknown"}
-                    </div>
-                    <div style={{ marginTop: "4px", fontSize: "12px", color: "rgba(255,255,255,0.44)" }}>
-                      Derived review state: {formatDerivedRightsStateLabel(request.derivedRightsVerificationStatus)}
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginTop: "4px" }}>
+                      <span style={routeChipStyle}>
+                        {request.currentRouteAtSubmission?.replaceAll("_", " ") || "unknown"}
+                      </span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>
+                      <span style={{ ...routeChipStyle, borderColor: "rgba(124,92,255,0.25)", color: "#a78bfa" }}>
+                        {request.requestedRoute.replaceAll("_", " ")}
+                      </span>
+                      {request.derivedRightsVerificationStatus && request.derivedRightsVerificationStatus !== "not_independently_reviewed" && (
+                        <span style={{
+                          padding: "2px 8px",
+                          borderRadius: "6px",
+                          fontSize: "10px",
+                          fontWeight: 600,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.04em",
+                          background: request.derivedRightsVerificationStatus === "rights_verified" ? "rgba(16,185,129,0.1)" :
+                            request.derivedRightsVerificationStatus === "rights_disputed" ? "rgba(239,68,68,0.1)" :
+                              "rgba(245,158,11,0.1)",
+                          color: request.derivedRightsVerificationStatus === "rights_verified" ? "#10b981" :
+                            request.derivedRightsVerificationStatus === "rights_disputed" ? "#ef4444" :
+                              "#f59e0b",
+                        }}>
+                          {formatDerivedRightsStateLabel(request.derivedRightsVerificationStatus)}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <span style={{ fontSize: "12px", opacity: 0.35, whiteSpace: "nowrap" }}>
@@ -412,64 +436,98 @@ export default function AdminDisputeQueue() {
                     {request.evidenceBundles.flatMap((bundle) => bundle.evidences).slice(0, 4).map((evidence) => (
                       <div
                         key={evidence.id}
+                        className="adq-evidence-card"
                         style={evidenceCardStyle}
                       >
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                          <span style={{ ...badgeStyle, borderColor: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.68)" }}>
-                            {evidence.kind.replaceAll("_", " ")}
-                          </span>
-                          <span style={{ fontSize: "13px", fontWeight: 600, color: "rgba(255,255,255,0.88)" }}>
-                            {evidence.title}
-                          </span>
-                          {evidence.sourceUrl && (
-                            <a href={evidence.sourceUrl} target="_blank" rel="noopener noreferrer" style={linkStyle}>
-                              <IconLink />
-                              <span>{compactUrlLabel(evidence.sourceUrl)}</span>
-                            </a>
-                          )}
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                            <span style={{ ...badgeStyle, borderColor: "rgba(167,139,250,0.25)", color: "#a78bfa", background: "rgba(167,139,250,0.06)" }}>
+                              {evidence.kind.replaceAll("_", " ")}
+                            </span>
+                            {evidence.strength && (
+                              <span style={{
+                                ...badgeStyle,
+                                borderColor: evidence.strength === "very_high" || evidence.strength === "high" ? "rgba(16,185,129,0.25)" : "rgba(245,158,11,0.25)",
+                                color: evidence.strength === "very_high" ? "#10b981" : evidence.strength === "high" ? "#34d399" : "#f59e0b",
+                                background: evidence.strength === "very_high" || evidence.strength === "high" ? "rgba(16,185,129,0.06)" : "rgba(245,158,11,0.06)",
+                              }}>
+                                {evidence.strength.replaceAll("_", " ")}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: "10px", flexWrap: "wrap" }}>
+                            <span style={{ fontSize: "14px", fontWeight: 600, color: "rgba(255,255,255,0.9)" }}>
+                              {evidence.title}
+                            </span>
+                            {evidence.sourceUrl && (
+                              <a href={evidence.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ ...linkStyle, fontSize: "12px" }}>
+                                <IconLink size={12} />
+                                <span>{compactUrlLabel(evidence.sourceUrl)}</span>
+                              </a>
+                            )}
+                          </div>
                         </div>
 
                         <div style={evidenceMetaGridStyle}>
-                          <div style={evidenceMetaItemStyle}>
-                            <span style={evidenceMetaLabelStyle}>Rightsholder</span>
-                            <span style={evidenceMetaValueStyle}>{evidence.claimedRightsholder || "—"}</span>
-                          </div>
-                          <div style={evidenceMetaItemStyle}>
-                            <span style={evidenceMetaLabelStyle}>Artist</span>
-                            <span style={evidenceMetaValueStyle}>{evidence.artistName || "—"}</span>
-                          </div>
-                          <div style={evidenceMetaItemStyle}>
-                            <span style={evidenceMetaLabelStyle}>Published</span>
-                            <span style={evidenceMetaValueStyle}>
-                              {evidence.publicationDate ? new Date(evidence.publicationDate).toLocaleDateString() : "—"}
-                            </span>
-                          </div>
-                          <div style={evidenceMetaItemStyle}>
-                            <span style={evidenceMetaLabelStyle}>Source</span>
-                            <span style={evidenceMetaValueStyle}>{evidence.sourceLabel || "—"}</span>
-                          </div>
-                          <div style={evidenceMetaItemStyle}>
-                            <span style={evidenceMetaLabelStyle}>ISRC</span>
-                            <span style={evidenceMetaValueStyle}>{evidence.isrc || "—"}</span>
-                          </div>
-                          <div style={evidenceMetaItemStyle}>
-                            <span style={evidenceMetaLabelStyle}>UPC</span>
-                            <span style={evidenceMetaValueStyle}>{evidence.upc || "—"}</span>
-                          </div>
-                          <div style={evidenceMetaItemStyle}>
-                            <span style={evidenceMetaLabelStyle}>Strength</span>
-                            <span style={evidenceMetaValueStyle}>{evidence.strength?.replaceAll("_", " ") || "—"}</span>
-                          </div>
-                          <div style={evidenceMetaItemStyle}>
-                            <span style={evidenceMetaLabelStyle}>Docs</span>
-                            <span style={evidenceMetaValueStyle}>
-                              {evidence.attachments && evidence.attachments.length > 0 ? String(evidence.attachments.length) : "0"}
-                            </span>
-                          </div>
+                          {evidence.claimedRightsholder && (
+                            <div style={evidenceMetaItemStyle}>
+                              <span style={evidenceMetaLabelStyle}>Rightsholder</span>
+                              <span style={evidenceMetaValueStyle}>{evidence.claimedRightsholder}</span>
+                            </div>
+                          )}
+                          {evidence.artistName && (
+                            <div style={evidenceMetaItemStyle}>
+                              <span style={evidenceMetaLabelStyle}>Artist</span>
+                              <span style={evidenceMetaValueStyle}>{evidence.artistName}</span>
+                            </div>
+                          )}
+                          {evidence.sourceLabel && (
+                            <div style={evidenceMetaItemStyle}>
+                              <span style={evidenceMetaLabelStyle}>Source</span>
+                              <span style={evidenceMetaValueStyle}>{evidence.sourceLabel}</span>
+                            </div>
+                          )}
+                          {evidence.publicationDate && (
+                            <div style={evidenceMetaItemStyle}>
+                              <span style={evidenceMetaLabelStyle}>Published</span>
+                              <span style={evidenceMetaValueStyle}>
+                                {new Date(evidence.publicationDate).toLocaleDateString()}
+                              </span>
+                            </div>
+                          )}
+                          {evidence.isrc && (
+                            <div style={evidenceMetaItemStyle}>
+                              <span style={evidenceMetaLabelStyle}>ISRC</span>
+                              <span style={{ ...evidenceMetaValueStyle, fontFamily: "monospace", fontSize: "11px" }}>{evidence.isrc}</span>
+                            </div>
+                          )}
+                          {evidence.upc && (
+                            <div style={evidenceMetaItemStyle}>
+                              <span style={evidenceMetaLabelStyle}>UPC</span>
+                              <span style={{ ...evidenceMetaValueStyle, fontFamily: "monospace", fontSize: "11px" }}>{evidence.upc}</span>
+                            </div>
+                          )}
+                          {/* strength shown as badge in header */}
+                          {evidence.attachments && evidence.attachments.length > 0 && (
+                            <div style={evidenceMetaItemStyle}>
+                              <span style={evidenceMetaLabelStyle}>Documents</span>
+                              <span style={evidenceMetaValueStyle}>
+                                {evidence.attachments.length} attached
+                              </span>
+                            </div>
+                          )}
                         </div>
 
                         {evidence.description && (
-                          <div style={{ fontSize: "12px", lineHeight: 1.5, color: "rgba(255,255,255,0.62)" }}>
+                          <div style={{
+                            fontSize: "12px",
+                            lineHeight: 1.55,
+                            color: "rgba(255,255,255,0.6)",
+                            padding: "8px 10px",
+                            background: "rgba(255,255,255,0.02)",
+                            borderRadius: "8px",
+                            borderLeft: "2px solid rgba(255,255,255,0.06)",
+                          }}>
                             {evidence.description}
                           </div>
                         )}
@@ -478,79 +536,83 @@ export default function AdminDisputeQueue() {
                   </div>
                 )}
 
-                <div style={{ ...actionsRowStyle, marginTop: "14px", flexWrap: "wrap" }}>
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                    <button
-                      className="adq-action-btn"
-                      onClick={() => reviewRightsRequest(request.id, "under_review")}
-                      disabled={actionLoading === request.id}
-                      style={{ ...actionBtnStyle, borderColor: "rgba(139,92,246,0.3)", color: "#8b5cf6", background: "rgba(139,92,246,0.06)" }}
-                    >
-                      {actionLoading === request.id ? "..." : "Under Review"}
-                    </button>
-                    <button
-                      className="adq-action-btn"
-                      onClick={() =>
-                        reviewRightsRequest(
-                          request.id,
-                          "more_evidence_requested",
-                          "Please provide stronger proof linking this wallet to the official artist or release profile.",
-                        )
-                      }
-                      disabled={actionLoading === request.id}
-                      style={{ ...actionBtnStyle, borderColor: "rgba(245,158,11,0.3)", color: "#f59e0b", background: "rgba(245,158,11,0.06)" }}
-                    >
-                      {actionLoading === request.id ? "..." : "Need More Evidence"}
-                    </button>
+                {/* ── Actions ─────────────────────────────────────── */}
+                <div style={actionsContainerStyle}>
+                  {/* Triage row */}
+                  <div style={actionGroupStyle}>
+                    <span style={actionGroupLabelStyle}>Triage</span>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <button
+                        className="adq-action-btn"
+                        onClick={() => reviewRightsRequest(request.id, "under_review")}
+                        disabled={actionLoading === request.id}
+                        style={{ ...actionBtnStyle, borderColor: "rgba(139,92,246,0.3)", color: "#8b5cf6", background: "rgba(139,92,246,0.06)" }}
+                      >
+                        {actionLoading === request.id ? "..." : "Under Review"}
+                      </button>
+                      <button
+                        className="adq-action-btn"
+                        onClick={() =>
+                          reviewRightsRequest(
+                            request.id,
+                            "more_evidence_requested",
+                            "Please provide stronger proof linking this wallet to the official artist or release profile.",
+                          )
+                        }
+                        disabled={actionLoading === request.id}
+                        style={{ ...actionBtnStyle, borderColor: "rgba(245,158,11,0.3)", color: "#f59e0b", background: "rgba(245,158,11,0.06)" }}
+                      >
+                        {actionLoading === request.id ? "..." : "Need Evidence"}
+                      </button>
+                    </div>
                   </div>
 
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
-                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    <button
-                      className="adq-action-btn"
-                      onClick={() =>
-                        reviewRightsRequest(
-                          request.id,
-                          "approved_standard_escrow",
-                          "Marketplace access approved under the standard escrow path after release rights review.",
-                        )
-                      }
-                      disabled={actionLoading === request.id}
-                      style={{ ...actionBtnStyle, borderColor: "rgba(16,185,129,0.3)", color: "#10b981", background: "rgba(16,185,129,0.06)" }}
-                    >
-                      {actionLoading === request.id ? "..." : "Approve Standard Review"}
-                    </button>
-                    <button
-                      className="adq-action-btn"
-                      onClick={() =>
-                        reviewRightsRequest(
-                          request.id,
-                          "approved_trusted_fast_path",
-                          "Marketplace access approved under the trusted fast path after release rights review.",
-                        )
-                      }
-                      disabled={actionLoading === request.id}
-                      style={{ ...actionBtnStyle, borderColor: "rgba(34,197,94,0.3)", color: "#4ade80", background: "rgba(34,197,94,0.06)" }}
-                    >
-                      {actionLoading === request.id ? "..." : "Mark Rights Verified"}
-                    </button>
-                    <button
-                      className="adq-action-btn"
-                      onClick={() =>
-                        reviewRightsRequest(
-                          request.id,
-                          "denied",
-                          "The submitted proof was not sufficient to unlock marketplace access for this release.",
-                        )
-                      }
-                      disabled={actionLoading === request.id}
-                      style={{ ...actionBtnStyle, borderColor: "rgba(239,68,68,0.3)", color: "#ef4444", background: "rgba(239,68,68,0.06)" }}
-                    >
-                      {actionLoading === request.id ? "..." : "Deny"}
-                    </button>
-                    </div>
-                    <div style={actionHintStyle}>
-                      Standard review keeps marketplace access under escrow. Rights verified is the strongest approval state.
+                  {/* Decision row */}
+                  <div style={actionGroupStyle}>
+                    <span style={actionGroupLabelStyle}>Decision</span>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <button
+                        className="adq-action-btn"
+                        onClick={() =>
+                          reviewRightsRequest(
+                            request.id,
+                            "approved_standard_escrow",
+                            "Marketplace access approved under the standard escrow path after release rights review.",
+                          )
+                        }
+                        disabled={actionLoading === request.id}
+                        style={{ ...actionBtnStyle, borderColor: "rgba(16,185,129,0.3)", color: "#10b981", background: "rgba(16,185,129,0.06)" }}
+                      >
+                        {actionLoading === request.id ? "..." : "Approve (Escrow)"}
+                      </button>
+                      <button
+                        className="adq-action-btn"
+                        onClick={() =>
+                          reviewRightsRequest(
+                            request.id,
+                            "approved_trusted_fast_path",
+                            "Marketplace access approved under the trusted fast path after release rights review.",
+                          )
+                        }
+                        disabled={actionLoading === request.id}
+                        style={{ ...actionBtnStyle, borderColor: "rgba(34,197,94,0.3)", color: "#4ade80", background: "rgba(34,197,94,0.06)" }}
+                      >
+                        {actionLoading === request.id ? "..." : "Verify Rights"}
+                      </button>
+                      <button
+                        className="adq-action-btn"
+                        onClick={() =>
+                          reviewRightsRequest(
+                            request.id,
+                            "denied",
+                            "The submitted proof was not sufficient to unlock marketplace access for this release.",
+                          )
+                        }
+                        disabled={actionLoading === request.id}
+                        style={{ ...actionBtnStyle, borderColor: "rgba(239,68,68,0.3)", color: "#ef4444", background: "rgba(239,68,68,0.06)" }}
+                      >
+                        {actionLoading === request.id ? "..." : "Deny"}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -819,10 +881,11 @@ const evidenceCardStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: "10px",
-  padding: "12px",
+  padding: "12px 14px",
   borderRadius: "12px",
   background: "rgba(255,255,255,0.02)",
   border: "1px solid rgba(255,255,255,0.05)",
+  transition: "background 0.15s, border-color 0.15s",
 };
 
 const evidenceMetaGridStyle: React.CSSProperties = {
@@ -903,6 +966,40 @@ const actionsRowStyle: React.CSSProperties = {
   marginTop: "16px",
   paddingTop: "14px",
   borderTop: "1px solid rgba(255,255,255,0.04)",
+};
+
+const routeChipStyle: React.CSSProperties = {
+  padding: "2px 8px",
+  borderRadius: "6px",
+  fontSize: "11px",
+  fontWeight: 500,
+  border: "1px solid rgba(255,255,255,0.1)",
+  color: "rgba(255,255,255,0.55)",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.03em",
+};
+
+const actionsContainerStyle: React.CSSProperties = {
+  marginTop: "14px",
+  paddingTop: "14px",
+  borderTop: "1px solid rgba(255,255,255,0.04)",
+  display: "flex",
+  gap: "16px",
+  flexWrap: "wrap",
+};
+
+const actionGroupStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "6px",
+};
+
+const actionGroupLabelStyle: React.CSSProperties = {
+  fontSize: "9px",
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: "0.1em",
+  color: "rgba(255,255,255,0.28)",
 };
 
 const actionBtnStyle: React.CSSProperties = {
