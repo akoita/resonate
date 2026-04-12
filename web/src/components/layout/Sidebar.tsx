@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
+
+const subscribe = () => () => {};
 
 const PRIMARY_ITEMS = [
   {
@@ -141,11 +143,7 @@ const SECONDARY_ITEMS = [
 export default function Sidebar() {
   const pathname = usePathname();
   const { role } = useAuth();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useSyncExternalStore(subscribe, () => true, () => false);
 
   const showAdminLink = mounted && role === "admin";
 
