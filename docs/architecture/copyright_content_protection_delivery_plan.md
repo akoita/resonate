@@ -76,8 +76,19 @@ These areas already have concrete code-level support:
   - provenance
   - rights review
 - typed rights evidence bundles across disputes / releases
+- richer release-rights evidence intake covering:
+  - source labels,
+  - artist/rightsholder metadata,
+  - publication date,
+  - ISRC / UPC,
+  - supporting document URLs
 - admin review queue for release rights-upgrade requests
 - creator-facing restricted-release rights-upgrade request flow
+- explicit review-state mapping from review outcomes to:
+  - `platform_review_pending`
+  - `platform_reviewed`
+  - `rights_verified`
+  - `rights_disputed`
 - in-app realtime release-rights review notifications and live status updates for:
   - admin queue intake,
   - admin decision delivery,
@@ -140,12 +151,9 @@ Primary issues:
 
 Still needed:
 
-- complete review-state modeling from evidence to final rights outcome
-- clearer mapping from review decisions to:
-  - platform reviewed
-  - rights verified
-  - denied / more evidence needed
-- stronger reviewer tooling and auditability
+- deeper reviewer tooling and audit displays beyond the current queue
+- clearer creator-facing presentation of required vs optional evidence details
+- stronger confirmation / rubric guidance for the strongest approval states
 
 Primary issues:
 

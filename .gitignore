@@ -21,6 +21,7 @@ test_audio.*
 # Codex
 .codex
 .claude/
+.agents/plans/issue-*.md
 
 # Environment & Secrets
 .env

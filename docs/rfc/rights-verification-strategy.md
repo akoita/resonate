@@ -222,6 +222,23 @@ For a serious report flow, require:
 - optional notes,
 - optional supporting attachments or references.
 
+### Review Output States
+
+When creator proof-of-control or rights-upgrade evidence enters platform review, the product should expose explicit review semantics rather than vague ownership language.
+
+Recommended output states:
+
+- `platform_review_pending`
+  - creator evidence has been submitted or is under active ops review
+- `platform_reviewed`
+  - Resonate reviewed the evidence and approved marketplace access under the standard escrow route
+- `rights_verified`
+  - Resonate granted the strongest approval state after higher-confidence review
+- `rights_disputed`
+  - review was denied, contradicted, or otherwise resolved into a failed/disputed state
+
+These states should be queryable from both release and review surfaces so content-protection badges, marketplace gating, and admin moderation tools all describe the same underlying decision.
+
 ### Required Juror View
 
 A juror should not see only a raw URL. A juror should see:

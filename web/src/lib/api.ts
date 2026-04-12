@@ -591,6 +591,7 @@ export type ReleaseRightsUpgradeRequestRecord = {
   artistId: string;
   requestedByAddress: string;
   status: ReleaseRightsUpgradeRequestStatus;
+  derivedRightsVerificationStatus?: string | null;
   requestedRoute: ReleaseRightsUpgradeRequestedRoute;
   currentRouteAtSubmission?: string | null;
   summary?: string | null;

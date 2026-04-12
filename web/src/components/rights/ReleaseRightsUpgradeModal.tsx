@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
 import {
@@ -44,6 +44,11 @@ const EVIDENCE_OPTIONS: Array<{
     label: "Trusted catalog reference",
     hint: "Label, distributor, or trusted catalog record that links you to this release.",
   },
+  {
+    value: "legal_notice",
+    label: "Signed declaration",
+    hint: "Signed declaration, authorization letter, or formal rights statement from the rightsholder.",
+  },
 ];
 
 const STRENGTH_OPTIONS: Array<{ value: RightsEvidenceStrength; label: string }> = [
@@ -51,6 +56,28 @@ const STRENGTH_OPTIONS: Array<{ value: RightsEvidenceStrength; label: string }> 
   { value: "high", label: "High" },
   { value: "very_high", label: "Very High" },
 ];
+
+function normalizeEvidenceUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const withProtocol =
+    /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) || trimmed.startsWith("ipfs://")
+      ? trimmed
+      : `https://${trimmed}`;
+
+  try {
+    const parsed = new URL(withProtocol);
+    if (!["http:", "https:", "ipfs:"].includes(parsed.protocol)) {
+      throw new Error("unsupported protocol");
+    }
+    return withProtocol;
+  } catch {
+    throw new Error("Please enter a valid URL, including https:// if needed.");
+  }
+}
 
 export default function ReleaseRightsUpgradeModal({
   releaseId,
@@ -68,14 +95,34 @@ export default function ReleaseRightsUpgradeModal({
   const [title, setTitle] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [claimedRightsholder, setClaimedRightsholder] = useState("");
+  const [sourceLabel, setSourceLabel] = useState("");
+  const [artistName, setArtistName] = useState("");
+  const [publicationDate, setPublicationDate] = useState("");
+  const [isrc, setIsrc] = useState("");
+  const [upc, setUpc] = useState("");
+  const [attachmentUrls, setAttachmentUrls] = useState("");
   const [description, setDescription] = useState("");
   const [strength, setStrength] = useState<RightsEvidenceStrength>("high");
   const [submitting, setSubmitting] = useState(false);
+  const [showOptional, setShowOptional] = useState(false);
 
   const selectedEvidence = useMemo(
     () => EVIDENCE_OPTIONS.find((option) => option.value === evidenceKind),
     [evidenceKind],
   );
+
+  const optionalFieldCount = useMemo(() => {
+    let count = 0;
+    if (sourceLabel.trim()) count++;
+    if (artistName.trim()) count++;
+    if (publicationDate.trim()) count++;
+    if (isrc.trim()) count++;
+    if (upc.trim()) count++;
+    if (attachmentUrls.trim()) count++;
+    return count;
+  }, [sourceLabel, artistName, publicationDate, isrc, upc, attachmentUrls]);
+
+  const toggleOptional = useCallback(() => setShowOptional((v) => !v), []);
 
   const canSubmit =
     summary.trim().length > 20 &&
@@ -104,6 +151,28 @@ export default function ReleaseRightsUpgradeModal({
 
     setSubmitting(true);
     try {
+      let normalizedSourceUrl = "";
+      let normalizedAttachments: string[] = [];
+
+      try {
+        normalizedSourceUrl = normalizeEvidenceUrl(sourceUrl);
+        normalizedAttachments = attachmentUrls
+          .split("\n")
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .map((value) => normalizeEvidenceUrl(value));
+      } catch (error) {
+        addToast({
+          type: "warning",
+          title: "Invalid URL",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Please provide valid evidence URLs before submitting.",
+        });
+        return;
+      }
+
       const request = await submitReleaseRightsUpgradeRequest(
         releaseId,
         {
@@ -113,11 +182,17 @@ export default function ReleaseRightsUpgradeModal({
             {
               kind: evidenceKind,
               title: title.trim(),
-              sourceUrl: sourceUrl.trim(),
+              sourceUrl: normalizedSourceUrl,
+              sourceLabel: sourceLabel.trim() || undefined,
               claimedRightsholder: claimedRightsholder.trim(),
+              artistName: artistName.trim() || undefined,
               description: description.trim() || undefined,
               releaseTitle,
+              publicationDate: publicationDate.trim() || undefined,
+              isrc: isrc.trim() || undefined,
+              upc: upc.trim() || undefined,
               strength,
+              attachments: normalizedAttachments,
             },
           ],
         },
@@ -159,15 +234,17 @@ export default function ReleaseRightsUpgradeModal({
         `}</style>
         <div style={headerStyle}>
           <div>
-            <h3 style={{ margin: 0, fontSize: "22px", fontWeight: 700 }}>
+            <h3 style={{ margin: 0, fontSize: "20px", fontWeight: 700 }}>
               Unlock Marketplace Rights
             </h3>
-            <p style={{ margin: "6px 0 0", color: "rgba(255,255,255,0.55)", fontSize: "13px", lineHeight: 1.5 }}>
-              Submit proof that you control this release so ops can review and potentially promote it to a marketplace-enabled route.
+            <p style={{ margin: "6px 0 0", color: "rgba(255,255,255,0.48)", fontSize: "13px", lineHeight: 1.5 }}>
+              Prove you control <strong style={{ color: "rgba(255,255,255,0.72)" }}>{releaseTitle}</strong> so reviewers can promote it to a marketplace route.
             </p>
           </div>
-          <button style={closeButtonStyle} onClick={onClose} aria-label="Close rights-upgrade modal">
-            ×
+          <button style={closeButtonStyle} onClick={onClose} aria-label="Close">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
         </div>
 
@@ -178,9 +255,12 @@ export default function ReleaseRightsUpgradeModal({
           </div>
         )}
 
+        {/* ── Required Fields ────────────────────────────────── */}
+        <div style={sectionHeaderStyle}>Required</div>
+
         <div style={gridStyle}>
           <label style={fieldStyle}>
-            <span style={labelStyle}>Requested path</span>
+            <span style={labelStyle}>Requested path *</span>
             <select
               value={requestedRoute}
               onChange={(event) =>
@@ -194,7 +274,7 @@ export default function ReleaseRightsUpgradeModal({
           </label>
 
           <label style={fieldStyle}>
-            <span style={labelStyle}>Primary evidence type</span>
+            <span style={labelStyle}>Primary evidence type *</span>
             <select
               value={evidenceKind}
               onChange={(event) => setEvidenceKind(event.target.value as RightsEvidenceKind)}
@@ -213,12 +293,12 @@ export default function ReleaseRightsUpgradeModal({
         </div>
 
         <label style={fieldStyle}>
-          <span style={labelStyle}>Rights summary</span>
+          <span style={labelStyle}>Rights summary *</span>
           <textarea
             value={summary}
             onChange={(event) => setSummary(event.target.value)}
-            rows={4}
-            style={{ ...inputStyle, resize: "vertical", minHeight: 96 }}
+            rows={3}
+            style={{ ...inputStyle, resize: "vertical", minHeight: 80 }}
             placeholder="Explain why you control this release, how the evidence links you to it, and what route you are requesting."
           />
           <span
@@ -234,7 +314,7 @@ export default function ReleaseRightsUpgradeModal({
 
         <div style={gridStyle}>
           <label style={fieldStyle}>
-            <span style={labelStyle}>Evidence title</span>
+            <span style={labelStyle}>Evidence title *</span>
             <input
               value={title}
               onChange={(event) => setTitle(event.target.value)}
@@ -244,7 +324,7 @@ export default function ReleaseRightsUpgradeModal({
           </label>
 
           <label style={fieldStyle}>
-            <span style={labelStyle}>Claimed rightsholder</span>
+            <span style={labelStyle}>Claimed rightsholder *</span>
             <input
               value={claimedRightsholder}
               onChange={(event) => setClaimedRightsholder(event.target.value)}
@@ -256,7 +336,7 @@ export default function ReleaseRightsUpgradeModal({
 
         <div style={gridStyle}>
           <label style={fieldStyle}>
-            <span style={labelStyle}>Evidence URL</span>
+            <span style={labelStyle}>Evidence URL *</span>
             <input
               value={sourceUrl}
               onChange={(event) => setSourceUrl(event.target.value)}
@@ -266,7 +346,7 @@ export default function ReleaseRightsUpgradeModal({
           </label>
 
           <label style={fieldStyle}>
-            <span style={labelStyle}>Evidence strength</span>
+            <span style={labelStyle}>Evidence strength *</span>
             <select
               value={strength}
               onChange={(event) => setStrength(event.target.value as RightsEvidenceStrength)}
@@ -281,13 +361,118 @@ export default function ReleaseRightsUpgradeModal({
           </label>
         </div>
 
+        {/* ── Optional Metadata (collapsible) ────────────────── */}
+        <button
+          type="button"
+          onClick={toggleOptional}
+          style={optionalToggleStyle}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <svg
+              width="14" height="14" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              style={{ transition: "transform 0.2s", transform: showOptional ? "rotate(90deg)" : "rotate(0deg)" }}
+            >
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+            <span>Additional metadata</span>
+            {optionalFieldCount > 0 && (
+              <span style={{
+                padding: "1px 7px",
+                borderRadius: "999px",
+                background: "rgba(124,92,255,0.15)",
+                color: "#a78bfa",
+                fontSize: "10px",
+                fontWeight: 700,
+              }}>
+                {optionalFieldCount} filled
+              </span>
+            )}
+          </div>
+          <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.32)" }}>
+            ISRC, UPC, artist, publication date, docs
+          </span>
+        </button>
+
+        {showOptional && (
+          <div style={optionalSectionStyle}>
+            <div style={gridStyle}>
+              <label style={fieldStyle}>
+                <span style={labelStyle}>Source label</span>
+                <input
+                  value={sourceLabel}
+                  onChange={(event) => setSourceLabel(event.target.value)}
+                  style={inputStyle}
+                  placeholder="Spotify artist page, distributor portal"
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={labelStyle}>Artist name</span>
+                <input
+                  value={artistName}
+                  onChange={(event) => setArtistName(event.target.value)}
+                  style={inputStyle}
+                  placeholder="Official artist name"
+                />
+              </label>
+            </div>
+
+            <div style={gridStyle}>
+              <label style={fieldStyle}>
+                <span style={labelStyle}>Publication date</span>
+                <input
+                  type="date"
+                  value={publicationDate}
+                  onChange={(event) => setPublicationDate(event.target.value)}
+                  style={inputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={labelStyle}>ISRC</span>
+                <input
+                  value={isrc}
+                  onChange={(event) => setIsrc(event.target.value.toUpperCase())}
+                  style={inputStyle}
+                  placeholder="USRC17607839"
+                />
+              </label>
+            </div>
+
+            <div style={gridStyle}>
+              <label style={fieldStyle}>
+                <span style={labelStyle}>UPC</span>
+                <input
+                  value={upc}
+                  onChange={(event) => setUpc(event.target.value)}
+                  style={inputStyle}
+                  placeholder="012345678905"
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={labelStyle}>Supporting document URLs</span>
+                <textarea
+                  value={attachmentUrls}
+                  onChange={(event) => setAttachmentUrls(event.target.value)}
+                  rows={2}
+                  style={{ ...inputStyle, resize: "vertical", minHeight: 60 }}
+                  placeholder="One URL per line"
+                />
+              </label>
+            </div>
+          </div>
+        )}
+
+        {/* ── Context ─────────────────────────────────────────── */}
         <label style={fieldStyle}>
           <span style={labelStyle}>Evidence context</span>
           <textarea
             value={description}
             onChange={(event) => setDescription(event.target.value)}
-            rows={3}
-            style={{ ...inputStyle, resize: "vertical", minHeight: 88 }}
+            rows={2}
+            style={{ ...inputStyle, resize: "vertical", minHeight: 60 }}
             placeholder="Add any details that help a reviewer understand the evidence quickly."
           />
         </label>
@@ -350,13 +535,19 @@ const headerStyle: React.CSSProperties = {
 };
 
 const closeButtonStyle: React.CSSProperties = {
-  border: "none",
-  background: "transparent",
+  border: "1px solid rgba(255,255,255,0.08)",
+  background: "rgba(255,255,255,0.04)",
   color: "rgba(255,255,255,0.5)",
-  fontSize: "30px",
-  lineHeight: 1,
+  borderRadius: "10px",
+  width: "36px",
+  height: "36px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
   cursor: "pointer",
   padding: 0,
+  flexShrink: 0,
+  transition: "all 0.15s",
 };
 
 const calloutStyle: React.CSSProperties = {
@@ -406,6 +597,40 @@ const inputStyle: React.CSSProperties = {
   fontSize: "14px",
   outline: "none",
   transition: "border-color 0.15s, box-shadow 0.15s",
+};
+
+const sectionHeaderStyle: React.CSSProperties = {
+  fontSize: "10px",
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: "0.1em",
+  color: "rgba(255,255,255,0.35)",
+  marginBottom: "12px",
+  paddingBottom: "8px",
+  borderBottom: "1px solid rgba(255,255,255,0.05)",
+};
+
+const optionalToggleStyle: React.CSSProperties = {
+  width: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "12px",
+  padding: "12px 14px",
+  marginBottom: "12px",
+  background: "rgba(255,255,255,0.02)",
+  border: "1px solid rgba(255,255,255,0.06)",
+  borderRadius: "12px",
+  color: "rgba(255,255,255,0.6)",
+  fontSize: "13px",
+  fontWeight: 600,
+  cursor: "pointer",
+  transition: "all 0.15s",
+};
+
+const optionalSectionStyle: React.CSSProperties = {
+  padding: "2px 0 4px",
+  marginBottom: "4px",
 };
 
 const footerStyle: React.CSSProperties = {

@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Reviewed the current copyright and content-protection branch with emphasis on the typed rights-evidence rollout, release rights-upgrade review flow, realtime wallet notifications, ingestion/result handling, and the restricted-release owner playback fixes. No new Critical or High findings were introduced by this branch.
+Reviewed the current copyright and content-protection branch with emphasis on the typed rights-evidence rollout, explicit rights-review state mapping, richer release-rights evidence intake, admin review workflow UX, realtime wallet notifications, and ingestion/result handling. No new Critical or High findings were introduced by this branch.
 
 ## Critical Findings
 
@@ -34,7 +34,7 @@ None.
 
 ## Notes
 
-- The changed branch files under `backend/src/modules/contracts/`, `backend/src/modules/rights/`, `backend/src/modules/ingestion/`, and the touched frontend release/dispute surfaces did not present new auth, injection, or secret-handling regressions.
+- The changed branch files under `backend/src/modules/contracts/`, `backend/src/modules/rights/`, `backend/src/modules/trust/`, and the touched frontend release/dispute surfaces did not present new auth, injection, or secret-handling regressions.
 - The new release-rights realtime event and wallet notification wiring do not expose privileged decision data beyond release-level status transitions already visible to the relevant creator/admin in-product.
 - Raw Prisma SQL usage found in `backend/src/main.ts` is parameterized template usage and was not treated as a SQL injection finding in this review.
-- The new typed evidence submission path stores structured metadata through Prisma creates/updates rather than raw SQL or dynamic code execution, and the new owner-scoped track stream path remains protected by JWT auth plus ownership checks.
+- The new typed evidence submission path stores structured metadata through Prisma creates/updates rather than raw SQL or dynamic code execution, and evidence URLs are normalized/validated on both the client and backend before persistence.

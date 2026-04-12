@@ -168,11 +168,15 @@ function normalizeUrlOrNull(value?: string | null) {
   }
 
   try {
-    const parsed = new URL(trimmed);
+    const candidate =
+      /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) || trimmed.startsWith("ipfs://")
+        ? trimmed
+        : `https://${trimmed}`;
+    const parsed = new URL(candidate);
     if (!["http:", "https:", "ipfs:"].includes(parsed.protocol)) {
       throw new Error("unsupported protocol");
     }
-    return trimmed;
+    return candidate;
   } catch {
     throw new BadRequestException("Invalid evidence sourceUrl");
   }
