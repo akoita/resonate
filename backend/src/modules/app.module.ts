@@ -32,6 +32,7 @@ import { FingerprintModule } from "./fingerprint/fingerprint.module";
 import { DmcaModule } from "./dmca/dmca.module";
 import { TrustModule } from "./trust/trust.module";
 import { NotificationModule } from "./notifications/notification.module";
+import { OpenApiModule } from "./openapi/openapi.module";
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { NotificationModule } from "./notifications/notification.module";
     DmcaModule,
     TrustModule,
     NotificationModule,
+    OpenApiModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
