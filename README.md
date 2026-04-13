@@ -26,14 +26,43 @@ Resonate is a machine-first audio licensing API for agentic commerce. It lets so
 
 The long-term vision is still broader than a storefront: artists monetize programmable stem IP, and AI systems can curate, remix, and negotiate rights around that catalog. But the fastest path to usefulness is to treat every paid API route like a storefront and make the commerce surface work for machines first.
 
+### Copy-paste demo: discover -> quote -> pay -> receipt
+
+Set a base URL, a stem ID, and an `X_PAYMENT` proof from the x402-capable client you use to settle the challenge. Raw `curl` is shown here so the underlying protocol stays visible.
+
 ```bash
 export RESONATE_API_BASE="${RESONATE_API_BASE:-http://localhost:3000}"
 export STEM_ID="<stem-id>"
+export X_PAYMENT="<payment proof from your x402-capable client>"
 
+curl "$RESONATE_API_BASE/openapi.json"
+curl "$RESONATE_API_BASE/api/storefront/stems?limit=3"
+curl "$RESONATE_API_BASE/api/storefront/stems/$STEM_ID"
+```
+
+```bash
 curl "$RESONATE_API_BASE/api/stems/$STEM_ID/x402/info"
 curl -i "$RESONATE_API_BASE/api/stems/$STEM_ID/x402"
-curl "$RESONATE_API_BASE/openapi.json"
 ```
+
+```bash
+curl -sS -D /tmp/resonate-headers.txt \
+  -H "X-PAYMENT: $X_PAYMENT" \
+  "$RESONATE_API_BASE/api/stems/$STEM_ID/x402" \
+  -o /tmp/resonate-stem.mp3
+
+node -e 'const fs = require("fs"); const raw = fs.readFileSync("/tmp/resonate-headers.txt", "utf8"); const line = raw.split("\\n").find((entry) => entry.toLowerCase().startsWith("x-resonate-receipt:")); if (!line) { throw new Error("Missing X-Resonate-Receipt header"); } const encoded = line.split(":").slice(1).join(":").trim(); const receipt = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")); console.log(JSON.stringify(receipt, null, 2));'
+```
+
+Expected flow:
+
+- `openapi.json` and `/api/storefront/stems` expose the discovery surface
+- `/api/stems/:stemId/x402/info` returns storefront-grade quote metadata
+- the first paid `curl` returns the `402 Payment Required` challenge
+- the retried paid `curl` downloads the stem and returns a structured receipt in `X-Resonate-Receipt`
+- the final `node` command decodes that receipt into JSON
+
+If you use an x402-capable client such as AgentCash, it can automate the proof exchange for you. The raw `curl` path above is here so reviewers can inspect the underlying commerce surface directly.
 
 ### What agents get
 
