@@ -49,16 +49,36 @@ describe("StorefrontService", () => {
       stemType: "vocals",
       stemTypes: ["vocals", "drums"],
       hasIpnft: true,
+      price: {
+        currency: "USDC",
+        amount: "0.05",
+        display: "0.05 USDC",
+        usd: 0.05,
+      },
       licenseOptions: [
-        { key: "personal", priceUsd: 0.05 },
-        { key: "remix", priceUsd: 5 },
-        { key: "commercial", priceUsd: 25 },
+        {
+          key: "personal",
+          price: { currency: "USDC", amount: "0.05" },
+          displayPrice: "0.05 USDC",
+        },
+        {
+          key: "remix",
+          price: { currency: "USDC", amount: "5" },
+          displayPrice: "5 USDC",
+        },
+        {
+          key: "commercial",
+          price: { currency: "USDC", amount: "25" },
+          displayPrice: "25 USDC",
+        },
       ],
       priceSummary: {
-        currency: "USD",
-        fromUsd: 0.05,
-        toUsd: 25,
+        currency: "USDC",
+        from: "0.05",
+        to: "25",
+        display: "0.05-25 USDC",
       },
+      alternativeOffers: [],
       previewUrl: "/catalog/stems/stem_1/preview",
       quoteUrl: "/api/stems/stem_1/x402/info",
       purchaseUrl: "/api/stems/stem_1/x402",
@@ -110,6 +130,38 @@ describe("StorefrontService", () => {
       network: "eip155:84532",
       quoteUrl: "/api/stems/stem_1/x402/info",
       purchaseUrl: "/api/stems/stem_1/x402",
+    });
+    expect(result.price).toEqual({
+      currency: "USDC",
+      amount: "0.05",
+      display: "0.05 USDC",
+      usd: 0.05,
+    });
+    expect(result.pricing).toEqual({
+      currency: "USDC",
+      licenses: [
+        {
+          key: "personal",
+          price: { currency: "USDC", amount: "0.05" },
+          displayPrice: "0.05 USDC",
+        },
+        {
+          key: "remix",
+          price: { currency: "USDC", amount: "5" },
+          displayPrice: "5 USDC",
+        },
+        {
+          key: "commercial",
+          price: { currency: "USDC", amount: "25" },
+          displayPrice: "25 USDC",
+        },
+      ],
+      summary: {
+        currency: "USDC",
+        from: "0.05",
+        to: "25",
+        display: "0.05-25 USDC",
+      },
     });
     expect(result.asset).toEqual({
       kind: "stem",

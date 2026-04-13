@@ -18,7 +18,7 @@ export type X402QuoteInput = {
 };
 
 const DEFAULT_PRICING = {
-  personal: 0.02,
+  personal: 0.05,
   remix: 5,
   commercial: 25,
 } as const;
