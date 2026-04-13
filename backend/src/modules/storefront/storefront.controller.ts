@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from "@nestjs/common";
+import { Controller, Get, Param, Query } from "@nestjs/common";
 import { StorefrontService } from "./storefront.service";
 
 @Controller("api/storefront")
@@ -24,5 +24,10 @@ export class StorefrontController {
           ? undefined
           : parsedLimit,
     });
+  }
+
+  @Get("stems/:stemId")
+  getStemDetail(@Param("stemId") stemId: string) {
+    return this.storefrontService.getStemDetail(stemId);
   }
 }
