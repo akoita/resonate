@@ -1,6 +1,15 @@
 # Project Resonate: The Agentic Audio Protocol
 
-> A decentralized, AI-native music streaming protocol where artists monetize audio stems as programmable IP and users deploy AI agents to curate, remix, and negotiate usage rights in real-time.
+> A machine-first audio licensing protocol where artists monetize audio stems as programmable IP and software agents can discover, quote, purchase, and prove usage rights over HTTP.
+
+## Storefront Framing
+
+Resonate should be understandable in two layers:
+
+1. As a machine-first storefront for audio licensing and stem purchase.
+2. As a broader agentic audio protocol that later expands into curation, remix, and identity.
+
+The storefront layer is the front door. It is the shortest path to agent adoption because it makes the catalog, quote, payment, and receipt loop legible to software before asking humans to learn a richer product story.
 
 ---
 
@@ -26,8 +35,11 @@ Traditional streaming platforms offer artists ~$0.003 per stream with opaque roy
 ### For Artists (The "IP Liquidity" Layer)
 Instead of per-stream earnings, artists upload **Stem Kits** (drums, vocals, bass) as programmable IP with dynamic pricing for remixing and commercial use.
 
+### For Agents & Integrators (The "Storefront" Layer)
+Agents and developers get a machine-readable surface for discovery, price inspection, instant checkout, and receipt collection. Every paid route is a potential storefront.
+
 ### For Listeners (The "Agentic" Experience)
-Users deploy **Personal AI DJ Agents** that scan the blockchain for tracks matching mood/budget, negotiate micro-payments, and generate seamless transitions.
+Users deploy **Personal AI DJ Agents** that scan the catalog for tracks matching mood/budget, negotiate micro-payments, and generate seamless transitions. This is a dogfooding surface for the storefront thesis, not a competing narrative.
 
 ### For Curators ("Proof of Taste")
 Stake stablecoins on emerging artists. If an AI Agent discovers a hit early, earn yield from future royalties.
@@ -182,4 +194,3 @@ The following represent potential directions, not commitments:
 - [0xSplits: Revenue Distribution Protocol](https://splits.org/)
 - [Demucs: Music Source Separation](https://github.com/facebookresearch/demucs) (htdemucs_6s model)
 - [ZeroDev: Smart Wallet SDK](https://zerodev.app/)
-
