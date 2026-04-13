@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { PUBLIC_RELEASE_ROUTES } from "../catalog/catalog-public.constants";
 
@@ -14,6 +14,8 @@ type StorefrontStemRow = {
   type: string;
   title: string | null;
   ipnftId: string | null;
+  mimeType?: string | null;
+  durationSeconds?: number | null;
   track: {
     id: string;
     title: string;
@@ -50,6 +52,44 @@ export class StorefrontService {
       meta: {
         count: rows.length,
         limit,
+      },
+    };
+  }
+
+  async getStemDetail(stemId: string) {
+    const row = await this.findPublicStemById(stemId);
+    if (!row) {
+      throw new NotFoundException(`Public storefront stem ${stemId} not found`);
+    }
+
+    const item = this.toStorefrontItem(row);
+
+    return {
+      ...item,
+      preview: {
+        url: item.previewUrl,
+        mimeType: row.mimeType ?? "audio/mpeg",
+      },
+      pricing: {
+        currency: "USD",
+        licenses: item.licenseOptions,
+      },
+      rights: {
+        availableLicenses: item.licenseOptions.map((option) => option.key),
+        assetAccess: "paid",
+        discoveryAccess: "public",
+      },
+      payment: {
+        protocol: "x402",
+        network: process.env.X402_NETWORK || "eip155:84532",
+        quoteUrl: item.quoteUrl,
+        purchaseUrl: item.purchaseUrl,
+      },
+      asset: {
+        kind: "stem",
+        delivery: "audio-download",
+        mimeType: row.mimeType ?? "audio/mpeg",
+        durationSeconds: row.durationSeconds ?? null,
       },
     };
   }
@@ -136,6 +176,8 @@ export class StorefrontService {
           type: true,
           title: true,
           ipnftId: true,
+          mimeType: true,
+          durationSeconds: true,
           pricing: {
             select: {
               basePlayPriceUsd: true,
@@ -171,6 +213,70 @@ export class StorefrontService {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Storefront search failed: ${message}`);
+      throw error;
+    }
+  }
+
+  protected async findPublicStemById(
+    stemId: string,
+  ): Promise<StorefrontStemRow | null> {
+    try {
+      return await prisma.stem.findFirst({
+        where: {
+          id: stemId,
+          track: {
+            contentStatus: "clean",
+            release: {
+              status: { in: ["ready", "published"] },
+              OR: [
+                { rightsRoute: null },
+                { rightsRoute: { in: [...PUBLIC_RELEASE_ROUTES] } },
+              ],
+            },
+          },
+        },
+        select: {
+          id: true,
+          type: true,
+          title: true,
+          ipnftId: true,
+          mimeType: true,
+          durationSeconds: true,
+          pricing: {
+            select: {
+              basePlayPriceUsd: true,
+              remixLicenseUsd: true,
+              commercialLicenseUsd: true,
+            },
+          },
+          track: {
+            select: {
+              id: true,
+              title: true,
+              artist: true,
+              contentStatus: true,
+              stems: {
+                select: {
+                  id: true,
+                  type: true,
+                },
+                orderBy: { type: "asc" },
+              },
+              release: {
+                select: {
+                  id: true,
+                  title: true,
+                  primaryArtist: true,
+                  status: true,
+                },
+              },
+            },
+          },
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Storefront detail failed: ${message}`);
       throw error;
     }
   }
