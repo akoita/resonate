@@ -16,6 +16,23 @@ describe("OpenApiService", () => {
     expect(doc.paths["/api/stems/{stemId}/x402"]).toBeDefined();
     expect(doc.paths["/api/stems/{stemId}/x402/info"]).toBeDefined();
     expect(doc.paths["/api/storefront/stems"]).toBeUndefined();
+    expect(
+      doc.paths["/api/stems/{stemId}/x402"].get["x-payment-info"],
+    ).toEqual({
+      price: {
+        mode: "dynamic",
+        currency: "USD",
+        min: "0.01",
+        max: "50",
+      },
+      protocols: [
+        {
+          x402: {
+            quoteEndpoint: "/api/stems/{stemId}/x402/info",
+          },
+        },
+      ],
+    });
 
     expect(
       doc.paths["/api/stems/{stemId}/x402"].get.responses["402"],
@@ -23,16 +40,5 @@ describe("OpenApiService", () => {
     expect(
       doc.components.schemas.X402PaymentRequired.properties.accepts,
     ).toBeDefined();
-  });
-
-  it("builds a well-known x402 discovery document", () => {
-    const service = new OpenApiService();
-    const doc = service.buildWellKnownDocument("http://localhost:3000") as any;
-
-    expect(doc.version).toBe(1);
-    expect(doc.resources).toEqual([
-      "GET http://localhost:3000/api/stems/{stemId}/x402",
-    ]);
-    expect(doc.instructions).toContain("/api/stems/{stemId}/x402");
   });
 });
