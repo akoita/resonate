@@ -23,7 +23,7 @@ const DEFAULT_PRICING = {
   commercial: 25,
 } as const;
 
-function formatUsdcAmount(value: number): string {
+export function formatUsdcAmount(value: number): string {
   return value.toFixed(6).replace(/\.?0+$/, "");
 }
 

@@ -1,9 +1,10 @@
-import { Controller, Get, Param, Res, Logger, HttpStatus } from '@nestjs/common';
-import { Response } from 'express';
+import { Controller, Get, Param, Req, Res, Logger, HttpStatus } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { X402Config } from './x402.config';
 import { prisma } from '../../db/prisma';
 import { EncryptionService } from '../encryption/encryption.service';
 import { buildStemX402Quote } from './x402.quote';
+import { buildStemX402Receipt, encodeX402ReceiptHeader } from './x402.receipt';
 
 /**
  * X402Controller — Public stem download endpoint gated by x402 USDC payment.
@@ -37,6 +38,7 @@ export class X402Controller {
   @Get(':stemId/x402')
   async downloadWithPayment(
     @Param('stemId') stemId: string,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     if (!this.x402Config.enabled) {
@@ -76,6 +78,10 @@ export class X402Controller {
         `x402 payment verified — serving stem ${stemId} (${stem.type})`,
       );
 
+      const pricing = await prisma.stemPricing.findUnique({
+        where: { stemId: stem.id },
+      });
+
       // 2. Fetch/decrypt the audio content
       let audioBuffer: Buffer;
 
@@ -104,12 +110,38 @@ export class X402Controller {
       // 3. Log the x402 purchase for provenance
       // StemPurchase requires a FK to StemListing (on-chain marketplace),
       // so we log x402 purchases as ContractEvents instead.
+      const purchasedAt = new Date();
+      const transactionHash = `x402:${stemId}:${purchasedAt.getTime()}`;
+      const paymentHeader = Array.isArray(req.headers['x-payment'])
+        ? req.headers['x-payment'][0]
+        : req.headers['x-payment'];
+      const receipt = buildStemX402Receipt({
+        stemId: stem.id,
+        stemType: stem.type,
+        stemTitle: stem.title ?? null,
+        trackTitle: stem.track?.title ?? null,
+        artist: stem.track?.release?.primaryArtist ?? null,
+        releaseTitle: stem.track?.release?.title ?? null,
+        hasNft: !!stem.nftMint,
+        tokenId: stem.nftMint?.tokenId?.toString() ?? null,
+        amountUsd: pricing?.basePlayPriceUsd ?? 0.05,
+        network: this.x402Config.network,
+        payTo: this.x402Config.payoutAddress,
+        resource: `/api/stems/${stem.id}/x402`,
+        quoteUrl: `/api/stems/${stem.id}/x402/info`,
+        mimeType: 'audio/mpeg',
+        contentLength: audioBuffer.length,
+        eventTransactionHash: transactionHash,
+        paymentHeader,
+        purchasedAt,
+      });
+
       await prisma.contractEvent.create({
         data: {
           eventName: 'x402.purchase',
           chainId: 84532, // Base Sepolia
           contractAddress: this.x402Config.payoutAddress,
-          transactionHash: `x402:${stemId}:${Date.now()}`,
+          transactionHash,
           logIndex: 0,
           blockNumber: BigInt(0),
           blockHash: '',
@@ -119,8 +151,13 @@ export class X402Controller {
             trackTitle: stem.track?.title,
             payTo: this.x402Config.payoutAddress,
             network: this.x402Config.network,
+            receiptId: receipt.receiptId,
+            licenseKey: receipt.license.key,
+            amount: receipt.payment.amount,
+            currency: receipt.payment.currency,
+            paymentProofSha256: receipt.payment.paymentProofSha256,
           },
-          processedAt: new Date(),
+          processedAt: purchasedAt,
         },
       });
 
@@ -128,10 +165,18 @@ export class X402Controller {
 
       // 4. Serve the audio
       const filename = `${stem.title || stem.type || 'stem'}.mp3`;
+      const encodedReceipt = encodeX402ReceiptHeader(receipt);
       res.set({
         'Content-Type': 'audio/mpeg',
         'Content-Length': String(audioBuffer.length),
         'Content-Disposition': `attachment; filename="${filename}"`,
+        'Access-Control-Expose-Headers':
+          'X-Resonate-Receipt,X-Resonate-Receipt-Id,X-Resonate-Receipt-Content-Type,X-Resonate-License',
+        'X-Resonate-License': receipt.license.key,
+        'X-Resonate-Receipt': encodedReceipt,
+        'X-Resonate-Receipt-Content-Type':
+          'application/vnd.resonate.purchase-receipt+json',
+        'X-Resonate-Receipt-Id': receipt.receiptId,
       });
 
       res.send(audioBuffer);
