@@ -128,7 +128,7 @@ describe('X402Middleware', () => {
       expect(next).toHaveBeenCalled();
     });
 
-    it('should use default price when no listing exists', async () => {
+    it('should use the canonical storefront default price when no listing exists', async () => {
       const config = createMockConfig();
       const middleware = new X402Middleware(config);
       const req = createMockReq('/api/stems/unlisted-stem/x402');
@@ -141,7 +141,7 @@ describe('X402Middleware', () => {
         expect.objectContaining({
           accepts: expect.arrayContaining([
             expect.objectContaining({
-              price: '$0.02',
+              price: '$0.05',
             }),
           ]),
         }),

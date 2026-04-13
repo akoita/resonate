@@ -79,7 +79,7 @@ describe("buildStemX402Quote", () => {
       payTo: "0xPayTo",
     });
 
-    expect(quote.price.amount).toBe("0.02");
+    expect(quote.price.amount).toBe("0.05");
     expect(quote.licenseOptions[1].price.amount).toBe("5");
     expect(quote.licenseOptions[2].price.amount).toBe("25");
     expect(quote.alternativeOffers).toEqual([]);
