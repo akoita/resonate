@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 
 type OpenApiDocument = Record<string, unknown>;
+type WellKnownDocument = Record<string, unknown>;
 
 @Injectable()
 export class OpenApiService {
@@ -403,6 +404,28 @@ export class OpenApiService {
           },
         },
       },
+    };
+  }
+
+  buildWellKnownDocument(baseUrl: string): WellKnownDocument {
+    return {
+      version: 1,
+      resources: [`GET ${baseUrl}/api/stems/{stemId}/x402`],
+      description:
+        "Machine-first audio licensing API for discovering and buying stems over x402.",
+      instructions: [
+        "# Resonate x402 discovery",
+        "",
+        `Origin: ${baseUrl}`,
+        "",
+        "Paid resource:",
+        "- GET /api/stems/{stemId}/x402",
+        "",
+        "Recommended flow:",
+        "1. Discover public releases via /catalog/published.",
+        "2. Inspect a target stem via /catalog/tracks/{trackId} and /api/stems/{stemId}/x402/info.",
+        "3. Call the paid x402 endpoint and satisfy the 402 challenge.",
+      ].join("\n"),
     };
   }
 }

@@ -1,9 +1,9 @@
 import { Module } from "@nestjs/common";
-import { OpenApiController } from "./openapi.controller";
+import { OpenApiController, WellKnownController } from "./openapi.controller";
 import { OpenApiService } from "./openapi.service";
 
 @Module({
-  controllers: [OpenApiController],
+  controllers: [OpenApiController, WellKnownController],
   providers: [OpenApiService],
 })
 export class OpenApiModule {}

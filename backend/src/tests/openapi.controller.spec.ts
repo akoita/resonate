@@ -24,4 +24,15 @@ describe("OpenApiService", () => {
       doc.components.schemas.X402PaymentRequired.properties.accepts,
     ).toBeDefined();
   });
+
+  it("builds a well-known x402 discovery document", () => {
+    const service = new OpenApiService();
+    const doc = service.buildWellKnownDocument("http://localhost:3000") as any;
+
+    expect(doc.version).toBe(1);
+    expect(doc.resources).toEqual([
+      "GET http://localhost:3000/api/stems/{stemId}/x402",
+    ]);
+    expect(doc.instructions).toContain("/api/stems/{stemId}/x402");
+  });
 });
