@@ -1,0 +1,5 @@
+export const PUBLIC_RELEASE_ROUTES: string[] = [
+  "LIMITED_MONITORING",
+  "STANDARD_ESCROW",
+  "TRUSTED_FAST_PATH",
+];
