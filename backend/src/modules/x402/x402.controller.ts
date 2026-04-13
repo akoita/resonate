@@ -3,6 +3,7 @@ import { Response } from 'express';
 import { X402Config } from './x402.config';
 import { prisma } from '../../db/prisma';
 import { EncryptionService } from '../encryption/encryption.service';
+import { buildStemX402Quote } from './x402.quote';
 
 /**
  * X402Controller — Public stem download endpoint gated by x402 USDC payment.
@@ -187,7 +188,7 @@ export class X402Controller {
       where: { stemId: stem.id },
     });
 
-    return {
+    return buildStemX402Quote({
       stemId: stem.id,
       type: stem.type,
       title: stem.title,
@@ -196,17 +197,12 @@ export class X402Controller {
       releaseTitle: stem.track?.release?.title ?? null,
       hasNft: !!stem.nftMint,
       tokenId: stem.nftMint?.tokenId?.toString() ?? null,
-      price: listing
-        ? { wei: listing.pricePerUnit, usd: pricing?.basePlayPriceUsd ?? null }
-        : pricing
-          ? { wei: null, usd: pricing.basePlayPriceUsd }
-          : null,
-      x402: {
-        network: this.x402Config.network,
-        payTo: this.x402Config.payoutAddress,
-        scheme: 'exact',
-        endpoint: `/api/stems/${stemId}/x402`,
-      },
-    };
+      basePlayPriceUsd: pricing?.basePlayPriceUsd,
+      remixLicenseUsd: pricing?.remixLicenseUsd,
+      commercialLicenseUsd: pricing?.commercialLicenseUsd,
+      listingWei: listing?.pricePerUnit ?? null,
+      network: this.x402Config.network,
+      payTo: this.x402Config.payoutAddress,
+    });
   }
 }
