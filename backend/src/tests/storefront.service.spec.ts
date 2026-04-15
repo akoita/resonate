@@ -1,8 +1,20 @@
 import { StorefrontService } from "../modules/storefront/storefront.service";
+import { X402Config } from "../modules/x402/x402.config";
+
+function createMockConfig(overrides: Partial<X402Config> = {}): X402Config {
+  return {
+    enabled: true,
+    payoutAddress: "0xTestPayoutAddr",
+    facilitatorUrl: "https://x402.org/facilitator",
+    network: "eip155:84532",
+    chainId: 84532,
+    ...overrides,
+  } as unknown as X402Config;
+}
 
 describe("StorefrontService", () => {
   it("maps public stem rows into machine-friendly storefront items", async () => {
-    const service = new StorefrontService();
+    const service = new StorefrontService(createMockConfig());
     jest
       .spyOn(service as any, "findPublicStems")
       .mockResolvedValue([
@@ -86,7 +98,7 @@ describe("StorefrontService", () => {
   });
 
   it("returns a storefront stem detail shape that separates preview from paid access", async () => {
-    const service = new StorefrontService();
+    const service = new StorefrontService(createMockConfig());
     jest
       .spyOn(service as any, "findPublicStemById")
       .mockResolvedValue({
