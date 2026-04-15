@@ -29,6 +29,7 @@ function createMockConfig(overrides: Partial<X402Config> = {}): X402Config {
     payoutAddress: '0xTestPayoutAddr',
     facilitatorUrl: 'https://x402.org/facilitator',
     network: 'eip155:84532',
+    chainId: 84532,
     ...overrides,
   } as X402Config;
 }
@@ -120,6 +121,7 @@ describe('X402Controller', () => {
     expect(prisma.contractEvent.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         eventName: 'x402.purchase',
+        chainId: 84532,
         args: expect.objectContaining({
           stemId: 'stem_1',
           receiptId: decodedReceipt.receiptId,
@@ -128,5 +130,61 @@ describe('X402Controller', () => {
         }),
       }),
     });
+  });
+
+  it('resolves relative local blob URLs and records PAYMENT-SIGNATURE receipts', async () => {
+    prisma.stem.findUnique.mockResolvedValue({
+      id: 'stem_local',
+      type: 'vocals',
+      title: 'Local Stem',
+      uri: '/catalog/stems/e2e-x402.m4a/blob',
+      mimeType: 'audio/mp4',
+      encryptionMetadata: null,
+      nftMint: null,
+      track: {
+        title: 'Local Track',
+        release: {
+          title: 'Local Release',
+          primaryArtist: 'Koita',
+        },
+      },
+    });
+    prisma.stemPricing.findUnique.mockResolvedValue({
+      basePlayPriceUsd: 0.05,
+    });
+
+    const controller = new X402Controller(
+      createMockConfig({ network: 'eip155:8453' }),
+      encryptionService as any,
+    );
+    const req: any = {
+      protocol: 'http',
+      headers: { 'payment-signature': 'proof-v2' },
+      get: jest.fn((header: string) =>
+        header.toLowerCase() === 'host' ? 'localhost:3000' : undefined,
+      ),
+    };
+    const res = createMockRes();
+
+    await controller.downloadWithPayment('stem_local', req, res);
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:3000/catalog/stems/e2e-x402.m4a/blob',
+    );
+    expect(res.headers['Content-Type']).toBe('audio/mp4');
+    expect(res.headers['Content-Disposition']).toContain('Local Stem.m4a');
+    expect(prisma.contractEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        chainId: 8453,
+      }),
+    });
+
+    const decodedReceipt = JSON.parse(
+      Buffer.from(res.headers['X-Resonate-Receipt'], 'base64url').toString(
+        'utf8',
+      ),
+    );
+    expect(decodedReceipt.payment.paymentProofSha256).toBeDefined();
+    expect(decodedReceipt.resource.mimeType).toBe('audio/mp4');
   });
 });

@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { getDefaultX402Asset, getX402ChainId } from './x402.public';
+
+const DEFAULT_TESTNET_FACILITATOR_URL = 'https://x402.org/facilitator';
+const DEFAULT_TESTNET_NETWORK = 'eip155:84532';
 
 /**
  * x402 Configuration — reads env vars for the x402 payment layer.
@@ -8,7 +12,7 @@ import { ConfigService } from '@nestjs/config';
  *   X402_PAYOUT_ADDRESS  — wallet address receiving USDC payments
  *
  * Optional env vars:
- *   X402_FACILITATOR_URL — facilitator endpoint (default: testnet)
+ *   X402_FACILITATOR_URL — facilitator endpoint (defaults to the x402 testnet facilitator)
  *   X402_NETWORK         — CAIP-2 chain identifier (default: Base Sepolia)
  *   X402_ENABLED         — feature flag (default: false)
  */
@@ -28,23 +32,33 @@ export class X402Config {
   /** CAIP-2 network identifier (e.g., eip155:84532 for Base Sepolia) */
   readonly network: string;
 
+  /** Numeric chain id derived from the CAIP-2 network identifier */
+  readonly chainId: number;
+
   constructor(private readonly config: ConfigService) {
     this.enabled = this.config.get<string>('X402_ENABLED') === 'true';
+    const configuredFacilitator = this.config.get<string>('X402_FACILITATOR_URL');
 
     this.payoutAddress =
       this.config.get<string>('X402_PAYOUT_ADDRESS') || '';
 
     this.facilitatorUrl =
-      this.config.get<string>('X402_FACILITATOR_URL') ||
-      'https://x402.org/facilitator';
+      configuredFacilitator || DEFAULT_TESTNET_FACILITATOR_URL;
 
     this.network =
-      this.config.get<string>('X402_NETWORK') || 'eip155:84532'; // Base Sepolia
+      this.config.get<string>('X402_NETWORK') || DEFAULT_TESTNET_NETWORK;
+    this.chainId = getX402ChainId(this.network);
 
     if (this.enabled) {
       if (!this.payoutAddress) {
         throw new Error(
           'X402_PAYOUT_ADDRESS is required when X402_ENABLED=true',
+        );
+      }
+      getDefaultX402Asset(this.network);
+      if (this.network === 'eip155:8453' && !configuredFacilitator) {
+        throw new Error(
+          'X402_FACILITATOR_URL must be set explicitly for Base mainnet x402 payments',
         );
       }
       this.logger.log(

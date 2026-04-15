@@ -22,6 +22,7 @@ describe('X402Config', () => {
     const cfg = createConfig({ X402_ENABLED: 'true' });
     expect(cfg.enabled).toBe(true);
     expect(cfg.payoutAddress).toBe('0x1234567890abcdef1234567890abcdef12345678');
+    expect(cfg.chainId).toBe(84532);
   });
 
   it('should throw when enabled without payout address', () => {
@@ -50,5 +51,16 @@ describe('X402Config', () => {
   it('should allow custom network', () => {
     const cfg = createConfig({ X402_NETWORK: 'eip155:8453' });
     expect(cfg.network).toBe('eip155:8453');
+    expect(cfg.chainId).toBe(8453);
+  });
+
+  it('should require an explicit facilitator for Base mainnet when enabled', () => {
+    expect(() => {
+      createConfig({
+        X402_ENABLED: 'true',
+        X402_NETWORK: 'eip155:8453',
+        X402_FACILITATOR_URL: '',
+      });
+    }).toThrow('X402_FACILITATOR_URL must be set explicitly for Base mainnet');
   });
 });
