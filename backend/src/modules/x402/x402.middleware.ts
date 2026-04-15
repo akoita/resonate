@@ -4,6 +4,7 @@ import path from 'node:path';
 import { X402Config } from './x402.config';
 import { prisma } from '../../db/prisma';
 import { formatUsdcAmount } from './x402.quote';
+import { getDefaultX402Asset } from './x402.public';
 
 // `@x402/core/http` only publishes ESM typings, while this backend still
 // compiles under CommonJS-style resolution. Pull the decoder from the CJS build
@@ -14,24 +15,6 @@ const {
   process.cwd(),
   'node_modules/@x402/core/dist/cjs/http/index.js',
 ));
-
-const DEFAULT_USDC_ASSETS: Record<
-  string,
-  { address: string; name: string; version: string; decimals: number }
-> = {
-  'eip155:8453': {
-    address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-    name: 'USD Coin',
-    version: '2',
-    decimals: 6,
-  },
-  'eip155:84532': {
-    address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
-    name: 'USDC',
-    version: '2',
-    decimals: 6,
-  },
-};
 
 /**
  * X402Middleware — NestJS adapter for the x402 Express payment middleware.
@@ -64,6 +47,15 @@ export class X402Middleware implements NestMiddleware {
     }
     const stemId = match[1];
 
+    const stem = await this.findProtectedStem(stemId);
+    if (!stem) {
+      return res.status(404).json({ error: 'Stem not found' });
+    }
+
+    if (!stem.uri) {
+      return res.status(404).json({ error: 'Stem file not available' });
+    }
+
     // Skip the /info sub-route — it's free
     if (req.path.endsWith('/x402/info')) {
       return next();
@@ -78,12 +70,16 @@ export class X402Middleware implements NestMiddleware {
 
     if (!paymentHeader) {
       // No payment — return 402 with payment instructions
-      return this.send402(res, stemId);
+      return this.send402(res, stemId, stem.mimeType);
     }
 
     // Payment header present — verify with facilitator
     try {
-      const paymentContext = await this.buildPaymentContext(stemId, paymentHeader);
+      const paymentContext = await this.buildPaymentContext(
+        stemId,
+        paymentHeader,
+        stem.mimeType,
+      );
       const isValid = await this.verifyPayment(
         paymentContext.paymentPayload,
         paymentContext.paymentRequirements,
@@ -117,8 +113,8 @@ export class X402Middleware implements NestMiddleware {
   /**
    * Send a 402 Payment Required response with x402 payment instructions.
    */
-  private async send402(res: Response, stemId: string) {
-    const paymentRequired = await this.buildPaymentRequired(stemId);
+  private async send402(res: Response, stemId: string, mimeType?: string | null) {
+    const paymentRequired = await this.buildPaymentRequired(stemId, mimeType);
 
     // AgentCash's HTTP client expects the V2 challenge in the PAYMENT-REQUIRED header.
     const encodedPaymentRequired = Buffer.from(
@@ -130,7 +126,7 @@ export class X402Middleware implements NestMiddleware {
     res.status(402).json(paymentRequired);
   }
 
-  private async buildPaymentRequired(stemId: string) {
+  private async buildPaymentRequired(stemId: string, mimeType?: string | null) {
     const pricing = await prisma.stemPricing.findUnique({
       where: { stemId },
     });
@@ -138,7 +134,7 @@ export class X402Middleware implements NestMiddleware {
     // Keep the 402 challenge aligned with the machine-readable storefront quote.
     const amountUsd = pricing?.basePlayPriceUsd ?? 0.05;
     const priceUsd = `$${formatUsdcAmount(amountUsd)}`;
-    const assetInfo = this.getDefaultAssetInfo(this.x402Config.network);
+    const assetInfo = getDefaultX402Asset(this.x402Config.network);
 
     return {
       x402Version: 2,
@@ -146,7 +142,7 @@ export class X402Middleware implements NestMiddleware {
       resource: {
         url: `/api/stems/${stemId}/x402`,
         description: `Purchase stem ${stemId} via x402`,
-        mimeType: 'audio/mpeg',
+        mimeType: mimeType || 'audio/mpeg',
       },
       accepts: [
         {
@@ -166,26 +162,33 @@ export class X402Middleware implements NestMiddleware {
     };
   }
 
-  private async buildPaymentContext(stemId: string, paymentHeader: string) {
-    const paymentRequired = await this.buildPaymentRequired(stemId);
+  private async buildPaymentContext(
+    stemId: string,
+    paymentHeader: string,
+    mimeType?: string | null,
+  ) {
+    const paymentRequired = await this.buildPaymentRequired(stemId, mimeType);
     return {
       paymentPayload: decodePaymentSignatureHeader(paymentHeader),
       paymentRequirements: paymentRequired.accepts[0],
     };
   }
 
-  private getDefaultAssetInfo(network: string) {
-    const asset = DEFAULT_USDC_ASSETS[network];
-    if (!asset) {
-      throw new Error(`No default USDC asset configured for network ${network}`);
-    }
-    return asset;
-  }
-
   private toTokenAmount(amount: number, decimals: number): string {
     const [intPart, decPart = ''] = String(amount).split('.');
     const paddedDec = decPart.padEnd(decimals, '0').slice(0, decimals);
     return (intPart + paddedDec).replace(/^0+/, '') || '0';
+  }
+
+  private async findProtectedStem(stemId: string) {
+    return prisma.stem.findUnique({
+      where: { id: stemId },
+      select: {
+        id: true,
+        uri: true,
+        mimeType: true,
+      },
+    });
   }
 
   /**

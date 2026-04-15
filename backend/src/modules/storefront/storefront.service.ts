@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { PUBLIC_RELEASE_ROUTES } from "../catalog/catalog-public.constants";
+import { X402Config } from "../x402/x402.config";
 import { buildStemX402Quote } from "../x402/x402.quote";
 
 type StorefrontStemSearchFilters = {
@@ -40,6 +41,8 @@ type StorefrontStemRow = {
 @Injectable()
 export class StorefrontService {
   private readonly logger = new Logger(StorefrontService.name);
+
+  constructor(private readonly x402Config: X402Config) {}
 
   async searchStems(filters: StorefrontStemSearchFilters) {
     const limit = Math.min(Math.max(filters.limit ?? 24, 1), 100);
@@ -83,7 +86,7 @@ export class StorefrontService {
       },
       payment: {
         protocol: "x402",
-        network: process.env.X402_NETWORK || "eip155:84532",
+        network: this.x402Config.network,
         quoteUrl: item.quoteUrl,
         purchaseUrl: item.purchaseUrl,
       },
@@ -298,8 +301,8 @@ export class StorefrontService {
       basePlayPriceUsd: row.pricing?.basePlayPriceUsd,
       remixLicenseUsd: row.pricing?.remixLicenseUsd,
       commercialLicenseUsd: row.pricing?.commercialLicenseUsd,
-      network: process.env.X402_NETWORK || "eip155:84532",
-      payTo: process.env.X402_PAYOUT_ADDRESS || "",
+      network: this.x402Config.network,
+      payTo: this.x402Config.payoutAddress,
     });
 
     return {

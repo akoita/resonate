@@ -94,6 +94,10 @@ Core app-side variables:
 | `RPC_URL` | Backend | RPC endpoint used by contract-aware backend flows |
 | `SEPOLIA_RPC_URL` | Contracts / backend | Required for Sepolia deploys and forked workflows |
 | `AGENT_KEY_ENCRYPTION_KEY` | Backend | Generate with `./backend/scripts/generate-agent-encryption-key.sh` for local KMS mode |
+| `X402_ENABLED` | Backend | Enables the x402 payment and storefront purchase surfaces |
+| `X402_PAYOUT_ADDRESS` | Backend | Required when x402 is enabled; receives USDC payments |
+| `X402_NETWORK` | Backend | CAIP-2 network id for x402 (`eip155:84532` Base Sepolia or `eip155:8453` Base mainnet) |
+| `X402_FACILITATOR_URL` | Backend | x402 verify/settle endpoint; set explicitly for Base mainnet |
 | `HUMAN_VERIFICATION_PROVIDER` | Backend | `mock`, `passport`, or `worldcoin`; defaults to `mock` locally |
 | `HUMAN_VERIFICATION_REQUIRED_REPORTS` | Backend | Report count threshold that triggers proof-of-humanity gating |
 | `CURATOR_REPUTATION_DECAY_DAYS` | Backend | Days per inactivity decay window for curator effective score |
@@ -107,6 +111,28 @@ Core app-side variables:
 | `WORLD_ID_VERIFICATION_LEVEL` | Backend | Optional verification level such as `orb` |
 
 If these variables are deployed through infrastructure, define them in `resonate-iac` alongside the backend service environment configuration.
+
+### Local x402 profiles
+
+Base Sepolia:
+
+```env
+X402_ENABLED=true
+X402_NETWORK=eip155:84532
+X402_FACILITATOR_URL=https://x402.org/facilitator
+X402_PAYOUT_ADDRESS=<base-sepolia-wallet>
+```
+
+Base mainnet with AgentCash:
+
+```env
+X402_ENABLED=true
+X402_NETWORK=eip155:8453
+X402_FACILITATOR_URL=https://facilitator.payai.network
+X402_PAYOUT_ADDRESS=<base-mainnet-wallet>
+```
+
+The backend now refuses to boot with `X402_NETWORK=eip155:8453` unless `X402_FACILITATOR_URL` is set explicitly, which prevents accidentally pairing the Base mainnet flow with the default testnet facilitator.
 
 ## Enabling Proof-of-Humanity Providers
 

@@ -1,10 +1,12 @@
 import { Controller, Get, Param, Req, Res, Logger, HttpStatus } from '@nestjs/common';
 import { Request, Response } from 'express';
+import path from 'node:path';
 import { X402Config } from './x402.config';
 import { prisma } from '../../db/prisma';
 import { EncryptionService } from '../encryption/encryption.service';
 import { buildStemX402Quote } from './x402.quote';
 import { buildStemX402Receipt, encodeX402ReceiptHeader } from './x402.receipt';
+import { getX402ChainId } from './x402.public';
 
 /**
  * X402Controller — Public stem download endpoint gated by x402 USDC payment.
@@ -12,11 +14,11 @@ import { buildStemX402Receipt, encodeX402ReceiptHeader } from './x402.receipt';
  * Flow:
  *   1. Agent sends GET /api/stems/:stemId/x402
  *   2. x402 middleware intercepts → returns 402 with USDC payment instructions
- *   3. Agent pays USDC on Base Sepolia
- *   4. Agent retries with X-PAYMENT header
+ *   3. Agent pays USDC on the configured x402 network
+ *   4. Agent retries with PAYMENT-SIGNATURE (or legacy X-PAYMENT)
  *   5. Facilitator verifies & settles → middleware passes request through
  *   6. Controller serves the decrypted stem audio
- *   7. Purchase recorded in StemPurchase table
+ *   7. Purchase provenance is recorded as a ContractEvent
  *
  * No JWT required — agents are unauthenticated.
  */
@@ -143,7 +145,7 @@ export class X402Controller {
       await prisma.contractEvent.create({
         data: {
           eventName: 'x402.purchase',
-          chainId: 84532, // Base Sepolia
+          chainId: getX402ChainId(this.x402Config.network),
           contractAddress: this.x402Config.payoutAddress,
           transactionHash,
           logIndex: 0,
@@ -168,7 +170,7 @@ export class X402Controller {
       this.logger.log(`x402 purchase recorded for stem ${stemId}`);
 
       // 4. Serve the audio
-      const filename = `${stem.title || stem.type || 'stem'}`;
+      const filename = `${stem.title || stem.type || 'stem'}${this.getDownloadExtension(stem.uri, responseMimeType)}`;
       const encodedReceipt = encodeX402ReceiptHeader(receipt);
       res.set({
         'Content-Type': responseMimeType,
@@ -205,6 +207,24 @@ export class X402Controller {
     const host = req.get('host') || process.env.BACKEND_HOST || 'localhost:3000';
 
     return new URL(uri, `${protocol}://${host}`).toString();
+  }
+
+  private getDownloadExtension(uri: string, mimeType: string) {
+    const pathname = /^https?:\/\//i.test(uri) ? new URL(uri).pathname : uri;
+    const existingExtension = path.extname(pathname);
+    if (existingExtension) {
+      return existingExtension;
+    }
+
+    if (mimeType === 'audio/mp4') {
+      return '.m4a';
+    }
+
+    if (mimeType === 'audio/mpeg') {
+      return '.mp3';
+    }
+
+    return '';
   }
 
   /**

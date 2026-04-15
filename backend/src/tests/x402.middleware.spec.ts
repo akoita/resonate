@@ -5,6 +5,13 @@ import { Request, Response, NextFunction } from 'express';
 // Mock prisma
 jest.mock('../db/prisma', () => ({
   prisma: {
+    stem: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'stem_1',
+        uri: 'https://example.com/stem.mp3',
+        mimeType: 'audio/mpeg',
+      }),
+    },
     stemListing: {
       findFirst: jest.fn().mockResolvedValue(null),
     },
@@ -20,6 +27,7 @@ function createMockConfig(overrides: Partial<X402Config> = {}): X402Config {
     payoutAddress: '0xTestPayoutAddr',
     facilitatorUrl: 'https://x402.org/facilitator',
     network: 'eip155:84532',
+    chainId: 84532,
     ...overrides,
   } as X402Config;
 }
@@ -48,6 +56,25 @@ function createMockRes(): { res: Partial<Response>; statusCode: number; body: an
 }
 
 describe('X402Middleware', () => {
+  beforeEach(() => {
+    const { prisma } = jest.requireMock('../db/prisma') as {
+      prisma: {
+        stem: { findUnique: jest.Mock };
+        stemListing: { findFirst: jest.Mock };
+        stemPricing: { findUnique: jest.Mock };
+      };
+    };
+
+    prisma.stem.findUnique.mockResolvedValue({
+      id: 'stem_1',
+      uri: 'https://example.com/stem.mp3',
+      mimeType: 'audio/mpeg',
+    });
+    prisma.stemListing.findFirst.mockResolvedValue(null);
+    prisma.stemPricing.findUnique.mockResolvedValue(null);
+    global.fetch = jest.fn();
+  });
+
   describe('disabled mode', () => {
     it('should pass through when x402 is disabled', async () => {
       const config = createMockConfig({ enabled: false });
@@ -105,6 +132,27 @@ describe('X402Middleware', () => {
           }),
         }),
       );
+    });
+
+    it('should return 404 before challenging when the stem does not exist', async () => {
+      const { prisma } = jest.requireMock('../db/prisma') as {
+        prisma: {
+          stem: { findUnique: jest.Mock };
+        };
+      };
+      prisma.stem.findUnique.mockResolvedValue(null);
+
+      const config = createMockConfig();
+      const middleware = new X402Middleware(config);
+      const req = createMockReq('/api/stems/missing-stem/x402');
+      const { res } = createMockRes();
+      const next = jest.fn();
+
+      await middleware.use(req as Request, res as Response, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Stem not found' });
     });
 
     it('should pass through non-x402 routes', async () => {
@@ -178,6 +226,115 @@ describe('X402Middleware', () => {
               amount: '50000',
             }),
           ]),
+        }),
+      );
+    });
+
+    it('should accept PAYMENT-SIGNATURE retries and continue after verification', async () => {
+      const config = createMockConfig();
+      const middleware = new X402Middleware(config);
+      const req = createMockReq('/api/stems/stem_1/x402', {
+        'payment-signature': 'proof-v2',
+      });
+      const { res } = createMockRes();
+      const next = jest.fn();
+
+      jest
+        .spyOn(middleware as any, 'buildPaymentContext')
+        .mockResolvedValue({
+          paymentPayload: { signature: 'decoded-proof' },
+          paymentRequirements: { scheme: 'exact', network: 'eip155:84532' },
+        });
+      jest.spyOn(middleware as any, 'verifyPayment').mockResolvedValue(true);
+      jest.spyOn(middleware as any, 'settlePayment').mockResolvedValue(undefined);
+
+      await middleware.use(req as Request, res as Response, next);
+
+      expect((middleware as any).buildPaymentContext).toHaveBeenCalledWith(
+        'stem_1',
+        'proof-v2',
+        'audio/mpeg',
+      );
+      expect((middleware as any).verifyPayment).toHaveBeenCalledWith(
+        { signature: 'decoded-proof' },
+        { scheme: 'exact', network: 'eip155:84532' },
+      );
+      expect(next).toHaveBeenCalled();
+    });
+
+    it('should send x402 v2 verification payloads to the facilitator', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => ({ isValid: true }),
+      });
+
+      const config = createMockConfig({
+        facilitatorUrl: 'https://facilitator.example.com',
+      });
+      const middleware = new X402Middleware(config);
+
+      const paymentPayload = { signature: 'decoded-proof' };
+      const paymentRequirements = {
+        scheme: 'exact',
+        network: 'eip155:84532',
+        amount: '50000',
+        asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+        payTo: '0xTestPayoutAddr',
+        maxTimeoutSeconds: 300,
+      };
+
+      const isValid = await (middleware as any).verifyPayment(
+        paymentPayload,
+        paymentRequirements,
+      );
+
+      expect(isValid).toBe(true);
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://facilitator.example.com/verify',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            x402Version: 2,
+            paymentPayload,
+            paymentRequirements,
+          }),
+        }),
+      );
+    });
+
+    it('should send x402 v2 settlement payloads to the facilitator', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+      });
+
+      const config = createMockConfig({
+        facilitatorUrl: 'https://facilitator.example.com',
+      });
+      const middleware = new X402Middleware(config);
+
+      const paymentPayload = { signature: 'decoded-proof' };
+      const paymentRequirements = {
+        scheme: 'exact',
+        network: 'eip155:84532',
+        amount: '50000',
+        asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+        payTo: '0xTestPayoutAddr',
+        maxTimeoutSeconds: 300,
+      };
+
+      await (middleware as any).settlePayment(paymentPayload, paymentRequirements);
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://facilitator.example.com/settle',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            x402Version: 2,
+            paymentPayload,
+            paymentRequirements,
+          }),
         }),
       );
     });

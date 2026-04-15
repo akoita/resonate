@@ -29,6 +29,7 @@ function createMockConfig(overrides: Partial<X402Config> = {}): X402Config {
     payoutAddress: '0xTestPayoutAddr',
     facilitatorUrl: 'https://x402.org/facilitator',
     network: 'eip155:84532',
+    chainId: 84532,
     ...overrides,
   } as X402Config;
 }
@@ -120,6 +121,7 @@ describe('X402Controller', () => {
     expect(prisma.contractEvent.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         eventName: 'x402.purchase',
+        chainId: 84532,
         args: expect.objectContaining({
           stemId: 'stem_1',
           receiptId: decodedReceipt.receiptId,
@@ -170,6 +172,12 @@ describe('X402Controller', () => {
       'http://localhost:3000/catalog/stems/e2e-x402.m4a/blob',
     );
     expect(res.headers['Content-Type']).toBe('audio/mp4');
+    expect(res.headers['Content-Disposition']).toContain('Local Stem.m4a');
+    expect(prisma.contractEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        chainId: 8453,
+      }),
+    });
 
     const decodedReceipt = JSON.parse(
       Buffer.from(res.headers['X-Resonate-Receipt'], 'base64url').toString(
