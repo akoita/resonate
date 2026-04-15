@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 
 type OpenApiDocument = Record<string, unknown>;
+type WellKnownDocument = Record<string, unknown>;
 
 @Injectable()
 export class OpenApiService {
@@ -418,6 +419,23 @@ export class OpenApiService {
           },
         },
       },
+    };
+  }
+
+  buildWellKnownDocument(baseUrl: string): WellKnownDocument {
+    return {
+      version: 1,
+      provider: "Resonate",
+      protocol: "x402",
+      openapi: `${baseUrl}/openapi.json`,
+      resources: [
+        `GET ${baseUrl}/api/stems/{stemId}/x402`,
+      ],
+      instructions: [
+        "Discover public stems with GET /api/storefront/stems.",
+        "Inspect pricing with GET /api/stems/{stemId}/x402/info.",
+        "Handle the 402 challenge on GET /api/stems/{stemId}/x402 and retry with X-PAYMENT.",
+      ].join(" "),
     };
   }
 }

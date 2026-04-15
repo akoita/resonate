@@ -34,6 +34,7 @@ function createMockReq(path: string, headers: Record<string, string> = {}): Part
 function createMockRes(): { res: Partial<Response>; statusCode: number; body: any } {
   const state = { statusCode: 200, body: null as any };
   const res: Partial<Response> = {
+    setHeader: jest.fn(),
     status: jest.fn((code: number) => {
       state.statusCode = code;
       return res as Response;
@@ -75,10 +76,12 @@ describe('X402Middleware', () => {
       expect(res.status).toHaveBeenCalledWith(402);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
+          x402Version: 2,
           accepts: expect.arrayContaining([
             expect.objectContaining({
               scheme: 'exact',
               network: 'eip155:84532',
+              asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
               payTo: '0xTestPayoutAddr',
             }),
           ]),
@@ -97,8 +100,8 @@ describe('X402Middleware', () => {
 
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          'x-payment': expect.objectContaining({
-            resource: '/api/stems/my-stem-123/x402',
+          resource: expect.objectContaining({
+            url: '/api/stems/my-stem-123/x402',
           }),
         }),
       );
@@ -141,7 +144,38 @@ describe('X402Middleware', () => {
         expect.objectContaining({
           accepts: expect.arrayContaining([
             expect.objectContaining({
-              price: '$0.05',
+              amount: '50000',
+            }),
+          ]),
+        }),
+      );
+    });
+
+    it('should ignore legacy ETH listings when no canonical USD price is stored', async () => {
+      const { prisma } = jest.requireMock('../db/prisma') as {
+        prisma: {
+          stemListing: { findFirst: jest.Mock };
+          stemPricing: { findUnique: jest.Mock };
+        };
+      };
+      prisma.stemListing.findFirst.mockResolvedValue({
+        pricePerUnit: '1000000000000000000',
+      });
+      prisma.stemPricing.findUnique.mockResolvedValue(null);
+
+      const config = createMockConfig();
+      const middleware = new X402Middleware(config);
+      const req = createMockReq('/api/stems/listed-stem/x402');
+      const { res } = createMockRes();
+      const next = jest.fn();
+
+      await middleware.use(req as Request, res as Response, next);
+
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accepts: expect.arrayContaining([
+            expect.objectContaining({
+              amount: '50000',
             }),
           ]),
         }),

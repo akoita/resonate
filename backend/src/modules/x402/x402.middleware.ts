@@ -1,7 +1,37 @@
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
+import path from 'node:path';
 import { X402Config } from './x402.config';
 import { prisma } from '../../db/prisma';
+import { formatUsdcAmount } from './x402.quote';
+
+// `@x402/core/http` only publishes ESM typings, while this backend still
+// compiles under CommonJS-style resolution. Pull the decoder from the CJS build
+// directly so local compilation and Jest stay happy.
+const {
+  decodePaymentSignatureHeader,
+}: { decodePaymentSignatureHeader: (header: string) => unknown } = require(path.join(
+  process.cwd(),
+  'node_modules/@x402/core/dist/cjs/http/index.js',
+));
+
+const DEFAULT_USDC_ASSETS: Record<
+  string,
+  { address: string; name: string; version: string; decimals: number }
+> = {
+  'eip155:8453': {
+    address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    name: 'USD Coin',
+    version: '2',
+    decimals: 6,
+  },
+  'eip155:84532': {
+    address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+    name: 'USDC',
+    version: '2',
+    decimals: 6,
+  },
+};
 
 /**
  * X402Middleware — NestJS adapter for the x402 Express payment middleware.
@@ -39,8 +69,12 @@ export class X402Middleware implements NestMiddleware {
       return next();
     }
 
-    // Check for payment header
-    const paymentHeader = req.headers['x-payment'] as string | undefined;
+    // AgentCash/x402 v2 retries with PAYMENT-SIGNATURE, while older flows may
+    // still use X-PAYMENT. Accept both so the protected route works with the
+    // current client stack.
+    const paymentHeader =
+      (req.headers['payment-signature'] as string | undefined) ??
+      (req.headers['x-payment'] as string | undefined);
 
     if (!paymentHeader) {
       // No payment — return 402 with payment instructions
@@ -49,7 +83,11 @@ export class X402Middleware implements NestMiddleware {
 
     // Payment header present — verify with facilitator
     try {
-      const isValid = await this.verifyPayment(paymentHeader);
+      const paymentContext = await this.buildPaymentContext(stemId, paymentHeader);
+      const isValid = await this.verifyPayment(
+        paymentContext.paymentPayload,
+        paymentContext.paymentRequirements,
+      );
       if (!isValid) {
         this.logger.warn(`Invalid x402 payment for stem ${stemId}`);
         return res.status(402).json({
@@ -59,7 +97,10 @@ export class X402Middleware implements NestMiddleware {
       }
 
       // Payment verified — settle it
-      await this.settlePayment(paymentHeader);
+      await this.settlePayment(
+        paymentContext.paymentPayload,
+        paymentContext.paymentRequirements,
+      );
       this.logger.log(`x402 payment verified and settled for stem ${stemId}`);
 
       return next();
@@ -77,34 +118,33 @@ export class X402Middleware implements NestMiddleware {
    * Send a 402 Payment Required response with x402 payment instructions.
    */
   private async send402(res: Response, stemId: string) {
-    // Look up the stem's active listing price or StemPricing
-    const listing = await prisma.stemListing.findFirst({
-      where: {
-        stemId: stemId,
-        status: 'active',
-      },
-      orderBy: { listedAt: 'desc' },
-    });
+    const paymentRequired = await this.buildPaymentRequired(stemId);
 
+    // AgentCash's HTTP client expects the V2 challenge in the PAYMENT-REQUIRED header.
+    const encodedPaymentRequired = Buffer.from(
+      JSON.stringify(paymentRequired),
+      'utf8',
+    ).toString('base64');
+
+    res.setHeader('PAYMENT-REQUIRED', encodedPaymentRequired);
+    res.status(402).json(paymentRequired);
+  }
+
+  private async buildPaymentRequired(stemId: string) {
     const pricing = await prisma.stemPricing.findUnique({
       where: { stemId },
     });
 
-    // Use StemPricing USD directly, or estimate from listing Wei, or default
-    const priceUsd = pricing
-      ? `$${pricing.basePlayPriceUsd.toFixed(4)}`
-      : listing
-        ? this.weiToUsdEstimate(BigInt(listing.pricePerUnit))
-        : '$0.05';
+    // Keep the 402 challenge aligned with the machine-readable storefront quote.
+    const amountUsd = pricing?.basePlayPriceUsd ?? 0.05;
+    const priceUsd = `$${formatUsdcAmount(amountUsd)}`;
+    const assetInfo = this.getDefaultAssetInfo(this.x402Config.network);
 
-    res.status(402).json({
-      'x-payment': {
-        version: '1',
-        scheme: 'exact',
-        network: this.x402Config.network,
-        payTo: this.x402Config.payoutAddress,
-        maxAmountRequired: priceUsd,
-        resource: `/api/stems/${stemId}/x402`,
+    return {
+      x402Version: 2,
+      error: 'Payment required',
+      resource: {
+        url: `/api/stems/${stemId}/x402`,
         description: `Purchase stem ${stemId} via x402`,
         mimeType: 'audio/mpeg',
       },
@@ -112,31 +152,72 @@ export class X402Middleware implements NestMiddleware {
         {
           scheme: 'exact',
           network: this.x402Config.network,
-          price: priceUsd,
+          amount: this.toTokenAmount(amountUsd, assetInfo.decimals),
+          asset: assetInfo.address,
           payTo: this.x402Config.payoutAddress,
+          maxTimeoutSeconds: 300,
+          extra: {
+            name: assetInfo.name,
+            version: assetInfo.version,
+            displayPrice: priceUsd,
+          },
         },
       ],
-    });
+    };
+  }
+
+  private async buildPaymentContext(stemId: string, paymentHeader: string) {
+    const paymentRequired = await this.buildPaymentRequired(stemId);
+    return {
+      paymentPayload: decodePaymentSignatureHeader(paymentHeader),
+      paymentRequirements: paymentRequired.accepts[0],
+    };
+  }
+
+  private getDefaultAssetInfo(network: string) {
+    const asset = DEFAULT_USDC_ASSETS[network];
+    if (!asset) {
+      throw new Error(`No default USDC asset configured for network ${network}`);
+    }
+    return asset;
+  }
+
+  private toTokenAmount(amount: number, decimals: number): string {
+    const [intPart, decPart = ''] = String(amount).split('.');
+    const paddedDec = decPart.padEnd(decimals, '0').slice(0, decimals);
+    return (intPart + paddedDec).replace(/^0+/, '') || '0';
   }
 
   /**
    * Verify payment proof with the x402 facilitator.
    */
-  private async verifyPayment(paymentHeader: string): Promise<boolean> {
+  private async verifyPayment(
+    paymentPayload: unknown,
+    paymentRequirements: unknown,
+  ): Promise<boolean> {
     try {
       const response = await fetch(`${this.x402Config.facilitatorUrl}/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payment: paymentHeader }),
+        body: JSON.stringify({
+          x402Version: 2,
+          paymentPayload,
+          paymentRequirements,
+        }),
       });
 
       if (!response.ok) {
-        this.logger.warn(`Facilitator /verify returned ${response.status}`);
+        const errorBody = await response.text().catch(() => '');
+        this.logger.warn(
+          `Facilitator /verify returned ${response.status}${
+            errorBody ? `: ${errorBody}` : ''
+          }`,
+        );
         return false;
       }
 
       const result = await response.json();
-      return result.valid === true;
+      return result.isValid === true;
     } catch (error) {
       this.logger.error(`Facilitator /verify failed: ${error}`);
       return false;
@@ -146,33 +227,33 @@ export class X402Middleware implements NestMiddleware {
   /**
    * Settle payment with the x402 facilitator.
    */
-  private async settlePayment(paymentHeader: string): Promise<void> {
+  private async settlePayment(
+    paymentPayload: unknown,
+    paymentRequirements: unknown,
+  ): Promise<void> {
     try {
       const response = await fetch(`${this.x402Config.facilitatorUrl}/settle`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payment: paymentHeader }),
+        body: JSON.stringify({
+          x402Version: 2,
+          paymentPayload,
+          paymentRequirements,
+        }),
       });
 
       if (!response.ok) {
-        this.logger.warn(`Facilitator /settle returned ${response.status}`);
+        const errorBody = await response.text().catch(() => '');
+        this.logger.warn(
+          `Facilitator /settle returned ${response.status}${
+            errorBody ? `: ${errorBody}` : ''
+          }`,
+        );
       }
     } catch (error) {
       // Settlement failure is logged but doesn't block delivery
       // The facilitator handles eventual settlement
       this.logger.error(`Facilitator /settle failed: ${error}`);
     }
-  }
-
-  /**
-   * Rough conversion of Wei price to USD string for x402.
-   * In production, use a real price feed.
-   */
-  private weiToUsdEstimate(priceWei: bigint): string {
-    // For testnet: assume 1 ETH ≈ $2000, prices in Wei
-    const ethPrice = 2000;
-    const ethValue = Number(priceWei) / 1e18;
-    const usd = ethValue * ethPrice;
-    return `$${usd.toFixed(4)}`;
   }
 }

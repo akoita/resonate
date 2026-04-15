@@ -28,14 +28,22 @@ The long-term vision is still broader than a storefront: artists monetize progra
 
 ### Copy-paste demo: discover -> quote -> pay -> receipt
 
-Set a base URL, a stem ID, and an `X_PAYMENT` proof from the x402-capable client you use to settle the challenge. Raw `curl` is shown here so the underlying protocol stays visible.
+The verified local demo path uses Base mainnet with the PayAI facilitator:
+
+```bash
+export X402_ENABLED=true
+export X402_NETWORK=eip155:8453
+export X402_FACILITATOR_URL=https://facilitator.payai.network
+```
+
+Set a base URL and a stem ID. Raw `curl` is shown first so the underlying protocol stays visible, then `agentcash fetch` is shown as the machine-native happy path.
 
 ```bash
 export RESONATE_API_BASE="${RESONATE_API_BASE:-http://localhost:3000}"
 export STEM_ID="<stem-id>"
-export X_PAYMENT="<payment proof from your x402-capable client>"
 
 curl "$RESONATE_API_BASE/openapi.json"
+curl "$RESONATE_API_BASE/.well-known/x402"
 curl "$RESONATE_API_BASE/api/storefront/stems?limit=3"
 curl "$RESONATE_API_BASE/api/storefront/stems/$STEM_ID"
 ```
@@ -46,10 +54,20 @@ curl -i "$RESONATE_API_BASE/api/stems/$STEM_ID/x402"
 ```
 
 ```bash
+npm exec --yes agentcash -- fetch "$RESONATE_API_BASE/api/stems/$STEM_ID/x402" \
+  --payment-network base \
+  --payment-protocol x402 \
+  --max-amount 0.05 \
+  --format pretty
+```
+
+If you want to inspect the raw receipt headers directly, use any x402-capable client to satisfy the challenge and then retry with the payment header:
+
+```bash
 curl -sS -D /tmp/resonate-headers.txt \
-  -H "X-PAYMENT: $X_PAYMENT" \
+  -H "X-PAYMENT: <payment-proof>" \
   "$RESONATE_API_BASE/api/stems/$STEM_ID/x402" \
-  -o /tmp/resonate-stem.mp3
+  -o /tmp/resonate-stem.bin
 
 node -e 'const fs = require("fs"); const raw = fs.readFileSync("/tmp/resonate-headers.txt", "utf8"); const line = raw.split("\\n").find((entry) => entry.toLowerCase().startsWith("x-resonate-receipt:")); if (!line) { throw new Error("Missing X-Resonate-Receipt header"); } const encoded = line.split(":").slice(1).join(":").trim(); const receipt = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")); console.log(JSON.stringify(receipt, null, 2));'
 ```
@@ -57,12 +75,19 @@ node -e 'const fs = require("fs"); const raw = fs.readFileSync("/tmp/resonate-he
 Expected flow:
 
 - `openapi.json` and `/api/storefront/stems` expose the discovery surface
+- `/.well-known/x402` advertises the paid resource for discovery-first clients
 - `/api/stems/:stemId/x402/info` returns storefront-grade quote metadata
 - the first paid `curl` returns the `402 Payment Required` challenge
-- the retried paid `curl` downloads the stem and returns a structured receipt in `X-Resonate-Receipt`
+- `agentcash fetch` completes the paid request over x402 on Base
+- the retried paid `curl` returns a structured receipt in `X-Resonate-Receipt`
 - the final `node` command decodes that receipt into JSON
 
-If you use an x402-capable client such as AgentCash, it can automate the proof exchange for you. The raw `curl` path above is here so reviewers can inspect the underlying commerce surface directly.
+If you use an x402-capable client such as AgentCash, it automates the proof exchange for you. The raw `curl` path above is kept so reviewers can inspect the underlying commerce surface and receipt directly.
+
+Two implementation notes from local validation:
+
+- `https://x402.org/facilitator` is testnet-oriented and does not verify Base mainnet payments.
+- Coinbase's mainnet facilitator requires auth in this setup, while `https://facilitator.payai.network` worked end to end for the Resonate demo flow.
 
 ### What agents get
 

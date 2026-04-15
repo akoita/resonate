@@ -81,6 +81,8 @@ export class X402Controller {
       const pricing = await prisma.stemPricing.findUnique({
         where: { stemId: stem.id },
       });
+      const resolvedStemUrl = this.resolveStemUrl(stem.uri, req);
+      const responseMimeType = stem.mimeType || 'audio/mpeg';
 
       // 2. Fetch/decrypt the audio content
       let audioBuffer: Buffer;
@@ -93,14 +95,14 @@ export class X402Controller {
           signedMessage: 'Download authorized via x402 payment verification',
         };
         audioBuffer = await this.encryptionService.decrypt(
-          stem.uri,
+          resolvedStemUrl,
           stem.encryptionMetadata,
           [],
           serverAuthSig,
         );
       } else {
         // Unencrypted — fetch directly
-        const response = await fetch(stem.uri);
+        const response = await fetch(resolvedStemUrl);
         if (!response.ok) {
           throw new Error(`Failed to fetch stem: ${response.status}`);
         }
@@ -112,9 +114,11 @@ export class X402Controller {
       // so we log x402 purchases as ContractEvents instead.
       const purchasedAt = new Date();
       const transactionHash = `x402:${stemId}:${purchasedAt.getTime()}`;
-      const paymentHeader = Array.isArray(req.headers['x-payment'])
-        ? req.headers['x-payment'][0]
-        : req.headers['x-payment'];
+      const paymentHeaderValue =
+        req.headers['payment-signature'] ?? req.headers['x-payment'];
+      const paymentHeader = Array.isArray(paymentHeaderValue)
+        ? paymentHeaderValue[0]
+        : paymentHeaderValue;
       const receipt = buildStemX402Receipt({
         stemId: stem.id,
         stemType: stem.type,
@@ -129,7 +133,7 @@ export class X402Controller {
         payTo: this.x402Config.payoutAddress,
         resource: `/api/stems/${stem.id}/x402`,
         quoteUrl: `/api/stems/${stem.id}/x402/info`,
-        mimeType: 'audio/mpeg',
+        mimeType: responseMimeType,
         contentLength: audioBuffer.length,
         eventTransactionHash: transactionHash,
         paymentHeader,
@@ -164,10 +168,10 @@ export class X402Controller {
       this.logger.log(`x402 purchase recorded for stem ${stemId}`);
 
       // 4. Serve the audio
-      const filename = `${stem.title || stem.type || 'stem'}.mp3`;
+      const filename = `${stem.title || stem.type || 'stem'}`;
       const encodedReceipt = encodeX402ReceiptHeader(receipt);
       res.set({
-        'Content-Type': 'audio/mpeg',
+        'Content-Type': responseMimeType,
         'Content-Length': String(audioBuffer.length),
         'Content-Disposition': `attachment; filename="${filename}"`,
         'Access-Control-Expose-Headers':
@@ -187,6 +191,20 @@ export class X402Controller {
         .status(HttpStatus.INTERNAL_SERVER_ERROR)
         .json({ error: 'Download failed', message });
     }
+  }
+
+  private resolveStemUrl(uri: string, req: Request) {
+    if (/^https?:\/\//i.test(uri)) {
+      return uri;
+    }
+
+    const forwardedProto = req.headers['x-forwarded-proto'];
+    const protocol = Array.isArray(forwardedProto)
+      ? forwardedProto[0]
+      : forwardedProto || req.protocol || 'http';
+    const host = req.get('host') || process.env.BACKEND_HOST || 'localhost:3000';
+
+    return new URL(uri, `${protocol}://${host}`).toString();
   }
 
   /**
