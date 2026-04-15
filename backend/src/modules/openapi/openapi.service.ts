@@ -154,8 +154,10 @@ export class OpenApiService {
                 content: {
                   "application/json": {
                     schema: {
-                      type: "array",
-                      items: { $ref: "#/components/schemas/StemPricing" },
+                      type: "object",
+                      additionalProperties: {
+                        $ref: "#/components/schemas/StemPricing",
+                      },
                     },
                   },
                 },
@@ -334,8 +336,21 @@ export class OpenApiService {
             properties: {
               stemId: { type: "string" },
               basePlayPriceUsd: { type: "number", nullable: true },
-              remixPriceUsd: { type: "number", nullable: true },
-              commercialPriceUsd: { type: "number", nullable: true },
+              remixLicenseUsd: { type: "number", nullable: true },
+              commercialLicenseUsd: { type: "number", nullable: true },
+              floorUsd: { type: "number", nullable: true },
+              ceilingUsd: { type: "number", nullable: true },
+              listingDurationDays: { type: "integer", nullable: true },
+              computed: {
+                type: "object",
+                properties: {
+                  personal: { type: "number" },
+                  remix: { type: "number" },
+                  commercial: { type: "number" },
+                },
+                additionalProperties: false,
+                nullable: true,
+              },
             },
             required: ["stemId"],
             additionalProperties: true,
@@ -375,7 +390,27 @@ export class OpenApiService {
           X402PaymentRequired: {
             type: "object",
             properties: {
-              error: { type: "string", enum: ["payment_required"] },
+              "x-payment": {
+                type: "object",
+                properties: {
+                  version: { type: "string" },
+                  scheme: { type: "string" },
+                  network: { type: "string" },
+                  payTo: { type: "string" },
+                  maxAmountRequired: { type: "string" },
+                  resource: { type: "string" },
+                  description: { type: "string" },
+                  mimeType: { type: "string" },
+                },
+                required: [
+                  "version",
+                  "scheme",
+                  "network",
+                  "payTo",
+                  "maxAmountRequired",
+                  "resource",
+                ],
+              },
               accepts: {
                 type: "array",
                 items: {
@@ -384,22 +419,18 @@ export class OpenApiService {
                     scheme: { type: "string" },
                     network: { type: "string" },
                     payTo: { type: "string" },
-                    maxAmountRequired: { type: "string" },
-                    resource: { type: "string" },
-                    description: { type: "string" },
-                    mimeType: { type: "string" },
+                    price: { type: "string" },
                   },
                   required: [
                     "scheme",
                     "network",
                     "payTo",
-                    "maxAmountRequired",
-                    "resource",
+                    "price",
                   ],
                 },
               },
             },
-            required: ["error", "accepts"],
+            required: ["x-payment", "accepts"],
           },
         },
       },

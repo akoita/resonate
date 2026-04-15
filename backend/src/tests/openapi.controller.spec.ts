@@ -23,5 +23,22 @@ describe("OpenApiService", () => {
     expect(
       doc.components.schemas.X402PaymentRequired.properties.accepts,
     ).toBeDefined();
+    expect(
+      doc.paths["/api/stem-pricing/batch-get"].get.responses["200"].content[
+        "application/json"
+      ].schema.type,
+    ).toBe("object");
+    expect(
+      doc.components.schemas.StemPricing.properties.remixLicenseUsd,
+    ).toBeDefined();
+    expect(
+      doc.components.schemas.StemPricing.properties.commercialLicenseUsd,
+    ).toBeDefined();
+    expect(
+      doc.components.schemas.X402PaymentRequired.required,
+    ).toContain("x-payment");
+    expect(
+      doc.components.schemas.X402PaymentRequired.properties["x-payment"],
+    ).toBeDefined();
   });
 });
