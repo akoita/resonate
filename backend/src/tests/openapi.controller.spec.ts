@@ -31,8 +31,8 @@ describe('OpenApiService', () => {
       price: {
         mode: 'dynamic',
         currency: 'USDC',
-        min: '0.05',
-        max: '50',
+        min: '0',
+        max: '500',
       },
       quote: {
         endpoint: '/api/stems/{stemId}/x402/info',
