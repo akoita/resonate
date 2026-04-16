@@ -95,7 +95,7 @@ export class X402Middleware implements NestMiddleware {
       ? `$${pricing.basePlayPriceUsd.toFixed(4)}`
       : listing
         ? this.weiToUsdEstimate(BigInt(listing.pricePerUnit))
-        : '$0.02';
+        : '$0.05';
 
     res.status(402).json({
       'x-payment': {
