@@ -1,9 +1,12 @@
-import { Controller, Get, Param, Res, Logger, HttpStatus } from '@nestjs/common';
-import { Response } from 'express';
+import { Controller, Get, Param, Req, Res, Logger, HttpStatus } from '@nestjs/common';
+import { Request, Response } from 'express';
+import path from 'node:path';
 import { X402Config } from './x402.config';
 import { prisma } from '../../db/prisma';
 import { EncryptionService } from '../encryption/encryption.service';
 import { buildStemX402Quote } from './x402.quote';
+import { buildStemX402Receipt, encodeX402ReceiptHeader } from './x402.receipt';
+import { getX402ChainId } from './x402.public';
 
 /**
  * X402Controller — Public stem download endpoint gated by x402 USDC payment.
@@ -11,11 +14,11 @@ import { buildStemX402Quote } from './x402.quote';
  * Flow:
  *   1. Agent sends GET /api/stems/:stemId/x402
  *   2. x402 middleware intercepts → returns 402 with USDC payment instructions
- *   3. Agent pays USDC on Base Sepolia
- *   4. Agent retries with X-PAYMENT header
+ *   3. Agent pays USDC on the configured x402 network
+ *   4. Agent retries with PAYMENT-SIGNATURE (or legacy X-PAYMENT)
  *   5. Facilitator verifies & settles → middleware passes request through
  *   6. Controller serves the decrypted stem audio
- *   7. Purchase recorded in StemPurchase table
+ *   7. Purchase provenance is recorded as a ContractEvent
  *
  * No JWT required — agents are unauthenticated.
  */
@@ -37,6 +40,7 @@ export class X402Controller {
   @Get(':stemId/x402')
   async downloadWithPayment(
     @Param('stemId') stemId: string,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     if (!this.x402Config.enabled) {
@@ -76,6 +80,12 @@ export class X402Controller {
         `x402 payment verified — serving stem ${stemId} (${stem.type})`,
       );
 
+      const pricing = await prisma.stemPricing.findUnique({
+        where: { stemId: stem.id },
+      });
+      const resolvedStemUrl = this.resolveStemUrl(stem.uri, req);
+      const responseMimeType = stem.mimeType || 'audio/mpeg';
+
       // 2. Fetch/decrypt the audio content
       let audioBuffer: Buffer;
 
@@ -87,14 +97,14 @@ export class X402Controller {
           signedMessage: 'Download authorized via x402 payment verification',
         };
         audioBuffer = await this.encryptionService.decrypt(
-          stem.uri,
+          resolvedStemUrl,
           stem.encryptionMetadata,
           [],
           serverAuthSig,
         );
       } else {
         // Unencrypted — fetch directly
-        const response = await fetch(stem.uri);
+        const response = await fetch(resolvedStemUrl);
         if (!response.ok) {
           throw new Error(`Failed to fetch stem: ${response.status}`);
         }
@@ -104,12 +114,40 @@ export class X402Controller {
       // 3. Log the x402 purchase for provenance
       // StemPurchase requires a FK to StemListing (on-chain marketplace),
       // so we log x402 purchases as ContractEvents instead.
+      const purchasedAt = new Date();
+      const transactionHash = `x402:${stemId}:${purchasedAt.getTime()}`;
+      const paymentHeaderValue =
+        req.headers['payment-signature'] ?? req.headers['x-payment'];
+      const paymentHeader = Array.isArray(paymentHeaderValue)
+        ? paymentHeaderValue[0]
+        : paymentHeaderValue;
+      const receipt = buildStemX402Receipt({
+        stemId: stem.id,
+        stemType: stem.type,
+        stemTitle: stem.title ?? null,
+        trackTitle: stem.track?.title ?? null,
+        artist: stem.track?.release?.primaryArtist ?? null,
+        releaseTitle: stem.track?.release?.title ?? null,
+        hasNft: !!stem.nftMint,
+        tokenId: stem.nftMint?.tokenId?.toString() ?? null,
+        amountUsd: pricing?.basePlayPriceUsd ?? 0.05,
+        network: this.x402Config.network,
+        payTo: this.x402Config.payoutAddress,
+        resource: `/api/stems/${stem.id}/x402`,
+        quoteUrl: `/api/stems/${stem.id}/x402/info`,
+        mimeType: responseMimeType,
+        contentLength: audioBuffer.length,
+        eventTransactionHash: transactionHash,
+        paymentHeader,
+        purchasedAt,
+      });
+
       await prisma.contractEvent.create({
         data: {
           eventName: 'x402.purchase',
-          chainId: 84532, // Base Sepolia
+          chainId: getX402ChainId(this.x402Config.network),
           contractAddress: this.x402Config.payoutAddress,
-          transactionHash: `x402:${stemId}:${Date.now()}`,
+          transactionHash,
           logIndex: 0,
           blockNumber: BigInt(0),
           blockHash: '',
@@ -119,19 +157,32 @@ export class X402Controller {
             trackTitle: stem.track?.title,
             payTo: this.x402Config.payoutAddress,
             network: this.x402Config.network,
+            receiptId: receipt.receiptId,
+            licenseKey: receipt.license.key,
+            amount: receipt.payment.amount,
+            currency: receipt.payment.currency,
+            paymentProofSha256: receipt.payment.paymentProofSha256,
           },
-          processedAt: new Date(),
+          processedAt: purchasedAt,
         },
       });
 
       this.logger.log(`x402 purchase recorded for stem ${stemId}`);
 
       // 4. Serve the audio
-      const filename = `${stem.title || stem.type || 'stem'}.mp3`;
+      const filename = `${stem.title || stem.type || 'stem'}${this.getDownloadExtension(stem.uri, responseMimeType)}`;
+      const encodedReceipt = encodeX402ReceiptHeader(receipt);
       res.set({
-        'Content-Type': 'audio/mpeg',
+        'Content-Type': responseMimeType,
         'Content-Length': String(audioBuffer.length),
         'Content-Disposition': `attachment; filename="${filename}"`,
+        'Access-Control-Expose-Headers':
+          'X-Resonate-Receipt,X-Resonate-Receipt-Id,X-Resonate-Receipt-Content-Type,X-Resonate-License',
+        'X-Resonate-License': receipt.license.key,
+        'X-Resonate-Receipt': encodedReceipt,
+        'X-Resonate-Receipt-Content-Type':
+          'application/vnd.resonate.purchase-receipt+json',
+        'X-Resonate-Receipt-Id': receipt.receiptId,
       });
 
       res.send(audioBuffer);
@@ -142,6 +193,38 @@ export class X402Controller {
         .status(HttpStatus.INTERNAL_SERVER_ERROR)
         .json({ error: 'Download failed', message });
     }
+  }
+
+  private resolveStemUrl(uri: string, req: Request) {
+    if (/^https?:\/\//i.test(uri)) {
+      return uri;
+    }
+
+    const forwardedProto = req.headers['x-forwarded-proto'];
+    const protocol = Array.isArray(forwardedProto)
+      ? forwardedProto[0]
+      : forwardedProto || req.protocol || 'http';
+    const host = req.get('host') || process.env.BACKEND_HOST || 'localhost:3000';
+
+    return new URL(uri, `${protocol}://${host}`).toString();
+  }
+
+  private getDownloadExtension(uri: string, mimeType: string) {
+    const pathname = /^https?:\/\//i.test(uri) ? new URL(uri).pathname : uri;
+    const existingExtension = path.extname(pathname);
+    if (existingExtension) {
+      return existingExtension;
+    }
+
+    if (mimeType === 'audio/mp4') {
+      return '.m4a';
+    }
+
+    if (mimeType === 'audio/mpeg') {
+      return '.mp3';
+    }
+
+    return '';
   }
 
   /**
