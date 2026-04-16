@@ -4,7 +4,7 @@
 
 ### The Agentic Audio Protocol
 
-**Decentralized • AI-Native • Stem-Level Monetization**
+**Machine-First Audio Licensing API • x402 Checkout • Stem-Level Commerce**
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=for-the-badge&logo=nestjs&logoColor=white)](https://nestjs.com/)
@@ -22,15 +22,61 @@
 
 ## 🌟 Overview
 
-Resonate is a decentralized music streaming protocol where artists monetize audio **stems** (vocals, drums, bass) as programmable IP, and users deploy **AI agents** to curate, remix, and negotiate usage rights in real-time.
+Resonate is a machine-first audio licensing API for agentic commerce. It lets software agents discover stems, inspect licensing-aware prices, pay over HTTP with x402, and receive machine-readable purchase proof without creating an account.
 
-### Key Features
+The long-term vision is still broader than a storefront: artists monetize programmable stem IP, and AI systems can curate, remix, and negotiate rights around that catalog. But the fastest path to usefulness is to treat every paid API route like a storefront and make the commerce surface work for machines first.
 
-- **🎛️ Stem-Level IP** — Artists upload stems as ERC-1155 NFTs with granular licensing
-- **🤖 AI Agent Wallets** — ERC-4337 smart accounts with autonomous micro-payment capabilities
-- **💳 x402 Payments** — AI agents purchase stems via HTTP using USDC — no account required
-- **💰 Transparent Royalties** — On-chain payment splitting with real-time analytics
-- **🔀 Remix Engine** — Composable smart contracts for derivative works
+### Copy-paste demo: discover -> quote -> pay -> receipt
+
+Set a base URL, a stem ID, and an `X_PAYMENT` proof from the x402-capable client you use to settle the challenge. Raw `curl` is shown here so the underlying protocol stays visible.
+
+```bash
+export RESONATE_API_BASE="${RESONATE_API_BASE:-http://localhost:3000}"
+export STEM_ID="<stem-id>"
+export X_PAYMENT="<payment proof from your x402-capable client>"
+
+curl "$RESONATE_API_BASE/openapi.json"
+curl "$RESONATE_API_BASE/api/storefront/stems?limit=3"
+curl "$RESONATE_API_BASE/api/storefront/stems/$STEM_ID"
+```
+
+```bash
+curl "$RESONATE_API_BASE/api/stems/$STEM_ID/x402/info"
+curl -i "$RESONATE_API_BASE/api/stems/$STEM_ID/x402"
+```
+
+```bash
+curl -sS -D /tmp/resonate-headers.txt \
+  -H "X-PAYMENT: $X_PAYMENT" \
+  "$RESONATE_API_BASE/api/stems/$STEM_ID/x402" \
+  -o /tmp/resonate-stem.mp3
+
+node -e 'const fs = require("fs"); const raw = fs.readFileSync("/tmp/resonate-headers.txt", "utf8"); const line = raw.split("\\n").find((entry) => entry.toLowerCase().startsWith("x-resonate-receipt:")); if (!line) { throw new Error("Missing X-Resonate-Receipt header"); } const encoded = line.split(":").slice(1).join(":").trim(); const receipt = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")); console.log(JSON.stringify(receipt, null, 2));'
+```
+
+Expected flow:
+
+- `openapi.json` and `/api/storefront/stems` expose the discovery surface
+- `/api/stems/:stemId/x402/info` returns storefront-grade quote metadata
+- the first paid `curl` returns the `402 Payment Required` challenge
+- the retried paid `curl` downloads the stem and returns a structured receipt in `X-Resonate-Receipt`
+- the final `node` command decodes that receipt into JSON
+
+If you use an x402-capable client such as AgentCash, it can automate the proof exchange for you. The raw `curl` path above is here so reviewers can inspect the underlying commerce surface directly.
+
+### What agents get
+
+- **Public discovery surfaces** — machine-readable catalog, quote, and pricing endpoints
+- **No-account checkout** — x402 payment flow over HTTP using USDC
+- **Structured receipts** — purchase proof attached to successful paid downloads
+- **Licensing-aware pricing** — personal, remix, and commercial pricing exposed for automation
+- **Composable audio IP** — stems remain the core monetizable asset
+
+### Product framing
+
+- **Primary thesis** — Resonate is a storefront-grade API for audio licensing and purchase by agents
+- **Dogfooding app** — the AI DJ experience is how Resonate exercises its own commerce rails, not the only product surface
+- **Why this matters** — the best UX for agents is discovery + quote + payment + receipt, with no dashboard required
 
 ---
 
