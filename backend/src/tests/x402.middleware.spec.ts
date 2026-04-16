@@ -110,6 +110,9 @@ describe('X402Middleware', () => {
               network: 'eip155:84532',
               asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
               payTo: '0xTestPayoutAddr',
+              extra: expect.objectContaining({
+                displayPrice: '0.05 USDC',
+              }),
             }),
           ]),
         }),

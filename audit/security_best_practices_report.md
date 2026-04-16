@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Reviewed the current copyright and content-protection branch with emphasis on the typed rights-evidence rollout, explicit rights-review state mapping, richer release-rights evidence intake, admin review workflow UX, realtime wallet notifications, and ingestion/result handling. No new Critical or High findings were introduced by this branch.
+Reviewed the backend changes for the x402 payment surface, storefront presenter reuse, and OpenAPI metadata updates. No Critical or High severity findings were identified in the modified files.
 
 ## Critical Findings
 
@@ -14,27 +14,18 @@ None.
 
 ## Medium Findings
 
-### SBPR-001: JWT secret falls back to a static development default
-
-**Files:** `backend/src/modules/auth/auth.module.ts` L40, `backend/src/modules/auth/jwt.strategy.ts` L9
-
-**Impact:** If production configuration ever omits `JWT_SECRET`, the backend would accept a predictable signing secret.
-
-**Recommendation:** Fail fast when `JWT_SECRET` is missing outside local development, or gate the fallback behind an explicit development-only environment check.
+None.
 
 ## Low Findings
 
-### SBPR-002: Several JSON parse points rely on caller-controlled input
+None.
 
-**Files:** `backend/src/modules/ingestion/ingestion.controller.ts` L32, `backend/src/modules/contracts/human-verification.service.ts` L173, plus internal parsing sites in encryption/subscriber code
+## Informational Notes
 
-**Impact:** Malformed input can trigger avoidable runtime exceptions if upstream validation drifts.
+### SBPR-001: Public payment and storefront routes remain intentionally unauthenticated
 
-**Recommendation:** Keep these parse points wrapped with explicit validation and stable error handling; prefer schema validation immediately after parsing where the payload is externally supplied.
+**Files:** `backend/src/modules/x402/x402.controller.ts`, `backend/src/modules/storefront/storefront.controller.ts`, `backend/src/modules/openapi/openapi.service.ts`
 
-## Notes
+**Impact:** These routes are publicly reachable by design because they implement the machine-first discovery and x402 payment flow. Their safety depends on constrained response shapes, x402 verification in middleware, and avoiding sensitive data in the public payloads.
 
-- The changed branch files under `backend/src/modules/contracts/`, `backend/src/modules/rights/`, `backend/src/modules/trust/`, and the touched frontend release/dispute surfaces did not present new auth, injection, or secret-handling regressions.
-- The new release-rights realtime event and wallet notification wiring do not expose privileged decision data beyond release-level status transitions already visible to the relevant creator/admin in-product.
-- Raw Prisma SQL usage found in `backend/src/main.ts` is parameterized template usage and was not treated as a SQL injection finding in this review.
-- The new typed evidence submission path stores structured metadata through Prisma creates/updates rather than raw SQL or dynamic code execution, and evidence URLs are normalized/validated on both the client and backend before persistence.
+**Recommendation:** Keep public response contracts narrow, continue using x402 verification before paid asset delivery, and preserve environment-driven payment configuration with no hardcoded secrets or deployment-specific values.

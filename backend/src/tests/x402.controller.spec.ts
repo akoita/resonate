@@ -6,6 +6,9 @@ jest.mock('../db/prisma', () => ({
     stem: {
       findUnique: jest.fn(),
     },
+    stemListing: {
+      findFirst: jest.fn(),
+    },
     stemPricing: {
       findUnique: jest.fn(),
     },
@@ -18,6 +21,7 @@ jest.mock('../db/prisma', () => ({
 const { prisma } = jest.requireMock('../db/prisma') as {
   prisma: {
     stem: { findUnique: jest.Mock };
+    stemListing: { findFirst: jest.Mock };
     stemPricing: { findUnique: jest.Mock };
     contractEvent: { create: jest.Mock };
   };
@@ -186,5 +190,164 @@ describe('X402Controller', () => {
     );
     expect(decodedReceipt.payment.paymentProofSha256).toBeDefined();
     expect(decodedReceipt.resource.mimeType).toBe('audio/mp4');
+  });
+
+  it('returns storefront-grade x402 info metadata with payment aliases', async () => {
+    prisma.stem.findUnique.mockResolvedValue({
+      id: 'stem_1',
+      type: 'vocals',
+      title: 'Hook Vocals',
+      ipnftId: 'ipnft_1',
+      mimeType: 'audio/mpeg',
+      durationSeconds: 12.5,
+      track: {
+        id: 'track_1',
+        title: 'Midnight Run',
+        artist: 'Koita',
+        stems: [
+          { id: 'stem_2', type: 'drums' },
+          { id: 'stem_1', type: 'vocals' },
+        ],
+        release: {
+          id: 'release_1',
+          title: 'Neon Heat',
+          primaryArtist: 'Koita',
+        },
+      },
+      nftMint: { tokenId: BigInt(42) },
+    });
+    prisma.stemListing.findFirst.mockResolvedValue({
+      pricePerUnit: '12300000000000000',
+    });
+    prisma.stemPricing.findUnique.mockResolvedValue({
+      basePlayPriceUsd: 0.05,
+      remixLicenseUsd: 5,
+      commercialLicenseUsd: 25,
+    });
+
+    const controller = new X402Controller(
+      createMockConfig(),
+      encryptionService as any,
+    );
+
+    const result = await controller.getStemInfo('stem_1');
+
+    expect(result).toEqual({
+      id: 'stem_1',
+      stemId: 'stem_1',
+      title: 'Hook Vocals',
+      artist: 'Koita',
+      releaseId: 'release_1',
+      releaseTitle: 'Neon Heat',
+      trackId: 'track_1',
+      trackTitle: 'Midnight Run',
+      stemType: 'vocals',
+      stemTypes: ['drums', 'vocals'],
+      type: 'vocals',
+      hasNft: true,
+      hasIpnft: true,
+      tokenId: '42',
+      price: {
+        currency: 'USDC',
+        amount: '0.05',
+        display: '0.05 USDC',
+        usd: 0.05,
+      },
+      licenseOptions: [
+        {
+          key: 'personal',
+          price: { currency: 'USDC', amount: '0.05' },
+          displayPrice: '0.05 USDC',
+        },
+        {
+          key: 'remix',
+          price: { currency: 'USDC', amount: '5' },
+          displayPrice: '5 USDC',
+        },
+        {
+          key: 'commercial',
+          price: { currency: 'USDC', amount: '25' },
+          displayPrice: '25 USDC',
+        },
+      ],
+      priceSummary: {
+        currency: 'USDC',
+        from: '0.05',
+        to: '25',
+        display: '0.05-25 USDC',
+      },
+      alternativeOffers: [
+        {
+          type: 'marketplace_listing',
+          currency: 'ETH',
+          amountWei: '12300000000000000',
+        },
+      ],
+      previewUrl: '/catalog/stems/stem_1/preview',
+      quoteUrl: '/api/stems/stem_1/x402/info',
+      purchaseUrl: '/api/stems/stem_1/x402',
+      preview: {
+        url: '/catalog/stems/stem_1/preview',
+        mimeType: 'audio/mpeg',
+      },
+      pricing: {
+        currency: 'USDC',
+        licenses: [
+          {
+            key: 'personal',
+            price: { currency: 'USDC', amount: '0.05' },
+            displayPrice: '0.05 USDC',
+          },
+          {
+            key: 'remix',
+            price: { currency: 'USDC', amount: '5' },
+            displayPrice: '5 USDC',
+          },
+          {
+            key: 'commercial',
+            price: { currency: 'USDC', amount: '25' },
+            displayPrice: '25 USDC',
+          },
+        ],
+        summary: {
+          currency: 'USDC',
+          from: '0.05',
+          to: '25',
+          display: '0.05-25 USDC',
+        },
+      },
+      rights: {
+        availableLicenses: ['personal', 'remix', 'commercial'],
+        assetAccess: 'paid',
+        discoveryAccess: 'public',
+      },
+      payment: {
+        protocol: 'x402',
+        network: 'eip155:84532',
+        quoteUrl: '/api/stems/stem_1/x402/info',
+        purchaseUrl: '/api/stems/stem_1/x402',
+      },
+      asset: {
+        kind: 'stem',
+        delivery: 'audio-download',
+        mimeType: 'audio/mpeg',
+        durationSeconds: 12.5,
+      },
+      purchase: {
+        protocol: 'x402',
+        scheme: 'exact',
+        network: 'eip155:84532',
+        payTo: '0xTestPayoutAddr',
+        endpoint: '/api/stems/stem_1/x402',
+        quoteUrl: '/api/stems/stem_1/x402/info',
+      },
+      x402: {
+        network: 'eip155:84532',
+        payTo: '0xTestPayoutAddr',
+        scheme: 'exact',
+        endpoint: '/api/stems/stem_1/x402',
+        quoteUrl: '/api/stems/stem_1/x402/info',
+      },
+    });
   });
 });

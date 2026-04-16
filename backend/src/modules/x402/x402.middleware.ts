@@ -133,7 +133,7 @@ export class X402Middleware implements NestMiddleware {
 
     // Keep the 402 challenge aligned with the machine-readable storefront quote.
     const amountUsd = pricing?.basePlayPriceUsd ?? 0.05;
-    const priceUsd = `$${formatUsdcAmount(amountUsd)}`;
+    const displayPrice = `${formatUsdcAmount(amountUsd)} USDC`;
     const assetInfo = getDefaultX402Asset(this.x402Config.network);
 
     return {
@@ -155,7 +155,7 @@ export class X402Middleware implements NestMiddleware {
           extra: {
             name: assetInfo.name,
             version: assetInfo.version,
-            displayPrice: priceUsd,
+            displayPrice,
           },
         },
       ],

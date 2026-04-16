@@ -30,14 +30,24 @@ describe('OpenApiService', () => {
     ).toEqual({
       price: {
         mode: 'dynamic',
-        currency: 'USD',
-        min: '0.01',
+        currency: 'USDC',
+        min: '0.05',
         max: '50',
+      },
+      quote: {
+        endpoint: '/api/stems/{stemId}/x402/info',
+        schema: '#/components/schemas/X402StemInfo',
+      },
+      challenge: {
+        status: 402,
+        schema: '#/components/schemas/X402PaymentRequired',
       },
       protocols: [
         {
           x402: {
             quoteEndpoint: '/api/stems/{stemId}/x402/info',
+            network: 'eip155:8453',
+            retryHeaders: ['PAYMENT-SIGNATURE', 'X-PAYMENT'],
           },
         },
       ],
@@ -61,6 +71,11 @@ describe('OpenApiService', () => {
     ).toBeDefined();
     expect(doc.components.schemas.X402PaymentRequired.required).toEqual(
       expect.arrayContaining(['x402Version', 'resource', 'accepts']),
+    );
+    expect(doc.components.schemas.X402StemInfo.allOf).toEqual(
+      expect.arrayContaining([
+        { $ref: '#/components/schemas/StorefrontStemDetail' },
+      ]),
     );
   });
 
