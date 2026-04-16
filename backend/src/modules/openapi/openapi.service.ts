@@ -305,14 +305,24 @@ export class OpenApiService {
             'x-payment-info': {
               price: {
                 mode: 'dynamic',
-                currency: 'USD',
-                min: '0.01',
-                max: '50',
+                currency: 'USDC',
+                min: '0',
+                max: '500',
+              },
+              quote: {
+                endpoint: '/api/stems/{stemId}/x402/info',
+                schema: '#/components/schemas/X402StemInfo',
+              },
+              challenge: {
+                status: 402,
+                schema: '#/components/schemas/X402PaymentRequired',
               },
               protocols: [
                 {
                   x402: {
                     quoteEndpoint: '/api/stems/{stemId}/x402/info',
+                    network: this.x402Config.network,
+                    retryHeaders: [...X402_RETRY_HEADERS],
                   },
                 },
               ],
@@ -640,60 +650,41 @@ export class OpenApiService {
             required: ['type', 'currency', 'amountWei'],
           },
           X402StemInfo: {
-            type: 'object',
-            properties: {
-              stemId: { type: 'string' },
-              type: { type: 'string' },
-              title: { type: 'string', nullable: true },
-              trackTitle: { type: 'string', nullable: true },
-              artist: { type: 'string', nullable: true },
-              releaseTitle: { type: 'string', nullable: true },
-              hasNft: { type: 'boolean' },
-              tokenId: { type: 'string', nullable: true },
-              price: { $ref: '#/components/schemas/UsdcPrice' },
-              priceSummary: { $ref: '#/components/schemas/PriceSummary' },
-              licenseOptions: {
-                type: 'array',
-                items: { $ref: '#/components/schemas/LicenseOption' },
-              },
-              purchase: {
+            allOf: [
+              { $ref: '#/components/schemas/StorefrontStemDetail' },
+              {
                 type: 'object',
                 properties: {
-                  protocol: { type: 'string' },
-                  scheme: { type: 'string' },
-                  network: { type: 'string' },
-                  payTo: { type: 'string' },
-                  endpoint: { type: 'string' },
-                  quoteUrl: { type: 'string' },
+                  stemId: { type: 'string' },
+                  type: { type: 'string' },
+                  hasNft: { type: 'boolean' },
+                  tokenId: { type: 'string', nullable: true },
+                  purchase: {
+                    type: 'object',
+                    properties: {
+                      protocol: { type: 'string' },
+                      scheme: { type: 'string' },
+                      network: { type: 'string' },
+                      payTo: { type: 'string' },
+                      endpoint: { type: 'string' },
+                      quoteUrl: { type: 'string' },
+                    },
+                    required: ['protocol', 'scheme', 'network', 'payTo', 'endpoint', 'quoteUrl'],
+                  },
+                  x402: {
+                    type: 'object',
+                    properties: {
+                      network: { type: 'string' },
+                      payTo: { type: 'string' },
+                      scheme: { type: 'string' },
+                      endpoint: { type: 'string' },
+                      quoteUrl: { type: 'string' },
+                    },
+                    required: ['network', 'payTo', 'scheme', 'endpoint', 'quoteUrl'],
+                  },
                 },
-                required: ['protocol', 'scheme', 'network', 'payTo', 'endpoint', 'quoteUrl'],
+                required: ['stemId', 'type', 'hasNft', 'purchase', 'x402'],
               },
-              x402: {
-                type: 'object',
-                properties: {
-                  network: { type: 'string' },
-                  payTo: { type: 'string' },
-                  scheme: { type: 'string' },
-                  endpoint: { type: 'string' },
-                  quoteUrl: { type: 'string' },
-                },
-                required: ['network', 'payTo', 'scheme', 'endpoint', 'quoteUrl'],
-              },
-              alternativeOffers: {
-                type: 'array',
-                items: { $ref: '#/components/schemas/AlternativeOffer' },
-              },
-            },
-            required: [
-              'stemId',
-              'type',
-              'hasNft',
-              'price',
-              'priceSummary',
-              'licenseOptions',
-              'purchase',
-              'x402',
-              'alternativeOffers',
             ],
           },
           X402PaymentRequired: {

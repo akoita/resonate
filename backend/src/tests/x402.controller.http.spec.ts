@@ -146,7 +146,7 @@ describe('X402Controller HTTP contract', () => {
           extra: {
             name: 'USDC',
             version: '2',
-            displayPrice: '$0.05',
+            displayPrice: '0.05 USDC',
           },
         },
       });

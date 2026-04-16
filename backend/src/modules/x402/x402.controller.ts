@@ -7,6 +7,7 @@ import { EncryptionService } from '../encryption/encryption.service';
 import { buildStemX402Quote } from './x402.quote';
 import { buildStemX402Receipt, encodeX402ReceiptHeader } from './x402.receipt';
 import { getX402ChainId } from './x402.public';
+import { buildStorefrontStemDetail } from '../storefront/storefront.presenter';
 
 /**
  * X402Controller — Public stem download endpoint gated by x402 USDC payment.
@@ -244,6 +245,10 @@ export class X402Controller {
       include: {
         track: {
           include: {
+            stems: {
+              select: { id: true, type: true },
+              orderBy: { type: 'asc' },
+            },
             release: {
               select: { id: true, title: true, primaryArtist: true },
             },
@@ -271,7 +276,7 @@ export class X402Controller {
       where: { stemId: stem.id },
     });
 
-    return buildStemX402Quote({
+    const quote = buildStemX402Quote({
       stemId: stem.id,
       type: stem.type,
       title: stem.title,
@@ -287,5 +292,46 @@ export class X402Controller {
       network: this.x402Config.network,
       payTo: this.x402Config.payoutAddress,
     });
+
+    const storefrontDetail = buildStorefrontStemDetail(
+      {
+        id: stem.id,
+        type: stem.type,
+        title: stem.title,
+        ipnftId: stem.ipnftId ?? null,
+        mimeType: stem.mimeType ?? null,
+        durationSeconds: stem.durationSeconds ?? null,
+        pricing: pricing
+          ? {
+              basePlayPriceUsd: pricing.basePlayPriceUsd,
+              remixLicenseUsd: pricing.remixLicenseUsd,
+              commercialLicenseUsd: pricing.commercialLicenseUsd,
+            }
+          : null,
+        listingWei: listing?.pricePerUnit ?? null,
+        track: {
+          id: stem.track.id,
+          title: stem.track.title,
+          artist: stem.track.artist ?? null,
+          stems: stem.track.stems,
+          release: {
+            id: stem.track.release.id,
+            title: stem.track.release.title,
+            primaryArtist: stem.track.release.primaryArtist ?? null,
+          },
+        },
+      },
+      this.x402Config,
+    );
+
+    return {
+      ...storefrontDetail,
+      stemId: quote.stemId,
+      type: quote.type,
+      hasNft: quote.hasNft,
+      tokenId: quote.tokenId,
+      purchase: quote.purchase,
+      x402: quote.x402,
+    };
   }
 }

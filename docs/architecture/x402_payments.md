@@ -14,7 +14,8 @@ Agent                     Resonate Backend              x402 Facilitator
   │<────────────────────────────│                            │
   │ GET /api/stems/:id/x402/info│                            │
   │────────────────────────────>│                            │
-  │  quote + license options    │                            │
+  │  storefront-grade quote     │                            │
+  │  + rights + payment info    │                            │
   │<────────────────────────────│                            │
   │ GET /api/stems/:id/x402     │                            │
   │────────────────────────────>│                            │
@@ -37,7 +38,7 @@ Agent                     Resonate Backend              x402 Facilitator
 | `GET /api/storefront/stems`        | None         | Public storefront discovery for purchasable stems       |
 | `GET /api/storefront/stems/:id`    | None         | Public storefront detail for a specific stem            |
 | `GET /api/stems/:stemId/x402`      | x402 payment | Download stem after USDC payment                        |
-| `GET /api/stems/:stemId/x402/info` | None         | Free discovery — returns metadata, pricing, x402 config |
+| `GET /api/stems/:stemId/x402/info` | None         | Free discovery — returns storefront-grade metadata, pricing, rights, and x402 config |
 
 ## Configuration
 
@@ -91,6 +92,16 @@ Public quote and payment challenge pricing resolve in this order:
 1. `StemPricing.basePlayPriceUsd` (direct USD from DB)
 2. `$0.05` storefront fallback when no canonical USD price is stored
 
+## Discovery contract
+
+`GET /api/stems/:stemId/x402/info` is intended to be sufficient for machine pre-purchase decision making. The response is storefront-grade and includes:
+
+- Canonical USDC `price` and `priceSummary`
+- `licenseOptions` for personal, remix, and commercial access
+- `preview`, `rights`, and `asset` metadata for discovery tooling
+- `payment`, `purchase`, and `x402` endpoint/protocol metadata for checkout clients
+- Optional `alternativeOffers` when an ETH marketplace listing exists, while keeping USDC as the canonical storefront price
+
 ## Provenance
 
 x402 purchases are recorded as `ContractEvent` entries with `eventName: 'x402.purchase'`, using the chain ID derived from the configured x402 network. This remains separate from on-chain `StemPurchase` records (which require a FK to `StemListing`).
@@ -111,6 +122,8 @@ Successful paid downloads expose:
 Challenge responses expose:
 
 - `PAYMENT-REQUIRED`
+
+The `PAYMENT-REQUIRED` challenge mirrors the runtime x402 requirements and now surfaces a USDC-formatted `displayPrice` so the challenge, discovery quote, and OpenAPI contract stay aligned.
 
 Clients should retry paid requests with:
 
