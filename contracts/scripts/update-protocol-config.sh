@@ -73,11 +73,14 @@ elif [[ "$CHAIN_ID" == "11155111" && -f "$SEPOLIA_DEPLOY_FILE" ]]; then
     STEM_NFT=$(jq -r '.contracts.StemNFT' "$SEPOLIA_DEPLOY_FILE")
     MARKETPLACE=$(jq -r '.contracts.StemMarketplaceV2' "$SEPOLIA_DEPLOY_FILE")
     TRANSFER_VALIDATOR=$(jq -r '.contracts.TransferValidator' "$SEPOLIA_DEPLOY_FILE")
-    CONTENT_PROTECTION=""
-    DISPUTE_RESOLUTION=""
-    CURATION_REWARDS=""
-    REVENUE_ESCROW=""
-    echo -e "${YELLOW}Warning: sepolia.json has no ContentProtection. Run 'make deploy-contracts' to deploy Phase 2.${NC}"
+    CONTENT_PROTECTION=$(jq -r '.contracts.ContentProtection // empty' "$SEPOLIA_DEPLOY_FILE")
+    DISPUTE_RESOLUTION=$(jq -r '.contracts.DisputeResolution // empty' "$SEPOLIA_DEPLOY_FILE")
+    CURATION_REWARDS=$(jq -r '.contracts.CurationRewards // empty' "$SEPOLIA_DEPLOY_FILE")
+    REVENUE_ESCROW=$(jq -r '.contracts.RevenueEscrow // empty' "$SEPOLIA_DEPLOY_FILE")
+
+    if [[ -z "$CONTENT_PROTECTION" || -z "$DISPUTE_RESOLUTION" || -z "$CURATION_REWARDS" || -z "$REVENUE_ESCROW" ]]; then
+        echo -e "${YELLOW}Warning: sepolia.json is missing one or more Phase 2 contract addresses. Re-run 'make deploy-sepolia' to refresh the deployment record.${NC}"
+    fi
 
 else
     echo "Error: No deployment broadcast found at:"

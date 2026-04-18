@@ -2,16 +2,24 @@
   "network": "sepolia",
   "chainId": 11155111,
   "deployer": "0x3e19e4B2f22fC27B5105A6762FCC6C6f129550BE",
-  "deployedAt": "2026-02-18T05:01:52Z",
+  "deployedAt": "2026-04-18T20:46:40Z",
   "contracts": {
-    "StemNFT": "0x024a8127989a13ee4f0b87e45afb529e4e5c28ea",
-    "StemMarketplaceV2": "0x3542a31ff2241723e2f73cf90a6bb427deabd3e1",
-    "TransferValidator": "0x68297ae1bae9d616f7c85e408644f1fe57733f04"
+    "StemNFT": "0xba177eb2246bb750e69021a1a8c0ceab735a0541",
+    "StemMarketplaceV2": "0x41a3f7232099c8e5353fe449e1a28c61ed88da68",
+    "TransferValidator": "0x845bb7a30f2ddaa755dee1384cfd9989f3e194ef",
+    "ContentProtection": "0x8cf00afec3efe8f2314545ceb391c59ce78a6c11",
+    "DisputeResolution": "0xff62ec2742a7cc799d63615bd6d8f271f48e34a6",
+    "CurationRewards": "0xf3864be2fe0d932bfa6f871bd052bcfed0033c5e",
+    "RevenueEscrow": "0x411e121a97b6901b2e81f67a795e8063c1b8d472"
   },
   "verification": {
-    "etherscan": "https://sepolia.etherscan.io/address/0x024a8127989a13ee4f0b87e45afb529e4e5c28ea",
-    "marketplace": "https://sepolia.etherscan.io/address/0x3542a31ff2241723e2f73cf90a6bb427deabd3e1",
-    "validator": "https://sepolia.etherscan.io/address/0x68297ae1bae9d616f7c85e408644f1fe57733f04"
+    "etherscan": "https://sepolia.etherscan.io/address/0xba177eb2246bb750e69021a1a8c0ceab735a0541",
+    "marketplace": "https://sepolia.etherscan.io/address/0x41a3f7232099c8e5353fe449e1a28c61ed88da68",
+    "validator": "https://sepolia.etherscan.io/address/0x845bb7a30f2ddaa755dee1384cfd9989f3e194ef",
+    "contentProtection": "https://sepolia.etherscan.io/address/0x8cf00afec3efe8f2314545ceb391c59ce78a6c11",
+    "disputeResolution": "https://sepolia.etherscan.io/address/0xff62ec2742a7cc799d63615bd6d8f271f48e34a6",
+    "curationRewards": "https://sepolia.etherscan.io/address/0xf3864be2fe0d932bfa6f871bd052bcfed0033c5e",
+    "revenueEscrow": "https://sepolia.etherscan.io/address/0x411e121a97b6901b2e81f67a795e8063c1b8d472"
   },
-  "firstTransaction": "0x8e730739b37e3ad672025c00436ea330671677023c9dc323c3475fb83f1c3e7d"
+  "firstTransaction": "0x753a532fe00e83486943d91ed683a500051746a4f29d4be16d001798fc1ab18b"
 }
