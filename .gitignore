@@ -17,6 +17,7 @@ backend/uploads/
 *.wav
 *.mp3
 test_audio.*
+music/
 
 # Codex
 .codex
