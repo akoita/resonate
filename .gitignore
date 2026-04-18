@@ -17,9 +17,12 @@ backend/uploads/
 *.wav
 *.mp3
 test_audio.*
+*.m4a
+music/
 
 # Codex
 .codex
+.codex-tmp/
 .claude/
 .agents/plans/issue-*.md
 

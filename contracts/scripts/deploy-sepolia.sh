@@ -113,6 +113,10 @@ fi
 STEM_NFT=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemNFT") | .contractAddress' "$BROADCAST_FILE")
 MARKETPLACE=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemMarketplaceV2") | .contractAddress' "$BROADCAST_FILE")
 TRANSFER_VALIDATOR=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "TransferValidator") | .contractAddress' "$BROADCAST_FILE")
+CONTENT_PROTECTION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "ERC1967Proxy") | .contractAddress' "$BROADCAST_FILE" | head -1)
+DISPUTE_RESOLUTION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "DisputeResolution") | .contractAddress' "$BROADCAST_FILE")
+CURATION_REWARDS=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "CurationRewards") | .contractAddress' "$BROADCAST_FILE")
+REVENUE_ESCROW=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "RevenueEscrow") | .contractAddress' "$BROADCAST_FILE")
 DEPLOY_TX=$(jq -r '.transactions[0].hash' "$BROADCAST_FILE")
 DEPLOY_BLOCK=$(jq -r '.receipts[0].blockNumber' "$BROADCAST_FILE" 2>/dev/null || echo "unknown")
 
@@ -121,6 +125,10 @@ echo ""
 echo -e "  StemNFT:             ${GREEN}$STEM_NFT${NC}"
 echo -e "  StemMarketplaceV2:   ${GREEN}$MARKETPLACE${NC}"
 echo -e "  TransferValidator:   ${GREEN}$TRANSFER_VALIDATOR${NC}"
+echo -e "  ContentProtection:   ${GREEN}$CONTENT_PROTECTION${NC}"
+echo -e "  DisputeResolution:   ${GREEN}$DISPUTE_RESOLUTION${NC}"
+echo -e "  CurationRewards:     ${GREEN}$CURATION_REWARDS${NC}"
+echo -e "  RevenueEscrow:       ${GREEN}$REVENUE_ESCROW${NC}"
 echo -e "  First TX:            $DEPLOY_TX"
 echo ""
 
@@ -138,12 +146,20 @@ cat > "$DEPLOY_RECORD" <<EOF
   "contracts": {
     "StemNFT": "$STEM_NFT",
     "StemMarketplaceV2": "$MARKETPLACE",
-    "TransferValidator": "$TRANSFER_VALIDATOR"
+    "TransferValidator": "$TRANSFER_VALIDATOR",
+    "ContentProtection": "$CONTENT_PROTECTION",
+    "DisputeResolution": "$DISPUTE_RESOLUTION",
+    "CurationRewards": "$CURATION_REWARDS",
+    "RevenueEscrow": "$REVENUE_ESCROW"
   },
   "verification": {
     "etherscan": "https://sepolia.etherscan.io/address/$STEM_NFT",
     "marketplace": "https://sepolia.etherscan.io/address/$MARKETPLACE",
-    "validator": "https://sepolia.etherscan.io/address/$TRANSFER_VALIDATOR"
+    "validator": "https://sepolia.etherscan.io/address/$TRANSFER_VALIDATOR",
+    "contentProtection": "https://sepolia.etherscan.io/address/$CONTENT_PROTECTION",
+    "disputeResolution": "https://sepolia.etherscan.io/address/$DISPUTE_RESOLUTION",
+    "curationRewards": "https://sepolia.etherscan.io/address/$CURATION_REWARDS",
+    "revenueEscrow": "https://sepolia.etherscan.io/address/$REVENUE_ESCROW"
   },
   "firstTransaction": "$DEPLOY_TX"
 }
