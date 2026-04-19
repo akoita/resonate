@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { prisma } from "../../db/prisma";
 import { createPublicClient, http, type Address } from "viem";
 import { foundry, sepolia, baseSepolia } from "viem/chains";
+import { getDefaultTrustTier, resolveTrustTiers, type TrustTierInfo } from "./trustTierConfig";
 
 /**
  * Trust tier thresholds per issue #406:
@@ -11,12 +12,6 @@ import { foundry, sepolia, baseSepolia } from "viem/chains";
  *   Trusted (50+)         → 0.001 ETH, 7 days
  *   Verified trust tier   → waived, 3 days
  */
-interface TrustTierInfo {
-  tier: string;
-  stakeAmountWei: string;
-  escrowDays: number;
-}
-
 type TrustRequirement = Awaited<ReturnType<typeof prisma.creatorTrust.upsert>> & {
   maxPriceMultiplier: number;
   maxListingPriceWei: string | null;
@@ -26,13 +21,6 @@ type TrustRequirement = Awaited<ReturnType<typeof prisma.creatorTrust.upsert>> &
 type CreatorVerificationRecord = {
   humanVerificationStatus: string | null;
   humanVerifiedAt: Date | null;
-};
-
-const TIERS: Record<string, TrustTierInfo> = {
-  verified: { tier: "verified", stakeAmountWei: "0", escrowDays: 3 },
-  trusted: { tier: "trusted", stakeAmountWei: "1000000000000000", escrowDays: 7 }, // 0.001 ETH
-  established: { tier: "established", stakeAmountWei: "5000000000000000", escrowDays: 14 }, // 0.005 ETH
-  new: { tier: "new", stakeAmountWei: "10000000000000000", escrowDays: 30 }, // 0.01 ETH
 };
 
 const CONTENT_PROTECTION_CONFIG_ABI = [
@@ -56,6 +44,10 @@ export class TrustService {
 
   constructor(private readonly config: ConfigService) {}
 
+  private get trustTiers() {
+    return resolveTrustTiers((key) => this.config.get<string>(key));
+  }
+
   /**
    * Calculate the trust tier for an artist based on their upload and dispute history.
    */
@@ -66,7 +58,7 @@ export class TrustService {
 
     // Verified trust tier is set manually — if already present, keep it.
     if (trust?.tier === "verified") {
-      return TIERS.verified;
+      return this.trustTiers.verified;
     }
 
     // Count uploads and disputes
@@ -84,7 +76,7 @@ export class TrustService {
     });
 
     if (!artist) {
-      return TIERS.new;
+      return this.trustTiers.new;
     }
 
     const totalUploads = artist.releases.length;
@@ -101,13 +93,13 @@ export class TrustService {
 
     // If they have lost disputes, cap at "new" tier
     if (disputesLost > 0) {
-      return TIERS.new;
+      return this.trustTiers.new;
     }
 
     // Tier assignment
-    if (cleanHistory >= 50) return TIERS.trusted;
-    if (cleanHistory >= 5) return TIERS.established;
-    return TIERS.new;
+    if (cleanHistory >= 50) return this.trustTiers.trusted;
+    if (cleanHistory >= 5) return this.trustTiers.established;
+    return this.trustTiers.new;
   }
 
   /**
@@ -184,13 +176,13 @@ export class TrustService {
       create: {
         artistId,
         tier: "verified",
-        stakeAmountWei: "0",
-        escrowDays: 3,
+        stakeAmountWei: getDefaultTrustTier("verified").stakeAmountWei,
+        escrowDays: getDefaultTrustTier("verified").escrowDays,
       },
       update: {
         tier: "verified",
-        stakeAmountWei: "0",
-        escrowDays: 3,
+        stakeAmountWei: getDefaultTrustTier("verified").stakeAmountWei,
+        escrowDays: getDefaultTrustTier("verified").escrowDays,
       },
     });
   }
@@ -199,9 +191,15 @@ export class TrustService {
    * Increment upload count after a successful publish.
    */
   async recordUpload(artistId: string) {
+    const newTier = this.trustTiers.new;
     await prisma.creatorTrust.upsert({
       where: { artistId },
-      create: { artistId },
+      create: {
+        artistId,
+        tier: newTier.tier,
+        stakeAmountWei: newTier.stakeAmountWei,
+        escrowDays: newTier.escrowDays,
+      },
       update: {
         totalUploads: { increment: 1 },
         cleanHistory: { increment: 1 },
@@ -213,14 +211,21 @@ export class TrustService {
    * Record a lost dispute — resets tier to "new".
    */
   async recordDisputeLost(artistId: string) {
+    const newTier = this.trustTiers.new;
     await prisma.creatorTrust.upsert({
       where: { artistId },
-      create: { artistId, disputesLost: 1 },
+      create: {
+        artistId,
+        disputesLost: 1,
+        tier: newTier.tier,
+        stakeAmountWei: newTier.stakeAmountWei,
+        escrowDays: newTier.escrowDays,
+      },
       update: {
         disputesLost: { increment: 1 },
         tier: "new",
-        stakeAmountWei: TIERS.new.stakeAmountWei,
-        escrowDays: TIERS.new.escrowDays,
+        stakeAmountWei: newTier.stakeAmountWei,
+        escrowDays: newTier.escrowDays,
       },
     });
   }

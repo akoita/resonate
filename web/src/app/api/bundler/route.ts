@@ -1,23 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerBundlerChainId, getServerBundlerTarget } from "../../../lib/bundlerConfig";
 
 /**
- * Bundler proxy – forwards ERC-4337 JSON-RPC requests to the local Alto
- * bundler running at localhost:4337 (started by `make local-aa-fork` or `make local-aa-up`).
+ * Bundler proxy – forwards ERC-4337 JSON-RPC requests to the configured server-side
+ * bundler endpoint. Local dev uses Alto at localhost:4337; deployed environments can
+ * use AA_BUNDLER / ALTO_BUNDLER_URL / server-side Pimlico credentials without
+ * exposing those details to the browser.
  *
  * This avoids CORS issues when the browser (localhost:3001) calls
  * the bundler (localhost:4337) directly.
  *
- * In production, this route is not used — the frontend calls the Pimlico
- * bundler endpoint directly (CORS is handled by Pimlico's servers).
+ * In cloud environments, the browser can still use this route when no public
+ * bundler URL or public Pimlico key is configured.
  */
 
-const ALTO_BUNDLER_URL = process.env.ALTO_BUNDLER_URL || "http://localhost:4337";
-
 async function proxyBundler(req: NextRequest) {
+    const chainId = getServerBundlerChainId();
+    const bundlerTarget = getServerBundlerTarget(chainId);
+
+    if (!bundlerTarget) {
+        return NextResponse.json(
+            { error: "No bundler is configured for this environment" },
+            { status: 503 },
+        );
+    }
+
     try {
         const body = await req.text();
 
-        const response = await fetch(ALTO_BUNDLER_URL, {
+        const response = await fetch(bundlerTarget, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -34,7 +45,7 @@ async function proxyBundler(req: NextRequest) {
             },
         });
     } catch (error) {
-        console.error(`[Bundler Proxy] Error forwarding to ${ALTO_BUNDLER_URL}:`, error);
+        console.error(`[Bundler Proxy] Error forwarding to ${bundlerTarget}:`, error);
         return NextResponse.json(
             { error: "Failed to proxy request to bundler" },
             { status: 502 }

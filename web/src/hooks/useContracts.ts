@@ -33,22 +33,7 @@ import { CurationRewardsABI, DisputeResolutionABI } from "../contracts_abi/index
 import { normalizeContractWriteError } from "../lib/contractErrors";
 import { getKernelAccountConfig } from "../lib/accountAbstraction";
 import { persistStemMarketplaceStatus } from "../lib/stemMarketplaceStatus";
-
-// Detect whether we're running against a local RPC (Anvil / forked Sepolia)
-function isLocalDevEnvironment(chainId?: number): boolean {
-  if (chainId === 31337) return true;
-  const rpcOverride = process.env.NEXT_PUBLIC_RPC_URL || "";
-  return rpcOverride.includes("localhost") || rpcOverride.includes("127.0.0.1");
-}
-
-// Get the bundler URL — local Alto (via /api/bundler proxy) or Pimlico cloud
-function getBundlerUrl(chainId: number): string {
-  const override = process.env.NEXT_PUBLIC_AA_BUNDLER;
-  if (override) return override;
-  if (isLocalDevEnvironment(chainId)) return "/api/bundler";
-  const pimlicoApiKey = process.env.NEXT_PUBLIC_PIMLICO_API_KEY || "";
-  return `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${pimlicoApiKey}`;
-}
+import { getBundlerUrl, isLocalDevEnvironment } from "../lib/bundlerConfig";
 
 // Custom transport that maps ZeroDev-proprietary methods to Pimlico/Alto equivalents
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
