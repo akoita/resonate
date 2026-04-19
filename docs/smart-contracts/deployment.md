@@ -123,7 +123,7 @@ Core app-side variables:
 | --- | --- | --- |
 | `NEXT_PUBLIC_API_URL` | Frontend | Defaults to `http://localhost:3001` in local app workflows |
 | `NEXT_PUBLIC_CHAIN_ID` | Frontend | `31337` for local Anvil, `11155111` for Sepolia fork mode |
-| `NEXT_PUBLIC_RPC_URL` | Frontend | Local RPC for fork/local AA flows |
+| `NEXT_PUBLIC_RPC_URL` | Frontend | Optional RPC override. Use for local/fork AA flows; deployed builds otherwise fall back to the chain default RPC. |
 | `RPC_URL` | Backend | RPC endpoint used by contract-aware backend flows |
 | `SEPOLIA_RPC_URL` | Contracts / backend | Required for Sepolia deploys and forked workflows |
 | `AGENT_KEY_ENCRYPTION_KEY` | Backend | Generate with `./backend/scripts/generate-agent-encryption-key.sh` for local KMS mode |
