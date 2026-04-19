@@ -7,7 +7,7 @@
  *
  * Also tests ZeroDevProviderClient's getChainConfig (chain selection logic).
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 // =============================================
 // decodeAuthClaims tests

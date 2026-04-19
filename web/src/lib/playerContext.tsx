@@ -2,21 +2,6 @@
 import { getAddress } from "viem";
 import { sanitizeStemUrl } from "./urlUtils";
 
-// Simple Mutex for synchronization
-class Mutex {
-    private promise: Promise<void> = Promise.resolve();
-    async lock() {
-        let unlockNext: () => void;
-        const nextPromise = new Promise<void>((resolve) => {
-            unlockNext = resolve;
-        });
-        const prevPromise = this.promise;
-        this.promise = nextPromise;
-        await prevPromise;
-        return unlockNext!;
-    }
-}
-
 // AuthSig type definition
 interface AuthSig {
     sig: string;
@@ -144,7 +129,7 @@ interface StemAudioProps {
 const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolume, onMount, onUnmount }: StemAudioProps) => {
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [streamUrl, setStreamUrl] = useState<string | null>(null);
-    const [isDecrypting, setIsDecrypting] = useState(false);
+    const [, setIsDecrypting] = useState(false);
     const { signMessage, address } = useAuth();
     const type = stem.type.toLowerCase();
 

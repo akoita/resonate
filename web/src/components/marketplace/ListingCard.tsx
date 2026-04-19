@@ -39,11 +39,14 @@ export function ListingCard({
       {/* Image */}
       <div className="aspect-square bg-zinc-800 relative">
         {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt={stemTitle || `Stem #${tokenId}`}
-            className="w-full h-full object-cover"
-          />
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={imageUrl}
+              alt={stemTitle || `Stem #${tokenId}`}
+              className="w-full h-full object-cover"
+            />
+          </>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <svg
