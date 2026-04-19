@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "../ui/Button";
 import {
@@ -30,22 +30,20 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     const [loading, setLoading] = useState(true);
     const [artworkUrls, setArtworkUrls] = useState<Map<string, string>>(new Map());
     const [showRenameModal, setShowRenameModal] = useState(false);
-    const [editName, setEditName] = useState("");
     const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
     const [draggingTrackId, setDraggingTrackId] = useState<string | null>(null);
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
-    const { playQueue, currentTrack, isPlaying, stop: handleStop, playNext, addToQueue } = usePlayer();
+    const { playQueue, currentTrack, playNext, addToQueue } = usePlayer();
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, track: LocalTrack } | null>(null);
     const { addToast } = useToast();
     const [trackProgress, setTrackProgress] = useState<Map<string, number>>(new Map());
 
-    const loadPlaylistData = async () => {
+    const loadPlaylistData = useCallback(async () => {
         setLoading(true);
         const p = await getPlaylist(playlistId);
         if (p) {
             setPlaylist(p);
-            setEditName(p.name);
 
             // Load actual track data
             const trackData = await Promise.all(
@@ -63,7 +61,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
             setArtworkUrls(urls);
         }
         setLoading(false);
-    };
+    }, [playlistId]);
 
     useWebSockets(
         (data) => {
@@ -84,12 +82,12 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         void loadPlaylistData();
-    }, [playlistId]);
+    }, [loadPlaylistData]);
 
-    const handlePlayTrack = (track: LocalTrack) => {
+    const handlePlayTrack = useCallback((track: LocalTrack) => {
         const index = tracks.findIndex((t) => t.id === track.id);
         void playQueue(tracks, index >= 0 ? index : 0);
-    };
+    }, [playQueue, tracks]);
 
     const handleRemoveTrack = async (trackId: string) => {
         if (!confirm("Remove this track from the playlist?")) return;
@@ -182,7 +180,10 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
 
             <div className="detail-hero">
                 {heroArt ? (
-                    <img src={heroArt} alt={playlist.name} className="detail-hero-artwork" />
+                    <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={heroArt} alt={playlist.name} className="detail-hero-artwork" />
+                    </>
                 ) : (
                     <div className="detail-hero-artwork" style={{ background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "80px" }}>
                         🎶
@@ -296,7 +297,10 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                                     </div>
                                     <div className="library-item-artwork">
                                         {artUrl ? (
-                                            <img src={artUrl} alt={track.title} />
+                                            <>
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img src={artUrl} alt={track.title} />
+                                            </>
                                         ) : (
                                             <div className="library-item-artwork-placeholder">🎵</div>
                                         )}

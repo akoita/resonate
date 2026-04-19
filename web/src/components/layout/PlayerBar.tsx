@@ -81,7 +81,10 @@ export default function PlayerBar() {
         {currentTrack ? (
           <>
             {artworkUrl ? (
-              <img src={artworkUrl} alt={currentTrack.title} className="player-artwork" />
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={artworkUrl} alt={currentTrack.title} className="player-artwork" />
+              </>
             ) : (
               <div className="player-artwork-placeholder">🎵</div>
             )}
