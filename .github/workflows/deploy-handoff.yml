@@ -50,7 +50,7 @@ jobs:
 
           {
             echo "environment=${environment}"
-            echo "source_ref=${HEAD_BRANCH}"
+            echo "source_ref=${HEAD_SHA}"
             echo "trigger_branch=${HEAD_BRANCH}"
             echo "release_sha=${HEAD_SHA}"
             echo "release_id=ci-${RUN_ID}-${RUN_NUMBER}"
