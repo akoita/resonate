@@ -142,10 +142,17 @@ const SECONDARY_ITEMS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { role } = useAuth();
+  const { role, status, address, smartAccountAddress } = useAuth();
   const mounted = useSyncExternalStore(subscribe, () => true, () => false);
 
   const showAdminLink = mounted && role === "admin";
+  const accountAddress = smartAccountAddress ?? address;
+  const showUserChip = mounted && status === "authenticated" && !!accountAddress;
+  const userInitial = accountAddress ? accountAddress.slice(2, 3).toUpperCase() : "";
+  const userLabel = accountAddress
+    ? `${accountAddress.slice(0, 6)}…${accountAddress.slice(-4)}`
+    : "";
+  const userStatusLabel = smartAccountAddress ? "Smart Account Connected" : "Wallet Connected";
 
   return (
     <aside className="app-sidebar">
@@ -206,18 +213,20 @@ export default function Sidebar() {
         ) : null}
       </nav>
 
-      <div className="sidebar-footer">
-        <div className="user-profile">
-          <div className="user-avatar">N</div>
-          <div className="user-info">
-            <div className="user-name">Natalia</div>
-            <div className="user-status">
-              <span className="status-dot" />
-              Connected
+      {showUserChip ? (
+        <div className="sidebar-footer">
+          <div className="user-profile" aria-label={`Connected account ${userLabel}`}>
+            <div className="user-avatar">{userInitial}</div>
+            <div className="user-info">
+              <div className="user-name">{userLabel}</div>
+              <div className="user-status">
+                <span className="status-dot" />
+                {userStatusLabel}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      ) : null}
     </aside>
   );
 }
