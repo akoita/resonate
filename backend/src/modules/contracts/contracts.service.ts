@@ -27,6 +27,7 @@ import {
   deriveCreatorVerificationStates,
   deriveReleaseVerificationStates,
 } from "../trust/verification-semantics";
+import { resolveTrustTiers } from "../trust/trustTierConfig";
 import type {
   NormalizedRightsEvidenceBundle,
   RightsEvidenceBundleInput,
@@ -1393,7 +1394,9 @@ export class ContractsService implements OnModuleInit {
 
     const trust = release.artist.creatorTrust;
     const tier = trust?.tier || "new";
-    const stakeAmountWei = trust?.stakeAmountWei || "10000000000000000"; // 0.01 ETH
+    const configuredTrustTiers = resolveTrustTiers((key) => process.env[key]);
+    const fallbackTier = configuredTrustTiers[tier] || configuredTrustTiers.new;
+    const stakeAmountWei = trust?.stakeAmountWei || fallbackTier.stakeAmountWei;
     const escrowDays = trust?.escrowDays || 30;
     const chainId = Number(
       process.env.AA_CHAIN_ID || process.env.CHAIN_ID || process.env.INDEXER_CHAIN_ID || "11155111",

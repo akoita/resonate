@@ -341,6 +341,7 @@ All endpoints are under `/wallet` and require JWT authentication.
 | `AA_CHAIN_ID`              | Chain ID                                                              | `31337` (local) / `11155111` (Sepolia) |
 | `AA_BUNDLER`               | Bundler URL                                                           | `http://localhost:4337` / ZeroDev URL  |
 | `AA_PAYMASTER`             | Paymaster URL                                                         | Optional                               |
+| `PIMLICO_API_KEY`          | Server-side Pimlico API key for the frontend `/api/bundler` proxy     | Optional                               |
 | `AA_SKIP_BUNDLER`          | Skip bundler for non-session-key txs (deprecated for agent purchases) | `false`                                |
 | `AA_STRICT_BUNDLER`        | Throw on bundler failure                                              | `false`                                |
 | `AA_STRICT_MODE`           | No fallbacks, mocks, or auto-funding                                  | `false`                                |
@@ -358,6 +359,8 @@ All endpoints are under `/wallet` and require JWT authentication.
 | `NEXT_PUBLIC_CHAIN_ID`           | Target chain ID                                                 | `31337`                        |
 | `NEXT_PUBLIC_ZERODEV_PROJECT_ID` | ZeroDev project ID — if set, uses ZeroDev hosted passkey server | None (uses self-hosted server) |
 | `NEXT_PUBLIC_RPC_URL`            | RPC override (forked Sepolia)                                   | Chain default                  |
+| `NEXT_PUBLIC_AA_BUNDLER`         | Optional public bundler override                                | None                           |
+| `NEXT_PUBLIC_PIMLICO_API_KEY`    | Optional public Pimlico API key                                 | None                           |
 
 ---
 
