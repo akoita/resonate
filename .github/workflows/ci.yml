@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -47,6 +49,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
@@ -73,6 +77,8 @@ jobs:
     # (Postgres, Redis, Anvil, Pub/Sub) with isolated containers on random ports
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -115,6 +121,8 @@ jobs:
     needs: lint
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -177,6 +185,8 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
