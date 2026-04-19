@@ -1,0 +1,100 @@
+name: Deploy Handoff
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main, develop]
+
+env:
+  RESONATE_IAC_REPOSITORY: akoita/resonate-iac
+  RESONATE_DEPLOY_EVENT: resonate_deploy
+
+jobs:
+  dispatch:
+    name: Dispatch Non-Prod Deploy
+    if: >-
+      ${{
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        (
+          github.event.workflow_run.head_branch == 'main' ||
+          github.event.workflow_run.head_branch == 'develop'
+        )
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Resolve deploy intent
+        id: intent
+        env:
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+        run: |
+          case "${HEAD_BRANCH}" in
+            develop)
+              environment="dev"
+              ;;
+            main)
+              environment="staging"
+              ;;
+            *)
+              echo "Unsupported branch for deploy handoff: ${HEAD_BRANCH}" >&2
+              exit 1
+              ;;
+          esac
+
+          {
+            echo "environment=${environment}"
+            echo "source_ref=${HEAD_BRANCH}"
+            echo "trigger_branch=${HEAD_BRANCH}"
+            echo "release_sha=${HEAD_SHA}"
+            echo "release_id=ci-${RUN_ID}-${RUN_NUMBER}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Validate dispatch token
+        env:
+          DISPATCH_TOKEN: ${{ secrets.RESONATE_IAC_DISPATCH_TOKEN }}
+        run: |
+          if [[ -z "${DISPATCH_TOKEN}" ]]; then
+            echo "Missing required secret: RESONATE_IAC_DISPATCH_TOKEN" >&2
+            exit 1
+          fi
+
+      - name: Dispatch deploy intent to resonate-iac
+        env:
+          DISPATCH_TOKEN: ${{ secrets.RESONATE_IAC_DISPATCH_TOKEN }}
+          ENVIRONMENT: ${{ steps.intent.outputs.environment }}
+          SOURCE_REF: ${{ steps.intent.outputs.source_ref }}
+          TRIGGER_BRANCH: ${{ steps.intent.outputs.trigger_branch }}
+          RELEASE_SHA: ${{ steps.intent.outputs.release_sha }}
+          RELEASE_ID: ${{ steps.intent.outputs.release_id }}
+        run: |
+          payload="$(cat <<EOF
+          {
+            "event_type": "${RESONATE_DEPLOY_EVENT}",
+            "client_payload": {
+              "environment": "${ENVIRONMENT}",
+              "source_repository": "${GITHUB_REPOSITORY}",
+              "source_ref": "${SOURCE_REF}",
+              "services": "all",
+              "action": "apply",
+              "release_sha": "${RELEASE_SHA}",
+              "release_id": "${RELEASE_ID}",
+              "trigger_branch": "${TRIGGER_BRANCH}"
+            }
+          }
+          EOF
+          )"
+
+          curl --fail-with-body \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${DISPATCH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${RESONATE_IAC_REPOSITORY}/dispatches" \
+            -d "${payload}"

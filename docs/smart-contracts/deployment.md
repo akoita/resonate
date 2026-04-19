@@ -79,6 +79,39 @@ Use `resonate-iac` for all of the following:
 - Deploy environment files such as `.env.deploy.*`
 - GitHub Actions deployment workflow configuration
 
+### GitHub delivery -> deploy handoff
+
+Application CI still runs in this repo. Successful push-based CI on:
+
+- `develop`
+- `main`
+
+now sends deploy intent to `resonate-iac` through GitHub `repository_dispatch`.
+
+Automatic handoff mapping:
+
+- `develop` -> `dev`
+- `main` -> `staging`
+
+Production remains manual-only in `resonate-iac`.
+
+The sender workflow in this repo passes:
+
+- `environment`
+- `source_ref`
+- `services=all`
+- `trigger_branch`
+- `release_sha`
+- `release_id`
+
+Required sender secret in `resonate`:
+
+- `RESONATE_IAC_DISPATCH_TOKEN`
+  - GitHub token with permission to trigger repository dispatch events on
+    `akoita/resonate-iac`
+
+The receiver-side contract and deploy execution live in `resonate-iac`.
+
 ## Environment Variables
 
 Application env vars are still documented here when they affect app code or contract tooling.
