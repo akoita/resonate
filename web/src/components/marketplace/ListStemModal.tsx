@@ -32,7 +32,7 @@ export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemM
         durationSeconds: BigInt(parseInt(duration) * 24 * 60 * 60),
       });
       onSuccess?.(hash);
-    } catch (err) {
+    } catch {
       // Error handled by hook
     }
   };

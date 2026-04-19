@@ -1,13 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { usePlayer } from "../../lib/playerContext";
 import { MarqueeText } from "../ui/MarqueeText";
 import { useToast } from "../ui/Toast";
 import { useUIStore } from "../../lib/uiStore";
 import { MixerConsole } from "../player/MixerConsole";
-import { useState } from "react";
 
 export default function PlayerBar() {
   const router = useRouter();
@@ -83,7 +81,10 @@ export default function PlayerBar() {
         {currentTrack ? (
           <>
             {artworkUrl ? (
-              <img src={artworkUrl} alt={currentTrack.title} className="player-artwork" />
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={artworkUrl} alt={currentTrack.title} className="player-artwork" />
+              </>
             ) : (
               <div className="player-artwork-placeholder">🎵</div>
             )}

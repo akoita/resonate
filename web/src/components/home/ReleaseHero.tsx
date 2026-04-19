@@ -3,8 +3,6 @@
 import { useRouter } from "next/navigation";
 import { Button } from "../ui/Button";
 import { Release } from "../../lib/api";
-import { LocalTrack } from "../../lib/localLibrary";
-import { usePlayer } from "../../lib/playerContext";
 
 interface ReleaseHeroProps {
   release: Release;
@@ -12,26 +10,6 @@ interface ReleaseHeroProps {
 
 export function ReleaseHero({ release }: ReleaseHeroProps) {
   const router = useRouter();
-  const { playQueue } = usePlayer();
-
-  const handlePlay = () => {
-    if (!release.tracks) return;
-    const playableTracks: LocalTrack[] = release.tracks.map(t => ({
-      id: t.id,
-      title: t.title,
-      artist: release.primaryArtist || release.artist?.displayName || "Unknown Artist",
-      albumArtist: null,
-      album: release.title,
-      year: release.releaseDate ? new Date(release.releaseDate).getFullYear() : null,
-      genre: release.genre || null,
-      duration: 0,
-      createdAt: t.createdAt,
-      remoteUrl: t.stems && t.stems.length > 0 ? t.stems[0].uri : undefined,
-      remoteArtworkUrl: release.artworkUrl || undefined,
-      stems: t.stems,
-    }));
-    void playQueue(playableTracks, 0);
-  };
 
   const handleViewDetails = () => {
     if (release.id) {
@@ -89,7 +67,10 @@ export function ReleaseHero({ release }: ReleaseHeroProps) {
 
       <div className="hero-artwork-container">
         {release.artworkUrl ? (
-          <img src={release.artworkUrl} alt={release.title} className="hero-artwork" />
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={release.artworkUrl} alt={release.title} className="hero-artwork" />
+          </>
         ) : (
           <div className="hero-artwork-placeholder">🎵</div>
         )}

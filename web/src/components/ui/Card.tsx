@@ -21,7 +21,10 @@ export function Card({ title, image, children, className, style, variant = "stan
       >
         <div className="compact-image-container">
           {image ? (
-            <img src={image} alt={title} className="compact-image" />
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={image} alt={title} className="compact-image" />
+            </>
           ) : (
             <div className="compact-placeholder">🎵</div>
           )}
@@ -80,7 +83,10 @@ export function Card({ title, image, children, className, style, variant = "stan
     >
       {image ? (
         <div className="ui-card-image shimmer-mask">
-          <img src={image} alt={title} />
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={image} alt={title} />
+          </>
         </div>
       ) : (
         <div className="ui-card-image-placeholder">

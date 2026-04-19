@@ -7,16 +7,30 @@ CONTRACTS_DIR="$(dirname "$SCRIPT_DIR")"
 
 cd "$CONTRACTS_DIR"
 
+strip_git_metadata() {
+  local root="$1"
+
+  if [[ ! -d "$root" ]]; then
+    return
+  fi
+
+  while IFS= read -r -d '' path; do
+    rm -rf "$path"
+  done < <(find "$root" \( -name .git -o -name .gitmodules \) -print0)
+}
+
 install_dep() {
   local path="$1"
   shift
 
   if [[ -d "$path" ]] && [[ -n "$(find "$path" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
     echo "Using existing dependency: $path"
+    strip_git_metadata "$path"
     return
   fi
 
   forge install "$@" --no-git
+  strip_git_metadata "$path"
 }
 
 install_git_dep() {
@@ -26,11 +40,13 @@ install_git_dep() {
 
   if [[ -d "$path" ]] && [[ -n "$(find "$path" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
     echo "Using existing dependency: $path"
+    strip_git_metadata "$path"
     return
   fi
 
   rm -rf "$path"
   git clone --depth 1 --branch "$ref" --recurse-submodules "$repo_url" "$path"
+  strip_git_metadata "$path"
 }
 
 install_dep "lib/forge-std" foundry-rs/forge-std
@@ -48,3 +64,5 @@ if [[ ! -d "lib/kernel/lib/I4337" ]] || [[ -z "$(find "lib/kernel/lib/I4337" -mi
   echo "Cloning kernel dependency: lib/kernel/lib/I4337"
   git clone --depth 1 https://github.com/leekt/I4337 lib/kernel/lib/I4337
 fi
+
+strip_git_metadata "lib/kernel/lib/I4337"

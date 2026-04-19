@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { Button } from "../ui/Button";
 import {
     Playlist,
@@ -13,11 +13,10 @@ import {
     deleteFolder,
     renamePlaylist,
     renameFolder,
-    getPlaylistsInFolder,
     addTrackToPlaylist,
     addTracksByCriteria,
 } from "../../lib/playlistStore";
-import { LocalTrack, getArtworkUrl } from "../../lib/localLibrary";
+import { LocalTrack } from "../../lib/localLibrary";
 import { useToast } from "../ui/Toast";
 import { PromptModal } from "../ui/PromptModal";
 import { usePlayer } from "../../lib/playerContext";
@@ -30,7 +29,6 @@ interface PlaylistTabProps {
 }
 
 export function PlaylistTab({
-    tracks,
     artworkUrls,
     onSelectPlaylist,
 }: PlaylistTabProps) {
@@ -39,8 +37,6 @@ export function PlaylistTab({
     const [loading, setLoading] = useState(true);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [createType, setCreateType] = useState<"playlist" | "folder">("playlist");
-    const [newName, setNewName] = useState("");
-    const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
     const [currentFolder, setCurrentFolder] = useState<PlaylistFolder | null>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editName, setEditName] = useState("");
@@ -48,7 +44,7 @@ export function PlaylistTab({
     const { addToast } = useToast();
     const { playQueue } = usePlayer();
 
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         setLoading(true);
         const [allPlaylists, allFolders] = await Promise.all([
             listPlaylists(),
@@ -57,12 +53,12 @@ export function PlaylistTab({
         setPlaylists(allPlaylists);
         setFolders(allFolders);
         setLoading(false);
-    };
+    }, []);
 
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         void loadData();
-    }, []);
+    }, [loadData]);
 
     // Filter playlists for current view (root or inside folder)
     const visiblePlaylists = useMemo(() => {
@@ -74,20 +70,6 @@ export function PlaylistTab({
         if (playlist.trackIds.length === 0) return null;
         const firstTrackId = playlist.trackIds[0];
         return artworkUrls.get(firstTrackId) || null;
-    };
-
-    const handleCreate = async () => {
-        if (!newName.trim()) return;
-
-        if (createType === "playlist") {
-            await createPlaylist(newName.trim(), currentFolder?.id ?? null);
-        } else {
-            await createFolder(newName.trim());
-        }
-
-        setNewName("");
-        setShowCreateModal(false);
-        await loadData();
     };
 
     const handleDelete = async (id: string, type: "playlist" | "folder") => {
@@ -105,16 +87,17 @@ export function PlaylistTab({
         await loadData();
     };
 
-    const handleRename = async (id: string, type: "playlist" | "folder") => {
-        if (!editName.trim()) {
+    const handleRename = async (id: string, type: "playlist" | "folder", name = editName) => {
+        const trimmedName = name.trim();
+        if (!trimmedName) {
             setEditingId(null);
             return;
         }
 
         if (type === "playlist") {
-            await renamePlaylist(id, editName.trim());
+            await renamePlaylist(id, trimmedName);
         } else {
-            await renameFolder(id, editName.trim());
+            await renameFolder(id, trimmedName);
         }
 
         setEditingId(null);
@@ -314,11 +297,14 @@ export function PlaylistTab({
                                 onDrop={(e) => handleDrop(e, playlist.id)}
                             >
                                 {artUrl ? (
-                                    <img
-                                        src={artUrl}
-                                        alt={playlist.name}
-                                        className="playlist-card-artwork"
-                                    />
+                                    <>
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img
+                                            src={artUrl}
+                                            alt={playlist.name}
+                                            className="playlist-card-artwork"
+                                        />
+                                    </>
                                 ) : (
                                     <div className="playlist-card-icon">🎶</div>
                                 )}
@@ -406,8 +392,11 @@ export function PlaylistTab({
                 initialValue={editName}
                 onConfirm={(name) => {
                     if (editingId) {
-                        // eslint-disable-next-line react-hooks/set-state-in-effect
-                        void handleRename(editingId, editingId.startsWith("folder") ? "folder" : "playlist");
+                        void handleRename(
+                            editingId,
+                            editingId.startsWith("folder") ? "folder" : "playlist",
+                            name
+                        );
                     }
                 }}
                 onCancel={() => setEditingId(null)}
