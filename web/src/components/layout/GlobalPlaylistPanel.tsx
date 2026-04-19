@@ -105,7 +105,7 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
             await syncPlaylists();
             await refreshLibrary();
             addToast({ type: "success", title: "Synced", message: "Playlists updated from cloud" });
-        } catch (err) {
+        } catch {
             addToast({ type: "error", title: "Sync Failed", message: "Could not sync with backend" });
         } finally {
             setIsSyncing(false);
@@ -312,7 +312,7 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
             let data;
             try {
                 data = JSON.parse(jsonData);
-            } catch (parseError) {
+            } catch {
                 console.warn("Dropped data is not valid JSON:", jsonData.substring(0, 50));
                 return;
             }
@@ -488,7 +488,7 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                                                 } else {
                                                     void handleDrop(e, p.id, finalIndex);
                                                 }
-                                            } catch (err) {
+                                            } catch {
                                                 void handleDrop(e, p.id, finalIndex);
                                             }
                                         }

@@ -40,7 +40,7 @@ function licenseLabel(type: string) {
 
 export default function SonicRadarPage() {
     const { sessions, isLoading } = useAgentHistory();
-    const { status: _status } = useAuth();
+    useAuth();
     const router = useRouter();
     const { setTracksToAddToPlaylist } = useUIStore();
 

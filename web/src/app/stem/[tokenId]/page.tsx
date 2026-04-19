@@ -101,7 +101,6 @@ export default function StemDetailPage() {
         );
     }
 
-    const _isOwner = address && stemData.creator.toLowerCase() === address.toLowerCase();
     const canList = balance > 0n;
 
     return (

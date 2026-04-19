@@ -1,13 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { usePlayer } from "../../lib/playerContext";
 import { MarqueeText } from "../ui/MarqueeText";
 import { useToast } from "../ui/Toast";
 import { useUIStore } from "../../lib/uiStore";
 import { MixerConsole } from "../player/MixerConsole";
-import { useState } from "react";
 
 export default function PlayerBar() {
   const router = useRouter();
