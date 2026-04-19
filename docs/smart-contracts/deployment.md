@@ -99,7 +99,7 @@ The sender workflow in this repo passes:
 
 - `environment`
 - `source_ref`
-- `services=all`
+- `services=backend,frontend`
 - `trigger_branch`
 - `release_sha`
 - `release_id`

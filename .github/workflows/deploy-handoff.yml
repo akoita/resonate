@@ -38,9 +38,11 @@ jobs:
           case "${HEAD_BRANCH}" in
             develop)
               environment="dev"
+              services="backend,frontend"
               ;;
             main)
               environment="staging"
+              services="backend,frontend"
               ;;
             *)
               echo "Unsupported branch for deploy handoff: ${HEAD_BRANCH}" >&2
@@ -50,6 +52,7 @@ jobs:
 
           {
             echo "environment=${environment}"
+            echo "services=${services}"
             echo "source_ref=${HEAD_SHA}"
             echo "trigger_branch=${HEAD_BRANCH}"
             echo "release_sha=${HEAD_SHA}"
@@ -69,6 +72,7 @@ jobs:
         env:
           DISPATCH_TOKEN: ${{ secrets.RESONATE_IAC_DISPATCH_TOKEN }}
           ENVIRONMENT: ${{ steps.intent.outputs.environment }}
+          SERVICES: ${{ steps.intent.outputs.services }}
           SOURCE_REF: ${{ steps.intent.outputs.source_ref }}
           TRIGGER_BRANCH: ${{ steps.intent.outputs.trigger_branch }}
           RELEASE_SHA: ${{ steps.intent.outputs.release_sha }}
@@ -81,7 +85,7 @@ jobs:
               "environment": "${ENVIRONMENT}",
               "source_repository": "${GITHUB_REPOSITORY}",
               "source_ref": "${SOURCE_REF}",
-              "services": "all",
+              "services": "${SERVICES}",
               "action": "apply",
               "release_sha": "${RELEASE_SHA}",
               "release_id": "${RELEASE_ID}",
