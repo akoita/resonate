@@ -13,6 +13,7 @@ import { CatalogService } from "../catalog/catalog.service";
 import { prisma } from "../../db/prisma";
 
 type UploadStatus = "queued" | "processing" | "complete" | "failed";
+const ACTIVE_PROCESSING_STAGES = new Set(["separating", "encrypting", "storing"]);
 
 interface UploadRecord {
   trackId: string;
@@ -310,7 +311,27 @@ export class IngestionService {
     return { releaseId, status: "processing" };
   }
 
-  handleProgress(releaseId: string, trackId: string, progress: number) {
+  async handleProgress(releaseId: string, trackId: string, progress: number) {
+    const heartbeatUpdate = await prisma.track.updateMany({
+      where: {
+        id: trackId,
+        releaseId,
+        processingStatus: { in: [...ACTIVE_PROCESSING_STAGES] },
+        release: { status: "processing" },
+      },
+      data: { lastProgressAt: new Date() },
+    }).catch((err) => {
+      console.warn(`[Ingestion] Failed to update progress heartbeat for ${trackId}: ${err}`);
+      return { count: 0 };
+    });
+
+    if (!heartbeatUpdate || heartbeatUpdate.count === 0) {
+      console.warn(
+        `[Ingestion] Ignoring progress heartbeat for inactive or mismatched track ${trackId} on release ${releaseId}`,
+      );
+      return { ok: false, ignored: true };
+    }
+
     this.eventBus.publish({
       eventName: "stems.progress" as any,
       eventVersion: 1,
@@ -320,6 +341,7 @@ export class IngestionService {
       progress,
     });
     console.log(`[Ingestion] Progress for ${trackId}: ${progress}%`);
+    return { ok: true };
   }
 
   async processStemsJob(input: { releaseId: string; artistId: string; tracks: any[] }) {
@@ -677,6 +699,7 @@ export class IngestionService {
     // Retry logic to handle race condition where Track record may not exist yet
     const MAX_RETRIES = 5;
     const RETRY_DELAY = 500;
+    const now = new Date();
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
@@ -685,6 +708,8 @@ export class IngestionService {
           data: {
             processingStatus: stage,
             processingError: stage === "failed" ? (error || "Processing failed") : null,
+            processingStartedAt: stage === "separating" ? now : undefined,
+            lastProgressAt: ACTIVE_PROCESSING_STAGES.has(stage) ? now : undefined,
           }
         });
 

@@ -129,6 +129,23 @@ describe('StemsProcessor (integration)', () => {
       const release = await prisma.release.findUnique({ where: { id: releaseId } });
       expect(release!.status).toBe('processing');
     });
+
+    it('records watchdog timestamps when tracks are handed to the worker path', async () => {
+      await processor.process(makeJob() as any);
+
+      const track = await prisma.track.findUnique({
+        where: { id: trackId },
+        select: {
+          processingStatus: true,
+          processingStartedAt: true,
+          lastProgressAt: true,
+        },
+      });
+
+      expect(track!.processingStatus).toBe('separating');
+      expect(track!.processingStartedAt).not.toBeNull();
+      expect(track!.lastProgressAt).not.toBeNull();
+    });
   });
 
   describe('edge cases', () => {

@@ -9,6 +9,7 @@ import type { StemResultMessage } from "./stem-pubsub.publisher";
 
 const TOPIC_RESULTS = "stem-results";
 const SUBSCRIPTION_RESULTS = "stem-results-backend";
+const ACTIVE_PROCESSING_STAGES = new Set(["separating", "encrypting", "storing"]);
 
 @Injectable()
 export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
@@ -297,6 +298,7 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
   ) {
     const MAX_RETRIES = 5;
     const RETRY_DELAY = 500;
+    const now = new Date();
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
@@ -305,6 +307,8 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
           data: {
             processingStatus: stage,
             processingError: stage === "failed" ? (error || "Processing failed") : null,
+            processingStartedAt: stage === "separating" ? now : undefined,
+            lastProgressAt: ACTIVE_PROCESSING_STAGES.has(stage) ? now : undefined,
           },
         });
 

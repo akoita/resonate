@@ -83,7 +83,12 @@ export class CatalogService implements OnModuleInit {
             tracks: event.checksum === "retry" ? {
               updateMany: {
                 where: { releaseId: event.releaseId },
-                data: { processingStatus: "pending", processingError: null }
+                data: {
+                  processingStatus: "pending",
+                  processingError: null,
+                  processingStartedAt: null,
+                  lastProgressAt: null,
+                }
               }
             } : undefined
           },

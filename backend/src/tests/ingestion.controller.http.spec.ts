@@ -25,6 +25,8 @@ const mockIngestionService = {
 describe('IngestionController (e2e)', () => {
   let app: INestApplication;
   const token = authToken('user-1');
+  const originalInternalServiceKey = process.env.INTERNAL_SERVICE_KEY;
+  const originalNodeEnv = process.env.NODE_ENV;
 
   beforeAll(async () => {
     app = await createControllerTestApp(IngestionController, [
@@ -33,10 +35,24 @@ describe('IngestionController (e2e)', () => {
   });
 
   afterAll(async () => {
+    if (originalInternalServiceKey === undefined) {
+      delete process.env.INTERNAL_SERVICE_KEY;
+    } else {
+      process.env.INTERNAL_SERVICE_KEY = originalInternalServiceKey;
+    }
+    if (originalNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
     await app.close();
   });
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    delete process.env.INTERNAL_SERVICE_KEY;
+    process.env.NODE_ENV = 'test';
+  });
 
   // ----- Guard enforcement -----
 
@@ -81,10 +97,39 @@ describe('IngestionController (e2e)', () => {
 
   // ----- Public route (progress webhook) -----
 
-  it('POST /ingestion/progress/:releaseId/:trackId → 201 (no auth)', async () => {
+  it('POST /ingestion/progress/:releaseId/:trackId → 201 without internal key in non-production', async () => {
     await request(app.getHttpServer())
       .post('/ingestion/progress/rel-1/trk-1')
       .send({ progress: 50 })
       .expect(201);
+  });
+
+  it('POST /ingestion/progress/:releaseId/:trackId → 401 with missing internal key when configured', async () => {
+    process.env.INTERNAL_SERVICE_KEY = 'worker-secret';
+
+    await request(app.getHttpServer())
+      .post('/ingestion/progress/rel-1/trk-1')
+      .send({ progress: 50 })
+      .expect(401);
+  });
+
+  it('POST /ingestion/progress/:releaseId/:trackId → 201 with matching internal key', async () => {
+    process.env.INTERNAL_SERVICE_KEY = 'worker-secret';
+
+    await request(app.getHttpServer())
+      .post('/ingestion/progress/rel-1/trk-1')
+      .set('x-internal-service-key', 'worker-secret')
+      .send({ progress: 50 })
+      .expect(201);
+  });
+
+  it('POST /ingestion/progress/:releaseId/:trackId → 500 in production without configured key', async () => {
+    delete process.env.INTERNAL_SERVICE_KEY;
+    process.env.NODE_ENV = 'production';
+
+    await request(app.getHttpServer())
+      .post('/ingestion/progress/rel-1/trk-1')
+      .send({ progress: 50 })
+      .expect(500);
   });
 });
