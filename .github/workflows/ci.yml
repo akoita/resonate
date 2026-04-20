@@ -15,6 +15,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.detect.outputs.backend }}
+      backend_identity: ${{ steps.detect.outputs.backend_identity }}
+      backend_ingestion: ${{ steps.detect.outputs.backend_ingestion }}
+      backend_catalog: ${{ steps.detect.outputs.backend_catalog }}
+      backend_generation: ${{ steps.detect.outputs.backend_generation }}
+      backend_marketplace: ${{ steps.detect.outputs.backend_marketplace }}
+      backend_shared: ${{ steps.detect.outputs.backend_shared }}
       web: ${{ steps.detect.outputs.web }}
       contracts: ${{ steps.detect.outputs.contracts }}
       shared: ${{ steps.detect.outputs.shared }}
@@ -33,6 +39,12 @@ jobs:
           set -euo pipefail
 
           backend=false
+          backend_identity=false
+          backend_ingestion=false
+          backend_catalog=false
+          backend_generation=false
+          backend_marketplace=false
+          backend_shared=false
           web=false
           contracts=false
           shared=false
@@ -67,8 +79,33 @@ jobs:
               # "shared" so the full cross-module safety net still runs.
               for file in "${changed_files[@]}"; do
                 case "${file}" in
+                  backend/src/modules/auth/*|backend/src/modules/identity/*|backend/src/modules/sessions/*|backend/src/modules/webauthn/*|backend/src/tests/auth.*|backend/src/tests/sessions.*|backend/src/tests/wallet.*|backend/src/tests/session_key.spec.ts|backend/src/tests/erc4337_client.integration.spec.ts|backend/src/tests/erc6492.spec.ts|backend/src/tests/roles.guard.spec.ts|backend/src/tests/social_recovery.spec.ts)
+                    backend=true
+                    backend_identity=true
+                    ;;
+                  backend/src/modules/ingestion/*|backend/src/modules/storage/*|backend/src/modules/encryption/*|backend/src/modules/fingerprint/*|backend/src/tests/asset_persistence.integration.spec.ts|backend/src/tests/demucs_integration.spec.ts|backend/src/tests/encryption.spec.ts|backend/src/tests/fingerprint.service.integration.spec.ts|backend/src/tests/flow1_ingestion.integration.spec.ts|backend/src/tests/ingestion*|backend/src/tests/pubsub-runtime.spec.ts|backend/src/tests/release-pipeline.spec.ts|backend/src/tests/separation-progress.regression.spec.ts|backend/src/tests/stem-*|backend/src/tests/stems-*|backend/src/tests/storage.integration.spec.ts|backend/src/tests/upload-rights-policy.spec.ts|backend/src/tests/upload-rights-routing.integration.spec.ts)
+                    backend=true
+                    backend_ingestion=true
+                    ;;
+                  backend/src/modules/catalog/*|backend/src/modules/contracts/*|backend/src/modules/library/*|backend/src/tests/catalog.*|backend/src/tests/contracts.integration.spec.ts|backend/src/tests/flow2_contracts.integration.spec.ts|backend/src/tests/indexer.integration.spec.ts|backend/src/tests/metadata.controller.integration.spec.ts|backend/src/tests/stem-pricing.*)
+                    backend=true
+                    backend_catalog=true
+                    ;;
+                  backend/src/modules/agents/*|backend/src/modules/embeddings/*|backend/src/modules/generation/*|backend/src/modules/openapi/*|backend/src/tests/agent_*|backend/src/tests/agents.spec.ts|backend/src/tests/embeddings.spec.ts|backend/src/tests/flow4_generation.integration.spec.ts|backend/src/tests/generation.*|backend/src/tests/lyria_client.spec.ts|backend/src/tests/openapi.controller.spec.ts|backend/src/tests/tool_declarations.integration.spec.ts)
+                    backend=true
+                    backend_generation=true
+                    ;;
+                  backend/src/modules/analytics/*|backend/src/modules/artist/*|backend/src/modules/curation/*|backend/src/modules/dmca/*|backend/src/modules/notifications/*|backend/src/modules/payments/*|backend/src/modules/playlist/*|backend/src/modules/pricing/*|backend/src/modules/recommendations/*|backend/src/modules/remix/*|backend/src/modules/rights/*|backend/src/modules/storefront/*|backend/src/modules/trust/*|backend/src/modules/x402/*|backend/src/tests/analytics.spec.ts|backend/src/tests/artist.*|backend/src/tests/curation.spec.ts|backend/src/tests/curator-reputation.integration.spec.ts|backend/src/tests/dmca.service.integration.spec.ts|backend/src/tests/payments.spec.ts|backend/src/tests/playlist.*|backend/src/tests/pricing.spec.ts|backend/src/tests/recommendations.*|backend/src/tests/remix.spec.ts|backend/src/tests/rights-evidence.spec.ts|backend/src/tests/storefront.service.spec.ts|backend/src/tests/trust-*|backend/src/tests/trust.controller.spec.ts|backend/src/tests/verification-semantics.spec.ts|backend/src/tests/x402.*)
+                    backend=true
+                    backend_marketplace=true
+                    ;;
+                  backend/jest*|backend/package-lock.json|backend/package.json|backend/TESTING.md|backend/prisma/*|backend/src/main.ts|backend/src/modules/audit/*|backend/src/modules/health/*|backend/src/modules/maintenance/*|backend/src/modules/shared/*|backend/src/tests/event_bus.spec.ts|backend/src/tests/global*|backend/src/tests/health.integration.spec.ts|backend/src/tests/prisma_postgres.integration.spec.ts|backend/src/tests/testcontainers.setup.ts)
+                    backend=true
+                    backend_shared=true
+                    ;;
                   backend/*)
                     backend=true
+                    backend_shared=true
                     ;;
                   web/*)
                     web=true
@@ -106,6 +143,12 @@ jobs:
           fi
 
           echo "backend=${backend}" >> "${GITHUB_OUTPUT}"
+          echo "backend_identity=${backend_identity}" >> "${GITHUB_OUTPUT}"
+          echo "backend_ingestion=${backend_ingestion}" >> "${GITHUB_OUTPUT}"
+          echo "backend_catalog=${backend_catalog}" >> "${GITHUB_OUTPUT}"
+          echo "backend_generation=${backend_generation}" >> "${GITHUB_OUTPUT}"
+          echo "backend_marketplace=${backend_marketplace}" >> "${GITHUB_OUTPUT}"
+          echo "backend_shared=${backend_shared}" >> "${GITHUB_OUTPUT}"
           echo "web=${web}" >> "${GITHUB_OUTPUT}"
           echo "contracts=${contracts}" >> "${GITHUB_OUTPUT}"
           echo "shared=${shared}" >> "${GITHUB_OUTPUT}"
@@ -116,6 +159,12 @@ jobs:
             echo "### Change detection"
             echo ""
             echo "- backend: ${backend}"
+            echo "- backend_identity: ${backend_identity}"
+            echo "- backend_ingestion: ${backend_ingestion}"
+            echo "- backend_catalog: ${backend_catalog}"
+            echo "- backend_generation: ${backend_generation}"
+            echo "- backend_marketplace: ${backend_marketplace}"
+            echo "- backend_shared: ${backend_shared}"
             echo "- web: ${web}"
             echo "- contracts: ${contracts}"
             echo "- shared: ${shared}"
@@ -198,8 +247,61 @@ jobs:
         run: forge test -vvv --no-match-path "test/formal/*"
         working-directory: contracts
 
-  backend-tests:
-    name: Backend Tests
+  backend-unit-tests:
+    name: Backend Unit Tests
+    runs-on: ubuntu-latest
+    needs: [changes, lint]
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        working-directory: backend
+
+      - name: Run selected backend unit tests
+        run: |
+          set -euo pipefail
+
+          selection="$(BACKEND_RUN_ALL='${{ needs.changes.outputs.run_all }}' \
+            REPO_SHARED='${{ needs.changes.outputs.shared }}' \
+            BACKEND_SHARED='${{ needs.changes.outputs.backend_shared }}' \
+            BACKEND_IDENTITY='${{ needs.changes.outputs.backend_identity }}' \
+            BACKEND_INGESTION='${{ needs.changes.outputs.backend_ingestion }}' \
+            BACKEND_CATALOG='${{ needs.changes.outputs.backend_catalog }}' \
+            BACKEND_GENERATION='${{ needs.changes.outputs.backend_generation }}' \
+            BACKEND_MARKETPLACE='${{ needs.changes.outputs.backend_marketplace }}' \
+            bash ../.github/scripts/select-backend-tests.sh unit)"
+
+          if [[ "${selection}" == "__FULL_SUITE__" ]]; then
+            echo "Running full backend unit suite"
+            npx jest --runInBand --config jest.config.js
+          else
+            printf 'Selected backend unit tests:\n%s\n' "${selection}"
+            mapfile -t tests < <(printf '%s\n' "${selection}")
+            npx jest --runInBand --config jest.config.js "${tests[@]}"
+          fi
+        working-directory: backend
+        env:
+          SKIP_DEMUCS_INTEGRATION: "true"
+          JWT_SECRET: ci-test-secret
+          ENCRYPTION_SECRET: ci-test-encryption-secret
+
+  backend-integration-tests:
+    name: Backend Integration Tests
     runs-on: ubuntu-latest
     needs: [changes, lint]
     if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
@@ -225,18 +327,29 @@ jobs:
         run: npx prisma generate
         working-directory: backend
 
-      - name: Run unit tests
-        run: npm test
-        working-directory: backend
-        env:
-          SKIP_DEMUCS_INTEGRATION: "true"
-          JWT_SECRET: ci-test-secret
-          ENCRYPTION_SECRET: ci-test-encryption-secret
-
       # No 'prisma db push' needed — Testcontainers globalSetup handles schema sync
+      - name: Run selected backend integration tests
+        run: |
+          set -euo pipefail
 
-      - name: Run integration tests
-        run: npm run test:integration
+          selection="$(BACKEND_RUN_ALL='${{ needs.changes.outputs.run_all }}' \
+            REPO_SHARED='${{ needs.changes.outputs.shared }}' \
+            BACKEND_SHARED='${{ needs.changes.outputs.backend_shared }}' \
+            BACKEND_IDENTITY='${{ needs.changes.outputs.backend_identity }}' \
+            BACKEND_INGESTION='${{ needs.changes.outputs.backend_ingestion }}' \
+            BACKEND_CATALOG='${{ needs.changes.outputs.backend_catalog }}' \
+            BACKEND_GENERATION='${{ needs.changes.outputs.backend_generation }}' \
+            BACKEND_MARKETPLACE='${{ needs.changes.outputs.backend_marketplace }}' \
+            bash ../.github/scripts/select-backend-tests.sh integration)"
+
+          if [[ "${selection}" == "__FULL_SUITE__" ]]; then
+            echo "Running full backend integration suite"
+            npx jest --runInBand --forceExit --config jest.integration.config.js
+          else
+            printf 'Selected backend integration tests:\n%s\n' "${selection}"
+            mapfile -t tests < <(printf '%s\n' "${selection}")
+            npx jest --runInBand --forceExit --config jest.integration.config.js "${tests[@]}"
+          fi
         working-directory: backend
         env:
           # Testcontainers sets DATABASE_URL, REDIS_URL, ANVIL_RPC_URL, PUBSUB_EMULATOR_HOST
@@ -244,6 +357,32 @@ jobs:
           STEM_PROCESSING_MODE: sync
           JWT_SECRET: ci-test-secret
           ENCRYPTION_SECRET: ci-test-encryption-secret
+
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    needs: [changes, backend-unit-tests, backend-integration-tests]
+    if: always() && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+    steps:
+      - name: Verify backend test jobs
+        run: |
+          set -euo pipefail
+
+          unit_result="${{ needs.backend-unit-tests.result }}"
+          integration_result="${{ needs.backend-integration-tests.result }}"
+
+          echo "Backend unit tests: ${unit_result}"
+          echo "Backend integration tests: ${integration_result}"
+
+          if [[ "${unit_result}" != "success" ]]; then
+            echo "Backend unit tests did not succeed"
+            exit 1
+          fi
+
+          if [[ "${integration_result}" != "success" ]]; then
+            echo "Backend integration tests did not succeed"
+            exit 1
+          fi
 
   build:
     name: Build
