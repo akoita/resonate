@@ -272,11 +272,9 @@ export class IngestionService {
     );
     await this.stemsQueue.add("process-stems", { releaseId, artistId: resolvedArtistId, tracks: serializableTracks });
 
-    // Persist processing status in DB synchronously so the API returns it immediately.
-    // This must happen BEFORE the HTTP response — the frontend navigates to the release
-    // page right after upload, and the BullMQ job runs asynchronously.
-    // RACE CONDITION FIX: The CatalogService creates the release via EventBus subscriber.
-    // That async upsert may not have committed yet, so we poll until the record exists.
+    // Persist the release-level processing status before the HTTP response so the frontend
+    // sees an active release immediately after upload. Tracks stay pending until the async
+    // Pub/Sub handoff succeeds in StemsProcessor.
     try {
       const MAX_RETRIES = 10;
       const RETRY_DELAY = 300;
@@ -302,16 +300,8 @@ export class IngestionService {
       if (!releaseFound) {
         console.warn(`[Ingestion] Release ${releaseId} never appeared after ${MAX_RETRIES} attempts — status not updated`);
       }
-
-      const trackIds = tracks.map((t: any) => t.id);
-      if (trackIds.length > 0) {
-        await prisma.track.updateMany({
-          where: { id: { in: trackIds } },
-          data: { processingStatus: "separating" },
-        });
-      }
       if (releaseFound) {
-        console.log(`[Ingestion] Updated release ${releaseId} to 'processing', tracks to 'separating'`);
+        console.log(`[Ingestion] Updated release ${releaseId} to 'processing'; tracks remain pending until worker handoff succeeds`);
       }
     } catch (err: any) {
       console.warn(`[Ingestion] Failed to update processing status: ${err?.message}`);
@@ -539,14 +529,7 @@ export class IngestionService {
       const errorMsg = `Failed to process any tracks for release ${input.releaseId}`;
       console.error(`[Ingestion] ${errorMsg}`);
 
-      this.eventBus.publish({
-        eventName: "stems.failed",
-        eventVersion: 1,
-        occurredAt: new Date().toISOString(),
-        releaseId: input.releaseId,
-        artistId: input.artistId,
-        error: errorMsg,
-      });
+      this.markReleaseFailed(input.releaseId, input.artistId, errorMsg);
 
       throw new Error(errorMsg);
     }
@@ -885,16 +868,20 @@ export class IngestionService {
     }
 
     // 2. Emit stems.failed event so catalog service updates DB status
+    this.markReleaseFailed(releaseId, "cancelled", "Processing cancelled by user");
+
+    return { success: true, message: "Processing cancelled" };
+  }
+
+  markReleaseFailed(releaseId: string, artistId: string, error: string) {
     this.eventBus.publish({
       eventName: "stems.failed",
       eventVersion: 1,
       occurredAt: new Date().toISOString(),
       releaseId,
-      artistId: "cancelled",
-      error: "Processing cancelled by user",
+      artistId,
+      error,
     });
-
-    return { success: true, message: "Processing cancelled" };
   }
 
   private inferStemType(uri: string) {

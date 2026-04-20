@@ -112,8 +112,11 @@ export class StemPubSubPublisher implements OnModuleInit {
    */
   async publishSeparationJob(message: StemSeparateMessage): Promise<string> {
     if (!this.separateTopic) {
-      this.logger.warn("Pub/Sub publisher not initialized — cannot publish separation job");
-      return "pubsub-disabled";
+      const error =
+        "Stem separation worker path unavailable: Pub/Sub publisher is not initialized. " +
+        "Set PUBSUB_EMULATOR_HOST for local dev or GOOGLE_APPLICATION_CREDENTIALS for production.";
+      this.logger.error(error);
+      throw new Error(error);
     }
     const data = Buffer.from(JSON.stringify(message));
     const messageId = await this.separateTopic.publishMessage({
