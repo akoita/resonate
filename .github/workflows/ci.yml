@@ -10,15 +10,134 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.detect.outputs.backend }}
+      web: ${{ steps.detect.outputs.web }}
+      contracts: ${{ steps.detect.outputs.contracts }}
+      shared: ${{ steps.detect.outputs.shared }}
+      docs_only: ${{ steps.detect.outputs.docs_only }}
+      run_all: ${{ steps.detect.outputs.run_all }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Classify changed paths
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          backend=false
+          web=false
+          contracts=false
+          shared=false
+          docs=false
+          infra=false
+          run_all=false
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+          else
+            base_sha="${{ github.event.before }}"
+          fi
+
+          if [[ -z "${base_sha}" || "${base_sha}" == "0000000000000000000000000000000000000000" ]]; then
+            echo "Unable to determine diff base safely; running full CI."
+            run_all=true
+          elif ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+            echo "Base commit ${base_sha} is not available locally; running full CI."
+            run_all=true
+          fi
+
+          if [[ "${run_all}" == "false" ]]; then
+            mapfile -t changed_files < <(git diff --name-only "${base_sha}...HEAD")
+
+            if [[ ${#changed_files[@]} -eq 0 ]]; then
+              echo "No changed files detected from git diff; running full CI."
+              run_all=true
+            else
+              printf 'Changed files:\n%s\n' "${changed_files[@]}"
+
+              # Keep this mapping conservative: ambiguous changes should land in
+              # "shared" so the full cross-module safety net still runs.
+              for file in "${changed_files[@]}"; do
+                case "${file}" in
+                  backend/*)
+                    backend=true
+                    ;;
+                  web/*)
+                    web=true
+                    ;;
+                  contracts/*)
+                    contracts=true
+                    ;;
+                  docs/*|*.md)
+                    docs=true
+                    ;;
+                  infra/*|terraform/*)
+                    infra=true
+                    ;;
+                  .github/workflows/*|.github/actions/*|scripts/*|package.json|package-lock.json|pnpm-lock.yaml|yarn.lock|tsconfig*.json|eslint.config.*|.eslintrc*|turbo.json|Makefile|docker-compose*.yml|docker-compose*.yaml)
+                    shared=true
+                    ;;
+                  *)
+                    shared=true
+                    ;;
+                esac
+              done
+            fi
+          fi
+
+          docs_only=false
+          # Infra-only and docs-only changes can skip module-specific jobs, but
+          # anything that doesn't classify cleanly falls back to a full run.
+          if [[ "${run_all}" == "false" && "${backend}" == "false" && "${web}" == "false" && "${contracts}" == "false" && "${shared}" == "false" ]]; then
+            if [[ "${docs}" == "true" || "${infra}" == "true" ]]; then
+              docs_only=true
+            else
+              echo "Change classification was empty or ambiguous; running full CI."
+              run_all=true
+            fi
+          fi
+
+          echo "backend=${backend}" >> "${GITHUB_OUTPUT}"
+          echo "web=${web}" >> "${GITHUB_OUTPUT}"
+          echo "contracts=${contracts}" >> "${GITHUB_OUTPUT}"
+          echo "shared=${shared}" >> "${GITHUB_OUTPUT}"
+          echo "docs_only=${docs_only}" >> "${GITHUB_OUTPUT}"
+          echo "run_all=${run_all}" >> "${GITHUB_OUTPUT}"
+
+          {
+            echo "### Change detection"
+            echo ""
+            echo "- backend: ${backend}"
+            echo "- web: ${web}"
+            echo "- contracts: ${contracts}"
+            echo "- shared: ${shared}"
+            echo "- docs_only: ${docs_only}"
+            echo "- run_all: ${run_all}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    needs: changes
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
 
+      - name: No lint needed for docs-only changes
+        if: needs.changes.outputs.docs_only == 'true'
+        run: echo "Docs-only change detected; skipping backend/web lint."
+
       - name: Setup Node.js
+        if: needs.changes.outputs.docs_only != 'true' && (needs.changes.outputs.web == 'true' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
         uses: actions/setup-node@v5
         with:
           node-version: "20"
@@ -28,28 +147,35 @@ jobs:
             backend/package-lock.json
 
       - name: Install web dependencies
+        if: needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
         run: npm ci --legacy-peer-deps
         working-directory: web
 
       - name: Run web lint
+        if: needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
         run: npm run lint
         working-directory: web
 
       - name: Install backend dependencies
+        if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
         run: npm ci
         working-directory: backend
 
       - name: Generate Prisma Client
+        if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
         run: npx prisma generate
         working-directory: backend
 
       - name: Run backend lint
+        if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
         run: npm run lint
         working-directory: backend
 
   contracts:
     name: Smart Contract Tests
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
     steps:
       - uses: actions/checkout@v5
         with:
@@ -75,7 +201,8 @@ jobs:
   backend-tests:
     name: Backend Tests
     runs-on: ubuntu-latest
-    needs: lint
+    needs: [changes, lint]
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
     # No service containers needed — Testcontainers handles all infrastructure
     # (Postgres, Redis, Anvil, Pub/Sub) with isolated containers on random ports
     steps:
@@ -121,7 +248,8 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: lint
+    needs: [changes, lint]
+    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
     steps:
       - uses: actions/checkout@v5
         with:
@@ -162,7 +290,8 @@ jobs:
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-latest
-    needs: build
+    needs: [changes, build]
+    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
     services:
       postgres:
         image: postgres:16
