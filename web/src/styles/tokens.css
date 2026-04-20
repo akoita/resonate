@@ -24,4 +24,19 @@
 
   --font-sans: var(--font-geist-sans), "Inter", system-ui, -apple-system,
     sans-serif;
+
+  /*
+   * Canonical responsive breakpoints — use these exact pixel values in
+   * @media queries and in useBreakpoint.ts so the app behaves consistently.
+   * Ranges: phone <768, tablet 768–1279, desktop ≥1280.
+   * CSS custom properties can't be referenced inside @media (without
+   * @custom-media polyfills), so the values are also repeated literally —
+   * the tokens here serve as the single source of truth for human readers.
+   */
+  --bp-sm: 640px;
+  --bp-md: 768px;
+  --bp-lg: 1024px;
+  --bp-xl: 1280px;
+
+  --touch-target: 44px;
 }

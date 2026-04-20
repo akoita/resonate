@@ -6,6 +6,10 @@ interface UIState {
     openPlaylistPanel: () => void;
     closePlaylistPanel: () => void;
     togglePlaylistPanel: () => void;
+    isSidebarOpen: boolean;
+    openSidebar: () => void;
+    closeSidebar: () => void;
+    toggleSidebar: () => void;
     tracksToAddToPlaylist: LocalTrack[] | null;
     setTracksToAddToPlaylist: (tracks: LocalTrack[] | null) => void;
     resaleModal: {
@@ -23,6 +27,10 @@ export const useUIStore = create<UIState>((set) => ({
     openPlaylistPanel: () => set({ isPlaylistPanelOpen: true }),
     closePlaylistPanel: () => set({ isPlaylistPanelOpen: false }),
     togglePlaylistPanel: () => set((state) => ({ isPlaylistPanelOpen: !state.isPlaylistPanelOpen })),
+    isSidebarOpen: false,
+    openSidebar: () => set({ isSidebarOpen: true }),
+    closeSidebar: () => set({ isSidebarOpen: false }),
+    toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
     tracksToAddToPlaylist: null,
     setTracksToAddToPlaylist: (tracks) => set({ tracksToAddToPlaylist: tracks }),
     resaleModal: null,

@@ -16,6 +16,24 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
+    {
+      name: "chromium-tablet",
+      // iPad viewport size, but keep chromium as the engine — we care about
+      // the layout at that width, not about Safari-specific behavior.
+      use: {
+        ...devices["iPad Pro 11"],
+        browserName: "chromium",
+        defaultBrowserType: "chromium",
+      },
+      // Only the cross-viewport smoke spec runs on tablet/mobile — existing
+      // per-flow specs stay desktop-only so CI time stays bounded (#557).
+      testMatch: /responsive\.spec\.ts/,
+    },
+    {
+      name: "chromium-mobile",
+      use: { ...devices["Pixel 7"] },
+      testMatch: /responsive\.spec\.ts/,
+    },
   ],
   webServer: [
     {
