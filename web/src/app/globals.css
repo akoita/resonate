@@ -484,6 +484,18 @@ a {
   text-overflow: ellipsis;
 }
 
+/* Secondary line — shown only when the chip is displaying a display
+ * name (so power users can still see the underlying address). */
+.user-subtext {
+  font-size: 11px;
+  color: var(--color-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
 .user-status {
   font-size: 11px;
   color: var(--color-muted);
@@ -9670,8 +9682,26 @@ tr[draggable="true"]:hover {
   }
 
   .app-sidebar .link-text,
-  .app-sidebar .logo-text,
+  .app-sidebar .logo-text {
+    display: none;
+  }
+
+  /* Tablet rail keeps the account chip, but collapses to an avatar
+   * puck — hide the text info so the 36px avatar fits the 72px rail
+   * and identity stays visible even when labels don't (#549). */
   .app-sidebar .sidebar-footer {
+    padding: var(--space-3) 0;
+    display: flex;
+    justify-content: center;
+  }
+
+  .app-sidebar .sidebar-footer .user-profile {
+    padding: 4px;
+    background: transparent;
+    border: none;
+  }
+
+  .app-sidebar .sidebar-footer .user-info {
     display: none;
   }
 
