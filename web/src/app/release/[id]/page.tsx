@@ -2541,6 +2541,102 @@ export default function ReleaseDetails() {
           font-size: 12px;
           color: #71717a;
         }
+
+        /* ----------------------------------------------------------------
+         * Responsive overrides (#565) — release/[id] page
+         * Tablet (768–1279): tighter outer padding and header gap, smaller
+         *   title, artwork 240px. Header still side-by-side.
+         * Phone (<768): stack header (artwork above info), title shrinks
+         *   to 36px, container padding collapses to 16px, tracklist max
+         *   height shrinks for better scroll ergonomics.
+         * ---------------------------------------------------------------- */
+        @media (max-width: 1279px) {
+          .release-details-container {
+            gap: 40px;
+            padding: 32px 32px 120px;
+          }
+
+          .release-header {
+            gap: 32px;
+            padding-top: 24px;
+          }
+
+          .header-artwork-container {
+            width: 240px;
+            height: 240px;
+          }
+
+          .release-title-lg {
+            font-size: 56px;
+            margin-bottom: 24px;
+          }
+
+          .release-artist-row {
+            margin-bottom: 32px;
+          }
+        }
+
+        @media (max-width: 767px) {
+          .release-details-container {
+            gap: 28px;
+            padding: 16px 16px 120px;
+          }
+
+          .release-header {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 20px;
+            padding-top: 16px;
+          }
+
+          .header-artwork-container {
+            width: 100%;
+            max-width: 280px;
+            height: auto;
+            aspect-ratio: 1 / 1;
+            margin: 0 auto;
+          }
+
+          .release-title-lg {
+            font-size: 36px;
+            line-height: 1;
+            margin-bottom: 16px;
+            word-break: break-word;
+          }
+
+          .release-artist-row {
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+          }
+
+          .tracklist-section {
+            padding: 12px;
+          }
+
+          .track-row td {
+            padding: 8px 6px;
+          }
+
+          /* Track table: 6 columns can't fit on a 375px viewport. Keep
+           * only num + title + actions; drop status / artist / genre /
+           * duration (duration reappears if/when we stack it under the
+           * title — for now it lives in the overflow menu). */
+          .track-table .track-status-cell,
+          .track-table .track-genre,
+          .track-table .track-duration {
+            display: none;
+          }
+
+          .track-table th.track-status-cell,
+          .track-table th.track-genre,
+          .track-table th.track-duration {
+            display: none;
+          }
+
+          .track-title-cell {
+            min-width: 0;
+          }
+        }
       `}</style>
 
     </div>
