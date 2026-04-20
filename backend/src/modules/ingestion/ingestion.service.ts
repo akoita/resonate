@@ -312,12 +312,25 @@ export class IngestionService {
   }
 
   async handleProgress(releaseId: string, trackId: string, progress: number) {
-    await prisma.track.updateMany({
-      where: { id: trackId },
+    const heartbeatUpdate = await prisma.track.updateMany({
+      where: {
+        id: trackId,
+        releaseId,
+        processingStatus: { in: [...ACTIVE_PROCESSING_STAGES] },
+        release: { status: "processing" },
+      },
       data: { lastProgressAt: new Date() },
     }).catch((err) => {
       console.warn(`[Ingestion] Failed to update progress heartbeat for ${trackId}: ${err}`);
+      return { count: 0 };
     });
+
+    if (!heartbeatUpdate || heartbeatUpdate.count === 0) {
+      console.warn(
+        `[Ingestion] Ignoring progress heartbeat for inactive or mismatched track ${trackId} on release ${releaseId}`,
+      );
+      return { ok: false, ignored: true };
+    }
 
     this.eventBus.publish({
       eventName: "stems.progress" as any,
@@ -328,6 +341,7 @@ export class IngestionService {
       progress,
     });
     console.log(`[Ingestion] Progress for ${trackId}: ${progress}%`);
+    return { ok: true };
   }
 
   async processStemsJob(input: { releaseId: string; artistId: string; tracks: any[] }) {

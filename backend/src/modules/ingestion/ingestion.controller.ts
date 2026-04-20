@@ -1,4 +1,18 @@
-import { Body, Controller, Get, Param, Post, Request, UseGuards, UseInterceptors, UploadedFiles, BadRequestException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Headers,
+  InternalServerErrorException,
+  Param,
+  Post,
+  Request,
+  UnauthorizedException,
+  UseGuards,
+  UseInterceptors,
+  UploadedFiles,
+} from "@nestjs/common";
 import { FilesInterceptor, FileFieldsInterceptor } from "@nestjs/platform-express";
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
@@ -50,7 +64,17 @@ export class IngestionController {
     @Param("releaseId") releaseId: string,
     @Param("trackId") trackId: string,
     @Body() body: { progress: number },
+    @Headers("x-internal-service-key") internalServiceKey?: string,
   ) {
+    const configuredInternalKey = process.env.INTERNAL_SERVICE_KEY;
+    if (configuredInternalKey) {
+      if (internalServiceKey !== configuredInternalKey) {
+        throw new UnauthorizedException("Invalid internal service key");
+      }
+    } else if (process.env.NODE_ENV === "production") {
+      throw new InternalServerErrorException("INTERNAL_SERVICE_KEY must be set in production");
+    }
+
     return this.ingestionService.handleProgress(releaseId, trackId, body.progress);
   }
 

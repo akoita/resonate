@@ -38,6 +38,13 @@ RESULTS_TOPIC = os.getenv("PUBSUB_RESULTS_TOPIC", "stem-results")
 _gcs_client = None
 
 
+def internal_service_headers() -> dict:
+    internal_key = os.getenv("INTERNAL_SERVICE_KEY")
+    if not internal_key:
+        return {}
+    return {"x-internal-service-key": internal_key}
+
+
 def generate_fingerprint(audio_path: Path) -> Tuple[float, str, str]:
     """Generate a Chromaprint fingerprint for an audio file.
 
@@ -79,7 +86,7 @@ async def submit_fingerprint(callback_url: str, release_id: str, track_id: str,
     }
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(url, json=payload)
+            response = await client.post(url, json=payload, headers=internal_service_headers())
             if response.status_code == 200 or response.status_code == 201:
                 return response.json()
             else:
@@ -196,7 +203,8 @@ async def run_demucs_separation(input_path: Path, temp_dir: str, release_id: str
                                 async with httpx.AsyncClient() as client:
                                     await client.post(
                                         f"{callback_url}/ingestion/progress/{release_id}/{track_id}",
-                                        json={"progress": percentage}
+                                        json={"progress": percentage},
+                                        headers=internal_service_headers(),
                                     )
                             except Exception as cb_err:
                                 logger.debug(f"Failed to send progress callback: {cb_err}")
