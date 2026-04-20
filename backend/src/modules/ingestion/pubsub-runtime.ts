@@ -26,15 +26,6 @@ export async function resolvePubSubRuntimeConfig(): Promise<PubSubRuntimeConfig>
     await auth.getClient();
 
     const projectId = configuredProjectId() || await auth.getProjectId().catch(() => undefined);
-    if (!projectId) {
-      return {
-        enabled: false,
-        reason:
-          "Pub/Sub credentials are available, but no GCP project ID could be resolved. " +
-          "Set GCP_PROJECT_ID (or GOOGLE_CLOUD_PROJECT) for backend Pub/Sub usage.",
-      };
-    }
-
     return { enabled: true, projectId };
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);

@@ -46,6 +46,16 @@ describe("resolvePubSubRuntimeConfig", () => {
     });
   });
 
+  it("keeps Pub/Sub enabled when ADC is available but project lookup is deferred", async () => {
+    mockGetClient.mockResolvedValue({});
+    mockGetProjectId.mockResolvedValue(undefined);
+
+    await expect(resolvePubSubRuntimeConfig()).resolves.toEqual({
+      enabled: true,
+      projectId: undefined,
+    });
+  });
+
   it("prefers an explicit GCP project id when provided", async () => {
     process.env.GCP_PROJECT_ID = "resonate-explicit";
     mockGetClient.mockResolvedValue({});

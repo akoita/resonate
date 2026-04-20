@@ -61,14 +61,16 @@ export class StemPubSubPublisher implements OnModuleInit {
 
   async onModuleInit() {
     const runtime = await resolvePubSubRuntimeConfig();
-    if (!runtime.enabled || !runtime.projectId) {
+    if (!runtime.enabled) {
       this.logger.warn(`Pub/Sub publisher disabled. ${runtime.reason || "No runtime config available."}`);
       return;
     }
 
     const projectId = runtime.projectId;
-    this.pubsub = new PubSub({ projectId });
-    this.logger.log(`PubSub initialized with project: ${projectId}, emulator: ${process.env.PUBSUB_EMULATOR_HOST || 'NOT SET'}`);
+    this.pubsub = projectId ? new PubSub({ projectId }) : new PubSub();
+    this.logger.log(
+      `PubSub initialized with project: ${projectId || "ADC default"}, emulator: ${process.env.PUBSUB_EMULATOR_HOST || 'NOT SET'}`,
+    );
     this.separateTopic = this.pubsub.topic(TOPIC_SEPARATE);
     this.resultsTopic = this.pubsub.topic(TOPIC_RESULTS);
 
