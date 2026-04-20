@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { formatEth, formatOptionalDate } from "../../lib/stakeConstants";
+import { useBreakpoint } from "../../hooks/useBreakpoint";
 
 interface StakeAnalytics {
   totalStaked: string;
@@ -27,6 +28,7 @@ export default function StakingOverview() {
   const { address } = useAuth();
   const [data, setData] = useState<StakeAnalytics | null>(null);
   const [loading, setLoading] = useState(!!address);
+  const { isPhone, isTablet } = useBreakpoint();
 
   useEffect(() => {
     if (!address) return;
@@ -99,7 +101,13 @@ export default function StakingOverview() {
       {/* KPI cards */}
       {data && data.counts.total > 0 && (
         <>
-          <div style={kpiGridStyle}>
+          <div style={{
+            ...kpiGridStyle,
+            // 4 across on desktop, 2 across on tablet, 2 across on phone
+            // (2-up keeps KPI pairs visually balanced rather than a tall
+            // 4-stack on phone).
+            gridTemplateColumns: isPhone || isTablet ? "repeat(2, minmax(0, 1fr))" : "repeat(4, 1fr)",
+          }}>
             {kpis.map(kpi => (
               <div key={kpi.label} style={kpiCardStyle}>
                 <div style={{ fontSize: "20px", marginBottom: "8px" }}>{kpi.icon}</div>

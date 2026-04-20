@@ -10062,3 +10062,35 @@ tr[draggable="true"]:hover {
     padding: 12px 14px;
   }
 }
+
+/* ------------------------------------------------------------------
+ * /artist/analytics responsive overrides (#570)
+ * - KPI row has a 4-up auto-fit grid that already collapses to 1 col
+ *   at phone width. Bump it to 2 cols (tighter minmax) so two small
+ *   KPIs fit side-by-side on phone instead of stacking tall.
+ * - Placeholder chart card: shrink fixed height + scale the CSS grid
+ *   background so the 40px ruler doesn't look oversized on phone.
+ * - Table padding tightens.
+ * ------------------------------------------------------------------ */
+@media (max-width: 767px) {
+  .kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+
+  .kpi {
+    gap: var(--space-2);
+  }
+
+  .analytics-chart,
+  .analytics-chart-grid {
+    height: 160px;
+    background-size: 24px 24px, 24px 24px;
+  }
+
+  .analytics-table th,
+  .analytics-table td {
+    padding: var(--space-2);
+    font-size: 12px;
+  }
+}
