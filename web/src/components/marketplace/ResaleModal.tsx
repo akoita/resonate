@@ -175,7 +175,7 @@ function ResaleModalInner({ modal, onClose }: ResaleModalProps) {
                 </div>
 
                 {/* Action Buttons */}
-                <div style={{ display: "flex", gap: 16 }}>
+                <div className="resale-modal-actions" style={{ display: "flex", gap: 16 }}>
                     <Button
                         variant="ghost"
                         onClick={onClose}
