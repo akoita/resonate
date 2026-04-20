@@ -164,7 +164,11 @@ export class StemsProcessor extends WorkerHost {
             for (const trackId of publishedTrackIds) {
                 await prisma.track.updateMany({
                     where: { id: trackId },
-                    data: { processingStatus: "separating" },
+                    data: {
+                        processingStatus: "separating",
+                        processingStartedAt: new Date(),
+                        lastProgressAt: new Date(),
+                    },
                 });
             }
             if (releaseFound) {

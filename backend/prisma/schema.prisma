@@ -95,6 +95,8 @@ model Track {
   artist             String?
   processingStatus   String            @default("pending") // pending, processing, complete, failed
   processingError    String?           @db.Text
+  processingStartedAt DateTime?
+  lastProgressAt     DateTime?
   contentStatus      String            @default("clean") // clean, quarantined, dmca_removed
   generationMetadata Json? // { provider, prompt, negativePrompt, seed, generatedAt, synthIdPresent, durationSeconds, sampleRate, cost }
   licenses           License[]

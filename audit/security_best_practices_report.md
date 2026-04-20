@@ -2,28 +2,34 @@
 
 ## Executive Summary
 
-Reviewed the backend changes for issue `#552`, focusing on the ingestion Pub/Sub handoff path and its new fail-fast behavior. No new Critical or High security findings were introduced by the modified files.
+Reviewed the backend watchdog changes for issue `#553`, focusing on the new stale-job timeout path, the added track timestamp fields, and the event-driven failure propagation they trigger. No new Critical or High security findings were introduced by the modified files.
 
 ## Scope Reviewed
 
+- `backend/prisma/schema.prisma`
+- `backend/src/modules/catalog/catalog.service.ts`
+- `backend/src/modules/ingestion/ingestion.module.ts`
 - `backend/src/modules/ingestion/ingestion.service.ts`
-- `backend/src/modules/ingestion/stem-pubsub.publisher.ts`
+- `backend/src/modules/ingestion/stem-result.subscriber.ts`
+- `backend/src/modules/ingestion/stem-watchdog.service.ts`
 - `backend/src/modules/ingestion/stems.processor.ts`
+- `backend/src/tests/stem-watchdog.integration.spec.ts`
 - `backend/src/tests/stems-processor.integration.spec.ts`
+- `docs/smart-contracts/deployment.md`
 
 ## Findings
 
 ### Informational
 
-#### SBPR-001: Fail-fast path preserves existing trusted event flow
+#### SBPR-001: Watchdog reuses the existing failure event path
 
-**Files:** `backend/src/modules/ingestion/ingestion.service.ts`, `backend/src/modules/ingestion/stems.processor.ts`, `backend/src/modules/ingestion/stem-pubsub.publisher.ts`
+**Files:** `backend/src/modules/ingestion/stem-watchdog.service.ts`, `backend/src/modules/catalog/catalog.service.ts`
 
-**Observation:** The new behavior reuses the existing `stems.failed` event path rather than introducing a parallel failure channel. This keeps release/track failure propagation centralized and reduces the chance of inconsistent user-visible state.
+**Observation:** The timeout sweep emits the existing `stems.failed` event instead of writing a parallel failure path. That keeps failure persistence and UI propagation centralized, which lowers the risk of stale jobs ending in inconsistent release or track state.
 
-**Recommendation:** Keep future stale-job timeout/watchdog work on the same event path so all failure modes remain consistent for DB persistence and WebSocket delivery.
+**Recommendation:** Keep future worker-timeout and retry logic on the same event path so backend persistence and WebSocket delivery remain aligned.
 
 ## Notes
 
-- Repo-wide grep checks surfaced some pre-existing patterns outside the issue scope, including development JWT fallbacks and broad controller/input-validation areas. Those were not introduced by this branch and are not counted as findings for issue `#552`.
-- No hardcoded production secrets, credentials, or environment-specific service URLs were introduced in the reviewed diff.
+- Targeted grep checks for hardcoded secrets, raw SQL, unsafe deserialization, and controller/input-validation patterns only surfaced pre-existing items outside this issue's diff.
+- The new watchdog configuration uses environment variables with local defaults and does not introduce hardcoded production URLs, credentials, or secret material.

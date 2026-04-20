@@ -149,6 +149,8 @@ Core app-side variables:
 | `WORLD_ID_ACTION` | Backend | World ID action string used by the verification payload |
 | `WORLD_ID_API_URL` | Backend | Optional override for the World ID verification base URL |
 | `WORLD_ID_VERIFICATION_LEVEL` | Backend | Optional verification level such as `orb` |
+| `STEM_WATCHDOG_TIMEOUT_MS` | Backend | Optional timeout before active stem-processing tracks are failed as stale; defaults to `900000` locally |
+| `STEM_WATCHDOG_INTERVAL_MS` | Backend | Optional watchdog sweep interval for stale stem-processing tracks; defaults to `60000` locally |
 
 If these variables are deployed through infrastructure, define them in `resonate-iac` alongside the backend service environment configuration.
 

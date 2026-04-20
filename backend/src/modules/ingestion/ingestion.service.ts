@@ -13,6 +13,7 @@ import { CatalogService } from "../catalog/catalog.service";
 import { prisma } from "../../db/prisma";
 
 type UploadStatus = "queued" | "processing" | "complete" | "failed";
+const ACTIVE_PROCESSING_STAGES = new Set(["separating", "encrypting", "storing"]);
 
 interface UploadRecord {
   trackId: string;
@@ -310,7 +311,14 @@ export class IngestionService {
     return { releaseId, status: "processing" };
   }
 
-  handleProgress(releaseId: string, trackId: string, progress: number) {
+  async handleProgress(releaseId: string, trackId: string, progress: number) {
+    await prisma.track.updateMany({
+      where: { id: trackId },
+      data: { lastProgressAt: new Date() },
+    }).catch((err) => {
+      console.warn(`[Ingestion] Failed to update progress heartbeat for ${trackId}: ${err}`);
+    });
+
     this.eventBus.publish({
       eventName: "stems.progress" as any,
       eventVersion: 1,
@@ -677,6 +685,7 @@ export class IngestionService {
     // Retry logic to handle race condition where Track record may not exist yet
     const MAX_RETRIES = 5;
     const RETRY_DELAY = 500;
+    const now = new Date();
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
@@ -685,6 +694,8 @@ export class IngestionService {
           data: {
             processingStatus: stage,
             processingError: stage === "failed" ? (error || "Processing failed") : null,
+            processingStartedAt: stage === "separating" ? now : undefined,
+            lastProgressAt: ACTIVE_PROCESSING_STAGES.has(stage) ? now : undefined,
           }
         });
 
