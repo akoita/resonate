@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useBreakpoint } from "../../hooks/useBreakpoint";
 
 interface Curator {
   walletAddress: string;
@@ -54,6 +55,7 @@ export default function CuratorLeaderboard() {
   const [curators, setCurators] = useState<Curator[]>([]);
   const [loading, setLoading] = useState(true);
   const [copiedAddr, setCopiedAddr] = useState<string | null>(null);
+  const { isPhone } = useBreakpoint();
 
   const copyAddress = (addr: string) => {
     navigator.clipboard.writeText(addr).then(() => {
@@ -148,9 +150,17 @@ export default function CuratorLeaderboard() {
         <>
           {/* Podium - Top 3 */}
           {topThree.length > 0 && (
-            <div style={podiumContainerStyle}>
-              {/* Visual order: 2nd, 1st, 3rd */}
-              {[1, 0, 2].map((rank) => {
+            <div
+              style={{
+                ...podiumContainerStyle,
+                flexDirection: isPhone ? "column" : "row",
+                alignItems: isPhone ? "stretch" : "flex-end",
+                gap: isPhone ? "10px" : "14px",
+              }}
+            >
+              {/* Visual order on desktop: 2nd, 1st, 3rd.
+               * On phone, stack by rank (1st on top). */}
+              {(isPhone ? [0, 1, 2] : [1, 0, 2]).map((rank) => {
                 const curator = topThree[rank];
                 if (!curator) return null;
                 const medal = MEDAL_CONFIG[rank];
@@ -164,8 +174,9 @@ export default function CuratorLeaderboard() {
                       background: medal.bgColor,
                       borderColor: medal.borderColor,
                       paddingTop: isFirst ? "32px" : rank === 1 ? "24px" : "20px",
-                      minHeight: isFirst ? "180px" : "160px",
-                      alignSelf: "flex-end",
+                      minHeight: isPhone ? "auto" : isFirst ? "180px" : "160px",
+                      alignSelf: isPhone ? "stretch" : "flex-end",
+                      maxWidth: isPhone ? "none" : "220px",
                     }}
                   >
                     <div style={{ fontSize: isFirst ? "36px" : "28px", lineHeight: 1 }}>{medal.emoji}</div>
@@ -209,10 +220,18 @@ export default function CuratorLeaderboard() {
                 const barColor = c.score > 0 ? "rgba(16,185,129,0.15)" : c.score < 0 ? "rgba(239,68,68,0.15)" : "rgba(255,255,255,0.04)";
 
                 return (
-                  <div key={c.walletAddress} style={rowStyle}>
+                  <div
+                    key={c.walletAddress}
+                    style={{
+                      ...rowStyle,
+                      flexWrap: isPhone ? "wrap" : "nowrap",
+                      gap: isPhone ? "8px" : "12px",
+                      padding: isPhone ? "10px 12px" : "10px 16px",
+                    }}
+                  >
                     <div style={rankStyle}>#{rank}</div>
 
-                    <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "6px" }}>
+                    <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
                       <span style={{ fontFamily: "monospace", fontSize: "13px", opacity: 0.7 }}>
                         {c.walletAddress.slice(0, 6)}...{c.walletAddress.slice(-4)}
                       </span>
@@ -222,7 +241,7 @@ export default function CuratorLeaderboard() {
                     </div>
 
                     {/* Score with bar */}
-                    <div style={{ position: "relative", minWidth: "80px" }}>
+                    <div style={{ position: "relative", minWidth: isPhone ? "60px" : "80px" }}>
                       <div style={{
                         position: "absolute",
                         left: 0,
@@ -244,7 +263,7 @@ export default function CuratorLeaderboard() {
                       </div>
                     </div>
 
-                    <div style={{ display: "flex", gap: "12px", alignItems: "center", fontSize: "12px", minWidth: "140px", justifyContent: "flex-end" }}>
+                    <div style={{ display: "flex", gap: isPhone ? "10px" : "12px", alignItems: "center", fontSize: "12px", minWidth: isPhone ? "100%" : "140px", justifyContent: isPhone ? "flex-start" : "flex-end", paddingLeft: isPhone ? "40px" : 0 }}>
                       <span style={{ color: "rgba(16,185,129,0.7)" }}>{c.successfulFlags} upheld</span>
                       <span style={{ color: "rgba(239,68,68,0.7)" }}>{c.rejectedFlags} rejected</span>
                     </div>

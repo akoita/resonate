@@ -966,6 +966,9 @@ const actionsRowStyle: React.CSSProperties = {
   marginTop: "16px",
   paddingTop: "14px",
   borderTop: "1px solid rgba(255,255,255,0.04)",
+  // Allow wrap so the 4-button row (Mark Under Review + 3 decision
+  // buttons) fits on phone without pushing off-screen (#568).
+  flexWrap: "wrap",
 };
 
 const routeChipStyle: React.CSSProperties = {
