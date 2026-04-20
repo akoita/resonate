@@ -454,6 +454,13 @@ The patch_demucs.py script fixes this. If you see this error, rebuild the contai
 3. Re-run the worker with `--gpus all`
 4. Confirm you built `workers/demucs/Dockerfile.gpu`, not the CPU Dockerfile
 
+### `CUFFT_INTERNAL_ERROR` or other CUDA runtime failures
+
+The worker now retries the same job once on CPU when the first Demucs attempt
+fails with a GPU runtime error such as `CUFFT_INTERNAL_ERROR`. That keeps uploads
+working even when the Cloud Run GPU runtime is unstable, while still preferring
+GPU acceleration when it is healthy.
+
 ### Reset local worker state
 
 When in doubt, this sequence gives you a clean local worker:

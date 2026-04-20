@@ -33,6 +33,15 @@ OUTPUT_BASE_DIR.mkdir(parents=True, exist_ok=True)
 PUBSUB_PROJECT = os.getenv("GCP_PROJECT_ID", "")
 SUBSCRIPTION_NAME = os.getenv("PUBSUB_SUBSCRIPTION", "stem-separate-worker")
 RESULTS_TOPIC = os.getenv("PUBSUB_RESULTS_TOPIC", "stem-results")
+DEMUCS_MODEL = "htdemucs_6s"
+GPU_RUNTIME_ERROR_MARKERS = (
+    "cufft",
+    "cuda error",
+    "cuda runtime error",
+    "cudnn",
+    "cublas",
+    "hipfft",
+)
 
 # Lazy-loaded GCS client (only imported when needed)
 _gcs_client = None
@@ -43,6 +52,114 @@ def internal_service_headers() -> dict:
     if not internal_key:
         return {}
     return {"x-internal-service-key": internal_key}
+
+
+def gpu_available() -> bool:
+    """Return True when the runtime can use CUDA."""
+    try:
+        import torch
+    except Exception as exc:
+        logger.warning(f"PyTorch import failed, falling back to CPU Demucs: {exc}")
+        return False
+
+    try:
+        return bool(torch.cuda.is_available())
+    except Exception as exc:
+        logger.warning(f"CUDA availability check failed, falling back to CPU Demucs: {exc}")
+        return False
+
+
+def demucs_devices_to_try() -> list[str]:
+    """Prefer GPU when it is healthy, but always keep CPU as the safe fallback."""
+    if gpu_available():
+        return ["cuda", "cpu"]
+    return ["cpu"]
+
+
+def should_retry_demucs_on_cpu(device: str, stderr: str) -> bool:
+    """Retry once on CPU when the GPU runtime itself is the failing component."""
+    if device != "cuda":
+        return False
+
+    normalized = stderr.lower()
+    return any(marker in normalized for marker in GPU_RUNTIME_ERROR_MARKERS)
+
+
+async def run_demucs_attempt(
+    input_path: Path,
+    temp_dir: str,
+    device: str,
+    release_id: str,
+    track_id: str,
+    callback_url: Optional[str] = None,
+) -> Tuple[int, str, Path]:
+    """Run one Demucs attempt on a specific device."""
+    attempt_output_dir = Path(temp_dir) / f"demucs-{device}"
+    attempt_output_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Running Demucs on {input_path} with device={device}")
+    process = await asyncio.create_subprocess_exec(
+        "demucs",
+        "-n", DEMUCS_MODEL,
+        "-d", device,
+        "--out", str(attempt_output_dir),
+        str(input_path),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+
+    # Results storage
+    stdout_data = []
+    stderr_data = []
+
+    async def read_stdout(stream):
+        while True:
+            line = await stream.readline()
+            if not line: break
+            stdout_data.append(line.decode())
+
+    async def read_stderr(stream):
+        buffer = ""
+        last_progress = -1
+        while True:
+            chunk = await stream.read(256)
+            if not chunk: break
+            decoded = chunk.decode(errors='ignore')
+            stderr_data.append(decoded)
+            buffer += decoded
+
+            import re
+            matches = re.findall(r'(\d+)%\|', buffer)
+            if matches:
+                try:
+                    percentage = int(matches[-1])
+                    if percentage != last_progress:
+                        last_progress = percentage
+                        logger.info(f"Progress: {percentage}%")
+                        if callback_url:
+                            try:
+                                async with httpx.AsyncClient() as client:
+                                    await client.post(
+                                        f"{callback_url}/ingestion/progress/{release_id}/{track_id}",
+                                        json={"progress": percentage},
+                                        headers=internal_service_headers(),
+                                    )
+                            except Exception as cb_err:
+                                logger.debug(f"Failed to send progress callback: {cb_err}")
+                except Exception as e:
+                    logger.debug(f"Failed to parse progress: {e}")
+
+            if len(buffer) > 1000:
+                buffer = buffer[-500:]
+
+    await asyncio.gather(
+        read_stdout(process.stdout),
+        read_stderr(process.stderr),
+        process.wait()
+    )
+
+    stderr_str = "".join(stderr_data)
+
+    return process.returncode, stderr_str, attempt_output_dir
 
 
 def generate_fingerprint(audio_path: Path) -> Tuple[float, str, str]:
@@ -95,6 +212,7 @@ async def submit_fingerprint(callback_url: str, release_id: str, track_id: str,
     except Exception as e:
         logger.warning(f"Failed to submit fingerprint: {e}")
         return {"quarantined": False}  # Don't block separation on fingerprint failures
+
 
 def get_gcs_client():
     global _gcs_client
@@ -159,79 +277,43 @@ async def run_demucs_separation(input_path: Path, temp_dir: str, release_id: str
         final_output_dir = Path(temp_dir) / "final"
         final_output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Run demucs
-    logger.info(f"Running Demucs on {input_path}")
-    process = await asyncio.create_subprocess_exec(
-        "demucs",
-        "-n", "htdemucs_6s",
-        "--out", str(temp_dir),
-        str(input_path),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
+    selected_output_dir: Optional[Path] = None
+    selected_device: Optional[str] = None
+    attempt_errors: list[str] = []
 
-    # Results storage
-    stdout_data = []
-    stderr_data = []
+    for device in demucs_devices_to_try():
+        returncode, stderr_str, attempt_output_dir = await run_demucs_attempt(
+            input_path=input_path,
+            temp_dir=temp_dir,
+            device=device,
+            release_id=release_id,
+            track_id=track_id,
+            callback_url=callback_url,
+        )
 
-    async def read_stdout(stream):
-        while True:
-            line = await stream.readline()
-            if not line: break
-            stdout_data.append(line.decode())
+        if returncode == 0:
+            selected_output_dir = attempt_output_dir
+            selected_device = device
+            break
 
-    async def read_stderr(stream):
-        buffer = ""
-        last_progress = -1
-        while True:
-            chunk = await stream.read(256)
-            if not chunk: break
-            decoded = chunk.decode(errors='ignore')
-            stderr_data.append(decoded)
-            buffer += decoded
+        logger.error(f"Demucs failed with exit code {returncode} on device={device}")
+        attempt_errors.append(f"{device}: {stderr_str}")
 
-            import re
-            matches = re.findall(r'(\d+)%\|', buffer)
-            if matches:
-                try:
-                    percentage = int(matches[-1])
-                    if percentage != last_progress:
-                        last_progress = percentage
-                        logger.info(f"Progress: {percentage}%")
-                        if callback_url:
-                            try:
-                                async with httpx.AsyncClient() as client:
-                                    await client.post(
-                                        f"{callback_url}/ingestion/progress/{release_id}/{track_id}",
-                                        json={"progress": percentage},
-                                        headers=internal_service_headers(),
-                                    )
-                            except Exception as cb_err:
-                                logger.debug(f"Failed to send progress callback: {cb_err}")
-                except Exception as e:
-                    logger.debug(f"Failed to parse progress: {e}")
+        if should_retry_demucs_on_cpu(device, stderr_str):
+            logger.warning("Demucs GPU attempt failed with a CUDA runtime error, retrying once on CPU")
+            continue
 
-            if len(buffer) > 1000:
-                buffer = buffer[-500:]
+        raise RuntimeError(f"Demucs processing failed on {device}: {stderr_str}")
 
-    await asyncio.gather(
-        read_stdout(process.stdout),
-        read_stderr(process.stderr),
-        process.wait()
-    )
+    if selected_output_dir is None or selected_device is None:
+        joined_errors = "\n\n".join(attempt_errors)
+        raise RuntimeError(f"Demucs processing failed after retry attempts: {joined_errors}")
 
-    stderr_str = "".join(stderr_data)
-
-    if process.returncode != 0:
-        logger.error(f"Demucs failed with exit code {process.returncode}")
-        raise RuntimeError(f"Demucs processing failed: {stderr_str}")
-
-    logger.info("Demucs finished successfully")
+    logger.info(f"Demucs finished successfully on device={selected_device}")
 
     # Process output stems
-    model = "htdemucs_6s"
     track_stem = input_path.stem
-    demucs_out_path = Path(temp_dir) / model / track_stem
+    demucs_out_path = selected_output_dir / DEMUCS_MODEL / track_stem
 
     if not demucs_out_path.exists():
         raise RuntimeError(f"Demucs output directory {demucs_out_path} not found")
