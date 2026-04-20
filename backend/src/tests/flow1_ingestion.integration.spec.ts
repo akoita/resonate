@@ -160,4 +160,55 @@ describe('Choreography Flow 1: Release Ingestion Pipeline', () => {
 
     await prisma.release.delete({ where: { id: failReleaseId } }).catch(() => {});
   }, 10000);
+
+  it('does not resurrect a failed release when late stems.processed arrives', async () => {
+    const lateReleaseId = `${P}late_release`;
+    const lateTrackId = `${P}late_track`;
+    const lateStemId = `${P}late_stem`;
+    const releaseReadyEvents = eventSpy(eventBus, 'catalog.release_ready');
+
+    await prisma.release.create({
+      data: { id: lateReleaseId, artistId, title: 'Late Result Release', status: 'processing' },
+    });
+    await prisma.track.create({
+      data: { id: lateTrackId, releaseId: lateReleaseId, title: 'Late Result Track', position: 1, processingStatus: 'separating' },
+    });
+
+    eventBus.publish({
+      eventName: 'stems.failed',
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      releaseId: lateReleaseId,
+      artistId,
+      error: 'Pub/Sub handoff failed after partial publish',
+    } as StemsFailedEvent);
+    await wait(1000);
+
+    eventBus.publish({
+      eventName: 'stems.processed',
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      releaseId: lateReleaseId,
+      artistId,
+      modelVersion: 'htdemucs_6s',
+      tracks: [{
+        id: lateTrackId,
+        title: 'Late Result Track',
+        position: 1,
+        stems: [
+          { id: lateStemId, uri: '/catalog/stems/late-vocals.mp3', type: 'vocals', mimeType: 'audio/mpeg' },
+        ],
+      }],
+    } as StemsProcessedEvent);
+    await wait(2000);
+
+    const releaseAfterLateProcessed = await prisma.release.findUnique({ where: { id: lateReleaseId } });
+    expect(releaseAfterLateProcessed!.status).toBe('failed');
+    expect(releaseAfterLateProcessed!.processingError).toBe('Pub/Sub handoff failed after partial publish');
+    expect(releaseReadyEvents).toHaveLength(0);
+
+    await prisma.stem.deleteMany({ where: { trackId: lateTrackId } }).catch(() => {});
+    await prisma.track.deleteMany({ where: { id: lateTrackId } }).catch(() => {});
+    await prisma.release.delete({ where: { id: lateReleaseId } }).catch(() => {});
+  }, 15000);
 });

@@ -37,76 +37,93 @@ export class StemsProcessor extends WorkerHost {
 
         const { releaseId, artistId, tracks } = job.data;
         const backendBaseUrl = process.env.BACKEND_URL || 'http://host.docker.internal:3000';
+        const publishedTrackIds: string[] = [];
 
-        for (const track of tracks) {
-            const originalStem = track.stems?.[0];
-            if (!originalStem) {
-                this.logger.warn(`[StemsProcessor] Track ${track.id} has no stems, skipping`);
-                continue;
-            }
-
-            // If the original stem has inline data but no URI, we need to upload it first
-            // so the worker can download it.
-            // In local dev, the URI may be a localhost URL — that's fine, the worker
-            // handles it via HTTP download with host.docker.internal mapping.
-            let originalStemUri = originalStem.uri;
-            if (!originalStemUri) {
-                if (originalStem.data) {
-                    const buffer = originalStem.data instanceof Buffer
-                        ? originalStem.data
-                        : Buffer.from(originalStem.data);
-                    const storage = await this.ingestionService.uploadToStorage(
-                        buffer,
-                        `original_${track.id}.mp3`,
-                        originalStem.mimeType || "audio/mpeg",
-                    );
-                    originalStemUri = storage.uri;
-                    this.logger.log(`[StemsProcessor] Uploaded original to storage: ${originalStemUri}`);
-                } else {
-                    this.logger.warn(`[StemsProcessor] Track ${track.id} has no data or URI, skipping`);
+        try {
+            for (const track of tracks) {
+                const originalStem = track.stems?.[0];
+                if (!originalStem) {
+                    this.logger.warn(`[StemsProcessor] Track ${track.id} has no stems, skipping`);
                     continue;
                 }
-            }
 
-            const isLocalCatalogStem =
-                originalStem.storageProvider === "local" &&
-                typeof originalStemUri === "string" &&
-                originalStemUri.startsWith("/catalog/stems/");
-            if (isLocalCatalogStem) {
-                const parts = originalStemUri.split("/");
-                const filename = parts[parts.length - 2];
-                if (filename) {
-                    originalStemUri = filename;
-                    this.logger.log(
-                        `[StemsProcessor] Using shared-volume local stem for track ${track.id}: ${originalStemUri}`,
-                    );
+                // If the original stem has inline data but no URI, we need to upload it first
+                // so the worker can download it.
+                // In local dev, the URI may be a localhost URL — that's fine, the worker
+                // handles it via HTTP download with host.docker.internal mapping.
+                let originalStemUri = originalStem.uri;
+                if (!originalStemUri) {
+                    if (originalStem.data) {
+                        const buffer = originalStem.data instanceof Buffer
+                            ? originalStem.data
+                            : Buffer.from(originalStem.data);
+                        const storage = await this.ingestionService.uploadToStorage(
+                            buffer,
+                            `original_${track.id}.mp3`,
+                            originalStem.mimeType || "audio/mpeg",
+                        );
+                        originalStemUri = storage.uri;
+                        this.logger.log(`[StemsProcessor] Uploaded original to storage: ${originalStemUri}`);
+                    } else {
+                        this.logger.warn(`[StemsProcessor] Track ${track.id} has no data or URI, skipping`);
+                        continue;
+                    }
                 }
+
+                const isLocalCatalogStem =
+                    originalStem.storageProvider === "local" &&
+                    typeof originalStemUri === "string" &&
+                    originalStemUri.startsWith("/catalog/stems/");
+                if (isLocalCatalogStem) {
+                    const parts = originalStemUri.split("/");
+                    const filename = parts[parts.length - 2];
+                    if (filename) {
+                        originalStemUri = filename;
+                        this.logger.log(
+                            `[StemsProcessor] Using shared-volume local stem for track ${track.id}: ${originalStemUri}`,
+                        );
+                    }
+                }
+
+                const message: StemSeparateMessage = {
+                    jobId: `sep_${releaseId}_${track.id}`,
+                    releaseId,
+                    artistId,
+                    trackId: track.id,
+                    trackTitle: track.title,
+                    trackPosition: track.position,
+                    // Local storage uses the shared /outputs volume; remote URIs stay fetchable over HTTP.
+                    originalStemUri: originalStemUri.startsWith('http') || !originalStemUri.startsWith('/')
+                        ? originalStemUri
+                        : `${backendBaseUrl}${originalStemUri}`,
+                    mimeType: originalStem.mimeType || "audio/mpeg",
+                    callbackUrl: backendBaseUrl,
+                    originalStemMeta: {
+                        id: originalStem.id,
+                        durationSeconds: originalStem.durationSeconds,
+                        storageProvider: originalStem.storageProvider,
+                    },
+                };
+
+                await this.stemPublisher.publishSeparationJob(message);
+                publishedTrackIds.push(track.id);
             }
-
-            const message: StemSeparateMessage = {
-                jobId: `sep_${releaseId}_${track.id}`,
-                releaseId,
-                artistId,
-                trackId: track.id,
-                trackTitle: track.title,
-                trackPosition: track.position,
-                // Local storage uses the shared /outputs volume; remote URIs stay fetchable over HTTP.
-                originalStemUri: originalStemUri.startsWith('http') || !originalStemUri.startsWith('/')
-                    ? originalStemUri
-                    : `${backendBaseUrl}${originalStemUri}`,
-                mimeType: originalStem.mimeType || "audio/mpeg",
-                callbackUrl: backendBaseUrl,
-                originalStemMeta: {
-                    id: originalStem.id,
-                    durationSeconds: originalStem.durationSeconds,
-                    storageProvider: originalStem.storageProvider,
-                },
-            };
-
-            await this.stemPublisher.publishSeparationJob(message);
+        } catch (error: any) {
+            const cause = error?.message || String(error);
+            const failureMessage = `Stem separation handoff failed for release ${releaseId}: ${cause}`;
+            this.logger.error(failureMessage);
+            this.ingestionService.markReleaseFailed(releaseId, artistId, failureMessage);
+            throw new Error(failureMessage);
         }
 
-        this.logger.log(`[StemsProcessor] Published ${tracks.length} track(s) for release ${releaseId}`);
+        if (publishedTrackIds.length === 0) {
+            const failureMessage = `Stem separation handoff failed for release ${releaseId}: no publishable tracks were handed to the worker path`;
+            this.logger.error(failureMessage);
+            this.ingestionService.markReleaseFailed(releaseId, artistId, failureMessage);
+            throw new Error(failureMessage);
+        }
+
+        this.logger.log(`[StemsProcessor] Published ${publishedTrackIds.length} track(s) for release ${releaseId}`);
 
         // Update DB status so the API returns the correct state immediately.
         // WebSocket events are ephemeral and can be missed if the client connects late.
@@ -144,14 +161,14 @@ export class StemsProcessor extends WorkerHost {
                 );
             }
 
-            for (const track of tracks) {
+            for (const trackId of publishedTrackIds) {
                 await prisma.track.updateMany({
-                    where: { id: track.id },
+                    where: { id: trackId },
                     data: { processingStatus: "separating" },
                 });
             }
             if (releaseFound) {
-                this.logger.log(`[StemsProcessor] Updated release ${releaseId} to 'processing' and tracks to 'separating'`);
+                this.logger.log(`[StemsProcessor] Updated release ${releaseId} to 'processing' and published tracks to 'separating'`);
             }
         } catch (err: any) {
             this.logger.warn(`[StemsProcessor] Failed to update DB status: ${err?.message}`);

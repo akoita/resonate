@@ -246,6 +246,18 @@ export class CatalogService implements OnModuleInit {
           }
         }
 
+        const latestRelease = await prisma.release.findUnique({
+          where: { id: event.releaseId },
+          select: { status: true },
+        });
+
+        if (latestRelease?.status === "failed") {
+          console.warn(
+            `[Catalog] Release ${event.releaseId} is already failed; skipping ready transition for late stems.processed`,
+          );
+          return;
+        }
+
         await prisma.release.update({
           where: { id: event.releaseId },
           data: { status: "ready", processingError: null },

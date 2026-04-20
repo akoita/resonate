@@ -14,6 +14,7 @@ const TEST_PREFIX = `sp_${Date.now()}_`;
 
 const mockPublishSeparationJob = jest.fn().mockResolvedValue('msg-456');
 const mockUploadToStorage = jest.fn().mockResolvedValue({ uri: '/catalog/stems/uploaded.mp3' });
+const mockMarkReleaseFailed = jest.fn();
 
 describe('StemsProcessor (integration)', () => {
   let processor: StemsProcessor;
@@ -23,6 +24,7 @@ describe('StemsProcessor (integration)', () => {
   const mockIngestionService = {
     processStemsJob: jest.fn().mockResolvedValue(undefined),
     uploadToStorage: mockUploadToStorage,
+    markReleaseFailed: mockMarkReleaseFailed,
   } as any;
 
   const mockStemPublisher = {
@@ -130,12 +132,35 @@ describe('StemsProcessor (integration)', () => {
   });
 
   describe('edge cases', () => {
-    it('skips tracks with no stems', async () => {
+    it('fails fast when no tracks can be handed to the worker path', async () => {
       const job = makeJob({
         tracks: [{ id: 'trk_empty', title: 'Empty', position: 1, stems: [] }],
       });
-      await processor.process(job as any);
+      await expect(processor.process(job as any)).rejects.toThrow(
+        `Stem separation handoff failed for release ${releaseId}: no publishable tracks were handed to the worker path`,
+      );
       expect(mockPublishSeparationJob).not.toHaveBeenCalled();
+      expect(mockMarkReleaseFailed).toHaveBeenCalledWith(
+        releaseId,
+        `${TEST_PREFIX}artist`,
+        expect.stringContaining('no publishable tracks were handed to the worker path'),
+      );
+    });
+
+    it('fails fast when Pub/Sub publishing is unavailable', async () => {
+      mockPublishSeparationJob.mockRejectedValueOnce(
+        new Error('Stem separation worker path unavailable: Pub/Sub publisher is not initialized.'),
+      );
+
+      await expect(processor.process(makeJob() as any)).rejects.toThrow(
+        `Stem separation handoff failed for release ${releaseId}: Stem separation worker path unavailable: Pub/Sub publisher is not initialized.`,
+      );
+
+      expect(mockMarkReleaseFailed).toHaveBeenCalledWith(
+        releaseId,
+        `${TEST_PREFIX}artist`,
+        expect.stringContaining('Pub/Sub publisher is not initialized'),
+      );
     });
   });
 

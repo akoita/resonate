@@ -2,30 +2,28 @@
 
 ## Executive Summary
 
-Reviewed the backend changes for the x402 payment surface, storefront presenter reuse, and OpenAPI metadata updates. No Critical or High severity findings were identified in the modified files.
+Reviewed the backend changes for issue `#552`, focusing on the ingestion Pub/Sub handoff path and its new fail-fast behavior. No new Critical or High security findings were introduced by the modified files.
 
-## Critical Findings
+## Scope Reviewed
 
-None.
+- `backend/src/modules/ingestion/ingestion.service.ts`
+- `backend/src/modules/ingestion/stem-pubsub.publisher.ts`
+- `backend/src/modules/ingestion/stems.processor.ts`
+- `backend/src/tests/stems-processor.integration.spec.ts`
 
-## High Findings
+## Findings
 
-None.
+### Informational
 
-## Medium Findings
+#### SBPR-001: Fail-fast path preserves existing trusted event flow
 
-None.
+**Files:** `backend/src/modules/ingestion/ingestion.service.ts`, `backend/src/modules/ingestion/stems.processor.ts`, `backend/src/modules/ingestion/stem-pubsub.publisher.ts`
 
-## Low Findings
+**Observation:** The new behavior reuses the existing `stems.failed` event path rather than introducing a parallel failure channel. This keeps release/track failure propagation centralized and reduces the chance of inconsistent user-visible state.
 
-None.
+**Recommendation:** Keep future stale-job timeout/watchdog work on the same event path so all failure modes remain consistent for DB persistence and WebSocket delivery.
 
-## Informational Notes
+## Notes
 
-### SBPR-001: Public payment and storefront routes remain intentionally unauthenticated
-
-**Files:** `backend/src/modules/x402/x402.controller.ts`, `backend/src/modules/storefront/storefront.controller.ts`, `backend/src/modules/openapi/openapi.service.ts`
-
-**Impact:** These routes are publicly reachable by design because they implement the machine-first discovery and x402 payment flow. Their safety depends on constrained response shapes, x402 verification in middleware, and avoiding sensitive data in the public payloads.
-
-**Recommendation:** Keep public response contracts narrow, continue using x402 verification before paid asset delivery, and preserve environment-driven payment configuration with no hardcoded secrets or deployment-specific values.
+- Repo-wide grep checks surfaced some pre-existing patterns outside the issue scope, including development JWT fallbacks and broad controller/input-validation areas. Those were not introduced by this branch and are not counted as findings for issue `#552`.
+- No hardcoded production secrets, credentials, or environment-specific service URLs were introduced in the reviewed diff.
