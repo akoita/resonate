@@ -11,11 +11,26 @@ export type TopbarProps = {
 };
 
 export default function Topbar({ title, actions }: TopbarProps) {
-  const { togglePlaylistPanel, isPlaylistPanelOpen } = useUIStore();
+  const { togglePlaylistPanel, isPlaylistPanelOpen, toggleSidebar, isSidebarOpen } = useUIStore();
 
   return (
     <div className="app-topbar">
-      <div>{title ?? "Discover"}</div>
+      <div className="topbar-leading">
+        <button
+          type="button"
+          className="hamburger-btn"
+          onClick={toggleSidebar}
+          aria-label={isSidebarOpen ? "Close navigation" : "Open navigation"}
+          aria-expanded={isSidebarOpen}
+        >
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+        <div className="topbar-title">{title ?? "Discover"}</div>
+      </div>
       <div className="topbar-actions">
         <button
           className={`topbar-playlist-btn ${isPlaylistPanelOpen ? 'active' : ''}`}

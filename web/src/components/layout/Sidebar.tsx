@@ -1,9 +1,10 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
+import { useUIStore } from "../../lib/uiStore";
 
 const subscribe = () => () => {};
 
@@ -144,6 +145,11 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { role, status, address, smartAccountAddress } = useAuth();
   const mounted = useSyncExternalStore(subscribe, () => true, () => false);
+  const { isSidebarOpen, closeSidebar } = useUIStore();
+
+  useEffect(() => {
+    closeSidebar();
+  }, [pathname, closeSidebar]);
 
   const showAdminLink = mounted && role === "admin";
   const accountAddress = smartAccountAddress ?? address;
@@ -155,7 +161,15 @@ export default function Sidebar() {
   const userStatusLabel = smartAccountAddress ? "Smart Account Connected" : "Wallet Connected";
 
   return (
-    <aside className="app-sidebar">
+    <>
+      {isSidebarOpen ? (
+        <div
+          className="sidebar-backdrop"
+          onClick={closeSidebar}
+          aria-hidden="true"
+        />
+      ) : null}
+      <aside className={`app-sidebar ${isSidebarOpen ? "open" : ""}`}>
       <div className="sidebar-logo">
         <span className="logo-icon">✨</span>
         <h2 className="logo-text">Resonate</h2>
@@ -227,6 +241,7 @@ export default function Sidebar() {
           </div>
         </div>
       ) : null}
-    </aside>
+      </aside>
+    </>
   );
 }
