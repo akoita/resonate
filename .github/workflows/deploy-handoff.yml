@@ -24,9 +24,18 @@ jobs:
       }}
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: read
 
     steps:
+      - name: Download deploy manifest
+        uses: actions/download-artifact@v8
+        with:
+          name: deploy-manifest
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/deploy-manifest
+
       - name: Resolve deploy intent
         id: intent
         env:
@@ -34,15 +43,47 @@ jobs:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+          MANIFEST_PATH: ${{ runner.temp }}/deploy-manifest/deploy-manifest.json
         run: |
+          if [[ ! -f "${MANIFEST_PATH}" ]]; then
+            echo "Missing deploy manifest artifact at ${MANIFEST_PATH}" >&2
+            exit 1
+          fi
+
+          python3 - <<'PY' "${MANIFEST_PATH}" > "${RUNNER_TEMP}/deploy-intent.env"
+          import json
+          import sys
+
+          manifest_path = sys.argv[1]
+          with open(manifest_path, "r", encoding="utf-8") as fh:
+            manifest = json.load(fh)
+
+          for key in (
+              "environment",
+              "source_repository",
+              "source_ref",
+              "services",
+              "trigger_branch",
+              "release_sha",
+              "release_id",
+              "backend_image",
+              "frontend_image",
+              "demucs_image",
+          ):
+            value = manifest.get(key, "")
+            print(f"{key}={value}")
+
+          print(f"should_dispatch={'true' if manifest.get('should_dispatch') else 'false'}")
+          PY
+
+          source "${RUNNER_TEMP}/deploy-intent.env"
+
           case "${HEAD_BRANCH}" in
             develop)
-              environment="dev"
-              services="backend,frontend"
+              expected_environment="dev"
               ;;
             main)
-              environment="staging"
-              services="backend,frontend"
+              expected_environment="staging"
               ;;
             *)
               echo "Unsupported branch for deploy handoff: ${HEAD_BRANCH}" >&2
@@ -50,16 +91,42 @@ jobs:
               ;;
           esac
 
+          if [[ "${trigger_branch}" != "${HEAD_BRANCH}" ]]; then
+            echo "Deploy manifest branch '${trigger_branch}' did not match workflow branch '${HEAD_BRANCH}'" >&2
+            exit 1
+          fi
+
+          if [[ "${source_ref}" != "${HEAD_SHA}" ]]; then
+            echo "Deploy manifest source_ref '${source_ref}' did not match workflow SHA '${HEAD_SHA}'" >&2
+            exit 1
+          fi
+
+          if [[ "${environment}" != "${expected_environment}" ]]; then
+            echo "Deploy manifest environment '${environment}' did not match expected '${expected_environment}' for branch '${HEAD_BRANCH}'" >&2
+            exit 1
+          fi
+
+          if [[ "${should_dispatch}" == "true" && -z "${services}" ]]; then
+            echo "Deploy manifest requested dispatch but did not include services." >&2
+            exit 1
+          fi
+
           {
+            echo "should_dispatch=${should_dispatch}"
             echo "environment=${environment}"
             echo "services=${services}"
-            echo "source_ref=${HEAD_SHA}"
-            echo "trigger_branch=${HEAD_BRANCH}"
-            echo "release_sha=${HEAD_SHA}"
-            echo "release_id=ci-${RUN_ID}-${RUN_NUMBER}"
+            echo "source_repository=${source_repository}"
+            echo "source_ref=${source_ref}"
+            echo "trigger_branch=${trigger_branch}"
+            echo "release_sha=${release_sha:-${HEAD_SHA}}"
+            echo "release_id=${release_id:-ci-${RUN_ID}-${RUN_NUMBER}}"
+            echo "backend_image=${backend_image}"
+            echo "frontend_image=${frontend_image}"
+            echo "demucs_image=${demucs_image}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Validate dispatch token
+        if: steps.intent.outputs.should_dispatch == 'true'
         env:
           DISPATCH_TOKEN: ${{ secrets.RESONATE_IAC_DISPATCH_TOKEN }}
         run: |
@@ -69,27 +136,35 @@ jobs:
           fi
 
       - name: Dispatch deploy intent to resonate-iac
+        if: steps.intent.outputs.should_dispatch == 'true'
         env:
           DISPATCH_TOKEN: ${{ secrets.RESONATE_IAC_DISPATCH_TOKEN }}
           ENVIRONMENT: ${{ steps.intent.outputs.environment }}
           SERVICES: ${{ steps.intent.outputs.services }}
+          SOURCE_REPOSITORY: ${{ steps.intent.outputs.source_repository }}
           SOURCE_REF: ${{ steps.intent.outputs.source_ref }}
           TRIGGER_BRANCH: ${{ steps.intent.outputs.trigger_branch }}
           RELEASE_SHA: ${{ steps.intent.outputs.release_sha }}
           RELEASE_ID: ${{ steps.intent.outputs.release_id }}
+          BACKEND_IMAGE: ${{ steps.intent.outputs.backend_image }}
+          FRONTEND_IMAGE: ${{ steps.intent.outputs.frontend_image }}
+          DEMUCS_IMAGE: ${{ steps.intent.outputs.demucs_image }}
         run: |
           payload="$(cat <<EOF
           {
             "event_type": "${RESONATE_DEPLOY_EVENT}",
             "client_payload": {
               "environment": "${ENVIRONMENT}",
-              "source_repository": "${GITHUB_REPOSITORY}",
+              "source_repository": "${SOURCE_REPOSITORY}",
               "source_ref": "${SOURCE_REF}",
               "services": "${SERVICES}",
               "action": "apply",
               "release_sha": "${RELEASE_SHA}",
               "release_id": "${RELEASE_ID}",
-              "trigger_branch": "${TRIGGER_BRANCH}"
+              "trigger_branch": "${TRIGGER_BRANCH}",
+              "backend_image": "${BACKEND_IMAGE}",
+              "frontend_image": "${FRONTEND_IMAGE}",
+              "demucs_image": "${DEMUCS_IMAGE}"
             }
           }
           EOF
@@ -102,3 +177,7 @@ jobs:
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "https://api.github.com/repos/${RESONATE_IAC_REPOSITORY}/dispatches" \
             -d "${payload}"
+
+      - name: Skip deploy handoff
+        if: steps.intent.outputs.should_dispatch != 'true'
+        run: echo "No deployable services changed for this successful CI run; skipping deploy handoff."

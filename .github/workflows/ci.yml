@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.detect.outputs.backend }}
+      demucs: ${{ steps.detect.outputs.demucs }}
       backend_identity: ${{ steps.detect.outputs.backend_identity }}
       backend_ingestion: ${{ steps.detect.outputs.backend_ingestion }}
       backend_catalog: ${{ steps.detect.outputs.backend_catalog }}
@@ -39,6 +40,7 @@ jobs:
           set -euo pipefail
 
           backend=false
+          demucs=false
           backend_identity=false
           backend_ingestion=false
           backend_catalog=false
@@ -107,6 +109,9 @@ jobs:
                     backend=true
                     backend_shared=true
                     ;;
+                  workers/demucs/*)
+                    demucs=true
+                    ;;
                   web/*)
                     web=true
                     ;;
@@ -133,7 +138,7 @@ jobs:
           docs_only=false
           # Infra-only and docs-only changes can skip module-specific jobs, but
           # anything that doesn't classify cleanly falls back to a full run.
-          if [[ "${run_all}" == "false" && "${backend}" == "false" && "${web}" == "false" && "${contracts}" == "false" && "${shared}" == "false" ]]; then
+          if [[ "${run_all}" == "false" && "${backend}" == "false" && "${demucs}" == "false" && "${web}" == "false" && "${contracts}" == "false" && "${shared}" == "false" ]]; then
             if [[ "${docs}" == "true" || "${infra}" == "true" ]]; then
               docs_only=true
             else
@@ -143,6 +148,7 @@ jobs:
           fi
 
           echo "backend=${backend}" >> "${GITHUB_OUTPUT}"
+          echo "demucs=${demucs}" >> "${GITHUB_OUTPUT}"
           echo "backend_identity=${backend_identity}" >> "${GITHUB_OUTPUT}"
           echo "backend_ingestion=${backend_ingestion}" >> "${GITHUB_OUTPUT}"
           echo "backend_catalog=${backend_catalog}" >> "${GITHUB_OUTPUT}"
@@ -159,6 +165,7 @@ jobs:
             echo "### Change detection"
             echo ""
             echo "- backend: ${backend}"
+            echo "- demucs: ${demucs}"
             echo "- backend_identity: ${backend_identity}"
             echo "- backend_ingestion: ${backend_ingestion}"
             echo "- backend_catalog: ${backend_catalog}"
@@ -526,3 +533,236 @@ jobs:
           name: playwright-report
           path: web/playwright-report/
           retention-days: 7
+
+  publish-deploy-images:
+    name: Publish Deployable Images
+    runs-on: ubuntu-latest
+    needs: [changes, lint, contracts, backend-tests, build, e2e-tests]
+    if: always() && github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'develop')
+    environment: ${{ github.ref_name == 'main' && 'staging' || github.ref_name == 'develop' && 'dev' || '' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Resolve publish plan
+        id: plan
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+        run: |
+          set -euo pipefail
+
+          case "${BRANCH_NAME}" in
+            main)
+              environment="staging"
+              demucs_dockerfile="workers/demucs/Dockerfile.gpu"
+              ;;
+            develop)
+              environment="dev"
+              demucs_dockerfile="workers/demucs/Dockerfile"
+              ;;
+            *)
+              echo "Unsupported deploy branch: ${BRANCH_NAME}" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ -z "${GCP_PROJECT_ID}" || -z "${GCP_REGION}" ]]; then
+            echo "Missing required environment variables: GCP_PROJECT_ID and/or GCP_REGION" >&2
+            exit 1
+          fi
+
+          services=()
+          if [[ "${{ needs.changes.outputs.run_all }}" == "true" || "${{ needs.changes.outputs.shared }}" == "true" ]]; then
+            services+=(backend frontend demucs)
+          else
+            [[ "${{ needs.changes.outputs.backend }}" == "true" ]] && services+=(backend)
+            [[ "${{ needs.changes.outputs.web }}" == "true" ]] && services+=(frontend)
+            [[ "${{ needs.changes.outputs.demucs }}" == "true" ]] && services+=(demucs)
+          fi
+
+          services_csv=""
+          if [[ ${#services[@]} -gt 0 ]]; then
+            printf -v services_csv '%s,' "${services[@]}"
+            services_csv="${services_csv%,}"
+          fi
+
+          should_dispatch="false"
+          if [[ -n "${services_csv}" ]]; then
+            should_dispatch="true"
+          fi
+
+          registry="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/resonate-${environment}"
+
+          {
+            echo "environment=${environment}"
+            echo "registry=${registry}"
+            echo "services_csv=${services_csv}"
+            echo "should_dispatch=${should_dispatch}"
+            echo "release_sha=${GITHUB_SHA}"
+            echo "release_id=ci-${GITHUB_RUN_ID}-${GITHUB_RUN_NUMBER}"
+            echo "demucs_dockerfile=${demucs_dockerfile}"
+            echo "backend_image=${registry}/backend:${GITHUB_SHA}"
+            echo "frontend_image=${registry}/frontend:${GITHUB_SHA}"
+            echo "demucs_image=${registry}/demucs-worker:${GITHUB_SHA}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Verify prerequisite jobs
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ needs.contracts.result }}" == "failure" ]]; then
+            echo "Smart Contract Tests failed; refusing to publish deployable images." >&2
+            exit 1
+          fi
+
+          if [[ "${{ steps.plan.outputs.should_dispatch }}" != "true" ]]; then
+            echo "No deployable services changed on this push; skipping image publication."
+            exit 0
+          fi
+
+          services=",${{ steps.plan.outputs.services_csv }},"
+
+          if [[ "${services}" == *",backend,"* || "${services}" == *",frontend,"* ]]; then
+            if [[ "${{ needs.lint.result }}" != "success" ]]; then
+              echo "Lint did not succeed for deployable application changes." >&2
+              exit 1
+            fi
+          fi
+
+          if [[ "${services}" == *",backend,"* && "${{ needs.backend-tests.result }}" != "success" ]]; then
+            echo "Backend Tests did not succeed for backend image publication." >&2
+            exit 1
+          fi
+
+          if [[ "${services}" == *",frontend,"* && "${{ needs.build.result }}" != "success" ]]; then
+            echo "Build did not succeed for frontend image publication." >&2
+            exit 1
+          fi
+
+          if [[ "${services}" == *",frontend,"* && "${{ needs.e2e-tests.result }}" != "success" ]]; then
+            echo "E2E Tests did not succeed for frontend image publication." >&2
+            exit 1
+          fi
+
+      - name: Validate artifact publishing auth
+        if: steps.plan.outputs.should_dispatch == 'true'
+        env:
+          GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+          GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+        run: |
+          if [[ -z "${GCP_WIF_PROVIDER}" ]]; then
+            echo "Missing required secret: GCP_WIF_PROVIDER" >&2
+            exit 1
+          fi
+          if [[ -z "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" ]]; then
+            echo "Missing required secret: GCP_ARTIFACT_REGISTRY_SA_EMAIL" >&2
+            exit 1
+          fi
+
+      - name: Authenticate to GCP
+        if: steps.plan.outputs.should_dispatch == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+
+      - name: Setup gcloud
+        if: steps.plan.outputs.should_dispatch == 'true'
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Docker Buildx
+        if: steps.plan.outputs.should_dispatch == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure Docker for Artifact Registry
+        if: steps.plan.outputs.should_dispatch == 'true'
+        run: gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
+
+      - name: Export frontend build args
+        if: steps.plan.outputs.should_dispatch == 'true' && contains(format(',{0},', steps.plan.outputs.services_csv), ',frontend,')
+        env:
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_ZERODEV_PROJECT_ID: ${{ vars.NEXT_PUBLIC_ZERODEV_PROJECT_ID }}
+          NEXT_PUBLIC_CHAIN_ID: ${{ vars.NEXT_PUBLIC_CHAIN_ID }}
+          NEXT_PUBLIC_STEM_NFT_ADDRESS: ${{ vars.NEXT_PUBLIC_STEM_NFT_ADDRESS }}
+          NEXT_PUBLIC_MARKETPLACE_ADDRESS: ${{ vars.NEXT_PUBLIC_MARKETPLACE_ADDRESS }}
+          NEXT_PUBLIC_TRANSFER_VALIDATOR_ADDRESS: ${{ vars.NEXT_PUBLIC_TRANSFER_VALIDATOR_ADDRESS }}
+          NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS: ${{ vars.NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS }}
+          NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS: ${{ vars.NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS }}
+          NEXT_PUBLIC_CURATION_REWARDS_ADDRESS: ${{ vars.NEXT_PUBLIC_CURATION_REWARDS_ADDRESS }}
+        run: bash .github/scripts/export-frontend-build-args.sh > "${RUNNER_TEMP}/frontend-build.env"
+
+      - name: Build and push backend image
+        if: steps.plan.outputs.should_dispatch == 'true' && contains(format(',{0},', steps.plan.outputs.services_csv), ',backend,')
+        run: docker buildx build --push --file backend/Dockerfile --tag "${{ steps.plan.outputs.backend_image }}" backend
+
+      - name: Build and push frontend image
+        if: steps.plan.outputs.should_dispatch == 'true' && contains(format(',{0},', steps.plan.outputs.services_csv), ',frontend,')
+        run: |
+          set -euo pipefail
+          set -a
+          source "${RUNNER_TEMP}/frontend-build.env"
+          set +a
+
+          docker buildx build --push \
+            --file web/Dockerfile \
+            --tag "${{ steps.plan.outputs.frontend_image }}" \
+            --build-arg "NEXT_PUBLIC_ZERODEV_PROJECT_ID=${NEXT_PUBLIC_ZERODEV_PROJECT_ID}" \
+            --build-arg "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" \
+            --build-arg "NEXT_PUBLIC_CHAIN_ID=${NEXT_PUBLIC_CHAIN_ID}" \
+            --build-arg "NEXT_PUBLIC_STEM_NFT_ADDRESS=${NEXT_PUBLIC_STEM_NFT_ADDRESS}" \
+            --build-arg "NEXT_PUBLIC_MARKETPLACE_ADDRESS=${NEXT_PUBLIC_MARKETPLACE_ADDRESS}" \
+            --build-arg "NEXT_PUBLIC_TRANSFER_VALIDATOR_ADDRESS=${NEXT_PUBLIC_TRANSFER_VALIDATOR_ADDRESS}" \
+            --build-arg "NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS=${NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS}" \
+            --build-arg "NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS=${NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS}" \
+            --build-arg "NEXT_PUBLIC_CURATION_REWARDS_ADDRESS=${NEXT_PUBLIC_CURATION_REWARDS_ADDRESS}" \
+            web
+
+      - name: Build and push Demucs image
+        if: steps.plan.outputs.should_dispatch == 'true' && contains(format(',{0},', steps.plan.outputs.services_csv), ',demucs,')
+        run: docker buildx build --push --file "${{ steps.plan.outputs.demucs_dockerfile }}" --tag "${{ steps.plan.outputs.demucs_image }}" workers/demucs
+
+      - name: Write deploy manifest
+        env:
+          SHOULD_DISPATCH: ${{ steps.plan.outputs.should_dispatch }}
+          ENVIRONMENT: ${{ steps.plan.outputs.environment }}
+          SERVICES: ${{ steps.plan.outputs.services_csv }}
+          RELEASE_SHA: ${{ steps.plan.outputs.release_sha }}
+          RELEASE_ID: ${{ steps.plan.outputs.release_id }}
+          ALL_BACKEND_IMAGE: ${{ steps.plan.outputs.backend_image }}
+          ALL_FRONTEND_IMAGE: ${{ steps.plan.outputs.frontend_image }}
+          ALL_DEMUCS_IMAGE: ${{ steps.plan.outputs.demucs_image }}
+        run: |
+          python3 - <<'PY' > "${RUNNER_TEMP}/deploy-manifest.json"
+          import json
+          import os
+
+          services = [item for item in os.environ["SERVICES"].split(",") if item]
+          payload = {
+              "should_dispatch": os.environ["SHOULD_DISPATCH"] == "true",
+              "environment": os.environ["ENVIRONMENT"],
+              "source_repository": os.environ["GITHUB_REPOSITORY"],
+              "source_ref": os.environ["GITHUB_SHA"],
+              "services": os.environ["SERVICES"],
+              "trigger_branch": os.environ["GITHUB_REF_NAME"],
+              "release_sha": os.environ["RELEASE_SHA"],
+              "release_id": os.environ["RELEASE_ID"],
+              "backend_image": os.environ["ALL_BACKEND_IMAGE"] if "backend" in services else "",
+              "frontend_image": os.environ["ALL_FRONTEND_IMAGE"] if "frontend" in services else "",
+              "demucs_image": os.environ["ALL_DEMUCS_IMAGE"] if "demucs" in services else "",
+          }
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload deploy manifest
+        uses: actions/upload-artifact@v6
+        with:
+          name: deploy-manifest
+          path: ${{ runner.temp }}/deploy-manifest.json
+          retention-days: 1
