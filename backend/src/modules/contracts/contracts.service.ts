@@ -27,7 +27,7 @@ import {
   deriveCreatorVerificationStates,
   deriveReleaseVerificationStates,
 } from "../trust/verification-semantics";
-import { resolveTrustTiers } from "../trust/trustTierConfig";
+import { TrustService } from "../trust/trust.service";
 import type {
   NormalizedRightsEvidenceBundle,
   RightsEvidenceBundleInput,
@@ -156,7 +156,10 @@ export class ContractsService implements OnModuleInit {
   private readonly logger = new Logger(ContractsService.name);
   private readonly curatorReputationService = new CuratorReputationService();
 
-  constructor(private readonly eventBus: EventBus) { }
+  constructor(
+    private readonly eventBus: EventBus,
+    private readonly trustService: TrustService,
+  ) {}
 
   private readonly releaseRightsUpgradeOpenStatuses = [
     "submitted",
@@ -1392,12 +1395,10 @@ export class ContractsService implements OnModuleInit {
 
     if (!release) return null;
 
-    const trust = release.artist.creatorTrust;
-    const tier = trust?.tier || "new";
-    const configuredTrustTiers = resolveTrustTiers((key) => process.env[key]);
-    const fallbackTier = configuredTrustTiers[tier] || configuredTrustTiers.new;
-    const stakeAmountWei = trust?.stakeAmountWei || fallbackTier.stakeAmountWei;
-    const escrowDays = trust?.escrowDays || 30;
+    const trust = await this.trustService.getStakeRequirement(release.artist.id);
+    const tier = trust.tier;
+    const stakeAmountWei = trust.stakeAmountWei;
+    const escrowDays = trust.escrowDays;
     const chainId = Number(
       process.env.AA_CHAIN_ID || process.env.CHAIN_ID || process.env.INDEXER_CHAIN_ID || "11155111",
     );

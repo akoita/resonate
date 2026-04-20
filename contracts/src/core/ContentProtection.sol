@@ -41,6 +41,12 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         bool active;
     }
 
+    struct TierPolicy {
+        uint256 stakeAmountWei;
+        uint256 escrowDays;
+        bool configured;
+    }
+
     // ============ State ============
 
     address public owner;
@@ -59,6 +65,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     mapping(uint256 => uint256) public stemToCanonicalTrack;
     mapping(uint256 => uint256) public stemToProtectionRoot;
     mapping(uint256 => uint256) public trackToParentRelease;
+    mapping(bytes32 => TierPolicy) private _tierPolicies;
 
     // Slash distribution (basis points, must sum to 10000)
     uint256 public constant SLASH_REPORTER_BPS = 6000; // 60%
@@ -99,6 +106,13 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     event Blacklisted(address indexed account);
     event BlacklistRemoved(address indexed account);
     event StakeAmountUpdated(uint256 oldAmount, uint256 newAmount);
+    event TierPolicyUpdated(
+        string tierName,
+        uint256 oldStakeAmountWei,
+        uint256 oldEscrowDays,
+        uint256 newStakeAmountWei,
+        uint256 newEscrowDays
+    );
     event MaxPriceMultiplierUpdated(
         uint256 oldMultiplier,
         uint256 newMultiplier
@@ -134,6 +148,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     error TransferFailed();
     error ZeroAddress();
     error InvalidMultiplier();
+    error InvalidTier();
 
     // ============ Modifiers ============
 
@@ -167,6 +182,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         treasury = _treasury;
         stakeAmount = _stakeAmount;
         maxPriceMultiplier = 10;
+        _initializeTierPoliciesFromStakeAmount(_stakeAmount);
     }
 
     // ============ Attestation ============
@@ -355,8 +371,27 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     }
 
     function setStakeAmount(uint256 newAmount) external onlyOwner {
-        emit StakeAmountUpdated(stakeAmount, newAmount);
+        uint256 oldAmount = stakeAmount;
+        emit StakeAmountUpdated(oldAmount, newAmount);
         stakeAmount = newAmount;
+        _syncDefaultTierPolicies(oldAmount, newAmount);
+    }
+
+    function setTierPolicy(
+        string calldata tierName,
+        uint256 newStakeAmountWei,
+        uint256 newEscrowDays
+    ) external onlyOwner {
+        bytes32 tierKey = _resolveTierKey(tierName);
+        TierPolicy storage currentPolicy = _tierPolicies[tierKey];
+        emit TierPolicyUpdated(
+            tierName,
+            currentPolicy.stakeAmountWei,
+            currentPolicy.escrowDays,
+            newStakeAmountWei,
+            newEscrowDays
+        );
+        _setTierPolicy(tierKey, newStakeAmountWei, newEscrowDays);
     }
 
     function setMaxPriceMultiplier(uint256 newMultiplier) external onlyOwner {
@@ -385,6 +420,12 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     function reinitializeV2() external reinitializer(2) {
         if (maxPriceMultiplier == 0) {
             maxPriceMultiplier = 10;
+        }
+    }
+
+    function reinitializeV3() external reinitializer(3) {
+        if (!_tierPolicies[_tierKey("new")].configured) {
+            _initializeTierPoliciesFromStakeAmount(stakeAmount);
         }
     }
 
@@ -558,6 +599,13 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         return stakes[stakeRoot].amount * maxPriceMultiplier;
     }
 
+    function getTierPolicy(
+        string calldata tierName
+    ) external view returns (uint256 requiredStakeWei, uint256 escrowDays) {
+        TierPolicy storage policy = _tierPolicies[_resolveTierKey(tierName)];
+        return (policy.stakeAmountWei, policy.escrowDays);
+    }
+
     function _hasAttestation(uint256 tokenId) internal view returns (bool) {
         return attestations[tokenId].attester != address(0);
     }
@@ -568,5 +616,94 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
             releaseId != 0 &&
             attestations[trackId].valid &&
             attestations[releaseId].valid;
+    }
+
+    function _initializeTierPoliciesFromStakeAmount(uint256 baseStakeAmount) internal {
+        _setTierPolicy(_tierKey("verified"), 0, 3);
+        _setTierPolicy(_tierKey("trusted"), baseStakeAmount / 10, 7);
+        _setTierPolicy(_tierKey("established"), baseStakeAmount / 2, 14);
+        _setTierPolicy(_tierKey("new"), baseStakeAmount, 30);
+    }
+
+    function _syncDefaultTierPolicies(
+        uint256 oldBaseStakeAmount,
+        uint256 newBaseStakeAmount
+    ) internal {
+        _syncTierPolicyIfStillDefault(
+            _tierKey("verified"),
+            0,
+            3,
+            0,
+            3
+        );
+        _syncTierPolicyIfStillDefault(
+            _tierKey("trusted"),
+            oldBaseStakeAmount / 10,
+            7,
+            newBaseStakeAmount / 10,
+            7
+        );
+        _syncTierPolicyIfStillDefault(
+            _tierKey("established"),
+            oldBaseStakeAmount / 2,
+            14,
+            newBaseStakeAmount / 2,
+            14
+        );
+        _syncTierPolicyIfStillDefault(
+            _tierKey("new"),
+            oldBaseStakeAmount,
+            30,
+            newBaseStakeAmount,
+            30
+        );
+    }
+
+    function _syncTierPolicyIfStillDefault(
+        bytes32 tierKey,
+        uint256 expectedOldStakeAmountWei,
+        uint256 expectedOldEscrowDays,
+        uint256 newStakeAmountWei,
+        uint256 newEscrowDays
+    ) internal {
+        TierPolicy storage currentPolicy = _tierPolicies[tierKey];
+        if (
+            !currentPolicy.configured ||
+            (currentPolicy.stakeAmountWei == expectedOldStakeAmountWei &&
+                currentPolicy.escrowDays == expectedOldEscrowDays)
+        ) {
+            _setTierPolicy(tierKey, newStakeAmountWei, newEscrowDays);
+        }
+    }
+
+    function _setTierPolicy(
+        bytes32 tierKey,
+        uint256 newStakeAmountWei,
+        uint256 newEscrowDays
+    ) internal {
+        _tierPolicies[tierKey] = TierPolicy({
+            stakeAmountWei: newStakeAmountWei,
+            escrowDays: newEscrowDays,
+            configured: true
+        });
+    }
+
+    function _resolveTierKey(
+        string calldata tierName
+    ) internal pure returns (bytes32) {
+        bytes32 tierKey = keccak256(bytes(tierName));
+        if (
+            tierKey != _tierKey("verified") &&
+            tierKey != _tierKey("trusted") &&
+            tierKey != _tierKey("established") &&
+            tierKey != _tierKey("new")
+        ) {
+            revert InvalidTier();
+        }
+        return tierKey;
+    }
+
+    function _tierKey(string memory tierName) internal pure returns (bytes32) {
+        return keccak256(bytes(tierName));
     }
 }

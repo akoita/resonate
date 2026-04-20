@@ -409,6 +409,9 @@ export type TrustTier = {
   tier: string;
   economicTier?: string;
   stakeAmountWei: string;
+  tierStakeAmountWei?: string;
+  protocolMinimumStakeAmountWei?: string;
+  policySource?: "contract" | "fallback";
   escrowDays: number;
   maxPriceMultiplier: number;
   maxListingPriceWei: string | null;
