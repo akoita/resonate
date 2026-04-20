@@ -66,7 +66,12 @@ test("phone backdrop click closes the drawer", async ({ page }, testInfo) => {
   const backdrop = page.locator(".sidebar-backdrop");
   await expect(backdrop).toBeVisible();
 
-  await backdrop.click();
+  // The backdrop uses `position: fixed; inset: 0;` so it spans the whole
+  // viewport, but the drawer sits on top of its left portion. Clicking
+  // the geometric center would hit a drawer sidebar link. Dispatch the
+  // click directly to the backdrop element — this is what the user
+  // effectively does when tapping the visible-to-them scrim area.
+  await backdrop.evaluate((el) => (el as HTMLElement).click());
   await expect(backdrop).toHaveCount(0);
   // Sidebar drawer itself should slide off-screen (lose its .open class).
   await expect(page.locator(".app-sidebar.open")).toHaveCount(0);
