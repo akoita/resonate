@@ -9939,3 +9939,80 @@ tr[draggable="true"]:hover {
     display: none;
   }
 }
+
+/* ------------------------------------------------------------------
+ * /artist/upload responsive overrides (#567)
+ * - Desktop grid is `1fr 500px` with a fixed `calc(100vh - 100px)` — on
+ *   anything narrower than ~1100px the right column crushes the left
+ *   and the whole page can't scroll naturally.
+ * - Tablet shrinks the right column to 420px.
+ * - Phone stacks into a single column, drops the viewport-locked height
+ *   so the page can scroll, tightens FileDropZone, and compacts the
+ *   upload item rows.
+ * ------------------------------------------------------------------ */
+@media (max-width: 1279px) {
+  .upload-grid {
+    grid-template-columns: 1fr 420px;
+    gap: var(--space-6);
+  }
+}
+
+@media (max-width: 767px) {
+  .upload-grid {
+    grid-template-columns: 1fr;
+    height: auto;
+    gap: var(--space-4);
+  }
+
+  /* Let each Card render its own natural height instead of flex-capping
+   * to the grid row — allows the page to scroll the settings panel. */
+  .upload-grid > .ui-card {
+    overflow: visible;
+    height: auto;
+  }
+
+  .upload-grid > .ui-card > .ui-card-body {
+    overflow: visible;
+  }
+
+  .upload-panel {
+    overflow: visible;
+    min-height: 0;
+  }
+
+  .upload-panel > .settings-group {
+    overflow-y: visible;
+    padding-right: 0;
+  }
+
+  .file-drop-zone {
+    padding: var(--space-4);
+    min-height: 110px;
+    gap: var(--space-2);
+  }
+
+  .file-drop-zone-icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .upload-item {
+    gap: var(--space-2);
+    padding: var(--space-3);
+    flex-wrap: wrap;
+  }
+
+  /* Put the remove / action buttons on their own row beneath the title
+   * + progress so the wrap layout doesn't squeeze the filename. */
+  .upload-item-header {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .upload-item-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
