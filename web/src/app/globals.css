@@ -9756,3 +9756,152 @@ tr[draggable="true"]:hover {
     flex-shrink: 1;
   }
 }
+
+/* ------------------------------------------------------------------
+ * /library responsive overrides (#563)
+ * Fixes three phone/tablet problems: (1) 6-tab bar overflow, (2) header
+ * row doesn't stack, (3) 7-col track-row grid unreadable below ~900px.
+ * ------------------------------------------------------------------ */
+
+/* Tab bar: horizontal scroll with edge fade mask below 1024px. Keeps all
+ * tabs reachable without a two-tap dropdown. Active tab auto-scrolls into
+ * view (JS in library/page.tsx). */
+@media (max-width: 1023px) {
+  .library-tabs-container {
+    /* Inline style on the page gives it justify-content:space-between, but
+     * on narrower screens the filter toggle needs to sit *below* the tabs,
+     * not next to them. Override to wrap. */
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .library-page-main .library-tabs,
+  .library-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    /* Edge fade so users see there's more to scroll. */
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      black 12px,
+      black calc(100% - 12px),
+      transparent 100%
+    );
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      black 12px,
+      black calc(100% - 12px),
+      transparent 100%
+    );
+    padding-left: 12px;
+    padding-right: 12px;
+    max-width: 100%;
+  }
+
+  .library-tabs::-webkit-scrollbar,
+  .library-page-main .library-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .library-tab {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+}
+
+/* Library header + track rows — real phone-tier changes apply below 768px. */
+@media (max-width: 767px) {
+  /* Header: stack title above actions, actions span full width. */
+  .library-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+    padding: var(--space-4) 0 var(--space-3);
+  }
+
+  .library-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .library-search {
+    flex: 1;
+    max-width: none;
+  }
+
+  /* "Library Settings" button is redundant on phone — the global drawer's
+   * secondary nav already contains a Settings link. Hide to free space. */
+  .library-header-actions > a[href="/settings"] {
+    display: none;
+  }
+
+  .library-title {
+    font-size: 20px;
+  }
+
+  /* Track row: 3-col mobile layout [48px art] [title+artist stacked] [⋯].
+   * Drop the checkbox (column 1), album (5), and duration (6). */
+  .library-page-main .library-content .library-item,
+  .library-item {
+    grid-template-columns: 48px 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 2px var(--space-3);
+    padding: 0.5rem 0.75rem;
+  }
+
+  /* The checkbox wrapper is the first child but has no class — target by
+   * position to hide it. */
+  .library-page-main .library-content .library-item > div:first-child:not([class]),
+  .library-item > div:first-child:not([class]) {
+    display: none;
+  }
+
+  .library-item-artwork {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+
+  .library-item-title {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 14px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .library-item-artist {
+    grid-column: 2;
+    grid-row: 2;
+    font-size: 12px;
+    color: var(--color-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .library-item-album,
+  .library-item-duration {
+    display: none;
+  }
+
+  .library-item-actions {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+
+  /* The header row ("Title" / "Artist" / "Album" / "Dur") adds no value
+   * in the 3-col mobile layout — hide it. */
+  .library-item.library-item-header {
+    display: none;
+  }
+}

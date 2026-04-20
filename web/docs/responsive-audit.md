@@ -42,7 +42,7 @@ Status values:
 |-----------------------------|---------------------------------------------------------------------|----------------|---------------------------------------------------------------------------------------------------------|
 | `/`                         | [app/page.tsx](../src/app/page.tsx)                                  | TBD            | Featured stems carousel already viewport-aware (4 tiers at 640/900/1200). Verify at 320px.              |
 | `/player`                   | [app/player/page.tsx](../src/app/player/page.tsx)                    | TBD            | Player page + PlayerBar overlap — verify both visible or one is hidden on phone.                        |
-| `/library`                  | [app/library/page.tsx](../src/app/library/page.tsx)                  | Needs follow-up | Library has a sticky playlist sidebar (`library-sidebar`) — doesn't collapse on phone.                  |
+| `/library`                  | [app/library/page.tsx](../src/app/library/page.tsx)                  | Needs follow-up | Tab bar (6 tabs) overflows phone widths; header row doesn't stack; 7-col track-row grid unreadable below ~900px. The `playlist-sidebar` CSS rules at `globals.css:3466` are orphaned — the page doesn't mount them. Tracked in #563. |
 | `/create`                   | [app/create/page.tsx](../src/app/create/page.tsx)                    | Shell-only     | Already has `@media (max-width: 640px)` rules in [create.css](../src/styles/create.css).                |
 | `/marketplace`              | [app/marketplace/page.tsx](../src/app/marketplace/page.tsx)          | Needs follow-up | Stem-pricing grid + filters bar — uses 900/600 breakpoints; modals (Buy, List, Resale) need audit.      |
 | `/agent`                    | [app/agent/page.tsx](../src/app/agent/page.tsx)                      | Needs follow-up | Agent dashboard grid collapses at 900px — fine for tablet, but taste-card layout needs phone check.     |
@@ -67,7 +67,7 @@ Status values:
 Each should reference #557 as parent and target an isolated page or
 component.
 
-1. **Library: responsive playlist sidebar** — the sticky `library-sidebar` needs to either stack above the track list on phone or become a sheet.
+1. **Library: tab bar + header + track rows on phone** — the `/library` page's 6-tab bar overflows, the header row doesn't stack, and the 7-col track-row grid is unreadable on phone. The `playlist-sidebar` CSS referenced in the earlier audit is orphaned (not mounted). Tracked in #563.
 2. **Marketplace: mobile-friendly filters + modals** — BuyModal, ListStemModal, BatchMintListModal, ResaleModal all assume desktop-width; plus the filter bar needs to scroll horizontally or collapse into a filter sheet.
 3. **Release detail: two-column to stacked layout** — reflow cover art + track list + rights panel for phone/tablet.
 4. **Stem detail: pricing grid on phone** — `stem-pricing.css` grids need phone-tier behavior.

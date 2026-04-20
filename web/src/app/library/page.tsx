@@ -71,6 +71,14 @@ export default function LibraryPage() {
     const [hoveredArtwork, setHoveredArtwork] = useState<{ url: string; title: string } | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [activeTab, setActiveTab] = useState<ViewTab>("tracks");
+    const tabsRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        const container = tabsRef.current;
+        if (!container) return;
+        const active = container.querySelector<HTMLElement>(".library-tab.active");
+        if (active) active.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+    }, [activeTab]);
     const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
     const [selectedAlbum, setSelectedAlbum] = useState<{ name: string; artist: string } | null>(null);
     const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
@@ -938,7 +946,7 @@ export default function LibraryPage() {
 
                     {/* Tabs & Filters */}
                     <div className="library-tabs-container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
-                        <div className="library-tabs">
+                        <div className="library-tabs" ref={tabsRef}>
                             <button
                                 className={`library-tab ${activeTab === "tracks" ? "active" : ""}`}
                                 onClick={() => { setActiveTab("tracks"); setSelectedArtist(null); setSelectedAlbum(null); }}
