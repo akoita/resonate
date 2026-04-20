@@ -1,6 +1,19 @@
 @import "../styles/tokens.css";
 
 /*
+ * Tailwind v4 utilities (#566) — several components authored with
+ * Tailwind classes (ListStemModal, stem detail page, artist onboarding,
+ * etc.) had no matching CSS because the project never installed the
+ * framework. Loading only the `utilities` + `theme` layers (not `base`)
+ * preserves the existing plain-CSS pages' default typography while
+ * letting utility classes take effect where they're used.
+ */
+@layer theme, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@source "../**/*.{js,ts,jsx,tsx}";
+
+/*
  * Base responsive layer (#557).
  * Keeps the viewport sane across phone / tablet / desktop so individual
  * pages don't each have to re-solve horizontal overflow, media sizing,

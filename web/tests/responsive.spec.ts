@@ -30,6 +30,9 @@ test("phone hamburger opens the sidebar drawer", async ({ page, viewport }, test
   expect(viewport?.width ?? 0).toBeLessThan(768);
 
   await page.goto("/");
+  // Wait for React hydration: under parallel dev-server load the initial
+  // HTML arrives before the handlers are attached, so early clicks no-op.
+  await page.waitForLoadState("networkidle");
   const hamburger = page.getByRole("button", { name: /open navigation/i });
   await expect(hamburger).toBeVisible();
 
@@ -60,7 +63,9 @@ test("phone backdrop click closes the drawer", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium-mobile", "phone-only check");
 
   await page.goto("/");
+  await page.waitForLoadState("networkidle");
   const hamburger = page.getByRole("button", { name: /open navigation/i });
+  await expect(hamburger).toBeVisible();
   await hamburger.click();
 
   const backdrop = page.locator(".sidebar-backdrop");
