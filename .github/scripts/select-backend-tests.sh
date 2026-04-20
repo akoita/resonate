@@ -34,6 +34,7 @@ add_identity_tests() {
       "src/tests/auth.controller.http.spec.ts" \
       "src/tests/auth.controller.spec.ts" \
       "src/tests/auth.spec.ts" \
+      "src/modules/identity/zerodev_session_key.spec.ts" \
       "src/tests/erc6492.spec.ts" \
       "src/tests/roles.guard.spec.ts" \
       "src/tests/session_key.spec.ts" \
@@ -85,6 +86,7 @@ add_catalog_tests() {
     add_tests \
       "src/tests/catalog.controller.http.spec.ts" \
       "src/tests/catalog.controller.spec.ts" \
+      "src/modules/contracts/human-verification.service.spec.ts" \
       "src/tests/stem-pricing.controller.spec.ts"
   else
     add_tests \
@@ -100,6 +102,8 @@ add_catalog_tests() {
 add_generation_tests() {
   if [[ "${suite}" == "unit" ]]; then
     add_tests \
+      "src/modules/agents/agent_purchase.spec.ts" \
+      "src/modules/agents/agent_wallet.spec.ts" \
       "src/tests/agent_evaluation.spec.ts" \
       "src/tests/agents.spec.ts" \
       "src/tests/embeddings.spec.ts" \
@@ -125,6 +129,7 @@ add_marketplace_tests() {
       "src/tests/analytics.spec.ts" \
       "src/tests/artist.controller.spec.ts" \
       "src/tests/curation.spec.ts" \
+      "src/modules/notifications/notification.service.spec.ts" \
       "src/tests/payments.spec.ts" \
       "src/tests/playlist.controller.http.spec.ts" \
       "src/tests/playlist.controller.spec.ts" \
