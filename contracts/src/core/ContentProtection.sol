@@ -58,7 +58,6 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
 
     mapping(uint256 => Attestation) public attestations;
     mapping(uint256 => StakeInfo) public stakes;
-    mapping(bytes32 => TierPolicy) private _tierPolicies;
     mapping(address => bool) internal _blacklisted;
     mapping(address => bool) public registrars;
     mapping(uint256 => uint256[]) private _releaseToTracks;
@@ -66,6 +65,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     mapping(uint256 => uint256) public stemToCanonicalTrack;
     mapping(uint256 => uint256) public stemToProtectionRoot;
     mapping(uint256 => uint256) public trackToParentRelease;
+    mapping(bytes32 => TierPolicy) private _tierPolicies;
 
     // Slash distribution (basis points, must sum to 10000)
     uint256 public constant SLASH_REPORTER_BPS = 6000; // 60%
