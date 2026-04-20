@@ -6,6 +6,7 @@ import { EncryptionService } from "../encryption/encryption.service";
 import { ArtistService } from "../artist/artist.service";
 import { prisma } from "../../db/prisma";
 import type { StemResultMessage } from "./stem-pubsub.publisher";
+import { resolvePubSubRuntimeConfig } from "./pubsub-runtime";
 
 const TOPIC_RESULTS = "stem-results";
 const SUBSCRIPTION_RESULTS = "stem-results-backend";
@@ -32,18 +33,20 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    // Skip if no Pub/Sub config available (CI, local dev without GCP)
-    if (!process.env.PUBSUB_EMULATOR_HOST && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    const runtime = await resolvePubSubRuntimeConfig();
+    if (!runtime.enabled) {
       this.logger.warn(
-        "No Pub/Sub config (PUBSUB_EMULATOR_HOST or GOOGLE_APPLICATION_CREDENTIALS not set) " +
-        "— skipping result subscriber. Set PUBSUB_EMULATOR_HOST for local dev or STEM_PROCESSING_MODE=sync.",
+        "Pub/Sub result subscriber disabled. " +
+        `${runtime.reason || "No runtime config available."}`,
       );
       return;
     }
 
-    const projectId = process.env.GCP_PROJECT_ID || 'resonate-local';
-    this.pubsub = new PubSub({ projectId });
-    this.logger.log(`StemResultSubscriber PubSub project: ${projectId}, emulator: ${process.env.PUBSUB_EMULATOR_HOST || 'NOT SET'}`);
+    const projectId = runtime.projectId;
+    this.pubsub = projectId ? new PubSub({ projectId }) : new PubSub();
+    this.logger.log(
+      `StemResultSubscriber PubSub project: ${projectId || "ADC default"}, emulator: ${process.env.PUBSUB_EMULATOR_HOST || 'NOT SET'}`,
+    );
 
     // Ensure subscription exists (idempotent)
     try {

@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { PubSub, Topic } from "@google-cloud/pubsub";
+import { resolvePubSubRuntimeConfig } from "./pubsub-runtime";
 
 /**
  * Message published to the `stem-separate` topic.
@@ -59,18 +60,17 @@ export class StemPubSubPublisher implements OnModuleInit {
   private resultsTopic!: Topic;
 
   async onModuleInit() {
-    // Skip if no Pub/Sub config available (CI, local dev without GCP)
-    if (!process.env.PUBSUB_EMULATOR_HOST && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-      this.logger.warn(
-        "No Pub/Sub config — publisher disabled. " +
-        "Set PUBSUB_EMULATOR_HOST for local dev or GOOGLE_APPLICATION_CREDENTIALS for production.",
-      );
+    const runtime = await resolvePubSubRuntimeConfig();
+    if (!runtime.enabled) {
+      this.logger.warn(`Pub/Sub publisher disabled. ${runtime.reason || "No runtime config available."}`);
       return;
     }
 
-    const projectId = process.env.GCP_PROJECT_ID || 'resonate-local';
-    this.pubsub = new PubSub({ projectId });
-    this.logger.log(`PubSub initialized with project: ${projectId}, emulator: ${process.env.PUBSUB_EMULATOR_HOST || 'NOT SET'}`);
+    const projectId = runtime.projectId;
+    this.pubsub = projectId ? new PubSub({ projectId }) : new PubSub();
+    this.logger.log(
+      `PubSub initialized with project: ${projectId || "ADC default"}, emulator: ${process.env.PUBSUB_EMULATOR_HOST || 'NOT SET'}`,
+    );
     this.separateTopic = this.pubsub.topic(TOPIC_SEPARATE);
     this.resultsTopic = this.pubsub.topic(TOPIC_RESULTS);
 
@@ -114,7 +114,9 @@ export class StemPubSubPublisher implements OnModuleInit {
     if (!this.separateTopic) {
       const error =
         "Stem separation worker path unavailable: Pub/Sub publisher is not initialized. " +
-        "Set PUBSUB_EMULATOR_HOST for local dev or GOOGLE_APPLICATION_CREDENTIALS for production.";
+        "Set PUBSUB_EMULATOR_HOST for local dev, or provide Application Default Credentials " +
+        "via an attached Cloud Run service account, GOOGLE_APPLICATION_CREDENTIALS, " +
+        "or `gcloud auth application-default login`.";
       this.logger.error(error);
       throw new Error(error);
     }

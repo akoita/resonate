@@ -127,6 +127,7 @@ Core app-side variables:
 | `NEXT_PUBLIC_AA_BUNDLER` | Frontend | Optional public bundler override; when unset the browser falls back to `/api/bundler` unless a public Pimlico key is provided |
 | `NEXT_PUBLIC_PIMLICO_API_KEY` | Frontend | Optional public Pimlico key. Leave unset when using server-side bundler config via `/api/bundler` |
 | `RPC_URL` | Backend | RPC endpoint used by contract-aware backend flows |
+| `GCP_PROJECT_ID` | Backend | Recommended explicit GCP project for Pub/Sub-backed ingestion; when unset in Cloud Run the backend can also derive the project from Application Default Credentials |
 | `AA_BUNDLER` | Backend / frontend server runtime | Server-side bundler URL used by account-abstraction flows and the `/api/bundler` proxy |
 | `PIMLICO_API_KEY` | Frontend server runtime | Optional server-side Pimlico key used by `/api/bundler` without exposing it to the browser |
 | `SEPOLIA_RPC_URL` | Contracts / backend | Required for Sepolia deploys and forked workflows |
@@ -152,6 +153,11 @@ Core app-side variables:
 | `INTERNAL_SERVICE_KEY` | Backend + internal workers | Shared secret for backend-originated privileged requests and Demucs callback authentication; required in production for internal worker callbacks |
 | `STEM_WATCHDOG_TIMEOUT_MS` | Backend | Optional timeout before active stem-processing tracks are failed as stale; defaults to `900000` locally |
 | `STEM_WATCHDOG_INTERVAL_MS` | Backend | Optional watchdog sweep interval for stale stem-processing tracks; defaults to `60000` locally |
+
+Pub/Sub auth modes:
+- Local development: set `PUBSUB_EMULATOR_HOST` via `make dev-up`.
+- Cloud Run / GCE: attach a service account and let Application Default Credentials resolve automatically.
+- Other non-local environments: use Application Default Credentials via `GOOGLE_APPLICATION_CREDENTIALS` if metadata-server auth is not available.
 
 If these variables are deployed through infrastructure, define them in `resonate-iac` alongside the backend service environment configuration.
 
