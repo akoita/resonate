@@ -45,3 +45,29 @@ test("desktop hides the hamburger", async ({ page }, testInfo) => {
   const hamburger = page.getByRole("button", { name: /open navigation/i });
   await expect(hamburger).toBeHidden();
 });
+
+test("tablet collapses sidebar labels (icon-only rail)", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium-tablet", "tablet-only check");
+
+  await page.goto("/");
+  // Sidebar renders, but the label text is hidden by the tablet media query.
+  const homeLabel = page.locator(".app-sidebar .link-text", { hasText: "Home" });
+  await expect(homeLabel).toBeAttached();
+  await expect(homeLabel).toBeHidden();
+});
+
+test("phone backdrop click closes the drawer", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium-mobile", "phone-only check");
+
+  await page.goto("/");
+  const hamburger = page.getByRole("button", { name: /open navigation/i });
+  await hamburger.click();
+
+  const backdrop = page.locator(".sidebar-backdrop");
+  await expect(backdrop).toBeVisible();
+
+  await backdrop.click();
+  await expect(backdrop).toHaveCount(0);
+  // Sidebar drawer itself should slide off-screen (lose its .open class).
+  await expect(page.locator(".app-sidebar.open")).toHaveCount(0);
+});

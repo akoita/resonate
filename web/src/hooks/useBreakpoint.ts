@@ -6,8 +6,8 @@ import { useSyncExternalStore } from "react";
  * Canonical breakpoints — mirror the values documented in
  * web/src/styles/tokens.css. Phone <768, tablet 768–1279, desktop ≥1280.
  */
-const PHONE_MAX = 767;
-const TABLET_MAX = 1279;
+export const PHONE_MAX = 767;
+export const TABLET_MAX = 1279;
 
 export type Breakpoint = "phone" | "tablet" | "desktop";
 
@@ -20,6 +20,14 @@ export interface BreakpointState {
   isBelowTablet: boolean;
   /** True for tablet-and-above — matches `@media (min-width: 768px)`. */
   isTabletUp: boolean;
+}
+
+/** Pure classifier — exposed so callers (and tests) can derive the
+ * breakpoint from an explicit width without a DOM. */
+export function getBreakpoint(width: number): Breakpoint {
+  if (width <= PHONE_MAX) return "phone";
+  if (width <= TABLET_MAX) return "tablet";
+  return "desktop";
 }
 
 function subscribe(callback: () => void): () => void {
@@ -36,9 +44,7 @@ function subscribe(callback: () => void): () => void {
 
 function readBreakpoint(): Breakpoint {
   if (typeof window === "undefined") return "desktop";
-  if (window.matchMedia(`(max-width: ${PHONE_MAX}px)`).matches) return "phone";
-  if (window.matchMedia(`(max-width: ${TABLET_MAX}px)`).matches) return "tablet";
-  return "desktop";
+  return getBreakpoint(window.innerWidth);
 }
 
 function getServerSnapshot(): Breakpoint {

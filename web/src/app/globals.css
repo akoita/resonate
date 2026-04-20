@@ -8,7 +8,9 @@
  */
 html,
 body {
-  overflow-x: hidden;
+  /* `clip` (vs `hidden`) doesn't create a new scroll container and
+   * doesn't break `position: sticky` on descendants. */
+  overflow-x: clip;
   max-width: 100%;
 }
 
@@ -9627,8 +9629,20 @@ tr[draggable="true"]:hover {
   inset: 0;
   background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(2px);
+  /* Above the sidebar's base z-index (5000) minus one, yet still below the
+   * drawer itself when the phone media query elevates both. */
   z-index: 4500;
   animation: fade-in 0.2s ease-out;
+}
+
+/* Resize safety: if the viewport grows past the phone range while the
+ * drawer is open, the sidebar returns to the grid via the phone media
+ * query below — but the backdrop is position:fixed and media-agnostic.
+ * Hide it at tablet+ so it can't hover over desktop content. */
+@media (min-width: 768px) {
+  .sidebar-backdrop {
+    display: none;
+  }
 }
 
 @keyframes fade-in {
@@ -9678,6 +9692,12 @@ tr[draggable="true"]:hover {
     display: inline-flex;
   }
 
+  /* Drawer above any in-app modal (playlist-modal-overlay z=2000,
+   * player-bar-mixer-popover z=2000). Backdrop sits just below it. */
+  .sidebar-backdrop {
+    z-index: 8999;
+  }
+
   .app-sidebar {
     position: fixed;
     top: 0;
@@ -9686,7 +9706,7 @@ tr[draggable="true"]:hover {
     width: min(84vw, 320px);
     transform: translateX(-100%);
     transition: transform 0.25s ease;
-    z-index: 5000;
+    z-index: 9000;
     border-right: 1px solid rgba(255, 255, 255, 0.08);
   }
 
