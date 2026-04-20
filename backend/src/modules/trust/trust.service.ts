@@ -13,6 +13,9 @@ import { getDefaultTrustTier, resolveTrustTiers, type TrustTierInfo } from "./tr
  *   Verified trust tier   → waived, 3 days
  */
 type TrustRequirement = Awaited<ReturnType<typeof prisma.creatorTrust.upsert>> & {
+  tierStakeAmountWei: string;
+  protocolMinimumStakeAmountWei: string;
+  policySource: "contract" | "fallback";
   maxPriceMultiplier: number;
   maxListingPriceWei: string | null;
   maxListingPriceUncapped: boolean;
@@ -25,17 +28,41 @@ type CreatorVerificationRecord = {
 
 const CONTENT_PROTECTION_CONFIG_ABI = [
   {
+    name: "stakeAmount",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
     name: "maxPriceMultiplier",
     type: "function",
     stateMutability: "view",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
   },
+  {
+    name: "getTierPolicy",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tierName", type: "string" }],
+    outputs: [
+      { name: "requiredStakeWei", type: "uint256" },
+      { name: "escrowDays", type: "uint256" },
+    ],
+  },
 ] as const;
 
 const DEFAULT_MAX_PRICE_MULTIPLIER = 10n;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const DEFAULT_SEPOLIA_RPC_URL = "https://sepolia.drpc.org";
+
+type TrustPolicyConfig = {
+  source: "contract" | "fallback";
+  tierPolicy: TrustTierInfo;
+  protocolMinimumStakeAmountWei: bigint;
+  maxPriceMultiplier: bigint;
+};
 
 @Injectable()
 export class TrustService {
@@ -107,6 +134,8 @@ export class TrustService {
    */
   async getStakeRequirement(artistId: string): Promise<TrustRequirement> {
     const tierInfo = await this.calculateTier(artistId);
+    const policy = await this.getPolicyConfig(tierInfo.tier);
+    const effectiveStakeAmountWei = this.getEffectiveStakeAmountWei(policy);
 
     // Upsert the trust record
     const trust = await prisma.creatorTrust.upsert({
@@ -114,26 +143,28 @@ export class TrustService {
       create: {
         artistId,
         tier: tierInfo.tier,
-        stakeAmountWei: tierInfo.stakeAmountWei,
-        escrowDays: tierInfo.escrowDays,
+        stakeAmountWei: effectiveStakeAmountWei.toString(),
+        escrowDays: policy.tierPolicy.escrowDays,
       },
       update: {
         tier: tierInfo.tier,
-        stakeAmountWei: tierInfo.stakeAmountWei,
-        escrowDays: tierInfo.escrowDays,
+        stakeAmountWei: effectiveStakeAmountWei.toString(),
+        escrowDays: policy.tierPolicy.escrowDays,
       },
     });
 
-    const maxPriceMultiplier = await this.getMaxPriceMultiplier();
-    const stakeAmountWei = BigInt(trust.stakeAmountWei || "0");
+    const stakeAmountWei = effectiveStakeAmountWei;
     const maxListingPriceUncapped = stakeAmountWei === 0n;
 
     return {
       ...trust,
-      maxPriceMultiplier: Number(maxPriceMultiplier),
+      tierStakeAmountWei: policy.tierPolicy.stakeAmountWei.toString(),
+      protocolMinimumStakeAmountWei: policy.protocolMinimumStakeAmountWei.toString(),
+      policySource: policy.source,
+      maxPriceMultiplier: Number(policy.maxPriceMultiplier),
       maxListingPriceWei: maxListingPriceUncapped
         ? null
-        : (stakeAmountWei * maxPriceMultiplier).toString(),
+        : (stakeAmountWei * policy.maxPriceMultiplier).toString(),
       maxListingPriceUncapped,
     };
   }
@@ -171,18 +202,20 @@ export class TrustService {
    * Manually set an artist to the verified trust tier (admin action).
    */
   async setVerified(artistId: string) {
+    const verifiedTier = await this.getPolicyConfig("verified");
+    const verifiedStakeAmountWei = this.getEffectiveStakeAmountWei(verifiedTier);
     return prisma.creatorTrust.upsert({
       where: { artistId },
       create: {
         artistId,
         tier: "verified",
-        stakeAmountWei: getDefaultTrustTier("verified").stakeAmountWei,
-        escrowDays: getDefaultTrustTier("verified").escrowDays,
+        stakeAmountWei: verifiedStakeAmountWei.toString(),
+        escrowDays: verifiedTier.tierPolicy.escrowDays,
       },
       update: {
         tier: "verified",
-        stakeAmountWei: getDefaultTrustTier("verified").stakeAmountWei,
-        escrowDays: getDefaultTrustTier("verified").escrowDays,
+        stakeAmountWei: verifiedStakeAmountWei.toString(),
+        escrowDays: verifiedTier.tierPolicy.escrowDays,
       },
     });
   }
@@ -191,14 +224,15 @@ export class TrustService {
    * Increment upload count after a successful publish.
    */
   async recordUpload(artistId: string) {
-    const newTier = this.trustTiers.new;
+    const newTier = await this.getPolicyConfig("new");
+    const newStakeAmountWei = this.getEffectiveStakeAmountWei(newTier);
     await prisma.creatorTrust.upsert({
       where: { artistId },
       create: {
         artistId,
-        tier: newTier.tier,
-        stakeAmountWei: newTier.stakeAmountWei,
-        escrowDays: newTier.escrowDays,
+        tier: newTier.tierPolicy.tier,
+        stakeAmountWei: newStakeAmountWei.toString(),
+        escrowDays: newTier.tierPolicy.escrowDays,
       },
       update: {
         totalUploads: { increment: 1 },
@@ -211,23 +245,106 @@ export class TrustService {
    * Record a lost dispute — resets tier to "new".
    */
   async recordDisputeLost(artistId: string) {
-    const newTier = this.trustTiers.new;
+    const newTier = await this.getPolicyConfig("new");
+    const newStakeAmountWei = this.getEffectiveStakeAmountWei(newTier);
     await prisma.creatorTrust.upsert({
       where: { artistId },
       create: {
         artistId,
         disputesLost: 1,
-        tier: newTier.tier,
-        stakeAmountWei: newTier.stakeAmountWei,
-        escrowDays: newTier.escrowDays,
+        tier: newTier.tierPolicy.tier,
+        stakeAmountWei: newStakeAmountWei.toString(),
+        escrowDays: newTier.tierPolicy.escrowDays,
       },
       update: {
         disputesLost: { increment: 1 },
         tier: "new",
-        stakeAmountWei: newTier.stakeAmountWei,
-        escrowDays: newTier.escrowDays,
+        stakeAmountWei: newStakeAmountWei.toString(),
+        escrowDays: newTier.tierPolicy.escrowDays,
       },
     });
+  }
+
+  private async getPolicyConfig(tierName: string): Promise<TrustPolicyConfig> {
+    const chainId = Number(
+      this.config.get<string>("INDEXER_CHAIN_ID") ||
+        this.config.get<string>("CHAIN_ID") ||
+        this.config.get<string>("AA_CHAIN_ID") ||
+        "31337",
+    );
+    const address = this.resolveContentProtectionAddress(chainId);
+
+    if (!address || address === ZERO_ADDRESS) {
+      return this.getFallbackPolicyConfig(tierName);
+    }
+
+    const client = createPublicClient({
+      chain: this.resolveChain(chainId),
+      transport: http(this.resolveRpcUrl(chainId)),
+    });
+
+    try {
+      const [protocolMinimumStakeAmountWei, maxPriceMultiplier] = await Promise.all([
+        client.readContract({
+          address: address as Address,
+          abi: CONTENT_PROTECTION_CONFIG_ABI,
+          functionName: "stakeAmount",
+        }) as Promise<bigint>,
+        client.readContract({
+          address: address as Address,
+          abi: CONTENT_PROTECTION_CONFIG_ABI,
+          functionName: "maxPriceMultiplier",
+        }) as Promise<bigint>,
+      ]);
+      this.maxPriceMultiplierCache = {
+        value: maxPriceMultiplier,
+        expiresAt: Date.now() + 60 * 60 * 1000,
+      };
+
+      const tierPolicyTuple = (await client.readContract({
+          address: address as Address,
+          abi: CONTENT_PROTECTION_CONFIG_ABI,
+          functionName: "getTierPolicy",
+          args: [tierName],
+        })) as readonly [bigint, bigint];
+      const tierPolicy: TrustTierInfo = {
+        tier: tierName,
+        stakeAmountWei: tierPolicyTuple[0].toString(),
+        escrowDays: Number(tierPolicyTuple[1]),
+      };
+
+      return {
+        source: "contract",
+        tierPolicy,
+        protocolMinimumStakeAmountWei,
+        maxPriceMultiplier,
+      };
+    } catch (error) {
+      this.logger.warn(
+        `Failed to read ContentProtection policy for tier ${tierName} on chain ${chainId}: ${error}`,
+      );
+      return {
+        ...this.getFallbackPolicyConfig(tierName),
+        maxPriceMultiplier: await this.getMaxPriceMultiplier(),
+      };
+    }
+  }
+
+  private getFallbackPolicyConfig(tierName: string): TrustPolicyConfig {
+    const fallbackTier = this.trustTiers[tierName] || getDefaultTrustTier("new");
+    return {
+      source: "fallback",
+      tierPolicy: fallbackTier,
+      protocolMinimumStakeAmountWei: BigInt(fallbackTier.stakeAmountWei),
+      maxPriceMultiplier: this.maxPriceMultiplierCache?.value || DEFAULT_MAX_PRICE_MULTIPLIER,
+    };
+  }
+
+  private getEffectiveStakeAmountWei(policy: TrustPolicyConfig): bigint {
+    const tierStakeAmountWei = BigInt(policy.tierPolicy.stakeAmountWei);
+    return tierStakeAmountWei > policy.protocolMinimumStakeAmountWei
+      ? tierStakeAmountWei
+      : policy.protocolMinimumStakeAmountWei;
   }
 
   private async getMaxPriceMultiplier(): Promise<bigint> {

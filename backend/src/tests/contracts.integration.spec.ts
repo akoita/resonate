@@ -34,7 +34,7 @@ describe('ContractsService (integration)', () => {
 
   beforeAll(async () => {
     eventBus = new EventBus();
-    service = new ContractsService(eventBus);
+    service = new ContractsService(eventBus, {} as any);
     service.onModuleInit();
 
     // Seed full ownership chain: User → Artist → Release → Track → Stem

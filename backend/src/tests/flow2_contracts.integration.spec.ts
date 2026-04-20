@@ -57,7 +57,7 @@ describe('Choreography Flow 2: Contract Indexing → Marketplace Lifecycle', () 
 
     // Real EventBus → real ContractsService (no mocks)
     eventBus = new EventBus();
-    contractsService = new ContractsService(eventBus as any);
+    contractsService = new ContractsService(eventBus as any, {} as any);
     (contractsService as any).subscribeToContractEvents();
   });
 

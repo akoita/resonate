@@ -14,6 +14,8 @@ import { MetadataController } from '../modules/contracts/metadata.controller';
 import { ContractsService } from '../modules/contracts/contracts.service';
 import { EventBus } from '../modules/shared/event_bus';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { TrustService } from '../modules/trust/trust.service';
 
 const TEST_PREFIX = `meta_${Date.now()}_`;
 
@@ -75,7 +77,8 @@ describe('MetadataController (integration)', () => {
 
     // Real ContractsService — all query methods use real Postgres
     const eventBus = new EventBus();
-    contractsService = new ContractsService(eventBus as any);
+    const trustService = new TrustService(new ConfigService());
+    contractsService = new ContractsService(eventBus as any, trustService);
     controller = new MetadataController(contractsService);
 
     await prisma.curatorReputation.create({

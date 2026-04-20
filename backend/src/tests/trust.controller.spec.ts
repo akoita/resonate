@@ -18,6 +18,9 @@ describe("TrustController", () => {
       artistId: "artist-1",
       tier: "new",
       stakeAmountWei: "10000000000000000",
+      tierStakeAmountWei: "10000000000000000",
+      protocolMinimumStakeAmountWei: "10000000000000",
+      policySource: "contract",
       escrowDays: 30,
       maxPriceMultiplier: 10,
       maxListingPriceWei: "100000000000000000",
@@ -36,5 +39,8 @@ describe("TrustController", () => {
 
     expect(result.humanVerificationStatus).toBe("human_verified");
     expect(result.humanVerifiedAt).toBe("2026-04-09T19:51:38.721Z");
+    expect(result.tierStakeAmountWei).toBe("10000000000000000");
+    expect(result.protocolMinimumStakeAmountWei).toBe("10000000000000");
+    expect(result.policySource).toBe("contract");
   });
 });

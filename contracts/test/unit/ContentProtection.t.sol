@@ -44,6 +44,13 @@ contract ContentProtectionTest is Test {
         uint256 oldMultiplier,
         uint256 newMultiplier
     );
+    event TierPolicyUpdated(
+        string tierName,
+        uint256 oldStakeAmountWei,
+        uint256 oldEscrowDays,
+        uint256 newStakeAmountWei,
+        uint256 newEscrowDays
+    );
     event TrackRegistered(uint256 indexed releaseId, uint256 indexed trackId);
     event StemRegistered(uint256 indexed trackId, uint256 indexed stemTokenId);
     event StemProtectionRootRegistered(
@@ -68,6 +75,27 @@ contract ContentProtectionTest is Test {
         assertEq(cp.treasury(), treasury);
         assertEq(cp.stakeAmount(), STAKE_AMOUNT);
         assertEq(cp.maxPriceMultiplier(), 10);
+    }
+
+    function test_Initialize_SeedsTierPolicies() public view {
+        (uint256 newStake, uint256 newEscrowDays) = cp.getTierPolicy("new");
+        (uint256 establishedStake, uint256 establishedEscrowDays) = cp
+            .getTierPolicy("established");
+        (uint256 trustedStake, uint256 trustedEscrowDays) = cp.getTierPolicy(
+            "trusted"
+        );
+        (uint256 verifiedStake, uint256 verifiedEscrowDays) = cp.getTierPolicy(
+            "verified"
+        );
+
+        assertEq(newStake, STAKE_AMOUNT);
+        assertEq(newEscrowDays, 30);
+        assertEq(establishedStake, STAKE_AMOUNT / 2);
+        assertEq(establishedEscrowDays, 14);
+        assertEq(trustedStake, STAKE_AMOUNT / 10);
+        assertEq(trustedEscrowDays, 7);
+        assertEq(verifiedStake, 0);
+        assertEq(verifiedEscrowDays, 3);
     }
 
     function test_Initialize_RevertDoubleInit() public {
@@ -269,6 +297,25 @@ contract ContentProtectionTest is Test {
         vm.prank(admin);
         cp.setStakeAmount(0.05 ether);
         assertEq(cp.stakeAmount(), 0.05 ether);
+    }
+
+    function test_SetTierPolicy() public {
+        vm.prank(admin);
+        vm.expectEmit(false, false, false, true);
+        emit TierPolicyUpdated("new", STAKE_AMOUNT, 30, 0.001 ether, 10);
+        cp.setTierPolicy("new", 0.001 ether, 10);
+
+        (uint256 updatedStake, uint256 updatedEscrowDays) = cp.getTierPolicy(
+            "new"
+        );
+        assertEq(updatedStake, 0.001 ether);
+        assertEq(updatedEscrowDays, 10);
+    }
+
+    function test_SetTierPolicy_RevertInvalidTier() public {
+        vm.prank(admin);
+        vm.expectRevert(ContentProtection.InvalidTier.selector);
+        cp.setTierPolicy("unknown", 1, 1);
     }
 
     function test_SetMaxPriceMultiplier() public {

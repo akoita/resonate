@@ -7,9 +7,10 @@ import { NotificationModule } from "../notifications/notification.module";
 import { MintAuthorizationController } from "./mint-authorization.controller";
 import { MintAuthorizationService } from "./mint-authorization.service";
 import { RightsModule } from "../rights/rights.module";
+import { TrustModule } from "../trust/trust.module";
 
 @Module({
-  imports: [SharedModule, NotificationModule, RightsModule],
+  imports: [SharedModule, NotificationModule, RightsModule, TrustModule],
   controllers: [MetadataController, MintAuthorizationController],
   providers: [ContractsService, IndexerService, MintAuthorizationService],
   exports: [ContractsService, IndexerService, MintAuthorizationService],
