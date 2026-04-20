@@ -99,16 +99,40 @@ The sender workflow in this repo passes:
 
 - `environment`
 - `source_ref`
-- `services=backend,frontend`
+- `services`
 - `trigger_branch`
 - `release_sha`
 - `release_id`
+- `backend_image`
+- `frontend_image`
+- `demucs_image`
 
 Required sender secret in `resonate`:
 
 - `RESONATE_IAC_DISPATCH_TOKEN`
   - GitHub token with permission to trigger repository dispatch events on
     `akoita/resonate-iac`
+
+Required image-publish auth secrets in deployable GitHub environments for `resonate`:
+
+- `GCP_WIF_PROVIDER`
+  - workload identity provider for Artifact Registry image publication
+- `GCP_ARTIFACT_REGISTRY_SA_EMAIL`
+  - service account email used by app CI to push immutable images
+
+Required deployable GitHub environment variables in `resonate`:
+
+- `GCP_PROJECT_ID`
+- `GCP_REGION`
+- `NEXT_PUBLIC_API_URL`
+- `NEXT_PUBLIC_ZERODEV_PROJECT_ID`
+- `NEXT_PUBLIC_CHAIN_ID`
+- `NEXT_PUBLIC_STEM_NFT_ADDRESS`
+- `NEXT_PUBLIC_MARKETPLACE_ADDRESS`
+- `NEXT_PUBLIC_TRANSFER_VALIDATOR_ADDRESS`
+- `NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS`
+- `NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS`
+- `NEXT_PUBLIC_CURATION_REWARDS_ADDRESS`
 
 The receiver-side contract and deploy execution live in `resonate-iac`.
 
