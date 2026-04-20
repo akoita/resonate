@@ -409,3 +409,30 @@
   color: var(--color-muted);
   font-size: 14px;
 }
+
+/* ------------------------------------------------------------------
+ * BuyModal responsive overrides (#564)
+ * Stack action buttons + reduce overlay padding so the modal gets
+ * more usable width on narrow phones.
+ * ------------------------------------------------------------------ */
+@media (max-width: 479px) {
+  .buy-modal-overlay {
+    padding: 8px;
+  }
+
+  .buy-modal {
+    padding: 20px;
+    border-radius: 18px;
+  }
+
+  /* Stack Cancel / Confirm vertically; primary action on top so it's
+   * reachable with one thumb near the top of the viewport. */
+  .buy-modal__actions {
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+
+  .buy-modal__btn {
+    width: 100%;
+  }
+}

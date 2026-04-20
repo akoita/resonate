@@ -722,3 +722,77 @@
   font-size: 11px;
   color: var(--color-muted);
 }
+
+/* ------------------------------------------------------------------
+ * /marketplace responsive overrides (#564)
+ * ------------------------------------------------------------------ */
+
+/* Stem type pills: horizontal scroll with edge fade below 1024px — 8
+ * pills + selects can't wrap cleanly on narrow widths. Matches the
+ * /library tab-bar pattern. */
+@media (max-width: 1023px) {
+  .marketplace-toolbar__group {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      black 12px,
+      black calc(100% - 12px),
+      transparent 100%
+    );
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      black 12px,
+      black calc(100% - 12px),
+      transparent 100%
+    );
+    padding: 0 12px;
+  }
+
+  .marketplace-toolbar__group::-webkit-scrollbar {
+    display: none;
+  }
+
+  .stem-pill {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+}
+
+/* Phone: 2-column grid, tighter sticky controls, smaller hero. */
+@media (max-width: 767px) {
+  .marketplace-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: var(--space-3);
+  }
+
+  .marketplace-sticky-controls {
+    padding: var(--space-3) 0;
+  }
+
+  .marketplace-toolbar {
+    gap: var(--space-2);
+  }
+
+  .marketplace-hero {
+    padding: var(--space-4) 0;
+  }
+
+  /* Stem card internals get tighter on phone to match the smaller card */
+  .stem-card__body {
+    padding: var(--space-3);
+  }
+}
+
+/* Very narrow phones: single-column grid — cards need breathing room. */
+@media (max-width: 380px) {
+  .marketplace-grid {
+    grid-template-columns: 1fr;
+  }
+}

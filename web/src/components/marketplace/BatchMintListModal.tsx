@@ -506,6 +506,30 @@ export function BatchMintListModal({ stems, onClose, onComplete }: BatchMintList
           opacity: 0.6;
           cursor: not-allowed;
         }
+
+        /* Phone overrides (#564) — stack footer buttons, tighten padding,
+         * reclaim overlay space. */
+        @media (max-width: 479px) {
+          .batch-modal {
+            width: calc(100% - 16px);
+            padding: 20px;
+            border-radius: 16px;
+          }
+
+          .batch-stems-list {
+            max-height: 240px;
+          }
+
+          .batch-modal-footer {
+            flex-direction: column-reverse;
+            gap: 8px;
+          }
+
+          .batch-modal-footer > button {
+            width: 100%;
+            padding: 12px 16px;
+          }
+        }
       `}</style>
     </>,
     document.body

@@ -9758,6 +9758,27 @@ tr[draggable="true"]:hover {
 }
 
 /* ------------------------------------------------------------------
+ * ResaleModal responsive overrides (#564)
+ * The modal renders its action buttons with inline styles, which CSS
+ * can't override without a class hook. `.resale-modal-actions` is a
+ * new className added to that row solely to enable these stacked
+ * buttons on phone.
+ * ------------------------------------------------------------------ */
+@media (max-width: 479px) {
+  .resale-modal-actions {
+    flex-direction: column-reverse !important;
+    gap: 8px !important;
+  }
+
+  /* Tighten the playlist-modal padding on phone so the modal content gets
+   * the full usable width — inline style set it to 32px. */
+  .playlist-modal.redesigned {
+    padding: 20px !important;
+    border-radius: 20px !important;
+  }
+}
+
+/* ------------------------------------------------------------------
  * /library responsive overrides (#563)
  * Fixes three phone/tablet problems: (1) 6-tab bar overflow, (2) header
  * row doesn't stack, (3) 7-col track-row grid unreadable below ~900px.
