@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
 import { useDisputeNotifications } from "../../hooks/useDisputeNotifications";
+import { useBreakpoint } from "../../hooks/useBreakpoint";
 
 interface DisputeEvidence {
   id: string;
@@ -276,6 +277,7 @@ export default function DisputeDashboard() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { disputeUpdate } = useDisputeNotifications(address ?? undefined);
+  const { isPhone } = useBreakpoint();
   const requestedTab = searchParams.get("tab");
   const highlightedDisputeId = searchParams.get("dispute");
   const initialTab: Tab =
@@ -1023,7 +1025,12 @@ export default function DisputeDashboard() {
                                   </div>
                                 </div>
                                 {canVote ? (
-                                  <div style={{ display: "flex", gap: "8px" }}>
+                                  <div style={{
+                                    display: "flex",
+                                    gap: "8px",
+                                    flexDirection: isPhone ? "column" : "row",
+                                    width: isPhone ? "100%" : "auto",
+                                  }}>
                                     <button
                                       className="dd-vote-btn"
                                       style={{
@@ -1031,6 +1038,7 @@ export default function DisputeDashboard() {
                                         borderColor: "rgba(16,185,129,0.4)",
                                         color: "#10b981",
                                         background: "rgba(16,185,129,0.08)",
+                                        width: isPhone ? "100%" : undefined,
                                       }}
                                       disabled={votePendingId === d.id}
                                       onClick={() => castJuryVote(d.id, "reporter")}
@@ -1044,6 +1052,7 @@ export default function DisputeDashboard() {
                                         borderColor: "rgba(239,68,68,0.4)",
                                         color: "#ef4444",
                                         background: "rgba(239,68,68,0.08)",
+                                        width: isPhone ? "100%" : undefined,
                                       }}
                                       disabled={votePendingId === d.id}
                                       onClick={() => castJuryVote(d.id, "creator")}

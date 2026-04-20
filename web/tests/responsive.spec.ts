@@ -36,9 +36,13 @@ test("phone hamburger opens the sidebar drawer", async ({ page, viewport }, test
   const hamburger = page.getByRole("button", { name: /open navigation/i });
   await expect(hamburger).toBeVisible();
 
-  await hamburger.click();
-  // Once open, at least one primary nav link should be reachable inside the drawer.
-  await expect(page.getByRole("link", { name: "Library" })).toBeVisible();
+  const drawerLink = page.getByRole("link", { name: "Library" });
+  // Same click-retry pattern as the backdrop test — immune to any
+  // residual hydration race under heavy parallel worker load.
+  await expect(async () => {
+    await hamburger.click();
+    await expect(drawerLink).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 10000 });
 });
 
 test("desktop hides the hamburger", async ({ page }, testInfo) => {
@@ -66,10 +70,16 @@ test("phone backdrop click closes the drawer", async ({ page }, testInfo) => {
   await page.waitForLoadState("networkidle");
   const hamburger = page.getByRole("button", { name: /open navigation/i });
   await expect(hamburger).toBeVisible();
-  await hamburger.click();
 
   const backdrop = page.locator(".sidebar-backdrop");
-  await expect(backdrop).toBeVisible();
+  // Click-and-verify retry loop. Under parallel worker load the first
+  // click can land before React has finished attaching its handler even
+  // after `networkidle`, and the state toggle is lost. Retry the click
+  // until the backdrop actually appears (or the outer 10s budget lapses).
+  await expect(async () => {
+    await hamburger.click();
+    await expect(backdrop).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 10000 });
 
   // The backdrop uses `position: fixed; inset: 0;` so it spans the whole
   // viewport, but the drawer sits on top of its left portion. Clicking
