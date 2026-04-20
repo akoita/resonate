@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
 import { useUIStore } from "../../lib/uiStore";
+import { getArtistMe, type ArtistProfile } from "../../lib/api";
 
 const subscribe = () => () => {};
 
@@ -143,9 +144,10 @@ const SECONDARY_ITEMS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { role, status, address, smartAccountAddress } = useAuth();
+  const { role, status, address, smartAccountAddress, token } = useAuth();
   const mounted = useSyncExternalStore(subscribe, () => true, () => false);
   const { isSidebarOpen, closeSidebar } = useUIStore();
+  const [artistProfile, setArtistProfile] = useState<ArtistProfile | null>(null);
 
   // Auto-close drawer on route change only. `closeSidebar` is a Zustand
   // action — referentially stable, deliberately excluded from deps so
@@ -156,14 +158,43 @@ export default function Sidebar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
+  // Opportunistic artist-profile fetch: when authenticated, upgrade the
+  // chip to show a `displayName` + name-derived initial instead of the
+  // raw address. Most users aren't artists; getArtistMe returns null in
+  // that case and we fall back to address-derived values.
+  useEffect(() => {
+    if (status !== "authenticated" || !token) {
+      setArtistProfile(null);
+      return;
+    }
+    let cancelled = false;
+    getArtistMe(token)
+      .then(p => { if (!cancelled) setArtistProfile(p); })
+      .catch(() => { if (!cancelled) setArtistProfile(null); });
+    return () => { cancelled = true; };
+  }, [status, token]);
+
   const showAdminLink = mounted && role === "admin";
   const accountAddress = smartAccountAddress ?? address;
   const showUserChip = mounted && status === "authenticated" && !!accountAddress;
-  const userInitial = accountAddress ? accountAddress.slice(2, 3).toUpperCase() : "";
-  const userLabel = accountAddress
+
+  const displayName = artistProfile?.displayName?.trim() || "";
+  const hasDisplayName = displayName.length > 0;
+
+  const truncatedAddress = accountAddress
     ? `${accountAddress.slice(0, 6)}…${accountAddress.slice(-4)}`
     : "";
-  const userStatusLabel = smartAccountAddress ? "Smart Account Connected" : "Wallet Connected";
+  const primaryLabel = hasDisplayName ? displayName : truncatedAddress;
+  const secondaryLabel = hasDisplayName ? truncatedAddress : null;
+  const userInitial = hasDisplayName
+    ? displayName[0]!.toUpperCase()
+    : accountAddress
+      ? accountAddress.slice(2, 3).toUpperCase()
+      : "";
+  // Drop the redundant "Connected" — the green status dot already conveys
+  // connection state. Keeps the status line short enough to avoid
+  // clipping at narrow drawer widths (#549).
+  const userStatusLabel = smartAccountAddress ? "Smart Account" : "Wallet";
 
   return (
     <>
@@ -234,10 +265,16 @@ export default function Sidebar() {
 
       {showUserChip ? (
         <div className="sidebar-footer">
-          <div className="user-profile" aria-label={`Connected account ${userLabel}`}>
+          <div
+            className="user-profile"
+            aria-label={`Connected account ${hasDisplayName ? `${displayName} (${truncatedAddress})` : truncatedAddress}`}
+          >
             <div className="user-avatar">{userInitial}</div>
             <div className="user-info">
-              <div className="user-name">{userLabel}</div>
+              <div className="user-name" title={primaryLabel}>{primaryLabel}</div>
+              {secondaryLabel ? (
+                <div className="user-subtext" title={secondaryLabel}>{secondaryLabel}</div>
+              ) : null}
               <div className="user-status">
                 <span className="status-dot" />
                 {userStatusLabel}
