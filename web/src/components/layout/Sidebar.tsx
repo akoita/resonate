@@ -147,9 +147,14 @@ export default function Sidebar() {
   const mounted = useSyncExternalStore(subscribe, () => true, () => false);
   const { isSidebarOpen, closeSidebar } = useUIStore();
 
+  // Auto-close drawer on route change only. `closeSidebar` is a Zustand
+  // action — referentially stable, deliberately excluded from deps so
+  // this doesn't re-run on unrelated state changes that could cancel a
+  // just-opened drawer mid-interaction.
   useEffect(() => {
     closeSidebar();
-  }, [pathname, closeSidebar]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   const showAdminLink = mounted && role === "admin";
   const accountAddress = smartAccountAddress ?? address;

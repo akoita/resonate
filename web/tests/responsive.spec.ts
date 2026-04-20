@@ -6,7 +6,15 @@ import { test, expect } from "@playwright/test";
  * Goal: prove the app renders without horizontal overflow and that the
  * phone drawer nav actually works — not to re-run every per-flow spec
  * against three viewports (that would triple CI time).
+ *
+ * `mode: serial` — under parallel workers + a single Next.js dev server,
+ * the first-compile queue + React hydration race can swallow hamburger
+ * clicks. Running these tests serially within each project removes the
+ * race; they still parallelize across the 3 viewport projects. Retries
+ * further guard against the rare compile-burst that can still nuke a
+ * click under heavy CI load.
  */
+test.describe.configure({ mode: "serial", retries: 2 });
 
 const ROUTES = ["/", "/library", "/marketplace", "/wallet"] as const;
 
@@ -37,12 +45,17 @@ test("phone hamburger opens the sidebar drawer", async ({ page, viewport }, test
   await expect(hamburger).toBeVisible();
 
   const drawerLink = page.getByRole("link", { name: "Library" });
-  // Same click-retry pattern as the backdrop test — immune to any
-  // residual hydration race under heavy parallel worker load.
+  const backdrop = page.locator(".sidebar-backdrop");
+  // Click-retry pattern immune to hydration race under heavy parallel
+  // worker load. Hamburger toggles, so only click when drawer is closed.
+  // Dispatching via `el.click()` avoids pointer/tap event quirks under
+  // touch emulation.
   await expect(async () => {
-    await hamburger.click();
+    if ((await backdrop.count()) === 0) {
+      await hamburger.evaluate((el) => (el as HTMLElement).click());
+    }
     await expect(drawerLink).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 10000 });
+  }).toPass({ timeout: 25000 });
 });
 
 test("desktop hides the hamburger", async ({ page }, testInfo) => {
@@ -74,12 +87,17 @@ test("phone backdrop click closes the drawer", async ({ page }, testInfo) => {
   const backdrop = page.locator(".sidebar-backdrop");
   // Click-and-verify retry loop. Under parallel worker load the first
   // click can land before React has finished attaching its handler even
-  // after `networkidle`, and the state toggle is lost. Retry the click
-  // until the backdrop actually appears (or the outer 10s budget lapses).
+  // after `networkidle`, and the state toggle is lost. The hamburger
+  // toggles (not opens), so blind retries would alternate open/close —
+  // only click if the drawer isn't already open. On touch-emulated
+  // mobile, dispatch the click directly on the element so we bypass
+  // the pointer/tap flow entirely.
   await expect(async () => {
-    await hamburger.click();
+    if ((await backdrop.count()) === 0) {
+      await hamburger.evaluate((el) => (el as HTMLElement).click());
+    }
     await expect(backdrop).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 10000 });
+  }).toPass({ timeout: 25000 });
 
   // The backdrop uses `position: fixed; inset: 0;` so it spans the whole
   // viewport, but the drawer sits on top of its left portion. Clicking

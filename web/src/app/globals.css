@@ -10016,3 +10016,49 @@ tr[draggable="true"]:hover {
     white-space: nowrap;
   }
 }
+
+/* ------------------------------------------------------------------
+ * /agent dashboard responsive overrides (#569)
+ * Complements the existing `@media (max-width: 900px)` rule (line 6744)
+ * that collapses the outer dashboard grid. Below 768px the internal
+ * taste-card split, hero title, and discovery banner all need phone
+ * adjustments.
+ * ------------------------------------------------------------------ */
+@media (max-width: 767px) {
+  .agent-dashboard-title {
+    font-size: 28px;
+    letter-spacing: -0.03em;
+  }
+
+  .agent-dashboard-header {
+    margin-bottom: var(--space-5);
+  }
+
+  .agent-card {
+    padding: var(--space-4);
+    border-radius: 16px;
+  }
+
+  /* Taste card: break the desktop 2:1 split into stacked sections. The
+   * desktop layout used a vertical `border-right` between columns;
+   * on phone rotate that to a horizontal rule between stacked sections. */
+  .agent-taste-content {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .agent-card-wide .agent-taste-card .agent-taste-col-main,
+  .agent-taste-col-main {
+    border-right: none;
+    padding-right: 0;
+    border-bottom: 1px solid var(--color-surface-hover, rgba(255, 255, 255, 0.08));
+    padding-bottom: var(--space-4);
+  }
+
+  /* Discovery banner: its inline flex with `justify-content: space-between`
+   * forces the trailing link offscreen at narrow widths. Let it wrap. */
+  .agent-discovery-banner {
+    flex-wrap: wrap;
+    padding: 12px 14px;
+  }
+}
