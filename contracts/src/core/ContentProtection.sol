@@ -371,8 +371,10 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     }
 
     function setStakeAmount(uint256 newAmount) external onlyOwner {
-        emit StakeAmountUpdated(stakeAmount, newAmount);
+        uint256 oldAmount = stakeAmount;
+        emit StakeAmountUpdated(oldAmount, newAmount);
         stakeAmount = newAmount;
+        _syncDefaultTierPolicies(oldAmount, newAmount);
     }
 
     function setTierPolicy(
@@ -621,6 +623,57 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         _setTierPolicy(_tierKey("trusted"), baseStakeAmount / 10, 7);
         _setTierPolicy(_tierKey("established"), baseStakeAmount / 2, 14);
         _setTierPolicy(_tierKey("new"), baseStakeAmount, 30);
+    }
+
+    function _syncDefaultTierPolicies(
+        uint256 oldBaseStakeAmount,
+        uint256 newBaseStakeAmount
+    ) internal {
+        _syncTierPolicyIfStillDefault(
+            _tierKey("verified"),
+            0,
+            3,
+            0,
+            3
+        );
+        _syncTierPolicyIfStillDefault(
+            _tierKey("trusted"),
+            oldBaseStakeAmount / 10,
+            7,
+            newBaseStakeAmount / 10,
+            7
+        );
+        _syncTierPolicyIfStillDefault(
+            _tierKey("established"),
+            oldBaseStakeAmount / 2,
+            14,
+            newBaseStakeAmount / 2,
+            14
+        );
+        _syncTierPolicyIfStillDefault(
+            _tierKey("new"),
+            oldBaseStakeAmount,
+            30,
+            newBaseStakeAmount,
+            30
+        );
+    }
+
+    function _syncTierPolicyIfStillDefault(
+        bytes32 tierKey,
+        uint256 expectedOldStakeAmountWei,
+        uint256 expectedOldEscrowDays,
+        uint256 newStakeAmountWei,
+        uint256 newEscrowDays
+    ) internal {
+        TierPolicy storage currentPolicy = _tierPolicies[tierKey];
+        if (
+            !currentPolicy.configured ||
+            (currentPolicy.stakeAmountWei == expectedOldStakeAmountWei &&
+                currentPolicy.escrowDays == expectedOldEscrowDays)
+        ) {
+            _setTierPolicy(tierKey, newStakeAmountWei, newEscrowDays);
+        }
     }
 
     function _setTierPolicy(

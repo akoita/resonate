@@ -297,6 +297,34 @@ contract ContentProtectionTest is Test {
         vm.prank(admin);
         cp.setStakeAmount(0.05 ether);
         assertEq(cp.stakeAmount(), 0.05 ether);
+
+        (uint256 newStake, uint256 newEscrowDays) = cp.getTierPolicy("new");
+        (uint256 establishedStake, uint256 establishedEscrowDays) = cp
+            .getTierPolicy("established");
+        (uint256 trustedStake, uint256 trustedEscrowDays) = cp.getTierPolicy(
+            "trusted"
+        );
+
+        assertEq(newStake, 0.05 ether);
+        assertEq(newEscrowDays, 30);
+        assertEq(establishedStake, 0.025 ether);
+        assertEq(establishedEscrowDays, 14);
+        assertEq(trustedStake, 0.005 ether);
+        assertEq(trustedEscrowDays, 7);
+    }
+
+    function test_SetStakeAmount_PreservesCustomizedTierPolicy() public {
+        vm.prank(admin);
+        cp.setTierPolicy("new", 0.001 ether, 10);
+
+        vm.prank(admin);
+        cp.setStakeAmount(0.05 ether);
+
+        (uint256 updatedStake, uint256 updatedEscrowDays) = cp.getTierPolicy(
+            "new"
+        );
+        assertEq(updatedStake, 0.001 ether);
+        assertEq(updatedEscrowDays, 10);
     }
 
     function test_SetTierPolicy() public {
