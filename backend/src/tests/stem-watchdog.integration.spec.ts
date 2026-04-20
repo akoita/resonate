@@ -9,6 +9,51 @@ import { EventBus } from '../modules/shared/event_bus';
 import { LocalStorageProvider } from '../modules/storage/local_storage_provider';
 
 const TEST_PREFIX = `watchdog_${Date.now()}_`;
+const POLL_INTERVAL_MS = 50;
+const POLL_TIMEOUT_MS = 2_000;
+
+async function waitForReleaseAndTrack(
+  releaseId: string,
+  trackId: string,
+  predicate: (state: {
+    releaseStatus: string | null;
+    releaseError: string | null;
+    trackStatus: string | null;
+    trackError: string | null;
+  }) => boolean,
+) {
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    const [release, track] = await Promise.all([
+      prisma.release.findUnique({
+        where: { id: releaseId },
+        select: { status: true, processingError: true },
+      }),
+      prisma.track.findUnique({
+        where: { id: trackId },
+        select: { processingStatus: true, processingError: true },
+      }),
+    ]);
+
+    const state = {
+      releaseStatus: release?.status ?? null,
+      releaseError: release?.processingError ?? null,
+      trackStatus: track?.processingStatus ?? null,
+      trackError: track?.processingError ?? null,
+    };
+
+    if (predicate(state)) {
+      return state;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  }
+
+  throw new Error(
+    `Timed out waiting for release ${releaseId} / track ${trackId} state transition`,
+  );
+}
 
 describe('StemWatchdogService (integration)', () => {
   let eventBus: EventBus;
@@ -82,15 +127,16 @@ describe('StemWatchdogService (integration)', () => {
     });
 
     await watchdog.runWatchdogSweep();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    const state = await waitForReleaseAndTrack(
+      releaseId,
+      trackId,
+      ({ releaseStatus, trackStatus }) => releaseStatus === 'failed' && trackStatus === 'failed',
+    );
 
-    const release = await prisma.release.findUnique({ where: { id: releaseId } });
-    const track = await prisma.track.findUnique({ where: { id: trackId } });
-
-    expect(release!.status).toBe('failed');
-    expect(release!.processingError).toContain('timed out');
-    expect(track!.processingStatus).toBe('failed');
-    expect(track!.processingError).toContain('timed out');
+    expect(state.releaseStatus).toBe('failed');
+    expect(state.releaseError).toContain('timed out');
+    expect(state.trackStatus).toBe('failed');
+    expect(state.trackError).toContain('timed out');
   });
 
   it('does not fail releases that have recent progress heartbeats', async () => {
@@ -121,14 +167,19 @@ describe('StemWatchdogService (integration)', () => {
     });
 
     await watchdog.runWatchdogSweep();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    const state = await waitForReleaseAndTrack(
+      releaseId,
+      trackId,
+      ({ releaseStatus, trackStatus, releaseError, trackError }) =>
+        releaseStatus === 'processing' &&
+        trackStatus === 'separating' &&
+        releaseError === null &&
+        trackError === null,
+    );
 
-    const release = await prisma.release.findUnique({ where: { id: releaseId } });
-    const track = await prisma.track.findUnique({ where: { id: trackId } });
-
-    expect(release!.status).toBe('processing');
-    expect(release!.processingError).toBeNull();
-    expect(track!.processingStatus).toBe('separating');
-    expect(track!.processingError).toBeNull();
+    expect(state.releaseStatus).toBe('processing');
+    expect(state.releaseError).toBeNull();
+    expect(state.trackStatus).toBe('separating');
+    expect(state.trackError).toBeNull();
   });
 });
