@@ -32,6 +32,13 @@ jobs:
           INPUT_CI_RUN_ID: ${{ inputs.ci_run_id || '' }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
+          run_id=""
+          run_number=""
+          head_branch=""
+          head_sha=""
+          run_event=""
+          run_conclusion=""
+
           if [[ "${EVENT_NAME}" == "workflow_run" ]]; then
             run_id="${{ github.event.workflow_run.id }}"
             run_number="${{ github.event.workflow_run.run_number }}"
@@ -47,24 +54,24 @@ jobs:
               "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${INPUT_CI_RUN_ID}")"
 
             export GH_RUN_RESPONSE="${response}"
-            eval "$(
-              python3 - <<'PY'
-              import json
-              import os
-              import shlex
+            python3 - <<'PY' > "${RUNNER_TEMP}/trigger-context.env"
+            import json
+            import os
+            import shlex
 
-              payload = json.loads(os.environ["GH_RUN_RESPONSE"])
-              for key, value in (
-                  ("run_id", payload["id"]),
-                  ("run_number", payload["run_number"]),
-                  ("head_branch", payload["head_branch"]),
-                  ("head_sha", payload["head_sha"]),
-                  ("run_event", payload["event"]),
-                  ("run_conclusion", payload["conclusion"] or ""),
-              ):
-                  print(f"{key}={shlex.quote(str(value))}")
-              PY
-            )"
+            payload = json.loads(os.environ["GH_RUN_RESPONSE"])
+            for key, value in (
+                ("run_id", payload["id"]),
+                ("run_number", payload["run_number"]),
+                ("head_branch", payload["head_branch"]),
+                ("head_sha", payload["head_sha"]),
+                ("run_event", payload["event"]),
+                ("run_conclusion", payload["conclusion"] or ""),
+            ):
+                print(f"{key}={shlex.quote(str(value))}")
+            PY
+
+            source "${RUNNER_TEMP}/trigger-context.env"
           fi
 
           should_continue="true"
