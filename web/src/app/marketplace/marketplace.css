@@ -798,15 +798,19 @@
     padding: var(--space-3);
   }
 
-  /* Pill group keeps its own horizontal scroll + fade, but don't let
-   * that fade mask bleed onto any wrapped-next-row sibling (#603). The
-   * sort/artist/genre selects were being clipped at the left ("west"
-   * instead of "Newest") because of an interaction with the pill row's
-   * padding + mask. Force the pill group to span the full toolbar
-   * width so siblings always drop to their own clean row. */
+  /* Pill group: drop the desktop horizontal-scroll + mask and let
+   * the 8 pills wrap onto 2 rows so every filter is visible at once
+   * (#603 follow-up: "some buttons are hidden on the left"). All 8
+   * pills are short enough that they fit in 2 rows on a 375-412px
+   * phone. `flex: 1 0 100%` keeps siblings wrapping to their own row
+   * below the pills, as before. */
   .marketplace-toolbar__group {
     flex: 1 0 100%;
-    padding: 0 12px;
+    flex-wrap: wrap;
+    overflow-x: visible;
+    mask-image: none;
+    -webkit-mask-image: none;
+    padding: 0;
   }
 
   /* Selects + toggle sit on their own row under the pills, with
