@@ -2,9 +2,9 @@
 
 # 🎵 Resonate
 
-### The Agentic Audio Protocol
+### On-chain music for artists, listeners, and agents.
 
-**Machine-First Audio Licensing API • x402 Checkout • Stem-Level Commerce**
+**Programmable Stem IP • Human Studio • x402-native API**
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=for-the-badge&logo=nestjs&logoColor=white)](https://nestjs.com/)
@@ -22,9 +22,13 @@
 
 ## 🌟 Overview
 
-Resonate is a machine-first audio licensing API for agentic commerce. It lets software agents discover stems, inspect licensing-aware prices, pay over HTTP with x402, and receive machine-readable purchase proof without creating an account.
+Resonate is an on-chain music platform where artists publish programmable stem IP and both humans and AI agents can discover, license, and remix it. A machine-first API surface (x402-native, no-account checkout) keeps that same catalog usable by agents as they become first-class consumers alongside the human studio app.
 
-The long-term vision is still broader than a storefront: artists monetize programmable stem IP, and AI systems can curate, remix, and negotiate rights around that catalog. But the fastest path to usefulness is to treat every paid API route like a storefront and make the commerce surface work for machines first.
+Three first-class audiences, one catalog:
+
+- **Artists** — upload releases, mint stems as NFTs, price them per-license type (personal / remix / commercial), and earn royalties via an on-chain payment splitter.
+- **Listeners** — use a full music app: player, library, playlists, marketplace, an AI DJ that curates against the catalog, and curator-resolved dispute flows. Purchases are wallet-native; you own what you buy.
+- **Agents** — hit storefront endpoints, inspect licensing-aware quotes, pay over HTTP with x402, and receive machine-readable purchase proof. No account, no OAuth, no dashboard.
 
 ### Copy-paste demo: discover -> quote -> pay -> receipt
 
@@ -64,7 +68,7 @@ Expected flow:
 
 If you use an x402-capable client such as AgentCash, it can automate the proof exchange for you. The raw `curl` path above is here so reviewers can inspect the underlying commerce surface directly.
 
-### What agents get
+### What the agent API surface gives you
 
 - **Public discovery surfaces** — machine-readable catalog, quote, and pricing endpoints
 - **No-account checkout** — x402 payment flow over HTTP using USDC
@@ -74,9 +78,9 @@ If you use an x402-capable client such as AgentCash, it can automate the proof e
 
 ### Product framing
 
-- **Primary thesis** — Resonate is a storefront-grade API for audio licensing and purchase by agents
-- **Dogfooding app** — the AI DJ experience is how Resonate exercises its own commerce rails, not the only product surface
-- **Why this matters** — the best UX for agents is discovery + quote + payment + receipt, with no dashboard required
+- **Stems are the primitive** — pricing, receipts, remix lineage, and royalties all compose on top of stem NFTs
+- **The app and the API are peers** — the human studio and the x402 storefront API both ride the same on-chain catalog; neither is a subset of the other
+- **Why the agent surface matters** — as AI systems become catalog consumers, a commerce path that's just `curl` + USDC + a signed receipt (no dashboard, no account, no OAuth) lands on the right side of how agents actually buy
 
 ---
 
