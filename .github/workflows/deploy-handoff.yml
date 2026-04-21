@@ -5,6 +5,12 @@ on:
     workflows: ["CI"]
     types: [completed]
     branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: Successful CI workflow run ID to hand off for deploy
+        required: true
+        type: string
 
 env:
   RESONATE_IAC_REPOSITORY: akoita/resonate-iac
@@ -13,36 +19,95 @@ env:
 jobs:
   dispatch:
     name: Dispatch Non-Prod Deploy
-    if: >-
-      ${{
-        github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.event == 'push' &&
-        (
-          github.event.workflow_run.head_branch == 'main' ||
-          github.event.workflow_run.head_branch == 'develop'
-        )
-      }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: read
 
     steps:
+      - name: Normalize trigger context
+        id: trigger
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_CI_RUN_ID: ${{ inputs.ci_run_id || '' }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "${EVENT_NAME}" == "workflow_run" ]]; then
+            run_id="${{ github.event.workflow_run.id }}"
+            run_number="${{ github.event.workflow_run.run_number }}"
+            head_branch="${{ github.event.workflow_run.head_branch }}"
+            head_sha="${{ github.event.workflow_run.head_sha }}"
+            run_event="${{ github.event.workflow_run.event }}"
+            run_conclusion="${{ github.event.workflow_run.conclusion }}"
+          else
+            response="$(curl --fail-with-body \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${INPUT_CI_RUN_ID}")"
+
+            eval "$(
+              python3 - <<'PY' "${response}"
+              import json
+              import shlex
+              import sys
+
+              payload = json.loads(sys.argv[1])
+              for key, value in (
+                  ("run_id", payload["id"]),
+                  ("run_number", payload["run_number"]),
+                  ("head_branch", payload["head_branch"]),
+                  ("head_sha", payload["head_sha"]),
+                  ("run_event", payload["event"]),
+                  ("run_conclusion", payload["conclusion"] or ""),
+              ):
+                  print(f"{key}={shlex.quote(str(value))}")
+              PY
+            )"
+          fi
+
+          should_continue="true"
+          skip_reason=""
+
+          if [[ "${run_conclusion}" != "success" ]]; then
+            should_continue="false"
+            skip_reason="Referenced CI run was not successful."
+          elif [[ "${run_event}" != "push" ]]; then
+            should_continue="false"
+            skip_reason="Deploy handoff only supports CI runs triggered by push."
+          elif [[ "${head_branch}" != "main" && "${head_branch}" != "develop" ]]; then
+            should_continue="false"
+            skip_reason="Deploy handoff only supports main/develop CI runs."
+          fi
+
+          {
+            echo "run_id=${run_id}"
+            echo "run_number=${run_number}"
+            echo "head_branch=${head_branch}"
+            echo "head_sha=${head_sha}"
+            echo "run_event=${run_event}"
+            echo "run_conclusion=${run_conclusion}"
+            echo "should_continue=${should_continue}"
+            echo "skip_reason=${skip_reason}"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Download deploy manifest
+        if: steps.trigger.outputs.should_continue == 'true'
         uses: actions/download-artifact@v8
         with:
           name: deploy-manifest
-          run-id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ steps.trigger.outputs.run_id }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/deploy-manifest
 
       - name: Resolve deploy intent
         id: intent
+        if: steps.trigger.outputs.should_continue == 'true'
         env:
-          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
-          RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+          HEAD_BRANCH: ${{ steps.trigger.outputs.head_branch }}
+          HEAD_SHA: ${{ steps.trigger.outputs.head_sha }}
+          RUN_ID: ${{ steps.trigger.outputs.run_id }}
+          RUN_NUMBER: ${{ steps.trigger.outputs.run_number }}
           MANIFEST_PATH: ${{ runner.temp }}/deploy-manifest/deploy-manifest.json
         run: |
           if [[ ! -f "${MANIFEST_PATH}" ]]; then
@@ -124,7 +189,7 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
       - name: Validate dispatch token
-        if: steps.intent.outputs.should_dispatch == 'true'
+        if: steps.trigger.outputs.should_continue == 'true' && steps.intent.outputs.should_dispatch == 'true'
         env:
           DISPATCH_TOKEN: ${{ secrets.RESONATE_IAC_DISPATCH_TOKEN }}
         run: |
@@ -134,7 +199,7 @@ jobs:
           fi
 
       - name: Dispatch deploy intent to resonate-iac
-        if: steps.intent.outputs.should_dispatch == 'true'
+        if: steps.trigger.outputs.should_continue == 'true' && steps.intent.outputs.should_dispatch == 'true'
         env:
           DISPATCH_TOKEN: ${{ secrets.RESONATE_IAC_DISPATCH_TOKEN }}
           ENVIRONMENT: ${{ steps.intent.outputs.environment }}
@@ -175,5 +240,12 @@ jobs:
             -d "${payload}"
 
       - name: Skip deploy handoff
-        if: steps.intent.outputs.should_dispatch != 'true'
-        run: echo "No deployable services changed for this successful CI run; skipping deploy handoff."
+        if: steps.trigger.outputs.should_continue != 'true' || steps.intent.outputs.should_dispatch != 'true'
+        env:
+          SKIP_REASON: ${{ steps.trigger.outputs.skip_reason }}
+        run: |
+          if [[ -n "${SKIP_REASON}" ]]; then
+            echo "${SKIP_REASON}"
+          else
+            echo "No deployable services changed for this successful CI run; skipping deploy handoff."
+          fi
