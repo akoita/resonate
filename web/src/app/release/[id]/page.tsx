@@ -1111,6 +1111,7 @@ export default function ReleaseDetails() {
             const upgradeColor = getRightsUpgradeStatusColor(rightsUpgradeStatus);
             return (
               <div
+                className="release-rights-upgrade-card"
                 style={{
                   marginTop: "16px",
                   borderRadius: "14px",
@@ -1196,6 +1197,7 @@ export default function ReleaseDetails() {
        * actionable, not via this internal-state banner. */}
       {isOwner && (
       <div
+        className="release-rights-monitor-card"
         style={{
           marginBottom: "var(--space-4)",
           borderRadius: "14px",
@@ -2722,13 +2724,15 @@ export default function ReleaseDetails() {
            * purple-filled pill + glow was visually dominating the card
            * (#603 follow-up: "make mixer buttons secondary"). Replace
            * the solid fill with a tinted accent outline, drop the
-           * glow. Keeps affordance + state communication without
-           * screaming. */
+           * glow. !important because the base .stem-btn.active rule
+           * sits inside the same scoped style jsx block and can
+           * otherwise win via source-order in some hydration
+           * orderings. */
           .track-title-cell .stem-btn.active {
-            background: rgba(var(--color-accent-rgb), 0.12);
-            border-color: rgba(var(--color-accent-rgb), 0.45);
-            color: var(--color-accent);
-            box-shadow: none;
+            background: rgba(var(--color-accent-rgb), 0.12) !important;
+            border-color: rgba(var(--color-accent-rgb), 0.45) !important;
+            color: var(--color-accent) !important;
+            box-shadow: none !important;
           }
 
           /* Artist + actions share the bottom row of the card: artist
@@ -2764,12 +2768,46 @@ export default function ReleaseDetails() {
             display: none;
           }
 
-          /* Tighten monitoring / rights info card: long chip labels
-           * like "Restrict Marketplace" were crowding "Restrict Payouts"
-           * next to them. Wrap the chip row. */
-          .monitoring-info-badges,
-          .monitoring-info-card {
+          /* Info cards occupy too much vertical space on phone
+           * because they're inline-styled with desktop padding +
+           * 40px+ primary CTAs. Tighten paddings, buttons, and
+           * typography on phone via classNames added alongside the
+           * inline styles (#603 follow-up). */
+          .release-rights-upgrade-card,
+          .release-rights-monitor-card {
+            padding: 10px 12px !important;
+            margin-top: 12px !important;
+            border-radius: 10px !important;
             flex-wrap: wrap;
+          }
+
+          .release-rights-upgrade-card {
+            gap: 10px !important;
+          }
+
+          /* The Unlock Marketplace Rights CTA inside the upgrade card
+           * is big and purple by default. Full-width but shorter on
+           * phone so it reads as "next step", not as the page's
+           * primary action. */
+          .release-rights-upgrade-card > button,
+          .release-rights-upgrade-card button {
+            flex: 1 1 100%;
+            min-height: 40px;
+            padding: 0 14px !important;
+            font-size: 13px !important;
+          }
+
+          .release-rights-monitor-card {
+            margin-bottom: 12px !important;
+          }
+
+          /* The monitor card's reason paragraph has margin-left: 28px
+           * + 0.8rem font + 1.5 line-height inline; tighten. */
+          .release-rights-monitor-card p {
+            margin-left: 0 !important;
+            font-size: 12px !important;
+            line-height: 1.4 !important;
+            margin-top: 6px !important;
           }
         }
       `}</style>
