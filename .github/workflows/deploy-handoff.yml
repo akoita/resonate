@@ -54,22 +54,7 @@ jobs:
               "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${INPUT_CI_RUN_ID}")"
 
             export GH_RUN_RESPONSE="${response}"
-            python3 - <<'PY' > "${RUNNER_TEMP}/trigger-context.env"
-            import json
-            import os
-            import shlex
-
-            payload = json.loads(os.environ["GH_RUN_RESPONSE"])
-            for key, value in (
-                ("run_id", payload["id"]),
-                ("run_number", payload["run_number"]),
-                ("head_branch", payload["head_branch"]),
-                ("head_sha", payload["head_sha"]),
-                ("run_event", payload["event"]),
-                ("run_conclusion", payload["conclusion"] or ""),
-            ):
-                print(f"{key}={shlex.quote(str(value))}")
-            PY
+            python3 -c 'import json, os, shlex; payload = json.loads(os.environ["GH_RUN_RESPONSE"]); pairs = (("run_id", payload["id"]), ("run_number", payload["run_number"]), ("head_branch", payload["head_branch"]), ("head_sha", payload["head_sha"]), ("run_event", payload["event"]), ("run_conclusion", payload["conclusion"] or "")); [print(f"{key}={shlex.quote(str(value))}") for key, value in pairs]' > "${RUNNER_TEMP}/trigger-context.env"
 
             source "${RUNNER_TEMP}/trigger-context.env"
           fi
@@ -123,30 +108,7 @@ jobs:
             exit 1
           fi
 
-          python3 - <<'PY' "${MANIFEST_PATH}" > "${RUNNER_TEMP}/deploy-intent.env"
-          import json
-          import sys
-
-          manifest_path = sys.argv[1]
-          with open(manifest_path, "r", encoding="utf-8") as fh:
-            manifest = json.load(fh)
-
-          for key in (
-              "environment",
-              "source_ref",
-              "services",
-              "trigger_branch",
-              "release_sha",
-              "release_id",
-              "backend_image",
-              "frontend_image",
-              "demucs_image",
-          ):
-            value = manifest.get(key, "")
-            print(f"{key}={value}")
-
-          print(f"should_dispatch={'true' if manifest.get('should_dispatch') else 'false'}")
-          PY
+          python3 -c 'import json, sys; manifest_path = sys.argv[1]; manifest = json.load(open(manifest_path, "r", encoding="utf-8")); keys = ("environment", "source_ref", "services", "trigger_branch", "release_sha", "release_id", "backend_image", "frontend_image", "demucs_image"); [print(f"{key}={manifest.get(key, \"\")}") for key in keys]; print(f"should_dispatch={\"true\" if manifest.get(\"should_dispatch\") else \"false\"}")' "${MANIFEST_PATH}" > "${RUNNER_TEMP}/deploy-intent.env"
 
           source "${RUNNER_TEMP}/deploy-intent.env"
 
