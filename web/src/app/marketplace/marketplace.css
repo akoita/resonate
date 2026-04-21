@@ -803,9 +803,17 @@
   /* Selects + toggle sit on their own row under the pills, with
    * explicit gutters so the dropdown's text isn't clipped by the
    * container edge. */
-  .marketplace-toolbar > :not(.marketplace-toolbar__group) {
+  .marketplace-toolbar > :not(.marketplace-toolbar__group):not(.toolbar-sep) {
     padding-left: 12px;
     padding-right: 12px;
+  }
+
+  /* 1px vertical separators between toolbar items don't make sense
+   * when the row has wrapped and each item sits on its own line — the
+   * rule rendered as an empty ~25px box after gaining 12px padding
+   * from the rule above (#603 follow-up). Hide on phone. */
+  .toolbar-sep {
+    display: none;
   }
 
   .marketplace-select {
