@@ -108,7 +108,7 @@ jobs:
             exit 1
           fi
 
-          python3 -c 'import json, sys; manifest_path = sys.argv[1]; manifest = json.load(open(manifest_path, "r", encoding="utf-8")); keys = ("environment", "source_ref", "services", "trigger_branch", "release_sha", "release_id", "backend_image", "frontend_image", "demucs_image"); [print(f"{key}={manifest.get(key, \"\")}") for key in keys]; print(f"should_dispatch={\"true\" if manifest.get(\"should_dispatch\") else \"false\"}")' "${MANIFEST_PATH}" > "${RUNNER_TEMP}/deploy-intent.env"
+          python3 .github/scripts/export-deploy-intent.py "${MANIFEST_PATH}" > "${RUNNER_TEMP}/deploy-intent.env"
 
           source "${RUNNER_TEMP}/deploy-intent.env"
 
