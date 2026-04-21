@@ -773,6 +773,15 @@
   }
 
   .marketplace-sticky-controls {
+    /* Desktop sets `margin: 0 calc(--space-10 * -1)` (−64px) + matching
+     * padding to create a full-bleed sticky header inside the desktop
+     * app-content (which has 64px side padding). On phone app-content
+     * has only 16px padding, so the −64px bleed pushes the whole
+     * toolbar 48px off-screen on both sides — that's why the "Newest"
+     * dropdown was rendering as "st" (#603 follow-up). Reset both
+     * margin and horizontal padding so the toolbar sits inside the
+     * content gutter. */
+    margin: 0;
     padding: var(--space-3) 0;
   }
 

@@ -2667,8 +2667,8 @@ export default function ReleaseDetails() {
             display: flex;
             flex-wrap: wrap;
             align-items: center;
-            gap: 8px 10px;
-            padding: 12px;
+            gap: 6px 10px;
+            padding: 10px 12px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.04);
           }
 
@@ -2681,13 +2681,17 @@ export default function ReleaseDetails() {
 
           .track-num {
             flex: 0 0 auto;
-            width: auto;
+            width: 20px;
             font-size: 13px;
             color: var(--color-muted);
+            text-align: left;
           }
 
+          /* Title takes the rest of the first row alongside num; use
+           * flex: 1 1 0 so it absorbs the remaining width and num
+           * stays inline to the left instead of wrapping above. */
           .track-title-cell {
-            flex: 1 1 calc(100% - 80px);
+            flex: 1 1 0;
             min-width: 0;
           }
 
@@ -2701,7 +2705,7 @@ export default function ReleaseDetails() {
            * becomes a flex row with wrap so 4–6 chips fit per line. */
           .track-title-cell .stem-selector {
             width: 100%;
-            margin-top: 8px;
+            margin-top: 6px;
           }
 
           .track-title-cell .stem-btns-group {
@@ -2714,16 +2718,34 @@ export default function ReleaseDetails() {
             flex: 0 0 auto;
           }
 
+          /* Stem buttons should read secondary on phone — the active
+           * purple-filled pill + glow was visually dominating the card
+           * (#603 follow-up: "make mixer buttons secondary"). Replace
+           * the solid fill with a tinted accent outline, drop the
+           * glow. Keeps affordance + state communication without
+           * screaming. */
+          .track-title-cell .stem-btn.active {
+            background: rgba(var(--color-accent-rgb), 0.12);
+            border-color: rgba(var(--color-accent-rgb), 0.45);
+            color: var(--color-accent);
+            box-shadow: none;
+          }
+
+          /* Artist + actions share the bottom row of the card: artist
+           * left, ⋮ overflow anchored right. Previously artist took
+           * flex: 1 1 100% which forced actions onto yet another row
+           * where it floated alone, centered. */
           .track-artist {
-            flex: 1 1 100%;
+            flex: 1 1 0;
             font-size: 12px;
             color: var(--color-muted);
             padding-top: 2px;
+            min-width: 0;
           }
 
           .track-actions-cell {
             flex: 0 0 auto;
-            margin-left: auto;
+            align-self: center;
           }
 
           /* Hide columns (and their placeholder) that don't fit the
