@@ -2613,28 +2613,132 @@ export default function ReleaseDetails() {
             padding: 12px;
           }
 
+          /* Action buttons row: "Play All" + Add to Playlist + Save to
+           * Library + (Mixer / Produce Stems) crowd each other on phone.
+           * Make Play All the full-width primary CTA, wrap the rest
+           * beneath on their own row (#603 follow-up). */
+          .header-actions {
+            flex-wrap: wrap;
+            gap: 8px;
+          }
+
+          .btn-play-all {
+            flex-basis: 100% !important;
+            height: 48px !important;
+            padding: 0 20px !important;
+            border-radius: 12px !important;
+          }
+
+          .header-actions > :not(.btn-play-all) {
+            flex: 1 1 calc(50% - 4px);
+            min-width: 0;
+            height: 40px !important;
+            padding: 0 10px !important;
+            font-size: 13px !important;
+            border-radius: 10px !important;
+          }
+
+          /* Track table → card mode on phone. The TABLE layout's
+           * column competition was squeezing the title cell to ~80px
+           * and forcing 7 stem chips into a vertical single-column
+           * stack (#603 feedback). Switch the whole table to block
+           * layout so each track renders as a top-to-bottom card. */
+          .track-table,
+          .track-table tbody,
+          .track-table tr {
+            display: block;
+            width: 100%;
+          }
+
+          .track-table thead {
+            display: none;
+          }
+
+          .track-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px 10px;
+            padding: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+          }
+
           .track-row td {
-            padding: 8px 6px;
+            display: block;
+            padding: 0;
+            border: none;
+            min-width: 0;
           }
 
-          /* Track table: 6 columns can't fit on a 375px viewport. Keep
-           * only num + title + actions; drop status / artist / genre /
-           * duration (duration reappears if/when we stack it under the
-           * title — for now it lives in the overflow menu). */
-          .track-table .track-status-cell,
-          .track-table .track-genre,
-          .track-table .track-duration {
-            display: none;
-          }
-
-          .track-table th.track-status-cell,
-          .track-table th.track-genre,
-          .track-table th.track-duration {
-            display: none;
+          .track-num {
+            flex: 0 0 auto;
+            width: auto;
+            font-size: 13px;
+            color: var(--color-muted);
           }
 
           .track-title-cell {
+            flex: 1 1 calc(100% - 80px);
             min-width: 0;
+          }
+
+          .track-title-cell .track-title-name {
+            font-size: 15px;
+            font-weight: 600;
+          }
+
+          /* Stem chips: wrap horizontally with plenty of room instead
+           * of stacking in a narrow column. The whole .stem-btns-group
+           * becomes a flex row with wrap so 4–6 chips fit per line. */
+          .track-title-cell .stem-selector {
+            width: 100%;
+            margin-top: 8px;
+          }
+
+          .track-title-cell .stem-btns-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+          }
+
+          .track-title-cell .stem-btn {
+            flex: 0 0 auto;
+          }
+
+          .track-artist {
+            flex: 1 1 100%;
+            font-size: 12px;
+            color: var(--color-muted);
+            padding-top: 2px;
+          }
+
+          .track-actions-cell {
+            flex: 0 0 auto;
+            margin-left: auto;
+          }
+
+          /* Hide columns (and their placeholder) that don't fit the
+           * card layout. In card mode the <td>s below still render but
+           * contribute nothing — hide them so they don't take row
+           * space. */
+          .track-status-cell,
+          .track-genre,
+          .track-duration {
+            display: none !important;
+          }
+
+          .th-select,
+          .th-duration,
+          .th-actions {
+            display: none;
+          }
+
+          /* Tighten monitoring / rights info card: long chip labels
+           * like "Restrict Marketplace" were crowding "Restrict Payouts"
+           * next to them. Wrap the chip row. */
+          .monitoring-info-badges,
+          .monitoring-info-card {
+            flex-wrap: wrap;
           }
         }
       `}</style>
