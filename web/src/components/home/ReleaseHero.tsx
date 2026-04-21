@@ -236,6 +236,97 @@ export function ReleaseHero({ release }: ReleaseHeroProps) {
           border-radius: 20px;
           border: 1px dashed rgba(255, 255, 255, 0.1);
         }
+
+        /* ----------------------------------------------------------------
+         * Responsive overrides (#603)
+         * Desktop layout is a fixed 400×400 artwork pinned right of a
+         * 72px title block, inside 80px side padding. On phone the
+         * title clips mid-word and the artwork ends up off-screen.
+         * Tablet (<=1279px): tighten padding + shrink title/artwork.
+         * Phone (<=767px): stack artwork above the content, scale
+         * everything down, let long titles wrap.
+         * ---------------------------------------------------------------- */
+        @media (max-width: 1279px) {
+          .home-hero-stage {
+            padding: var(--space-8) var(--space-6);
+            min-height: 440px;
+            border-radius: 28px;
+          }
+
+          .hero-main-title {
+            font-size: 52px;
+          }
+
+          .hero-artwork-container {
+            width: 280px;
+            height: 280px;
+            margin-left: 40px;
+          }
+        }
+
+        @media (max-width: 767px) {
+          .home-hero-stage {
+            flex-direction: column;
+            align-items: stretch;
+            padding: var(--space-5) var(--space-4);
+            min-height: 0;
+            border-radius: 20px;
+            margin-bottom: var(--space-6);
+          }
+
+          .hero-content {
+            max-width: none;
+            order: 2;
+          }
+
+          .hero-metadata {
+            margin-bottom: 12px;
+          }
+
+          .hero-main-title {
+            font-size: 32px;
+            line-height: 1.05;
+            margin-bottom: 8px;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+          }
+
+          .hero-main-artist {
+            font-size: 15px;
+            margin-bottom: 20px;
+          }
+
+          .hero-actions {
+            gap: 10px;
+            flex-wrap: wrap;
+          }
+
+          .btn-main-action,
+          .btn-secondary-action {
+            height: 44px !important;
+            padding: 0 20px !important;
+          }
+
+          .hero-artwork-container {
+            order: 1;
+            width: 100%;
+            max-width: 240px;
+            height: auto;
+            aspect-ratio: 1 / 1;
+            margin: 0 auto 16px;
+          }
+
+          /* The backdrop gradient was tuned for horizontal layout; on a
+           * stacked phone layout it reads cleaner as a vertical fade. */
+          .hero-backdrop-overlay {
+            background: linear-gradient(
+              180deg,
+              var(--studio-bg) 0%,
+              rgba(5, 5, 8, 0.6) 70%,
+              transparent 100%
+            );
+          }
+        }
       `}</style>
     </div>
   );

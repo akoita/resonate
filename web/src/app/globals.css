@@ -3054,6 +3054,41 @@ a {
   }
 }
 
+/* Phone: release the fixed-viewport-height lock so the page scrolls
+ * naturally when the Smart Account / Security / Stakes cards stack
+ * below the hero (#603). */
+@media (max-width: 767px) {
+  .vault-stage {
+    height: auto;
+    overflow: visible;
+    padding: var(--space-3);
+    padding-bottom: 120px;
+    gap: var(--space-4);
+  }
+
+  .vault-hero {
+    padding: var(--space-4);
+    min-height: 0;
+    max-height: none;
+    flex: 0 0 auto;
+    border-radius: var(--radius-lg);
+  }
+
+  .vault-hero-top-row {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .vault-balance {
+    font-size: 2.25rem;
+  }
+
+  .vault-meta-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+  }
+}
+
 .vault-meta-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -9767,12 +9802,30 @@ tr[draggable="true"]:hover {
     padding-bottom: 140px;
   }
 
-  /* Global playlist panel becomes a full-screen sheet on phone */
+  /* Global playlist panel becomes a full-screen sheet on phone.
+   * The 1-line `margin-right: 320px` sidebar shift (line ~5761) also
+   * has to be neutralised here — otherwise main content gets pushed
+   * 320px off-screen while the panel sits on top, leaving a visible
+   * content strip bleeding through on the left (#603). */
   .global-playlist-panel {
     width: 100vw !important;
     max-width: 100vw !important;
     right: 0;
     left: 0;
+  }
+
+  .app-shell.has-sidebar .app-main {
+    margin-right: 0 !important;
+  }
+
+  /* Mixer popover is 400px wide at `right: 20px` — doesn't fit a
+   * phone viewport and renders as a clipped tab floating over content
+   * (#603). The mixer is a power-user desktop surface; on phone
+   * users can still reach it via /player. Hide both the popover and
+   * its artwork-embedded toggle on narrow viewports. */
+  .player-bar-mixer-popover,
+  .artwork-mixer-toggle {
+    display: none !important;
   }
 
   /* Compact player bar: shrink insets and allow wrapping so controls

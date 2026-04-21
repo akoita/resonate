@@ -788,6 +788,30 @@
   .stem-card__body {
     padding: var(--space-3);
   }
+
+  /* Pill group keeps its own horizontal scroll + fade, but don't let
+   * that fade mask bleed onto any wrapped-next-row sibling (#603). The
+   * sort/artist/genre selects were being clipped at the left ("west"
+   * instead of "Newest") because of an interaction with the pill row's
+   * padding + mask. Force the pill group to span the full toolbar
+   * width so siblings always drop to their own clean row. */
+  .marketplace-toolbar__group {
+    flex: 1 0 100%;
+    padding: 0 12px;
+  }
+
+  /* Selects + toggle sit on their own row under the pills, with
+   * explicit gutters so the dropdown's text isn't clipped by the
+   * container edge. */
+  .marketplace-toolbar > :not(.marketplace-toolbar__group) {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .marketplace-select {
+    min-width: 0;
+    max-width: 100%;
+  }
 }
 
 /* Very narrow phones: single-column grid — cards need breathing room. */
