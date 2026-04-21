@@ -93,6 +93,10 @@ jobs:
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/deploy-manifest
 
+      - name: Check out repository
+        if: steps.trigger.outputs.should_continue == 'true'
+        uses: actions/checkout@v5
+
       - name: Resolve deploy intent
         id: intent
         if: steps.trigger.outputs.should_continue == 'true'
