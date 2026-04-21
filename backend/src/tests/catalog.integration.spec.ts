@@ -172,6 +172,37 @@ describe('CatalogService (integration)', () => {
     expect(await prisma.release.findUnique({ where: { id: created.id } })).toBeNull();
   });
 
+  it('deletes a failed upload release that already has a fingerprint', async () => {
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Failed Fingerprinted Release',
+      tracks: [{ title: 'Broken Upload', position: 1 }],
+    });
+
+    await prisma.audioFingerprint.create({
+      data: {
+        trackId: created.tracks[0].id,
+        fingerprint: '1,2,3,4',
+        fingerprintHash: `${TEST_PREFIX}fingerprint-hash`,
+        duration: 196.65,
+      },
+    });
+
+    await prisma.release.update({
+      where: { id: created.id },
+      data: {
+        status: 'failed',
+        processingError: 'Demucs processing failed',
+      },
+    });
+
+    const result = await catalog.deleteRelease(created.id, `${TEST_PREFIX}user`);
+
+    expect(result.success).toBe(true);
+    expect(await prisma.audioFingerprint.findUnique({ where: { trackId: created.tracks[0].id } })).toBeNull();
+    expect(await prisma.release.findUnique({ where: { id: created.id } })).toBeNull();
+  });
+
   it('rejects delete for wrong user', async () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
