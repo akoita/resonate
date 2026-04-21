@@ -742,21 +742,48 @@ export class CatalogService implements OnModuleInit {
     // 2. Cascade delete: stems → tracks → release (no cascade in schema)
     const stemIds = release.tracks.flatMap(t => t.stems.map(s => s.id));
     const trackIds = release.tracks.map(t => t.id);
+    const rightsUpgradeRequests = await prisma.releaseRightsUpgradeRequest.findMany({
+      where: { releaseId },
+      select: { id: true },
+    });
+    const rightsUpgradeRequestIds = rightsUpgradeRequests.map((request) => request.id);
 
-    if (stemIds.length > 0) {
-      // Delete any listings/mints associated with stems first
-      await prisma.stemListing.deleteMany({ where: { stemId: { in: stemIds } } });
-      await prisma.stemNftMint.deleteMany({ where: { stemId: { in: stemIds } } });
-      await prisma.stem.deleteMany({ where: { id: { in: stemIds } } });
-    }
+    await prisma.$transaction(async (tx) => {
+      if (rightsUpgradeRequestIds.length > 0) {
+        const evidenceBundles = await tx.rightsEvidenceBundle.findMany({
+          where: { rightsUpgradeRequestId: { in: rightsUpgradeRequestIds } },
+          select: { id: true },
+        });
+        const evidenceBundleIds = evidenceBundles.map((bundle) => bundle.id);
 
-    if (trackIds.length > 0) {
-      // Delete any licenses associated with tracks
-      await prisma.license.deleteMany({ where: { trackId: { in: trackIds } } });
-      await prisma.track.deleteMany({ where: { id: { in: trackIds } } });
-    }
+        if (evidenceBundleIds.length > 0) {
+          await tx.rightsEvidence.deleteMany({ where: { bundleId: { in: evidenceBundleIds } } });
+          await tx.rightsEvidenceBundle.deleteMany({ where: { id: { in: evidenceBundleIds } } });
+        }
 
-    await prisma.release.delete({ where: { id: releaseId } });
+        await tx.releaseRightsUpgradeRequest.deleteMany({
+          where: { id: { in: rightsUpgradeRequestIds } },
+        });
+      }
+
+      if (stemIds.length > 0) {
+        // Delete any listings/mints/pricing associated with stems first
+        await tx.stemListing.deleteMany({ where: { stemId: { in: stemIds } } });
+        await tx.stemNftMint.deleteMany({ where: { stemId: { in: stemIds } } });
+        await tx.stemPricing.deleteMany({ where: { stemId: { in: stemIds } } });
+        await tx.stem.deleteMany({ where: { id: { in: stemIds } } });
+      }
+
+      if (trackIds.length > 0) {
+        // Delete any dependent content-protection or licensing records first
+        await tx.dmcaReport.deleteMany({ where: { trackId: { in: trackIds } } });
+        await tx.audioFingerprint.deleteMany({ where: { trackId: { in: trackIds } } });
+        await tx.license.deleteMany({ where: { trackId: { in: trackIds } } });
+        await tx.track.deleteMany({ where: { id: { in: trackIds } } });
+      }
+
+      await tx.release.delete({ where: { id: releaseId } });
+    });
 
     this.clearCache();
     console.log(`[Catalog] Deleted release ${releaseId} with ${trackIds.length} tracks and ${stemIds.length} stems`);
