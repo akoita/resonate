@@ -38,6 +38,7 @@ import { useAutoScan } from "../../lib/useAutoScan";
 import { groupByArtist, groupByAlbum } from "../../lib/libraryGrouping";
 import { usePlayer } from "../../lib/playerContext";
 import { useUIStore } from "../../lib/uiStore";
+import { useBreakpoint } from "../../hooks/useBreakpoint";
 import { PlaylistTab } from "../../components/library/PlaylistTab";
 import { PlaylistDetail } from "../../components/library/PlaylistDetail";
 import { ContextMenu, ContextMenuItem } from "../../components/ui/ContextMenu";
@@ -72,6 +73,7 @@ export default function LibraryPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [activeTab, setActiveTab] = useState<ViewTab>("tracks");
     const tabsRef = useRef<HTMLDivElement | null>(null);
+    const { isPhone } = useBreakpoint();
 
     useEffect(() => {
         const container = tabsRef.current;
@@ -927,7 +929,7 @@ export default function LibraryPage() {
                                 <span className="library-search-icon">🔍</span>
                                 <input
                                     type="text"
-                                    placeholder="Search tracks, artists, albums..."
+                                    placeholder={isPhone ? "Search library" : "Search tracks, artists, albums..."}
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     className="library-search-input"
