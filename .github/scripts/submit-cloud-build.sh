@@ -102,6 +102,15 @@ if [[ -n "${build_args_file}" && ! -f "${build_args_file}" ]]; then
   exit 1
 fi
 
+normalized_service_account=""
+if [[ -n "${service_account}" ]]; then
+  if [[ "${service_account}" == projects/*/serviceAccounts/* ]]; then
+    normalized_service_account="${service_account}"
+  else
+    normalized_service_account="projects/${project_id}/serviceAccounts/${service_account}"
+  fi
+fi
+
 config_file="$(mktemp)"
 cleanup() {
   rm -f "${config_file}"
@@ -113,7 +122,7 @@ DOCKERFILE="${dockerfile}" \
 BUILD_ARGS_FILE="${build_args_file}" \
 CONTEXT_DIR="${context_dir}" \
 REMOTE_SOURCE="${remote_source}" \
-SERVICE_ACCOUNT="${service_account}" \
+SERVICE_ACCOUNT="${normalized_service_account}" \
 python3 - <<'PY' > "${config_file}"
 import json
 import os
@@ -184,8 +193,8 @@ else
   )
 fi
 
-if [[ -n "${service_account}" ]]; then
-  submit_args+=(--service-account "${service_account}")
+if [[ -n "${normalized_service_account}" ]]; then
+  submit_args+=(--service-account "${normalized_service_account}")
 fi
 
 gcloud "${submit_args[@]}"
