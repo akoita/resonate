@@ -694,34 +694,40 @@ jobs:
         if: steps.plan.outputs.should_dispatch == 'true' && contains(format(',{0},', steps.plan.outputs.services_csv), ',backend,')
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
         run: |
           bash .github/scripts/submit-cloud-build.sh \
             --project "${GCP_PROJECT_ID}" \
             --context backend \
             --dockerfile Dockerfile \
+            --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
             --image "${{ steps.plan.outputs.backend_image }}"
 
       - name: Build and push frontend image
         if: steps.plan.outputs.should_dispatch == 'true' && contains(format(',{0},', steps.plan.outputs.services_csv), ',frontend,')
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
         run: |
           bash .github/scripts/submit-cloud-build.sh \
             --project "${GCP_PROJECT_ID}" \
             --context web \
             --dockerfile Dockerfile \
             --build-args-file "${RUNNER_TEMP}/frontend-build.env" \
+            --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
             --image "${{ steps.plan.outputs.frontend_image }}"
 
       - name: Build and push Demucs image
         if: steps.plan.outputs.should_dispatch == 'true' && contains(format(',{0},', steps.plan.outputs.services_csv), ',demucs,')
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
         run: |
           bash .github/scripts/submit-cloud-build.sh \
             --project "${GCP_PROJECT_ID}" \
             --context workers/demucs \
             --dockerfile "${{ steps.plan.outputs.demucs_dockerfile }}" \
+            --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
             --image "${{ steps.plan.outputs.demucs_image }}"
 
       - name: Write deploy manifest

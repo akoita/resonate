@@ -9,6 +9,7 @@ Usage: submit-cloud-build.sh \
   --context <context-dir> \
   --dockerfile <dockerfile-relative-to-context> \
   [--build-args-file <path>] \
+  [--service-account <service-account-email>] \
   [--project <gcp-project-id>] \
   [--timeout <duration>]
 EOF
@@ -19,6 +20,7 @@ image=""
 context_dir=""
 dockerfile=""
 build_args_file=""
+service_account=""
 project_id="${GCP_PROJECT_ID:-}"
 timeout="1800s"
 
@@ -38,6 +40,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --build-args-file)
       build_args_file="${2:-}"
+      shift 2
+      ;;
+    --service-account)
+      service_account="${2:-}"
       shift 2
       ;;
     --project)
@@ -83,6 +89,7 @@ trap cleanup EXIT
 IMAGE="${image}" \
 DOCKERFILE="${dockerfile}" \
 BUILD_ARGS_FILE="${build_args_file}" \
+SERVICE_ACCOUNT="${service_account}" \
 python3 - <<'PY' > "${config_file}"
 import json
 import os
@@ -90,6 +97,7 @@ import os
 image = os.environ["IMAGE"]
 dockerfile = os.environ["DOCKERFILE"]
 build_args_file = os.environ.get("BUILD_ARGS_FILE", "")
+service_account = os.environ.get("SERVICE_ACCOUNT", "")
 
 args = ["build", "-f", dockerfile, "-t", image]
 
@@ -111,12 +119,28 @@ config = {
         }
     ],
     "images": [image],
+    "options": {
+        "logging": "CLOUD_LOGGING_ONLY",
+    },
 }
+
+if service_account:
+    config["serviceAccount"] = service_account
 
 print(json.dumps(config))
 PY
 
-gcloud builds submit "${context_dir}" \
-  --project "${project_id}" \
-  --config "${config_file}" \
+submit_args=(
+  builds
+  submit
+  "${context_dir}"
+  --project "${project_id}"
+  --config "${config_file}"
   --timeout "${timeout}"
+)
+
+if [[ -n "${service_account}" ]]; then
+  submit_args+=(--service-account "${service_account}")
+fi
+
+gcloud "${submit_args[@]}"

@@ -126,7 +126,10 @@ Required image-publish auth secrets in deployable GitHub environments for `reson
 - `GCP_WIF_PROVIDER`
   - workload identity provider used by GitHub Actions to submit Cloud Build jobs
 - `GCP_ARTIFACT_REGISTRY_SA_EMAIL`
-  - service account email used by app CI to invoke Cloud Build and publish immutable images
+  - dedicated Cloud Build publisher service account email
+  - GitHub Actions authenticates as this identity and passes it explicitly to
+    `gcloud builds submit --service-account` so Cloud Build does not fall back to
+    the project default build identity
 
 Additional GCP requirement:
 
