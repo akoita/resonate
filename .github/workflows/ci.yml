@@ -695,11 +695,15 @@ jobs:
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           bash .github/scripts/submit-cloud-build.sh \
             --project "${GCP_PROJECT_ID}" \
             --context backend \
             --dockerfile Dockerfile \
+            --git-source-url "https://github.com/${GITHUB_REPOSITORY}" \
+            --git-source-revision "${GITHUB_SHA}" \
             --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
             --image "${{ steps.plan.outputs.backend_image }}"
 
@@ -708,12 +712,16 @@ jobs:
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           bash .github/scripts/submit-cloud-build.sh \
             --project "${GCP_PROJECT_ID}" \
             --context web \
             --dockerfile Dockerfile \
             --build-args-file "${RUNNER_TEMP}/frontend-build.env" \
+            --git-source-url "https://github.com/${GITHUB_REPOSITORY}" \
+            --git-source-revision "${GITHUB_SHA}" \
             --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
             --image "${{ steps.plan.outputs.frontend_image }}"
 
@@ -722,11 +730,15 @@ jobs:
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           bash .github/scripts/submit-cloud-build.sh \
             --project "${GCP_PROJECT_ID}" \
             --context workers/demucs \
             --dockerfile "${{ steps.plan.outputs.demucs_dockerfile }}" \
+            --git-source-url "https://github.com/${GITHUB_REPOSITORY}" \
+            --git-source-revision "${GITHUB_SHA}" \
             --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
             --image "${{ steps.plan.outputs.demucs_image }}"
 

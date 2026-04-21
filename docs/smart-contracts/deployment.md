@@ -118,8 +118,8 @@ Required sender secret in `resonate`:
     `akoita/resonate-iac`
 
 Deployable image publication now runs through GCP Cloud Build. GitHub Actions only
-submits the remote build jobs and records the resulting immutable image refs in the
-deploy manifest.
+submits the remote build jobs against the exact GitHub commit being deployed and
+records the resulting immutable image refs in the deploy manifest.
 
 Required image-publish auth secrets in deployable GitHub environments for `resonate`:
 
@@ -135,6 +135,10 @@ Additional GCP requirement:
 
 - Cloud Build must be enabled in the target project, and the effective build service
   account must have permission to push into the target Artifact Registry repository.
+- The repository source used by Cloud Build must remain reachable from GCP for the
+  commit being published, since app CI now submits builds against the GitHub repo
+  URL and commit SHA rather than uploading local source into the default Cloud Build
+  staging bucket.
 
 Required deployable GitHub environment variables in `resonate`:
 
