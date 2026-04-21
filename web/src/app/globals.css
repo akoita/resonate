@@ -9828,6 +9828,37 @@ tr[draggable="true"]:hover {
     display: none !important;
   }
 
+  /* /player page: the floating System Monitoring console was pinned
+   * to the right edge at `width: clamp(320px, 30vw, 500px)`, covering
+   * most of a 412px phone viewport and crushing the hero artwork /
+   * title into the remaining ~90px. Reflow the whole stage to a
+   * vertical stack on phone so both surfaces have full width (#603
+   * follow-up). */
+  .player-master-stage {
+    position: relative;
+    inset: auto;
+    overflow: visible;
+    flex-direction: column;
+    align-items: stretch;
+    min-height: calc(100vh - 160px);
+  }
+
+  .player-floating-console {
+    position: static;
+    width: 100%;
+    bottom: auto;
+    top: auto;
+    right: auto;
+    border-radius: 20px;
+    margin-top: var(--space-4);
+    padding: var(--space-3);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  }
+
+  .player-hero-stage {
+    padding: var(--space-3);
+  }
+
   /* Compact player bar: shrink insets and allow wrapping so controls
    * don't overflow the narrow viewport. */
   .app-player {

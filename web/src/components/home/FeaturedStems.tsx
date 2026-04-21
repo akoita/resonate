@@ -32,6 +32,11 @@ export function FeaturedStems({ releases }: FeaturedStemsProps) {
 
     useEffect(() => {
         const onResize = () => setViewportWidth(window.innerWidth);
+        // Fire once on mount to sync past the SSR/hydration default (1200)
+        // that otherwise persisted until the user resized the window —
+        // phone visitors ended up with desktop `cardsPerPage` and cards
+        // crushed to ~80px wide (#603 follow-up).
+        onResize();
         window.addEventListener("resize", onResize);
         return () => window.removeEventListener("resize", onResize);
     }, []);
@@ -224,6 +229,24 @@ export function FeaturedStems({ releases }: FeaturedStemsProps) {
 
                 .carousel-dot:hover:not(.active) {
                     background: rgba(255, 255, 255, 0.3);
+                }
+
+                /* Phone: arrows eat ~100px of the ~380px usable width —
+                 * hide them and let users navigate via dots + auto-advance
+                 * + swipe. Slide padding also tightens so the card gets
+                 * the full viewport (#603 follow-up). */
+                @media (max-width: 640px) {
+                    .carousel-arrow {
+                        display: none;
+                    }
+
+                    .carousel-slide {
+                        padding: 0 4px;
+                    }
+
+                    .carousel-dots {
+                        margin-top: 12px;
+                    }
                 }
             `}</style>
         </section>
