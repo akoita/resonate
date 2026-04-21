@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       ci_run_id:
-        description: Successful CI workflow run ID to hand off for deploy
+        description: "Paste the numeric CI run ID from /actions/runs/<id> for a successful push on main or develop (example: 24707254354)"
         required: true
         type: string
 
