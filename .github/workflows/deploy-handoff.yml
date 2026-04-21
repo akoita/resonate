@@ -60,7 +60,6 @@ jobs:
 
           for key in (
               "environment",
-              "source_repository",
               "source_ref",
               "services",
               "trigger_branch",
@@ -115,7 +114,6 @@ jobs:
             echo "should_dispatch=${should_dispatch}"
             echo "environment=${environment}"
             echo "services=${services}"
-            echo "source_repository=${source_repository}"
             echo "source_ref=${source_ref}"
             echo "trigger_branch=${trigger_branch}"
             echo "release_sha=${release_sha:-${HEAD_SHA}}"
@@ -141,7 +139,6 @@ jobs:
           DISPATCH_TOKEN: ${{ secrets.RESONATE_IAC_DISPATCH_TOKEN }}
           ENVIRONMENT: ${{ steps.intent.outputs.environment }}
           SERVICES: ${{ steps.intent.outputs.services }}
-          SOURCE_REPOSITORY: ${{ steps.intent.outputs.source_repository }}
           SOURCE_REF: ${{ steps.intent.outputs.source_ref }}
           TRIGGER_BRANCH: ${{ steps.intent.outputs.trigger_branch }}
           RELEASE_SHA: ${{ steps.intent.outputs.release_sha }}
@@ -155,7 +152,6 @@ jobs:
             "event_type": "${RESONATE_DEPLOY_EVENT}",
             "client_payload": {
               "environment": "${ENVIRONMENT}",
-              "source_repository": "${SOURCE_REPOSITORY}",
               "source_ref": "${SOURCE_REF}",
               "services": "${SERVICES}",
               "action": "apply",
