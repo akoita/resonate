@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Release } from "../../lib/api";
 import { StemCard, FeaturedStem } from "./StemCard";
+import { useBreakpoint } from "../../hooks/useBreakpoint";
 
 /** How many most-recent releases to source stems from */
 const MAX_RECENT_RELEASES = 3;
@@ -22,8 +23,10 @@ export function FeaturedStems({ releases }: FeaturedStemsProps) {
         [releases],
     );
     const trackRef = useRef<HTMLDivElement>(null);
+    const viewportRef = useRef<HTMLDivElement>(null);
     const [page, setPage] = useState(0);
     const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const { isPhone } = useBreakpoint();
 
     // Responsive cards-per-page — derived purely, no setState in effect
     const [viewportWidth, setViewportWidth] = useState(
@@ -58,17 +61,71 @@ export function FeaturedStems({ releases }: FeaturedStemsProps) {
     const next = useCallback(() => goTo(safePage < totalPages - 1 ? safePage + 1 : 0), [safePage, totalPages, goTo]);
     const prev = useCallback(() => goTo(safePage > 0 ? safePage - 1 : totalPages - 1), [safePage, totalPages, goTo]);
 
-    // Auto-advance every 6s, pause on hover
+    // Auto-advance every 6s on desktop/tablet. On phone users drive the
+    // native scroll-snap carousel themselves — an auto-advance would
+    // fight their swipe and feel broken on touch.
     useEffect(() => {
+        if (isPhone) return;
         autoPlayRef.current = setInterval(next, 6000);
         return () => { if (autoPlayRef.current) clearInterval(autoPlayRef.current); };
-    }, [next]);
+    }, [next, isPhone]);
 
     const pauseAuto = () => { if (autoPlayRef.current) clearInterval(autoPlayRef.current); };
     const resumeAuto = () => {
+        if (isPhone) return;
         pauseAuto();
         autoPlayRef.current = setInterval(next, 6000);
     };
+
+    // On phone, sync the dot indicator with the native scroll position so
+    // the active dot always matches the centered card as the user swipes.
+    useEffect(() => {
+        if (!isPhone) return;
+        const viewport = viewportRef.current;
+        if (!viewport) return;
+        let raf = 0;
+        const onScroll = () => {
+            cancelAnimationFrame(raf);
+            raf = requestAnimationFrame(() => {
+                const slides = Array.from(
+                    viewport.querySelectorAll<HTMLElement>(".carousel-slide"),
+                );
+                if (slides.length === 0) return;
+                const center = viewport.scrollLeft + viewport.clientWidth / 2;
+                let bestIdx = 0;
+                let bestDist = Infinity;
+                slides.forEach((s, i) => {
+                    const slideCenter = s.offsetLeft + s.offsetWidth / 2;
+                    const d = Math.abs(center - slideCenter);
+                    if (d < bestDist) { bestDist = d; bestIdx = i; }
+                });
+                setPage(bestIdx);
+            });
+        };
+        viewport.addEventListener("scroll", onScroll, { passive: true });
+        onScroll();
+        return () => {
+            cancelAnimationFrame(raf);
+            viewport.removeEventListener("scroll", onScroll);
+        };
+    }, [isPhone, stems.length]);
+
+    // Dot click: on phone, scroll natively to the chosen slide. On
+    // desktop, keep the existing JS-driven page transform.
+    const handleDotClick = useCallback((i: number) => {
+        if (isPhone && viewportRef.current) {
+            const slides = viewportRef.current.querySelectorAll<HTMLElement>(".carousel-slide");
+            const target = slides[i];
+            if (target) {
+                viewportRef.current.scrollTo({
+                    left: target.offsetLeft - (viewportRef.current.clientWidth - target.offsetWidth) / 2,
+                    behavior: "smooth",
+                });
+                return;
+            }
+        }
+        goTo(i);
+    }, [isPhone, goTo]);
 
     if (stems.length === 0) return null;
 
@@ -95,7 +152,7 @@ export function FeaturedStems({ releases }: FeaturedStemsProps) {
                 </button>
 
                 {/* Track */}
-                <div className="carousel-viewport">
+                <div className="carousel-viewport" ref={viewportRef}>
                     <div
                         ref={trackRef}
                         className="carousel-track"
@@ -121,19 +178,25 @@ export function FeaturedStems({ releases }: FeaturedStemsProps) {
                 </button>
             </div>
 
-            {/* Dot indicators */}
-            {totalPages > 1 && (
-                <div className="carousel-dots">
-                    {Array.from({ length: totalPages }, (_, i) => (
-                        <button
-                            key={i}
-                            className={`carousel-dot ${i === safePage ? "active" : ""}`}
-                            onClick={() => goTo(i)}
-                            aria-label={`Go to page ${i + 1}`}
-                        />
-                    ))}
-                </div>
-            )}
+            {/* Dot indicators — one per stem on phone (scroll-snap,
+             * each slide is its own snap target), one per page on
+             * wider viewports (transform-based paging). */}
+            {(() => {
+                const dotCount = isPhone ? stems.length : totalPages;
+                if (dotCount <= 1) return null;
+                return (
+                    <div className="carousel-dots">
+                        {Array.from({ length: dotCount }, (_, i) => (
+                            <button
+                                key={i}
+                                className={`carousel-dot ${i === safePage ? "active" : ""}`}
+                                onClick={() => handleDotClick(i)}
+                                aria-label={isPhone ? `Go to stem ${i + 1}` : `Go to page ${i + 1}`}
+                            />
+                        ))}
+                    </div>
+                );
+            })()}
 
             <style jsx>{`
                 .stems-count-badge {
@@ -231,21 +294,89 @@ export function FeaturedStems({ releases }: FeaturedStemsProps) {
                     background: rgba(255, 255, 255, 0.3);
                 }
 
-                /* Phone: arrows eat ~100px of the ~380px usable width —
-                 * hide them and let users navigate via dots + auto-advance
-                 * + swipe. Slide padding also tightens so the card gets
-                 * the full viewport (#603 follow-up). */
+                /* Phone: switch from JS-transform paging to native
+                 * CSS scroll-snap with peek cards on both sides.
+                 * Cards are 80% of the viewport so the previous + next
+                 * stems poke in from the edges — matches the native
+                 * Spotify / Apple Music pattern and tells the user "you
+                 * can swipe" without needing arrows. The JS transform
+                 * on .carousel-track is explicitly overridden so it
+                 * doesn't fight the native scroll. */
                 @media (max-width: 640px) {
                     .carousel-arrow {
                         display: none;
                     }
 
+                    .carousel-wrapper {
+                        gap: 0;
+                    }
+
+                    .carousel-viewport {
+                        overflow-x: auto;
+                        overflow-y: hidden;
+                        scroll-snap-type: x mandatory;
+                        scroll-padding: 0 10%;
+                        -webkit-overflow-scrolling: touch;
+                        scrollbar-width: none;
+                        border-radius: 0;
+                    }
+
+                    .carousel-viewport::-webkit-scrollbar {
+                        display: none;
+                    }
+
+                    .carousel-track {
+                        transform: none !important;
+                    }
+
                     .carousel-slide {
-                        padding: 0 4px;
+                        flex: 0 0 80% !important;
+                        scroll-snap-align: center;
+                        padding: 0 6px;
+                    }
+
+                    /* Fades at the outer edges hint that the peek cards
+                     * aren't clipped by accident — they sit intentionally
+                     * under a soft gradient. */
+                    .carousel-wrapper::before,
+                    .carousel-wrapper::after {
+                        content: "";
+                        position: absolute;
+                        top: 0;
+                        bottom: 0;
+                        width: 24px;
+                        pointer-events: none;
+                        z-index: 2;
+                    }
+                    .carousel-wrapper::before {
+                        left: 0;
+                        background: linear-gradient(
+                            90deg,
+                            var(--studio-bg, #050508) 0%,
+                            transparent 100%
+                        );
+                    }
+                    .carousel-wrapper::after {
+                        right: 0;
+                        background: linear-gradient(
+                            270deg,
+                            var(--studio-bg, #050508) 0%,
+                            transparent 100%
+                        );
                     }
 
                     .carousel-dots {
-                        margin-top: 12px;
+                        margin-top: 14px;
+                        gap: 6px;
+                    }
+
+                    .carousel-dot {
+                        width: 6px;
+                        height: 6px;
+                    }
+
+                    .carousel-dot.active {
+                        width: 18px;
                     }
                 }
             `}</style>
