@@ -98,14 +98,18 @@ Production remains manual-only in `resonate-iac`.
 The sender workflow in this repo passes:
 
 - `environment`
-- `source_ref`
 - `services`
-- `trigger_branch`
+- `source_ref`
 - `release_sha`
 - `release_id`
+- `trigger_branch`
 - `backend_image`
 - `frontend_image`
 - `demucs_image`
+
+It intentionally does not pass `source_repository`, because `resonate-iac`
+already knows the default source repository and GitHub repository dispatch
+payloads are limited to 10 properties.
 
 Required sender secret in `resonate`:
 
