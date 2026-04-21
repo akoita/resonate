@@ -1187,6 +1187,14 @@ export default function ReleaseDetails() {
         </div>
       )}
 
+      {/* Rights-monitoring banner is owner-only (#608). It exposes the
+       * uploader's trust-gate route, restriction flags, and the reason
+       * text ("the uploader does not yet have enough trust…"), which
+       * is uploader-reputation metadata a random viewer has no reason
+       * to see and no ability to act on. Public-facing consequences
+       * (e.g. "marketplace minting is disabled") surface where they're
+       * actionable, not via this internal-state banner. */}
+      {isOwner && (
       <div
         style={{
           marginBottom: "var(--space-4)",
@@ -1293,6 +1301,7 @@ export default function ReleaseDetails() {
           </p>
         )}
       </div>
+      )}
 
       {release.status === "failed" && release.processingError && (
         <div
