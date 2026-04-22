@@ -6,11 +6,11 @@ import { EventBus } from '../shared/event_bus';
 import { StorageProvider } from '../storage/storage_provider';
 import { CatalogService } from '../catalog/catalog.service';
 import { LyriaClient } from './lyria.client';
-import { CreateGenerationDto, GenerationStatusResponse, GenerationMetadata, ALL_STEM_TYPES, StemAnalysisResult, PublishGenerationDto } from './generation.dto';
+import { CreateGenerationDto, GenerationStatusResponse, GenerationMetadata, ALL_STEM_TYPES, StemAnalysisResult, PublishGenerationDto, SupportedGenerationDuration } from './generation.dto';
 import { prisma } from '../../db/prisma';
 import { randomUUID } from 'crypto';
 
-const COST_PER_GENERATION = 0.06; // $0.06 per 30-second clip
+const COST_PER_30_SECONDS = 0.06; // Estimated cost baseline for 30 seconds of generated audio
 const DEFAULT_RATE_LIMIT = 5; // max generations per hour per user
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
@@ -127,6 +127,7 @@ export class GenerationService {
       prompt: dto.prompt,
       negativePrompt: dto.negativePrompt,
       seed: dto.seed,
+      durationSeconds: dto.durationSeconds ?? 30,
     }, {
       jobId,
       attempts: 3,
@@ -157,8 +158,9 @@ export class GenerationService {
     prompt: string;
     negativePrompt?: string;
     seed?: number;
+    durationSeconds?: SupportedGenerationDuration;
   }): Promise<void> {
-    const { jobId, userId, prompt, negativePrompt, seed } = data;
+    const { jobId, userId, prompt, negativePrompt, seed, durationSeconds = 30 } = data;
     let { artistId } = data;
 
     // Auto-resolve artistId from userId if not provided
@@ -183,7 +185,7 @@ export class GenerationService {
         phase: 'generating',
       });
 
-      const result = await this.lyriaClient.generate({ prompt, negativePrompt, seed });
+      const result = await this.lyriaClient.generate({ prompt, negativePrompt, seed, durationSeconds });
 
       // Phase 2: Store audio
       this.eventBus.publish({
@@ -220,15 +222,15 @@ export class GenerationService {
 
       const generationMetadata: GenerationMetadata = {
         jobId,
-        provider: 'lyria-002',
+        provider: result.provider,
         prompt,
         negativePrompt,
         seed: result.seed,
         generatedAt: new Date().toISOString(),
         synthIdPresent: result.synthIdPresent,
-        durationSeconds: 30,
-        sampleRate: 48000,
-        cost: COST_PER_GENERATION,
+        durationSeconds: result.durationSeconds,
+        sampleRate: result.sampleRate,
+        cost: this.calculateGenerationCost(result.durationSeconds),
       };
 
       // Create Release + Track via Prisma
@@ -248,7 +250,7 @@ export class GenerationService {
                   type: 'master',
                   uri: storageResult.uri,
                   storageProvider: storageResult.provider,
-                  durationSeconds: 30,
+                  durationSeconds: result.durationSeconds,
                   mimeType: 'audio/wav',
                 },
               },
@@ -380,7 +382,7 @@ export class GenerationService {
           provider: meta.provider || 'lyria-002',
           generatedAt: meta.generatedAt || release.createdAt.toISOString(),
           durationSeconds: meta.durationSeconds || 30,
-          cost: meta.cost || 0.06,
+          cost: meta.cost || this.calculateGenerationCost(meta.durationSeconds || 30),
           audioUri: `/catalog/releases/${release.id}/tracks/${track.id}/stream`,
         };
       }),
@@ -397,10 +399,25 @@ export class GenerationService {
     let totalCost = 0;
 
     if (artist) {
-      totalGenerations = await prisma.release.count({
+      const releases = await prisma.release.findMany({
         where: { artistId: artist.id, type: 'ai_generated' },
+        include: {
+          tracks: {
+            select: {
+              generationMetadata: true,
+            },
+          },
+        },
       });
-      totalCost = +(totalGenerations * COST_PER_GENERATION).toFixed(2);
+
+      totalGenerations = releases.length;
+      totalCost = +releases
+        .flatMap((release) => release.tracks)
+        .reduce((sum, track) => {
+          const meta = (track.generationMetadata as any) || {};
+          return sum + (meta.cost || this.calculateGenerationCost(meta.durationSeconds || 30));
+        }, 0)
+        .toFixed(2);
     }
 
     // ---- rate limit state ----
@@ -543,9 +560,13 @@ export class GenerationService {
     const artistId = process.env.AGENT_ARTIST_ID || 'agent';
 
     return this.createGeneration(
-      { prompt, negativePrompt, artistId },
+      { prompt, negativePrompt, artistId, durationSeconds: 30 },
       userId,
     );
+  }
+
+  private calculateGenerationCost(durationSeconds: number): number {
+    return +((durationSeconds / 30) * COST_PER_30_SECONDS).toFixed(2);
   }
 
   async publishGeneration(

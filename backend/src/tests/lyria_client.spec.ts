@@ -1,43 +1,23 @@
 /**
- * LyriaClient unit tests — Issue #446 (@google/genai SDK refactor)
+ * LyriaClient unit tests
  *
- * Tests SDK initialization, prompt handling, session lifecycle,
- * and error handling using mocked @google/genai client.
+ * Covers the Lyria 3 Pro generateContent path used by /create.
  */
 
-// Mock session returned by client.live.music.connect()
-const mockSession = {
-  setWeightedPrompts: jest.fn().mockResolvedValue(undefined),
-  setMusicGenerationConfig: jest.fn().mockResolvedValue(undefined),
-  play: jest.fn().mockResolvedValue(undefined),
-  stop: jest.fn().mockResolvedValue(undefined),
-};
+const mockGenerateContent = jest.fn();
 
-// Track the onmessage callback so tests can inject audio chunks
-let capturedCallbacks: any = {};
-
-const mockConnect = jest.fn().mockImplementation(async (opts: any) => {
-  capturedCallbacks = opts.callbacks || {};
-  return mockSession;
-});
-
-// Mock @google/genai
 jest.mock('@google/genai', () => ({
   GoogleGenAI: jest.fn().mockImplementation(() => ({
-    live: {
-      music: {
-        connect: mockConnect,
-      },
+    models: {
+      generateContent: mockGenerateContent,
     },
   })),
 }));
 
-// Config service with 0ms generation wait for instant test completion
 const mockConfigService = {
   get: jest.fn().mockImplementation((key: string, defaultVal?: any) => {
     const map: Record<string, any> = {
       GOOGLE_AI_API_KEY: 'test-api-key-123',
-      LYRIA_GENERATION_WAIT_MS: 0,
     };
     return map[key] ?? defaultVal ?? '';
   }),
@@ -46,33 +26,17 @@ const mockConfigService = {
 import { LyriaClient } from '../modules/generation/lyria.client';
 import { GoogleGenAI } from '@google/genai';
 
-/**
- * Helper: injects audio chunks into the captured session callback.
- * Must be called after generate() is invoked (which triggers connect()).
- */
-function injectAudioChunks(chunks: Buffer[]) {
-  for (const chunk of chunks) {
-    capturedCallbacks.onmessage?.({
-      serverContent: {
-        audioChunks: [{ data: chunk.toString('base64') }],
+function buildResponse(parts: Array<{ text?: string; inlineData?: { data: string } }>, promptFeedback?: any) {
+  return {
+    candidates: [
+      {
+        content: {
+          parts,
+        },
       },
-    });
-  }
-}
-
-function injectSetupComplete() {
-  capturedCallbacks.onmessage?.({
-    setupComplete: {},
-  });
-}
-
-function injectFilteredPrompt(filteredReason: string, text = 'test prompt') {
-  capturedCallbacks.onmessage?.({
-    filteredPrompt: {
-      text,
-      filteredReason,
-    },
-  });
+    ],
+    promptFeedback,
+  };
 }
 
 describe('LyriaClient', () => {
@@ -80,212 +44,94 @@ describe('LyriaClient', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    capturedCallbacks = {};
-    mockConfigService.get.mockImplementation((key: string, defaultVal?: any) => {
-      const map: Record<string, any> = {
-        GOOGLE_AI_API_KEY: 'test-api-key-123',
-        LYRIA_GENERATION_WAIT_MS: 0,
-      };
-      return map[key] ?? defaultVal ?? '';
-    });
     client = new LyriaClient(mockConfigService as any);
+    mockGenerateContent.mockResolvedValue(
+      buildResponse([
+        { text: '[Intro]\nInstrumental only' },
+        { inlineData: { data: Buffer.from('fake-wav-data').toString('base64') } },
+      ]),
+    );
+  });
 
-    // After connect resolves, inject audio chunks by default
-    // Tests that need no audio can override mockConnect
-    mockConnect.mockImplementation(async (opts: any) => {
-      capturedCallbacks = opts.callbacks || {};
-      // Simulate audio arriving immediately after connect
-      process.nextTick(() => {
-        injectSetupComplete();
-        injectAudioChunks([Buffer.from('default-audio')]);
-      });
-      return mockSession;
+  it('creates GoogleGenAI with GOOGLE_AI_API_KEY and v1beta version', () => {
+    expect(GoogleGenAI).toHaveBeenCalledWith({
+      apiKey: 'test-api-key-123',
+      apiVersion: 'v1beta',
     });
   });
 
-  describe('SDK initialization', () => {
-    it('creates GoogleGenAI with GOOGLE_AI_API_KEY and v1alpha version', () => {
-      expect(GoogleGenAI).toHaveBeenCalledWith({
-        apiKey: 'test-api-key-123',
-        apiVersion: 'v1alpha',
-      });
+  it('uses lyria-3-pro-preview with wav output config', async () => {
+    const result = await client.generate({ prompt: 'dreamy ambient' });
+
+    expect(mockGenerateContent).toHaveBeenCalledWith({
+      model: 'lyria-3-pro-preview',
+      contents: 'Create a 30-second track. dreamy ambient',
+      config: {
+        responseModalities: ['AUDIO', 'TEXT'],
+        responseMimeType: 'audio/wav',
+      },
     });
+
+    expect(result.audioBytes).toEqual(Buffer.from('fake-wav-data'));
+    expect(result.provider).toBe('lyria-3-pro-preview');
+    expect(result.durationSeconds).toBe(30);
+    expect(result.sampleRate).toBe(44_100);
+    expect(result.lyrics).toEqual(['[Intro]\nInstrumental only']);
   });
 
-  describe('generation session', () => {
-    it('connects to lyria-realtime-exp model', async () => {
-      const audioData = Buffer.from('test-audio-data');
-      mockConnect.mockImplementation(async (opts: any) => {
-        capturedCallbacks = opts.callbacks || {};
-        process.nextTick(() => {
-          injectSetupComplete();
-          injectAudioChunks([audioData]);
-        });
-        return mockSession;
-      });
+  it('requests longer duration through the prompt', async () => {
+    await client.generate({ prompt: 'cinematic score with strings', durationSeconds: 120 });
 
-      const result = await client.generate({ prompt: 'jazz piano' });
-
-      expect(mockConnect).toHaveBeenCalledWith(
-        expect.objectContaining({
-          model: 'models/lyria-realtime-exp',
-          callbacks: expect.any(Object),
-        }),
-      );
-
-      expect(result.audioBytes.subarray(0, 4).toString('utf8')).toBe('RIFF');
-      expect(result.audioBytes.subarray(8, 12).toString('utf8')).toBe('WAVE');
-      expect(result.audioBytes.readUInt32LE(40)).toBe(audioData.length);
-      expect(result.audioBytes.subarray(44)).toEqual(audioData);
-      expect(result.sampleRate).toBe(48000);
-      expect(result.durationSeconds).toBe(30);
-    });
-
-    it('sets weighted prompts with correct text and weight', async () => {
-      await client.generate({ prompt: 'dreamy ambient' });
-
-      expect(mockSession.setWeightedPrompts).toHaveBeenCalledWith({
-        weightedPrompts: [{ text: 'dreamy ambient', weight: 1.0 }],
-      });
-    });
-
-    it('includes negative prompt with negative weight', async () => {
-      await client.generate({ prompt: 'jazz', negativePrompt: 'vocals' });
-
-      expect(mockSession.setWeightedPrompts).toHaveBeenCalledWith({
-        weightedPrompts: [
-          { text: 'jazz', weight: 1.0 },
-          { text: 'vocals', weight: -1.0 },
-        ],
-      });
-    });
-
-    it('calls play() to start and stop() to end generation', async () => {
-      await client.generate({ prompt: 'test' });
-
-      expect(mockSession.play).toHaveBeenCalled();
-      expect(mockSession.stop).toHaveBeenCalled();
-    });
-
-    it('does not require setupComplete before sending prompts and play', async () => {
-      mockConnect.mockImplementation(async (opts: any) => {
-        capturedCallbacks = opts.callbacks || {};
-        process.nextTick(() => {
-          injectAudioChunks([Buffer.from('without-setup')]);
-        });
-        return mockSession;
-      });
-
-      await client.generate({ prompt: 'test' });
-
-      expect(mockSession.setWeightedPrompts).toHaveBeenCalled();
-      expect(mockSession.play).toHaveBeenCalled();
-    });
-
-    it('uses provided seed', async () => {
-      const result = await client.generate({ prompt: 'test', seed: 42 });
-      expect(result.seed).toBe(42);
-      expect(mockSession.setMusicGenerationConfig).toHaveBeenCalledWith({
-        musicGenerationConfig: expect.objectContaining({
-          seed: 42,
-        }),
-      });
-    });
-
-    it('generates random seed when not provided', async () => {
-      const result = await client.generate({ prompt: 'test' });
-      expect(result.seed).toBeDefined();
-      expect(typeof result.seed).toBe('number');
-    });
+    expect(mockGenerateContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contents: 'Create a 2-minute track. cinematic score with strings',
+      }),
+    );
   });
 
-  describe('error handling', () => {
-    it('throws when no audio chunks received', async () => {
-      // Override mock to NOT inject any chunks
-      mockConnect.mockImplementation(async (opts: any) => {
-        capturedCallbacks = opts.callbacks || {};
-        process.nextTick(() => injectSetupComplete());
-        return mockSession;
-      });
-
-      await expect(client.generate({ prompt: 'test' })).rejects.toThrow(
-        'Lyria API returned no audio chunks',
-      );
+  it('injects negative prompt guidance into the prompt text', async () => {
+    await client.generate({
+      prompt: 'afrobeat groove with guitars',
+      negativePrompt: 'no vocals, no drums',
+      durationSeconds: 60,
     });
 
-    it('throws the filtered prompt reason when Lyria rejects the prompt', async () => {
-      mockConnect.mockImplementation(async (opts: any) => {
-        capturedCallbacks = opts.callbacks || {};
-        process.nextTick(() => {
-          injectSetupComplete();
-          injectFilteredPrompt('SAFETY');
-        });
-        return mockSession;
-      });
-
-      await expect(client.generate({ prompt: 'test' })).rejects.toThrow(
-        'Lyria prompt was filtered: SAFETY',
-      );
-    });
-
-    it('throws when the session closes before any audio arrives', async () => {
-      mockConnect.mockImplementation(async (opts: any) => {
-        capturedCallbacks = opts.callbacks || {};
-        process.nextTick(() => {
-          capturedCallbacks.onclose?.();
-        });
-        return mockSession;
-      });
-
-      await expect(client.generate({ prompt: 'test' })).rejects.toThrow(
-        'Lyria session closed before audio generation started',
-      );
-    });
-
-    it('throws the underlying session error before audio generation', async () => {
-      mockConnect.mockImplementation(async (opts: any) => {
-        capturedCallbacks = opts.callbacks || {};
-        process.nextTick(() => {
-          capturedCallbacks.onerror?.(new Error('upstream rejected websocket'));
-        });
-        return mockSession;
-      });
-
-      await expect(client.generate({ prompt: 'test' })).rejects.toThrow(
-        'Lyria session error before audio generation: upstream rejected websocket',
-      );
-    });
-
-    it('reports synthIdPresent as true', async () => {
-      const result = await client.generate({ prompt: 'test' });
-      expect(result.synthIdPresent).toBe(true);
-    });
+    expect(mockGenerateContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contents:
+          'Create a 1-minute track. afrobeat groove with guitars Avoid these elements: no vocals, no drums.',
+      }),
+    );
   });
 
-  describe('response parsing', () => {
-    it('wraps concatenated PCM chunks in a playable wav container', async () => {
-      const chunk1 = Buffer.from('first-chunk');
-      const chunk2 = Buffer.from('second-chunk');
+  it('returns provided seed unchanged in metadata', async () => {
+    const result = await client.generate({ prompt: 'test', seed: 42 });
+    expect(result.seed).toBe(42);
+  });
 
-      mockConnect.mockImplementation(async (opts: any) => {
-        capturedCallbacks = opts.callbacks || {};
-        process.nextTick(() => {
-          injectSetupComplete();
-          injectAudioChunks([chunk1, chunk2]);
-        });
-        return mockSession;
-      });
+  it('generates random seed when not provided', async () => {
+    const result = await client.generate({ prompt: 'test' });
+    expect(result.seed).toBeDefined();
+    expect(typeof result.seed).toBe('number');
+  });
 
-      const result = await client.generate({ prompt: 'test' });
+  it('throws when no audio inline data is returned', async () => {
+    mockGenerateContent.mockResolvedValueOnce(
+      buildResponse([{ text: 'Lyrics only' }]),
+    );
 
-      const pcm = Buffer.concat([chunk1, chunk2]);
-      expect(result.audioBytes.subarray(0, 4).toString('utf8')).toBe('RIFF');
-      expect(result.audioBytes.subarray(8, 12).toString('utf8')).toBe('WAVE');
-      expect(result.audioBytes.readUInt16LE(22)).toBe(2);
-      expect(result.audioBytes.readUInt32LE(24)).toBe(48000);
-      expect(result.audioBytes.readUInt16LE(34)).toBe(16);
-      expect(result.audioBytes.readUInt32LE(40)).toBe(pcm.length);
-      expect(result.audioBytes.subarray(44)).toEqual(pcm);
-    });
+    await expect(client.generate({ prompt: 'test' })).rejects.toThrow(
+      'Lyria 3 returned no audio data',
+    );
+  });
+
+  it('surfaces blocked prompt feedback', async () => {
+    mockGenerateContent.mockResolvedValueOnce(
+      buildResponse([], { blockReason: 'SAFETY' }),
+    );
+
+    await expect(client.generate({ prompt: 'test' })).rejects.toThrow(
+      'Lyria prompt was blocked: SAFETY',
+    );
   });
 });

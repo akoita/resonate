@@ -1430,6 +1430,7 @@ export async function createGeneration(
     artistId: string;
     negativePrompt?: string;
     seed?: number;
+    durationSeconds?: 30 | 60 | 120 | 180;
   }
 ) {
   return apiRequest<{ jobId: string }>(
