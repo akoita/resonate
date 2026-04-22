@@ -38,7 +38,8 @@ export class LyriaClient {
    * Generate music from a text prompt via the Lyria model.
    *
    * Uses a one-shot Lyria RealTime session: connect → prompt → collect
-   * audio chunks → stop. Returns concatenated PCM wrapped in caller context.
+   * audio chunks → stop. Lyria returns raw PCM chunks, so we wrap them in
+   * a standard WAV container before handing them off to storage/playback.
    *
    * @returns WAV audio bytes and generation metadata
    */
@@ -131,8 +132,11 @@ export class LyriaClient {
       throw new Error('Lyria API returned no audio chunks');
     }
 
-    const audioBytes = Buffer.concat(audioChunks);
-    this.logger.log(`Generated ${audioBytes.length} bytes of audio (${audioChunks.length} chunks)`);
+    const pcmBytes = Buffer.concat(audioChunks);
+    const audioBytes = this.wrapPcmAsWav(pcmBytes, 48_000, 2, 16);
+    this.logger.log(
+      `Generated ${pcmBytes.length} bytes of PCM audio (${audioChunks.length} chunks), wrapped to ${audioBytes.length} bytes WAV`,
+    );
 
     return {
       audioBytes,
@@ -141,5 +145,33 @@ export class LyriaClient {
       durationSeconds: 30,
       sampleRate: 48000,
     };
+  }
+
+  private wrapPcmAsWav(
+    pcmData: Buffer,
+    sampleRate: number,
+    channels: number,
+    bitDepth: number,
+  ): Buffer {
+    const bytesPerSample = bitDepth / 8;
+    const blockAlign = channels * bytesPerSample;
+    const byteRate = sampleRate * blockAlign;
+
+    const header = Buffer.alloc(44);
+    header.write('RIFF', 0);
+    header.writeUInt32LE(36 + pcmData.length, 4);
+    header.write('WAVE', 8);
+    header.write('fmt ', 12);
+    header.writeUInt32LE(16, 16);
+    header.writeUInt16LE(1, 20);
+    header.writeUInt16LE(channels, 22);
+    header.writeUInt32LE(sampleRate, 24);
+    header.writeUInt32LE(byteRate, 28);
+    header.writeUInt16LE(blockAlign, 32);
+    header.writeUInt16LE(bitDepth, 34);
+    header.write('data', 36);
+    header.writeUInt32LE(pcmData.length, 40);
+
+    return Buffer.concat([header, pcmData]);
   }
 }

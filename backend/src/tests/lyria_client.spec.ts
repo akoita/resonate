@@ -133,7 +133,10 @@ describe('LyriaClient', () => {
         }),
       );
 
-      expect(result.audioBytes).toEqual(audioData);
+      expect(result.audioBytes.subarray(0, 4).toString('utf8')).toBe('RIFF');
+      expect(result.audioBytes.subarray(8, 12).toString('utf8')).toBe('WAVE');
+      expect(result.audioBytes.readUInt32LE(40)).toBe(audioData.length);
+      expect(result.audioBytes.subarray(44)).toEqual(audioData);
       expect(result.sampleRate).toBe(48000);
       expect(result.durationSeconds).toBe(30);
     });
@@ -260,7 +263,7 @@ describe('LyriaClient', () => {
   });
 
   describe('response parsing', () => {
-    it('concatenates multiple audio chunks', async () => {
+    it('wraps concatenated PCM chunks in a playable wav container', async () => {
       const chunk1 = Buffer.from('first-chunk');
       const chunk2 = Buffer.from('second-chunk');
 
@@ -275,7 +278,14 @@ describe('LyriaClient', () => {
 
       const result = await client.generate({ prompt: 'test' });
 
-      expect(result.audioBytes).toEqual(Buffer.concat([chunk1, chunk2]));
+      const pcm = Buffer.concat([chunk1, chunk2]);
+      expect(result.audioBytes.subarray(0, 4).toString('utf8')).toBe('RIFF');
+      expect(result.audioBytes.subarray(8, 12).toString('utf8')).toBe('WAVE');
+      expect(result.audioBytes.readUInt16LE(22)).toBe(2);
+      expect(result.audioBytes.readUInt32LE(24)).toBe(48000);
+      expect(result.audioBytes.readUInt16LE(34)).toBe(16);
+      expect(result.audioBytes.readUInt32LE(40)).toBe(pcm.length);
+      expect(result.audioBytes.subarray(44)).toEqual(pcm);
     });
   });
 });
