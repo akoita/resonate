@@ -783,6 +783,15 @@
      * content gutter. */
     margin: 0;
     padding: var(--space-3) 0;
+    /* Auto-hide on scroll-down, re-show on scroll-up. The sticky bar
+     * takes ~40-50% of the viewport on phone and occludes the
+     * listing cards while the user is clearly browsing (#620). */
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
+  }
+
+  .marketplace-sticky-controls.is-hidden {
+    transform: translateY(-100%);
   }
 
   .marketplace-toolbar {
