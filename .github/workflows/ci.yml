@@ -595,20 +595,25 @@ jobs:
           path: web/playwright-report/
           retention-days: 7
 
-  publish-deploy-images:
-    name: Publish Deployable Images
+  publish-plan:
+    name: Resolve Deploy Image Plan
     runs-on: ubuntu-latest
     needs: [changes, lint, contracts, backend-tests, build, build-deployable-frontend, e2e-tests]
     if: always() && github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'develop')
-    environment: ${{ github.ref_name == 'main' && 'staging' || github.ref_name == 'develop' && 'dev' || '' }}
+    outputs:
+      environment: ${{ steps.plan.outputs.environment }}
+      registry: ${{ steps.plan.outputs.registry }}
+      services_csv: ${{ steps.plan.outputs.services_csv }}
+      should_dispatch: ${{ steps.plan.outputs.should_dispatch }}
+      release_sha: ${{ steps.plan.outputs.release_sha }}
+      release_id: ${{ steps.plan.outputs.release_id }}
+      demucs_dockerfile: ${{ steps.plan.outputs.demucs_dockerfile }}
+      backend_image: ${{ steps.plan.outputs.backend_image }}
+      frontend_image: ${{ steps.plan.outputs.frontend_image }}
+      demucs_image: ${{ steps.plan.outputs.demucs_image }}
     permissions:
       contents: read
-      id-token: write
     steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-
       - name: Resolve publish plan
         id: plan
         env:
@@ -731,19 +736,30 @@ jobs:
             exit 1
           fi
 
+  publish-backend-image:
+    name: Publish Backend Image
+    runs-on: ubuntu-latest
+    needs: [publish-plan]
+    if: needs.publish-plan.outputs.should_dispatch == 'true' && contains(format(',{0},', needs.publish-plan.outputs.services_csv), ',backend,')
+    environment: ${{ needs.publish-plan.outputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
       - name: Authenticate to GCP
-        if: steps.plan.outputs.should_dispatch == 'true'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
 
       - name: Setup gcloud
-        if: steps.plan.outputs.should_dispatch == 'true'
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Build and push backend image
-        if: steps.plan.outputs.should_dispatch == 'true' && contains(format(',{0},', steps.plan.outputs.services_csv), ',backend,')
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
@@ -757,17 +773,38 @@ jobs:
             --git-source-url "https://github.com/${GITHUB_REPOSITORY}" \
             --git-source-revision "${GITHUB_SHA}" \
             --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
-            --image "${{ steps.plan.outputs.backend_image }}"
+            --image "${{ needs.publish-plan.outputs.backend_image }}"
+
+  publish-frontend-image:
+    name: Publish Frontend Image
+    runs-on: ubuntu-latest
+    needs: [publish-plan]
+    if: needs.publish-plan.outputs.should_dispatch == 'true' && contains(format(',{0},', needs.publish-plan.outputs.services_csv), ',frontend,')
+    environment: ${{ needs.publish-plan.outputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
 
       - name: Download deployable frontend artifact
-        if: steps.plan.outputs.should_dispatch == 'true' && contains(format(',{0},', steps.plan.outputs.services_csv), ',frontend,')
         uses: actions/download-artifact@v8
         with:
           name: web-build-deployable
           path: ${{ runner.temp }}/web-build-deployable
 
       - name: Prepare frontend runtime image context
-        if: steps.plan.outputs.should_dispatch == 'true' && contains(format(',{0},', steps.plan.outputs.services_csv), ',frontend,')
         run: |
           bash .github/scripts/prepare-frontend-runtime-context.sh \
             --artifact-dir "${RUNNER_TEMP}/web-build-deployable" \
@@ -775,7 +812,6 @@ jobs:
             --output-dir "${RUNNER_TEMP}/frontend-runtime-context"
 
       - name: Build and push frontend image
-        if: steps.plan.outputs.should_dispatch == 'true' && contains(format(',{0},', steps.plan.outputs.services_csv), ',frontend,')
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
@@ -785,10 +821,32 @@ jobs:
             --context "${RUNNER_TEMP}/frontend-runtime-context" \
             --dockerfile Dockerfile \
             --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
-            --image "${{ steps.plan.outputs.frontend_image }}"
+            --image "${{ needs.publish-plan.outputs.frontend_image }}"
+
+  publish-demucs-image:
+    name: Publish Demucs Image
+    runs-on: ubuntu-latest
+    needs: [publish-plan]
+    if: needs.publish-plan.outputs.should_dispatch == 'true' && contains(format(',{0},', needs.publish-plan.outputs.services_csv), ',demucs,')
+    environment: ${{ needs.publish-plan.outputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
 
       - name: Build and push Demucs image
-        if: steps.plan.outputs.should_dispatch == 'true' && contains(format(',{0},', steps.plan.outputs.services_csv), ',demucs,')
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
@@ -798,22 +856,62 @@ jobs:
           bash .github/scripts/submit-cloud-build.sh \
             --project "${GCP_PROJECT_ID}" \
             --context workers/demucs \
-            --dockerfile "${{ steps.plan.outputs.demucs_dockerfile }}" \
+            --dockerfile "${{ needs.publish-plan.outputs.demucs_dockerfile }}" \
             --git-source-url "https://github.com/${GITHUB_REPOSITORY}" \
             --git-source-revision "${GITHUB_SHA}" \
             --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
-            --image "${{ steps.plan.outputs.demucs_image }}"
+            --image "${{ needs.publish-plan.outputs.demucs_image }}"
+
+  publish-deploy-images:
+    name: Publish Deployable Images
+    runs-on: ubuntu-latest
+    needs: [publish-plan, publish-backend-image, publish-frontend-image, publish-demucs-image]
+    if: always() && needs.publish-plan.result == 'success'
+    permissions:
+      contents: read
+    steps:
+      - name: Verify publish jobs
+        env:
+          SHOULD_DISPATCH: ${{ needs.publish-plan.outputs.should_dispatch }}
+          SERVICES: ${{ needs.publish-plan.outputs.services_csv }}
+          BACKEND_RESULT: ${{ needs.publish-backend-image.result }}
+          FRONTEND_RESULT: ${{ needs.publish-frontend-image.result }}
+          DEMUCS_RESULT: ${{ needs.publish-demucs-image.result }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${SHOULD_DISPATCH}" != "true" ]]; then
+            echo "No deployable services changed on this push; writing skip manifest."
+            exit 0
+          fi
+
+          services=",${SERVICES},"
+
+          if [[ "${services}" == *",backend,"* && "${BACKEND_RESULT}" != "success" ]]; then
+            echo "Backend image publication did not succeed." >&2
+            exit 1
+          fi
+
+          if [[ "${services}" == *",frontend,"* && "${FRONTEND_RESULT}" != "success" ]]; then
+            echo "Frontend image publication did not succeed." >&2
+            exit 1
+          fi
+
+          if [[ "${services}" == *",demucs,"* && "${DEMUCS_RESULT}" != "success" ]]; then
+            echo "Demucs image publication did not succeed." >&2
+            exit 1
+          fi
 
       - name: Write deploy manifest
         env:
-          SHOULD_DISPATCH: ${{ steps.plan.outputs.should_dispatch }}
-          ENVIRONMENT: ${{ steps.plan.outputs.environment }}
-          SERVICES: ${{ steps.plan.outputs.services_csv }}
-          RELEASE_SHA: ${{ steps.plan.outputs.release_sha }}
-          RELEASE_ID: ${{ steps.plan.outputs.release_id }}
-          ALL_BACKEND_IMAGE: ${{ steps.plan.outputs.backend_image }}
-          ALL_FRONTEND_IMAGE: ${{ steps.plan.outputs.frontend_image }}
-          ALL_DEMUCS_IMAGE: ${{ steps.plan.outputs.demucs_image }}
+          SHOULD_DISPATCH: ${{ needs.publish-plan.outputs.should_dispatch }}
+          ENVIRONMENT: ${{ needs.publish-plan.outputs.environment }}
+          SERVICES: ${{ needs.publish-plan.outputs.services_csv }}
+          RELEASE_SHA: ${{ needs.publish-plan.outputs.release_sha }}
+          RELEASE_ID: ${{ needs.publish-plan.outputs.release_id }}
+          ALL_BACKEND_IMAGE: ${{ needs.publish-plan.outputs.backend_image }}
+          ALL_FRONTEND_IMAGE: ${{ needs.publish-plan.outputs.frontend_image }}
+          ALL_DEMUCS_IMAGE: ${{ needs.publish-plan.outputs.demucs_image }}
         run: |
           python3 - <<'PY' > "${RUNNER_TEMP}/deploy-manifest.json"
           import json
