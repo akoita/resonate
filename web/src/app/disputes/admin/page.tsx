@@ -1,7 +1,7 @@
 import AdminDisputeQueue from "@/components/disputes/AdminDisputeQueue";
 
 export const metadata = {
-  title: "Admin Dispute Queue | Resonate",
+  title: "Admin Review",
   description: "Review and resolve pending content disputes",
 };
 
