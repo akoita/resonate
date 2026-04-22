@@ -685,13 +685,6 @@ a {
     0 0 60px rgba(124, 92, 255, 0.2);
 }
 
-.home-chips {
-  display: flex;
-  gap: var(--space-3);
-  margin-top: var(--space-6);
-  flex-wrap: wrap;
-}
-
 .home-chip {
   padding: 8px 16px;
   border-radius: 12px;
@@ -819,6 +812,26 @@ a {
   font-weight: 700;
   color: #fff;
   margin-bottom: var(--space-2);
+}
+
+/* Release / listing cards on phone: the default 1:1 artwork and
+ * 32px body/title padding make each card very tall (#603: "release
+ * images are too big, text part is too big relative to content").
+ * Compact proportions on phone — shorter artwork, tighter text,
+ * so more of the release list is visible above the fold. */
+@media (max-width: 767px) {
+  .ui-card-image {
+    aspect-ratio: 4 / 3 !important;
+  }
+
+  .ui-card-title {
+    padding: var(--space-4) var(--space-4) 0;
+    font-size: 15px;
+  }
+
+  .ui-card-body {
+    padding: var(--space-3) var(--space-4) var(--space-4);
+  }
 }
 
 .player-master-stage {
