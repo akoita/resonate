@@ -31,6 +31,49 @@ export class CatalogService implements OnModuleInit {
   >();
   private readonly cacheTtlMs = 30_000;
 
+  private resolveInternalUri(uri: string): string {
+    const trimmedUri = uri.trim();
+    const baseUrl = `http://localhost:${process.env.PORT || 3000}`;
+
+    if (trimmedUri.startsWith("/")) {
+      return `${baseUrl}${trimmedUri}`;
+    }
+
+    if (trimmedUri.startsWith("catalog/")) {
+      return `${baseUrl}/${trimmedUri}`;
+    }
+
+    return trimmedUri;
+  }
+
+  private async fetchStemSourceBuffer(uri: string): Promise<Buffer> {
+    const trimmedUri = uri.trim();
+    if (!trimmedUri) {
+      throw new BadRequestException("Stem has no source URI");
+    }
+
+    try {
+      const downloaded = await this.storageProvider.download(trimmedUri);
+      if (downloaded) {
+        return downloaded;
+      }
+    } catch (error) {
+      console.warn(`[Catalog] Storage provider download failed for ${trimmedUri}:`, error);
+    }
+
+    const resolvedUri = this.resolveInternalUri(trimmedUri);
+    if (!/^https?:\/\//i.test(resolvedUri)) {
+      throw new BadRequestException(`Unsupported stem source URI: ${trimmedUri}`);
+    }
+
+    const response = await fetch(resolvedUri);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch stem content: ${response.status}`);
+    }
+
+    return Buffer.from(await response.arrayBuffer());
+  }
+
   private getLocalStemFilename(stem: { id: string; uri: string }) {
     const trimmedUri = stem.uri.trim();
     if (!trimmedUri) {
@@ -1153,11 +1196,6 @@ export class CatalogService implements OnModuleInit {
 
     if (!stem.uri && !stem.data) throw new BadRequestException("Stem has no source URI or data");
 
-    // Resolve relative paths to absolute for server-side fetch/decrypt
-    // Use localhost (not BACKEND_URL which may be host.docker.internal)
-    const selfBase = `http://localhost:${process.env.PORT || 3000}`;
-    const resolvedUri = stem.uri && !stem.uri.startsWith('http') ? `${selfBase}${stem.uri}` : stem.uri;
-
     // Handle encrypted content from IPFS/Lighthouse
     // We prioritize this over stem.data because stem.data might contain the encrypted blob
     if (stem.encryptionMetadata) {
@@ -1172,7 +1210,7 @@ export class CatalogService implements OnModuleInit {
       };
 
       const decryptedBuffer = await this.encryptionService.decrypt(
-        resolvedUri,
+        stem.uri!,
         stem.encryptionMetadata,
         [], // No specific access conditions for public preview if we want to bypass Lit checks on backend
         internalAuthSig,
@@ -1181,10 +1219,12 @@ export class CatalogService implements OnModuleInit {
       return { data: decryptedBuffer, mimeType: stem.mimeType || "audio/mpeg" };
     }
 
+    if (stem.data) {
+      return { data: stem.data, mimeType: stem.mimeType || "audio/mpeg" };
+    }
+
     // Unencrypted external content
-    const response = await fetch(resolvedUri);
-    if (!response.ok) throw new Error(`Failed to fetch stem content: ${response.status}`);
-    const buffer = Buffer.from(await response.arrayBuffer());
+    const buffer = await this.fetchStemSourceBuffer(stem.uri!);
 
     return { data: buffer, mimeType: stem.mimeType || "audio/mpeg" };
   }
