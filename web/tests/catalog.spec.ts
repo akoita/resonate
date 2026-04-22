@@ -19,12 +19,10 @@ test.describe("Catalog & Home Page", () => {
         await expect(page.locator(".logo-text")).toContainText("Resonate");
     });
 
-    test("HOME-02: Mood chips are displayed", async ({ page }) => {
-        await page.goto("/");
-        await expect(page.locator(".signal-chip").first()).toBeVisible();
-        await expect(page.getByText("Focus")).toBeVisible();
-        await expect(page.getByText("Chill")).toBeVisible();
-    });
+    // HOME-02 removed: the mood "signal chips" (Focus / Chill / Energy /
+    // Night Drive / Lo-fi) were placeholder UI with no onClick and no
+    // backing filter — removed in #603 polish work. If real mood-based
+    // catalog filtering lands, add a proper test then.
 
     test("HOME-03: Latest Masterings section exists", async ({ page }) => {
         await page.goto("/");
