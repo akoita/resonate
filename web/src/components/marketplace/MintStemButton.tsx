@@ -10,6 +10,7 @@ import {
 } from "../../lib/stemMarketplaceStatus";
 import { useToast } from "../ui/Toast";
 import { type Address } from "viem";
+import { formatPrice } from "../../lib/contracts";
 
 // Poll backend until the minted token ID is indexed (max ~30s)
 async function pollForMintedTokenId(
@@ -58,6 +59,7 @@ async function pollForListing(
 interface MintStemButtonProps {
     stemId: string;
     stemType: string;
+    listingPricePerUnit: bigint;
     disabled?: boolean;
     disabledReason?: string;
     disabledLabel?: string;
@@ -71,6 +73,7 @@ const LISTED_TTL_MS = 60 * 60 * 1000;
 export function MintStemButton({
     stemId,
     stemType,
+    listingPricePerUnit,
     disabled = false,
     disabledReason,
     disabledLabel,
@@ -210,12 +213,12 @@ export function MintStemButton({
         }
 
         try {
-            // List for 0.01 ETH, 1 unit, 7 days
+            // List for the resolved marketplace price, 1 unit, 7 days
             const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
 
             await list({
                 tokenId: mintedTokenId,
-                pricePerUnit: BigInt("10000000000000000"), // 0.01 ETH
+                pricePerUnit: listingPricePerUnit,
                 amount: BigInt(1),
                 paymentToken: ZERO_ADDRESS,
                 durationSeconds: BigInt(7 * 24 * 60 * 60),
@@ -231,7 +234,7 @@ export function MintStemButton({
                 addToast({
                     type: "success",
                     title: "Listed for Sale!",
-                    message: `${stemType} stem (Token #${mintedTokenId}) is now on the marketplace for 0.01 ETH`,
+                    message: `${stemType} stem (Token #${mintedTokenId}) is now on the marketplace for ${formatPrice(listingPricePerUnit)} ETH`,
                 });
             } else {
                 // Listing tx went through but indexer hasn't confirmed yet
@@ -270,7 +273,7 @@ export function MintStemButton({
                 royaltyBps: 500,
                 remixable: true,
                 parentIds: [],
-                pricePerUnit: BigInt("10000000000000000"), // 0.01 ETH
+                pricePerUnit: listingPricePerUnit,
                 paymentToken: ZERO_ADDRESS,
                 durationSeconds: BigInt(7 * 24 * 60 * 60),
             });
@@ -287,7 +290,7 @@ export function MintStemButton({
             addToast({
                 type: "success",
                 title: "Minted & Listed!",
-                message: `${stemType} stem (Token #${actualTokenId}) is now on the marketplace for 0.01 ETH`,
+                message: `${stemType} stem (Token #${actualTokenId}) is now on the marketplace for ${formatPrice(listingPricePerUnit)} ETH`,
             });
 
             // Notify backend to create listing in DB + broadcast WebSocket
@@ -299,7 +302,7 @@ export function MintStemButton({
                     body: JSON.stringify({
                         tokenId: actualTokenId.toString(),
                         seller: smartAccountAddress || address,
-                        price: "10000000000000000", // 0.01 ETH — must match pricePerUnit above
+                        price: listingPricePerUnit.toString(),
                         amount: "1",
                         paymentToken: "0x0000000000000000000000000000000000000000",
                         durationSeconds: String(7 * 24 * 60 * 60),
