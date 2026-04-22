@@ -34,7 +34,9 @@ describe('Choreography Flow 4: AI Generation Pipeline', () => {
       synthIdPresent: true,
       seed: 42,
       durationSeconds: 30,
-      sampleRate: 48000,
+      sampleRate: 44100,
+      provider: 'lyria-3-pro-preview',
+      lyrics: [],
     }),
   };
 

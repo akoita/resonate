@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
+import { SupportedGenerationDuration } from './generation.dto';
 
 export interface LyriaGenerationResult {
   audioBytes: Buffer;
@@ -8,170 +9,114 @@ export interface LyriaGenerationResult {
   seed: number;
   durationSeconds: number;
   sampleRate: number;
+  provider: 'lyria-3-pro-preview';
+  lyrics: string[];
 }
 
 export interface LyriaGenerationParams {
   prompt: string;
   negativePrompt?: string;
   seed?: number;
+  durationSeconds?: SupportedGenerationDuration;
 }
 
 /**
  * Wrapper service for Google AI Lyria music generation.
  *
  * Uses the @google/genai SDK with a Google AI Studio API key.
- * The Lyria model generates 30-second 48kHz stereo WAV clips from text prompts.
+ * Lyria 3 Pro uses generateContent and can return wav audio for clips up to
+ * a few minutes when prompted for duration/structure.
  */
 @Injectable()
 export class LyriaClient {
   private readonly logger = new Logger(LyriaClient.name);
   private readonly client: GoogleGenAI;
-  private readonly generationWaitMs: number;
 
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('GOOGLE_AI_API_KEY', '');
-    this.client = new GoogleGenAI({ apiKey, apiVersion: 'v1alpha' });
-    this.generationWaitMs = this.configService.get<number>('LYRIA_GENERATION_WAIT_MS', 32_000);
+    this.client = new GoogleGenAI({ apiKey, apiVersion: 'v1beta' });
   }
 
   /**
    * Generate music from a text prompt via the Lyria model.
    *
-   * Uses a one-shot Lyria RealTime session: connect → prompt → collect
-   * audio chunks → stop. Lyria returns raw PCM chunks, so we wrap them in
-   * a standard WAV container before handing them off to storage/playback.
+   * Uses Lyria 3 Pro via generateContent so we can request longer songs
+   * while preserving WAV output for the rest of the pipeline.
    *
    * @returns WAV audio bytes and generation metadata
    */
   async generate(params: LyriaGenerationParams): Promise<LyriaGenerationResult> {
-    const { prompt, negativePrompt, seed } = params;
+    const { prompt, negativePrompt, seed, durationSeconds = 30 } = params;
     const actualSeed = seed ?? Math.floor(Math.random() * 2147483647);
+    const composedPrompt = this.buildPrompt(prompt, durationSeconds, negativePrompt);
 
-    this.logger.log(`Generating audio: prompt="${prompt.substring(0, 50)}..." seed=${actualSeed}`);
-
-    // Collect audio chunks from the realtime session
-    const audioChunks: Buffer[] = [];
-    let filteredPromptReason: string | null = null;
-    let setupCompleted = false;
-    let sessionClosed = false;
-    let sessionError: string | null = null;
-
-    const session = await this.client.live.music.connect({
-      model: 'models/lyria-realtime-exp',
-      callbacks: {
-        onmessage: (message: any) => {
-          if (message.setupComplete) {
-            setupCompleted = true;
-          }
-
-          if (message.filteredPrompt) {
-            filteredPromptReason =
-              message.filteredPrompt.filteredReason ||
-              'Prompt was filtered by the Lyria API';
-            this.logger.warn(
-              `Lyria filtered prompt "${message.filteredPrompt.text || prompt.substring(0, 80)}": ${filteredPromptReason}`,
-            );
-          }
-
-          if (message.serverContent?.audioChunks) {
-            for (const chunk of message.serverContent.audioChunks) {
-              audioChunks.push(Buffer.from(chunk.data, 'base64'));
-            }
-          }
-        },
-        onerror: (error: any) => {
-          sessionError = error instanceof Error ? error.message : String(error);
-          this.logger.error(`Lyria session error: ${error}`);
-        },
-        onclose: () => {
-          sessionClosed = true;
-          if (!setupCompleted) {
-            this.logger.warn('Lyria session closed before setup completed');
-          }
-          this.logger.debug('Lyria session closed');
-        },
-      },
-    });
-
-    // Build weighted prompts
-    const weightedPrompts: Array<{ text: string; weight: number }> = [
-      { text: prompt, weight: 1.0 },
-    ];
-    if (negativePrompt) {
-      weightedPrompts.push({ text: negativePrompt, weight: -1.0 });
-    }
-
-    await session.setWeightedPrompts({ weightedPrompts });
-
-    await session.setMusicGenerationConfig({
-      musicGenerationConfig: {
-        bpm: 120,
-        temperature: 1.0,
-        seed: actualSeed,
-      },
-    });
-
-    // Start generation and collect for ~30 seconds
-    await session.play();
-
-    // Wait for audio generation to complete
-    await new Promise<void>((resolve) => setTimeout(resolve, this.generationWaitMs));
-
-    await session.stop();
-
-    if (audioChunks.length === 0) {
-      if (filteredPromptReason) {
-        throw new Error(`Lyria prompt was filtered: ${filteredPromptReason}`);
-      }
-      if (sessionError) {
-        throw new Error(`Lyria session error before audio generation: ${sessionError}`);
-      }
-      if (sessionClosed && !setupCompleted) {
-        throw new Error('Lyria session closed before audio generation started');
-      }
-      throw new Error('Lyria API returned no audio chunks');
-    }
-
-    const pcmBytes = Buffer.concat(audioChunks);
-    const audioBytes = this.wrapPcmAsWav(pcmBytes, 48_000, 2, 16);
     this.logger.log(
-      `Generated ${pcmBytes.length} bytes of PCM audio (${audioChunks.length} chunks), wrapped to ${audioBytes.length} bytes WAV`,
+      `Generating audio with Lyria 3 Pro: duration=${durationSeconds}s prompt="${prompt.substring(0, 80)}..." seed=${actualSeed}`,
+    );
+
+    const response = await this.client.models.generateContent({
+      model: 'lyria-3-pro-preview',
+      contents: composedPrompt,
+      config: {
+        responseModalities: ['AUDIO', 'TEXT'],
+        responseMimeType: 'audio/wav',
+      },
+    });
+
+    const parts = response.candidates?.[0]?.content?.parts ?? [];
+    const lyrics: string[] = [];
+    let audioBytes: Buffer | null = null;
+
+    for (const part of parts) {
+      if (part.text) {
+        lyrics.push(part.text);
+      } else if (part.inlineData?.data) {
+        audioBytes = Buffer.from(part.inlineData.data, 'base64');
+      }
+    }
+
+    if (!audioBytes || audioBytes.length === 0) {
+      const blockReason = response.promptFeedback?.blockReason;
+      if (blockReason) {
+        throw new Error(`Lyria prompt was blocked: ${blockReason}`);
+      }
+      throw new Error('Lyria 3 returned no audio data');
+    }
+
+    this.logger.log(
+      `Generated ${audioBytes.length} bytes of wav audio via Lyria 3 Pro (${durationSeconds}s target, ${lyrics.length} text parts)`,
     );
 
     return {
       audioBytes,
       synthIdPresent: true, // Lyria always embeds SynthID
       seed: actualSeed,
-      durationSeconds: 30,
-      sampleRate: 48000,
+      durationSeconds,
+      sampleRate: 44_100,
+      provider: 'lyria-3-pro-preview',
+      lyrics,
     };
   }
 
-  private wrapPcmAsWav(
-    pcmData: Buffer,
-    sampleRate: number,
-    channels: number,
-    bitDepth: number,
-  ): Buffer {
-    const bytesPerSample = bitDepth / 8;
-    const blockAlign = channels * bytesPerSample;
-    const byteRate = sampleRate * blockAlign;
+  private buildPrompt(
+    prompt: string,
+    durationSeconds: SupportedGenerationDuration,
+    negativePrompt?: string,
+  ): string {
+    const durationLabel =
+      durationSeconds >= 60
+        ? `${durationSeconds / 60}-minute`
+        : `${durationSeconds}-second`;
 
-    const header = Buffer.alloc(44);
-    header.write('RIFF', 0);
-    header.writeUInt32LE(36 + pcmData.length, 4);
-    header.write('WAVE', 8);
-    header.write('fmt ', 12);
-    header.writeUInt32LE(16, 16);
-    header.writeUInt16LE(1, 20);
-    header.writeUInt16LE(channels, 22);
-    header.writeUInt32LE(sampleRate, 24);
-    header.writeUInt32LE(byteRate, 28);
-    header.writeUInt16LE(blockAlign, 32);
-    header.writeUInt16LE(bitDepth, 34);
-    header.write('data', 36);
-    header.writeUInt32LE(pcmData.length, 40);
+    const parts = [
+      `Create a ${durationLabel} track.`,
+      prompt.trim(),
+    ];
 
-    return Buffer.concat([header, pcmData]);
+    if (negativePrompt?.trim()) {
+      parts.push(`Avoid these elements: ${negativePrompt.trim()}.`);
+    }
+
+    return parts.join(' ');
   }
 }

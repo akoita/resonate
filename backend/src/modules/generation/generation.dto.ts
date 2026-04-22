@@ -1,4 +1,7 @@
-import { IsString, IsOptional, IsNumber, IsNotEmpty, MaxLength, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsNotEmpty, MaxLength, Min, Max, IsIn } from 'class-validator';
+
+export const SUPPORTED_GENERATION_DURATIONS = [30, 60, 120, 180] as const;
+export type SupportedGenerationDuration = typeof SUPPORTED_GENERATION_DURATIONS[number];
 
 export class CreateGenerationDto {
   @IsString()
@@ -17,6 +20,11 @@ export class CreateGenerationDto {
   @Max(2147483647)
   seed?: number;
 
+  @IsNumber()
+  @IsOptional()
+  @IsIn(SUPPORTED_GENERATION_DURATIONS)
+  durationSeconds?: SupportedGenerationDuration;
+
   @IsString()
   @IsNotEmpty()
   artistId!: string;
@@ -33,14 +41,14 @@ export interface GenerationStatusResponse {
 
 export interface GenerationMetadata {
   jobId?: string;
-  provider: 'lyria-002';
+  provider: 'lyria-002' | 'lyria-3-pro-preview';
   prompt: string;
   negativePrompt?: string;
   seed: number;
   generatedAt: string;
   synthIdPresent: boolean;
-  durationSeconds: 30;
-  sampleRate: 48000;
+  durationSeconds: number;
+  sampleRate: number;
   cost: number;
 }
 

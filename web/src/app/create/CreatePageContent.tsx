@@ -22,6 +22,13 @@ const STYLE_PRESETS = [
   { label: "Cinematic", prompt: "Cinematic orchestral score, sweeping strings, epic brass" },
 ];
 
+const DURATION_OPTIONS = [
+  { value: 30 as const, label: "30s" },
+  { value: 60 as const, label: "1 min" },
+  { value: 120 as const, label: "2 min" },
+  { value: 180 as const, label: "3 min" },
+];
+
 export default function CreatePageContent() {
   const { token, status } = useAuth();
   const router = useRouter();
@@ -29,6 +36,7 @@ export default function CreatePageContent() {
   const [artistId, setArtistId] = useState<string | null>(null);
   const [artistDisplayName, setArtistDisplayName] = useState<string>("");
   const [prompt, setPrompt] = useState("");
+  const [durationSeconds, setDurationSeconds] = useState<(typeof DURATION_OPTIONS)[number]["value"]>(30);
   const [activeStyles, setActiveStyles] = useState<Set<string>>(new Set());
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [noVocals, setNoVocals] = useState(false);
@@ -53,6 +61,9 @@ export default function CreatePageContent() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed.prompt) setPrompt(parsed.prompt);
+        if (parsed.durationSeconds && DURATION_OPTIONS.some((option) => option.value === parsed.durationSeconds)) {
+          setDurationSeconds(parsed.durationSeconds);
+        }
         if (parsed.hasPublished) setHasPublished(parsed.hasPublished);
         if (parsed.state && parsed.result) {
           restoreState(parsed.state, parsed.result);
@@ -68,12 +79,12 @@ export default function CreatePageContent() {
   useEffect(() => {
     if (state === "complete" && result) {
       hasMountedRef.current = true;
-      sessionStorage.setItem("resonate_ai_session", JSON.stringify({ prompt, state, result, hasPublished }));
+      sessionStorage.setItem("resonate_ai_session", JSON.stringify({ prompt, durationSeconds, state, result, hasPublished }));
     } else if (state === "idle" && hasMountedRef.current) {
       sessionStorage.removeItem("resonate_ai_session");
       setHasPublished(false);
     }
-  }, [state, result, prompt, hasPublished]);
+  }, [state, result, prompt, durationSeconds, hasPublished]);
 
   // Fetch artist profile on mount
   useEffect(() => {
@@ -117,16 +128,18 @@ export default function CreatePageContent() {
     if (!prompt.trim()) return;
     await startGeneration(prompt.trim(), {
       negativePrompt: buildNegativePrompt(),
+      durationSeconds,
     });
-  }, [prompt, startGeneration, buildNegativePrompt]);
+  }, [prompt, startGeneration, buildNegativePrompt, durationSeconds]);
 
   const handleRegenerate = useCallback(async () => {
     reset();
     await startGeneration(prompt.trim(), {
       negativePrompt: buildNegativePrompt(),
       seed: Math.floor(Math.random() * 2147483647),
+      durationSeconds,
     });
-  }, [prompt, startGeneration, buildNegativePrompt, reset]);
+  }, [prompt, startGeneration, buildNegativePrompt, reset, durationSeconds]);
 
   const handleSendToDemucs = useCallback(() => {
     setPublishActionQueue("demucs");
@@ -275,7 +288,7 @@ export default function CreatePageContent() {
       <div className="create-page">
         <div className="create-header">
           <h1>✨ Create with AI</h1>
-          <p>Describe the track you want and Lyria will generate a 30-second clip</p>
+          <p>Describe the track you want and Lyria 3 Pro will generate up to a 3-minute track.</p>
         </div>
 
         <div className="create-card">
@@ -289,6 +302,23 @@ export default function CreatePageContent() {
             disabled={isGenerating}
             rows={4}
           />
+
+          <div className="style-chips-section">
+            <span className="style-chips-label">Duration</span>
+            <div className="style-chips">
+              {DURATION_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  className={`style-chip ${durationSeconds === option.value ? "active" : ""}`}
+                  onClick={() => setDurationSeconds(option.value)}
+                  disabled={isGenerating}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Style Presets */}
           <div className="style-chips-section">

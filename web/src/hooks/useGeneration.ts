@@ -58,7 +58,10 @@ export function useGeneration(token: string | null, artistId: string | null) {
   );
 
   const startGeneration = useCallback(
-    async (prompt: string, options?: { negativePrompt?: string; seed?: number }) => {
+    async (
+      prompt: string,
+      options?: { negativePrompt?: string; seed?: number; durationSeconds?: 30 | 60 | 120 | 180 },
+    ) => {
       if (!token || !artistId) {
         setError("Please connect your wallet and set up an artist profile first.");
         setState("failed");
@@ -75,6 +78,7 @@ export function useGeneration(token: string | null, artistId: string | null) {
           artistId,
           negativePrompt: options?.negativePrompt,
           seed: options?.seed,
+          durationSeconds: options?.durationSeconds,
         });
         setJobId(res.jobId);
         activeJobRef.current = res.jobId;
