@@ -30,6 +30,7 @@ import { buildTrackStreamUrl } from "../../../lib/urlUtils";
 import { MintStemButton } from "../../../components/marketplace/MintStemButton";
 import { BatchMintListModal } from "../../../components/marketplace/BatchMintListModal";
 import { useAttestAndStake, type BatchStemItem } from "../../../hooks/useContracts";
+import { useTrustTier } from "../../../hooks/useTrustTier";
 import { TrackActionMenu } from "../../../components/ui/TrackActionMenu";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressUpdate, type ReleaseRightsRequestUpdate } from "../../../hooks/useWebSockets";
@@ -38,6 +39,10 @@ import { LicensingInfoSection } from "../../../components/release/LicensingInfoS
 import ReleaseContentProtection from "../../../components/content-protection/ReleaseContentProtection";
 import ReportContentModal from "../../../components/disputes/ReportContentModal";
 import ReleaseRightsUpgradeModal from "../../../components/rights/ReleaseRightsUpgradeModal";
+import {
+  isStakeCappedListingPrice,
+  resolveStakeSafeListingPriceWei,
+} from "../../../lib/stakeSafeListingPrice";
 import "../../../styles/license-badges.css";
 
 // Helper to get duration from track's first stem
@@ -196,6 +201,7 @@ export default function ReleaseDetails() {
   } = usePlayer();
   const { addToast } = useToast();
   const { token, userId } = useAuth();
+  const { trustTier } = useTrustTier();
   const { attestAndStake, pending: attestationPending } = useAttestAndStake();
   const [release, setRelease] = useState<Release | null>(null);
   const [loading, setLoading] = useState(true);
@@ -258,6 +264,14 @@ export default function ReleaseDetails() {
     : needsAttestationForMinting
       ? "Marketplace rights are approved. Complete the release's on-chain Content Protection attestation to mint and list stems."
       : null;
+  const effectiveListingPriceWei = resolveStakeSafeListingPriceWei({
+    trustTier,
+    releaseProtection,
+  });
+  const listingPriceCapped = isStakeCappedListingPrice({
+    trustTier,
+    releaseProtection,
+  });
 
   // Handle real-time track progress updates via WebSocket
   const handleProgressUpdate = useCallback((data: ReleaseProgressUpdate) => {
@@ -1737,6 +1751,7 @@ export default function ReleaseDetails() {
                                   <MintStemButton
                                     stemId={stem.id}
                                     stemType={stem.type}
+                                    listingPricePerUnit={effectiveListingPriceWei}
                                     disabled={!!mintingBlockedReason}
                                     disabledLabel={marketplaceRestrictedByRights ? "Marketplace Restricted" : "Attestation Required"}
                                     disabledReason={mintingBlockedReason || undefined}
@@ -1772,6 +1787,8 @@ export default function ReleaseDetails() {
       {batchModalStems && batchModalStems.length > 0 && (
         <BatchMintListModal
           stems={batchModalStems}
+          listingPriceWei={effectiveListingPriceWei}
+          listingPriceCapped={listingPriceCapped}
           onClose={() => {
             setBatchModalStems(null);
             setSelectedNftStems(new Set());

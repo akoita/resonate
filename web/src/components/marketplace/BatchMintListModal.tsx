@@ -8,9 +8,12 @@ import {
   type BatchStemResult,
   type BatchStemStatus,
 } from "../../hooks/useContracts";
+import { formatPrice } from "../../lib/contracts";
 
 interface BatchMintListModalProps {
   stems: BatchStemItem[];
+  listingPriceWei: bigint;
+  listingPriceCapped?: boolean;
   onClose: () => void;
   onComplete?: () => void;
 }
@@ -31,17 +34,25 @@ const STATUS_ICON: Record<BatchStemStatus, string> = {
   failed: "❌",
 };
 
-export function BatchMintListModal({ stems, onClose, onComplete }: BatchMintListModalProps) {
+export function BatchMintListModal({
+  stems,
+  listingPriceWei,
+  listingPriceCapped = false,
+  onClose,
+  onComplete,
+}: BatchMintListModalProps) {
   const { executeBatch, pending } = useBatchMintAndList();
   const [phase, setPhase] = useState<"confirm" | "progress">("confirm");
   const [results, setResults] = useState<BatchStemResult[]>([]);
   const [batchError, setBatchError] = useState<string | null>(null);
+  const listingPriceEth = `${formatPrice(listingPriceWei)} ETH`;
 
   const handleConfirm = useCallback(async () => {
     setBatchError(null);
     setPhase("progress");
     try {
       await executeBatch(stems, {
+        pricePerUnit: listingPriceWei,
         onProgress: (r) => setResults([...r]),
       });
       onComplete?.();
@@ -51,7 +62,7 @@ export function BatchMintListModal({ stems, onClose, onComplete }: BatchMintList
         err instanceof Error ? err.message : "Batch transaction failed"
       );
     }
-  }, [stems, executeBatch, onClose, onComplete]);
+  }, [stems, executeBatch, listingPriceWei, onClose, onComplete]);
 
   const handleRetryFailed = useCallback(async () => {
     const failedStems = stems.filter(s =>
@@ -62,6 +73,7 @@ export function BatchMintListModal({ stems, onClose, onComplete }: BatchMintList
     setBatchError(null);
     try {
       await executeBatch(failedStems, {
+        pricePerUnit: listingPriceWei,
         onProgress: (newResults) => {
           setResults(prev => {
             const updated = [...prev];
@@ -80,7 +92,7 @@ export function BatchMintListModal({ stems, onClose, onComplete }: BatchMintList
         err instanceof Error ? err.message : "Retry failed"
       );
     }
-  }, [stems, results, executeBatch, onClose, onComplete]);
+  }, [stems, results, executeBatch, listingPriceWei, onClose, onComplete]);
 
   const doneCount = results.filter(r => r.status === "done").length;
   const failedCount = results.filter(r => r.status === "failed").length;
@@ -104,8 +116,14 @@ export function BatchMintListModal({ stems, onClose, onComplete }: BatchMintList
         {phase === "confirm" && (
           <>
             <p className="batch-modal-desc">
-              The following <strong>{stems.length} stems</strong> will be minted as NFTs and listed on the marketplace at <strong>0.01 ETH</strong> each.
+              The following <strong>{stems.length} stems</strong> will be minted as NFTs and listed on the marketplace at <strong>{listingPriceEth}</strong> each.
             </p>
+
+            {listingPriceCapped && (
+              <div className="batch-cap-note">
+                Current Content Protection stake caps this release to <strong>{listingPriceEth}</strong> per stem listing.
+              </div>
+            )}
 
             <div className="batch-stems-list">
               {stems.map(stem => (
@@ -119,7 +137,7 @@ export function BatchMintListModal({ stems, onClose, onComplete }: BatchMintList
                     </span>
                     <span className="batch-stem-track">{stem.trackTitle}</span>
                   </div>
-                  <span className="batch-stem-price">0.01 ETH</span>
+                  <span className="batch-stem-price">{listingPriceEth}</span>
                 </div>
               ))}
             </div>
@@ -424,6 +442,17 @@ export function BatchMintListModal({ stems, onClose, onComplete }: BatchMintList
           font-size: 13px;
           margin-bottom: 16px;
           word-break: break-word;
+        }
+
+        .batch-cap-note {
+          margin-bottom: 14px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          background: rgba(245, 158, 11, 0.08);
+          border: 1px solid rgba(245, 158, 11, 0.25);
+          color: #fcd34d;
+          font-size: 12px;
+          line-height: 1.45;
         }
 
         .batch-modal-footer {
