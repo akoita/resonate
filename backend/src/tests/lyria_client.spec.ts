@@ -60,12 +60,34 @@ function injectAudioChunks(chunks: Buffer[]) {
   }
 }
 
+function injectSetupComplete() {
+  capturedCallbacks.onmessage?.({
+    setupComplete: {},
+  });
+}
+
+function injectFilteredPrompt(filteredReason: string, text = 'test prompt') {
+  capturedCallbacks.onmessage?.({
+    filteredPrompt: {
+      text,
+      filteredReason,
+    },
+  });
+}
+
 describe('LyriaClient', () => {
   let client: LyriaClient;
 
   beforeEach(() => {
     jest.clearAllMocks();
     capturedCallbacks = {};
+    mockConfigService.get.mockImplementation((key: string, defaultVal?: any) => {
+      const map: Record<string, any> = {
+        GOOGLE_AI_API_KEY: 'test-api-key-123',
+        LYRIA_GENERATION_WAIT_MS: 0,
+      };
+      return map[key] ?? defaultVal ?? '';
+    });
     client = new LyriaClient(mockConfigService as any);
 
     // After connect resolves, inject audio chunks by default
@@ -74,6 +96,7 @@ describe('LyriaClient', () => {
       capturedCallbacks = opts.callbacks || {};
       // Simulate audio arriving immediately after connect
       process.nextTick(() => {
+        injectSetupComplete();
         injectAudioChunks([Buffer.from('default-audio')]);
       });
       return mockSession;
@@ -94,7 +117,10 @@ describe('LyriaClient', () => {
       const audioData = Buffer.from('test-audio-data');
       mockConnect.mockImplementation(async (opts: any) => {
         capturedCallbacks = opts.callbacks || {};
-        process.nextTick(() => injectAudioChunks([audioData]));
+        process.nextTick(() => {
+          injectSetupComplete();
+          injectAudioChunks([audioData]);
+        });
         return mockSession;
       });
 
@@ -138,9 +164,32 @@ describe('LyriaClient', () => {
       expect(mockSession.stop).toHaveBeenCalled();
     });
 
+    it('waits for setupComplete before sending prompts and play', async () => {
+      mockConnect.mockImplementation(async (opts: any) => {
+        capturedCallbacks = opts.callbacks || {};
+        process.nextTick(() => {
+          expect(mockSession.setWeightedPrompts).not.toHaveBeenCalled();
+          expect(mockSession.play).not.toHaveBeenCalled();
+          injectSetupComplete();
+          injectAudioChunks([Buffer.from('after-setup')]);
+        });
+        return mockSession;
+      });
+
+      await client.generate({ prompt: 'test' });
+
+      expect(mockSession.setWeightedPrompts).toHaveBeenCalled();
+      expect(mockSession.play).toHaveBeenCalled();
+    });
+
     it('uses provided seed', async () => {
       const result = await client.generate({ prompt: 'test', seed: 42 });
       expect(result.seed).toBe(42);
+      expect(mockSession.setMusicGenerationConfig).toHaveBeenCalledWith({
+        musicGenerationConfig: expect.objectContaining({
+          seed: 42,
+        }),
+      });
     });
 
     it('generates random seed when not provided', async () => {
@@ -155,11 +204,48 @@ describe('LyriaClient', () => {
       // Override mock to NOT inject any chunks
       mockConnect.mockImplementation(async (opts: any) => {
         capturedCallbacks = opts.callbacks || {};
+        process.nextTick(() => injectSetupComplete());
         return mockSession;
       });
 
       await expect(client.generate({ prompt: 'test' })).rejects.toThrow(
         'Lyria API returned no audio chunks',
+      );
+    });
+
+    it('throws the filtered prompt reason when Lyria rejects the prompt', async () => {
+      mockConnect.mockImplementation(async (opts: any) => {
+        capturedCallbacks = opts.callbacks || {};
+        process.nextTick(() => {
+          injectSetupComplete();
+          injectFilteredPrompt('SAFETY');
+        });
+        return mockSession;
+      });
+
+      await expect(client.generate({ prompt: 'test' })).rejects.toThrow(
+        'Lyria prompt was filtered: SAFETY',
+      );
+    });
+
+    it('throws when setupComplete never arrives', async () => {
+      mockConfigService.get.mockImplementation((key: string, defaultVal?: any) => {
+        const map: Record<string, any> = {
+          GOOGLE_AI_API_KEY: 'test-api-key-123',
+          LYRIA_GENERATION_WAIT_MS: 0,
+          LYRIA_SETUP_TIMEOUT_MS: 0,
+        };
+        return map[key] ?? defaultVal ?? '';
+      });
+
+      client = new LyriaClient(mockConfigService as any);
+      mockConnect.mockImplementation(async (opts: any) => {
+        capturedCallbacks = opts.callbacks || {};
+        return mockSession;
+      });
+
+      await expect(client.generate({ prompt: 'test' })).rejects.toThrow(
+        'Lyria session setup did not complete within 0ms',
       );
     });
 
@@ -176,7 +262,10 @@ describe('LyriaClient', () => {
 
       mockConnect.mockImplementation(async (opts: any) => {
         capturedCallbacks = opts.callbacks || {};
-        process.nextTick(() => injectAudioChunks([chunk1, chunk2]));
+        process.nextTick(() => {
+          injectSetupComplete();
+          injectAudioChunks([chunk1, chunk2]);
+        });
         return mockSession;
       });
 

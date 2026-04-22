@@ -27,11 +27,13 @@ export class LyriaClient {
   private readonly logger = new Logger(LyriaClient.name);
   private readonly client: GoogleGenAI;
   private readonly generationWaitMs: number;
+  private readonly setupTimeoutMs: number;
 
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('GOOGLE_AI_API_KEY', '');
     this.client = new GoogleGenAI({ apiKey, apiVersion: 'v1alpha' });
     this.generationWaitMs = this.configService.get<number>('LYRIA_GENERATION_WAIT_MS', 32_000);
+    this.setupTimeoutMs = this.configService.get<number>('LYRIA_SETUP_TIMEOUT_MS', 10_000);
   }
 
   /**
@@ -50,11 +52,52 @@ export class LyriaClient {
 
     // Collect audio chunks from the realtime session
     const audioChunks: Buffer[] = [];
+    let filteredPromptReason: string | null = null;
+    let setupCompleteResolve!: () => void;
+    let setupCompleteReject!: (error: Error) => void;
+    let setupCompleted = false;
+    let setupSettled = false;
+
+    const setupComplete = new Promise<void>((resolve, reject) => {
+      setupCompleteResolve = () => {
+        if (setupSettled) return;
+        setupSettled = true;
+        setupCompleted = true;
+        resolve();
+      };
+      setupCompleteReject = (error: Error) => {
+        if (setupSettled) return;
+        setupSettled = true;
+        reject(error);
+      };
+    });
+
+    const setupTimeout = setTimeout(() => {
+      if (!setupCompleted) {
+        setupCompleteReject(
+          new Error(`Lyria session setup did not complete within ${this.setupTimeoutMs}ms`),
+        );
+      }
+    }, this.setupTimeoutMs);
 
     const session = await this.client.live.music.connect({
       model: 'models/lyria-realtime-exp',
       callbacks: {
         onmessage: (message: any) => {
+          if (message.setupComplete) {
+            clearTimeout(setupTimeout);
+            setupCompleteResolve();
+          }
+
+          if (message.filteredPrompt) {
+            filteredPromptReason =
+              message.filteredPrompt.filteredReason ||
+              'Prompt was filtered by the Lyria API';
+            this.logger.warn(
+              `Lyria filtered prompt "${message.filteredPrompt.text || prompt.substring(0, 80)}": ${filteredPromptReason}`,
+            );
+          }
+
           if (message.serverContent?.audioChunks) {
             for (const chunk of message.serverContent.audioChunks) {
               audioChunks.push(Buffer.from(chunk.data, 'base64'));
@@ -63,12 +106,24 @@ export class LyriaClient {
         },
         onerror: (error: any) => {
           this.logger.error(`Lyria session error: ${error}`);
+          clearTimeout(setupTimeout);
+          if (!setupCompleted) {
+            setupCompleteReject(
+              error instanceof Error ? error : new Error(String(error)),
+            );
+          }
         },
         onclose: () => {
+          clearTimeout(setupTimeout);
+          if (!setupCompleted) {
+            setupCompleteReject(new Error('Lyria session closed before setup completed'));
+          }
           this.logger.debug('Lyria session closed');
         },
       },
     });
+
+    await setupComplete;
 
     // Build weighted prompts
     const weightedPrompts: Array<{ text: string; weight: number }> = [
@@ -84,6 +139,7 @@ export class LyriaClient {
       musicGenerationConfig: {
         bpm: 120,
         temperature: 1.0,
+        seed: actualSeed,
       },
     });
 
@@ -96,6 +152,9 @@ export class LyriaClient {
     await session.stop();
 
     if (audioChunks.length === 0) {
+      if (filteredPromptReason) {
+        throw new Error(`Lyria prompt was filtered: ${filteredPromptReason}`);
+      }
       throw new Error('Lyria API returned no audio chunks');
     }
 
