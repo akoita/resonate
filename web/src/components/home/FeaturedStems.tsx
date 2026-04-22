@@ -365,18 +365,13 @@ export function FeaturedStems({ releases }: FeaturedStemsProps) {
                         );
                     }
 
+                    /* Scroll-snap mode already provides native scroll
+                     * affordance + edge fades hint there are more
+                     * cards — dots are redundant and user feedback
+                     * was that the row of 8 dim dots felt ugly
+                     * ("not esthetic"). Hidden on phone. */
                     .carousel-dots {
-                        margin-top: 14px;
-                        gap: 6px;
-                    }
-
-                    .carousel-dot {
-                        width: 6px;
-                        height: 6px;
-                    }
-
-                    .carousel-dot.active {
-                        width: 18px;
+                        display: none;
                     }
                 }
             `}</style>

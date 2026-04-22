@@ -14,7 +14,6 @@ import { useToast } from "../components/ui/Toast";
 
 export default function Home() {
   const router = useRouter();
-  const moods = ["Focus", "Chill", "Energy", "Night Drive", "Lo-fi"];
   const [releases, setReleases] = useState<Release[]>([]);
   const [myReleases, setMyReleases] = useState<Release[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,17 +142,12 @@ export default function Home() {
         )}
       </section>
 
-      {/* 4. Mood Filters / Signal Chips */}
-      <section className="home-section chip-section fade-in-up" style={{ animationDelay: '0.3s' }}>
-        <div className="home-chips">
-          {moods.map((mood) => (
-            <button key={mood} className="signal-chip" type="button">
-              <span className="signal-pulse" />
-              {mood}
-            </button>
-          ))}
-        </div>
-      </section>
+      {/* Mood-filter "signal chips" were removed here: they rendered as
+       * visually-tappable mood buttons (Focus / Chill / Energy / Night
+       * Drive / Lo-fi) but had no onClick, no filter wiring, and no
+       * tracked plan to implement. If we ever want real mood-based
+       * catalog filtering, it should land as a designed feature with
+       * actual backend filter params + state, not as placeholder UI. */}
 
       {status === "authenticated" && myReleases.length > 0 && (
         <section className="home-section">
@@ -190,6 +184,17 @@ export default function Home() {
           flex-direction: column;
           gap: 80px;
           padding: 0 60px;
+        }
+
+        /* Phone: the 60px desktop gutters eat 120px of a 412px viewport
+         * (29%), pushing every home section into ~260px of usable
+         * width. Drop to 0 on phone so sections span the full
+         * app-content gutter (which already adds 16px each side). */
+        @media (max-width: 767px) {
+          .home-container {
+            gap: 32px;
+            padding: 0;
+          }
         }
 
         .home-hero-section {
@@ -251,42 +256,6 @@ export default function Home() {
         .release-year {
           font-size: 12px;
           color: var(--color-muted);
-        }
-
-        .signal-chip {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 10px 24px;
-          border-radius: 50px;
-          background: var(--studio-surface);
-          border: 1px solid var(--studio-border);
-          color: var(--color-muted);
-          font-size: 13px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .signal-chip:hover {
-          background: var(--studio-surface-raised);
-          color: #fff;
-          border-color: var(--studio-border-glow);
-          transform: translateY(-2px);
-        }
-
-        .signal-pulse {
-          width: 6px;
-          height: 6px;
-          background: var(--color-accent);
-          border-radius: 50%;
-          box-shadow: 0 0 10px var(--color-accent);
-          animation: pulse-ring 2s infinite;
-        }
-
-        @keyframes pulse-ring {
-          0% { transform: scale(1); opacity: 1; }
-          100% { transform: scale(2.5); opacity: 0; }
         }
 
         .loading-shimmer-container {
