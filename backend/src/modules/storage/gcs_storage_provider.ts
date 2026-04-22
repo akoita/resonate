@@ -44,6 +44,65 @@ export class GcsStorageProvider extends StorageProvider {
         return headers;
     }
 
+    private normalizeObjectPath(uri: string): string | null {
+        const trimmed = uri.trim();
+        if (!trimmed) return null;
+
+        if (trimmed.startsWith(`gs://${this.bucket}/`)) {
+            return trimmed.slice(`gs://${this.bucket}/`.length);
+        }
+
+        if (trimmed.startsWith('gs://')) {
+            const withoutScheme = trimmed.slice('gs://'.length);
+            const firstSlash = withoutScheme.indexOf('/');
+            return firstSlash >= 0 ? withoutScheme.slice(firstSlash + 1) : null;
+        }
+
+        if (trimmed.startsWith(`https://storage.googleapis.com/${this.bucket}/`)) {
+            return trimmed.slice(`https://storage.googleapis.com/${this.bucket}/`.length);
+        }
+
+        if (trimmed.startsWith(`http://storage.googleapis.com/${this.bucket}/`)) {
+            return trimmed.slice(`http://storage.googleapis.com/${this.bucket}/`.length);
+        }
+
+        const withoutLeadingSlash = trimmed.replace(/^\/+/, '');
+        if (withoutLeadingSlash.startsWith(`${this.bucket}/`)) {
+            return withoutLeadingSlash.slice(this.bucket.length + 1);
+        }
+
+        if (/^https?:\/\//i.test(trimmed)) {
+            try {
+                const url = new URL(trimmed);
+                const path = url.pathname.replace(/^\/+/, '');
+                if (path.startsWith(`${this.bucket}/`)) {
+                    return path.slice(this.bucket.length + 1);
+                }
+            } catch {
+                return null;
+            }
+            return null;
+        }
+
+        return withoutLeadingSlash || null;
+    }
+
+    private resolveDownloadUrl(uri: string): string | null {
+        const trimmed = uri.trim();
+        if (!trimmed) return null;
+
+        if (/^https?:\/\//i.test(trimmed)) {
+            return trimmed;
+        }
+
+        const objectPath = this.normalizeObjectPath(trimmed);
+        if (!objectPath) {
+            return null;
+        }
+
+        return `https://storage.googleapis.com/${this.bucket}/${objectPath}`;
+    }
+
     async upload(data: Buffer, filename: string, _mimeType: string): Promise<StorageResult> {
         const gcsPath = `originals/${filename}`;
         const uri = `https://storage.googleapis.com/${this.bucket}/${gcsPath}`;
@@ -70,10 +129,16 @@ export class GcsStorageProvider extends StorageProvider {
 
     async download(uri: string): Promise<Buffer | null> {
         try {
+            const downloadUrl = this.resolveDownloadUrl(uri);
+            if (!downloadUrl) {
+                this.logger.warn(`Could not resolve GCS download URL for ${uri}`);
+                return null;
+            }
+
             const token = await this.getAccessToken();
             const headers = this.authHeaders(token);
 
-            const response = await fetch(uri, { headers, signal: AbortSignal.timeout(30000) });
+            const response = await fetch(downloadUrl, { headers, signal: AbortSignal.timeout(30000) });
             if (!response.ok) return null;
             return Buffer.from(await response.arrayBuffer());
         } catch (err) {
@@ -83,9 +148,8 @@ export class GcsStorageProvider extends StorageProvider {
     }
 
     async delete(uri: string): Promise<void> {
-        const match = uri.match(/storage\.googleapis\.com\/[^/]+\/(.+)/);
-        if (!match) return;
-        const objectPath = match[1];
+        const objectPath = this.normalizeObjectPath(uri);
+        if (!objectPath) return;
 
         try {
             const token = await this.getAccessToken();
