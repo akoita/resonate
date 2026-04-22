@@ -21,6 +21,10 @@ const mockConfigService = {
   }),
 };
 
+const mockStorageProvider = {
+  download: jest.fn(),
+};
+
 import { EncryptionService } from '../modules/encryption/encryption.service';
 
 describe('EncryptionService', () => {
@@ -28,7 +32,12 @@ describe('EncryptionService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new EncryptionService(mockProvider as any, mockConfigService as any);
+    mockStorageProvider.download.mockReset();
+    service = new EncryptionService(
+      mockProvider as any,
+      mockConfigService as any,
+      mockStorageProvider as any,
+    );
   });
 
   describe('isReady', () => {
@@ -81,6 +90,53 @@ describe('EncryptionService', () => {
         authSig: { address: '0xABC', sig: '0x...', signedMessage: 'test' },
         requesterAddress: '0xABC',
       });
+    });
+  });
+
+  describe('decrypt source loading', () => {
+    it('prefers storage provider download for encrypted content before raw fetch', async () => {
+      const encryptedData = Buffer.from('ciphertext');
+      mockStorageProvider.download.mockResolvedValue(encryptedData);
+      const fetchSpy = jest.spyOn(global, 'fetch');
+
+      await service.decrypt(
+        'https://storage.googleapis.com/private/stem.mp3',
+        JSON.stringify({ iv: 'aa', authTag: 'bb', keyId: 'stem-1' }),
+        [],
+        { address: '0xABC', sig: '0x1234', signedMessage: 'test' },
+      );
+
+      expect(mockStorageProvider.download).toHaveBeenCalledWith(
+        'https://storage.googleapis.com/private/stem.mp3',
+      );
+      expect(mockProvider.decrypt).toHaveBeenCalledWith(
+        encryptedData,
+        expect.objectContaining({
+          requesterAddress: '0xABC',
+        }),
+      );
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
+
+    it('uses storage provider download for raw content fallback too', async () => {
+      const rawData = Buffer.from('raw-audio');
+      mockStorageProvider.download.mockResolvedValue(rawData);
+      const fetchSpy = jest.spyOn(global, 'fetch');
+
+      const result = await service.decrypt(
+        'https://storage.googleapis.com/private/stem.mp3',
+        '',
+        [],
+        { address: '0xABC', sig: '0x1234', signedMessage: 'test' },
+      );
+
+      expect(result).toEqual(rawData);
+      expect(mockStorageProvider.download).toHaveBeenCalledWith(
+        'https://storage.googleapis.com/private/stem.mp3',
+      );
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
     });
   });
 });

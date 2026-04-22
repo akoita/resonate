@@ -1,8 +1,9 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { join } from 'path';
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { createHash } from 'crypto';
+import { StorageProvider } from '../storage/storage_provider';
 import {
     EncryptionProvider,
     EncryptionContext,
@@ -38,6 +39,7 @@ export class EncryptionService {
     constructor(
         @Inject('ENCRYPTION_PROVIDER') private readonly provider: EncryptionProvider,
         private readonly configService: ConfigService,
+        @Optional() private readonly storageProvider?: StorageProvider,
     ) {
         this.ensureCacheDir();
         this.logger.log(`Encryption Service initialized with provider: ${this.provider.providerName}`);
@@ -69,6 +71,30 @@ export class EncryptionService {
 
     get providerName(): string {
         return this.provider.providerName;
+    }
+
+    private async fetchSourceBuffer(uri: string): Promise<Buffer> {
+        if (this.storageProvider) {
+            try {
+                const downloaded = await this.storageProvider.download(uri);
+                if (downloaded) {
+                    this.logger.log(`[Decrypt] Loaded source via storage provider: ${uri}`);
+                    return downloaded;
+                }
+            } catch (error: any) {
+                this.logger.warn(
+                    `[Decrypt] Storage provider download failed for ${uri}: ${error?.message || error}`,
+                );
+            }
+        }
+
+        const resolvedUri = this.resolveUri(uri);
+        this.logger.log(`[Decrypt] Fetching source via HTTP: ${resolvedUri}`);
+        const response = await fetch(resolvedUri);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch encrypted data: ${response.status}`);
+        }
+        return Buffer.from(await response.arrayBuffer());
     }
 
     /**
@@ -146,14 +172,7 @@ export class EncryptionService {
             this.logger.warn(`[Cache] Access denied for ${authSig.address}, fetching fresh`);
         }
 
-        // Fetch encrypted data from URI
-        const resolvedUri = this.resolveUri(uri);
-        this.logger.log(`[Decrypt] Fetching encrypted data from: ${resolvedUri}`);
-        const response = await fetch(resolvedUri);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch encrypted data: ${response.status}`);
-        }
-        const encryptedData = Buffer.from(await response.arrayBuffer());
+        const encryptedData = await this.fetchSourceBuffer(uri);
 
         // Decrypt
         const context: DecryptionContext = {
@@ -182,17 +201,13 @@ export class EncryptionService {
     ): Promise<Buffer> {
         // For unencrypted content (provider = 'none'), just fetch
         if (this.provider.providerName === 'none') {
-            const response = await fetch(this.resolveUri(uri));
-            if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
-            return Buffer.from(await response.arrayBuffer());
+            return this.fetchSourceBuffer(uri);
         }
 
         // If no metadata or empty metadata, fall back to raw fetch
         // This handles: unencrypted tracks, old Lit tracks we can't decrypt
         if (!metadata || metadata === '{}' || metadata.trim() === '') {
-            const response = await fetch(this.resolveUri(uri));
-            if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
-            return Buffer.from(await response.arrayBuffer());
+            return this.fetchSourceBuffer(uri);
         }
 
         // Try to parse metadata to check if it's AES format
@@ -201,16 +216,12 @@ export class EncryptionService {
             // Check if it's AES metadata (has iv, authTag, keyId)
             if (!parsed.iv || !parsed.authTag || !parsed.keyId) {
                 this.logger.log(`[Decrypt] Metadata is not AES format, fetching raw: ${uri}`);
-                const response = await fetch(this.resolveUri(uri));
-                if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
-                return Buffer.from(await response.arrayBuffer());
+                return this.fetchSourceBuffer(uri);
             }
         } catch (e) {
             // Invalid JSON, fall back to raw
             this.logger.log(`[Decrypt] Invalid metadata JSON, fetching raw: ${uri}`);
-            const response = await fetch(this.resolveUri(uri));
-            if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
-            return Buffer.from(await response.arrayBuffer());
+            return this.fetchSourceBuffer(uri);
         }
 
         return this.decryptFromUri(uri, metadata, authSig);
