@@ -491,7 +491,7 @@ export default function CreatePageContent() {
 
             <div className="result-audio">
               <audio controls preload="metadata">
-                <source src={getReleaseArtworkUrl(result.releaseId).replace("/artwork", `/tracks/${result.trackId}/stream`)} type="audio/wav" />
+                <source src={getReleaseArtworkUrl(result.releaseId).replace("/artwork", `/tracks/${result.trackId}/stream`)} />
               </audio>
             </div>
 

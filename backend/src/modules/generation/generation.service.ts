@@ -196,20 +196,23 @@ export class GenerationService {
         phase: 'storing',
       });
 
+      const audioMimeType = result.mimeType || 'audio/mpeg';
       let finalAudioBytes = result.audioBytes;
-      try {
-        finalAudioBytes = appendRiffInfoChunk(result.audioBytes, {
-          title: prompt.substring(0, 120),
-          artist: 'AI (Lyria)',
-          album: 'Resonate',
-          composer: userId, // track provenance
-        });
-      } catch (tagError) {
-        this.logger.warn(`Failed to inject RIFF chunks into WAV for job ${jobId}: ${tagError}`);
+      if (audioMimeType === 'audio/wav') {
+        try {
+          finalAudioBytes = appendRiffInfoChunk(result.audioBytes, {
+            title: prompt.substring(0, 120),
+            artist: 'AI (Lyria)',
+            album: 'Resonate',
+            composer: userId, // track provenance
+          });
+        } catch (tagError) {
+          this.logger.warn(`Failed to inject RIFF chunks into WAV for job ${jobId}: ${tagError}`);
+        }
       }
 
-      const filename = `generated-${jobId}.wav`;
-      const storageResult = await this.storageProvider.upload(finalAudioBytes, filename, 'audio/wav');
+      const filename = `generated-${jobId}${this.audioExtensionForMimeType(audioMimeType)}`;
+      const storageResult = await this.storageProvider.upload(finalAudioBytes, filename, audioMimeType);
 
       // Phase 3: Create DB records
       this.eventBus.publish({
@@ -251,7 +254,7 @@ export class GenerationService {
                   uri: storageResult.uri,
                   storageProvider: storageResult.provider,
                   durationSeconds: result.durationSeconds,
-                  mimeType: 'audio/wav',
+                  mimeType: audioMimeType,
                 },
               },
             },
@@ -567,6 +570,17 @@ export class GenerationService {
 
   private calculateGenerationCost(durationSeconds: number): number {
     return +((durationSeconds / 30) * COST_PER_30_SECONDS).toFixed(2);
+  }
+
+  private audioExtensionForMimeType(mimeType: string): string {
+    switch (mimeType) {
+      case 'audio/wav':
+        return '.wav';
+      case 'audio/mpeg':
+        return '.mp3';
+      default:
+        return '.bin';
+    }
   }
 
   async publishGeneration(

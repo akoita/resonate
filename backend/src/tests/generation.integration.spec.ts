@@ -23,6 +23,7 @@ const storageProvider = new LocalStorageProvider();
 const mockLyriaClient = {
   generate: jest.fn().mockResolvedValue({
     audioBytes: Buffer.from('fake-audio-data'),
+    mimeType: 'audio/mpeg',
     synthIdPresent: true,
     seed: 42,
     durationSeconds: 30,

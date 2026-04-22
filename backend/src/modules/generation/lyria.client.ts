@@ -5,6 +5,7 @@ import { SupportedGenerationDuration } from './generation.dto';
 
 export interface LyriaGenerationResult {
   audioBytes: Buffer;
+  mimeType: string;
   synthIdPresent: boolean;
   seed: number;
   durationSeconds: number;
@@ -24,7 +25,7 @@ export interface LyriaGenerationParams {
  * Wrapper service for Google AI Lyria music generation.
  *
  * Uses the @google/genai SDK with a Google AI Studio API key.
- * Lyria 3 Pro uses generateContent and can return wav audio for clips up to
+ * Lyria 3 Pro uses generateContent and returns inline audio data for clips up to
  * a few minutes when prompted for duration/structure.
  */
 @Injectable()
@@ -40,10 +41,11 @@ export class LyriaClient {
   /**
    * Generate music from a text prompt via the Lyria model.
    *
-   * Uses Lyria 3 Pro via generateContent so we can request longer songs
-   * while preserving WAV output for the rest of the pipeline.
+   * Uses Lyria 3 Pro via generateContent so we can request longer songs.
+   * The model returns inline audio data with its own mime type; we preserve that
+   * instead of forcing an unsupported responseMimeType.
    *
-   * @returns WAV audio bytes and generation metadata
+   * @returns Audio bytes and generation metadata
    */
   async generate(params: LyriaGenerationParams): Promise<LyriaGenerationResult> {
     const { prompt, negativePrompt, seed, durationSeconds = 30 } = params;
@@ -59,19 +61,20 @@ export class LyriaClient {
       contents: composedPrompt,
       config: {
         responseModalities: ['AUDIO', 'TEXT'],
-        responseMimeType: 'audio/wav',
       },
     });
 
     const parts = response.candidates?.[0]?.content?.parts ?? [];
     const lyrics: string[] = [];
     let audioBytes: Buffer | null = null;
+    let mimeType: string | undefined;
 
     for (const part of parts) {
       if (part.text) {
         lyrics.push(part.text);
       } else if (part.inlineData?.data) {
         audioBytes = Buffer.from(part.inlineData.data, 'base64');
+        mimeType = part.inlineData.mimeType || mimeType;
       }
     }
 
@@ -84,11 +87,12 @@ export class LyriaClient {
     }
 
     this.logger.log(
-      `Generated ${audioBytes.length} bytes of wav audio via Lyria 3 Pro (${durationSeconds}s target, ${lyrics.length} text parts)`,
+      `Generated ${audioBytes.length} bytes of ${mimeType || 'audio'} via Lyria 3 Pro (${durationSeconds}s target, ${lyrics.length} text parts)`,
     );
 
     return {
       audioBytes,
+      mimeType: mimeType || this.detectAudioMimeType(audioBytes),
       synthIdPresent: true, // Lyria always embeds SynthID
       seed: actualSeed,
       durationSeconds,
@@ -118,5 +122,28 @@ export class LyriaClient {
     }
 
     return parts.join(' ');
+  }
+
+  private detectAudioMimeType(audioBytes: Buffer): string {
+    if (
+      audioBytes.length >= 12 &&
+      audioBytes.subarray(0, 4).toString('ascii') === 'RIFF' &&
+      audioBytes.subarray(8, 12).toString('ascii') === 'WAVE'
+    ) {
+      return 'audio/wav';
+    }
+
+    if (
+      audioBytes.length >= 3 &&
+      audioBytes.subarray(0, 3).toString('ascii') === 'ID3'
+    ) {
+      return 'audio/mpeg';
+    }
+
+    if (audioBytes.length >= 2 && audioBytes[0] === 0xff && (audioBytes[1] & 0xe0) === 0xe0) {
+      return 'audio/mpeg';
+    }
+
+    return 'audio/mpeg';
   }
 }
