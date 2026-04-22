@@ -101,6 +101,133 @@ describe('CatalogService (integration)', () => {
     expect(updated.status).toBe('published');
   });
 
+  it('preserves bucket-relative URIs when decrypting marketplace previews', async () => {
+    const releaseId = `${TEST_PREFIX}preview_release_encrypted`;
+    const trackId = `${TEST_PREFIX}preview_track_encrypted`;
+    const stemId = `${TEST_PREFIX}preview_stem_encrypted`;
+    const stemUri = 'resonate-stems-staging/originals/preview-encrypted.mp3';
+
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Encrypted Preview',
+        status: 'ready',
+        rightsRoute: 'STANDARD_ESCROW',
+        artworkData: Buffer.from('artwork'),
+        artworkMimeType: 'image/png',
+      },
+    });
+    await prisma.track.create({
+      data: {
+        id: trackId,
+        releaseId,
+        title: 'Encrypted Preview Track',
+        rightsRoute: 'STANDARD_ESCROW',
+      },
+    });
+    await prisma.stem.create({
+      data: {
+        id: stemId,
+        trackId,
+        type: 'vocals',
+        uri: stemUri,
+        mimeType: 'audio/mpeg',
+        storageProvider: 'gcs',
+        encryptionMetadata: JSON.stringify({
+          iv: 'iv',
+          authTag: 'tag',
+          keyId: 'key',
+        }),
+      },
+    });
+
+    const decrypt = jest.fn().mockResolvedValue(Buffer.from('decrypted-preview'));
+    const previewCatalog = new CatalogService(
+      eventBus,
+      { decrypt } as unknown as EncryptionService,
+      { download: jest.fn(), upload: jest.fn(), delete: jest.fn() } as unknown as LocalStorageProvider,
+      new UploadRightsRoutingService(),
+    );
+
+    try {
+      const preview = await previewCatalog.getStemPreview(stemId);
+
+      expect(preview.data.toString()).toBe('decrypted-preview');
+      expect(decrypt).toHaveBeenCalledWith(
+        stemUri,
+        expect.any(String),
+        [],
+        expect.objectContaining({
+          address: '0x0000000000000000000000000000000000000000',
+        }),
+      );
+    } finally {
+      await prisma.stem.delete({ where: { id: stemId } });
+      await prisma.track.delete({ where: { id: trackId } });
+      await prisma.release.delete({ where: { id: releaseId } });
+    }
+  });
+
+  it('uses the storage provider for unencrypted marketplace previews before localhost fetch', async () => {
+    const releaseId = `${TEST_PREFIX}preview_release_unencrypted`;
+    const trackId = `${TEST_PREFIX}preview_track_unencrypted`;
+    const stemId = `${TEST_PREFIX}preview_stem_unencrypted`;
+    const stemUri = 'resonate-stems-staging/originals/preview-raw.mp3';
+    const download = jest.fn().mockResolvedValue(Buffer.from('raw-preview'));
+    const fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('should not fetch'));
+
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Raw Preview',
+        status: 'ready',
+        rightsRoute: 'STANDARD_ESCROW',
+        artworkData: Buffer.from('artwork'),
+        artworkMimeType: 'image/png',
+      },
+    });
+    await prisma.track.create({
+      data: {
+        id: trackId,
+        releaseId,
+        title: 'Raw Preview Track',
+        rightsRoute: 'STANDARD_ESCROW',
+      },
+    });
+    await prisma.stem.create({
+      data: {
+        id: stemId,
+        trackId,
+        type: 'vocals',
+        uri: stemUri,
+        mimeType: 'audio/mpeg',
+        storageProvider: 'gcs',
+      },
+    });
+
+    const previewCatalog = new CatalogService(
+      eventBus,
+      { decrypt: jest.fn() } as unknown as EncryptionService,
+      { download, upload: jest.fn(), delete: jest.fn() } as unknown as LocalStorageProvider,
+      new UploadRightsRoutingService(),
+    );
+
+    try {
+      const preview = await previewCatalog.getStemPreview(stemId);
+
+      expect(preview.data.toString()).toBe('raw-preview');
+      expect(download).toHaveBeenCalledWith(stemUri);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+      await prisma.stem.delete({ where: { id: stemId } });
+      await prisma.track.delete({ where: { id: trackId } });
+      await prisma.release.delete({ where: { id: releaseId } });
+    }
+  });
+
   it('persists processing errors on failed releases and tracks', async () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
