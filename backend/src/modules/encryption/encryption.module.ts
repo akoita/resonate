@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EncryptionService } from './encryption.service';
 import { EncryptionController } from './encryption.controller';
 import { AesEncryptionProvider, NoopEncryptionProvider } from './providers';
+import { StorageModule } from '../storage/storage.module';
 
 /**
  * Encryption Module
@@ -16,7 +17,7 @@ import { AesEncryptionProvider, NoopEncryptionProvider } from './providers';
  */
 @Global()
 @Module({
-    imports: [ConfigModule],
+    imports: [ConfigModule, StorageModule],
     controllers: [EncryptionController],
     providers: [
         {
