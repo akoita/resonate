@@ -39,7 +39,7 @@ export class EncryptionService {
     constructor(
         @Inject('ENCRYPTION_PROVIDER') private readonly provider: EncryptionProvider,
         private readonly configService: ConfigService,
-        @Optional() private readonly storageProvider?: StorageProvider,
+        @Optional() @Inject(StorageProvider) private readonly storageProvider?: StorageProvider,
     ) {
         this.ensureCacheDir();
         this.logger.log(`Encryption Service initialized with provider: ${this.provider.providerName}`);
