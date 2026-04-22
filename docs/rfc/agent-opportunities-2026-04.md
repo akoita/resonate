@@ -84,7 +84,7 @@ Scored **1–5** where 5 = best. "Fit" = how natural to Resonate's goal, "Trend"
 | **1** | **Expose Resonate as an MCP server** (catalog/pricing/stem-download/generate as MCP tools; optional x402 gating via existing middleware) | 5 | 5 | 2 | *gap — no issue* |
 | **2** | **Ship ERC-8004 Agent Identity + Reputation** — agent soulbound NFT, periodic taste/reputation attestations tied to `AgentConfig` | 5 | 5 | 3 | [#291](https://github.com/akoita/resonate/issues/291), [#261](https://github.com/akoita/resonate/issues/261) |
 | **3** | **Curator agents publishing on-chain quality scores** via ERC-8004 Validation registry — fixes "buys stems blindly" problem | 5 | 5 | 3 | [#322](https://github.com/akoita/resonate/issues/322) |
-| **4** | **Langfuse + rubric LLM-as-judge + golden set (50–200 items)** — replace home-grown eval harness with the 2026 production pattern | 4 | 5 | 2 | *gap* |
+| **4** | **Langfuse + rubric LLM-as-judge + golden set (start ~100, grow to 200)** — replace home-grown eval harness with the 2026 production pattern | 4 | 5 | 2 | *gap* |
 | **5** | **Migrate `EmbeddingStore` → pgvector** (already Prisma/Postgres) — unblocks real taste similarity + learning loop | 5 | 4 | 2 | supports [#290](https://github.com/akoita/resonate/issues/290) |
 | **6** | **Agent Learning Loop** — signal-weighted taste evolution, real Taste Score on dashboard; feeds into ERC-8004 attestation | 5 | 4 | 3 | [#290](https://github.com/akoita/resonate/issues/290) |
 | **7** | **Unified agent runtime extraction** — single `AgentRuntimeService` entrypoint + `PaymentRouterService` (x402 ∥ ERC-4337) + `PolicyGuardService`; prerequisite to publishing the agent as its own MCP-ready process | 5 | 4 | 4 | [#424](https://github.com/akoita/resonate/issues/424), [RFC](agent-platform-refactor.md) |
@@ -123,7 +123,7 @@ Goal: three small, shippable PRs that each land a trend flag without a refactor.
 
 2. **pgvector migration** — replace in-memory `EmbeddingStore` in [embeddings.similarity tool](../../backend/src/modules/agents/tools/tool_registry.ts) with a `vector(1536)` column on `Track` and an HNSW index. Directly improves the selector and is the only prerequisite to issue #290.
 
-3. **Langfuse + golden-set eval** — add `@langfuse/node-sdk`, wrap ADK runner, define 50 curated golden cases under `backend/src/evals/` (queries like "deep house under $2", "upbeat pop with vocals"), add a GitHub Actions job that runs a judge-LLM rubric (genre match, budget respected, repeat avoidance). Retires the `AgentEvaluationService` internal metrics in favor of the industry-standard pattern.
+3. **Langfuse + golden-set eval** — add `@langfuse/node-sdk`, wrap ADK runner, start with ~100 curated golden cases under `backend/src/evals/` (queries like "deep house under $2", "upbeat pop with vocals") and grow toward 200 as coverage gaps appear, then add a GitHub Actions job that runs a judge-LLM rubric (genre match, budget respected, repeat avoidance). Retires the `AgentEvaluationService` internal metrics in favor of the industry-standard pattern.
 
 ### Wave 2 — Identity, reputation, and agent-as-a-brand (≈ 5–7 weeks)
 
@@ -175,9 +175,11 @@ I would **not** start with ERC-8004 or the remix engine, even though they are st
 
 ### Practical priority order
 
+Once P1–P3 land, the next three — still in priority order — are ERC-8004 identity, curator agents, and runtime extraction. Labels below are qualitative; the 1–5 numeric rubric lives in §3 above.
+
 | Priority | Initiative | Why now | Main dependency | Risk |
 |---|---|---|---|---|
-| **P1** | MCP server | Best immediate leverage from shipped OpenAPI + x402 work | none | medium |
+| **P1** | MCP server | Best immediate leverage from shipped OpenAPI + x402 work | none | low (additive; real risk is over-designing v1) |
 | **P2** | pgvector migration | Unblocks learning loop and better similarity tooling | Prisma migration discipline | low/medium |
 | **P3** | Langfuse + golden-set evals | Gives a real quality bar before more agent complexity | stable eval scenarios | low |
 | **P4** | ERC-8004 identity + reputation | Strongest differentiated on-chain signal | runtime boundaries clearer | medium/high |
@@ -220,7 +222,7 @@ These are the smallest slices that would keep momentum high and reviewable.
    - Instrument ADK runner, tool calls, and purchase decisions
 
 2. **PR 2: golden set**
-   - Add `50–100` canonical curation scenarios with expected rubric dimensions
+   - Start with ~100 canonical curation scenarios with expected rubric dimensions; grow toward 200 as coverage gaps appear
 
 3. **PR 3: CI gate**
    - Add a non-blocking CI eval job first, then promote to a quality gate once stable
@@ -232,18 +234,23 @@ These are the smallest slices that would keep momentum high and reviewable.
 - **Langfuse** is low implementation risk, but only valuable if the team commits to maintaining a golden set and actually reading the traces.
 - **ERC-8004** should stay in view, but it becomes much more credible once there is a measurable learning loop and a portable runtime boundary behind it.
 
+### Still on the roadmap (Wave 3), just not next
+
+- **Human-facing x402 checkout** — small wrapper around shipped middleware; ships whenever the buy modal gets its next pass.
+- **Agentic.Market / x402scan registration ([#520](https://github.com/akoita/resonate/issues/520))** — blocked on a public host, not on engineering.
+
 ### What I would explicitly defer
 
 - **Real-time remix engine** — huge upside, but this is a moat project, not a next-step foundation project.
 - **Mastra** — plausible fit, but not yet necessary while the NestJS + Next.js shape is still workable.
 - **A2A peer mesh** — interesting, but it should be earned by real coordination pain, not adopted because it is fashionable.
-- **Proof-of-inference / Ritual / EZKL** — good demo bait, weak near-term leverage.
+- **Proof-of-inference / Ritual / EZKL** — good proof-of-concept material, weak near-term leverage.
 
 ---
 
 ## 6. One-paragraph executive pitch
 
-Resonate already has the skeleton of a senior-eng flagship project: ADK agent runtime, ERC-4337 smart wallet, x402 paywall, Lyria generation, a full dashboard. The three moves that compound hardest on both *project thesis* and *2026 trend signal* are: **(a)** expose the platform itself as an MCP server (with x402-gated tools) so external agents can buy stems natively, **(b)** ship ERC-8004 identity + reputation because it is already in the plan, unblocks curator agents, and is currently a scarce skill, and **(c)** extract the agent runtime per RFC #424 so the agent becomes a standalone, portable, composable unit. Everything else — Claude Agent SDK subagents, Mastra on the frontend, Langfuse eval, pgvector, Letta memory, the remix engine with ACE-Step + Demucs — stacks naturally on top. Avoid the LangChain/Spleeter/Suno-wrapper dead ends.
+Resonate already has the skeleton of a senior-eng flagship project: ADK agent runtime, ERC-4337 smart wallet, x402 paywall, Lyria generation, a full dashboard. The three next moves — the ones that give the platform a real foundation before adding more agent surface area — are: **(a)** expose the platform itself as an MCP server (with x402-gated tools) so external agents can buy stems natively, **(b)** move the embedding substrate from in-memory to pgvector, and **(c)** stand up Langfuse + a ~100-item golden set. The headline follow-ups — ERC-8004 identity + reputation, curator agents, and runtime extraction per RFC #424 — then land on measurable ground, and the rest (Claude Agent SDK subagents, Mastra on the frontend, Letta memory, the remix engine with ACE-Step + Demucs) stacks naturally on top. Avoid the LangChain/Spleeter/Suno-wrapper dead ends.
 
 ---
 
