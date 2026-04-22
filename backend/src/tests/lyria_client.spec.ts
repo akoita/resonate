@@ -164,14 +164,11 @@ describe('LyriaClient', () => {
       expect(mockSession.stop).toHaveBeenCalled();
     });
 
-    it('waits for setupComplete before sending prompts and play', async () => {
+    it('does not require setupComplete before sending prompts and play', async () => {
       mockConnect.mockImplementation(async (opts: any) => {
         capturedCallbacks = opts.callbacks || {};
         process.nextTick(() => {
-          expect(mockSession.setWeightedPrompts).not.toHaveBeenCalled();
-          expect(mockSession.play).not.toHaveBeenCalled();
-          injectSetupComplete();
-          injectAudioChunks([Buffer.from('after-setup')]);
+          injectAudioChunks([Buffer.from('without-setup')]);
         });
         return mockSession;
       });
@@ -228,24 +225,31 @@ describe('LyriaClient', () => {
       );
     });
 
-    it('throws when setupComplete never arrives', async () => {
-      mockConfigService.get.mockImplementation((key: string, defaultVal?: any) => {
-        const map: Record<string, any> = {
-          GOOGLE_AI_API_KEY: 'test-api-key-123',
-          LYRIA_GENERATION_WAIT_MS: 0,
-          LYRIA_SETUP_TIMEOUT_MS: 0,
-        };
-        return map[key] ?? defaultVal ?? '';
-      });
-
-      client = new LyriaClient(mockConfigService as any);
+    it('throws when the session closes before any audio arrives', async () => {
       mockConnect.mockImplementation(async (opts: any) => {
         capturedCallbacks = opts.callbacks || {};
+        process.nextTick(() => {
+          capturedCallbacks.onclose?.();
+        });
         return mockSession;
       });
 
       await expect(client.generate({ prompt: 'test' })).rejects.toThrow(
-        'Lyria session setup did not complete within 0ms',
+        'Lyria session closed before audio generation started',
+      );
+    });
+
+    it('throws the underlying session error before audio generation', async () => {
+      mockConnect.mockImplementation(async (opts: any) => {
+        capturedCallbacks = opts.callbacks || {};
+        process.nextTick(() => {
+          capturedCallbacks.onerror?.(new Error('upstream rejected websocket'));
+        });
+        return mockSession;
+      });
+
+      await expect(client.generate({ prompt: 'test' })).rejects.toThrow(
+        'Lyria session error before audio generation: upstream rejected websocket',
       );
     });
 
