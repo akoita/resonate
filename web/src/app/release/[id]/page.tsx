@@ -18,6 +18,7 @@ import {
 } from "../../../lib/api";
 import { LocalTrack, saveTracksMetadata } from "../../../lib/localLibrary";
 import { Button } from "../../../components/ui/Button";
+import { useBreakpoint } from "../../../hooks/useBreakpoint";
 import { usePlayer } from "../../../lib/playerContext";
 import { AddToPlaylistModal } from "../../../components/library/AddToPlaylistModal";
 import { MixerConsole } from "../../../components/player/MixerConsole";
@@ -203,6 +204,16 @@ export default function ReleaseDetails() {
   const { token, userId } = useAuth();
   const { trustTier } = useTrustTier();
   const { attestAndStake, pending: attestationPending } = useAttestAndStake();
+  const { isPhone } = useBreakpoint();
+  // Owner-only info cards (rights-upgrade request + limited monitoring
+  // banner) are heavy and dominate the mobile above-the-fold. Default
+  // them collapsed on phone; user taps the summary row to expand.
+  const [rightsUpgradeCardOpen, setRightsUpgradeCardOpen] = useState(false);
+  const [rightsMonitorCardOpen, setRightsMonitorCardOpen] = useState(false);
+  useEffect(() => {
+    setRightsUpgradeCardOpen(!isPhone);
+    setRightsMonitorCardOpen(!isPhone);
+  }, [isPhone]);
   const [release, setRelease] = useState<Release | null>(null);
   const [loading, setLoading] = useState(true);
   const [isUpdatingArtwork, setIsUpdatingArtwork] = useState(false);
@@ -1120,7 +1131,10 @@ export default function ReleaseDetails() {
             )}
           </div>
 
-          {/* Marketplace restriction CTA — inside header for prominence */}
+          {/* Marketplace restriction CTA — collapsible so it doesn't
+           * dominate the mobile above-the-fold. Summary row (icon +
+           * chip + chevron) always visible; tap to expand the
+           * description, reason, and primary CTA. */}
           {isOwner && marketplaceRestrictedByRights && (() => {
             const upgradeColor = getRightsUpgradeStatusColor(rightsUpgradeStatus);
             return (
@@ -1131,64 +1145,105 @@ export default function ReleaseDetails() {
                   borderRadius: "14px",
                   border: `1px solid ${upgradeColor.fg}22`,
                   background: upgradeColor.bg,
-                  padding: "14px 18px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "16px",
-                  flexWrap: "wrap",
+                  padding: "12px 16px",
                 }}
               >
-                <div style={{ minWidth: 0, flex: "1 1 280px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "6px" }}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={upgradeColor.fg} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                    </svg>
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        padding: "3px 9px",
-                        borderRadius: "999px",
-                        background: "rgba(255,255,255,0.06)",
-                        color: upgradeColor.fg,
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        letterSpacing: "0.02em",
-                      }}
-                    >
-                      {rightsUpgradeStatusLabel}
-                    </span>
-                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.55)" }}>
-                      Marketplace access requires proof-of-control review.
-                    </span>
-                  </div>
-                  {rightsUpgradeDecisionReason && (
-                    <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.75)", lineHeight: 1.5 }}>
-                      {rightsUpgradeDecisionReason}
-                    </div>
-                  )}
-                </div>
+                <button
+                  type="button"
+                  className="rights-card-summary"
+                  onClick={() => setRightsUpgradeCardOpen((v) => !v)}
+                  aria-expanded={rightsUpgradeCardOpen}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    width: "100%",
+                    padding: 0,
+                    background: "transparent",
+                    border: "none",
+                    color: "inherit",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={upgradeColor.fg} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "3px 9px",
+                      borderRadius: "999px",
+                      background: "rgba(255,255,255,0.06)",
+                      color: upgradeColor.fg,
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      letterSpacing: "0.02em",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {rightsUpgradeStatusLabel}
+                  </span>
+                  <svg
+                    width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                    style={{
+                      marginLeft: "auto",
+                      flexShrink: 0,
+                      opacity: 0.6,
+                      transition: "transform 0.2s ease",
+                      transform: rightsUpgradeCardOpen ? "rotate(180deg)" : "none",
+                    }}
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
 
-                {canSubmitRightsUpgrade && (
-                  <Button
-                    variant="primary"
-                    onClick={() => setShowRightsUpgradeModal(true)}
-                    style={{ whiteSpace: "nowrap", flexShrink: 0 }}
+                {rightsUpgradeCardOpen && (
+                  <div
+                    className="rights-card-body"
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      justifyContent: "space-between",
+                      gap: "12px",
+                      flexWrap: "wrap",
+                      marginTop: "10px",
+                    }}
                   >
-                    {rightsUpgradeButtonLabel}
-                  </Button>
-                )}
-                {!canSubmitRightsUpgrade && canCompleteAttestation && (
-                  <Button
-                    variant="primary"
-                    onClick={handleCompleteAttestation}
-                    disabled={attestationPending}
-                    style={{ whiteSpace: "nowrap", flexShrink: 0 }}
-                  >
-                    {attestationPending ? "Attesting..." : "Complete On-Chain Attestation"}
-                  </Button>
+                    <div style={{ minWidth: 0, flex: "1 1 240px" }}>
+                      <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.55)" }}>
+                        Marketplace access requires proof-of-control review.
+                      </div>
+                      {rightsUpgradeDecisionReason && (
+                        <div style={{ marginTop: "6px", fontSize: "13px", color: "rgba(255,255,255,0.75)", lineHeight: 1.5 }}>
+                          {rightsUpgradeDecisionReason}
+                        </div>
+                      )}
+                    </div>
+
+                    {canSubmitRightsUpgrade && (
+                      <Button
+                        variant="primary"
+                        onClick={() => setShowRightsUpgradeModal(true)}
+                        style={{ whiteSpace: "nowrap", flexShrink: 0 }}
+                      >
+                        {rightsUpgradeButtonLabel}
+                      </Button>
+                    )}
+                    {!canSubmitRightsUpgrade && canCompleteAttestation && (
+                      <Button
+                        variant="primary"
+                        onClick={handleCompleteAttestation}
+                        disabled={attestationPending}
+                        style={{ whiteSpace: "nowrap", flexShrink: 0 }}
+                      >
+                        {attestationPending ? "Attesting..." : "Complete On-Chain Attestation"}
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
             );
@@ -1202,14 +1257,26 @@ export default function ReleaseDetails() {
         </div>
       )}
 
-      {/* Rights-monitoring banner is owner-only (#608). It exposes the
-       * uploader's trust-gate route, restriction flags, and the reason
-       * text ("the uploader does not yet have enough trust…"), which
-       * is uploader-reputation metadata a random viewer has no reason
-       * to see and no ability to act on. Public-facing consequences
-       * (e.g. "marketplace minting is disabled") surface where they're
-       * actionable, not via this internal-state banner. */}
-      {isOwner && (
+      {/* Rights-monitoring banner is owner-only (#608) and collapsible
+       * so it doesn't dominate the mobile above-the-fold. Summary row
+       * (icon + badge + chevron) always visible; the source label,
+       * timestamp, flag chips, and reason paragraph reveal on tap. */}
+      {isOwner && (() => {
+        const statusIcon = (() => {
+          const common = {
+            width: 18, height: 18, viewBox: "0 0 24 24", fill: "none",
+            stroke: rightsTone.color, strokeWidth: 2,
+            strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
+            style: { flexShrink: 0 },
+          };
+          if (rightsTone.icon === "shield-check") return (<svg {...common}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9 12l2 2 4-4" /></svg>);
+          if (rightsTone.icon === "eye") return (<svg {...common}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>);
+          if (rightsTone.icon === "alert-triangle") return (<svg {...common}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>);
+          if (rightsTone.icon === "x-circle") return (<svg {...common}><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>);
+          if (rightsTone.icon === "help-circle") return (<svg {...common}><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>);
+          return null;
+        })();
+        return (
       <div
         className="release-rights-monitor-card"
         style={{
@@ -1218,39 +1285,28 @@ export default function ReleaseDetails() {
           border: "1px solid rgba(255,255,255,0.06)",
           borderLeft: `3px solid ${rightsTone.color}`,
           background: rightsTone.background,
-          padding: "14px 18px",
+          padding: "12px 16px",
         }}
       >
-        {/* Primary row: icon + badge + metadata + flags */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-          {/* Status icon */}
-          {rightsTone.icon === "shield-check" && (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={rightsTone.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M9 12l2 2 4-4" />
-            </svg>
-          )}
-          {rightsTone.icon === "eye" && (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={rightsTone.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
-            </svg>
-          )}
-          {rightsTone.icon === "alert-triangle" && (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={rightsTone.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-            </svg>
-          )}
-          {rightsTone.icon === "x-circle" && (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={rightsTone.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
-            </svg>
-          )}
-          {rightsTone.icon === "help-circle" && (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={rightsTone.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" />
-            </svg>
-          )}
-
-          {/* Badge */}
+        <button
+          type="button"
+          className="rights-card-summary"
+          onClick={() => setRightsMonitorCardOpen((v) => !v)}
+          aria-expanded={rightsMonitorCardOpen}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            width: "100%",
+            padding: 0,
+            background: "transparent",
+            border: "none",
+            color: "inherit",
+            cursor: "pointer",
+            textAlign: "left",
+          }}
+        >
+          {statusIcon}
           <span style={{
             display: "inline-flex",
             alignItems: "center",
@@ -1260,64 +1316,70 @@ export default function ReleaseDetails() {
             color: rightsTone.color,
             fontWeight: 700,
             fontSize: "0.8rem",
+            flexShrink: 0,
           }}>
             {rightsRouteLabel}
           </span>
+          <svg
+            width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            style={{
+              marginLeft: "auto",
+              flexShrink: 0,
+              opacity: 0.5,
+              transition: "transform 0.2s ease",
+              transform: rightsMonitorCardOpen ? "rotate(180deg)" : "none",
+            }}
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
 
-          {/* Inline metadata */}
-          {rightsSourceLabel && (
-            <span style={{ fontSize: "0.78rem", opacity: 0.5 }}>
-              {rightsSourceLabel}
-            </span>
-          )}
-          {release.rightsEvaluatedAt && (
-            <span style={{ fontSize: "0.72rem", opacity: 0.3, fontFamily: "monospace" }}>
-              {new Date(release.rightsEvaluatedAt).toLocaleString()}
-            </span>
-          )}
-
-          {release.rightsFlags && release.rightsFlags.length > 0 && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                flexWrap: "wrap",
-                marginLeft: "auto",
-                justifyContent: "flex-end",
-              }}
-            >
-              <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", justifyContent: "flex-end" }}>
-                {release.rightsFlags.map((flag) => (
-                  <span key={flag} style={{
-                    borderRadius: "4px",
-                    padding: "2px 6px",
-                    background: "rgba(255,255,255,0.05)",
-                    fontSize: "0.68rem",
-                    opacity: 0.55,
-                    whiteSpace: "nowrap",
-                  }}>
-                    {formatRightsLabel(flag)}
-                  </span>
-                ))}
-              </div>
+        {rightsMonitorCardOpen && (
+          <div className="rights-card-body" style={{ marginTop: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              {rightsSourceLabel && (
+                <span style={{ fontSize: "0.78rem", opacity: 0.55 }}>
+                  {rightsSourceLabel}
+                </span>
+              )}
+              {release.rightsEvaluatedAt && (
+                <span style={{ fontSize: "0.72rem", opacity: 0.35, fontFamily: "monospace" }}>
+                  {new Date(release.rightsEvaluatedAt).toLocaleString()}
+                </span>
+              )}
+              {release.rightsFlags && release.rightsFlags.length > 0 && (
+                <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginLeft: "auto" }}>
+                  {release.rightsFlags.map((flag) => (
+                    <span key={flag} style={{
+                      borderRadius: "4px",
+                      padding: "2px 6px",
+                      background: "rgba(255,255,255,0.05)",
+                      fontSize: "0.68rem",
+                      opacity: 0.6,
+                      whiteSpace: "nowrap",
+                    }}>
+                      {formatRightsLabel(flag)}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-
-        {/* Reason (secondary line) */}
-        {release.rightsReason && (
-          <p style={{
-            margin: "8px 0 0 28px",
-            fontSize: "0.8rem",
-            opacity: 0.5,
-            lineHeight: 1.5,
-          }}>
-            {release.rightsReason}
-          </p>
+            {release.rightsReason && (
+              <p style={{
+                margin: "8px 0 0",
+                fontSize: "0.8rem",
+                opacity: 0.55,
+                lineHeight: 1.5,
+              }}>
+                {release.rightsReason}
+              </p>
+            )}
+          </div>
         )}
       </div>
-      )}
+        );
+      })()}
 
       {release.status === "failed" && release.processingError && (
         <div
