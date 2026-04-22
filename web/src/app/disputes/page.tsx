@@ -1,7 +1,7 @@
 import DisputeDashboard from "@/components/disputes/DisputeDashboard";
 
 export const metadata = {
-  title: "Disputes | Resonate",
+  title: "Disputes",
   description: "View and manage content disputes on Resonate",
 };
 
