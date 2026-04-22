@@ -125,6 +125,33 @@ export default function MarketplacePage() {
     const [buyModalListing, setBuyModalListing] = useState<{ listingId: string; stemId: string } | null>(null);
     const [hasStaleData, setHasStaleData] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
+
+    // Auto-hide the sticky filter bar on scroll-down (phone only).
+    // On narrow viewports the bar occupies ~40-50% of the visible
+    // content area while scrolling the listing grid, so we slide it
+    // up when the user is clearly browsing and bring it back on any
+    // upward scroll gesture. Desktop is unchanged.
+    const [stickyHidden, setStickyHidden] = useState(false);
+    const lastScrollRef = useRef(0);
+    useEffect(() => {
+        const scrollEl = document.querySelector(".app-content") as HTMLElement | null;
+        if (!scrollEl) return;
+        const onScroll = () => {
+            const y = scrollEl.scrollTop;
+            const delta = y - lastScrollRef.current;
+            if (Math.abs(delta) < 8) return;
+            if (y < 120) {
+                setStickyHidden(false);
+            } else if (delta > 0) {
+                setStickyHidden(true);
+            } else {
+                setStickyHidden(false);
+            }
+            lastScrollRef.current = y;
+        };
+        scrollEl.addEventListener("scroll", onScroll, { passive: true });
+        return () => scrollEl.removeEventListener("scroll", onScroll);
+    }, []);
     const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const { pending: buyPending } = useBuyStem();
@@ -347,7 +374,7 @@ export default function MarketplacePage() {
             </div>
 
             {/* Sticky Search + Filter Controls */}
-            <div className="marketplace-sticky-controls">
+            <div className={`marketplace-sticky-controls${stickyHidden ? " is-hidden" : ""}`}>
                 {/* Search */}
                 <div className="marketplace-search">
                     <span className="marketplace-search__icon">🔍</span>
