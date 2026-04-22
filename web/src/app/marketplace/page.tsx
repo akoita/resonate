@@ -19,6 +19,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 function resolveUrl(path?: string | null): string | undefined {
   if (!path) return undefined;
   if (path.startsWith("http")) return path;
+  if (path.startsWith("/default-stem-cover")) return path;
   return `${API_BASE}${path}`;
 }
 

@@ -1086,16 +1086,16 @@ export class CatalogService implements OnModuleInit {
       }
     }
 
-    // 3. Remote storage (IPFS/Lighthouse) - fetch from URI
-    if (stem.uri && (stem.storageProvider === "ipfs" || stem.uri.includes("ipfs") || stem.uri.includes("lighthouse"))) {
+    // 3. Remote storage providers (GCS/IPFS/etc.) - prefer provider-aware download first.
+    if (stem.uri && stem.storageProvider && stem.storageProvider !== "local") {
       try {
-        console.log(`[Catalog] Fetching stem ${stem.id} from remote URI: ${stem.uri}`);
+        console.log(`[Catalog] Fetching stem ${stem.id} via storage provider: ${stem.uri}`);
         const fetchedData = await this.storageProvider.download(stem.uri);
         if (fetchedData) {
           return { data: fetchedData, mimeType: stem.mimeType || "audio/mpeg" };
         }
       } catch (err) {
-        console.error(`[Catalog] Failed to fetch stem ${stem.id} from remote:`, err);
+        console.error(`[Catalog] Failed to fetch stem ${stem.id} via storage provider:`, err);
       }
     }
 
