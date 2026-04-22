@@ -155,13 +155,99 @@ Goal: the creative moonshot.
 
 ---
 
-## 5. One-paragraph executive pitch
+## 5. What I would actually do next
+
+If the goal is to turn this RFC into an execution plan rather than a broad opportunity map, the best next three bets are:
+
+1. **MCP server**
+   - Why first: highest trend signal, tightest fit with the machine-first thesis, and it compounds the x402/OpenAPI work that already exists instead of asking for a large architectural rewrite.
+   - Why now: it is mostly additive and can ship without waiting on ERC-8004, curator agents, or runtime extraction.
+
+2. **pgvector migration**
+   - Why second: it is the least glamorous item in the report, but it is the cleanest dependency for real taste similarity, learning-loop quality, and curator-agent usefulness.
+   - Why now: it reduces future rework. Building learning/reputation features on top of an in-memory embedding store would create throwaway logic.
+
+3. **Langfuse + golden-set evals**
+   - Why third: before adding more agent surface area, the team needs a real way to measure whether selector quality, budget behavior, and diversity actually improve.
+   - Why now: it makes every later agent change easier to ship with confidence, including MCP, curator agents, and taste learning.
+
+I would **not** start with ERC-8004 or the remix engine, even though they are stronger "headline" features. They are better as wave-two and wave-three moves after the platform has an external tool surface, a persistent retrieval substrate, and production-grade evaluation.
+
+### Practical priority order
+
+| Priority | Initiative | Why now | Main dependency | Risk |
+|---|---|---|---|---|
+| **P1** | MCP server | Best immediate leverage from shipped OpenAPI + x402 work | none | medium |
+| **P2** | pgvector migration | Unblocks learning loop and better similarity tooling | Prisma migration discipline | low/medium |
+| **P3** | Langfuse + golden-set evals | Gives a real quality bar before more agent complexity | stable eval scenarios | low |
+| **P4** | ERC-8004 identity + reputation | Strongest differentiated on-chain signal | runtime boundaries clearer | medium/high |
+| **P5** | Curator agents | Solves the blind-buy problem with a visible wedge | ERC-8004 reputation surface, embeddings | high |
+| **P6** | Runtime extraction | Valuable, but easier after one external interface ships | clearer module seams | high |
+
+### Suggested PR slices
+
+These are the smallest slices that would keep momentum high and reviewable.
+
+#### MCP server
+
+1. **PR 1: MCP scaffold**
+   - Add `backend/src/modules/mcp/`
+   - Stand up `/mcp` and `/.well-known/mcp.json`
+   - Expose one read-only tool such as `catalog.search`
+
+2. **PR 2: commercial tools**
+   - Add `stem.quote`, `stem.download`, `generate.track`
+   - Reuse existing x402 middleware for paid tools
+
+3. **PR 3: productization**
+   - Basic docs, example client, and discovery metadata for external MCP clients
+
+#### pgvector migration
+
+1. **PR 1: schema + storage**
+   - Add `vector(...)` column and index
+   - Backfill embeddings for a small bounded set
+
+2. **PR 2: read path**
+   - Switch `embeddings.similarity` and selector lookups to Postgres-backed search
+
+3. **PR 3: cleanup**
+   - Retire or narrow the in-memory `EmbeddingStore`
+
+#### Langfuse + evals
+
+1. **PR 1: tracing**
+   - Instrument ADK runner, tool calls, and purchase decisions
+
+2. **PR 2: golden set**
+   - Add `50–100` canonical curation scenarios with expected rubric dimensions
+
+3. **PR 3: CI gate**
+   - Add a non-blocking CI eval job first, then promote to a quality gate once stable
+
+### Effort and risk notes
+
+- **MCP server** has the best ratio of visibility to effort, but the real risk is over-designing the first version. The first ship should be narrow and boring.
+- **pgvector** is mostly execution risk, not product risk. The key is keeping the migration and backfill straightforward.
+- **Langfuse** is low implementation risk, but only valuable if the team commits to maintaining a golden set and actually reading the traces.
+- **ERC-8004** should stay in view, but it becomes much more credible once there is a measurable learning loop and a portable runtime boundary behind it.
+
+### What I would explicitly defer
+
+- **Real-time remix engine** — huge upside, but this is a moat project, not a next-step foundation project.
+- **Mastra** — plausible fit, but not yet necessary while the NestJS + Next.js shape is still workable.
+- **A2A peer mesh** — interesting, but it should be earned by real coordination pain, not adopted because it is fashionable.
+- **Proof-of-inference / Ritual / EZKL** — good demo bait, weak near-term leverage.
+
+---
+
+## 6. One-paragraph executive pitch
 
 Resonate already has the skeleton of a senior-eng flagship project: ADK agent runtime, ERC-4337 smart wallet, x402 paywall, Lyria generation, a full dashboard. The three moves that compound hardest on both *project thesis* and *2026 trend signal* are: **(a)** expose the platform itself as an MCP server (with x402-gated tools) so external agents can buy stems natively, **(b)** ship ERC-8004 identity + reputation because it is already in the plan, unblocks curator agents, and is currently a scarce skill, and **(c)** extract the agent runtime per RFC #424 so the agent becomes a standalone, portable, composable unit. Everything else — Claude Agent SDK subagents, Mastra on the frontend, Langfuse eval, pgvector, Letta memory, the remix engine with ACE-Step + Demucs — stacks naturally on top. Avoid the LangChain/Spleeter/Suno-wrapper dead ends.
 
 ---
 
-## 6. Key sources
+## 7. Key sources
 
 **Internal:**
 - [docs/rfc/RESONATE_SPECS.md](RESONATE_SPECS.md)
