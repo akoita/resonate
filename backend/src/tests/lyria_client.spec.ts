@@ -26,7 +26,10 @@ const mockConfigService = {
 import { LyriaClient } from '../modules/generation/lyria.client';
 import { GoogleGenAI } from '@google/genai';
 
-function buildResponse(parts: Array<{ text?: string; inlineData?: { data: string } }>, promptFeedback?: any) {
+function buildResponse(
+  parts: Array<{ text?: string; inlineData?: { data: string; mimeType?: string } }>,
+  promptFeedback?: any,
+) {
   return {
     candidates: [
       {
@@ -48,7 +51,7 @@ describe('LyriaClient', () => {
     mockGenerateContent.mockResolvedValue(
       buildResponse([
         { text: '[Intro]\nInstrumental only' },
-        { inlineData: { data: Buffer.from('fake-wav-data').toString('base64') } },
+        { inlineData: { data: Buffer.from('fake-mp3-data').toString('base64'), mimeType: 'audio/mpeg' } },
       ]),
     );
   });
@@ -60,7 +63,7 @@ describe('LyriaClient', () => {
     });
   });
 
-  it('uses lyria-3-pro-preview with wav output config', async () => {
+  it('uses lyria-3-pro-preview with audio response modalities only', async () => {
     const result = await client.generate({ prompt: 'dreamy ambient' });
 
     expect(mockGenerateContent).toHaveBeenCalledWith({
@@ -68,15 +71,33 @@ describe('LyriaClient', () => {
       contents: 'Create a 30-second track. dreamy ambient',
       config: {
         responseModalities: ['AUDIO', 'TEXT'],
-        responseMimeType: 'audio/wav',
       },
     });
 
-    expect(result.audioBytes).toEqual(Buffer.from('fake-wav-data'));
+    expect(result.audioBytes).toEqual(Buffer.from('fake-mp3-data'));
+    expect(result.mimeType).toBe('audio/mpeg');
     expect(result.provider).toBe('lyria-3-pro-preview');
     expect(result.durationSeconds).toBe(30);
     expect(result.sampleRate).toBe(44_100);
     expect(result.lyrics).toEqual(['[Intro]\nInstrumental only']);
+  });
+
+  it('falls back to magic-byte audio mime detection when inlineData mimeType is missing', async () => {
+    const fakeWav = Buffer.concat([
+      Buffer.from('RIFF'),
+      Buffer.alloc(4),
+      Buffer.from('WAVE'),
+      Buffer.from('rest-of-wav'),
+    ]);
+
+    mockGenerateContent.mockResolvedValueOnce(
+      buildResponse([
+        { inlineData: { data: fakeWav.toString('base64') } },
+      ]),
+    );
+
+    const result = await client.generate({ prompt: 'test wav detection' });
+    expect(result.mimeType).toBe('audio/wav');
   });
 
   it('requests longer duration through the prompt', async () => {

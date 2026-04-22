@@ -31,6 +31,7 @@ describe('Choreography Flow 4: AI Generation Pipeline', () => {
   const lyriaClient = {
     generate: jest.fn().mockResolvedValue({
       audioBytes: Buffer.from('fake-audio'),
+      mimeType: 'audio/mpeg',
       synthIdPresent: true,
       seed: 42,
       durationSeconds: 30,
