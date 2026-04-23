@@ -45,7 +45,7 @@ export default function CreatePageContent() {
   const [analytics, setAnalytics] = useState<GenerationAnalytics>({
     totalGenerations: 0,
     totalCost: 0,
-    rateLimit: { remaining: 5, limit: 5, resetsAt: null },
+    rateLimit: { remaining: 50, limit: 50, resetsAt: null },
   });
   const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
   const [isDuplicateWarningOpen, setIsDuplicateWarningOpen] = useState(false);

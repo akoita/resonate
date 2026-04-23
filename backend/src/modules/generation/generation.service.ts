@@ -11,7 +11,7 @@ import { prisma } from '../../db/prisma';
 import { randomUUID } from 'crypto';
 
 const COST_PER_30_SECONDS = 0.06; // Estimated cost baseline for 30 seconds of generated audio
-const DEFAULT_RATE_LIMIT = 5; // max generations per hour per user
+const DEFAULT_RATE_LIMIT = 50; // max generations per hour per user
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 interface RateLimitEntry {
