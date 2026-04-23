@@ -1,0 +1,684 @@
+/* Resonate Shows — fan-funded booking surface
+ *
+ * All Shows-specific styles live here as a global stylesheet to avoid
+ * the styled-jsx backtick-in-comment trap that has broken builds in
+ * prior PRs. The amber `--color-signal` accent is scoped to
+ * `.shows-surface` and never leaks — Resonate's dominant purple
+ * palette stays untouched everywhere else. */
+
+.shows-surface {
+  --color-signal: #f59e47;
+  --color-signal-soft: rgba(245, 158, 71, 0.14);
+  --color-signal-border: rgba(245, 158, 71, 0.28);
+  --color-signal-glow: rgba(245, 158, 71, 0.35);
+  position: relative;
+  isolation: isolate;
+}
+
+/* Numeric stats inside the Shows surface read as "contract", not "album":
+ * fixed-width digits for the progress bar, backer count, countdown. */
+.shows-surface .tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* -------------------------------------------------------------------
+ * Campaign hero
+ * -----------------------------------------------------------------*/
+
+.campaign-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 48px;
+  padding: 40px;
+  min-height: min(560px, 55vh);
+  border-radius: 28px;
+  background:
+    radial-gradient(at 0% 0%, var(--color-signal-soft), transparent 55%),
+    linear-gradient(170deg, rgba(30, 22, 16, 0.96) 0%, rgba(18, 14, 20, 0.98) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.campaign-hero::before {
+  /* subtle animated amber glow in the top-left */
+  content: "";
+  position: absolute;
+  left: -20%;
+  top: -25%;
+  width: 60%;
+  height: 60%;
+  background: radial-gradient(closest-side, var(--color-signal-glow), transparent 70%);
+  opacity: 0.35;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.campaign-hero__body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.campaign-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  align-self: flex-start;
+  border-radius: 999px;
+  border: 1px solid var(--color-signal-border);
+  background: var(--color-signal-soft);
+  color: var(--color-signal);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.campaign-hero__eyebrow::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-signal);
+  box-shadow: 0 0 8px var(--color-signal-glow);
+}
+
+.campaign-hero__title {
+  font-size: clamp(32px, 4.8vw, 56px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff;
+  line-height: 1.05;
+  margin: 0;
+}
+
+.campaign-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.campaign-hero__meta strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+.campaign-hero__tagline {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.5;
+  max-width: 52ch;
+  margin: 0;
+}
+
+.campaign-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.campaign-hero__cta-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 26px;
+  border-radius: 999px;
+  border: 0;
+  background: var(--color-signal);
+  color: #1a0f05;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  box-shadow: 0 10px 28px rgba(245, 158, 71, 0.35);
+  font-family: inherit;
+  text-decoration: none;
+}
+
+.campaign-hero__cta-primary:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+  box-shadow: 0 14px 32px rgba(245, 158, 71, 0.45);
+}
+
+.campaign-hero__cta-primary:active {
+  transform: translateY(0);
+}
+
+.campaign-hero__cta-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  text-decoration: none;
+}
+
+.campaign-hero__cta-secondary:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.campaign-hero__trust {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.5;
+  max-width: 52ch;
+}
+
+.campaign-hero__art {
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
+  background: linear-gradient(160deg, #2a1a0f, #1a1220 60%, #140a1a);
+  min-height: 280px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: 24px;
+  z-index: 1;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.campaign-hero__art::before {
+  /* diagonal mesh so a partner visually reads "this card is on-brand
+   * but not just another album cover" */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(245, 158, 71, 0.35), transparent 45%),
+    radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.25), transparent 55%),
+    linear-gradient(135deg, rgba(245, 158, 71, 0.1), transparent 60%);
+  pointer-events: none;
+}
+
+.campaign-hero__art-monogram {
+  position: relative;
+  font-size: 84px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.92);
+  letter-spacing: -0.04em;
+  line-height: 1;
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.campaign-hero__art-city {
+  position: relative;
+  margin-left: 12px;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+  align-self: flex-end;
+}
+
+@media (max-width: 1023px) {
+  .campaign-hero {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 28px;
+    min-height: auto;
+  }
+  .campaign-hero__art {
+    order: -1;
+    aspect-ratio: 16 / 9;
+    min-height: 0;
+  }
+  .campaign-hero__art-monogram {
+    font-size: 72px;
+  }
+}
+
+@media (max-width: 767px) {
+  .campaign-hero {
+    padding: 20px;
+    border-radius: 20px;
+  }
+  .campaign-hero__cta-primary {
+    padding: 12px 20px;
+    font-size: 14px;
+  }
+  .campaign-hero__cta-secondary {
+    padding: 12px 16px;
+  }
+}
+
+/* -------------------------------------------------------------------
+ * Campaign progress — shared by hero / card / detail
+ * -----------------------------------------------------------------*/
+
+.campaign-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.campaign-progress__amounts {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.campaign-progress__raised {
+  font-size: 28px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+
+.campaign-progress__goal {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.55);
+  font-weight: 500;
+}
+
+.campaign-progress__pct {
+  font-size: 13px;
+  color: var(--color-signal);
+  font-weight: 700;
+}
+
+.campaign-progress__bar {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.campaign-progress__fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  background: linear-gradient(
+    90deg,
+    var(--color-signal) 0%,
+    #ffb56b 60%,
+    var(--color-signal) 100%
+  );
+  background-size: 200% 100%;
+  border-radius: 999px;
+  box-shadow: 0 0 12px var(--color-signal-glow);
+  animation: shows-progress-sheen 3s ease-in-out infinite;
+}
+
+@keyframes shows-progress-sheen {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.campaign-progress__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.campaign-progress__stats strong {
+  color: #fff;
+  font-weight: 700;
+}
+
+.campaign-progress__stats .campaign-stat-sep {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.campaign-progress--compact .campaign-progress__raised {
+  font-size: 20px;
+}
+
+.campaign-progress--compact .campaign-progress__bar {
+  height: 6px;
+}
+
+/* -------------------------------------------------------------------
+ * Campaign card (3-up grid)
+ * -----------------------------------------------------------------*/
+
+.campaign-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+
+@media (max-width: 1023px) {
+  .campaign-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+}
+
+@media (max-width: 639px) {
+  .campaign-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+.campaign-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(175deg, rgba(28, 22, 18, 0.92) 0%, rgba(18, 14, 20, 0.96) 100%);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+  text-decoration: none;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  padding: 0;
+}
+
+.campaign-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--color-signal-border);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--color-signal-border);
+}
+
+.campaign-card:focus-visible {
+  outline: 2px solid var(--color-signal);
+  outline-offset: 2px;
+}
+
+.campaign-card__art {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(135deg, #2a1a0f, #1a1220 55%, #140a1a);
+  display: flex;
+  align-items: flex-end;
+  padding: 16px;
+}
+
+.campaign-card__art::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 25% 30%, rgba(245, 158, 71, 0.28), transparent 50%),
+    radial-gradient(circle at 85% 75%, rgba(139, 92, 246, 0.18), transparent 60%);
+  pointer-events: none;
+}
+
+.campaign-card__monogram {
+  position: relative;
+  font-size: 44px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.campaign-card__city-chip {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.campaign-card__body {
+  padding: 18px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+}
+
+.campaign-card__title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.campaign-card__meta {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.52);
+  margin: -8px 0 0;
+}
+
+/* -------------------------------------------------------------------
+ * Section framing on the home page
+ * -----------------------------------------------------------------*/
+
+.shows-home-section {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.shows-home-section__header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shows-home-section__kicker {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--color-signal);
+}
+
+.shows-home-section__title {
+  font-size: 28px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.shows-home-section__sub {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  max-width: 60ch;
+}
+
+/* -------------------------------------------------------------------
+ * /shows explorer + /shows/[id] detail
+ * -----------------------------------------------------------------*/
+
+.shows-page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 40px 32px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+@media (max-width: 767px) {
+  .shows-page {
+    padding: 24px 16px 64px;
+    gap: 28px;
+  }
+}
+
+.shows-page__intro {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 760px;
+}
+
+.shows-page__title {
+  font-size: clamp(32px, 4.5vw, 48px);
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.03em;
+  margin: 0;
+  line-height: 1.05;
+}
+
+.shows-page__lede {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.68);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.shows-page__toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.shows-page__sort {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: not-allowed;
+  font-family: inherit;
+}
+
+.shows-page__sort-note {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  letter-spacing: 0.04em;
+}
+
+/* -------- detail page ---------------------------------------------*/
+
+.show-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.show-detail__how {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 767px) {
+  .show-detail__how {
+    grid-template-columns: 1fr;
+  }
+}
+
+.show-detail__step {
+  padding: 20px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.show-detail__step-num {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--color-signal);
+}
+
+.show-detail__step-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+
+.show-detail__step-body {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.62);
+  margin: 0;
+}
+
+.show-detail__notice {
+  padding: 24px;
+  border-radius: 20px;
+  border: 1px dashed var(--color-signal-border);
+  background: var(--color-signal-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.show-detail__notice-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+
+.show-detail__notice-body {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.show-detail__notice-body a {
+  color: var(--color-signal);
+  text-decoration: underline;
+  text-decoration-color: var(--color-signal-border);
+  text-underline-offset: 3px;
+}
+
+/* -------------------------------------------------------------------
+ * Sidebar "NEW" pill on the Shows nav entry
+ * -----------------------------------------------------------------*/
+
+.sidebar-link__new {
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #f59e47;
+  color: #1a0f05;
+  line-height: 1;
+}
