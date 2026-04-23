@@ -25,6 +25,7 @@ export function CampaignHero({ campaign }: Props) {
   });
 
   const monogram = (campaign.artistName[0] ?? "?").toUpperCase();
+  const routeCode = `${campaign.artistSlug.slice(0, 3).toUpperCase()}-${campaign.city.slice(0, 3).toUpperCase()}`;
 
   return (
     <article className="campaign-hero">
@@ -74,8 +75,19 @@ export function CampaignHero({ campaign }: Props) {
       </div>
 
       <div className="campaign-hero__art" aria-hidden>
+        <span className="campaign-hero__art-ribbon">Fan-funded route</span>
+        <div className="campaign-hero__art-grid">
+          <span />
+          <span />
+          <span />
+          <span />
+        </div>
         <span className="campaign-hero__art-monogram">{monogram}</span>
         <span className="campaign-hero__art-city">{campaign.city}</span>
+        <div className="campaign-hero__art-footer">
+          <span>{routeCode}</span>
+          <span>{campaign.status}</span>
+        </div>
       </div>
     </article>
   );
