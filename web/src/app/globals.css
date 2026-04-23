@@ -105,20 +105,32 @@ video {
 }
 
 :root {
-  /* Premium Studio Palette */
-  --studio-bg: #050508;
-  --studio-surface: rgba(15, 15, 20, 0.85);
-  --studio-surface-raised: rgba(25, 25, 30, 0.95);
-  --studio-border: rgba(255, 255, 255, 0.06);
-  --studio-border-glow: rgba(124, 92, 255, 0.3);
+  /*
+   * Studio / glass vocabulary aligned with the Stitch "Next-Gen Music
+   * Platform" aesthetic — single glass idiom across the whole app.
+   *
+   *   `--studio-bg`        base canvas (Stitch surface #15121c)
+   *   `--studio-surface`   4% white tint for glass panels
+   *   `--studio-raised`    ~10% tint for hover/raised state
+   *   `--studio-border`    1px internal edge at 10% white
+   *
+   * Blur values bumped from 20/180% to 32/140% to match the Stitch
+   * `.ng-glass` spec, so any `.glass-panel` surface now looks the same
+   * as the home page's glass cards at a glance.
+   */
+  --studio-bg: var(--ds-surface);
+  --studio-surface: rgba(255, 255, 255, 0.04);
+  --studio-surface-raised: rgba(255, 255, 255, 0.1);
+  --studio-border: rgba(255, 255, 255, 0.1);
+  --studio-border-glow: rgba(138, 63, 252, 0.32);
 
   --accent-glow: radial-gradient(
     circle at center,
     var(--color-accent) 0%,
     transparent 70%
   );
-  --glass-blur: blur(20px);
-  --glass-saturate: saturate(180%);
+  --glass-blur: blur(32px);
+  --glass-saturate: saturate(140%);
 }
 
 @keyframes mesh-drift {
@@ -222,6 +234,15 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
+}
+
+/* Default headline face — every page's h1..h4 that doesn't set its own
+ * `font-family` now picks up Space Grotesk (Stitch display face). Pages
+ * that explicitly set their own font (e.g. logo marks, stylized
+ * one-offs) remain untouched because inline / local rules still win. */
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
 }
 
 .ui-btn {

@@ -7,10 +7,13 @@
  * palette stays untouched everywhere else. */
 
 .shows-surface {
-  --color-signal: #f59e47;
-  --color-signal-soft: rgba(245, 158, 71, 0.14);
-  --color-signal-border: rgba(245, 158, 71, 0.28);
-  --color-signal-glow: rgba(245, 158, 71, 0.35);
+  /* Shows amber now flows from the Stitch tertiary token so the amber
+   * used here matches the tertiary waveform bars + live-event badge on
+   * the home page. Single amber, one design system. */
+  --color-signal: var(--ds-tertiary);
+  --color-signal-soft: color-mix(in srgb, var(--ds-tertiary) 14%, transparent);
+  --color-signal-border: color-mix(in srgb, var(--ds-tertiary) 28%, transparent);
+  --color-signal-glow: color-mix(in srgb, var(--ds-tertiary) 35%, transparent);
   position: relative;
   isolation: isolate;
 }
