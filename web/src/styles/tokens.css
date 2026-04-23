@@ -1,11 +1,20 @@
 :root {
-  --color-bg: #0b0d12;
-  --color-surface: #121623;
-  --color-text: #e6e8ee;
-  --color-muted: #9aa3b2;
-  --color-accent: #7c5cff;
-  --color-accent-rgb: 124, 92, 255;
-  --color-accent-2: #00d1ff;
+  /*
+   * Legacy `--color-*` tokens are now aliases of the Stitch "Next-Gen
+   * Music Platform" design-system tokens below. Every component that
+   * reads these vars (sidebar, topbar, player bar, buttons, text
+   * gradients, processing badges, etc.) now picks up the new palette
+   * automatically, without touching per-component code.
+   * Migration plan: once surfaces are explicitly moved to `--ds-*`,
+   * the corresponding legacy alias can be retired.
+   */
+  --color-bg: var(--ds-surface);
+  --color-surface: var(--ds-surface-low);
+  --color-text: var(--ds-on-surface);
+  --color-muted: var(--ds-on-surface-variant);
+  --color-accent: var(--ds-primary-container);
+  --color-accent-rgb: 138, 63, 252;
+  --color-accent-2: var(--ds-tertiary);
   --color-border: rgba(255, 255, 255, 0.08);
 
   --radius-sm: 6px;
@@ -22,8 +31,16 @@
   --space-10: 64px;
   --space-12: 80px;
 
-  --font-sans: var(--font-geist-sans), "Inter", system-ui, -apple-system,
-    sans-serif;
+  /* Body-text font resolves to Be Vietnam Pro via the Stitch design
+   * system; Geist / Inter remain as graceful fallbacks so any surface
+   * that references `var(--font-sans)` flips to the new face with no
+   * code change. */
+  --font-sans: var(--font-ds-body), var(--font-geist-sans), "Inter",
+    system-ui, -apple-system, sans-serif;
+  /* Display / kicker font — new surfaces reference this directly so
+   * they can switch to Space Grotesk without extra configuration. */
+  --font-display: var(--font-ds-display), var(--font-geist-sans), "Inter",
+    system-ui, -apple-system, sans-serif;
 
   /*
    * Canonical responsive breakpoints — use these exact pixel values in
