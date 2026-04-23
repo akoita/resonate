@@ -211,14 +211,21 @@ export function ConfirmDialog({
             <div
                 onClick={(e) => e.stopPropagation()}
                 style={{
+                    // design.md §Elevation → Floating layer:
+                    // 12% white fill + 64px backdrop blur + primary-tinted
+                    // outer glow. Variant color only influences the outer
+                    // glow halo + top accent line, not the base surface.
                     maxWidth: "420px",
                     width: "100%",
-                    background: "linear-gradient(170deg, rgba(30, 30, 40, 0.98) 0%, rgba(18, 18, 24, 0.99) 100%)",
+                    background: "rgba(255, 255, 255, 0.12)",
+                    backdropFilter: "blur(64px) saturate(140%)",
+                    WebkitBackdropFilter: "blur(64px) saturate(140%)",
                     border: `1px solid ${v.borderColor}`,
                     borderRadius: "20px",
                     boxShadow: `
                         0 24px 80px rgba(0, 0, 0, 0.6),
                         0 0 0 1px rgba(255, 255, 255, 0.04),
+                        0 0 60px rgba(138, 63, 252, 0.18),
                         ${v.glow}
                     `,
                     overflow: "hidden",

@@ -245,22 +245,94 @@ h1, h2, h3, h4 {
   letter-spacing: -0.01em;
 }
 
+/* Global focus-ring for inputs and interactive elements — design.md
+ * §Components → Input fields: "focus state should glow with the primary
+ * purple." Surfaces that already define their own focus state still win;
+ * this is the default for everyone else. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--ds-primary);
+  box-shadow: 0 0 0 3px rgba(138, 63, 252, 0.25);
+}
+
+/* `.kicker` utility — design.md §Typography kicker role. Drop this
+ * class on any nav label, section kicker, button label, or category
+ * chip that needs the wide-tracked uppercase Space Grotesk treatment.
+ * The matching `.ng-kicker` remains scoped to the `.home-ng` surface; this
+ * globally-available version lets the sidebar + other surfaces adopt it
+ * without touching .home-ng. */
+.kicker {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+/*
+ * Button primitives — aligned with design.md §Components → Buttons.
+ *   Primary: solid --ds-primary fill on --ds-on-primary text, 14px radius,
+ *            translateY(-1px) on hover, subtle primary-tinted shadow.
+ *   Ghost:   6% white fill, 16% white border, 12px backdrop blur.
+ * The Button.tsx wrapper composes these; raw `.ui-btn-*` classes also
+ * work standalone for places that don't import the React primitive.
+ */
 .ui-btn {
-  padding: var(--space-3) var(--space-5);
-  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: 14px;
   border: 1px solid transparent;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   cursor: pointer;
+  transition: transform 0.2s ease, filter 0.2s ease, background 0.2s ease,
+    box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.ui-btn:disabled,
+.ui-btn[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .ui-btn-primary {
-  background: var(--color-accent);
-  color: #fff;
+  background: var(--ds-primary);
+  color: var(--ds-on-primary);
+  box-shadow: 0 10px 24px rgba(138, 63, 252, 0.22);
 }
 
+.ui-btn-primary:hover:not(:disabled):not([aria-disabled="true"]) {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+  box-shadow: 0 14px 32px rgba(138, 63, 252, 0.3);
+}
+
+.ui-btn-primary:active:not(:disabled):not([aria-disabled="true"]) {
+  transform: translateY(0);
+}
+
+/* Ghost = glass secondary per design.md: 6% white fill, 16% white border,
+ * backdrop-blur 12px. */
 .ui-btn-ghost {
-  background: transparent;
-  border-color: var(--color-muted);
-  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  backdrop-filter: blur(12px);
+}
+
+.ui-btn-ghost:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
 }
 
 html,
@@ -737,23 +809,31 @@ a {
   margin-bottom: var(--space-3);
 }
 
+/* Badges — design.md §Shapes "Interactive badges: 4px radius rectangles"
+ * and §Typography kicker (Space Grotesk, 0.15em tracking, uppercase).
+ * Status colors stay mapped to semantic tones (success green, warn amber,
+ * neutral violet) but the shape + type treatment is unified. */
 .status-badge {
-  padding: 2px 8px;
+  padding: 3px 8px;
   border-radius: 4px;
+  font-family: var(--font-display);
   font-size: 10px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  font-weight: 600;
+  white-space: nowrap;
 }
 
 .status-ready {
-  background: rgba(74, 222, 128, 0.1);
+  background: rgba(74, 222, 128, 0.12);
   color: #4ade80;
 }
 
 .status-processing,
 .status-draft {
-  background: rgba(251, 191, 36, 0.1);
-  color: #fbbf24;
+  background: rgba(255, 183, 130, 0.14);
+  color: var(--ds-tertiary);
 }
 
 .track-card-meta {
@@ -764,13 +844,17 @@ a {
 }
 
 .track-badge {
+  font-family: var(--font-display);
   font-size: 10px;
+  line-height: 1.2;
   text-transform: uppercase;
   font-weight: 700;
-  padding: 2px 8px;
+  letter-spacing: 0.12em;
+  padding: 3px 8px;
   border-radius: 4px;
-  background: rgba(124, 92, 255, 0.1);
-  color: var(--color-accent);
+  background: rgba(138, 63, 252, 0.14);
+  color: var(--ds-primary);
+  white-space: nowrap;
 }
 
 .track-card-date {
@@ -3485,25 +3569,21 @@ a {
   letter-spacing: 0.05em;
 }
 
-.status-badge {
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  text-transform: capitalize;
-}
-
+/* .status-badge override used in release-view track rows — matches the
+ * generic badge spec (4px radius rectangle + kicker typography) rather
+ * than the old capsule look, so badges look the same everywhere. */
 .status-badge.status-draft {
-  background: rgba(156, 163, 178, 0.15);
-  color: var(--color-muted);
+  background: rgba(205, 194, 216, 0.14);
+  color: var(--ds-on-surface-variant);
 }
 
 .status-badge.status-processing {
-  background: rgba(0, 209, 255, 0.15);
-  color: var(--color-accent-2);
+  background: rgba(255, 183, 130, 0.14);
+  color: var(--ds-tertiary);
 }
 
 .status-badge.status-ready {
-  background: rgba(74, 222, 128, 0.15);
+  background: rgba(74, 222, 128, 0.14);
   color: #4ade80;
 }
 
