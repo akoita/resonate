@@ -138,8 +138,14 @@ export function FeaturedStems({ releases }: FeaturedStemsProps) {
             onMouseEnter={pauseAuto}
             onMouseLeave={resumeAuto}
         >
-            <div className="section-header">
-                <h2 className="home-section-title text-gradient">Featured Stems</h2>
+            <div className="section-header featured-stems-header">
+                <div>
+                    <span className="featured-stems-kicker">Granular breakdowns</span>
+                    <h2 className="home-section-title text-gradient">Trending Stems</h2>
+                    <p className="featured-stems-subtitle">
+                        Solo a vocal, bassline, drum bed, or melodic layer and jump straight into the mixer.
+                    </p>
+                </div>
                 <span className="stems-count-badge">{stems.length} stems</span>
             </div>
 
@@ -199,6 +205,29 @@ export function FeaturedStems({ releases }: FeaturedStemsProps) {
             })()}
 
             <style jsx>{`
+                .featured-stems-header {
+                    align-items: flex-end;
+                    gap: 18px;
+                }
+
+                .featured-stems-kicker {
+                    display: block;
+                    margin-bottom: 5px;
+                    color: #f7b267;
+                    font-size: 11px;
+                    font-weight: 900;
+                    letter-spacing: 0.18em;
+                    text-transform: uppercase;
+                }
+
+                .featured-stems-subtitle {
+                    max-width: 560px;
+                    margin: 6px 0 0;
+                    color: rgba(255, 255, 255, 0.58);
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
+
                 .stems-count-badge {
                     font-size: 11px;
                     font-weight: 700;
@@ -303,6 +332,14 @@ export function FeaturedStems({ releases }: FeaturedStemsProps) {
                  * on .carousel-track is explicitly overridden so it
                  * doesn't fight the native scroll. */
                 @media (max-width: 640px) {
+                    .featured-stems-header {
+                        align-items: flex-start;
+                    }
+
+                    .featured-stems-subtitle {
+                        font-size: 13px;
+                    }
+
                     .carousel-arrow {
                         display: none;
                     }

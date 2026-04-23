@@ -341,55 +341,127 @@
 /* ---------- Trending Stems ----------------------------------- */
 
 .home-ng .ng-stem-card {
-  border-radius: 20px;
+  position: relative;
+  isolation: isolate;
+  border-radius: 24px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background:
+    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 28%, transparent), transparent 40%),
+    rgba(18, 18, 28, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 22px 58px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
   display: flex;
   flex-direction: column;
+  transition:
+    transform 0.28s ease,
+    border-color 0.28s ease,
+    box-shadow 0.28s ease;
+}
+
+.home-ng .ng-stem-card:hover {
+  transform: translateY(-8px);
+  border-color: color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 48%, rgba(255, 255, 255, 0.08));
+  box-shadow:
+    0 32px 78px rgba(0, 0, 0, 0.5),
+    0 0 48px color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 18%, transparent);
+}
+
+.home-ng .ng-stem-card__art {
+  position: relative;
+  display: flex;
+  min-height: 178px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 
 .home-ng .ng-stem-waveform {
-  height: 96px;
+  position: absolute;
+  z-index: 3;
+  left: 18px;
+  right: 18px;
+  bottom: 16px;
+  height: 34px;
   display: flex;
   align-items: flex-end;
   gap: 4px;
-  padding: 8px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(0, 0, 0, 0.2);
+  opacity: 0.9;
+  mask-image: linear-gradient(90deg, transparent, black 12%, black 88%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, black 12%, black 88%, transparent);
 }
 
 .home-ng .ng-stem-waveform__bar {
   flex: 1;
-  border-radius: 2px 2px 0 0;
+  min-width: 3px;
+  border-radius: 999px 999px 0 0;
   min-height: 4px;
+  background: color-mix(in srgb, var(--stem-tone, var(--ds-primary)) var(--bar-opacity, 60%), transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 28%, transparent);
 }
 
-/* Stem color variants (purple, amber, violet — per Stitch design) */
-.home-ng .ng-stem-card[data-tone="primary"] .ng-stem-waveform__bar {
-  background: color-mix(in srgb, var(--ds-primary-container) var(--bar-opacity, 60%), transparent);
+.home-ng .ng-stem-waveform__bar[data-peak="true"] {
+  background: color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 86%, #fff);
+  box-shadow: 0 0 20px var(--stem-tone, var(--ds-primary));
 }
-.home-ng .ng-stem-card[data-tone="primary"] .ng-stem-waveform__bar[data-peak="true"] {
-  background: var(--ds-primary-container);
-  box-shadow: 0 0 15px var(--ds-primary-container);
+
+.home-ng .ng-stem-card__image,
+.home-ng .ng-stem-card__shade {
+  position: absolute;
+  inset: 0;
 }
-.home-ng .ng-stem-card[data-tone="tertiary"] .ng-stem-waveform__bar {
-  background: color-mix(in srgb, var(--ds-tertiary) var(--bar-opacity, 60%), transparent);
+
+.home-ng .ng-stem-card__image {
+  background-position: center;
+  background-size: cover;
+  transform: scale(1.02);
+  transition:
+    transform 0.45s ease,
+    filter 0.45s ease;
 }
-.home-ng .ng-stem-card[data-tone="tertiary"] .ng-stem-waveform__bar[data-peak="true"] {
-  background: var(--ds-tertiary);
-  box-shadow: 0 0 15px var(--ds-tertiary);
+
+.home-ng .ng-stem-card:hover .ng-stem-card__image {
+  transform: scale(1.08);
+  filter: saturate(1.08) contrast(1.04);
 }
-.home-ng .ng-stem-card[data-tone="secondary"] .ng-stem-waveform__bar {
-  background: color-mix(in srgb, var(--ds-primary) var(--bar-opacity, 60%), transparent);
+
+.home-ng .ng-stem-card__shade {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.1), rgba(13, 13, 20, 0.9)),
+    radial-gradient(circle at 50% 58%, color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 34%, transparent), transparent 34%);
 }
-.home-ng .ng-stem-card[data-tone="secondary"] .ng-stem-waveform__bar[data-peak="true"] {
-  background: var(--ds-primary);
-  box-shadow: 0 0 15px var(--ds-primary);
+
+.home-ng .ng-stem-card__play {
+  position: relative;
+  z-index: 3;
+  width: 58px;
+  height: 58px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: #fff;
+  background:
+    radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.25), transparent 28%),
+    color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 82%, #6d5dfc);
+  box-shadow:
+    0 18px 42px color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 40%, transparent),
+    0 0 0 10px rgba(255, 255, 255, 0.08);
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.home-ng .ng-stem-card:hover .ng-stem-card__play {
+  transform: scale(1.06);
+  box-shadow:
+    0 22px 52px color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 54%, transparent),
+    0 0 0 12px rgba(255, 255, 255, 0.1);
 }
 
 .home-ng .ng-stem-card__body {
-  padding: 22px;
+  padding: 18px;
 }
 
 .home-ng .ng-stem-card__head {
@@ -402,10 +474,11 @@
 
 .home-ng .ng-stem-card__title {
   font-family: var(--ds-font-display);
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 750;
   color: #fff;
-  margin: 0 0 4px;
+  margin: 0 0 6px;
+  line-height: 1.25;
 }
 
 .home-ng .ng-stem-card__from {
@@ -416,28 +489,37 @@
 }
 
 .home-ng .ng-stem-card__tag {
+  position: absolute;
+  z-index: 4;
+  top: 14px;
+  right: 14px;
   font-family: var(--ds-font-display);
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 900;
   letter-spacing: 0.15em;
   text-transform: uppercase;
-  padding: 4px 8px;
-  border-radius: 4px;
-  border: 1px solid;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 55%, rgba(255, 255, 255, 0.18));
+  color: #fff;
+  background: color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 68%, rgba(0, 0, 0, 0.55));
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
   white-space: nowrap;
 }
 
-.home-ng .ng-stem-card[data-tone="primary"] .ng-stem-card__tag {
-  color: var(--ds-primary);
-  border-color: color-mix(in srgb, var(--ds-primary-container) 30%, transparent);
-}
-.home-ng .ng-stem-card[data-tone="tertiary"] .ng-stem-card__tag {
-  color: var(--ds-tertiary-fixed-dim);
-  border-color: color-mix(in srgb, var(--ds-tertiary) 30%, transparent);
-}
-.home-ng .ng-stem-card[data-tone="secondary"] .ng-stem-card__tag {
-  color: var(--ds-primary);
-  border-color: color-mix(in srgb, var(--ds-primary) 30%, transparent);
+.home-ng .ng-stem-card__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.48);
+  font-family: var(--ds-font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .home-ng .ng-stem-card__actions {
@@ -461,7 +543,8 @@
 }
 
 .home-ng .ng-stem-card__action:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 20%, rgba(255, 255, 255, 0.08));
+  border-color: color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 38%, rgba(255, 255, 255, 0.12));
   color: #fff;
 }
 

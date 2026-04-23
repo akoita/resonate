@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayer } from "../../lib/playerContext";
 import { LocalTrack } from "../../lib/localLibrary";
@@ -61,6 +62,9 @@ export function StemCard({ stem }: StemCardProps) {
   const { playQueue, mixerMode, toggleMixerMode, setMixerVolumes } = usePlayer();
   const style = getStemStyle(stem.type);
   const isRemixable = !!stem.ipnftId;
+  const durationLabel = stem.durationSeconds
+    ? `${Math.floor(stem.durationSeconds / 60)}:${Math.floor(stem.durationSeconds % 60).toString().padStart(2, "0")}`
+    : "Mixer-ready";
 
   /** Play the track in mixer mode with this stem soloed */
   const handlePlay = async (e?: React.MouseEvent) => {
@@ -111,46 +115,60 @@ export function StemCard({ stem }: StemCardProps) {
 
   return (
     <div
-      className="stem-card glass-panel"
+      className="stem-card"
       onClick={handlePlay}
+      style={{ "--stem-accent": style.color } as CSSProperties}
     >
-      {/* Decorative waveform bar */}
-      <div
-        className="stem-card-wave"
-        style={{
-          background: `linear-gradient(135deg, ${style.color}33 0%, ${style.color}11 100%)`,
-          borderBottom: `1px solid ${style.color}22`,
-        }}
-      >
-        <span className="stem-card-icon">{style.icon}</span>
-        <div className="stem-card-badges">
+      <div className="stem-card-art">
+        {stem.releaseArtworkUrl ? (
+          <div
+            className="stem-card-art-image"
+            style={{ backgroundImage: `url(${JSON.stringify(stem.releaseArtworkUrl)})` }}
+            aria-hidden="true"
+          />
+        ) : (
+          <div className="stem-card-art-fallback" />
+        )}
+        <div className="stem-card-art-gradient" />
+        <div className="stem-card-topline">
+          <span className="stem-type-chip">
+            <span className="stem-card-icon">{style.icon}</span>
+            {style.label}
+          </span>
           {isRemixable && (
             <span className="stem-remixable-badge">Remixable</span>
           )}
         </div>
+        <div className="stem-card-play-orb" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="8 5 19 12 8 19 8 5" />
+          </svg>
+        </div>
+        <div className="stem-card-wave" aria-hidden="true">
+          {Array.from({ length: 18 }, (_, i) => (
+            <span key={i} style={{ height: `${18 + ((i * 37) % 52)}%` }} />
+          ))}
+        </div>
       </div>
 
-      {/* Content */}
       <div className="stem-card-body">
-        <span className="stem-type-label" style={{ color: style.color }}>
-          {style.label}
-        </span>
         <p className="stem-track-title">{stem.trackTitle}</p>
         <p className="stem-release-info">
-          from <span className="stem-release-name">{stem.releaseTitle}</span>
+          <span className="stem-release-name">{stem.releaseTitle}</span> by {stem.releaseArtist}
         </p>
-        <p className="stem-artist">{stem.releaseArtist}</p>
 
-        {/* Remix count + Quick Mix CTA */}
+        <div className="stem-card-meta-row">
+          <span>{durationLabel}</span>
+          <span>Solo stem</span>
+        </div>
+
         <div className="stem-card-actions">
-          <span className="stem-remix-count">0 remixes</span>
           <button
             className="stem-quick-mix-btn"
             onClick={handlePlay}
-            title="Play in Mixer"
-            style={{ borderColor: `${style.color}44`, color: style.color }}
+            title="Solo this stem in the mixer"
           >
-            ▶ Play Stem
+            Solo in Mixer
           </button>
         </div>
       </div>
@@ -162,69 +180,127 @@ export function StemCard({ stem }: StemCardProps) {
           border-radius: 16px;
           overflow: hidden;
           cursor: pointer;
+          position: relative;
+          isolation: isolate;
+          background:
+            radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--stem-accent) 28%, transparent), transparent 38%),
+            rgba(18, 18, 27, 0.92);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          box-shadow:
+            0 20px 55px rgba(0, 0, 0, 0.32),
+            inset 0 1px 0 rgba(255, 255, 255, 0.04);
           transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
           flex-shrink: 0;
         }
 
         .stem-card:hover {
-          transform: translateY(-6px) scale(1.02);
-          border-color: ${style.color}44;
-          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4),
-                      0 0 30px ${style.color}15;
+          transform: translateY(-8px);
+          border-color: color-mix(in srgb, var(--stem-accent) 50%, rgba(255, 255, 255, 0.08));
+          box-shadow:
+            0 28px 70px rgba(0, 0, 0, 0.48),
+            0 0 42px color-mix(in srgb, var(--stem-accent) 20%, transparent);
         }
 
-        .stem-card-wave {
-          height: 80px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 0 16px;
+        .stem-card-art {
           position: relative;
+          height: 172px;
           overflow: hidden;
         }
 
-        .stem-card-wave::after {
-          content: "";
+        .stem-card-art-image,
+        .stem-card-art-fallback {
+          width: 100%;
+          height: 100%;
+          display: block;
+          background-position: center;
+          background-size: cover;
+          transform: scale(1.02);
+          transition: transform 0.45s ease, filter 0.45s ease;
+        }
+
+        .stem-card:hover .stem-card-art-image,
+        .stem-card:hover .stem-card-art-fallback {
+          transform: scale(1.08);
+          filter: saturate(1.1) contrast(1.05);
+        }
+
+        .stem-card-art-fallback {
+          background:
+            linear-gradient(135deg, color-mix(in srgb, var(--stem-accent) 72%, #12121b), #08080d),
+            repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 8px);
+        }
+
+        .stem-card-art-gradient {
           position: absolute;
-          bottom: 8px;
+          inset: 0;
+          background:
+            linear-gradient(180deg, rgba(0, 0, 0, 0.1), rgba(9, 9, 14, 0.86)),
+            radial-gradient(circle at 50% 58%, color-mix(in srgb, var(--stem-accent) 34%, transparent), transparent 34%);
+        }
+
+        .stem-card-topline {
+          position: absolute;
+          z-index: 2;
+          top: 12px;
           left: 12px;
           right: 12px;
-          height: 24px;
-          background:
-            repeating-linear-gradient(
-              90deg,
-              ${style.color}22 0px,
-              ${style.color}44 2px,
-              transparent 2px,
-              transparent 6px
-            );
-          mask: linear-gradient(
-            to right,
-            transparent,
-            black 10%,
-            black 90%,
-            transparent
-          );
-          -webkit-mask: linear-gradient(
-            to right,
-            transparent,
-            black 10%,
-            black 90%,
-            transparent
-          );
-          opacity: 0.7;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        }
+
+        .stem-type-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          min-width: 0;
+          max-width: 100%;
+          padding: 6px 10px;
+          border-radius: 999px;
+          color: #fff;
+          background: color-mix(in srgb, var(--stem-accent) 72%, rgba(0, 0, 0, 0.55));
+          border: 1px solid color-mix(in srgb, var(--stem-accent) 58%, rgba(255, 255, 255, 0.16));
+          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+          font-size: 10px;
+          font-weight: 900;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
         }
 
         .stem-card-icon {
-          font-size: 28px;
-          z-index: 1;
-          filter: drop-shadow(0 2px 8px ${style.color}44);
+          font-size: 14px;
+          filter: drop-shadow(0 2px 8px color-mix(in srgb, var(--stem-accent) 45%, transparent));
         }
 
-        .stem-card-badges {
+        .stem-card-play-orb {
+          position: absolute;
+          z-index: 2;
+          left: 50%;
+          top: 50%;
+          width: 58px;
+          height: 58px;
+          transform: translate(-50%, -50%);
           display: flex;
-          gap: 6px;
-          z-index: 1;
+          align-items: center;
+          justify-content: center;
+          border-radius: 999px;
+          color: #fff;
+          background:
+            radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.24), transparent 28%),
+            color-mix(in srgb, var(--stem-accent) 82%, #6d5dfc);
+          box-shadow:
+            0 18px 42px color-mix(in srgb, var(--stem-accent) 42%, transparent),
+            0 0 0 10px rgba(255, 255, 255, 0.08);
+          opacity: 0.94;
+          transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+
+        .stem-card:hover .stem-card-play-orb {
+          transform: translate(-50%, -50%) scale(1.06);
+          box-shadow:
+            0 22px 52px color-mix(in srgb, var(--stem-accent) 56%, transparent),
+            0 0 0 12px rgba(255, 255, 255, 0.1);
         }
 
         .stem-remixable-badge {
@@ -233,33 +309,53 @@ export function StemCard({ stem }: StemCardProps) {
           letter-spacing: 0.1em;
           text-transform: uppercase;
           color: #10b981;
-          background: rgba(16, 185, 129, 0.12);
+          background: rgba(5, 18, 14, 0.72);
           border: 1px solid rgba(16, 185, 129, 0.25);
           padding: 3px 8px;
-          border-radius: 6px;
+          border-radius: 999px;
+          backdrop-filter: blur(10px);
+        }
+
+        .stem-card-wave {
+          position: absolute;
+          z-index: 2;
+          left: 16px;
+          right: 16px;
+          bottom: 14px;
+          height: 34px;
+          display: flex;
+          align-items: flex-end;
+          gap: 4px;
+          opacity: 0.88;
+          mask-image: linear-gradient(90deg, transparent, black 12%, black 88%, transparent);
+          -webkit-mask-image: linear-gradient(90deg, transparent, black 12%, black 88%, transparent);
+        }
+
+        .stem-card-wave span {
+          flex: 1;
+          min-width: 3px;
+          border-radius: 999px 999px 0 0;
+          background: linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--stem-accent) 96%, #fff),
+            color-mix(in srgb, var(--stem-accent) 42%, transparent)
+          );
+          box-shadow: 0 0 16px color-mix(in srgb, var(--stem-accent) 32%, transparent);
         }
 
         .stem-card-body {
-          padding: 14px 16px 16px;
-        }
-
-        .stem-type-label {
-          font-size: 10px;
-          font-weight: 800;
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
-          display: block;
-          margin-bottom: 6px;
+          padding: 16px;
         }
 
         .stem-track-title {
-          font-size: 15px;
-          font-weight: 700;
+          font-size: 16px;
+          font-weight: 850;
           color: #fff;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          margin-bottom: 4px;
+          margin-bottom: 6px;
+          letter-spacing: -0.02em;
         }
 
         .stem-release-info {
@@ -268,49 +364,55 @@ export function StemCard({ stem }: StemCardProps) {
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          margin-bottom: 2px;
+          margin-bottom: 12px;
         }
 
         .stem-release-name {
-          color: rgba(255, 255, 255, 0.7);
+          color: rgba(255, 255, 255, 0.78);
         }
 
-        .stem-artist {
+        .stem-card-meta-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 9px 0 12px;
+          border-top: 1px solid rgba(255, 255, 255, 0.07);
           font-size: 11px;
           color: var(--color-muted);
-          opacity: 0.7;
-          margin-bottom: 10px;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          opacity: 0.8;
         }
 
         .stem-card-actions {
           display: flex;
           align-items: center;
-          justify-content: space-between;
-          gap: 8px;
-        }
-
-        .stem-remix-count {
-          font-size: 11px;
-          color: var(--color-muted);
-          opacity: 0.6;
+          justify-content: stretch;
         }
 
         .stem-quick-mix-btn {
-          font-size: 10px;
-          font-weight: 700;
-          letter-spacing: 0.05em;
-          background: rgba(255, 255, 255, 0.04);
-          border: 1px solid;
-          padding: 4px 10px;
-          border-radius: 8px;
+          width: 100%;
+          min-height: 40px;
+          font-size: 11px;
+          font-weight: 900;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: #fff;
+          background:
+            linear-gradient(135deg, color-mix(in srgb, var(--stem-accent) 55%, rgba(255, 255, 255, 0.06)), rgba(255, 255, 255, 0.05));
+          border: 1px solid color-mix(in srgb, var(--stem-accent) 42%, rgba(255, 255, 255, 0.12));
+          padding: 0 12px;
+          border-radius: 12px;
           cursor: pointer;
           transition: all 0.2s ease;
           white-space: nowrap;
         }
 
         .stem-quick-mix-btn:hover {
-          background: rgba(255, 255, 255, 0.1);
-          transform: scale(1.05);
+          background: color-mix(in srgb, var(--stem-accent) 22%, rgba(255, 255, 255, 0.08));
+          transform: translateY(-1px);
         }
       `}</style>
     </div>
