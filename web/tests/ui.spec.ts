@@ -4,7 +4,8 @@ import { test, expect } from "@playwright/test";
 
 test("home hero renders", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByText("Latest Masterings")).toBeVisible();
+  // Post-Stitch home lead section (#646). Pin to a stable visible label.
+  await expect(page.locator(".ng-hero")).toBeVisible();
 });
 
 test("wallet page renders", async ({ page }) => {

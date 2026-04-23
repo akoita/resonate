@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Inter } from "next/font/google";
+import { Geist, Geist_Mono, Inter, Space_Grotesk, Be_Vietnam_Pro } from "next/font/google";
 import "./globals.css";
 import AppShell from "../components/layout/AppShell";
 import AuthProvider from "../components/auth/AuthProvider";
@@ -19,6 +19,23 @@ const geistMono = Geist_Mono({
 const inter = Inter({
   variable: "--font-sans",
   subsets: ["latin"],
+});
+
+// Stitch design system fonts. Scoped via the `--ds-font-*` tokens in
+// tokens.css so they only apply where the new design system is used
+// (home page + future migrated surfaces).
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-ds-display",
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  display: "swap",
+});
+
+const beVietnamPro = Be_Vietnam_Pro({
+  variable: "--font-ds-body",
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600"],
+  display: "swap",
 });
 
 const SITE_NAME = "Resonate";
@@ -55,7 +72,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} ${geistSans.variable} ${geistMono.variable}`}>
+      <head>
+        {/* Material Symbols icon font — used by the Stitch-designed home.
+         * Lives in the root layout so it applies app-wide; the lint rule
+         * flags page-scoped font links, not root-layout ones. */}
+        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
+        />
+      </head>
+      <body className={`${inter.variable} ${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} ${beVietnamPro.variable}`}>
         <ToastProvider>
           <ZeroDevProviderClient projectId={process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID}>
             <AuthProvider>

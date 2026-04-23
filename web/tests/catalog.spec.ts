@@ -5,6 +5,12 @@
  * No mocks. The database is seeded by global-setup.ts before the suite starts.
  * Seeded test data includes a published release with track and stems.
  *
+ * The home page was rebuilt on the Stitch "Next-Gen Music Platform" design in
+ * #646. Sections are now: Hero, Filter Chips, Resume Playing, Trending Stems,
+ * Upcoming Live Events, Agentic Mixes, Top Artists. Old "Latest Masterings /
+ * Good Evening / Featured Stems" rows no longer exist — the assertions below
+ * map onto the new rows instead.
+ *
  * @requires Postgres running with seeded data
  * @requires Backend on :3000, Frontend on :3001 (auto-started by playwright.config)
  */
@@ -19,26 +25,25 @@ test.describe("Catalog & Home Page", () => {
         await expect(page.locator(".logo-text")).toContainText("Resonate");
     });
 
-    // HOME-02 removed: the mood "signal chips" (Focus / Chill / Energy /
-    // Night Drive / Lo-fi) were placeholder UI with no onClick and no
-    // backing filter — removed in #603 polish work. If real mood-based
-    // catalog filtering lands, add a proper test then.
-
-    test("HOME-03: Latest Masterings section exists", async ({ page }) => {
+    test("HOME-03: Resume Playing section exists", async ({ page }) => {
         await page.goto("/");
-        await expect(page.locator(".home-section-title").filter({ hasText: "Latest Masterings" })).toBeVisible();
+        await expect(
+            page.locator(".ng-section-title").filter({ hasText: "Resume Playing" }),
+        ).toBeVisible();
     });
 
     test("HOME-04: Hero actions are visible", async ({ page }) => {
         await page.goto("/");
-        // Hero stage has "View Release" and "Tracklist" buttons
-        await expect(page.getByText(/View Release/i)).toBeVisible({ timeout: 15000 });
-        await expect(page.getByText(/Tracklist/i)).toBeVisible();
+        // New hero (Stitch design) exposes "Listen Now" + "View Campaign".
+        await expect(page.getByRole("link", { name: /Listen Now/i })).toBeVisible({ timeout: 15000 });
+        await expect(page.getByRole("link", { name: /View Campaign/i })).toBeVisible();
     });
 
-    test("HOME-05: Good Evening section exists", async ({ page }) => {
+    test("HOME-05: Upcoming Live Events section exists", async ({ page }) => {
         await page.goto("/");
-        await expect(page.getByText("Good Evening")).toBeVisible();
+        await expect(
+            page.locator(".ng-section-title").filter({ hasText: "Upcoming Live Events" }),
+        ).toBeVisible();
     });
 
     test("HOME-06: Sidebar Upload link navigates correctly", async ({ page }) => {
@@ -47,15 +52,21 @@ test.describe("Catalog & Home Page", () => {
         await expect(page).toHaveURL(/\/artist\/upload/);
     });
 
-    test("HOME-07: Featured Stems section exists", async ({ page }) => {
+    test("HOME-07: Trending Stems section exists", async ({ page }) => {
         await page.goto("/");
-        await expect(page.locator(".home-section-title").filter({ hasText: "Featured Stems" })).toBeVisible();
+        await expect(
+            page.locator(".ng-section-title").filter({ hasText: "Trending Stems" }),
+        ).toBeVisible();
     });
 
-    test("HOME-08: Stem cards display stem type", async ({ page }) => {
+    test("HOME-08: Stem cards display a type tag", async ({ page }) => {
         await page.goto("/");
-        // Should show at least one stem card with a recognizable type label
-        await expect(page.locator(".stem-card").first()).toBeVisible({ timeout: 15000 });
-        await expect(page.getByText("Vocals")).toBeVisible();
+        const firstStemCard = page.locator(".ng-stem-card").first();
+        await expect(firstStemCard).toBeVisible({ timeout: 15000 });
+        // Stem cards rotate through Drums / Vocals / Synth tags; at least
+        // one should be present on the page.
+        await expect(
+            page.locator(".ng-stem-card__tag").filter({ hasText: /Drums|Vocals|Synth/i }).first(),
+        ).toBeVisible();
     });
 });
