@@ -201,6 +201,10 @@ Core app-side variables:
 | `STEM_WATCHDOG_TIMEOUT_MS` | Backend | Optional timeout before active stem-processing tracks are failed as stale; defaults to `900000` locally |
 | `STEM_WATCHDOG_INTERVAL_MS` | Backend | Optional watchdog sweep interval for stale stem-processing tracks; defaults to `60000` locally |
 
+Lyria auth modes:
+- Preferred for Cloud Run / GCE: set `LYRIA_PROJECT_ID` and `LYRIA_LOCATION` and let Application Default Credentials from the attached service account authenticate Vertex AI requests.
+- Local / non-Vertex fallback: set `GOOGLE_AI_API_KEY` to use the Google AI Studio Gemini API path when ADC/Vertex is not available.
+
 Pub/Sub auth modes:
 - Local development: set `PUBSUB_EMULATOR_HOST` via `make dev-up`.
 - Cloud Run / GCE: attach a service account and let Application Default Credentials resolve automatically.
