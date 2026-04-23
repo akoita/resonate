@@ -14,6 +14,7 @@ import AgentBudgetCard from "../../components/agent/AgentBudgetCard";
 import AgentBudgetModal from "../../components/agent/AgentBudgetModal";
 import AgentTasteCard from "../../components/agent/AgentTasteCard";
 import AgentHistoryCard from "../../components/agent/AgentHistoryCard";
+import AgentSessionPresets from "../../components/agent/AgentSessionPresets";
 import { useToast } from "../../components/ui/Toast";
 
 export default function AgentPage() {
@@ -119,6 +120,7 @@ export default function AgentPage() {
                     </div>
                 ) : (
                     <>
+                        <AgentSessionPresets />
                         <div className="agent-dashboard-grid">
                             <AgentStatusCard
                                 config={config}

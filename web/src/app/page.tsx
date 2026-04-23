@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../components/auth/AuthProvider";
@@ -8,6 +8,7 @@ import { listPublishedReleases, Release } from "../lib/api";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
 import { useToast } from "../components/ui/Toast";
 import { listCampaignsSync, getFeaturedCampaignSync, daysUntil, type Campaign } from "../lib/shows";
+import AgentSessionPresets from "../components/agent/AgentSessionPresets";
 import { FALLBACK_RELEASES } from "../lib/fallbackReleases";
 
 /*
@@ -19,7 +20,7 @@ import { FALLBACK_RELEASES } from "../lib/fallbackReleases";
  *   3. Resume Playing — 4 square release cards with hover play overlay
  *   4. Trending Stems — 3 waveform-visualized stem cards
  *   5. Upcoming Live Events — 2 wide 16:9 campaign cards (Shows surface)
- *   6. Agentic Mixes — 5 circular AI-DJ mix presets
+ *   6. AI DJ session presets — intent-led mix modes
  *   7. Top Artists — horizontal pill row derived from catalog
  *
  * Source: Stitch project 8644925846196383098 "Next-Gen Music Platform - Home Page".
@@ -35,14 +36,6 @@ const FILTERS: { id: FilterOption; label: string }[] = [
   { id: "afrobeat", label: "Afrobeat" },
   { id: "indie", label: "Indie" },
   { id: "jazz", label: "Jazz" },
-];
-
-const AGENT_MIXES = [
-  { id: "focus", title: "Focus: Neural Flow", bpm: "124", tint: "from-violet-500 to-indigo-600" },
-  { id: "hype", title: "Hype: Pulse Raid", bpm: "145", tint: "from-fuchsia-500 to-rose-500" },
-  { id: "chill", title: "Chill: Liquid Sky", bpm: "90", tint: "from-cyan-500 to-violet-500" },
-  { id: "dark", title: "Dark: Abyss Shift", bpm: "130", tint: "from-red-900 to-black" },
-  { id: "zen", title: "Zen: Static Calm", bpm: "60", tint: "from-amber-500 to-violet-800" },
 ];
 
 export default function Home() {
@@ -236,43 +229,8 @@ export default function Home() {
           </section>
         )}
 
-        {/* 6. AGENTIC MIXES ————————————————————————————————————— */}
-        <section className="ng-section">
-          <header className="ng-section-header">
-            <div>
-              <span className="ng-kicker ng-kicker--primary">AI generated sessions</span>
-              <h3 className="ng-section-title">Agentic Mixes</h3>
-            </div>
-            <Link href="/agent" className="ng-section-link">
-              Open AI DJ
-              <span className="ms-icon" aria-hidden style={{ fontSize: 14 }}>arrow_forward</span>
-            </Link>
-          </header>
-          <div className="ng-grid-5">
-            {AGENT_MIXES.map((m) => (
-              <Link key={m.id} href="/agent" className="ng-mix">
-                <div className="ng-mix__avatar-wrap">
-                  <div
-                    className="ng-mix__avatar"
-                    style={{
-                      background: `linear-gradient(135deg, ${
-                        {
-                          focus: "#3b82f6, #7c3aed",
-                          hype: "#ec4899, #f43f5e",
-                          chill: "#06b6d4, #8b5cf6",
-                          dark: "#450a0a, #0a0a0a",
-                          zen: "#f59e0b, #4c1d95",
-                        }[m.id]
-                      })`,
-                    }}
-                  />
-                </div>
-                <p className="ng-mix__title">{m.title}</p>
-                <p className="ng-mix__meta">BPM: {m.bpm} (Auto)</p>
-              </Link>
-            ))}
-          </div>
-        </section>
+        {/* 6. AI DJ SESSION PRESETS ————————————————————————————— */}
+        <AgentSessionPresets compact />
 
         {/* 7. TOP ARTISTS —————————————————————————————————————— */}
         {topArtists.length > 0 && (
@@ -308,40 +266,69 @@ export default function Home() {
 
 const STEM_TONES = ["primary", "tertiary", "secondary"] as const;
 const STEM_TAGS = ["Drums", "Vocals", "Synth"] as const;
+const STEM_ACCENTS: Record<(typeof STEM_TONES)[number], string> = {
+  primary: "var(--ds-primary-container)",
+  tertiary: "var(--ds-tertiary)",
+  secondary: "var(--ds-primary)",
+};
 
 function StemCard({ release, variantIndex }: { release: Release; variantIndex: number }) {
   const tone = STEM_TONES[variantIndex % STEM_TONES.length];
   const tag = STEM_TAGS[variantIndex % STEM_TAGS.length];
+  const artistName = release.primaryArtist || release.artist?.displayName || "Unknown";
   // Deterministic bars (10) seeded by release id so rerenders don't jitter.
-  const bars = useMemo(() => pseudoRandomBars(release.id, 10), [release.id]);
+  const bars = useMemo(() => pseudoRandomBars(release.id, 18), [release.id]);
   const peakIdx = bars.indexOf(Math.max(...bars));
 
   return (
-    <article className="ng-stem-card" data-tone={tone}>
-      <div className="ng-stem-waveform" aria-hidden>
-        {bars.map((h, i) => (
+    <article
+      className="ng-stem-card"
+      data-tone={tone}
+      style={{ "--stem-tone": STEM_ACCENTS[tone] } as CSSProperties}
+    >
+      <Link
+        href={`/release/${release.id}`}
+        className="ng-stem-card__art"
+        aria-label={`Open ${release.title} in the mixer`}
+      >
+        {release.artworkUrl ? (
           <span
-            key={i}
-            className="ng-stem-waveform__bar"
-            data-peak={i === peakIdx ? "true" : undefined}
-            style={
-              {
-                height: `${h}%`,
-                "--bar-opacity": `${20 + ((h * 70) / 100)}%`,
-              } as React.CSSProperties
-            }
+            className="ng-stem-card__image"
+            style={{ backgroundImage: `url(${JSON.stringify(release.artworkUrl)})` }}
+            aria-hidden
           />
-        ))}
-      </div>
+        ) : (
+          <span className="ng-monogram" aria-hidden>
+            {(release.title?.[0] ?? "?").toUpperCase()}
+          </span>
+        )}
+        <span className="ng-stem-card__shade" aria-hidden />
+        <span className="ng-stem-card__tag">{tag}</span>
+        <span className="ng-stem-card__play" aria-hidden>
+          <span className="ms-icon" data-fill="1">play_arrow</span>
+        </span>
+        <span className="ng-stem-waveform" aria-hidden>
+          {bars.map((h, i) => (
+            <span
+              key={i}
+              className="ng-stem-waveform__bar"
+              data-peak={i === peakIdx ? "true" : undefined}
+              style={
+                {
+                  height: `${h}%`,
+                  "--bar-opacity": `${20 + ((h * 70) / 100)}%`,
+                } as CSSProperties
+              }
+            />
+          ))}
+        </span>
+      </Link>
       <div className="ng-stem-card__body">
-        <div className="ng-stem-card__head">
-          <div>
-            <h5 className="ng-stem-card__title">{release.title}</h5>
-            <p className="ng-stem-card__from">
-              From: {release.primaryArtist || release.artist?.displayName || "Unknown"}
-            </p>
-          </div>
-          <span className="ng-stem-card__tag">{tag}</span>
+        <h5 className="ng-stem-card__title">{release.title}</h5>
+        <p className="ng-stem-card__from">From: {artistName}</p>
+        <div className="ng-stem-card__meta">
+          <span>Stem layer</span>
+          <span>Ready for mixer</span>
         </div>
         <div className="ng-stem-card__actions">
           <Link
@@ -349,16 +336,15 @@ function StemCard({ release, variantIndex }: { release: Release; variantIndex: n
             className="ng-stem-card__action ng-stem-card__action--flex"
             style={{ textAlign: "center" }}
           >
-            Isolate
+            Open Mixer
           </Link>
-          <button
-            type="button"
+          <Link
+            href={`/release/${release.id}?mixer=true`}
             className="ng-stem-card__action ng-stem-card__action--icon"
-            aria-label="Download stem"
-            onClick={(e) => e.preventDefault()}
+            aria-label="Solo this stem"
           >
-            <span className="ms-icon" aria-hidden style={{ fontSize: 16 }}>download</span>
-          </button>
+            <span className="ms-icon" aria-hidden style={{ fontSize: 16 }}>graphic_eq</span>
+          </Link>
         </div>
       </div>
     </article>

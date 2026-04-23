@@ -38,6 +38,9 @@ import { ErrorDetailsDialog } from "../../../components/ui/ErrorDetailsDialog";
 import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressUpdate, type ReleaseRightsRequestUpdate } from "../../../hooks/useWebSockets";
 import { StemPricingPanel } from "../../../components/release/StemPricingPanel";
 import { LicensingInfoSection } from "../../../components/release/LicensingInfoSection";
+import { ProcessingFailureCallout } from "../../../components/release/ProcessingFailureCallout";
+import { ReleaseOverviewStrip } from "../../../components/release/ReleaseOverviewStrip";
+import { summarizeProcessingFailure } from "../../../components/release/processingFailure";
 import ReleaseContentProtection from "../../../components/content-protection/ReleaseContentProtection";
 import ReportContentModal from "../../../components/disputes/ReportContentModal";
 import ReleaseRightsUpgradeModal from "../../../components/rights/ReleaseRightsUpgradeModal";
@@ -145,6 +148,30 @@ const isMarketplaceAllowedRoute = (route?: string | null): boolean => {
   return !route || ["STANDARD_ESCROW", "TRUSTED_FAST_PATH"].includes(route);
 };
 
+const formatReleaseStatusLabel = (status?: string | null): string => {
+  switch (status) {
+    case "ready":
+      return "Ready";
+    case "processing":
+      return "Processing";
+    case "failed":
+      return "Needs attention";
+    case "pending":
+      return "Preparing";
+    case "draft":
+      return "Draft";
+    default:
+      return status ? formatRightsLabel(status) || status : "Unknown";
+  }
+};
+
+const getReleaseStatusTone = (status?: string | null): "neutral" | "success" | "warning" | "danger" => {
+  if (status === "ready") return "success";
+  if (status === "failed") return "danger";
+  if (status === "processing" || status === "pending") return "warning";
+  return "neutral";
+};
+
 const getRightsTone = (route?: string | null) => {
   switch (route) {
     case "BLOCKED":
@@ -240,10 +267,47 @@ export default function ReleaseDetails() {
   const rightsRouteLabel = formatRightsLabel(release?.rightsRoute) || "Not Evaluated";
   const rightsSourceLabel = formatRightsLabel(release?.rightsSourceType);
   const isOwner = release?.artist?.userId?.toLowerCase() === userId?.toLowerCase();
+  const hasFailedProcessing = release?.status === "failed" || release?.tracks?.some(t => t.processingStatus === "failed");
+  const isProcessingRelease = release?.status === "processing";
+  const hasUnprocessedTracks = release?.tracks?.some(t => !t.stems || t.stems.length <= 1);
+  const separatedStemCount = release?.tracks?.reduce((total, track) => {
+    const stems = track.stems?.filter((stem) => !["ORIGINAL", "master"].includes(stem.type)) ?? [];
+    return total + stems.length;
+  }, 0) ?? 0;
+  const totalDurationSeconds = release?.tracks?.reduce((total, track) => total + getTrackDuration(track), 0) ?? 0;
+  const stemsOverviewLabel = isProcessingRelease
+    ? "In progress"
+    : hasFailedProcessing
+      ? "Needs retry"
+      : separatedStemCount > 0
+        ? `${separatedStemCount} ready`
+        : "Not produced";
   const marketplaceRestrictedByRights =
     !!release?.rightsRoute && !isMarketplaceAllowedRoute(release.rightsRoute);
   const marketplaceApprovedByRights =
     !!release?.rightsRoute && isMarketplaceAllowedRoute(release.rightsRoute);
+  const overviewItems = [
+    {
+      label: "Release",
+      value: formatReleaseStatusLabel(release?.status),
+      tone: getReleaseStatusTone(release?.status),
+    },
+    {
+      label: "Rights",
+      value: rightsRouteLabel,
+      tone: marketplaceApprovedByRights ? "success" as const : marketplaceRestrictedByRights ? "warning" as const : "neutral" as const,
+    },
+    {
+      label: "Stems",
+      value: stemsOverviewLabel,
+      tone: hasFailedProcessing ? "danger" as const : separatedStemCount > 0 ? "success" as const : isProcessingRelease ? "warning" as const : "neutral" as const,
+    },
+    {
+      label: "Runtime",
+      value: totalDurationSeconds > 0 ? formatDuration(totalDurationSeconds) : "Not timed",
+      tone: "accent" as const,
+    },
+  ];
   const rightsUpgradeStatus =
     rightsUpgradeRequest?.status || releaseProtection?.rightsUpgradeRequestStatus || null;
   const rightsUpgradeStatusLabel = formatRightsUpgradeStatusLabel(rightsUpgradeStatus);
@@ -285,6 +349,52 @@ export default function ReleaseDetails() {
     trustTier,
     releaseProtection,
   });
+
+  const handleRetryProcessing = useCallback(async () => {
+    if (!token || !release?.id) return;
+
+    try {
+      const { retryRelease } = await import("../../../lib/api");
+      await retryRelease(token, release.id);
+      addToast({ type: "success", title: "Retrying...", message: "Processing restarted." });
+      setRelease(prev => prev ? {
+        ...prev,
+        status: "processing",
+        processingError: null,
+        tracks: prev.tracks?.map(t => ({
+          ...t,
+          processingStatus: "separating" as const,
+          processingError: null,
+        })),
+      } : null);
+    } catch (e) {
+      console.error(e);
+      addToast({ type: "error", title: "Retry failed", message: "Could not restart processing." });
+    }
+  }, [addToast, release?.id, token]);
+
+  const handleProduceStems = useCallback(async () => {
+    if (!token || !release?.id) return;
+
+    try {
+      const { retryRelease } = await import("../../../lib/api");
+      await retryRelease(token, release.id);
+      addToast({ type: "success", title: "Stems processing started!", message: "Your tracks are being separated into stems by Demucs." });
+      setRelease(prev => prev ? {
+        ...prev,
+        status: "processing",
+        processingError: null,
+        tracks: prev.tracks?.map(t =>
+          (!t.stems || t.stems.length <= 1)
+            ? { ...t, processingStatus: "separating" as const, processingError: null }
+            : t
+        ),
+      } : null);
+    } catch (e) {
+      console.error(e);
+      addToast({ type: "error", title: "Failed", message: "Could not start stem production." });
+    }
+  }, [addToast, release?.id, token]);
 
   // Handle real-time track progress updates via WebSocket
   const handleProgressUpdate = useCallback((data: ReleaseProgressUpdate) => {
@@ -961,175 +1071,127 @@ export default function ReleaseDetails() {
             <span className="track-count">{release.tracks?.length || 0} tracks</span>
           </div>
 
-          <div className="header-actions">
-            <Button onClick={handlePlayAll} className="btn-play-all">
-              Play All
-            </Button>
-            <Button variant="ghost" className="btn-save" onClick={handleAddReleaseToPlaylist}>
-              Add to Playlist
-            </Button>
-            <Button variant="ghost" className="btn-save" onClick={handleSaveToLibrary}>
-              Save to Library
-            </Button>
-            {/* Produce Stems / Retry Processing — mutually exclusive */}
-            {isOwner && (() => {
-              const hasFailed = release.status === 'failed' || release.tracks?.some(t => t.processingStatus === 'failed');
-              const isProcessing = release.status === 'processing';
-              const hasUnprocessedTracks = release.tracks?.some(t => !t.stems || t.stems.length <= 1);
+          <ReleaseOverviewStrip items={overviewItems} />
 
-              // Priority: Retry/Restart when failed or processing; otherwise Produce Stems
-              if (hasFailed || isProcessing) {
-                return (
+          <div className="header-actions">
+            <div className="header-action-group header-action-group--primary">
+              <Button onClick={handlePlayAll} className="btn-play-all">
+                Play All
+              </Button>
+              <Button variant="ghost" className="btn-save" onClick={handleAddReleaseToPlaylist}>
+                Add to Playlist
+              </Button>
+              <Button variant="ghost" className="btn-save" onClick={handleSaveToLibrary}>
+                Save to Library
+              </Button>
+              {currentTrack && currentTrack.stems && currentTrack.stems.some(s => !['ORIGINAL', 'master', 'other'].includes(s.type)) && (
+                <Button
+                  variant="ghost"
+                  className={`btn-mixer ${mixerMode ? 'active' : ''}`}
+                  onClick={toggleMixerMode}
+                >
+                  Mixer
+                </Button>
+              )}
+            </div>
+
+            {isOwner && (
+              <div className="header-action-group header-action-group--owner">
+                {(hasFailedProcessing || isProcessingRelease) && (
                   <Button
                     className="btn-retry"
-                    onClick={async () => {
-                      if (!token) return;
-                      try {
-                        const { retryRelease } = await import("../../../lib/api");
-                        await retryRelease(token, release.id);
-                        addToast({ type: "success", title: "Retrying...", message: "Processing restarted." });
-                        setRelease(prev => prev ? {
-                          ...prev,
-                          status: 'processing',
-                          processingError: null,
-                          tracks: prev.tracks?.map(t => ({
-                            ...t,
-                            processingStatus: 'separating' as const,
-                            processingError: null,
-                          }))
-                        } : null);
-                      } catch (e) {
-                        console.error(e);
-                        addToast({ type: "error", title: "Retry failed", message: "Could not restart processing." });
-                      }
-                    }}
+                    onClick={handleRetryProcessing}
                     style={{
-                      backgroundColor: hasFailed ? 'var(--color-error)' : 'var(--color-warning, #eab308)',
+                      backgroundColor: hasFailedProcessing ? 'var(--color-error)' : 'var(--color-warning, #eab308)',
                       color: 'white',
                       borderColor: 'transparent'
                     }}
                   >
-                    {hasFailed ? 'Retry Processing' : 'Restart Processing'}
+                    {hasFailedProcessing ? 'Retry Processing' : 'Restart Processing'}
                   </Button>
-                );
-              } else if (hasUnprocessedTracks) {
-                return (
+                )}
+                {!hasFailedProcessing && !isProcessingRelease && hasUnprocessedTracks && (
                   <Button
                     variant="ghost"
-                    className="btn-save"
-                    style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
-                    onClick={async () => {
-                      if (!token) return;
-                      try {
-                        const { retryRelease } = await import("../../../lib/api");
-                        await retryRelease(token, release.id);
-                        addToast({ type: "success", title: "Stems processing started!", message: "Your tracks are being separated into stems by Demucs." });
-                        setRelease(prev => prev ? {
-                          ...prev,
-                          status: 'processing',
-                          processingError: null,
-                          tracks: prev.tracks?.map(t =>
-                            (!t.stems || t.stems.length <= 1)
-                              ? { ...t, processingStatus: 'separating' as const, processingError: null }
-                              : t
-                          )
-                        } : null);
-                      } catch (e) {
-                        console.error(e);
-                        addToast({ type: "error", title: "Failed", message: "Could not start stem production." });
-                      }
-                    }}
+                    className="btn-produce-stems"
+                    onClick={handleProduceStems}
                   >
-                    🎛️ Produce Stems
+                    Produce Stems
                   </Button>
-                );
-              }
-              return null;
-            })()}
-            {/* Global Mixer Toggle - only show when track has Demucs-separated stems */}
-            {currentTrack && currentTrack.stems && currentTrack.stems.some(s => !['ORIGINAL', 'master', 'other'].includes(s.type)) && (
-              <Button
-                variant="ghost"
-                className={`btn-mixer ${mixerMode ? 'active' : ''}`}
-                onClick={toggleMixerMode}
-              >
-                🎚️ Mixer
-              </Button>
-            )}
-            {/* Three-dots menu at the rightmost position */}
-            {isOwner && (
-              <TrackActionMenu
-                actions={[
-                  {
-                    label: "Edit Cover",
-                    icon: <span>🖼️</span>,
-                    onClick: () => artworkInputRef.current?.click(),
-                  },
-                  ...(release.status === 'processing' ? [{
-                    label: "Cancel Processing",
-                    icon: <span>⏹</span>,
-                    variant: "destructive" as const,
-                    onClick: () => {
-                      if (!token) return;
-                      setConfirmDialog({
-                        title: "Cancel Processing",
-                        message: "Stop processing this release? Tracks will be marked as failed.",
-                        variant: "warning",
-                        confirmLabel: "Stop Processing",
-                        onConfirm: async () => {
-                          try {
-                            const { cancelProcessing } = await import("../../../lib/api");
-                            await cancelProcessing(token, release.id);
-                            addToast({ type: "success", title: "Cancelled", message: "Processing has been stopped." });
-                            setRelease(prev => prev ? {
-                              ...prev,
-                              status: 'failed',
-                              processingError: "Processing cancelled by user",
-                              tracks: prev.tracks?.map(t => ({
-                                ...t,
-                                processingStatus: 'failed' as const,
+                )}
+                <TrackActionMenu
+                  actions={[
+                    {
+                      label: "Edit Cover",
+                      icon: <span>🖼️</span>,
+                      onClick: () => artworkInputRef.current?.click(),
+                    },
+                    ...(release.status === 'processing' ? [{
+                      label: "Cancel Processing",
+                      icon: <span>⏹</span>,
+                      variant: "destructive" as const,
+                      onClick: () => {
+                        if (!token) return;
+                        setConfirmDialog({
+                          title: "Cancel Processing",
+                          message: "Stop processing this release? Tracks will be marked as failed.",
+                          variant: "warning",
+                          confirmLabel: "Stop Processing",
+                          onConfirm: async () => {
+                            try {
+                              const { cancelProcessing } = await import("../../../lib/api");
+                              await cancelProcessing(token, release.id);
+                              addToast({ type: "success", title: "Cancelled", message: "Processing has been stopped." });
+                              setRelease(prev => prev ? {
+                                ...prev,
+                                status: 'failed',
                                 processingError: "Processing cancelled by user",
-                              }))
-                            } : null);
-                          } catch (e) {
-                            console.error(e);
-                            addToast({ type: "error", title: "Cancel failed", message: "Could not cancel processing." });
-                          } finally {
-                            setConfirmDialog(null);
-                          }
-                        },
-                      });
+                                tracks: prev.tracks?.map(t => ({
+                                  ...t,
+                                  processingStatus: 'failed' as const,
+                                  processingError: "Processing cancelled by user",
+                                }))
+                              } : null);
+                            } catch (e) {
+                              console.error(e);
+                              addToast({ type: "error", title: "Cancel failed", message: "Could not cancel processing." });
+                            } finally {
+                              setConfirmDialog(null);
+                            }
+                          },
+                        });
+                      },
+                    }] : []),
+                    {
+                      label: "Delete Release",
+                      icon: <span>🗑</span>,
+                      variant: "destructive" as const,
+                      onClick: () => {
+                        if (!token) return;
+                        setConfirmDialog({
+                          title: "Delete Release",
+                          message: `Delete "${release.title}"? This action is permanent and cannot be undone.`,
+                          variant: "danger",
+                          confirmLabel: "Delete Forever",
+                          onConfirm: async () => {
+                            try {
+                              const { deleteRelease } = await import("../../../lib/api");
+                              await deleteRelease(token, release.id);
+                              addToast({ type: "success", title: "Deleted", message: `"${release.title}" has been removed.` });
+                              router.push("/");
+                            } catch (e) {
+                              console.error(e);
+                              addToast({ type: "error", title: "Delete failed", message: "Could not delete the release." });
+                            } finally {
+                              setConfirmDialog(null);
+                            }
+                          },
+                        });
+                      },
                     },
-                  }] : []),
-                  {
-                    label: "Delete Release",
-                    icon: <span>🗑</span>,
-                    variant: "destructive" as const,
-                    onClick: () => {
-                      if (!token) return;
-                      setConfirmDialog({
-                        title: "Delete Release",
-                        message: `Delete "${release.title}"? This action is permanent and cannot be undone.`,
-                        variant: "danger",
-                        confirmLabel: "Delete Forever",
-                        onConfirm: async () => {
-                          try {
-                            const { deleteRelease } = await import("../../../lib/api");
-                            await deleteRelease(token, release.id);
-                            addToast({ type: "success", title: "Deleted", message: `"${release.title}" has been removed.` });
-                            router.push("/");
-                          } catch (e) {
-                            console.error(e);
-                            addToast({ type: "error", title: "Delete failed", message: "Could not delete the release." });
-                          } finally {
-                            setConfirmDialog(null);
-                          }
-                        },
-                      });
-                    },
-                  },
-                ]}
-              />
+                  ]}
+                />
+              </div>
             )}
           </div>
 
@@ -1384,23 +1446,15 @@ export default function ReleaseDetails() {
       })()}
 
       {release.status === "failed" && release.processingError && (
-        <div
-          style={{
-            marginBottom: "var(--space-4)",
-            borderRadius: "10px",
-            border: "1px solid rgba(248, 113, 113, 0.28)",
-            background: "rgba(127, 29, 29, 0.16)",
-            padding: "12px 14px",
-            color: "#fecaca",
-          }}
-        >
-          <div style={{ fontSize: "0.78rem", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: "4px" }}>
-            Processing Failure
-          </div>
-          <div style={{ fontSize: "0.92rem", lineHeight: 1.5 }}>
-            {release.processingError}
-          </div>
-        </div>
+        <ProcessingFailureCallout
+          error={release.processingError}
+          canRetry={isOwner}
+          onRetry={handleRetryProcessing}
+          onViewDiagnostics={() => setErrorDetails({
+            title: "Processing diagnostics",
+            message: release.processingError as string,
+          })}
+        />
       )}
 
       <section className="tracklist-section glass-panel">
@@ -1562,15 +1616,16 @@ export default function ReleaseDetails() {
                           </>
                         );
                         if (hasDetails) {
+                          const trackFailure = summarizeProcessingFailure(track.processingError);
                           return (
                             <button
                               type="button"
                               className={`processing-badge processing-failed`}
-                              title="Click to view the full error"
+                              title={`${trackFailure.title}. Click to view diagnostics.`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setErrorDetails({
-                                  title: `Processing error — ${track.title || "track"}`,
+                                  title: `${trackFailure.title} — ${track.title || "track"}`,
                                   message: track.processingError as string,
                                 });
                               }}
@@ -2105,7 +2160,7 @@ export default function ReleaseDetails() {
           display: flex;
           align-items: center;
           gap: 12px;
-          margin-bottom: 48px;
+          margin-bottom: 22px;
           font-size: 16px;
         }
 
@@ -2141,7 +2196,31 @@ export default function ReleaseDetails() {
 
         .header-actions {
           display: flex;
-          gap: 16px;
+          align-items: center;
+          justify-content: space-between;
+          gap: 14px;
+          flex-wrap: wrap;
+          padding-top: 4px;
+        }
+
+        .header-action-group {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .header-action-group--primary {
+          flex: 1 1 520px;
+        }
+
+        .header-action-group--owner {
+          flex: 0 1 auto;
+          justify-content: flex-end;
+          padding: 6px;
+          border: 1px solid rgba(255,255,255,0.06);
+          border-radius: 999px;
+          background: rgba(255,255,255,0.03);
         }
 
         .btn-play-all {
@@ -2158,6 +2237,21 @@ export default function ReleaseDetails() {
           padding: 0 32px !important;
           height: 56px !important;
           border-color: rgba(255, 255, 255, 0.2) !important;
+        }
+
+        .btn-retry,
+        .btn-produce-stems {
+          border-radius: 50px !important;
+          padding: 0 24px !important;
+          height: 44px !important;
+          font-weight: 800 !important;
+          white-space: nowrap;
+        }
+
+        .btn-produce-stems {
+          border-color: var(--color-primary) !important;
+          color: var(--color-primary) !important;
+          background: rgba(var(--color-accent-rgb), 0.06) !important;
         }
 
         .btn-mixer {
@@ -2729,8 +2823,19 @@ export default function ReleaseDetails() {
            * Make Play All the full-width primary CTA, wrap the rest
            * beneath on their own row (#603 follow-up). */
           .header-actions {
+            align-items: stretch;
             flex-wrap: wrap;
             gap: 8px;
+          }
+
+          .header-action-group {
+            width: 100%;
+            gap: 8px;
+          }
+
+          .header-action-group--owner {
+            justify-content: stretch;
+            border-radius: 14px;
           }
 
           .btn-play-all {
@@ -2740,7 +2845,7 @@ export default function ReleaseDetails() {
             border-radius: 12px !important;
           }
 
-          .header-actions > :not(.btn-play-all) {
+          .header-action-group > :not(.btn-play-all) {
             flex: 1 1 calc(50% - 4px);
             min-width: 0;
             height: 40px !important;
