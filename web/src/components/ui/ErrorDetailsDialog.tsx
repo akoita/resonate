@@ -65,15 +65,21 @@ export function ErrorDetailsDialog({ isOpen, title, message, onClose }: ErrorDet
                 aria-modal="true"
                 aria-label={title}
                 style={{
+                    // design.md §Elevation → Floating layer recipe:
+                    // 12% white fill + 64px backdrop blur + subtle outer
+                    // glow. Error variant keeps a red-tinted border +
+                    // outer halo for semantic distinction.
                     width: "min(720px, 100%)",
                     maxHeight: "min(80vh, 640px)",
                     display: "flex",
                     flexDirection: "column",
-                    background: "linear-gradient(170deg, rgba(30,30,40,0.98) 0%, rgba(18,18,24,0.99) 100%)",
-                    border: "1px solid rgba(239, 68, 68, 0.22)",
+                    background: "rgba(255, 255, 255, 0.12)",
+                    backdropFilter: "blur(64px) saturate(140%)",
+                    WebkitBackdropFilter: "blur(64px) saturate(140%)",
+                    border: "1px solid rgba(239, 68, 68, 0.28)",
                     borderRadius: 16,
                     boxShadow:
-                        "0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04), 0 0 40px rgba(239,68,68,0.10)",
+                        "0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04), 0 0 60px rgba(239,68,68,0.22)",
                     overflow: "hidden",
                     animation: "error-dialog-enter 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
                 }}
