@@ -24,7 +24,9 @@ export interface LyriaGenerationParams {
 /**
  * Wrapper service for Google AI Lyria music generation.
  *
- * Uses the @google/genai SDK with a Google AI Studio API key.
+ * Uses the @google/genai SDK against Vertex AI via ADC when project/location
+ * are configured, and falls back to the Google AI Studio API key path for
+ * local/non-Vertex environments.
  * Lyria 3 Pro uses generateContent and returns inline audio data for clips up to
  * a few minutes when prompted for duration/structure.
  */
@@ -35,7 +37,26 @@ export class LyriaClient {
 
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('GOOGLE_AI_API_KEY', '');
+    const project = this.configService.get<string>('LYRIA_PROJECT_ID', '');
+    const location = this.configService.get<string>('LYRIA_LOCATION', '');
+
+    if (project && location) {
+      this.client = new GoogleGenAI({
+        vertexai: true,
+        project,
+        location,
+        apiVersion: 'v1beta',
+      });
+      this.logger.log(`Configured Lyria client for Vertex AI (${project}/${location}) via ADC`);
+      return;
+    }
+
     this.client = new GoogleGenAI({ apiKey, apiVersion: 'v1beta' });
+    if (apiKey) {
+      this.logger.warn('Configured Lyria client with GOOGLE_AI_API_KEY fallback; Vertex AI ADC not enabled');
+    } else {
+      this.logger.warn('Lyria client has no Vertex AI config or GOOGLE_AI_API_KEY fallback');
+    }
   }
 
   /**

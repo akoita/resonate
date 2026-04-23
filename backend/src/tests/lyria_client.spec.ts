@@ -18,6 +18,8 @@ const mockConfigService = {
   get: jest.fn().mockImplementation((key: string, defaultVal?: any) => {
     const map: Record<string, any> = {
       GOOGLE_AI_API_KEY: 'test-api-key-123',
+      LYRIA_PROJECT_ID: '',
+      LYRIA_LOCATION: '',
     };
     return map[key] ?? defaultVal ?? '';
   }),
@@ -56,9 +58,29 @@ describe('LyriaClient', () => {
     );
   });
 
-  it('creates GoogleGenAI with GOOGLE_AI_API_KEY and v1beta version', () => {
+  it('creates GoogleGenAI with GOOGLE_AI_API_KEY and v1beta version when Vertex config is absent', () => {
     expect(GoogleGenAI).toHaveBeenCalledWith({
       apiKey: 'test-api-key-123',
+      apiVersion: 'v1beta',
+    });
+  });
+
+  it('prefers Vertex AI ADC when LYRIA project and location are configured', () => {
+    mockConfigService.get = jest.fn().mockImplementation((key: string, defaultVal?: any) => {
+      const map: Record<string, any> = {
+        GOOGLE_AI_API_KEY: 'test-api-key-123',
+        LYRIA_PROJECT_ID: 'resonate-vertex',
+        LYRIA_LOCATION: 'us-central1',
+      };
+      return map[key] ?? defaultVal ?? '';
+    });
+
+    new LyriaClient(mockConfigService as any);
+
+    expect(GoogleGenAI).toHaveBeenCalledWith({
+      vertexai: true,
+      project: 'resonate-vertex',
+      location: 'us-central1',
       apiVersion: 'v1beta',
     });
   });
