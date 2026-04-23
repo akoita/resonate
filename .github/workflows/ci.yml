@@ -645,12 +645,18 @@ jobs:
           fi
 
           services=()
+          # Keep the backend ingestion path and Demucs worker deployed together.
+          # Upload regressions can otherwise persist in staging when only backend
+          # ingestion code changes on later commits and the worker image stays stale.
           if [[ "${{ needs.changes.outputs.run_all }}" == "true" || "${{ needs.changes.outputs.shared }}" == "true" ]]; then
             services+=(backend frontend demucs)
           else
             [[ "${{ needs.changes.outputs.backend }}" == "true" ]] && services+=(backend)
             [[ "${{ needs.changes.outputs.web }}" == "true" ]] && services+=(frontend)
             [[ "${{ needs.changes.outputs.demucs }}" == "true" ]] && services+=(demucs)
+            if [[ "${{ needs.changes.outputs.backend_ingestion }}" == "true" && " ${services[*]} " != *" demucs "* ]]; then
+              services+=(demucs)
+            fi
           fi
 
           services_csv=""
