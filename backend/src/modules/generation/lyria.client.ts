@@ -33,28 +33,36 @@ export interface LyriaGenerationParams {
 @Injectable()
 export class LyriaClient {
   private readonly logger = new Logger(LyriaClient.name);
-  private readonly client: GoogleGenAI;
+  private readonly vertexClient: GoogleGenAI | null;
+  private readonly apiClient: GoogleGenAI | null;
+  private readonly vertexProject: string;
+  private readonly vertexLocation: string;
 
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('GOOGLE_AI_API_KEY', '');
-    const project = this.configService.get<string>('LYRIA_PROJECT_ID', '');
-    const location = this.configService.get<string>('LYRIA_LOCATION', '');
+    this.vertexProject = this.configService.get<string>('LYRIA_PROJECT_ID', '');
+    this.vertexLocation = this.configService.get<string>('LYRIA_LOCATION', '');
 
-    if (project && location) {
-      this.client = new GoogleGenAI({
-        vertexai: true,
-        project,
-        location,
-        apiVersion: 'v1beta',
-      });
-      this.logger.log(`Configured Lyria client for Vertex AI (${project}/${location}) via ADC`);
-      return;
+    this.vertexClient =
+      this.vertexProject && this.vertexLocation
+        ? new GoogleGenAI({
+            vertexai: true,
+            project: this.vertexProject,
+            location: this.vertexLocation,
+            apiVersion: 'v1beta',
+          })
+        : null;
+    this.apiClient = apiKey ? new GoogleGenAI({ apiKey, apiVersion: 'v1beta' }) : null;
+
+    if (this.vertexClient) {
+      this.logger.log(`Configured Lyria client for Vertex AI (${this.vertexProject}/${this.vertexLocation}) via ADC`);
     }
 
-    this.client = new GoogleGenAI({ apiKey, apiVersion: 'v1beta' });
-    if (apiKey) {
+    if (this.apiClient) {
       this.logger.warn('Configured Lyria client with GOOGLE_AI_API_KEY fallback; Vertex AI ADC not enabled');
-    } else {
+    }
+
+    if (!this.vertexClient && !this.apiClient) {
       this.logger.warn('Lyria client has no Vertex AI config or GOOGLE_AI_API_KEY fallback');
     }
   }
@@ -73,11 +81,63 @@ export class LyriaClient {
     const actualSeed = seed ?? Math.floor(Math.random() * 2147483647);
     const composedPrompt = this.buildPrompt(prompt, durationSeconds, negativePrompt);
 
+    if (this.vertexClient) {
+      try {
+        return await this.generateWithClient({
+          client: this.vertexClient,
+          prompt,
+          composedPrompt,
+          seed: actualSeed,
+          durationSeconds,
+          sourceLabel: `Vertex AI (${this.vertexProject}/${this.vertexLocation})`,
+        });
+      } catch (error) {
+        if (this.apiClient && this.shouldFallbackToApiKey(error)) {
+          this.logger.warn(
+            `Vertex Lyria endpoint returned not found for ${this.vertexProject}/${this.vertexLocation}; retrying with GOOGLE_AI_API_KEY path`,
+          );
+          return this.generateWithClient({
+            client: this.apiClient,
+            prompt,
+            composedPrompt,
+            seed: actualSeed,
+            durationSeconds,
+            sourceLabel: 'Gemini API key fallback',
+          });
+        }
+        throw error;
+      }
+    }
+
+    if (this.apiClient) {
+      return this.generateWithClient({
+        client: this.apiClient,
+        prompt,
+        composedPrompt,
+        seed: actualSeed,
+        durationSeconds,
+        sourceLabel: 'Gemini API key',
+      });
+    }
+
+    throw new Error('Lyria generation is not configured');
+  }
+
+  private async generateWithClient(params: {
+    client: GoogleGenAI;
+    prompt: string;
+    composedPrompt: string;
+    seed: number;
+    durationSeconds: SupportedGenerationDuration;
+    sourceLabel: string;
+  }): Promise<LyriaGenerationResult> {
+    const { client, prompt, composedPrompt, seed, durationSeconds, sourceLabel } = params;
+
     this.logger.log(
-      `Generating audio with Lyria 3 Pro: duration=${durationSeconds}s prompt="${prompt.substring(0, 80)}..." seed=${actualSeed}`,
+      `Generating audio with ${sourceLabel}: duration=${durationSeconds}s prompt="${prompt.substring(0, 80)}..." seed=${seed}`,
     );
 
-    const response = await this.client.models.generateContent({
+    const response = await client.models.generateContent({
       model: 'lyria-3-pro-preview',
       contents: composedPrompt,
       config: {
@@ -108,19 +168,56 @@ export class LyriaClient {
     }
 
     this.logger.log(
-      `Generated ${audioBytes.length} bytes of ${mimeType || 'audio'} via Lyria 3 Pro (${durationSeconds}s target, ${lyrics.length} text parts)`,
+      `Generated ${audioBytes.length} bytes of ${mimeType || 'audio'} via ${sourceLabel} (${durationSeconds}s target, ${lyrics.length} text parts)`,
     );
 
     return {
       audioBytes,
       mimeType: mimeType || this.detectAudioMimeType(audioBytes),
       synthIdPresent: true, // Lyria always embeds SynthID
-      seed: actualSeed,
+      seed,
       durationSeconds,
       sampleRate: 44_100,
       provider: 'lyria-3-pro-preview',
       lyrics,
     };
+  }
+
+  private shouldFallbackToApiKey(error: unknown): boolean {
+    const stack: unknown[] = [error];
+    const strings: string[] = [];
+
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (!current) continue;
+
+      if (typeof current === 'string') {
+        strings.push(current);
+        continue;
+      }
+
+      if (typeof current === 'number') {
+        strings.push(String(current));
+        continue;
+      }
+
+      if (typeof current !== 'object') continue;
+
+      const record = current as Record<string, unknown>;
+      if (typeof record.code === 'number' && record.code === 404) {
+        return true;
+      }
+      if (typeof record.status === 'number' && record.status === 404) {
+        return true;
+      }
+
+      for (const value of Object.values(record)) {
+        stack.push(value);
+      }
+    }
+
+    const flattened = strings.join(' ').toUpperCase();
+    return flattened.includes('404') || flattened.includes('NOT_FOUND');
   }
 
   private buildPrompt(
