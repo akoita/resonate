@@ -27,8 +27,12 @@ test.describe("Catalog & Home Page", () => {
 
     test("HOME-03: Resume Playing section exists", async ({ page }) => {
         await page.goto("/");
+        // `.first()` guards against StrictMode-in-dev / hydration-window
+        // double-render: Playwright occasionally sees two h3s in the DOM
+        // before the pre-hydrate copy is replaced. The visible semantic
+        // heading is what we care about.
         await expect(
-            page.locator(".ng-section-title").filter({ hasText: "Resume Playing" }),
+            page.getByRole("heading", { name: "Resume Playing" }).first(),
         ).toBeVisible();
     });
 
@@ -42,7 +46,7 @@ test.describe("Catalog & Home Page", () => {
     test("HOME-05: Upcoming Live Events section exists", async ({ page }) => {
         await page.goto("/");
         await expect(
-            page.locator(".ng-section-title").filter({ hasText: "Upcoming Live Events" }),
+            page.getByRole("heading", { name: "Upcoming Live Events" }).first(),
         ).toBeVisible();
     });
 
@@ -55,7 +59,7 @@ test.describe("Catalog & Home Page", () => {
     test("HOME-07: Trending Stems section exists", async ({ page }) => {
         await page.goto("/");
         await expect(
-            page.locator(".ng-section-title").filter({ hasText: "Trending Stems" }),
+            page.getByRole("heading", { name: "Trending Stems" }).first(),
         ).toBeVisible();
     });
 

@@ -60,8 +60,12 @@ test.describe("Marketplace", () => {
         await page.goto("/marketplace");
         await expect(page.getByText("Vocals Stem")).toBeVisible({ timeout: 15000 });
 
-        // Sort by Price ↑ — the real backend will re-order
-        const sortSelect = page.getByTestId("marketplace-sort");
+        // Sort by Price ↑ — the real backend will re-order.
+        // `.first()` is a Playwright strict-mode guard: during the
+        // hydration window the select can briefly exist twice in the
+        // DOM (SSR copy + client copy), so we target the first
+        // semantic instance.
+        const sortSelect = page.getByTestId("marketplace-sort").first();
         await sortSelect.selectOption("price_asc");
 
         // Both listings should still appear (just in a different order)
