@@ -47,6 +47,16 @@ const PRIMARY_ITEMS = [
     )
   },
   {
+    name: "Shows",
+    href: "/shows",
+    badge: "NEW" as const,
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 10h18" /><path d="M7 10V4" /><path d="M17 10V4" /><rect x="3" y="4" width="18" height="16" rx="2" />
+      </svg>
+    )
+  },
+  {
     name: "Marketplace",
     href: "/marketplace",
     icon: (
@@ -214,6 +224,7 @@ export default function Sidebar() {
       <nav className="sidebar-nav primary">
         {PRIMARY_ITEMS.map((item) => {
           const isActive = pathname === item.href;
+          const badge = "badge" in item ? item.badge : undefined;
           return (
             <Link
               key={item.href}
@@ -222,6 +233,7 @@ export default function Sidebar() {
             >
               <span className="link-icon">{item.icon}</span>
               <span className="link-text">{item.name}</span>
+              {badge ? <span className="sidebar-link__new">{badge}</span> : null}
               {isActive && <div className="active-pill" />}
             </Link>
           );

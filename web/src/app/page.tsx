@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card } from "../components/ui/Card";
@@ -11,6 +11,13 @@ import { HeroCarousel } from "../components/home/HeroCarousel";
 import { FeaturedStems } from "../components/home/FeaturedStems";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
 import { useToast } from "../components/ui/Toast";
+import { CampaignHero } from "../components/shows/CampaignHero";
+import { CampaignCard } from "../components/shows/CampaignCard";
+import {
+  getFeaturedCampaignSync,
+  listCampaignsSync,
+} from "../lib/shows";
+import { FALLBACK_RELEASES } from "../lib/fallbackReleases";
 
 export default function Home() {
   const router = useRouter();
@@ -59,21 +66,65 @@ export default function Home() {
   }, [token, status]);
 
 
-  const quickAccessReleases = releases.slice(0, 6);
-  const newReleases = releases.slice(1, 9);
+  // When the catalog API is empty (fresh staging, backend blip) the home
+  // would otherwise render a half-built skeleton forever. Fall back to a
+  // small curated set so the page always looks finished per
+  // speedrun_sr007/04_mvp_scope.md (line 71-76).
+  const displayReleases = useMemo<Release[]>(
+    () => (!loading && releases.length === 0 ? FALLBACK_RELEASES : releases),
+    [releases, loading],
+  );
+
+  const quickAccessReleases = displayReleases.slice(0, 6);
+  const newReleases = displayReleases.slice(1, 9);
+
+  const featuredCampaign = getFeaturedCampaignSync();
+  const allCampaigns = listCampaignsSync();
 
   return (
     <main className="home-container">
       <div className="mesh-gradient-bg" />
 
-      {/* 1. Master Stage Hero Carousel */}
-      {releases.length > 0 && (
-        <HeroCarousel releases={releases.slice(0, 3)} />
+      {/* 1. Resonate Shows — fan-funded booking wedge (primary CTA). */}
+      <section className="shows-surface shows-home-hero fade-in-up">
+        <CampaignHero campaign={featuredCampaign} />
+      </section>
+
+      {/* 2. Active campaigns grid — three cards on the same amber surface. */}
+      <section className="shows-surface shows-home-section fade-in-up" style={{ animationDelay: '0.1s' }}>
+        <header className="shows-home-section__header">
+          <span className="shows-home-section__kicker">Active campaigns</span>
+          <h2 className="shows-home-section__title">Fans bring the show.</h2>
+          <p className="shows-home-section__sub">
+            Pick an artist and a city. If enough fans commit, the show gets
+            booked. If not, every pledge is refunded automatically — enforced
+            by code, not a company.
+          </p>
+        </header>
+        <div className="campaign-grid">
+          {allCampaigns.map((c) => (
+            <CampaignCard key={c.id} campaign={c} />
+          ))}
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <Link href="/shows" className="view-all-link">
+            Browse all campaigns →
+          </Link>
+        </div>
+      </section>
+
+      {/* 3. Discover new music — demoted release carousel (secondary). */}
+      {displayReleases.length > 0 && (
+        <HeroCarousel
+          releases={displayReleases.slice(0, 3)}
+          autoAdvanceMs={12000}
+          variant="secondary"
+        />
       )}
 
-      {/* 2. Featured Stems — the hero asset */}
-      {!loading && releases.length > 0 && (
-        <FeaturedStems releases={releases} />
+      {/* 4. Featured Stems — the hero asset */}
+      {displayReleases.length > 0 && (
+        <FeaturedStems releases={displayReleases} />
       )}
 
       {/* 3. Quick Access (Spotify Style but Glass) */}
@@ -101,7 +152,7 @@ export default function Home() {
           <Link href="/library" className="view-all-link">View all</Link>
         </div>
 
-        {loading ? (
+        {loading && releases.length === 0 ? (
           <div className="loading-shimmer-container">
             <div className="shimmer-card" />
             <div className="shimmer-card" />

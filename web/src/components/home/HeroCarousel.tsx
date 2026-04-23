@@ -6,13 +6,17 @@ import { ReleaseHero } from "./ReleaseHero";
 
 interface HeroCarouselProps {
     releases: Release[];
+    /** Auto-advance interval in ms. Pass `0` to disable. Default 7000. */
+    autoAdvanceMs?: number;
+    /** `"primary"` keeps the original tall hero; `"secondary"` shrinks the track min-height ~35% so the carousel reads as a supporting surface. */
+    variant?: "primary" | "secondary";
 }
 
 /**
  * Hero banner carousel — cycles through the latest releases
  * with smooth crossfade transitions, auto-advance, and dot indicators.
  */
-export function HeroCarousel({ releases }: HeroCarouselProps) {
+export function HeroCarousel({ releases, autoAdvanceMs = 7000, variant = "primary" }: HeroCarouselProps) {
     const [activeIndex, setActiveIndex] = useState(0);
     const autoRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -25,20 +29,26 @@ export function HeroCarousel({ releases }: HeroCarouselProps) {
 
     const next = useCallback(() => goTo(activeIndex + 1), [activeIndex, goTo]);
 
-    // Auto-advance every 7s
+    // Auto-advance (default 7s; callers can slow it down — e.g. the Shows
+    // wedge home page passes 12s so the release hero doesn't visually
+    // compete with the campaign hero's live countdown).
     useEffect(() => {
-        autoRef.current = setInterval(next, 7000);
+        if (autoAdvanceMs <= 0) return;
+        autoRef.current = setInterval(next, autoAdvanceMs);
         return () => { if (autoRef.current) clearInterval(autoRef.current); };
-    }, [next]);
+    }, [next, autoAdvanceMs]);
 
     const pause = () => { if (autoRef.current) clearInterval(autoRef.current); };
-    const resume = () => { pause(); autoRef.current = setInterval(next, 7000); };
+    const resume = () => {
+        pause();
+        if (autoAdvanceMs > 0) autoRef.current = setInterval(next, autoAdvanceMs);
+    };
 
     if (count === 0) return null;
 
     return (
         <section
-            className="hero-carousel fade-in-up"
+            className={`hero-carousel fade-in-up hero-carousel--${variant}`}
             onMouseEnter={pause}
             onMouseLeave={resume}
         >
@@ -101,6 +111,10 @@ export function HeroCarousel({ releases }: HeroCarouselProps) {
                     position: relative;
                     width: 100%;
                     min-height: 520px;
+                }
+
+                .hero-carousel--secondary .hero-carousel-track {
+                    min-height: 340px;
                 }
 
                 .hero-carousel-slide {
