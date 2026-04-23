@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
+import { GoogleAuth } from 'google-auth-library';
 import { SupportedGenerationDuration } from './generation.dto';
 
 export interface LyriaGenerationResult {
@@ -10,7 +11,7 @@ export interface LyriaGenerationResult {
   seed: number;
   durationSeconds: number;
   sampleRate: number;
-  provider: 'lyria-3-pro-preview';
+  provider: 'lyria-002' | 'lyria-3-pro-preview';
   lyrics: string[];
 }
 
@@ -33,36 +34,27 @@ export interface LyriaGenerationParams {
 @Injectable()
 export class LyriaClient {
   private readonly logger = new Logger(LyriaClient.name);
-  private readonly vertexClient: GoogleGenAI | null;
   private readonly apiClient: GoogleGenAI | null;
   private readonly vertexProject: string;
   private readonly vertexLocation: string;
+  private readonly vertexAuth: GoogleAuth | null;
 
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('GOOGLE_AI_API_KEY', '');
     this.vertexProject = this.configService.get<string>('LYRIA_PROJECT_ID', '');
     this.vertexLocation = this.configService.get<string>('LYRIA_LOCATION', '');
 
-    this.vertexClient =
+    this.vertexAuth =
       this.vertexProject && this.vertexLocation
-        ? new GoogleGenAI({
-            vertexai: true,
-            project: this.vertexProject,
-            location: this.vertexLocation,
-            apiVersion: 'v1beta',
-          })
+        ? new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] })
         : null;
     this.apiClient = apiKey ? new GoogleGenAI({ apiKey, apiVersion: 'v1beta' }) : null;
 
-    if (this.vertexClient) {
+    if (this.vertexAuth) {
       this.logger.log(`Configured Lyria client for Vertex AI (${this.vertexProject}/${this.vertexLocation}) via ADC`);
-    }
-
-    if (this.apiClient) {
+    } else if (this.apiClient) {
       this.logger.warn('Configured Lyria client with GOOGLE_AI_API_KEY fallback; Vertex AI ADC not enabled');
-    }
-
-    if (!this.vertexClient && !this.apiClient) {
+    } else {
       this.logger.warn('Lyria client has no Vertex AI config or GOOGLE_AI_API_KEY fallback');
     }
   }
@@ -79,65 +71,42 @@ export class LyriaClient {
   async generate(params: LyriaGenerationParams): Promise<LyriaGenerationResult> {
     const { prompt, negativePrompt, seed, durationSeconds = 30 } = params;
     const actualSeed = seed ?? Math.floor(Math.random() * 2147483647);
-    const composedPrompt = this.buildPrompt(prompt, durationSeconds, negativePrompt);
-
-    if (this.vertexClient) {
-      try {
-        return await this.generateWithClient({
-          client: this.vertexClient,
-          prompt,
-          composedPrompt,
-          seed: actualSeed,
-          durationSeconds,
-          sourceLabel: `Vertex AI (${this.vertexProject}/${this.vertexLocation})`,
-        });
-      } catch (error) {
-        if (this.apiClient && this.shouldFallbackToApiKey(error)) {
-          this.logger.warn(
-            `Vertex Lyria endpoint returned not found for ${this.vertexProject}/${this.vertexLocation}; retrying with GOOGLE_AI_API_KEY path`,
-          );
-          return this.generateWithClient({
-            client: this.apiClient,
-            prompt,
-            composedPrompt,
-            seed: actualSeed,
-            durationSeconds,
-            sourceLabel: 'Gemini API key fallback',
-          });
-        }
-        throw error;
-      }
+    if (durationSeconds === 30 && this.vertexAuth) {
+      return this.generateWithVertexLyria2({ prompt, negativePrompt, seed: actualSeed });
     }
 
     if (this.apiClient) {
-      return this.generateWithClient({
-        client: this.apiClient,
+      return this.generateWithGeminiLyria3({
         prompt,
-        composedPrompt,
+        negativePrompt,
         seed: actualSeed,
         durationSeconds,
-        sourceLabel: 'Gemini API key',
       });
+    }
+
+    if (this.vertexAuth) {
+      throw new Error(
+        'Longer-than-30-second Lyria generation requires the Gemini API key path; Vertex ADC currently supports 30-second lyria-002 clips only.',
+      );
     }
 
     throw new Error('Lyria generation is not configured');
   }
 
-  private async generateWithClient(params: {
-    client: GoogleGenAI;
+  private async generateWithGeminiLyria3(params: {
     prompt: string;
-    composedPrompt: string;
+    negativePrompt?: string;
     seed: number;
     durationSeconds: SupportedGenerationDuration;
-    sourceLabel: string;
   }): Promise<LyriaGenerationResult> {
-    const { client, prompt, composedPrompt, seed, durationSeconds, sourceLabel } = params;
+    const { prompt, negativePrompt, seed, durationSeconds } = params;
+    const composedPrompt = this.buildPrompt(prompt, durationSeconds, negativePrompt);
 
     this.logger.log(
-      `Generating audio with ${sourceLabel}: duration=${durationSeconds}s prompt="${prompt.substring(0, 80)}..." seed=${seed}`,
+      `Generating audio with Lyria 3 Pro: duration=${durationSeconds}s prompt="${prompt.substring(0, 80)}..." seed=${seed}`,
     );
 
-    const response = await client.models.generateContent({
+    const response = await this.apiClient!.models.generateContent({
       model: 'lyria-3-pro-preview',
       contents: composedPrompt,
       config: {
@@ -168,7 +137,7 @@ export class LyriaClient {
     }
 
     this.logger.log(
-      `Generated ${audioBytes.length} bytes of ${mimeType || 'audio'} via ${sourceLabel} (${durationSeconds}s target, ${lyrics.length} text parts)`,
+      `Generated ${audioBytes.length} bytes of ${mimeType || 'audio'} via Lyria 3 Pro (${durationSeconds}s target, ${lyrics.length} text parts)`,
     );
 
     return {
@@ -183,41 +152,80 @@ export class LyriaClient {
     };
   }
 
-  private shouldFallbackToApiKey(error: unknown): boolean {
-    const stack: unknown[] = [error];
-    const strings: string[] = [];
+  private async generateWithVertexLyria2(params: {
+    prompt: string;
+    negativePrompt?: string;
+    seed: number;
+  }): Promise<LyriaGenerationResult> {
+    const { prompt, negativePrompt, seed } = params;
+    this.logger.log(
+      `Generating audio with Vertex Lyria 2: duration=30s prompt="${prompt.substring(0, 80)}..." seed=${seed}`,
+    );
 
-    while (stack.length > 0) {
-      const current = stack.pop();
-      if (!current) continue;
-
-      if (typeof current === 'string') {
-        strings.push(current);
-        continue;
-      }
-
-      if (typeof current === 'number') {
-        strings.push(String(current));
-        continue;
-      }
-
-      if (typeof current !== 'object') continue;
-
-      const record = current as Record<string, unknown>;
-      if (typeof record.code === 'number' && record.code === 404) {
-        return true;
-      }
-      if (typeof record.status === 'number' && record.status === 404) {
-        return true;
-      }
-
-      for (const value of Object.values(record)) {
-        stack.push(value);
-      }
+    const token = await this.vertexAuth!.getAccessToken();
+    if (!token) {
+      throw new Error('Vertex AI ADC did not provide an access token for Lyria generation');
     }
 
-    const flattened = strings.join(' ').toUpperCase();
-    return flattened.includes('404') || flattened.includes('NOT_FOUND');
+    const endpoint =
+      `https://${this.vertexLocation}-aiplatform.googleapis.com/v1/projects/${this.vertexProject}` +
+      `/locations/${this.vertexLocation}/publishers/google/models/lyria-002:predict`;
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        instances: [
+          {
+            prompt: prompt.trim(),
+            ...(negativePrompt?.trim() ? { negative_prompt: negativePrompt.trim() } : {}),
+            seed,
+          },
+        ],
+        parameters: {},
+      }),
+    });
+
+    if (!response.ok) {
+      let errorPayload: unknown = null;
+      try {
+        errorPayload = await response.json();
+      } catch {
+        errorPayload = await response.text();
+      }
+      throw new Error(
+        typeof errorPayload === 'string' && errorPayload
+          ? errorPayload
+          : JSON.stringify(errorPayload),
+      );
+    }
+
+    const payload = (await response.json()) as {
+      predictions?: Array<{ audioContent?: string; mimeType?: string }>;
+    };
+    const prediction = payload.predictions?.[0];
+    if (!prediction?.audioContent) {
+      throw new Error('Vertex Lyria 2 returned no audio data');
+    }
+
+    const audioBytes = Buffer.from(prediction.audioContent, 'base64');
+    const mimeType = prediction.mimeType || this.detectAudioMimeType(audioBytes);
+
+    this.logger.log(`Generated ${audioBytes.length} bytes of ${mimeType} via Vertex Lyria 2`);
+
+    return {
+      audioBytes,
+      mimeType,
+      synthIdPresent: true,
+      seed,
+      durationSeconds: 30,
+      sampleRate: 48_000,
+      provider: 'lyria-002',
+      lyrics: [],
+    };
   }
 
   private buildPrompt(
