@@ -2,31 +2,51 @@
 
 ## Executive Summary
 
-Reviewed the Pub/Sub Application Default Credentials hotfix on `fix/pubsub-adc-cloud-run-init`, focusing on backend credential detection, worker handoff initialization, and result-subscriber startup. No new Critical or High security findings were introduced by the modified files.
+Reviewed the backend MCP changes for issue #631. No Critical or High findings were identified in the new MCP module, catalog MCP search path, dependency declaration, or tests.
 
-## Scope Reviewed
+## Scope
 
-- `backend/src/modules/ingestion/pubsub-runtime.ts`
-- `backend/src/modules/ingestion/stem-pubsub.publisher.ts`
-- `backend/src/modules/ingestion/stem-result.subscriber.ts`
-- `backend/src/tests/pubsub-runtime.spec.ts`
-- `backend/src/tests/stem-result.subscriber.spec.ts`
-- `docs/smart-contracts/deployment.md`
+- `backend/src/modules/mcp/`
+- `backend/src/modules/catalog/catalog.service.ts`
+- `backend/src/modules/app.module.ts`
+- `backend/package.json`
+- `backend/package-lock.json`
+- MCP-focused tests under `backend/src/tests/`
 
-## Findings
+## Critical Findings
 
-### Informational
+None.
 
-#### SBPR-001: Pub/Sub auth detection now matches Cloud Run ADC expectations
+## High Findings
 
-**Files:** `backend/src/modules/ingestion/pubsub-runtime.ts`, `backend/src/modules/ingestion/stem-pubsub.publisher.ts`, `backend/src/modules/ingestion/stem-result.subscriber.ts`
+None.
 
-**Observation:** The hotfix removes the prior requirement for `GOOGLE_APPLICATION_CREDENTIALS` in production-like environments and accepts Application Default Credentials from the runtime, which is the expected Cloud Run auth model. The new helper still fails closed when neither the emulator nor ADC is available, so it reduces false negatives without weakening the backend startup guard.
+## Medium Findings
 
-**Recommendation:** Keep Pub/Sub, GCS, and any future Google service clients aligned on the same ADC detection pattern so staging and production credential paths do not drift again.
+None.
 
-## Notes
+## Low Findings
 
-- Targeted grep checks for hardcoded secrets, raw SQL, unsafe deserialization, and controller/input-validation patterns did not surface any new vulnerabilities in the touched backend files beyond the intentional `JSON.parse` on Pub/Sub payloads.
-- The new runtime helper does not introduce hardcoded credentials or project-specific production URLs.
-- Local verification completed with `npm run lint` in `backend/` and focused Jest coverage for `pubsub-runtime.spec.ts` and `stem-result.subscriber.spec.ts`.
+None.
+
+## Informational Notes
+
+- `GET /mcp` and `POST /mcp` are intentionally unauthenticated for PR 1 because the only exposed tool is read-only public catalog search.
+- `catalog.search` inputs are validated by the MCP SDK with Zod before the service query runs.
+- Public catalog results are filtered to `ready`/`published` releases and existing public rights routes.
+- Retained MCP sessions are bounded and expired to limit resource growth from abandoned unauthenticated sessions.
+- `licensable` is derived from active, unexpired stem listings with positive remaining amount; no payment proof or x402 settlement path is introduced in this PR.
+- Codex can connect to the same Streamable HTTP `/mcp` endpoint with `codex mcp add resonate-local --url http://localhost:3000/mcp`.
+- No secrets, private keys, API tokens, or environment-specific production URLs were added.
+
+## Commands Run
+
+```bash
+rg -n 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw' backend/src/
+rg -n 'JSON\.parse|eval\(' backend/src/
+rg -n '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/mcp backend/src/modules/catalog/catalog.service.ts backend/src/modules/app.module.ts
+rg -n '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/mcp backend/src/modules/catalog/catalog.service.ts
+rg -n 'dangerouslySetInnerHTML|innerHTML' web/src/
+rg -n 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
+```

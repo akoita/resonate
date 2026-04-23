@@ -23,6 +23,18 @@ const PUBLIC_RELEASE_ROUTES: UploadRightsRoute[] = [
   "TRUSTED_FAST_PATH",
 ];
 
+export type McpCatalogSearchItem = {
+  id: string;
+  title: string;
+  artist: string;
+  genre: string | null;
+  releaseDate: string | null;
+  artworkUrl: string | null;
+  trackCount: number;
+  licensable: boolean;
+  deeplink: string;
+};
+
 @Injectable()
 export class CatalogService implements OnModuleInit {
   private searchCache = new Map<
@@ -941,6 +953,162 @@ export class CatalogService implements OnModuleInit {
 
     this.searchCache.set(cacheKey, { items, cachedAt: Date.now() });
     return { items };
+  }
+
+  async searchMcpCatalog(
+    query: string,
+    limit = 10,
+  ): Promise<{ items: McpCatalogSearchItem[] }> {
+    const trimmedQuery = query.trim();
+    const cappedLimit = Math.min(Math.max(limit, 1), 25);
+    const now = new Date();
+
+    const releases = await prisma.release.findMany({
+      where: {
+        status: { in: ["ready", "published"] },
+        OR: [
+          { rightsRoute: null },
+          { rightsRoute: { in: PUBLIC_RELEASE_ROUTES } },
+        ],
+        ...(trimmedQuery
+          ? {
+              AND: [
+                {
+                  OR: [
+                    { title: { contains: trimmedQuery, mode: "insensitive" } },
+                    {
+                      primaryArtist: {
+                        contains: trimmedQuery,
+                        mode: "insensitive",
+                      },
+                    },
+                    {
+                      featuredArtists: {
+                        contains: trimmedQuery,
+                        mode: "insensitive",
+                      },
+                    },
+                    {
+                      genre: {
+                        contains: trimmedQuery,
+                        mode: "insensitive",
+                      },
+                    },
+                    {
+                      tracks: {
+                        some: {
+                          title: {
+                            contains: trimmedQuery,
+                            mode: "insensitive",
+                          },
+                        },
+                      },
+                    },
+                    {
+                      tracks: {
+                        some: {
+                          artist: {
+                            contains: trimmedQuery,
+                            mode: "insensitive",
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        title: true,
+        primaryArtist: true,
+        genre: true,
+        releaseDate: true,
+        artworkUrl: true,
+        artworkMimeType: true,
+        artist: {
+          select: { displayName: true },
+        },
+        tracks: {
+          select: {
+            id: true,
+            stems: {
+              select: {
+                listings: {
+                  where: {
+                    status: "active",
+                    amount: { gt: 0n },
+                    expiresAt: { gt: now },
+                  },
+                  select: { id: true },
+                  take: 1,
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: cappedLimit,
+    });
+
+    return {
+      items: releases.map((release) => ({
+        id: release.id,
+        title: release.title,
+        artist:
+          release.primaryArtist ||
+          release.artist?.displayName ||
+          "Unknown Artist",
+        genre: release.genre,
+        releaseDate: release.releaseDate?.toISOString() ?? null,
+        artworkUrl: this.buildMcpArtworkUrl(release),
+        trackCount: release.tracks.length,
+        licensable: release.tracks.some((track) =>
+          track.stems.some((stem) => stem.listings.length > 0),
+        ),
+        deeplink: this.buildMcpReleaseDeeplink(release.id),
+      })),
+    };
+  }
+
+  private buildMcpArtworkUrl(release: {
+    id: string;
+    artworkUrl: string | null;
+    artworkMimeType: string | null;
+  }): string | null {
+    if (release.artworkUrl) {
+      return this.toAbsoluteUrl(
+        release.artworkUrl,
+        process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3000}`,
+      );
+    }
+
+    if (!release.artworkMimeType) {
+      return null;
+    }
+
+    return this.toAbsoluteUrl(
+      `/catalog/releases/${encodeURIComponent(release.id)}/artwork`,
+      process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3000}`,
+    );
+  }
+
+  private buildMcpReleaseDeeplink(releaseId: string): string {
+    return this.toAbsoluteUrl(
+      `/release/${encodeURIComponent(releaseId)}`,
+      process.env.FRONTEND_URL || "http://localhost:3001",
+    );
+  }
+
+  private toAbsoluteUrl(pathOrUrl: string, baseUrl: string): string {
+    try {
+      return new URL(pathOrUrl, baseUrl).toString();
+    } catch {
+      return pathOrUrl;
+    }
   }
 
   async getReleaseArtwork(releaseId: string) {
