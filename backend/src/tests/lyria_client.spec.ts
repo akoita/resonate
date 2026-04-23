@@ -116,7 +116,7 @@ describe('LyriaClient', () => {
       json: async () => ({
         predictions: [
           {
-            audioContent: Buffer.from('fake-wav-data').toString('base64'),
+            bytesBase64Encoded: Buffer.from('fake-wav-data').toString('base64'),
             mimeType: 'audio/wav',
           },
         ],
