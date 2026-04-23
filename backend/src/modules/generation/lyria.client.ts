@@ -204,14 +204,19 @@ export class LyriaClient {
     }
 
     const payload = (await response.json()) as {
-      predictions?: Array<{ audioContent?: string; mimeType?: string }>;
+      predictions?: Array<{
+        audioContent?: string;
+        bytesBase64Encoded?: string;
+        mimeType?: string;
+      }>;
     };
     const prediction = payload.predictions?.[0];
-    if (!prediction?.audioContent) {
+    const encodedAudio = prediction?.audioContent || prediction?.bytesBase64Encoded;
+    if (!encodedAudio) {
       throw new Error('Vertex Lyria 2 returned no audio data');
     }
 
-    const audioBytes = Buffer.from(prediction.audioContent, 'base64');
+    const audioBytes = Buffer.from(encodedAudio, 'base64');
     const mimeType = prediction.mimeType || this.detectAudioMimeType(audioBytes);
 
     this.logger.log(`Generated ${audioBytes.length} bytes of ${mimeType} via Vertex Lyria 2`);
