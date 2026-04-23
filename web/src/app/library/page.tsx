@@ -104,7 +104,7 @@ export default function LibraryPage() {
     const [aiAnalytics, setAiAnalytics] = useState<GenerationAnalytics>({
         totalGenerations: 0,
         totalCost: 0,
-        rateLimit: { remaining: 5, limit: 5, resetsAt: null },
+        rateLimit: { remaining: 50, limit: 50, resetsAt: null },
     });
 
     // Unified tracks (Local + Owned Stems), deduplicated by ID
