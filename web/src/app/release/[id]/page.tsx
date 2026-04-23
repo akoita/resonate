@@ -34,6 +34,7 @@ import { useAttestAndStake, type BatchStemItem } from "../../../hooks/useContrac
 import { useTrustTier } from "../../../hooks/useTrustTier";
 import { TrackActionMenu } from "../../../components/ui/TrackActionMenu";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
+import { ErrorDetailsDialog } from "../../../components/ui/ErrorDetailsDialog";
 import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressUpdate, type ReleaseRightsRequestUpdate } from "../../../hooks/useWebSockets";
 import { StemPricingPanel } from "../../../components/release/StemPricingPanel";
 import { LicensingInfoSection } from "../../../components/release/LicensingInfoSection";
@@ -233,6 +234,7 @@ export default function ReleaseDetails() {
   const [showRightsUpgradeModal, setShowRightsUpgradeModal] = useState(false);
   const [releaseProtection, setReleaseProtection] = useState<ReleaseContentProtectionData | null>(null);
   const [rightsUpgradeRequest, setRightsUpgradeRequest] = useState<ReleaseRightsUpgradeRequestRecord | null>(null);
+  const [errorDetails, setErrorDetails] = useState<{ title: string; message: string } | null>(null);
   const shouldWaitForPendingRelease = searchParams.get("pending") === "1";
   const rightsTone = getRightsTone(release?.rightsRoute);
   const rightsRouteLabel = formatRightsLabel(release?.rightsRoute) || "Not Evaluated";
@@ -1517,63 +1519,82 @@ export default function ReleaseDetails() {
                     </td>
                     <td className="track-status-cell">
                       {/* Processing status badge */}
-                      {(track.processingStatus && track.processingStatus !== "complete") || recentlyCompletedTracks.has(track.id) ? (
-                        <span
-                          className={`processing-badge processing-${recentlyCompletedTracks.has(track.id) ? 'complete' : track.processingStatus}`}
-                          title={track.processingStatus === "failed" ? (track.processingError || "Processing failed") : undefined}
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            verticalAlign: "middle",
-                            gap: 4,
-                            padding: "2px 8px",
-                            borderRadius: 12,
-                            fontSize: 11,
-                            fontWeight: 500,
-                            background:
-                              recentlyCompletedTracks.has(track.id) ? "#22c55e20" :
-                                track.processingStatus === "pending" ? "#3b82f620" :
-                                  track.processingStatus === "separating" ? "#eab30820" :
-                                    track.processingStatus === "encrypting" ? "#f9731620" :
-                                      track.processingStatus === "storing" ? "#14b8a620" :
-                                        track.processingStatus === "failed" ? "#ef444420" : "transparent",
-                            color:
-                              recentlyCompletedTracks.has(track.id) ? "#4ade80" :
-                                track.processingStatus === "pending" ? "#60a5fa" :
-                                  track.processingStatus === "separating" ? "#fbbf24" :
-                                    track.processingStatus === "encrypting" ? "#fb923c" :
-                                      track.processingStatus === "storing" ? "#2dd4bf" :
-                                        track.processingStatus === "failed" ? "#f87171" : "#a1a1aa",
-                            transition: "all 0.3s ease",
-                          }}
-                        >
-                          {recentlyCompletedTracks.has(track.id) && "✅ Complete"}
-                          {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "pending" && "🔵 Pending"}
-                          {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "separating" && (
-                            trackProgress[track.id] != null
-                              ? `🟡 Separating ${trackProgress[track.id]}%`
-                              : "🟡 Separating..."
-                          )}
-                          {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "encrypting" && "🟠 Encrypting..."}
-                          {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "storing" && "🟢 Storing..."}
-                          {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "failed" && "🔴 Failed"}
-                        </span>
-                      ) : null}
-                      {track.processingStatus === "failed" && track.processingError && (
-                        <div
-                          style={{
-                            marginTop: 4,
-                            fontSize: 11,
-                            lineHeight: 1.35,
-                            color: "rgba(248, 113, 113, 0.9)",
-                            maxWidth: 260,
-                            whiteSpace: "normal",
-                            wordBreak: "break-word",
-                          }}
-                        >
-                          {track.processingError}
-                        </div>
-                      )}
+                      {(track.processingStatus && track.processingStatus !== "complete") || recentlyCompletedTracks.has(track.id) ? (() => {
+                        const isFailed = track.processingStatus === "failed";
+                        const hasDetails = isFailed && !!track.processingError;
+                        const commonStyle: React.CSSProperties = {
+                          display: "inline-flex",
+                          alignItems: "center",
+                          verticalAlign: "middle",
+                          gap: 4,
+                          padding: "2px 8px",
+                          borderRadius: 12,
+                          fontSize: 11,
+                          fontWeight: 500,
+                          background:
+                            recentlyCompletedTracks.has(track.id) ? "#22c55e20" :
+                              track.processingStatus === "pending" ? "#3b82f620" :
+                                track.processingStatus === "separating" ? "#eab30820" :
+                                  track.processingStatus === "encrypting" ? "#f9731620" :
+                                    track.processingStatus === "storing" ? "#14b8a620" :
+                                      isFailed ? "#ef444420" : "transparent",
+                          color:
+                            recentlyCompletedTracks.has(track.id) ? "#4ade80" :
+                              track.processingStatus === "pending" ? "#60a5fa" :
+                                track.processingStatus === "separating" ? "#fbbf24" :
+                                  track.processingStatus === "encrypting" ? "#fb923c" :
+                                    track.processingStatus === "storing" ? "#2dd4bf" :
+                                      isFailed ? "#f87171" : "#a1a1aa",
+                          transition: "all 0.3s ease",
+                        };
+                        const label = (
+                          <>
+                            {recentlyCompletedTracks.has(track.id) && "✅ Complete"}
+                            {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "pending" && "🔵 Pending"}
+                            {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "separating" && (
+                              trackProgress[track.id] != null
+                                ? `🟡 Separating ${trackProgress[track.id]}%`
+                                : "🟡 Separating..."
+                            )}
+                            {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "encrypting" && "🟠 Encrypting..."}
+                            {!recentlyCompletedTracks.has(track.id) && track.processingStatus === "storing" && "🟢 Storing..."}
+                            {!recentlyCompletedTracks.has(track.id) && isFailed && "🔴 Failed"}
+                          </>
+                        );
+                        if (hasDetails) {
+                          return (
+                            <button
+                              type="button"
+                              className={`processing-badge processing-failed`}
+                              title="Click to view the full error"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setErrorDetails({
+                                  title: `Processing error — ${track.title || "track"}`,
+                                  message: track.processingError as string,
+                                });
+                              }}
+                              style={{
+                                ...commonStyle,
+                                border: "1px solid rgba(239, 68, 68, 0.35)",
+                                cursor: "pointer",
+                                fontFamily: "inherit",
+                              }}
+                            >
+                              {label}
+                              <span aria-hidden style={{ opacity: 0.7, marginLeft: 2 }}>›</span>
+                            </button>
+                          );
+                        }
+                        return (
+                          <span
+                            className={`processing-badge processing-${recentlyCompletedTracks.has(track.id) ? 'complete' : track.processingStatus}`}
+                            style={commonStyle}
+                          >
+                            {label}
+                          </span>
+                        );
+                      })() : null}
                     </td>
                     <td
                       className="track-artist clickable"
@@ -2938,6 +2959,13 @@ export default function ReleaseDetails() {
       confirmLabel={confirmDialog?.confirmLabel ?? "Confirm"}
       onConfirm={confirmDialog?.onConfirm ?? (() => {})}
       onCancel={() => setConfirmDialog(null)}
+    />
+
+    <ErrorDetailsDialog
+      isOpen={!!errorDetails}
+      title={errorDetails?.title ?? ""}
+      message={errorDetails?.message ?? ""}
+      onClose={() => setErrorDetails(null)}
     />
     </>
   );
