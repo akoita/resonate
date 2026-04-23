@@ -1,7 +1,8 @@
 /**
  * LyriaClient unit tests
  *
- * Covers the Lyria 3 Pro generateContent path used by /create.
+ * Covers the Lyria 3 Pro generateContent path used by /create, including
+ * Vertex-first auth with Gemini API-key fallback when Vertex returns Not Found.
  */
 
 const mockGenerateContent = jest.fn();
@@ -46,9 +47,20 @@ function buildResponse(
 
 describe('LyriaClient', () => {
   let client: LyriaClient;
+  const setConfig = (map: Record<string, any>) => {
+    mockConfigService.get = jest.fn().mockImplementation((key: string, defaultVal?: any) => {
+      const base: Record<string, any> = {
+        GOOGLE_AI_API_KEY: 'test-api-key-123',
+        LYRIA_PROJECT_ID: '',
+        LYRIA_LOCATION: '',
+      };
+      return (map[key] ?? base[key] ?? defaultVal ?? '');
+    });
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    setConfig({});
     client = new LyriaClient(mockConfigService as any);
     mockGenerateContent.mockResolvedValue(
       buildResponse([
@@ -66,13 +78,9 @@ describe('LyriaClient', () => {
   });
 
   it('prefers Vertex AI ADC when LYRIA project and location are configured', () => {
-    mockConfigService.get = jest.fn().mockImplementation((key: string, defaultVal?: any) => {
-      const map: Record<string, any> = {
-        GOOGLE_AI_API_KEY: 'test-api-key-123',
-        LYRIA_PROJECT_ID: 'resonate-vertex',
-        LYRIA_LOCATION: 'us-central1',
-      };
-      return map[key] ?? defaultVal ?? '';
+    setConfig({
+      LYRIA_PROJECT_ID: 'resonate-vertex',
+      LYRIA_LOCATION: 'us-central1',
     });
 
     new LyriaClient(mockConfigService as any);
@@ -83,6 +91,34 @@ describe('LyriaClient', () => {
       location: 'us-central1',
       apiVersion: 'v1beta',
     });
+    expect(GoogleGenAI).toHaveBeenCalledWith({
+      apiKey: 'test-api-key-123',
+      apiVersion: 'v1beta',
+    });
+  });
+
+  it('falls back to the Gemini API key path when Vertex returns not found', async () => {
+    setConfig({
+      LYRIA_PROJECT_ID: 'resonate-vertex',
+      LYRIA_LOCATION: 'us-central1',
+    });
+
+    mockGenerateContent
+      .mockRejectedValueOnce({ error: { code: 404, status: 'NOT_FOUND' } })
+      .mockResolvedValueOnce(
+        buildResponse([
+          { inlineData: { data: Buffer.from('fallback-audio').toString('base64'), mimeType: 'audio/mpeg' } },
+        ]),
+      );
+
+    client = new LyriaClient(mockConfigService as any);
+    const result = await client.generate({ prompt: 'vertex groove', durationSeconds: 30, seed: 123 });
+
+    expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+    expect(result.provider).toBe('lyria-3-pro-preview');
+    expect(result.durationSeconds).toBe(30);
+    expect(result.sampleRate).toBe(44_100);
+    expect(result.mimeType).toBe('audio/mpeg');
   });
 
   it('uses lyria-3-pro-preview with audio response modalities only', async () => {
@@ -102,6 +138,38 @@ describe('LyriaClient', () => {
     expect(result.durationSeconds).toBe(30);
     expect(result.sampleRate).toBe(44_100);
     expect(result.lyrics).toEqual(['[Intro]\nInstrumental only']);
+  });
+
+  it('uses Gemini Lyria 3 for longer durations even when Vertex config is present', async () => {
+    setConfig({
+      LYRIA_PROJECT_ID: 'resonate-vertex',
+      LYRIA_LOCATION: 'us-central1',
+    });
+
+    client = new LyriaClient(mockConfigService as any);
+    await client.generate({ prompt: 'cinematic longform', durationSeconds: 60 });
+
+    expect(mockGenerateContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'lyria-3-pro-preview',
+        contents: 'Create a 1-minute track. cinematic longform',
+      }),
+    );
+  });
+
+  it('does not fall back when Vertex fails with a non-not-found error', async () => {
+    setConfig({
+      LYRIA_PROJECT_ID: 'resonate-vertex',
+      LYRIA_LOCATION: 'us-central1',
+    });
+    mockGenerateContent.mockRejectedValueOnce({ error: { code: 429, status: 'RESOURCE_EXHAUSTED' } });
+
+    client = new LyriaClient(mockConfigService as any);
+
+    await expect(client.generate({ prompt: 'vertex quota fail', durationSeconds: 30 })).rejects.toEqual({
+      error: { code: 429, status: 'RESOURCE_EXHAUSTED' },
+    });
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to magic-byte audio mime detection when inlineData mimeType is missing', async () => {

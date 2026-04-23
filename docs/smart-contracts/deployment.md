@@ -203,6 +203,7 @@ Core app-side variables:
 
 Lyria auth modes:
 - Preferred for Cloud Run / GCE: set `LYRIA_PROJECT_ID` and `LYRIA_LOCATION` and let Application Default Credentials from the attached service account authenticate Vertex AI requests.
+- Keep `GOOGLE_AI_API_KEY` configured as a fallback while Vertex Lyria rollout is stabilizing; the backend will retry the Google AI Studio / Gemini API path if Vertex responds with a not-found error for the requested Lyria model.
 - Local / non-Vertex fallback: set `GOOGLE_AI_API_KEY` to use the Google AI Studio Gemini API path when ADC/Vertex is not available.
 
 Pub/Sub auth modes:
