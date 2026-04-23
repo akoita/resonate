@@ -19,6 +19,34 @@ interface RateLimitEntry {
 }
 
 /**
+ * Google GenAI SDK surfaces API errors by stringifying the full response body
+ * into Error.message, including provider URLs and quota metric names. Strip
+ * that for user-facing events so the /create page doesn't render raw JSON.
+ * The original message is still logged server-side for debugging.
+ */
+export function normalizeGenerationErrorMessage(error: unknown): string {
+  const raw = typeof error === 'string' ? error : (error as { message?: string } | null)?.message ?? '';
+  const jsonStart = raw.indexOf('{');
+  if (jsonStart !== -1) {
+    try {
+      const parsed = JSON.parse(raw.slice(jsonStart));
+      const status = parsed?.error?.status;
+      const code = parsed?.error?.code;
+      if (status === 'RESOURCE_EXHAUSTED' || code === 429) {
+        return 'Generation is temporarily rate-limited. Please try again in a few minutes.';
+      }
+      if (status === 'INVALID_ARGUMENT' || code === 400) {
+        return 'The prompt was rejected by the generation provider. Try rephrasing it.';
+      }
+      return 'Generation failed. Please try again.';
+    } catch {
+      // Not JSON — fall through to the raw message.
+    }
+  }
+  return raw || 'Generation failed. Please try again.';
+}
+
+/**
  * Appends a RIFF LIST INFO chunk to a standard WAV buffer,
  * and repairs any truncated chunk size declarations (e.g. from Lyria).
  */
@@ -286,7 +314,7 @@ export class GenerationService {
         occurredAt: new Date().toISOString(),
         jobId,
         userId,
-        error: error?.message || 'Unknown generation error',
+        error: normalizeGenerationErrorMessage(error),
       });
 
       throw error; // Let BullMQ handle retries
