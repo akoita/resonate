@@ -10,28 +10,18 @@ import { test, expect } from "@playwright/test";
 
 test.describe.configure({ mode: "serial", retries: 2 });
 
-test("home page leads with the Sennarin campaign hero and its CTA", async ({ page }) => {
+test("home hero features the Sennarin campaign and links to its detail page", async ({ page }) => {
   await page.goto("/");
   await page.waitForLoadState("domcontentloaded");
 
-  const hero = page.locator(".campaign-hero").first();
+  // Stitch-designed hero (amber/purple mesh, glass card).
+  const hero = page.locator(".ng-hero").first();
   await expect(hero).toBeVisible();
-
   await expect(hero.getByText("Sennarin in Paris")).toBeVisible();
-  await expect(hero.getByText(/Featured Show/i)).toBeVisible();
+  await expect(hero.getByText(/Featured Campaign/i)).toBeVisible();
 
-  // The progress bar has a valid aria progressbar exposed.
-  await expect(hero.getByRole("progressbar")).toBeVisible();
-
-  // Trust-signal ghost button points at Sepolia Etherscan.
-  const escrowLink = hero.getByRole("link", { name: /escrow contract/i });
-  await expect(escrowLink).toHaveAttribute(
-    "href",
-    /sepolia\.etherscan\.io\/address\/0x/,
-  );
-
-  // Primary CTA navigates to the detail page.
-  const cta = hero.getByRole("link", { name: /send your signal/i });
+  // Primary CTA navigates to the campaign detail page.
+  const cta = hero.getByRole("link", { name: /listen now/i });
   await expect(cta).toHaveAttribute("href", "/shows/sennarin-paris");
 });
 

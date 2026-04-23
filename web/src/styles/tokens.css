@@ -39,4 +39,74 @@
   --bp-xl: 1280px;
 
   --touch-target: 44px;
+
+  /*
+   * Next-Gen Music Platform design system (Stitch, Apr 2026).
+   * Deep-space dark canvas, purple primary, amber tertiary (Shows/live only).
+   * Used by the home page and any component built against the Stitch
+   * "Hyper-Fidelity Digital" aesthetic. Existing `--color-*` tokens above
+   * remain so the rest of the app (marketplace, library, etc.) doesn't
+   * break until it's migrated intentionally.
+   */
+  --ds-surface: #15121c;
+  --ds-surface-dim: #15121c;
+  --ds-surface-bright: #3c3743;
+  --ds-surface-lowest: #100c16;
+  --ds-surface-low: #1e1a24;
+  --ds-surface-mid: #221e28;
+  --ds-surface-high: #2c2833;
+  --ds-surface-highest: #37333e;
+  --ds-on-surface: #e8dfef;
+  --ds-on-surface-variant: #cdc2d8;
+  --ds-outline: #968da1;
+  --ds-outline-variant: #4b4455;
+  --ds-primary: #d4bbff;
+  --ds-on-primary: #41008b;
+  --ds-primary-container: #8a3ffc;
+  --ds-on-primary-container: #faf1ff;
+  --ds-secondary: #d4bbff;
+  --ds-secondary-container: #55348c;
+  --ds-tertiary: #ffb782;
+  --ds-on-tertiary: #4f2500;
+  --ds-tertiary-container: #ad5900;
+  --ds-tertiary-fixed: #ffdcc5;
+  --ds-tertiary-fixed-dim: #ffb782;
+  --ds-error: #ffb4ab;
+
+  --ds-font-display: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  --ds-font-body: "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
+
+  /* Stitch spacing scale (4px base). */
+  --ds-margin: 40px;
+  --ds-gutter: 24px;
+  --ds-stack-xs: 8px;
+  --ds-stack-md: 24px;
+  --ds-stack-lg: 48px;
+}
+
+/*
+ * Tailwind v4 @theme — exposes the Stitch tokens as utility classes
+ * (`bg-ds-surface`, `text-ds-primary`, `font-ds-display`, etc.) so the
+ * Stitch-generated markup uses the same color names without needing a
+ * legacy tailwind.config.js. Everything scoped with the `ds-` prefix so
+ * it's clear which side of the migration a class comes from.
+ */
+@theme {
+  --color-ds-surface: #15121c;
+  --color-ds-surface-low: #1e1a24;
+  --color-ds-surface-mid: #221e28;
+  --color-ds-surface-high: #2c2833;
+  --color-ds-on-surface: #e8dfef;
+  --color-ds-on-surface-variant: #cdc2d8;
+  --color-ds-outline: #968da1;
+  --color-ds-primary: #d4bbff;
+  --color-ds-on-primary: #41008b;
+  --color-ds-primary-container: #8a3ffc;
+  --color-ds-secondary: #d4bbff;
+  --color-ds-tertiary: #ffb782;
+  --color-ds-on-tertiary: #4f2500;
+  --color-ds-tertiary-fixed: #ffdcc5;
+  --color-ds-tertiary-fixed-dim: #ffb782;
+  --font-ds-display: "Space Grotesk", system-ui, sans-serif;
+  --font-ds-body: "Be Vietnam Pro", system-ui, sans-serif;
 }
