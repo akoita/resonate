@@ -281,6 +281,7 @@ export class GenerationService {
                   type: 'master',
                   uri: storageResult.uri,
                   storageProvider: storageResult.provider,
+                  data: storageResult.provider === 'local' ? finalAudioBytes : undefined,
                   durationSeconds: result.durationSeconds,
                   mimeType: audioMimeType,
                 },

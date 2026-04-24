@@ -185,6 +185,19 @@ describe('GenerationService (integration)', () => {
       // Verify real release was created in DB
       const release = await prisma.release.findUnique({ where: { id: completedEvent.releaseId } });
       expect(release).not.toBeNull();
+
+      const masterStem = await prisma.stem.findFirst({
+        where: {
+          trackId: completedEvent.trackId,
+          type: 'master',
+        },
+        select: {
+          data: true,
+          storageProvider: true,
+        },
+      });
+      expect(masterStem?.storageProvider).toBe('local');
+      expect(masterStem?.data?.equals(Buffer.from('fake-audio-data'))).toBe(true);
     });
 
     it('emits generation.failed on LyriaClient error', async () => {
