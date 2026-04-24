@@ -156,6 +156,7 @@ export class CatalogService implements OnModuleInit {
         artistId: canonical.artistId,
         title: { equals: canonical.title, mode: "insensitive" },
         status: { in: ["ready", "published"] },
+        rightsSourceType: "ai_generated",
         tracks: {
           some: {
             stems: {

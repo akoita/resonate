@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { join } from "path";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
 import { readdir } from "fs/promises";
@@ -744,7 +744,7 @@ export class IngestionService {
     console.log(`[Ingestion] Track ${trackId} stage: ${stage}`);
   }
 
-  async retryRelease(releaseId: string) {
+  async retryRelease(releaseId: string, requesterUserId: string) {
     console.log(`[Ingestion] Retrying release ${releaseId}`);
 
     // 1. Fetch release details from Catalog
@@ -753,6 +753,9 @@ export class IngestionService {
     });
     if (!release) {
       throw new Error(`Release ${releaseId} not found`);
+    }
+    if (!requesterUserId || release.artist?.userId !== requesterUserId) {
+      throw new UnauthorizedException("Not authorized to retry this release");
     }
 
     const hasSeparatedStems = release.tracks.some((track) =>

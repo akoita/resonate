@@ -87,6 +87,7 @@ describe("IngestionService metadata", () => {
       getRelease: jest.fn().mockResolvedValue({
         id: "rel_ai_1",
         artistId: "artist_1",
+        artist: { userId: "user_1" },
         title: "AI Single",
         status: "ready",
         type: "ai_generated",
@@ -127,7 +128,7 @@ describe("IngestionService metadata", () => {
     const uploadedEvents: any[] = [];
     eventBus.subscribe("stems.uploaded", (event: any) => uploadedEvents.push(event));
 
-    const result = await service.retryRelease("rel_ai_1");
+    const result = await service.retryRelease("rel_ai_1", "user_1");
 
     expect(result).toEqual({ success: true, releaseId: "rel_ai_1" });
     expect(uploadedEvents).toHaveLength(1);
@@ -151,6 +152,7 @@ describe("IngestionService metadata", () => {
       getRelease: jest.fn().mockResolvedValue({
         id: "rel_ready_1",
         artistId: "artist_1",
+        artist: { userId: "user_1" },
         title: "Separated Single",
         status: "ready",
         type: "single",
@@ -176,13 +178,50 @@ describe("IngestionService metadata", () => {
       queue as any,
     );
 
-    const result = await service.retryRelease("rel_ready_1");
+    const result = await service.retryRelease("rel_ready_1", "user_1");
 
     expect(result).toEqual({
       success: true,
       message: "Release already has separated stems",
       releaseId: "rel_ready_1",
     });
+    expect(queue.add).not.toHaveBeenCalled();
+    expect(mockCatalogService.getStemBlob).not.toHaveBeenCalled();
+  });
+
+  it("rejects retry attempts from non-owners", async () => {
+    const eventBus = new EventBus();
+    const queue = { add: jest.fn() };
+    const mockCatalogService = {
+      getRelease: jest.fn().mockResolvedValue({
+        id: "rel_other_owner",
+        artistId: "artist_1",
+        artist: { userId: "owner_user" },
+        title: "Owner Only",
+        status: "ready",
+        type: "ai_generated",
+        tracks: [{
+          id: "trk_owner_1",
+          title: "Owner Only",
+          artist: "AI",
+          position: 1,
+          stems: [{ id: "stem_master_1", uri: "gs://bucket/master.mp3", type: "master" }],
+        }],
+      }),
+      getStemBlob: jest.fn(),
+    };
+    const service = new IngestionService(
+      eventBus,
+      mockStorageProvider as any,
+      mockEncryptionService as any,
+      mockArtistService as any,
+      mockCatalogService as any,
+      queue as any,
+    );
+
+    await expect(service.retryRelease("rel_other_owner", "intruder_user")).rejects.toThrow(
+      "Not authorized to retry this release",
+    );
     expect(queue.add).not.toHaveBeenCalled();
     expect(mockCatalogService.getStemBlob).not.toHaveBeenCalled();
   });

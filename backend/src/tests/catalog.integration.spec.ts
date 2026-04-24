@@ -171,6 +171,76 @@ describe('CatalogService (integration)', () => {
     expect(duplicate).toBeNull();
   });
 
+  it('does not consolidate a same-title non-AI release into an AI-generated release', async () => {
+    const canonicalReleaseId = `${TEST_PREFIX}ai_canonical_safe`;
+    const canonicalTrackId = `${TEST_PREFIX}ai_track_safe`;
+    const canonicalStemId = `${TEST_PREFIX}ai_master_safe`;
+    const normalReleaseId = `${TEST_PREFIX}normal_same_title`;
+    const normalTrackId = `${TEST_PREFIX}normal_track`;
+    const normalVocalStemId = `${TEST_PREFIX}normal_vocals`;
+
+    await prisma.release.create({
+      data: {
+        id: canonicalReleaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Shared Title',
+        status: 'published',
+        type: 'ai_generated',
+        primaryArtist: 'AI (Lyria)',
+        tracks: {
+          create: {
+            id: canonicalTrackId,
+            title: 'Shared Title',
+            processingStatus: 'complete',
+            stems: {
+              create: {
+                id: canonicalStemId,
+                type: 'master',
+                uri: 'gs://bucket/master-safe.mp3',
+                storageProvider: 'gcs',
+              },
+            },
+          },
+        },
+      },
+    });
+    await prisma.release.create({
+      data: {
+        id: normalReleaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Shared Title',
+        status: 'ready',
+        type: 'single',
+        primaryArtist: 'TC Test Artist',
+        rightsSourceType: 'direct_upload',
+        tracks: {
+          create: {
+            id: normalTrackId,
+            title: 'Shared Title',
+            processingStatus: 'complete',
+            stems: {
+              create: {
+                id: normalVocalStemId,
+                type: 'vocals',
+                uri: 'gs://bucket/normal-vocals.mp3',
+                storageProvider: 'gcs',
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const release = await catalog.getRelease(canonicalReleaseId, { includeRestricted: true });
+
+    expect(release).not.toBeNull();
+    expect(release!.tracks[0].stems.map((stem) => stem.type)).toEqual(['master']);
+    const normalRelease = await prisma.release.findUnique({ where: { id: normalReleaseId } });
+    expect(normalRelease).not.toBeNull();
+    const normalStem = await prisma.stem.findUnique({ where: { id: normalVocalStemId } });
+    expect(normalStem?.trackId).toBe(normalTrackId);
+  });
+
   it('updates release title and status', async () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
