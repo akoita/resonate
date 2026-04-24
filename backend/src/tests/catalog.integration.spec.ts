@@ -458,6 +458,50 @@ describe('CatalogService (integration)', () => {
     expect(await prisma.release.findUnique({ where: { id: created.id } })).toBeNull();
   });
 
+  it('deletes release when a legacy stem quality rating table still exists', async () => {
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Legacy Rating Delete Target',
+      tracks: [{ title: 'Rated Stem', position: 1 }],
+    });
+    const stem = await prisma.stem.create({
+      data: { trackId: created.tracks[0].id, type: 'vocals', uri: '/rated.mp3' },
+    });
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "StemQualityRating" (
+        "id" TEXT PRIMARY KEY,
+        "stemId" TEXT NOT NULL,
+        "curatorId" TEXT NOT NULL,
+        "score" INTEGER NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "StemQualityRating"
+      DROP CONSTRAINT IF EXISTS "StemQualityRating_stemId_fkey"
+    `);
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "StemQualityRating"
+      ADD CONSTRAINT "StemQualityRating_stemId_fkey"
+      FOREIGN KEY ("stemId") REFERENCES "Stem"("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    `);
+    await prisma.$executeRaw`
+      INSERT INTO "StemQualityRating" ("id", "stemId", "curatorId", "score")
+      VALUES (${`${TEST_PREFIX}rating`}, ${stem.id}, ${`${TEST_PREFIX}curator`}, ${5})
+    `;
+
+    try {
+      const result = await catalog.deleteRelease(created.id, `${TEST_PREFIX}user`);
+
+      expect(result.success).toBe(true);
+      expect(await prisma.stem.findUnique({ where: { id: stem.id } })).toBeNull();
+      expect(await prisma.release.findUnique({ where: { id: created.id } })).toBeNull();
+    } finally {
+      await prisma.$executeRawUnsafe('DROP TABLE IF EXISTS "StemQualityRating"');
+    }
+  });
+
   it('deletes release with purchased stem listing', async () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
@@ -536,6 +580,42 @@ describe('CatalogService (integration)', () => {
     expect(result.success).toBe(true);
     expect(await prisma.audioFingerprint.findUnique({ where: { trackId: created.tracks[0].id } })).toBeNull();
     expect(await prisma.release.findUnique({ where: { id: created.id } })).toBeNull();
+  });
+
+  it('deletes release for the owner when stored wallet casing differs from the JWT subject', async () => {
+    const mixedCaseUserId = `${TEST_PREFIX}OwnerMixed`;
+    const releaseId = `${TEST_PREFIX}case_release`;
+    const trackId = `${TEST_PREFIX}case_track`;
+
+    await prisma.user.create({
+      data: { id: mixedCaseUserId, email: `${TEST_PREFIX}owner-mixed@test.resonate` },
+    });
+    await prisma.artist.create({
+      data: {
+        id: `${TEST_PREFIX}case_artist`,
+        userId: mixedCaseUserId,
+        displayName: 'Case Owner',
+        payoutAddress: '0x' + 'C'.repeat(40),
+      },
+    });
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        artistId: `${TEST_PREFIX}case_artist`,
+        title: 'Case Sensitive Delete Target',
+        status: 'ready',
+      },
+    });
+    await prisma.track.create({
+      data: { id: trackId, releaseId, title: 'Case Track', position: 1 },
+    });
+
+    const result = await catalog.deleteRelease(releaseId, mixedCaseUserId.toLowerCase());
+
+    expect(result.success).toBe(true);
+    expect(await prisma.release.findUnique({ where: { id: releaseId } })).toBeNull();
+    await prisma.artist.delete({ where: { id: `${TEST_PREFIX}case_artist` } });
+    await prisma.user.delete({ where: { id: mixedCaseUserId } });
   });
 
   it('rejects delete for wrong user', async () => {
