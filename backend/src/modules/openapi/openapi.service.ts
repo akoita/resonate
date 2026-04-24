@@ -1,4 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import {
+  MCP_PROTOCOL_VERSION,
+  MCP_SERVER_INFO,
+  MCP_TOOL_NAMES,
+} from '../mcp/mcp.constants';
 import { X402Config } from '../x402/x402.config';
 import { X402_RETRY_HEADERS } from '../x402/x402.public';
 
@@ -754,6 +759,43 @@ export class OpenApiService {
         'Inspect pricing with GET /api/stems/{stemId}/x402/info.',
         `Handle the 402 challenge on GET /api/stems/{stemId}/x402 and retry with ${X402_RETRY_HEADERS.join(' or ')}.`,
       ].join(' '),
+    };
+  }
+
+  buildMcpWellKnownDocument(baseUrl: string): WellKnownDocument {
+    const endpoint = `${baseUrl}/mcp`;
+
+    return {
+      schemaVersion: 1,
+      protocol: 'mcp',
+      protocolVersion: MCP_PROTOCOL_VERSION,
+      serverInfo: MCP_SERVER_INFO,
+      transport: {
+        type: 'streamable-http',
+        endpoint,
+      },
+      endpoints: {
+        mcp: endpoint,
+        capabilities: `${baseUrl}/mcp`,
+        openapi: `${baseUrl}/openapi.json`,
+      },
+      tools: [...MCP_TOOL_NAMES],
+      capabilities: {
+        tools: true,
+        resources: false,
+        prompts: false,
+      },
+      authentication: {
+        type: 'none',
+        note: 'Public MCP tools do not require a Resonate user JWT. Paid stem downloads require an x402 payment proof at the tool layer.',
+      },
+      discovery: {
+        convention: '/.well-known/mcp.json',
+        authoritativeSource:
+          'The MCP initialize response remains the source of truth for live server capabilities.',
+      },
+      documentation:
+        'https://github.com/akoita/resonate/blob/main/docs/architecture/mcp_server.md',
     };
   }
 

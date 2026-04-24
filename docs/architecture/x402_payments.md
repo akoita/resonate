@@ -39,6 +39,11 @@ Agent                     Resonate Backend              x402 Facilitator
 | `GET /api/storefront/stems/:id`    | None         | Public storefront detail for a specific stem            |
 | `GET /api/stems/:stemId/x402`      | x402 payment | Download stem after USDC payment                        |
 | `GET /api/stems/:stemId/x402/info` | None         | Free discovery — returns storefront-grade metadata, pricing, rights, and x402 config |
+| `POST /mcp`                        | Tool-level x402 for paid downloads | MCP tools for catalog search, stem quotes, and paid stem downloads |
+
+The MCP server reuses the same x402 challenge and proof-verification path for
+`stem.quote` and `stem.download`. See [MCP Server](mcp_server.md) for client
+configuration and the `/.well-known/mcp.json` discovery document.
 
 ## Configuration
 
