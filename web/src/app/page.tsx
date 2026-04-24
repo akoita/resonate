@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../components/auth/AuthProvider";
-import { listPublishedReleases, Release } from "../lib/api";
+import { listMyReleases, listPublishedReleases, Release } from "../lib/api";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
 import { useToast } from "../components/ui/Toast";
 import { listCampaignsSync, getFeaturedCampaignSync, daysUntil, type Campaign } from "../lib/shows";
@@ -28,6 +28,29 @@ import { FALLBACK_RELEASES } from "../lib/fallbackReleases";
  */
 
 type FilterOption = "all" | "electronic" | "hip-hop" | "afrobeat" | "indie" | "jazz";
+type CatalogView = "releases" | "artists" | "stems";
+
+type ArtistSummary = {
+  key: string;
+  name: string;
+  artistId?: string;
+  releaseCount: number;
+  stemCount: number;
+  latestRelease?: Release;
+  latestAt: number;
+  genres: Set<string>;
+};
+
+type StemSummary = {
+  id: string;
+  releaseId: string;
+  releaseTitle: string;
+  title: string;
+  type: string;
+  artistName: string;
+  artworkUrl?: string | null;
+  createdAt: string;
+};
 
 const FILTERS: { id: FilterOption; label: string }[] = [
   { id: "all", label: "All Trending" },
@@ -41,9 +64,12 @@ const FILTERS: { id: FilterOption; label: string }[] = [
 export default function Home() {
   const router = useRouter();
   const [releases, setReleases] = useState<Release[]>([]);
+  const [myReleases, setMyReleases] = useState<Release[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<FilterOption>("all");
-  const { status } = useAuth();
+  const [catalogView, setCatalogView] = useState<CatalogView>("releases");
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const { status, token } = useAuth();
   const { addToast } = useToast();
 
   useWebSockets((data: ReleaseStatusUpdate) => {
@@ -58,11 +84,30 @@ export default function Home() {
   });
 
   useEffect(() => {
-    listPublishedReleases(12)
+    listPublishedReleases(48)
       .then(setReleases)
       .catch(() => setReleases([]))
       .finally(() => setLoading(false));
   }, [status]);
+
+  useEffect(() => {
+    if (status !== "authenticated" || !token) {
+      return;
+    }
+
+    let cancelled = false;
+    listMyReleases(token)
+      .then((items) => {
+        if (!cancelled) setMyReleases(items);
+      })
+      .catch(() => {
+        if (!cancelled) setMyReleases([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status, token]);
 
   // Prevent shimmer-forever: fall back to curated mock releases when the
   // catalog API is empty (fresh staging, backend blip).
@@ -85,20 +130,40 @@ export default function Home() {
   const campaigns = listCampaignsSync();
   const featuredCampaign = getFeaturedCampaignSync();
   const eventRow: Campaign[] = campaigns.slice(0, 2);
+  const catalogStems = useMemo<StemSummary[]>(
+    () => flattenStems(displayReleases),
+    [displayReleases],
+  );
+  const catalogArtists = useMemo<ArtistSummary[]>(
+    () => summarizeArtists(displayReleases),
+    [displayReleases],
+  );
+  const normalizedSearch = catalogSearch.trim().toLowerCase();
+  const browseReleases = useMemo(
+    () => filterReleases(displayReleases, normalizedSearch).slice(0, 18),
+    [displayReleases, normalizedSearch],
+  );
+  const browseArtists = useMemo(
+    () => filterArtists(catalogArtists, normalizedSearch).slice(0, 12),
+    [catalogArtists, normalizedSearch],
+  );
+  const browseStems = useMemo(
+    () => filterStems(catalogStems, normalizedSearch).slice(0, 12),
+    [catalogStems, normalizedSearch],
+  );
+  const activeUploaders = catalogArtists.slice(0, 5);
+  const recentUploads = (status === "authenticated" ? myReleases : [])
+    .slice()
+    .sort((a, b) => getReleaseTime(b) - getReleaseTime(a))
+    .slice(0, 4);
 
   // Derive top artists from the catalog (de-dup by primary artist name).
   const topArtists = useMemo(() => {
-    const seen = new Set<string>();
-    const out: { name: string; artistId?: string }[] = [];
-    for (const r of displayReleases) {
-      const name = r.primaryArtist || r.artist?.displayName;
-      if (!name || seen.has(name)) continue;
-      seen.add(name);
-      out.push({ name, artistId: r.artist?.id || r.artistId });
-      if (out.length >= 8) break;
-    }
-    return out;
-  }, [displayReleases]);
+    return catalogArtists.slice(0, 8).map((a) => ({
+      name: a.name,
+      artistId: a.artistId,
+    }));
+  }, [catalogArtists]);
 
   return (
     <div className="home-ng">
@@ -147,7 +212,222 @@ export default function Home() {
           ))}
         </div>
 
-        {/* 3. RESUME PLAYING ———————————————————————————————————— */}
+        {/* 3. CATALOG BROWSER ——————————————————————————————————— */}
+        <section className="ng-section">
+          <div className="ng-catalog-shell ng-glass">
+            <header className="ng-catalog-header">
+              <div>
+                <span className="ng-kicker ng-kicker--violet">Global catalog</span>
+                <h3 className="ng-section-title">Browse Everything</h3>
+              </div>
+              <label className="ng-catalog-search">
+                <span className="ms-icon" aria-hidden>search</span>
+                <input
+                  value={catalogSearch}
+                  onChange={(event) => setCatalogSearch(event.target.value)}
+                  placeholder="Search releases, artists, stems"
+                  aria-label="Search catalog"
+                />
+              </label>
+            </header>
+
+            <div className="ng-catalog-stats" aria-label="Catalog totals">
+              <div>
+                <strong>{displayReleases.length}</strong>
+                <span>Releases</span>
+              </div>
+              <div>
+                <strong>{catalogArtists.length}</strong>
+                <span>Artists</span>
+              </div>
+              <div>
+                <strong>{catalogStems.length}</strong>
+                <span>Stems</span>
+              </div>
+            </div>
+
+            <div className="ng-segmented" role="tablist" aria-label="Catalog view">
+              {(["releases", "artists", "stems"] as const).map((view) => (
+                <button
+                  key={view}
+                  type="button"
+                  role="tab"
+                  aria-selected={catalogView === view}
+                  className={catalogView === view ? "ng-segmented__item active" : "ng-segmented__item"}
+                  onClick={() => setCatalogView(view)}
+                >
+                  {view}
+                </button>
+              ))}
+            </div>
+
+            {catalogView === "releases" && (
+              <div className="ng-resource-grid ng-resource-grid--releases">
+                {browseReleases.map((release) => (
+                  <Link
+                    key={release.id}
+                    href={`/release/${release.id}`}
+                    className="ng-resource-card"
+                  >
+                    <ReleaseThumb release={release} />
+                    <div className="ng-resource-card__body">
+                      <h4>{release.title}</h4>
+                      <p>{getArtistName(release)}</p>
+                      <div className="ng-resource-card__meta">
+                        <span>{release.type || "Release"}</span>
+                        <span>{release.genre || "Uncategorized"}</span>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            {catalogView === "artists" && (
+              <div className="ng-artist-browser">
+                {browseArtists.map((artist) => (
+                  <Link
+                    key={artist.key}
+                    href={`/artist/${encodeURIComponent(artist.artistId ?? artist.name)}`}
+                    className="ng-artist-row"
+                  >
+                    <span className="ng-artist-row__avatar" aria-hidden>
+                      {artist.name[0]?.toUpperCase() ?? "?"}
+                    </span>
+                    <span className="ng-artist-row__main">
+                      <strong>{artist.name}</strong>
+                      <small>{artist.latestRelease?.title ?? "No recent release"}</small>
+                    </span>
+                    <span className="ng-artist-row__metric">
+                      {artist.releaseCount}
+                      <small>releases</small>
+                    </span>
+                    <span className="ng-artist-row__metric">
+                      {artist.stemCount}
+                      <small>stems</small>
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            {catalogView === "stems" && (
+              <div className="ng-stem-browser">
+                {browseStems.length > 0 ? (
+                  browseStems.map((stem) => (
+                    <Link
+                      key={stem.id}
+                      href={`/release/${stem.releaseId}?mixer=true`}
+                      className="ng-stem-row"
+                    >
+                      <span className="ng-stem-row__icon" aria-hidden>
+                        <span className="ms-icon">graphic_eq</span>
+                      </span>
+                      <span className="ng-stem-row__main">
+                        <strong>{stem.title}</strong>
+                        <small>{stem.releaseTitle} · {stem.artistName}</small>
+                      </span>
+                      <span className="ng-stem-row__type">{stem.type}</span>
+                    </Link>
+                  ))
+                ) : (
+                  <div className="ng-empty-state">
+                    <span className="ms-icon" aria-hidden>graphic_eq</span>
+                    <p>No stems are exposed in this catalog slice yet.</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* 4. UPLOAD OPERATIONS ——————————————————————————————— */}
+        <section className="ng-section">
+          <div className="ng-ops-grid">
+            <article className="ng-ops-panel ng-glass">
+              <header className="ng-ops-panel__header">
+                <div>
+                  <span className="ng-kicker ng-kicker--tertiary">Active uploaders</span>
+                  <h3 className="ng-section-title">Uploaded Resources</h3>
+                </div>
+                <Link href="/artist/upload" className="ng-icon-link" aria-label="Upload resources">
+                  <span className="ms-icon" aria-hidden>upload</span>
+                </Link>
+              </header>
+              <div className="ng-uploader-list">
+                {activeUploaders.map((artist) => (
+                  <Link
+                    key={artist.key}
+                    href={`/artist/${encodeURIComponent(artist.artistId ?? artist.name)}`}
+                    className="ng-uploader-row"
+                  >
+                    <span className="ng-uploader-row__avatar" aria-hidden>
+                      {artist.name[0]?.toUpperCase() ?? "?"}
+                    </span>
+                    <span className="ng-uploader-row__main">
+                      <strong>{artist.name}</strong>
+                      <small>{formatRelativeTime(artist.latestAt)}</small>
+                    </span>
+                    <span className="ng-uploader-row__count">
+                      {artist.releaseCount + artist.stemCount}
+                      <small>resources</small>
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </article>
+
+            <article className="ng-ops-panel ng-glass">
+              <header className="ng-ops-panel__header">
+                <div>
+                  <span className="ng-kicker ng-kicker--primary">Management queue</span>
+                  <h3 className="ng-section-title">Your Uploads</h3>
+                </div>
+                <Link href="/artist/analytics" className="ng-icon-link" aria-label="Open analytics">
+                  <span className="ms-icon" aria-hidden>monitoring</span>
+                </Link>
+              </header>
+
+              {status === "authenticated" ? (
+                recentUploads.length > 0 ? (
+                  <div className="ng-upload-list">
+                    {recentUploads.map((release) => (
+                      <Link
+                        key={release.id}
+                        href={`/release/${release.id}`}
+                        className="ng-upload-row"
+                      >
+                        <ReleaseThumb release={release} small />
+                        <span className="ng-upload-row__main">
+                          <strong>{release.title}</strong>
+                          <small>{getReleaseResourceCount(release)} resources · {formatRelativeTime(getReleaseTime(release))}</small>
+                        </span>
+                        <span className={`ng-status-pill ${getStatusClass(release.status)}`}>
+                          {formatStatus(release.status)}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="ng-empty-state">
+                    <span className="ms-icon" aria-hidden>upload_file</span>
+                    <p>No uploads yet.</p>
+                    <Link href="/artist/upload" className="ng-btn ng-btn--primary">
+                      Start upload
+                    </Link>
+                  </div>
+                )
+              ) : (
+                <div className="ng-empty-state">
+                  <span className="ms-icon" aria-hidden>lock</span>
+                  <p>Connect a wallet to manage uploaded resources.</p>
+                </div>
+              )}
+            </article>
+          </div>
+        </section>
+
+        {/* 5. RESUME PLAYING ———————————————————————————————————— */}
         {resumeRow.length > 0 && (
           <section className="ng-section">
             <header className="ng-section-header">
@@ -191,7 +471,7 @@ export default function Home() {
           </section>
         )}
 
-        {/* 4. TRENDING STEMS ———————————————————————————————————— */}
+        {/* 6. TRENDING STEMS ———————————————————————————————————— */}
         {stemRow.length > 0 && (
           <section className="ng-section">
             <header className="ng-section-header">
@@ -208,7 +488,7 @@ export default function Home() {
           </section>
         )}
 
-        {/* 5. UPCOMING LIVE EVENTS ————————————————————————————— */}
+        {/* 7. UPCOMING LIVE EVENTS ————————————————————————————— */}
         {eventRow.length > 0 && (
           <section className="ng-section">
             <header className="ng-section-header">
@@ -229,12 +509,12 @@ export default function Home() {
           </section>
         )}
 
-        {/* 6. AI DJ SESSION PRESETS ————————————————————————————— */}
+        {/* 8. AI DJ SESSION PRESETS ————————————————————————————— */}
         <section className="ng-section ng-section--presets">
           <AgentSessionPresets compact />
         </section>
 
-        {/* 7. TOP ARTISTS —————————————————————————————————————— */}
+        {/* 9. TOP ARTISTS —————————————————————————————————————— */}
         {topArtists.length > 0 && (
           <section className="ng-section">
             <header className="ng-section-header">
@@ -262,6 +542,158 @@ export default function Home() {
       </main>
     </div>
   );
+}
+
+function ReleaseThumb({ release, small = false }: { release: Release; small?: boolean }) {
+  return (
+    <span className={small ? "ng-release-thumb ng-release-thumb--small" : "ng-release-thumb"}>
+      {release.artworkUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={release.artworkUrl} alt="" />
+      ) : (
+        <span aria-hidden>{(release.title?.[0] ?? "?").toUpperCase()}</span>
+      )}
+    </span>
+  );
+}
+
+function getArtistName(release: Release) {
+  return release.primaryArtist || release.artist?.displayName || "Unknown Artist";
+}
+
+function getReleaseTime(release: Release) {
+  const raw = release.releaseDate || release.createdAt;
+  const time = raw ? new Date(raw).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+}
+
+function getReleaseResourceCount(release: Release) {
+  const stemCount = release.tracks?.reduce(
+    (sum, track) => sum + (track.stems?.length ?? 0),
+    0,
+  ) ?? 0;
+  return Math.max(1, 1 + stemCount);
+}
+
+function flattenStems(releases: Release[]): StemSummary[] {
+  return releases.flatMap((release) =>
+    (release.tracks ?? []).flatMap((track) =>
+      (track.stems ?? []).map((stem) => ({
+        id: stem.id,
+        releaseId: release.id,
+        releaseTitle: release.title,
+        title: stem.title || track.title,
+        type: stem.type || "stem",
+        artistName: stem.artist || track.artist || getArtistName(release),
+        artworkUrl: stem.artworkUrl || release.artworkUrl,
+        createdAt: track.createdAt || release.createdAt,
+      })),
+    ),
+  );
+}
+
+function summarizeArtists(releases: Release[]): ArtistSummary[] {
+  const byArtist = new Map<string, ArtistSummary>();
+
+  for (const release of releases) {
+    const name = getArtistName(release);
+    const key = release.artist?.id || release.artistId || name.toLowerCase();
+    const stemCount = release.tracks?.reduce(
+      (sum, track) => sum + (track.stems?.length ?? 0),
+      0,
+    ) ?? 0;
+    const latestAt = getReleaseTime(release);
+    const existing = byArtist.get(key);
+
+    if (!existing) {
+      byArtist.set(key, {
+        key,
+        name,
+        artistId: release.artist?.id || release.artistId,
+        releaseCount: 1,
+        stemCount,
+        latestRelease: release,
+        latestAt,
+        genres: new Set(release.genre ? [release.genre] : []),
+      });
+      continue;
+    }
+
+    existing.releaseCount += 1;
+    existing.stemCount += stemCount;
+    if (release.genre) existing.genres.add(release.genre);
+    if (latestAt > existing.latestAt) {
+      existing.latestAt = latestAt;
+      existing.latestRelease = release;
+    }
+  }
+
+  return Array.from(byArtist.values()).sort((a, b) => b.latestAt - a.latestAt);
+}
+
+function filterReleases(releases: Release[], query: string) {
+  if (!query) return releases;
+  return releases.filter((release) =>
+    [
+      release.title,
+      getArtistName(release),
+      release.genre,
+      release.label,
+      release.type,
+    ].some((value) => value?.toLowerCase().includes(query)),
+  );
+}
+
+function filterArtists(artists: ArtistSummary[], query: string) {
+  if (!query) return artists;
+  return artists.filter((artist) =>
+    [
+      artist.name,
+      artist.latestRelease?.title,
+      ...Array.from(artist.genres),
+    ].some((value) => value?.toLowerCase().includes(query)),
+  );
+}
+
+function filterStems(stems: StemSummary[], query: string) {
+  if (!query) return stems;
+  return stems.filter((stem) =>
+    [
+      stem.title,
+      stem.type,
+      stem.releaseTitle,
+      stem.artistName,
+    ].some((value) => value.toLowerCase().includes(query)),
+  );
+}
+
+function formatStatus(status?: string | null) {
+  if (!status) return "Draft";
+  return status
+    .toLowerCase()
+    .split(/[_\s-]+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function getStatusClass(status?: string | null) {
+  return (status || "draft").toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+}
+
+function formatRelativeTime(time: number) {
+  if (!time) return "Recently active";
+  const diffMs = Date.now() - time;
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(time).toLocaleDateString("en-GB", {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 /* ----------- Trending-stem card (deterministic waveform) --------- */

@@ -7,9 +7,9 @@
  *
  * The home page was rebuilt on the Stitch "Next-Gen Music Platform" design in
  * #646. Sections are now: Hero, Filter Chips, Resume Playing, Trending Stems,
- * Upcoming Live Events, Agentic Mixes, Top Artists. Old "Latest Masterings /
- * Good Evening / Featured Stems" rows no longer exist — the assertions below
- * map onto the new rows instead.
+ * Catalog Browser, Upload Operations, Upcoming Live Events, Agentic Mixes, Top
+ * Artists. Old "Latest Masterings / Good Evening / Featured Stems" rows no
+ * longer exist — the assertions below map onto the new rows instead.
  *
  * @requires Postgres running with seeded data
  * @requires Backend on :3000, Frontend on :3001 (auto-started by playwright.config)
@@ -72,5 +72,22 @@ test.describe("Catalog & Home Page", () => {
         await expect(
             page.locator(".ng-stem-card__tag").filter({ hasText: /Drums|Vocals|Synth/i }).first(),
         ).toBeVisible();
+    });
+
+    test("HOME-09: Global catalog browser exposes releases, artists, and stems tabs", async ({ page }) => {
+        await page.goto("/");
+        await expect(page.getByRole("heading", { name: "Browse Everything" })).toBeVisible();
+        await expect(page.getByRole("tab", { name: "releases" })).toBeVisible();
+        await expect(page.getByRole("tab", { name: "artists" })).toBeVisible();
+        await expect(page.getByRole("tab", { name: "stems" })).toBeVisible();
+        await expect(page.getByLabel("Search catalog")).toBeVisible();
+    });
+
+    test("HOME-10: Uploaded resources panel is separate from Library", async ({ page }) => {
+        await page.goto("/");
+        await expect(page.getByRole("heading", { name: "Uploaded Resources" })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Your Uploads" })).toBeVisible();
+        await expect(page.getByRole("link", { name: "Upload resources" })).toHaveAttribute("href", "/artist/upload");
+        await expect(page.getByRole("link", { name: "Open analytics" })).toHaveAttribute("href", "/artist/analytics");
     });
 });
