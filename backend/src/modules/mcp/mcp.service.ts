@@ -11,6 +11,9 @@ import {
   MCP_SERVER_INFO,
   MCP_TOOL_NAMES,
 } from "./mcp.constants";
+import { McpStemService } from "./mcp-stem.service";
+
+const licenseTypeSchema = z.enum(["personal", "remix", "commercial"]);
 
 type McpSession = {
   server: McpServer;
@@ -26,7 +29,10 @@ export class McpService implements OnModuleDestroy {
   private readonly maxSessions = 100;
   private readonly sessionTtlMs = 5 * 60 * 1000;
 
-  constructor(private readonly catalogService: CatalogService) {}
+  constructor(
+    private readonly catalogService: CatalogService,
+    private readonly stemService: McpStemService,
+  ) {}
 
   async onModuleDestroy() {
     await Promise.all(
@@ -188,7 +194,129 @@ export class McpService implements OnModuleDestroy {
       },
     );
 
+    server.registerTool(
+      "stem.quote",
+      {
+        title: "Quote Stem License",
+        description:
+          "Return a USDC quote and x402 payment challenge for a stem license.",
+        inputSchema: {
+          stemId: z.string().describe("Resonate stem ID to quote."),
+          licenseType: licenseTypeSchema
+            .optional()
+            .describe("License tier to quote. Defaults to personal."),
+        },
+        outputSchema: {
+          stemId: z.string(),
+          licenseType: licenseTypeSchema,
+          priceUsdc: z.string(),
+          expiresAt: z.string(),
+          paymentChallenge: z.object({
+            scheme: z.literal("x402"),
+            facilitatorUrl: z.string(),
+            paymentRequirements: z.record(z.string(), z.unknown()),
+          }),
+          stem: z.object({
+            title: z.string().nullable(),
+            type: z.string(),
+            trackTitle: z.string().nullable(),
+            artist: z.string().nullable(),
+            releaseTitle: z.string().nullable(),
+            mimeType: z.string(),
+          }),
+        },
+        annotations: {
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
+      },
+      async ({ stemId, licenseType }) => {
+        try {
+          const result = await this.stemService.quote(
+            stemId,
+            licenseType ?? "personal",
+          );
+          return {
+            structuredContent: result,
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+          };
+        } catch (error) {
+          return this.toolError(
+            "QUOTE_FAILED",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      },
+    );
+
+    server.registerTool(
+      "stem.download",
+      {
+        title: "Download Paid Stem",
+        description:
+          "Validate an x402 payment proof and return the purchased stem as an MCP resource.",
+        inputSchema: {
+          stemId: z.string().describe("Resonate stem ID to download."),
+          licenseType: licenseTypeSchema
+            .optional()
+            .describe("License tier being purchased. Defaults to personal."),
+          paymentProof: z
+            .string()
+            .optional()
+            .describe(
+              "x402 PAYMENT-SIGNATURE or legacy X-PAYMENT proof returned by the payment client.",
+            ),
+        },
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: true,
+        },
+      },
+      async ({ stemId, licenseType, paymentProof }) => {
+        try {
+          const result = await this.stemService.download(
+            stemId,
+            licenseType ?? "personal",
+            paymentProof,
+          );
+          return {
+            structuredContent: result.structuredContent,
+            content: result.content as any,
+            isError: !result.ok,
+          };
+        } catch (error) {
+          return this.toolError(
+            "DOWNLOAD_FAILED",
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      },
+    );
+
     return server;
+  }
+
+  private toolError(code: string, message: string) {
+    const structuredContent = { code, message };
+    return {
+      structuredContent,
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify(structuredContent, null, 2),
+        },
+      ],
+      isError: true,
+    };
   }
 
   private getSessionId(req: Request): string | undefined {

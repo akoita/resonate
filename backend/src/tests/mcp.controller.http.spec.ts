@@ -3,10 +3,15 @@ import { INestApplication } from "@nestjs/common";
 import { McpController } from "../modules/mcp/mcp.controller";
 import { McpService } from "../modules/mcp/mcp.service";
 import { CatalogService } from "../modules/catalog/catalog.service";
+import { McpStemService } from "../modules/mcp/mcp-stem.service";
 import { createControllerTestApp } from "./e2e-helpers";
 
 const mockCatalogService = {
   searchMcpCatalog: jest.fn(),
+};
+const mockStemService = {
+  quote: jest.fn(),
+  download: jest.fn(),
 };
 
 describe("McpController (HTTP)", () => {
@@ -16,6 +21,7 @@ describe("McpController (HTTP)", () => {
     app = await createControllerTestApp(McpController, [
       McpService,
       { provide: CatalogService, useValue: mockCatalogService },
+      { provide: McpStemService, useValue: mockStemService },
     ]);
   });
 
@@ -23,7 +29,9 @@ describe("McpController (HTTP)", () => {
     await app.close();
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await app.get(McpService).onModuleDestroy();
+    (app.get(McpService) as any).maxSessions = 100;
     jest.clearAllMocks();
     mockCatalogService.searchMcpCatalog.mockResolvedValue({
       items: [
@@ -40,6 +48,42 @@ describe("McpController (HTTP)", () => {
         },
       ],
     });
+    mockStemService.quote.mockResolvedValue({
+      stemId: "stem_1",
+      licenseType: "remix",
+      priceUsdc: "5",
+      expiresAt: "2026-04-24T00:05:00.000Z",
+      paymentChallenge: {
+        scheme: "x402",
+        facilitatorUrl: "https://x402.org/facilitator",
+        paymentRequirements: {
+          scheme: "exact",
+          network: "eip155:84532",
+          amount: "5000000",
+        },
+      },
+      stem: {
+        title: "Hook Vocals",
+        type: "vocals",
+        trackTitle: "Midnight Run",
+        artist: "Koita",
+        releaseTitle: "Neon Heat",
+        mimeType: "audio/mpeg",
+      },
+    });
+    mockStemService.download.mockResolvedValue({
+      ok: false,
+      structuredContent: {
+        code: "PAYMENT_REQUIRED",
+        message: "Missing paymentProof.",
+      },
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ code: "PAYMENT_REQUIRED" }),
+        },
+      ],
+    });
   });
 
   it("GET /mcp returns a curl-friendly capability object", async () => {
@@ -51,7 +95,7 @@ describe("McpController (HTTP)", () => {
         name: "resonate-mcp",
         version: "0.1.0",
       },
-      tools: ["catalog.search"],
+      tools: ["catalog.search", "stem.quote", "stem.download"],
     });
   });
 
@@ -108,6 +152,14 @@ describe("McpController (HTTP)", () => {
           name: "catalog.search",
           annotations: expect.objectContaining({ readOnlyHint: true }),
         }),
+        expect.objectContaining({
+          name: "stem.quote",
+          annotations: expect.objectContaining({ readOnlyHint: true }),
+        }),
+        expect.objectContaining({
+          name: "stem.download",
+          annotations: expect.objectContaining({ readOnlyHint: false }),
+        }),
       ]),
     );
 
@@ -138,6 +190,95 @@ describe("McpController (HTTP)", () => {
         id: "rel_1",
         licensable: true,
         deeplink: "http://localhost:3001/release/rel_1",
+      }),
+    );
+  });
+
+  it("serves stem.quote and recoverable stem.download payment errors", async () => {
+    const init = await request(app.getHttpServer())
+      .post("/mcp")
+      .set("Accept", "application/json, text/event-stream")
+      .send({
+        jsonrpc: "2.0",
+        id: 20,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-11-25",
+          capabilities: {},
+          clientInfo: {
+            name: "jest",
+            version: "0.0.1",
+          },
+        },
+      })
+      .expect(200);
+
+    const sessionId = init.headers["mcp-session-id"];
+    await request(app.getHttpServer())
+      .post("/mcp")
+      .set("mcp-session-id", sessionId)
+      .set("Accept", "application/json, text/event-stream")
+      .send({
+        jsonrpc: "2.0",
+        method: "notifications/initialized",
+      })
+      .expect(202);
+
+    const quote = await request(app.getHttpServer())
+      .post("/mcp")
+      .set("mcp-session-id", sessionId)
+      .set("Accept", "application/json, text/event-stream")
+      .send({
+        jsonrpc: "2.0",
+        id: 21,
+        method: "tools/call",
+        params: {
+          name: "stem.quote",
+          arguments: {
+            stemId: "stem_1",
+            licenseType: "remix",
+          },
+        },
+      })
+      .expect(200);
+
+    expect(mockStemService.quote).toHaveBeenCalledWith("stem_1", "remix");
+    expect(quote.body.result.structuredContent).toEqual(
+      expect.objectContaining({
+        stemId: "stem_1",
+        licenseType: "remix",
+        priceUsdc: "5",
+        paymentChallenge: expect.objectContaining({ scheme: "x402" }),
+      }),
+    );
+
+    const download = await request(app.getHttpServer())
+      .post("/mcp")
+      .set("mcp-session-id", sessionId)
+      .set("Accept", "application/json, text/event-stream")
+      .send({
+        jsonrpc: "2.0",
+        id: 22,
+        method: "tools/call",
+        params: {
+          name: "stem.download",
+          arguments: {
+            stemId: "stem_1",
+            licenseType: "remix",
+          },
+        },
+      })
+      .expect(200);
+
+    expect(mockStemService.download).toHaveBeenCalledWith(
+      "stem_1",
+      "remix",
+      undefined,
+    );
+    expect(download.body.result.isError).toBe(true);
+    expect(download.body.result.structuredContent).toEqual(
+      expect.objectContaining({
+        code: "PAYMENT_REQUIRED",
       }),
     );
   });

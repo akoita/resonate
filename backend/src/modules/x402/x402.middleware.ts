@@ -1,20 +1,8 @@
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
-import path from 'node:path';
 import { X402Config } from './x402.config';
 import { prisma } from '../../db/prisma';
-import { formatUsdcAmount } from './x402.quote';
-import { getDefaultX402Asset } from './x402.public';
-
-// `@x402/core/http` only publishes ESM typings, while this backend still
-// compiles under CommonJS-style resolution. Pull the decoder from the CJS build
-// directly so local compilation and Jest stay happy.
-const {
-  decodePaymentSignatureHeader,
-}: { decodePaymentSignatureHeader: (header: string) => unknown } = require(path.join(
-  process.cwd(),
-  'node_modules/@x402/core/dist/cjs/http/index.js',
-));
+import { X402PaymentService } from './x402.payment.service';
 
 /**
  * X402Middleware — NestJS adapter for the x402 Express payment middleware.
@@ -33,7 +21,10 @@ const {
 export class X402Middleware implements NestMiddleware {
   private readonly logger = new Logger(X402Middleware.name);
 
-  constructor(private readonly x402Config: X402Config) {}
+  constructor(
+    private readonly x402Config: X402Config,
+    private readonly paymentService: X402PaymentService,
+  ) {}
 
   async use(req: Request, res: Response, next: NextFunction) {
     if (!this.x402Config.enabled) {
@@ -75,14 +66,12 @@ export class X402Middleware implements NestMiddleware {
 
     // Payment header present — verify with facilitator
     try {
-      const paymentContext = await this.buildPaymentContext(
-        stemId,
-        paymentHeader,
-        stem.mimeType,
+      const challenge = await this.paymentService.buildPaymentChallenge(
+        this.httpStemResource(stemId, stem.mimeType),
       );
-      const isValid = await this.verifyPayment(
-        paymentContext.paymentPayload,
-        paymentContext.paymentRequirements,
+      const isValid = await this.paymentService.verifyAndSettle(
+        paymentHeader,
+        challenge.paymentRequirements,
       );
       if (!isValid) {
         this.logger.warn(`Invalid x402 payment for stem ${stemId}`);
@@ -92,11 +81,6 @@ export class X402Middleware implements NestMiddleware {
         });
       }
 
-      // Payment verified — settle it
-      await this.settlePayment(
-        paymentContext.paymentPayload,
-        paymentContext.paymentRequirements,
-      );
       this.logger.log(`x402 payment verified and settled for stem ${stemId}`);
 
       return next();
@@ -127,57 +111,9 @@ export class X402Middleware implements NestMiddleware {
   }
 
   private async buildPaymentRequired(stemId: string, mimeType?: string | null) {
-    const pricing = await prisma.stemPricing.findUnique({
-      where: { stemId },
-    });
-
-    // Keep the 402 challenge aligned with the machine-readable storefront quote.
-    const amountUsd = pricing?.basePlayPriceUsd ?? 0.05;
-    const displayPrice = `${formatUsdcAmount(amountUsd)} USDC`;
-    const assetInfo = getDefaultX402Asset(this.x402Config.network);
-
-    return {
-      x402Version: 2,
-      error: 'Payment required',
-      resource: {
-        url: `/api/stems/${stemId}/x402`,
-        description: `Purchase stem ${stemId} via x402`,
-        mimeType: mimeType || 'audio/mpeg',
-      },
-      accepts: [
-        {
-          scheme: 'exact',
-          network: this.x402Config.network,
-          amount: this.toTokenAmount(amountUsd, assetInfo.decimals),
-          asset: assetInfo.address,
-          payTo: this.x402Config.payoutAddress,
-          maxTimeoutSeconds: 300,
-          extra: {
-            name: assetInfo.name,
-            version: assetInfo.version,
-            displayPrice,
-          },
-        },
-      ],
-    };
-  }
-
-  private async buildPaymentContext(
-    stemId: string,
-    paymentHeader: string,
-    mimeType?: string | null,
-  ) {
-    const paymentRequired = await this.buildPaymentRequired(stemId, mimeType);
-    return {
-      paymentPayload: decodePaymentSignatureHeader(paymentHeader),
-      paymentRequirements: paymentRequired.accepts[0],
-    };
-  }
-
-  private toTokenAmount(amount: number, decimals: number): string {
-    const [intPart, decPart = ''] = String(amount).split('.');
-    const paddedDec = decPart.padEnd(decimals, '0').slice(0, decimals);
-    return (intPart + paddedDec).replace(/^0+/, '') || '0';
+    return this.paymentService.buildPaymentRequired(
+      this.httpStemResource(stemId, mimeType),
+    );
   }
 
   private async findProtectedStem(stemId: string) {
@@ -191,72 +127,13 @@ export class X402Middleware implements NestMiddleware {
     });
   }
 
-  /**
-   * Verify payment proof with the x402 facilitator.
-   */
-  private async verifyPayment(
-    paymentPayload: unknown,
-    paymentRequirements: unknown,
-  ): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.x402Config.facilitatorUrl}/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          x402Version: 2,
-          paymentPayload,
-          paymentRequirements,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.text().catch(() => '');
-        this.logger.warn(
-          `Facilitator /verify returned ${response.status}${
-            errorBody ? `: ${errorBody}` : ''
-          }`,
-        );
-        return false;
-      }
-
-      const result = await response.json();
-      return result.isValid === true;
-    } catch (error) {
-      this.logger.error(`Facilitator /verify failed: ${error}`);
-      return false;
-    }
-  }
-
-  /**
-   * Settle payment with the x402 facilitator.
-   */
-  private async settlePayment(
-    paymentPayload: unknown,
-    paymentRequirements: unknown,
-  ): Promise<void> {
-    try {
-      const response = await fetch(`${this.x402Config.facilitatorUrl}/settle`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          x402Version: 2,
-          paymentPayload,
-          paymentRequirements,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.text().catch(() => '');
-        this.logger.warn(
-          `Facilitator /settle returned ${response.status}${
-            errorBody ? `: ${errorBody}` : ''
-          }`,
-        );
-      }
-    } catch (error) {
-      // Settlement failure is logged but doesn't block delivery
-      // The facilitator handles eventual settlement
-      this.logger.error(`Facilitator /settle failed: ${error}`);
-    }
+  private httpStemResource(stemId: string, mimeType?: string | null) {
+    return {
+      stemId,
+      licenseType: "personal" as const,
+      resourceUrl: `/api/stems/${stemId}/x402`,
+      description: `Purchase stem ${stemId} via x402`,
+      mimeType,
+    };
   }
 }

@@ -2,13 +2,16 @@
 
 This module exposes Resonate through the Model Context Protocol (MCP).
 
-PR 1 intentionally keeps the surface small and read-only:
+Current surface:
 
 - Endpoint: `POST /mcp`
 - Curl-friendly capability check: `GET /mcp`
-- Tool: `catalog.search(query, limit)`
-- Auth: none for this first read-only catalog tool
-- Payment: none in PR 1; quote and paid download tools ship later
+- Tools:
+  - `catalog.search(query, limit)`
+  - `stem.quote(stemId, licenseType)`
+  - `stem.download(stemId, licenseType, paymentProof)`
+- Auth: no user JWT required
+- Payment: x402 quote-pay-confirm for `stem.download`
 
 `catalog.search` returns public release cards with stable fields:
 
@@ -26,6 +29,12 @@ PR 1 intentionally keeps the surface small and read-only:
 }
 ```
 
+`stem.quote` is free. It returns `{ priceUsdc, expiresAt, paymentChallenge }`,
+where `paymentChallenge` contains the facilitator URL and x402 payment
+requirements. `stem.download` validates a `paymentProof`; without one it returns
+an MCP tool error with `code: "PAYMENT_REQUIRED"` and the same quote challenge.
+With a valid proof, it returns an embedded MCP resource for the purchased stem.
+
 Quick route check:
 
 ```bash
@@ -41,7 +50,7 @@ curl -s http://localhost:3000/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"curl","version":"0.0.1"}}}'
 ```
 
-Verify PR 1 with MCP Inspector:
+Verify with MCP Inspector:
 
 ```bash
 npx @modelcontextprotocol/inspector http://localhost:3000/mcp
