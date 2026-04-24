@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, OnModuleInit, NotFoundException } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
 import { EncryptionService } from "../encryption/encryption.service";
@@ -24,6 +24,10 @@ const PUBLIC_RELEASE_ROUTES: UploadRightsRoute[] = [
 ];
 const SOURCE_STEM_TYPES = new Set(["original", "master"]);
 
+function sameUserId(left?: string | null, right?: string | null) {
+  return !!left && !!right && left.toLowerCase() === right.toLowerCase();
+}
+
 export type McpCatalogSearchItem = {
   id: string;
   title: string;
@@ -43,6 +47,28 @@ export class CatalogService implements OnModuleInit {
     { items: unknown[]; cachedAt: number }
   >();
   private readonly cacheTtlMs = 30_000;
+
+  private async deleteLegacyStemQualityRatings(
+    tx: Prisma.TransactionClient,
+    stemIds: string[],
+  ) {
+    if (stemIds.length === 0) {
+      return;
+    }
+
+    const rows = await tx.$queryRaw<Array<{ exists: boolean }>>`
+      SELECT to_regclass('"public"."StemQualityRating"') IS NOT NULL AS "exists"
+    `;
+
+    if (!rows[0]?.exists) {
+      return;
+    }
+
+    await tx.$executeRaw`
+      DELETE FROM "StemQualityRating"
+      WHERE "stemId" IN (${Prisma.join(stemIds)})
+    `;
+  }
 
   private resolveInternalUri(uri: string): string {
     const trimmedUri = uri.trim();
@@ -915,7 +941,7 @@ export class CatalogService implements OnModuleInit {
       return null;
     }
 
-    return release.artist?.userId === userId ? release : null;
+    return sameUserId(release.artist?.userId, userId) ? release : null;
   }
 
   async listByArtist(artistId: string, options?: { includeRestricted?: boolean }) {
@@ -988,8 +1014,8 @@ export class CatalogService implements OnModuleInit {
   }
 
   async listByUserId(userId: string) {
-    const artist = await prisma.artist.findUnique({
-      where: { userId },
+    const artist = await prisma.artist.findFirst({
+      where: { userId: { equals: userId, mode: "insensitive" } },
     });
     if (!artist) return [];
     return this.listByArtist(artist.id, { includeRestricted: true });
@@ -1026,7 +1052,7 @@ export class CatalogService implements OnModuleInit {
       throw new NotFoundException("Release not found");
     }
 
-    if (release.artist?.userId !== userId) {
+    if (!sameUserId(release.artist?.userId, userId)) {
       throw new BadRequestException("Not authorized to delete this release");
     }
 
@@ -1059,6 +1085,8 @@ export class CatalogService implements OnModuleInit {
 
       if (stemIds.length > 0) {
         // Delete marketplace dependents before the stems themselves.
+        await this.deleteLegacyStemQualityRatings(tx, stemIds);
+
         const listings = await tx.stemListing.findMany({
           where: { stemId: { in: stemIds } },
           select: { id: true },
@@ -1098,7 +1126,7 @@ export class CatalogService implements OnModuleInit {
     });
 
     if (!release) throw new BadRequestException("Release not found");
-    if (release.artist?.userId !== userId) {
+    if (!sameUserId(release.artist?.userId, userId)) {
       throw new BadRequestException("Not authorized to update this release");
     }
 
@@ -1380,7 +1408,7 @@ export class CatalogService implements OnModuleInit {
       },
     });
 
-    if (!release || !release.artworkData || release.artist?.userId !== userId) {
+    if (!release || !release.artworkData || !sameUserId(release.artist?.userId, userId)) {
       return null;
     }
 
@@ -1412,7 +1440,7 @@ export class CatalogService implements OnModuleInit {
     if (
       !track ||
       track.releaseId !== releaseId ||
-      track.release.artist?.userId !== userId
+      !sameUserId(track.release.artist?.userId, userId)
     ) {
       return null;
     }
