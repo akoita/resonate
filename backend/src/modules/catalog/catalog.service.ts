@@ -1058,7 +1058,17 @@ export class CatalogService implements OnModuleInit {
       }
 
       if (stemIds.length > 0) {
-        // Delete any listings/mints/pricing associated with stems first
+        // Delete marketplace dependents before the stems themselves.
+        const listings = await tx.stemListing.findMany({
+          where: { stemId: { in: stemIds } },
+          select: { id: true },
+        });
+        const listingIds = listings.map((listing) => listing.id);
+
+        if (listingIds.length > 0) {
+          await tx.stemPurchase.deleteMany({ where: { listingId: { in: listingIds } } });
+        }
+
         await tx.stemListing.deleteMany({ where: { stemId: { in: stemIds } } });
         await tx.stemNftMint.deleteMany({ where: { stemId: { in: stemIds } } });
         await tx.stemPricing.deleteMany({ where: { stemId: { in: stemIds } } });
