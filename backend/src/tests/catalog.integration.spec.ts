@@ -90,6 +90,87 @@ describe('CatalogService (integration)', () => {
     expect(release!.tracks[0].title).toBe('Solo Track');
   });
 
+  it('consolidates an AI-generated release with its legacy Demucs duplicate', async () => {
+    const canonicalReleaseId = `${TEST_PREFIX}ai_canonical`;
+    const canonicalTrackId = `${TEST_PREFIX}ai_track`;
+    const canonicalStemId = `${TEST_PREFIX}ai_master`;
+    const duplicateReleaseId = `${TEST_PREFIX}ai_duplicate`;
+    const duplicateTrackId = `${TEST_PREFIX}dup_track`;
+    const duplicateOriginalStemId = `${TEST_PREFIX}dup_original`;
+    const duplicateVocalStemId = `${TEST_PREFIX}dup_vocals`;
+
+    await prisma.release.create({
+      data: {
+        id: canonicalReleaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Duplicate AI Single',
+        status: 'published',
+        type: 'ai_generated',
+        primaryArtist: 'AI (Lyria)',
+        tracks: {
+          create: {
+            id: canonicalTrackId,
+            title: 'Duplicate AI Single',
+            processingStatus: 'complete',
+            stems: {
+              create: {
+                id: canonicalStemId,
+                type: 'master',
+                uri: 'gs://bucket/master.mp3',
+                storageProvider: 'gcs',
+              },
+            },
+          },
+        },
+      },
+    });
+    await prisma.release.create({
+      data: {
+        id: duplicateReleaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Duplicate AI Single',
+        status: 'ready',
+        type: 'single',
+        primaryArtist: 'AI (Lyria)',
+        rightsRoute: 'LIMITED_MONITORING',
+        rightsSourceType: 'ai_generated',
+        tracks: {
+          create: {
+            id: duplicateTrackId,
+            title: 'Duplicate AI Single',
+            processingStatus: 'complete',
+            stems: {
+              create: [
+                {
+                  id: duplicateOriginalStemId,
+                  type: 'original',
+                  uri: 'gs://bucket/original.mp3',
+                  storageProvider: 'gcs',
+                },
+                {
+                  id: duplicateVocalStemId,
+                  type: 'vocals',
+                  uri: 'gs://bucket/vocals.mp3',
+                  storageProvider: 'gcs',
+                },
+              ],
+            },
+          },
+        },
+      },
+    });
+
+    const release = await catalog.getRelease(canonicalReleaseId, { includeRestricted: true });
+
+    expect(release).not.toBeNull();
+    expect(release!.rightsRoute).toBe('LIMITED_MONITORING');
+    expect(release!.tracks[0].stems.map((stem) => stem.type).sort()).toEqual(['master', 'vocals']);
+    const movedStem = await prisma.stem.findUnique({ where: { id: duplicateVocalStemId } });
+    expect(movedStem?.trackId).toBe(canonicalTrackId);
+    const duplicate = await prisma.release.findUnique({ where: { id: duplicateReleaseId } });
+    expect(duplicate).toBeNull();
+  });
+
   it('updates release title and status', async () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,

@@ -100,6 +100,7 @@ export class StemsProcessor extends WorkerHost {
                     callbackUrl: backendBaseUrl,
                     originalStemMeta: {
                         id: originalStem.id,
+                        uri: originalStem.uri,
                         durationSeconds: originalStem.durationSeconds,
                         storageProvider: originalStem.storageProvider,
                     },

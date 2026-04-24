@@ -230,7 +230,9 @@ export default function Home() {
         )}
 
         {/* 6. AI DJ SESSION PRESETS ————————————————————————————— */}
-        <AgentSessionPresets compact />
+        <section className="ng-section ng-section--presets">
+          <AgentSessionPresets compact />
+        </section>
 
         {/* 7. TOP ARTISTS —————————————————————————————————————— */}
         {topArtists.length > 0 && (

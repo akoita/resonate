@@ -20,6 +20,7 @@ export interface StemSeparateMessage {
   /** Original stem metadata for re-assembly after separation */
   originalStemMeta?: {
     id?: string;
+    uri?: string;
     durationSeconds?: number;
     storageProvider?: string;
   };

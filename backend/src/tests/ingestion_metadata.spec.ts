@@ -8,6 +8,10 @@ const mockArtistService = { findById: jest.fn().mockResolvedValue(null) };
 const mockQueue = { add: jest.fn() };
 
 describe("IngestionService metadata", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it("publishes metadata on stems.uploaded", () => {
     const eventBus = new EventBus();
     const mockCatalogService = {} as any;
@@ -75,5 +79,111 @@ describe("IngestionService metadata", () => {
     const status = service.getStatus(result.trackId);
     expect(status.status).toBe("complete");
     expect(processed?.tracks?.[0]?.stems?.length).toBe(2);
+  });
+
+  it("queues an existing ready AI-generated release that only has a master stem", async () => {
+    const eventBus = new EventBus();
+    const mockCatalogService = {
+      getRelease: jest.fn().mockResolvedValue({
+        id: "rel_ai_1",
+        artistId: "artist_1",
+        title: "AI Single",
+        status: "ready",
+        type: "ai_generated",
+        primaryArtist: "AI (Lyria)",
+        featuredArtists: null,
+        genre: "Electronic",
+        label: "Resonate Records",
+        releaseDate: new Date("2026-04-24T00:00:00.000Z"),
+        explicit: false,
+        tracks: [{
+          id: "trk_ai_1",
+          title: "AI Single",
+          artist: "AI (Lyria)",
+          position: 1,
+          explicit: false,
+          stems: [{
+            id: "stem_master_1",
+            uri: "gs://bucket/generated.mp3",
+            type: "master",
+            durationSeconds: 32,
+            storageProvider: "gcs",
+          }],
+        }],
+      }),
+      getStemBlob: jest.fn().mockResolvedValue({
+        data: Buffer.from("generated audio"),
+        mimeType: "audio/mpeg",
+      }),
+    };
+    const service = new IngestionService(
+      eventBus,
+      mockStorageProvider as any,
+      mockEncryptionService as any,
+      mockArtistService as any,
+      mockCatalogService as any,
+      mockQueue as any,
+    );
+    const uploadedEvents: any[] = [];
+    eventBus.subscribe("stems.uploaded", (event: any) => uploadedEvents.push(event));
+
+    const result = await service.retryRelease("rel_ai_1");
+
+    expect(result).toEqual({ success: true, releaseId: "rel_ai_1" });
+    expect(uploadedEvents).toHaveLength(1);
+    expect(uploadedEvents[0].releaseId).toBe("rel_ai_1");
+    expect(uploadedEvents[0].metadata.tracks[0].id).toBe("trk_ai_1");
+    expect(mockQueue.add).toHaveBeenCalledWith(
+      "process-stems",
+      expect.objectContaining({
+        releaseId: "rel_ai_1",
+        artistId: "artist_1",
+        tracks: [expect.objectContaining({ id: "trk_ai_1" })],
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it("does not queue an existing release that already has separated stems", async () => {
+    const eventBus = new EventBus();
+    const queue = { add: jest.fn() };
+    const mockCatalogService = {
+      getRelease: jest.fn().mockResolvedValue({
+        id: "rel_ready_1",
+        artistId: "artist_1",
+        title: "Separated Single",
+        status: "ready",
+        type: "single",
+        tracks: [{
+          id: "trk_ready_1",
+          title: "Separated Single",
+          artist: "Artist",
+          position: 1,
+          stems: [
+            { id: "stem_original_1", uri: "gs://bucket/original.mp3", type: "original" },
+            { id: "stem_vocals_1", uri: "gs://bucket/vocals.mp3", type: "vocals" },
+          ],
+        }],
+      }),
+      getStemBlob: jest.fn(),
+    };
+    const service = new IngestionService(
+      eventBus,
+      mockStorageProvider as any,
+      mockEncryptionService as any,
+      mockArtistService as any,
+      mockCatalogService as any,
+      queue as any,
+    );
+
+    const result = await service.retryRelease("rel_ready_1");
+
+    expect(result).toEqual({
+      success: true,
+      message: "Release already has separated stems",
+      releaseId: "rel_ready_1",
+    });
+    expect(queue.add).not.toHaveBeenCalled();
+    expect(mockCatalogService.getStemBlob).not.toHaveBeenCalled();
   });
 });

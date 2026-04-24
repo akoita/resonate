@@ -6,7 +6,7 @@ import Link from "next/link";
 import AuthGate from "../../components/auth/AuthGate";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { useGeneration } from "../../hooks/useGeneration";
-import { getArtistMe, uploadStems, getReleaseArtworkUrl, saveLibraryTrackAPI, getGenerationAnalytics, GenerationAnalytics, publishAiGeneration, waitForReleaseAvailability } from "../../lib/api";
+import { getArtistMe, getReleaseArtworkUrl, saveLibraryTrackAPI, getGenerationAnalytics, GenerationAnalytics, publishAiGeneration, retryRelease, waitForReleaseAvailability } from "../../lib/api";
 import { AICreationPublishModal, PublishMetadata } from "../../components/create/AICreationPublishModal";
 import { DuplicatePublishWarningModal } from "../../components/create/DuplicatePublishWarningModal";
 import { useToast } from "../../components/ui/Toast";
@@ -181,7 +181,7 @@ export default function CreatePageContent() {
       const publishResult = await publishAiGeneration(token, result.trackId, formData);
 
       // Use the authoritative releaseId from the backend response
-      let targetReleaseId = publishResult?.releaseId ?? result.releaseId;
+      const targetReleaseId = publishResult?.releaseId ?? result.releaseId;
 
       if (publishActionQueue === "library") {
         await saveLibraryTrackAPI(token, {
@@ -198,30 +198,7 @@ export default function CreatePageContent() {
           remoteArtworkUrl: getReleaseArtworkUrl(targetReleaseId),
         });
       } else if (publishActionQueue === "demucs") {
-        const demucsFormData = new FormData();
-        demucsFormData.append("trackId", result.trackId);
-        demucsFormData.append("source", "ai_generated");
-        // Send structured metadata matching what ingestion service expects
-        demucsFormData.append("metadata", JSON.stringify({
-          title: metadata.title,
-          primaryArtist: metadata.artist,
-          genre: metadata.genre,
-          label: metadata.label,
-          releaseDate: metadata.releaseDate,
-          tracks: [{
-            title: metadata.title,
-            artist: metadata.artist,
-          }],
-        }));
-        if (metadata.artworkBlob) {
-          demucsFormData.append("artwork", metadata.artworkBlob, "cover.png");
-        }
-        const demucsResult = await uploadStems(token, demucsFormData);
-
-        // Demucs creates a new release — use that ID for navigation
-        if (demucsResult?.releaseId) {
-          targetReleaseId = demucsResult.releaseId;
-        }
+        await retryRelease(token, targetReleaseId);
       }
       setHasPublished(true);
 
