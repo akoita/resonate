@@ -9,7 +9,6 @@ import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
 import { useToast } from "../components/ui/Toast";
 import { listCampaignsSync, getFeaturedCampaignSync, daysUntil, type Campaign } from "../lib/shows";
 import AgentSessionPresets from "../components/agent/AgentSessionPresets";
-import { FALLBACK_RELEASES } from "../lib/fallbackReleases";
 
 /*
  * Home page — Next-Gen Music Platform (Stitch design applied, 2026-04).
@@ -65,7 +64,6 @@ export default function Home() {
   const router = useRouter();
   const [releases, setReleases] = useState<Release[]>([]);
   const [myReleases, setMyReleases] = useState<Release[]>([]);
-  const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<FilterOption>("all");
   const [catalogView, setCatalogView] = useState<CatalogView>("releases");
   const [catalogSearch, setCatalogSearch] = useState("");
@@ -86,8 +84,7 @@ export default function Home() {
   useEffect(() => {
     listPublishedReleases(48)
       .then(setReleases)
-      .catch(() => setReleases([]))
-      .finally(() => setLoading(false));
+      .catch(() => setReleases([]));
   }, [status]);
 
   useEffect(() => {
@@ -109,12 +106,7 @@ export default function Home() {
     };
   }, [status, token]);
 
-  // Prevent shimmer-forever: fall back to curated mock releases when the
-  // catalog API is empty (fresh staging, backend blip).
-  const displayReleases = useMemo<Release[]>(
-    () => (!loading && releases.length === 0 ? FALLBACK_RELEASES : releases),
-    [releases, loading],
-  );
+  const displayReleases = releases;
 
   // Client-side filter (genre match on `release.genre`, case-insensitive).
   const filteredReleases = useMemo<Release[]>(() => {
@@ -263,51 +255,65 @@ export default function Home() {
 
             {catalogView === "releases" && (
               <div className="ng-resource-grid ng-resource-grid--releases">
-                {browseReleases.map((release) => (
-                  <Link
-                    key={release.id}
-                    href={`/release/${release.id}`}
-                    className="ng-resource-card"
-                  >
-                    <ReleaseThumb release={release} />
-                    <div className="ng-resource-card__body">
-                      <h4>{release.title}</h4>
-                      <p>{getArtistName(release)}</p>
-                      <div className="ng-resource-card__meta">
-                        <span>{release.type || "Release"}</span>
-                        <span>{release.genre || "Uncategorized"}</span>
+                {browseReleases.length > 0 ? (
+                  browseReleases.map((release) => (
+                    <Link
+                      key={release.id}
+                      href={`/release/${release.id}`}
+                      className="ng-resource-card"
+                    >
+                      <ReleaseThumb release={release} />
+                      <div className="ng-resource-card__body">
+                        <h4>{release.title}</h4>
+                        <p>{getArtistName(release)}</p>
+                        <div className="ng-resource-card__meta">
+                          <span>{release.type || "Release"}</span>
+                          <span>{release.genre || "Uncategorized"}</span>
+                        </div>
                       </div>
-                    </div>
-                  </Link>
-                ))}
+                    </Link>
+                  ))
+                ) : (
+                  <div className="ng-empty-state">
+                    <span className="ms-icon" aria-hidden>album</span>
+                    <p>No releases in the global catalog.</p>
+                  </div>
+                )}
               </div>
             )}
 
             {catalogView === "artists" && (
               <div className="ng-artist-browser">
-                {browseArtists.map((artist) => (
-                  <Link
-                    key={artist.key}
-                    href={`/artist/${encodeURIComponent(artist.artistId ?? artist.name)}`}
-                    className="ng-artist-row"
-                  >
-                    <span className="ng-artist-row__avatar" aria-hidden>
-                      {artist.name[0]?.toUpperCase() ?? "?"}
-                    </span>
-                    <span className="ng-artist-row__main">
-                      <strong>{artist.name}</strong>
-                      <small>{artist.latestRelease?.title ?? "No recent release"}</small>
-                    </span>
-                    <span className="ng-artist-row__metric">
-                      {artist.releaseCount}
-                      <small>releases</small>
-                    </span>
-                    <span className="ng-artist-row__metric">
-                      {artist.stemCount}
-                      <small>stems</small>
-                    </span>
-                  </Link>
-                ))}
+                {browseArtists.length > 0 ? (
+                  browseArtists.map((artist) => (
+                    <Link
+                      key={artist.key}
+                      href={`/artist/${encodeURIComponent(artist.artistId ?? artist.name)}`}
+                      className="ng-artist-row"
+                    >
+                      <span className="ng-artist-row__avatar" aria-hidden>
+                        {artist.name[0]?.toUpperCase() ?? "?"}
+                      </span>
+                      <span className="ng-artist-row__main">
+                        <strong>{artist.name}</strong>
+                        <small>{artist.latestRelease?.title ?? "No recent release"}</small>
+                      </span>
+                      <span className="ng-artist-row__metric">
+                        {artist.releaseCount}
+                        <small>releases</small>
+                      </span>
+                      <span className="ng-artist-row__metric">
+                        {artist.stemCount}
+                        <small>stems</small>
+                      </span>
+                    </Link>
+                  ))
+                ) : (
+                  <div className="ng-empty-state">
+                    <span className="ms-icon" aria-hidden>person_search</span>
+                    <p>No artists in the global catalog.</p>
+                  </div>
+                )}
               </div>
             )}
 
