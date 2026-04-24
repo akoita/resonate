@@ -26,4 +26,12 @@ export class WellKnownController {
       `${req.protocol}://${req.get("host")}`;
     return this.openApiService.buildWellKnownDocument(origin);
   }
+
+  @Get("mcp.json")
+  async getMcpDiscoveryDocument(@Req() req: Request) {
+    const origin =
+      process.env.PUBLIC_API_URL ||
+      `${req.protocol}://${req.get("host")}`;
+    return this.openApiService.buildMcpWellKnownDocument(origin);
+  }
 }

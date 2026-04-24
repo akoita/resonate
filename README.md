@@ -4,7 +4,7 @@
 
 ### On-chain music for artists, listeners, and agents.
 
-**Programmable Stem IP • Human Studio • x402-native API**
+**Programmable Stem IP • Human Studio • x402-native API • MCP Server**
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=for-the-badge&logo=nestjs&logoColor=white)](https://nestjs.com/)
@@ -71,6 +71,7 @@ If you use an x402-capable client such as AgentCash, it can automate the proof e
 ### What the agent API surface gives you
 
 - **Public discovery surfaces** — machine-readable catalog, quote, and pricing endpoints
+- **MCP tools** — `catalog.search`, `stem.quote`, and `stem.download` over Streamable HTTP at `/mcp`
 - **No-account checkout** — x402 payment flow over HTTP using USDC
 - **Structured receipts** — purchase proof attached to successful paid downloads
 - **Licensing-aware pricing** — personal, remix, and commercial pricing exposed for automation
@@ -328,6 +329,7 @@ repo-local `docker build`, `docker run`, stale-image recovery, and "stuck on Sep
 | [Core Contracts](docs/smart-contracts/core_contracts.md)                   | Stem NFT and marketplace contracts             |
 | [Marketplace Integration](docs/smart-contracts/marketplace_integration.md) | Frontend/backend integration                   |
 | [x402 Payments](docs/architecture/x402_payments.md)                        | Machine-to-machine stem purchases via x402     |
+| [MCP Server](docs/architecture/mcp_server.md)                              | Tool discovery and client setup for agents     |
 | [Contributing](CONTRIBUTING.md)                                            | Contribution guidelines                        |
 
 ---

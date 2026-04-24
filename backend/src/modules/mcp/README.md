@@ -6,6 +6,7 @@ Current surface:
 
 - Endpoint: `POST /mcp`
 - Curl-friendly capability check: `GET /mcp`
+- Discovery metadata: `GET /.well-known/mcp.json`
 - Tools:
   - `catalog.search(query, limit)`
   - `stem.quote(stemId, licenseType)`
@@ -39,6 +40,7 @@ Quick route check:
 
 ```bash
 curl http://localhost:3000/mcp
+curl http://localhost:3000/.well-known/mcp.json
 ```
 
 Initialize handshake:
@@ -70,5 +72,5 @@ Equivalent `~/.codex/config.toml` entry:
 url = "http://localhost:3000/mcp"
 ```
 
-Codex CLI and IDE configuration are shared. Claude Desktop and Cursor configs
-are intentionally deferred to PR 3.
+Claude Desktop, Cursor, and the TypeScript smoke client are documented in
+`docs/architecture/mcp_server.md`.
