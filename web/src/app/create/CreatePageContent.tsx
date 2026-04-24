@@ -9,6 +9,7 @@ import { useGeneration } from "../../hooks/useGeneration";
 import { getArtistMe, getReleaseArtworkUrl, saveLibraryTrackAPI, getGenerationAnalytics, GenerationAnalytics, publishAiGeneration, retryRelease, waitForReleaseAvailability } from "../../lib/api";
 import { AICreationPublishModal, PublishMetadata } from "../../components/create/AICreationPublishModal";
 import { DuplicatePublishWarningModal } from "../../components/create/DuplicatePublishWarningModal";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { useToast } from "../../components/ui/Toast";
 import "../../styles/create.css";
 
@@ -49,6 +50,7 @@ export default function CreatePageContent() {
   });
   const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
   const [isDuplicateWarningOpen, setIsDuplicateWarningOpen] = useState(false);
+  const [isReplaceConfirmOpen, setIsReplaceConfirmOpen] = useState(false);
   const [publishActionQueue, setPublishActionQueue] = useState<'library' | 'demucs' | null>(null);
   const [hasPublished, setHasPublished] = useState(false);
 
@@ -124,22 +126,37 @@ export default function CreatePageContent() {
     return parts.length > 0 ? parts.join(", ") : undefined;
   }, [noVocals, noDrums, customExclude]);
 
-  const handleGenerate = useCallback(async () => {
+  const startFreshGeneration = useCallback(async (options?: { seed?: number }) => {
     if (!prompt.trim()) return;
+    setHasPublished(false);
     await startGeneration(prompt.trim(), {
       negativePrompt: buildNegativePrompt(),
+      seed: options?.seed,
       durationSeconds,
     });
   }, [prompt, startGeneration, buildNegativePrompt, durationSeconds]);
 
+  const hasUnpublishedGeneratedTrack = state === "complete" && Boolean(result) && !hasPublished;
+
+  const handleGenerate = useCallback(async () => {
+    if (!prompt.trim()) return;
+    if (hasUnpublishedGeneratedTrack) {
+      setIsReplaceConfirmOpen(true);
+      return;
+    }
+    await startFreshGeneration();
+  }, [prompt, hasUnpublishedGeneratedTrack, startFreshGeneration]);
+
+  const handleReplaceConfirm = useCallback(async () => {
+    setIsReplaceConfirmOpen(false);
+    reset();
+    await startFreshGeneration();
+  }, [reset, startFreshGeneration]);
+
   const handleRegenerate = useCallback(async () => {
     reset();
-    await startGeneration(prompt.trim(), {
-      negativePrompt: buildNegativePrompt(),
-      seed: Math.floor(Math.random() * 2147483647),
-      durationSeconds,
-    });
-  }, [prompt, startGeneration, buildNegativePrompt, reset, durationSeconds]);
+    await startFreshGeneration({ seed: Math.floor(Math.random() * 2147483647) });
+  }, [startFreshGeneration, reset]);
 
   const handleSendToDemucs = useCallback(() => {
     setPublishActionQueue("demucs");
@@ -446,7 +463,7 @@ export default function CreatePageContent() {
               <button
                 className="result-action-btn"
                 style={{ marginTop: "var(--space-3)" }}
-                onClick={() => { reset(); handleGenerate(); }}
+                onClick={() => { reset(); void startFreshGeneration(); }}
                 type="button"
               >
                 🔄 Try Again
@@ -493,25 +510,36 @@ export default function CreatePageContent() {
         )}
       </div>
 
-          <DuplicatePublishWarningModal
-            isOpen={isDuplicateWarningOpen}
-            onConfirm={handleDuplicateWarningConfirm}
-            onCancel={() => setIsDuplicateWarningOpen(false)}
-          />
+      <ConfirmDialog
+        isOpen={isReplaceConfirmOpen}
+        title="Replace generated track?"
+        message="You already have a generated track that has not been saved to your library or sent to Demucs. Generating a new track will replace it."
+        confirmLabel="Replace Track"
+        cancelLabel="Keep Current"
+        variant="warning"
+        onConfirm={handleReplaceConfirm}
+        onCancel={() => setIsReplaceConfirmOpen(false)}
+      />
 
-          <AICreationPublishModal
-            isOpen={isPublishModalOpen}
-            onClose={() => {
-              setIsPublishModalOpen(false);
-              setPublishActionQueue(null);
-            }}
-            onPublish={handlePublishConfirm}
-            defaultTitle={prompt.trim().slice(0, 60) || "AI Generated Track"}
-            defaultAudioUrl={getStreamUrl()}
-            action={publishActionQueue ?? 'library'}
-            userDisplayName={artistDisplayName}
-            token={token ?? undefined}
-          />
+      <DuplicatePublishWarningModal
+        isOpen={isDuplicateWarningOpen}
+        onConfirm={handleDuplicateWarningConfirm}
+        onCancel={() => setIsDuplicateWarningOpen(false)}
+      />
+
+      <AICreationPublishModal
+        isOpen={isPublishModalOpen}
+        onClose={() => {
+          setIsPublishModalOpen(false);
+          setPublishActionQueue(null);
+        }}
+        onPublish={handlePublishConfirm}
+        defaultTitle={prompt.trim().slice(0, 60) || "AI Generated Track"}
+        defaultAudioUrl={getStreamUrl()}
+        action={publishActionQueue ?? 'library'}
+        userDisplayName={artistDisplayName}
+        token={token ?? undefined}
+      />
     </AuthGate>
   );
 }

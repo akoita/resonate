@@ -56,6 +56,14 @@ describe('CatalogService (integration)', () => {
   });
 
   afterAll(async () => {
+    await prisma.stemPurchase.deleteMany({
+      where: { listing: { stem: { is: { track: { release: { artistId: `${TEST_PREFIX}artist` } } } } } },
+    });
+    await prisma.stemListing.deleteMany({
+      where: { stem: { is: { track: { release: { artistId: `${TEST_PREFIX}artist` } } } } },
+    });
+    await prisma.stemPricing.deleteMany({ where: { stem: { track: { release: { artistId: `${TEST_PREFIX}artist` } } } } });
+    await prisma.stemNftMint.deleteMany({ where: { stem: { track: { release: { artistId: `${TEST_PREFIX}artist` } } } } });
     await prisma.stem.deleteMany({ where: { track: { release: { artistId: `${TEST_PREFIX}artist` } } } });
     await prisma.track.deleteMany({ where: { release: { artistId: `${TEST_PREFIX}artist` } } });
     await prisma.release.deleteMany({ where: { artistId: `${TEST_PREFIX}artist` } });
@@ -447,6 +455,55 @@ describe('CatalogService (integration)', () => {
     });
     const result = await catalog.deleteRelease(created.id, `${TEST_PREFIX}user`);
     expect(result.success).toBe(true);
+    expect(await prisma.release.findUnique({ where: { id: created.id } })).toBeNull();
+  });
+
+  it('deletes release with purchased stem listing', async () => {
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Purchased Stem Delete Target',
+      tracks: [{ title: 'Sold Stem', position: 1 }],
+    });
+    const stem = await prisma.stem.create({
+      data: { trackId: created.tracks[0].id, type: 'vocals', uri: '/sold.mp3' },
+    });
+    const listing = await prisma.stemListing.create({
+      data: {
+        listingId: BigInt(Date.now()),
+        stemId: stem.id,
+        tokenId: BigInt(Date.now() + 1),
+        chainId: 31337,
+        contractAddress: '0x' + '1'.repeat(40),
+        sellerAddress: '0x' + '2'.repeat(40),
+        pricePerUnit: '5000000000000000',
+        amount: BigInt(1),
+        paymentToken: '0x' + '3'.repeat(40),
+        expiresAt: new Date(Date.now() + 86_400_000),
+        transactionHash: '0x' + `${TEST_PREFIX}listing`.padEnd(64, '0').slice(0, 64),
+        blockNumber: BigInt(1),
+        listedAt: new Date(),
+      },
+    });
+    const purchase = await prisma.stemPurchase.create({
+      data: {
+        listingId: listing.id,
+        buyerAddress: '0x' + '4'.repeat(40),
+        amount: BigInt(1),
+        totalPaid: '5000000000000000',
+        royaltyPaid: '250000000000000',
+        protocolFeePaid: '50000000000000',
+        sellerReceived: '4700000000000000',
+        transactionHash: '0x' + `${TEST_PREFIX}purchase`.padEnd(64, '0').slice(0, 64),
+        blockNumber: BigInt(2),
+        purchasedAt: new Date(),
+      },
+    });
+
+    const result = await catalog.deleteRelease(created.id, `${TEST_PREFIX}user`);
+
+    expect(result.success).toBe(true);
+    expect(await prisma.stemPurchase.findUnique({ where: { id: purchase.id } })).toBeNull();
+    expect(await prisma.stemListing.findUnique({ where: { id: listing.id } })).toBeNull();
     expect(await prisma.release.findUnique({ where: { id: created.id } })).toBeNull();
   });
 
