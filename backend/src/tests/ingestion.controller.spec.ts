@@ -84,5 +84,13 @@ describe('IngestionController', () => {
         expect.objectContaining({ files: [] }),
       );
     });
+
+    it('passes userId to retryRelease for ownership checks', () => {
+      const ctrl = makeController();
+
+      ctrl.retry('rel-1', { user: { userId: 'user-42' } });
+
+      expect(mockIngestionService.retryRelease).toHaveBeenCalledWith('rel-1', 'user-42');
+    });
   });
 });

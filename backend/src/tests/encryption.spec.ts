@@ -5,6 +5,23 @@
  * ready state, and provider name.
  */
 
+import { createHash } from 'crypto';
+import { rmSync } from 'fs';
+import { join } from 'path';
+import { EncryptionService } from '../modules/encryption/encryption.service';
+
+const TEST_STEM_URI = 'https://storage.googleapis.com/private/stem.mp3';
+const TEST_STEM_CACHE_PATH = join(
+  process.cwd(),
+  'uploads',
+  'decrypted_cache',
+  `${createHash('sha256').update(TEST_STEM_URI).digest('hex')}.mp3`,
+);
+
+const clearTestStemCache = () => {
+  rmSync(TEST_STEM_CACHE_PATH, { force: true });
+};
+
 const mockProvider = {
   providerName: 'noop',
   encrypt: jest.fn().mockResolvedValue(null),
@@ -25,19 +42,22 @@ const mockStorageProvider = {
   download: jest.fn(),
 };
 
-import { EncryptionService } from '../modules/encryption/encryption.service';
-
 describe('EncryptionService', () => {
   let service: EncryptionService;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    clearTestStemCache();
     mockStorageProvider.download.mockReset();
     service = new EncryptionService(
       mockProvider as any,
       mockConfigService as any,
       mockStorageProvider as any,
     );
+  });
+
+  afterEach(() => {
+    clearTestStemCache();
   });
 
   describe('isReady', () => {
@@ -100,14 +120,14 @@ describe('EncryptionService', () => {
       const fetchSpy = jest.spyOn(global, 'fetch');
 
       await service.decrypt(
-        'https://storage.googleapis.com/private/stem.mp3',
+        TEST_STEM_URI,
         JSON.stringify({ iv: 'aa', authTag: 'bb', keyId: 'stem-1' }),
         [],
         { address: '0xABC', sig: '0x1234', signedMessage: 'test' },
       );
 
       expect(mockStorageProvider.download).toHaveBeenCalledWith(
-        'https://storage.googleapis.com/private/stem.mp3',
+        TEST_STEM_URI,
       );
       expect(mockProvider.decrypt).toHaveBeenCalledWith(
         encryptedData,
@@ -125,7 +145,7 @@ describe('EncryptionService', () => {
       const fetchSpy = jest.spyOn(global, 'fetch');
 
       const result = await service.decrypt(
-        'https://storage.googleapis.com/private/stem.mp3',
+        TEST_STEM_URI,
         '',
         [],
         { address: '0xABC', sig: '0x1234', signedMessage: 'test' },
@@ -133,7 +153,7 @@ describe('EncryptionService', () => {
 
       expect(result).toEqual(rawData);
       expect(mockStorageProvider.download).toHaveBeenCalledWith(
-        'https://storage.googleapis.com/private/stem.mp3',
+        TEST_STEM_URI,
       );
       expect(fetchSpy).not.toHaveBeenCalled();
       fetchSpy.mockRestore();

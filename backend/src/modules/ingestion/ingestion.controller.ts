@@ -80,8 +80,8 @@ export class IngestionController {
 
   @UseGuards(AuthGuard("jwt"))
   @Post("retry/:releaseId")
-  retry(@Param("releaseId") releaseId: string) {
-    return this.ingestionService.retryRelease(releaseId);
+  retry(@Param("releaseId") releaseId: string, @Request() req: any) {
+    return this.ingestionService.retryRelease(releaseId, req.user?.userId);
   }
 
   @UseGuards(AuthGuard("jwt"))

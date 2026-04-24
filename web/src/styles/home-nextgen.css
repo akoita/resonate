@@ -33,6 +33,10 @@
   margin-bottom: var(--ds-stack-md);
 }
 
+.home-ng .ng-section--presets {
+  margin-bottom: var(--ds-stack-lg);
+}
+
 .home-ng .ng-section-header {
   display: flex;
   justify-content: space-between;

@@ -95,6 +95,15 @@ describe('IngestionController (e2e)', () => {
     expect(res.body.trackId).toBeDefined();
   });
 
+  it('POST /ingestion/retry/:releaseId passes JWT userId to service', async () => {
+    await request(app.getHttpServer())
+      .post('/ingestion/retry/rel-1')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(201);
+
+    expect(mockIngestionService.retryRelease).toHaveBeenCalledWith('rel-1', 'user-1');
+  });
+
   // ----- Public route (progress webhook) -----
 
   it('POST /ingestion/progress/:releaseId/:trackId → 201 without internal key in non-production', async () => {

@@ -55,6 +55,25 @@ const getTrackDuration = (track: { stems?: Array<{ durationSeconds?: number | nu
   return track.stems?.[0]?.durationSeconds ?? 0;
 };
 
+const MIXER_STEM_TYPES = ["vocals", "drums", "bass", "piano", "guitar", "other"] as const;
+
+const normalizeStemType = (type?: string | null): string => type?.trim().toLowerCase() ?? "";
+
+const hasMixerStem = (
+  stems?: Array<{ type?: string | null }> | null,
+  selectedType?: string,
+): boolean => {
+  const normalizedSelectedType = normalizeStemType(selectedType);
+
+  return stems?.some((stem) => {
+    const type = normalizeStemType(stem.type);
+    if (!type || type === "original" || type === "master") {
+      return false;
+    }
+    return normalizedSelectedType ? type === normalizedSelectedType : true;
+  }) ?? false;
+};
+
 function slugifyReleaseTitle(value: string): string {
   return value
     .toLowerCase()
@@ -271,7 +290,7 @@ export default function ReleaseDetails() {
   const isProcessingRelease = release?.status === "processing";
   const hasUnprocessedTracks = release?.tracks?.some(t => !t.stems || t.stems.length <= 1);
   const separatedStemCount = release?.tracks?.reduce((total, track) => {
-    const stems = track.stems?.filter((stem) => !["ORIGINAL", "master"].includes(stem.type)) ?? [];
+    const stems = track.stems?.filter((stem) => hasMixerStem([stem])) ?? [];
     return total + stems.length;
   }, 0) ?? 0;
   const totalDurationSeconds = release?.tracks?.reduce((total, track) => total + getTrackDuration(track), 0) ?? 0;
@@ -676,9 +695,8 @@ export default function ReleaseDetails() {
       // Solo the specific stem if provided
       const stemParam = searchParams.get('stem');
       if (stemParam) {
-        const stemTypes = ["vocals", "drums", "bass", "piano", "guitar", "other"];
         const newVolumes: Record<string, number> = {};
-        for (const st of stemTypes) {
+        for (const st of MIXER_STEM_TYPES) {
           newVolumes[st] = st.toLowerCase() === stemParam.toLowerCase() ? 1 : 0;
         }
         setMixerVolumes(newVolumes);
@@ -773,6 +791,8 @@ export default function ReleaseDetails() {
 
     const isOriginal = type.toUpperCase() === "ORIGINAL";
     const isTrackAlreadyPlaying = currentTrack?.id === trackId;
+    const currentTrackHasSelectedStem = hasMixerStem(currentTrack?.stems, type);
+    const needsPlayerTrackRefresh = !isTrackAlreadyPlaying || (!isOriginal && !currentTrackHasSelectedStem);
 
     if (isOriginal) {
       // Playing full track - disable mixer mode for clean playback
@@ -780,8 +800,8 @@ export default function ReleaseDetails() {
         toggleMixerMode();
       }
       // If track is already playing, don't re-queue (just let mixer mode change take effect)
-      if (!isTrackAlreadyPlaying) {
-        handlePlayTrack(trackIndex, type);
+      if (needsPlayerTrackRefresh) {
+        void handlePlayTrack(trackIndex, type);
       }
     } else {
       // Playing an individual stem - enable mixer and solo it
@@ -790,9 +810,8 @@ export default function ReleaseDetails() {
       }
 
       // Solo the selected stem: set it to 100%, mute all others
-      const stemTypes = ["vocals", "drums", "bass", "piano", "guitar", "other"];
       const newVolumes: Record<string, number> = {};
-      for (const stemType of stemTypes) {
+      for (const stemType of MIXER_STEM_TYPES) {
         newVolumes[stemType] = stemType.toLowerCase() === type.toLowerCase() ? 1 : 0;
       }
       setMixerVolumes(newVolumes);
@@ -800,8 +819,8 @@ export default function ReleaseDetails() {
       // Only start playback if track isn't already playing
       // IMPORTANT: Call synchronously to preserve user gesture context for browser audio
       // The toggleMixerMode above sets the ref immediately, so playTrack will see the correct state
-      if (!isTrackAlreadyPlaying) {
-        handlePlayTrack(trackIndex, type);
+      if (needsPlayerTrackRefresh) {
+        void handlePlayTrack(trackIndex, type);
       }
     }
   };
@@ -1084,7 +1103,7 @@ export default function ReleaseDetails() {
               <Button variant="ghost" className="btn-save" onClick={handleSaveToLibrary}>
                 Save to Library
               </Button>
-              {currentTrack && currentTrack.stems && currentTrack.stems.some(s => !['ORIGINAL', 'master', 'other'].includes(s.type)) && (
+              {hasMixerStem(currentTrack?.stems) && (
                 <Button
                   variant="ghost"
                   className={`btn-mixer ${mixerMode ? 'active' : ''}`}
@@ -1551,8 +1570,8 @@ export default function ReleaseDetails() {
                       {track.stems && track.stems.length > 1 && (
                         <div className="stem-selector" onClick={(e) => e.stopPropagation()}>
                           <div className="stem-btns-group">
-                            {["ORIGINAL", "vocals", "drums", "bass", "piano", "guitar", "other"].map((type) => {
-                              const hasStem = track.stems?.some(s => s.type.toLowerCase() === type.toLowerCase());
+                            {(["ORIGINAL", ...MIXER_STEM_TYPES]).map((type) => {
+                              const hasStem = track.stems?.some(s => normalizeStemType(s.type) === normalizeStemType(type));
                               if (!hasStem) return null;
 
                               const isSelected = (trackStems[track.id] || "ORIGINAL").toLowerCase() === type.toLowerCase();
@@ -1997,7 +2016,7 @@ export default function ReleaseDetails() {
             trackId: t.id,
             trackTitle: t.title,
             stems: (t.stems || [])
-              .filter((s) => s.type !== "ORIGINAL")
+              .filter((s) => hasMixerStem([s]))
               .map((s) => ({ id: s.id, type: s.type })),
           }))
           .filter((t) => t.stems.length > 0);

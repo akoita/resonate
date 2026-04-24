@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { usePlayer } from "../../lib/playerContext";
 
 interface MixerConsoleProps {
@@ -9,15 +9,41 @@ interface MixerConsoleProps {
     showCloseButton?: boolean;
 }
 
+const isMixerStemType = (type?: string | null) => {
+    const normalized = type?.trim().toLowerCase();
+    return !!normalized && normalized !== "original" && normalized !== "master";
+};
+
 export function MixerConsole({ onClose, className = "", showCloseButton = true }: MixerConsoleProps) {
     const { mixerVolumes, setMixerVolumes, toggleMixerMode, isPlaying, currentTrack } = usePlayer();
-    const hasStems = currentTrack?.stems && currentTrack.stems.some(s => s.type.toUpperCase() !== 'ORIGINAL');
+    const hasStems = currentTrack?.stems?.some(s => isMixerStemType(s.type)) ?? false;
+    const dragMargin = 8;
 
     // Drag state
     const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+    const [floatingSize, setFloatingSize] = useState<{ width: number; height: number } | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
-    const offsetRef = useRef({ x: 0, y: 0 });
+    const dragRef = useRef<{
+        offsetX: number;
+        offsetY: number;
+        width: number;
+        height: number;
+    } | null>(null);
+
+    const clampPosition = useCallback((x: number, y: number, width: number, height: number) => {
+        if (typeof window === "undefined") {
+            return { x, y };
+        }
+
+        const maxX = Math.max(dragMargin, window.innerWidth - width - dragMargin);
+        const maxY = Math.max(dragMargin, window.innerHeight - height - dragMargin);
+
+        return {
+            x: Math.min(Math.max(dragMargin, x), maxX),
+            y: Math.min(Math.max(dragMargin, y), maxY),
+        };
+    }, []);
 
     const handleVolumeChange = (type: string, value: number) => {
         setMixerVolumes({
@@ -33,34 +59,81 @@ export function MixerConsole({ onClose, className = "", showCloseButton = true }
 
     const handlePointerDown = (e: React.PointerEvent) => {
         if (!containerRef.current) return;
+        if (e.pointerType === "mouse" && e.button !== 0) return;
 
         e.preventDefault();
         e.stopPropagation();
 
         const rect = containerRef.current.getBoundingClientRect();
-        offsetRef.current = {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
+        const width = Math.min(rect.width, window.innerWidth - dragMargin * 2);
+        const height = Math.min(rect.height, window.innerHeight - dragMargin * 2);
+        dragRef.current = {
+            offsetX: e.clientX - rect.left,
+            offsetY: e.clientY - rect.top,
+            width,
+            height,
         };
 
-        setPosition({ x: rect.left, y: rect.top });
+        setFloatingSize({ width, height });
+        setPosition(clampPosition(rect.left, rect.top, width, height));
         setIsDragging(true);
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     };
 
-    const handlePointerMove = (e: React.PointerEvent) => {
+    useEffect(() => {
         if (!isDragging) return;
-        setPosition({
-            x: e.clientX - offsetRef.current.x,
-            y: e.clientY - offsetRef.current.y,
-        });
-    };
 
-    const handlePointerUp = (e: React.PointerEvent) => {
-        if (!isDragging) return;
-        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-        setIsDragging(false);
-    };
+        const previousCursor = document.body.style.cursor;
+        const previousUserSelect = document.body.style.userSelect;
+        document.body.style.cursor = "grabbing";
+        document.body.style.userSelect = "none";
+
+        const handlePointerMove = (event: PointerEvent) => {
+            const drag = dragRef.current;
+            if (!drag) return;
+
+            event.preventDefault();
+            setPosition(clampPosition(
+                event.clientX - drag.offsetX,
+                event.clientY - drag.offsetY,
+                drag.width,
+                drag.height,
+            ));
+        };
+
+        const stopDragging = () => {
+            dragRef.current = null;
+            setIsDragging(false);
+        };
+
+        window.addEventListener("pointermove", handlePointerMove, { passive: false });
+        window.addEventListener("pointerup", stopDragging);
+        window.addEventListener("pointercancel", stopDragging);
+        window.addEventListener("blur", stopDragging);
+
+        return () => {
+            document.body.style.cursor = previousCursor;
+            document.body.style.userSelect = previousUserSelect;
+            window.removeEventListener("pointermove", handlePointerMove);
+            window.removeEventListener("pointerup", stopDragging);
+            window.removeEventListener("pointercancel", stopDragging);
+            window.removeEventListener("blur", stopDragging);
+        };
+    }, [clampPosition, isDragging]);
+
+    useEffect(() => {
+        if (!position || !floatingSize) return;
+
+        const handleResize = () => {
+            setPosition((current) => current
+                ? clampPosition(current.x, current.y, floatingSize.width, floatingSize.height)
+                : current
+            );
+        };
+
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, [clampPosition, floatingSize, position]);
 
     const stems = [
         { id: "vocals", label: "Vocals", icon: "🎤" },
@@ -76,10 +149,13 @@ export function MixerConsole({ onClose, className = "", showCloseButton = true }
         left: `${position.x}px`,
         top: `${position.y}px`,
         transform: 'none',
-        width: 'min(520px, 85vw)',
-        maxWidth: '520px',
-        zIndex: 300,
+        width: floatingSize ? `${floatingSize.width}px` : undefined,
+        maxWidth: `calc(100vw - ${dragMargin * 2}px)`,
+        maxHeight: `calc(100vh - ${dragMargin * 2}px)`,
+        zIndex: 9100,
         bottom: 'auto',
+        right: 'auto',
+        margin: 0,
     } : {};
 
     return (
@@ -97,10 +173,8 @@ export function MixerConsole({ onClose, className = "", showCloseButton = true }
             <div 
                 className="mixer-drag-bar"
                 onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                onPointerCancel={handlePointerUp}
                 style={{ touchAction: 'none' }}
+                title="Drag mixer"
             >
                 <div className="mixer-drag-bar-indicator" />
             </div>
@@ -191,12 +265,19 @@ export function MixerConsole({ onClose, className = "", showCloseButton = true }
                     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
                     user-select: none;
                     -webkit-user-drag: none;
+                    transition:
+                        background 0.2s ease,
+                        border-color 0.2s ease,
+                        box-shadow 0.2s ease,
+                        opacity 0.2s ease;
                 }
 
                 .mixer-console.dragging {
                     cursor: grabbing;
                     box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7);
-                    opacity: 0.95;
+                    opacity: 1;
+                    transition: none;
+                    will-change: left, top;
                 }
 
                 .mixer-drag-bar {
@@ -206,6 +287,7 @@ export function MixerConsole({ onClose, className = "", showCloseButton = true }
                     padding: 8px 0 4px 0;
                     cursor: grab;
                     user-select: none;
+                    -webkit-user-select: none;
                     margin: -20px -20px 12px -20px;
                     border-radius: 24px 24px 0 0;
                     transition: background 0.2s;

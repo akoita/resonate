@@ -22,6 +22,7 @@ const PUBLIC_RELEASE_ROUTES: UploadRightsRoute[] = [
   "STANDARD_ESCROW",
   "TRUSTED_FAST_PATH",
 ];
+const SOURCE_STEM_TYPES = new Set(["original", "master"]);
 
 export type McpCatalogSearchItem = {
   id: string;
@@ -112,6 +113,160 @@ export class CatalogService implements OnModuleInit {
     private readonly storageProvider: StorageProvider,
     private readonly uploadRightsRoutingService: UploadRightsRoutingService,
   ) { }
+
+  private hasSeparatedStems(
+    release: { tracks?: Array<{ stems?: Array<{ type?: string | null }> }> },
+  ) {
+    return release.tracks?.some((track) =>
+      track.stems?.some((stem) => !SOURCE_STEM_TYPES.has(String(stem.type || "").toLowerCase())),
+    ) ?? false;
+  }
+
+  private releaseHasOnlySourceAudio(
+    release: { tracks?: Array<{ stems?: Array<{ type?: string | null }> }> },
+  ) {
+    const stems = release.tracks?.flatMap((track) => track.stems ?? []) ?? [];
+    return stems.length > 0 && stems.every((stem) =>
+      SOURCE_STEM_TYPES.has(String(stem.type || "").toLowerCase()),
+    );
+  }
+
+  private async consolidateAiDemucsDuplicate(releaseId: string) {
+    const canonical = await prisma.release.findUnique({
+      where: { id: releaseId },
+      include: {
+        tracks: {
+          orderBy: { position: "asc" },
+          include: { stems: true },
+        },
+      },
+    });
+
+    if (
+      !canonical ||
+      canonical.type !== "ai_generated" ||
+      !this.releaseHasOnlySourceAudio(canonical)
+    ) {
+      return false;
+    }
+
+    const duplicate = await prisma.release.findFirst({
+      where: {
+        id: { not: canonical.id },
+        artistId: canonical.artistId,
+        title: { equals: canonical.title, mode: "insensitive" },
+        status: { in: ["ready", "published"] },
+        rightsSourceType: "ai_generated",
+        tracks: {
+          some: {
+            stems: {
+              some: {
+                type: { notIn: ["original", "ORIGINAL", "master", "MASTER"] },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      include: {
+        tracks: {
+          orderBy: { position: "asc" },
+          include: { stems: true },
+        },
+      },
+    });
+
+    if (!duplicate) {
+      return false;
+    }
+
+    const canonicalTrack = canonical.tracks[0];
+    if (!canonicalTrack) {
+      return false;
+    }
+
+    const separatedStemIds = duplicate.tracks
+      .flatMap((track) => track.stems)
+      .filter((stem) => !SOURCE_STEM_TYPES.has(stem.type.toLowerCase()))
+      .map((stem) => stem.id);
+
+    if (separatedStemIds.length === 0) {
+      return false;
+    }
+
+    const canonicalRightsUpdate = {
+      status: "ready",
+      processingError: null,
+      rightsRoute: duplicate.rightsRoute ?? canonical.rightsRoute,
+      rightsFlags: (duplicate.rightsFlags ?? canonical.rightsFlags ?? undefined) as Prisma.InputJsonValue | undefined,
+      rightsReason: duplicate.rightsReason ?? canonical.rightsReason,
+      rightsPolicyVersion: duplicate.rightsPolicyVersion ?? canonical.rightsPolicyVersion,
+      rightsSourceType: duplicate.rightsSourceType ?? canonical.rightsSourceType ?? "ai_generated",
+      rightsEvaluatedAt: duplicate.rightsEvaluatedAt ?? canonical.rightsEvaluatedAt,
+    };
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.release.update({
+          where: { id: canonical.id },
+          data: canonicalRightsUpdate,
+        });
+        await tx.track.update({
+          where: { id: canonicalTrack.id },
+          data: {
+            processingStatus: "complete",
+            processingError: null,
+            rightsRoute: canonicalRightsUpdate.rightsRoute,
+            rightsFlags: canonicalRightsUpdate.rightsFlags,
+            rightsReason: canonicalRightsUpdate.rightsReason,
+            rightsPolicyVersion: canonicalRightsUpdate.rightsPolicyVersion,
+            rightsEvaluatedAt: canonicalRightsUpdate.rightsEvaluatedAt,
+          },
+        });
+        await tx.stem.updateMany({
+          where: { id: { in: separatedStemIds } },
+          data: { trackId: canonicalTrack.id },
+        });
+        await tx.stem.deleteMany({
+          where: { track: { releaseId: duplicate.id } },
+        });
+        await tx.track.deleteMany({
+          where: { releaseId: duplicate.id },
+        });
+        await tx.release.delete({
+          where: { id: duplicate.id },
+        });
+      });
+    } catch (error) {
+      console.warn(
+        `[Catalog] Could not delete duplicate release ${duplicate.id}; hiding it after consolidation:`,
+        error,
+      );
+      await prisma.stem.updateMany({
+        where: { id: { in: separatedStemIds } },
+        data: { trackId: canonicalTrack.id },
+      });
+      await prisma.track.update({
+        where: { id: canonicalTrack.id },
+        data: { processingStatus: "complete", processingError: null },
+      });
+      await prisma.release.update({
+        where: { id: canonical.id },
+        data: canonicalRightsUpdate,
+      });
+      await prisma.release.update({
+        where: { id: duplicate.id },
+        data: {
+          status: "duplicate_consolidated",
+          processingError: `Consolidated into ${canonical.id}`,
+        },
+      });
+    }
+
+    this.clearCache();
+    console.log(`[Catalog] Consolidated duplicate Demucs release ${duplicate.id} into AI release ${canonical.id}`);
+    return true;
+  }
 
   onModuleInit() {
     this.eventBus.subscribe("stems.uploaded", async (event: StemsUploadedEvent) => {
@@ -406,8 +561,8 @@ export class CatalogService implements OnModuleInit {
     });
   }
 
-  async listPublished(limit = 20, primaryArtist?: string) {
-    return prisma.release.findMany({
+  async listPublished(limit = 20, primaryArtist?: string): Promise<any[]> {
+    const releases = await prisma.release.findMany({
       where: {
         status: { in: ['ready', 'published'] },
         OR: [
@@ -479,6 +634,18 @@ export class CatalogService implements OnModuleInit {
       orderBy: { createdAt: "desc" },
       take: limit,
     });
+
+    const consolidated = await Promise.all(
+      releases
+        .filter((release) => release.type === "ai_generated" && this.releaseHasOnlySourceAudio(release))
+        .map((release) => this.consolidateAiDemucsDuplicate(release.id)),
+    );
+
+    if (consolidated.some(Boolean)) {
+      return this.listPublished(limit, primaryArtist);
+    }
+
+    return releases;
   }
 
   async createRelease(input: {
@@ -600,7 +767,7 @@ export class CatalogService implements OnModuleInit {
   }
 
   async getRelease(releaseId: string, options?: { includeRestricted?: boolean }) {
-    const release = await prisma.release.findUnique({
+    let release = await prisma.release.findUnique({
       where: { id: releaseId },
       select: {
         id: true,
@@ -664,6 +831,75 @@ export class CatalogService implements OnModuleInit {
 
     if (!release) {
       return null;
+    }
+
+    if (release.type === "ai_generated" && this.releaseHasOnlySourceAudio(release)) {
+      const consolidated = await this.consolidateAiDemucsDuplicate(release.id);
+      if (consolidated) {
+        release = await prisma.release.findUnique({
+          where: { id: releaseId },
+          select: {
+            id: true,
+            artistId: true,
+            title: true,
+            status: true,
+            processingError: true,
+            type: true,
+            primaryArtist: true,
+            featuredArtists: true,
+            genre: true,
+            label: true,
+            releaseDate: true,
+            explicit: true,
+            createdAt: true,
+            rightsRoute: true,
+            rightsFlags: true,
+            rightsReason: true,
+            rightsPolicyVersion: true,
+            rightsSourceType: true,
+            rightsEvaluatedAt: true,
+            artworkMimeType: true,
+            artist: {
+              select: { id: true, displayName: true, userId: true }
+            },
+            tracks: {
+              orderBy: { position: "asc" },
+              select: {
+                id: true,
+                title: true,
+                artist: true,
+                position: true,
+                explicit: true,
+                isrc: true,
+                createdAt: true,
+                processingStatus: true,
+                processingError: true,
+                contentStatus: true,
+                rightsRoute: true,
+                rightsFlags: true,
+                rightsReason: true,
+                rightsPolicyVersion: true,
+                rightsEvaluatedAt: true,
+                stems: {
+                  select: {
+                    id: true,
+                    type: true,
+                    uri: true,
+                    ipnftId: true,
+                    durationSeconds: true,
+                    isEncrypted: true,
+                    encryptionMetadata: true,
+                    storageProvider: true,
+                  }
+                }
+              }
+            }
+          }
+        });
+        if (!release) {
+          return null;
+        }
+      }
     }
 
     if (!options?.includeRestricted && !this.isPubliclyVisible(release.rightsRoute)) {

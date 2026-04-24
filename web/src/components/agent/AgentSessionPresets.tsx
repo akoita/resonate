@@ -129,8 +129,7 @@ export default function AgentSessionPresets({ compact = false }: Props) {
         }
 
         .agent-session-presets.compact {
-          margin-top: -28px;
-          margin-bottom: 0;
+          margin: 0;
         }
 
         .agent-session-copy {

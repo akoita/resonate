@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { join } from "path";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
 import { readdir } from "fs/promises";
@@ -14,6 +14,7 @@ import { prisma } from "../../db/prisma";
 
 type UploadStatus = "queued" | "processing" | "complete" | "failed";
 const ACTIVE_PROCESSING_STAGES = new Set(["separating", "encrypting", "storing"]);
+const SOURCE_STEM_TYPES = new Set(["original", "master"]);
 
 interface UploadRecord {
   trackId: string;
@@ -743,7 +744,7 @@ export class IngestionService {
     console.log(`[Ingestion] Track ${trackId} stage: ${stage}`);
   }
 
-  async retryRelease(releaseId: string) {
+  async retryRelease(releaseId: string, requesterUserId: string) {
     console.log(`[Ingestion] Retrying release ${releaseId}`);
 
     // 1. Fetch release details from Catalog
@@ -753,54 +754,25 @@ export class IngestionService {
     if (!release) {
       throw new Error(`Release ${releaseId} not found`);
     }
+    if (!requesterUserId || release.artist?.userId !== requesterUserId) {
+      throw new UnauthorizedException("Not authorized to retry this release");
+    }
 
-    if (release.status === 'ready') {
-      console.log(`[Ingestion] Release ${releaseId} is already ready, skipping retry`);
-      return { success: true, message: 'Release is already processed', releaseId };
+    const hasSeparatedStems = release.tracks.some((track) =>
+      track.stems.some((stem: any) => !SOURCE_STEM_TYPES.has(String(stem.type || "").toLowerCase())),
+    );
+
+    if ((release.status === 'ready' || release.status === 'published') && hasSeparatedStems) {
+      console.log(`[Ingestion] Release ${releaseId} already has separated stems, skipping retry`);
+      return { success: true, message: 'Release already has separated stems', releaseId };
     }
 
     // 2. Re-emit Uploaded event to reset status to processing
     // We map the tracks back to the format expected by the event
-    const tracks = release.tracks.map(t => ({
-      id: t.id,
-      title: t.title,
-      artist: t.artist,
-      position: t.position,
-      stems: t.stems.map((s: any) => ({
-        id: s.id,
-        uri: s.uri,
-        type: s.type,
-        // Note: For a retry, we assume the Buffer is no longer available in memory.
-        // The worker needs to fetch from the URI.
-        // If s.storageProvider is 'local', URI is a file path or localhost URL.
-        // We might need to ensure the worker can handle fetching from URI if data is null.
-        // Currently processStemsJob expects 'data' prop on stems.
-        // This is a limitation: we can't fully retry if we didn't persist the raw upload buffer.
-        // But for local fs, we could potentially re-read it if we knew the path.
-        // For now, let's assume we can't easily re-read raw buffers unless we stored them.
-
-        // However, the demucs-worker fetches from URI anyway if data is missing?
-        // Checking processStemsJob...
-        // It checks: if (!originalStem || !originalStem.data) break;
-        // So we strictly need the data buffer.
-        // If we don't have it, we can't retry the separation.
-
-        // Wait, the original upload flow:
-        // 1. handleFileUpload receives Files (Buffers).
-        // 2. It creates 'tracks' object WITH buffers.
-        // 3. It adds to Queue.
-
-        // If we want to retry LATER, those buffers are gone from RAM.
-        // We saved the 'original' stem to storage (local/ipfs).
-        // So we need to fetch the original file content back into a buffer.
-      }))
-    }));
-
-    // For a robust retry, we need to re-download the original file.
-    // Let's implement that.
-
     const tracksWithData = await Promise.all(release.tracks.map(async (t) => {
-      const originalStem = t.stems.find(s => s.type === 'ORIGINAL' || s.type === 'original' || s.type === 'master');
+      const originalStem = t.stems.find((s: any) =>
+        SOURCE_STEM_TYPES.has(String(s.type || "").toLowerCase()),
+      );
       if (!originalStem) return null;
 
       const dbStem = await this.catalogService.getStemBlob(originalStem.id, {
@@ -838,16 +810,28 @@ export class IngestionService {
       releaseId: release.id,
       artistId: release.artistId,
       checksum: "retry",
+      sourceType: release.type === "ai_generated" ? "ai_generated" : release.rightsSourceType || undefined,
       metadata: {
         title: (release as any).title || "Unknown",
+        type: release.type,
+        primaryArtist: release.primaryArtist ?? undefined,
+        featuredArtists: release.featuredArtists ? String(release.featuredArtists).split(",").map((artist) => artist.trim()).filter(Boolean) : undefined,
+        genre: release.genre ?? undefined,
+        label: release.label ?? undefined,
+        releaseDate: release.releaseDate ? new Date(release.releaseDate).toISOString() : undefined,
+        explicit: release.explicit,
         tracks: validTracks.map(t => ({
+          id: t.id,
           title: t.title,
           artist: t.artist,
           position: t.position,
+          explicit: t.explicit,
           stems: t.stems.map((s: any) => ({
             id: s.id,
             uri: s.uri,
-            type: s.type
+            type: s.type,
+            storageProvider: s.storageProvider,
+            durationSeconds: s.durationSeconds,
           }))
         }))
       }
@@ -872,7 +856,7 @@ export class IngestionService {
       }
     );
 
-    return { success: true };
+    return { success: true, releaseId };
   }
 
   async cancelProcessing(releaseId: string) {

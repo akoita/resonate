@@ -2,18 +2,24 @@
 
 ## Executive Summary
 
-Reviewed the MCP PR 3 productization changes for issue #631. No Critical or
-High findings were identified in the discovery metadata route, documentation,
-or example MCP client.
+Reviewed the mixer, AI-generation-to-Demucs, duplicate-release consolidation,
+and home spacing changes on `fix/mixer-stem-readiness-race`. No Critical or
+High findings were identified.
 
 ## Scope
 
-- `backend/src/modules/openapi/`
-- `backend/src/modules/mcp/`
-- MCP and OpenAPI-focused tests under `backend/src/tests/`
-- `docs/architecture/mcp_server.md`
-- `examples/mcp-client/`
-- Root README and x402 architecture doc links
+- `backend/src/modules/catalog/catalog.service.ts`
+- `backend/src/modules/ingestion/ingestion.service.ts`
+- `backend/src/modules/ingestion/stem-pubsub.publisher.ts`
+- `backend/src/modules/ingestion/stems.processor.ts`
+- `backend/src/tests/catalog.integration.spec.ts`
+- `backend/src/tests/ingestion_metadata.spec.ts`
+- `web/src/app/create/CreatePageContent.tsx`
+- `web/src/app/page.tsx`
+- `web/src/app/release/[id]/page.tsx`
+- `web/src/components/agent/AgentSessionPresets.tsx`
+- `web/src/components/player/MixerConsole.tsx`
+- `web/src/styles/home-nextgen.css`
 
 ## Critical Findings
 
@@ -29,28 +35,37 @@ None.
 
 ## Low Findings
 
-None.
+None in the changed code.
 
 ## Informational Notes
 
-- `GET /.well-known/mcp.json` exposes public server metadata only: endpoint,
-  transport type, server info, tools, and documentation pointers.
-- The discovery document derives runtime endpoints from `PUBLIC_API_URL` or the
-  incoming request origin; it does not hardcode staging or production service
-  URLs.
-- The discovery document is explicitly documented as compatibility metadata.
-  MCP `initialize` and `tools/list` remain the authoritative capability source.
-- The MCP tools remain unauthenticated at the Resonate user layer by design.
-  Paid downloads still require an x402 payment proof inside `stem.download`.
-- The TypeScript smoke client calls only `catalog.search`; it does not execute
-  paid downloads or handle payment proofs.
-- Localhost URLs in docs and examples are local-dev fallbacks and match the
-  repository port conventions.
+- The new AI-to-Demucs flow reuses the existing authenticated
+  `POST /ingestion/retry/:releaseId` path instead of submitting generated audio
+  through the generic upload endpoint, preventing duplicate catalog releases.
+- The retry path now distinguishes source stems (`original`, `master`) from
+  separated stems before re-queuing work. It does not introduce new public write
+  endpoints.
+- Duplicate consolidation is limited to same-artist, same-title AI-generated
+  releases where the canonical release only has source audio and the duplicate
+  has separated stems.
+- Raw Prisma usage found by the scan is existing parameterized maintenance or
+  locking code outside this branch's changed logic.
+- Existing development-only JWT fallback strings (`dev-secret`) were observed
+  in auth configuration. They are not introduced or modified by this branch.
+- No secrets, private keys, API keys, or credentials were found in the branch
+  diff.
 
 ## Commands Run
 
 ```bash
-rg -n 'password|secret|api_key|private_key|bearer|token|PUBLIC_API_URL|localhost|https?://' backend/src/modules/openapi backend/src/modules/mcp docs/architecture/mcp_server.md examples/mcp-client README.md docs/architecture/x402_payments.md --iglob '!*.test.*' --iglob '!*.spec.*'
-rg -n 'rawQuery|executeRaw|\$queryRaw|\$executeRaw|eval\(|JSON\.parse' backend/src/modules/openapi backend/src/modules/mcp examples/mcp-client docs/architecture/mcp_server.md
-git diff --check
+git diff --name-only main
+git diff -- . ':(exclude)package-lock.json' | rg -n "(API_KEY|SECRET|PRIVATE_KEY|PASSWORD|TOKEN|BEGIN .*PRIVATE|0x[a-fA-F0-9]{64}|AIza|sk-|xox|ghp_|pat_)" -S
+rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/ | grep -v 'Guard\|Auth'
+rg 'JSON\.parse|eval\(' backend/src/
+rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/ | grep -v 'Pipe\|Dto\|Validation'
+rg 'dangerouslySetInnerHTML|innerHTML' web/src/
+rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
+rg 'document\.cookie|setCookie|httpOnly.*false' web/src/
 ```
