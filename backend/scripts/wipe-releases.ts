@@ -76,14 +76,15 @@ async function main() {
     if (count > 0) console.log(`   ${table}: ${count}`);
   }
 
-  // Clean up GCS bucket
+  // Clean up GCS bucket. GcsStorageProvider currently writes all audio under
+  // originals/, while older flows used stems/.
   const bucket = process.env.GCS_STEMS_BUCKET;
   if (bucket) {
-    console.log(`\n🪣 Cleaning GCS bucket: gs://${bucket}/stems/...`);
+    console.log(`\n🪣 Cleaning GCS bucket audio objects: gs://${bucket}/{originals,stems}/...`);
     try {
       const { execSync } = await import("child_process");
-      execSync(`gsutil -m rm -r "gs://${bucket}/stems/" 2>/dev/null || true`, { stdio: "inherit" });
-      console.log("   GCS stems cleaned.");
+      execSync(`gsutil -m rm -r "gs://${bucket}/originals/" "gs://${bucket}/stems/" 2>/dev/null || true`, { stdio: "inherit" });
+      console.log("   GCS audio objects cleaned.");
     } catch {
       console.warn("   ⚠️ Could not clean GCS (gsutil not available or bucket empty).");
     }
