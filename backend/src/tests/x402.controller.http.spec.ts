@@ -12,6 +12,7 @@ import { EncryptionService } from '../modules/encryption/encryption.service';
 import { X402Config } from '../modules/x402/x402.config';
 import { X402Controller } from '../modules/x402/x402.controller';
 import { X402Middleware } from '../modules/x402/x402.middleware';
+import { X402PaymentService } from '../modules/x402/x402.payment.service';
 
 jest.mock('../db/prisma', () => ({
   prisma: {
@@ -56,6 +57,7 @@ const mockEncryptionService = {
   controllers: [X402Controller],
   providers: [
     X402Config,
+    X402PaymentService,
     {
       provide: EncryptionService,
       useValue: mockEncryptionService,
@@ -132,30 +134,7 @@ describe('X402Controller HTTP contract', () => {
   });
 
   it('GET /api/stems/:stemId/x402 returns receipt headers after a paid retry', async () => {
-    jest
-      .spyOn(X402Middleware.prototype as any, 'buildPaymentContext')
-      .mockResolvedValue({
-        paymentPayload: { signature: 'proof-v2' },
-        paymentRequirements: {
-          scheme: 'exact',
-          network: 'eip155:84532',
-          amount: '50000',
-          asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
-          payTo: '0xTestPayoutAddr',
-          maxTimeoutSeconds: 300,
-          extra: {
-            name: 'USDC',
-            version: '2',
-            displayPrice: '0.05 USDC',
-          },
-        },
-      });
-    jest
-      .spyOn(X402Middleware.prototype as any, 'verifyPayment')
-      .mockResolvedValue(true);
-    jest
-      .spyOn(X402Middleware.prototype as any, 'settlePayment')
-      .mockResolvedValue(undefined);
+    jest.spyOn(X402PaymentService.prototype, 'verifyAndSettle').mockResolvedValue(true);
 
     prisma.stem.findUnique
       .mockResolvedValueOnce({

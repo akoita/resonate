@@ -7,4 +7,8 @@ export const MCP_SERVER_INFO = {
 
 export const MCP_PROTOCOL_VERSION = LATEST_PROTOCOL_VERSION;
 
-export const MCP_TOOL_NAMES = ["catalog.search"] as const;
+export const MCP_TOOL_NAMES = [
+  "catalog.search",
+  "stem.quote",
+  "stem.download",
+] as const;

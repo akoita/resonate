@@ -1,5 +1,6 @@
 import { X402Middleware } from '../modules/x402/x402.middleware';
 import { X402Config } from '../modules/x402/x402.config';
+import { X402PaymentService } from '../modules/x402/x402.payment.service';
 import { Request, Response, NextFunction } from 'express';
 
 // Mock prisma
@@ -30,6 +31,13 @@ function createMockConfig(overrides: Partial<X402Config> = {}): X402Config {
     chainId: 84532,
     ...overrides,
   } as X402Config;
+}
+
+function createMiddleware(
+  config: X402Config,
+  paymentService: X402PaymentService = new X402PaymentService(config),
+) {
+  return new X402Middleware(config, paymentService);
 }
 
 function createMockReq(path: string, headers: Record<string, string> = {}): Partial<Request> {
@@ -78,7 +86,7 @@ describe('X402Middleware', () => {
   describe('disabled mode', () => {
     it('should pass through when x402 is disabled', async () => {
       const config = createMockConfig({ enabled: false });
-      const middleware = new X402Middleware(config);
+      const middleware = createMiddleware(config);
       const req = createMockReq('/api/stems/abc/x402');
       const { res } = createMockRes();
       const next = jest.fn();
@@ -92,7 +100,7 @@ describe('X402Middleware', () => {
   describe('enabled mode', () => {
     it('should return 402 when no X-PAYMENT header', async () => {
       const config = createMockConfig();
-      const middleware = new X402Middleware(config);
+      const middleware = createMiddleware(config);
       const req = createMockReq('/api/stems/test-stem-id/x402');
       const { res } = createMockRes();
       const next = jest.fn();
@@ -121,7 +129,7 @@ describe('X402Middleware', () => {
 
     it('should include stemId in the payment resource URL', async () => {
       const config = createMockConfig();
-      const middleware = new X402Middleware(config);
+      const middleware = createMiddleware(config);
       const req = createMockReq('/api/stems/my-stem-123/x402');
       const { res } = createMockRes();
       const next = jest.fn();
@@ -146,7 +154,7 @@ describe('X402Middleware', () => {
       prisma.stem.findUnique.mockResolvedValue(null);
 
       const config = createMockConfig();
-      const middleware = new X402Middleware(config);
+      const middleware = createMiddleware(config);
       const req = createMockReq('/api/stems/missing-stem/x402');
       const { res } = createMockRes();
       const next = jest.fn();
@@ -160,7 +168,7 @@ describe('X402Middleware', () => {
 
     it('should pass through non-x402 routes', async () => {
       const config = createMockConfig();
-      const middleware = new X402Middleware(config);
+      const middleware = createMiddleware(config);
       const req = createMockReq('/api/stems/abc/info');
       const { res } = createMockRes();
       const next = jest.fn();
@@ -172,7 +180,7 @@ describe('X402Middleware', () => {
 
     it('should pass through the /info sub-route', async () => {
       const config = createMockConfig();
-      const middleware = new X402Middleware(config);
+      const middleware = createMiddleware(config);
       const req = createMockReq('/api/stems/abc/x402/info');
       const { res } = createMockRes();
       const next = jest.fn();
@@ -184,7 +192,7 @@ describe('X402Middleware', () => {
 
     it('should use the canonical storefront default price when no listing exists', async () => {
       const config = createMockConfig();
-      const middleware = new X402Middleware(config);
+      const middleware = createMiddleware(config);
       const req = createMockReq('/api/stems/unlisted-stem/x402');
       const { res } = createMockRes();
       const next = jest.fn();
@@ -215,7 +223,7 @@ describe('X402Middleware', () => {
       prisma.stemPricing.findUnique.mockResolvedValue(null);
 
       const config = createMockConfig();
-      const middleware = new X402Middleware(config);
+      const middleware = createMiddleware(config);
       const req = createMockReq('/api/stems/listed-stem/x402');
       const { res } = createMockRes();
       const next = jest.fn();
@@ -235,31 +243,30 @@ describe('X402Middleware', () => {
 
     it('should accept PAYMENT-SIGNATURE retries and continue after verification', async () => {
       const config = createMockConfig();
-      const middleware = new X402Middleware(config);
+      const paymentService = {
+        buildPaymentChallenge: jest.fn().mockResolvedValue({
+          paymentRequirements: { scheme: 'exact', network: 'eip155:84532' },
+        }),
+        verifyAndSettle: jest.fn().mockResolvedValue(true),
+      } as unknown as X402PaymentService;
+      const middleware = createMiddleware(config, paymentService);
       const req = createMockReq('/api/stems/stem_1/x402', {
         'payment-signature': 'proof-v2',
       });
       const { res } = createMockRes();
       const next = jest.fn();
 
-      jest
-        .spyOn(middleware as any, 'buildPaymentContext')
-        .mockResolvedValue({
-          paymentPayload: { signature: 'decoded-proof' },
-          paymentRequirements: { scheme: 'exact', network: 'eip155:84532' },
-        });
-      jest.spyOn(middleware as any, 'verifyPayment').mockResolvedValue(true);
-      jest.spyOn(middleware as any, 'settlePayment').mockResolvedValue(undefined);
-
       await middleware.use(req as Request, res as Response, next);
 
-      expect((middleware as any).buildPaymentContext).toHaveBeenCalledWith(
-        'stem_1',
-        'proof-v2',
-        'audio/mpeg',
+      expect(paymentService.buildPaymentChallenge).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stemId: 'stem_1',
+          resourceUrl: '/api/stems/stem_1/x402',
+          mimeType: 'audio/mpeg',
+        }),
       );
-      expect((middleware as any).verifyPayment).toHaveBeenCalledWith(
-        { signature: 'decoded-proof' },
+      expect(paymentService.verifyAndSettle).toHaveBeenCalledWith(
+        'proof-v2',
         { scheme: 'exact', network: 'eip155:84532' },
       );
       expect(next).toHaveBeenCalled();
@@ -274,7 +281,7 @@ describe('X402Middleware', () => {
       const config = createMockConfig({
         facilitatorUrl: 'https://facilitator.example.com',
       });
-      const middleware = new X402Middleware(config);
+      const paymentService = new X402PaymentService(config);
 
       const paymentPayload = { signature: 'decoded-proof' };
       const paymentRequirements = {
@@ -286,7 +293,7 @@ describe('X402Middleware', () => {
         maxTimeoutSeconds: 300,
       };
 
-      const isValid = await (middleware as any).verifyPayment(
+      const isValid = await (paymentService as any).verifyPayment(
         paymentPayload,
         paymentRequirements,
       );
@@ -314,7 +321,7 @@ describe('X402Middleware', () => {
       const config = createMockConfig({
         facilitatorUrl: 'https://facilitator.example.com',
       });
-      const middleware = new X402Middleware(config);
+      const paymentService = new X402PaymentService(config);
 
       const paymentPayload = { signature: 'decoded-proof' };
       const paymentRequirements = {
@@ -326,7 +333,7 @@ describe('X402Middleware', () => {
         maxTimeoutSeconds: 300,
       };
 
-      await (middleware as any).settlePayment(paymentPayload, paymentRequirements);
+      await (paymentService as any).settlePayment(paymentPayload, paymentRequirements);
 
       expect(global.fetch).toHaveBeenCalledWith(
         'https://facilitator.example.com/settle',
