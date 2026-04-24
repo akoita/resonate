@@ -25,6 +25,7 @@
     "@lit-protocol/constants": "7.4.0",
     "@lit-protocol/lit-node-client-nodejs": "7.4.0",
     "@lit-protocol/types": "7.4.0",
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^10.4.0",
     "@nestjs/config": "^4.0.2",

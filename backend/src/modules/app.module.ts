@@ -34,6 +34,7 @@ import { TrustModule } from "./trust/trust.module";
 import { NotificationModule } from "./notifications/notification.module";
 import { StorefrontModule } from "./storefront/storefront.module";
 import { OpenApiModule } from "./openapi/openapi.module";
+import { McpModule } from "./mcp/mcp.module";
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { OpenApiModule } from "./openapi/openapi.module";
     NotificationModule,
     StorefrontModule,
     OpenApiModule,
+    McpModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
