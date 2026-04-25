@@ -34,13 +34,24 @@ class DemucsCpuFallbackTest(unittest.TestCase):
             )
         )
 
-    def test_non_gpu_demucs_error_does_not_retry_on_cpu(self):
-        self.assertFalse(
+    def test_cuda_attempt_retries_cpu_for_any_demucs_failure(self):
+        self.assertTrue(
             main.should_retry_demucs_on_cpu(
                 "cuda",
                 "RuntimeError: invalid audio stream",
             )
         )
+
+    def test_cpu_attempt_hides_cuda_from_subprocess(self):
+        env = main.demucs_attempt_env("cpu")
+        self.assertEqual(env["CUDA_VISIBLE_DEVICES"], "")
+        self.assertEqual(env["NVIDIA_VISIBLE_DEVICES"], "")
+
+    def test_cuda_attempt_keeps_runtime_environment(self):
+        with patch.dict(os.environ, {"CUDA_VISIBLE_DEVICES": "0", "NVIDIA_VISIBLE_DEVICES": "all"}):
+            env = main.demucs_attempt_env("cuda")
+        self.assertEqual(env["CUDA_VISIBLE_DEVICES"], "0")
+        self.assertEqual(env["NVIDIA_VISIBLE_DEVICES"], "all")
 
     def test_device_override_can_force_cpu(self):
         with patch.object(main, "DEMUCS_DEVICE", "cpu"):
@@ -101,7 +112,7 @@ class DemucsCpuFallbackTest(unittest.TestCase):
             self.assertEqual(attempts, ["cuda", "cpu"])
             self.assertEqual(result, {"vocals": "rel_test/trk_test/vocals.mp3"})
 
-    def test_run_demucs_separation_fails_fast_for_non_runtime_error(self):
+    def test_run_demucs_separation_retries_any_cuda_failure_before_raising(self):
         with tempfile.TemporaryDirectory() as temp_dir_name:
             temp_dir = Path(temp_dir_name)
             input_path = temp_dir / "track_test.wav"
@@ -125,7 +136,7 @@ class DemucsCpuFallbackTest(unittest.TestCase):
                 patch.object(main, "demucs_devices_to_try", return_value=["cuda", "cpu"]),
                 patch.object(main, "run_demucs_attempt", fake_run_demucs_attempt),
             ):
-                with self.assertRaisesRegex(RuntimeError, "Demucs processing failed on cuda"):
+                with self.assertRaisesRegex(RuntimeError, "Demucs processing failed on cpu"):
                     asyncio.run(
                         main.run_demucs_separation(
                             input_path=input_path,
@@ -135,7 +146,7 @@ class DemucsCpuFallbackTest(unittest.TestCase):
                         )
                     )
 
-            self.assertEqual(attempts, ["cuda"])
+            self.assertEqual(attempts, ["cuda", "cpu"])
 
 
 if __name__ == "__main__":
