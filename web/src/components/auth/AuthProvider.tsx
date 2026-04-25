@@ -255,6 +255,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         address: saAddress,
         message,
         signature,
+        authMode: mode === "register" ? "register" : "login",
+        chainId,
         pubKeyX: webAuthnKey?.pubX?.toString(16)?.padStart(64, "0"),
         pubKeyY: webAuthnKey?.pubY?.toString(16)?.padStart(64, "0"),
       });
