@@ -2,6 +2,7 @@ import { Body, Controller, Post, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { Roles } from "../auth/roles.decorator";
 import { AgentEvaluationService } from "./agent_evaluation.service";
+import { AgentGoldenEvalService } from "./agent_golden_eval.service";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentRuntimeService } from "./agent_runtime.service";
 import { AgentRunnerService } from "./agent_runner.service";
@@ -12,6 +13,7 @@ export class AgentsController {
     private readonly agentRunner: AgentRunnerService,
     private readonly orchestrator: AgentOrchestratorService,
     private readonly evaluator: AgentEvaluationService,
+    private readonly goldenEval: AgentGoldenEvalService,
     private readonly runtime: AgentRuntimeService
   ) {}
 
@@ -33,6 +35,13 @@ export class AgentsController {
     };
   }) {
     return this.agentRunner.run(body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("admin")
+  @Post("evaluate/golden")
+  evaluateGolden() {
+    return this.goldenEval.run();
   }
 
   @UseGuards(AuthGuard("jwt"))

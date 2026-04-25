@@ -1,5 +1,6 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
+import { AgentObservabilityService } from "./agent_observability.service";
 import { AgentPolicyService } from "./agent_policy.service";
 
 export interface AgentRunInput {
@@ -17,15 +18,29 @@ export interface AgentRunInput {
   };
 }
 
+export interface AgentRunResult {
+  status: "approved" | "rejected";
+  decision: {
+    allowed: boolean;
+    licenseType: "personal" | "remix" | "commercial";
+    priceUsd: number;
+    reason: string;
+  };
+}
+
 @Injectable()
 export class AgentRunnerService {
   constructor(
     private readonly policyService: AgentPolicyService,
-    private readonly eventBus: EventBus
+    private readonly eventBus: EventBus,
+    @Optional()
+    private readonly observability?: AgentObservabilityService
   ) {}
 
-  run(input: AgentRunInput) {
+  run(input: AgentRunInput): AgentRunResult {
+    const startedAt = new Date();
     const decision = this.policyService.evaluate(input);
+    const status: AgentRunResult["status"] = decision.allowed ? "approved" : "rejected";
     this.eventBus.publish({
       eventName: "agent.evaluated",
       eventVersion: 1,
@@ -36,9 +51,24 @@ export class AgentRunnerService {
       priceUsd: decision.priceUsd,
       reason: decision.reason,
     });
-    return {
-      status: decision.allowed ? "approved" : "rejected",
+    const result = {
+      status,
       decision,
     };
+    void this.observability?.traceEvaluation({
+      name: "agent.policy.evaluate",
+      sessions: [input],
+      metrics: {
+        total: 1,
+        approved: status === "approved" ? 1 : 0,
+        rejected: status === "rejected" ? 1 : 0,
+        approvalRate: status === "approved" ? 1 : 0,
+        avgPriceUsd: decision.priceUsd,
+        repeatRate: 0,
+      },
+      startedAt,
+      endedAt: new Date(),
+    });
+    return result;
   }
 }

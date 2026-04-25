@@ -20,7 +20,13 @@ describe("agent evaluation", () => {
           },
     } as any;
     const runtimeService = { run: async () => ({ status: "approved" }) } as any;
-    const service = new AgentEvaluationService(orchestrator, runtimeService, new EventBus());
+    const observability = { traceEvaluation: jest.fn() };
+    const service = new AgentEvaluationService(
+      orchestrator,
+      runtimeService,
+      new EventBus(),
+      observability as any
+    );
     const result = await service.evaluate([
       {
         sessionId: "session-1",
@@ -41,5 +47,12 @@ describe("agent evaluation", () => {
     expect(result.metrics.approved).toBe(1);
     expect(result.metrics.rejected).toBe(1);
     expect(result.metrics.repeatRate).toBe(0.5);
+    expect(observability.traceEvaluation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "agent.evaluate",
+        sessions: expect.any(Array),
+        metrics: expect.objectContaining({ approved: 1, rejected: 1 }),
+      })
+    );
   });
 });

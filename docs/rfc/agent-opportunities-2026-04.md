@@ -220,6 +220,7 @@ These are the smallest slices that would keep momentum high and reviewable.
 
 1. **PR 1: tracing**
    - Instrument ADK runner, tool calls, and purchase decisions
+   - #677 starts this slice with optional Langfuse-compatible ingestion and deterministic policy golden evals
 
 2. **PR 2: golden set**
    - Start with ~100 canonical curation scenarios with expected rubric dimensions; grow toward 200 as coverage gaps appear

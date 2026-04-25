@@ -1,9 +1,10 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { prisma } from "../../../db/prisma";
 import { calculatePrice, PricingInput } from "../../../pricing/pricing";
 import { EmbeddingService } from "../../embeddings/embedding.service";
 import { EmbeddingStore } from "../../embeddings/embedding.store";
 import { GenerationService } from "../../generation/generation.service";
+import { AgentObservabilityService } from "../agent_observability.service";
 
 export interface ToolInput {
   [key: string]: unknown;
@@ -27,7 +28,9 @@ export class ToolRegistry {
   constructor(
     private readonly embeddingService: EmbeddingService,
     private readonly embeddingStore: EmbeddingStore,
-    private readonly generationService: GenerationService
+    private readonly generationService: GenerationService,
+    @Optional()
+    private readonly observability?: AgentObservabilityService
   ) {
     this.register({
       name: "catalog.search",
@@ -221,7 +224,32 @@ export class ToolRegistry {
   }
 
   register(tool: Tool) {
-    this.tools.set(tool.name, tool);
+    this.tools.set(tool.name, {
+      name: tool.name,
+      run: async (input) => {
+        const startedAt = new Date();
+        try {
+          const output = await tool.run(input);
+          await this.observability?.traceToolCall({
+            toolName: tool.name,
+            input,
+            output,
+            startedAt,
+            endedAt: new Date(),
+          });
+          return output;
+        } catch (error) {
+          await this.observability?.traceToolCall({
+            toolName: tool.name,
+            input,
+            error,
+            startedAt,
+            endedAt: new Date(),
+          });
+          throw error;
+        }
+      },
+    });
   }
 
   get(name: string) {

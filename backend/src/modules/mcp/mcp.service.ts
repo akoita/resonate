@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
+import { Injectable, Logger, OnModuleDestroy, Optional } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import type { Request, Response } from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -6,6 +6,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { CatalogService } from "../catalog/catalog.service";
+import { AgentObservabilityService } from "../agents/agent_observability.service";
 import {
   MCP_PROTOCOL_VERSION,
   MCP_SERVER_INFO,
@@ -32,6 +33,8 @@ export class McpService implements OnModuleDestroy {
   constructor(
     private readonly catalogService: CatalogService,
     private readonly stemService: McpStemService,
+    @Optional()
+    private readonly observability?: AgentObservabilityService,
   ) {}
 
   async onModuleDestroy() {
@@ -177,20 +180,22 @@ export class McpService implements OnModuleDestroy {
         },
       },
       async ({ query, limit }) => {
-        const result = await this.catalogService.searchMcpCatalog(
-          query,
-          limit ?? 10,
-        );
+        return this.traceMcpTool("catalog.search", { query, limit }, async () => {
+          const result = await this.catalogService.searchMcpCatalog(
+            query,
+            limit ?? 10,
+          );
 
-        return {
-          structuredContent: result,
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
+          return {
+            structuredContent: result,
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+          };
+        });
       },
     );
 
@@ -233,26 +238,28 @@ export class McpService implements OnModuleDestroy {
         },
       },
       async ({ stemId, licenseType }) => {
-        try {
-          const result = await this.stemService.quote(
-            stemId,
-            licenseType ?? "personal",
-          );
-          return {
-            structuredContent: result,
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify(result, null, 2),
-              },
-            ],
-          };
-        } catch (error) {
-          return this.toolError(
-            "QUOTE_FAILED",
-            error instanceof Error ? error.message : String(error),
-          );
-        }
+        return this.traceMcpTool("stem.quote", { stemId, licenseType }, async () => {
+          try {
+            const result = await this.stemService.quote(
+              stemId,
+              licenseType ?? "personal",
+            );
+            return {
+              structuredContent: result,
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2),
+                },
+              ],
+            };
+          } catch (error) {
+            return this.toolError(
+              "QUOTE_FAILED",
+              error instanceof Error ? error.message : String(error),
+            );
+          }
+        });
       },
     );
 
@@ -282,23 +289,25 @@ export class McpService implements OnModuleDestroy {
         },
       },
       async ({ stemId, licenseType, paymentProof }) => {
-        try {
-          const result = await this.stemService.download(
-            stemId,
-            licenseType ?? "personal",
-            paymentProof,
-          );
-          return {
-            structuredContent: result.structuredContent,
-            content: result.content as any,
-            isError: !result.ok,
-          };
-        } catch (error) {
-          return this.toolError(
-            "DOWNLOAD_FAILED",
-            error instanceof Error ? error.message : String(error),
-          );
-        }
+        return this.traceMcpTool("stem.download", { stemId, licenseType, paymentProof }, async () => {
+          try {
+            const result = await this.stemService.download(
+              stemId,
+              licenseType ?? "personal",
+              paymentProof,
+            );
+            return {
+              structuredContent: result.structuredContent,
+              content: result.content as any,
+              isError: !result.ok,
+            };
+          } catch (error) {
+            return this.toolError(
+              "DOWNLOAD_FAILED",
+              error instanceof Error ? error.message : String(error),
+            );
+          }
+        });
       },
     );
 
@@ -317,6 +326,34 @@ export class McpService implements OnModuleDestroy {
       ],
       isError: true,
     };
+  }
+
+  private async traceMcpTool<T>(
+    toolName: string,
+    input: Record<string, unknown>,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    const startedAt = new Date();
+    try {
+      const output = await run();
+      await this.observability?.traceToolCall({
+        toolName,
+        input,
+        output,
+        startedAt,
+        endedAt: new Date(),
+      });
+      return output;
+    } catch (error) {
+      await this.observability?.traceToolCall({
+        toolName,
+        input,
+        error,
+        startedAt,
+        endedAt: new Date(),
+      });
+      throw error;
+    }
   }
 
   private getSessionId(req: Request): string | undefined {
