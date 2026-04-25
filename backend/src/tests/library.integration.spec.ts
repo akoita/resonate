@@ -17,6 +17,8 @@ describe('LibraryService (integration)', () => {
   const catalogTrackId = `${TEST_PREFIX}catalog_track`;
   const localTrackId = `${TEST_PREFIX}local_track`;
   const staleTrackId = `${TEST_PREFIX}stale_library_track`;
+  const staleUrlTrackId = `${TEST_PREFIX}stale_url_library_track`;
+  const liveUrlTrackId = `${TEST_PREFIX}live_url_library_track`;
 
   beforeAll(async () => {
     await prisma.user.create({
@@ -62,7 +64,7 @@ describe('LibraryService (integration)', () => {
       data: {
         userId,
         name: 'Stale Track Playlist',
-        trackIds: [staleTrackId, localTrackId],
+        trackIds: [staleTrackId, staleUrlTrackId, localTrackId],
       },
     });
     await prisma.libraryTrack.createMany({
@@ -75,11 +77,25 @@ describe('LibraryService (integration)', () => {
           catalogTrackId,
         },
         {
+          id: liveUrlTrackId,
+          userId,
+          source: 'remote',
+          title: 'Live URL Track',
+          remoteUrl: `/catalog/releases/${releaseId}/tracks/${catalogTrackId}/stream`,
+        },
+        {
           id: staleTrackId,
           userId,
           source: 'remote',
           title: 'Deleted Catalog Track',
           catalogTrackId: `${TEST_PREFIX}missing_catalog_track`,
+        },
+        {
+          id: staleUrlTrackId,
+          userId,
+          source: 'remote',
+          title: 'Deleted URL Track',
+          remoteUrl: `/catalog/releases/${TEST_PREFIX}missing_release/tracks/${TEST_PREFIX}missing_track/stream`,
         },
         {
           id: localTrackId,
@@ -92,9 +108,11 @@ describe('LibraryService (integration)', () => {
 
     const tracks = await service.listTracks(userId);
 
-    expect(tracks.map((track) => track.id)).toEqual(expect.arrayContaining([catalogTrackId, localTrackId]));
+    expect(tracks.map((track) => track.id)).toEqual(expect.arrayContaining([catalogTrackId, liveUrlTrackId, localTrackId]));
     expect(tracks.map((track) => track.id)).not.toContain(staleTrackId);
+    expect(tracks.map((track) => track.id)).not.toContain(staleUrlTrackId);
     expect(await prisma.libraryTrack.findUnique({ where: { id: staleTrackId } })).toBeNull();
+    expect(await prisma.libraryTrack.findUnique({ where: { id: staleUrlTrackId } })).toBeNull();
     const updatedPlaylist = await prisma.playlist.findUnique({ where: { id: playlist.id } });
     expect(updatedPlaylist?.trackIds).toEqual([localTrackId]);
   });

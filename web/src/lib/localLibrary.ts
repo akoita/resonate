@@ -68,6 +68,7 @@ export interface LocalTrack {
     blobKey?: string; // Optional for remote tracks
     artworkKey?: string | null;
     createdAt: string;
+    catalogTrackId?: string | null;
     remoteUrl?: string; // For streaming catalog
     remoteArtworkUrl?: string; // For streaming catalog
     stems?: Array<{
@@ -113,6 +114,7 @@ function apiTrackToLocal(apiTrack: APILibraryTrack): LocalTrack {
         createdAt: apiTrack.createdAt,
         sourcePath: apiTrack.sourcePath ?? undefined,
         fileSize: apiTrack.fileSize ?? undefined,
+        catalogTrackId: apiTrack.catalogTrackId ?? null,
         remoteUrl: apiTrack.remoteUrl ?? undefined,
         remoteArtworkUrl: apiTrack.remoteArtworkUrl ?? undefined,
         source: apiTrack.source,
@@ -144,7 +146,7 @@ function localTrackToApi(
         duration: track.duration,
         sourcePath: track.sourcePath ?? null,
         fileSize: track.fileSize ?? null,
-        catalogTrackId: null,
+        catalogTrackId: track.catalogTrackId ?? null,
         remoteUrl: track.remoteUrl ?? null,
         remoteArtworkUrl: track.remoteArtworkUrl ?? null,
         stemType: track.stemType ?? null,
@@ -291,6 +293,7 @@ export async function getTrack(id: string): Promise<LocalTrack | null> {
                     duration: null,
                     createdAt: catalogTrack.createdAt || new Date().toISOString(),
                     source: "remote",
+                    catalogTrackId: catalogTrack.id,
                     remoteArtworkUrl: catalogTrack.release?.artworkUrl || (catalogTrack.release?.artworkMimeType ? getReleaseArtworkUrl(catalogTrack.release.id) : undefined),
                     stems: catalogTrack.stems?.map(s => ({
                         id: s.id,
@@ -338,6 +341,7 @@ async function enrichStemTrackUrl(track: LocalTrack): Promise<LocalTrack> {
         const token = getToken();
         const catalogTrack = await getCatalogTrack(catalogTrackId, token);
         if (catalogTrack?.stems) {
+            track.catalogTrackId = catalogTrackId;
             const matchingStem = catalogTrack.stems.find(
                 s => s.type.toLowerCase() === stemTypeSlug
             );
@@ -424,6 +428,7 @@ export async function listTracks(): Promise<LocalTrack[]> {
         try {
             const apiTracks = await listLibraryTracksAPI(token);
             const tracks = apiTracks.map(apiTrackToLocal);
+            await pruneRemoteCacheNotInApi(tracks);
 
             // For local tracks, check if the blob is available on this device
             for (const track of tracks) {
@@ -448,14 +453,31 @@ export async function listTracks(): Promise<LocalTrack[]> {
         }
     }
 
-    // Fallback: read from IndexedDB (offline / unauthenticated)
+    // Fallback: read from IndexedDB (offline / unauthenticated). When an
+    // authenticated API read fails, keep remote catalog rows out of the
+    // fallback so deleted backend content is not resurrected from cache.
     const tracks: LocalTrack[] = [];
     await trackStore.iterate<LocalTrack, void>((value) => {
-        tracks.push({ ...value, available: true });
+        if (!token || value.source !== "remote") {
+            tracks.push({ ...value, available: true });
+        }
     });
     return tracks.sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
+}
+
+async function pruneRemoteCacheNotInApi(apiTracks: LocalTrack[]): Promise<void> {
+    const apiTrackIds = new Set(apiTracks.map((track) => track.id));
+    const staleRemoteCacheIds: string[] = [];
+
+    await trackStore.iterate<LocalTrack, void>((value, key) => {
+        if (value.source === "remote" && !apiTrackIds.has(value.id)) {
+            staleRemoteCacheIds.push(key);
+        }
+    });
+
+    await Promise.all(staleRemoteCacheIds.map((id) => trackStore.removeItem(id)));
 }
 
 /**

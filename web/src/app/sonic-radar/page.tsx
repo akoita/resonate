@@ -120,6 +120,7 @@ export default function SonicRadarPage() {
                 duration: null,
                 createdAt: tx.createdAt,
                 source: "remote" as const,
+                catalogTrackId: tx.trackId,
                 stemType: tx.stemName || undefined,
                 remoteArtworkUrl: artworkUrl,
                 remoteUrl: previewUrl,
