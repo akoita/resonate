@@ -37,11 +37,16 @@ const mockPublicClient = {
   getCode: jest.fn(),
 };
 
+const mockSignupFaucet = {
+  maybeFundOnSignup: jest.fn().mockResolvedValue({ status: 'skipped', reason: 'disabled' }),
+};
+
 function makeController() {
   return new AuthController(
     mockAuthService as any,
     mockNonceService as any,
     mockPublicClient as any,
+    mockSignupFaucet as any,
   );
 }
 
@@ -59,6 +64,7 @@ beforeEach(() => {
   mockAuthService.issueTokenForAddress.mockReturnValue({ accessToken: 'tok-addr' });
   mockNonceService.issue.mockReturnValue('nonce-123');
   mockNonceService.consume.mockReturnValue(true);
+  mockSignupFaucet.maybeFundOnSignup.mockResolvedValue({ status: 'skipped', reason: 'disabled' });
 });
 
 // ====================================================================
@@ -148,6 +154,39 @@ describe('AuthController', () => {
         '0xsmartaccount', // lowercased
         'listener',
       );
+    });
+
+    it('signup on Sepolia invokes the signup faucet after successful auth', async () => {
+      mockPublicClient.getChainId.mockResolvedValue(11155111);
+      mockPublicClient.getCode.mockResolvedValue('0x'); // counterfactual
+      const ctrl = makeController();
+
+      await ctrl.verify(body({
+        authMode: 'register',
+        chainId: 11155111,
+      }));
+
+      expect(mockSignupFaucet.maybeFundOnSignup).toHaveBeenCalledWith({
+        authMode: 'register',
+        requestedChainId: 11155111,
+        verifiedChainId: 11155111,
+        userId: '0xsmartaccount',
+        walletAddress: '0xSmartAccount',
+      });
+    });
+
+    it('signup faucet errors do not block token issuance', async () => {
+      mockPublicClient.getChainId.mockResolvedValue(11155111);
+      mockPublicClient.getCode.mockResolvedValue('0x');
+      mockSignupFaucet.maybeFundOnSignup.mockRejectedValue(new Error('faucet down'));
+      const ctrl = makeController();
+
+      const result = await ctrl.verify(body({
+        authMode: 'register',
+        chainId: 11155111,
+      }));
+
+      expect(result).toEqual({ accessToken: 'tok-addr' });
     });
 
     it('counterfactual SA: returns invalid_nonce on mismatch', async () => {

@@ -41,6 +41,23 @@ model Wallet {
   user             User    @relation(fields: [userId], references: [id])
 }
 
+model SignupFaucetAttempt {
+  id            String   @id @default(uuid())
+  userId        String
+  walletAddress String
+  chainId       Int
+  purpose       String   @default("signup-sepolia-faucet")
+  amountWei     String
+  status        String
+  txHash        String?
+  failureReason String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, walletAddress, chainId, purpose], name: "signupFaucetAttempt_identity", map: "SignupFaucetAttempt_signupFaucetAttempt_identity_key")
+  @@index([walletAddress, chainId], map: "SignupFaucetAttempt_walletAddress_chainId_idx")
+}
+
 model Artist {
   id            String        @id @default(uuid())
   userId        String        @unique

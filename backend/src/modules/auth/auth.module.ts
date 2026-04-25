@@ -9,6 +9,13 @@ import { AuthController } from "./auth.controller";
 import { AuthNonceService } from "./auth_nonce.service";
 import { AuthService } from "./auth.service";
 import { JwtStrategy } from "./jwt.strategy";
+import {
+  PrismaSignupFaucetStore,
+  SIGNUP_FAUCET_SENDER,
+  SIGNUP_FAUCET_STORE,
+  SignupFaucetService,
+  ViemSignupFaucetSender,
+} from "./signup_faucet.service";
 
 /**
  * Get chain config based on RPC URL
@@ -52,6 +59,9 @@ function getChainFromRpc(rpcUrl: string | undefined): { chain: Chain; transport:
   providers: [
     AuthService,
     AuthNonceService,
+    SignupFaucetService,
+    { provide: SIGNUP_FAUCET_STORE, useClass: PrismaSignupFaucetStore },
+    { provide: SIGNUP_FAUCET_SENDER, useClass: ViemSignupFaucetSender },
     JwtStrategy,
     {
       provide: "PUBLIC_CLIENT",
@@ -67,6 +77,6 @@ function getChainFromRpc(rpcUrl: string | undefined): { chain: Chain; transport:
       },
     },
   ],
-  exports: [AuthService, "PUBLIC_CLIENT", PassportModule, JwtStrategy],
+  exports: [AuthService, "PUBLIC_CLIENT", PassportModule, JwtStrategy, SignupFaucetService],
 })
 export class AuthModule { }

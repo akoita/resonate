@@ -1,15 +1,17 @@
-import { Body, Controller, Inject, Post } from "@nestjs/common";
+import { Body, Controller, Inject, Optional, Post } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { recoverMessageAddress, type PublicClient } from "viem";
 import { AuthService } from "./auth.service";
 import { AuthNonceService } from "./auth_nonce.service";
+import { SignupFaucetService, type AuthMode } from "./signup_faucet.service";
 
 @Controller("auth")
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly nonceService: AuthNonceService,
-    @Inject("PUBLIC_CLIENT") private readonly publicClient: PublicClient
+    @Inject("PUBLIC_CLIENT") private readonly publicClient: PublicClient,
+    @Optional() private readonly signupFaucetService?: SignupFaucetService,
   ) { }
 
   @Post("login")
@@ -33,6 +35,8 @@ export class AuthController {
       message: string;
       signature: `0x${string}`;
       role?: string;
+      authMode?: AuthMode;
+      chainId?: number;
       /** Local dev (31337): EOA that signed; we verify this and issue token for address (smart account) */
       signerAddress?: string;
     }
@@ -58,7 +62,14 @@ export class AuthController {
           console.warn(`[Auth] Nonce mismatch for ${body.address}`);
           return { status: "invalid_nonce" };
         }
-        return this.authService.issueTokenForAddress(body.address, body.role ?? "listener");
+        return this.issueTokenAndMaybeFundSignup({
+          userId: body.address,
+          walletAddress: body.address,
+          role: body.role,
+          authMode: body.authMode,
+          requestedChainId: body.chainId,
+          verifiedChainId: chainId,
+        });
       }
 
       const verifyOptions: any = {
@@ -96,7 +107,14 @@ export class AuthController {
           console.warn(`[Auth] Nonce mismatch for counterfactual ${body.address}`);
           return { status: "invalid_nonce" };
         }
-        return this.authService.issueTokenForAddress(body.address.toLowerCase(), body.role ?? "listener");
+        return this.issueTokenAndMaybeFundSignup({
+          userId: body.address.toLowerCase(),
+          walletAddress: body.address,
+          role: body.role,
+          authMode: body.authMode,
+          requestedChainId: body.chainId,
+          verifiedChainId: chainId,
+        });
       }
 
       let ok = await this.publicClient.verifyMessage(verifyOptions);
@@ -135,18 +153,57 @@ export class AuthController {
           console.warn(`[Auth] Nonce mismatch for ${body.address}`);
           return { status: "invalid_nonce" };
         }
-        return this.authService.issueTokenForAddress(body.address.toLowerCase(), body.role ?? "listener");
+        return this.issueTokenAndMaybeFundSignup({
+          userId: body.address.toLowerCase(),
+          walletAddress: body.address,
+          role: body.role,
+          authMode: body.authMode,
+          requestedChainId: body.chainId,
+          verifiedChainId: chainId,
+        });
       }
       const nonceMatch = /Nonce:\s*(.+)$/m.exec(body.message)?.[1] ?? "";
       if (!this.nonceService.consume(body.address, nonceMatch)) {
         console.warn(`[Auth] Nonce mismatch for ${body.address}`);
         return { status: "invalid_nonce" };
       }
-      const result = this.authService.issueTokenForAddress(issuedAddress, body.role ?? "listener");
+      const result = await this.issueTokenAndMaybeFundSignup({
+        userId: issuedAddress,
+        walletAddress: body.address,
+        role: body.role,
+        authMode: body.authMode,
+        requestedChainId: body.chainId,
+        verifiedChainId: chainId,
+      });
       return issuedAddress !== body.address ? { ...result, address: issuedAddress } : result;
     } catch (err) {
       console.error(`[Auth] Error during verification:`, err);
       return { status: "error", message: (err as Error).message };
     }
+  }
+
+  private async issueTokenAndMaybeFundSignup(input: {
+    userId: string;
+    walletAddress: string;
+    role?: string;
+    authMode?: AuthMode;
+    requestedChainId?: number;
+    verifiedChainId: number;
+  }) {
+    const result = this.authService.issueTokenForAddress(input.userId, input.role ?? "listener");
+    if (this.signupFaucetService) {
+      try {
+        await this.signupFaucetService.maybeFundOnSignup({
+          authMode: input.authMode,
+          requestedChainId: input.requestedChainId,
+          verifiedChainId: input.verifiedChainId,
+          userId: input.userId,
+          walletAddress: input.walletAddress,
+        });
+      } catch (error) {
+        console.error("[Auth] Signup faucet failed after token issuance:", error);
+      }
+    }
+    return result;
   }
 }

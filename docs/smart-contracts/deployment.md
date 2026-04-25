@@ -200,6 +200,11 @@ Core app-side variables:
 | `INTERNAL_SERVICE_KEY` | Backend + internal workers | Shared secret for backend-originated privileged requests and Demucs callback authentication; required in production for internal worker callbacks |
 | `STEM_WATCHDOG_TIMEOUT_MS` | Backend | Optional timeout before active stem-processing tracks are failed as stale; defaults to `900000` locally |
 | `STEM_WATCHDOG_INTERVAL_MS` | Backend | Optional watchdog sweep interval for stale stem-processing tracks; defaults to `60000` locally |
+| `SIGNUP_SEPOLIA_FAUCET_ENABLED` | Backend | Enables the signup faucet. Defaults to `false`; set `true` only in staging/testnet environments |
+| `SIGNUP_SEPOLIA_FAUCET_AMOUNT_ETH` | Backend | Sepolia ETH amount sent to new signup wallets when the faucet is enabled; defaults to `0.1` |
+| `SIGNUP_SEPOLIA_FAUCET_CHAIN_ID` | Backend | Faucet chain guard; defaults to Sepolia `11155111` |
+| `SIGNUP_SEPOLIA_FAUCET_RPC_URL` | Backend | Optional faucet RPC override; falls back to `RPC_URL` / `SEPOLIA_RPC_URL` |
+| `SIGNUP_SEPOLIA_FAUCET_FUNDER_PRIVATE_KEY` | Backend secret | Optional faucet funding key; falls back to the deployer `PRIVATE_KEY`. Store in secret manager/GitHub environment secrets, never source |
 
 Lyria auth modes:
 - Preferred for Cloud Run / GCE 30-second generation: set `LYRIA_PROJECT_ID` and `LYRIA_LOCATION` and let Application Default Credentials from the attached service account authenticate Vertex AI `lyria-002` requests.

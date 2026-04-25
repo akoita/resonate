@@ -215,6 +215,8 @@ export async function verifySignature(input: {
   message: string;
   signature: `0x${string}`;
   role?: string;
+  authMode?: "login" | "register";
+  chainId?: number;
   /** For local dev (chainId 31337): EOA that signed; backend verifies this and issues token for address */
   signerAddress?: string;
   /** P-256 public key X coordinate (hex) for off-chain verification */
