@@ -458,6 +458,43 @@ describe('CatalogService (integration)', () => {
     expect(await prisma.release.findUnique({ where: { id: created.id } })).toBeNull();
   });
 
+  it('deletes saved library tracks and prunes playlists for deleted release tracks', async () => {
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Library Delete Target',
+      tracks: [{ title: 'Saved Track', position: 1 }],
+    });
+    const trackId = created.tracks[0].id;
+    const libraryTrackId = `${TEST_PREFIX}library_${trackId}`;
+    const keepTrackId = `${TEST_PREFIX}keep_track`;
+    const playlist = await prisma.playlist.create({
+      data: {
+        userId: `${TEST_PREFIX}user`,
+        name: 'Release Playlist',
+        trackIds: [trackId, libraryTrackId, keepTrackId],
+      },
+    });
+    await prisma.libraryTrack.create({
+      data: {
+        id: libraryTrackId,
+        userId: `${TEST_PREFIX}user`,
+        source: 'remote',
+        title: 'Saved Track',
+        artist: 'TC Test Artist',
+        album: 'Library Delete Target',
+        catalogTrackId: trackId,
+      },
+    });
+
+    const result = await catalog.deleteRelease(created.id, `${TEST_PREFIX}user`);
+
+    expect(result.success).toBe(true);
+    expect(await prisma.libraryTrack.findUnique({ where: { id: libraryTrackId } })).toBeNull();
+    const updatedPlaylist = await prisma.playlist.findUnique({ where: { id: playlist.id } });
+    expect(updatedPlaylist?.trackIds).toEqual([keepTrackId]);
+    await prisma.playlist.delete({ where: { id: playlist.id } });
+  });
+
   it('deletes release when a legacy stem quality rating table still exists', async () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,

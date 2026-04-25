@@ -1104,6 +1104,38 @@ export class CatalogService implements OnModuleInit {
       }
 
       if (trackIds.length > 0) {
+        const libraryTracks = await tx.libraryTrack.findMany({
+          where: {
+            source: "remote",
+            OR: [
+              { id: { in: trackIds } },
+              { catalogTrackId: { in: trackIds } },
+            ],
+          },
+          select: { id: true },
+        });
+        const libraryTrackIds = libraryTracks.map((track) => track.id);
+        const deletedTrackReferences = [...new Set([...trackIds, ...libraryTrackIds])];
+
+        if (libraryTrackIds.length > 0) {
+          await tx.libraryTrack.deleteMany({
+            where: { id: { in: libraryTrackIds } },
+          });
+        }
+
+        const playlists = await tx.playlist.findMany({
+          where: { trackIds: { hasSome: deletedTrackReferences } },
+          select: { id: true, trackIds: true },
+        });
+        for (const playlist of playlists) {
+          await tx.playlist.update({
+            where: { id: playlist.id },
+            data: {
+              trackIds: playlist.trackIds.filter((id) => !deletedTrackReferences.includes(id)),
+            },
+          });
+        }
+
         // Delete any dependent content-protection or licensing records first
         await tx.dmcaReport.deleteMany({ where: { trackId: { in: trackIds } } });
         await tx.audioFingerprint.deleteMany({ where: { trackId: { in: trackIds } } });
