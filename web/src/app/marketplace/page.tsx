@@ -10,6 +10,7 @@ import { getReleaseArtworkUrl } from "../../lib/api";
 import { ExpiryBadge } from "../../components/marketplace/ExpiryBadge";
 import { LicenseBadges } from "../../components/marketplace/LicenseBadges";
 import { BuyModal } from "../../components/marketplace/BuyModal";
+import { artistProfileHref } from "../../lib/artistRoutes";
 import "./marketplace.css";
 import "../../styles/license-badges.css";
 
@@ -598,7 +599,7 @@ export default function MarketplacePage() {
                                             <>
                                                 {" · "}
                                                 {listing.stem?.artistId ? (
-                                                    <Link href={`/artist/${listing.stem.artistId}`} style={{ color: "inherit", textDecoration: "none" }}>
+                                                    <Link href={artistProfileHref(listing.stem.artistId)} style={{ color: "inherit", textDecoration: "none" }}>
                                                         <span>{listing.stem.artist}</span>
                                                     </Link>
                                                 ) : <span>{listing.stem.artist}</span>}

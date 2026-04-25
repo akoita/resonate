@@ -45,6 +45,7 @@ import { ContextMenu, ContextMenuItem } from "../../components/ui/ContextMenu";
 import { TrackActionMenu } from "../../components/ui/TrackActionMenu";
 import { MarqueeText } from "../../components/ui/MarqueeText";
 import Link from "next/link";
+import { libraryArtistHref } from "../../lib/artistRoutes";
 
 type ViewTab = "tracks" | "artists" | "albums" | "playlists" | "stems" | "ai_creations";
 
@@ -630,7 +631,7 @@ export default function LibraryPage() {
                             onClick={(e) => {
                                 e.stopPropagation();
                                 const target = track.artist;
-                                if (target) router.push(`/artist/${encodeURIComponent(target)}`);
+                                if (target) router.push(libraryArtistHref(target));
                             }}
                         >
                             {track.artist || "Unknown Artist"}
@@ -675,7 +676,7 @@ export default function LibraryPage() {
                     <div
                         key={artist.name}
                         className="library-card"
-                        onClick={() => router.push(`/artist/${encodeURIComponent(artist.name)}`)}
+                        onClick={() => router.push(libraryArtistHref(artist.name))}
                         onContextMenu={(e) => handleArtistContextMenu(e, artist.name)}
                         draggable
                         onDragStart={(e) => {
@@ -782,7 +783,7 @@ export default function LibraryPage() {
                         </div>
                     )}
                     <div className="detail-hero-content">
-                        <div className="detail-hero-label">Artist</div>
+                        <div className="detail-hero-label">Library Artist</div>
                         <h1 className="detail-hero-title">{selectedArtist}</h1>
                         <div className="detail-hero-meta">
                             {artistAlbums.length} album{artistAlbums.length !== 1 ? "s" : ""} • {artistTracks.length} track{artistTracks.length !== 1 ? "s" : ""}

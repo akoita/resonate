@@ -694,6 +694,8 @@ export class CatalogService implements OnModuleInit {
       throw new BadRequestException("User is not a registered artist");
     }
 
+    const primaryArtist = input.primaryArtist?.trim() || artist.displayName;
+
     this.clearCache();
     return prisma.release.create({
       data: {
@@ -701,7 +703,7 @@ export class CatalogService implements OnModuleInit {
         title: input.title,
         status: "draft",
         type: input.type ?? "single",
-        primaryArtist: input.primaryArtist,
+        primaryArtist,
         featuredArtists: input.featuredArtists?.join(", "),
         genre: input.genre,
         label: input.label,
@@ -712,6 +714,7 @@ export class CatalogService implements OnModuleInit {
             title: t.title,
             position: t.position,
             explicit: t.explicit ?? false,
+            artist: primaryArtist,
           }))
         }
       },

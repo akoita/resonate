@@ -134,7 +134,7 @@ export default function ArtistOnboardingPage() {
             </div>
             <h1 className="onboarding-title">Create your profile</h1>
             <p className="onboarding-description">
-              Set up your artist identity to start uploading and monetizing your stems.
+              Create the artist identity that will appear on your releases and receive payouts.
             </p>
           </div>
 

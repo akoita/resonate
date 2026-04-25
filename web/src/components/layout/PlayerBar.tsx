@@ -3,6 +3,7 @@
 import { useRouter, usePathname } from "next/navigation";
 import { usePlayer } from "../../lib/playerContext";
 import { MarqueeText } from "../ui/MarqueeText";
+import { libraryArtistHref } from "../../lib/artistRoutes";
 import { useToast } from "../ui/Toast";
 import { useUIStore } from "../../lib/uiStore";
 import { MixerConsole } from "../player/MixerConsole";
@@ -95,10 +96,8 @@ export default function PlayerBar() {
                 className="player-artist clickable"
                 onClick={(e) => {
                   e.stopPropagation();
-                  // For local tracks, we might only have name.
-                  // Use name as fallback.
-                  const target = currentTrack.artist; // LocalTrack doesn't guaranteed have ID for artist profile yet
-                  if (target) router.push(`/artist/${encodeURIComponent(target)}`);
+                  const target = currentTrack.artist;
+                  if (target) router.push(libraryArtistHref(target));
                 }}
               />
             </div>

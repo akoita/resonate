@@ -83,11 +83,11 @@ test.describe("Catalog & Home Page", () => {
         await expect(page.getByLabel("Search catalog")).toBeVisible();
     });
 
-    test("HOME-10: Uploaded resources panel is separate from Library", async ({ page }) => {
+    test("HOME-10: Managed catalog panel is separate from Library", async ({ page }) => {
         await page.goto("/");
-        await expect(page.getByRole("heading", { name: "Uploaded Resources" })).toBeVisible();
-        await expect(page.getByRole("heading", { name: "Your Uploads" })).toBeVisible();
-        await expect(page.getByRole("link", { name: "Upload resources" })).toHaveAttribute("href", "/artist/upload");
+        await expect(page.getByRole("heading", { name: "Managed Catalog" })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Your Releases" })).toBeVisible();
+        await expect(page.getByRole("link", { name: "Upload release" })).toHaveAttribute("href", "/artist/upload");
         await expect(page.getByRole("link", { name: "Open analytics" })).toHaveAttribute("href", "/artist/analytics");
     });
 });

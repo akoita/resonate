@@ -371,7 +371,6 @@ export function PlaylistTab({
                 isOpen={showCreateModal}
                 title={`Create ${createType === "playlist" ? "Playlist" : "Folder"}`}
                 onConfirm={(name) => {
-                    // eslint-disable-next-line react-hooks/set-state-in-effect
                     void (async () => {
                         if (createType === "playlist") {
                             await createPlaylist(name, currentFolder?.id ?? null);
