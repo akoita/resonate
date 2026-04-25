@@ -14,6 +14,7 @@ function readCommitSha() {
     process.env.CI_COMMIT_SHA;
   if (fromEnv) return String(fromEnv).slice(0, 7);
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- next.config.js is CJS
     const { execSync } = require("child_process");
     return execSync("git rev-parse --short HEAD", {
       stdio: ["ignore", "pipe", "ignore"],
@@ -24,6 +25,7 @@ function readCommitSha() {
     return "";
   }
 }
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- next.config.js is CJS
 const appVersion = require("./package.json").version || "";
 const commitSha = readCommitSha();
 
