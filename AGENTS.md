@@ -53,8 +53,10 @@ environment-dependent values directly in source code.
 
 ### Required Environment Variables
 
-Document any new env var in `docs/smart-contracts/deployment.md` and the relevant Terraform config
-(`infra/terraform/backend-service.tf` or `infra/terraform/frontend-service.tf`).
+Document any new app env var in `docs/deployment/environment.md` and the
+relevant deploy configuration in `resonate-iac`. Keep
+`docs/smart-contracts/deployment.md` focused on contract deployment and
+contract-adjacent local workflows.
 
 ---
 
