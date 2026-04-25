@@ -34,8 +34,10 @@ PUBSUB_PROJECT = os.getenv("GCP_PROJECT_ID", "")
 SUBSCRIPTION_NAME = os.getenv("PUBSUB_SUBSCRIPTION", "stem-separate-worker")
 RESULTS_TOPIC = os.getenv("PUBSUB_RESULTS_TOPIC", "stem-results")
 DEMUCS_MODEL = "htdemucs_6s"
+DEMUCS_DEVICE = os.getenv("DEMUCS_DEVICE", "auto").strip().lower()
 GPU_RUNTIME_ERROR_MARKERS = (
     "cufft",
+    "cufft_internal_error",
     "cuda error",
     "cuda runtime error",
     "cudnn",
@@ -71,6 +73,18 @@ def gpu_available() -> bool:
 
 def demucs_devices_to_try() -> list[str]:
     """Prefer GPU when it is healthy, but always keep CPU as the safe fallback."""
+    if DEMUCS_DEVICE == "cpu":
+        return ["cpu"]
+
+    if DEMUCS_DEVICE in ("cuda", "gpu"):
+        if gpu_available():
+            return ["cuda", "cpu"]
+        logger.warning("DEMUCS_DEVICE=%s requested, but CUDA is unavailable; using CPU", DEMUCS_DEVICE)
+        return ["cpu"]
+
+    if DEMUCS_DEVICE not in ("", "auto"):
+        logger.warning("Invalid DEMUCS_DEVICE=%s; expected auto, cpu, or cuda. Using auto.", DEMUCS_DEVICE)
+
     if gpu_available():
         return ["cuda", "cpu"]
     return ["cpu"]
@@ -158,8 +172,9 @@ async def run_demucs_attempt(
     )
 
     stderr_str = "".join(stderr_data)
+    combined_output = "".join(stdout_data) + stderr_str
 
-    return process.returncode, stderr_str, attempt_output_dir
+    return process.returncode, combined_output, attempt_output_dir
 
 
 def generate_fingerprint(audio_path: Path) -> Tuple[float, str, str]:
@@ -604,4 +619,5 @@ def health():
         "status": "ok",
         "storage_mode": STORAGE_MODE,
         "processing_mode": PROCESSING_MODE,
+        "demucs_device": DEMUCS_DEVICE or "auto",
     }
