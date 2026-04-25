@@ -92,6 +92,16 @@ const withPreviewUrlsForMixerStems = (stems?: PlaybackStem[]): PlaybackStem[] | 
   });
 };
 
+const isPreviewBackedMixerStem = (
+  stem?: { id?: string | null; uri?: string | null; isEncrypted?: boolean } | null,
+): boolean => {
+  if (!stem?.id || !stem.uri) {
+    return false;
+  }
+
+  return !stem.isEncrypted && stem.uri === getStemPreviewUrl(stem.id);
+};
+
 function slugifyReleaseTitle(value: string): string {
   return value
     .toLowerCase()
@@ -810,8 +820,14 @@ export default function ReleaseDetails() {
 
     const isOriginal = type.toUpperCase() === "ORIGINAL";
     const isTrackAlreadyPlaying = currentTrack?.id === trackId;
+    const currentSelectedStem = currentTrack?.stems?.find(
+      (stem) => normalizeStemType(stem.type) === normalizeStemType(type),
+    );
     const currentTrackHasSelectedStem = hasMixerStem(currentTrack?.stems, type);
-    const needsPlayerTrackRefresh = !isTrackAlreadyPlaying || (!isOriginal && !currentTrackHasSelectedStem);
+    const currentTrackHasPreviewSelectedStem = isPreviewBackedMixerStem(currentSelectedStem);
+    const needsPlayerTrackRefresh =
+      !isTrackAlreadyPlaying ||
+      (!isOriginal && (!currentTrackHasSelectedStem || !currentTrackHasPreviewSelectedStem));
 
     if (isOriginal) {
       // Playing full track - disable mixer mode for clean playback
