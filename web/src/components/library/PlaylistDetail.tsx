@@ -17,6 +17,7 @@ import { ContextMenu, ContextMenuItem } from "../ui/ContextMenu";
 import { useToast } from "../ui/Toast";
 import { PromptModal } from "../ui/PromptModal";
 import { useWebSockets } from "../../hooks/useWebSockets";
+import { libraryArtistHref } from "../../lib/artistRoutes";
 
 interface PlaylistDetailProps {
     playlistId: string;
@@ -317,9 +318,8 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                                                 className="clickable hover:underline"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    // For local tracks, we might rely on name
                                                     const target = track.artist;
-                                                    if (target) router.push(`/artist/${encodeURIComponent(target)}`);
+                                                    if (target) router.push(libraryArtistHref(target));
                                                 }}
                                             >
                                                 {track.artist || "Unknown Artist"}

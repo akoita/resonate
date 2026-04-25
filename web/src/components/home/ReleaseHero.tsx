@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { Button } from "../ui/Button";
 import { Release } from "../../lib/api";
+import { releaseArtistCreditHref } from "../../lib/artistRoutes";
 
 interface ReleaseHeroProps {
   release: Release;
@@ -37,14 +38,11 @@ export function ReleaseHero({ release }: ReleaseHeroProps) {
         <h1 className="hero-main-title text-gradient">{release.title}</h1>
         <p className="hero-main-artist">
           By <span
-            className="artist-highlight clickable"
+            className={`artist-highlight ${releaseArtistCreditHref(release) ? "clickable" : ""}`}
             onClick={(e) => {
               e.stopPropagation();
-              // Prefer artist ID (UUID), fallback to name
-              const id = release.artist?.id || release.artistId;
-              const name = release.primaryArtist || release.artist?.displayName;
-              const target = id || name;
-              if (target) router.push(`/artist/${encodeURIComponent(target)}`);
+              const target = releaseArtistCreditHref(release);
+              if (target) router.push(target);
             }}
           >
             {release.primaryArtist || release.artist?.displayName || "Unknown Artist"}

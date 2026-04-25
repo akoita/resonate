@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { join } from "path";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
 import { readdir } from "fs/promises";
@@ -77,16 +77,31 @@ export class IngestionService {
     catalogTrackId?: string;
     sourceType?: string;
   }) {
-    // Resolve artistId: from body, or lookup from userId
+    // The authenticated user's artist profile is the upload owner. Metadata
+    // artist names are credits only; clients must not pick another profile id.
     let artistId = input.artistId;
-    if (!artistId && input.userId) {
+    let artistDisplayName: string | undefined;
+    if (input.userId) {
       const artist = await this.artistService.getProfile(input.userId);
-      artistId = artist?.id;
+      if (!artist) {
+        throw new Error("Could not resolve artist for upload");
+      }
+      if (artistId && artistId !== artist.id) {
+        throw new ForbiddenException("Uploads must use the authenticated user's artist profile");
+      }
+      artistId = artist.id;
+      artistDisplayName = artist.displayName;
     }
     if (!artistId) {
       throw new Error("Could not resolve artist for upload");
     }
     const resolvedArtistId: string = artistId;
+    if (artistDisplayName && !input.metadata?.primaryArtist?.trim?.()) {
+      input.metadata = {
+        ...input.metadata,
+        primaryArtist: artistDisplayName,
+      };
+    }
 
     // If catalogTrackId is provided, fetch the audio from catalog
     if (input.catalogTrackId && input.files.length === 0) {

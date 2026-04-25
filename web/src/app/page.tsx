@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../components/auth/AuthProvider";
 import { listMyReleases, listPublishedReleases, Release } from "../lib/api";
+import { artistProfileHref } from "../lib/artistRoutes";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
 import { useToast } from "../components/ui/Toast";
 import { listCampaignsSync, getFeaturedCampaignSync, daysUntil, type Campaign } from "../lib/shows";
@@ -32,7 +33,7 @@ type CatalogView = "releases" | "artists" | "stems";
 type ArtistSummary = {
   key: string;
   name: string;
-  artistId?: string;
+  artistId: string;
   releaseCount: number;
   stemCount: number;
   latestRelease?: Release;
@@ -143,7 +144,7 @@ export default function Home() {
     () => filterStems(catalogStems, normalizedSearch).slice(0, 12),
     [catalogStems, normalizedSearch],
   );
-  const activeUploaders = catalogArtists.slice(0, 5);
+  const managedArtists = summarizeArtists(status === "authenticated" ? myReleases : []).slice(0, 5);
   const recentUploads = (status === "authenticated" ? myReleases : [])
     .slice()
     .sort((a, b) => getReleaseTime(b) - getReleaseTime(a))
@@ -288,7 +289,7 @@ export default function Home() {
                   browseArtists.map((artist) => (
                     <Link
                       key={artist.key}
-                      href={`/artist/${encodeURIComponent(artist.artistId ?? artist.name)}`}
+                      href={artistProfileHref(artist.artistId)}
                       className="ng-artist-row"
                     >
                       <span className="ng-artist-row__avatar" aria-hidden>
@@ -353,18 +354,18 @@ export default function Home() {
             <article className="ng-ops-panel ng-glass">
               <header className="ng-ops-panel__header">
                 <div>
-                  <span className="ng-kicker ng-kicker--tertiary">Active uploaders</span>
-                  <h3 className="ng-section-title">Uploaded Resources</h3>
+                  <span className="ng-kicker ng-kicker--tertiary">Managed artists</span>
+                  <h3 className="ng-section-title">Managed Catalog</h3>
                 </div>
-                <Link href="/artist/upload" className="ng-icon-link" aria-label="Upload resources">
+                <Link href="/artist/upload" className="ng-icon-link" aria-label="Upload release">
                   <span className="ms-icon" aria-hidden>upload</span>
                 </Link>
               </header>
               <div className="ng-uploader-list">
-                {activeUploaders.map((artist) => (
+                {managedArtists.length > 0 ? managedArtists.map((artist) => (
                   <Link
                     key={artist.key}
-                    href={`/artist/${encodeURIComponent(artist.artistId ?? artist.name)}`}
+                    href={artistProfileHref(artist.artistId)}
                     className="ng-uploader-row"
                   >
                     <span className="ng-uploader-row__avatar" aria-hidden>
@@ -375,19 +376,24 @@ export default function Home() {
                       <small>{formatRelativeTime(artist.latestAt)}</small>
                     </span>
                     <span className="ng-uploader-row__count">
-                      {artist.releaseCount + artist.stemCount}
-                      <small>resources</small>
+                      {artist.releaseCount}
+                      <small>releases</small>
                     </span>
                   </Link>
-                ))}
+                )) : (
+                  <div className="ng-empty-state">
+                    <span className="ms-icon" aria-hidden>person_add</span>
+                    <p>No managed artist catalog yet.</p>
+                  </div>
+                )}
               </div>
             </article>
 
             <article className="ng-ops-panel ng-glass">
               <header className="ng-ops-panel__header">
                 <div>
-                  <span className="ng-kicker ng-kicker--primary">Management queue</span>
-                  <h3 className="ng-section-title">Your Uploads</h3>
+                  <span className="ng-kicker ng-kicker--primary">Release queue</span>
+                  <h3 className="ng-section-title">Your Releases</h3>
                 </div>
                 <Link href="/artist/analytics" className="ng-icon-link" aria-label="Open analytics">
                   <span className="ms-icon" aria-hidden>monitoring</span>
@@ -417,16 +423,16 @@ export default function Home() {
                 ) : (
                   <div className="ng-empty-state">
                     <span className="ms-icon" aria-hidden>upload_file</span>
-                    <p>No uploads yet.</p>
+                    <p>No releases yet.</p>
                     <Link href="/artist/upload" className="ng-btn ng-btn--primary">
-                      Start upload
+                      Upload release
                     </Link>
                   </div>
                 )
               ) : (
                 <div className="ng-empty-state">
                   <span className="ms-icon" aria-hidden>lock</span>
-                  <p>Connect a wallet to manage uploaded resources.</p>
+                  <p>Connect a wallet to manage artist profiles and releases.</p>
                 </div>
               )}
             </article>
@@ -533,7 +539,7 @@ export default function Home() {
               {topArtists.map((a) => (
                 <Link
                   key={a.name}
-                  href={`/artist/${encodeURIComponent(a.artistId ?? a.name)}`}
+                  href={artistProfileHref(a.artistId)}
                   className="ng-artist-pill"
                 >
                   <span className="ng-artist-pill__avatar" aria-hidden>
@@ -565,6 +571,10 @@ function ReleaseThumb({ release, small = false }: { release: Release; small?: bo
 
 function getArtistName(release: Release) {
   return release.primaryArtist || release.artist?.displayName || "Unknown Artist";
+}
+
+function getArtistProfileName(release: Release) {
+  return release.artist?.displayName || release.primaryArtist || "Unknown Artist";
 }
 
 function getReleaseTime(release: Release) {
@@ -602,7 +612,7 @@ function summarizeArtists(releases: Release[]): ArtistSummary[] {
   const byArtist = new Map<string, ArtistSummary>();
 
   for (const release of releases) {
-    const name = getArtistName(release);
+    const name = getArtistProfileName(release);
     const key = release.artist?.id || release.artistId || name.toLowerCase();
     const stemCount = release.tracks?.reduce(
       (sum, track) => sum + (track.stems?.length ?? 0),

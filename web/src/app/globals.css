@@ -10324,3 +10324,19 @@ tr[draggable="true"]:hover {
     font-size: 12px;
   }
 }
+/* Upload form helper copy for managed artist profile vs public credits. */
+.studio-field-help,
+.studio-field-warning {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.studio-field-help {
+  color: var(--color-muted);
+}
+
+.studio-field-warning {
+  color: var(--color-warning, #eab308);
+}

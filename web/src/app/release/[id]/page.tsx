@@ -28,6 +28,7 @@ import { useToast } from "../../../components/ui/Toast";
 // import { addTracksByCriteria } from "../../../lib/playlistStore";
 import { formatDuration } from "../../../lib/metadataExtractor";
 import { useAuth } from "../../../components/auth/AuthProvider";
+import { releaseArtistCreditHref } from "../../../lib/artistRoutes";
 import { buildTrackStreamUrl } from "../../../lib/urlUtils";
 import { MintStemButton } from "../../../components/marketplace/MintStemButton";
 import { BatchMintListModal } from "../../../components/marketplace/BatchMintListModal";
@@ -1122,13 +1123,11 @@ export default function ReleaseDetails() {
           <div className="release-artist-row">
             <div className="artist-avatar" />
             <span
-              className="artist-name clickable"
+              className={`artist-name ${releaseArtistCreditHref(release) ? "clickable" : ""}`}
               onClick={(e) => {
                 e.stopPropagation();
-                const id = release.artist?.id || release.artistId;
-                const name = release.primaryArtist || release.artist?.displayName;
-                const target = id || name;
-                if (target) router.push(`/artist/${encodeURIComponent(target)}`);
+                const target = releaseArtistCreditHref(release);
+                if (target) router.push(target);
               }}
             >
               {release.primaryArtist || release.artist?.displayName || "Unknown Artist"}
@@ -1718,20 +1717,16 @@ export default function ReleaseDetails() {
                       })() : null}
                     </td>
                     <td
-                      className="track-artist clickable"
+                      className={`track-artist ${releaseArtistCreditHref(release) ? "clickable" : ""}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         // Track might have its own artist override, but usually it's string only in this object structure unless we expand it.
                         // For now, if track.artist matches release primary, we use release IDs.
                         // Otherwise fall back to name string.
                         const name = track.artist || release.primaryArtist || release.artist?.displayName;
-
-                        // Check if it's the main artist to use the ID
                         const isMain = name === (release.primaryArtist || release.artist?.displayName);
-                        const id = isMain ? (release.artist?.id || release.artistId) : null;
-
-                        const target = id || name;
-                        if (target) router.push(`/artist/${encodeURIComponent(target)}`);
+                        const target = isMain ? releaseArtistCreditHref(release) : null;
+                        if (target) router.push(target);
                       }}
                     >
                       {track.artist || release.primaryArtist || release.artist?.displayName || "Unknown Artist"}

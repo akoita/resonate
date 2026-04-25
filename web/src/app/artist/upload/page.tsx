@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import AuthGate from "../../../components/auth/AuthGate";
 import ArtistGate from "../../../components/auth/ArtistGate";
@@ -10,7 +10,7 @@ import { Input } from "../../../components/ui/Input";
 import { FileDropZone } from "../../../components/ui/FileDropZone";
 import { useToast } from "../../../components/ui/Toast";
 import { useAuth } from "../../../components/auth/AuthProvider";
-import { getArtistMe, uploadStems, waitForReleaseAvailability } from "../../../lib/api";
+import { getArtistMe, uploadStems, waitForReleaseAvailability, type ArtistProfile } from "../../../lib/api";
 import { extractMetadata } from "../../../lib/metadataExtractor";
 import { useTrustTier } from "../../../hooks/useTrustTier";
 import { useAttestAndStake } from "../../../hooks/useContracts";
@@ -60,6 +60,7 @@ export default function ArtistUploadPage() {
   const [selectedStemId, setSelectedStemId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [artistProfile, setArtistProfile] = useState<ArtistProfile | null>(null);
   const { addToast } = useToast();
   const artworkInputRef = useRef<HTMLInputElement>(null);
   const { trustTier, loading: trustLoading } = useTrustTier();
@@ -87,6 +88,30 @@ export default function ArtistUploadPage() {
     artworkUrl: "",
     artworkBlob: undefined as Blob | undefined,
   });
+
+  useEffect(() => {
+    if (!token) return;
+
+    let cancelled = false;
+    getArtistMe(token)
+      .then((profile) => {
+        if (cancelled) return;
+        setArtistProfile(profile);
+        if (profile?.displayName) {
+          setFormData((prev) => ({
+            ...prev,
+            primaryArtist: prev.primaryArtist || profile.displayName,
+          }));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setArtistProfile(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -265,7 +290,7 @@ export default function ArtistUploadPage() {
         releaseType: "single",
         releaseTitle: "",
         title: "", // Still keeping title in state for now although unused, but better to remove later in a full cleanup
-        primaryArtist: "",
+        primaryArtist: artistProfile?.displayName || "",
         featuredArtists: "",
         genre: "",
         isrc: "",
@@ -373,7 +398,7 @@ export default function ArtistUploadPage() {
           return {
             ...prev,
             releaseTitle: prev.releaseTitle || detectedTitle || "",
-            primaryArtist: prev.primaryArtist || meta.artist || meta.albumArtist || "",
+            primaryArtist: prev.primaryArtist || artistProfile?.displayName || meta.artist || meta.albumArtist || "",
             genre: prev.genre || meta.genre || "",
             label: prev.label || meta.label || "",
             releaseDate: meta.year ? `${meta.year}-01-01` : prev.releaseDate,
@@ -441,7 +466,7 @@ export default function ArtistUploadPage() {
         }
       }, 200);
     }
-  }, [addToast, formData.primaryArtist, selectedStemId, stems.length]);
+  }, [addToast, artistProfile?.displayName, formData.primaryArtist, selectedStemId, stems.length]);
 
   const handleRemoveStem = useCallback((id: string) => {
     setStems(prev => prev.filter(s => s.id !== id));
@@ -467,6 +492,11 @@ export default function ArtistUploadPage() {
   };
 
   const allReady = stems.length > 0 && stems.every(stem => stem.status === "Ready");
+  const primaryArtistDiffersFromProfile = Boolean(
+    artistProfile?.displayName &&
+    formData.primaryArtist.trim() &&
+    formData.primaryArtist.trim().toLowerCase() !== artistProfile.displayName.trim().toLowerCase(),
+  );
 
   return (
     <AuthGate title="Connect your wallet to upload releases.">
@@ -659,6 +689,16 @@ export default function ArtistUploadPage() {
                   <label>
                     Primary artist
                     <Input name="primaryArtist" placeholder="Aya Lune" value={formData.primaryArtist} onChange={handleInputChange} />
+                    {artistProfile?.displayName && (
+                      <span className="studio-field-help">
+                        Defaults to your managed artist profile: {artistProfile.displayName}.
+                      </span>
+                    )}
+                    {primaryArtistDiffersFromProfile && (
+                      <span className="studio-field-warning">
+                        This release will be managed by {artistProfile?.displayName}, but credited to {formData.primaryArtist}. Marketplace rights may require proof of control.
+                      </span>
+                    )}
                   </label>
                   <label>
                     Genre
