@@ -273,6 +273,7 @@ export default function ReleaseDetails() {
     mixerMode,
     toggleMixerMode,
     setMixerVolumes,
+    isPlaying,
     currentTrack
   } = usePlayer();
   const { addToast } = useToast();
@@ -827,6 +828,7 @@ export default function ReleaseDetails() {
     const currentTrackHasPreviewSelectedStem = isPreviewBackedMixerStem(currentSelectedStem);
     const needsPlayerTrackRefresh =
       !isTrackAlreadyPlaying ||
+      !isPlaying ||
       (!isOriginal && (!currentTrackHasSelectedStem || !currentTrackHasPreviewSelectedStem));
 
     if (isOriginal) {
