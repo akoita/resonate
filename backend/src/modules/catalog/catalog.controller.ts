@@ -174,18 +174,11 @@ export class CatalogController {
   @Get("stems/:stemId/preview")
   async getStemPreview(
     @Param("stemId") stemId: string,
+    @Headers("range") range: string,
     @Res() res: Response
   ) {
     const stem = await this.catalogService.getStemPreview(stemId);
-
-    res.set({
-      'Content-Length': stem.data.length,
-      'Content-Type': stem.mimeType || 'audio/mpeg',
-      'Accept-Ranges': 'none', // Previews might be easier as full downloads for now or small chunks
-      'Cache-Control': 'public, max-age=3600',
-    });
-
-    res.end(stem.data);
+    this.sendAudioResponse(stem, range, res);
   }
 
   @UseGuards(AuthGuard("jwt"))

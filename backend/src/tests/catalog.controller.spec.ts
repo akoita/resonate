@@ -132,6 +132,37 @@ describe('CatalogController', () => {
     });
   });
 
+  describe('getStemPreview — range requests', () => {
+    const previewData = { data: Buffer.alloc(1500), mimeType: 'audio/mpeg' };
+
+    it('returns 206 and byte-range headers for preview range requests', async () => {
+      mockCatalogService.getStemPreview.mockResolvedValue(previewData);
+      const ctrl = makeController();
+      const res = mockRes();
+
+      await ctrl.getStemPreview('stem-1', 'bytes=250-749', res);
+
+      expect(res.statusCode).toBe(206);
+      expect(res.headers['Content-Range']).toBe('bytes 250-749/1500');
+      expect(res.headers['Accept-Ranges']).toBe('bytes');
+      expect(res.headers['Content-Length']).toBe(500);
+      expect(res.body).toHaveLength(500);
+    });
+
+    it('advertises byte ranges for full preview responses', async () => {
+      mockCatalogService.getStemPreview.mockResolvedValue(previewData);
+      const ctrl = makeController();
+      const res = mockRes();
+
+      await ctrl.getStemPreview('stem-1', undefined as any, res);
+
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['Content-Length']).toBe(1500);
+      expect(res.headers['Accept-Ranges']).toBe('bytes');
+      expect(res.headers['Content-Type']).toBe('audio/mpeg');
+    });
+  });
+
   // ===== getReleaseArtwork — response shaping =====
 
   describe('getReleaseArtwork', () => {
