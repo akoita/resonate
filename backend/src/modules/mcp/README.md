@@ -32,9 +32,10 @@ Current surface:
 
 `stem.quote` is free. It returns `{ priceUsdc, expiresAt, paymentChallenge }`,
 where `paymentChallenge` contains the facilitator URL and x402 payment
-requirements. `stem.download` validates a `paymentProof`; without one it returns
-an MCP tool error with `code: "PAYMENT_REQUIRED"` and the same quote challenge.
-With a valid proof, it returns an embedded MCP resource for the purchased stem.
+requirements. `stem.download` validates a `paymentProof`; when proof is missing
+or invalid it returns an MCP tool error with `code: "PAYMENT_REQUIRED"` and the
+same quote challenge. With a valid proof, it returns an embedded MCP resource
+for the purchased stem.
 
 Quick route check:
 

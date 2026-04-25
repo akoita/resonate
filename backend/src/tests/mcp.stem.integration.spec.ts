@@ -173,6 +173,33 @@ describe("McpStemService (integration)", () => {
     expect(paymentService.verifyAndSettle).not.toHaveBeenCalled();
   });
 
+  it("returns the same payment challenge when proof verification fails", async () => {
+    paymentService.verifyAndSettle.mockResolvedValue(false);
+
+    const result = await service.download(stemId, "remix", "invalid-proof");
+
+    expect(result.ok).toBe(false);
+    expect(paymentService.verifyAndSettle).toHaveBeenCalledWith(
+      "invalid-proof",
+      expect.objectContaining({
+        scheme: "exact",
+        amount: "9000000",
+      }),
+    );
+    expect(result.structuredContent).toEqual(
+      expect.objectContaining({
+        code: "PAYMENT_REQUIRED",
+        message: "The paymentProof could not be verified by the x402 facilitator.",
+        challenge: expect.objectContaining({
+          stemId,
+          licenseType: "remix",
+          priceUsdc: "9",
+        }),
+      }),
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it("verifies proof, embeds the purchased stem resource, and records provenance", async () => {
     const result = await service.download(stemId, "commercial", "proof-header");
 
