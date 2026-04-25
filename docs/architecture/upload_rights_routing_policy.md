@@ -240,6 +240,8 @@ Expected behavior:
 | `STANDARD_ESCROW` | Yes | Yes | Yes | Yes, under normal controls | Standard escrow |
 | `TRUSTED_FAST_PATH` | Yes | Yes | Yes | Yes | Lowest-friction escrow / release policy |
 
+For `LIMITED_MONITORING`, "streaming" includes platform-controlled preview/mixer playback but not full-quality stem download, export, remix rights, or commercial licensing. Marketplace and licensing actions remain restricted until the release is upgraded to an allowed rights route.
+
 ## Ops Review Policy
 
 Ops review should be mandatory for:

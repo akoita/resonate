@@ -12,6 +12,7 @@ import {
   getReleaseArtworkUrl,
   getOwnerScopedTrackStreamObjectUrl,
   getReleaseTrackStreamUrl,
+  getStemPreviewUrl,
   waitForReleaseAvailability,
   getReleaseContentProtectionStatus,
   type ReleaseContentProtectionData,
@@ -72,6 +73,33 @@ const hasMixerStem = (
     }
     return normalizedSelectedType ? type === normalizedSelectedType : true;
   }) ?? false;
+};
+
+type PlaybackStem = NonNullable<Track["stems"]>[number];
+
+const withPreviewUrlsForMixerStems = (stems?: PlaybackStem[]): PlaybackStem[] | undefined => {
+  return stems?.map((stem) => {
+    if (!hasMixerStem([stem])) {
+      return stem;
+    }
+
+    return {
+      ...stem,
+      uri: getStemPreviewUrl(stem.id),
+      isEncrypted: false,
+      encryptionMetadata: null,
+    };
+  });
+};
+
+const isPreviewBackedMixerStem = (
+  stem?: { id?: string | null; uri?: string | null; isEncrypted?: boolean } | null,
+): boolean => {
+  if (!stem?.id || !stem.uri) {
+    return false;
+  }
+
+  return !stem.isEncrypted && stem.uri === getStemPreviewUrl(stem.id);
 };
 
 function slugifyReleaseTitle(value: string): string {
@@ -305,6 +333,7 @@ export default function ReleaseDetails() {
     !!release?.rightsRoute && !isMarketplaceAllowedRoute(release.rightsRoute);
   const marketplaceApprovedByRights =
     !!release?.rightsRoute && isMarketplaceAllowedRoute(release.rightsRoute);
+  const canUseMixerPreview = !!token;
   const overviewItems = [
     {
       label: "Release",
@@ -690,7 +719,7 @@ export default function ReleaseDetails() {
 
   // Auto-enable mixer mode when navigating from Quick Mix CTA (?mixer=true&stem=vocals)
   useEffect(() => {
-    if (searchParams.get('mixer') === 'true' && !mixerMode && release?.tracks?.length) {
+    if (searchParams.get('mixer') === 'true' && canUseMixerPreview && !mixerMode && release?.tracks?.length) {
       toggleMixerMode();
       // Solo the specific stem if provided
       const stemParam = searchParams.get('stem');
@@ -706,7 +735,7 @@ export default function ReleaseDetails() {
     }
     // Only run once when release loads
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [release?.id]);
+  }, [release?.id, canUseMixerPreview]);
 
   useEffect(() => {
     return () => {
@@ -780,7 +809,7 @@ export default function ReleaseDetails() {
         createdAt: t.createdAt,
         remoteUrl: streamUrl,
         remoteArtworkUrl: release.artworkUrl || undefined,
-        stems: t.stems,
+        stems: withPreviewUrlsForMixerStems(t.stems),
       };
     }));
     void playQueue(playableTracks, trackIndex);
@@ -791,8 +820,14 @@ export default function ReleaseDetails() {
 
     const isOriginal = type.toUpperCase() === "ORIGINAL";
     const isTrackAlreadyPlaying = currentTrack?.id === trackId;
+    const currentSelectedStem = currentTrack?.stems?.find(
+      (stem) => normalizeStemType(stem.type) === normalizeStemType(type),
+    );
     const currentTrackHasSelectedStem = hasMixerStem(currentTrack?.stems, type);
-    const needsPlayerTrackRefresh = !isTrackAlreadyPlaying || (!isOriginal && !currentTrackHasSelectedStem);
+    const currentTrackHasPreviewSelectedStem = isPreviewBackedMixerStem(currentSelectedStem);
+    const needsPlayerTrackRefresh =
+      !isTrackAlreadyPlaying ||
+      (!isOriginal && (!currentTrackHasSelectedStem || !currentTrackHasPreviewSelectedStem));
 
     if (isOriginal) {
       // Playing full track - disable mixer mode for clean playback
@@ -804,6 +839,15 @@ export default function ReleaseDetails() {
         void handlePlayTrack(trackIndex, type);
       }
     } else {
+      if (!canUseMixerPreview) {
+        addToast({
+          title: "Sign in to preview stems",
+          message: "Connect your wallet to use the mixer.",
+          type: "info",
+        });
+        return;
+      }
+
       // Playing an individual stem - enable mixer and solo it
       if (!mixerMode) {
         toggleMixerMode();
@@ -852,7 +896,7 @@ export default function ReleaseDetails() {
       catalogTrackId: t.id,
       remoteUrl: remoteUrlOverride || streamUrl,
       remoteArtworkUrl: release?.artworkUrl || undefined,
-      stems: t.stems,
+      stems: withPreviewUrlsForMixerStems(t.stems),
     };
   }, [release]);
 
@@ -1104,7 +1148,7 @@ export default function ReleaseDetails() {
               <Button variant="ghost" className="btn-save" onClick={handleSaveToLibrary}>
                 Save to Library
               </Button>
-              {hasMixerStem(currentTrack?.stems) && (
+              {canUseMixerPreview && hasMixerStem(currentTrack?.stems) && (
                 <Button
                   variant="ghost"
                   className={`btn-mixer ${mixerMode ? 'active' : ''}`}
@@ -1335,7 +1379,7 @@ export default function ReleaseDetails() {
         </div>
       </header>
 
-      {mixerMode && currentTrack && (
+      {canUseMixerPreview && mixerMode && currentTrack && (
         <div className="mixer-page-section" style={{ marginBottom: 'var(--space-4)' }}>
           <MixerConsole onClose={() => toggleMixerMode()} />
         </div>
@@ -1568,7 +1612,7 @@ export default function ReleaseDetails() {
                         {track.explicit && <span className="explicit-tag">E</span>}
                       </div>
 
-                      {track.stems && track.stems.length > 1 && (
+                      {canUseMixerPreview && track.stems && track.stems.length > 1 && (
                         <div className="stem-selector" onClick={(e) => e.stopPropagation()}>
                           <div className="stem-btns-group">
                             {(["ORIGINAL", ...MIXER_STEM_TYPES]).map((type) => {

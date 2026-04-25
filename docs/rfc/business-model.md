@@ -110,6 +110,20 @@ The full track is how users _discover_ music on Resonate. Stems are what they _b
 
 **Why subscribe?** The AI DJ agent is the killer feature — it is unlike anything on any other platform. The stem preview in the player turns passive listening into active exploration. The subscription funds the agent wallet for micro-transactions.
 
+### Playback And Stem Access Policy
+
+Resonate separates discovery playback from licensed stem access. Previewing stems should create the licensing moment; it should not silently grant download, export, remix, or commercial rights.
+
+| Action | Free listener | Logged-in / Pro listener | Buyer / licensee | Owner / uploader |
+| --- | --- | --- | --- | --- |
+| Full-track stream | Yes | Yes | Yes | Yes |
+| Stem preview / mixer playback | No or limited | Yes | Yes | Yes |
+| Full-quality stem download | No | No | Yes | Yes |
+| Remix / commercial use | No | No | License-dependent | Yes for owned work |
+| Marketplace listing | No | No | N/A | Only when the rights route allows marketplace access |
+
+Implementation rule: mixer playback should use the platform preview path, while full-quality stem decrypt/download stays gated by owner, explicit allowlist, or verified purchase/license flow.
+
 **Revenue split on micro-payments:**
 
 | Recipient | Share |

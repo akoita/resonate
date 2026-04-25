@@ -96,6 +96,7 @@ export class X402Controller {
           address: this.x402Config.payoutAddress.toLowerCase(),
           sig: 'x402-payment-verified',
           signedMessage: 'Download authorized via x402 payment verification',
+          internalKey: process.env.INTERNAL_SERVICE_KEY,
         };
         audioBuffer = await this.encryptionService.decrypt(
           resolvedStemUrl,

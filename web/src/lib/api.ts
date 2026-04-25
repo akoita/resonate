@@ -27,6 +27,10 @@ export function getReleaseTrackStreamUrl(
   return `${API_BASE}/catalog/releases/${releaseId}/tracks/${trackId}/stream`;
 }
 
+export function getStemPreviewUrl(stemId: string) {
+  return `${API_BASE}/catalog/stems/${stemId}/preview`;
+}
+
 export type WalletRecord = {
   id: string;
   userId: string;
