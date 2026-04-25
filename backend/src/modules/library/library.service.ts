@@ -106,10 +106,49 @@ export class LibraryService {
     async listTracks(userId: string, source?: string) {
         const where: any = { userId };
         if (source) where.source = source;
-        return prisma.libraryTrack.findMany({
+        const tracks = await prisma.libraryTrack.findMany({
             where,
             orderBy: { createdAt: "desc" },
         });
+
+        const catalogTrackIds = tracks
+            .filter((track) => track.source === "remote" && track.catalogTrackId)
+            .map((track) => track.catalogTrackId as string);
+
+        if (catalogTrackIds.length === 0) {
+            return tracks;
+        }
+
+        const existingCatalogTracks = await prisma.track.findMany({
+            where: { id: { in: catalogTrackIds } },
+            select: { id: true },
+        });
+        const existingCatalogTrackIds = new Set(existingCatalogTracks.map((track) => track.id));
+        const staleTrackIds = tracks
+            .filter((track) => track.source === "remote" && track.catalogTrackId && !existingCatalogTrackIds.has(track.catalogTrackId))
+            .map((track) => track.id);
+
+        if (staleTrackIds.length === 0) {
+            return tracks;
+        }
+
+        await prisma.libraryTrack.deleteMany({
+            where: { userId, id: { in: staleTrackIds } },
+        });
+        const playlists = await prisma.playlist.findMany({
+            where: { userId, trackIds: { hasSome: staleTrackIds } },
+            select: { id: true, trackIds: true },
+        });
+        for (const playlist of playlists) {
+            await prisma.playlist.update({
+                where: { id: playlist.id },
+                data: {
+                    trackIds: playlist.trackIds.filter((id) => !staleTrackIds.includes(id)),
+                },
+            });
+        }
+
+        return tracks.filter((track) => !staleTrackIds.includes(track.id));
     }
 
     async getTrack(userId: string, id: string) {
