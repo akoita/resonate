@@ -22,7 +22,7 @@ in the changed backend code.
 - `backend/src/tests/agent_golden_eval.spec.ts`
 - `backend/src/tests/tool_registry_observability.spec.ts`
 - Related documentation updates in `docs/rfc/agent-opportunities-2026-04.md`
-  and `docs/smart-contracts/deployment.md`
+  and `docs/deployment/environment.md`
 
 ## Critical Findings
 

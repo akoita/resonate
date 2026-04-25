@@ -323,7 +323,8 @@ repo-local `docker build`, `docker run`, stale-image recovery, and "stuck on Sep
 | Document                                                                   | Description                                    |
 | -------------------------------------------------------------------------- | ---------------------------------------------- |
 | [Project Specification](docs/rfc/RESONATE_SPECS.md)                        | Vision, architecture, and roadmap              |
-| [Deployment Guide](docs/smart-contracts/deployment.md)                     | Repo split, contract deploys, and app environment setup |
+| [Deployment Guide](docs/smart-contracts/deployment.md)                     | Repo split, contract deploys, and contract-adjacent local setup |
+| [Environment Variables](docs/deployment/environment.md)                    | App runtime, observability, x402, and provider configuration |
 | [Local AA Development](docs/account-abstraction/local-aa-development.md)   | Account abstraction setup guide                |
 | [Demucs Worker](workers/demucs/README.md)                                  | GPU stem separation setup and troubleshooting  |
 | [Core Contracts](docs/smart-contracts/core_contracts.md)                   | Stem NFT and marketplace contracts             |
