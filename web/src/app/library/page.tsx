@@ -1005,15 +1005,15 @@ export default function LibraryPage() {
                     {/* Sidebar + Content Layout */}
                     <div className="library-layout">
                         <div className="library-content w-full">
-                            {loading && tracks.length === 0 ? (
+                            {loading && tracks.length === 0 && activeTab !== "playlists" && activeTab !== "ai_creations" ? (
                                 <div className="home-subtitle">Loading your library...</div>
-                            ) : unifiedTracks.length === 0 && !isCollectionLoading ? (
+                            ) : activeTab !== "playlists" && activeTab !== "ai_creations" && unifiedTracks.length === 0 && !isCollectionLoading ? (
                                 <div className="home-subtitle">
                                     Your library is empty.{" "}
                                     <Link href="/settings" className="text-accent">Add library sources in Settings</Link>{" "}
                                     to get started!
                                 </div>
-                            ) : filteredTracks.length === 0 ? (
+                            ) : activeTab !== "playlists" && activeTab !== "ai_creations" && filteredTracks.length === 0 ? (
                                 <div className="home-subtitle">
                                     {searchQuery.trim()
                                         ? <>No results found for &quot;{searchQuery}&quot;</>
