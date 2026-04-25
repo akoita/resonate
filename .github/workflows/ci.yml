@@ -489,6 +489,7 @@ jobs:
           NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS: ${{ vars.NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS }}
           NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS: ${{ vars.NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS }}
           NEXT_PUBLIC_CURATION_REWARDS_ADDRESS: ${{ vars.NEXT_PUBLIC_CURATION_REWARDS_ADDRESS }}
+          NEXT_PUBLIC_ENV: ${{ vars.NEXT_PUBLIC_ENV }}
         run: bash .github/scripts/export-frontend-build-args.sh > "${RUNNER_TEMP}/frontend-build.env"
 
       - name: Build deployable frontend artifact
