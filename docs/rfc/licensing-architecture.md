@@ -156,6 +156,8 @@ License NFT metadata is stored on IPFS. The `LicenseRegistry` contract stores th
 | Legal covenants        | Off-platform enforcement | 📋 To build        | IPFS-stored legal terms attached to License NFTs               |
 | DMCA tooling           | Takedown automation      | 📋 Future          | Automated DMCA notice generation from fingerprint matches      |
 
+Platform encryption protects full-quality stem decrypt/download. Public or Pro mixer playback is a separate preview entitlement and should use preview endpoints rather than the full decrypt path. A valid wallet signature alone is not a license; full decrypt is granted only to owners/allowlisted users or backend-verified purchase/license flows.
+
 ### 4.2 On-Platform Enforcement Flow
 
 ```

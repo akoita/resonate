@@ -12,6 +12,7 @@ import {
   getReleaseArtworkUrl,
   getOwnerScopedTrackStreamObjectUrl,
   getReleaseTrackStreamUrl,
+  getStemPreviewUrl,
   waitForReleaseAvailability,
   getReleaseContentProtectionStatus,
   type ReleaseContentProtectionData,
@@ -72,6 +73,23 @@ const hasMixerStem = (
     }
     return normalizedSelectedType ? type === normalizedSelectedType : true;
   }) ?? false;
+};
+
+type PlaybackStem = NonNullable<Track["stems"]>[number];
+
+const withPreviewUrlsForMixerStems = (stems?: PlaybackStem[]): PlaybackStem[] | undefined => {
+  return stems?.map((stem) => {
+    if (!hasMixerStem([stem])) {
+      return stem;
+    }
+
+    return {
+      ...stem,
+      uri: getStemPreviewUrl(stem.id),
+      isEncrypted: false,
+      encryptionMetadata: null,
+    };
+  });
 };
 
 function slugifyReleaseTitle(value: string): string {
@@ -780,7 +798,7 @@ export default function ReleaseDetails() {
         createdAt: t.createdAt,
         remoteUrl: streamUrl,
         remoteArtworkUrl: release.artworkUrl || undefined,
-        stems: t.stems,
+        stems: withPreviewUrlsForMixerStems(t.stems),
       };
     }));
     void playQueue(playableTracks, trackIndex);
@@ -852,7 +870,7 @@ export default function ReleaseDetails() {
       catalogTrackId: t.id,
       remoteUrl: remoteUrlOverride || streamUrl,
       remoteArtworkUrl: release?.artworkUrl || undefined,
-      stems: t.stems,
+      stems: withPreviewUrlsForMixerStems(t.stems),
     };
   }, [release]);
 

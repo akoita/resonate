@@ -274,6 +274,7 @@ export class McpStemService {
           address: this.x402Config.payoutAddress.toLowerCase(),
           sig: "x402-payment-verified",
           signedMessage: "Download authorized via MCP x402 payment verification",
+          internalKey: process.env.INTERNAL_SERVICE_KEY,
         },
       );
     }

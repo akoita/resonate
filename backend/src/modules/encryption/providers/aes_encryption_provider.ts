@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes, createCipheriv, createDecipheriv, createHash } from 'crypto';
-import { verifyMessage, getAddress } from 'viem';
 import {
     EncryptionProvider,
     EncryptionContext,
@@ -134,9 +133,6 @@ export class AesEncryptionProvider extends EncryptionProvider {
 
     async verifyAccess(context: DecryptionContext): Promise<boolean> {
         try {
-            // MVP: Allow any authenticated user (valid wallet signature)
-            // Future: Check allowedAddresses, NFT ownership, purchase records, etc.
-
             if (!context.authSig) {
                 this.logger.warn('[AES] No authSig provided - access denied');
                 return false;
@@ -144,33 +140,26 @@ export class AesEncryptionProvider extends EncryptionProvider {
 
             // Internal bypasses gated by INTERNAL_SERVICE_KEY (SBPR-004)
             const internalKey = this.configService.get<string>('INTERNAL_SERVICE_KEY');
-            const isPreviewBypass =
-                context.authSig.address === '0x0000000000000000000000000000000000000000' &&
-                context.authSig.sig === 'preview-authorized';
+            const internalBypassSignatures = new Set([
+                'preview-authorized',
+                'ownership-verified',
+                'x402-payment-verified',
+            ]);
+            const isInternalBypass = internalBypassSignatures.has(context.authSig.sig);
             if (internalKey) {
-                // Special case: allow preview address (used by backend to proxy previews)
-                if (isPreviewBypass && (context.authSig as any).internalKey === internalKey) {
-                    this.logger.log('[AES] Access granted for internal preview request');
-                    return true;
-                }
-
-                // Special case: ownership already verified by download endpoint
-                if (
-                    context.authSig.sig === 'ownership-verified' &&
-                    (context.authSig as any).internalKey === internalKey
-                ) {
-                    this.logger.log(`[AES] Access granted via ownership verification for ${context.authSig.address}`);
+                if (isInternalBypass && (context.authSig as any).internalKey === internalKey) {
+                    this.logger.log(`[AES] Access granted for internal ${context.authSig.sig} request`);
                     return true;
                 }
             }
 
             if (
-                isPreviewBypass &&
+                isInternalBypass &&
                 !internalKey &&
                 this.configService.get<string>('NODE_ENV') !== 'production'
             ) {
                 this.logger.warn(
-                    '[AES] INTERNAL_SERVICE_KEY is not set; allowing marketplace preview bypass in non-production environment',
+                    `[AES] INTERNAL_SERVICE_KEY is not set; allowing ${context.authSig.sig} bypass in non-production environment`,
                 );
                 return true;
             }
@@ -190,48 +179,7 @@ export class AesEncryptionProvider extends EncryptionProvider {
                 }
             }
 
-            // Try standard EOA signature verification first
-            try {
-                const isValidSig = await verifyMessage({
-                    address: getAddress(context.authSig.address),
-                    message: context.authSig.signedMessage,
-                    signature: context.authSig.sig as `0x${string}`,
-                });
-
-                if (isValidSig) {
-                    this.logger.log(`[AES] Access granted for authenticated user: ${context.authSig.address}`);
-                    return true;
-                }
-            } catch (eoaErr: any) {
-                // EOA verification failed (e.g. invalid signature length for smart contract wallets)
-                this.logger.debug(`[AES] EOA sig verification failed, trying EIP-1271: ${eoaErr.message}`);
-            }
-
-            // Fallback: EIP-1271 smart contract wallet verification (ZeroDev/Kernel)
-            try {
-                const { createPublicClient, http } = await import('viem');
-                const viemChains = await import('viem/chains');
-                const rpcUrl = this.configService.get<string>('RPC_URL');
-                const chainName = this.configService.get<string>('CHAIN_NAME') || 'sepolia';
-                const chain = (viemChains as any)[chainName] || viemChains.sepolia;
-                const publicClient = createPublicClient({
-                    chain,
-                    transport: rpcUrl ? http(rpcUrl) : http(),
-                });
-                const isValid = await publicClient.verifyMessage({
-                    address: getAddress(context.authSig.address),
-                    message: context.authSig.signedMessage,
-                    signature: context.authSig.sig as `0x${string}`,
-                });
-                if (isValid) {
-                    this.logger.log(`[AES] Access granted via EIP-1271 for: ${context.authSig.address}`);
-                    return true;
-                }
-            } catch (eip1271Err: any) {
-                this.logger.debug(`[AES] EIP-1271 verification also failed: ${eip1271Err.message}`);
-            }
-
-            this.logger.warn(`[AES] All verification methods failed for ${context.authSig.address}`);
+            this.logger.warn(`[AES] Access denied for ${context.authSig.address}`);
             return false;
         } catch (error: any) {
             this.logger.error(`[AES] Access verification failed: ${error.message}`);

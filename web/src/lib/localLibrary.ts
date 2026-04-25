@@ -17,10 +17,16 @@ import {
     deleteLibraryTrackAPI,
     clearLocalLibraryAPI,
     APILibraryTrack,
+    getStemPreviewUrl,
     getTrack as getCatalogTrack,
     getReleaseArtworkUrl,
 } from "./api";
 import { sanitizeStemUrl } from "./urlUtils";
+
+const isMixerStemType = (type?: string | null) => {
+    const normalized = type?.trim().toLowerCase();
+    return !!normalized && normalized !== "original" && normalized !== "master";
+};
 
 // Configure localforage stores (blobs + artwork + player only)
 const trackStore = localforage.createInstance({
@@ -297,11 +303,11 @@ export async function getTrack(id: string): Promise<LocalTrack | null> {
                     remoteArtworkUrl: catalogTrack.release?.artworkUrl || (catalogTrack.release?.artworkMimeType ? getReleaseArtworkUrl(catalogTrack.release.id) : undefined),
                     stems: catalogTrack.stems?.map(s => ({
                         id: s.id,
-                        uri: s.uri,
+                        uri: isMixerStemType(s.type) ? getStemPreviewUrl(s.id) : s.uri,
                         type: s.type,
                         durationSeconds: s.durationSeconds,
-                        isEncrypted: s.isEncrypted,
-                        encryptionMetadata: s.encryptionMetadata,
+                        isEncrypted: isMixerStemType(s.type) ? false : s.isEncrypted,
+                        encryptionMetadata: isMixerStemType(s.type) ? null : s.encryptionMetadata,
                     })),
                 };
             }
@@ -346,8 +352,7 @@ async function enrichStemTrackUrl(track: LocalTrack): Promise<LocalTrack> {
                 s => s.type.toLowerCase() === stemTypeSlug
             );
             if (matchingStem) {
-                const { API_BASE } = await import("./api");
-                const url = `${API_BASE}/catalog/stems/${matchingStem.id}/preview`;
+                const url = getStemPreviewUrl(matchingStem.id);
                 track.remoteUrl = url;
                 track.previewUrl = url;
                 // Also set duration if available

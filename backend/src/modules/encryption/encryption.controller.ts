@@ -141,6 +141,7 @@ export class EncryptionController {
                     address: walletAddress.toLowerCase(),
                     sig: 'ownership-verified',
                     signedMessage: 'Download authorized via ownership verification',
+                    internalKey: process.env.INTERNAL_SERVICE_KEY,
                 };
                 audioBuffer = await this.encryptionService.decrypt(
                     stemUri,
