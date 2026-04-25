@@ -93,7 +93,7 @@ jobs:
                     backend=true
                     backend_catalog=true
                     ;;
-                  backend/src/modules/agents/*|backend/src/modules/embeddings/*|backend/src/modules/generation/*|backend/src/modules/openapi/*|backend/src/tests/agent_*|backend/src/tests/agents.spec.ts|backend/src/tests/embeddings.spec.ts|backend/src/tests/flow4_generation.integration.spec.ts|backend/src/tests/generation.*|backend/src/tests/lyria_client.spec.ts|backend/src/tests/openapi.controller.spec.ts|backend/src/tests/tool_declarations.integration.spec.ts)
+                  backend/src/evals/*|backend/src/modules/agents/*|backend/src/modules/embeddings/*|backend/src/modules/generation/*|backend/src/modules/openapi/*|backend/src/tests/agent_*|backend/src/tests/agents.spec.ts|backend/src/tests/embeddings.spec.ts|backend/src/tests/flow4_generation.integration.spec.ts|backend/src/tests/generation.*|backend/src/tests/lyria_client.spec.ts|backend/src/tests/openapi.controller.spec.ts|backend/src/tests/tool_declarations.integration.spec.ts)
                     backend=true
                     backend_generation=true
                     ;;
@@ -306,6 +306,13 @@ jobs:
           SKIP_DEMUCS_INTEGRATION: "true"
           JWT_SECRET: ci-test-secret
           ENCRYPTION_SECRET: ci-test-encryption-secret
+
+      - name: Upload agent golden eval results
+        if: always() && hashFiles('backend/eval-results/agent-golden-results.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-golden-eval-results
+          path: backend/eval-results/agent-golden-results.json
 
   backend-integration-tests:
     name: Backend Integration Tests

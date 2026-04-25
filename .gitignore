@@ -10,6 +10,7 @@ contracts/broadcast/
 backend/dist/
 backend/.env
 backend/.env.local
+backend/eval-results/
 backend/src/debug_*.ts
 
 # Uploads & Test Files
