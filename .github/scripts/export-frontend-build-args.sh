@@ -14,6 +14,14 @@ required_vars=(
   NEXT_PUBLIC_CURATION_REWARDS_ADDRESS
 )
 
+# Optional vars: emitted with their current value (which may be empty)
+# so a missing GitHub `vars.*` setting doesn't fail the build. Used for
+# the in-app About modal + environment badge — production stays silent
+# when NEXT_PUBLIC_ENV is unset.
+optional_vars=(
+  NEXT_PUBLIC_ENV
+)
+
 for key in "${required_vars[@]}"; do
   if [[ -z "${!key:-}" ]]; then
     echo "Missing required frontend build variable: ${key}" >&2
@@ -23,4 +31,8 @@ done
 
 for key in "${required_vars[@]}"; do
   printf '%s=%s\n' "${key}" "${!key}"
+done
+
+for key in "${optional_vars[@]}"; do
+  printf '%s=%s\n' "${key}" "${!key:-}"
 done
