@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
 import { useUIStore } from "../../lib/uiStore";
 import { getArtistMe, type ArtistProfile } from "../../lib/api";
+import { getEnvironment, isProduction } from "../../lib/buildInfo";
+import { AboutModal } from "../ui/AboutModal";
 
 const subscribe = () => () => {};
 
@@ -158,6 +160,9 @@ export default function Sidebar() {
   const mounted = useSyncExternalStore(subscribe, () => true, () => false);
   const { isSidebarOpen, closeSidebar } = useUIStore();
   const [artistProfile, setArtistProfile] = useState<ArtistProfile | null>(null);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const showEnvBadge = mounted && !isProduction();
+  const envLabel = getEnvironment();
 
   // Auto-close drawer on route change only. `closeSidebar` is a Zustand
   // action — referentially stable, deliberately excluded from deps so
@@ -219,6 +224,17 @@ export default function Sidebar() {
       <div className="sidebar-logo">
         <span className="logo-icon">✨</span>
         <h2 className="logo-text">Resonate</h2>
+        {showEnvBadge ? (
+          <button
+            type="button"
+            className="env-badge"
+            onClick={() => setIsAboutOpen(true)}
+            title={`${envLabel} build — click for details`}
+            aria-label={`Environment: ${envLabel}. Open About dialog.`}
+          >
+            {envLabel}
+          </button>
+        ) : null}
       </div>
 
       <nav className="sidebar-nav primary">
@@ -273,8 +289,23 @@ export default function Sidebar() {
             <span className="link-text">Admin Review</span>
           </Link>
         ) : null}
+        <button
+          type="button"
+          className="sidebar-link sidebar-link--button"
+          onClick={() => setIsAboutOpen(true)}
+        >
+          <span className="link-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+          </span>
+          <span className="link-text">About</span>
+        </button>
       </nav>
 
+      <AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} />
       {showUserChip ? (
         <div className="sidebar-footer">
           <div
