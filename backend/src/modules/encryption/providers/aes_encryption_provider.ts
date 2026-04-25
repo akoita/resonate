@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes, createCipheriv, createDecipheriv, createHash } from 'crypto';
+import { verifyMessage, getAddress } from 'viem';
 import {
     EncryptionProvider,
     EncryptionContext,
@@ -154,23 +155,27 @@ export class AesEncryptionProvider extends EncryptionProvider {
             }
 
             if (
-                isInternalBypass &&
+                context.authSig.sig === 'preview-authorized' &&
+                context.authSig.address === '0x0000000000000000000000000000000000000000' &&
                 !internalKey &&
                 this.configService.get<string>('NODE_ENV') !== 'production'
             ) {
                 this.logger.warn(
-                    `[AES] INTERNAL_SERVICE_KEY is not set; allowing ${context.authSig.sig} bypass in non-production environment`,
+                    '[AES] INTERNAL_SERVICE_KEY is not set; allowing preview bypass in non-production environment',
                 );
                 return true;
             }
 
-            // Check if requester is the content owner (skip sig verification)
+            // Check if requester is the content owner or allowlisted, then verify
+            // that the requester actually controls that address.
             if (context.metadata) {
                 try {
                     const metadata: AesMetadata = JSON.parse(context.metadata);
-                    const requesterAddr = context.authSig.address.toLowerCase();
-                    if (metadata.ownerAddress === requesterAddr ||
-                        metadata.allowedAddresses?.map(a => a.toLowerCase()).includes(requesterAddr)) {
+                    const requesterAddr = getAddress(context.authSig.address).toLowerCase();
+                    const hasAddressEntitlement =
+                        metadata.ownerAddress === requesterAddr ||
+                        metadata.allowedAddresses?.map(a => a.toLowerCase()).includes(requesterAddr);
+                    if (hasAddressEntitlement && await this.verifyAuthSignature(context.authSig)) {
                         this.logger.log(`[AES] Access granted for owner/allowed address: ${context.authSig.address}`);
                         return true;
                     }
@@ -183,6 +188,43 @@ export class AesEncryptionProvider extends EncryptionProvider {
             return false;
         } catch (error: any) {
             this.logger.error(`[AES] Access verification failed: ${error.message}`);
+            return false;
+        }
+    }
+
+    private async verifyAuthSignature(authSig: NonNullable<DecryptionContext['authSig']>): Promise<boolean> {
+        try {
+            const isValidSig = await verifyMessage({
+                address: getAddress(authSig.address),
+                message: authSig.signedMessage,
+                signature: authSig.sig as `0x${string}`,
+            });
+
+            if (isValidSig) {
+                return true;
+            }
+        } catch (eoaErr: any) {
+            this.logger.debug(`[AES] EOA sig verification failed, trying EIP-1271: ${eoaErr.message}`);
+        }
+
+        try {
+            const { createPublicClient, http } = await import('viem');
+            const viemChains = await import('viem/chains');
+            const rpcUrl = this.configService.get<string>('RPC_URL');
+            const chainName = this.configService.get<string>('CHAIN_NAME') || 'sepolia';
+            const chain = (viemChains as any)[chainName] || viemChains.sepolia;
+            const publicClient = createPublicClient({
+                chain,
+                transport: rpcUrl ? http(rpcUrl) : http(),
+            });
+
+            return publicClient.verifyMessage({
+                address: getAddress(authSig.address),
+                message: authSig.signedMessage,
+                signature: authSig.sig as `0x${string}`,
+            });
+        } catch (eip1271Err: any) {
+            this.logger.debug(`[AES] EIP-1271 verification also failed: ${eip1271Err.message}`);
             return false;
         }
     }

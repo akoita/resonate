@@ -323,6 +323,7 @@ export default function ReleaseDetails() {
     !!release?.rightsRoute && !isMarketplaceAllowedRoute(release.rightsRoute);
   const marketplaceApprovedByRights =
     !!release?.rightsRoute && isMarketplaceAllowedRoute(release.rightsRoute);
+  const canUseMixerPreview = !!token;
   const overviewItems = [
     {
       label: "Release",
@@ -708,7 +709,7 @@ export default function ReleaseDetails() {
 
   // Auto-enable mixer mode when navigating from Quick Mix CTA (?mixer=true&stem=vocals)
   useEffect(() => {
-    if (searchParams.get('mixer') === 'true' && !mixerMode && release?.tracks?.length) {
+    if (searchParams.get('mixer') === 'true' && canUseMixerPreview && !mixerMode && release?.tracks?.length) {
       toggleMixerMode();
       // Solo the specific stem if provided
       const stemParam = searchParams.get('stem');
@@ -724,7 +725,7 @@ export default function ReleaseDetails() {
     }
     // Only run once when release loads
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [release?.id]);
+  }, [release?.id, canUseMixerPreview]);
 
   useEffect(() => {
     return () => {
@@ -822,6 +823,15 @@ export default function ReleaseDetails() {
         void handlePlayTrack(trackIndex, type);
       }
     } else {
+      if (!canUseMixerPreview) {
+        addToast({
+          title: "Sign in to preview stems",
+          message: "Connect your wallet to use the mixer.",
+          type: "info",
+        });
+        return;
+      }
+
       // Playing an individual stem - enable mixer and solo it
       if (!mixerMode) {
         toggleMixerMode();
@@ -1122,7 +1132,7 @@ export default function ReleaseDetails() {
               <Button variant="ghost" className="btn-save" onClick={handleSaveToLibrary}>
                 Save to Library
               </Button>
-              {hasMixerStem(currentTrack?.stems) && (
+              {canUseMixerPreview && hasMixerStem(currentTrack?.stems) && (
                 <Button
                   variant="ghost"
                   className={`btn-mixer ${mixerMode ? 'active' : ''}`}
@@ -1353,7 +1363,7 @@ export default function ReleaseDetails() {
         </div>
       </header>
 
-      {mixerMode && currentTrack && (
+      {canUseMixerPreview && mixerMode && currentTrack && (
         <div className="mixer-page-section" style={{ marginBottom: 'var(--space-4)' }}>
           <MixerConsole onClose={() => toggleMixerMode()} />
         </div>
@@ -1586,7 +1596,7 @@ export default function ReleaseDetails() {
                         {track.explicit && <span className="explicit-tag">E</span>}
                       </div>
 
-                      {track.stems && track.stems.length > 1 && (
+                      {canUseMixerPreview && track.stems && track.stems.length > 1 && (
                         <div className="stem-selector" onClick={(e) => e.stopPropagation()}>
                           <div className="stem-btns-group">
                             {(["ORIGINAL", ...MIXER_STEM_TYPES]).map((type) => {
