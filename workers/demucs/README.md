@@ -138,6 +138,7 @@ docker run --rm -d \
   -e PUBSUB_EMULATOR_HOST=host.docker.internal:8085 \
   -e PUBSUB_SUBSCRIPTION=stem-separate-worker \
   -e PUBSUB_RESULTS_TOPIC=stem-results \
+  -e DEMUCS_DEVICE=auto \
   -e TORCHAUDIO_USE_BACKEND_DISPATCHER=1 \
   -v "$(pwd)/backend/uploads/stems:/outputs" \
   resonate-demucs:cpu
@@ -158,12 +159,17 @@ docker run --rm -d \
   -e PUBSUB_EMULATOR_HOST=host.docker.internal:8085 \
   -e PUBSUB_SUBSCRIPTION=stem-separate-worker \
   -e PUBSUB_RESULTS_TOPIC=stem-results \
+  -e DEMUCS_DEVICE=auto \
   -e NVIDIA_VISIBLE_DEVICES=all \
   -e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
   -e TORCHAUDIO_USE_BACKEND_DISPATCHER=1 \
   -v "$(pwd)/backend/uploads/stems:/outputs" \
   resonate-demucs:gpu
 ```
+
+`DEMUCS_DEVICE` defaults to `auto`. In auto mode, the worker tries CUDA first when available and
+retries once on CPU for GPU runtime failures such as `cuFFT`/CUDA/cuDNN errors. Set
+`DEMUCS_DEVICE=cpu` to bypass CUDA entirely when a staging GPU node is unhealthy.
 
 ### 5. Verify the worker
 
@@ -178,7 +184,8 @@ Expected health response:
 {
   "status": "ok",
   "storage_mode": "local",
-  "processing_mode": "pubsub"
+  "processing_mode": "pubsub",
+  "demucs_device": "auto"
 }
 ```
 
