@@ -35,15 +35,6 @@ SUBSCRIPTION_NAME = os.getenv("PUBSUB_SUBSCRIPTION", "stem-separate-worker")
 RESULTS_TOPIC = os.getenv("PUBSUB_RESULTS_TOPIC", "stem-results")
 DEMUCS_MODEL = "htdemucs_6s"
 DEMUCS_DEVICE = os.getenv("DEMUCS_DEVICE", "auto").strip().lower()
-GPU_RUNTIME_ERROR_MARKERS = (
-    "cufft",
-    "cufft_internal_error",
-    "cuda error",
-    "cuda runtime error",
-    "cudnn",
-    "cublas",
-    "hipfft",
-)
 
 # Lazy-loaded GCS client (only imported when needed)
 _gcs_client = None
@@ -91,12 +82,26 @@ def demucs_devices_to_try() -> list[str]:
 
 
 def should_retry_demucs_on_cpu(device: str, stderr: str) -> bool:
-    """Retry once on CPU when the GPU runtime itself is the failing component."""
-    if device != "cuda":
-        return False
+    """Retry once on CPU when a CUDA Demucs attempt fails.
 
-    normalized = stderr.lower()
-    return any(marker in normalized for marker in GPU_RUNTIME_ERROR_MARKERS)
+    CUDA failures often surface as low-level cuFFT/cuDNN/cuBLAS errors, but
+    Torch and Demucs do not guarantee stable wording across versions. Default
+    to a CPU rescue attempt for any CUDA subprocess failure so a transient GPU
+    runtime fault does not permanently fail a release.
+    """
+    return device == "cuda"
+
+
+def demucs_attempt_env(device: str) -> dict:
+    """Build a subprocess environment for a Demucs attempt."""
+    env = os.environ.copy()
+    if device == "cpu":
+        # Make the CPU rescue path independent from a broken CUDA runtime.
+        # Demucs receives -d cpu, and hiding CUDA here prevents Torch/audio
+        # helpers from touching GPU FFT libraries during model execution.
+        env["CUDA_VISIBLE_DEVICES"] = ""
+        env["NVIDIA_VISIBLE_DEVICES"] = ""
+    return env
 
 
 async def run_demucs_attempt(
@@ -118,7 +123,8 @@ async def run_demucs_attempt(
         "--out", str(attempt_output_dir),
         str(input_path),
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
+        stderr=asyncio.subprocess.PIPE,
+        env=demucs_attempt_env(device),
     )
 
     # Results storage
@@ -315,7 +321,7 @@ async def run_demucs_separation(input_path: Path, temp_dir: str, release_id: str
         attempt_errors.append(f"{device}: {stderr_str}")
 
         if should_retry_demucs_on_cpu(device, stderr_str):
-            logger.warning("Demucs GPU attempt failed with a CUDA runtime error, retrying once on CPU")
+            logger.warning("Demucs GPU attempt failed, retrying once on CPU")
             continue
 
         raise RuntimeError(f"Demucs processing failed on {device}: {stderr_str}")
