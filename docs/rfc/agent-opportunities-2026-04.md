@@ -2,9 +2,47 @@
 
 **Date:** 2026-04-22
 **Author:** @akoita (research-assisted)
-**Status:** Discussion / proposal
+**Status:** Roadmap checkpoint — Wave 1 foundation partially shipped
 
 Research pulled from four parallel tracks: **codebase inventory**, **docs/RFCs**, **issue backlog (318 issues / 45 PRs mined)**, and **Q1/Q2-2026 ecosystem survey** (primary sources). Below is the synthesis, then ranked opportunities, then a staged roadmap.
+
+## 0. 2026-04-25 status update
+
+Issue [#627](https://github.com/akoita/resonate/issues/627) is closed as the
+discussion/report vehicle. That does **not** mean the whole agent roadmap is
+done. It means the first execution pass from this report has landed enough
+foundation to move from "proposal" to normal roadmap tracking.
+
+Shipped or started since this report:
+
+- **MCP foundation shipped** — `backend/src/modules/mcp/` exposes `/mcp`,
+  `GET /mcp`, and `/.well-known/mcp.json`, with `catalog.search`,
+  `stem.quote`, and paid `stem.download`. Docs include MCP Inspector, Codex,
+  Claude Desktop, Cursor, and the `examples/mcp-client` smoke client.
+- **pgvector-backed embeddings shipped** — `TrackEmbedding` and the
+  `EmbeddingStore` now persist 16-dimensional vectors in Postgres/pgvector, and
+  selector similarity uses that store.
+- **Agent observability started** — optional Langfuse-compatible ingestion
+  traces policy evals, tool calls, MCP tools, and evaluation summaries.
+- **Golden eval harness started** — deterministic policy golden cases live under
+  `backend/src/evals/`, with `npm run eval:golden` covering the first tiny set.
+
+Still open from the foundation wave:
+
+- MCP does **not** yet expose `generate.track`.
+- The golden set is not yet the originally proposed ~100-200 case suite.
+- There is no LLM-as-judge rubric or CI quality gate for agent evals yet.
+- Agentic.Market / x402scan registration remains blocked on public endpoint
+  availability; see [#520](https://github.com/akoita/resonate/issues/520).
+
+Still open beyond Wave 1:
+
+- ERC-8004 identity and reputation.
+- Curator agents.
+- Unified runtime extraction.
+- Learning loop / real Taste Score.
+- Memory layer.
+- Real remix engine.
 
 ---
 
@@ -21,6 +59,17 @@ Resonate is not a green field — it is roughly **55% agent-complete** with a cl
 - **Lyria generation** — `@google/genai` live-music, SynthID watermark verification, BullMQ queue, $0.06 per 30s clip.
 - **x402 paywall** — middleware + `/api/stems/:id/x402` + `x-payment-info` in OpenAPI (PR #403, #533).
 - **AgentCash machine-first pivot** — `/openapi.json`, `/.well-known/x402`, USDC-canonical pricing, structured receipts (epic #499, mostly closed).
+- **MCP server foundation** — `/mcp` streamable HTTP transport, curl-friendly
+  `GET /mcp`, discovery metadata, `catalog.search`, `stem.quote`, and paid
+  `stem.download` ([backend/src/modules/mcp](../../backend/src/modules/mcp),
+  [docs/architecture/mcp_server.md](../architecture/mcp_server.md)).
+- **pgvector embedding store** — `TrackEmbedding` persists similarity vectors in
+  Postgres/pgvector and backs `embeddings.similarity`
+  ([backend/src/modules/embeddings/embedding.store.ts](../../backend/src/modules/embeddings/embedding.store.ts)).
+- **Agent observability first slice** — optional Langfuse-compatible trace
+  ingestion plus deterministic golden eval entrypoint
+  ([agent_observability.service.ts](../../backend/src/modules/agents/agent_observability.service.ts),
+  [backend/src/evals](../../backend/src/evals)).
 - **Dashboard UI** — setup wizard, status card, budget ring, taste card, activity feed, history ([web/src/app/agent/page.tsx](../../web/src/app/agent/page.tsx), [web/src/components/agent/](../../web/src/components/agent/)).
 
 **What's planned but unshipped** (from docs + backlog):
@@ -31,16 +80,20 @@ Resonate is not a green field — it is roughly **55% agent-complete** with a cl
 - **Learning loop / real Taste Score** — [#290](https://github.com/akoita/resonate/issues/290): "The agent makes the same quality of decisions on day 100 as day 1."
 - **Real-time remix engine** — [#323](https://github.com/akoita/resonate/issues/323): "`AgentMixerService.plan()` outputs a transition type string … but never touches audio."
 - **LangGraph multi-agent state machine** — [#306](https://github.com/akoita/resonate/issues/306), explicitly parked by RFC until ADK proves insufficient.
+- **Full production eval system** — expand the tiny deterministic golden set to
+  a maintained scenario suite, add rubric / judge evaluation, and promote a
+  stable eval job into CI.
+- **MCP generation tool** — `generate.track` remains a follow-up after the
+  read/quote/download MCP path.
 
-**Blind spots the docs don't cover** (UI hints, no backing plan):
+**Previously identified blind spots now partially covered**:
 
-- MCP server exposure of Resonate's tools to *outside* agents.
-- A2A (Agent-to-Agent) for Selector↔Mixer↔Negotiator as peers.
-- Evaluation framework beyond the home-grown harness.
-- Vector DB (issue #627 branch: pgvector-backed `EmbeddingStore` in backend).
-- LLM observability / tracing.
-- Agent memory layer (Mem0 / Letta / Zep).
-- Claude or OpenAI in the stack at all — pure Google Gemini monoculture.
+- MCP server exposure moved from blind spot to shipped foundation.
+- Vector DB moved from blind spot to pgvector-backed first slice.
+- LLM observability moved from blind spot to optional Langfuse-compatible first
+  slice.
+- Still uncovered: A2A between Selector / Mixer / Negotiator, a real memory
+  layer (Mem0 / Letta / Zep), and Claude/OpenAI in the runtime stack.
 
 ---
 
@@ -79,13 +132,13 @@ Filtered from the landscape survey. In order of **CV-scarcity × genuine-product
 
 Scored **1–5** where 5 = best. "Fit" = how natural to Resonate's goal, "Trend" = 2026 CV signal, "Effort" = smaller is better.
 
-| # | Opportunity | Fit | Trend | Effort (lo=good) | Open issue |
+| # | Opportunity | Fit | Trend | Effort (lo=good) | Issue / status |
 |---|---|---|---|---|---|
-| **1** | **Expose Resonate as an MCP server** (catalog/pricing/stem-download/generate as MCP tools; optional x402 gating via existing middleware) | 5 | 5 | 2 | *gap — no issue* |
+| **1** | **Expose Resonate as an MCP server** (catalog/pricing/stem-download/generate as MCP tools; optional x402 gating via existing middleware) | 5 | 5 | 2 | Foundation shipped; `generate.track` remains |
 | **2** | **Ship ERC-8004 Agent Identity + Reputation** — agent soulbound NFT, periodic taste/reputation attestations tied to `AgentConfig` | 5 | 5 | 3 | [#291](https://github.com/akoita/resonate/issues/291), [#261](https://github.com/akoita/resonate/issues/261) |
 | **3** | **Curator agents publishing on-chain quality scores** via ERC-8004 Validation registry — fixes "buys stems blindly" problem | 5 | 5 | 3 | [#322](https://github.com/akoita/resonate/issues/322) |
-| **4** | **Langfuse + rubric LLM-as-judge + golden set (start ~100, grow to 200)** — replace home-grown eval harness with the 2026 production pattern | 4 | 5 | 2 | *gap* |
-| **5** | **Migrate `EmbeddingStore` → pgvector** (already Prisma/Postgres) — unblocks real taste similarity + learning loop | 5 | 4 | 2 | supports [#290](https://github.com/akoita/resonate/issues/290) |
+| **4** | **Langfuse + rubric LLM-as-judge + golden set (start ~100, grow to 200)** — replace home-grown eval harness with the 2026 production pattern | 4 | 5 | 2 | First tracing + tiny golden set shipped; suite/rubric/CI remain |
+| **5** | **Migrate `EmbeddingStore` → pgvector** (already Prisma/Postgres) — unblocks real taste similarity + learning loop | 5 | 4 | 2 | First pgvector path shipped; provider-scale embeddings/HNSW remain |
 | **6** | **Agent Learning Loop** — signal-weighted taste evolution, real Taste Score on dashboard; feeds into ERC-8004 attestation | 5 | 4 | 3 | [#290](https://github.com/akoita/resonate/issues/290) |
 | **7** | **Unified agent runtime extraction** — single `AgentRuntimeService` entrypoint + `PaymentRouterService` (x402 ∥ ERC-4337) + `PolicyGuardService`; prerequisite to publishing the agent as its own MCP-ready process | 5 | 4 | 4 | [#424](https://github.com/akoita/resonate/issues/424), [RFC](agent-platform-refactor.md) |
 | **8** | **Claude Agent SDK subagent for dispute triage** — classifier bot that comments on disputes, pre-tags evidence, suggests jury escalation; uses hooks to enforce evidence-quality thresholds | 4 | 5 | 3 | adjacent to [#408](https://github.com/akoita/resonate/issues/408), [#468](https://github.com/akoita/resonate/issues/468) |
@@ -110,20 +163,31 @@ Scored **1–5** where 5 = best. "Fit" = how natural to Resonate's goal, "Trend"
 
 Each wave is designed to (a) close a UI/docs gap, (b) plant a high-signal tech flag, (c) set up the next wave.
 
-### Wave 1 — Foundations + first high-signal ship (≈ 2–3 weeks)
+### Wave 1 — Foundations + first high-signal ship (partially shipped)
 
 Goal: three small, shippable PRs that each land a trend flag without a refactor.
 
-1. **MCP server** (new module `backend/src/modules/mcp/`).
-   - Expose 5 tools: `catalog.search`, `stem.quote`, `stem.buy_with_x402`, `stem.download`, `generate.track`.
-   - Use the official `@modelcontextprotocol/sdk` TS SDK, streamable-HTTP transport.
-   - Reuse the existing x402 middleware so paid tools are gated natively.
-   - Public endpoint `/mcp` + `/.well-known/mcp.json`.
-   - Outcome: Resonate is *discoverable by any MCP-aware agent* (Claude Code, Cursor, Claude Desktop). Senior-eng signal: you shipped an MCP server, not just consumed MCP servers.
+1. **MCP server** (foundation shipped).
+   - Shipped: `backend/src/modules/mcp/`, official `@modelcontextprotocol/sdk`,
+     streamable-HTTP transport, `/mcp`, `GET /mcp`, `/.well-known/mcp.json`,
+     `catalog.search`, `stem.quote`, paid `stem.download`, and productization
+     docs/client examples.
+   - Remaining: `generate.track` and any deeper paid-generation policy.
+   - Outcome: Resonate is *discoverable by MCP-aware agents* and can be tested
+     from MCP Inspector, Codex, Claude Desktop, Cursor, and the repo smoke
+     client.
 
-2. **pgvector migration** — replace in-memory `EmbeddingStore` in [embeddings.similarity tool](../../backend/src/modules/agents/tools/tool_registry.ts) with pgvector-backed storage. The first slice keeps the current 16-dimensional local embedding shape in a `TrackEmbedding` table; provider-scale embeddings and HNSW indexing remain follow-ups. Directly improves the selector and is the only prerequisite to issue #290.
+2. **pgvector migration** (first slice shipped) — `EmbeddingStore` now persists
+   the current 16-dimensional local embedding shape in `TrackEmbedding` using
+   pgvector. Provider-scale embeddings and HNSW/ANN indexing remain follow-ups.
+   This directly improves selector similarity and is a prerequisite for issue
+   [#290](https://github.com/akoita/resonate/issues/290).
 
-3. **Langfuse + golden-set eval** — add `@langfuse/node-sdk`, wrap ADK runner, start with ~100 curated golden cases under `backend/src/evals/` (queries like "deep house under $2", "upbeat pop with vocals") and grow toward 200 as coverage gaps appear, then add a GitHub Actions job that runs a judge-LLM rubric (genre match, budget respected, repeat avoidance). Retires the `AgentEvaluationService` internal metrics in favor of the industry-standard pattern.
+3. **Langfuse + golden-set eval** (started) — optional Langfuse-compatible
+   ingestion now traces policy evals, tool calls, MCP tool calls, and evaluation
+   summaries. A small deterministic golden set lives under `backend/src/evals/`.
+   Remaining: grow toward ~100-200 curated scenarios, add rubric / judge eval,
+   and add a non-blocking CI eval job before considering a quality gate.
 
 ### Wave 2 — Identity, reputation, and agent-as-a-brand (≈ 5–7 weeks)
 
@@ -157,34 +221,42 @@ Goal: the creative moonshot.
 
 ## 5. What I would actually do next
 
-If the goal is to turn this RFC into an execution plan rather than a broad opportunity map, the best next three bets are:
+If the goal is to continue execution from the 2026-04-25 checkpoint rather than
+read the original RFC as frozen history, the next bets are:
 
-1. **MCP server**
-   - Why first: highest trend signal, tightest fit with the machine-first thesis, and it compounds the x402/OpenAPI work that already exists instead of asking for a large architectural rewrite.
-   - Why now: it is mostly additive and can ship without waiting on ERC-8004, curator agents, or runtime extraction.
+1. **Finish the eval foundation**
+   - Grow the golden set beyond the tiny deterministic starter set.
+   - Add rubric dimensions for genre match, budget respected, repeat avoidance,
+     licensability preference, and failure-mode clarity.
+   - Add a non-blocking CI eval job once the suite is stable enough to be useful.
 
-2. **pgvector migration**
-   - Why second: it is the least glamorous item in the report, but it is the cleanest dependency for real taste similarity, learning-loop quality, and curator-agent usefulness.
-   - Why now: it reduces future rework. Building learning/reputation features on top of an in-memory embedding store would create throwaway logic.
+2. **Register machine-discovery endpoints once public host availability is fixed**
+   - Complete [#520](https://github.com/akoita/resonate/issues/520) when
+     `/openapi.json`, `/.well-known/x402`, and MCP metadata are publicly
+     reachable from the deployed API.
 
-3. **Langfuse + golden-set evals**
-   - Why third: before adding more agent surface area, the team needs a real way to measure whether selector quality, budget behavior, and diversity actually improve.
-   - Why now: it makes every later agent change easier to ship with confidence, including MCP, curator agents, and taste learning.
+3. **Start Wave 2 with ERC-8004 identity/reputation**
+   - This is the next differentiated on-chain agent primitive now that MCP and
+     pgvector foundation work has landed.
 
-I would **not** start with ERC-8004 or the remix engine, even though they are stronger "headline" features. They are better as wave-two and wave-three moves after the platform has an external tool surface, a persistent retrieval substrate, and production-grade evaluation.
+I would still **not** start with the remix engine. It remains a moat project,
+not the next foundation project.
 
 ### Practical priority order
 
-Once P1–P3 land, the next three — still in priority order — are ERC-8004 identity, curator agents, and runtime extraction. Labels below are qualitative; the 1–5 numeric rubric lives in §3 above.
+As of 2026-04-25, P1/P2 have landed as first slices and P3 has started. The
+next priorities are now the remaining eval work, public registration, and then
+Wave 2 identity/reputation.
 
-| Priority | Initiative | Why now | Main dependency | Risk |
+| Priority | Initiative | Status | Main dependency | Risk |
 |---|---|---|---|---|
-| **P1** | MCP server | Best immediate leverage from shipped OpenAPI + x402 work | none | low (additive; real risk is over-designing v1) |
-| **P2** | pgvector migration | Unblocks learning loop and better similarity tooling | Prisma migration discipline | low/medium |
-| **P3** | Langfuse + golden-set evals | Gives a real quality bar before more agent complexity | stable eval scenarios | low |
-| **P4** | ERC-8004 identity + reputation | Strongest differentiated on-chain signal | runtime boundaries clearer | medium/high |
-| **P5** | Curator agents | Solves the blind-buy problem with a visible wedge | ERC-8004 reputation surface, embeddings | high |
-| **P6** | Runtime extraction | Valuable, but easier after one external interface ships | clearer module seams | high |
+| **P1** | MCP server | Foundation shipped; `generate.track` remains | paid-generation policy | low/medium |
+| **P2** | pgvector migration | First slice shipped; provider-scale embeddings/HNSW remain | embedding provider choice | medium |
+| **P3** | Langfuse + golden-set evals | Started; suite/rubric/CI remain | stable eval scenarios | low |
+| **P4** | Public agent registration | Blocked by public endpoint availability | deployed API metadata | low once unblocked |
+| **P5** | ERC-8004 identity + reputation | Not started | runtime boundaries clearer | medium/high |
+| **P6** | Curator agents | Not started | ERC-8004 reputation surface, embeddings | high |
+| **P7** | Runtime extraction | Not started | clearer module seams | high |
 
 ### Suggested PR slices
 
@@ -196,37 +268,50 @@ These are the smallest slices that would keep momentum high and reviewable.
    - Add `backend/src/modules/mcp/`
    - Stand up `/mcp` and `/.well-known/mcp.json`
    - Expose one read-only tool such as `catalog.search`
+   - Status: shipped, with `GET /mcp` capability check.
 
 2. **PR 2: commercial tools**
    - Add `stem.quote`, `stem.download`, `generate.track`
    - Reuse existing x402 middleware for paid tools
+   - Status: `stem.quote` and paid `stem.download` shipped; `generate.track`
+     remains.
 
 3. **PR 3: productization**
    - Basic docs, example client, and discovery metadata for external MCP clients
+   - Status: shipped for Inspector, Codex, Claude Desktop, Cursor, and
+     `examples/mcp-client`.
 
 #### pgvector migration
 
 1. **PR 1: schema + storage**
    - Add `vector(...)` column and index
    - Backfill embeddings for a small bounded set
+   - Status: first schema/storage slice shipped with `TrackEmbedding`.
 
 2. **PR 2: read path**
    - Switch `embeddings.similarity` and selector lookups to Postgres-backed search
+   - Status: shipped for current 16-dimensional embedding path.
 
 3. **PR 3: cleanup**
    - Retire or narrow the in-memory `EmbeddingStore`
+   - Status: no longer in-memory for persisted track embeddings; future cleanup
+     is about provider-scale embeddings and indexing rather than deleting a
+     memory-only store.
 
 #### Langfuse + evals
 
 1. **PR 1: tracing**
    - Instrument ADK runner, tool calls, and purchase decisions
    - #677 starts this slice with optional Langfuse-compatible ingestion and deterministic policy golden evals
+   - Status: shipped as a first slice.
 
 2. **PR 2: golden set**
    - Start with ~100 canonical curation scenarios with expected rubric dimensions; grow toward 200 as coverage gaps appear
+   - Status: not done; only a tiny deterministic starter set exists.
 
 3. **PR 3: CI gate**
    - Add a non-blocking CI eval job first, then promote to a quality gate once stable
+   - Status: not done.
 
 ### Effort and risk notes
 
@@ -251,7 +336,15 @@ These are the smallest slices that would keep momentum high and reviewable.
 
 ## 6. One-paragraph executive pitch
 
-Resonate already has the skeleton of a senior-eng flagship project: ADK agent runtime, ERC-4337 smart wallet, x402 paywall, Lyria generation, a full dashboard. The three next moves — the ones that give the platform a real foundation before adding more agent surface area — are: **(a)** expose the platform itself as an MCP server (with x402-gated tools) so external agents can buy stems natively, **(b)** move the embedding substrate from in-memory to pgvector, and **(c)** stand up Langfuse + a ~100-item golden set. The headline follow-ups — ERC-8004 identity + reputation, curator agents, and runtime extraction per RFC #424 — then land on measurable ground, and the rest (Claude Agent SDK subagents, Mastra on the frontend, Letta memory, the remix engine with ACE-Step + Demucs) stacks naturally on top. Avoid the LangChain/Spleeter/Suno-wrapper dead ends.
+Resonate now has the skeleton of a senior-eng flagship project plus the first
+machine-facing agent foundation: ADK agent runtime, ERC-4337 smart wallet, x402
+paywall, Lyria generation, full dashboard, MCP server, pgvector-backed
+similarity, and optional Langfuse-compatible trace export. The next compounding
+moves are to finish the eval system, complete public registry submission once
+the public metadata endpoints are reachable, and then ship ERC-8004 identity +
+reputation. Curator agents, runtime extraction, memory, and the remix engine
+should land after those foundations are measurable and externally discoverable.
+Avoid the LangChain/Spleeter/Suno-wrapper dead ends.
 
 ---
 
