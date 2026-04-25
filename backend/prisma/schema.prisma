@@ -1,10 +1,12 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
 }
 
 model User {
@@ -118,6 +120,7 @@ model Track {
   generationMetadata Json? // { provider, prompt, negativePrompt, seed, generatedAt, synthIdPresent, durationSeconds, sampleRate, cost }
   licenses           License[]
   stems              Stem[]
+  embedding          TrackEmbedding?
   fingerprint        AudioFingerprint?
   dmcaReports        DmcaReport[]
   release            Release           @relation(fields: [releaseId], references: [id])
@@ -128,6 +131,16 @@ model Track {
   rightsEvaluatedAt  DateTime?
 
   @@index([rightsRoute])
+}
+
+model TrackEmbedding {
+  trackId   String                  @id
+  vector    Unsupported("vector(16)")
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+  track     Track                   @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@index([updatedAt])
 }
 
 model Stem {

@@ -135,7 +135,7 @@ export class ToolRegistry {
         const candidateIds = (input.candidates as string[]) ?? [];
         const queryVector = this.embeddingService.embed(query);
         for (const trackId of candidateIds) {
-          if (this.embeddingStore.get(trackId)) {
+          if (await this.embeddingStore.get(trackId)) {
             continue;
           }
           const track = await prisma.track.findUnique({
@@ -144,11 +144,11 @@ export class ToolRegistry {
           });
           const text = `${track?.title ?? ""} ${track?.release?.genre ?? ""}`.trim();
           if (text) {
-            this.embeddingStore.upsert(trackId, this.embeddingService.embed(text));
+            await this.embeddingStore.upsert(trackId, this.embeddingService.embed(text));
           }
         }
         return {
-          ranked: this.embeddingStore.similarity(queryVector, candidateIds),
+          ranked: await this.embeddingStore.similarity(queryVector, candidateIds),
         };
       },
     });
