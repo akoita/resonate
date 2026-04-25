@@ -28,7 +28,7 @@ module.exports = async function globalSetup() {
   const env = {};
 
   // ===== Postgres =====
-  const pgContainer = await new PostgreSqlContainer('postgres:16')
+  const pgContainer = await new PostgreSqlContainer('pgvector/pgvector:pg16')
     .withDatabase('resonate_test')
     .withUsername('test')
     .withPassword('test')

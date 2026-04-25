@@ -37,7 +37,7 @@ Resonate is not a green field — it is roughly **55% agent-complete** with a cl
 - MCP server exposure of Resonate's tools to *outside* agents.
 - A2A (Agent-to-Agent) for Selector↔Mixer↔Negotiator as peers.
 - Evaluation framework beyond the home-grown harness.
-- Vector DB (today: in-memory `EmbeddingStore` in backend).
+- Vector DB (issue #627 branch: pgvector-backed `EmbeddingStore` in backend).
 - LLM observability / tracing.
 - Agent memory layer (Mem0 / Letta / Zep).
 - Claude or OpenAI in the stack at all — pure Google Gemini monoculture.
@@ -57,7 +57,7 @@ Filtered from the landscape survey. In order of **CV-scarcity × genuine-product
 | **Mastra** | TS-first, 1.0 Jan 2026, YC W25, 22k stars, Next.js-shaped. | **High** — natural for `web/` layer streaming UX and agent-side tool calls. |
 | **LangGraph 1.0** | GA Oct 2025, LTS, Uber/LinkedIn/Klarna prod use. | **Medium** — only if the Selector/Mixer/Negotiator workflow outgrows ADK; parked by RFC. |
 | **Langfuse** | OSS, OpenInference-compatible, most-adopted. | **High** — existing eval harness needs production telemetry. |
-| **pgvector / Qdrant** | pgvector is the 2026 default under ~5M vectors; Qdrant for lowest p50 latency. | **High** — backend already has Postgres; swap the in-memory `EmbeddingStore`. |
+| **pgvector / Qdrant** | pgvector is the 2026 default under ~5M vectors; Qdrant for lowest p50 latency. | **High** — backend already has Postgres; `EmbeddingStore` now has a pgvector-backed path. |
 | **Voyage 4 Large / Cohere embed-v4** | Beat text-embedding-3-large on MTEB by ~8–14%. | **Medium** — upgrade, not a rewrite. |
 | **Mem0 + Letta** | Mem0 = plug-in memory; Letta = agent runtime with self-editing core/archival/recall. | **High** — direct answer to learning-loop issue #290. |
 | **Demucs `htdemucs_ft` + ACE-Step v1.5 + AudioShake** | HTDemucs SDR 9.20 dB; ACE-Step = 4-min song in 20s OSS breakout 2026. | **Very high** — stems-native moat; directly unlocks issue #323. |
@@ -121,7 +121,7 @@ Goal: three small, shippable PRs that each land a trend flag without a refactor.
    - Public endpoint `/mcp` + `/.well-known/mcp.json`.
    - Outcome: Resonate is *discoverable by any MCP-aware agent* (Claude Code, Cursor, Claude Desktop). Senior-eng signal: you shipped an MCP server, not just consumed MCP servers.
 
-2. **pgvector migration** — replace in-memory `EmbeddingStore` in [embeddings.similarity tool](../../backend/src/modules/agents/tools/tool_registry.ts) with a `vector(1536)` column on `Track` and an HNSW index. Directly improves the selector and is the only prerequisite to issue #290.
+2. **pgvector migration** — replace in-memory `EmbeddingStore` in [embeddings.similarity tool](../../backend/src/modules/agents/tools/tool_registry.ts) with pgvector-backed storage. The first slice keeps the current 16-dimensional local embedding shape in a `TrackEmbedding` table; provider-scale embeddings and HNSW indexing remain follow-ups. Directly improves the selector and is the only prerequisite to issue #290.
 
 3. **Langfuse + golden-set eval** — add `@langfuse/node-sdk`, wrap ADK runner, start with ~100 curated golden cases under `backend/src/evals/` (queries like "deep house under $2", "upbeat pop with vocals") and grow toward 200 as coverage gaps appear, then add a GitHub Actions job that runs a judge-LLM rubric (genre match, budget respected, repeat avoidance). Retires the `AgentEvaluationService` internal metrics in favor of the industry-standard pattern.
 
