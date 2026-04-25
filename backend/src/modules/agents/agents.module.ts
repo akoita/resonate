@@ -1,8 +1,10 @@
 import { Module, forwardRef } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
 import { AgentEvaluationService } from "./agent_evaluation.service";
+import { AgentGoldenEvalService } from "./agent_golden_eval.service";
 import { AgentMixerService } from "./agent_mixer.service";
 import { AgentNegotiatorService } from "./agent_negotiator.service";
+import { AgentObservabilityService } from "./agent_observability.service";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentPolicyService } from "./agent_policy.service";
 import { AgentRunnerService } from "./agent_runner.service";
@@ -33,6 +35,8 @@ import { GenerationModule } from "../generation/generation.module";
     AgentRunnerService,
     AgentRuntimeService,
     AgentEvaluationService,
+    AgentGoldenEvalService,
+    AgentObservabilityService,
     AgentSelectorService,
     AgentMixerService,
     AgentNegotiatorService,
@@ -46,5 +50,4 @@ import { GenerationModule } from "../generation/generation.module";
   exports: [AgentWalletService, AgentPurchaseService],
 })
 export class AgentsModule { }
-
 

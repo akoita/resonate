@@ -1,5 +1,6 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
+import { AgentObservabilityService } from "./agent_observability.service";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentRuntimeService } from "./agent_runtime.service";
 
@@ -27,10 +28,13 @@ export class AgentEvaluationService {
   constructor(
     private readonly orchestrator: AgentOrchestratorService,
     private readonly runtimeService: AgentRuntimeService,
-    private readonly eventBus: EventBus
+    private readonly eventBus: EventBus,
+    @Optional()
+    private readonly observability?: AgentObservabilityService
   ) { }
 
   async evaluate(sessions: AgentEvalSession[], options?: EvaluateOptions) {
+    const startedAt = new Date();
     const useRuntime = options?.runtime && options.runtime !== "local";
     const results = [];
     let approved = 0;
@@ -103,6 +107,14 @@ export class AgentEvaluationService {
       eventVersion: 1,
       occurredAt: new Date().toISOString(),
       ...metrics,
+    });
+
+    await this.observability?.traceEvaluation({
+      name: "agent.evaluate",
+      sessions,
+      metrics,
+      startedAt,
+      endedAt: new Date(),
     });
 
     return { metrics, results };

@@ -205,6 +205,12 @@ Core app-side variables:
 | `SIGNUP_SEPOLIA_FAUCET_CHAIN_ID` | Backend | Faucet chain guard; defaults to Sepolia `11155111` |
 | `SIGNUP_SEPOLIA_FAUCET_RPC_URL` | Backend | Optional faucet RPC override; falls back to `RPC_URL` / `SEPOLIA_RPC_URL` |
 | `SIGNUP_SEPOLIA_FAUCET_FUNDER_PRIVATE_KEY` | Backend secret | Optional faucet funding key; falls back to the deployer `PRIVATE_KEY`. Store in secret manager/GitHub environment secrets, never source |
+| `LANGFUSE_ENABLED` | Backend | Optional agent observability switch. Set to `true` only when Langfuse credentials and host are configured |
+| `LANGFUSE_BASE_URL` | Backend | Langfuse base URL for trace ingestion. Required only when `LANGFUSE_ENABLED=true` |
+| `LANGFUSE_HOST` | Backend | Backward-compatible alias for `LANGFUSE_BASE_URL` |
+| `LANGFUSE_PUBLIC_KEY` | Backend secret | Langfuse public key for Basic Auth ingestion. Required only when tracing is enabled |
+| `LANGFUSE_SECRET_KEY` | Backend secret | Langfuse secret key for Basic Auth ingestion. Store in secret manager/GitHub environment secrets, never source |
+| `LANGFUSE_ENVIRONMENT` | Backend | Optional lowercase trace environment label; falls back to `NODE_ENV` when unset |
 
 Lyria auth modes:
 - Preferred for Cloud Run / GCE 30-second generation: set `LYRIA_PROJECT_ID` and `LYRIA_LOCATION` and let Application Default Credentials from the attached service account authenticate Vertex AI `lyria-002` requests.
