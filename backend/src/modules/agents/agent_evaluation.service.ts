@@ -13,6 +13,8 @@ export interface AgentEvalSession {
     mood?: string;
     energy?: "low" | "medium" | "high";
     genres?: string[];
+    stemTypes?: string[];
+    learnedGenreWeights?: Record<string, number>;
     allowExplicit?: boolean;
     licenseType?: "personal" | "remix" | "commercial";
   };
@@ -43,6 +45,7 @@ export class AgentEvaluationService {
     let totalLatencyMs = 0;
     let repeatCount = 0;
     const seenTracks = new Set<string>();
+    const sessionAccepted: boolean[] = [];
 
     for (const session of sessions) {
       if (useRuntime) {
@@ -54,8 +57,10 @@ export class AgentEvaluationService {
           if (result.status === "approved") {
             approved += 1;
             totalPrice += (result as any).priceUsd ?? 0;
+            sessionAccepted.push(true);
           } else {
             rejected += 1;
+            sessionAccepted.push(false);
           }
           if ((result as any).trackId && seenTracks.has((result as any).trackId)) {
             repeatCount += 1;
@@ -84,10 +89,21 @@ export class AgentEvaluationService {
         }
         if (result.tracks.length === 0) {
           rejected += 1;
+          sessionAccepted.push(false);
+        } else {
+          sessionAccepted.push(true);
         }
         results.push(result);
       }
     }
+
+    const midpoint = Math.ceil(sessionAccepted.length / 2);
+    const early = sessionAccepted.slice(0, midpoint);
+    const late = sessionAccepted.slice(midpoint);
+    const rate = (values: boolean[]) =>
+      values.length ? values.filter(Boolean).length / values.length : 0;
+    const earlyAcceptanceRate = rate(early);
+    const lateAcceptanceRate = rate(late);
 
     const metrics = {
       runtime: options?.runtime ?? "local",
@@ -95,6 +111,9 @@ export class AgentEvaluationService {
       approved,
       rejected,
       approvalRate: sessions.length ? approved / sessions.length : 0,
+      earlyAcceptanceRate,
+      lateAcceptanceRate,
+      acceptanceRateImprovement: late.length ? lateAcceptanceRate - earlyAcceptanceRate : 0,
       avgPriceUsd: approved ? totalPrice / approved : 0,
       repeatRate: sessions.length ? repeatCount / sessions.length : 0,
       ...(useRuntime

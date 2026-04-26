@@ -1,11 +1,13 @@
-import { Body, Controller, Get, Logger, Patch, Post, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Logger, Patch, Post, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentRuntimeService } from "./agent_runtime.service";
 import { AgentPurchaseService } from "./agent_purchase.service";
 import { AgentNegotiatorService } from "./agent_negotiator.service";
 import { AgentIdentityService } from "./agent_identity.service";
+import { AgentLearningService, isAgentSignalAction, type AgentSignalAction } from "./agent_learning.service";
 import { EventBus } from "../shared/event_bus";
 import type { NegotiationResult } from "./agent_negotiator.service";
 
@@ -19,6 +21,7 @@ export class AgentConfigController {
         private readonly purchaseService: AgentPurchaseService,
         private readonly negotiatorService: AgentNegotiatorService,
         private readonly identityService: AgentIdentityService,
+        private readonly learningService: AgentLearningService,
         private readonly eventBus: EventBus
     ) { }
 
@@ -92,6 +95,37 @@ export class AgentConfigController {
         return this.identityService.enrichConfig(config);
     }
 
+    @Post("signals")
+    @UseGuards(AuthGuard("jwt"))
+    async recordSignal(
+        @Req() req: any,
+        @Body() body: { trackId: string; action: string; sessionId?: string; metadata?: Record<string, unknown> }
+    ) {
+        if (!body.trackId || !isAgentSignalAction(body.action)) {
+            throw new BadRequestException({
+                reason: "trackId and valid action are required",
+                acceptedActions: ["accept", "skip", "replay", "add_to_playlist", "purchase"],
+            });
+        }
+
+        const profile = await this.learningService.recordSignal({
+            userId: req.user.userId,
+            sessionId: body.sessionId,
+            trackId: body.trackId,
+            action: body.action as AgentSignalAction,
+            metadata: body.metadata as Prisma.InputJsonObject | undefined,
+        });
+        const config = await prisma.agentConfig.findUnique({
+            where: { userId: req.user.userId },
+        });
+
+        return {
+            status: "recorded",
+            profile,
+            config: config ? await this.identityService.enrichConfig(config) : null,
+        };
+    }
+
     @Post("session")
     @UseGuards(AuthGuard("jwt"))
     async startSession(@Req() req: any) {
@@ -146,6 +180,10 @@ export class AgentConfigController {
 
             // Kick off orchestration — route through LLM when AGENT_RUNTIME is set
             const generationBudgetUsd = parseFloat(process.env.AGENT_GENERATION_BUDGET ?? "1.00");
+            const tasteProfilePromise = this.learningService.computeTasteProfile(req.user.userId, config.vibes).catch((error) => {
+                this.logger.warn(`Failed to compute learned taste profile: ${error}`);
+                return null;
+            });
             const runtimeInput = {
                 sessionId: session.id,
                 userId: req.user.userId,
@@ -155,12 +193,19 @@ export class AgentConfigController {
                 preferences: {
                     genres: config.vibes,
                     stemTypes: config.stemTypes,
+                    learnedGenreWeights: {} as Record<string, number>,
                     licenseType: "personal" as const,
                 },
             };
 
-            this.runtimeService
-                .run(runtimeInput)
+            tasteProfilePromise
+                .then((profile) => {
+                    if (profile) {
+                        runtimeInput.preferences.genres = this.learningService.mergeLearnedGenres(config.vibes, profile);
+                        runtimeInput.preferences.learnedGenreWeights = profile.genreWeights;
+                    }
+                    return this.runtimeService.run(runtimeInput);
+                })
                 .then(async (result) => {
                     if ("tracks" in result) {
                         // Orchestrator pipeline result (local mode)
@@ -174,6 +219,13 @@ export class AgentConfigController {
                                         priceUsd: track.negotiation.priceUsd,
                                         durationSeconds: 0,
                                     },
+                                });
+                                await this.learningService.recordSignal({
+                                    userId: req.user.userId,
+                                    sessionId: session.id,
+                                    trackId: track.trackId,
+                                    action: "accept",
+                                    metadata: { source: "agent_session" },
                                 });
                                 this.logger.log(`[Agent] Processing track ${track.trackId} in mode ${config.sessionMode}`);
                                 if (config.sessionMode === "buy") {
@@ -221,6 +273,13 @@ export class AgentConfigController {
                                         priceUsd: pick.priceUsd,
                                         durationSeconds: 0,
                                     },
+                                });
+                                await this.learningService.recordSignal({
+                                    userId: req.user.userId,
+                                    sessionId: session.id,
+                                    trackId: pick.trackId,
+                                    action: "accept",
+                                    metadata: { source: "agent_session", runtime: "llm" },
                                 });
                                 if (config.sessionMode === "buy") {
                                     // Fetch actual listings to ensure we can buy
@@ -402,6 +461,7 @@ export class AgentConfigController {
             return;
         }
 
+        let purchaseSignalRecorded = false;
         for (const listing of listings) {
             try {
                 this.logger.log(`[Agent] Purchasing listing ${listing.listingId} price=${listing.pricePerUnit}`);
@@ -419,6 +479,21 @@ export class AgentConfigController {
                         `Purchase failed for listing ${listing.listingId} (${listing.stemType}): ${result.reason}`,
                     );
                 } else {
+                    if (!purchaseSignalRecorded) {
+                        await this.learningService.recordSignal({
+                            userId,
+                            sessionId,
+                            trackId,
+                            action: "purchase",
+                            metadata: {
+                                source: "agent_purchase",
+                                listingId: String(listing.listingId),
+                                stemType: listing.stemType,
+                                priceUsd: negotiation.priceUsd,
+                            },
+                        });
+                        purchaseSignalRecorded = true;
+                    }
                     this.logger.log(`[Agent] Purchase success: tx=${result.txHash}`);
                 }
             } catch (err) {

@@ -1,0 +1,58 @@
+import {
+  computeAgentTasteProfileFromSignals,
+  AGENT_SIGNAL_WEIGHTS,
+} from "../modules/agents/agent_learning.service";
+import { AgentSelectorService } from "../modules/agents/agent_selector.service";
+
+describe("agent learning loop", () => {
+  it("weights purchase and playlist signals above lightweight accepts", () => {
+    const profile = computeAgentTasteProfileFromSignals([
+      { trackId: "track-1", action: "accept", genre: "Lo-fi" },
+      { trackId: "track-2", action: "add_to_playlist", genre: "Lo-fi" },
+      { trackId: "track-3", action: "purchase", genre: "Deep House" },
+      { trackId: "track-4", action: "skip", genre: "Noise" },
+    ]);
+
+    expect(AGENT_SIGNAL_WEIGHTS.purchase).toBe(5);
+    expect(profile.signals).toBe(4);
+    expect(profile.positiveSignals).toBe(3);
+    expect(profile.negativeSignals).toBe(1);
+    expect(profile.favoredGenres[0]).toBe("Deep House");
+    expect(profile.genreWeights["Lo-fi"]).toBe(4);
+    expect(profile.genreWeights.Noise).toBe(-1);
+    expect(profile.score).toBeGreaterThan(30);
+  });
+
+  it("falls back to user-selected vibes until enough signals exist", () => {
+    const profile = computeAgentTasteProfileFromSignals([], ["Focus", "Ambient"]);
+
+    expect(profile.score).toBe(0);
+    expect(profile.tier).toBe("New");
+    expect(profile.genresExplored).toEqual(["Focus", "Ambient"]);
+    expect(profile.favoredGenres).toEqual([]);
+  });
+
+  it("boosts learned genres after listing priority in selector ranking", async () => {
+    const tool = {
+      run: jest.fn().mockResolvedValue({
+        items: [
+          { id: "jazz", title: "Jazz Track", hasListing: false, release: { genre: "Jazz" } },
+          { id: "house", title: "House Track", hasListing: false, release: { genre: "Deep House" } },
+          { id: "listed", title: "Listed Track", hasListing: true, release: { genre: "Ambient" } },
+        ],
+      }),
+    };
+    const selector = new AgentSelectorService({
+      get: jest.fn().mockReturnValue(tool),
+    } as any);
+
+    const result = await selector.select({
+      queries: ["music"],
+      recentTrackIds: [],
+      learnedGenreWeights: { "Deep House": 10, Jazz: 1 },
+      limit: 3,
+    });
+
+    expect(result.selected.map((track: any) => track.id)).toEqual(["listed", "house", "jazz"]);
+  });
+});

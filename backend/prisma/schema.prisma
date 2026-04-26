@@ -15,6 +15,7 @@ model User {
   createdAt     DateTime       @default(now())
   artist        Artist?
   agentConfig   AgentConfig?
+  agentSignals  AgentSignal[]
   folders       Folder[]
   libraryTracks LibraryTrack[]
   playlists     Playlist[]
@@ -119,6 +120,7 @@ model Track {
   contentStatus      String            @default("clean") // clean, quarantined, dmca_removed
   generationMetadata Json? // { provider, prompt, negativePrompt, seed, generatedAt, synthIdPresent, durationSeconds, sampleRate, cost }
   licenses           License[]
+  agentSignals       AgentSignal[]
   stems              Stem[]
   embedding          TrackEmbedding?
   fingerprint        AudioFingerprint?
@@ -314,7 +316,27 @@ model Session {
   licenses          License[]
   payments          Payment[]
   agentTransactions AgentTransaction[]
+  agentSignals      AgentSignal[]
   user              User               @relation(fields: [userId], references: [id])
+}
+
+model AgentSignal {
+  id        String   @id @default(uuid())
+  userId    String
+  sessionId String?
+  trackId   String
+  action    String
+  weight    Float
+  metadata  Json?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  session   Session? @relation(fields: [sessionId], references: [id])
+  track     Track    @relation(fields: [trackId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([trackId])
+  @@index([sessionId])
+  @@index([action])
 }
 
 model AgentTransaction {
@@ -395,6 +417,9 @@ model AgentConfig {
   identityTokenId       String?
   identityTxHash        String?
   identityCredential    Json?
+  learnedTasteProfile   Json?
+  tasteScore            Int       @default(0)
+  tasteUpdatedAt        DateTime?
   reputationScore       Int       @default(0)
   reputationSnapshot    Json?
   reputationAttestedAt  DateTime?

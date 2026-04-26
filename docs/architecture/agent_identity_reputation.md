@@ -15,14 +15,16 @@ job will fill, without depending on a finalized registry deployment.
 - `identityStatus`: `local`, `pending`, `minted`, or `attested`
 - `identityChainId`, `identityRegistry`, `identityTokenId`, `identityTxHash`
 - `identityCredential`: portable JSON credential for external agents/clients
+- `learnedTasteProfile`, `tasteScore`, `tasteUpdatedAt`
 - `reputationScore`, `reputationSnapshot`
 - `reputationAttestedAt`, `reputationTxHash`
 
 `AgentIdentityService` enriches `GET/POST/PATCH /agents/config` responses with a
 fresh reputation snapshot. The score is computed from recent agent sessions,
-curated licenses, spend against the configured budget, and genre diversity. When
-there are no session-derived genres yet, selected vibes seed the local identity
-profile so the dashboard is useful before the first run.
+curated licenses, spend against the configured budget, learned taste signals,
+and genre diversity. When there are no signal-derived genres yet, selected
+vibes seed the local identity profile so the dashboard is useful before the
+first run.
 
 ## Frontend
 
