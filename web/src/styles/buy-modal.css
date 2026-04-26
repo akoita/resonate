@@ -410,6 +410,87 @@
   font-size: 14px;
 }
 
+/* Payment-method segmented control (#705) */
+.buy-modal__pay-methods {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.buy-modal__pay-method {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--color-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.buy-modal__pay-method:hover:not(:disabled) {
+  color: var(--color-text, #fff);
+}
+
+.buy-modal__pay-method--active {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: var(--color-text, #fff);
+}
+
+.buy-modal__pay-method:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.buy-modal__pay-method-sub {
+  font-size: 11px;
+  opacity: 0.65;
+  font-weight: 400;
+}
+
+.buy-modal__x402-quote {
+  margin-bottom: 16px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.buy-modal__x402-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+.buy-modal__x402-row--total {
+  color: var(--color-text, #fff);
+  font-weight: 600;
+  font-size: 14px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.buy-modal__x402-status {
+  font-size: 12px;
+  color: var(--color-muted);
+  margin-top: 4px;
+}
+
 /* ------------------------------------------------------------------
  * BuyModal responsive overrides (#564)
  * Stack action buttons + reduce overlay padding so the modal gets

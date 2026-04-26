@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useBuyQuote, useBuyStem, useListing } from "../../hooks/useContracts";
+import { useX402PublicConfig } from "../../hooks/useX402PublicConfig";
+import { useAuth } from "../auth/AuthProvider";
 import { formatPrice } from "../../lib/contracts";
+import { payStemWithX402, X402PaymentError, type X402PaymentResult } from "../../lib/x402Pay";
 import { LicenseTypeSelector, type LicenseType } from "./LicenseTypeSelector";
 import { LicenseTermsPreview } from "./LicenseTermsPreview";
 import "../../styles/buy-modal.css";
@@ -10,6 +13,21 @@ import "../../styles/license-badges.css";
 import "../../styles/license-terms.css";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+
+type X402StatusPhase = "challenging" | "signing" | "settling" | "downloading";
+
+const X402_STATUS_LABEL: Record<X402StatusPhase, string> = {
+  challenging: "Requesting payment quote…",
+  signing: "Awaiting wallet signature…",
+  settling: "Settling payment with facilitator…",
+  downloading: "Downloading stem…",
+};
+
+type X402QuoteInfo = {
+  amountUsd: number | null;
+  asset: { name: string; address: string } | null;
+  payTo: string | null;
+};
 
 interface BuyModalProps {
   listingId: bigint;
@@ -25,9 +43,20 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   const [stemPricing, setStemPricing] = useState<{
     personal: number; remix: number; commercial: number;
   } | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"onchain" | "x402">("onchain");
+  const [x402Quote, setX402Quote] = useState<X402QuoteInfo | null>(null);
+  const [x402Status, setX402Status] = useState<X402StatusPhase | null>(null);
+  const [x402Error, setX402Error] = useState<string | null>(null);
+  const [x402Result, setX402Result] = useState<X402PaymentResult | null>(null);
   const { listing, loading: listingLoading } = useListing(listingId);
   const { quote, loading: quoteLoading } = useBuyQuote(listingId, amount);
   const { buy, pending, error, txHash } = useBuyStem();
+  const { config: x402Config } = useX402PublicConfig();
+  const { kernelAccount } = useAuth();
+  const x402Available = useMemo(
+    () => Boolean(x402Config?.enabled && stemId && kernelAccount?.signTypedData),
+    [x402Config, stemId, kernelAccount],
+  );
 
   // Fetch stem pricing for license type selector
   useEffect(() => {
@@ -40,6 +69,37 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
       .catch(err => console.error("Pricing fetch error:", err));
   }, [stemId, isOpen]);
 
+  // Fetch x402 quote when the user switches to the x402 method
+  useEffect(() => {
+    if (!isOpen || paymentMethod !== "x402" || !stemId || !x402Available) return;
+    let cancelled = false;
+    fetch(`${API_BASE}/api/stems/${stemId}/x402/info`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.x402) return;
+        setX402Quote({
+          amountUsd: data.x402?.amountUsd ?? data.purchase?.basePlayPriceUsd ?? null,
+          asset: data.x402?.asset ?? null,
+          payTo: data.x402?.payTo ?? null,
+        });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("x402 quote fetch error:", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, paymentMethod, stemId, x402Available]);
+
+  // Reset x402 transient state whenever the modal is closed/reopened
+  useEffect(() => {
+    if (isOpen) return;
+    setX402Status(null);
+    setX402Error(null);
+    setX402Result(null);
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handleBuy = async () => {
@@ -49,6 +109,29 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
       onSuccess?.(hash);
     } catch {
       // Error handled by hook
+    }
+  };
+
+  const handleX402Pay = async () => {
+    if (!stemId || !kernelAccount) return;
+    setX402Error(null);
+    setX402Result(null);
+    try {
+      const result = await payStemWithX402({
+        stemId,
+        signer: kernelAccount,
+        onStatus: (phase) => setX402Status(phase),
+      });
+      setX402Result(result);
+      setX402Status(null);
+    } catch (err) {
+      const message = err instanceof X402PaymentError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : String(err);
+      setX402Error(message);
+      setX402Status(null);
     }
   };
 
@@ -89,6 +172,34 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 </div>
               </div>
             </div>
+
+            {/* Payment method (#705) — only shown when x402 is configured for this server */}
+            {x402Available && (
+              <div className="buy-modal__pay-methods" role="tablist" aria-label="Payment method">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={paymentMethod === "onchain"}
+                  className={`buy-modal__pay-method${paymentMethod === "onchain" ? " buy-modal__pay-method--active" : ""}`}
+                  onClick={() => setPaymentMethod("onchain")}
+                  disabled={pending || x402Status !== null}
+                >
+                  <span>On-chain</span>
+                  <span className="buy-modal__pay-method-sub">NFT mint · ETH</span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={paymentMethod === "x402"}
+                  className={`buy-modal__pay-method${paymentMethod === "x402" ? " buy-modal__pay-method--active" : ""}`}
+                  onClick={() => setPaymentMethod("x402")}
+                  disabled={pending || x402Status !== null}
+                >
+                  <span>USDC (x402)</span>
+                  <span className="buy-modal__pay-method-sub">Pay-per-download</span>
+                </button>
+              </div>
+            )}
 
             {/* Quantity */}
             <div className="buy-modal__quantity">
@@ -139,7 +250,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
             <LicenseTermsPreview licenseType={selectedLicense} compact />
 
             {/* Price Breakdown */}
-            {quote && !quoteLoading && (
+            {paymentMethod === "onchain" && quote && !quoteLoading && (
               <div className="buy-modal__breakdown">
                 <div className="buy-modal__breakdown-row">
                   <span className="buy-modal__breakdown-label">
@@ -171,15 +282,51 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
               </div>
             )}
 
+            {/* x402 Quote */}
+            {paymentMethod === "x402" && (
+              <div className="buy-modal__x402-quote" data-testid="buy-modal-x402-quote">
+                <div className="buy-modal__x402-row">
+                  <span>Stem download (personal license)</span>
+                  <span>{x402Quote?.amountUsd != null ? `$${x402Quote.amountUsd.toFixed(2)}` : "—"}</span>
+                </div>
+                <div className="buy-modal__x402-row">
+                  <span>Asset</span>
+                  <span>{x402Quote?.asset?.name ?? "USDC"}</span>
+                </div>
+                {x402Quote?.payTo && (
+                  <div className="buy-modal__x402-row">
+                    <span>Pay to</span>
+                    <span>
+                      {x402Quote.payTo.slice(0, 6)}…{x402Quote.payTo.slice(-4)}
+                    </span>
+                  </div>
+                )}
+                <div className="buy-modal__x402-row buy-modal__x402-row--total">
+                  <span>Total</span>
+                  <span>{x402Quote?.amountUsd != null ? `$${x402Quote.amountUsd.toFixed(2)} USDC` : "—"}</span>
+                </div>
+                {x402Status && (
+                  <div className="buy-modal__x402-status" role="status">
+                    {X402_STATUS_LABEL[x402Status]}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Error */}
-            {error && (
+            {paymentMethod === "onchain" && error && (
               <div className="buy-modal__alert buy-modal__alert--error">
                 {error.message}
               </div>
             )}
+            {paymentMethod === "x402" && x402Error && (
+              <div className="buy-modal__alert buy-modal__alert--error">
+                {x402Error}
+              </div>
+            )}
 
             {/* Success */}
-            {txHash && (
+            {paymentMethod === "onchain" && txHash && (
               <div className="buy-modal__alert buy-modal__alert--success">
                 Purchase successful!{" "}
                 <a
@@ -191,20 +338,47 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 </a>
               </div>
             )}
+            {paymentMethod === "x402" && x402Result && (
+              <div className="buy-modal__alert buy-modal__alert--success">
+                Payment settled.{" "}
+                <a
+                  href={URL.createObjectURL(x402Result.audio)}
+                  download={x402Result.filename}
+                >
+                  Download stem →
+                </a>
+                {x402Result.receiptId && (
+                  <div className="buy-modal__x402-status">
+                    Receipt {x402Result.receiptId}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Actions */}
             <div className="buy-modal__actions">
               <button className="buy-modal__btn buy-modal__btn--cancel" onClick={onClose}>
                 Cancel
               </button>
-              <button
-                className="buy-modal__btn buy-modal__btn--confirm"
-                onClick={handleBuy}
-                disabled={pending || !quote}
-              >
-                {pending && <span className="buy-modal__spinner" />}
-                {pending ? "Confirming…" : "Confirm Purchase"}
-              </button>
+              {paymentMethod === "onchain" ? (
+                <button
+                  className="buy-modal__btn buy-modal__btn--confirm"
+                  onClick={handleBuy}
+                  disabled={pending || !quote}
+                >
+                  {pending && <span className="buy-modal__spinner" />}
+                  {pending ? "Confirming…" : "Confirm Purchase"}
+                </button>
+              ) : (
+                <button
+                  className="buy-modal__btn buy-modal__btn--confirm"
+                  onClick={handleX402Pay}
+                  disabled={x402Status !== null || !x402Quote}
+                >
+                  {x402Status !== null && <span className="buy-modal__spinner" />}
+                  {x402Status !== null ? X402_STATUS_LABEL[x402Status] : "Pay with USDC"}
+                </button>
+              )}
             </div>
           </div>
         ) : (

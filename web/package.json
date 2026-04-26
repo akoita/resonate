@@ -14,6 +14,8 @@
     "@lit-protocol/contracts-sdk": "^7.4.0",
     "@lit-protocol/lit-node-client": "^7.4.0",
     "@walletconnect/modal": "^2.7.0",
+    "@x402/core": "^2.10.0",
+    "@x402/evm": "^2.10.0",
     "@zerodev/ecdsa-validator": "^5.4.9",
     "@zerodev/passkey-validator": "^5.6.0",
     "@zerodev/permissions": "^5.6.3",

@@ -4,6 +4,7 @@ import { X402Config } from './x402.config';
 import { X402Controller } from './x402.controller';
 import { X402Middleware } from './x402.middleware';
 import { X402PaymentService } from './x402.payment.service';
+import { X402PublicController } from './x402.public.controller';
 import { EncryptionModule } from '../encryption/encryption.module';
 
 /**
@@ -19,7 +20,7 @@ import { EncryptionModule } from '../encryption/encryption.module';
  */
 @Module({
   imports: [ConfigModule, EncryptionModule],
-  controllers: [X402Controller],
+  controllers: [X402Controller, X402PublicController],
   providers: [X402Config, X402PaymentService, X402Middleware],
   exports: [X402Config, X402PaymentService],
 })
