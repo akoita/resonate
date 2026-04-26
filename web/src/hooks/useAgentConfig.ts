@@ -6,6 +6,8 @@ import {
     getAgentConfig,
     createAgentConfig,
     updateAgentConfig,
+    mintAgentIdentity,
+    attestAgentReputation,
     startAgentSession,
     stopAgentSession,
     type AgentConfig,
@@ -65,6 +67,20 @@ export function useAgentConfig() {
         return result;
     }, [config, token]);
 
+    const mintIdentity = useCallback(async () => {
+        if (!token) return;
+        const result = await mintAgentIdentity(token);
+        setConfig(result);
+        return result;
+    }, [token]);
+
+    const attestReputation = useCallback(async () => {
+        if (!token) return;
+        const result = await attestAgentReputation(token);
+        setConfig(result);
+        return result;
+    }, [token]);
+
     const stopSession = useCallback(async () => {
         if (!config || !token) return;
         const result = await stopAgentSession(token);
@@ -81,6 +97,8 @@ export function useAgentConfig() {
         setShowWizard,
         createConfig,
         updateConfig: patchConfig,
+        mintIdentity,
+        attestReputation,
         startSession,
         stopSession,
         refetch: fetchConfig,

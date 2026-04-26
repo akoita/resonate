@@ -59,6 +59,11 @@ When adding a new environment variable:
 | `LANGFUSE_PUBLIC_KEY` | Backend secret | Langfuse public key for Basic Auth ingestion. Required only when tracing is enabled |
 | `LANGFUSE_SECRET_KEY` | Backend secret | Langfuse secret key for Basic Auth ingestion. Store in secret manager/GitHub environment secrets, never source |
 | `LANGFUSE_ENVIRONMENT` | Backend | Optional lowercase trace environment label; falls back to `NODE_ENV` when unset |
+| `ERC8004_ENABLED` | Backend | Enables ERC-8004 identity registration and reputation metadata writes. Defaults to disabled |
+| `ERC8004_IDENTITY_REGISTRY_ADDRESS` | Backend | ERC-8004 Identity Registry contract address used by `register(string)` and `setMetadata(uint256,string,bytes)` |
+| `ERC8004_CHAIN_ID` | Backend | Optional ERC-8004 chain override; falls back to `AA_CHAIN_ID`, then `CHAIN_ID`, then local Anvil |
+| `ERC8004_RPC_URL` | Backend | Optional RPC override for ERC-8004 receipt reads; falls back to `RPC_URL` / `LOCAL_RPC_URL` |
+| `ERC8004_PUBLIC_BASE_URL` | Backend | Optional public base URL included in the ERC-8004 registration file service endpoints |
 
 ## Lyria Auth Modes
 

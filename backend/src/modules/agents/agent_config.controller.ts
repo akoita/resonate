@@ -64,7 +64,10 @@ export class AgentConfigController {
                 monthlyCapUsd: body.monthlyCapUsd,
             },
         });
-        return this.identityService.enrichConfig(config);
+        return this.identityService.mintIdentity(req.user.userId).catch((error) => {
+            this.logger.warn(`Agent identity mint skipped after config create: ${error instanceof Error ? error.message : error}`);
+            return this.identityService.enrichConfig(config);
+        });
     }
 
     @Patch()
@@ -93,6 +96,30 @@ export class AgentConfigController {
             data: allowedData,
         });
         return this.identityService.enrichConfig(config);
+    }
+
+    @Post("identity/mint")
+    @UseGuards(AuthGuard("jwt"))
+    async mintIdentity(@Req() req: any) {
+        return this.identityService.mintIdentity(req.user.userId);
+    }
+
+    @Post("identity/attest")
+    @UseGuards(AuthGuard("jwt"))
+    async attestIdentity(@Req() req: any) {
+        return this.identityService.attestReputation(req.user.userId);
+    }
+
+    @Get("identity/registration-file")
+    @UseGuards(AuthGuard("jwt"))
+    async getRegistrationFile(@Req() req: any) {
+        const config = await prisma.agentConfig.findUnique({
+            where: { userId: req.user.userId },
+        });
+        if (!config) {
+            throw new BadRequestException("Agent config is required before exporting registration file");
+        }
+        return this.identityService.buildRegistrationFile(config);
     }
 
     @Post("signals")

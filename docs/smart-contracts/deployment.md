@@ -164,3 +164,9 @@ The receiver-side contract and deploy execution live in `resonate-iac`.
 General app environment variables now live in
 [`docs/deployment/environment.md`](../deployment/environment.md). Keep this
 document focused on contract deployment and contract-adjacent local workflows.
+
+ERC-8004 agent identity writes are backend runtime configuration, not protocol
+deployment inputs. When a deployed environment should register agents on-chain,
+set `ERC8004_ENABLED`, `ERC8004_IDENTITY_REGISTRY_ADDRESS`, and any chain/RPC
+overrides in the service configuration managed by `resonate-iac`; the variable
+reference lives in [`docs/deployment/environment.md`](../deployment/environment.md).
