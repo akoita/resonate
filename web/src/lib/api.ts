@@ -1128,6 +1128,24 @@ export type AgentConfig = {
   identityTokenId: string | null;
   identityTxHash: string | null;
   identityCredential: Record<string, unknown> | null;
+  learnedTasteProfile: {
+    schemaVersion: "agent-taste-profile/v1";
+    score: number;
+    tier: "New" | "Emerging" | "Focused" | "Deep";
+    signals: number;
+    positiveSignals: number;
+    negativeSignals: number;
+    acceptanceRate: number;
+    genresExplored: string[];
+    favoredGenres: string[];
+    genreWeights: Record<string, number>;
+    diversity: number;
+    depth: number;
+    consistency: number;
+    updatedAt: string;
+  } | null;
+  tasteScore: number;
+  tasteUpdatedAt: string | null;
   reputationScore: number;
   reputationSnapshot: {
     score: number;
@@ -1170,6 +1188,22 @@ export async function updateAgentConfig(
   return apiRequest<AgentConfig>(
     "/agents/config",
     { method: "PATCH", body: JSON.stringify(input) },
+    token
+  );
+}
+
+export async function recordAgentSignal(
+  token: string,
+  input: {
+    trackId: string;
+    action: "accept" | "skip" | "replay" | "add_to_playlist" | "purchase";
+    sessionId?: string;
+    metadata?: Record<string, unknown>;
+  }
+): Promise<{ status: string; profile?: AgentConfig["learnedTasteProfile"]; config?: AgentConfig | null }> {
+  return apiRequest<{ status: string; profile?: AgentConfig["learnedTasteProfile"]; config?: AgentConfig | null }>(
+    "/agents/config/signals",
+    { method: "POST", body: JSON.stringify(input) },
     token
   );
 }

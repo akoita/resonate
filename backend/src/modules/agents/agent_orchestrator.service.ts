@@ -20,6 +20,7 @@ export interface AgentOrchestratorInput {
     energy?: "low" | "medium" | "high";
     genres?: string[];
     stemTypes?: string[];
+    learnedGenreWeights?: Record<string, number>;
     allowExplicit?: boolean;
     licenseType?: "personal" | "remix" | "commercial";
   };
@@ -69,6 +70,7 @@ export class AgentOrchestratorService {
       allowExplicit: input.preferences.allowExplicit,
       useEmbeddings: queries.length > 0,
       limit: parseInt(process.env.AGENT_TRACK_LIMIT ?? "5", 10),
+      learnedGenreWeights: input.preferences.learnedGenreWeights,
     });
 
     const selectedCount = selection.selected?.length ?? 0;

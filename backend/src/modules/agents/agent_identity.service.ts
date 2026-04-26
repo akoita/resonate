@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma, type AgentConfig } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { AgentLearningService } from "./agent_learning.service";
 
 export type AgentIdentityStatus = "local" | "pending" | "minted" | "attested";
 
@@ -10,6 +11,7 @@ export type AgentReputationInput = {
   totalSpendUsd: number;
   monthlyCapUsd: number;
   genresExplored: string[];
+  tasteScore?: number;
 };
 
 export type AgentReputationSnapshot = AgentReputationInput & {
@@ -49,6 +51,7 @@ export function computeAgentReputationSnapshot(
       sessions * 6 +
       tracksCurated * 4 +
       genresExplored.length * 5 +
+      (input.tasteScore ?? 0) * 0.25 +
       acceptanceRate * 20 +
       budgetUtilization * 10
     ),
@@ -77,6 +80,8 @@ export function computeAgentReputationSnapshot(
 
 @Injectable()
 export class AgentIdentityService {
+  constructor(private readonly learningService: AgentLearningService) {}
+
   async enrichConfig(config: AgentConfig): Promise<EnrichedAgentConfig> {
     const reputationSnapshot = await this.computeReputation(config);
     const identityCredential = this.buildCredential(config as AgentConfigWithIdentity, reputationSnapshot);
@@ -125,6 +130,7 @@ export class AgentIdentityService {
   }
 
   private async computeReputation(config: AgentConfig): Promise<AgentReputationSnapshot> {
+    const tasteProfile = await this.learningService.computeTasteProfile(config.userId, config.vibes);
     const sessions = await prisma.session.findMany({
       where: { userId: config.userId },
       include: {
@@ -151,14 +157,22 @@ export class AgentIdentityService {
     );
     const totalSpendUsd = sessions.reduce((sum, session) => sum + session.spentUsd, 0);
     const tracksCurated = sessions.reduce((sum, session) => sum + session.licenses.length, 0);
+    const genresExplored = tasteProfile.genresExplored.length > 0
+      ? tasteProfile.genresExplored
+      : (licenseGenres.length > 0 ? licenseGenres : config.vibes);
 
-    const lastSignalAt = sessions[0]?.startedAt ?? config.updatedAt;
+    const lastSignalAt = new Date(Math.max(
+      sessions[0]?.startedAt.getTime() ?? 0,
+      Date.parse(tasteProfile.updatedAt),
+      config.updatedAt.getTime(),
+    ));
     return computeAgentReputationSnapshot({
       sessions: sessions.length,
-      tracksCurated,
+      tracksCurated: Math.max(tracksCurated, tasteProfile.positiveSignals),
       totalSpendUsd,
       monthlyCapUsd: config.monthlyCapUsd,
-      genresExplored: licenseGenres.length > 0 ? licenseGenres : config.vibes,
+      genresExplored,
+      tasteScore: tasteProfile.score,
     }, lastSignalAt);
   }
 

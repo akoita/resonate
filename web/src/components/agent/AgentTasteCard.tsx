@@ -95,10 +95,15 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
     // Custom vibes that aren't in the preset list
     const customVibes = draft.filter((v) => !PRESET_VIBES.includes(v));
     const activeStemTypes = config.stemTypes ?? [];
+    const learnedTaste = config.learnedTasteProfile;
     const reputation = config.reputationSnapshot;
-    const score = Math.max(0, Math.min(100, config.reputationScore ?? reputation?.score ?? 0));
-    const tier = reputation?.tier ?? "New";
-    const exploredGenres = reputation?.genresExplored?.length ? reputation.genresExplored : config.vibes;
+    const score = Math.max(0, Math.min(100, config.tasteScore ?? learnedTaste?.score ?? config.reputationScore ?? reputation?.score ?? 0));
+    const tier = learnedTaste?.tier ?? reputation?.tier ?? "New";
+    const exploredGenres = learnedTaste?.genresExplored?.length
+        ? learnedTaste.genresExplored
+        : (reputation?.genresExplored?.length ? reputation.genresExplored : config.vibes);
+    const signalCount = learnedTaste?.signals ?? 0;
+    const acceptanceRate = Math.round((learnedTaste?.acceptanceRate ?? reputation?.acceptanceRate ?? 0) * 100);
     const credentialAvailable = Boolean(config.identityCredential);
 
     const handleCredentialExport = async () => {
@@ -282,8 +287,10 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
                             <span className="agent-identity-pill">{config.identityStatus}</span>
                         </div>
                         <p className="agent-taste-hint">
-                            {reputation
-                                ? `${reputation.tracksCurated} tracks curated across ${reputation.sessions} sessions.`
+                            {learnedTaste
+                                ? `${signalCount} signals learned, ${acceptanceRate}% positive.`
+                                : reputation
+                                    ? `${reputation.tracksCurated} tracks curated across ${reputation.sessions} sessions.`
                                 : "Start a session to build your score."}
                         </p>
                     </div>
@@ -295,6 +302,11 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
                                 <span key={genre} className="agent-genre-tag">{genre}</span>
                             ))}
                         </div>
+                        {learnedTaste?.favoredGenres?.length ? (
+                            <p className="agent-taste-hint">
+                                Favors {learnedTaste.favoredGenres.slice(0, 3).join(", ")}.
+                            </p>
+                        ) : null}
                     </div>
 
                     <div className="agent-taste-section">

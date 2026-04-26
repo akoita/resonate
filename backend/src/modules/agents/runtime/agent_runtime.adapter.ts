@@ -9,6 +9,8 @@ export interface AgentRuntimeInput {
     mood?: string;
     energy?: "low" | "medium" | "high";
     genres?: string[];
+    stemTypes?: string[];
+    learnedGenreWeights?: Record<string, number>;
     allowExplicit?: boolean;
     licenseType?: "personal" | "remix" | "commercial";
   };

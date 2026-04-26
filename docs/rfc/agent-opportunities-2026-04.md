@@ -26,6 +26,10 @@ Shipped or started since this report:
   traces policy evals, tool calls, MCP tools, and evaluation summaries.
 - **Golden eval harness started** — deterministic policy golden cases live under
   `backend/src/evals/`, with `npm run eval:golden` covering the first tiny set.
+- **Agent learning loop first slice shipped** — weighted `AgentSignal` records
+  aggregate into `learnedTasteProfile` / `tasteScore`, selector ranking uses
+  learned genre weights, and the dashboard shows learned score and explored
+  genres.
 
 Still open from the foundation wave:
 
@@ -41,7 +45,7 @@ Still open beyond Wave 1:
 - ERC-8004 identity and reputation.
 - Curator agents.
 - Unified runtime extraction.
-- Learning loop / real Taste Score.
+- Learning loop provider-scale expansion and memory integration.
 - Memory layer.
 - Real remix engine.
 

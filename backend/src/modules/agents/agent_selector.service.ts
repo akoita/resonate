@@ -7,6 +7,7 @@ export interface AgentSelectorInput {
   allowExplicit?: boolean;
   useEmbeddings?: boolean;
   limit?: number;
+  learnedGenreWeights?: Record<string, number>;
 }
 
 @Injectable()
@@ -57,11 +58,17 @@ export class AgentSelectorService {
       }
     }
 
-    // Stable-sort: listed tracks first (preserves embedding rank within each group)
+    // Stable-sort: listed tracks first, then boost genres learned from user feedback.
+    const learnedGenreWeights = input.learnedGenreWeights ?? {};
     allCandidates.sort((a: any, b: any) => {
       const aListed = a.hasListing ? 1 : 0;
       const bListed = b.hasListing ? 1 : 0;
-      return bListed - aListed;
+      if (aListed !== bListed) return bListed - aListed;
+      const aGenre = a.release?.genre;
+      const bGenre = b.release?.genre;
+      const aWeight = aGenre ? learnedGenreWeights[aGenre] ?? 0 : 0;
+      const bWeight = bGenre ? learnedGenreWeights[bGenre] ?? 0 : 0;
+      return bWeight - aWeight;
     });
 
     // Filter out recently played tracks, then take up to `limit`
