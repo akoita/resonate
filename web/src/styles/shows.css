@@ -966,3 +966,435 @@
   color: #1a0f05;
   line-height: 1;
 }
+
+/* ===================================================================
+ * Theme v2 — "ticket stub" identity (2026-04)
+ *
+ * Brings Shows in line with the home-hero polish language (hairline
+ * gradient borders, top-edge sheen, gradient text, live pulse) while
+ * adding one Shows-only motif: a perforated edge between the card art
+ * and body that reads as a physical concert ticket. All amber accents
+ * stay scoped to `.shows-surface`.
+ * ================================================================ */
+
+/* --- Surface atmosphere ------------------------------------------- */
+
+.shows-surface {
+  /* A soft warm vignette in the top-third stops the page from reading
+   * as "rectangles on a flat dark canvas." */
+  background:
+    radial-gradient(ellipse at 50% -10%, color-mix(in srgb, var(--ds-tertiary) 8%, transparent), transparent 55%),
+    radial-gradient(ellipse at 0% 30%, color-mix(in srgb, var(--ds-primary-container) 6%, transparent), transparent 50%);
+}
+
+/* --- Page intro: title gets the same luster as the home hero ------ */
+
+.shows-page__title {
+  background: linear-gradient(180deg, #ffffff 0%, color-mix(in srgb, var(--ds-tertiary) 35%, #ffffff) 100%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.shows-home-section__kicker,
+.shows-page__intro .shows-home-section__kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shows-page__intro .shows-home-section__kicker::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-signal);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-signal) 60%, transparent);
+  animation: shows-dot-pulse 2.4s ease-out infinite;
+}
+
+@keyframes shows-dot-pulse {
+  0%   { box-shadow: 0 0 0 0   color-mix(in srgb, var(--color-signal) 60%, transparent); }
+  70%  { box-shadow: 0 0 0 8px color-mix(in srgb, var(--color-signal) 0%,  transparent); }
+  100% { box-shadow: 0 0 0 0   color-mix(in srgb, var(--color-signal) 0%,  transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shows-page__intro .shows-home-section__kicker::before { animation: none; }
+}
+
+/* --- Hero: hairline gradient border + richer atmosphere ----------- */
+
+.campaign-hero {
+  background:
+    radial-gradient(at 100% 0%, color-mix(in srgb, var(--ds-tertiary) 18%, transparent), transparent 45%),
+    radial-gradient(at 0% 100%, color-mix(in srgb, var(--ds-primary-container) 14%, transparent), transparent 50%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px),
+    radial-gradient(at 0% 0%, var(--color-signal-soft), transparent 55%),
+    linear-gradient(170deg, rgba(30, 22, 16, 0.96) 0%, rgba(18, 14, 20, 0.98) 100%);
+  background-size: auto, auto, 44px 44px, 44px 44px, auto, auto;
+  /* Layered shadows: outer warm bloom, deep depth, top-edge highlight,
+   * hairline ring, and a top-left amber stroke that fakes a gradient
+   * border without an extra wrapping element. */
+  box-shadow:
+    0 30px 80px -28px color-mix(in srgb, var(--color-signal) 38%, transparent),
+    0 24px 80px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 22%, transparent);
+}
+
+/* Top-edge sheen — same trick as the home hero, in warm tone. */
+.campaign-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, transparent 22%);
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 0;
+}
+
+/* Hero title gets the same luster as the home hero (white → warm). */
+.campaign-hero__title {
+  background: linear-gradient(180deg, #ffffff 0%, color-mix(in srgb, var(--ds-tertiary) 30%, #ffffff) 100%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* --- Hero art: real EQ columns + amber halo behind monogram ------ */
+
+.campaign-hero__art {
+  background:
+    radial-gradient(at 50% 35%, color-mix(in srgb, var(--ds-tertiary) 22%, transparent), transparent 55%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.07), transparent 1px),
+    linear-gradient(160deg, #2a1a0f, #1a1220 60%, #140a1a);
+  background-size: auto, 26px 26px, auto;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 0 80px color-mix(in srgb, var(--color-signal) 14%, transparent);
+}
+
+/* Reposition / restyle the 4 art bars as a proper EQ snapshot. Each
+ * column shows a "filled" amber portion at a different height so they
+ * read as a vertical equalizer, not just decorative pills. */
+.campaign-hero__art-grid {
+  /* Bottom inset clears the monogram (84px tall) + 24px panel padding
+   * + a small breathing gap, so the EQ columns sit cleanly above the
+   * "S PARIS" signature instead of overlapping it. */
+  inset: 56px 28px 130px;
+  gap: 14px;
+  align-items: end;
+  opacity: 1;
+}
+
+.campaign-hero__art-grid span {
+  position: relative;
+  height: 100%;
+  background:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      transparent var(--eq-empty, 50%),
+      color-mix(in srgb, var(--color-signal) 60%, transparent) var(--eq-empty, 50%),
+      var(--color-signal) 100%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015));
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow:
+    inset 0 0 24px color-mix(in srgb, var(--color-signal) 18%, transparent),
+    0 6px 20px color-mix(in srgb, var(--color-signal) 8%, transparent);
+  overflow: hidden;
+  animation: shows-eq-pulse 3.6s ease-in-out infinite;
+}
+
+.campaign-hero__art-grid span::after {
+  /* Top cap — looks like the "current peak" indicator on a real EQ. */
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: var(--eq-empty, 50%);
+  height: 2px;
+  background: color-mix(in srgb, var(--color-signal) 90%, #fff);
+  box-shadow: 0 0 10px var(--color-signal);
+  border-radius: 2px;
+  transform: translateY(-1px);
+}
+
+.campaign-hero__art-grid span:nth-child(1) { --eq-empty: 35%; animation-delay: 0s; }
+.campaign-hero__art-grid span:nth-child(2) { --eq-empty: 18%; animation-delay: 0.25s; }
+.campaign-hero__art-grid span:nth-child(3) { --eq-empty: 52%; animation-delay: 0.5s; }
+.campaign-hero__art-grid span:nth-child(4) { --eq-empty: 28%; animation-delay: 0.75s; }
+
+@keyframes shows-eq-pulse {
+  0%, 100% { filter: brightness(1); }
+  50%      { filter: brightness(1.15); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .campaign-hero__art-grid span { animation: none; }
+}
+
+/* Soft amber halo behind the big monogram. The ::before sits behind
+ * the letter and provides the warm bloom; the letter itself stays
+ * white and crisp. */
+.campaign-hero__art-monogram {
+  position: relative;
+  z-index: 2;
+  isolation: isolate;
+  filter: drop-shadow(0 6px 24px color-mix(in srgb, var(--color-signal) 28%, transparent));
+}
+
+.campaign-hero__art-monogram::before {
+  content: "";
+  position: absolute;
+  inset: -32px;
+  z-index: -1;
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--color-signal) 35%, transparent), transparent 60%);
+  pointer-events: none;
+}
+
+/* --- Hero CTA: matched glow technique with home hero ------------- */
+
+.campaign-hero__cta-primary {
+  box-shadow:
+    0 10px 28px -8px color-mix(in srgb, var(--color-signal) 65%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.campaign-hero__cta-primary:hover {
+  box-shadow:
+    0 14px 36px -6px color-mix(in srgb, var(--color-signal) 80%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+/* --- Card: hairline gradient border + ticket-stub perforation ---- */
+
+.campaign-card {
+  position: relative;
+  /* Reuse the box-shadow trick to fake a gradient stroke without an
+   * extra wrapping element — top-left amber hint, dark base. */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 18%, transparent);
+}
+
+.campaign-card:hover {
+  box-shadow:
+    0 16px 44px rgba(0, 0, 0, 0.45),
+    0 0 0 1px var(--color-signal-border),
+    0 12px 36px -10px color-mix(in srgb, var(--color-signal) 38%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 28%, transparent);
+}
+
+/* Ticket perforation line between art and body. The dotted gradient
+ * trick uses a horizontal repeating-linear with sharp transparent gaps,
+ * plus two small "punched out" semicircles on the edges. */
+.campaign-card__body {
+  position: relative;
+  /* extra top padding to make room for the perforation line above */
+  padding-top: 22px;
+}
+
+.campaign-card__body::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 0;
+  height: 1px;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.32) 1px, transparent 1.5px);
+  background-size: 8px 1px;
+  background-repeat: repeat-x;
+  background-position: 0 50%;
+  opacity: 0.7;
+}
+
+/* The "punched-out" half-circles at the perforation ends — reads as a
+ * physical ticket stub. Centers sit on the card edges so the inner half
+ * is what stays visible after `overflow: hidden` clips the outer half;
+ * fill matches the page canvas so they look cut out of the card. */
+.campaign-card__body::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -8px;
+  height: 16px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle 8px at 0 50%, var(--ds-surface) 95%, transparent 100%),
+    radial-gradient(circle 8px at 100% 50%, var(--ds-surface) 95%, transparent 100%);
+}
+
+/* --- Card art: subtle halftone + EQ ribbon at the bottom --------- */
+
+.campaign-card__art {
+  /* Slightly tighter aspect so the empty-feeling fade doesn't dominate. */
+  aspect-ratio: 16 / 8;
+  background:
+    /* faint halftone dot pattern */
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 1.4px) 0 0 / 14px 14px,
+    radial-gradient(circle at 22% 32%, color-mix(in srgb, var(--color-signal) 32%, transparent), transparent 50%),
+    radial-gradient(circle at 84% 70%, color-mix(in srgb, var(--ds-primary-container) 22%, transparent), transparent 60%),
+    linear-gradient(135deg, #2a1a0f, #1a1220 55%, #140a1a);
+}
+
+.campaign-card__art::before {
+  /* Override the original radial — replaced by the layered background
+   * above. Repurpose this pseudo as a thin EQ ribbon at the bottom of
+   * the art panel using a repeating-linear-gradient (no JSX needed).
+   *
+   * `inset` shorthand here is critical: the original rule sets
+   * `inset: 0`, which would otherwise leak `top: 0` and make `height`
+   * a no-op (the strip would fill the whole panel). */
+  content: "";
+  position: absolute;
+  inset: auto 14px 14px 14px;
+  height: 22px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--color-signal) 70%, transparent) 0 3px,
+      transparent 3px 9px
+    );
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 40%, #000 100%);
+          mask-image: linear-gradient(180deg, transparent 0%, #000 40%, #000 100%);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.campaign-card__monogram {
+  /* Bigger watermark feel without overpowering the card. */
+  font-size: 56px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), color-mix(in srgb, var(--color-signal) 40%, #ffffff));
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 4px 18px color-mix(in srgb, var(--color-signal) 25%, transparent));
+}
+
+/* City chip: add a small pin glyph so it reads as "location" not "tag". */
+.campaign-card__city-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.campaign-card__city-chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-signal);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-signal) 60%, transparent);
+}
+
+/* --- Stat snapshot cards: hairline gradient stroke + leading bar -- */
+
+.show-detail__signal-card {
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 12%, transparent);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.show-detail__signal-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-signal-border);
+  box-shadow:
+    0 12px 32px -12px color-mix(in srgb, var(--color-signal) 35%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 22%, transparent);
+}
+
+/* Primary card: 3px amber rail down the left edge + amber gradient on
+ * the headline number to make it read as the primary signal. */
+.show-detail__signal-card--primary::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--color-signal), color-mix(in srgb, var(--color-signal) 30%, transparent));
+  box-shadow: 0 0 14px color-mix(in srgb, var(--color-signal) 50%, transparent);
+}
+
+.show-detail__signal-card--primary strong {
+  background: linear-gradient(180deg, #fff 0%, color-mix(in srgb, var(--color-signal) 60%, #fff) 100%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* --- Pledge tier "featured" — stronger gold treatment ------------- */
+
+.show-detail__tier {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.show-detail__tier--featured {
+  transform: translateY(-2px);
+  box-shadow:
+    0 14px 36px -12px color-mix(in srgb, var(--color-signal) 45%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--color-signal) 25%, transparent);
+}
+
+.show-detail__tier--featured strong {
+  background: linear-gradient(180deg, #fff 0%, color-mix(in srgb, var(--color-signal) 65%, #fff) 100%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* --- Progress bar: tick marks at 25 / 50 / 75 -------------------- */
+
+.campaign-progress__bar {
+  background-image:
+    linear-gradient(90deg, transparent calc(25% - 1px), rgba(255, 255, 255, 0.18) calc(25% - 1px), rgba(255, 255, 255, 0.18) 25%, transparent 25%),
+    linear-gradient(90deg, transparent calc(50% - 1px), rgba(255, 255, 255, 0.18) calc(50% - 1px), rgba(255, 255, 255, 0.18) 50%, transparent 50%),
+    linear-gradient(90deg, transparent calc(75% - 1px), rgba(255, 255, 255, 0.18) calc(75% - 1px), rgba(255, 255, 255, 0.18) 75%, transparent 75%);
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.campaign-progress__fill {
+  /* Slight inner highlight so the fill reads as 3D, not flat. */
+  box-shadow:
+    0 0 12px var(--color-signal-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+/* --- Notice strip: warmer treatment with a side glow ------------ */
+
+.show-detail__notice {
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 20%, transparent),
+    0 14px 40px -16px color-mix(in srgb, var(--color-signal) 28%, transparent);
+}
+
+.show-detail__notice::before {
+  content: "";
+  position: absolute;
+  left: -10%;
+  top: -40%;
+  width: 50%;
+  height: 180%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--color-signal) 22%, transparent), transparent 70%);
+  pointer-events: none;
+}
+
+.show-detail__notice > * {
+  position: relative;
+  z-index: 1;
+}
