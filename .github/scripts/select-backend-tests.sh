@@ -105,6 +105,7 @@ add_generation_tests() {
       "src/modules/agents/agent_purchase.spec.ts" \
       "src/modules/agents/agent_wallet.spec.ts" \
       "src/tests/agent_evaluation.spec.ts" \
+      "src/tests/agent_golden_eval.spec.ts" \
       "src/tests/agents.spec.ts" \
       "src/tests/embeddings.spec.ts" \
       "src/tests/generation.controller.http.spec.ts" \
