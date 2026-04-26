@@ -24,8 +24,10 @@ Shipped or started since this report:
   selector similarity uses that store.
 - **Agent observability started** — optional Langfuse-compatible ingestion
   traces policy evals, tool calls, MCP tools, and evaluation summaries.
-- **Golden eval harness started** — deterministic policy golden cases live under
-  `backend/src/evals/`, with `npm run eval:golden` covering the first tiny set.
+- **Golden eval harness expanded** — deterministic policy golden cases live
+  under `backend/src/evals/`, with `npm run eval:golden` covering 30+ cases,
+  rubric-dimension metrics, acceptance/rejection-rate reporting, learned
+  preference regression metrics, and CI-uploaded JSON/Markdown artifacts.
 - **Agent learning loop first slice shipped** — weighted `AgentSignal` records
   aggregate into `learnedTasteProfile` / `tasteScore`, selector ranking uses
   learned genre weights, and the dashboard shows learned score and explored
@@ -35,7 +37,7 @@ Still open from the foundation wave:
 
 - MCP does **not** yet expose `generate.track`.
 - The golden set is not yet the originally proposed ~100-200 case suite.
-- There is no LLM-as-judge rubric or CI quality gate for agent evals yet.
+- There is no LLM-as-judge grader or blocking CI quality gate for agent evals yet.
 - Agentic.Market / x402scan registration is past public endpoint
   availability and now blocked on deployed x402 enablement; see
   [#520](https://github.com/akoita/resonate/issues/520).
@@ -188,11 +190,13 @@ Goal: three small, shippable PRs that each land a trend flag without a refactor.
    This directly improves selector similarity and is a prerequisite for issue
    [#290](https://github.com/akoita/resonate/issues/290).
 
-3. **Langfuse + golden-set eval** (started) — optional Langfuse-compatible
+3. **Langfuse + golden-set eval** (expanded) — optional Langfuse-compatible
    ingestion now traces policy evals, tool calls, MCP tool calls, and evaluation
-   summaries. A small deterministic golden set lives under `backend/src/evals/`.
-   Remaining: grow toward ~100-200 curated scenarios, add rubric / judge eval,
-   and add a non-blocking CI eval job before considering a quality gate.
+   summaries. A deterministic golden set lives under `backend/src/evals/` and
+   now emits JSON plus Markdown artifacts with rubric dimensions and learned
+   preference regression metrics. Remaining: grow toward ~100-200 curated
+   scenarios, add an LLM-as-judge grader, and consider a blocking quality gate
+   only after the suite is stable.
 
 ### Wave 2 — Identity, reputation, and agent-as-a-brand (≈ 5–7 weeks)
 
@@ -231,10 +235,11 @@ If the goal is to continue execution from the 2026-04-25 checkpoint rather than
 read the original RFC as frozen history, the next bets are:
 
 1. **Finish the eval foundation**
-   - Grow the golden set beyond the tiny deterministic starter set.
-   - Add rubric dimensions for genre match, budget respected, repeat avoidance,
-     licensability preference, and failure-mode clarity.
-   - Add a non-blocking CI eval job once the suite is stable enough to be useful.
+   - Status: first expansion is in progress via
+     [#692](https://github.com/akoita/resonate/issues/692).
+   - Remaining: grow from 30+ cases toward the 100-200 case target and add an
+     LLM-as-judge grader once deterministic coverage stops catching the obvious
+     regressions.
 
 2. **Register machine-discovery endpoints once public host availability is fixed**
    - Complete [#520](https://github.com/akoita/resonate/issues/520) when
@@ -258,7 +263,7 @@ Wave 2 identity/reputation.
 |---|---|---|---|---|
 | **P1** | MCP server | Foundation shipped; `generate.track` remains | paid-generation policy | low/medium |
 | **P2** | pgvector migration | First slice shipped; provider-scale embeddings/HNSW remain | embedding provider choice | medium |
-| **P3** | Langfuse + golden-set evals | Started; suite/rubric/CI remain | stable eval scenarios | low |
+| **P3** | Langfuse + golden-set evals | Expanded first suite; judge/gate remain | stable eval scenarios | low |
 | **P4** | Public agent registration | Blocked by deployed x402 enablement | deployed API metadata | low once unblocked |
 | **P5** | ERC-8004 identity + reputation | Not started | runtime boundaries clearer | medium/high |
 | **P6** | Curator agents | Not started | ERC-8004 reputation surface, embeddings | high |
@@ -313,11 +318,11 @@ These are the smallest slices that would keep momentum high and reviewable.
 
 2. **PR 2: golden set**
    - Start with ~100 canonical curation scenarios with expected rubric dimensions; grow toward 200 as coverage gaps appear
-   - Status: not done; only a tiny deterministic starter set exists.
+   - Status: first expansion in [#692](https://github.com/akoita/resonate/issues/692) adds 30+ deterministic scenarios, rubric-dimension aggregates, acceptance/rejection-rate reporting, learned-preference regression metrics, and CI-visible JSON/Markdown artifacts.
 
 3. **PR 3: CI gate**
    - Add a non-blocking CI eval job first, then promote to a quality gate once stable
-   - Status: not done.
+   - Status: non-blocking artifact reporting is in place; a blocking gate remains deferred.
 
 ### Effort and risk notes
 

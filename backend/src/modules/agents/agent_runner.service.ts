@@ -15,6 +15,7 @@ export interface AgentRunInput {
     genres?: string[];
     allowExplicit?: boolean;
     licenseType?: "personal" | "remix" | "commercial";
+    learnedGenreWeights?: Record<string, number>;
   };
 }
 

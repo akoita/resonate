@@ -2,23 +2,20 @@
 
 ## Executive Summary
 
-Reviewed the #290 agent learning-loop change. No Critical or High findings were
-identified in the changed backend/API, Prisma, evaluation, or dashboard code.
+Reviewed the #692 agent eval-foundation change. No Critical or High findings
+were identified in the changed backend eval harness, CI artifact handling, or
+documentation.
 
 ## Scope
 
-- `backend/prisma/schema.prisma`
-- `backend/prisma/migrations/20260426143000_agent_learning_loop/migration.sql`
-- `backend/src/modules/agents/agent_config.controller.ts`
-- `backend/src/modules/agents/agent_learning.service.ts`
-- `backend/src/modules/agents/agent_selector.service.ts`
-- `backend/src/modules/agents/agent_evaluation.service.ts`
-- `backend/src/modules/agents/agent_identity.service.ts`
-- `backend/src/modules/agents/agents.module.ts`
-- `backend/src/modules/agents/runtime/agent_runtime.adapter.ts`
-- `web/src/components/agent/AgentTasteCard.tsx`
-- `web/src/lib/api.ts`
-- `docs/architecture/agent_learning_loop.md`
+- `.github/workflows/ci.yml`
+- `backend/src/evals/README.md`
+- `backend/src/evals/agent_golden_set.ts`
+- `backend/src/modules/agents/agent_golden_eval.service.ts`
+- `backend/src/modules/agents/agent_policy.service.ts`
+- `backend/src/modules/agents/agent_runner.service.ts`
+- `backend/src/tests/agent_golden_eval.spec.ts`
+- `docs/rfc/agent-opportunities-2026-04.md`
 
 ## Critical Findings
 
@@ -38,27 +35,20 @@ None in the changed code.
 
 ## Informational Notes
 
-- Agent config and signal endpoints remain protected by `AuthGuard("jwt")`.
-- Signal actions are allowlisted before write; arbitrary client strings are not
-  accepted as learning actions.
-- Signal, profile, and selector reads use Prisma relation queries; no raw SQL was
-  added.
-- Client-provided signal metadata is stored as JSON and returned as data only. The
-  dashboard does not use `dangerouslySetInnerHTML`.
-- Existing repository scan output still reports pre-existing Langfuse secret env
-  handling in `agent_observability.service.ts`; this branch did not add secrets,
-  private keys, API keys, or hardcoded production service dependencies.
+- The eval harness remains deterministic and local; it does not call external
+  LLMs or network services.
+- The CI change uploads generated eval JSON/Markdown artifacts only from
+  `backend/eval-results/`; it does not expose secrets.
+- No raw SQL, DOM HTML injection, or new API surface was added.
+- Secret scan output reports existing CI secret references and test-only
+  placeholders (`ci-test-secret`, `dev-secret`); this branch did not add hardcoded
+  production credentials, private keys, API keys, or service URLs.
 
 ## Commands Run
 
 ```bash
-rg 'password|secret|api_key|private_key' backend/src/modules/agents backend/src/tests/agent_learning* --iglob '!*.test.*' --iglob '!*.spec.*'
-rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/agents backend/src/tests/agent_learning*
-rg '@Controller|@Get|@Post|@Put|@Delete|@Patch|@UseGuards' backend/src/modules/agents/agent_config.controller.ts backend/src/modules/agents/agents.controller.ts
-rg 'dangerouslySetInnerHTML|innerHTML' web/src/components/agent web/src/lib/api.ts
-rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/components/agent web/src/lib/api.ts
+rg 'password|secret|api_key|private_key|token' backend/src/evals backend/src/modules/agents/agent_golden_eval.service.ts backend/src/modules/agents/agent_policy.service.ts backend/src/modules/agents/agent_runner.service.ts backend/src/tests/agent_golden_eval.spec.ts .github/workflows/ci.yml --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw|dangerouslySetInnerHTML|innerHTML' backend/src/evals backend/src/modules/agents/agent_golden_eval.service.ts backend/src/modules/agents/agent_policy.service.ts backend/src/modules/agents/agent_runner.service.ts backend/src/tests/agent_golden_eval.spec.ts .github/workflows/ci.yml
 npm run lint
-npm test -- --runInBand
-npx jest --runInBand --config jest.integration.config.js --testPathPattern='agent_learning.integration'
-npx prisma validate
+npm run eval:golden
 ```

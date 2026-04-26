@@ -18,23 +18,46 @@ describe("agent golden evals", () => {
     const runner = new AgentRunnerService(new AgentPolicyService(), new EventBus());
     const service = new AgentGoldenEvalService(runner);
 
-    const { report, artifactPath: writtenPath } = service.runAndWriteArtifact();
+    const { report, artifactPath: writtenPath, summaryPath } = service.runAndWriteArtifact();
 
     expect(report.schemaVersion).toBe("agent-golden-eval/v1");
-    expect(report.metrics.total).toBeGreaterThanOrEqual(25);
+    expect(report.metrics.total).toBeGreaterThanOrEqual(30);
     expect(report.metrics.failed).toBe(0);
     expect(report.metrics.passRate).toBe(1);
+    expect(report.metrics.acceptanceRate).toBeGreaterThan(0);
+    expect(report.metrics.rejectionRate).toBeGreaterThan(0);
+    expect(report.metrics.learnedPreference.total).toBeGreaterThanOrEqual(3);
+    expect(report.metrics.learnedPreference.passRate).toBe(1);
     expect(report.metrics.categories.catalog_search_intent.total).toBeGreaterThanOrEqual(2);
+    expect(report.metrics.categories.learned_preference_regression.total).toBeGreaterThanOrEqual(3);
     expect(report.metrics.categories.policy_budget_refusal.total).toBeGreaterThanOrEqual(4);
     expect(report.metrics.categories.paid_download_readiness.total).toBeGreaterThanOrEqual(4);
+    expect(report.metrics.rubricDimensions.budgetRespected.passRate).toBe(1);
+    expect(report.metrics.rubricDimensions.failureModeClarity.passRate).toBe(1);
+    expect(report.metrics.rubricDimensions.learnedPreference.passRate).toBe(1);
     expect(report.rubric.judgeRequired).toBe(false);
+    expect(report.rubric.dimensions).toEqual(
+      expect.arrayContaining([
+        "genreMatch",
+        "budgetRespected",
+        "repeatAvoidance",
+        "licensabilityPreference",
+        "failureModeClarity",
+        "learnedPreference",
+      ])
+    );
     expect(report.results.every((item) => item.passed)).toBe(true);
     expect(writtenPath).toBe(artifactPath);
+    expect(summaryPath).toBe(resolve(process.cwd(), "eval-results/agent-golden-summary.md"));
     expect(existsSync(artifactPath)).toBe(true);
+    expect(existsSync(summaryPath)).toBe(true);
 
     const artifact = JSON.parse(readFileSync(artifactPath, "utf8"));
     expect(artifact.schemaVersion).toBe("agent-golden-eval/v1");
     expect(artifact.metrics.total).toBe(report.metrics.total);
+    const summary = readFileSync(summaryPath, "utf8");
+    expect(summary).toContain("Agent Golden Eval Report");
+    expect(summary).toContain("Learned-preference pass rate");
   });
 
   it("reports case-level failures for regressions", () => {
@@ -72,6 +95,7 @@ describe("agent golden evals", () => {
         },
         rubric: {
           deterministicChecks: ["status", "reason", "licenseType", "priceCeiling"],
+          dimensions: ["budgetRespected", "licensabilityPreference", "failureModeClarity"],
           judgeSignals: ["Regression fixture"],
         },
       },
