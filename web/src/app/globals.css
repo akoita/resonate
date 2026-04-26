@@ -7600,6 +7600,8 @@ tr[draggable="true"]:hover {
   font-weight: 700;
   color: var(--color-accent);
   white-space: nowrap;
+  min-width: 24px;
+  text-align: right;
 }
 
 .agent-taste-hint {
@@ -7613,6 +7615,24 @@ tr[draggable="true"]:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.agent-identity-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--space-2);
+}
+
+.agent-identity-pill {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text);
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: capitalize;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .agent-genre-tag {
@@ -7655,6 +7675,11 @@ tr[draggable="true"]:hover {
   background: rgba(124, 92, 255, 0.1);
   border-color: rgba(124, 92, 255, 0.25);
   color: var(--color-accent);
+}
+
+.agent-taste-edit-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .agent-vibes-grid {

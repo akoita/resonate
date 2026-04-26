@@ -1122,6 +1122,28 @@ export type AgentConfig = {
   sessionMode: "curate" | "buy";
   monthlyCapUsd: number;
   isActive: boolean;
+  identityStatus: "local" | "pending" | "minted" | "attested";
+  identityChainId: number | null;
+  identityRegistry: string | null;
+  identityTokenId: string | null;
+  identityTxHash: string | null;
+  identityCredential: Record<string, unknown> | null;
+  reputationScore: number;
+  reputationSnapshot: {
+    score: number;
+    tier: "New" | "Emerging" | "Trusted" | "Proven";
+    sessions: number;
+    tracksCurated: number;
+    totalSpendUsd: number;
+    monthlyCapUsd: number;
+    genresExplored: string[];
+    acceptanceRate: number;
+    budgetUtilization: number;
+    tasteDepth: number;
+    updatedAt: string;
+  } | null;
+  reputationAttestedAt: string | null;
+  reputationTxHash: string | null;
   createdAt: string;
   updatedAt: string;
 };

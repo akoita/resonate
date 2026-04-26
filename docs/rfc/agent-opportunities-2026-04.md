@@ -198,7 +198,8 @@ Goal: ship the two most scarce on-chain primitives (ERC-8004 + curator attestati
    - Deploy or integrate the public ERC-8004 Identity Registry on Base.
    - On first agent activation, mint a soulbound NFT bound to the user's ERC-4337 smart account; metadata `{ agentId, vibes, monthlyCapUsd, createdAt }`.
    - Wire into [AgentSetupWizard](../../web/src/components/agent/AgentSetupWizard.tsx) after budget step.
-   - Remove the "Prep for ERC-8004 identity" placeholder at [AgentTasteCard.tsx:263](../../web/src/components/agent/AgentTasteCard.tsx#L263).
+   - First slice: local identity metadata, reputation snapshots, and credential export are documented in [agent_identity_reputation.md](../architecture/agent_identity_reputation.md).
+   - Remaining: replace the local identity state with confirmed ERC-8004 registry mint/attestation transactions.
 
 5. **ERC-8004 Reputation attestations** — cron job publishes periodic attestations `{ tracksCurated, acceptanceRate, avgBudgetUtilization, genreBreakdown, tasteDepth }` from the learning loop.
 

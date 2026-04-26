@@ -2,13 +2,18 @@
 
 ## Executive Summary
 
-Reviewed the backend image build-speed change on
-`fix/backend-image-build-speed`. No Critical or High findings were identified
-in the changed backend packaging code.
+Reviewed the #291 agent identity and reputation change. No Critical or High
+findings were identified in the changed backend/API, Prisma, or dashboard code.
 
 ## Scope
 
-- `backend/Dockerfile`
+- `backend/prisma/schema.prisma`
+- `backend/prisma/migrations/20260426130000_agent_identity_reputation/migration.sql`
+- `backend/src/modules/agents/agent_config.controller.ts`
+- `backend/src/modules/agents/agent_identity.service.ts`
+- `backend/src/modules/agents/agents.module.ts`
+- `web/src/components/agent/AgentTasteCard.tsx`
+- `web/src/lib/api.ts`
 
 ## Critical Findings
 
@@ -28,30 +33,26 @@ None in the changed code.
 
 ## Informational Notes
 
-- The Dockerfile change reuses a single `npm ci` result for build and runtime
-  stages, then prunes dev dependencies before copying runtime dependencies. It
-  does not add a controller, authentication path, database query, external call,
-  or secret-bearing configuration value.
-- The runtime image was built locally, confirmed to include generated Prisma
-  artifacts and the Prisma CLI needed by the existing startup command, and
-  confirmed to load the compiled backend until expected runtime environment
-  variables were required.
-- Existing scan output still reports pre-existing workflow test/dev placeholders
-  such as `ci-test-secret` and `dev-secret`. No new secrets, private keys, API
-  keys, or hardcoded production service dependencies were introduced.
-- Ignored local files include `.env` files, dependency directories, uploads, and
-  build artifacts; none are staged by this branch.
+- Agent config endpoints remain protected by `AuthGuard("jwt")`.
+- Reputation reads use Prisma relation queries; no raw SQL was added.
+- `PATCH /agents/config` now whitelists mutable fields before writing to Prisma,
+  so identity and reputation fields are not client-controlled through the generic
+  update body.
+- Credential export serializes backend-provided JSON into a browser download. It
+  does not use `dangerouslySetInnerHTML` or expose client-side secrets.
+- Existing repository scan output still reports pre-existing development/test
+  placeholders such as `dev-secret`; this branch did not add secrets, private
+  keys, API keys, or hardcoded production service dependencies.
 
 ## Commands Run
 
 ```bash
 rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
 rg 'rawQuery|executeRaw|\$queryRaw' backend/src/
-rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/ | grep -v 'Guard\|Auth'
-rg 'JSON\.parse|eval\(' backend/src/
-rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/ | grep -v 'Pipe\|Dto\|Validation'
-rg -n "password|secret|api_key|private_key|token" backend/Dockerfile .github/scripts/submit-cloud-build.sh .github/workflows/ci.yml
-docker build -t resonate-backend-build-speed-test -f backend/Dockerfile backend
-docker run --rm resonate-backend-build-speed-test sh -lc 'test -d node_modules/.prisma && test -d node_modules/@prisma && npx --no-install prisma --version'
-git status --ignored --short
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/agents/agent_config.controller.ts backend/src/modules/agents/agent_identity.service.ts
+rg 'dangerouslySetInnerHTML|innerHTML' web/src/components/agent web/src/lib/api.ts
+rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/components/agent web/src/lib/api.ts
+npm run lint
+npm test -- --runInBand src/tests/agent_identity.spec.ts
+npx prisma validate
 ```
