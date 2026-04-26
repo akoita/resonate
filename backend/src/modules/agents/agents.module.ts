@@ -12,8 +12,10 @@ import { AgentPolicyService } from "./agent_policy.service";
 import { AgentRunnerService } from "./agent_runner.service";
 import { AgentRuntimeService } from "./agent_runtime.service";
 import { AgentSelectorService } from "./agent_selector.service";
+import { AgentStemQualityService } from "./agent_stem_quality.service";
 import { AgentWalletService } from "./agent_wallet.service";
 import { AgentPurchaseService } from "./agent_purchase.service";
+import { AgentCuratorController } from "./agent_curator.controller";
 import { AgentsController } from "./agents.controller";
 import { AgentConfigController } from "./agent_config.controller";
 import { EmbeddingService } from "../embeddings/embedding.service";
@@ -24,10 +26,11 @@ import { LangGraphAdapter } from "./runtime/langgraph_adapter";
 import { VertexAiAdapter } from "./runtime/vertex_ai_adapter";
 import { IdentityModule } from "../identity/identity.module";
 import { GenerationModule } from "../generation/generation.module";
+import { CatalogModule } from "../catalog/catalog.module";
 
 @Module({
-  imports: [forwardRef(() => IdentityModule), GenerationModule],
-  controllers: [AgentsController, AgentConfigController],
+  imports: [forwardRef(() => IdentityModule), GenerationModule, CatalogModule],
+  controllers: [AgentsController, AgentConfigController, AgentCuratorController],
   providers: [
     EventBus,
     EmbeddingService,
@@ -42,6 +45,7 @@ import { GenerationModule } from "../generation/generation.module";
     AgentLearningService,
     AgentObservabilityService,
     AgentSelectorService,
+    AgentStemQualityService,
     AgentMixerService,
     AgentNegotiatorService,
     AgentOrchestratorService,
@@ -51,6 +55,6 @@ import { GenerationModule } from "../generation/generation.module";
     AgentWalletService,
     AgentPurchaseService,
   ],
-  exports: [AgentWalletService, AgentPurchaseService],
+  exports: [AgentWalletService, AgentPurchaseService, AgentStemQualityService],
 })
 export class AgentsModule { }

@@ -19,7 +19,7 @@ test.describe("Marketplace", () => {
 
     test("marketplace page loads and displays heading", async ({ page }) => {
         await page.goto("/marketplace");
-        const heading = page.getByTestId("marketplace-title");
+        const heading = page.getByTestId("marketplace-title").first();
         await expect(heading).toBeVisible({ timeout: 15000 });
     });
 

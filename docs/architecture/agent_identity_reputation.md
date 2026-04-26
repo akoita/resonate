@@ -21,6 +21,17 @@ mainnet/testnet chain IDs unless an override is supplied.
 - `reputationScore`, `reputationSnapshot`
 - `reputationAttestedAt`, `reputationTxHash`
 
+`StemQualityRating` records curator-agent quality work for issue #322:
+
+- `stemId`, `curatorUserId`, and optional `curatorAgentConfigId`
+- score plus RMS energy, spectral density, silence ratio, musical salience,
+  and confidence metrics
+- task metadata fields: `taskType = stem.quality_rating`,
+  `analysisMetadata`, `analysisUri`, `onchainMetadataKey`,
+  `onchainTaskHash`, `onchainTxHash`, and `onchainStatus`
+- validation counters and `reputationDelta` derived from buyer purchase/skip
+  signals
+
 `AgentIdentityService` enriches `GET/POST/PATCH /agents/config` responses with a
 fresh reputation snapshot. The score is computed from recent agent sessions,
 curated licenses, spend against the configured budget, learned taste signals,
@@ -41,6 +52,24 @@ Additional endpoints:
   feedback under the draft standard.
 - `GET /agents/config/identity/registration-file` returns the ERC-8004
   registration file that is encoded into the on-chain `agentURI`.
+- `POST /agents/curator/stems/:stemId/quality` runs the curator quality
+  analyzer for a stem, stores the score locally, and attempts to publish a
+  task-shaped ERC-8004 metadata payload with
+  `setMetadata(agentId, "resonate.task.stem.quality_rating.<hash>", bytes)`.
+- `GET /agents/curator/stems/:stemId/quality` returns stored quality ratings
+  for authenticated buyer agents, clients, and reviewers.
+
+The buyer negotiator reads `StemQualityRating` before purchase execution. It
+filters ratings below the conservative default quality threshold, then sorts
+remaining listings by quality score, confidence, and stem-type priority. If no
+rating exists yet, the listing remains eligible with a neutral quality rank so
+the marketplace does not dead-end before curators have covered the catalog.
+
+Curator reputation is part of the normal identity snapshot. Buyer validation is
+recorded internally after successful agent purchases and updates
+`StemQualityRating.reputationDelta`; the next enriched agent identity snapshot
+folds the curator's rating count and accumulated delta into the ERC-8004
+reputation surface.
 
 ## Frontend
 
@@ -76,5 +105,8 @@ parallel model:
 1. Add a scheduler for periodic reputation metadata refreshes.
 2. Add an indexer/backfill job for deployments that do not emit a parseable
    `Registered` event in the transaction receipt.
-3. Add ERC-8004 Reputation Registry feedback once Resonate has independent
+3. Move stem quality tasks from Identity Registry metadata to the ERC-8004
+   Validation Registry once the deployed registry interface is finalized for
+   Resonate's target chain.
+4. Add ERC-8004 Reputation Registry feedback once Resonate has independent
    curator or client agents that can submit non-owner feedback.

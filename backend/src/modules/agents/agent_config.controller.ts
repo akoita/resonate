@@ -8,6 +8,7 @@ import { AgentPurchaseService } from "./agent_purchase.service";
 import { AgentNegotiatorService } from "./agent_negotiator.service";
 import { AgentIdentityService } from "./agent_identity.service";
 import { AgentLearningService, isAgentSignalAction, type AgentSignalAction } from "./agent_learning.service";
+import { AgentStemQualityService } from "./agent_stem_quality.service";
 import { EventBus } from "../shared/event_bus";
 import type { NegotiationResult } from "./agent_negotiator.service";
 
@@ -22,6 +23,7 @@ export class AgentConfigController {
         private readonly negotiatorService: AgentNegotiatorService,
         private readonly identityService: AgentIdentityService,
         private readonly learningService: AgentLearningService,
+        private readonly stemQualityService: AgentStemQualityService,
         private readonly eventBus: EventBus
     ) { }
 
@@ -516,10 +518,18 @@ export class AgentConfigController {
                                 source: "agent_purchase",
                                 listingId: String(listing.listingId),
                                 stemType: listing.stemType,
+                                qualityScore: listing.qualityScore ?? null,
+                                qualityRatingId: listing.qualityRatingId ?? null,
                                 priceUsd: negotiation.priceUsd,
                             },
                         });
                         purchaseSignalRecorded = true;
+                    }
+                    if (listing.stemId) {
+                        await this.stemQualityService.recordValidation({
+                            stemId: listing.stemId,
+                            validation: "purchase",
+                        });
                     }
                     this.logger.log(`[Agent] Purchase success: tx=${result.txHash}`);
                 }
