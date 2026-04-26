@@ -312,7 +312,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: agent-golden-eval-results
-          path: backend/eval-results/agent-golden-results.json
+          path: |
+            backend/eval-results/agent-golden-results.json
+            backend/eval-results/agent-golden-summary.md
+
+      - name: Append agent golden eval summary
+        if: always() && hashFiles('backend/eval-results/agent-golden-summary.md') != ''
+        run: cat backend/eval-results/agent-golden-summary.md >> "${GITHUB_STEP_SUMMARY}"
 
   backend-integration-tests:
     name: Backend Integration Tests

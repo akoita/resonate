@@ -6,10 +6,20 @@ export type AgentGoldenCaseCategory =
   | "policy_budget_refusal"
   | "no_license_refusal"
   | "paid_download_readiness"
-  | "ambiguous_intent";
+  | "ambiguous_intent"
+  | "learned_preference_regression";
+
+export type AgentGoldenRubricDimension =
+  | "genreMatch"
+  | "budgetRespected"
+  | "repeatAvoidance"
+  | "licensabilityPreference"
+  | "failureModeClarity"
+  | "learnedPreference";
 
 export interface AgentGoldenRubric {
   deterministicChecks: Array<"status" | "reason" | "licenseType" | "priceCeiling">;
+  dimensions: AgentGoldenRubricDimension[];
   judgeSignals: string[];
 }
 
@@ -41,6 +51,7 @@ const baseInput = {
 
 const BASE_RUBRIC: AgentGoldenRubric = {
   deterministicChecks: ["status", "reason", "licenseType", "priceCeiling"],
+  dimensions: ["budgetRespected", "licensabilityPreference", "failureModeClarity"],
   judgeSignals: [
     "The agent should respect the requested or inferred license type.",
     "The agent should never approve a purchase whose price exceeds the remaining budget.",
@@ -49,9 +60,18 @@ const BASE_RUBRIC: AgentGoldenRubric = {
 };
 
 function makeCase(testCase: Omit<AgentGoldenCase, "rubric"> & { rubric?: AgentGoldenRubric }): AgentGoldenCase {
+  const baseRubric = testCase.rubric ?? BASE_RUBRIC;
   return {
-    rubric: BASE_RUBRIC,
     ...testCase,
+    rubric: {
+      ...baseRubric,
+      dimensions: Array.from(new Set([
+        ...baseRubric.dimensions,
+        ...(testCase.input.preferences.genres?.length ? ["genreMatch" as const] : []),
+        ...(testCase.input.recentTrackIds.length ? ["repeatAvoidance" as const] : []),
+        ...(Object.keys(testCase.input.preferences.learnedGenreWeights ?? {}).length ? ["learnedPreference" as const] : []),
+      ])),
+    },
   };
 }
 
@@ -598,6 +618,118 @@ export const AGENT_GOLDEN_SET: AgentGoldenCase[] = [
       status: "rejected",
       reason: "budget_exceeded",
       licenseType: "remix",
+    },
+  }),
+  makeCase({
+    id: "learned-house-personal-budget-pass",
+    category: "learned_preference_regression",
+    description: "Honors a learned house preference while keeping personal licensing inside budget.",
+    tags: ["learned-preference", "house", "personal"],
+    input: {
+      ...baseInput,
+      sessionId: "golden-learned-house-personal",
+      trackId: "track-learned-house-personal",
+      budgetRemainingUsd: 0.02,
+      preferences: {
+        mood: "club",
+        energy: "high",
+        genres: ["house"],
+        learnedGenreWeights: { house: 9, ambient: 1 },
+        licenseType: "personal",
+      },
+    },
+    expected: {
+      status: "approved",
+      reason: "policy_ok",
+      licenseType: "personal",
+      maxPriceUsd: 0.02,
+    },
+  }),
+  makeCase({
+    id: "learned-ambient-remix-budget-pass",
+    category: "learned_preference_regression",
+    description: "Approves a learned ambient remix preference when the quote fits.",
+    tags: ["learned-preference", "ambient", "remix"],
+    input: {
+      ...baseInput,
+      sessionId: "golden-learned-ambient-remix",
+      trackId: "track-learned-ambient-remix",
+      budgetRemainingUsd: 0.07,
+      preferences: {
+        mood: "focus",
+        energy: "low",
+        genres: ["ambient", "drone"],
+        learnedGenreWeights: { ambient: 12, drone: 3, house: -2 },
+        licenseType: "remix",
+      },
+    },
+    expected: {
+      status: "approved",
+      reason: "policy_ok",
+      licenseType: "remix",
+      maxPriceUsd: 0.061,
+    },
+  }),
+  makeCase({
+    id: "learned-jazz-commercial-budget-refusal",
+    category: "learned_preference_regression",
+    description: "Still refuses a learned jazz commercial intent when budget is insufficient.",
+    tags: ["learned-preference", "jazz", "commercial", "refusal"],
+    input: {
+      ...baseInput,
+      sessionId: "golden-learned-jazz-commercial-refusal",
+      trackId: "track-learned-jazz-commercial-refusal",
+      budgetRemainingUsd: 0.08,
+      preferences: {
+        mood: "late night",
+        energy: "low",
+        genres: ["jazz"],
+        learnedGenreWeights: { jazz: 10, techno: -1 },
+        licenseType: "commercial",
+      },
+    },
+    expected: {
+      status: "rejected",
+      reason: "budget_exceeded",
+      licenseType: "commercial",
+    },
+  }),
+  makeCase({
+    id: "repeat-track-marker-personal-pass",
+    category: "catalog_search_intent",
+    description: "Keeps repeat-avoidance context visible while approving a different personal track.",
+    tags: ["repeat-avoidance", "catalog-intent", "personal"],
+    input: {
+      ...baseInput,
+      sessionId: "golden-repeat-track-marker-personal",
+      trackId: "track-new-house-candidate",
+      recentTrackIds: ["track-old-house-candidate", "track-old-jazz-candidate"],
+      budgetRemainingUsd: 0.02,
+      preferences: { ...baseInput.preferences, licenseType: "personal" },
+    },
+    expected: {
+      status: "approved",
+      reason: "policy_ok",
+      licenseType: "personal",
+      maxPriceUsd: 0.02,
+    },
+  }),
+  makeCase({
+    id: "failure-mode-commercial-zero-budget",
+    category: "policy_budget_refusal",
+    description: "Keeps the commercial zero-budget failure mode stable and branchable.",
+    tags: ["failure-mode", "commercial", "budget", "refusal"],
+    input: {
+      ...baseInput,
+      sessionId: "golden-failure-commercial-zero-budget",
+      trackId: "track-failure-commercial-zero-budget",
+      budgetRemainingUsd: 0,
+      preferences: { ...baseInput.preferences, licenseType: "commercial" },
+    },
+    expected: {
+      status: "rejected",
+      reason: "budget_exceeded",
+      licenseType: "commercial",
     },
   }),
 ];
