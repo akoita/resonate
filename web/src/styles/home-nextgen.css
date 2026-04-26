@@ -115,10 +115,62 @@
   align-items: center;
   padding: 48px;
   background:
-    radial-gradient(at 20% 20%, rgba(138, 63, 252, 0.45), transparent 55%),
-    radial-gradient(at 80% 80%, rgba(212, 187, 255, 0.25), transparent 60%),
-    linear-gradient(135deg, #1a0d2e 0%, #0a0714 60%, #15121c 100%);
+    radial-gradient(at 18% 18%, rgba(168, 95, 255, 0.55), transparent 52%),
+    radial-gradient(at 82% 78%, rgba(120, 200, 255, 0.18), transparent 58%),
+    radial-gradient(at 60% 110%, rgba(212, 187, 255, 0.22), transparent 60%),
+    linear-gradient(135deg, #1c0e36 0%, #0a0714 58%, #150f22 100%);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 30px 80px -30px rgba(138, 63, 252, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Top-edge sheen — adds depth without weight. */
+.home-ng .ng-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.07) 0%,
+    transparent 22%
+  );
+  pointer-events: none;
+}
+
+/* Concentric motif on the right — slow drift makes it feel alive. */
+.home-ng .ng-hero__motif {
+  position: absolute;
+  top: 50%;
+  right: -120px;
+  width: 620px;
+  height: 620px;
+  transform: translateY(-50%);
+  color: rgba(212, 187, 255, 0.55);
+  opacity: 0.7;
+  pointer-events: none;
+  animation: ngHeroMotifDrift 28s linear infinite;
+  filter: drop-shadow(0 0 24px rgba(168, 95, 255, 0.25));
+}
+
+.home-ng .ng-hero__motif-ping {
+  transform-origin: 300px 300px;
+  animation: ngHeroPing 3.4s ease-out infinite;
+}
+
+@keyframes ngHeroMotifDrift {
+  to { transform: translateY(-50%) rotate(360deg); }
+}
+
+@keyframes ngHeroPing {
+  0%   { transform: scale(1);   opacity: 0.85; }
+  70%  { transform: scale(2.6); opacity: 0; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-ng .ng-hero__motif,
+  .home-ng .ng-hero__motif-ping { animation: none; }
 }
 
 .home-ng .ng-hero__card {
@@ -127,9 +179,63 @@
   max-width: 640px;
   padding: 40px;
   border-radius: 20px;
-  background: rgba(0, 0, 0, 0.4);
+  background:
+    linear-gradient(160deg, rgba(40, 20, 70, 0.55) 0%, rgba(0, 0, 0, 0.45) 100%);
   border: 1px solid rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  box-shadow:
+    0 24px 60px -20px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* Hairline gradient border highlight on the top-left corner. */
+.home-ng .ng-hero__card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    140deg,
+    rgba(212, 187, 255, 0.55) 0%,
+    rgba(212, 187, 255, 0) 38%,
+    rgba(255, 255, 255, 0) 70%,
+    rgba(168, 95, 255, 0.35) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Live pulse dot before the FEATURED CAMPAIGN kicker. */
+.home-ng .ng-hero__card .ng-kicker--primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.home-ng .ng-hero__card .ng-kicker--primary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ds-primary);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ds-primary) 60%, transparent);
+  animation: ngHeroDotPulse 2.2s ease-out infinite;
+}
+
+@keyframes ngHeroDotPulse {
+  0%   { box-shadow: 0 0 0 0   color-mix(in srgb, var(--ds-primary) 60%, transparent); }
+  70%  { box-shadow: 0 0 0 8px color-mix(in srgb, var(--ds-primary) 0%,  transparent); }
+  100% { box-shadow: 0 0 0 0   color-mix(in srgb, var(--ds-primary) 0%,  transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-ng .ng-hero__card .ng-kicker--primary::before { animation: none; }
 }
 
 .home-ng .ng-hero__title {
@@ -140,6 +246,10 @@
   letter-spacing: -0.02em;
   color: #fff;
   margin: 16px 0 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #e6d8ff 100%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .home-ng .ng-hero__body {
@@ -179,9 +289,17 @@
 .home-ng .ng-btn--primary {
   background: var(--ds-primary);
   color: var(--ds-on-primary);
+  box-shadow:
+    0 8px 24px -8px color-mix(in srgb, var(--ds-primary) 70%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
-.home-ng .ng-btn--primary:hover { filter: brightness(1.08); }
+.home-ng .ng-btn--primary:hover {
+  filter: brightness(1.08);
+  box-shadow:
+    0 12px 32px -8px color-mix(in srgb, var(--ds-primary) 85%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
 
 .home-ng .ng-btn--glass {
   background: rgba(255, 255, 255, 0.06);

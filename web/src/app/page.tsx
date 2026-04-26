@@ -164,6 +164,30 @@ export default function Home() {
         {/* 1. HERO ————————————————————————————————————————————————— */}
         <section className="ng-section ng-section--tight">
           <div className="ng-hero">
+            <svg
+              className="ng-hero__motif"
+              viewBox="0 0 600 600"
+              aria-hidden
+              focusable="false"
+            >
+              <g fill="none" stroke="currentColor" strokeWidth="1">
+                <circle cx="300" cy="300" r="60" opacity="0.55" />
+                <circle cx="300" cy="300" r="120" opacity="0.40" />
+                <circle cx="300" cy="300" r="190" opacity="0.26" />
+                <circle cx="300" cy="300" r="270" opacity="0.16" />
+                <circle cx="300" cy="300" r="360" opacity="0.08" />
+              </g>
+              <circle
+                className="ng-hero__motif-ping"
+                cx="300"
+                cy="300"
+                r="60"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+              />
+              <circle cx="300" cy="300" r="6" fill="currentColor" opacity="0.9" />
+            </svg>
             <div className="ng-hero__card">
               <span className="ng-kicker ng-kicker--primary">Featured Campaign</span>
               <h2 className="ng-hero__title">
