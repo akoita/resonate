@@ -140,4 +140,5 @@ Clients should retry paid requests with:
 - [x402 Protocol](https://x402.org) — open standard by Coinbase
 - [x402 Docs](https://docs.x402.org) — seller/buyer quickstarts
 - [Coinbase x402 SDK](https://github.com/coinbase/x402) — TypeScript/Python/Go
+- [Registry submission receipt](x402_registry_registration.md) — x402scan / mppscan validation status
 - [Issue #371](https://github.com/akoita/resonate/issues/371) — tracking issue

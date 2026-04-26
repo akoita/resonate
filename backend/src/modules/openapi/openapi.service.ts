@@ -16,6 +16,8 @@ export class OpenApiService {
   constructor(private readonly x402Config: X402Config) {}
 
   buildDocument(baseUrl: string): OpenApiDocument {
+    const freePaymentInfo = this.buildFreePaymentInfo();
+
     return {
       openapi: '3.1.0',
       info: {
@@ -40,6 +42,7 @@ export class OpenApiService {
             summary: 'List published releases',
             description:
               'Public catalog discovery endpoint returning published releases.',
+            'x-payment-info': freePaymentInfo,
             parameters: [
               {
                 name: 'limit',
@@ -70,6 +73,7 @@ export class OpenApiService {
         '/catalog/releases/{releaseId}': {
           get: {
             summary: 'Get release detail',
+            'x-payment-info': freePaymentInfo,
             parameters: [
               {
                 name: 'releaseId',
@@ -101,6 +105,7 @@ export class OpenApiService {
         '/catalog/tracks/{trackId}': {
           get: {
             summary: 'Get track detail',
+            'x-payment-info': freePaymentInfo,
             parameters: [
               {
                 name: 'trackId',
@@ -134,6 +139,7 @@ export class OpenApiService {
             summary: 'Search public storefront stems',
             description:
               'Primary machine-first discovery endpoint for purchasable public stems.',
+            'x-payment-info': freePaymentInfo,
             parameters: [
               {
                 name: 'q',
@@ -171,6 +177,7 @@ export class OpenApiService {
         '/api/storefront/stems/{stemId}': {
           get: {
             summary: 'Get public storefront stem detail',
+            'x-payment-info': freePaymentInfo,
             parameters: [
               {
                 name: 'stemId',
@@ -202,6 +209,7 @@ export class OpenApiService {
         '/api/stem-pricing/templates': {
           get: {
             summary: 'List pricing templates',
+            'x-payment-info': freePaymentInfo,
             responses: {
               '200': {
                 description: 'Pricing templates returned successfully.',
@@ -220,6 +228,7 @@ export class OpenApiService {
         '/api/stem-pricing/batch-get': {
           get: {
             summary: 'Fetch pricing for multiple stems',
+            'x-payment-info': freePaymentInfo,
             parameters: [
               {
                 name: 'stemIds',
@@ -249,6 +258,7 @@ export class OpenApiService {
         '/api/stem-pricing/{stemId}': {
           get: {
             summary: 'Fetch pricing for a single stem',
+            'x-payment-info': freePaymentInfo,
             parameters: [
               {
                 name: 'stemId',
@@ -274,6 +284,7 @@ export class OpenApiService {
             summary: 'Inspect x402 purchase metadata for a stem',
             description:
               'Free endpoint used to discover pricing, license options, and payment instructions before paying.',
+            'x-payment-info': freePaymentInfo,
             parameters: [
               {
                 name: 'stemId',
@@ -308,11 +319,23 @@ export class OpenApiService {
             description:
               'Paid endpoint. Call the free info endpoint first, handle the x402 challenge, then retry with PAYMENT-SIGNATURE. Legacy X-PAYMENT retries remain supported for compatibility.',
             'x-payment-info': {
+              authMode: 'paid',
+              protocol: 'x402',
+              protocols: ['x402'],
+              currency: 'USDC',
               price: {
                 mode: 'dynamic',
                 currency: 'USDC',
                 min: '0',
                 max: '500',
+              },
+              minPrice: {
+                currency: 'USDC',
+                amount: '0',
+              },
+              maxPrice: {
+                currency: 'USDC',
+                amount: '500',
               },
               quote: {
                 endpoint: '/api/stems/{stemId}/x402/info',
@@ -322,15 +345,11 @@ export class OpenApiService {
                 status: 402,
                 schema: '#/components/schemas/X402PaymentRequired',
               },
-              protocols: [
-                {
-                  x402: {
-                    quoteEndpoint: '/api/stems/{stemId}/x402/info',
-                    network: this.x402Config.network,
-                    retryHeaders: [...X402_RETRY_HEADERS],
-                  },
-                },
-              ],
+              x402: {
+                quoteEndpoint: '/api/stems/{stemId}/x402/info',
+                network: this.x402Config.network,
+                retryHeaders: [...X402_RETRY_HEADERS],
+              },
             },
             parameters: [
               {
@@ -809,6 +828,12 @@ export class OpenApiService {
         usd: { type: 'number' },
       },
       required: ['currency', 'amount', 'display', 'usd'],
+    };
+  }
+
+  private buildFreePaymentInfo(): OpenApiSchema {
+    return {
+      authMode: 'free',
     };
   }
 }

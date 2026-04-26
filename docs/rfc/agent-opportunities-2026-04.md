@@ -32,8 +32,9 @@ Still open from the foundation wave:
 - MCP does **not** yet expose `generate.track`.
 - The golden set is not yet the originally proposed ~100-200 case suite.
 - There is no LLM-as-judge rubric or CI quality gate for agent evals yet.
-- Agentic.Market / x402scan registration remains blocked on public endpoint
-  availability; see [#520](https://github.com/akoita/resonate/issues/520).
+- Agentic.Market / x402scan registration is past public endpoint
+  availability and now blocked on deployed x402 enablement; see
+  [#520](https://github.com/akoita/resonate/issues/520).
 
 Still open beyond Wave 1:
 
@@ -253,7 +254,7 @@ Wave 2 identity/reputation.
 | **P1** | MCP server | Foundation shipped; `generate.track` remains | paid-generation policy | low/medium |
 | **P2** | pgvector migration | First slice shipped; provider-scale embeddings/HNSW remain | embedding provider choice | medium |
 | **P3** | Langfuse + golden-set evals | Started; suite/rubric/CI remain | stable eval scenarios | low |
-| **P4** | Public agent registration | Blocked by public endpoint availability | deployed API metadata | low once unblocked |
+| **P4** | Public agent registration | Blocked by deployed x402 enablement | deployed API metadata | low once unblocked |
 | **P5** | ERC-8004 identity + reputation | Not started | runtime boundaries clearer | medium/high |
 | **P6** | Curator agents | Not started | ERC-8004 reputation surface, embeddings | high |
 | **P7** | Runtime extraction | Not started | clearer module seams | high |
@@ -323,7 +324,7 @@ These are the smallest slices that would keep momentum high and reviewable.
 ### Still on the roadmap (Wave 3), just not next
 
 - **Human-facing x402 checkout** — small wrapper around shipped middleware; ships whenever the buy modal gets its next pass.
-- **Agentic.Market / x402scan registration ([#520](https://github.com/akoita/resonate/issues/520))** — blocked on a public host, not on engineering.
+- **Agentic.Market / x402scan registration ([#520](https://github.com/akoita/resonate/issues/520))** — public metadata is live; staging still needs x402 enabled before scanners can validate a concrete 402 challenge.
 
 ### What I would explicitly defer
 
