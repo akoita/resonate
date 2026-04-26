@@ -5,6 +5,7 @@ import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentRuntimeService } from "./agent_runtime.service";
 import { AgentPurchaseService } from "./agent_purchase.service";
 import { AgentNegotiatorService } from "./agent_negotiator.service";
+import { AgentIdentityService } from "./agent_identity.service";
 import { EventBus } from "../shared/event_bus";
 import type { NegotiationResult } from "./agent_negotiator.service";
 
@@ -17,6 +18,7 @@ export class AgentConfigController {
         private readonly runtimeService: AgentRuntimeService,
         private readonly purchaseService: AgentPurchaseService,
         private readonly negotiatorService: AgentNegotiatorService,
+        private readonly identityService: AgentIdentityService,
         private readonly eventBus: EventBus
     ) { }
 
@@ -26,7 +28,7 @@ export class AgentConfigController {
         const config = await prisma.agentConfig.findUnique({
             where: { userId: req.user.userId },
         });
-        return config ?? null;
+        return config ? this.identityService.enrichConfig(config) : null;
     }
 
     @Post()
@@ -45,7 +47,7 @@ export class AgentConfigController {
             },
         });
 
-        return prisma.agentConfig.upsert({
+        const config = await prisma.agentConfig.upsert({
             where: { userId: req.user.userId },
             update: {
                 name: body.name,
@@ -59,6 +61,7 @@ export class AgentConfigController {
                 monthlyCapUsd: body.monthlyCapUsd,
             },
         });
+        return this.identityService.enrichConfig(config);
     }
 
     @Patch()
@@ -67,10 +70,26 @@ export class AgentConfigController {
         @Req() req: any,
         @Body() body: { name?: string; vibes?: string[]; stemTypes?: string[]; sessionMode?: string; monthlyCapUsd?: number; isActive?: boolean }
     ) {
-        return prisma.agentConfig.update({
+        const allowedData: {
+            name?: string;
+            vibes?: string[];
+            stemTypes?: string[];
+            sessionMode?: string;
+            monthlyCapUsd?: number;
+            isActive?: boolean;
+        } = {};
+        if (body.name !== undefined) allowedData.name = body.name;
+        if (body.vibes !== undefined) allowedData.vibes = body.vibes;
+        if (body.stemTypes !== undefined) allowedData.stemTypes = body.stemTypes;
+        if (body.sessionMode !== undefined) allowedData.sessionMode = body.sessionMode;
+        if (body.monthlyCapUsd !== undefined) allowedData.monthlyCapUsd = body.monthlyCapUsd;
+        if (body.isActive !== undefined) allowedData.isActive = body.isActive;
+
+        const config = await prisma.agentConfig.update({
             where: { userId: req.user.userId },
-            data: body,
+            data: allowedData,
         });
+        return this.identityService.enrichConfig(config);
     }
 
     @Post("session")

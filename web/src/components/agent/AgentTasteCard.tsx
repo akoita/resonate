@@ -95,6 +95,24 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
     // Custom vibes that aren't in the preset list
     const customVibes = draft.filter((v) => !PRESET_VIBES.includes(v));
     const activeStemTypes = config.stemTypes ?? [];
+    const reputation = config.reputationSnapshot;
+    const score = Math.max(0, Math.min(100, config.reputationScore ?? reputation?.score ?? 0));
+    const tier = reputation?.tier ?? "New";
+    const exploredGenres = reputation?.genresExplored?.length ? reputation.genresExplored : config.vibes;
+    const credentialAvailable = Boolean(config.identityCredential);
+
+    const handleCredentialExport = async () => {
+        if (!config.identityCredential) return;
+        const blob = new Blob([JSON.stringify(config.identityCredential, null, 2)], {
+            type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${config.id}-identity-credential.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+    };
 
     return (
         <div className="agent-card agent-taste-card">
@@ -255,21 +273,51 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
                         <span className="agent-taste-label">Taste Score</span>
                         <div className="agent-taste-score">
                             <div className="agent-taste-score-bar">
-                                <div className="agent-taste-score-fill" style={{ width: "15%" }} />
+                                <div className="agent-taste-score-fill" style={{ width: `${score}%` }} />
                             </div>
-                            <span className="agent-taste-score-value">Emerging</span>
+                            <span className="agent-taste-score-value">{score}</span>
+                        </div>
+                        <div className="agent-identity-row">
+                            <span className="agent-identity-pill">{tier}</span>
+                            <span className="agent-identity-pill">{config.identityStatus}</span>
                         </div>
                         <p className="agent-taste-hint">
-                            Your taste score grows as your DJ explores more tracks. Prep for ERC-8004 identity.
+                            {reputation
+                                ? `${reputation.tracksCurated} tracks curated across ${reputation.sessions} sessions.`
+                                : "Start a session to build your score."}
                         </p>
                     </div>
 
                     <div className="agent-taste-section">
                         <span className="agent-taste-label">Genres Explored</span>
                         <div className="agent-taste-genres">
-                            <span className="agent-genre-tag">—</span>
+                            {exploredGenres.map((genre) => (
+                                <span key={genre} className="agent-genre-tag">{genre}</span>
+                            ))}
                         </div>
-                        <p className="agent-taste-hint">Start a session to explore genres.</p>
+                    </div>
+
+                    <div className="agent-taste-section">
+                        <div className="agent-taste-section-header">
+                            <span className="agent-taste-label">Portable Identity</span>
+                            <button
+                                className="agent-taste-edit-btn"
+                                onClick={handleCredentialExport}
+                                disabled={!credentialAvailable}
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                    <polyline points="7 10 12 15 17 10" />
+                                    <line x1="12" x2="12" y1="15" y2="3" />
+                                </svg>
+                                VC
+                            </button>
+                        </div>
+                        <p className="agent-taste-hint">
+                            {config.identityTokenId
+                                ? `ERC-8004 token ${config.identityTokenId}`
+                                : "Local identity ready for ERC-8004 minting."}
+                        </p>
                     </div>
                 </div>
             </div>

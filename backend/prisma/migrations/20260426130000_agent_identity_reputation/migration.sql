@@ -1,0 +1,10 @@
+ALTER TABLE "AgentConfig" ADD COLUMN     "identityStatus" TEXT NOT NULL DEFAULT 'local';
+ALTER TABLE "AgentConfig" ADD COLUMN     "identityChainId" INTEGER;
+ALTER TABLE "AgentConfig" ADD COLUMN     "identityRegistry" TEXT;
+ALTER TABLE "AgentConfig" ADD COLUMN     "identityTokenId" TEXT;
+ALTER TABLE "AgentConfig" ADD COLUMN     "identityTxHash" TEXT;
+ALTER TABLE "AgentConfig" ADD COLUMN     "identityCredential" JSONB;
+ALTER TABLE "AgentConfig" ADD COLUMN     "reputationScore" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "AgentConfig" ADD COLUMN     "reputationSnapshot" JSONB;
+ALTER TABLE "AgentConfig" ADD COLUMN     "reputationAttestedAt" TIMESTAMP(3);
+ALTER TABLE "AgentConfig" ADD COLUMN     "reputationTxHash" TEXT;

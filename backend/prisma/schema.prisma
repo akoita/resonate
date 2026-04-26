@@ -381,17 +381,27 @@ model Folder {
 }
 
 model AgentConfig {
-  id            String   @id @default(uuid())
-  userId        String   @unique
-  name          String   @default("My DJ")
-  vibes         String[] @default(["Focus"])
-  sessionMode   String   @default("curate") // "curate" | "buy"
-  stemTypes     String[] @default([])
-  monthlyCapUsd Float    @default(10)
-  isActive      Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  user          User     @relation(fields: [userId], references: [id])
+  id                    String    @id @default(uuid())
+  userId                String    @unique
+  name                  String    @default("My DJ")
+  vibes                 String[]  @default(["Focus"])
+  sessionMode           String    @default("curate") // "curate" | "buy"
+  stemTypes             String[]  @default([])
+  monthlyCapUsd         Float     @default(10)
+  isActive              Boolean   @default(false)
+  identityStatus        String    @default("local") // "local" | "pending" | "minted" | "attested"
+  identityChainId       Int?
+  identityRegistry      String?
+  identityTokenId       String?
+  identityTxHash        String?
+  identityCredential    Json?
+  reputationScore       Int       @default(0)
+  reputationSnapshot    Json?
+  reputationAttestedAt  DateTime?
+  reputationTxHash      String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  user                  User      @relation(fields: [userId], references: [id])
 }
 
 model SessionKey {
