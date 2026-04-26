@@ -23,6 +23,7 @@ model User {
   wallet        Wallet?
   sessionKeys   SessionKey[]
   stemQualityRatings StemQualityRating[]
+  reputationFeedbackSubmitted AgentReputationFeedback[] @relation("AgentReputationFeedbackSubmitter")
 }
 
 model Wallet {
@@ -466,6 +467,34 @@ model AgentConfig {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   user                  User      @relation(fields: [userId], references: [id])
+  reputationFeedback    AgentReputationFeedback[] @relation("AgentReputationFeedbackSubject")
+}
+
+model AgentReputationFeedback {
+  id                   String      @id @default(uuid())
+  subjectAgentConfigId String
+  submitterUserId      String?
+  submitterRole        String      // "BuyerAgent" | "CuratorAgent" | "ExternalClient" | "PlatformReviewer"
+  submitterIdentifier  String?
+  feedbackKind         String      // "QualityValidation" | "TasteEndorsement" | "DisputeOutcome" | "GeneralReview"
+  score                Int
+  weight               Float
+  evidenceUri          String?
+  notes                String?
+  referenceType        String?
+  referenceId          String?
+  replayHash           String      @unique
+  onchainStatus        String      @default("Pending") // "Pending" | "Published" | "NotApplicable"
+  onchainTxHash        String?
+  createdAt            DateTime    @default(now())
+
+  subject   AgentConfig @relation("AgentReputationFeedbackSubject", fields: [subjectAgentConfigId], references: [id], onDelete: Cascade)
+  submitter User?       @relation("AgentReputationFeedbackSubmitter", fields: [submitterUserId], references: [id])
+
+  @@index([subjectAgentConfigId])
+  @@index([submitterUserId])
+  @@index([createdAt])
+  @@index([submitterUserId, createdAt])
 }
 
 model SessionKey {

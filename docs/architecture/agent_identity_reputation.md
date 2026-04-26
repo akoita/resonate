@@ -77,7 +77,7 @@ folds the curator's rating count and accumulated delta into the ERC-8004
 reputation surface.
 
 The reputation attestation payload is versioned as
-`resonate-agent-reputation/v1` and published under the metadata key
+`resonate-agent-reputation/v2` and published under the metadata key
 `resonate.reputation`. It is tied to the current `AgentConfig`, ERC-8004 token
 link, W3C-style identity credential, and replayable reputation metrics:
 
@@ -86,7 +86,48 @@ link, W3C-style identity credential, and replayable reputation metrics:
 - budget: total spend, configured monthly cap, and average budget utilization
 - taste: score, tier, taste depth, explored genres, and normalized genre
   breakdown
+- trust: a separate block exposing `platformComputedScore` (Resonate-derived),
+  `blendedScore` (used for the public tier), and an `independentValidation`
+  summary aggregating non-owner feedback by submitter role
 - reputation: the full backend snapshot used by Resonate clients
+
+## Independent Validation
+
+Issue #701 adds a non-owner feedback channel so reputation becomes increasingly
+credible beyond backend-computed metadata. Validation events are stored in
+`AgentReputationFeedback`, separately from the platform-computed
+`AgentConfig.reputationSnapshot`, and are replayable.
+
+`AgentReputationFeedbackService` enforces:
+
+- self-feedback rejection: a submitter cannot feed back on the agent they own,
+  whether the submitter is identified by their internal user ID or by an
+  external wallet/identifier matching the agent owner
+- duplicate rejection: the same `(subject, submitter, reference, kind)` tuple
+  is hashed into `replayHash`, which is unique
+- daily submission cap: each submitter is limited to a fixed number of
+  feedback events per 24 hours (default 5)
+- weighted contribution: each event carries a `weight` derived from the
+  submitter role (`PlatformReviewer 1.0`, `CuratorAgent 0.7`, `BuyerAgent 0.5`,
+  `ExternalClient 0.3`) scaled by the submitted score
+- role-share cap: when summarized, no single submitter role can contribute
+  more than 60% of the weighted score, so a flood of one role cannot dominate
+- bounded boost: the weighted summary feeds at most +10 points into the
+  blended reputation score, leaving the platform-computed component visible
+  in `reputationSnapshot.platformComputedScore`
+
+Endpoints (all under `/agents/:agentConfigId/reputation/feedback`):
+
+- `POST` submits feedback. Requires authenticated submitter; subject is the
+  path parameter. Rejects self-feedback with `400`. Rejects duplicates and
+  exceeded daily cap with `409`.
+- `GET` lists the most recent 200 feedback events for the subject agent.
+- `GET summary` returns the aggregated `IndependentValidationSummary` that is
+  folded into the next reputation snapshot and the v2 attestation payload.
+
+`onchainStatus` on each feedback row is `Pending` by default and tracks future
+publishing to an ERC-8004 Reputation Registry once the deployed interface is
+finalized.
 
 `AgentReputationSchedulerService` can refresh this metadata automatically. It is
 opt-in and only starts when both `ERC8004_ENABLED=true` and
@@ -136,5 +177,9 @@ parallel model:
 2. Move stem quality tasks from Identity Registry metadata to the ERC-8004
    Validation Registry once the deployed registry interface is finalized for
    Resonate's target chain.
-3. Add ERC-8004 Reputation Registry feedback once Resonate has independent
-   curator or client agents that can submit non-owner feedback.
+3. Independent non-owner validation is now ingested via
+   `AgentReputationFeedback` (issue #701) and folded into the v2 attestation
+   payload. The remaining work is wiring the published feedback events to an
+   ERC-8004 Reputation Registry once the deployed interface is finalized.
+   `AgentReputationFeedback.onchainStatus` is the per-event tracker for that
+   handoff.
