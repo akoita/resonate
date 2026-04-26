@@ -947,6 +947,184 @@
   justify-content: center;
 }
 
+/*
+ * Stem-specific identity ----------------------------------------
+ * Each Trending Stems card carries a [data-stem] attribute (drums,
+ * vocals, synth). The base layout above is identical for all three;
+ * the rules below add a unique character per stem — a motif overlay
+ * around the play orb, tag-chip icon alignment, and a waveform bar
+ * shape that mirrors the stem's natural rhythm.
+ */
+
+.home-ng .ng-stem-card__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.home-ng .ng-stem-card__tag-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 1px 4px color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 60%, transparent));
+}
+
+.home-ng .ng-stem-card__motif {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+/* Drums — concentric kick pulses radiating from the play orb.
+   Two staggered rings + a faint third for depth. */
+.home-ng .ng-stem-card[data-stem="drums"] .ng-stem-card__motif::before,
+.home-ng .ng-stem-card[data-stem="drums"] .ng-stem-card__motif::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 58px;
+  height: 58px;
+  margin: -29px 0 0 -29px;
+  border-radius: 999px;
+  border: 1.5px solid color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 55%, transparent);
+  animation: ng-stem-drum-pulse 2.6s cubic-bezier(0.2, 0.8, 0.4, 1) infinite;
+}
+
+.home-ng .ng-stem-card[data-stem="drums"] .ng-stem-card__motif::after {
+  animation-delay: 1.3s;
+}
+
+@keyframes ng-stem-drum-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+    border-width: 1.5px;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+    border-width: 0.5px;
+  }
+}
+
+/* Drums waveform — square, blunt-top bars (kick-drum hits). */
+.home-ng .ng-stem-card[data-stem="drums"] .ng-stem-waveform {
+  gap: 5px;
+}
+.home-ng .ng-stem-card[data-stem="drums"] .ng-stem-waveform__bar {
+  border-radius: 3px 3px 0 0;
+  min-width: 5px;
+}
+.home-ng .ng-stem-card[data-stem="drums"] .ng-stem-waveform__bar[data-peak="true"] {
+  animation: ng-stem-drum-thump 1.3s cubic-bezier(0.2, 0.8, 0.4, 1) infinite;
+  transform-origin: bottom;
+}
+@keyframes ng-stem-drum-thump {
+  0%, 80%, 100% { transform: scaleY(1); }
+  10% { transform: scaleY(1.16); }
+}
+
+/* Vocals — soft breathing halo around the play orb. */
+.home-ng .ng-stem-card[data-stem="vocals"] .ng-stem-card__motif::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 92px;
+  height: 92px;
+  margin: -46px 0 0 -46px;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 38%, transparent) 0%,
+    transparent 65%
+  );
+  animation: ng-stem-vocal-breathe 3.6s ease-in-out infinite;
+}
+
+@keyframes ng-stem-vocal-breathe {
+  0%, 100% { transform: scale(0.88); opacity: 0.55; }
+  50% { transform: scale(1.18); opacity: 1; }
+}
+
+/* Vocals waveform — slim, smooth bars; whole row gently breathes. */
+.home-ng .ng-stem-card[data-stem="vocals"] .ng-stem-waveform {
+  gap: 3px;
+  animation: ng-stem-vocal-breathe-soft 4s ease-in-out infinite;
+}
+.home-ng .ng-stem-card[data-stem="vocals"] .ng-stem-waveform__bar {
+  min-width: 2px;
+  border-radius: 999px;
+}
+@keyframes ng-stem-vocal-breathe-soft {
+  0%, 100% { opacity: 0.78; }
+  50% { opacity: 1; }
+}
+
+/* Synth — oscilloscope grid + horizontal scan line.
+   Grid lives behind the orb so it tints the whole artwork; the scan
+   line reads as a moving signal sweep. */
+.home-ng .ng-stem-card[data-stem="synth"] .ng-stem-card__motif {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 22%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 22%, transparent) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: -1px -1px;
+  opacity: 0.45;
+  mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%);
+}
+
+.home-ng .ng-stem-card[data-stem="synth"] .ng-stem-card__motif::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 80%, #fff) 50%,
+    transparent
+  );
+  box-shadow: 0 0 12px color-mix(in srgb, var(--stem-tone, var(--ds-primary)) 60%, transparent);
+  animation: ng-stem-synth-scan 4.5s linear infinite;
+  transform-origin: center;
+}
+
+@keyframes ng-stem-synth-scan {
+  0% { transform: translateY(-22px); opacity: 0; }
+  20% { opacity: 0.9; }
+  80% { opacity: 0.9; }
+  100% { transform: translateY(22px); opacity: 0; }
+}
+
+/* Synth waveform — sharp, geometric, slightly sawtoothed feel via
+   tighter gaps and crisp top corners. */
+.home-ng .ng-stem-card[data-stem="synth"] .ng-stem-waveform {
+  gap: 3px;
+}
+.home-ng .ng-stem-card[data-stem="synth"] .ng-stem-waveform__bar {
+  border-radius: 2px 2px 0 0;
+  min-width: 3px;
+}
+
+/* Respect reduced-motion: kill all the per-stem animations so the
+   visual identity stays but nothing breathes/pulses/scans. */
+@media (prefers-reduced-motion: reduce) {
+  .home-ng .ng-stem-card__motif,
+  .home-ng .ng-stem-card__motif::before,
+  .home-ng .ng-stem-card__motif::after,
+  .home-ng .ng-stem-card[data-stem="drums"] .ng-stem-waveform__bar[data-peak="true"],
+  .home-ng .ng-stem-card[data-stem="vocals"] .ng-stem-waveform {
+    animation: none !important;
+  }
+}
+
 /* ---------- Upcoming Live Events (Shows surface) -------------- */
 
 .home-ng .ng-event-card {

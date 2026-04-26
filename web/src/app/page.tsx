@@ -716,6 +716,7 @@ function formatRelativeTime(time: number) {
 
 const STEM_TONES = ["primary", "tertiary", "secondary"] as const;
 const STEM_TAGS = ["Drums", "Vocals", "Synth"] as const;
+type StemTag = (typeof STEM_TAGS)[number];
 const STEM_ACCENTS: Record<(typeof STEM_TONES)[number], string> = {
   primary: "var(--ds-primary-container)",
   tertiary: "var(--ds-tertiary)",
@@ -726,32 +727,102 @@ const STEM_ACCENTS: Record<(typeof STEM_TONES)[number], string> = {
 // MIXER_STEM_TYPES (release/[id]/page.tsx:60). Tags that don't match
 // any mixer channel (e.g. "Synth") return null so we fall back to
 // "mixer-on, all stems audible" instead of soloing-to-silence.
-const STEM_TAG_TO_MIXER: Record<(typeof STEM_TAGS)[number], string | null> = {
+const STEM_TAG_TO_MIXER: Record<StemTag, string | null> = {
   Drums: "drums",
   Vocals: "vocals",
   Synth: null,
 };
 
-function buildMixerHref(releaseId: string, tag: (typeof STEM_TAGS)[number]): string {
+function buildMixerHref(releaseId: string, tag: StemTag): string {
   const stem = STEM_TAG_TO_MIXER[tag];
   return stem
     ? `/release/${releaseId}?mixer=true&stem=${stem}`
     : `/release/${releaseId}?mixer=true`;
 }
 
+// Each stem sounds different, so its waveform should *look* different.
+// Drums = sparse 4-on-the-floor kicks with ghost notes between.
+// Vocals = smooth sinusoidal phrasing (rises and falls of a melody).
+// Synth = staircase / saw-style oscillation (electronic, geometric).
+const STEM_BAR_COUNT: Record<StemTag, number> = {
+  Drums: 14,
+  Vocals: 28,
+  Synth: 18,
+};
+
+function shapeStemBars(tag: StemTag, base: number[]): number[] {
+  if (tag === "Drums") {
+    return base.map((v, i) => {
+      const onBeat = i % 4 === 0;
+      const offBeat = i % 4 === 2;
+      if (onBeat) return 86 + (v % 14);
+      if (offBeat) return 32 + (v % 22);
+      return 14 + (v % 18);
+    });
+  }
+  if (tag === "Vocals") {
+    return base.map((v, i) => {
+      const t = base.length > 1 ? i / (base.length - 1) : 0;
+      const phrase = Math.sin(t * Math.PI * 2) * 0.4 + 0.6;
+      const env = phrase * 70 + 18;
+      const jitter = (v % 10) - 5;
+      return Math.max(15, Math.min(95, env + jitter));
+    });
+  }
+  // Synth — three-phase staircase (peak / mid / valley) with light drift.
+  const heights = [85, 50, 28];
+  return base.map((v, i) => {
+    const phase = i % heights.length;
+    const drift = (v % 12) - 6;
+    return Math.max(20, Math.min(95, heights[phase] + drift));
+  });
+}
+
+const STEM_ICONS: Record<StemTag, React.ReactNode> = {
+  // Kick-drum: concentric circles read as a "drumhead" without leaning
+  // on emoji or a skeuomorphic kit illustration.
+  Drums: (
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden>
+      <circle cx="12" cy="12" r="9" opacity="0.35" />
+      <circle cx="12" cy="12" r="6" opacity="0.65" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  ),
+  Vocals: (
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="9" y="2" width="6" height="12" rx="3" />
+      <path d="M5 11v1a7 7 0 0 0 14 0v-1" />
+      <line x1="12" y1="19" x2="12" y2="23" />
+    </svg>
+  ),
+  // Oscilloscope envelope — reads as "synth signal" via shape alone.
+  Synth: (
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 12h3l2-7 4 14 2-7 2 4h5" />
+    </svg>
+  ),
+};
+
 function StemCard({ release, variantIndex }: { release: Release; variantIndex: number }) {
   const tone = STEM_TONES[variantIndex % STEM_TONES.length];
   const tag = STEM_TAGS[variantIndex % STEM_TAGS.length];
+  const stemKey = tag.toLowerCase();
   const mixerHref = buildMixerHref(release.id, tag);
   const artistName = release.primaryArtist || release.artist?.displayName || "Unknown";
-  // Deterministic bars (10) seeded by release id so rerenders don't jitter.
-  const bars = useMemo(() => pseudoRandomBars(release.id, 18), [release.id]);
+  // Deterministic bars seeded by release id so rerenders don't jitter,
+  // shaped per-stem so each card has its own rhythmic fingerprint.
+  const bars = useMemo(() => {
+    const count = STEM_BAR_COUNT[tag];
+    const base = pseudoRandomBars(release.id, count);
+    return shapeStemBars(tag, base);
+  }, [release.id, tag]);
   const peakIdx = bars.indexOf(Math.max(...bars));
 
   return (
     <article
       className="ng-stem-card"
       data-tone={tone}
+      data-stem={stemKey}
       style={{ "--stem-tone": STEM_ACCENTS[tone] } as CSSProperties}
     >
       <Link
@@ -771,7 +842,11 @@ function StemCard({ release, variantIndex }: { release: Release; variantIndex: n
           </span>
         )}
         <span className="ng-stem-card__shade" aria-hidden />
-        <span className="ng-stem-card__tag">{tag}</span>
+        <span className="ng-stem-card__motif" aria-hidden />
+        <span className="ng-stem-card__tag">
+          <span className="ng-stem-card__tag-icon" aria-hidden>{STEM_ICONS[tag]}</span>
+          {tag}
+        </span>
         <span className="ng-stem-card__play" aria-hidden>
           <span className="ms-icon" data-fill="1">play_arrow</span>
         </span>
@@ -785,6 +860,7 @@ function StemCard({ release, variantIndex }: { release: Release; variantIndex: n
                 {
                   height: `${h}%`,
                   "--bar-opacity": `${20 + ((h * 70) / 100)}%`,
+                  "--bar-index": i,
                 } as CSSProperties
               }
             />
