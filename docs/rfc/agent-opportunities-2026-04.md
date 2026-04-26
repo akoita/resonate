@@ -42,9 +42,15 @@ Still open from the foundation wave:
   availability and now blocked on deployed x402 enablement; see
   [#520](https://github.com/akoita/resonate/issues/520).
 
+Started beyond Wave 1:
+
+- ERC-8004 identity and reputation now has a configurable on-chain adapter:
+  local credentials remain the default, while configured environments can mint
+  the agent identity through `register(string agentURI)` and publish reputation
+  snapshots with `setMetadata(agentId, "resonate.reputation", bytes)`.
+
 Still open beyond Wave 1:
 
-- ERC-8004 identity and reputation.
 - Curator agents.
 - Unified runtime extraction.
 - Learning loop provider-scale expansion and memory integration.
@@ -265,7 +271,7 @@ Wave 2 identity/reputation.
 | **P2** | pgvector migration | First slice shipped; provider-scale embeddings/HNSW remain | embedding provider choice | medium |
 | **P3** | Langfuse + golden-set evals | Expanded first suite; judge/gate remain | stable eval scenarios | low |
 | **P4** | Public agent registration | Blocked by deployed x402 enablement | deployed API metadata | low once unblocked |
-| **P5** | ERC-8004 identity + reputation | Not started | runtime boundaries clearer | medium/high |
+| **P5** | ERC-8004 identity + reputation | Started via #291 | registry deployment + session-key approval | medium/high |
 | **P6** | Curator agents | Not started | ERC-8004 reputation surface, embeddings | high |
 | **P7** | Runtime extraction | Not started | clearer module seams | high |
 

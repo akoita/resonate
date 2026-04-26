@@ -15,9 +15,11 @@ type Props = {
     config: AgentConfig;
     onUpdateVibes?: (vibes: string[]) => Promise<void>;
     onUpdateStemTypes?: (stemTypes: string[]) => Promise<void>;
+    onMintIdentity?: () => Promise<void>;
+    onAttestReputation?: () => Promise<void>;
 };
 
-export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemTypes }: Props) {
+export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemTypes, onMintIdentity, onAttestReputation }: Props) {
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState<string[]>(config.vibes);
     const [saving, setSaving] = useState(false);
@@ -27,6 +29,8 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
     const [editingStems, setEditingStems] = useState(false);
     const [stemDraft, setStemDraft] = useState<string[]>(config.stemTypes ?? []);
     const [savingStems, setSavingStems] = useState(false);
+    const [mintingIdentity, setMintingIdentity] = useState(false);
+    const [attestingReputation, setAttestingReputation] = useState(false);
 
     const toggleVibe = (vibe: string) => {
         setDraft((prev) =>
@@ -117,6 +121,26 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
         link.download = `${config.id}-identity-credential.json`;
         link.click();
         URL.revokeObjectURL(url);
+    };
+
+    const handleMintIdentity = async () => {
+        if (!onMintIdentity) return;
+        setMintingIdentity(true);
+        try {
+            await onMintIdentity();
+        } finally {
+            setMintingIdentity(false);
+        }
+    };
+
+    const handleAttestReputation = async () => {
+        if (!onAttestReputation) return;
+        setAttestingReputation(true);
+        try {
+            await onAttestReputation();
+        } finally {
+            setAttestingReputation(false);
+        }
     };
 
     return (
@@ -330,6 +354,22 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
                                 ? `ERC-8004 token ${config.identityTokenId}`
                                 : "Local identity ready for ERC-8004 minting."}
                         </p>
+                        <div className="agent-identity-actions">
+                            <button
+                                className="agent-taste-edit-btn"
+                                onClick={handleMintIdentity}
+                                disabled={!onMintIdentity || mintingIdentity || config.identityStatus === "minted" || config.identityStatus === "attested"}
+                            >
+                                {mintingIdentity ? "Minting..." : "Mint"}
+                            </button>
+                            <button
+                                className="agent-taste-edit-btn"
+                                onClick={handleAttestReputation}
+                                disabled={!onAttestReputation || attestingReputation || !config.identityTokenId}
+                            >
+                                {attestingReputation ? "Attesting..." : "Attest"}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

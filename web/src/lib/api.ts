@@ -1113,6 +1113,8 @@ export async function createBatchStemMintAuthorizations(
 
 // ========== Agent Config API ==========
 
+export type AgentIdentityStatus = "local" | "pending" | "minted" | "attested";
+
 export type AgentConfig = {
   id: string;
   userId: string;
@@ -1122,7 +1124,7 @@ export type AgentConfig = {
   sessionMode: "curate" | "buy";
   monthlyCapUsd: number;
   isActive: boolean;
-  identityStatus: "local" | "pending" | "minted" | "attested";
+  identityStatus: AgentIdentityStatus;
   identityChainId: number | null;
   identityRegistry: string | null;
   identityTokenId: string | null;
@@ -1164,6 +1166,14 @@ export type AgentConfig = {
   reputationTxHash: string | null;
   createdAt: string;
   updatedAt: string;
+  onchain?: {
+    status: AgentIdentityStatus;
+    chainId: number | null;
+    registry: string | null;
+    txHash: string | null;
+    tokenId: string | null;
+    reason?: "erc8004_disabled" | "missing_session_key" | "already_minted" | "missing_token_id";
+  };
 };
 
 export async function getAgentConfig(token: string): Promise<AgentConfig | null> {
@@ -1188,6 +1198,22 @@ export async function updateAgentConfig(
   return apiRequest<AgentConfig>(
     "/agents/config",
     { method: "PATCH", body: JSON.stringify(input) },
+    token
+  );
+}
+
+export async function mintAgentIdentity(token: string): Promise<AgentConfig> {
+  return apiRequest<AgentConfig>(
+    "/agents/config/identity/mint",
+    { method: "POST" },
+    token
+  );
+}
+
+export async function attestAgentReputation(token: string): Promise<AgentConfig> {
+  return apiRequest<AgentConfig>(
+    "/agents/config/identity/attest",
+    { method: "POST" },
     token
   );
 }

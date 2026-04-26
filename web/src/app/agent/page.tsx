@@ -18,7 +18,7 @@ import AgentSessionPresets from "../../components/agent/AgentSessionPresets";
 import { useToast } from "../../components/ui/Toast";
 
 export default function AgentPage() {
-    const { config, isLoading, showWizard, setShowWizard, createConfig, updateConfig, startSession, stopSession } =
+    const { config, isLoading, showWizard, setShowWizard, createConfig, updateConfig, mintIdentity, attestReputation, startSession, stopSession } =
         useAgentConfig();
     const events = useAgentEvents();
     const { sessions, isLoading: historyLoading, refetch: refetchHistory } = useAgentHistory();
@@ -167,6 +167,32 @@ export default function AgentPage() {
                                             message: stemTypes.length === 0
                                                 ? "Your DJ will buy all available stems."
                                                 : `Your DJ will buy: ${stemTypes.join(", ")}`,
+                                        });
+                                    }}
+                                    onMintIdentity={async () => {
+                                        const result = await mintIdentity();
+                                        const reason = result?.onchain?.reason;
+                                        addToast({
+                                            type: result?.identityStatus === "minted" || result?.identityStatus === "attested" ? "success" : "info",
+                                            title: reason === "erc8004_disabled" ? "Identity Local" : "Identity Updated",
+                                            message: result?.identityTxHash
+                                                ? "ERC-8004 identity transaction recorded."
+                                                : reason === "erc8004_disabled"
+                                                    ? "ERC-8004 registry writes are not configured for this environment."
+                                                    : "Enable the smart wallet session key to mint on-chain.",
+                                        });
+                                    }}
+                                    onAttestReputation={async () => {
+                                        const result = await attestReputation();
+                                        const reason = result?.onchain?.reason;
+                                        addToast({
+                                            type: result?.reputationTxHash ? "success" : "info",
+                                            title: result?.reputationTxHash ? "Reputation Attested" : "Attestation Pending",
+                                            message: result?.reputationTxHash
+                                                ? "Taste and reputation snapshot published on-chain."
+                                                : reason === "erc8004_disabled"
+                                                    ? "ERC-8004 registry writes are not configured for this environment."
+                                                    : "Mint an ERC-8004 identity and enable the smart wallet session key first.",
                                         });
                                     }}
                                 />
