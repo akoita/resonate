@@ -59,6 +59,9 @@ When adding a new environment variable:
 | `LANGFUSE_PUBLIC_KEY` | Backend secret | Langfuse public key for Basic Auth ingestion. Required only when tracing is enabled |
 | `LANGFUSE_SECRET_KEY` | Backend secret | Langfuse secret key for Basic Auth ingestion. Store in secret manager/GitHub environment secrets, never source |
 | `LANGFUSE_ENVIRONMENT` | Backend | Optional lowercase trace environment label; falls back to `NODE_ENV` when unset |
+| `AGENT_RUNTIME_WORKER_URL` | Backend | Optional base URL for the standalone agent runtime worker. When unset, `AgentRuntimeService` runs in-process |
+| `AGENT_RUNTIME_WORKER_TIMEOUT_MS` | Backend | Optional timeout for backend-to-worker runtime calls; defaults to `5000` |
+| `AGENT_RUNTIME_WORKER_REQUIRED` | Backend | Optional fail-closed switch. Set `true` to disable in-process fallback when the worker is configured but unavailable |
 | `ERC8004_ENABLED` | Backend | Enables ERC-8004 identity registration and reputation metadata writes. Defaults to disabled |
 | `ERC8004_IDENTITY_REGISTRY_ADDRESS` | Backend | Optional ERC-8004 Identity Registry override. When omitted, the backend selects the official mainnet or testnet registry for supported chain IDs |
 | `ERC8004_CHAIN_ID` | Backend | Optional ERC-8004 chain override; falls back to `AA_CHAIN_ID`, then `CHAIN_ID`, then local Anvil |

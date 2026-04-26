@@ -1,41 +1,33 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { AgentOrchestratorService } from "./agent_orchestrator.service";
+import { AgentRuntimeExecutorService } from "./agent_runtime.executor.service";
+import { AgentRuntimeRemoteClient } from "./agent_runtime_remote.client";
+import { AgentRuntimeRunResult } from "./agent_runtime.types";
 import { AgentRuntimeInput } from "./runtime/agent_runtime.adapter";
-import { AdkAdapter } from "./runtime/adk_adapter";
-import { LangGraphAdapter } from "./runtime/langgraph_adapter";
-import { VertexAiAdapter } from "./runtime/vertex_ai_adapter";
 
 @Injectable()
 export class AgentRuntimeService {
   private readonly logger = new Logger(AgentRuntimeService.name);
 
   constructor(
-    private readonly orchestrator: AgentOrchestratorService,
-    private readonly vertexAdapter: VertexAiAdapter,
-    private readonly langGraphAdapter: LangGraphAdapter,
-    private readonly adkAdapter: AdkAdapter
+    private readonly executor: AgentRuntimeExecutorService,
+    private readonly remoteClient: AgentRuntimeRemoteClient
   ) {}
 
-  async run(input: AgentRuntimeInput) {
-    const mode = process.env.AGENT_RUNTIME ?? "adk";
-    const adapter =
-      mode === "adk"
-        ? this.adkAdapter
-        : mode === "vertex"
-        ? this.vertexAdapter
-        : mode === "langgraph"
-        ? this.langGraphAdapter
-        : undefined;
-    if (!adapter) {
-      return this.orchestrator.orchestrate(input);
+  async run(input: AgentRuntimeInput): Promise<AgentRuntimeRunResult> {
+    if (!this.remoteClient.enabled) {
+      return this.executor.run(input);
     }
+
     try {
-      return await adapter.run(input);
+      return await this.remoteClient.run(input);
     } catch (error: any) {
+      if (this.remoteClient.required) {
+        throw error;
+      }
       this.logger.warn(
-        `${adapter.name} adapter failed (${error.message}) — falling back to deterministic orchestrator`
+        `agent runtime worker failed (${error.message}) - falling back to in-process executor`
       );
-      return this.orchestrator.orchestrate(input);
+      return this.executor.run(input);
     }
   }
 }

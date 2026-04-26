@@ -1,7 +1,7 @@
 /**
  * Agent Runtime — Integration Test (Testcontainers)
  *
- * Tests AgentRuntimeService against real Postgres.
+ * Tests AgentRuntimeExecutorService against real Postgres.
  * Seeds tracks for selection. Google AI SDK mocks stay (external ESM packages).
  *
  * Run: npm run test:integration
@@ -20,7 +20,7 @@ jest.mock('@google/adk', () => ({
 }));
 
 import { prisma } from '../db/prisma';
-import { AgentRuntimeService } from '../modules/agents/agent_runtime.service';
+import { AgentRuntimeExecutorService } from '../modules/agents/agent_runtime.executor.service';
 import { AdkAdapter } from '../modules/agents/runtime/adk_adapter';
 import { LangGraphAdapter } from '../modules/agents/runtime/langgraph_adapter';
 import { VertexAiAdapter } from '../modules/agents/runtime/vertex_ai_adapter';
@@ -45,7 +45,7 @@ function makeInput(overrides: Record<string, any> = {}) {
   };
 }
 
-describe('AgentRuntimeService (integration)', () => {
+describe('AgentRuntimeExecutorService (integration)', () => {
   let tools: ToolRegistry;
 
   beforeAll(async () => {
@@ -76,7 +76,7 @@ describe('AgentRuntimeService (integration)', () => {
     const orchestrator = {
       orchestrate: async () => ({ status: 'approved', tracks: [] }),
     } as any;
-    const runtime = new AgentRuntimeService(
+    const runtime = new AgentRuntimeExecutorService(
       orchestrator,
       new VertexAiAdapter(tools),
       new LangGraphAdapter(),
@@ -94,7 +94,7 @@ describe('AgentRuntimeService (integration)', () => {
         tracks: [{ trackId: 't-orch', mixPlan: {}, negotiation: { priceUsd: 0.05, licenseType: 'personal' } }],
       }),
     } as any;
-    const runtime = new AgentRuntimeService(
+    const runtime = new AgentRuntimeExecutorService(
       orchestrator,
       new VertexAiAdapter(tools),
       new LangGraphAdapter(),
@@ -118,7 +118,7 @@ describe('AgentRuntimeService (integration)', () => {
       name: 'vertex' as const,
       run: async () => { throw new Error('Network down'); },
     };
-    const runtime = new AgentRuntimeService(
+    const runtime = new AgentRuntimeExecutorService(
       orchestrator,
       badAdapter as any,
       new LangGraphAdapter(),
@@ -140,7 +140,7 @@ describe('AgentRuntimeService (integration)', () => {
       name: 'adk' as const,
       run: async () => { throw new Error('ADK error'); },
     };
-    const runtime = new AgentRuntimeService(
+    const runtime = new AgentRuntimeExecutorService(
       orchestrator,
       new VertexAiAdapter(tools),
       new LangGraphAdapter(),

@@ -173,3 +173,9 @@ for a fork or custom registry; otherwise the backend selects the official
 ERC-8004 mainnet or testnet Identity Registry for supported chain IDs. The
 variable reference lives in
 [`docs/deployment/environment.md`](../deployment/environment.md).
+
+The standalone agent runtime worker is also backend runtime configuration. Set
+`AGENT_RUNTIME_WORKER_URL`, `AGENT_RUNTIME_WORKER_TIMEOUT_MS`, and
+`AGENT_RUNTIME_WORKER_REQUIRED` in the backend service configuration when a
+deployed environment should route agent execution to a separate worker. The
+worker and backend share `INTERNAL_SERVICE_KEY` for internal requests.

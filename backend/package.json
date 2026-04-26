@@ -5,7 +5,9 @@
   "description": "Backend services for Project Resonate (MVP).",
   "scripts": {
     "start": "node dist/main.js",
+    "start:agent-worker": "node dist/agent-worker.js",
     "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts",
+    "start:agent-worker:dev": "ts-node-dev --respawn --transpile-only src/agent-worker.ts",
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "prisma generate && jest --runInBand",
