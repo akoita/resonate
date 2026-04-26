@@ -67,6 +67,10 @@ When adding a new environment variable:
 | `ERC8004_CHAIN_ID` | Backend | Optional ERC-8004 chain override; falls back to `AA_CHAIN_ID`, then `CHAIN_ID`, then local Anvil |
 | `ERC8004_RPC_URL` | Backend | Optional RPC override for ERC-8004 receipt reads; falls back to `RPC_URL` / `LOCAL_RPC_URL` |
 | `ERC8004_PUBLIC_BASE_URL` | Backend | Optional public base URL included in the ERC-8004 registration file service endpoints |
+| `ERC8004_REPUTATION_SCHEDULER_ENABLED` | Backend | Enables periodic reputation attestation refreshes for active minted agents. Defaults to `false` and also requires `ERC8004_ENABLED=true` |
+| `ERC8004_REPUTATION_SCHEDULER_INTERVAL_MS` | Backend | Optional scheduler interval; defaults to `21600000` (6 hours) when the scheduler is enabled |
+| `ERC8004_REPUTATION_FRESHNESS_MS` | Backend | Optional freshness window before an agent is eligible for another reputation attestation; defaults to `86400000` (24 hours) |
+| `ERC8004_REPUTATION_SCHEDULER_BATCH_SIZE` | Backend | Optional maximum active minted agents refreshed per scheduler sweep; defaults to `25` |
 
 ## Lyria Auth Modes
 
