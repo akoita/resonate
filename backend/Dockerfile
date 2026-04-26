@@ -1,5 +1,5 @@
-# ---- Stage 1: Build ----
-FROM node:20-slim AS build
+# ---- Stage 1: Dependencies ----
+FROM node:20-slim AS deps
 
 WORKDIR /app
 
@@ -10,6 +10,9 @@ RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists
 COPY package.json package-lock.json ./
 RUN npm ci
 
+# ---- Stage 2: Build ----
+FROM deps AS build
+
 # Copy Prisma schema and generate client
 COPY prisma ./prisma
 RUN npx prisma generate
@@ -19,21 +22,22 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
-# ---- Stage 2: Production Runtime ----
+# ---- Stage 3: Production Dependencies ----
+FROM build AS prod-deps
+
+RUN npm prune --omit=dev
+
+# ---- Stage 4: Production Runtime ----
 FROM node:20-slim
 
 WORKDIR /app
 
 RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
-# Install production dependencies only
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
-
-# Copy Prisma schema + generated client (needed at runtime)
+# Copy production dependencies, Prisma schema, and generated client.
+COPY --from=prod-deps /app/node_modules ./node_modules
 COPY prisma ./prisma
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
+COPY package.json package-lock.json ./
 
 # Copy compiled output
 COPY --from=build /app/dist ./dist
