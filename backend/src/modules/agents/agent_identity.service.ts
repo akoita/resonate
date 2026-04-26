@@ -16,6 +16,12 @@ import { base, baseSepolia, foundry, sepolia } from "viem/chains";
 import { prisma } from "../../db/prisma";
 import { KernelAccountService } from "../identity/kernel_account.service";
 import { AgentLearningService } from "./agent_learning.service";
+import {
+  AgentReputationFeedbackService,
+  applyIndependentValidationToScore,
+  emptyIndependentValidationSummary,
+  type IndependentValidationSummary,
+} from "./agent_reputation_feedback.service";
 import { AgentWalletService } from "./agent_wallet.service";
 import {
   ERC8004_IDENTITY_ABI,
@@ -26,7 +32,7 @@ import {
   type AgentRegistrationFile,
 } from "./erc8004_identity";
 
-export const AGENT_REPUTATION_ATTESTATION_SCHEMA_VERSION = "resonate-agent-reputation/v1";
+export const AGENT_REPUTATION_ATTESTATION_SCHEMA_VERSION = "resonate-agent-reputation/v2";
 export const AGENT_REPUTATION_METADATA_KEY = "resonate.reputation";
 
 export type AgentIdentityStatus = "local" | "pending" | "minted" | "attested";
@@ -41,14 +47,17 @@ export type AgentReputationInput = {
   tasteScore?: number;
   stemQualityRatings?: number;
   curatorReputationDelta?: number;
+  independentValidation?: IndependentValidationSummary | null;
 };
 
 export type AgentReputationSnapshot = AgentReputationInput & {
   score: number;
+  platformComputedScore: number;
   tier: "New" | "Emerging" | "Trusted" | "Proven";
   acceptanceRate: number;
   budgetUtilization: number;
   tasteDepth: number;
+  independentValidation: IndependentValidationSummary | null;
   updatedAt: string;
 };
 
@@ -130,6 +139,11 @@ export type AgentReputationAttestationPayload = {
     genresExplored: string[];
     genreBreakdown: Record<string, number>;
   };
+  trust: {
+    platformComputedScore: number;
+    blendedScore: number;
+    independentValidation: IndependentValidationSummary;
+  };
   reputation: AgentReputationSnapshot;
   credential: AgentIdentityCredential;
 };
@@ -186,7 +200,7 @@ export function computeAgentReputationSnapshot(
   const acceptanceRate = sessions === 0 ? 0 : Math.min(1, tracksCurated / sessions);
   const budgetUtilization = monthlyCapUsd === 0 ? 0 : Math.min(1, totalSpendUsd / monthlyCapUsd);
   const tasteDepth = Math.min(1, (tracksCurated / 12) + (genresExplored.length / 10));
-  const score = Math.max(
+  const platformComputedScore = Math.max(
     0,
     Math.min(
       100,
@@ -202,6 +216,10 @@ export function computeAgentReputationSnapshot(
       ),
     ),
   );
+  const independentValidation = input.independentValidation ?? null;
+  const score = independentValidation
+    ? applyIndependentValidationToScore(platformComputedScore, independentValidation)
+    : platformComputedScore;
   const tier =
     score >= 80 ? "Proven" :
       score >= 50 ? "Trusted" :
@@ -218,7 +236,9 @@ export function computeAgentReputationSnapshot(
     curatorReputationDelta,
     genresExplored,
     genreBreakdown,
+    independentValidation,
     score,
+    platformComputedScore,
     tier,
     acceptanceRate,
     budgetUtilization,
@@ -226,6 +246,7 @@ export function computeAgentReputationSnapshot(
     updatedAt: now.toISOString(),
   };
 }
+
 
 export function buildAgentReputationAttestationPayload(input: {
   config: AgentReputationAttestationConfig;
@@ -283,6 +304,11 @@ export function buildAgentReputationAttestationPayload(input: {
       genresExplored: reputationSnapshot.genresExplored,
       genreBreakdown: reputationSnapshot.genreBreakdown ?? buildEqualGenreBreakdown(reputationSnapshot.genresExplored),
     },
+    trust: {
+      platformComputedScore: reputationSnapshot.platformComputedScore,
+      blendedScore: reputationSnapshot.score,
+      independentValidation: reputationSnapshot.independentValidation ?? emptyIndependentValidationSummary(),
+    },
     reputation: reputationSnapshot,
     credential: identityCredential,
   };
@@ -312,6 +338,7 @@ export class AgentIdentityService {
     private readonly agentWalletService: AgentWalletService,
     private readonly kernelAccountService: KernelAccountService,
     private readonly configService: ConfigService,
+    private readonly feedbackService: AgentReputationFeedbackService,
   ) {}
 
   async enrichConfig(config: AgentConfig): Promise<EnrichedAgentConfig> {
@@ -671,38 +698,54 @@ export class AgentIdentityService {
     }
 
     const snapshot = stored as Record<string, unknown>;
+    const storedValidation = (snapshot.independentValidation ?? null) as IndependentValidationSummary | null;
+    const nextValidation = next.independentValidation ?? null;
     return (
       snapshot.score !== next.score ||
+      snapshot.platformComputedScore !== next.platformComputedScore ||
       snapshot.sessions !== next.sessions ||
       snapshot.tracksCurated !== next.tracksCurated ||
       snapshot.totalSpendUsd !== next.totalSpendUsd ||
       snapshot.monthlyCapUsd !== next.monthlyCapUsd ||
       snapshot.updatedAt !== next.updatedAt ||
       JSON.stringify(snapshot.genreBreakdown ?? {}) !== JSON.stringify(next.genreBreakdown ?? {}) ||
-      JSON.stringify(snapshot.genresExplored ?? []) !== JSON.stringify(next.genresExplored)
+      JSON.stringify(snapshot.genresExplored ?? []) !== JSON.stringify(next.genresExplored) ||
+      (storedValidation?.count ?? 0) !== (nextValidation?.count ?? 0) ||
+      (storedValidation?.weightedScore ?? 0) !== (nextValidation?.weightedScore ?? 0) ||
+      (storedValidation?.lastFeedbackAt ?? null) !== (nextValidation?.lastFeedbackAt ?? null)
     );
   }
 
   private async computeReputation(config: AgentConfig): Promise<AgentReputationSnapshot> {
-    const tasteProfile = await this.learningService.computeTasteProfile(config.userId, config.vibes);
-    const sessions = await prisma.session.findMany({
-      where: { userId: config.userId },
-      include: {
-        licenses: {
-          include: {
-            track: {
-              select: {
-                release: {
-                  select: { genre: true },
+    const [tasteProfile, sessions, stemQualityRatings, independentValidation] = await Promise.all([
+      this.learningService.computeTasteProfile(config.userId, config.vibes),
+      prisma.session.findMany({
+        where: { userId: config.userId },
+        include: {
+          licenses: {
+            include: {
+              track: {
+                select: {
+                  release: {
+                    select: { genre: true },
+                  },
                 },
               },
             },
           },
         },
-      },
-      orderBy: { startedAt: "desc" },
-      take: 100,
-    });
+        orderBy: { startedAt: "desc" },
+        take: 100,
+      }),
+      prisma.stemQualityRating.findMany({
+        where: { curatorUserId: config.userId },
+        select: {
+          reputationDelta: true,
+        },
+        take: 500,
+      }),
+      this.feedbackService.summarize(config.id),
+    ]);
 
     const licenseGenres = sessions.flatMap((session) =>
       session.licenses
@@ -711,13 +754,6 @@ export class AgentIdentityService {
     );
     const totalSpendUsd = sessions.reduce((sum, session) => sum + session.spentUsd, 0);
     const tracksCurated = sessions.reduce((sum, session) => sum + session.licenses.length, 0);
-    const stemQualityRatings = await prisma.stemQualityRating.findMany({
-      where: { curatorUserId: config.userId },
-      select: {
-        reputationDelta: true,
-      },
-      take: 500,
-    });
     const curatorReputationDelta = stemQualityRatings.reduce(
       (sum, rating) => sum + rating.reputationDelta,
       0,
@@ -744,6 +780,7 @@ export class AgentIdentityService {
       tasteScore: tasteProfile.score,
       stemQualityRatings: stemQualityRatings.length,
       curatorReputationDelta,
+      independentValidation,
     }, lastSignalAt);
   }
 

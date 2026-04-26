@@ -225,9 +225,15 @@ Goal: ship the two most scarce on-chain primitives (ERC-8004 + curator attestati
      ships the deterministic payload, manual export endpoint, and
      `setMetadata` handoff.
    - Second slice: [#702](https://github.com/akoita/resonate/issues/702)
-     adds the opt-in backend scheduler for periodic refreshes. Remaining work is
-     independent non-owner validation and eventual ERC-8004 Reputation Registry
-     feedback.
+     adds the opt-in backend scheduler for periodic refreshes.
+   - Third slice: [#701](https://github.com/akoita/resonate/issues/701)
+     adds independent non-owner validation. `AgentReputationFeedback` persists
+     buyer/curator/external/reviewer events with self-feedback rejection,
+     duplicate guards, daily caps, and role-share weighting; the v2 attestation
+     payload now exposes a `trust` block separating platform-computed metrics
+     from independently-validated feedback. Remaining: route published events
+     to an ERC-8004 Reputation Registry once the deployed interface is
+     finalized.
 
 6. **Curator Agent (Claude Agent SDK subagent)** — issue [#322](https://github.com/akoita/resonate/issues/322) now has the backend quality-rating foundation: `StemQualityRating`, a curator analyzer for RMS energy, spectral density, silence ratio, and musical salience, ERC-8004 task-shaped metadata publication, buyer-side quality ranking, and validation-driven curator reputation deltas. Remaining product work is to replace the deterministic analyzer with a richer subagent/audio model and move task publication to a dedicated ERC-8004 Validation Registry when that deployed interface is selected.
 

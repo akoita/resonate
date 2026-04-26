@@ -1,5 +1,7 @@
 import { Module, forwardRef } from "@nestjs/common";
 import { AgentIdentityService } from "./agent_identity.service";
+import { AgentReputationFeedbackService } from "./agent_reputation_feedback.service";
+import { AgentReputationFeedbackController } from "./agent_reputation_feedback.controller";
 import { AgentReputationSchedulerService } from "./agent_reputation_scheduler.service";
 import { AGENT_RUNTIME_CORE_PROVIDERS } from "./agent_runtime.providers";
 import { AgentStemQualityService } from "./agent_stem_quality.service";
@@ -14,10 +16,16 @@ import { CatalogModule } from "../catalog/catalog.module";
 
 @Module({
   imports: [forwardRef(() => IdentityModule), GenerationModule, CatalogModule],
-  controllers: [AgentsController, AgentConfigController, AgentCuratorController],
+  controllers: [
+    AgentsController,
+    AgentConfigController,
+    AgentCuratorController,
+    AgentReputationFeedbackController,
+  ],
   providers: [
     ...AGENT_RUNTIME_CORE_PROVIDERS,
     AgentIdentityService,
+    AgentReputationFeedbackService,
     AgentReputationSchedulerService,
     AgentStemQualityService,
     AgentWalletService,
