@@ -89,6 +89,37 @@ You can run the helpers directly if needed:
 ./contracts/scripts/update-protocol-config.sh
 ```
 
+## ERC-8004 Identity Mint
+
+Issue #261 uses the public ERC-8004 Identity Registry instead of deploying a
+Resonate-owned registry. The backend defaults to the official mainnet or
+testnet registry address for supported public chain IDs, and
+`ERC8004_IDENTITY_REGISTRY_ADDRESS` remains available for local forks or custom
+deployments.
+
+Use the standalone script when you need to mint/link an agent identity outside
+the web dashboard:
+
+```bash
+cd backend
+
+export ERC8004_RPC_URL="$SEPOLIA_RPC_URL"
+export ERC8004_PRIVATE_KEY="0x..."
+
+npx ts-node-dev --transpile-only scripts/mint-agent-identity.ts \
+  --network sepolia \
+  --smart-account 0xYourKernelSmartAccount \
+  --name "Resonate DJ Agent" \
+  --capabilities curation,negotiation,mcp.catalog.search \
+  --mock-ipfs
+```
+
+`--mock-ipfs` prints the registration JSON and sets a deterministic `ipfs://`
+placeholder so local reviewers can verify the registry link before pinning the
+file. Without `--mock-ipfs`, the script stores the registration file as a
+`data:application/json` URI. Pass `--agent-uri ipfs://...` once the metadata is
+pinned.
+
 ## Local App Commands
 
 | Command | Purpose |

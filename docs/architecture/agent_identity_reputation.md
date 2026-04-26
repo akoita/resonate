@@ -2,12 +2,13 @@
 
 ## Scope
 
-Issue #291 starts the ERC-8004 identity path by making every agent config carry
-portable identity metadata, a computed reputation snapshot, and a verifiable
-credential export surface. The implementation is registry-ready and remains
-local-first by default. When ERC-8004 registry environment variables are set,
-the backend can submit identity registration and reputation metadata
-transactions through the user's approved agent session key.
+Issues #291 and #261 start the ERC-8004 identity path by making every agent
+config carry portable identity metadata, a computed reputation snapshot, and a
+verifiable credential export surface. The implementation remains local-first by
+default. When ERC-8004 is enabled, the backend can submit identity registration
+and reputation metadata transactions through the user's approved agent session
+key, using the official public Identity Registry address for supported
+mainnet/testnet chain IDs unless an override is supplied.
 
 ## Backend
 
@@ -51,16 +52,21 @@ approval is missing.
 
 ## Configuration
 
-ERC-8004 chain writes are disabled unless `ERC8004_ENABLED=true` and
-`ERC8004_IDENTITY_REGISTRY_ADDRESS` are set.
+ERC-8004 chain writes are disabled unless `ERC8004_ENABLED=true`.
 
 | Variable | Purpose |
 | --- | --- |
 | `ERC8004_ENABLED` | Enables ERC-8004 identity and reputation writes |
-| `ERC8004_IDENTITY_REGISTRY_ADDRESS` | Identity Registry contract implementing `register(string)` and `setMetadata(uint256,string,bytes)` |
+| `ERC8004_IDENTITY_REGISTRY_ADDRESS` | Optional Identity Registry override. When omitted, the backend selects the official ERC-8004 mainnet or testnet registry for supported chain IDs |
 | `ERC8004_CHAIN_ID` | Optional chain override; falls back to `AA_CHAIN_ID`, then `CHAIN_ID`, then local Anvil |
 | `ERC8004_RPC_URL` | Optional RPC override for receipt reads; falls back to `RPC_URL` / `LOCAL_RPC_URL` |
 | `ERC8004_PUBLIC_BASE_URL` | Optional public web/API base used in the registration file services list |
+
+Official defaults are centralized in
+`backend/src/modules/agents/erc8004_identity.ts`:
+
+- mainnets: `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`
+- testnets: `0x8004A818BFB912233c491871b3d84c89A494BD9e`
 
 ## ERC-8004 Follow-Up
 

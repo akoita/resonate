@@ -48,6 +48,8 @@ Started beyond Wave 1:
   local credentials remain the default, while configured environments can mint
   the agent identity through `register(string agentURI)` and publish reputation
   snapshots with `setMetadata(agentId, "resonate.reputation", bytes)`.
+  Issue #261 adds official mainnet/testnet Identity Registry defaults and a
+  standalone mint/link script for reviewers and operators.
 
 Still open beyond Wave 1:
 
@@ -213,7 +215,7 @@ Goal: ship the two most scarce on-chain primitives (ERC-8004 + curator attestati
    - On first agent activation, mint a soulbound NFT bound to the user's ERC-4337 smart account; metadata `{ agentId, vibes, monthlyCapUsd, createdAt }`.
    - Wire into [AgentSetupWizard](../../web/src/components/agent/AgentSetupWizard.tsx) after budget step.
    - First slice: local identity metadata, reputation snapshots, and credential export are documented in [agent_identity_reputation.md](../architecture/agent_identity_reputation.md).
-   - Remaining: replace the local identity state with confirmed ERC-8004 registry mint/attestation transactions.
+   - #261 adds official Identity Registry defaults plus the standalone mint/link script; remaining work is periodic reputation publishing and independent validation/feedback.
 
 5. **ERC-8004 Reputation attestations** — cron job publishes periodic attestations `{ tracksCurated, acceptanceRate, avgBudgetUtilization, genreBreakdown, tasteDepth }` from the learning loop.
 

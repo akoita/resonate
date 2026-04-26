@@ -1,9 +1,14 @@
 import {
+  computeAgentReputationSnapshot,
+} from "../modules/agents/agent_identity.service";
+import {
+  ERC8004_MAINNET_IDENTITY_REGISTRY,
+  ERC8004_TESTNET_IDENTITY_REGISTRY,
   buildAgentRegistrationFile,
   buildAgentRegistryId,
-  computeAgentReputationSnapshot,
+  defaultErc8004IdentityRegistry,
   toDataUriJson,
-} from "../modules/agents/agent_identity.service";
+} from "../modules/agents/erc8004_identity";
 
 describe("agent identity reputation scoring", () => {
   it("keeps a new agent at the new tier with no activity", () => {
@@ -47,32 +52,20 @@ describe("agent identity reputation scoring", () => {
       .toBe("eip155:84532:0x1234567890123456789012345678901234567890");
   });
 
+  it("selects official ERC-8004 registry defaults by network class", () => {
+    expect(defaultErc8004IdentityRegistry(84532)).toBe(ERC8004_TESTNET_IDENTITY_REGISTRY);
+    expect(defaultErc8004IdentityRegistry(1)).toBe(ERC8004_MAINNET_IDENTITY_REGISTRY);
+  });
+
   it("builds an ERC-8004 registration file from agent config", () => {
     const file = buildAgentRegistrationFile({
       config: {
         id: "agent_1",
-        userId: "0xowner",
         name: "Koita DJ",
         vibes: ["House", "Jazz"],
         stemTypes: ["drums"],
-        sessionMode: "curate",
-        monthlyCapUsd: 10,
         isActive: true,
-        identityStatus: "minted",
-        identityChainId: 84532,
-        identityRegistry: "0x1234567890123456789012345678901234567890",
         identityTokenId: "42",
-        identityTxHash: "0xtx",
-        identityCredential: null,
-        learnedTasteProfile: null,
-        tasteScore: 0,
-        tasteUpdatedAt: null,
-        reputationScore: 0,
-        reputationSnapshot: null,
-        reputationAttestedAt: null,
-        reputationTxHash: null,
-        createdAt: new Date("2026-04-26T00:00:00.000Z"),
-        updatedAt: new Date("2026-04-26T00:00:00.000Z"),
       },
       chainId: 84532,
       registry: "0x1234567890123456789012345678901234567890",
