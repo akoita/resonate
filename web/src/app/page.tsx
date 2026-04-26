@@ -722,9 +722,27 @@ const STEM_ACCENTS: Record<(typeof STEM_TONES)[number], string> = {
   secondary: "var(--ds-primary)",
 };
 
+// Maps the cosmetic card tag to a real mixer stem type from
+// MIXER_STEM_TYPES (release/[id]/page.tsx:60). Tags that don't match
+// any mixer channel (e.g. "Synth") return null so we fall back to
+// "mixer-on, all stems audible" instead of soloing-to-silence.
+const STEM_TAG_TO_MIXER: Record<(typeof STEM_TAGS)[number], string | null> = {
+  Drums: "drums",
+  Vocals: "vocals",
+  Synth: null,
+};
+
+function buildMixerHref(releaseId: string, tag: (typeof STEM_TAGS)[number]): string {
+  const stem = STEM_TAG_TO_MIXER[tag];
+  return stem
+    ? `/release/${releaseId}?mixer=true&stem=${stem}`
+    : `/release/${releaseId}?mixer=true`;
+}
+
 function StemCard({ release, variantIndex }: { release: Release; variantIndex: number }) {
   const tone = STEM_TONES[variantIndex % STEM_TONES.length];
   const tag = STEM_TAGS[variantIndex % STEM_TAGS.length];
+  const mixerHref = buildMixerHref(release.id, tag);
   const artistName = release.primaryArtist || release.artist?.displayName || "Unknown";
   // Deterministic bars (10) seeded by release id so rerenders don't jitter.
   const bars = useMemo(() => pseudoRandomBars(release.id, 18), [release.id]);
@@ -737,7 +755,7 @@ function StemCard({ release, variantIndex }: { release: Release; variantIndex: n
       style={{ "--stem-tone": STEM_ACCENTS[tone] } as CSSProperties}
     >
       <Link
-        href={`/release/${release.id}`}
+        href={mixerHref}
         className="ng-stem-card__art"
         aria-label={`Open ${release.title} in the mixer`}
       >
@@ -782,16 +800,20 @@ function StemCard({ release, variantIndex }: { release: Release; variantIndex: n
         </div>
         <div className="ng-stem-card__actions">
           <Link
-            href={`/release/${release.id}`}
+            href={mixerHref}
             className="ng-stem-card__action ng-stem-card__action--flex"
             style={{ textAlign: "center" }}
           >
             Open Mixer
           </Link>
           <Link
-            href={`/release/${release.id}?mixer=true`}
+            href={mixerHref}
             className="ng-stem-card__action ng-stem-card__action--icon"
-            aria-label="Solo this stem"
+            aria-label={
+              STEM_TAG_TO_MIXER[tag]
+                ? `Solo ${tag.toLowerCase()} in the mixer`
+                : "Open in mixer"
+            }
           >
             <span className="ms-icon" aria-hidden style={{ fontSize: 16 }}>graphic_eq</span>
           </Link>
