@@ -25,7 +25,6 @@ const X402_STATUS_LABEL: Record<X402StatusPhase, string> = {
 
 type X402QuoteInfo = {
   amountUsd: number | null;
-  asset: { name: string; address: string } | null;
   payTo: string | null;
 };
 
@@ -57,6 +56,15 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
     () => Boolean(x402Config?.enabled && stemId && kernelAccount?.signTypedData),
     [x402Config, stemId, kernelAccount],
   );
+  const x402Asset = x402Config?.enabled ? x402Config.asset : null;
+  const x402DownloadUrl = useMemo(
+    () => (x402Result ? URL.createObjectURL(x402Result.audio) : null),
+    [x402Result],
+  );
+  useEffect(() => {
+    if (!x402DownloadUrl) return;
+    return () => URL.revokeObjectURL(x402DownloadUrl);
+  }, [x402DownloadUrl]);
 
   // Fetch stem pricing for license type selector
   useEffect(() => {
@@ -78,8 +86,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
       .then((data) => {
         if (cancelled || !data?.x402) return;
         setX402Quote({
-          amountUsd: data.x402?.amountUsd ?? data.purchase?.basePlayPriceUsd ?? null,
-          asset: data.x402?.asset ?? null,
+          amountUsd: typeof data.price?.usd === "number" ? data.price.usd : null,
           payTo: data.x402?.payTo ?? null,
         });
       })
@@ -291,7 +298,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 </div>
                 <div className="buy-modal__x402-row">
                   <span>Asset</span>
-                  <span>{x402Quote?.asset?.name ?? "USDC"}</span>
+                  <span>{x402Asset?.name ?? "USDC"}</span>
                 </div>
                 {x402Quote?.payTo && (
                   <div className="buy-modal__x402-row">
@@ -338,11 +345,11 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 </a>
               </div>
             )}
-            {paymentMethod === "x402" && x402Result && (
+            {paymentMethod === "x402" && x402Result && x402DownloadUrl && (
               <div className="buy-modal__alert buy-modal__alert--success">
                 Payment settled.{" "}
                 <a
-                  href={URL.createObjectURL(x402Result.audio)}
+                  href={x402DownloadUrl}
                   download={x402Result.filename}
                 >
                   Download stem →
