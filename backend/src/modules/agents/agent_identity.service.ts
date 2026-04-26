@@ -35,6 +35,8 @@ export type AgentReputationInput = {
   monthlyCapUsd: number;
   genresExplored: string[];
   tasteScore?: number;
+  stemQualityRatings?: number;
+  curatorReputationDelta?: number;
 };
 
 export type AgentReputationSnapshot = AgentReputationInput & {
@@ -61,6 +63,11 @@ export type AgentIdentityOnchainResult = {
   reason?: "erc8004_disabled" | "missing_session_key" | "already_minted" | "missing_token_id";
 };
 
+export type AgentIdentityMetadataResult = Omit<AgentIdentityOnchainResult, "reason"> & {
+  metadataKey: string;
+  reason?: "erc8004_disabled" | "missing_session_key" | "missing_token_id";
+};
+
 type AgentConfigWithIdentity = AgentConfig & {
   identityStatus: AgentIdentityStatus;
 };
@@ -73,19 +80,26 @@ export function computeAgentReputationSnapshot(
   const tracksCurated = Math.max(0, input.tracksCurated);
   const monthlyCapUsd = Math.max(0, input.monthlyCapUsd);
   const totalSpendUsd = Math.max(0, input.totalSpendUsd);
+  const stemQualityRatings = Math.max(0, input.stemQualityRatings ?? 0);
+  const curatorReputationDelta = input.curatorReputationDelta ?? 0;
   const genresExplored = Array.from(new Set(input.genresExplored.filter(Boolean)));
   const acceptanceRate = sessions === 0 ? 0 : Math.min(1, tracksCurated / sessions);
   const budgetUtilization = monthlyCapUsd === 0 ? 0 : Math.min(1, totalSpendUsd / monthlyCapUsd);
   const tasteDepth = Math.min(1, (tracksCurated / 12) + (genresExplored.length / 10));
-  const score = Math.min(
-    100,
-    Math.round(
-      sessions * 6 +
-      tracksCurated * 4 +
-      genresExplored.length * 5 +
-      (input.tasteScore ?? 0) * 0.25 +
-      acceptanceRate * 20 +
-      budgetUtilization * 10
+  const score = Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round(
+        sessions * 6 +
+        tracksCurated * 4 +
+        genresExplored.length * 5 +
+        Math.min(20, stemQualityRatings * 2) +
+        curatorReputationDelta +
+        (input.tasteScore ?? 0) * 0.25 +
+        acceptanceRate * 20 +
+        budgetUtilization * 10
+      ),
     ),
   );
   const tier =
@@ -100,6 +114,8 @@ export function computeAgentReputationSnapshot(
     tracksCurated,
     totalSpendUsd,
     monthlyCapUsd,
+    stemQualityRatings,
+    curatorReputationDelta,
     genresExplored,
     score,
     tier,
@@ -344,6 +360,82 @@ export class AgentIdentityService {
     }
   }
 
+  async publishMetadata(
+    userId: string,
+    metadataKey: string,
+    metadataPayload: unknown,
+  ): Promise<AgentIdentityMetadataResult> {
+    const config = await prisma.agentConfig.findUnique({ where: { userId } });
+    if (!config) {
+      throw new BadRequestException("Agent config is required before publishing ERC-8004 metadata");
+    }
+
+    const registryConfig = this.getRegistryConfig();
+    if (!registryConfig) {
+      return {
+        status: config.identityStatus as AgentIdentityStatus,
+        chainId: config.identityChainId,
+        registry: config.identityRegistry,
+        txHash: null,
+        tokenId: config.identityTokenId,
+        metadataKey,
+        reason: "erc8004_disabled",
+      };
+    }
+    if (!config.identityTokenId) {
+      return {
+        status: config.identityStatus as AgentIdentityStatus,
+        chainId: registryConfig.chainId,
+        registry: registryConfig.identityRegistry,
+        txHash: null,
+        tokenId: null,
+        metadataKey,
+        reason: "missing_token_id",
+      };
+    }
+
+    const keyData = await this.agentWalletService.getAgentKeyData(userId);
+    if (!keyData) {
+      return {
+        status: config.identityStatus as AgentIdentityStatus,
+        chainId: registryConfig.chainId,
+        registry: registryConfig.identityRegistry,
+        txHash: null,
+        tokenId: config.identityTokenId,
+        metadataKey,
+        reason: "missing_session_key",
+      };
+    }
+
+    try {
+      const data = encodeFunctionData({
+        abi: ERC8004_IDENTITY_ABI,
+        functionName: "setMetadata",
+        args: [
+          BigInt(config.identityTokenId),
+          metadataKey,
+          stringToHex(JSON.stringify(metadataPayload)),
+        ],
+      });
+      const txHash = await this.kernelAccountService.sendSessionKeyTransaction(
+        keyData.agentPrivateKey.toString(),
+        keyData.approvalData,
+        registryConfig.identityRegistry,
+        data,
+      );
+      return {
+        status: "attested",
+        chainId: registryConfig.chainId,
+        registry: registryConfig.identityRegistry,
+        txHash,
+        tokenId: config.identityTokenId,
+        metadataKey,
+      };
+    } finally {
+      keyData.agentPrivateKey.zero();
+    }
+  }
+
   buildRegistrationFile(config: AgentConfig): AgentRegistrationFile {
     const registryConfig = this.getRegistryConfig();
     return buildAgentRegistrationFile({
@@ -406,6 +498,17 @@ export class AgentIdentityService {
     );
     const totalSpendUsd = sessions.reduce((sum, session) => sum + session.spentUsd, 0);
     const tracksCurated = sessions.reduce((sum, session) => sum + session.licenses.length, 0);
+    const stemQualityRatings = await prisma.stemQualityRating.findMany({
+      where: { curatorUserId: config.userId },
+      select: {
+        reputationDelta: true,
+      },
+      take: 500,
+    });
+    const curatorReputationDelta = stemQualityRatings.reduce(
+      (sum, rating) => sum + rating.reputationDelta,
+      0,
+    );
     const genresExplored = tasteProfile.genresExplored.length > 0
       ? tasteProfile.genresExplored
       : (licenseGenres.length > 0 ? licenseGenres : config.vibes);
@@ -422,6 +525,8 @@ export class AgentIdentityService {
       monthlyCapUsd: config.monthlyCapUsd,
       genresExplored,
       tasteScore: tasteProfile.score,
+      stemQualityRatings: stemQualityRatings.length,
+      curatorReputationDelta,
     }, lastSignalAt);
   }
 

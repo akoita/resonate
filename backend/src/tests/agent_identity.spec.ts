@@ -47,6 +47,22 @@ describe("agent identity reputation scoring", () => {
     expect(snapshot.tasteDepth).toBeGreaterThan(0.7);
   });
 
+  it("folds curator quality-rating validation into agent reputation", () => {
+    const snapshot = computeAgentReputationSnapshot({
+      sessions: 0,
+      tracksCurated: 0,
+      totalSpendUsd: 0,
+      monthlyCapUsd: 10,
+      genresExplored: ["Soul"],
+      stemQualityRatings: 4,
+      curatorReputationDelta: 6,
+    });
+
+    expect(snapshot.stemQualityRatings).toBe(4);
+    expect(snapshot.curatorReputationDelta).toBe(6);
+    expect(snapshot.score).toBeGreaterThan(10);
+  });
+
   it("builds ERC-8004 registry identifiers", () => {
     expect(buildAgentRegistryId(84532, "0x1234567890123456789012345678901234567890"))
       .toBe("eip155:84532:0x1234567890123456789012345678901234567890");

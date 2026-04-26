@@ -219,7 +219,7 @@ Goal: ship the two most scarce on-chain primitives (ERC-8004 + curator attestati
 
 5. **ERC-8004 Reputation attestations** — cron job publishes periodic attestations `{ tracksCurated, acceptanceRate, avgBudgetUtilization, genreBreakdown, tasteDepth }` from the learning loop.
 
-6. **Curator Agent (Claude Agent SDK subagent)** — a *different* agent role that analyzes a stem's RMS energy, spectral density, silence ratio, musical salience and publishes 0–100 quality scores to ERC-8004's Validation registry. This is [#322](https://github.com/akoita/resonate/issues/322) — and it cleanly justifies bringing Anthropic into the stack alongside Google (multi-model fluency on a resume).
+6. **Curator Agent (Claude Agent SDK subagent)** — issue [#322](https://github.com/akoita/resonate/issues/322) now has the backend quality-rating foundation: `StemQualityRating`, a curator analyzer for RMS energy, spectral density, silence ratio, and musical salience, ERC-8004 task-shaped metadata publication, buyer-side quality ranking, and validation-driven curator reputation deltas. Remaining product work is to replace the deterministic analyzer with a richer subagent/audio model and move task publication to a dedicated ERC-8004 Validation Registry when that deployed interface is selected.
 
 7. **Agent runtime extraction** ([#424](https://github.com/akoita/resonate/issues/424)) — extract `AgentRuntimeService` + `PaymentRouterService` + `PolicyGuardService` into a standalone NestJS app or Node service. Opens the door to public-agent composability and becomes the "binary" an outside ERC-8004-compatible agent talks to.
 

@@ -2,6 +2,8 @@ import { Injectable, Logger } from "@nestjs/common";
 import { createPublicClient, http, type Address } from "viem";
 import { sepolia, foundry } from "viem/chains";
 import { prisma } from "../../db/prisma";
+import { AgentStemQualityService } from "./agent_stem_quality.service";
+import { DEFAULT_MIN_STEM_QUALITY_SCORE } from "./stem_quality";
 import { ToolRegistry } from "./tools/tool_registry";
 
 /** ABI fragment for StemMarketplaceV2.listings(uint256) view */
@@ -33,9 +35,14 @@ export interface AgentNegotiatorInput {
 export interface ListingInfo {
   listingId: bigint;
   tokenId: bigint;
+  stemId: string | null;
   pricePerUnit: string;
   chainId: number;
   stemType: string;
+  qualityScore?: number | null;
+  qualityConfidence?: number | null;
+  qualityRatingId?: string | null;
+  qualityWeightedRank?: number;
 }
 
 export interface NegotiationResult {
@@ -55,7 +62,10 @@ export class AgentNegotiatorService {
   private readonly rpcUrl: string;
   private readonly marketplaceAddress: Address;
 
-  constructor(private readonly tools: ToolRegistry) {
+  constructor(
+    private readonly tools: ToolRegistry,
+    private readonly stemQualityService?: AgentStemQualityService,
+  ) {
     this.rpcUrl = process.env.RPC_URL ?? "http://localhost:8545";
     this.marketplaceAddress = (process.env.MARKETPLACE_ADDRESS ??
       "0x0000000000000000000000000000000000000000") as Address;
@@ -89,13 +99,14 @@ export class AgentNegotiatorService {
       const filtered = stemFilter.length > 0
         ? allListings.filter((l) => stemFilter.includes(l.stemType))
         : allListings;
+      const ranked = await this.rankListings(filtered);
 
-      result.listings = filtered;
-      result.listing = filtered[0]; // backward compat
+      result.listings = ranked;
+      result.listing = ranked[0]; // backward compat
 
-      if (filtered.length > 0) {
+      if (ranked.length > 0) {
         this.logger.debug(
-          `Found ${filtered.length} active listing(s) for track ${input.trackId}: ${filtered.map((l) => `${l.stemType}#${l.listingId}`).join(", ")}`
+          `Found ${ranked.length} active listing(s) for track ${input.trackId}: ${ranked.map((l) => `${l.stemType}#${l.listingId}@q${l.qualityScore ?? "na"}`).join(", ")}`
         );
       }
     } catch (err) {
@@ -143,6 +154,7 @@ export class AgentNegotiatorService {
         validListings.push({
           listingId: listing.listingId,
           tokenId: listing.tokenId,
+          stemId: stem.id,
           pricePerUnit: listing.pricePerUnit,
           chainId: listing.chainId,
           stemType: stem.type,
@@ -151,6 +163,18 @@ export class AgentNegotiatorService {
     }
 
     return validListings;
+  }
+
+  private async rankListings(listings: ListingInfo[]): Promise<ListingInfo[]> {
+    if (!this.stemQualityService || listings.length === 0) return listings;
+    try {
+      return await this.stemQualityService.rankListings(listings, {
+        minScore: DEFAULT_MIN_STEM_QUALITY_SCORE,
+      });
+    } catch (error) {
+      this.logger.warn(`Stem quality ranking unavailable: ${error}`);
+      return listings;
+    }
   }
 
   /**

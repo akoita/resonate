@@ -22,6 +22,7 @@ model User {
   sessions      Session[]
   wallet        Wallet?
   sessionKeys   SessionKey[]
+  stemQualityRatings StemQualityRating[]
 }
 
 model Wallet {
@@ -165,6 +166,44 @@ model Stem {
   listings           StemListing[]
   nftMint            StemNftMint?
   pricing            StemPricing?
+  qualityRatings     StemQualityRating[]
+}
+
+model StemQualityRating {
+  id                      String    @id @default(uuid())
+  stemId                  String
+  curatorUserId           String
+  curatorAgentConfigId    String?
+  curatorIdentityRegistry String?
+  curatorIdentityTokenId  String?
+  score                   Int
+  rmsEnergy               Float
+  spectralDensity         Float
+  silenceRatio            Float
+  musicalSalience         Float
+  confidence              Float     @default(0)
+  taskType                String    @default("stem.quality_rating")
+  analysisMethod          String
+  analysisMetadata        Json?
+  analysisUri             String?
+  onchainMetadataKey      String?
+  onchainTaskHash         String?
+  onchainTxHash           String?
+  onchainStatus           String    @default("local")
+  onchainError            String?   @db.Text
+  purchaseValidationCount Int       @default(0)
+  skipValidationCount     Int       @default(0)
+  reputationDelta         Int       @default(0)
+  lastValidatedAt         DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  stem                    Stem      @relation(fields: [stemId], references: [id], onDelete: Cascade)
+  curator                 User      @relation(fields: [curatorUserId], references: [id], onDelete: Cascade)
+
+  @@unique([stemId, curatorUserId])
+  @@index([stemId, score])
+  @@index([curatorUserId, createdAt])
+  @@index([onchainTaskHash])
 }
 
 model StemPricing {

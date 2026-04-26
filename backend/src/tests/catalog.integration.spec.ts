@@ -495,7 +495,7 @@ describe('CatalogService (integration)', () => {
     await prisma.playlist.delete({ where: { id: playlist.id } });
   });
 
-  it('deletes release when a legacy stem quality rating table still exists', async () => {
+  it('deletes release when stem quality ratings exist', async () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Legacy Rating Delete Target',
@@ -505,38 +505,30 @@ describe('CatalogService (integration)', () => {
       data: { trackId: created.tracks[0].id, type: 'vocals', uri: '/rated.mp3' },
     });
 
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "StemQualityRating" (
-        "id" TEXT PRIMARY KEY,
-        "stemId" TEXT NOT NULL,
-        "curatorId" TEXT NOT NULL,
-        "score" INTEGER NOT NULL,
-        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "StemQualityRating"
-      DROP CONSTRAINT IF EXISTS "StemQualityRating_stemId_fkey"
-    `);
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "StemQualityRating"
-      ADD CONSTRAINT "StemQualityRating_stemId_fkey"
-      FOREIGN KEY ("stemId") REFERENCES "Stem"("id") ON DELETE RESTRICT ON UPDATE CASCADE
-    `);
-    await prisma.$executeRaw`
-      INSERT INTO "StemQualityRating" ("id", "stemId", "curatorId", "score")
-      VALUES (${`${TEST_PREFIX}rating`}, ${stem.id}, ${`${TEST_PREFIX}curator`}, ${5})
-    `;
+    await prisma.stemQualityRating.create({
+      data: {
+        id: `${TEST_PREFIX}rating`,
+        stemId: stem.id,
+        curatorUserId: `${TEST_PREFIX}user`,
+        score: 5,
+        rmsEnergy: 0.1,
+        spectralDensity: 0.1,
+        silenceRatio: 0.9,
+        musicalSalience: 0.1,
+        confidence: 0.5,
+        taskType: 'stem.quality_rating',
+        analysisMethod: 'test',
+        analysisMetadata: {},
+        onchainStatus: 'local',
+      },
+    });
 
-    try {
-      const result = await catalog.deleteRelease(created.id, `${TEST_PREFIX}user`);
+    const result = await catalog.deleteRelease(created.id, `${TEST_PREFIX}user`);
 
-      expect(result.success).toBe(true);
-      expect(await prisma.stem.findUnique({ where: { id: stem.id } })).toBeNull();
-      expect(await prisma.release.findUnique({ where: { id: created.id } })).toBeNull();
-    } finally {
-      await prisma.$executeRawUnsafe('DROP TABLE IF EXISTS "StemQualityRating"');
-    }
+    expect(result.success).toBe(true);
+    expect(await prisma.stemQualityRating.findUnique({ where: { id: `${TEST_PREFIX}rating` } })).toBeNull();
+    expect(await prisma.stem.findUnique({ where: { id: stem.id } })).toBeNull();
+    expect(await prisma.release.findUnique({ where: { id: created.id } })).toBeNull();
   });
 
   it('deletes release with purchased stem listing', async () => {
