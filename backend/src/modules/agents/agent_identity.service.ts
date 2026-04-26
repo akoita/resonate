@@ -17,6 +17,14 @@ import { prisma } from "../../db/prisma";
 import { KernelAccountService } from "../identity/kernel_account.service";
 import { AgentLearningService } from "./agent_learning.service";
 import { AgentWalletService } from "./agent_wallet.service";
+import {
+  ERC8004_IDENTITY_ABI,
+  buildAgentRegistrationFile,
+  buildAgentRegistryId,
+  defaultErc8004IdentityRegistry,
+  toDataUriJson,
+  type AgentRegistrationFile,
+} from "./erc8004_identity";
 
 export type AgentIdentityStatus = "local" | "pending" | "minted" | "attested";
 
@@ -44,18 +52,6 @@ export type EnrichedAgentConfig = Omit<AgentConfig, "identityCredential" | "repu
   identityCredential: AgentIdentityCredential;
 };
 
-export type AgentRegistrationFile = Prisma.InputJsonObject & {
-  type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1";
-  name: string;
-  description: string;
-  image: string;
-  services: Array<{ name: string; endpoint: string; version?: string }>;
-  x402Support: boolean;
-  active: boolean;
-  registrations: Array<{ agentId: number | string; agentRegistry: string }>;
-  supportedTrust: string[];
-};
-
 export type AgentIdentityOnchainResult = {
   status: AgentIdentityStatus;
   chainId: number | null;
@@ -68,81 +64,6 @@ export type AgentIdentityOnchainResult = {
 type AgentConfigWithIdentity = AgentConfig & {
   identityStatus: AgentIdentityStatus;
 };
-
-const AGENT_IDENTITY_ABI = [
-  {
-    type: "function",
-    name: "register",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "agentURI", type: "string" }],
-    outputs: [{ name: "agentId", type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "setMetadata",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "agentId", type: "uint256" },
-      { name: "metadataKey", type: "string" },
-      { name: "metadataValue", type: "bytes" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "event",
-    name: "Registered",
-    inputs: [
-      { name: "agentId", type: "uint256", indexed: true },
-      { name: "agentURI", type: "string", indexed: false },
-      { name: "owner", type: "address", indexed: true },
-    ],
-  },
-] as const;
-
-export function buildAgentRegistryId(chainId: number, registry: string): string {
-  return `eip155:${chainId}:${registry}`;
-}
-
-export function buildAgentRegistrationFile(input: {
-  config: AgentConfig;
-  chainId: number | null;
-  registry: string | null;
-  publicBaseUrl?: string | null;
-}): AgentRegistrationFile {
-  const publicBaseUrl = input.publicBaseUrl?.replace(/\/$/, "");
-  const registrations =
-    input.chainId && input.registry && input.config.identityTokenId
-      ? [{
-        agentId: input.config.identityTokenId,
-        agentRegistry: buildAgentRegistryId(input.chainId, input.registry),
-      }]
-      : [];
-
-  const services: AgentRegistrationFile["services"] = [];
-  if (publicBaseUrl) {
-    services.push(
-      { name: "web", endpoint: publicBaseUrl },
-      { name: "MCP", endpoint: `${publicBaseUrl}/mcp`, version: "2025-06-18" },
-    );
-  }
-
-  return {
-    type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
-    name: input.config.name,
-    description: `Resonate AI DJ agent for ${input.config.vibes.join(", ") || "music curation"}.`,
-    image: publicBaseUrl ? `${publicBaseUrl}/icon.png` : "",
-    services,
-    x402Support: true,
-    active: input.config.isActive,
-    registrations,
-    supportedTrust: ["reputation"],
-  };
-}
-
-export function toDataUriJson(value: unknown): string {
-  const json = JSON.stringify(value);
-  return `data:application/json;base64,${Buffer.from(json, "utf8").toString("base64")}`;
-}
 
 export function computeAgentReputationSnapshot(
   input: AgentReputationInput,
@@ -292,7 +213,7 @@ export class AgentIdentityService {
         publicBaseUrl: registryConfig.publicBaseUrl,
       }));
       const data = encodeFunctionData({
-        abi: AGENT_IDENTITY_ABI,
+        abi: ERC8004_IDENTITY_ABI,
         functionName: "register",
         args: [agentURI],
       });
@@ -383,7 +304,7 @@ export class AgentIdentityService {
         credential: enrichedBeforeTx.identityCredential,
       };
       const data = encodeFunctionData({
-        abi: AGENT_IDENTITY_ABI,
+        abi: ERC8004_IDENTITY_ABI,
         functionName: "setMetadata",
         args: [
           BigInt(config.identityTokenId),
@@ -544,12 +465,8 @@ export class AgentIdentityService {
     publicBaseUrl: string | null;
   } | null {
     const enabled = this.configService.get<string>("ERC8004_ENABLED") === "true";
-    const registry = this.configService.get<string>("ERC8004_IDENTITY_REGISTRY_ADDRESS");
-    if (!enabled || !registry) {
+    if (!enabled) {
       return null;
-    }
-    if (!isAddress(registry)) {
-      throw new Error("ERC8004_IDENTITY_REGISTRY_ADDRESS must be a valid EVM address");
     }
 
     const chainId = Number(
@@ -558,6 +475,15 @@ export class AgentIdentityService {
       this.configService.get<string>("CHAIN_ID") ||
       "31337",
     );
+    const registry =
+      this.configService.get<string>("ERC8004_IDENTITY_REGISTRY_ADDRESS") ||
+      defaultErc8004IdentityRegistry(chainId);
+    if (!registry) {
+      throw new Error("ERC8004_IDENTITY_REGISTRY_ADDRESS is required for unsupported ERC-8004 chain IDs");
+    }
+    if (!isAddress(registry)) {
+      throw new Error("ERC8004_IDENTITY_REGISTRY_ADDRESS must be a valid EVM address");
+    }
     const rpcUrl =
       this.configService.get<string>("ERC8004_RPC_URL") ||
       this.configService.get<string>("RPC_URL") ||
@@ -603,7 +529,7 @@ export class AgentIdentityService {
       }
       try {
         const decoded = decodeEventLog({
-          abi: AGENT_IDENTITY_ABI,
+          abi: ERC8004_IDENTITY_ABI,
           data: log.data,
           topics: log.topics,
         });

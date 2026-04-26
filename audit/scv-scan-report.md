@@ -1,54 +1,56 @@
 ## Smart Contract Scan Report
 
-Scope reviewed on April 8, 2026:
+Scope reviewed on April 26, 2026 for issue #261:
 
-- `contracts/src/core/DisputeResolution.sol`
-- `contracts/script/DeployLocalAA.s.sol`
-- `contracts/test/unit/DisputeResolution.t.sol`
-- `contracts/test/unit/CurationRewards.t.sol`
+- `contracts/src/interfaces/IERC8004.sol`
 
 ### Reconnaissance
 
 - Solidity version: `0.8.28`
-- Key inherited dependencies:
-  - OpenZeppelin `Ownable`
-  - OpenZeppelin `ReentrancyGuard`
+- Contract type: interface only
+- External dependencies: none
 - Change focus:
-  - prevent the same reporter wallet from re-filing the same token after resolution
-  - update local AA deployment operator instructions
+  - document the minimal official ERC-8004 Identity Registry surface used by
+    Resonate agents
+  - avoid a Resonate-owned mock registry for public mainnet/testnet integration
 
 ### Syntactic Sweep
 
 Patterns reviewed:
 
-- access control via `onlyOwner`
-- state transitions around `fileDispute`, `resolve`, and `finalizeJuryDecision`
-- external-call and callback triggers such as `.call{}`, `delegatecall`, `_safeMint`, `safeTransferFrom`
-- unsafe primitives such as `tx.origin`, `selfdestruct`, `unchecked`, and `assembly`
+- external call triggers: `.call{}`, `_safeMint`, `_safeTransfer`,
+  `safeTransferFrom`
+- access-control gates: `onlyOwner`, `onlyRole`, `_checkRole`,
+  `require(msg.sender...)`
+- dangerous primitives: `selfdestruct`, `delegatecall`, `tx.origin`
+- unchecked arithmetic and inline `assembly`
 
 Observed result:
 
-- no new external-call surfaces were introduced
-- no new unchecked arithmetic or inline assembly was introduced
-- the new `hasReportedByToken` guard only adds state validation before dispute creation
+- no implementation logic was added
+- no storage, value transfer, external call, authorization, unchecked arithmetic,
+  or assembly paths were introduced
+- all functions are declarations for the external Identity Registry
 
 ### Semantic Review
 
-Reviewed the new `AlreadyReported` flow for:
+Reviewed the interface for:
 
-- accidental permanent lock of unrelated reporters
-- bypass via appeal or jury flow
-- stale active-dispute state after resolution
+- signature alignment with the ERC-8004 Identity Registry operations used by
+  the backend and mint script
+- accidental writable implementation logic
+- accidental payable functions or fund-handling surface
 
 Conclusion:
 
-- the new mapping is keyed by `tokenId` and `reporter`, so it blocks only repeat filings by the same wallet for the same token
-- `activeDisputeByToken` is still cleared on resolution and jury finalization, so different reporters can still file later cases
-- the change does not alter fund-handling or access-control paths
+- the interface only declares `register`, `setAgentURI`, ERC-721 read methods,
+  agent wallet readback, and metadata read/write/delete methods
+- no confirmed vulnerability is introduced by this interface-only change
 
 ### Findings
 
-No confirmed Critical, High, Medium, Low, or Informational security findings were identified in the reviewed changes.
+No confirmed Critical, High, Medium, Low, or Informational security findings
+were identified in the reviewed changes.
 
 | Severity | Count |
 | -------- | ----- |
@@ -57,3 +59,11 @@ No confirmed Critical, High, Medium, Low, or Informational security findings wer
 | Medium   | 0 |
 | Low      | 0 |
 | Info     | 0 |
+
+### Commands Run
+
+```bash
+find contracts/src -name '*.sol' -type f
+rg '\.call\{|_safeMint|_safeTransfer|safeTransferFrom|onlyOwner|onlyRole|_checkRole|require.*msg\.sender|selfdestruct|delegatecall|tx\.origin|unchecked|assembly' contracts/src/interfaces/IERC8004.sol
+cd contracts && forge build
+```

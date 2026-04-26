@@ -167,6 +167,9 @@ document focused on contract deployment and contract-adjacent local workflows.
 
 ERC-8004 agent identity writes are backend runtime configuration, not protocol
 deployment inputs. When a deployed environment should register agents on-chain,
-set `ERC8004_ENABLED`, `ERC8004_IDENTITY_REGISTRY_ADDRESS`, and any chain/RPC
-overrides in the service configuration managed by `resonate-iac`; the variable
-reference lives in [`docs/deployment/environment.md`](../deployment/environment.md).
+set `ERC8004_ENABLED` and any chain/RPC overrides in the service configuration
+managed by `resonate-iac`. `ERC8004_IDENTITY_REGISTRY_ADDRESS` is only required
+for a fork or custom registry; otherwise the backend selects the official
+ERC-8004 mainnet or testnet Identity Registry for supported chain IDs. The
+variable reference lives in
+[`docs/deployment/environment.md`](../deployment/environment.md).
