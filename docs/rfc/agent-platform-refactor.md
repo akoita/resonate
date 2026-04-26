@@ -347,6 +347,9 @@ quality and payment correctness.
 ### Phase A: Runtime Unification
 
 - make `AgentRuntimeService` the canonical entrypoint
+- expose the same runtime through a standalone worker process at
+  `POST /agent-runtime/execute`, with `AgentRuntimeExecutorService` preserving
+  the in-process ADK / Vertex / LangGraph / deterministic fallback path
 - move session agent flow behind the shared runtime
 - remove direct price computation from session orchestration
 

@@ -2,24 +2,28 @@
 
 ## Executive Summary
 
-Reviewed the #322 curator-agent stem quality implementation. No Critical or
-High findings were identified in the changed backend schema, services,
-controllers, buyer ranking path, or documentation.
+Reviewed the #424 agent runtime worker extraction. No Critical or High findings
+were identified in the new worker endpoint, backend-to-worker delegation path,
+runtime contract, tests, or documentation.
 
 ## Scope
 
-- `backend/prisma/schema.prisma`
-- `backend/prisma/migrations/20260426160000_stem_quality_ratings/migration.sql`
-- `backend/src/modules/agents/agent_curator.controller.ts`
-- `backend/src/modules/agents/agent_stem_quality.service.ts`
-- `backend/src/modules/agents/stem_quality.ts`
-- `backend/src/modules/agents/agent_config.controller.ts`
-- `backend/src/modules/agents/agent_identity.service.ts`
+- `backend/src/agent-worker.ts`
+- `backend/src/modules/agents/agent_worker.module.ts`
+- `backend/src/modules/agents/agent_runtime_worker.controller.ts`
+- `backend/src/modules/agents/agent_runtime.contract.ts`
+- `backend/src/modules/agents/agent_runtime.executor.service.ts`
+- `backend/src/modules/agents/agent_runtime_remote.client.ts`
+- `backend/src/modules/agents/agent_runtime.service.ts`
+- `backend/src/modules/agents/agent_runtime.providers.ts`
+- `backend/src/modules/agents/agent_runtime.types.ts`
 - `backend/src/modules/agents/agent_negotiator.service.ts`
 - `backend/src/modules/agents/agents.module.ts`
-- `backend/src/tests/agent_identity.spec.ts`
-- `backend/src/tests/agent_stem_quality.spec.ts`
-- `docs/architecture/agent_identity_reputation.md`
+- `backend/src/tests/agent_runtime_worker.spec.ts`
+- `backend/src/tests/agent_runtime.integration.spec.ts`
+- `docs/architecture/agent-runtime-worker.md`
+- `docs/deployment/environment.md`
+- `docs/rfc/agent-platform-refactor.md`
 - `docs/rfc/agent-opportunities-2026-04.md`
 
 ## Critical Findings
@@ -40,25 +44,29 @@ None in the changed code.
 
 ## Informational Notes
 
-- Curator quality endpoints use the existing JWT guard. Buyer ranking reads the
-  ratings internally through `AgentStemQualityService`, so no public anonymous
-  mutation surface was added.
-- ERC-8004 quality publication reuses the existing session-key transaction path
-  and remains disabled unless `ERC8004_ENABLED=true`.
-- The on-chain metadata key and task hash are derived from server-generated
-  JSON. No user-provided raw SQL or untrusted deserialization path was added.
-- Stem audio is read through the existing catalog/storage path with
-  `includeRestricted: true` only inside the authenticated curator service.
-- No secrets, private keys, staging URLs, or production service identifiers were
-  introduced in source.
+- The worker endpoint is internal-only when `INTERNAL_SERVICE_KEY` is
+  configured, and it refuses production requests if the key is missing.
+- The backend delegates to the worker only when `AGENT_RUNTIME_WORKER_URL` is
+  configured. Otherwise it keeps the existing in-process runtime behavior.
+- Worker failures fall back to the local executor unless
+  `AGENT_RUNTIME_WORKER_REQUIRED=true`, preserving current storefront/session
+  contracts by default.
+- Runtime request validation rejects malformed input before invoking the
+  executor. No raw SQL, unsafe deserialization, or dynamic evaluation paths were
+  added.
+- New configuration is environment-variable driven and documented; no secrets,
+  staging URLs, or production service identifiers were introduced in source.
 
 ## Commands Run
 
 ```bash
-rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
-rg 'rawQuery|executeRaw|\$queryRaw' backend/src/
-rg 'JSON\.parse|eval\(' backend/src/modules/agents backend/src/modules/catalog backend/src/modules/contracts backend/src/modules/auth backend/src/modules/encryption -S
-rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/agents backend/src/modules/catalog backend/src/modules/auth backend/src/modules/encryption -S
+rg 'password|secret|api_key|private_key' backend/src/modules/agents backend/src/agent-worker.ts --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/agents backend/src/agent-worker.ts
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/agents backend/src/agent-worker.ts
+rg 'JSON\.parse|eval\(' backend/src/modules/agents backend/src/agent-worker.ts
+rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/agents backend/src/agent-worker.ts
 cd backend && npm run lint
 cd backend && npm test
+cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='agent_runtime.integration'
+git diff --check
 ```

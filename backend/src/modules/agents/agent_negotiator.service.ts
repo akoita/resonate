@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { createPublicClient, http, type Address } from "viem";
 import { sepolia, foundry } from "viem/chains";
 import { prisma } from "../../db/prisma";
@@ -64,6 +64,7 @@ export class AgentNegotiatorService {
 
   constructor(
     private readonly tools: ToolRegistry,
+    @Optional()
     private readonly stemQualityService?: AgentStemQualityService,
   ) {
     this.rpcUrl = process.env.RPC_URL ?? "http://localhost:8545";
