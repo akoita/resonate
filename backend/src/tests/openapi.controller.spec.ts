@@ -29,14 +29,34 @@ describe('OpenApiService', () => {
     expect(doc.paths['/api/storefront/stems/{stemId}']).toBeDefined();
     expect(doc.paths['/api/stems/{stemId}/x402']).toBeDefined();
     expect(doc.paths['/api/stems/{stemId}/x402/info']).toBeDefined();
+    expect(doc.paths['/api/storefront/stems'].get['x-payment-info']).toEqual({
+      authMode: 'free',
+    });
+    expect(
+      doc.paths['/api/stems/{stemId}/x402/info'].get['x-payment-info'],
+    ).toEqual({
+      authMode: 'free',
+    });
     expect(
       doc.paths['/api/stems/{stemId}/x402'].get['x-payment-info'],
     ).toEqual({
+      authMode: 'paid',
+      protocol: 'x402',
+      protocols: ['x402'],
+      currency: 'USDC',
       price: {
         mode: 'dynamic',
         currency: 'USDC',
         min: '0',
         max: '500',
+      },
+      minPrice: {
+        currency: 'USDC',
+        amount: '0',
+      },
+      maxPrice: {
+        currency: 'USDC',
+        amount: '500',
       },
       quote: {
         endpoint: '/api/stems/{stemId}/x402/info',
@@ -46,15 +66,11 @@ describe('OpenApiService', () => {
         status: 402,
         schema: '#/components/schemas/X402PaymentRequired',
       },
-      protocols: [
-        {
-          x402: {
-            quoteEndpoint: '/api/stems/{stemId}/x402/info',
-            network: 'eip155:8453',
-            retryHeaders: ['PAYMENT-SIGNATURE', 'X-PAYMENT'],
-          },
-        },
-      ],
+      x402: {
+        quoteEndpoint: '/api/stems/{stemId}/x402/info',
+        network: 'eip155:8453',
+        retryHeaders: ['PAYMENT-SIGNATURE', 'X-PAYMENT'],
+      },
     });
 
     expect(
