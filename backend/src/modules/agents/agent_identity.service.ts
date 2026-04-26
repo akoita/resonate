@@ -26,6 +26,9 @@ import {
   type AgentRegistrationFile,
 } from "./erc8004_identity";
 
+export const AGENT_REPUTATION_ATTESTATION_SCHEMA_VERSION = "resonate-agent-reputation/v1";
+export const AGENT_REPUTATION_METADATA_KEY = "resonate.reputation";
+
 export type AgentIdentityStatus = "local" | "pending" | "minted" | "attested";
 
 export type AgentReputationInput = {
@@ -34,6 +37,7 @@ export type AgentReputationInput = {
   totalSpendUsd: number;
   monthlyCapUsd: number;
   genresExplored: string[];
+  genreBreakdown?: Record<string, number>;
   tasteScore?: number;
   stemQualityRatings?: number;
   curatorReputationDelta?: number;
@@ -68,9 +72,104 @@ export type AgentIdentityMetadataResult = Omit<AgentIdentityOnchainResult, "reas
   reason?: "erc8004_disabled" | "missing_session_key" | "missing_token_id";
 };
 
+export type AgentReputationAttestationConfig = Pick<
+  AgentConfig,
+  | "id"
+  | "userId"
+  | "name"
+  | "vibes"
+  | "stemTypes"
+  | "monthlyCapUsd"
+  | "identityStatus"
+  | "identityChainId"
+  | "identityRegistry"
+  | "identityTokenId"
+  | "identityTxHash"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+export type AgentReputationAttestationPayload = {
+  schemaVersion: typeof AGENT_REPUTATION_ATTESTATION_SCHEMA_VERSION;
+  metadataKey: typeof AGENT_REPUTATION_METADATA_KEY;
+  issuedAt: string;
+  agent: {
+    id: string;
+    owner: string;
+    name: string;
+    vibes: string[];
+    stemTypes: string[];
+    monthlyCapUsd: number;
+    createdAt: string;
+    updatedAt: string;
+  };
+  erc8004: {
+    status: AgentIdentityStatus;
+    chainId: number | null;
+    registry: string | null;
+    tokenId: string | null;
+    txHash: string | null;
+    agentRegistry: string | null;
+  };
+  curation: {
+    sessions: number;
+    tracksCurated: number;
+    acceptanceRate: number;
+    stemQualityRatings: number;
+    curatorReputationDelta: number;
+  };
+  budget: {
+    totalSpendUsd: number;
+    monthlyCapUsd: number;
+    avgBudgetUtilization: number;
+  };
+  taste: {
+    score: number;
+    tier: AgentReputationSnapshot["tier"];
+    tasteDepth: number;
+    genresExplored: string[];
+    genreBreakdown: Record<string, number>;
+  };
+  reputation: AgentReputationSnapshot;
+  credential: AgentIdentityCredential;
+};
+
+export type AgentReputationAttestationExport = {
+  metadataKey: typeof AGENT_REPUTATION_METADATA_KEY;
+  payload: AgentReputationAttestationPayload;
+  onchain: AgentIdentityMetadataResult & {
+    enabled: boolean;
+  };
+};
+
 type AgentConfigWithIdentity = AgentConfig & {
   identityStatus: AgentIdentityStatus;
 };
+
+function buildEqualGenreBreakdown(genres: string[]): Record<string, number> {
+  if (genres.length === 0) {
+    return {};
+  }
+  const weight = Number((1 / genres.length).toFixed(4));
+  return Object.fromEntries(genres.map((genre) => [genre, weight]));
+}
+
+function sanitizeGenreBreakdown(
+  genreBreakdown: Record<string, number> | undefined,
+  genresExplored: string[],
+): Record<string, number> {
+  const entries = Object.entries(genreBreakdown ?? {})
+    .filter(([genre, weight]) => Boolean(genre) && Number.isFinite(weight) && weight > 0);
+  if (entries.length === 0) {
+    return buildEqualGenreBreakdown(genresExplored);
+  }
+
+  const total = entries.reduce((sum, [, weight]) => sum + weight, 0);
+  return Object.fromEntries(entries.map(([genre, weight]) => [
+    genre,
+    Number((weight / total).toFixed(4)),
+  ]));
+}
 
 export function computeAgentReputationSnapshot(
   input: AgentReputationInput,
@@ -83,6 +182,7 @@ export function computeAgentReputationSnapshot(
   const stemQualityRatings = Math.max(0, input.stemQualityRatings ?? 0);
   const curatorReputationDelta = input.curatorReputationDelta ?? 0;
   const genresExplored = Array.from(new Set(input.genresExplored.filter(Boolean)));
+  const genreBreakdown = sanitizeGenreBreakdown(input.genreBreakdown, genresExplored);
   const acceptanceRate = sessions === 0 ? 0 : Math.min(1, tracksCurated / sessions);
   const budgetUtilization = monthlyCapUsd === 0 ? 0 : Math.min(1, totalSpendUsd / monthlyCapUsd);
   const tasteDepth = Math.min(1, (tracksCurated / 12) + (genresExplored.length / 10));
@@ -117,6 +217,7 @@ export function computeAgentReputationSnapshot(
     stemQualityRatings,
     curatorReputationDelta,
     genresExplored,
+    genreBreakdown,
     score,
     tier,
     acceptanceRate,
@@ -124,6 +225,82 @@ export function computeAgentReputationSnapshot(
     tasteDepth,
     updatedAt: now.toISOString(),
   };
+}
+
+export function buildAgentReputationAttestationPayload(input: {
+  config: AgentReputationAttestationConfig;
+  reputationSnapshot: AgentReputationSnapshot;
+  identityCredential: AgentIdentityCredential;
+  chainId: number | null;
+  registry: string | null;
+  tokenId: string | null;
+  issuedAt?: string;
+}): AgentReputationAttestationPayload {
+  const { config, reputationSnapshot, identityCredential } = input;
+  const chainId = input.chainId ?? config.identityChainId;
+  const registry = input.registry ?? config.identityRegistry;
+  const tokenId = input.tokenId ?? config.identityTokenId;
+  const agentRegistry = chainId && registry ? buildAgentRegistryId(chainId, registry) : null;
+
+  return {
+    schemaVersion: AGENT_REPUTATION_ATTESTATION_SCHEMA_VERSION,
+    metadataKey: AGENT_REPUTATION_METADATA_KEY,
+    issuedAt: input.issuedAt ?? reputationSnapshot.updatedAt,
+    agent: {
+      id: config.id,
+      owner: config.userId,
+      name: config.name,
+      vibes: config.vibes,
+      stemTypes: config.stemTypes,
+      monthlyCapUsd: config.monthlyCapUsd,
+      createdAt: config.createdAt.toISOString(),
+      updatedAt: config.updatedAt.toISOString(),
+    },
+    erc8004: {
+      status: config.identityStatus as AgentIdentityStatus,
+      chainId,
+      registry,
+      tokenId,
+      txHash: config.identityTxHash,
+      agentRegistry,
+    },
+    curation: {
+      sessions: reputationSnapshot.sessions,
+      tracksCurated: reputationSnapshot.tracksCurated,
+      acceptanceRate: reputationSnapshot.acceptanceRate,
+      stemQualityRatings: reputationSnapshot.stemQualityRatings ?? 0,
+      curatorReputationDelta: reputationSnapshot.curatorReputationDelta ?? 0,
+    },
+    budget: {
+      totalSpendUsd: reputationSnapshot.totalSpendUsd,
+      monthlyCapUsd: reputationSnapshot.monthlyCapUsd,
+      avgBudgetUtilization: reputationSnapshot.budgetUtilization,
+    },
+    taste: {
+      score: reputationSnapshot.tasteScore ?? 0,
+      tier: reputationSnapshot.tier,
+      tasteDepth: reputationSnapshot.tasteDepth,
+      genresExplored: reputationSnapshot.genresExplored,
+      genreBreakdown: reputationSnapshot.genreBreakdown ?? buildEqualGenreBreakdown(reputationSnapshot.genresExplored),
+    },
+    reputation: reputationSnapshot,
+    credential: identityCredential,
+  };
+}
+
+export function encodeAgentReputationMetadataCall(input: {
+  tokenId: string;
+  payload: AgentReputationAttestationPayload;
+}): Hex {
+  return encodeFunctionData({
+    abi: ERC8004_IDENTITY_ABI,
+    functionName: "setMetadata",
+    args: [
+      BigInt(input.tokenId),
+      AGENT_REPUTATION_METADATA_KEY,
+      stringToHex(JSON.stringify(input.payload)),
+    ],
+  });
 }
 
 @Injectable()
@@ -309,24 +486,17 @@ export class AgentIdentityService {
     }
 
     try {
-      const reputationPayload = {
-        schemaVersion: "resonate-agent-reputation/v1",
-        agentId: config.id,
-        erc8004: {
-          agentRegistry: buildAgentRegistryId(registryConfig.chainId, registryConfig.identityRegistry),
-          agentId: config.identityTokenId,
-        },
-        reputation: enrichedBeforeTx.reputationSnapshot,
-        credential: enrichedBeforeTx.identityCredential,
-      };
-      const data = encodeFunctionData({
-        abi: ERC8004_IDENTITY_ABI,
-        functionName: "setMetadata",
-        args: [
-          BigInt(config.identityTokenId),
-          "resonate.reputation",
-          stringToHex(JSON.stringify(reputationPayload)),
-        ],
+      const reputationPayload = buildAgentReputationAttestationPayload({
+        config: enrichedBeforeTx,
+        reputationSnapshot: enrichedBeforeTx.reputationSnapshot,
+        identityCredential: enrichedBeforeTx.identityCredential,
+        chainId: registryConfig.chainId,
+        registry: registryConfig.identityRegistry,
+        tokenId: config.identityTokenId,
+      });
+      const data = encodeAgentReputationMetadataCall({
+        tokenId: config.identityTokenId,
+        payload: reputationPayload,
       });
       const txHash = await this.kernelAccountService.sendSessionKeyTransaction(
         keyData.agentPrivateKey.toString(),
@@ -358,6 +528,48 @@ export class AgentIdentityService {
     } finally {
       keyData.agentPrivateKey.zero();
     }
+  }
+
+  async buildReputationAttestation(userId: string): Promise<EnrichedAgentConfig & { attestation: AgentReputationAttestationExport }> {
+    const config = await prisma.agentConfig.findUnique({ where: { userId } });
+    if (!config) {
+      throw new BadRequestException("Agent config is required before exporting reputation attestation");
+    }
+
+    const enriched = await this.enrichConfig(config);
+    const registryConfig = this.getRegistryConfig();
+    const chainId = registryConfig?.chainId ?? enriched.identityChainId;
+    const registry = registryConfig?.identityRegistry ?? enriched.identityRegistry;
+    const tokenId = enriched.identityTokenId;
+    const payload = buildAgentReputationAttestationPayload({
+      config: enriched,
+      reputationSnapshot: enriched.reputationSnapshot,
+      identityCredential: enriched.identityCredential,
+      chainId,
+      registry,
+      tokenId,
+    });
+    const reason = !registryConfig
+      ? "erc8004_disabled"
+      : (!tokenId ? "missing_token_id" : undefined);
+
+    return {
+      ...enriched,
+      attestation: {
+        metadataKey: AGENT_REPUTATION_METADATA_KEY,
+        payload,
+        onchain: {
+          enabled: Boolean(registryConfig && tokenId),
+          status: enriched.identityStatus as AgentIdentityStatus,
+          chainId,
+          registry,
+          txHash: enriched.reputationTxHash,
+          tokenId,
+          metadataKey: AGENT_REPUTATION_METADATA_KEY,
+          reason,
+        },
+      },
+    };
   }
 
   async publishMetadata(
@@ -466,6 +678,7 @@ export class AgentIdentityService {
       snapshot.totalSpendUsd !== next.totalSpendUsd ||
       snapshot.monthlyCapUsd !== next.monthlyCapUsd ||
       snapshot.updatedAt !== next.updatedAt ||
+      JSON.stringify(snapshot.genreBreakdown ?? {}) !== JSON.stringify(next.genreBreakdown ?? {}) ||
       JSON.stringify(snapshot.genresExplored ?? []) !== JSON.stringify(next.genresExplored)
     );
   }
@@ -512,6 +725,9 @@ export class AgentIdentityService {
     const genresExplored = tasteProfile.genresExplored.length > 0
       ? tasteProfile.genresExplored
       : (licenseGenres.length > 0 ? licenseGenres : config.vibes);
+    const genreBreakdown = Object.keys(tasteProfile.genreWeights).length > 0
+      ? tasteProfile.genreWeights
+      : buildEqualGenreBreakdown(Array.from(new Set(genresExplored.filter(Boolean))));
 
     const lastSignalAt = new Date(Math.max(
       sessions[0]?.startedAt.getTime() ?? 0,
@@ -524,6 +740,7 @@ export class AgentIdentityService {
       totalSpendUsd,
       monthlyCapUsd: config.monthlyCapUsd,
       genresExplored,
+      genreBreakdown,
       tasteScore: tasteProfile.score,
       stemQualityRatings: stemQualityRatings.length,
       curatorReputationDelta,

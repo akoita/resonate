@@ -45,6 +45,11 @@ Additional endpoints:
   ERC-8004 Identity Registry by calling `register(string agentURI)`. If the
   registry is not configured, the response stays local. If the smart-wallet
   session key is missing, the config moves to `pending`.
+- `GET /agents/config/identity/reputation-attestation` returns the exact
+  deterministic reputation metadata payload the backend would write on-chain,
+  plus an `onchain` block that explains whether publishing is enabled, disabled,
+  or waiting on a minted token. This keeps Codex, MCP clients, and reviewers able
+  to inspect the attestation without a wallet transaction.
 - `POST /agents/config/identity/attest` publishes the latest reputation
   snapshot as `setMetadata(agentId, "resonate.reputation", bytes)` on the
   Identity Registry. This uses ERC-8004 metadata rather than Reputation Registry
@@ -70,6 +75,18 @@ recorded internally after successful agent purchases and updates
 `StemQualityRating.reputationDelta`; the next enriched agent identity snapshot
 folds the curator's rating count and accumulated delta into the ERC-8004
 reputation surface.
+
+The reputation attestation payload is versioned as
+`resonate-agent-reputation/v1` and published under the metadata key
+`resonate.reputation`. It is tied to the current `AgentConfig`, ERC-8004 token
+link, W3C-style identity credential, and replayable reputation metrics:
+
+- curation: sessions, tracks curated, acceptance rate, quality-rating count,
+  and curator reputation delta
+- budget: total spend, configured monthly cap, and average budget utilization
+- taste: score, tier, taste depth, explored genres, and normalized genre
+  breakdown
+- reputation: the full backend snapshot used by Resonate clients
 
 ## Frontend
 
@@ -102,7 +119,8 @@ Official defaults are centralized in
 Follow-up work should update the existing fields instead of introducing a
 parallel model:
 
-1. Add a scheduler for periodic reputation metadata refreshes.
+1. Add a scheduler that periodically calls the exported reputation attestation
+   publisher for active minted agents.
 2. Add an indexer/backfill job for deployments that do not emit a parseable
    `Registered` event in the transaction receipt.
 3. Move stem quality tasks from Identity Registry metadata to the ERC-8004

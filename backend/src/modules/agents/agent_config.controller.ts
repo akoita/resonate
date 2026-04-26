@@ -112,6 +112,12 @@ export class AgentConfigController {
         return this.identityService.attestReputation(req.user.userId);
     }
 
+    @Get("identity/reputation-attestation")
+    @UseGuards(AuthGuard("jwt"))
+    async getReputationAttestation(@Req() req: any) {
+        return this.identityService.buildReputationAttestation(req.user.userId);
+    }
+
     @Get("identity/registration-file")
     @UseGuards(AuthGuard("jwt"))
     async getRegistrationFile(@Req() req: any) {
