@@ -88,6 +88,14 @@ link, W3C-style identity credential, and replayable reputation metrics:
   breakdown
 - reputation: the full backend snapshot used by Resonate clients
 
+`AgentReputationSchedulerService` can refresh this metadata automatically. It is
+opt-in and only starts when both `ERC8004_ENABLED=true` and
+`ERC8004_REPUTATION_SCHEDULER_ENABLED=true` are set. Each sweep selects active
+agents with `identityStatus` of `minted` or `attested`, a non-empty
+`identityTokenId`, and no recent `reputationAttestedAt` inside the configured
+freshness window. Missing session keys and per-agent failures are logged as
+skips/failures without stopping later agents in the batch.
+
 ## Frontend
 
 The Agent Taste card displays the computed reputation score, the identity status,
@@ -107,6 +115,10 @@ ERC-8004 chain writes are disabled unless `ERC8004_ENABLED=true`.
 | `ERC8004_CHAIN_ID` | Optional chain override; falls back to `AA_CHAIN_ID`, then `CHAIN_ID`, then local Anvil |
 | `ERC8004_RPC_URL` | Optional RPC override for receipt reads; falls back to `RPC_URL` / `LOCAL_RPC_URL` |
 | `ERC8004_PUBLIC_BASE_URL` | Optional public web/API base used in the registration file services list |
+| `ERC8004_REPUTATION_SCHEDULER_ENABLED` | Enables periodic reputation attestation refreshes for active minted agents; requires `ERC8004_ENABLED=true` |
+| `ERC8004_REPUTATION_SCHEDULER_INTERVAL_MS` | Optional refresh sweep interval; defaults to 6 hours |
+| `ERC8004_REPUTATION_FRESHNESS_MS` | Optional minimum age before refreshing the same agent again; defaults to 24 hours |
+| `ERC8004_REPUTATION_SCHEDULER_BATCH_SIZE` | Optional maximum agents refreshed per sweep; defaults to 25 |
 
 Official defaults are centralized in
 `backend/src/modules/agents/erc8004_identity.ts`:
@@ -119,12 +131,10 @@ Official defaults are centralized in
 Follow-up work should update the existing fields instead of introducing a
 parallel model:
 
-1. Add a scheduler that periodically calls the exported reputation attestation
-   publisher for active minted agents.
-2. Add an indexer/backfill job for deployments that do not emit a parseable
+1. Add an indexer/backfill job for deployments that do not emit a parseable
    `Registered` event in the transaction receipt.
-3. Move stem quality tasks from Identity Registry metadata to the ERC-8004
+2. Move stem quality tasks from Identity Registry metadata to the ERC-8004
    Validation Registry once the deployed registry interface is finalized for
    Resonate's target chain.
-4. Add ERC-8004 Reputation Registry feedback once Resonate has independent
+3. Add ERC-8004 Reputation Registry feedback once Resonate has independent
    curator or client agents that can submit non-owner feedback.

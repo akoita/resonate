@@ -1,5 +1,6 @@
 import { Module, forwardRef } from "@nestjs/common";
 import { AgentIdentityService } from "./agent_identity.service";
+import { AgentReputationSchedulerService } from "./agent_reputation_scheduler.service";
 import { AGENT_RUNTIME_CORE_PROVIDERS } from "./agent_runtime.providers";
 import { AgentStemQualityService } from "./agent_stem_quality.service";
 import { AgentWalletService } from "./agent_wallet.service";
@@ -17,6 +18,7 @@ import { CatalogModule } from "../catalog/catalog.module";
   providers: [
     ...AGENT_RUNTIME_CORE_PROVIDERS,
     AgentIdentityService,
+    AgentReputationSchedulerService,
     AgentStemQualityService,
     AgentWalletService,
     AgentPurchaseService,

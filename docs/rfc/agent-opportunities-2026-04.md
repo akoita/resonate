@@ -51,7 +51,8 @@ Started beyond Wave 1:
   Issue #261 adds official mainnet/testnet Identity Registry defaults and a
   standalone mint/link script for reviewers and operators. Issue #699 adds the
   replayable reputation attestation export/publish payload that Codex and MCP
-  clients can inspect before an on-chain write.
+  clients can inspect before an on-chain write. Issue #702 adds the opt-in
+  scheduler that refreshes active minted agents once their attestation is stale.
 
 Still open beyond Wave 1:
 
@@ -222,8 +223,11 @@ Goal: ship the two most scarce on-chain primitives (ERC-8004 + curator attestati
 5. **ERC-8004 Reputation attestations** — cron job publishes periodic attestations `{ tracksCurated, acceptanceRate, avgBudgetUtilization, genreBreakdown, tasteDepth }` from the learning loop.
    - First slice: [#699](https://github.com/akoita/resonate/issues/699)
      ships the deterministic payload, manual export endpoint, and
-     `setMetadata` handoff. Remaining work is the scheduler for periodic
-     refreshes.
+     `setMetadata` handoff.
+   - Second slice: [#702](https://github.com/akoita/resonate/issues/702)
+     adds the opt-in backend scheduler for periodic refreshes. Remaining work is
+     independent non-owner validation and eventual ERC-8004 Reputation Registry
+     feedback.
 
 6. **Curator Agent (Claude Agent SDK subagent)** — issue [#322](https://github.com/akoita/resonate/issues/322) now has the backend quality-rating foundation: `StemQualityRating`, a curator analyzer for RMS energy, spectral density, silence ratio, and musical salience, ERC-8004 task-shaped metadata publication, buyer-side quality ranking, and validation-driven curator reputation deltas. Remaining product work is to replace the deterministic analyzer with a richer subagent/audio model and move task publication to a dedicated ERC-8004 Validation Registry when that deployed interface is selected.
 
@@ -279,7 +283,7 @@ Wave 2 identity/reputation.
 | **P2** | pgvector migration | First slice shipped; provider-scale embeddings/HNSW remain | embedding provider choice | medium |
 | **P3** | Langfuse + golden-set evals | Expanded first suite; judge/gate remain | stable eval scenarios | low |
 | **P4** | Public agent registration | Blocked by deployed x402 enablement | deployed API metadata | low once unblocked |
-| **P5** | ERC-8004 identity + reputation | Identity and manual reputation attestation slices landed via #291/#261/#699 | registry deployment + session-key approval | medium/high |
+| **P5** | ERC-8004 identity + reputation | Identity, manual attestation, and scheduler slices landed via #291/#261/#699/#702 | registry deployment + session-key approval | medium/high |
 | **P6** | Curator agents | Not started | ERC-8004 reputation surface, embeddings | high |
 | **P7** | Runtime extraction | Not started | clearer module seams | high |
 
