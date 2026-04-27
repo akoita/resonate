@@ -6,6 +6,7 @@ import { useX402PublicConfig } from "../../hooks/useX402PublicConfig";
 import { useAuth } from "../auth/AuthProvider";
 import { formatPrice } from "../../lib/contracts";
 import { payStemWithX402, X402PaymentError, type X402PaymentResult } from "../../lib/x402Pay";
+import { createX402KernelSigner } from "../../lib/x402SignerAdapter";
 import { LicenseTypeSelector, type LicenseType } from "./LicenseTypeSelector";
 import { LicenseTermsPreview } from "./LicenseTermsPreview";
 import "../../styles/buy-modal.css";
@@ -137,9 +138,14 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
         );
         return;
       }
+      // Wrap the Kernel account so undeployed smart accounts produce
+      // ERC-6492 signatures the x402 facilitator can verify.
+      const x402Signer = signer.factoryAddress && signer.generateInitCode
+        ? createX402KernelSigner({ account: signer })
+        : signer;
       const result = await payStemWithX402({
         stemId,
-        signer,
+        signer: x402Signer,
         onStatus: (phase) => setX402Status(phase),
       });
       setX402Result(result);
