@@ -138,13 +138,13 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
         );
         return;
       }
-      // Whatever viem's smart-account wrapper returns, normalize to a
-      // signature the x402 facilitator can verify. Three branches handle the
-      // failure modes we've observed on staging:
-      //   - signature already 6492-wrapped (deployed-via-counterfactual case)
-      //   - account already deployed on-chain (raw 1271 sig is fine)
-      //   - account undeployed and viem skipped the wrap (factory args
-      //     missing in viem's getFactoryArgs even though Kernel exposes them)
+      // Always 6492-wrap when we have factory data. viem's smart-account
+      // signTypedData wrapper conditionally skips the wrap based on its
+      // internal isDeployed cache, which disagrees with the x402
+      // facilitator's RPC view in practice. ERC-6492 envelopes are also
+      // safe for already-deployed accounts because the Kernel factory's
+      // createAccount is idempotent (CREATE2 returns the existing
+      // address rather than reverting).
       const ERC6492_MAGIC =
         "6492649264926492649264926492649264926492649264926492649264926492";
       const fallbackSigner = {
@@ -152,18 +152,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
         signTypedData: async (msg: Parameters<typeof signer.signTypedData>[0]) => {
           const sig: string = await signer.signTypedData(msg);
           if (sig.toLowerCase().endsWith(ERC6492_MAGIC)) {
-            return sig as `0x${string}`;
-          }
-
-          let isDeployed = false;
-          try {
-            isDeployed = typeof signer.isDeployed === "function"
-              ? await signer.isDeployed()
-              : false;
-          } catch {
-            isDeployed = false;
-          }
-          if (isDeployed) {
+            console.info("[x402] viem already 6492-wrapped the signature");
             return sig as `0x${string}`;
           }
 
@@ -179,11 +168,18 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
             );
             return sig as `0x${string}`;
           }
-          return serializeErc6492Signature({
+          const wrapped = serializeErc6492Signature({
             address: factory,
             data: factoryData,
             signature: sig as `0x${string}`,
           });
+          console.info("[x402] manually 6492-wrapped signature", {
+            factory,
+            factoryDataLength: factoryData.length,
+            innerSignatureLength: sig.length,
+            wrappedLength: wrapped.length,
+          });
+          return wrapped;
         },
       };
       const result = await payStemWithX402({
