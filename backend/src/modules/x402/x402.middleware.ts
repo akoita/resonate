@@ -69,15 +69,15 @@ export class X402Middleware implements NestMiddleware {
       const challenge = await this.paymentService.buildPaymentChallenge(
         this.httpStemResource(stemId, stem.mimeType),
       );
-      const isValid = await this.paymentService.verifyAndSettle(
+      const result = await this.paymentService.verifyAndSettle(
         paymentHeader,
         challenge.paymentRequirements,
       );
-      if (!isValid) {
-        this.logger.warn(`Invalid x402 payment for stem ${stemId}`);
+      if (!result.ok) {
+        this.logger.warn(`Invalid x402 payment for stem ${stemId}: ${result.reason}`);
         return res.status(402).json({
           error: 'Payment verification failed',
-          message: 'The payment proof could not be verified by the facilitator.',
+          message: result.reason,
         });
       }
 

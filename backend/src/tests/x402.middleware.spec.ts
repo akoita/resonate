@@ -247,7 +247,7 @@ describe('X402Middleware', () => {
         buildPaymentChallenge: jest.fn().mockResolvedValue({
           paymentRequirements: { scheme: 'exact', network: 'eip155:84532' },
         }),
-        verifyAndSettle: jest.fn().mockResolvedValue(true),
+        verifyAndSettle: jest.fn().mockResolvedValue({ ok: true }),
       } as unknown as X402PaymentService;
       const middleware = createMiddleware(config, paymentService);
       const req = createMockReq('/api/stems/stem_1/x402', {
@@ -298,7 +298,7 @@ describe('X402Middleware', () => {
         paymentRequirements,
       );
 
-      expect(isValid).toBe(true);
+      expect(isValid).toEqual({ ok: true });
       expect(global.fetch).toHaveBeenCalledWith(
         'https://facilitator.example.com/verify',
         expect.objectContaining({

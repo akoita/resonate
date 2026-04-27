@@ -85,8 +85,21 @@ export async function payStemWithX402(input: {
   });
 
   if (!paidResponse.ok) {
+    let reason: string | null = null;
+    try {
+      const body = await paidResponse.clone().json();
+      if (body && typeof body === "object") {
+        reason = (body as { message?: string; error?: string }).message
+          ?? (body as { error?: string }).error
+          ?? null;
+      }
+    } catch {
+      // Body wasn't JSON; fall back to status text.
+    }
     throw new X402PaymentError(
-      `x402 settle failed: HTTP ${paidResponse.status}`,
+      reason
+        ? `x402 settle failed (HTTP ${paidResponse.status}): ${reason}`
+        : `x402 settle failed: HTTP ${paidResponse.status}`,
     );
   }
 

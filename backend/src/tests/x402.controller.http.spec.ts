@@ -134,7 +134,7 @@ describe('X402Controller HTTP contract', () => {
   });
 
   it('GET /api/stems/:stemId/x402 returns receipt headers after a paid retry', async () => {
-    jest.spyOn(X402PaymentService.prototype, 'verifyAndSettle').mockResolvedValue(true);
+    jest.spyOn(X402PaymentService.prototype, 'verifyAndSettle').mockResolvedValue({ ok: true });
 
     prisma.stem.findUnique
       .mockResolvedValueOnce({
