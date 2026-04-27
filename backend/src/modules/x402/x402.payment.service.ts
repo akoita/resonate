@@ -86,19 +86,28 @@ export class X402PaymentService {
   async verifyAndSettle(
     paymentProof: string,
     paymentRequirements: unknown,
-  ): Promise<boolean> {
+  ): Promise<{ ok: true } | { ok: false; reason: string }> {
+    let paymentPayload: unknown;
     try {
-      const paymentPayload = decodePaymentSignatureHeader(paymentProof);
-      const isValid = await this.verifyPayment(paymentPayload, paymentRequirements);
-      if (!isValid) {
-        return false;
-      }
-
-      await this.settlePayment(paymentPayload, paymentRequirements);
-      return true;
+      paymentPayload = decodePaymentSignatureHeader(paymentProof);
     } catch (error) {
-      this.logger.warn(`x402 payment proof could not be decoded: ${error}`);
-      return false;
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`x402 payment proof could not be decoded: ${reason}`);
+      return { ok: false, reason: `payment_proof_decode_failed: ${reason}` };
+    }
+
+    const verifyResult = await this.verifyPayment(paymentPayload, paymentRequirements);
+    if (!verifyResult.ok) {
+      return verifyResult;
+    }
+
+    try {
+      await this.settlePayment(paymentPayload, paymentRequirements);
+      return { ok: true };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`x402 settle threw: ${reason}`);
+      return { ok: false, reason: `settle_failed: ${reason}` };
     }
   }
 
@@ -131,7 +140,7 @@ export class X402PaymentService {
   private async verifyPayment(
     paymentPayload: unknown,
     paymentRequirements: unknown,
-  ): Promise<boolean> {
+  ): Promise<{ ok: true } | { ok: false; reason: string }> {
     try {
       const response = await fetch(`${this.x402Config.facilitatorUrl}/verify`, {
         method: "POST",
@@ -150,14 +159,27 @@ export class X402PaymentService {
             errorBody ? `: ${errorBody}` : ""
           }`,
         );
-        return false;
+        return {
+          ok: false,
+          reason: `facilitator_http_${response.status}${errorBody ? `: ${errorBody.slice(0, 200)}` : ""}`,
+        };
       }
 
       const result = await response.json();
-      return result.isValid === true;
+      if (result.isValid === true) {
+        return { ok: true };
+      }
+      const facilitatorReason = typeof result.invalidReason === "string"
+        ? result.invalidReason
+        : typeof result.reason === "string"
+          ? result.reason
+          : "verification_rejected";
+      this.logger.warn(`Facilitator /verify rejected: ${facilitatorReason}`);
+      return { ok: false, reason: facilitatorReason };
     } catch (error) {
-      this.logger.error(`Facilitator /verify failed: ${error}`);
-      return false;
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Facilitator /verify failed: ${message}`);
+      return { ok: false, reason: `facilitator_unreachable: ${message}` };
     }
   }
 
