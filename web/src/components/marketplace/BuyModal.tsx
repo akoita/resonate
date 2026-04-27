@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { serializeErc6492Signature } from "viem";
 import { useBuyQuote, useBuyStem, useListing } from "../../hooks/useContracts";
 import { useX402PublicConfig } from "../../hooks/useX402PublicConfig";
 import { useAuth } from "../auth/AuthProvider";
@@ -137,52 +138,57 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
         );
         return;
       }
-      // viem's toSmartAccount is supposed to wrap signTypedData with ERC-6492
-      // when the Kernel smart account is not yet deployed, but on staging the
-      // facilitator keeps reporting invalid_exact_evm_payload_undeployed_smart_wallet.
-      // Wrap the signer so we can confirm the signature shape end-to-end.
-      const debugSigner = {
+      // Whatever viem's smart-account wrapper returns, normalize to a
+      // signature the x402 facilitator can verify. Three branches handle the
+      // failure modes we've observed on staging:
+      //   - signature already 6492-wrapped (deployed-via-counterfactual case)
+      //   - account already deployed on-chain (raw 1271 sig is fine)
+      //   - account undeployed and viem skipped the wrap (factory args
+      //     missing in viem's getFactoryArgs even though Kernel exposes them)
+      const ERC6492_MAGIC =
+        "6492649264926492649264926492649264926492649264926492649264926492";
+      const fallbackSigner = {
         address: signer.address,
         signTypedData: async (msg: Parameters<typeof signer.signTypedData>[0]) => {
-          let isDeployed: boolean | string = "unknown";
-          let factoryArgs: { factory?: string; factoryData?: string } = {};
+          const sig: string = await signer.signTypedData(msg);
+          if (sig.toLowerCase().endsWith(ERC6492_MAGIC)) {
+            return sig as `0x${string}`;
+          }
+
+          let isDeployed = false;
           try {
             isDeployed = typeof signer.isDeployed === "function"
               ? await signer.isDeployed()
-              : "no isDeployed()";
-          } catch (probeErr) {
-            isDeployed = `probe error: ${probeErr instanceof Error ? probeErr.message : String(probeErr)}`;
+              : false;
+          } catch {
+            isDeployed = false;
           }
-          try {
-            factoryArgs = typeof signer.getFactoryArgs === "function"
-              ? await signer.getFactoryArgs()
-              : { factory: undefined, factoryData: undefined };
-          } catch (probeErr) {
-            factoryArgs = {
-              factory: `probe error: ${probeErr instanceof Error ? probeErr.message : String(probeErr)}`,
-            };
+          if (isDeployed) {
+            return sig as `0x${string}`;
           }
-          console.info("[x402 debug] account state before sign", {
-            address: signer.address,
-            isDeployed,
-            factory: factoryArgs.factory,
-            factoryDataLength: factoryArgs.factoryData?.length,
+
+          const factory = signer.factoryAddress as `0x${string}` | undefined;
+          const factoryData =
+            typeof signer.generateInitCode === "function"
+              ? ((await signer.generateInitCode()) as `0x${string}`)
+              : undefined;
+          if (!factory || !factoryData || factoryData === "0x") {
+            console.warn(
+              "[x402] cannot 6492-wrap: missing factory/factoryData on smart account",
+              { factory, factoryDataLength: factoryData?.length },
+            );
+            return sig as `0x${string}`;
+          }
+          return serializeErc6492Signature({
+            address: factory,
+            data: factoryData,
+            signature: sig as `0x${string}`,
           });
-          const sig = await signer.signTypedData(msg);
-          const ERC6492_MAGIC = "6492649264926492649264926492649264926492649264926492649264926492";
-          const sigStr = typeof sig === "string" ? sig : String(sig);
-          const tail = sigStr.slice(-64).toLowerCase();
-          console.info("[x402 debug] signature shape", {
-            length: sigStr.length,
-            endsWithErc6492Magic: tail === ERC6492_MAGIC,
-            tail,
-          });
-          return sig;
         },
       };
       const result = await payStemWithX402({
         stemId,
-        signer: debugSigner,
+        signer: fallbackSigner,
         onStatus: (phase) => setX402Status(phase),
       });
       setX402Result(result);
