@@ -93,6 +93,19 @@ export async function getX402KernelAccount(
     factoryAddress,
   })) as unknown as X402KernelAccount;
 
+  if (
+    !account.address ||
+    account.address.toLowerCase() === "0x0000000000000000000000000000000000000000"
+  ) {
+    // Don't cache: a zero address means the SDK couldn't resolve the
+    // counterfactual SA via the EntryPoint (usually wrong factory or the
+    // contracts aren't deployed on this chain). Surfacing as an error gives
+    // callers something to display instead of a silently broken signer.
+    throw new Error(
+      "x402 Kernel account resolved to the zero address; check Base Sepolia factory + EntryPoint deployment.",
+    );
+  }
+
   cachedAccount = account;
   cachedKey = input.webAuthnKey;
   return account;
