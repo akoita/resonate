@@ -350,3 +350,11 @@ repo-local `docker build`, `docker run`, stale-image recovery, and "stuck on Sep
 ## 📄 License
 
 MIT © 2024-2026
+
+## 💰 Bounty Contribution
+
+- **Task:** Wire x402 settlements into the on-chain marketplace + license contracts
+- **Reward:** $402
+- **Source:** GitHub-Paid
+- **Date:** 2026-04-27
+
