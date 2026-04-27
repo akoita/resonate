@@ -8,6 +8,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { formatPrice } from "../../lib/contracts";
 import { payStemWithX402, X402PaymentError, type X402PaymentResult } from "../../lib/x402Pay";
 import { getX402KernelAccount } from "../../lib/x402KernelAccount";
+import { simulateX402Multicall } from "../../lib/x402Preflight";
 import { LicenseTypeSelector, type LicenseType } from "./LicenseTypeSelector";
 import { LicenseTermsPreview } from "./LicenseTermsPreview";
 import "../../styles/buy-modal.css";
@@ -179,13 +180,66 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
         address: x402Signer.address,
         signTypedData: async (msg: Parameters<typeof x402Signer.signTypedData>[0]) => {
           const sig: string = await x402Signer.signTypedData(msg);
+          // Whether viem auto-wrapped or we wrap manually below, capture the
+          // factoryData once so we can replay the same multicall locally.
+          const factory: `0x${string}` | undefined =
+            x402Signer.factoryAddress as `0x${string}` | undefined;
+          let factoryData: `0x${string}` = "0x" as `0x${string}`;
+          try {
+            const generated = await x402Signer.generateInitCode();
+            factoryData = generated as `0x${string}`;
+          } catch {
+            // generateInitCode is required for an undeployed SA; without it
+            // we fall through to logging just the raw sig and skip preflight.
+          }
+
+          // Preflight the SAME multicall the facilitator runs, on our RPC,
+          // so we surface the actual revert reason from each call. This is
+          // diagnostic-only — the actual flow continues regardless.
+          try {
+            const innerSig = sig.toLowerCase().endsWith(ERC6492_MAGIC)
+              ? // viem already wrapped → strip the outer envelope to recover
+                // the inner Kernel signature the facilitator extracts.
+                ((await import("viem")).parseErc6492Signature(
+                  sig as `0x${string}`,
+                ).signature as `0x${string}`)
+              : (sig as `0x${string}`);
+            const usdcAddress = (msg.domain as { verifyingContract?: `0x${string}` })
+              .verifyingContract;
+            const authorization = msg.message as {
+              from: `0x${string}`;
+              to: `0x${string}`;
+              value: bigint;
+              validAfter: bigint;
+              validBefore: bigint;
+              nonce: `0x${string}`;
+            };
+            if (usdcAddress) {
+              const preflight = await simulateX402Multicall({
+                usdcAddress,
+                authorization,
+                innerSignature: innerSig,
+                factory: factory ?? null,
+                factoryData,
+              });
+              console.info("[x402 preflight] Base Sepolia multicall results", {
+                results: preflight,
+              });
+            }
+          } catch (preflightErr) {
+            console.warn("[x402 preflight] failed to simulate locally", {
+              error:
+                preflightErr instanceof Error
+                  ? preflightErr.message
+                  : String(preflightErr),
+            });
+          }
+
           if (sig.toLowerCase().endsWith(ERC6492_MAGIC)) {
             console.info("[x402] viem already 6492-wrapped the signature");
             return sig as `0x${string}`;
           }
 
-          const factory = x402Signer.factoryAddress;
-          const factoryData = await x402Signer.generateInitCode();
           if (!factory || !factoryData || factoryData === "0x") {
             console.warn(
               "[x402] cannot 6492-wrap: missing factory/factoryData on Base Sepolia smart account",
