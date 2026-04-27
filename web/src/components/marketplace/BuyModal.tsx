@@ -53,8 +53,8 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   const { config: x402Config } = useX402PublicConfig();
   const { kernelAccount } = useAuth();
   const x402Available = useMemo(
-    () => Boolean(x402Config?.enabled && stemId && kernelAccount?.signTypedData),
-    [x402Config, stemId, kernelAccount],
+    () => Boolean(x402Config?.enabled && stemId),
+    [x402Config, stemId],
   );
   const x402Asset = x402Config?.enabled ? x402Config.asset : null;
   const x402DownloadUrl = useMemo(
@@ -120,9 +120,15 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   };
 
   const handleX402Pay = async () => {
-    if (!stemId || !kernelAccount) return;
+    if (!stemId) return;
     setX402Error(null);
     setX402Result(null);
+    if (!kernelAccount?.signTypedData) {
+      setX402Error(
+        "Connected wallet does not support typed-data signing required for x402. Reconnect with a Kernel smart account or an EOA wallet that holds USDC.",
+      );
+      return;
+    }
     try {
       const result = await payStemWithX402({
         stemId,
