@@ -10,12 +10,14 @@ const SEPOLIA_AA_DEFAULTS = {
   factory: "0xaac5D4240AF87249B3f71BC8E4A2cae074A3E419",
 } as const;
 
-// Kernel V3.1 metaFactory + canonical EntryPoint v0.7 on Base Sepolia.
-// Used by the x402 payment path so the smart account address resolves on the
-// chain where Circle USDC + the x402 facilitator live.
+// Kernel V3.1 canonical addresses on Base Sepolia. The basic factory and the
+// EntryPoint v0.7 are deployed at the same deterministic addresses across
+// every chain ZeroDev supports, so we reuse the canonical V3.1 factory rather
+// than the metaFactory (those have different roles inside createKernelAccount
+// — the metaFactory is filled in from the SDK's KernelVersionToAddressesMap).
 const BASE_SEPOLIA_AA_DEFAULTS = {
   entryPoint: "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
-  factory: "0xd703aaE79538628d27099B8c4f621bE4CCd142d5",
+  factory: "0xaac5D4240AF87249B3f71BC8E4A2cae074A3E419",
 } as const;
 
 export function getKernelAccountConfig(chainId: number) {
