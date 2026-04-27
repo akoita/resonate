@@ -25,7 +25,10 @@ type AuthState = {
   /** The actual on-chain Smart Account address (may differ from auth address) */
   smartAccountAddress: string | null;
   connect: () => Promise<void>;
-  login: () => Promise<void>;
+  // Returns the freshly-built kernel account and the webAuthnKey for callers
+  // that need to operate on a different chain (e.g. x402 builds a parallel
+  // Base Sepolia account from the same passkey). The return is null on error.
+  login: () => Promise<{ account: unknown; webAuthnKey: unknown } | null>;
   signup: () => Promise<void>;
   connectPrivy: () => Promise<void>;
   connectEmbedded: () => Promise<void>;
@@ -282,15 +285,15 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       // Accumulate the SA address (the on-chain identity) for marketplace filtering
       addKnownAddress(saAddress);
 
-      // Return the account so callers can use it immediately
-      // (React state update from setActiveAccount won't flush until next render)
-      return account;
+      // Return the account and webAuthnKey so callers can use them
+      // immediately (React state updates won't flush until next render).
+      return { account, webAuthnKey };
 
     } catch (err) {
       console.error(err);
       setError((err as Error).message);
       setStatus("error");
-      return null;
+      return { account: null, webAuthnKey: null };
     }
   }, [getOrConnectAccount, chainId, projectId, resolveAuth]);
 

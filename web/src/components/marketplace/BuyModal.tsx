@@ -7,6 +7,7 @@ import { useX402PublicConfig } from "../../hooks/useX402PublicConfig";
 import { useAuth } from "../auth/AuthProvider";
 import { formatPrice } from "../../lib/contracts";
 import { payStemWithX402, X402PaymentError, type X402PaymentResult } from "../../lib/x402Pay";
+import { getX402KernelAccount } from "../../lib/x402KernelAccount";
 import { LicenseTypeSelector, type LicenseType } from "./LicenseTypeSelector";
 import { LicenseTermsPreview } from "./LicenseTermsPreview";
 import "../../styles/buy-modal.css";
@@ -52,7 +53,8 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   const { quote, loading: quoteLoading } = useBuyQuote(listingId, amount);
   const { buy, pending, error, txHash } = useBuyStem();
   const { config: x402Config } = useX402PublicConfig();
-  const { kernelAccount, login } = useAuth();
+  const { login, webAuthnKey } = useAuth();
+  const [x402PayerAddress, setX402PayerAddress] = useState<`0x${string}` | null>(null);
   const x402Available = useMemo(
     () => Boolean(x402Config?.enabled && stemId),
     [x402Config, stemId],
@@ -106,7 +108,28 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
     setX402Status(null);
     setX402Error(null);
     setX402Result(null);
+    setX402PayerAddress(null);
   }, [isOpen]);
+
+  // Pre-resolve the Base Sepolia SA address when the user opens the USDC tab
+  // so the "Pays from" row + faucet link have the right address before they
+  // click "Pay with USDC".
+  useEffect(() => {
+    if (!isOpen || paymentMethod !== "x402" || !x402Available || !webAuthnKey) return;
+    let cancelled = false;
+    getX402KernelAccount({ webAuthnKey })
+      .then((account) => {
+        if (cancelled) return;
+        setX402PayerAddress(account.address);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.warn("[x402] failed to resolve Base Sepolia payer address", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, paymentMethod, x402Available, webAuthnKey]);
 
   if (!isOpen) return null;
 
@@ -125,19 +148,24 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
     setX402Error(null);
     setX402Result(null);
     try {
-      // Kernel accounts are lazily reconstructed after page reloads, so the
-      // value from useAuth() may be null even when the user is authenticated.
-      // Mirror what signMessage does and reconnect via login() before signing.
-      let signer = kernelAccount;
-      if (!signer?.signTypedData) {
-        signer = await login();
+      // The user authenticates against Sepolia (where the marketplace lives),
+      // but x402 needs a Kernel account on Base Sepolia (where Circle USDC +
+      // the facilitator live). We rebuild a parallel account from the same
+      // passkey on Base Sepolia and sign with it. webAuthnKey may be null on
+      // first click after a page reload, so log in to repopulate it.
+      let key = webAuthnKey;
+      if (!key) {
+        const result = await login();
+        if (!result?.webAuthnKey) {
+          setX402Error(
+            "Could not load your passkey. Try signing in again before paying with USDC.",
+          );
+          return;
+        }
+        key = result.webAuthnKey;
       }
-      if (!signer?.signTypedData) {
-        setX402Error(
-          "Could not connect a wallet that supports typed-data signing. Try signing in again, or use an EOA wallet that holds USDC.",
-        );
-        return;
-      }
+      const x402Signer = await getX402KernelAccount({ webAuthnKey: key });
+      setX402PayerAddress(x402Signer.address);
       // Always 6492-wrap when we have factory data. viem's smart-account
       // signTypedData wrapper conditionally skips the wrap based on its
       // internal isDeployed cache, which disagrees with the x402
@@ -148,22 +176,19 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
       const ERC6492_MAGIC =
         "6492649264926492649264926492649264926492649264926492649264926492";
       const fallbackSigner = {
-        address: signer.address,
-        signTypedData: async (msg: Parameters<typeof signer.signTypedData>[0]) => {
-          const sig: string = await signer.signTypedData(msg);
+        address: x402Signer.address,
+        signTypedData: async (msg: Parameters<typeof x402Signer.signTypedData>[0]) => {
+          const sig: string = await x402Signer.signTypedData(msg);
           if (sig.toLowerCase().endsWith(ERC6492_MAGIC)) {
             console.info("[x402] viem already 6492-wrapped the signature");
             return sig as `0x${string}`;
           }
 
-          const factory = signer.factoryAddress as `0x${string}` | undefined;
-          const factoryData =
-            typeof signer.generateInitCode === "function"
-              ? ((await signer.generateInitCode()) as `0x${string}`)
-              : undefined;
+          const factory = x402Signer.factoryAddress;
+          const factoryData = await x402Signer.generateInitCode();
           if (!factory || !factoryData || factoryData === "0x") {
             console.warn(
-              "[x402] cannot 6492-wrap: missing factory/factoryData on smart account",
+              "[x402] cannot 6492-wrap: missing factory/factoryData on Base Sepolia smart account",
               { factory, factoryDataLength: factoryData?.length },
             );
             return sig as `0x${string}`;
@@ -173,13 +198,13 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
             data: factoryData,
             signature: sig as `0x${string}`,
           });
-          console.info("[x402] manually 6492-wrapped signature", {
-            payerSmartAccountAddress: signer.address,
+          console.info("[x402] manually 6492-wrapped signature (Base Sepolia)", {
+            payerSmartAccountAddress: x402Signer.address,
             factory,
             factoryDataLength: factoryData.length,
             innerSignatureLength: sig.length,
             wrappedLength: wrapped.length,
-            tip: "Fund this SA address with Base Sepolia USDC at https://faucet.circle.com to clear invalid_exact_evm_transaction_simulation_failed.",
+            tip: "Fund this SA address with Base Sepolia USDC at https://faucet.circle.com.",
           });
           return wrapped;
         },
@@ -368,17 +393,17 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                     </span>
                   </div>
                 )}
-                {kernelAccount?.address && (
+                {x402PayerAddress && (
                   <div className="buy-modal__x402-row">
-                    <span>Pays from</span>
+                    <span>Pays from (Base Sepolia)</span>
                     <span>
                       <a
-                        href={`https://faucet.circle.com/?recipient=${kernelAccount.address}&network=base-sepolia&token=usdc`}
+                        href={`https://faucet.circle.com/?recipient=${x402PayerAddress}&network=base-sepolia&token=usdc`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        title="Fund this address with Base Sepolia USDC at the Circle faucet"
+                        title="Fund this Base Sepolia smart-account address with USDC at the Circle faucet"
                       >
-                        {kernelAccount.address.slice(0, 6)}…{kernelAccount.address.slice(-4)} ↗
+                        {x402PayerAddress.slice(0, 6)}…{x402PayerAddress.slice(-4)} ↗
                       </a>
                     </span>
                   </div>
