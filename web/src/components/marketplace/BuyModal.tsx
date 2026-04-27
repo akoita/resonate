@@ -51,7 +51,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   const { quote, loading: quoteLoading } = useBuyQuote(listingId, amount);
   const { buy, pending, error, txHash } = useBuyStem();
   const { config: x402Config } = useX402PublicConfig();
-  const { kernelAccount } = useAuth();
+  const { kernelAccount, login } = useAuth();
   const x402Available = useMemo(
     () => Boolean(x402Config?.enabled && stemId),
     [x402Config, stemId],
@@ -123,16 +123,23 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
     if (!stemId) return;
     setX402Error(null);
     setX402Result(null);
-    if (!kernelAccount?.signTypedData) {
-      setX402Error(
-        "Connected wallet does not support typed-data signing required for x402. Reconnect with a Kernel smart account or an EOA wallet that holds USDC.",
-      );
-      return;
-    }
     try {
+      // Kernel accounts are lazily reconstructed after page reloads, so the
+      // value from useAuth() may be null even when the user is authenticated.
+      // Mirror what signMessage does and reconnect via login() before signing.
+      let signer = kernelAccount;
+      if (!signer?.signTypedData) {
+        signer = await login();
+      }
+      if (!signer?.signTypedData) {
+        setX402Error(
+          "Could not connect a wallet that supports typed-data signing. Try signing in again, or use an EOA wallet that holds USDC.",
+        );
+        return;
+      }
       const result = await payStemWithX402({
         stemId,
-        signer: kernelAccount,
+        signer,
         onStatus: (phase) => setX402Status(phase),
       });
       setX402Result(result);
