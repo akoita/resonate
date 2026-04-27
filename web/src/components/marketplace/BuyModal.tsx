@@ -174,10 +174,12 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
             signature: sig as `0x${string}`,
           });
           console.info("[x402] manually 6492-wrapped signature", {
+            payerSmartAccountAddress: signer.address,
             factory,
             factoryDataLength: factoryData.length,
             innerSignatureLength: sig.length,
             wrappedLength: wrapped.length,
+            tip: "Fund this SA address with Base Sepolia USDC at https://faucet.circle.com to clear invalid_exact_evm_transaction_simulation_failed.",
           });
           return wrapped;
         },
@@ -363,6 +365,21 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                     <span>Pay to</span>
                     <span>
                       {x402Quote.payTo.slice(0, 6)}…{x402Quote.payTo.slice(-4)}
+                    </span>
+                  </div>
+                )}
+                {kernelAccount?.address && (
+                  <div className="buy-modal__x402-row">
+                    <span>Pays from</span>
+                    <span>
+                      <a
+                        href={`https://faucet.circle.com/?recipient=${kernelAccount.address}&network=base-sepolia&token=usdc`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Fund this address with Base Sepolia USDC at the Circle faucet"
+                      >
+                        {kernelAccount.address.slice(0, 6)}…{kernelAccount.address.slice(-4)} ↗
+                      </a>
                     </span>
                   </div>
                 )}
