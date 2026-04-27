@@ -106,6 +106,11 @@ export class X402Middleware implements NestMiddleware {
       'utf8',
     ).toString('base64');
 
+    // Browsers can only read the V2 challenge header when CORS exposes it.
+    res.setHeader(
+      'Access-Control-Expose-Headers',
+      'PAYMENT-REQUIRED, X-Payment-Response',
+    );
     res.setHeader('PAYMENT-REQUIRED', encodedPaymentRequired);
     res.status(402).json(paymentRequired);
   }

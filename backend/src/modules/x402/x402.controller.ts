@@ -179,7 +179,7 @@ export class X402Controller {
         'Content-Length': String(audioBuffer.length),
         'Content-Disposition': `attachment; filename="${filename}"`,
         'Access-Control-Expose-Headers':
-          'X-Resonate-Receipt,X-Resonate-Receipt-Id,X-Resonate-Receipt-Content-Type,X-Resonate-License',
+          'X-Resonate-Receipt,X-Resonate-Receipt-Id,X-Resonate-Receipt-Content-Type,X-Resonate-License,X-Payment-Response',
         'X-Resonate-License': receipt.license.key,
         'X-Resonate-Receipt': encodedReceipt,
         'X-Resonate-Receipt-Content-Type':
