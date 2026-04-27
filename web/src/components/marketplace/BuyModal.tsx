@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useBuyQuote, useBuyStem, useListing } from "../../hooks/useContracts";
 import { useX402PublicConfig } from "../../hooks/useX402PublicConfig";
 import { useAuth } from "../auth/AuthProvider";
+import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { formatPrice } from "../../lib/contracts";
 import { payStemWithX402, X402PaymentError, type X402PaymentResult } from "../../lib/x402Pay";
 import { createX402KernelSigner } from "../../lib/x402SignerAdapter";
@@ -53,6 +54,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   const { buy, pending, error, txHash } = useBuyStem();
   const { config: x402Config } = useX402PublicConfig();
   const { kernelAccount, login } = useAuth();
+  const { publicClient } = useZeroDev();
   const x402Available = useMemo(
     () => Boolean(x402Config?.enabled && stemId),
     [x402Config, stemId],
@@ -139,9 +141,10 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
         return;
       }
       // Wrap the Kernel account so undeployed smart accounts produce
-      // ERC-6492 signatures the x402 facilitator can verify.
+      // ERC-6492 signatures the x402 facilitator can verify. Reuse the
+      // ZeroDev publicClient so the bytecode probe targets the right RPC.
       const x402Signer = signer.factoryAddress && signer.generateInitCode
-        ? createX402KernelSigner({ account: signer })
+        ? createX402KernelSigner({ account: signer, publicClient })
         : signer;
       const result = await payStemWithX402({
         stemId,
