@@ -70,7 +70,8 @@ export function useAgentWallet() {
         // Step 0: Reconnect Kernel account if lost (e.g. after page refresh)
         let account = kernelAccount;
         if (!account) {
-          account = await login();
+          const result = await login();
+          account = result?.account;
         }
 
         // Step 1: Enable wallet — backend generates agent keypair and returns the address
