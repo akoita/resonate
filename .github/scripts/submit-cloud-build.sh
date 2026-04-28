@@ -13,6 +13,8 @@ Usage: submit-cloud-build.sh \
   [--git-source-revision <git-revision>] \
   [--service-account <service-account-email>] \
   [--project <gcp-project-id>] \
+  [--billing-project <gcp-project-id>] \
+  [--gcs-source-staging-dir <gs://bucket/prefix>] \
   [--timeout <duration>]
 EOF
   exit 1
@@ -26,6 +28,8 @@ git_source_url=""
 git_source_revision=""
 service_account=""
 project_id="${GCP_PROJECT_ID:-}"
+billing_project="${GCP_BILLING_QUOTA_PROJECT:-}"
+gcs_source_staging_dir="${GCP_CLOUD_BUILD_SOURCE_STAGING_DIR:-}"
 timeout="1800s"
 
 while [[ $# -gt 0 ]]; do
@@ -62,6 +66,14 @@ while [[ $# -gt 0 ]]; do
       project_id="${2:-}"
       shift 2
       ;;
+    --billing-project)
+      billing_project="${2:-}"
+      shift 2
+      ;;
+    --gcs-source-staging-dir)
+      gcs_source_staging_dir="${2:-}"
+      shift 2
+      ;;
     --timeout)
       timeout="${2:-}"
       shift 2
@@ -76,6 +88,9 @@ done
 if [[ -z "${image}" || -z "${context_dir}" || -z "${dockerfile}" || -z "${project_id}" ]]; then
   usage
 fi
+
+billing_project="${billing_project:-${project_id}}"
+gcs_source_staging_dir="${gcs_source_staging_dir:-gs://${project_id}_cloudbuild/source}"
 
 remote_source=false
 if [[ -n "${git_source_url}" || -n "${git_source_revision}" ]]; then
@@ -179,7 +194,9 @@ if [[ "${remote_source}" == "true" ]]; then
     "${git_source_url}"
     --git-source-revision "${git_source_revision}"
     --project "${project_id}"
+    --billing-project "${billing_project}"
     --config "${config_file}"
+    --gcs-source-staging-dir "${gcs_source_staging_dir}"
     --timeout "${timeout}"
   )
 else
@@ -188,7 +205,9 @@ else
     submit
     "${context_dir}"
     --project "${project_id}"
+    --billing-project "${billing_project}"
     --config "${config_file}"
+    --gcs-source-staging-dir "${gcs_source_staging_dir}"
     --timeout "${timeout}"
   )
 fi

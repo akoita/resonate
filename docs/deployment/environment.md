@@ -23,6 +23,8 @@ When adding a new environment variable:
 | `NEXT_PUBLIC_PIMLICO_API_KEY` | Frontend | Optional public Pimlico key. Leave unset when using server-side bundler config via `/api/bundler` |
 | `RPC_URL` | Backend | RPC endpoint used by contract-aware backend flows |
 | `GCP_PROJECT_ID` | Backend | Recommended explicit GCP project for Pub/Sub-backed ingestion; when unset in Cloud Run the backend can also derive the project from Application Default Credentials |
+| `GCP_BILLING_QUOTA_PROJECT` | CI | Optional quota/billing project for Cloud Build submission; deploy CI defaults it to `GCP_PROJECT_ID` |
+| `GCP_CLOUD_BUILD_SOURCE_STAGING_DIR` | CI | Optional Cloud Storage prefix for `gcloud builds submit` source archives; deploy CI defaults it from `GCP_PROJECT_ID` |
 | `AA_BUNDLER` | Backend / frontend server runtime | Server-side bundler URL used by account-abstraction flows and the `/api/bundler` proxy |
 | `PIMLICO_API_KEY` | Frontend server runtime | Optional server-side Pimlico key used by `/api/bundler` without exposing it to the browser |
 | `SEPOLIA_RPC_URL` | Contracts / backend | Required for Sepolia deploys and forked workflows |
