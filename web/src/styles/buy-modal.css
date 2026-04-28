@@ -334,6 +334,12 @@
   color: #34d399;
 }
 
+.buy-modal__alert--warning {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+}
+
 .buy-modal__alert--success a {
   color: #10b981;
   text-decoration: underline;
