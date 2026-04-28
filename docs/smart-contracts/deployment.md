@@ -142,6 +142,10 @@ Additional GCP requirement:
   GitHub repo URL and commit SHA.
 - Frontend publication uploads only the prepared runtime artifact context to Cloud Build,
   so the effective build identity also needs access to the Cloud Build staging bucket.
+- The Cloud Build submit wrapper passes an explicit billing/quota project and
+  source staging directory. `GCP_BILLING_QUOTA_PROJECT` and
+  `GCP_CLOUD_BUILD_SOURCE_STAGING_DIR` can override those values when an
+  environment does not follow the default IaC bucket convention.
 
 Required deployable GitHub environment variables in `resonate`:
 
