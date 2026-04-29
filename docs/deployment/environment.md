@@ -30,6 +30,9 @@ When adding a new environment variable:
 | `GCP_CLOUD_BUILD_SOURCE_STAGING_DIR` | CI | Optional Cloud Storage prefix for `gcloud builds submit` source archives; deploy CI defaults it from `GCP_PROJECT_ID` |
 | `AA_BUNDLER` | Backend / frontend server runtime | Server-side bundler URL used by account-abstraction flows and the `/api/bundler` proxy |
 | `PIMLICO_API_KEY` | Frontend server runtime | Optional server-side Pimlico key used by `/api/bundler` without exposing it to the browser |
+| `FRONTEND_URL` | Backend | Public frontend origin used for generated metadata links, self-hosted WebAuthn fallback, and CORS allowlisting |
+| `CORS_ORIGIN` | Backend | Optional comma-separated browser origins allowed to call the backend. Defaults include local dev and also derives from `FRONTEND_URL` / `WEBAUTHN_ORIGIN` |
+| `CORS_ORIGINS` | Backend | Optional plural alias for `CORS_ORIGIN` |
 | `WEBAUTHN_RP_ID` | Backend | Optional relying-party ID for self-hosted passkey credentials. Usually the frontend hostname, without protocol |
 | `WEBAUTHN_ORIGIN` | Backend | Optional relying-party origin for self-hosted passkey verification. Usually the frontend HTTPS origin |
 | `SEPOLIA_RPC_URL` | Contracts / backend | Required for Sepolia deploys and forked workflows |
