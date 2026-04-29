@@ -53,6 +53,7 @@ contract DeployProtocol is Script {
         address ethUsdFeed = vm.envOr("PAYMENT_ETH_USD_FEED", address(0));
         address usdcUsdFeed = vm.envOr("PAYMENT_USDC_USD_FEED", address(0));
         uint256 oracleMaxStaleness = vm.envOr("PAYMENT_ORACLE_MAX_STALENESS", uint256(1 days));
+        uint256 usdcStakeAmount = vm.envOr("STAKE_USDC_AMOUNT", uint256(10_000000)); // Default 10 USDC
 
         vm.startBroadcast(deployerKey);
 
@@ -101,6 +102,12 @@ contract DeployProtocol is Script {
         console.log("  -> ETH enabled for native marketplace payments");
         console.log("  -> USDC:", usdcAddress);
         console.log("  -> WETH:", wethAddress, "enabled:", enableWeth);
+        contentProtection.setPaymentAssetRegistry(address(paymentAssetRegistry));
+        console.log("  -> ContentProtection linked to PaymentAssetRegistry");
+        if (usdcAddress != address(0)) {
+            contentProtection.setStakeAmountForAsset(usdcAddress, usdcStakeAmount);
+            console.log("  -> USDC stake amount:", usdcStakeAmount);
+        }
 
         address ethUsdAdapter = address(0);
         address usdcUsdAdapter = address(0);

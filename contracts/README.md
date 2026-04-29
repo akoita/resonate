@@ -109,6 +109,7 @@ This will:
 | `FEE_RECIPIENT`    | Deployer address                    | Protocol fee + treasury recipient     |
 | `PROTOCOL_FEE_BPS` | `250` (2.5%)                        | Marketplace fee in basis points       |
 | `STAKE_AMOUNT`     | `0.01 ether`                        | Default stake amount for new creators |
+| `STAKE_USDC_AMOUNT` | `10000000` (10 USDC)               | USDC stake amount when USDC is enabled |
 | `ESCROW_PERIOD`    | `30 days`                           | Default escrow hold duration          |
 
 ### Post-Deploy Checklist
