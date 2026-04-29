@@ -7,6 +7,7 @@ import { PaymasterService } from "./paymaster.service";
 import { WalletProviderRegistry } from "./wallet_provider_registry";
 
 type WalletProviderName = "local" | "erc4337";
+const ETH_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 
 @Injectable()
 export class WalletService {
@@ -158,7 +159,15 @@ export class WalletService {
     const selected =
       provider ??
       ((process.env.WALLET_PROVIDER ?? "erc4337") as WalletProviderName);
-    const account = this.providerRegistry.getProvider(selected).getAccount(userId);
+    const derivedAccount = this.providerRegistry.getProvider(selected).getAccount(userId);
+    const account =
+      selected === "erc4337" && ETH_ADDRESS_PATTERN.test(userId)
+        ? {
+            ...derivedAccount,
+            address: userId.toLowerCase(),
+            ownerAddress: null,
+          }
+        : derivedAccount;
 
     // Ensure User exists before creating Wallet to avoid FK violation
     // Since this is wallet-auth, we might not have an email, so we generate a placeholder.

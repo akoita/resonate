@@ -2,18 +2,19 @@
 
 ## Executive Summary
 
-Reviewed the #702 ERC-8004 reputation attestation scheduler. No Critical or
-High findings were identified in the changed backend scheduler, identity module
-wiring, tests, or documentation.
+Reviewed the smart-account wallet identity recovery change for backend auth and
+wallet registration. No Critical or High findings were identified in the changed
+backend code.
 
 ## Scope
 
-- `backend/src/modules/agents/agent_reputation_scheduler.service.ts`
-- `backend/src/modules/agents/agents.module.ts`
-- `backend/src/tests/agent_reputation_scheduler.spec.ts`
-- `docs/architecture/agent_identity_reputation.md`
-- `docs/deployment/environment.md`
-- `docs/rfc/agent-opportunities-2026-04.md`
+- `backend/src/modules/auth/auth.controller.ts`
+- `backend/src/modules/auth/auth.service.ts`
+- `backend/src/modules/identity/wallet.service.ts`
+- `backend/src/tests/auth.controller.http.spec.ts`
+- `backend/src/tests/auth.controller.spec.ts`
+- `backend/src/tests/auth.integration.spec.ts`
+- `backend/src/tests/wallet.integration.spec.ts`
 
 ## Critical Findings
 
@@ -33,32 +34,29 @@ None in the changed code.
 
 ## Informational Notes
 
-- The scheduler is fail-closed by default. It starts only when both
-  `ERC8004_REPUTATION_SCHEDULER_ENABLED=true` and `ERC8004_ENABLED=true`.
-- The scheduler selects only active minted/attested agents with an identity
-  token and a stale or missing `reputationAttestedAt` value.
-- Metadata publication reuses the existing `AgentIdentityService.attestReputation`
-  path, preserving session-key handling, ERC-8004 registry configuration, and
-  deterministic #699 payload construction.
-- Missing session keys and per-agent failures are recorded as skips/failures and
-  do not stop the rest of the scheduler batch.
-- New configuration is environment-variable driven and documented. No secrets,
-  hardcoded service URLs, raw SQL, unsafe deserialization, or dynamic evaluation
-  paths were added.
-- Broad scans surfaced pre-existing observability secret handling and controller
-  body typing in the agents module. They were reviewed as out-of-scope for #702
-  and are not introduced by these changes.
+- Successful smart-account authentication now upserts the `User` and `Wallet`
+  rows for the verified address, which keeps redeployed backends aligned with
+  the existing on-chain smart account instead of creating a derived placeholder.
+- Existing wallet budget fields are preserved when a wallet row is repaired.
+- Wallet creation now treats address-shaped ERC-4337 user IDs as the actual
+  smart-account address when `/wallet/:userId` is the first backend touchpoint.
+- Partial JWT logging in `AuthService.issueToken` was removed during review.
+- The new database writes use Prisma `upsert` APIs with structured values. No
+  raw SQL, dynamic evaluation, secrets, or hardcoded production configuration
+  were introduced.
+- Broad scans surfaced pre-existing env-secret references, typed controller
+  bodies, and raw SQL in unrelated modules. They were reviewed as out of scope
+  for this branch and are not introduced by these changes.
 
 ## Commands Run
 
 ```bash
-rg 'password|secret|api_key|private_key' backend/src/modules/agents --iglob '!*.test.*' --iglob '!*.spec.*'
-rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/agents
-rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/agents | grep -v 'Guard\|Auth'
-rg 'JSON\.parse|eval\(' backend/src/modules/agents
-rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/agents | grep -v 'Pipe\|Dto\|Validation'
+rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/
+rg 'JSON\.parse|eval\(' backend/src/
+rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/auth backend/src/modules/identity backend/src/modules/artist
 cd backend && npm run lint
-cd backend && npx jest --runInBand src/tests/agent_reputation_scheduler.spec.ts src/tests/agent_identity.spec.ts
 cd backend && npm test
+cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='auth.integration|wallet.integration'
 git diff --check
 ```

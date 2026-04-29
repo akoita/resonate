@@ -24,6 +24,7 @@ jest.mock('viem', () => ({
 const mockAuthService = {
   issueToken: jest.fn().mockReturnValue({ accessToken: 'tok' }),
   issueTokenForAddress: jest.fn().mockReturnValue({ accessToken: 'tok-addr' }),
+  upsertWalletIdentity: jest.fn().mockResolvedValue({ id: 'wallet-1' }),
 };
 
 const mockNonceService = {
@@ -62,6 +63,7 @@ beforeEach(() => {
   // Re-apply defaults (clearAllMocks strips mockReturnValue)
   mockAuthService.issueToken.mockReturnValue({ accessToken: 'tok' });
   mockAuthService.issueTokenForAddress.mockReturnValue({ accessToken: 'tok-addr' });
+  mockAuthService.upsertWalletIdentity.mockResolvedValue({ id: 'wallet-1' });
   mockNonceService.issue.mockReturnValue('nonce-123');
   mockNonceService.consume.mockReturnValue(true);
   mockSignupFaucet.maybeFundOnSignup.mockResolvedValue({ status: 'skipped', reason: 'disabled' });

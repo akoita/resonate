@@ -191,6 +191,11 @@ export class AuthController {
     verifiedChainId: number;
   }) {
     const result = this.authService.issueTokenForAddress(input.userId, input.role ?? "listener");
+    await this.authService.upsertWalletIdentity({
+      userId: input.userId,
+      walletAddress: input.walletAddress,
+      chainId: input.requestedChainId ?? input.verifiedChainId,
+    });
     if (this.signupFaucetService) {
       try {
         await this.signupFaucetService.maybeFundOnSignup({

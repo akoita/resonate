@@ -12,6 +12,7 @@ import { WalletService } from '../modules/identity/wallet.service';
 import { EventBus } from '../modules/shared/event_bus';
 
 const TEST_PREFIX = `wal_${Date.now()}_`;
+const TEST_ADDRESS = `0x${Date.now().toString(16).padStart(40, '0').slice(-40)}`;
 
 describe('WalletService (integration)', () => {
   let wallet: WalletService;
@@ -44,8 +45,8 @@ describe('WalletService (integration)', () => {
   });
 
   afterAll(async () => {
-    await prisma.wallet.deleteMany({ where: { userId: `${TEST_PREFIX}user` } }).catch(() => {});
-    await prisma.user.delete({ where: { id: `${TEST_PREFIX}user` } }).catch(() => {});
+    await prisma.wallet.deleteMany({ where: { userId: { in: [`${TEST_PREFIX}user`, TEST_ADDRESS] } } }).catch(() => {});
+    await prisma.user.deleteMany({ where: { id: { in: [`${TEST_PREFIX}user`, TEST_ADDRESS] } } }).catch(() => {});
   });
 
   it('enforces monthly budget cap', async () => {
@@ -63,5 +64,12 @@ describe('WalletService (integration)', () => {
     });
     expect(found).not.toBeNull();
     expect(found!.monthlyCapUsd).toBe(10);
+  });
+
+  it('uses an authenticated smart account address instead of a derived placeholder', async () => {
+    const found = await wallet.getWallet(TEST_ADDRESS);
+
+    expect(found.address).toBe(TEST_ADDRESS);
+    expect(found.ownerAddress).toBeNull();
   });
 });

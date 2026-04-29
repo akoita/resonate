@@ -17,6 +17,7 @@ import { createControllerTestApp } from './e2e-helpers';
 const mockAuthService = {
   issueToken: jest.fn().mockReturnValue({ accessToken: 'test-token' }),
   issueTokenForAddress: jest.fn().mockReturnValue({ accessToken: 'test-token-addr' }),
+  upsertWalletIdentity: jest.fn().mockResolvedValue({ id: 'wallet-1' }),
 };
 
 const mockNonceService = {
@@ -49,6 +50,7 @@ describe('AuthController (e2e)', () => {
     jest.clearAllMocks();
     mockAuthService.issueToken.mockReturnValue({ accessToken: 'test-token' });
     mockAuthService.issueTokenForAddress.mockReturnValue({ accessToken: 'test-token-addr' });
+    mockAuthService.upsertWalletIdentity.mockResolvedValue({ id: 'wallet-1' });
     mockNonceService.issue.mockReturnValue('nonce-abc');
     mockNonceService.consume.mockReturnValue(true);
     mockPublicClient.getChainId.mockResolvedValue(1);
