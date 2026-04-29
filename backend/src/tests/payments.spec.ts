@@ -1,10 +1,11 @@
 import { PaymentsService } from "../modules/payments/payments.service";
 import { EventBus } from "../modules/shared/event_bus";
+import { ConfigService } from "@nestjs/config";
 
 describe("payments", () => {
   it("applies split config and settles", () => {
     const eventBus = new EventBus();
-    const service = new PaymentsService(eventBus);
+    const service = new PaymentsService(eventBus, new ConfigService({}));
     service.setSplitConfig({ trackId: "track-1", artistPct: 70, mixerPct: 20 });
 
     const payment = service.initiatePayment({

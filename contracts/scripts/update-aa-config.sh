@@ -153,12 +153,21 @@ if ! command -v jq &> /dev/null; then
     exit 1
 fi
 
-# Parse the JSON to get deployed contract addresses
-ENTRY_POINT=$(jq -r '.transactions[] | select(.contractName == "EntryPoint") | .contractAddress' "$BROADCAST_FILE")
-KERNEL=$(jq -r '.transactions[] | select(.contractName == "Kernel") | .contractAddress' "$BROADCAST_FILE")
-KERNEL_FACTORY=$(jq -r '.transactions[] | select(.contractName == "KernelFactory") | .contractAddress' "$BROADCAST_FILE")
-ECDSA_VALIDATOR=$(jq -r '.transactions[] | select(.contractName == "ECDSAValidator") | .contractAddress' "$BROADCAST_FILE")
-SIG_VALIDATOR=$(jq -r '.transactions[] | select(.contractName == "UniversalSigValidator") | .contractAddress' "$BROADCAST_FILE")
+# Parse the JSON to get deployed contract addresses. Forge traces can include
+# repeated entries for the same contract name, so keep a single deterministic
+# address for env-file writes.
+contract_address() {
+    local contract_name="$1"
+    jq -r --arg name "$contract_name" \
+        '.transactions[] | select(.transactionType == "CREATE" and .contractName == $name) | .contractAddress' \
+        "$BROADCAST_FILE" | tail -1
+}
+
+ENTRY_POINT=$(contract_address "EntryPoint")
+KERNEL=$(contract_address "Kernel")
+KERNEL_FACTORY=$(contract_address "KernelFactory")
+ECDSA_VALIDATOR=$(contract_address "ECDSAValidator")
+SIG_VALIDATOR=$(contract_address "UniversalSigValidator")
 
 echo -e "${GREEN}Deployed Contract Addresses:${NC}"
 echo "  EntryPoint:             $ENTRY_POINT"

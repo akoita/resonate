@@ -189,6 +189,37 @@ contracts-deploy-local: local-aa-up
 	@sleep 1
 	$(MAKE) deploy-contracts
 
+deploy-local-payments:
+	@echo "Deploying local payment dev contracts..."
+	cd contracts && forge script script/DeployLocalPayments.s.sol --rpc-url http://localhost:8545 --broadcast
+	@echo ""
+	@echo "Updating local payment configuration..."
+	./contracts/scripts/update-local-payment-config.sh
+	@echo "Clearing Next.js cache (payment env vars are baked at build time)..."
+	@rm -rf web/.next
+	@echo "✓ Local payment contracts and config are ready"
+
+payments-dev-up: dev-up local-aa-up
+	$(MAKE) local-aa-deploy
+	@sleep 1
+	$(MAKE) deploy-contracts
+	$(MAKE) deploy-local-payments
+	$(MAKE) payments-dev-status
+
+payments-dev-reset:
+	@if ! nc -z localhost 8545 >/dev/null 2>&1; then \
+		echo "❌ Local Anvil is not reachable on localhost:8545"; \
+		echo "Run 'make payments-dev-up' first."; \
+		exit 1; \
+	fi
+	$(MAKE) deploy-contracts
+	$(MAKE) deploy-local-payments
+	@rm -rf web/.next
+	@echo "✓ Local payment state reset"
+
+payments-dev-status:
+	./contracts/scripts/payments-dev-status.sh
+
 # Update .env files with deployed AA contract addresses
 local-aa-config:
 	./contracts/scripts/update-aa-config.sh

@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { PaymentsService } from "./payments.service";
 
@@ -28,5 +28,36 @@ export class PaymentsController {
   @Post("confirm")
   confirm(@Body() body: { paymentId: string }) {
     return this.paymentsService.confirmOnChain(body.paymentId);
+  }
+
+  @Get("assets")
+  assets(@Query("chainId") chainId?: string) {
+    return this.paymentsService.getPaymentAssets(
+      chainId ? Number(chainId) : undefined,
+    );
+  }
+
+  @Get("funding-options")
+  fundingOptions(
+    @Query("chainId") chainId?: string,
+    @Query("wallet") wallet?: string,
+  ) {
+    return this.paymentsService.getFundingOptions({
+      chainId: chainId ? Number(chainId) : undefined,
+      wallet,
+    });
+  }
+
+  @Get("dev/status")
+  localDevStatus() {
+    return this.paymentsService.getLocalDevStatus();
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("dev/fund")
+  fundLocalDevWallet(
+    @Body() body: { wallet: string; assetId: string; amount?: string },
+  ) {
+    return this.paymentsService.fundLocalDevWallet(body);
   }
 }
