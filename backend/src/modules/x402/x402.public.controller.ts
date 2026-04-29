@@ -1,6 +1,7 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Optional } from '@nestjs/common';
+import { PaymentsService } from '../payments/payments.service';
 import { X402Config } from './x402.config';
-import { getDefaultX402Asset, type X402AssetInfo } from './x402.public';
+import { resolveX402AssetInfo, type X402AssetInfo } from './x402.public';
 
 export type X402PublicConfig =
   | { enabled: false }
@@ -15,7 +16,11 @@ export type X402PublicConfig =
 
 @Controller('api/x402')
 export class X402PublicController {
-  constructor(private readonly x402Config: X402Config) {}
+  constructor(
+    private readonly x402Config: X402Config,
+    @Optional()
+    private readonly paymentsService?: PaymentsService,
+  ) {}
 
   @Get('public-config')
   getPublicConfig(): X402PublicConfig {
@@ -28,7 +33,10 @@ export class X402PublicController {
       chainId: this.x402Config.chainId,
       facilitatorUrl: this.x402Config.facilitatorUrl,
       payoutAddress: this.x402Config.payoutAddress,
-      asset: getDefaultX402Asset(this.x402Config.network),
+      asset: resolveX402AssetInfo(
+        this.x402Config.network,
+        this.paymentsService?.getPaymentAssets(this.x402Config.chainId).assets,
+      ),
     };
   }
 }

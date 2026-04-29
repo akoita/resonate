@@ -1,6 +1,8 @@
+import { ConfigService } from '@nestjs/config';
 import { X402Middleware } from '../modules/x402/x402.middleware';
 import { X402Config } from '../modules/x402/x402.config';
 import { X402PaymentService } from '../modules/x402/x402.payment.service';
+import { PaymentsService } from '../modules/payments/payments.service';
 import { Request, Response, NextFunction } from 'express';
 
 // Mock prisma
@@ -38,6 +40,13 @@ function createMiddleware(
   paymentService: X402PaymentService = new X402PaymentService(config),
 ) {
   return new X402Middleware(config, paymentService);
+}
+
+function createPaymentsService(paymentAssetsJson: string) {
+  return new PaymentsService(
+    { publish: jest.fn() } as any,
+    new ConfigService({ PAYMENT_ASSETS_JSON: paymentAssetsJson }),
+  );
 }
 
 function createMockReq(path: string, headers: Record<string, string> = {}): Partial<Request> {
@@ -119,6 +128,47 @@ describe('X402Middleware', () => {
               asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
               payTo: '0xTestPayoutAddr',
               extra: expect.objectContaining({
+                displayPrice: '0.05 USDC',
+              }),
+            }),
+          ]),
+        }),
+      );
+    });
+
+    it('uses shared payment metadata for the x402 USDC challenge asset', async () => {
+      const config = createMockConfig();
+      const paymentsService = createPaymentsService(JSON.stringify([
+        {
+          assetId: 'base-sepolia:usdc',
+          chainId: 84532,
+          symbol: 'USDC',
+          name: 'Circle USDC',
+          kind: 'stablecoin',
+          tokenAddress: '0x1111111111111111111111111111111111111111',
+          decimals: 6,
+          enabled: true,
+          settlement: ['x402'],
+          pricingStrategy: 'usd_pegged',
+        },
+      ]));
+      const middleware = createMiddleware(
+        config,
+        new X402PaymentService(config, paymentsService),
+      );
+      const req = createMockReq('/api/stems/test-stem-id/x402');
+      const { res } = createMockRes();
+      const next = jest.fn();
+
+      await middleware.use(req as Request, res as Response, next);
+
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accepts: expect.arrayContaining([
+            expect.objectContaining({
+              asset: '0x1111111111111111111111111111111111111111',
+              extra: expect.objectContaining({
+                name: 'Circle USDC',
                 displayPrice: '0.05 USDC',
               }),
             }),
