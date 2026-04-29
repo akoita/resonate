@@ -17,7 +17,7 @@ When adding a new environment variable:
 | Variable | Scope | Notes |
 | --- | --- | --- |
 | `NEXT_PUBLIC_API_URL` | Frontend | Defaults to `http://localhost:3001` in local app workflows |
-| `NEXT_PUBLIC_CHAIN_ID` | Frontend | `31337` for local Anvil, `11155111` for Sepolia fork mode |
+| `NEXT_PUBLIC_CHAIN_ID` | Frontend | `31337` for local Anvil, `11155111` for Sepolia fork mode, `84532` for Base Sepolia staging |
 | `NEXT_PUBLIC_RPC_URL` | Frontend | Optional RPC override. Use for local/fork AA flows; deployed builds otherwise fall back to the chain default RPC. |
 | `NEXT_PUBLIC_AA_BUNDLER` | Frontend | Optional public bundler override; when unset the browser falls back to `/api/bundler` unless a public Pimlico key is provided |
 | `NEXT_PUBLIC_PIMLICO_API_KEY` | Frontend | Optional public Pimlico key. Leave unset when using server-side bundler config via `/api/bundler` |
@@ -36,6 +36,15 @@ When adding a new environment variable:
 | `WEBAUTHN_RP_ID` | Backend | Optional relying-party ID for self-hosted passkey credentials. Usually the frontend hostname, without protocol |
 | `WEBAUTHN_ORIGIN` | Backend | Optional relying-party origin for self-hosted passkey verification. Usually the frontend HTTPS origin |
 | `SEPOLIA_RPC_URL` | Contracts / backend | Required for Sepolia deploys and forked workflows |
+| `BASE_SEPOLIA_RPC_URL` | Contracts / backend | Required for Base Sepolia protocol deploys and single-chain x402 staging |
+| `ETHERSCAN_API_KEY` | Contracts secret | Optional Etherscan API v2 key used for Base Sepolia contract verification. Store in secret manager/GitHub environment secrets when used in CI |
+| `BASESCAN_API_KEY` | Contracts secret | Backward-compatible alias for `ETHERSCAN_API_KEY` in Base Sepolia verification scripts |
+| `BASESCAN_API_URL` | Contracts | Optional verification API override. Defaults to `https://api.etherscan.io/v2/api`, which requires a key/plan with Base Sepolia API access |
+| `VERIFY_CONTRACTS` | Contracts | Optional Base Sepolia deploy verification switch. Defaults to `auto`: verify when an explorer API key is set, skip otherwise. Set `false` to force-disable verification |
+| `BROADCAST_FILE` | Contracts | Optional broadcast JSON path for Base Sepolia verification retry commands; defaults to the latest Base Sepolia deployment |
+| `VERIFY_RETRIES` / `VERIFY_DELAY_SECONDS` | Contracts | Optional BaseScan retry tuning for `make verify-base-sepolia`; defaults to `8` retries and `15` seconds |
+| `SOURCIFY_API_URL` | Contracts | Optional Sourcify server override for `make verify-base-sepolia-sourcify`; defaults to `https://sourcify.dev/server` |
+| `SOURCIFY_RETRIES` / `SOURCIFY_DELAY_SECONDS` | Contracts | Optional Sourcify retry tuning for `make verify-base-sepolia-sourcify`; defaults to `12` retries and `5` seconds |
 | `TRUST_STAKE_WEI_NEW` | Backend | Optional override for the new-creator content-protection stake requirement |
 | `TRUST_STAKE_WEI_ESTABLISHED` | Backend | Optional override for the established-tier content-protection stake requirement |
 | `TRUST_STAKE_WEI_TRUSTED` | Backend | Optional override for the trusted-tier content-protection stake requirement |
@@ -109,11 +118,21 @@ If these variables are deployed through infrastructure, define them in
 Base Sepolia:
 
 ```env
+NEXT_PUBLIC_CHAIN_ID=84532
+NEXT_PUBLIC_RPC_URL=https://sepolia.base.org
+RPC_URL=https://sepolia.base.org
 X402_ENABLED=true
 X402_NETWORK=eip155:84532
 X402_FACILITATOR_URL=https://x402.org/facilitator
 X402_PAYOUT_ADDRESS=<base-sepolia-wallet>
 ```
+
+For deployed staging, keep the protocol chain and x402 chain aligned on Base
+Sepolia: deploy the protocol contracts with `make deploy-base-sepolia`, copy the
+resulting contract addresses into the `resonate-iac` environment config, and set
+the backend and frontend chain variables to `84532`. This avoids the confusing
+state where users see a Sepolia smart account in the app but x402 settlement
+requires USDC at a different Base Sepolia address.
 
 Base mainnet with AgentCash:
 

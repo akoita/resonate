@@ -1,4 +1,7 @@
 SEPOLIA_RPC_URL ?= https://sepolia.drpc.org
+BASE_SEPOLIA_RPC_URL ?= https://sepolia.base.org
+NEXT_PUBLIC_CHAIN_ID ?= 11155111
+BROADCAST_FILE ?= contracts/broadcast/DeployProtocol.s.sol/84532/run-latest.json
 RESONATE_IAC_REPO ?= https://github.com/akoita/resonate-iac
 LOCAL_INFRA_COMPOSE_FILE ?= docker/docker-compose.local.yml
 AA_INFRA_COMPOSE_FILE ?= docker/docker-compose.aa.yml
@@ -51,7 +54,7 @@ docker-build-cloud:
 	docker build -t resonate-web \
 		--build-arg NEXT_PUBLIC_API_URL=$(NEXT_PUBLIC_API_URL) \
 		--build-arg NEXT_PUBLIC_ZERODEV_PROJECT_ID=$(NEXT_PUBLIC_ZERODEV_PROJECT_ID) \
-		--build-arg NEXT_PUBLIC_CHAIN_ID=11155111 \
+		--build-arg NEXT_PUBLIC_CHAIN_ID=$(NEXT_PUBLIC_CHAIN_ID) \
 		--build-arg NEXT_PUBLIC_STEM_NFT_ADDRESS=$(NEXT_PUBLIC_STEM_NFT_ADDRESS) \
 		--build-arg NEXT_PUBLIC_MARKETPLACE_ADDRESS=$(NEXT_PUBLIC_MARKETPLACE_ADDRESS) \
 		--build-arg NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS=$(NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS) \
@@ -80,11 +83,20 @@ docker-down:
 	$(moved_to_resonate_iac)
 
 # ============================================
-# Sepolia Contract Deployment
+# Testnet Contract Deployment
 # ============================================
 
 deploy-sepolia:
-	./contracts/scripts/deploy-sepolia.sh
+	SEPOLIA_RPC_URL="$(SEPOLIA_RPC_URL)" ./contracts/scripts/deploy-sepolia.sh
+
+deploy-base-sepolia:
+	BASE_SEPOLIA_RPC_URL="$(BASE_SEPOLIA_RPC_URL)" ./contracts/scripts/deploy-base-sepolia.sh
+
+verify-base-sepolia:
+	BASE_SEPOLIA_RPC_URL="$(BASE_SEPOLIA_RPC_URL)" BROADCAST_FILE="$(BROADCAST_FILE)" ./contracts/scripts/verify-base-sepolia.sh
+
+verify-base-sepolia-sourcify:
+	BROADCAST_FILE="$(BROADCAST_FILE)" ./contracts/scripts/verify-base-sepolia-sourcify.sh
 
 infra-init:
 	$(moved_to_resonate_iac)

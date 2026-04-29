@@ -2,13 +2,14 @@
 
 import React, { createContext, useContext, useMemo } from "react";
 import { createPublicClient, http } from "viem";
-import { sepolia, foundry } from "viem/chains";
+import type { PublicClient } from "viem";
+import { baseSepolia, sepolia, foundry } from "viem/chains";
 import { getBrowserSafeRpcUrl, getRpcUrl } from "../../lib/rpc";
 import { getZeroDevProjectId } from "../../lib/passkeyConfig";
 
 type ZeroDevState = {
     projectId: string | null;
-    publicClient: import("viem").PublicClient;
+    publicClient: PublicClient;
     chainId: number;
 };
 
@@ -19,6 +20,7 @@ const ZeroDevContext = createContext<ZeroDevState | null>(null);
  * - Local development: NEXT_PUBLIC_CHAIN_ID=31337 (Foundry/Anvil)
  * - Forked Sepolia: NEXT_PUBLIC_CHAIN_ID=11155111 + NEXT_PUBLIC_RPC_URL=http://localhost:8545
  * - Testnet: NEXT_PUBLIC_CHAIN_ID=11155111 or unset (Sepolia)
+ * - x402 staging: NEXT_PUBLIC_CHAIN_ID=84532 (Base Sepolia)
  */
 function getChainConfig() {
     const chainId = process.env.NEXT_PUBLIC_CHAIN_ID;
@@ -35,6 +37,19 @@ function getChainConfig() {
                 },
             },
             bundlerUrl: "http://localhost:4337",
+        };
+    }
+
+    if (chainId === "84532") {
+        return {
+            chain: {
+                ...baseSepolia,
+                rpcUrls: {
+                    default: { http: [rpcUrl] },
+                    public: { http: [rpcUrl] },
+                },
+            },
+            bundlerUrl: undefined,
         };
     }
 
@@ -71,7 +86,7 @@ export default function ZeroDevProviderClient({
     const finalProjectId = getZeroDevProjectId(projectId);
     const { chain } = CHAIN_CONFIG;
 
-    const publicClient = useMemo(
+    const publicClient = useMemo<PublicClient>(
         () => {
             const rpcUrl = getBrowserSafeRpcUrl();
             // Only log in dev and only when actually re-creating
@@ -81,7 +96,7 @@ export default function ZeroDevProviderClient({
             return createPublicClient({
                 chain,
                 transport: http(rpcUrl),
-            });
+            }) as PublicClient;
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [chain.id] // chain is module-level constant, ID used to stabilize

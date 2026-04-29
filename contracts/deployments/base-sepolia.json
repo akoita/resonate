@@ -1,0 +1,25 @@
+{
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "deployer": "0x3e19e4B2f22fC27B5105A6762FCC6C6f129550BE",
+  "deployedAt": "2026-04-29T13:24:17Z",
+  "contracts": {
+    "StemNFT": "0x2ed745028cf200eaaa3779fece669f5ffd1b0814",
+    "StemMarketplaceV2": "0xb00842811ea1bf1194a4804759d88eb4a71f3c0d",
+    "TransferValidator": "0x8730bdd4c922e6333bc1c324d0735fd58f90baa6",
+    "ContentProtection": "0x5a7b149f0a663e57978b30eb6d54b86be296fdff",
+    "DisputeResolution": "0x35adbf46e80d5026add13e8e01c71126920aed17",
+    "CurationRewards": "0x56912168dd3b3ec667bc7d7d9aec90ec4946e934",
+    "RevenueEscrow": "0xfa1c04d8d1358bd13ee85a0f2ce7bf19abdef3c4"
+  },
+  "verification": {
+    "basescan": "https://sepolia.basescan.org/address/0x2ed745028cf200eaaa3779fece669f5ffd1b0814",
+    "marketplace": "https://sepolia.basescan.org/address/0xb00842811ea1bf1194a4804759d88eb4a71f3c0d",
+    "validator": "https://sepolia.basescan.org/address/0x8730bdd4c922e6333bc1c324d0735fd58f90baa6",
+    "contentProtection": "https://sepolia.basescan.org/address/0x5a7b149f0a663e57978b30eb6d54b86be296fdff",
+    "disputeResolution": "https://sepolia.basescan.org/address/0x35adbf46e80d5026add13e8e01c71126920aed17",
+    "curationRewards": "https://sepolia.basescan.org/address/0x56912168dd3b3ec667bc7d7d9aec90ec4946e934",
+    "revenueEscrow": "https://sepolia.basescan.org/address/0xfa1c04d8d1358bd13ee85a0f2ce7bf19abdef3c4"
+  },
+  "firstTransaction": "0x0be3d79189d566c27e26421248de5289826bdd68b0b07a7e7c8051037868c6f2"
+}

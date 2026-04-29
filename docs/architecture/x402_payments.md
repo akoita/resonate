@@ -51,7 +51,7 @@ configuration and the `/.well-known/mcp.json` discovery document.
 | ---------------------- | ------------------------------ | --------------------------------------------------------------------------- |
 | `X402_ENABLED`         | `false`                        | Feature flag                                                                |
 | `X402_PAYOUT_ADDRESS`  | —                              | Wallet receiving USDC (required when enabled)                               |
-| `X402_FACILITATOR_URL` | `https://x402.org/facilitator` | Verify/settle endpoint; set explicitly for Base mainnet                     |
+| `X402_FACILITATOR_URL` | `https://x402.org/facilitator` | Verify/settle endpoint; set explicitly for Base mainnet or any custom facilitator |
 | `X402_NETWORK`         | `eip155:84532`                 | CAIP-2 chain ID (`eip155:84532` Base Sepolia, `eip155:8453` Base mainnet)   |
 
 ### Recommended local/test profiles
@@ -59,6 +59,8 @@ configuration and the `/.well-known/mcp.json` discovery document.
 Base Sepolia smoke tests:
 
 ```env
+NEXT_PUBLIC_CHAIN_ID=84532
+NEXT_PUBLIC_RPC_URL=https://sepolia.base.org
 X402_ENABLED=true
 X402_NETWORK=eip155:84532
 X402_FACILITATOR_URL=https://x402.org/facilitator
@@ -78,6 +80,7 @@ Notes:
 
 - `X402_NETWORK=eip155:8453` now requires an explicit `X402_FACILITATOR_URL`; we do not silently reuse the testnet default on mainnet.
 - `https://x402.org/facilitator` is suitable for testnet-style flows, not the validated Base mainnet AgentCash path.
+- `X402_NETWORK=eip155:11155111` is not currently a supported staging profile. It would require a Sepolia x402 facilitator and a USDC contract that the facilitator accepts.
 
 ## Module structure
 
@@ -111,9 +114,25 @@ Public quote and payment challenge pricing resolve in this order:
 
 x402 purchases are recorded as `ContractEvent` entries with `eventName: 'x402.purchase'`, using the chain ID derived from the configured x402 network. This remains separate from on-chain `StemPurchase` records (which require a FK to `StemListing`).
 
-## Network
+## Network Strategy
 
-x402 uses USDC on **Base Sepolia** (testnet) or **Base** (mainnet), not Ethereum Sepolia where the marketplace contracts live. This is a separate payment rail — the existing `StemMarketplaceV2.buy()` on-chain flow is unchanged.
+Current x402-compatible USDC settlement is available on **Base Sepolia** (testnet)
+or **Base** (mainnet). Ethereum Sepolia can remain useful for ordinary contract
+development, but it is not enough for end-to-end x402 unless a facilitator also
+supports `eip155:11155111`.
+
+For staging, prefer a single-chain Base Sepolia profile:
+
+- deploy `StemNFT`, `StemMarketplaceV2`, and the Phase 2 protocol contracts to Base Sepolia
+- build the frontend with `NEXT_PUBLIC_CHAIN_ID=84532`
+- point backend contract/indexer RPC at Base Sepolia
+- configure x402 with `X402_NETWORK=eip155:84532`
+
+The older split-chain mode (marketplace contracts on Sepolia, x402 on Base
+Sepolia) is technically possible for machine clients, but it creates confusing
+wallet balances and smart-account addresses for humans. Keep the human checkout
+disabled in that mode until the signer, account deployment, and facilitator
+simulation all agree on the same authorization path.
 
 ## Headers
 
