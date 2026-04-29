@@ -5,6 +5,9 @@ import {Test, console} from "forge-std/Test.sol";
 import {StemNFT} from "../../src/core/StemNFT.sol";
 import {StemMarketplaceV2} from "../../src/core/StemMarketplaceV2.sol";
 import {TransferValidator} from "../../src/modules/TransferValidator.sol";
+import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
+import {MockUSDC} from "../../src/payments/MockUSDC.sol";
+import {WrappedNativeMock} from "../../src/payments/WrappedNativeMock.sol";
 import {ERC20Mock} from "../mocks/ERC20Mock.sol";
 import {MockContentProtectionMarketplace} from "../mocks/MockContentProtectionMarketplace.sol";
 
@@ -16,7 +19,10 @@ contract StemMarketplaceTest is Test {
     StemNFT public stemNFT;
     StemMarketplaceV2 public marketplace;
     TransferValidator public validator;
+    PaymentAssetRegistry public paymentAssetRegistry;
     ERC20Mock public paymentToken;
+    MockUSDC public usdc;
+    WrappedNativeMock public weth;
     MockContentProtectionMarketplace public contentProtection;
     uint256 public authorizerKey = 0xA11CE;
 
@@ -30,6 +36,10 @@ contract StemMarketplaceTest is Test {
     uint256 constant PROTOCOL_FEE_BPS = 250; // 2.5%
     uint256 constant ROYALTY_BPS = 500; // 5%
     uint256 constant LISTING_DURATION = 7 days;
+    bytes32 constant LOCAL_ETH = keccak256("local:eth");
+    bytes32 constant LOCAL_TEST = keccak256("local:test");
+    bytes32 constant LOCAL_USDC = keccak256("local:usdc");
+    bytes32 constant LOCAL_WETH = keccak256("local:weth");
 
     event Listed(
         uint256 indexed listingId,
@@ -59,13 +69,21 @@ contract StemMarketplaceTest is Test {
         stemNFT = new StemNFT("https://api.resonate.fm/metadata/");
         validator = new TransferValidator();
         contentProtection = new MockContentProtectionMarketplace();
+        paymentAssetRegistry = new PaymentAssetRegistry(admin);
+        paymentToken = new ERC20Mock("Test Token", "TEST");
+        usdc = new MockUSDC();
+        weth = new WrappedNativeMock();
+        paymentAssetRegistry.configureAsset(LOCAL_ETH, address(0), "ETH", 18, true, false);
+        paymentAssetRegistry.configureAsset(LOCAL_TEST, address(paymentToken), "TEST", 18, true, false);
+        paymentAssetRegistry.configureAsset(LOCAL_USDC, address(usdc), "USDC", 6, true, true);
+        paymentAssetRegistry.configureAsset(LOCAL_WETH, address(weth), "WETH", 18, true, false);
         marketplace = new StemMarketplaceV2(
             address(stemNFT),
             address(contentProtection),
+            address(paymentAssetRegistry),
             feeRecipient,
             PROTOCOL_FEE_BPS
         );
-        paymentToken = new ERC20Mock("Test Token", "TEST");
 
         // Setup validator
         stemNFT.setTransferValidator(address(validator));
@@ -98,8 +116,15 @@ contract StemMarketplaceTest is Test {
         // Fund buyer
         vm.deal(buyer, 100 ether);
         paymentToken.mint(buyer, 1000 ether);
+        usdc.mint(buyer, 1000_000000);
+        vm.prank(buyer);
+        weth.deposit{value: 50 ether}();
         vm.prank(buyer);
         paymentToken.approve(address(marketplace), type(uint256).max);
+        vm.prank(buyer);
+        usdc.approve(address(marketplace), type(uint256).max);
+        vm.prank(buyer);
+        weth.approve(address(marketplace), type(uint256).max);
     }
 
     // ============ Constructor Tests ============
@@ -110,6 +135,7 @@ contract StemMarketplaceTest is Test {
             address(marketplace.contentProtection()),
             address(contentProtection)
         );
+        assertEq(address(marketplace.paymentAssetRegistry()), address(paymentAssetRegistry));
         assertEq(marketplace.protocolFeeRecipient(), feeRecipient);
         assertEq(marketplace.protocolFeeBps(), PROTOCOL_FEE_BPS);
     }
@@ -119,6 +145,19 @@ contract StemMarketplaceTest is Test {
         vm.expectRevert(StemMarketplaceV2.ZeroAddress.selector);
         new StemMarketplaceV2(
             address(stemNFT),
+            address(0),
+            address(paymentAssetRegistry),
+            feeRecipient,
+            PROTOCOL_FEE_BPS
+        );
+    }
+
+    function test_Constructor_RevertZeroPaymentAssetRegistry() public {
+        vm.prank(admin);
+        vm.expectRevert(StemMarketplaceV2.ZeroAddress.selector);
+        new StemMarketplaceV2(
+            address(stemNFT),
+            address(contentProtection),
             address(0),
             feeRecipient,
             PROTOCOL_FEE_BPS
@@ -131,6 +170,7 @@ contract StemMarketplaceTest is Test {
         new StemMarketplaceV2(
             address(stemNFT),
             address(contentProtection),
+            address(paymentAssetRegistry),
             feeRecipient,
             501
         ); // > 5%
@@ -143,6 +183,7 @@ contract StemMarketplaceTest is Test {
         new StemMarketplaceV2(
             address(stemNFT),
             address(contentProtection),
+            address(paymentAssetRegistry),
             address(0),
             250
         );
@@ -154,6 +195,7 @@ contract StemMarketplaceTest is Test {
         StemMarketplaceV2 m = new StemMarketplaceV2(
             address(stemNFT),
             address(contentProtection),
+            address(paymentAssetRegistry),
             address(0),
             0
         );
@@ -166,6 +208,7 @@ contract StemMarketplaceTest is Test {
         StemMarketplaceV2 m = new StemMarketplaceV2(
             address(stemNFT),
             address(contentProtection),
+            address(paymentAssetRegistry),
             address(0),
             0
         );
@@ -211,6 +254,14 @@ contract StemMarketplaceTest is Test {
             listingId
         );
         assertEq(listing.paymentToken, address(paymentToken));
+    }
+
+    function test_List_RevertUnsupportedPaymentAsset() public {
+        ERC20Mock unsupported = new ERC20Mock("Unsupported", "NOPE");
+
+        vm.prank(seller);
+        vm.expectRevert(StemMarketplaceV2.UnsupportedPaymentAsset.selector);
+        marketplace.list(1, 50, 100e18, address(unsupported), LISTING_DURATION);
     }
 
     function test_List_EmitsEvent() public {
@@ -535,6 +586,46 @@ contract StemMarketplaceTest is Test {
         assertTrue(paymentToken.balanceOf(seller) > sellerBefore);
     }
 
+    function test_Buy_WithUSDC() public {
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(
+            1,
+            50,
+            100_000000,
+            address(usdc),
+            LISTING_DURATION
+        );
+
+        uint256 buyerBefore = usdc.balanceOf(buyer);
+        uint256 sellerBefore = usdc.balanceOf(seller);
+
+        vm.prank(buyer);
+        marketplace.buy(listingId, 10);
+
+        assertEq(buyerBefore - usdc.balanceOf(buyer), 1000_000000);
+        assertTrue(usdc.balanceOf(seller) > sellerBefore);
+    }
+
+    function test_Buy_WithWETH() public {
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(
+            1,
+            50,
+            1 ether,
+            address(weth),
+            LISTING_DURATION
+        );
+
+        uint256 buyerBefore = weth.balanceOf(buyer);
+        uint256 sellerBefore = weth.balanceOf(seller);
+
+        vm.prank(buyer);
+        marketplace.buy(listingId, 10);
+
+        assertEq(buyerBefore - weth.balanceOf(buyer), 10 ether);
+        assertTrue(weth.balanceOf(seller) > sellerBefore);
+    }
+
     function test_Buy_RevertInvalidListing() public {
         vm.prank(buyer);
         vm.expectRevert(StemMarketplaceV2.InvalidListing.selector);
@@ -568,6 +659,7 @@ contract StemMarketplaceTest is Test {
             LISTING_DURATION
         );
 
+        vm.deal(buyer, 100 ether);
         vm.prank(buyer);
         vm.expectRevert(StemMarketplaceV2.InsufficientAmount.selector);
         marketplace.buy{value: 100 ether}(listingId, 100); // Only 50 available

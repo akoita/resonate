@@ -21,15 +21,11 @@ contract PaymentAssetRegistry {
     }
 
     mapping(bytes32 => PaymentAsset) private assetsById;
+    mapping(address => bytes32) private assetIdByToken;
     bytes32[] private assetIds;
 
     event AssetConfigured(
-        bytes32 indexed assetId,
-        address indexed token,
-        string symbol,
-        uint8 decimals,
-        bool enabled,
-        bool isStablecoin
+        bytes32 indexed assetId, address indexed token, string symbol, uint8 decimals, bool enabled, bool isStablecoin
     );
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
@@ -61,9 +57,20 @@ contract PaymentAssetRegistry {
         require(assetId != bytes32(0), "PaymentAssetRegistry: empty asset id");
         require(bytes(symbol).length > 0, "PaymentAssetRegistry: empty symbol");
 
+        PaymentAsset memory previousAsset = assetsById[assetId];
+        bytes32 existingAssetIdForToken = assetIdByToken[token];
+        require(
+            existingAssetIdForToken == bytes32(0) || existingAssetIdForToken == assetId,
+            "PaymentAssetRegistry: duplicate token"
+        );
+
         if (assetsById[assetId].assetId == bytes32(0)) {
             assetIds.push(assetId);
+        } else if (previousAsset.token != token && assetIdByToken[previousAsset.token] == assetId) {
+            delete assetIdByToken[previousAsset.token];
         }
+
+        assetIdByToken[token] = assetId;
 
         assetsById[assetId] = PaymentAsset({
             assetId: assetId,
@@ -85,6 +92,17 @@ contract PaymentAssetRegistry {
 
     function isEnabled(bytes32 assetId) external view returns (bool) {
         return assetsById[assetId].enabled;
+    }
+
+    function getAssetByToken(address token) external view returns (PaymentAsset memory) {
+        bytes32 assetId = assetIdByToken[token];
+        require(assetId != bytes32(0), "PaymentAssetRegistry: unknown token");
+        return assetsById[assetId];
+    }
+
+    function isTokenEnabled(address token) external view returns (bool) {
+        bytes32 assetId = assetIdByToken[token];
+        return assetId != bytes32(0) && assetsById[assetId].enabled;
     }
 
     function listAssetIds() external view returns (bytes32[] memory) {

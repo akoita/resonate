@@ -61,6 +61,12 @@ When adding a new environment variable:
 | `PAYMENT_DEV_FAUCET_ENABLED` | Backend | Enables local-only payment funding endpoints. Must be `true` only on local Anvil |
 | `PAYMENT_DEV_ARTIFACT_PATH` | Backend | Optional path to the generated local payment artifact. Defaults to `contracts/deployments/local-payments.json` |
 | `PAYMENT_DEV_FUNDER_ADDRESS` | Backend | Local Anvil unlocked account used to send mock-token mint transactions for `POST /payments/dev/fund` |
+| `PAYMENT_USDC_ADDRESS` | Contracts | Optional deployed USDC token address configured into the protocol payment asset registry during contract deployment |
+| `PAYMENT_WETH_ADDRESS` | Contracts | Optional deployed WETH token address configured into the protocol payment asset registry during contract deployment |
+| `PAYMENT_ENABLE_WETH` | Contracts | Enables WETH in the deployed payment asset registry when `PAYMENT_WETH_ADDRESS` is set. Defaults to `false` |
+| `PAYMENT_ETH_USD_FEED` | Contracts | Optional Chainlink-compatible ETH/USD feed address wrapped by the deployed oracle adapter |
+| `PAYMENT_USDC_USD_FEED` | Contracts | Optional Chainlink-compatible USDC/USD feed address wrapped by the deployed oracle adapter |
+| `PAYMENT_ORACLE_MAX_STALENESS` | Contracts | Maximum accepted feed age in seconds for deployed oracle adapters. Defaults to `86400` |
 | `NEXT_PUBLIC_PAYMENT_ASSETS_JSON` | Frontend | Public mirror of local/deployed payment asset metadata for client-side display |
 | `NEXT_PUBLIC_PAYMENT_DEFAULT_ASSET` | Frontend | Public default payment asset id for client-side display |
 | `HUMAN_VERIFICATION_PROVIDER` | Backend | `mock`, `passport`, or `worldcoin`; defaults to `mock` locally |
