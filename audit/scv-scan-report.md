@@ -1,60 +1,56 @@
-## Smart Contract Scan Report
+# Smart Contract Scan Report
 
-Scope reviewed on April 29, 2026 for issue #733:
+Scope reviewed on April 29, 2026 for issue #740:
 
-- Base Sepolia deployment and verification scripts under `contracts/scripts/`
-- Base Sepolia deployment handoff record under `contracts/deployments/`
-- No Solidity implementation files changed in `contracts/src/`
+- `contracts/src/payments/PaymentAssetRegistry.sol`
+- `contracts/src/payments/MockUSDC.sol`
+- `contracts/src/payments/MockPriceOracle.sol`
+- `contracts/src/payments/WrappedNativeMock.sol`
+- `contracts/script/DeployLocalPayments.s.sol`
+- `contracts/test/unit/PaymentAssetRegistry.t.sol`
 
-### Reconnaissance
+## Reconnaissance
 
 - Solidity version: `0.8.28`
-- Contract logic delta: none
-- Deployment delta:
-  - added Base Sepolia deployment wrapper
-  - added BaseScan/Etherscan v2 verification retry helper
-  - added Sourcify verification retry helper
-  - added Base Sepolia deployment record and remote environment handoff
+- New production-facing contract: none enabled in deployed flows yet
+- New local-dev contracts:
+  - owner-managed payment asset registry
+  - mintable local USDC-like token
+  - deterministic Chainlink-like mock oracle
+  - WETH-style wrapped-native helper for the later WETH milestone
 
-### Syntactic Sweep
+## Syntactic Sweep
 
-Patterns reviewed across the Solidity source tree:
+Patterns reviewed across the changed Solidity files:
 
-- external call triggers: `.call{}`, `_safeMint`, `_safeTransfer`,
-  `safeTransferFrom`
-- access-control gates: `onlyOwner`, `onlyRole`, `_checkRole`,
-  `require(msg.sender...)`
+- external calls: `.call{}`
+- token callback triggers: `_safeMint`, `_safeTransfer`, `safeTransferFrom`
+- access control: `onlyOwner`, `onlyRole`, `_checkRole`, `require(msg.sender...)`
 - dangerous primitives: `selfdestruct`, `delegatecall`, `tx.origin`
 - unchecked arithmetic and inline `assembly`
 
-Observed result:
+Observed matches:
 
-- the scan found existing external-call, access-control, and assembly patterns
-  in unchanged Solidity files
-- no new Solidity source locations were introduced by this branch
-- no storage, token transfer, authorization, or payable contract logic changed
+- `WrappedNativeMock.withdraw()` uses `.call{value: amount}("")` after burning
+  the caller's wrapped balance.
+- `PaymentAssetRegistry` uses `onlyOwner` and
+  `require(msg.sender == owner, ...)` for registry mutation.
 
-### Semantic Review
+## Semantic Review
 
-Reviewed the changed contract-adjacent scripts for:
+- `PaymentAssetRegistry` has a single owner and only the owner can configure
+  assets or transfer ownership. It rejects the zero owner and empty asset ids.
+- `MockUSDC` has unrestricted minting by design and is only deployed by the
+  local payment dev script.
+- `MockPriceOracle` has unrestricted answer updates by design and is only for
+  deterministic local/test profiles.
+- `WrappedNativeMock.withdraw()` burns before the ETH transfer. A reentrant
+  recipient cannot withdraw more than its remaining wrapped balance.
+- `DeployLocalPayments.s.sol` defaults to the standard Anvil private key only
+  for local deployment, matching existing local scripts. The generated local
+  artifact is ignored by git.
 
-- hardcoded secrets or committed private keys
-- accidental deployment to the wrong chain ID
-- reuse of generated broadcast data for verification retries
-- remote environment handoff content
-- failure handling when explorer verification fails after successful deployment
-
-Conclusion:
-
-- deploy scripts read private keys, RPC URLs, and explorer API keys from
-  environment variables
-- the Base Sepolia deployment script checks that the RPC resolves to chain
-  `84532` before broadcasting
-- the remote environment handoff uses placeholders for RPC and payout values and
-  does not include secrets
-- Sourcify verification succeeded for all eight deployed Base Sepolia contracts
-
-### Findings
+## Findings
 
 No confirmed Critical, High, Medium, Low, or Informational security findings
 were identified in the reviewed changes.
@@ -67,11 +63,10 @@ were identified in the reviewed changes.
 | Low      | 0 |
 | Info     | 0 |
 
-### Commands Run
+## Commands Run
 
 ```bash
-git diff --name-only main -- contracts/src contracts/script contracts/test
-rg '\.call\{|_safeMint|_safeTransfer|safeTransferFrom|onlyOwner|onlyRole|_checkRole|require.*msg\.sender|selfdestruct|delegatecall|tx\.origin|unchecked|assembly' contracts/src contracts/script
+rg '\.call\{|_safeMint|_safeTransfer|safeTransferFrom|onlyOwner|onlyRole|_checkRole|require.*msg\.sender|selfdestruct|delegatecall|tx\.origin|unchecked|assembly' contracts/src/payments contracts/script/DeployLocalPayments.s.sol contracts/test/unit/PaymentAssetRegistry.t.sol
 cd contracts && forge build
-make verify-base-sepolia-sourcify
+cd contracts && forge test --match-path test/unit/PaymentAssetRegistry.t.sol
 ```

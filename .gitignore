@@ -48,6 +48,7 @@ infra/terraform/terraform.tfplan
 
 # Deployment secrets (never commit private keys or API keys)
 contracts/deployments/*-secrets.json
+contracts/deployments/local-payments.json
 
 # Debug / temp scripts (root-level scratch files)
 check-mint.js
