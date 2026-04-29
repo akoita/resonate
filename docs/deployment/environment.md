@@ -21,12 +21,17 @@ When adding a new environment variable:
 | `NEXT_PUBLIC_RPC_URL` | Frontend | Optional RPC override. Use for local/fork AA flows; deployed builds otherwise fall back to the chain default RPC. |
 | `NEXT_PUBLIC_AA_BUNDLER` | Frontend | Optional public bundler override; when unset the browser falls back to `/api/bundler` unless a public Pimlico key is provided |
 | `NEXT_PUBLIC_PIMLICO_API_KEY` | Frontend | Optional public Pimlico key. Leave unset when using server-side bundler config via `/api/bundler` |
+| `NEXT_PUBLIC_ZERODEV_PROJECT_ID` | Frontend | Optional ZeroDev project ID. When set, passkey login uses the hosted ZeroDev passkey server instead of the self-hosted backend passkey store |
+| `NEXT_PUBLIC_PASSKEY_SERVER_URL` | Frontend server runtime | Optional hosted passkey server URL. If it ends with a ZeroDev project UUID, the frontend derives `NEXT_PUBLIC_ZERODEV_PROJECT_ID` from it for backward-compatible passkey login |
+| `NEXT_PUBLIC_PASSKEY_RP_ID` | Frontend | Optional WebAuthn relying-party ID override. Leave unset for normal hostname-based passkeys; set only to recover or intentionally share passkeys across subdomains |
 | `RPC_URL` | Backend | RPC endpoint used by contract-aware backend flows |
 | `GCP_PROJECT_ID` | Backend | Recommended explicit GCP project for Pub/Sub-backed ingestion; when unset in Cloud Run the backend can also derive the project from Application Default Credentials |
 | `GCP_BILLING_QUOTA_PROJECT` | CI | Optional quota/billing project for Cloud Build submission; deploy CI defaults it to `GCP_PROJECT_ID` |
 | `GCP_CLOUD_BUILD_SOURCE_STAGING_DIR` | CI | Optional Cloud Storage prefix for `gcloud builds submit` source archives; deploy CI defaults it from `GCP_PROJECT_ID` |
 | `AA_BUNDLER` | Backend / frontend server runtime | Server-side bundler URL used by account-abstraction flows and the `/api/bundler` proxy |
 | `PIMLICO_API_KEY` | Frontend server runtime | Optional server-side Pimlico key used by `/api/bundler` without exposing it to the browser |
+| `WEBAUTHN_RP_ID` | Backend | Optional relying-party ID for self-hosted passkey credentials. Usually the frontend hostname, without protocol |
+| `WEBAUTHN_ORIGIN` | Backend | Optional relying-party origin for self-hosted passkey verification. Usually the frontend HTTPS origin |
 | `SEPOLIA_RPC_URL` | Contracts / backend | Required for Sepolia deploys and forked workflows |
 | `TRUST_STAKE_WEI_NEW` | Backend | Optional override for the new-creator content-protection stake requirement |
 | `TRUST_STAKE_WEI_ESTABLISHED` | Backend | Optional override for the established-tier content-protection stake requirement |
