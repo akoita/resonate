@@ -57,6 +57,8 @@ MOCK_USDC="$(contract_addresses MockUSDC | tail -1)"
 ETH_ORACLE="$(contract_addresses MockPriceOracle | head -1)"
 USDC_ORACLE="$(contract_addresses MockPriceOracle | tail -1)"
 REGISTRY="$(contract_addresses PaymentAssetRegistry | tail -1)"
+ETH_ORACLE_ADAPTER="$(contract_addresses ChainlinkPriceOracleAdapter | head -1)"
+USDC_ORACLE_ADAPTER="$(contract_addresses ChainlinkPriceOracleAdapter | tail -1)"
 WETH="$(contract_addresses WrappedNativeMock | tail -1)"
 
 if [[ -z "$MOCK_USDC" || "$MOCK_USDC" == "null" || -z "$ETH_ORACLE" || "$ETH_ORACLE" == "null" || -z "$REGISTRY" || "$REGISTRY" == "null" ]]; then
@@ -134,6 +136,8 @@ jq -n \
   --arg registry "$REGISTRY" \
   --arg ethOracle "$ETH_ORACLE" \
   --arg usdcOracle "$USDC_ORACLE" \
+  --arg ethOracleAdapter "$ETH_ORACLE_ADAPTER" \
+  --arg usdcOracleAdapter "$USDC_ORACLE_ADAPTER" \
   --argjson assets "$ASSETS_JSON" \
   --argjson funding "$FUNDING_JSON" \
   '{
@@ -143,7 +147,9 @@ jq -n \
     contracts: {
       PaymentAssetRegistry: $registry,
       MockEthUsdOracle: $ethOracle,
-      MockUsdcUsdOracle: $usdcOracle
+      MockUsdcUsdOracle: $usdcOracle,
+      EthUsdOracleAdapter: $ethOracleAdapter,
+      UsdcUsdOracleAdapter: $usdcOracleAdapter
     },
     prices: {
       "ETH/USD": "3000",

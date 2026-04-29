@@ -52,6 +52,40 @@ contract PaymentAssetRegistryTest is Test {
         registry.configureAsset(LOCAL_ETH, address(0), "ETH", 18, true, false);
     }
 
+    function testTokenLookupTracksEnabledAssets() public {
+        MockUSDC usdc = new MockUSDC();
+
+        vm.startPrank(owner);
+        registry.configureAsset(LOCAL_ETH, address(0), "ETH", 18, true, false);
+        registry.configureAsset(LOCAL_USDC, address(usdc), "USDC", 6, true, true);
+        vm.stopPrank();
+
+        assertTrue(registry.isTokenEnabled(address(0)));
+        assertTrue(registry.isTokenEnabled(address(usdc)));
+
+        PaymentAssetRegistry.PaymentAsset memory usdcAsset = registry.getAssetByToken(address(usdc));
+        assertEq(usdcAsset.assetId, LOCAL_USDC);
+    }
+
+    function testDisabledAssetIsNotTokenEnabled() public {
+        MockUSDC usdc = new MockUSDC();
+
+        vm.prank(owner);
+        registry.configureAsset(LOCAL_USDC, address(usdc), "USDC", 6, false, true);
+
+        assertFalse(registry.isTokenEnabled(address(usdc)));
+    }
+
+    function testCannotConfigureDuplicateTokenForDifferentAsset() public {
+        MockUSDC usdc = new MockUSDC();
+
+        vm.startPrank(owner);
+        registry.configureAsset(LOCAL_USDC, address(usdc), "USDC", 6, true, true);
+        vm.expectRevert("PaymentAssetRegistry: duplicate token");
+        registry.configureAsset(LOCAL_ETH, address(usdc), "ETH", 18, true, false);
+        vm.stopPrank();
+    }
+
     function testMockUsdcUsesSixDecimals() public {
         MockUSDC usdc = new MockUSDC();
         usdc.mint(other, 123_000000);

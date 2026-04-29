@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {StemNFT} from "../../src/core/StemNFT.sol";
 import {StemMarketplaceV2} from "../../src/core/StemMarketplaceV2.sol";
 import {TransferValidator} from "../../src/modules/TransferValidator.sol";
+import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
 import {MockContentProtectionMarketplace} from "../mocks/MockContentProtectionMarketplace.sol";
 
 /**
@@ -15,6 +16,7 @@ contract StemMarketplaceFuzzTest is Test {
     StemNFT public stemNFT;
     StemMarketplaceV2 public marketplace;
     TransferValidator public validator;
+    PaymentAssetRegistry public paymentAssetRegistry;
     MockContentProtectionMarketplace public contentProtection;
 
     address public admin = makeAddr("admin");
@@ -25,9 +27,12 @@ contract StemMarketplaceFuzzTest is Test {
         stemNFT = new StemNFT("https://api.resonate.fm/metadata/");
         validator = new TransferValidator();
         contentProtection = new MockContentProtectionMarketplace();
+        paymentAssetRegistry = new PaymentAssetRegistry(admin);
+        paymentAssetRegistry.configureAsset(keccak256("local:eth"), address(0), "ETH", 18, true, false);
         marketplace = new StemMarketplaceV2(
             address(stemNFT),
             address(contentProtection),
+            address(paymentAssetRegistry),
             feeRecipient,
             250
         );

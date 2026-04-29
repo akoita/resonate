@@ -11,6 +11,7 @@ contract MockPriceOracle {
     string public description;
     uint256 public version = 1;
     uint80 private roundId = 1;
+    uint80 private answeredInRound = 1;
     uint256 private updatedAt;
 
     event AnswerUpdated(int256 indexed current, uint256 indexed roundId, uint256 updatedAt);
@@ -23,21 +24,20 @@ contract MockPriceOracle {
 
     function setAnswer(int256 nextAnswer) external {
         roundId += 1;
+        answeredInRound = roundId;
         _setAnswer(nextAnswer);
     }
 
-    function latestRoundData()
-        external
-        view
-        returns (
-            uint80,
-            int256,
-            uint256,
-            uint256,
-            uint80
-        )
-    {
-        return (roundId, answer, updatedAt, updatedAt, roundId);
+    function setUpdatedAt(uint256 nextUpdatedAt) external {
+        updatedAt = nextUpdatedAt;
+    }
+
+    function setAnsweredInRound(uint80 nextAnsweredInRound) external {
+        answeredInRound = nextAnsweredInRound;
+    }
+
+    function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80) {
+        return (roundId, answer, updatedAt, updatedAt, answeredInRound);
     }
 
     function _setAnswer(int256 nextAnswer) private {

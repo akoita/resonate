@@ -9,6 +9,8 @@ import {DisputeResolution} from "../src/core/DisputeResolution.sol";
 import {CurationRewards} from "../src/core/CurationRewards.sol";
 import {RevenueEscrow} from "../src/core/RevenueEscrow.sol";
 import {TransferValidator} from "../src/modules/TransferValidator.sol";
+import {PaymentAssetRegistry} from "../src/payments/PaymentAssetRegistry.sol";
+import {ChainlinkPriceOracleAdapter} from "../src/payments/ChainlinkPriceOracleAdapter.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
@@ -29,6 +31,10 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
  *   forge script script/DeployProtocol.s.sol --rpc-url $RPC_URL --broadcast --verify
  */
 contract DeployProtocol is Script {
+    bytes32 private constant BASE_SEPOLIA_ETH = keccak256("base-sepolia:eth");
+    bytes32 private constant BASE_SEPOLIA_USDC = keccak256("base-sepolia:usdc");
+    bytes32 private constant BASE_SEPOLIA_WETH = keccak256("base-sepolia:weth");
+
     function run() external {
         uint256 deployerKey =
             vm.envOr("PRIVATE_KEY", uint256(0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80));
@@ -41,6 +47,12 @@ contract DeployProtocol is Script {
         uint256 protocolFeeBps = vm.envOr("PROTOCOL_FEE_BPS", uint256(250)); // 2.5%
         uint256 stakeAmountWei = vm.envOr("STAKE_AMOUNT", uint256(0.01 ether)); // Default 0.01 ETH
         uint256 escrowPeriod = vm.envOr("ESCROW_PERIOD", uint256(30 days)); // Default 30 days
+        address usdcAddress = vm.envOr("PAYMENT_USDC_ADDRESS", address(0));
+        address wethAddress = vm.envOr("PAYMENT_WETH_ADDRESS", address(0));
+        bool enableWeth = vm.envOr("PAYMENT_ENABLE_WETH", false);
+        address ethUsdFeed = vm.envOr("PAYMENT_ETH_USD_FEED", address(0));
+        address usdcUsdFeed = vm.envOr("PAYMENT_USDC_USD_FEED", address(0));
+        uint256 oracleMaxStaleness = vm.envOr("PAYMENT_ORACLE_MAX_STALENESS", uint256(1 days));
 
         vm.startBroadcast(deployerKey);
 
@@ -76,17 +88,38 @@ contract DeployProtocol is Script {
         StemNFT stemNFT = new StemNFT(baseUri);
         console.log("StemNFT:", address(stemNFT));
 
-        // 7. Deploy StemMarketplaceV2 (core)
-        StemMarketplaceV2 marketplace =
-            new StemMarketplaceV2(
-                address(stemNFT),
-                address(contentProtection),
-                feeRecipient,
-                protocolFeeBps
-            );
+        // 7. Deploy payment asset registry
+        PaymentAssetRegistry paymentAssetRegistry = new PaymentAssetRegistry(deployer);
+        paymentAssetRegistry.configureAsset(BASE_SEPOLIA_ETH, address(0), "ETH", 18, true, false);
+        if (usdcAddress != address(0)) {
+            paymentAssetRegistry.configureAsset(BASE_SEPOLIA_USDC, usdcAddress, "USDC", 6, true, true);
+        }
+        if (wethAddress != address(0)) {
+            paymentAssetRegistry.configureAsset(BASE_SEPOLIA_WETH, wethAddress, "WETH", 18, enableWeth, false);
+        }
+        console.log("PaymentAssetRegistry:", address(paymentAssetRegistry));
+        console.log("  -> ETH enabled for native marketplace payments");
+        console.log("  -> USDC:", usdcAddress);
+        console.log("  -> WETH:", wethAddress, "enabled:", enableWeth);
+
+        address ethUsdAdapter = address(0);
+        address usdcUsdAdapter = address(0);
+        if (ethUsdFeed != address(0)) {
+            ethUsdAdapter = address(new ChainlinkPriceOracleAdapter(ethUsdFeed, oracleMaxStaleness));
+        }
+        if (usdcUsdFeed != address(0)) {
+            usdcUsdAdapter = address(new ChainlinkPriceOracleAdapter(usdcUsdFeed, oracleMaxStaleness));
+        }
+        console.log("ETH/USD Oracle Adapter:", ethUsdAdapter);
+        console.log("USDC/USD Oracle Adapter:", usdcUsdAdapter);
+
+        // 8. Deploy StemMarketplaceV2 (core)
+        StemMarketplaceV2 marketplace = new StemMarketplaceV2(
+            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), feeRecipient, protocolFeeBps
+        );
         console.log("StemMarketplaceV2:", address(marketplace));
 
-        // 8. Configure
+        // 9. Configure
         stemNFT.setTransferValidator(address(validator));
         console.log("  -> Validator linked to StemNFT");
 
@@ -121,6 +154,7 @@ contract DeployProtocol is Script {
         console.log("Core Contracts:");
         console.log("  StemNFT:", address(stemNFT));
         console.log("  StemMarketplaceV2:", address(marketplace));
+        console.log("  PaymentAssetRegistry:", address(paymentAssetRegistry));
         console.log("");
         console.log("Content Protection:");
         console.log("  ContentProtection (proxy):", address(contentProtection));

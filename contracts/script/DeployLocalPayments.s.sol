@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 import {PaymentAssetRegistry} from "../src/payments/PaymentAssetRegistry.sol";
+import {ChainlinkPriceOracleAdapter} from "../src/payments/ChainlinkPriceOracleAdapter.sol";
 import {MockPriceOracle} from "../src/payments/MockPriceOracle.sol";
 import {MockUSDC} from "../src/payments/MockUSDC.sol";
 import {WrappedNativeMock} from "../src/payments/WrappedNativeMock.sol";
@@ -32,9 +33,13 @@ contract DeployLocalPayments is Script {
 
         MockPriceOracle ethUsd = new MockPriceOracle("ETH / USD", 8, 3000e8);
         console.log("Mock ETH/USD Oracle:", address(ethUsd));
+        ChainlinkPriceOracleAdapter ethUsdAdapter = new ChainlinkPriceOracleAdapter(address(ethUsd), 1 hours);
+        console.log("ETH/USD Oracle Adapter:", address(ethUsdAdapter));
 
         MockPriceOracle usdcUsd = new MockPriceOracle("USDC / USD", 8, 1e8);
         console.log("Mock USDC/USD Oracle:", address(usdcUsd));
+        ChainlinkPriceOracleAdapter usdcUsdAdapter = new ChainlinkPriceOracleAdapter(address(usdcUsd), 1 hours);
+        console.log("USDC/USD Oracle Adapter:", address(usdcUsdAdapter));
 
         PaymentAssetRegistry registry = new PaymentAssetRegistry(deployer);
         registry.configureAsset(LOCAL_ETH, address(0), "ETH", 18, true, false);
