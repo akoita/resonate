@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Test, console} from "forge-std/Test.sol";
 import {RevenueEscrow} from "../../src/core/RevenueEscrow.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
+import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
@@ -13,6 +14,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 contract RevenueEscrowTest is Test {
     RevenueEscrow public escrow;
     ContentProtection public cp;
+    MockUSDC public usdc;
 
     address public admin = makeAddr("admin");
     address public treasury = makeAddr("treasury");
@@ -22,18 +24,29 @@ contract RevenueEscrowTest is Test {
 
     uint256 constant ESCROW_PERIOD = 30 days;
     uint256 constant STAKE_AMOUNT = 0.01 ether;
+    uint256 constant USDC_AMOUNT = 25_000000;
 
     event RevenueDeposited(uint256 indexed tokenId, address indexed depositor, uint256 amount, uint256 newBalance);
+    event RevenueDepositedWithAsset(
+        uint256 indexed tokenId, address indexed depositor, address indexed token, uint256 amount, uint256 newBalance
+    );
     event EscrowFrozen(uint256 indexed tokenId);
     event EscrowUnfrozen(uint256 indexed tokenId);
     event EscrowReleased(uint256 indexed tokenId, address indexed beneficiary, uint256 amount);
+    event EscrowReleasedWithAsset(
+        uint256 indexed tokenId, address indexed beneficiary, address indexed token, uint256 amount
+    );
     event EscrowRedirected(uint256 indexed tokenId, address indexed newRecipient, uint256 amount);
+    event EscrowRedirectedWithAsset(
+        uint256 indexed tokenId, address indexed newRecipient, address indexed token, uint256 amount
+    );
 
     function setUp() public {
         ContentProtection impl = new ContentProtection();
         bytes memory initData = abi.encodeCall(ContentProtection.initialize, (admin, treasury, STAKE_AMOUNT));
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         cp = ContentProtection(address(proxy));
+        usdc = new MockUSDC();
 
         vm.prank(admin);
         escrow = new RevenueEscrow(admin, ESCROW_PERIOD);
@@ -64,6 +77,27 @@ contract RevenueEscrowTest is Test {
 
         (, uint256 balance,,) = escrow.getEscrow(1);
         assertEq(balance, 0.8 ether);
+    }
+
+    function test_DepositWithAsset_USDC() public {
+        usdc.mint(address(this), USDC_AMOUNT);
+        usdc.approve(address(escrow), USDC_AMOUNT);
+
+        vm.expectEmit(true, true, true, true);
+        emit RevenueDepositedWithAsset(1, address(this), address(usdc), USDC_AMOUNT, USDC_AMOUNT);
+        escrow.depositWithAsset(1, alice, address(usdc), USDC_AMOUNT);
+
+        (address beneficiary, uint256 balance, uint256 escrowEndTime, bool frozen) =
+            escrow.getEscrowAsset(1, address(usdc));
+        assertEq(beneficiary, alice);
+        assertEq(balance, USDC_AMOUNT);
+        assertGt(escrowEndTime, block.timestamp);
+        assertFalse(frozen);
+        assertEq(usdc.balanceOf(address(escrow)), USDC_AMOUNT);
+
+        address[] memory assets = escrow.getEscrowAssets(1);
+        assertEq(assets.length, 1);
+        assertEq(assets[0], address(usdc));
     }
 
     function test_Deposit_RevertZeroAmount() public {
@@ -110,6 +144,7 @@ contract RevenueEscrowTest is Test {
     function test_Unfreeze() public {
         vm.deal(address(this), 1 ether);
         escrow.deposit{value: 0.5 ether}(1, alice);
+        _depositUsdc(1, alice, USDC_AMOUNT);
 
         vm.startPrank(admin);
         escrow.freeze(1);
@@ -117,6 +152,20 @@ contract RevenueEscrowTest is Test {
         vm.stopPrank();
 
         (,,, bool frozen) = escrow.getEscrow(1);
+        (,,, bool usdcFrozen) = escrow.getEscrowAsset(1, address(usdc));
+        assertFalse(frozen);
+        assertFalse(usdcFrozen);
+    }
+
+    function test_UnfreezeAsset_USDC() public {
+        _depositUsdc(1, alice, USDC_AMOUNT);
+
+        vm.startPrank(admin);
+        escrow.freezeAsset(1, address(usdc));
+        escrow.unfreezeAsset(1, address(usdc));
+        vm.stopPrank();
+
+        (,,, bool frozen) = escrow.getEscrowAsset(1, address(usdc));
         assertFalse(frozen);
     }
 
@@ -146,6 +195,35 @@ contract RevenueEscrowTest is Test {
         assertEq(alice.balance - aliceBefore, 0.5 ether);
         (, uint256 balance,,) = escrow.getEscrow(1);
         assertEq(balance, 0);
+    }
+
+    function test_ReleaseAsset_USDC() public {
+        _depositUsdc(1, alice, USDC_AMOUNT);
+
+        vm.warp(block.timestamp + ESCROW_PERIOD + 1);
+
+        uint256 aliceBefore = usdc.balanceOf(alice);
+        vm.expectEmit(true, true, true, true);
+        emit EscrowReleasedWithAsset(1, alice, address(usdc), USDC_AMOUNT);
+        escrow.releaseAsset(1, address(usdc));
+
+        assertEq(usdc.balanceOf(alice) - aliceBefore, USDC_AMOUNT);
+        (, uint256 balance,,) = escrow.getEscrowAsset(1, address(usdc));
+        assertEq(balance, 0);
+    }
+
+    function test_ReleaseAsset_USDCPreservesNativeEscrow() public {
+        vm.deal(address(this), 1 ether);
+        escrow.deposit{value: 0.5 ether}(1, alice);
+        _depositUsdc(1, alice, USDC_AMOUNT);
+
+        vm.warp(block.timestamp + ESCROW_PERIOD + 1);
+        escrow.releaseAsset(1, address(usdc));
+
+        (, uint256 nativeBalance,,) = escrow.getEscrow(1);
+        (, uint256 usdcBalance,,) = escrow.getEscrowAsset(1, address(usdc));
+        assertEq(nativeBalance, 0.5 ether);
+        assertEq(usdcBalance, 0);
     }
 
     function test_Release_RevertFrozen() public {
@@ -198,6 +276,25 @@ contract RevenueEscrowTest is Test {
         escrow.redirect(1, rightfulOwner);
 
         assertEq(rightfulOwner.balance - rightfulBefore, 0.5 ether);
+    }
+
+    function test_RedirectAsset_USDC() public {
+        _depositUsdc(1, alice, USDC_AMOUNT);
+
+        vm.prank(admin);
+        escrow.freezeAsset(1, address(usdc));
+
+        uint256 rightfulBefore = usdc.balanceOf(rightfulOwner);
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit EscrowRedirectedWithAsset(1, rightfulOwner, address(usdc), USDC_AMOUNT);
+        escrow.redirectAsset(1, address(usdc), rightfulOwner);
+
+        assertEq(usdc.balanceOf(rightfulOwner) - rightfulBefore, USDC_AMOUNT);
+        (address beneficiary, uint256 balance,, bool frozen) = escrow.getEscrowAsset(1, address(usdc));
+        assertEq(beneficiary, rightfulOwner);
+        assertEq(balance, 0);
+        assertFalse(frozen);
     }
 
     function test_Redirect_RevertNotFrozen() public {
@@ -269,18 +366,27 @@ contract RevenueEscrowTest is Test {
         vm.deal(address(this), 2 ether);
         escrow.deposit{value: 0.4 ether}(20, alice);
         escrow.deposit{value: 0.3 ether}(30, alice);
+        _depositUsdc(20, alice, USDC_AMOUNT);
 
         vm.prank(admin);
         escrow.freezeByTrack(20);
 
         (,,, bool trackFrozen) = escrow.getEscrow(20);
+        (,,, bool trackUsdcFrozen) = escrow.getEscrowAsset(20, address(usdc));
         (,,, bool stem30Frozen) = escrow.getEscrow(30);
         (,,, bool stem31Frozen) = escrow.getEscrow(31);
         (,,, bool stem32Frozen) = escrow.getEscrow(32);
 
         assertTrue(trackFrozen);
+        assertTrue(trackUsdcFrozen);
         assertTrue(stem30Frozen);
         assertFalse(stem31Frozen);
         assertFalse(stem32Frozen);
+    }
+
+    function _depositUsdc(uint256 tokenId, address beneficiary, uint256 amount) internal {
+        usdc.mint(address(this), amount);
+        usdc.approve(address(escrow), amount);
+        escrow.depositWithAsset(tokenId, beneficiary, address(usdc), amount);
     }
 }
