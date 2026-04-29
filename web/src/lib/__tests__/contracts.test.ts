@@ -1,6 +1,37 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatPrice, parsePrice, formatRoyaltyBps, isZeroAddress, getContractAddresses } from "../contracts";
 import type { Address } from "viem";
+
+const CONTRACT_ENV_KEYS = [
+    "NEXT_PUBLIC_STEM_NFT_ADDRESS",
+    "NEXT_PUBLIC_MARKETPLACE_ADDRESS",
+    "NEXT_PUBLIC_TRANSFER_VALIDATOR_ADDRESS",
+    "NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS",
+    "NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS",
+    "NEXT_PUBLIC_CURATION_REWARDS_ADDRESS",
+    "NEXT_PUBLIC_BASE_SEPOLIA_STEM_NFT_ADDRESS",
+    "NEXT_PUBLIC_BASE_SEPOLIA_MARKETPLACE_ADDRESS",
+    "NEXT_PUBLIC_BASE_SEPOLIA_TRANSFER_VALIDATOR_ADDRESS",
+    "NEXT_PUBLIC_BASE_SEPOLIA_CONTENT_PROTECTION_ADDRESS",
+    "NEXT_PUBLIC_BASE_SEPOLIA_DISPUTE_RESOLUTION_ADDRESS",
+    "NEXT_PUBLIC_BASE_SEPOLIA_CURATION_REWARDS_ADDRESS",
+] as const;
+
+const ORIGINAL_CONTRACT_ENV = Object.fromEntries(
+    CONTRACT_ENV_KEYS.map((key) => [key, process.env[key]])
+);
+
+afterEach(() => {
+    for (const key of CONTRACT_ENV_KEYS) {
+        const value = ORIGINAL_CONTRACT_ENV[key];
+        if (value === undefined) {
+            delete process.env[key];
+        } else {
+            process.env[key] = value;
+        }
+    }
+    vi.resetModules();
+});
 
 // ============ Pure Utility Function Tests ============
 
@@ -102,5 +133,30 @@ describe("getContractAddresses", () => {
         const addresses = getContractAddresses(84532);
         expect(addresses).toBeDefined();
         expect(addresses.stemNFT).toBeDefined();
+    });
+
+    it("uses generic deployment env fallbacks for Base Sepolia", async () => {
+        for (const key of CONTRACT_ENV_KEYS) {
+            delete process.env[key];
+        }
+
+        process.env.NEXT_PUBLIC_STEM_NFT_ADDRESS = "0x1111111111111111111111111111111111111111";
+        process.env.NEXT_PUBLIC_MARKETPLACE_ADDRESS = "0x2222222222222222222222222222222222222222";
+        process.env.NEXT_PUBLIC_TRANSFER_VALIDATOR_ADDRESS = "0x3333333333333333333333333333333333333333";
+        process.env.NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS = "0x4444444444444444444444444444444444444444";
+        process.env.NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS = "0x5555555555555555555555555555555555555555";
+        process.env.NEXT_PUBLIC_CURATION_REWARDS_ADDRESS = "0x6666666666666666666666666666666666666666";
+
+        vi.resetModules();
+        const { getAddresses } = await import("../../contracts_abi/index");
+
+        expect(getAddresses(84532)).toEqual({
+            stemNFT: "0x1111111111111111111111111111111111111111",
+            marketplace: "0x2222222222222222222222222222222222222222",
+            transferValidator: "0x3333333333333333333333333333333333333333",
+            contentProtection: "0x4444444444444444444444444444444444444444",
+            disputeResolution: "0x5555555555555555555555555555555555555555",
+            curationRewards: "0x6666666666666666666666666666666666666666",
+        });
     });
 });
