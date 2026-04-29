@@ -2,9 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, "feat/*", "fix/*", "docs/*"]
+    branches: [main, develop, "mergify/merge-queue/**"]
   pull_request:
     branches: [main, develop, "feat/*", "fix/*", "docs/*"]
+  merge_group:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -27,6 +34,7 @@ jobs:
       shared: ${{ steps.detect.outputs.shared }}
       docs_only: ${{ steps.detect.outputs.docs_only }}
       run_all: ${{ steps.detect.outputs.run_all }}
+      main_deploy_only: ${{ steps.detect.outputs.main_deploy_only }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -53,9 +61,23 @@ jobs:
           docs=false
           infra=false
           run_all=false
+          main_deploy_only=false
+
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_name }}" == "main" ]]; then
+            main_deploy_only=true
+            echo "Main push detected; this run will publish/deploy from a merge-queue-certified commit and skip duplicate validation jobs."
+          fi
 
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             base_sha="${{ github.event.pull_request.base.sha }}"
+          elif [[ "${{ github.event_name }}" == "merge_group" ]]; then
+            base_sha="${{ github.event.merge_group.base_sha }}"
+            run_all=true
+            echo "GitHub merge queue candidate detected; running the full validation safety net once for the queued batch."
+          elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref_name }}" == mergify/merge-queue/* ]]; then
+            base_sha="${{ github.event.before }}"
+            run_all=true
+            echo "Mergify queue branch detected; running the full validation safety net once for the queued batch."
           else
             base_sha="${{ github.event.before }}"
           fi
@@ -160,6 +182,7 @@ jobs:
           echo "shared=${shared}" >> "${GITHUB_OUTPUT}"
           echo "docs_only=${docs_only}" >> "${GITHUB_OUTPUT}"
           echo "run_all=${run_all}" >> "${GITHUB_OUTPUT}"
+          echo "main_deploy_only=${main_deploy_only}" >> "${GITHUB_OUTPUT}"
 
           {
             echo "### Change detection"
@@ -177,12 +200,14 @@ jobs:
             echo "- shared: ${shared}"
             echo "- docs_only: ${docs_only}"
             echo "- run_all: ${run_all}"
+            echo "- main_deploy_only: ${main_deploy_only}"
           } >> "${GITHUB_STEP_SUMMARY}"
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
     needs: changes
+    if: needs.changes.outputs.main_deploy_only != 'true'
     steps:
       - uses: actions/checkout@v5
         with:
@@ -231,7 +256,7 @@ jobs:
     name: Smart Contract Tests
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.contracts == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
+    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.contracts == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     steps:
       - uses: actions/checkout@v5
         with:
@@ -258,7 +283,7 @@ jobs:
     name: Backend Unit Tests
     runs-on: ubuntu-latest
     needs: [changes, lint]
-    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
+    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     steps:
       - uses: actions/checkout@v5
         with:
@@ -324,7 +349,7 @@ jobs:
     name: Backend Integration Tests
     runs-on: ubuntu-latest
     needs: [changes, lint]
-    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
+    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     # No service containers needed — Testcontainers handles all infrastructure
     # (Postgres, Redis, Anvil, Pub/Sub) with isolated containers on random ports
     steps:
@@ -382,7 +407,7 @@ jobs:
     name: Backend Tests
     runs-on: ubuntu-latest
     needs: [changes, backend-unit-tests, backend-integration-tests]
-    if: always() && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+    if: always() && needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     steps:
       - name: Verify backend test jobs
         run: |
@@ -408,7 +433,7 @@ jobs:
     name: Demucs Worker Tests
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.demucs == 'true' || needs.changes.outputs.backend_ingestion == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
+    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.demucs == 'true' || needs.changes.outputs.backend_ingestion == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     steps:
       - uses: actions/checkout@v5
         with:
@@ -431,7 +456,7 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     needs: [changes, lint]
-    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
+    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     steps:
       - uses: actions/checkout@v5
         with:
@@ -473,7 +498,7 @@ jobs:
     name: Build Deployable Frontend Artifact
     runs-on: ubuntu-latest
     needs: [changes, lint]
-    if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'develop') && (needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+    if: always() && github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'develop') && (github.ref_name == 'main' || needs.lint.result == 'success') && (needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     environment: ${{ github.ref_name == 'main' && 'staging' || github.ref_name == 'develop' && 'dev' || '' }}
     steps:
       - uses: actions/checkout@v5
@@ -535,7 +560,7 @@ jobs:
     name: E2E Tests
     runs-on: ubuntu-latest
     needs: [changes, build]
-    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
+    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -726,6 +751,11 @@ jobs:
         run: |
           set -euo pipefail
 
+          main_deploy_only="${{ needs.changes.outputs.main_deploy_only }}"
+          if [[ "${main_deploy_only}" == "true" ]]; then
+            echo "Main deploy-only run: validation is expected to have passed on the merge queue candidate before main moved."
+          fi
+
           if [[ "${{ needs.contracts.result }}" == "failure" ]]; then
             echo "Smart Contract Tests failed; refusing to publish deployable images." >&2
             exit 1
@@ -739,28 +769,28 @@ jobs:
           services=",${{ steps.plan.outputs.services_csv }},"
 
           if [[ "${services}" == *",backend,"* || "${services}" == *",frontend,"* ]]; then
-            if [[ "${{ needs.lint.result }}" != "success" ]]; then
+            if [[ "${main_deploy_only}" != "true" && "${{ needs.lint.result }}" != "success" ]]; then
               echo "Lint did not succeed for deployable application changes." >&2
               exit 1
             fi
           fi
 
-          if [[ "${services}" == *",backend,"* && "${{ needs.backend-tests.result }}" != "success" ]]; then
+          if [[ "${main_deploy_only}" != "true" && "${services}" == *",backend,"* && "${{ needs.backend-tests.result }}" != "success" ]]; then
             echo "Backend Tests did not succeed for backend image publication." >&2
             exit 1
           fi
 
-          if [[ "${services}" == *",demucs,"* && "${{ needs.demucs-worker-tests.result }}" != "success" ]]; then
+          if [[ "${main_deploy_only}" != "true" && "${services}" == *",demucs,"* && "${{ needs.demucs-worker-tests.result }}" != "success" ]]; then
             echo "Demucs Worker Tests did not succeed for Demucs image publication." >&2
             exit 1
           fi
 
-          if [[ "${services}" == *",frontend,"* && "${{ needs.build.result }}" != "success" ]]; then
+          if [[ "${main_deploy_only}" != "true" && "${services}" == *",frontend,"* && "${{ needs.build.result }}" != "success" ]]; then
             echo "Build did not succeed for frontend image publication." >&2
             exit 1
           fi
 
-          if [[ "${services}" == *",frontend,"* && "${{ needs.e2e-tests.result }}" != "success" ]]; then
+          if [[ "${main_deploy_only}" != "true" && "${services}" == *",frontend,"* && "${{ needs.e2e-tests.result }}" != "success" ]]; then
             echo "E2E Tests did not succeed for frontend image publication." >&2
             exit 1
           fi
