@@ -34,6 +34,7 @@ import { normalizeContractWriteError } from "../lib/contractErrors";
 import { getKernelAccountConfig } from "../lib/accountAbstraction";
 import { persistStemMarketplaceStatus } from "../lib/stemMarketplaceStatus";
 import { getBundlerUrl, isLocalDevEnvironment } from "../lib/bundlerConfig";
+import { getPasskeyRpId, getPasskeyServerUrl, getZeroDevProjectId } from "../lib/passkeyConfig";
 
 // Custom transport that maps ZeroDev-proprietary methods to Pimlico/Alto equivalents
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -258,22 +259,20 @@ async function sendContractTransaction(
 
   if (!account) {
     // Fallback: create a new passkey validator (requires user interaction)
-    const projectId = process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID;
+    const projectId = getZeroDevProjectId();
     const passkey = await import("@zerodev/passkey-validator");
     const { toPasskeyValidator, toWebAuthnKey, PasskeyValidatorContractVersion } = passkey;
 
     const { entryPoint, factoryAddress } = getKernelAccountConfig(chainId);
     const kernelVersion = constants.KERNEL_V3_1;
 
-    const passkeyServerUrl = projectId
-      ? `/api/zerodev/${projectId}`
-      : `/api/zerodev/self-hosted`;
+    const passkeyServerUrl = getPasskeyServerUrl(projectId);
 
     const webAuthnKey = await toWebAuthnKey({
       passkeyName: "Resonate",
       passkeyServerUrl,
       mode: passkey.WebAuthnMode.Login,
-      rpID: typeof window !== "undefined" ? window.location.hostname : undefined,
+      rpID: getPasskeyRpId(),
     });
 
     const passkeyValidator = await toPasskeyValidator(publicClient, {
@@ -1683,22 +1682,20 @@ async function sendBatchContractTransactions(
   let account = kernelAccount;
 
   if (!account) {
-    const projectId = process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID;
+    const projectId = getZeroDevProjectId();
     const passkey = await import("@zerodev/passkey-validator");
     const { toPasskeyValidator, toWebAuthnKey, PasskeyValidatorContractVersion } = passkey;
 
     const { entryPoint, factoryAddress } = getKernelAccountConfig(chainId);
     const kernelVersion = constants.KERNEL_V3_1;
 
-    const passkeyServerUrl = projectId
-      ? `/api/zerodev/${projectId}`
-      : `/api/zerodev/self-hosted`;
+    const passkeyServerUrl = getPasskeyServerUrl(projectId);
 
     const webAuthnKey = await toWebAuthnKey({
       passkeyName: "Resonate",
       passkeyServerUrl,
       mode: passkey.WebAuthnMode.Login,
-      rpID: typeof window !== "undefined" ? window.location.hostname : undefined,
+      rpID: getPasskeyRpId(),
     });
 
     const passkeyValidator = await toPasskeyValidator(publicClient, {

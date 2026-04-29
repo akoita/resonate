@@ -4,6 +4,7 @@ import React, { createContext, useContext, useMemo } from "react";
 import { createPublicClient, http } from "viem";
 import { sepolia, foundry } from "viem/chains";
 import { getBrowserSafeRpcUrl, getRpcUrl } from "../../lib/rpc";
+import { getZeroDevProjectId } from "../../lib/passkeyConfig";
 
 type ZeroDevState = {
     projectId: string | null;
@@ -67,7 +68,7 @@ export default function ZeroDevProviderClient({
     children: React.ReactNode;
     projectId?: string;
 }) {
-    const finalProjectId = projectId || process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID || null;
+    const finalProjectId = getZeroDevProjectId(projectId);
     const { chain } = CHAIN_CONFIG;
 
     const publicClient = useMemo(

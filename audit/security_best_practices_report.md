@@ -2,19 +2,20 @@
 
 ## Executive Summary
 
-Reviewed the smart-account wallet identity recovery change for backend auth and
-wallet registration. No Critical or High findings were identified in the changed
-backend code.
+Reviewed the passkey recovery and WebAuthn configuration changes for frontend
+auth, deployment configuration, and backend sample environment variables. No
+Critical or High findings were identified in the changed code.
 
 ## Scope
 
-- `backend/src/modules/auth/auth.controller.ts`
-- `backend/src/modules/auth/auth.service.ts`
-- `backend/src/modules/identity/wallet.service.ts`
-- `backend/src/tests/auth.controller.http.spec.ts`
-- `backend/src/tests/auth.controller.spec.ts`
-- `backend/src/tests/auth.integration.spec.ts`
-- `backend/src/tests/wallet.integration.spec.ts`
+- `web/src/lib/passkeyConfig.ts`
+- `web/src/components/auth/AuthProvider.tsx`
+- `web/src/components/auth/ZeroDevProviderClient.tsx`
+- `web/src/hooks/useContracts.ts`
+- `web/Dockerfile`
+- `web/.env.example`
+- `backend/.env.example`
+- `docs/deployment/environment.md`
 
 ## Critical Findings
 
@@ -34,29 +35,32 @@ None in the changed code.
 
 ## Informational Notes
 
-- Successful smart-account authentication now upserts the `User` and `Wallet`
-  rows for the verified address, which keeps redeployed backends aligned with
-  the existing on-chain smart account instead of creating a derived placeholder.
-- Existing wallet budget fields are preserved when a wallet row is repaired.
-- Wallet creation now treats address-shaped ERC-4337 user IDs as the actual
-  smart-account address when `/wallet/:userId` is the first backend touchpoint.
-- Partial JWT logging in `AuthService.issueToken` was removed during review.
-- The new database writes use Prisma `upsert` APIs with structured values. No
-  raw SQL, dynamic evaluation, secrets, or hardcoded production configuration
-  were introduced.
-- Broad scans surfaced pre-existing env-secret references, typed controller
-  bodies, and raw SQL in unrelated modules. They were reviewed as out of scope
-  for this branch and are not introduced by these changes.
+- Passkey server selection now comes from centralized environment-backed
+  helpers instead of per-file configuration.
+- `NEXT_PUBLIC_PASSKEY_SERVER_URL` and `NEXT_PUBLIC_PASSKEY_RP_ID` are public
+  browser configuration values, not secrets. They are documented and passed
+  through the frontend Docker build explicitly.
+- Signup now reuses login mode when the browser has a recoverable smart-account
+  address, reducing the risk of accidentally deriving a new account from an
+  existing passkey browser state.
+- A selected passkey that derives a different smart account than the saved
+  browser account is rejected before backend authentication.
+- The backend sample env now uses the variable names read by the WebAuthn
+  service: `WEBAUTHN_RP_ID` and `WEBAUTHN_ORIGIN`.
+- Broad scans surfaced pre-existing backend secret references and raw SQL in
+  unrelated modules. They were reviewed as out of scope for this branch and are
+  not introduced by these changes.
 
 ## Commands Run
 
 ```bash
 rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
 rg 'rawQuery|executeRaw|\$queryRaw' backend/src/
-rg 'JSON\.parse|eval\(' backend/src/
-rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/auth backend/src/modules/identity backend/src/modules/artist
+rg 'dangerouslySetInnerHTML|innerHTML' web/src/
+rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
+rg 'document\.cookie|setCookie|httpOnly.*false' web/src/
 cd backend && npm run lint
-cd backend && npm test
-cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='auth.integration|wallet.integration'
+cd web && npm run lint
+cd web && npm run build
 git diff --check
 ```

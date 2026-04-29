@@ -6,6 +6,7 @@ import { clearEmbeddedAccount } from "../../lib/embedded_wallet";
 import { syncPlaylists } from "../../lib/playlistStore";
 import { useZeroDev } from "./ZeroDevProviderClient";
 import { getKernelAccountConfig } from "../../lib/accountAbstraction";
+import { getPasskeyRpId, getPasskeyServerUrl } from "../../lib/passkeyConfig";
 import type { WebAuthnMode } from "@zerodev/passkey-validator";
 
 type AuthState = {
@@ -44,6 +45,7 @@ const ADDRESS_KEY = "resonate.address";
 const SA_ADDRESS_KEY = "resonate.smartAccountAddress";
 const PRIVY_USER_KEY = "resonate.privy.userId";
 const KNOWN_ADDRESSES_KEY = "resonate.knownAddresses";
+const ETH_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 
 /** Read the accumulated set of all Smart Account addresses this Passkey has ever used */
 function getKnownAddresses(): string[] {
@@ -59,6 +61,27 @@ function addKnownAddress(addr: string) {
   const set = new Set(getKnownAddresses().map((a: string) => a.toLowerCase()));
   set.add(addr.toLowerCase());
   localStorage.setItem(KNOWN_ADDRESSES_KEY, JSON.stringify(Array.from(set)));
+}
+
+function getRecoverableSmartAccountAddress() {
+  if (typeof window === "undefined") return null;
+
+  const storedSmartAccount = localStorage.getItem(SA_ADDRESS_KEY);
+  if (storedSmartAccount && ETH_ADDRESS_PATTERN.test(storedSmartAccount)) {
+    return storedSmartAccount.toLowerCase();
+  }
+
+  const storedAuthAddress = localStorage.getItem(ADDRESS_KEY);
+  if (storedAuthAddress && ETH_ADDRESS_PATTERN.test(storedAuthAddress)) {
+    return storedAuthAddress.toLowerCase();
+  }
+
+  const knownAddresses = getKnownAddresses().filter((addr) => ETH_ADDRESS_PATTERN.test(addr));
+  return knownAddresses.length === 1 ? knownAddresses[0].toLowerCase() : null;
+}
+
+function shortAddress(addr: string) {
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 }
 
 /** Decode role and userId from a JWT without validation */
@@ -164,12 +187,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     const { entryPoint, factoryAddress } = getKernelAccountConfig(chainId);
     const kernelVersion = constants.KERNEL_V3_1;
 
-    // Determine passkey server URL:
-    // - With projectId: ZeroDev hosted (existing)
-    // - Without projectId: Self-hosted on NestJS backend (no ZeroDev dependency)
-    const passkeyServerUrl = projectId
-      ? `/api/zerodev/${projectId}`
-      : `/api/zerodev/self-hosted`;
+    const passkeyServerUrl = getPasskeyServerUrl(projectId);
 
     if (!projectId) {
       console.log("[Auth] Using self-hosted Passkey server (no ZeroDev Project ID)");
@@ -180,7 +198,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         passkeyName: "Resonate",
         passkeyServerUrl,
         mode: webAuthnMode,
-        rpID: typeof window !== "undefined" ? window.location.hostname : undefined,
+        rpID: getPasskeyRpId(),
       });
 
       const passkeyValidator = await toPasskeyValidator(publicClient, {
@@ -243,6 +261,13 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       console.log("[Auth] SA Address:", saAddress);
       if (!saAddress || saAddress === "0x0000000000000000000000000000000000000000") {
         throw new Error("Calculated Smart Account address is zero.");
+      }
+
+      const recoverableAddress = getRecoverableSmartAccountAddress();
+      if (recoverableAddress && saAddress.toLowerCase() !== recoverableAddress) {
+        throw new Error(
+          `That passkey opens ${shortAddress(saAddress)}, but this browser is trying to recover ${shortAddress(recoverableAddress)}. Choose the passkey for the saved account or clear the saved account before creating a new one.`,
+        );
       }
 
       const { nonce } = await fetchNonce(saAddress);
@@ -316,6 +341,10 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
   const signup = useCallback(async () => {
     const { WebAuthnMode } = await import("@zerodev/passkey-validator");
+    if (getRecoverableSmartAccountAddress()) {
+      await authenticate(WebAuthnMode.Login);
+      return;
+    }
     await authenticate(WebAuthnMode.Register);
   }, [authenticate]);
 
