@@ -1,8 +1,9 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import path from "node:path";
+import { PaymentsService } from "../payments/payments.service";
 import { X402Config } from "./x402.config";
 import { formatUsdcAmount, QuoteLicenseKey } from "./x402.quote";
-import { getDefaultX402Asset } from "./x402.public";
+import { resolveX402AssetInfo } from "./x402.public";
 import { prisma } from "../../db/prisma";
 
 const {
@@ -30,7 +31,11 @@ export type X402PaymentChallenge = {
 export class X402PaymentService {
   private readonly logger = new Logger(X402PaymentService.name);
 
-  constructor(private readonly x402Config: X402Config) {}
+  constructor(
+    private readonly x402Config: X402Config,
+    @Optional()
+    private readonly paymentsService?: PaymentsService,
+  ) {}
 
   async buildPaymentRequired(resource: X402ProtectedResource) {
     const licenseType = resource.licenseType ?? "personal";
@@ -38,8 +43,8 @@ export class X402PaymentService {
       where: { stemId: resource.stemId },
     });
     const amountUsd = this.resolveLicenseAmountUsd(pricing, licenseType);
-    const displayPrice = `${formatUsdcAmount(amountUsd)} USDC`;
-    const assetInfo = getDefaultX402Asset(this.x402Config.network);
+    const assetInfo = this.resolveAssetInfo();
+    const displayPrice = `${formatUsdcAmount(amountUsd)} ${assetInfo.symbol}`;
 
     return {
       x402Version: 2,
@@ -135,6 +140,13 @@ export class X402PaymentService {
     const [intPart, decPart = ""] = String(amount).split(".");
     const paddedDec = decPart.padEnd(decimals, "0").slice(0, decimals);
     return (intPart + paddedDec).replace(/^0+/, "") || "0";
+  }
+
+  private resolveAssetInfo() {
+    return resolveX402AssetInfo(
+      this.x402Config.network,
+      this.paymentsService?.getPaymentAssets(this.x402Config.chainId).assets,
+    );
   }
 
   private async verifyPayment(

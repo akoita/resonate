@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { getDefaultX402Asset, getX402ChainId } from './x402.public';
+import { getX402ChainId } from './x402.public';
 
 const DEFAULT_TESTNET_FACILITATOR_URL = 'https://x402.org/facilitator';
 const DEFAULT_TESTNET_NETWORK = 'eip155:84532';
@@ -55,7 +55,6 @@ export class X402Config {
           'X402_PAYOUT_ADDRESS is required when X402_ENABLED=true',
         );
       }
-      getDefaultX402Asset(this.network);
       if (this.network === 'eip155:8453' && !configuredFacilitator) {
         throw new Error(
           'X402_FACILITATOR_URL must be set explicitly for Base mainnet x402 payments',

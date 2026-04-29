@@ -1,11 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import {
   MCP_PROTOCOL_VERSION,
   MCP_SERVER_INFO,
   MCP_TOOL_NAMES,
 } from '../mcp/mcp.constants';
+import { PaymentsService } from '../payments/payments.service';
 import { X402Config } from '../x402/x402.config';
-import { X402_RETRY_HEADERS } from '../x402/x402.public';
+import { resolveX402AssetInfo, X402_RETRY_HEADERS } from '../x402/x402.public';
 
 type OpenApiDocument = Record<string, unknown>;
 type OpenApiSchema = Record<string, unknown>;
@@ -13,10 +14,15 @@ type WellKnownDocument = Record<string, unknown>;
 
 @Injectable()
 export class OpenApiService {
-  constructor(private readonly x402Config: X402Config) {}
+  constructor(
+    private readonly x402Config: X402Config,
+    @Optional()
+    private readonly paymentsService?: PaymentsService,
+  ) {}
 
   buildDocument(baseUrl: string): OpenApiDocument {
     const freePaymentInfo = this.buildFreePaymentInfo();
+    const x402Asset = this.resolveX402Asset();
 
     return {
       openapi: '3.1.0',
@@ -322,19 +328,26 @@ export class OpenApiService {
               authMode: 'paid',
               protocol: 'x402',
               protocols: ['x402'],
-              currency: 'USDC',
+              currency: x402Asset.symbol,
+              asset: {
+                assetId: x402Asset.assetId,
+                address: x402Asset.address,
+                symbol: x402Asset.symbol,
+                name: x402Asset.name,
+                decimals: x402Asset.decimals,
+              },
               price: {
                 mode: 'dynamic',
-                currency: 'USDC',
+                currency: x402Asset.symbol,
                 min: '0',
                 max: '500',
               },
               minPrice: {
-                currency: 'USDC',
+                currency: x402Asset.symbol,
                 amount: '0',
               },
               maxPrice: {
-                currency: 'USDC',
+                currency: x402Asset.symbol,
                 amount: '500',
               },
               quote: {
@@ -541,7 +554,7 @@ export class OpenApiService {
                 items: { type: 'string' },
               },
               hasIpnft: { type: 'boolean' },
-              price: { $ref: '#/components/schemas/UsdcPrice' },
+              price: { $ref: '#/components/schemas/PaymentPrice' },
               licenseOptions: {
                 type: 'array',
                 items: { $ref: '#/components/schemas/LicenseOption' },
@@ -637,7 +650,7 @@ export class OpenApiService {
               },
             ],
           },
-          UsdcPrice: this.buildUsdcPriceSchema(),
+          PaymentPrice: this.buildPaymentPriceSchema(),
           PriceSummary: {
             type: 'object',
             properties: {
@@ -818,11 +831,11 @@ export class OpenApiService {
     };
   }
 
-  private buildUsdcPriceSchema(): OpenApiSchema {
+  private buildPaymentPriceSchema(): OpenApiSchema {
     return {
       type: 'object',
       properties: {
-        currency: { type: 'string', enum: ['USDC'] },
+        currency: { type: 'string' },
         amount: { type: 'string' },
         display: { type: 'string' },
         usd: { type: 'number' },
@@ -835,5 +848,12 @@ export class OpenApiService {
     return {
       authMode: 'free',
     };
+  }
+
+  private resolveX402Asset() {
+    return resolveX402AssetInfo(
+      this.x402Config.network,
+      this.paymentsService?.getPaymentAssets(this.x402Config.chainId).assets,
+    );
   }
 }

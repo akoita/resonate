@@ -44,6 +44,13 @@ describe('OpenApiService', () => {
       protocol: 'x402',
       protocols: ['x402'],
       currency: 'USDC',
+      asset: {
+        assetId: 'base:usdc',
+        address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        symbol: 'USDC',
+        name: 'USD Coin',
+        decimals: 6,
+      },
       price: {
         mode: 'dynamic',
         currency: 'USDC',
