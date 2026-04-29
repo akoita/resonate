@@ -8,6 +8,7 @@ import { join } from "path";
 import * as express from "express";
 import { AppModule } from "./modules/app.module";
 import { RedisIoAdapter } from "./modules/shared/redis.adapter";
+import { getCorsAllowedOrigins } from "./config/cors";
 
 async function bootstrap() {
   console.log("========================================");
@@ -59,10 +60,8 @@ async function bootstrap() {
     console.warn('[Bootstrap] Redis Socket.IO adapter failed, falling back to in-memory:', err);
   }
 
-  const allowedOrigins = ['http://localhost:3001', 'http://localhost:3000'];
-  if (process.env.CORS_ORIGIN) {
-    allowedOrigins.push(...process.env.CORS_ORIGIN.split(',').map(o => o.trim()));
-  }
+  const allowedOrigins = getCorsAllowedOrigins();
+  console.log(`[Bootstrap] CORS allowed origins: ${allowedOrigins.join(", ")}`);
 
   app.enableCors({
     origin: allowedOrigins,
