@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { decodeEventLog, type Address, encodeFunctionData, type Hex, http, type PublicClient } from "viem";
+import { decodeEventLog, type Address, encodeFunctionData, formatEther, type Hex, http, type PublicClient } from "viem";
 import { useZeroDev } from "../components/auth/ZeroDevProviderClient";
 import { useAuth } from "../components/auth/AuthProvider";
 import {
@@ -915,6 +915,19 @@ export function useAttestAndStake() {
           throw new Error(
             `This release is already attested by ${existingAttester} on-chain.`
           );
+        }
+
+        if (effectiveStakeAmount > 0n) {
+          const smartAccountBalance = await publicClient.getBalance({
+            address: callerAddress,
+          });
+
+          if (smartAccountBalance < effectiveStakeAmount) {
+            const missingStake = effectiveStakeAmount - smartAccountBalance;
+            throw new Error(
+              `Your smart account needs ${formatEther(effectiveStakeAmount)} ETH on Base Sepolia to deposit the Content Protection stake. Current balance: ${formatEther(smartAccountBalance)} ETH. Add at least ${formatEther(missingStake)} ETH to ${callerAddress} and try publishing again.`
+            );
+          }
         }
 
         const calls: { to: Address; data: Hex; value?: bigint }[] = [];

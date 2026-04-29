@@ -122,7 +122,9 @@ export function extractRevertData(message: string): Hex | null {
  */
 export function normalizeContractWriteError(error: unknown): Error {
   const baseError = toError(error);
-  const trimmedMessage = baseError.message.split(" Request Arguments:")[0].trim();
+  const trimmedMessage = baseError.message
+    .replace(/\s+Request Arguments:[\s\S]*$/i, "")
+    .trim();
   const revertData = extractRevertData(trimmedMessage);
 
   if (revertData) {

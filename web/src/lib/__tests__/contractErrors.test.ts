@@ -123,6 +123,16 @@ describe("normalizeContractWriteError", () => {
     expect(result.message).toBe("Something went wrong");
   });
 
+  it("strips multiline bundler Request Arguments details", () => {
+    const raw = new Error(
+      "Execution reverted with reason:\nUserOperation reverted during simulation with reason: 0x. Request Arguments:\ncallData: 0xabc\nsender: 0xdef"
+    );
+    const result = normalizeContractWriteError(raw);
+    expect(result.message).toBe(
+      "Execution reverted with reason:\nUserOperation reverted during simulation with reason: 0x."
+    );
+  });
+
   it("decodes AlreadyReported", () => {
     const raw = new Error(
       `Transaction reverted with reason: ${alreadyReportedData}`

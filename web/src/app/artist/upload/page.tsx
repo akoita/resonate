@@ -317,6 +317,9 @@ export default function ArtistUploadPage() {
       } else if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("CORS")) {
         title = "Network error";
         message = "Could not reach the server. Please check your connection and try again.";
+      } else if (msg.includes("Content Protection stake") && msg.includes("smart account")) {
+        title = "Add Base Sepolia ETH";
+        message = msg;
       } else if (msg.includes("already been attested")) {
         title = "Already attested";
       } else if (msg.includes("already been deposited")) {
