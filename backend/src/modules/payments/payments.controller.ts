@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
-import { PaymentsService } from "./payments.service";
+import { PaymentSurface, PaymentsService } from "./payments.service";
 
 @Controller("payments")
 export class PaymentsController {
@@ -37,14 +37,44 @@ export class PaymentsController {
     );
   }
 
+  @Get("quote")
+  quote(
+    @Query("amountUsd") amountUsd: string,
+    @Query("chainId") chainId?: string,
+    @Query("assetId") assetId?: string,
+    @Query("surface") surface?: string,
+  ) {
+    return this.paymentsService.quotePayment({
+      amountUsd,
+      chainId: chainId ? Number(chainId) : undefined,
+      assetId,
+      surface: surface as PaymentSurface | undefined,
+    });
+  }
+
+  @Get("policy")
+  policy(
+    @Query("chainId") chainId?: string,
+    @Query("surface") surface?: string,
+  ) {
+    return this.paymentsService.getPaymentPolicy({
+      chainId: chainId ? Number(chainId) : undefined,
+      surface: surface as PaymentSurface | undefined,
+    });
+  }
+
   @Get("funding-options")
   fundingOptions(
     @Query("chainId") chainId?: string,
     @Query("wallet") wallet?: string,
+    @Query("assetId") assetId?: string,
+    @Query("surface") surface?: string,
   ) {
     return this.paymentsService.getFundingOptions({
       chainId: chainId ? Number(chainId) : undefined,
       wallet,
+      assetId,
+      surface: surface as PaymentSurface | undefined,
     });
   }
 

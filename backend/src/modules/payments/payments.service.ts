@@ -1,8 +1,8 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { existsSync, readFileSync } from "fs";
 import path from "path";
-import { encodeFunctionData, parseEther, parseUnits } from "viem";
+import { encodeFunctionData, formatUnits, parseEther, parseUnits } from "viem";
 import { EventBus } from "../shared/event_bus";
 
 interface PaymentRecord {
@@ -16,6 +16,15 @@ interface PaymentRecord {
 }
 
 type PaymentAssetKind = "native" | "wrapped_native" | "stablecoin";
+type PaymentPricingStrategy = "usd_pegged" | "chainlink_feed" | "fixed_test_price";
+
+export type PaymentSurface =
+  | "marketplace"
+  | "upload_stake"
+  | "dispute_counter_stake"
+  | "appeal_stake"
+  | "revenue_escrow"
+  | "x402";
 
 export interface PaymentAsset {
   assetId: string;
@@ -27,17 +36,19 @@ export interface PaymentAsset {
   decimals: number;
   enabled: boolean;
   settlement: string[];
-  pricingStrategy: "usd_pegged" | "chainlink_feed" | "fixed_test_price";
+  pricingStrategy: PaymentPricingStrategy;
 }
 
 export interface FundingOption {
   id: string;
   assetId: string;
+  chainId?: number;
   kind: "local_faucet" | "testnet_faucet" | "transfer" | "onramp" | "offramp";
   label: string;
   endpoint?: string;
   url?: string;
   localOnly?: boolean;
+  surfaces?: PaymentSurface[];
 }
 
 interface LocalPaymentArtifact {
@@ -45,9 +56,37 @@ interface LocalPaymentArtifact {
   chainId: number;
   rpcUrl?: string;
   contracts?: Record<string, string>;
+  prices?: Record<string, string>;
   assets?: PaymentAsset[];
   funding?: { enabled: boolean; options: FundingOption[] };
   x402?: { localMode: string; fallbackModes?: string[] };
+}
+
+interface AssetPriceConfig {
+  priceUsd: string | number;
+  updatedAt?: string | number;
+  maxAgeSeconds?: number;
+}
+
+interface PaymentAssetQuote {
+  assetId: string;
+  chainId: number;
+  symbol: string;
+  name: string;
+  kind: PaymentAssetKind;
+  tokenAddress: string;
+  decimals: number;
+  pricingStrategy: PaymentPricingStrategy;
+  priceUsd: string;
+  amount: string;
+  amountUnits: string;
+  expiresAt: string;
+}
+
+interface DecimalFraction {
+  numerator: bigint;
+  scale: bigint;
+  normalized: string;
 }
 
 const LOCAL_CHAIN_ID = 31337;
@@ -55,6 +94,29 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 const DEFAULT_LOCAL_PAYMENT_ARTIFACT = "contracts/deployments/local-payments.json";
 const DEFAULT_LOCAL_FUNDER = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
+const DEFAULT_QUOTE_TTL_SECONDS = 60;
+const DEFAULT_PRICE_MAX_STALENESS_SECONDS = 3600;
+const DEFAULT_FIXED_TEST_PRICES_USD: Record<string, string> = {
+  ETH: "3000",
+  WETH: "3000",
+  USDC: "1",
+};
+const PAYMENT_SURFACES: PaymentSurface[] = [
+  "marketplace",
+  "upload_stake",
+  "dispute_counter_stake",
+  "appeal_stake",
+  "revenue_escrow",
+  "x402",
+];
+const SURFACE_SETTLEMENT_ALIASES: Record<PaymentSurface, string[]> = {
+  marketplace: ["marketplace"],
+  upload_stake: ["upload_stake", "stake"],
+  dispute_counter_stake: ["dispute_counter_stake", "dispute", "stake"],
+  appeal_stake: ["appeal_stake", "appeal", "stake"],
+  revenue_escrow: ["revenue_escrow", "escrow"],
+  x402: ["x402"],
+};
 const MINT_ABI = [
   {
     type: "function",
@@ -171,16 +233,90 @@ export class PaymentsService {
     };
   }
 
-  getFundingOptions(input: { chainId?: number; wallet?: string }) {
+  quotePayment(input: {
+    amountUsd: string | number;
+    chainId?: number;
+    assetId?: string;
+    surface?: PaymentSurface;
+  }) {
+    const amountUsd = this.parsePositiveDecimal(input.amountUsd, "amountUsd");
     const assets = this.loadPaymentAssets();
     const chainId = input.chainId ?? this.getConfiguredChainId(assets);
+    const surface = input.surface;
+    this.assertKnownSurface(surface);
+
+    const chainAssets = assets.filter((asset) => asset.chainId === chainId);
+    const candidates = input.assetId
+      ? chainAssets.filter((asset) => asset.assetId === input.assetId)
+      : chainAssets.filter((asset) => this.assetSupportsSurface(asset, surface));
+
+    if (input.assetId && candidates.length === 0) {
+      throw new BadRequestException(`Payment asset ${input.assetId} is not enabled on chain ${chainId}`);
+    }
+    if (candidates.length === 0) {
+      throw new BadRequestException(`No enabled payment assets are configured for chain ${chainId}`);
+    }
+
+    const expiresAt = new Date(Date.now() + this.getQuoteTtlSeconds() * 1000).toISOString();
+    const quotes = candidates.map((asset) => this.buildAssetQuote(asset, amountUsd, expiresAt));
+    return {
+      chainId,
+      surface: surface ?? null,
+      amountUsd: amountUsd.normalized,
+      quotes,
+      defaultAsset: this.resolveDefaultAssetId(chainAssets, surface),
+      source: this.getPaymentConfigSource(),
+    };
+  }
+
+  getPaymentPolicy(input: { chainId?: number; surface?: PaymentSurface }) {
+    const assets = this.loadPaymentAssets();
+    const chainId = input.chainId ?? this.getConfiguredChainId(assets);
+    this.assertKnownSurface(input.surface);
+    const chainAssets = assets.filter((asset) => asset.chainId === chainId);
+    const surfaces = input.surface ? [input.surface] : PAYMENT_SURFACES;
+
+    return {
+      chainId,
+      policies: surfaces.map((surface) => {
+        const acceptedAssets = chainAssets.filter((asset) => this.assetSupportsSurface(asset, surface));
+        return {
+          surface,
+          acceptedAssetIds: acceptedAssets.map((asset) => asset.assetId),
+          defaultAsset: this.resolveDefaultAssetId(acceptedAssets, surface),
+          requiresGas: acceptedAssets.some((asset) => asset.kind !== "native"),
+          quoteRequired: true,
+        };
+      }),
+    };
+  }
+
+  getFundingOptions(input: {
+    chainId?: number;
+    wallet?: string;
+    assetId?: string;
+    surface?: PaymentSurface;
+  }) {
+    const assets = this.loadPaymentAssets();
+    const chainId = input.chainId ?? this.getConfiguredChainId(assets);
+    this.assertKnownSurface(input.surface);
     const options = this.loadFundingOptions();
     return {
       chainId,
       wallet: input.wallet ?? null,
       options: options.filter((option) => {
         const asset = assets.find((candidate) => candidate.assetId === option.assetId);
-        return !asset || asset.chainId === chainId;
+        if (input.assetId && option.assetId !== input.assetId) {
+          return false;
+        }
+        if (input.surface && option.surfaces && !option.surfaces.includes(input.surface)) {
+          return false;
+        }
+        if (asset && !this.assetSupportsSurface(asset, input.surface)) {
+          return false;
+        }
+        const optionChainId = option.chainId ?? asset?.chainId;
+        return !optionChainId || optionChainId === chainId;
       }),
     };
   }
@@ -274,10 +410,10 @@ export class PaymentsService {
     const configured = this.parseJsonArray<PaymentAsset>(
       this.config.get<string>("PAYMENT_ASSETS_JSON"),
     );
-    if (configured.length > 0) {
-      return configured;
-    }
-    return this.loadLocalPaymentArtifact()?.assets ?? [];
+    const assets = configured.length > 0
+      ? configured
+      : this.loadLocalPaymentArtifact()?.assets ?? [];
+    return assets.filter((asset) => asset.enabled);
   }
 
   private loadFundingOptions(): FundingOption[] {
@@ -327,6 +463,20 @@ export class PaymentsService {
     }
   }
 
+  private parseJsonObject<T extends Record<string, unknown>>(value?: string): T | null {
+    if (!value) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed as T
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
   private getConfiguredChainId(assets: PaymentAsset[]) {
     const configured =
       this.config.get<string>("PAYMENT_CHAIN_ID") ??
@@ -347,6 +497,184 @@ export class PaymentsService {
       return "artifact";
     }
     return "empty";
+  }
+
+  private buildAssetQuote(
+    asset: PaymentAsset,
+    amountUsd: DecimalFraction,
+    expiresAt: string,
+  ): PaymentAssetQuote {
+    const priceUsd = this.resolveAssetPriceUsd(asset);
+    const amountUnits = this.quoteAssetUnits(amountUsd, priceUsd, asset.decimals);
+    return {
+      assetId: asset.assetId,
+      chainId: asset.chainId,
+      symbol: asset.symbol,
+      name: asset.name,
+      kind: asset.kind,
+      tokenAddress: asset.tokenAddress,
+      decimals: asset.decimals,
+      pricingStrategy: asset.pricingStrategy,
+      priceUsd: priceUsd.normalized,
+      amount: formatUnits(amountUnits, asset.decimals),
+      amountUnits: amountUnits.toString(),
+      expiresAt,
+    };
+  }
+
+  private quoteAssetUnits(
+    amountUsd: DecimalFraction,
+    priceUsd: DecimalFraction,
+    decimals: number,
+  ) {
+    const unitScale = 10n ** BigInt(decimals);
+    const numerator = amountUsd.numerator * priceUsd.scale * unitScale;
+    const denominator = amountUsd.scale * priceUsd.numerator;
+    return this.ceilDiv(numerator, denominator);
+  }
+
+  private resolveAssetPriceUsd(asset: PaymentAsset): DecimalFraction {
+    if (asset.pricingStrategy === "usd_pegged") {
+      return this.parsePositiveDecimal("1", `priceUsd:${asset.assetId}`);
+    }
+
+    const priceConfig = this.lookupAssetPriceConfig(asset);
+    if (priceConfig) {
+      this.assertPriceFresh(asset, priceConfig);
+      return this.parsePositiveDecimal(priceConfig.priceUsd, `priceUsd:${asset.assetId}`);
+    }
+
+    const artifactPrice = this.loadLocalPaymentArtifact()?.prices?.[`${asset.symbol}/USD`];
+    if (artifactPrice) {
+      return this.parsePositiveDecimal(artifactPrice, `priceUsd:${asset.assetId}`);
+    }
+
+    if (asset.pricingStrategy === "fixed_test_price") {
+      const fixedPrice = DEFAULT_FIXED_TEST_PRICES_USD[asset.symbol.toUpperCase()];
+      if (fixedPrice) {
+        return this.parsePositiveDecimal(fixedPrice, `priceUsd:${asset.assetId}`);
+      }
+    }
+
+    throw new BadRequestException(`No USD price configured for payment asset ${asset.assetId}`);
+  }
+
+  private lookupAssetPriceConfig(asset: PaymentAsset): AssetPriceConfig | null {
+    const configured = this.parseJsonObject<Record<string, unknown>>(
+      this.config.get<string>("PAYMENT_ASSET_PRICES_JSON"),
+    );
+    const rawPrice = configured?.[asset.assetId] ??
+      configured?.[asset.symbol] ??
+      configured?.[asset.symbol.toUpperCase()] ??
+      configured?.[`${asset.symbol}/USD`];
+
+    if (rawPrice === undefined) {
+      return null;
+    }
+    if (typeof rawPrice === "string" || typeof rawPrice === "number") {
+      return { priceUsd: rawPrice };
+    }
+    if (rawPrice && typeof rawPrice === "object" && !Array.isArray(rawPrice)) {
+      const record = rawPrice as Record<string, unknown>;
+      const priceUsd = record.priceUsd;
+      if (typeof priceUsd === "string" || typeof priceUsd === "number") {
+        return {
+          priceUsd,
+          updatedAt: typeof record.updatedAt === "string" || typeof record.updatedAt === "number"
+            ? record.updatedAt
+            : undefined,
+          maxAgeSeconds: typeof record.maxAgeSeconds === "number"
+            ? record.maxAgeSeconds
+            : undefined,
+        };
+      }
+    }
+    throw new BadRequestException(`Invalid PAYMENT_ASSET_PRICES_JSON entry for ${asset.assetId}`);
+  }
+
+  private assertPriceFresh(asset: PaymentAsset, priceConfig: AssetPriceConfig) {
+    if (priceConfig.updatedAt === undefined) {
+      return;
+    }
+    const updatedAt = typeof priceConfig.updatedAt === "number"
+      ? priceConfig.updatedAt
+      : Date.parse(priceConfig.updatedAt);
+    if (!Number.isFinite(updatedAt)) {
+      throw new BadRequestException(`Invalid updatedAt for payment asset ${asset.assetId}`);
+    }
+    const maxAgeSeconds =
+      priceConfig.maxAgeSeconds ??
+      this.getNumberConfig("PAYMENT_QUOTE_MAX_STALENESS_SECONDS", DEFAULT_PRICE_MAX_STALENESS_SECONDS);
+    const ageSeconds = Math.floor((Date.now() - updatedAt) / 1000);
+    if (ageSeconds > maxAgeSeconds) {
+      throw new BadRequestException(`USD price for payment asset ${asset.assetId} is stale`);
+    }
+  }
+
+  private assetSupportsSurface(asset: PaymentAsset, surface?: PaymentSurface) {
+    if (!surface) {
+      return true;
+    }
+    const accepted = new Set(asset.settlement);
+    return SURFACE_SETTLEMENT_ALIASES[surface].some((alias) => accepted.has(alias));
+  }
+
+  private resolveDefaultAssetId(assets: PaymentAsset[], surface?: PaymentSurface) {
+    const defaultAsset = this.config.get<string>("PAYMENT_DEFAULT_ASSET");
+    if (defaultAsset && assets.some((asset) => {
+      return asset.assetId === defaultAsset && this.assetSupportsSurface(asset, surface);
+    })) {
+      return defaultAsset;
+    }
+    const stablecoin = assets.find((asset) => {
+      return asset.kind === "stablecoin" && this.assetSupportsSurface(asset, surface);
+    });
+    return stablecoin?.assetId ?? assets[0]?.assetId ?? null;
+  }
+
+  private assertKnownSurface(surface?: PaymentSurface) {
+    if (surface && !PAYMENT_SURFACES.includes(surface)) {
+      throw new BadRequestException(`Unknown payment surface ${surface}`);
+    }
+  }
+
+  private parsePositiveDecimal(value: string | number, label: string): DecimalFraction {
+    const raw = String(value).trim();
+    if (!/^\d+(\.\d+)?$/.test(raw)) {
+      throw new BadRequestException(`${label} must be a positive decimal`);
+    }
+    const [whole, fraction = ""] = raw.split(".");
+    const normalizedWhole = whole.replace(/^0+(?=\d)/, "") || "0";
+    const normalizedFraction = fraction.replace(/0+$/, "");
+    const scale = 10n ** BigInt(fraction.length);
+    const numerator = BigInt(whole) * scale + BigInt(fraction || "0");
+    if (numerator <= 0n) {
+      throw new BadRequestException(`${label} must be greater than zero`);
+    }
+    return {
+      numerator,
+      scale,
+      normalized: normalizedFraction
+        ? `${normalizedWhole}.${normalizedFraction}`
+        : normalizedWhole,
+    };
+  }
+
+  private ceilDiv(numerator: bigint, denominator: bigint) {
+    if (denominator <= 0n) {
+      throw new BadRequestException("Quote denominator must be greater than zero");
+    }
+    return (numerator + denominator - 1n) / denominator;
+  }
+
+  private getQuoteTtlSeconds() {
+    return this.getNumberConfig("PAYMENT_QUOTE_TTL_SECONDS", DEFAULT_QUOTE_TTL_SECONDS);
+  }
+
+  private getNumberConfig(name: string, fallback: number) {
+    const configured = this.config.get<string>(name);
+    const parsed = configured ? Number(configured) : NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }
 
   private assertLocalFundingAllowed(chainId: number) {

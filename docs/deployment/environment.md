@@ -57,6 +57,9 @@ When adding a new environment variable:
 | `PAYMENT_ASSETS_JSON` | Backend | JSON array of chain-scoped payment assets. Local Anvil values are generated from `contracts/deployments/local-payments.json` |
 | `PAYMENT_DEFAULT_ASSET` | Backend | Default app payment asset id for the active chain, such as `local:usdc` |
 | `PAYMENT_ORACLE_MODE` | Backend | Payment quote oracle mode. Local Anvil uses `fixed_test_price`; deployed environments should use configured feeds or explicit testnet mocks |
+| `PAYMENT_ASSET_PRICES_JSON` | Backend | Optional USD quote inputs keyed by asset id, symbol, or `SYMBOL/USD`. Values may be a decimal price or `{ "priceUsd": "3000", "updatedAt": "...", "maxAgeSeconds": 3600 }`; used for fixed local prices and Chainlink-compatible quote snapshots |
+| `PAYMENT_QUOTE_TTL_SECONDS` | Backend | Optional lifetime for backend payment quotes returned by `/payments/quote`. Defaults to `60` |
+| `PAYMENT_QUOTE_MAX_STALENESS_SECONDS` | Backend | Optional maximum age for timestamped backend oracle price entries. Defaults to `3600` |
 | `PAYMENT_FUNDING_OPTIONS_JSON` | Backend | JSON array of environment-aware funding actions exposed by the payment UX |
 | `PAYMENT_DEV_FAUCET_ENABLED` | Backend | Enables local-only payment funding endpoints. Must be `true` only on local Anvil |
 | `PAYMENT_DEV_ARTIFACT_PATH` | Backend | Optional path to the generated local payment artifact. Defaults to `contracts/deployments/local-payments.json` |
