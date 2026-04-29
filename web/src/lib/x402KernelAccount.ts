@@ -3,17 +3,17 @@ import { baseSepolia } from "viem/chains";
 import { getKernelAccountConfig } from "./accountAbstraction";
 
 /**
- * The Resonate app authenticates against Sepolia (chain 11155111), where the
- * marketplace and license contracts live. The x402 payment layer uses Base
- * Sepolia (chain 84532) instead, because Circle's official USDC with EIP-3009
- * support and the public x402 facilitator both run there.
+ * The x402 payment layer uses Base Sepolia (chain 84532), because Circle's
+ * official USDC with EIP-3009 support and the public x402 facilitator both run
+ * there.
  *
- * That split means the Sepolia smart account the user sees in the wallet badge
- * is *not* deployed on Base Sepolia. CREATE2 with a different factory address
- * yields a different counterfactual address. To make x402 work without
- * migrating the rest of the stack, we build a parallel Kernel account on Base
- * Sepolia using the same passkey, and use it as the x402 signer. The two
- * accounts share custody (same WebAuthn key) but live at different addresses.
+ * Legacy deployments may still authenticate the main app on Sepolia while x402
+ * settles on Base Sepolia. That split means the Sepolia smart account the user
+ * sees in the wallet badge is not deployed on Base Sepolia. CREATE2 with a
+ * different factory address yields a different counterfactual address. To make
+ * x402 work in that mode, we build a parallel Kernel account on Base Sepolia
+ * using the same passkey, and use it as the x402 signer. Single-chain staging
+ * should instead configure the main app and x402 on Base Sepolia together.
  *
  * Callers must fund USDC at the Base Sepolia SA address — funding the Sepolia
  * SA address does nothing for x402 settlement.

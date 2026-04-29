@@ -83,6 +83,14 @@ function getChainConfig(chainId?: string, rpcUrl?: string) {
     };
   }
 
+  if (chainId === '84532') {
+    return {
+      chainId: 84532,
+      bundlerUrl: undefined,
+      rpcUrl: rpcUrl ?? 'https://sepolia.base.org',
+    };
+  }
+
   if (rpcUrl?.includes('localhost') || rpcUrl?.includes('127.0.0.1')) {
     return {
       chainId: 11155111,
@@ -123,6 +131,13 @@ describe('getChainConfig', () => {
     const config = getChainConfig();
     expect(config.chainId).toBe(11155111);
     expect(config.bundlerUrl).toBeUndefined();
+  });
+
+  it('returns Base Sepolia when requested explicitly', () => {
+    const config = getChainConfig('84532', 'https://sepolia.base.org');
+    expect(config.chainId).toBe(84532);
+    expect(config.bundlerUrl).toBeUndefined();
+    expect(config.rpcUrl).toBe('https://sepolia.base.org');
   });
 
   it('defaults to Sepolia for unrecognized chain ID', () => {

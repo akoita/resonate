@@ -22,8 +22,28 @@ const X402_STATUS_LABEL: Record<X402StatusPhase, string> = {
   downloading: "Downloading stem…",
 };
 
-const X402_SMART_ACCOUNT_UNSUPPORTED =
-  "USDC checkout runs on Base Sepolia, while the main app remains on Sepolia. It is temporarily unavailable for passkey accounts because the current x402 USDC settlement requires an EOA authorization, but Resonate login uses a Kernel smart account.";
+const CHAIN_NAMES: Record<number, string> = {
+  84532: "Base Sepolia",
+  11155111: "Sepolia",
+  31337: "local Anvil",
+};
+
+function getChainName(chainId: number | null | undefined) {
+  if (!chainId) return "the configured chain";
+  return CHAIN_NAMES[chainId] ?? `chain ${chainId}`;
+}
+
+function getX402SmartAccountUnsupportedMessage(x402ChainId: number | null | undefined) {
+  const appChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 11155111);
+  const x402Chain = getChainName(x402ChainId);
+  const appChain = getChainName(appChainId);
+
+  if (x402ChainId && x402ChainId !== appChainId) {
+    return `USDC checkout is configured on ${x402Chain}, while the main app is on ${appChain}. It is temporarily unavailable for passkey accounts because the current x402 USDC settlement requires a compatible EOA authorization path, but Resonate login uses a Kernel smart account.`;
+  }
+
+  return `USDC checkout is configured on ${x402Chain}. It is temporarily unavailable for passkey accounts because the current x402 USDC settlement requires a compatible EOA authorization path, but Resonate login uses a Kernel smart account.`;
+}
 
 type X402QuoteInfo = {
   amountUsd: number | null;
@@ -58,6 +78,10 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
     [x402Config, stemId],
   );
   const x402SmartAccountUnsupported = x402Available;
+  const x402SmartAccountUnsupportedMessage = useMemo(
+    () => getX402SmartAccountUnsupportedMessage(x402Config?.enabled ? x402Config.chainId : null),
+    [x402Config],
+  );
   const x402Asset = x402Config?.enabled ? x402Config.asset : null;
   const x402DownloadUrl = useMemo(
     () => (x402Result ? URL.createObjectURL(x402Result.audio) : null),
@@ -125,7 +149,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
     if (!stemId) return;
     setX402Error(null);
     setX402Result(null);
-    setX402Error(X402_SMART_ACCOUNT_UNSUPPORTED);
+    setX402Error(x402SmartAccountUnsupportedMessage);
   };
 
   const maxAmount = listing?.amount || 1n;
@@ -300,7 +324,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 </div>
                 {x402SmartAccountUnsupported && (
                   <div className="buy-modal__alert buy-modal__alert--warning">
-                    {X402_SMART_ACCOUNT_UNSUPPORTED}
+                    {x402SmartAccountUnsupportedMessage}
                   </div>
                 )}
                 {x402Status && (

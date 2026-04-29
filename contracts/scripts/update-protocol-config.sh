@@ -6,8 +6,8 @@
 # TransferValidator, ContentProtection, DisputeResolution, CurationRewards,
 # and RevenueEscrow contract addresses.
 #
-# Auto-detects chain ID from the local RPC so it works on both plain Anvil
-# (chainId 31337) and forked Sepolia (chainId 11155111).
+# Auto-detects chain ID from the RPC so it works on plain Anvil (chainId 31337),
+# forked Sepolia (chainId 11155111), and Base Sepolia (chainId 84532).
 #
 # Usage: ./contracts/scripts/update-protocol-config.sh
 
@@ -44,6 +44,7 @@ echo -e "${GREEN}Detected chain ID: $CHAIN_ID${NC}"
 echo ""
 
 SEPOLIA_DEPLOY_FILE="$PROJECT_ROOT/contracts/deployments/sepolia.json"
+BASE_SEPOLIA_DEPLOY_FILE="$PROJECT_ROOT/contracts/deployments/base-sepolia.json"
 
 # On a Sepolia fork, use the existing Sepolia deployment addresses
 # (the contracts are already deployed on the fork from the real Sepolia state)
@@ -82,11 +83,25 @@ elif [[ "$CHAIN_ID" == "11155111" && -f "$SEPOLIA_DEPLOY_FILE" ]]; then
         echo -e "${YELLOW}Warning: sepolia.json is missing one or more Phase 2 contract addresses. Re-run 'make deploy-sepolia' to refresh the deployment record.${NC}"
     fi
 
+elif [[ "$CHAIN_ID" == "84532" && -f "$BASE_SEPOLIA_DEPLOY_FILE" ]]; then
+    echo -e "${GREEN}No local broadcast — using Base Sepolia deployment addresses from base-sepolia.json${NC}"
+    STEM_NFT=$(jq -r '.contracts.StemNFT' "$BASE_SEPOLIA_DEPLOY_FILE")
+    MARKETPLACE=$(jq -r '.contracts.StemMarketplaceV2' "$BASE_SEPOLIA_DEPLOY_FILE")
+    TRANSFER_VALIDATOR=$(jq -r '.contracts.TransferValidator' "$BASE_SEPOLIA_DEPLOY_FILE")
+    CONTENT_PROTECTION=$(jq -r '.contracts.ContentProtection // empty' "$BASE_SEPOLIA_DEPLOY_FILE")
+    DISPUTE_RESOLUTION=$(jq -r '.contracts.DisputeResolution // empty' "$BASE_SEPOLIA_DEPLOY_FILE")
+    CURATION_REWARDS=$(jq -r '.contracts.CurationRewards // empty' "$BASE_SEPOLIA_DEPLOY_FILE")
+    REVENUE_ESCROW=$(jq -r '.contracts.RevenueEscrow // empty' "$BASE_SEPOLIA_DEPLOY_FILE")
+
+    if [[ -z "$CONTENT_PROTECTION" || -z "$DISPUTE_RESOLUTION" || -z "$CURATION_REWARDS" || -z "$REVENUE_ESCROW" ]]; then
+        echo -e "${YELLOW}Warning: base-sepolia.json is missing one or more Phase 2 contract addresses. Re-run 'make deploy-base-sepolia' to refresh the deployment record.${NC}"
+    fi
+
 else
     echo "Error: No deployment broadcast found at:"
     echo "  $BROADCAST_FILE"
     echo ""
-    echo "Run 'make deploy-contracts' first."
+    echo "Run 'make deploy-contracts', 'make deploy-sepolia', or 'make deploy-base-sepolia' first."
     exit 1
 fi
 

@@ -1,22 +1,24 @@
 ## Smart Contract Scan Report
 
-Scope reviewed on April 26, 2026 for issue #261:
+Scope reviewed on April 29, 2026 for issue #733:
 
-- `contracts/src/interfaces/IERC8004.sol`
+- Base Sepolia deployment and verification scripts under `contracts/scripts/`
+- Base Sepolia deployment handoff record under `contracts/deployments/`
+- No Solidity implementation files changed in `contracts/src/`
 
 ### Reconnaissance
 
 - Solidity version: `0.8.28`
-- Contract type: interface only
-- External dependencies: none
-- Change focus:
-  - document the minimal official ERC-8004 Identity Registry surface used by
-    Resonate agents
-  - avoid a Resonate-owned mock registry for public mainnet/testnet integration
+- Contract logic delta: none
+- Deployment delta:
+  - added Base Sepolia deployment wrapper
+  - added BaseScan/Etherscan v2 verification retry helper
+  - added Sourcify verification retry helper
+  - added Base Sepolia deployment record and remote environment handoff
 
 ### Syntactic Sweep
 
-Patterns reviewed:
+Patterns reviewed across the Solidity source tree:
 
 - external call triggers: `.call{}`, `_safeMint`, `_safeTransfer`,
   `safeTransferFrom`
@@ -27,25 +29,30 @@ Patterns reviewed:
 
 Observed result:
 
-- no implementation logic was added
-- no storage, value transfer, external call, authorization, unchecked arithmetic,
-  or assembly paths were introduced
-- all functions are declarations for the external Identity Registry
+- the scan found existing external-call, access-control, and assembly patterns
+  in unchanged Solidity files
+- no new Solidity source locations were introduced by this branch
+- no storage, token transfer, authorization, or payable contract logic changed
 
 ### Semantic Review
 
-Reviewed the interface for:
+Reviewed the changed contract-adjacent scripts for:
 
-- signature alignment with the ERC-8004 Identity Registry operations used by
-  the backend and mint script
-- accidental writable implementation logic
-- accidental payable functions or fund-handling surface
+- hardcoded secrets or committed private keys
+- accidental deployment to the wrong chain ID
+- reuse of generated broadcast data for verification retries
+- remote environment handoff content
+- failure handling when explorer verification fails after successful deployment
 
 Conclusion:
 
-- the interface only declares `register`, `setAgentURI`, ERC-721 read methods,
-  agent wallet readback, and metadata read/write/delete methods
-- no confirmed vulnerability is introduced by this interface-only change
+- deploy scripts read private keys, RPC URLs, and explorer API keys from
+  environment variables
+- the Base Sepolia deployment script checks that the RPC resolves to chain
+  `84532` before broadcasting
+- the remote environment handoff uses placeholders for RPC and payout values and
+  does not include secrets
+- Sourcify verification succeeded for all eight deployed Base Sepolia contracts
 
 ### Findings
 
@@ -63,7 +70,8 @@ were identified in the reviewed changes.
 ### Commands Run
 
 ```bash
-find contracts/src -name '*.sol' -type f
-rg '\.call\{|_safeMint|_safeTransfer|safeTransferFrom|onlyOwner|onlyRole|_checkRole|require.*msg\.sender|selfdestruct|delegatecall|tx\.origin|unchecked|assembly' contracts/src/interfaces/IERC8004.sol
+git diff --name-only main -- contracts/src contracts/script contracts/test
+rg '\.call\{|_safeMint|_safeTransfer|safeTransferFrom|onlyOwner|onlyRole|_checkRole|require.*msg\.sender|selfdestruct|delegatecall|tx\.origin|unchecked|assembly' contracts/src contracts/script
 cd contracts && forge build
+make verify-base-sepolia-sourcify
 ```

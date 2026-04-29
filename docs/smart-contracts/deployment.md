@@ -37,6 +37,7 @@ Useful app-local targets that still live here:
 | `make web-dev` | Start the Next.js frontend on port `3001` |
 | `make local-aa-fork` | Start the recommended Sepolia fork + local Alto bundler and refresh fork-mode env |
 | `make local-aa-up` | Start a plain local `31337` Anvil + local Alto bundler |
+| `make deploy-base-sepolia` | Deploy protocol contracts to Base Sepolia and refresh app-local contract config |
 | `make local-aa-down` | Stop the local AA runtime |
 | `make db-reset` | Reset the local Prisma database |
 | `make pubsub-init` | Recreate emulator topics/subscriptions on `localhost:8085` |
@@ -57,6 +58,51 @@ make deploy-sepolia
 This runs [`contracts/scripts/deploy-sepolia.sh`](../../contracts/scripts/deploy-sepolia.sh), writes a deployment record to `contracts/deployments/sepolia.json`, and refreshes local app config via `contracts/scripts/update-protocol-config.sh`.
 
 The protocol deploy script also grants both `StemMarketplaceV2` and `StemNFT` registrar access in `ContentProtection` so protected mint flows and later marketplace listings resolve the correct stake root.
+
+### Deploy protocol contracts to Base Sepolia
+
+Use this for single-chain x402 staging, where the marketplace contracts, Kernel
+smart accounts, USDC settlement, and x402 facilitator all target Base Sepolia.
+
+```bash
+export PRIVATE_KEY=<deployer-private-key>
+export BASE_SEPOLIA_RPC_URL=<base-sepolia-rpc-url>
+
+make deploy-base-sepolia
+```
+
+This runs [`contracts/scripts/deploy-base-sepolia.sh`](../../contracts/scripts/deploy-base-sepolia.sh), writes a deployment record to `contracts/deployments/base-sepolia.json`, writes a copyable remote environment handoff to `contracts/deployments/base-sepolia.remote.env`, and refreshes local app config via `contracts/scripts/update-protocol-config.sh`.
+
+Sourcify verification does not require an API key and is the preferred Base
+Sepolia verification path:
+
+```bash
+make verify-base-sepolia-sourcify
+```
+
+BaseScan verification can also run automatically when `ETHERSCAN_API_KEY` is
+set. Use an Etherscan API v2 key with Base Sepolia access:
+
+```bash
+export ETHERSCAN_API_KEY=<etherscan-v2-api-key>
+make deploy-base-sepolia
+```
+
+To force deployment without BaseScan verification, set `VERIFY_CONTRACTS=false`.
+Verification failures do not block the deployment record or remote environment
+handoff after on-chain execution has completed. If BaseScan verification fails
+after a successful deploy, retry without redeploying with `make
+verify-base-sepolia`; for Sourcify, use `make verify-base-sepolia-sourcify`.
+
+Both retry commands read `contracts/broadcast/DeployProtocol.s.sol/84532/run-latest.json`.
+To verify an older broadcast, pass `BROADCAST_FILE=contracts/broadcast/DeployProtocol.s.sol/84532/run-<timestamp>.json`.
+
+After a successful deploy, copy `contracts/deployments/base-sepolia.remote.env`
+into the environment managed by `resonate-iac`, filling in the RPC URL, x402
+payout address, and any service-specific secrets there. The handoff keeps
+`NEXT_PUBLIC_CHAIN_ID=84532` and `X402_NETWORK=eip155:84532` together so x402
+challenges, recorded purchase events, and frontend wallet state all refer to
+the same chain.
 
 ### Refresh local contract config
 
