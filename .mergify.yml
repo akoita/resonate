@@ -1,0 +1,13 @@
+queue_rules:
+  - name: main-batch
+    merge_method: squash
+    batch_size: 5
+    batch_max_wait_time: 5 min
+    batch_max_failure_resolution_attempts: 3
+    branch_protection_injection_mode: queue
+    checks_timeout: 60 min
+    queue_branch_prefix: mergify/merge-queue/
+    queue_conditions:
+      - base = main
+      - -draft
+      - -conflict

@@ -134,6 +134,13 @@ Application CI still runs in this repo. Successful push-based CI on:
 
 now sends deploy intent to `resonate-iac` through GitHub `repository_dispatch`.
 
+`main` should be merged through Mergify's merge queue. In that mode, pull requests
+get path-aware feedback, Mergify queue branches run the full validation suite once
+for the combined batch, and the post-merge `main` push focuses on deployable image
+publication plus deploy-manifest handoff. See
+[`docs/operations/merge_queue_ci.md`](../operations/merge_queue_ci.md) for the
+required branch protection settings, Mergify setup, and operator flow.
+
 Automatic handoff mapping:
 
 - `develop` -> `dev`
