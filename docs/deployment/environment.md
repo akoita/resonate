@@ -64,6 +64,7 @@ When adding a new environment variable:
 | `PAYMENT_USDC_ADDRESS` | Contracts | Optional deployed USDC token address configured into the protocol payment asset registry during contract deployment |
 | `PAYMENT_WETH_ADDRESS` | Contracts | Optional deployed WETH token address configured into the protocol payment asset registry during contract deployment |
 | `PAYMENT_ENABLE_WETH` | Contracts | Enables WETH in the deployed payment asset registry when `PAYMENT_WETH_ADDRESS` is set. Defaults to `false` |
+| `STAKE_USDC_AMOUNT` | Contracts | Optional USDC-denominated content-protection stake amount, in USDC base units, configured when `PAYMENT_USDC_ADDRESS` is set. Defaults to `10000000` (10 USDC) |
 | `PAYMENT_ETH_USD_FEED` | Contracts | Optional Chainlink-compatible ETH/USD feed address wrapped by the deployed oracle adapter |
 | `PAYMENT_USDC_USD_FEED` | Contracts | Optional Chainlink-compatible USDC/USD feed address wrapped by the deployed oracle adapter |
 | `PAYMENT_ORACLE_MAX_STALENESS` | Contracts | Maximum accepted feed age in seconds for deployed oracle adapters. Defaults to `86400` |

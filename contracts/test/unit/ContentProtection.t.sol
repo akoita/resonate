@@ -3,6 +3,8 @@ pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
+import {MockUSDC} from "../../src/payments/MockUSDC.sol";
+import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
@@ -20,6 +22,9 @@ contract ContentProtectionTest is Test {
     address public reporter = makeAddr("reporter");
 
     uint256 constant STAKE_AMOUNT = 0.01 ether;
+    uint256 constant USDC_STAKE_AMOUNT = 10_000000;
+    bytes32 constant LOCAL_ETH = keccak256("local:eth");
+    bytes32 constant LOCAL_USDC = keccak256("local:usdc");
 
     event ContentAttested(
         uint256 indexed tokenId,
@@ -29,6 +34,9 @@ contract ContentProtectionTest is Test {
         string metadataURI
     );
     event StakeDeposited(uint256 indexed tokenId, address indexed staker, uint256 amount);
+    event StakeDepositedWithAsset(
+        uint256 indexed tokenId, address indexed staker, address indexed token, uint256 amount
+    );
     event StakeSlashed(
         uint256 indexed tokenId,
         address indexed reporter,
@@ -37,13 +45,13 @@ contract ContentProtectionTest is Test {
         uint256 burnedAmount
     );
     event StakeRefunded(uint256 indexed tokenId, address indexed staker, uint256 amount);
+    event StakeRefundedWithAsset(
+        uint256 indexed tokenId, address indexed staker, address indexed token, uint256 amount
+    );
     event Blacklisted(address indexed account);
     event BlacklistRemoved(address indexed account);
     event RegistrarUpdated(address indexed registrar, bool allowed);
-    event MaxPriceMultiplierUpdated(
-        uint256 oldMultiplier,
-        uint256 newMultiplier
-    );
+    event MaxPriceMultiplierUpdated(uint256 oldMultiplier, uint256 newMultiplier);
     event TierPolicyUpdated(
         string tierName,
         uint256 oldStakeAmountWei,
@@ -53,10 +61,7 @@ contract ContentProtectionTest is Test {
     );
     event TrackRegistered(uint256 indexed releaseId, uint256 indexed trackId);
     event StemRegistered(uint256 indexed trackId, uint256 indexed stemTokenId);
-    event StemProtectionRootRegistered(
-        uint256 indexed releaseId,
-        uint256 indexed stemTokenId
-    );
+    event StemProtectionRootRegistered(uint256 indexed releaseId, uint256 indexed stemTokenId);
     event TrackRevoked(uint256 indexed trackId);
     event ReleaseRevoked(uint256 indexed releaseId);
 
@@ -79,14 +84,9 @@ contract ContentProtectionTest is Test {
 
     function test_Initialize_SeedsTierPolicies() public view {
         (uint256 newStake, uint256 newEscrowDays) = cp.getTierPolicy("new");
-        (uint256 establishedStake, uint256 establishedEscrowDays) = cp
-            .getTierPolicy("established");
-        (uint256 trustedStake, uint256 trustedEscrowDays) = cp.getTierPolicy(
-            "trusted"
-        );
-        (uint256 verifiedStake, uint256 verifiedEscrowDays) = cp.getTierPolicy(
-            "verified"
-        );
+        (uint256 establishedStake, uint256 establishedEscrowDays) = cp.getTierPolicy("established");
+        (uint256 trustedStake, uint256 trustedEscrowDays) = cp.getTierPolicy("trusted");
+        (uint256 verifiedStake, uint256 verifiedEscrowDays) = cp.getTierPolicy("verified");
 
         assertEq(newStake, STAKE_AMOUNT);
         assertEq(newEscrowDays, 30);
@@ -178,6 +178,46 @@ contract ContentProtectionTest is Test {
         assertTrue(cp.isStaked(100));
     }
 
+    function test_StakeWithAsset_USDC() public {
+        MockUSDC usdc = _configureUsdcStakeAsset();
+
+        vm.prank(alice);
+        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+
+        usdc.mint(alice, USDC_STAKE_AMOUNT);
+        vm.startPrank(alice);
+        usdc.approve(address(cp), USDC_STAKE_AMOUNT);
+        vm.expectEmit(true, true, true, true);
+        emit StakeDepositedWithAsset(1, alice, address(usdc), USDC_STAKE_AMOUNT);
+        cp.stakeWithAsset(1, address(usdc), USDC_STAKE_AMOUNT);
+        vm.stopPrank();
+
+        (address token, uint256 amount, bool active) = cp.getStakeAsset(1);
+        assertTrue(active);
+        assertEq(token, address(usdc));
+        assertEq(amount, USDC_STAKE_AMOUNT);
+        assertEq(usdc.balanceOf(address(cp)), USDC_STAKE_AMOUNT);
+    }
+
+    function test_StakeForReleaseWithAsset_USDC() public {
+        MockUSDC usdc = _configureUsdcStakeAsset();
+
+        vm.prank(alice);
+        cp.attestRelease(100, keccak256("release"), keccak256("release-fp"), "release-uri");
+
+        usdc.mint(alice, USDC_STAKE_AMOUNT);
+        vm.startPrank(alice);
+        usdc.approve(address(cp), USDC_STAKE_AMOUNT);
+        cp.stakeForReleaseWithAsset(100, address(usdc), USDC_STAKE_AMOUNT);
+        vm.stopPrank();
+
+        assertTrue(cp.isStaked(100));
+        (address token, uint256 amount, bool active) = cp.getStakeAsset(100);
+        assertTrue(active);
+        assertEq(token, address(usdc));
+        assertEq(amount, USDC_STAKE_AMOUNT);
+    }
+
     function test_Stake_RevertNotAttested() public {
         vm.deal(alice, 1 ether);
         vm.prank(alice);
@@ -233,6 +273,31 @@ contract ContentProtectionTest is Test {
         assertTrue(cp.isBlacklisted(alice)); // Auto-blacklisted
     }
 
+    function test_Slash_USDCStake() public {
+        MockUSDC usdc = _configureUsdcStakeAsset();
+
+        vm.prank(alice);
+        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        usdc.mint(alice, USDC_STAKE_AMOUNT);
+        vm.startPrank(alice);
+        usdc.approve(address(cp), USDC_STAKE_AMOUNT);
+        cp.stakeWithAsset(1, address(usdc), USDC_STAKE_AMOUNT);
+        vm.stopPrank();
+
+        uint256 expectedReporter = (USDC_STAKE_AMOUNT * 6000) / 10000;
+        uint256 expectedTreasury = (USDC_STAKE_AMOUNT * 3000) / 10000;
+
+        vm.prank(admin);
+        cp.slash(1, reporter);
+
+        assertEq(usdc.balanceOf(reporter), expectedReporter);
+        assertEq(usdc.balanceOf(treasury), expectedTreasury);
+        assertEq(usdc.balanceOf(address(cp)), USDC_STAKE_AMOUNT - expectedReporter - expectedTreasury);
+        assertFalse(cp.isStaked(1));
+        assertFalse(cp.isAttested(1));
+        assertTrue(cp.isBlacklisted(alice));
+    }
+
     function test_Slash_RevertNotOwner() public {
         vm.prank(alice);
         cp.attest(1, keccak256("a"), keccak256("b"), "uri");
@@ -259,6 +324,27 @@ contract ContentProtectionTest is Test {
         cp.refundStake(1);
 
         assertEq(alice.balance - aliceBefore, STAKE_AMOUNT);
+        assertFalse(cp.isStaked(1));
+    }
+
+    function test_RefundStake_USDCStake() public {
+        MockUSDC usdc = _configureUsdcStakeAsset();
+
+        vm.prank(alice);
+        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        usdc.mint(alice, USDC_STAKE_AMOUNT);
+        vm.startPrank(alice);
+        usdc.approve(address(cp), USDC_STAKE_AMOUNT);
+        cp.stakeWithAsset(1, address(usdc), USDC_STAKE_AMOUNT);
+        vm.stopPrank();
+
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit StakeRefundedWithAsset(1, alice, address(usdc), USDC_STAKE_AMOUNT);
+        cp.refundStake(1);
+
+        assertEq(usdc.balanceOf(alice), USDC_STAKE_AMOUNT);
+        assertEq(usdc.balanceOf(address(cp)), 0);
         assertFalse(cp.isStaked(1));
     }
 
@@ -299,11 +385,8 @@ contract ContentProtectionTest is Test {
         assertEq(cp.stakeAmount(), 0.05 ether);
 
         (uint256 newStake, uint256 newEscrowDays) = cp.getTierPolicy("new");
-        (uint256 establishedStake, uint256 establishedEscrowDays) = cp
-            .getTierPolicy("established");
-        (uint256 trustedStake, uint256 trustedEscrowDays) = cp.getTierPolicy(
-            "trusted"
-        );
+        (uint256 establishedStake, uint256 establishedEscrowDays) = cp.getTierPolicy("established");
+        (uint256 trustedStake, uint256 trustedEscrowDays) = cp.getTierPolicy("trusted");
 
         assertEq(newStake, 0.05 ether);
         assertEq(newEscrowDays, 30);
@@ -320,9 +403,7 @@ contract ContentProtectionTest is Test {
         vm.prank(admin);
         cp.setStakeAmount(0.05 ether);
 
-        (uint256 updatedStake, uint256 updatedEscrowDays) = cp.getTierPolicy(
-            "new"
-        );
+        (uint256 updatedStake, uint256 updatedEscrowDays) = cp.getTierPolicy("new");
         assertEq(updatedStake, 0.001 ether);
         assertEq(updatedEscrowDays, 10);
     }
@@ -333,9 +414,7 @@ contract ContentProtectionTest is Test {
         emit TierPolicyUpdated("new", STAKE_AMOUNT, 30, 0.001 ether, 10);
         cp.setTierPolicy("new", 0.001 ether, 10);
 
-        (uint256 updatedStake, uint256 updatedEscrowDays) = cp.getTierPolicy(
-            "new"
-        );
+        (uint256 updatedStake, uint256 updatedEscrowDays) = cp.getTierPolicy("new");
         assertEq(updatedStake, 0.001 ether);
         assertEq(updatedEscrowDays, 10);
     }
@@ -615,5 +694,17 @@ contract ContentProtectionTest is Test {
             keccak256(abi.encodePacked("track-fp", trackId)),
             "track"
         );
+    }
+
+    function _configureUsdcStakeAsset() internal returns (MockUSDC usdc) {
+        usdc = new MockUSDC();
+        PaymentAssetRegistry registry = new PaymentAssetRegistry(admin);
+
+        vm.startPrank(admin);
+        registry.configureAsset(LOCAL_ETH, address(0), "ETH", 18, true, false);
+        registry.configureAsset(LOCAL_USDC, address(usdc), "USDC", 6, true, true);
+        cp.setPaymentAssetRegistry(address(registry));
+        cp.setStakeAmountForAsset(address(usdc), USDC_STAKE_AMOUNT);
+        vm.stopPrank();
     }
 }

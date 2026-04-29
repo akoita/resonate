@@ -1,52 +1,52 @@
 # Smart Contract Scan Report
 
-Scope reviewed on April 29, 2026 for issue #739:
+Scope reviewed on April 29, 2026 for issue #741:
 
-- `contracts/src/payments/PaymentAssetRegistry.sol`
-- `contracts/src/payments/ChainlinkPriceOracleAdapter.sol`
-- `contracts/src/payments/MockPriceOracle.sol`
-- `contracts/src/core/StemMarketplaceV2.sol`
-- `contracts/script/DeployLocalPayments.s.sol`
+- `contracts/src/core/ContentProtection.sol`
+- `contracts/src/core/CurationRewards.sol`
+- `contracts/src/interfaces/IContentProtection.sol`
 - `contracts/script/DeployProtocol.s.sol`
-- `contracts/scripts/update-local-payment-config.sh`
-- payment registry, oracle adapter, marketplace, fuzz, invariant, and formal harness tests touched by the new constructor dependency
+- `contracts/script/UpgradeContentProtection.s.sol`
+- unit tests covering native ETH and USDC stake, refund, slash, rejection, inconclusive, and appeal outcomes
 
 ## Reconnaissance
 
 - Solidity version: `0.8.28`
-- New production-facing contract: `ChainlinkPriceOracleAdapter`
 - Updated production-facing contracts:
-  - `PaymentAssetRegistry` now supports token-address lookup and duplicate-token prevention.
-  - `StemMarketplaceV2` now requires a payment asset registry and rejects unsupported payment tokens at listing time.
-- Updated deployment scripts configure native ETH, optional Circle USDC, optional WETH, and optional Chainlink-compatible oracle adapters.
+  - `ContentProtection` now records the stake token alongside the existing stake amount tuple and supports enabled ERC20 stake deposits.
+  - `CurationRewards` now records counter-stake and appeal-stake tokens and pays refunds/slashes in the original asset.
+- Native ETH remains represented by `address(0)`.
+- ERC20 transfers use OpenZeppelin `SafeERC20`.
+- Registry checks use `PaymentAssetRegistry.isTokenEnabled(token)` when the registry is configured.
 
 ## Syntactic Sweep
 
-Patterns reviewed across `contracts/src/`:
+Patterns reviewed across changed contracts:
 
 - external calls: `.call{}`
-- token callback triggers: `_safeMint`, `_safeTransfer`, `safeTransferFrom`
-- access control: `onlyOwner`, `onlyRole`, `_checkRole`, `require(msg.sender...)`
+- token callback triggers: `safeTransferFrom`, `safeTransfer`
+- access control: `onlyOwner`, registry owner configuration
 - dangerous primitives: `selfdestruct`, `delegatecall`, `tx.origin`
 - unchecked arithmetic and inline `assembly`
 
 Observed matches relevant to this change:
 
-- `StemMarketplaceV2.buy()` uses `safeTransferFrom` for ERC1155 settlement and ERC20 collection; the function is `nonReentrant`, updates listing state before external calls, and existed before this payment-asset change.
-- `StemMarketplaceV2._pay()` and `withdrawTrappedETH()` use native ETH `.call{value: ...}`; both existed before this change and remain guarded by existing effects-before-interactions or owner-only flow.
-- `PaymentAssetRegistry` uses `onlyOwner` and `require(msg.sender == owner, ...)` for registry mutation.
-- `ChainlinkPriceOracleAdapter` has no state-changing external calls after construction.
+- `ContentProtection._stakeErc20()` records stake state then calls `safeTransferFrom`; the entrypoint is `nonReentrant`, and a failed ERC20 transfer reverts the full transaction.
+- `ContentProtection.slash()` and `refundStake()` now route through `_pay(token, to, amount)`. Native ETH transfers use `.call{value: ...}` after stake state is marked inactive. ERC20 transfers use `safeTransfer`.
+- `CurationRewards.reportContentWithAsset()` and `appealDisputeWithAsset()` collect ERC20 stakes with `safeTransferFrom` under `nonReentrant`.
+- `CurationRewards` payout paths use `_pay(token, to, amount)` after processing flags or appeal stake state are updated.
+- New admin configuration in `ContentProtection` is limited to `onlyOwner`.
 
-No `selfdestruct`, `delegatecall`, or `tx.origin` usage was found in the changed payment contracts.
+No `selfdestruct`, `delegatecall`, `tx.origin`, `unchecked`, or inline `assembly` usage was found in the changed contracts.
 
 ## Semantic Review
 
-- `PaymentAssetRegistry` has a single owner and only the owner can configure assets or transfer ownership. It rejects the zero owner, empty asset ids, empty symbols, and duplicate token addresses across different asset ids.
-- Disabled assets remain registered but `isTokenEnabled()` returns false, so marketplace listings cannot use them.
-- `StemMarketplaceV2` validates `paymentAssetRegistry` at construction and checks the registry before listing. This keeps existing native ETH and ERC20 settlement logic while constraining the accepted token set.
-- `ChainlinkPriceOracleAdapter` rejects zero/negative answers, missing timestamps, stale answers, and incomplete rounds before scaling prices to 18 decimals.
-- `MockPriceOracle` remains a deterministic test/local feed and now supports stale/incomplete-round test scenarios.
-- Deployment script changes use optional environment-provided token/feed addresses and default to zero-address skips for optional assets and feeds.
+- Asset identity is stored separately from the legacy `stakes(tokenId)` tuple, preserving the existing ABI while adding `stakeTokens(tokenId)` and `getStakeAsset(tokenId)`.
+- ERC20 stake deposits require an enabled registry token and a configured token-specific stake floor. Native ETH retains the existing `stakeAmount` floor and can be constrained by the registry when configured.
+- Slash and refund paths mark the stake inactive before external transfers, and both ETH and ERC20 payouts preserve the original stake asset.
+- Counter-stake requirements are calculated from the creator's active stake amount, then paid and later settled in that same stake asset.
+- Appeal stakes inherit the original counter-stake token and are refunded or slashed in that same asset.
+- Existing ETH flows remain covered and new USDC flows are covered for stake, refund, slash, rejected dispute, inconclusive dispute, and appeal refund.
 
 ## Findings
 
@@ -63,13 +63,10 @@ No confirmed Critical, High, Medium, Low, or Informational security findings wer
 ## Commands Run
 
 ```bash
-find contracts/src -name '*.sol' -type f
-rg '\.call\{|_safeMint|_safeTransfer|safeTransferFrom' contracts/src
-rg 'onlyOwner|onlyRole|_checkRole|require.*msg\.sender' contracts/src
-rg 'selfdestruct|delegatecall|tx\.origin|unchecked|assembly' contracts/src
-cd contracts && forge build
-cd contracts && forge test --no-match-path 'test/formal/*' -vv
-cd contracts && forge test --match-path 'test/formal/*' -vv
-bash -n contracts/scripts/update-local-payment-config.sh
+rg '\.call\{|safeTransferFrom|safeTransfer|onlyOwner|delegatecall|tx\.origin|selfdestruct|unchecked|assembly' contracts/src/core/ContentProtection.sol contracts/src/core/CurationRewards.sol contracts/src/interfaces/IContentProtection.sol -n
+cd contracts && forge test --match-path test/unit/ContentProtection.t.sol -vv
+cd contracts && forge test --match-path test/unit/CurationRewards.t.sol -vv
+cd contracts && forge test --match-contract 'ContentProtectionTest|CurationRewardsTest'
+cd contracts && forge test
 git diff --check
 ```

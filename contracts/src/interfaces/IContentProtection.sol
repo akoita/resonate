@@ -31,6 +31,10 @@ interface IContentProtection {
 
     function stakes(uint256 tokenId) external view returns (uint256 amount, uint256 depositedAt, bool active);
 
+    function stakeTokens(uint256 tokenId) external view returns (address token);
+
+    function getStakeAsset(uint256 tokenId) external view returns (address token, uint256 amount, bool active);
+
     function attestRelease(
         uint256 releaseId,
         bytes32 contentHash,
@@ -65,6 +69,8 @@ interface IContentProtection {
     function getMaxListingPrice(uint256 tokenId) external view returns (uint256);
 
     function stakeForRelease(uint256 releaseId) external payable;
+
+    function stakeForReleaseWithAsset(uint256 releaseId, address token, uint256 amount) external;
 
     function registerStemProtectionRoot(uint256 releaseId, uint256 stemTokenId) external;
 

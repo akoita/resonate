@@ -5,6 +5,8 @@ import {Test} from "forge-std/Test.sol";
 import {CurationRewards} from "../../src/core/CurationRewards.sol";
 import {DisputeResolution} from "../../src/core/DisputeResolution.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
+import {MockUSDC} from "../../src/payments/MockUSDC.sol";
+import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IDisputeResolution} from "../../src/interfaces/IDisputeResolution.sol";
 
@@ -24,11 +26,24 @@ contract CurationRewardsTest is Test {
 
     uint256 constant STAKE_AMOUNT = 0.01 ether;
     uint256 constant COUNTER_STAKE = 0.002 ether; // 20% of stake
+    uint256 constant USDC_STAKE_AMOUNT = 10_000000;
+    uint256 constant USDC_COUNTER_STAKE = 2_000000;
+    bytes32 constant LOCAL_ETH = keccak256("local:eth");
+    bytes32 constant LOCAL_USDC = keccak256("local:usdc");
 
     event ContentReported(
         uint256 indexed disputeId,
         uint256 indexed tokenId,
         address indexed reporter,
+        uint256 counterStake,
+        string evidenceURI
+    );
+
+    event ContentReportedWithAsset(
+        uint256 indexed disputeId,
+        uint256 indexed tokenId,
+        address indexed reporter,
+        address token,
         uint256 counterStake,
         string evidenceURI
     );
@@ -74,6 +89,32 @@ contract CurationRewardsTest is Test {
         assertEq(id, 1);
         assertEq(cr.counterStakes(1), COUNTER_STAKE);
         assertEq(cr.reporters(1), reporter);
+    }
+
+    function test_ReportContentWithAsset_UsesCreatorStakeAsset() public {
+        MockUSDC usdc = _setUpUsdcStake(2);
+        usdc.mint(reporter, USDC_COUNTER_STAKE);
+
+        vm.startPrank(reporter);
+        usdc.approve(address(cr), USDC_COUNTER_STAKE);
+        vm.expectEmit(true, true, true, true);
+        emit ContentReportedWithAsset(1, 2, reporter, address(usdc), USDC_COUNTER_STAKE, "ipfs://usdc-evidence");
+        uint256 id = cr.reportContentWithAsset(2, "ipfs://usdc-evidence", USDC_COUNTER_STAKE);
+        vm.stopPrank();
+
+        assertEq(id, 1);
+        assertEq(cr.counterStakes(1), USDC_COUNTER_STAKE);
+        assertEq(cr.counterStakeTokens(1), address(usdc));
+        assertEq(usdc.balanceOf(address(cr)), USDC_COUNTER_STAKE);
+    }
+
+    function test_ReportContent_RevertETHForUSDCStake() public {
+        _setUpUsdcStake(2);
+
+        vm.deal(reporter, 1 ether);
+        vm.prank(reporter);
+        vm.expectRevert(CurationRewards.UnsupportedStakeAsset.selector);
+        cr.reportContent{value: COUNTER_STAKE}(2, "ipfs://wrong-asset");
     }
 
     function test_ReportContent_RevertSelfReport() public {
@@ -259,6 +300,21 @@ contract CurationRewardsTest is Test {
         assertEq(cr.rejectedReports(reporter), 1);
     }
 
+    function test_ProcessRejection_USDCCounterStake() public {
+        MockUSDC usdc = _setUpUsdcStake(2);
+        _reportUsdc(2, usdc);
+
+        vm.prank(admin);
+        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
+
+        cr.processRejection(1);
+
+        assertEq(usdc.balanceOf(creator), USDC_COUNTER_STAKE);
+        assertEq(usdc.balanceOf(address(cr)), 0);
+        assertEq(cr.getReputation(reporter), -15);
+        assertEq(cr.rejectedReports(reporter), 1);
+    }
+
     function test_ProcessRejection_RevertNotRejected() public {
         vm.deal(reporter, 1 ether);
         vm.prank(reporter);
@@ -290,6 +346,45 @@ contract CurationRewardsTest is Test {
 
         // No reputation change
         assertEq(cr.getReputation(reporter), 0);
+    }
+
+    function test_ProcessInconclusive_USDCCounterStake() public {
+        MockUSDC usdc = _setUpUsdcStake(2);
+        _reportUsdc(2, usdc);
+
+        vm.prank(admin);
+        dr.resolve(1, IDisputeResolution.Outcome.Inconclusive);
+
+        cr.processInconclusive(1);
+
+        assertEq(usdc.balanceOf(reporter), USDC_COUNTER_STAKE);
+        assertEq(usdc.balanceOf(address(cr)), 0);
+        assertEq(cr.getReputation(reporter), 0);
+    }
+
+    function test_ProcessAppealOutcome_USDCAppealStakeRefunded() public {
+        MockUSDC usdc = _setUpUsdcStake(2);
+        _reportUsdc(2, usdc);
+
+        vm.prank(admin);
+        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+
+        uint256 appealStake = USDC_COUNTER_STAKE * 2;
+        usdc.mint(creator, appealStake);
+        vm.startPrank(creator);
+        usdc.approve(address(cr), appealStake);
+        cr.appealDisputeWithAsset(1, appealStake);
+        vm.stopPrank();
+
+        vm.prank(admin);
+        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
+
+        uint256 creatorBefore = usdc.balanceOf(creator);
+        cr.processAppealOutcome(1);
+
+        assertEq(cr.appealStakeTokens(1), address(0));
+        assertEq(usdc.balanceOf(creator) - creatorBefore, appealStake);
+        assertEq(usdc.balanceOf(address(cr)), USDC_COUNTER_STAKE);
     }
 
     // ============ Admin ============
@@ -346,5 +441,39 @@ contract CurationRewardsTest is Test {
         assertEq(cr.getReputation(reporter), -5);
         assertEq(cr.successfulReports(reporter), 1);
         assertEq(cr.rejectedReports(reporter), 1);
+    }
+
+    function _setUpUsdcStake(uint256 tokenId) internal returns (MockUSDC usdc) {
+        usdc = new MockUSDC();
+        PaymentAssetRegistry registry = new PaymentAssetRegistry(admin);
+
+        vm.startPrank(admin);
+        registry.configureAsset(LOCAL_ETH, address(0), "ETH", 18, true, false);
+        registry.configureAsset(LOCAL_USDC, address(usdc), "USDC", 6, true, true);
+        cp.setPaymentAssetRegistry(address(registry));
+        cp.setStakeAmountForAsset(address(usdc), USDC_STAKE_AMOUNT);
+        vm.stopPrank();
+
+        vm.prank(creator);
+        cp.attest(
+            tokenId,
+            keccak256(abi.encodePacked("audio", tokenId)),
+            keccak256(abi.encodePacked("fp", tokenId)),
+            "ipfs://usdc-meta"
+        );
+
+        usdc.mint(creator, USDC_STAKE_AMOUNT);
+        vm.startPrank(creator);
+        usdc.approve(address(cp), USDC_STAKE_AMOUNT);
+        cp.stakeWithAsset(tokenId, address(usdc), USDC_STAKE_AMOUNT);
+        vm.stopPrank();
+    }
+
+    function _reportUsdc(uint256 tokenId, MockUSDC usdc) internal {
+        usdc.mint(reporter, USDC_COUNTER_STAKE);
+        vm.startPrank(reporter);
+        usdc.approve(address(cr), USDC_COUNTER_STAKE);
+        cr.reportContentWithAsset(tokenId, "ipfs://usdc-evidence", USDC_COUNTER_STAKE);
+        vm.stopPrank();
     }
 }

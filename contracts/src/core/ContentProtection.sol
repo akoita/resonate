@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {
-    UUPSUpgradeable
-} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
-import {
-    Initializable
-} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
-import {
-    ReentrancyGuard
-} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {PaymentAssetRegistry} from "../payments/PaymentAssetRegistry.sol";
 
 /**
  * @title ContentProtection
@@ -24,6 +21,8 @@ import {
  * @custom:version 1.0.0
  */
 contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
     // ============ Structs ============
 
     struct Attestation {
@@ -55,9 +54,12 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     uint256 public stakeAmount; // Default: 0.01 ETH (adjustable by owner)
     uint256 public maxPriceMultiplier; // Default: 10x stake per unit
     uint256 public nextTokenId; // Counter for attestation-assigned token IDs
+    PaymentAssetRegistry public paymentAssetRegistry;
 
     mapping(uint256 => Attestation) public attestations;
     mapping(uint256 => StakeInfo) public stakes;
+    mapping(uint256 => address) public stakeTokens;
+    mapping(address => uint256) public stakeAmountsByToken;
     mapping(address => bool) internal _blacklisted;
     mapping(address => bool) public registrars;
     mapping(uint256 => uint256[]) private _releaseToTracks;
@@ -83,10 +85,10 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         string metadataURI
     );
 
-    event StakeDeposited(
-        uint256 indexed tokenId,
-        address indexed staker,
-        uint256 amount
+    event StakeDeposited(uint256 indexed tokenId, address indexed staker, uint256 amount);
+
+    event StakeDepositedWithAsset(
+        uint256 indexed tokenId, address indexed staker, address indexed token, uint256 amount
     );
 
     event StakeSlashed(
@@ -97,10 +99,19 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         uint256 burnedAmount
     );
 
-    event StakeRefunded(
+    event StakeSlashedWithAsset(
         uint256 indexed tokenId,
-        address indexed staker,
-        uint256 amount
+        address indexed reporter,
+        address indexed token,
+        uint256 reporterAmount,
+        uint256 treasuryAmount,
+        uint256 burnedAmount
+    );
+
+    event StakeRefunded(uint256 indexed tokenId, address indexed staker, uint256 amount);
+
+    event StakeRefundedWithAsset(
+        uint256 indexed tokenId, address indexed staker, address indexed token, uint256 amount
     );
 
     event Blacklisted(address indexed account);
@@ -113,24 +124,17 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         uint256 newStakeAmountWei,
         uint256 newEscrowDays
     );
-    event MaxPriceMultiplierUpdated(
-        uint256 oldMultiplier,
-        uint256 newMultiplier
-    );
+    event MaxPriceMultiplierUpdated(uint256 oldMultiplier, uint256 newMultiplier);
     event TreasuryUpdated(address oldTreasury, address newTreasury);
+    event PaymentAssetRegistryUpdated(address indexed oldRegistry, address indexed newRegistry);
+    event StakeAssetAmountUpdated(address indexed token, uint256 oldAmount, uint256 newAmount);
     event RegistrarUpdated(address indexed registrar, bool allowed);
     event TrackRegistered(uint256 indexed releaseId, uint256 indexed trackId);
     event StemRegistered(uint256 indexed trackId, uint256 indexed stemTokenId);
-    event StemProtectionRootRegistered(
-        uint256 indexed releaseId,
-        uint256 indexed stemTokenId
-    );
+    event StemProtectionRootRegistered(uint256 indexed releaseId, uint256 indexed stemTokenId);
     event TrackRevoked(uint256 indexed trackId);
     event ReleaseRevoked(uint256 indexed releaseId);
-    event OwnershipTransferred(
-        address indexed previousOwner,
-        address indexed newOwner
-    );
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     // ============ Errors ============
 
@@ -149,6 +153,9 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     error ZeroAddress();
     error InvalidMultiplier();
     error InvalidTier();
+    error UnsupportedStakeAsset();
+    error UnexpectedETH();
+    error InvalidStakeAmount();
 
     // ============ Modifiers ============
 
@@ -158,8 +165,9 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     }
 
     modifier onlyRegistrarOrOwner() {
-        if (msg.sender != owner && !registrars[msg.sender])
+        if (msg.sender != owner && !registrars[msg.sender]) {
             revert NotRegistrar();
+        }
         _;
     }
 
@@ -170,11 +178,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         _disableInitializers();
     }
 
-    function initialize(
-        address _owner,
-        address _treasury,
-        uint256 _stakeAmount
-    ) external initializer {
+    function initialize(address _owner, address _treasury, uint256 _stakeAmount) external initializer {
         if (_owner == address(0)) revert ZeroAddress();
         if (_treasury == address(0)) revert ZeroAddress();
 
@@ -194,12 +198,9 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
      * @param fingerprintHash Chromaprint fingerprint hash
      * @param metadataURI IPFS URI or URL pointing to attestation metadata
      */
-    function attest(
-        uint256 tokenId,
-        bytes32 contentHash,
-        bytes32 fingerprintHash,
-        string calldata metadataURI
-    ) external {
+    function attest(uint256 tokenId, bytes32 contentHash, bytes32 fingerprintHash, string calldata metadataURI)
+        external
+    {
         _attest(tokenId, contentHash, fingerprintHash, metadataURI);
     }
 
@@ -216,12 +217,9 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         _attest(releaseId, contentHash, fingerprintHash, metadataURI);
     }
 
-    function _attest(
-        uint256 tokenId,
-        bytes32 contentHash,
-        bytes32 fingerprintHash,
-        string calldata metadataURI
-    ) internal {
+    function _attest(uint256 tokenId, bytes32 contentHash, bytes32 fingerprintHash, string calldata metadataURI)
+        internal
+    {
         if (_blacklisted[msg.sender]) revert IsBlacklisted();
         if (attestations[tokenId].valid) revert AlreadyAttested();
 
@@ -234,13 +232,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
             valid: true
         });
 
-        emit ContentAttested(
-            tokenId,
-            msg.sender,
-            contentHash,
-            fingerprintHash,
-            metadataURI
-        );
+        emit ContentAttested(tokenId, msg.sender, contentHash, fingerprintHash, metadataURI);
     }
 
     // ============ Staking ============
@@ -250,7 +242,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
      * @param tokenId The attested content or release identifier to stake for
      */
     function stake(uint256 tokenId) external payable nonReentrant {
-        _stake(tokenId);
+        _stakeNative(tokenId);
     }
 
     /**
@@ -258,23 +250,47 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
      * @dev Keeps the external API aligned with the hierarchical release-root model.
      */
     function stakeForRelease(uint256 releaseId) external payable nonReentrant {
-        _stake(releaseId);
+        _stakeNative(releaseId);
     }
 
-    function _stake(uint256 tokenId) internal {
+    function stakeWithAsset(uint256 tokenId, address token, uint256 amount) external nonReentrant {
+        _stakeErc20(tokenId, token, amount);
+    }
+
+    function stakeForReleaseWithAsset(uint256 releaseId, address token, uint256 amount) external nonReentrant {
+        _stakeErc20(releaseId, token, amount);
+    }
+
+    function _stakeNative(uint256 tokenId) internal {
+        if (msg.value < stakeAmount) revert InsufficientStake();
+        _validateStakeAsset(address(0));
+        _recordStake(tokenId, address(0), msg.value);
+    }
+
+    function _stakeErc20(uint256 tokenId, address token, uint256 amount) internal {
+        if (msg.value != 0) revert UnexpectedETH();
+        if (token == address(0)) revert UnsupportedStakeAsset();
+        _validateStakeAsset(token);
+
+        uint256 requiredAmount = stakeAmountsByToken[token];
+        if (requiredAmount == 0) revert InvalidStakeAmount();
+        if (amount < requiredAmount) revert InsufficientStake();
+
+        _recordStake(tokenId, token, amount);
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+    }
+
+    function _recordStake(uint256 tokenId, address token, uint256 amount) internal {
         if (_blacklisted[msg.sender]) revert IsBlacklisted();
         if (!attestations[tokenId].valid) revert NotAttested();
         if (attestations[tokenId].attester != msg.sender) revert NotOwner();
         if (stakes[tokenId].active) revert AlreadyStaked();
-        if (msg.value < stakeAmount) revert InsufficientStake();
 
-        stakes[tokenId] = StakeInfo({
-            amount: msg.value,
-            depositedAt: block.timestamp,
-            active: true
-        });
+        stakes[tokenId] = StakeInfo({amount: amount, depositedAt: block.timestamp, active: true});
+        stakeTokens[tokenId] = token;
 
-        emit StakeDeposited(tokenId, msg.sender, msg.value);
+        emit StakeDeposited(tokenId, msg.sender, amount);
+        emit StakeDepositedWithAsset(tokenId, msg.sender, token, amount);
     }
 
     /**
@@ -283,14 +299,12 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
      * @param tokenId The token ID to slash
      * @param reporter The address that reported the theft
      */
-    function slash(
-        uint256 tokenId,
-        address reporter
-    ) external onlyOwner nonReentrant {
+    function slash(uint256 tokenId, address reporter) external onlyOwner nonReentrant {
         if (!stakes[tokenId].active) revert NotStaked();
         if (reporter == address(0)) revert ZeroAddress();
 
         uint256 total = stakes[tokenId].amount;
+        address token = stakeTokens[tokenId];
         address attester = attestations[tokenId].attester;
 
         // Invalidate
@@ -303,11 +317,8 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         uint256 burnedAmount = total - reporterAmount - treasuryAmount;
 
         // Transfer (Interactions last — CEI pattern)
-        (bool ok1, ) = payable(reporter).call{value: reporterAmount}("");
-        if (!ok1) revert TransferFailed();
-
-        (bool ok2, ) = payable(treasury).call{value: treasuryAmount}("");
-        if (!ok2) revert TransferFailed();
+        _pay(token, reporter, reporterAmount);
+        _pay(token, treasury, treasuryAmount);
 
         // Burned amount stays in contract (can be swept to treasury later)
 
@@ -317,13 +328,8 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
             emit Blacklisted(attester);
         }
 
-        emit StakeSlashed(
-            tokenId,
-            reporter,
-            reporterAmount,
-            treasuryAmount,
-            burnedAmount
-        );
+        emit StakeSlashed(tokenId, reporter, reporterAmount, treasuryAmount, burnedAmount);
+        emit StakeSlashedWithAsset(tokenId, reporter, token, reporterAmount, treasuryAmount, burnedAmount);
     }
 
     /**
@@ -335,13 +341,14 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
 
         address attester = attestations[tokenId].attester;
         uint256 amount = stakes[tokenId].amount;
+        address token = stakeTokens[tokenId];
 
         stakes[tokenId].active = false;
 
-        (bool ok, ) = payable(attester).call{value: amount}("");
-        if (!ok) revert TransferFailed();
+        _pay(token, attester, amount);
 
         emit StakeRefunded(tokenId, attester, amount);
+        emit StakeRefundedWithAsset(tokenId, attester, token, amount);
     }
 
     // ============ Blacklist ============
@@ -377,19 +384,27 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         _syncDefaultTierPolicies(oldAmount, newAmount);
     }
 
-    function setTierPolicy(
-        string calldata tierName,
-        uint256 newStakeAmountWei,
-        uint256 newEscrowDays
-    ) external onlyOwner {
+    function setPaymentAssetRegistry(address newRegistry) external onlyOwner {
+        emit PaymentAssetRegistryUpdated(address(paymentAssetRegistry), newRegistry);
+        paymentAssetRegistry = PaymentAssetRegistry(newRegistry);
+    }
+
+    function setStakeAmountForAsset(address token, uint256 newAmount) external onlyOwner {
+        if (token == address(0)) revert UnsupportedStakeAsset();
+        if (newAmount == 0) revert InvalidStakeAmount();
+        uint256 oldAmount = stakeAmountsByToken[token];
+        stakeAmountsByToken[token] = newAmount;
+        emit StakeAssetAmountUpdated(token, oldAmount, newAmount);
+    }
+
+    function setTierPolicy(string calldata tierName, uint256 newStakeAmountWei, uint256 newEscrowDays)
+        external
+        onlyOwner
+    {
         bytes32 tierKey = _resolveTierKey(tierName);
         TierPolicy storage currentPolicy = _tierPolicies[tierKey];
         emit TierPolicyUpdated(
-            tierName,
-            currentPolicy.stakeAmountWei,
-            currentPolicy.escrowDays,
-            newStakeAmountWei,
-            newEscrowDays
+            tierName, currentPolicy.stakeAmountWei, currentPolicy.escrowDays, newStakeAmountWei, newEscrowDays
         );
         _setTierPolicy(tierKey, newStakeAmountWei, newEscrowDays);
     }
@@ -429,12 +444,11 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         }
     }
 
+    function reinitializeV4() external reinitializer(4) {}
+
     // ============ Views ============
 
-    function registerTrack(
-        uint256 releaseId,
-        uint256 trackId
-    ) external onlyRegistrarOrOwner {
+    function registerTrack(uint256 releaseId, uint256 trackId) external onlyRegistrarOrOwner {
         if (!_hasAttestation(releaseId) || !_hasAttestation(trackId)) {
             revert NotAttested();
         }
@@ -450,10 +464,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         emit TrackRegistered(releaseId, trackId);
     }
 
-    function registerStem(
-        uint256 trackId,
-        uint256 stemTokenId
-    ) external onlyRegistrarOrOwner {
+    function registerStem(uint256 trackId, uint256 stemTokenId) external onlyRegistrarOrOwner {
         if (!_hasAttestation(trackId)) revert NotAttested();
         if (trackId == stemTokenId) revert InvalidParent();
 
@@ -467,10 +478,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         emit StemRegistered(trackId, stemTokenId);
     }
 
-    function registerStemProtectionRoot(
-        uint256 releaseId,
-        uint256 stemTokenId
-    ) external onlyRegistrarOrOwner {
+    function registerStemProtectionRoot(uint256 releaseId, uint256 stemTokenId) external onlyRegistrarOrOwner {
         if (!_hasAttestation(releaseId)) revert NotAttested();
         if (releaseId == stemTokenId) revert InvalidParent();
 
@@ -508,11 +516,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     /// @notice Paginated release revocation for releases with many tracks.
     /// @param offset Start index in the release's track array
     /// @param limit  Max tracks to process in this call
-    function revokeReleaseBatch(
-        uint256 releaseId,
-        uint256 offset,
-        uint256 limit
-    ) external onlyOwner {
+    function revokeReleaseBatch(uint256 releaseId, uint256 offset, uint256 limit) external onlyOwner {
         attestations[releaseId].valid = false;
 
         uint256[] storage trackIds = _releaseToTracks[releaseId];
@@ -528,15 +532,11 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         emit ReleaseRevoked(releaseId);
     }
 
-    function getReleaseTracks(
-        uint256 releaseId
-    ) external view returns (uint256[] memory) {
+    function getReleaseTracks(uint256 releaseId) external view returns (uint256[] memory) {
         return _releaseToTracks[releaseId];
     }
 
-    function getTrackStems(
-        uint256 trackId
-    ) external view returns (uint256[] memory) {
+    function getTrackStems(uint256 trackId) external view returns (uint256[] memory) {
         return _trackToStems[trackId];
     }
 
@@ -563,15 +563,11 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         return stakes[tokenId].active;
     }
 
-    function resolveCanonicalTrack(
-        uint256 stemTokenId
-    ) external view returns (uint256) {
+    function resolveCanonicalTrack(uint256 stemTokenId) external view returns (uint256) {
         return stemToCanonicalTrack[stemTokenId];
     }
 
-    function resolveProtectionTarget(
-        uint256 tokenId
-    ) external view returns (uint256) {
+    function resolveProtectionTarget(uint256 tokenId) external view returns (uint256) {
         uint256 canonicalTrackId = stemToCanonicalTrack[tokenId];
         return canonicalTrackId == 0 ? tokenId : canonicalTrackId;
     }
@@ -590,18 +586,23 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         return releaseId != 0 ? releaseId : tokenId;
     }
 
-    function getMaxListingPrice(
-        uint256 tokenId
-    ) external view returns (uint256) {
+    function getMaxListingPrice(uint256 tokenId) external view returns (uint256) {
         uint256 stakeRoot = resolveStakeRoot(tokenId);
         if (!stakes[stakeRoot].active) return type(uint256).max;
 
         return stakes[stakeRoot].amount * maxPriceMultiplier;
     }
 
-    function getTierPolicy(
-        string calldata tierName
-    ) external view returns (uint256 requiredStakeWei, uint256 escrowDays) {
+    function getStakeAsset(uint256 tokenId) external view returns (address token, uint256 amount, bool active) {
+        StakeInfo storage currentStake = stakes[tokenId];
+        return (stakeTokens[tokenId], currentStake.amount, currentStake.active);
+    }
+
+    function getTierPolicy(string calldata tierName)
+        external
+        view
+        returns (uint256 requiredStakeWei, uint256 escrowDays)
+    {
         TierPolicy storage policy = _tierPolicies[_resolveTierKey(tierName)];
         return (policy.stakeAmountWei, policy.escrowDays);
     }
@@ -610,12 +611,28 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         return attestations[tokenId].attester != address(0);
     }
 
+    function _validateStakeAsset(address token) internal view {
+        if (address(paymentAssetRegistry) == address(0)) {
+            if (token != address(0)) revert UnsupportedStakeAsset();
+            return;
+        }
+        if (!paymentAssetRegistry.isTokenEnabled(token)) {
+            revert UnsupportedStakeAsset();
+        }
+    }
+
+    function _pay(address token, address to, uint256 amount) internal {
+        if (token == address(0)) {
+            (bool ok,) = payable(to).call{value: amount}("");
+            if (!ok) revert TransferFailed();
+        } else {
+            IERC20(token).safeTransfer(to, amount);
+        }
+    }
+
     function _isTrackVerified(uint256 trackId) internal view returns (bool) {
         uint256 releaseId = trackToParentRelease[trackId];
-        return
-            releaseId != 0 &&
-            attestations[trackId].valid &&
-            attestations[releaseId].valid;
+        return releaseId != 0 && attestations[trackId].valid && attestations[releaseId].valid;
     }
 
     function _initializeTierPoliciesFromStakeAmount(uint256 baseStakeAmount) internal {
@@ -625,38 +642,11 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         _setTierPolicy(_tierKey("new"), baseStakeAmount, 30);
     }
 
-    function _syncDefaultTierPolicies(
-        uint256 oldBaseStakeAmount,
-        uint256 newBaseStakeAmount
-    ) internal {
-        _syncTierPolicyIfStillDefault(
-            _tierKey("verified"),
-            0,
-            3,
-            0,
-            3
-        );
-        _syncTierPolicyIfStillDefault(
-            _tierKey("trusted"),
-            oldBaseStakeAmount / 10,
-            7,
-            newBaseStakeAmount / 10,
-            7
-        );
-        _syncTierPolicyIfStillDefault(
-            _tierKey("established"),
-            oldBaseStakeAmount / 2,
-            14,
-            newBaseStakeAmount / 2,
-            14
-        );
-        _syncTierPolicyIfStillDefault(
-            _tierKey("new"),
-            oldBaseStakeAmount,
-            30,
-            newBaseStakeAmount,
-            30
-        );
+    function _syncDefaultTierPolicies(uint256 oldBaseStakeAmount, uint256 newBaseStakeAmount) internal {
+        _syncTierPolicyIfStillDefault(_tierKey("verified"), 0, 3, 0, 3);
+        _syncTierPolicyIfStillDefault(_tierKey("trusted"), oldBaseStakeAmount / 10, 7, newBaseStakeAmount / 10, 7);
+        _syncTierPolicyIfStillDefault(_tierKey("established"), oldBaseStakeAmount / 2, 14, newBaseStakeAmount / 2, 14);
+        _syncTierPolicyIfStillDefault(_tierKey("new"), oldBaseStakeAmount, 30, newBaseStakeAmount, 30);
     }
 
     function _syncTierPolicyIfStillDefault(
@@ -668,35 +658,24 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     ) internal {
         TierPolicy storage currentPolicy = _tierPolicies[tierKey];
         if (
-            !currentPolicy.configured ||
-            (currentPolicy.stakeAmountWei == expectedOldStakeAmountWei &&
-                currentPolicy.escrowDays == expectedOldEscrowDays)
+            !currentPolicy.configured
+                || (currentPolicy.stakeAmountWei == expectedOldStakeAmountWei
+                    && currentPolicy.escrowDays == expectedOldEscrowDays)
         ) {
             _setTierPolicy(tierKey, newStakeAmountWei, newEscrowDays);
         }
     }
 
-    function _setTierPolicy(
-        bytes32 tierKey,
-        uint256 newStakeAmountWei,
-        uint256 newEscrowDays
-    ) internal {
-        _tierPolicies[tierKey] = TierPolicy({
-            stakeAmountWei: newStakeAmountWei,
-            escrowDays: newEscrowDays,
-            configured: true
-        });
+    function _setTierPolicy(bytes32 tierKey, uint256 newStakeAmountWei, uint256 newEscrowDays) internal {
+        _tierPolicies[tierKey] =
+            TierPolicy({stakeAmountWei: newStakeAmountWei, escrowDays: newEscrowDays, configured: true});
     }
 
-    function _resolveTierKey(
-        string calldata tierName
-    ) internal pure returns (bytes32) {
+    function _resolveTierKey(string calldata tierName) internal pure returns (bytes32) {
         bytes32 tierKey = keccak256(bytes(tierName));
         if (
-            tierKey != _tierKey("verified") &&
-            tierKey != _tierKey("trusted") &&
-            tierKey != _tierKey("established") &&
-            tierKey != _tierKey("new")
+            tierKey != _tierKey("verified") && tierKey != _tierKey("trusted") && tierKey != _tierKey("established")
+                && tierKey != _tierKey("new")
         ) {
             revert InvalidTier();
         }
