@@ -313,6 +313,13 @@
   -webkit-text-fill-color: transparent;
 }
 
+.buy-modal__breakdown-note {
+  padding-top: 2px;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 /* Error / Success alerts */
 .buy-modal__alert {
   padding: 12px 16px;

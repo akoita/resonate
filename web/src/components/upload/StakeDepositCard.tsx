@@ -67,7 +67,7 @@ export default function StakeDepositCard({ trustTier, loading, onStakeAcknowledg
       </div>
 
       <div style={rowStyle}>
-        <span style={{ opacity: 0.6, fontSize: "12px" }}>Stake Required</span>
+        <span style={{ opacity: 0.6, fontSize: "12px" }}>Native ETH Stake Required</span>
         <span style={{
           fontWeight: 600,
           fontSize: "13px",
@@ -106,7 +106,8 @@ export default function StakeDepositCard({ trustTier, loading, onStakeAcknowledg
         ) : (
           <>A refundable stake of <strong style={{ color: "#f59e0b" }}>{stakeEth}</strong> will be deposited
             on publish to protect against copyright violations. Revenue is held in escrow for {trustTier.escrowDays} days.
-            Your current max listing price per unit is <strong>{maxListingPrice}</strong>. As you build clean history, your stake decreases.</>
+            Your current max listing price per unit is <strong>{maxListingPrice}</strong>. This upload stake route is still
+            native ETH while the asset-aware stake selector is rolled into the publish flow.</>
         )}
       </div>
 

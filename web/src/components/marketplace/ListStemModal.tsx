@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useListStem, useStemBalance } from "../../hooks/useContracts";
 import { parsePrice } from "../../lib/contracts";
+import { getExplorerTxUrl } from "../../lib/explorer";
 import { type Address } from "viem";
 
 interface ListStemModalProps {
@@ -38,6 +39,7 @@ export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemM
   };
 
   const maxAmount = balance;
+  const txExplorerUrl = getExplorerTxUrl(txHash);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -73,7 +75,7 @@ export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemM
           {/* Price Input */}
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-1">
-              Price per Edition (ETH)
+              Native ETH price per edition
             </label>
             <input
               type="number"
@@ -143,8 +145,9 @@ export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemM
 
           {/* Info */}
           <p className="text-xs text-zinc-500">
-            You will need to approve the marketplace to transfer your NFTs. 
-            Royalties and protocol fees are automatically deducted from sales.
+            This listing form currently creates native ETH listings. Buyer checkout supports ERC-20
+            listings when the listing payment token is USDC or WETH. Royalties and protocol fees are
+            automatically deducted from sales.
           </p>
 
           {/* Error */}
@@ -159,14 +162,16 @@ export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemM
             <div className="bg-emerald-900/20 border border-emerald-800 rounded-md p-3">
               <p className="text-sm text-emerald-400">
                 Listed successfully!{" "}
-                <a
-                  href={`https://sepolia.etherscan.io/tx/${txHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline"
-                >
-                  View transaction
-                </a>
+                {txExplorerUrl && (
+                  <a
+                    href={txExplorerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    View transaction
+                  </a>
+                )}
               </p>
             </div>
           )}

@@ -4,17 +4,22 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useWebSockets, type MarketplaceUpdate } from "../../hooks/useWebSockets";
 import { useBuyStem } from "../../hooks/useContracts";
+import { usePaymentAssets } from "../../hooks/usePaymentAssets";
 import { useToast } from "../../components/ui/Toast";
 import { useAuth } from "../../components/auth/AuthProvider";
-import { getReleaseArtworkUrl } from "../../lib/api";
+import { useZeroDev } from "../../components/auth/ZeroDevProviderClient";
+import { API_BASE, getReleaseArtworkUrl } from "../../lib/api";
+import {
+    findPaymentAssetForToken,
+    formatPaymentAmount,
+    paymentAssetSymbol,
+} from "../../lib/payments";
 import { ExpiryBadge } from "../../components/marketplace/ExpiryBadge";
 import { LicenseBadges } from "../../components/marketplace/LicenseBadges";
 import { BuyModal } from "../../components/marketplace/BuyModal";
 import { artistProfileHref } from "../../lib/artistRoutes";
 import "./marketplace.css";
 import "../../styles/license-badges.css";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 /** Resolve a potentially-relative backend path to a full URL */
 function resolveUrl(path?: string | null): string | undefined {
@@ -29,6 +34,7 @@ interface ListingData {
     tokenId: string;
     seller: string;
     price: string;
+    paymentToken?: string;
     amount: string;
     status: string;
     expiresAt: string;
@@ -158,6 +164,8 @@ export default function MarketplacePage() {
     const { pending: buyPending } = useBuyStem();
     const { addToast } = useToast();
     const { address: walletAddress, smartAccountAddress } = useAuth();
+    const { chainId } = useZeroDev();
+    const { assets: paymentAssets } = usePaymentAssets(chainId);
 
     // Use the smart account address (on-chain identity) as the signer address.
     // In the unified AA path, the Kernel account IS the on-chain identity.
@@ -326,6 +334,22 @@ export default function MarketplacePage() {
     }), [listings, stemType, selectedGenre, selectedArtist]);
 
     const hasActiveFilters = stemType !== "all" || selectedGenre !== "all" || selectedArtist !== "all" || search !== "";
+    const formatListingPayment = useCallback((listing: ListingData) => {
+        const asset = findPaymentAssetForToken(paymentAssets, chainId, listing.paymentToken);
+        const symbol = paymentAssetSymbol(asset, listing.paymentToken);
+        const decimals = asset?.decimals ?? 18;
+        try {
+            return {
+                amount: formatPaymentAmount(listing.price, decimals),
+                symbol,
+            };
+        } catch {
+            return {
+                amount: formatPrice(listing.price),
+                symbol,
+            };
+        }
+    }, [chainId, paymentAssets]);
 
     // ---- Handlers ----
 
@@ -623,7 +647,10 @@ export default function MarketplacePage() {
                                         <div className="stem-card__price">
                                             <span className="stem-card__price-label">Price</span>
                                             <span className="stem-card__price-value">
-                                                {formatPrice(listing.price)}<small>ETH</small>
+                                                {(() => {
+                                                    const price = formatListingPayment(listing);
+                                                    return <>{price.amount}<small>{price.symbol}</small></>;
+                                                })()}
                                             </span>
                                         </div>
                                         {signerAddress && listing.seller.toLowerCase() === signerAddress ? (

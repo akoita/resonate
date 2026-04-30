@@ -903,7 +903,7 @@ export default function ArtistUploadPage() {
                   color: "#f59e0b",
                 }}>
                   <span style={{ fontSize: "18px" }}>🔒</span>
-                  <span>Deposit your <strong>{trustTier ? (Number(trustTier.stakeAmountWei) / 1e18) : '...'} ETH</strong> stake above to unlock publishing.</span>
+                  <span>Deposit your <strong>{trustTier ? (Number(trustTier.stakeAmountWei) / 1e18) : '...'} ETH</strong> native stake above to unlock publishing.</span>
                 </div>
               )}
 

@@ -471,7 +471,7 @@ export default function ReportContentModal({
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={infoLabelStyle}>Counter-Stake</div>
+              <div style={infoLabelStyle}>Native ETH Counter-Stake</div>
               <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "4px", justifyContent: "flex-end" }}>
                 <span style={{ color: "#f59e0b" }}><IconDiamond size={14} /></span>
                 <span style={{ fontSize: "16px", fontWeight: 700, color: "#f59e0b" }}>
@@ -480,6 +480,10 @@ export default function ReportContentModal({
               </div>
             </div>
           </div>
+          <p style={{ margin: "0 0 10px", fontSize: "11px", lineHeight: 1.5, color: "rgba(255,255,255,0.45)" }}>
+            Report and appeal staking still uses the native ETH contract path in this web flow. The
+            backend quote system supports stablecoin pricing so the next UI slice can offer asset selection here too.
+          </p>
           {reportingPolicy && (
             <div style={{
               display: "inline-flex",
