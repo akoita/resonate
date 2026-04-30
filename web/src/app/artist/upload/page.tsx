@@ -14,7 +14,7 @@ import { getArtistMe, uploadStems, waitForReleaseAvailability, type ArtistProfil
 import { extractMetadata } from "../../../lib/metadataExtractor";
 import { useTrustTier } from "../../../hooks/useTrustTier";
 import { useAttestAndStake } from "../../../hooks/useContracts";
-import { useFundingOptions, usePaymentAssets } from "../../../hooks/usePaymentAssets";
+import { useFundingOptions, usePaymentAssets, usePaymentQuote } from "../../../hooks/usePaymentAssets";
 import { useZeroDev } from "../../../components/auth/ZeroDevProviderClient";
 import { FundingActions } from "../../../components/payments/FundingActions";
 import StakeDepositCard from "../../../components/upload/StakeDepositCard";
@@ -96,10 +96,29 @@ export default function ArtistUploadPage() {
   const preferredStableStakeAsset = paymentAssets.find((asset) => {
     return asset.kind === "stablecoin" && paymentAssetSupportsSurface(asset, "upload_stake");
   }) ?? null;
-  const stableStakeRequirement = preferredStableStakeAsset && stableStakeAmountUnits && stableStakeAmountUnits > 0n
+
+  // Stake is required unless tier is verified (waived) or trust data is still loading
+  const stakeRequired = Boolean(!trustLoading && trustTier && trustTier.stakeAmountWei !== "0");
+  const canonicalStakeAmountUsd = trustTier?.stakeAmountUsd ?? null;
+  const {
+    quotes: stableStakeQuotes,
+    loading: stableStakeQuoteLoading,
+  } = usePaymentQuote({
+    amountUsd: stakeRequired ? canonicalStakeAmountUsd : null,
+    chainId,
+    assetId: preferredStableStakeAsset?.assetId,
+    surface: "upload_stake",
+  });
+  const quotedStableStakeAmountUnits = stableStakeQuotes[0]?.amountUnits
+    ? BigInt(stableStakeQuotes[0].amountUnits)
+    : null;
+  const effectiveStableStakeAmountUnits = [stableStakeAmountUnits, quotedStableStakeAmountUnits]
+    .filter((amount): amount is bigint => Boolean(amount && amount > 0n))
+    .reduce<bigint | null>((max, amount) => (max === null || amount > max ? amount : max), null);
+  const stableStakeRequirement = preferredStableStakeAsset && effectiveStableStakeAmountUnits && effectiveStableStakeAmountUnits > 0n
     ? {
         asset: preferredStableStakeAsset,
-        amountUnits: stableStakeAmountUnits,
+        amountUnits: effectiveStableStakeAmountUnits,
       }
     : null;
   const stakeAssetLabel = stableStakeRequirement
@@ -117,9 +136,10 @@ export default function ArtistUploadPage() {
       )
     : null;
 
-  // Stake is required unless tier is verified (waived) or trust data is still loading
-  const stakeRequired = Boolean(!trustLoading && trustTier && trustTier.stakeAmountWei !== "0");
-  const stableStakeLookupPending = Boolean(preferredStableStakeAsset && stableStakeAmountUnits === undefined);
+  const stableStakeLookupPending = Boolean(
+    preferredStableStakeAsset &&
+      (stableStakeAmountUnits === undefined || stableStakeQuoteLoading)
+  );
   const stakeReady = !stakeRequired || (!stableStakeLookupPending && stakeAcknowledged);
 
   // Form state
