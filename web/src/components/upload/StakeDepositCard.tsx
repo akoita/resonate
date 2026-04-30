@@ -20,6 +20,9 @@ function formatMaxListingPrice(trustTier: TrustTier): string {
 interface StakeDepositCardProps {
   trustTier: TrustTier | null;
   loading: boolean;
+  stakeAssetLabel?: string | null;
+  stakeAssetKind?: "stablecoin" | "native";
+  maxListingPriceLabel?: string | null;
   /** Called when user acknowledges the stake requirement. */
   onStakeAcknowledged?: () => void;
 }
@@ -31,7 +34,14 @@ interface StakeDepositCardProps {
  * (after the backend assigns the release protection id and content hashes), not here.
  * This card is a visual gate that shows the user what will be required.
  */
-export default function StakeDepositCard({ trustTier, loading, onStakeAcknowledged }: StakeDepositCardProps) {
+export default function StakeDepositCard({
+  trustTier,
+  loading,
+  stakeAssetLabel,
+  stakeAssetKind = "native",
+  maxListingPriceLabel,
+  onStakeAcknowledged,
+}: StakeDepositCardProps) {
   const [acknowledged, setAcknowledged] = useState(false);
   if (loading) {
     return (
@@ -40,7 +50,7 @@ export default function StakeDepositCard({ trustTier, loading, onStakeAcknowledg
           <span style={iconStyle}>🔒</span>
           <span style={{ fontWeight: 600, fontSize: "14px" }}>Content Protection Stake</span>
         </div>
-        <div style={{ opacity: 0.5, fontSize: "13px" }}>Loading trust tier...</div>
+        <div style={{ opacity: 0.5, fontSize: "13px" }}>Loading stake policy...</div>
       </div>
     );
   }
@@ -50,8 +60,10 @@ export default function StakeDepositCard({ trustTier, loading, onStakeAcknowledg
   const tierLabel = TIER_LABELS[trustTier.tier] || trustTier.tier;
   const tierColor = TIER_COLORS[trustTier.tier] || "#888";
   const stakeEth = formatEth(trustTier.stakeAmountWei);
-  const maxListingPrice = formatMaxListingPrice(trustTier);
+  const stakeLabel = stakeAssetLabel ?? stakeEth;
+  const maxListingPrice = maxListingPriceLabel ?? formatMaxListingPrice(trustTier);
   const isWaived = trustTier.stakeAmountWei === "0";
+  const stakeLabelPrefix = stakeAssetKind === "stablecoin" ? "Stablecoin Stake Required" : "Native ETH Stake Required";
 
   return (
     <div style={cardStyle}>
@@ -67,13 +79,13 @@ export default function StakeDepositCard({ trustTier, loading, onStakeAcknowledg
       </div>
 
       <div style={rowStyle}>
-        <span style={{ opacity: 0.6, fontSize: "12px" }}>Native ETH Stake Required</span>
+        <span style={{ opacity: 0.6, fontSize: "12px" }}>{stakeLabelPrefix}</span>
         <span style={{
           fontWeight: 600,
           fontSize: "13px",
           color: isWaived ? "#10b981" : "#f59e0b"
         }}>
-          {stakeEth}
+          {stakeLabel}
         </span>
       </div>
 
@@ -104,10 +116,9 @@ export default function StakeDepositCard({ trustTier, loading, onStakeAcknowledg
         {isWaived ? (
           <>Your verified trust tier waives the stake requirement. Revenue is held in escrow for {trustTier.escrowDays} days, and listings remain uncapped unless a stake is later configured.</>
         ) : (
-          <>A refundable stake of <strong style={{ color: "#f59e0b" }}>{stakeEth}</strong> will be deposited
+          <>A refundable stake of <strong style={{ color: "#f59e0b" }}>{stakeLabel}</strong> will be deposited
             on publish to protect against copyright violations. Revenue is held in escrow for {trustTier.escrowDays} days.
-            Your current max listing price per unit is <strong>{maxListingPrice}</strong>. This upload stake route is still
-            native ETH while the asset-aware stake selector is rolled into the publish flow.</>
+            Your current max listing price per unit is <strong>{maxListingPrice}</strong>.</>
         )}
       </div>
 
@@ -132,7 +143,7 @@ export default function StakeDepositCard({ trustTier, loading, onStakeAcknowledg
             transition: "all 0.2s",
           }}
         >
-          I understand — {stakeEth} will be deposited on publish
+          I understand — {stakeLabel} will be deposited on publish
         </button>
       )}
 
@@ -145,7 +156,7 @@ export default function StakeDepositCard({ trustTier, loading, onStakeAcknowledg
           fontSize: "11px",
           color: "#10b981",
         }}>
-          ✓ Stake requirement acknowledged — {stakeEth} will be deposited on publish
+          ✓ Stake requirement acknowledged — {stakeLabel} will be deposited on publish
         </div>
       )}
 

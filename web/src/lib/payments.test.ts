@@ -3,10 +3,12 @@ import {
   findPaymentAssetForToken,
   fundLocalDevWallet,
   formatPaymentAmount,
+  formatPaymentAmountWithSymbol,
   getFundingOptions,
   getPaymentAssets,
   groupFundingOptions,
   isNativePaymentToken,
+  paymentAssetSupportsSurface,
   paymentAssetSymbol,
   ZERO_PAYMENT_TOKEN,
   type FundingOption,
@@ -57,6 +59,15 @@ describe("payment asset helpers", () => {
   it("formats token amounts with asset decimals", () => {
     expect(formatPaymentAmount(1234567n, 6)).toBe("1.234567");
     expect(formatPaymentAmount("1000000000000000000", 18)).toBe("1");
+    expect(formatPaymentAmountWithSymbol(10000000n, 6, "USDC")).toBe("10 USDC");
+  });
+
+  it("matches upload stake assets through the stake settlement alias", () => {
+    expect(paymentAssetSupportsSurface(assets[1], "upload_stake")).toBe(false);
+    expect(paymentAssetSupportsSurface({
+      ...assets[1],
+      settlement: ["stake"],
+    }, "upload_stake")).toBe(true);
   });
 
   it("groups funding actions by user-facing flow type", () => {
