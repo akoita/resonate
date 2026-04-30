@@ -100,6 +100,7 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
     error PriceExceedsStakeCap();
     error ZeroAddress();
     error UnsupportedPaymentAsset();
+    error ListingExpiryOverflow();
 
     // ============ Constructor ============
 
@@ -197,6 +198,8 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
         uint256 maxPrice = contentProtection.getMaxListingPrice(tokenId);
         if (pricePerUnit > maxPrice) revert PriceExceedsStakeCap();
 
+        uint40 expiry = _checkedListingExpiry(duration);
+
         listingId = ++_listingId;
         listings[listingId] = Listing({
             seller: seller,
@@ -204,10 +207,18 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
             amount: amount,
             pricePerUnit: pricePerUnit,
             paymentToken: paymentToken,
-            expiry: uint40(block.timestamp + duration)
+            expiry: expiry
         });
 
         emit Listed(listingId, seller, tokenId, amount, pricePerUnit);
+    }
+
+    function _checkedListingExpiry(
+        uint256 duration
+    ) internal view returns (uint40) {
+        uint256 expiry = block.timestamp + duration;
+        if (expiry > type(uint40).max) revert ListingExpiryOverflow();
+        return uint40(expiry);
     }
 
     function cancel(uint256 listingId) external {

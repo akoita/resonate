@@ -256,6 +256,32 @@ contract StemMarketplaceTest is Test {
         assertEq(listing.paymentToken, address(paymentToken));
     }
 
+    function test_List_AllowsExpiryAtUint40Max() public {
+        vm.warp(type(uint40).max - LISTING_DURATION);
+
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(
+            1,
+            50,
+            1 ether,
+            address(0),
+            LISTING_DURATION
+        );
+
+        StemMarketplaceV2.Listing memory listing = marketplace.getListing(
+            listingId
+        );
+        assertEq(listing.expiry, type(uint40).max);
+    }
+
+    function test_List_RevertExpiryOverflow() public {
+        vm.warp(type(uint40).max - LISTING_DURATION + 1);
+
+        vm.prank(seller);
+        vm.expectRevert(StemMarketplaceV2.ListingExpiryOverflow.selector);
+        marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
+    }
+
     function test_List_RevertUnsupportedPaymentAsset() public {
         ERC20Mock unsupported = new ERC20Mock("Unsupported", "NOPE");
 
