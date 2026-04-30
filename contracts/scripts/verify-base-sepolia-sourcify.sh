@@ -79,6 +79,9 @@ contract_id_for() {
         StemNFT)
             echo "src/core/StemNFT.sol:StemNFT"
             ;;
+        PaymentAssetRegistry)
+            echo "src/payments/PaymentAssetRegistry.sol:PaymentAssetRegistry"
+            ;;
         StemMarketplaceV2)
             echo "src/core/StemMarketplaceV2.sol:StemMarketplaceV2"
             ;;
@@ -272,6 +275,7 @@ CONTRACTS=(
     CurationRewards
     RevenueEscrow
     StemNFT
+    PaymentAssetRegistry
     StemMarketplaceV2
 )
 
