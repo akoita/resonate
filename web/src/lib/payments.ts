@@ -47,11 +47,56 @@ export type FundingOption = {
   chainId?: number;
   kind: "local_faucet" | "testnet_faucet" | "transfer" | "onramp" | "offramp";
   label: string;
+  description?: string;
+  provider?: string;
+  region?: string;
   endpoint?: string;
   url?: string;
+  requiresWallet?: boolean;
+  disabledReason?: string;
   localOnly?: boolean;
   surfaces?: PaymentSurface[];
 };
+
+export const FUNDING_GROUPS: Record<FundingOption["kind"], {
+  title: string;
+  eyebrow: string;
+  description: string;
+}> = {
+  local_faucet: {
+    title: "Local Dev",
+    eyebrow: "Local",
+    description: "Instant Anvil funding for developer wallets.",
+  },
+  testnet_faucet: {
+    title: "Testnet Faucets",
+    eyebrow: "Test",
+    description: "Public or project faucets for test ETH and test stablecoins.",
+  },
+  transfer: {
+    title: "Transfer",
+    eyebrow: "Send",
+    description: "Move funds from another wallet, exchange, or faucet account.",
+  },
+  onramp: {
+    title: "On-ramp",
+    eyebrow: "Provider",
+    description: "Provider-gated fiat-to-crypto funding where available.",
+  },
+  offramp: {
+    title: "Off-ramp",
+    eyebrow: "Provider",
+    description: "Optional crypto-to-fiat cash-out where eligible.",
+  },
+};
+
+export const FUNDING_GROUP_ORDER: FundingOption["kind"][] = [
+  "local_faucet",
+  "testnet_faucet",
+  "transfer",
+  "onramp",
+  "offramp",
+];
 
 export type PaymentAssetsResponse = {
   chainId: number;
@@ -150,7 +195,8 @@ export async function fundLocalDevWallet(input: {
   endpoint?: string;
 }) {
   const endpoint = input.endpoint ?? "/api/payments/dev/fund";
-  const res = await fetch(`${API_BASE}${endpoint}`, {
+  const path = endpoint.startsWith("/api/") ? endpoint : `/api${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+  const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -204,4 +250,18 @@ export function formatPaymentAmount(amountUnits: bigint | string, decimals: numb
   const [whole, fraction = ""] = formatted.split(".");
   const trimmed = fraction.replace(/0+$/, "").slice(0, 6);
   return trimmed ? `${whole}.${trimmed}` : whole;
+}
+
+export function getFundingGroup(kind: FundingOption["kind"]) {
+  return FUNDING_GROUPS[kind];
+}
+
+export function groupFundingOptions(options: FundingOption[]) {
+  return FUNDING_GROUP_ORDER
+    .map((kind) => ({
+      kind,
+      ...FUNDING_GROUPS[kind],
+      options: options.filter((option) => option.kind === kind),
+    }))
+    .filter((group) => group.options.length > 0);
 }

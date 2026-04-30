@@ -45,8 +45,13 @@ export interface FundingOption {
   chainId?: number;
   kind: "local_faucet" | "testnet_faucet" | "transfer" | "onramp" | "offramp";
   label: string;
+  description?: string;
+  provider?: string;
+  region?: string;
   endpoint?: string;
   url?: string;
+  requiresWallet?: boolean;
+  disabledReason?: string;
   localOnly?: boolean;
   surfaces?: PaymentSurface[];
 }
@@ -90,6 +95,7 @@ interface DecimalFraction {
 }
 
 const LOCAL_CHAIN_ID = 31337;
+const BASE_SEPOLIA_CHAIN_ID = 84532;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 const DEFAULT_LOCAL_PAYMENT_ARTIFACT = "contracts/deployments/local-payments.json";
@@ -127,6 +133,25 @@ const MINT_ABI = [
       { name: "amount", type: "uint256" },
     ],
     outputs: [],
+  },
+] as const;
+const WRAPPED_NATIVE_ABI = [
+  {
+    type: "function",
+    name: "deposit",
+    stateMutability: "payable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "transfer",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
   },
 ] as const;
 
@@ -300,7 +325,7 @@ export class PaymentsService {
     const assets = this.loadPaymentAssets();
     const chainId = input.chainId ?? this.getConfiguredChainId(assets);
     this.assertKnownSurface(input.surface);
-    const options = this.loadFundingOptions();
+    const options = this.loadFundingOptions(assets);
     return {
       chainId,
       wallet: input.wallet ?? null,
@@ -360,7 +385,7 @@ export class PaymentsService {
     }
     this.assertLocalFundingAllowed(asset.chainId);
 
-    const amount = input.amount ?? (asset.kind === "native" ? "1" : "100");
+    const amount = input.amount ?? (asset.kind === "native" || asset.kind === "wrapped_native" ? "1" : "100");
     const amountUnits = asset.kind === "native"
       ? parseEther(amount)
       : parseUnits(amount, asset.decimals);
@@ -378,6 +403,40 @@ export class PaymentsService {
 
     if (!ADDRESS_PATTERN.test(asset.tokenAddress) || asset.tokenAddress === ZERO_ADDRESS) {
       return { status: "invalid_token", assetId: asset.assetId };
+    }
+
+    if (asset.kind === "wrapped_native") {
+      const funder = this.getLocalFunderAddress();
+      await this.rpc("eth_sendTransaction", [
+        {
+          from: funder,
+          to: asset.tokenAddress,
+          data: encodeFunctionData({
+            abi: WRAPPED_NATIVE_ABI,
+            functionName: "deposit",
+          }),
+          value: this.toRpcQuantity(amountUnits),
+        },
+      ]);
+      const txHash = await this.rpc("eth_sendTransaction", [
+        {
+          from: funder,
+          to: asset.tokenAddress,
+          data: encodeFunctionData({
+            abi: WRAPPED_NATIVE_ABI,
+            functionName: "transfer",
+            args: [wallet as `0x${string}`, amountUnits],
+          }),
+        },
+      ]);
+
+      return {
+        status: "funded",
+        assetId: asset.assetId,
+        wallet,
+        amount,
+        txHash,
+      };
     }
 
     const data = encodeFunctionData({
@@ -416,14 +475,85 @@ export class PaymentsService {
     return assets.filter((asset) => asset.enabled);
   }
 
-  private loadFundingOptions(): FundingOption[] {
+  private loadFundingOptions(assets: PaymentAsset[]): FundingOption[] {
     const configured = this.parseJsonArray<FundingOption>(
       this.config.get<string>("PAYMENT_FUNDING_OPTIONS_JSON"),
     );
     if (configured.length > 0) {
       return configured;
     }
-    return this.loadLocalPaymentArtifact()?.funding?.options ?? [];
+    const localOptions = this.loadLocalPaymentArtifact()?.funding?.options ?? [];
+    if (localOptions.length > 0) {
+      return localOptions;
+    }
+    return this.buildDefaultFundingOptions(assets);
+  }
+
+  private buildDefaultFundingOptions(assets: PaymentAsset[]): FundingOption[] {
+    const options: FundingOption[] = [];
+    const baseSepoliaAssets = assets.filter((asset) => asset.chainId === BASE_SEPOLIA_CHAIN_ID);
+    const baseSepoliaEth = baseSepoliaAssets.find((asset) => {
+      return asset.kind === "native" || asset.assetId === "base-sepolia:eth";
+    });
+    const baseSepoliaUsdc = baseSepoliaAssets.find((asset) => {
+      return asset.kind === "stablecoin" && asset.symbol.toUpperCase() === "USDC";
+    });
+
+    if (baseSepoliaEth) {
+      options.push({
+        id: "base-sepolia-eth-transfer",
+        assetId: baseSepoliaEth.assetId,
+        chainId: BASE_SEPOLIA_CHAIN_ID,
+        kind: "transfer",
+        label: "Transfer Base Sepolia ETH",
+        description: "Send Base Sepolia ETH to this wallet for gas.",
+        provider: "Wallet or exchange",
+        requiresWallet: true,
+      });
+      const ethFaucetUrl = this.config.get<string>("PAYMENT_BASE_SEPOLIA_ETH_FAUCET_URL");
+      if (ethFaucetUrl) {
+        options.push({
+          id: "base-sepolia-eth-faucet",
+          assetId: baseSepoliaEth.assetId,
+          chainId: BASE_SEPOLIA_CHAIN_ID,
+          kind: "testnet_faucet",
+          label: "Get Base Sepolia ETH",
+          description: "Use a configured testnet faucet to fund gas.",
+          provider: this.config.get<string>("PAYMENT_BASE_SEPOLIA_ETH_FAUCET_PROVIDER") ?? "Configured faucet",
+          url: ethFaucetUrl,
+          requiresWallet: true,
+        });
+      }
+    }
+
+    if (baseSepoliaUsdc) {
+      options.push({
+        id: "base-sepolia-usdc-transfer",
+        assetId: baseSepoliaUsdc.assetId,
+        chainId: BASE_SEPOLIA_CHAIN_ID,
+        kind: "transfer",
+        label: "Transfer Circle USDC",
+        description: "Send Base Sepolia USDC to this wallet for settlement.",
+        provider: "Wallet or exchange",
+        requiresWallet: true,
+      });
+      const usdcFaucetUrl = this.config.get<string>("PAYMENT_BASE_SEPOLIA_USDC_FAUCET_URL");
+      if (usdcFaucetUrl) {
+        options.push({
+          id: "base-sepolia-usdc-faucet",
+          assetId: baseSepoliaUsdc.assetId,
+          chainId: BASE_SEPOLIA_CHAIN_ID,
+          kind: "testnet_faucet",
+          label: "Get Circle USDC",
+          description: "Use the configured Circle USDC testnet faucet.",
+          provider: this.config.get<string>("PAYMENT_BASE_SEPOLIA_USDC_FAUCET_PROVIDER") ?? "Circle",
+          url: usdcFaucetUrl,
+          requiresWallet: true,
+        });
+      }
+    }
+
+    return options;
   }
 
   private loadLocalPaymentArtifact(): LocalPaymentArtifact | null {

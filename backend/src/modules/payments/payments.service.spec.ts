@@ -55,6 +55,18 @@ describe("PaymentsService local payment metadata", () => {
       pricingStrategy: "fixed_test_price",
     },
     {
+      assetId: "base-sepolia:eth",
+      chainId: 84532,
+      symbol: "ETH",
+      name: "Base Sepolia Ether",
+      kind: "native",
+      tokenAddress: "0x0000000000000000000000000000000000000000",
+      decimals: 18,
+      enabled: true,
+      settlement: ["marketplace", "stake", "dispute", "escrow"],
+      pricingStrategy: "chainlink_feed",
+    },
+    {
       assetId: "base-sepolia:usdc",
       chainId: 84532,
       symbol: "USDC",
@@ -139,6 +151,60 @@ describe("PaymentsService local payment metadata", () => {
         },
       ],
     });
+  });
+
+  it("synthesizes Base Sepolia funding options from asset and faucet env config", () => {
+    const service = createService({
+      PAYMENT_ASSETS_JSON: JSON.stringify(assets),
+      PAYMENT_DEV_ARTIFACT_PATH: "missing-local-payments.json",
+      PAYMENT_BASE_SEPOLIA_ETH_FAUCET_URL: "https://example.test/base-eth",
+      PAYMENT_BASE_SEPOLIA_USDC_FAUCET_URL: "https://example.test/circle-usdc",
+      PAYMENT_BASE_SEPOLIA_USDC_FAUCET_PROVIDER: "Circle",
+    });
+
+    expect(service.getFundingOptions({ chainId: 84532 })).toEqual({
+      chainId: 84532,
+      wallet: null,
+      options: [
+        expect.objectContaining({
+          id: "base-sepolia-eth-transfer",
+          assetId: "base-sepolia:eth",
+          kind: "transfer",
+          requiresWallet: true,
+        }),
+        expect.objectContaining({
+          id: "base-sepolia-eth-faucet",
+          assetId: "base-sepolia:eth",
+          kind: "testnet_faucet",
+          url: "https://example.test/base-eth",
+        }),
+        expect.objectContaining({
+          id: "base-sepolia-usdc-transfer",
+          assetId: "base-sepolia:usdc",
+          kind: "transfer",
+          requiresWallet: true,
+        }),
+        expect.objectContaining({
+          id: "base-sepolia-usdc-faucet",
+          assetId: "base-sepolia:usdc",
+          kind: "testnet_faucet",
+          provider: "Circle",
+          url: "https://example.test/circle-usdc",
+        }),
+      ],
+    });
+  });
+
+  it("keeps provider faucet actions disabled by omission when URLs are not configured", () => {
+    const service = createService({
+      PAYMENT_ASSETS_JSON: JSON.stringify(assets),
+      PAYMENT_DEV_ARTIFACT_PATH: "missing-local-payments.json",
+    });
+
+    expect(service.getFundingOptions({ chainId: 84532 }).options.map((option) => option.kind)).toEqual([
+      "transfer",
+      "transfer",
+    ]);
   });
 
   it("quotes USD-pegged stablecoins with token decimals", () => {
