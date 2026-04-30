@@ -1109,7 +1109,7 @@ export default function DisputeDashboard() {
                     >
                       Appeal Decision
                     </button>
-                    <span style={{ fontSize: "11px", opacity: 0.4 }}>Requires 2x stake</span>
+                    <span style={{ fontSize: "11px", opacity: 0.4 }}>Requires 2x native ETH stake</span>
                   </div>
                 )}
               </div>

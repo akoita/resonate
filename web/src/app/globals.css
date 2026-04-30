@@ -3321,6 +3321,39 @@ a {
   transform: none;
 }
 
+.vault-funding-actions {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--studio-border);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.vault-funding-actions__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.vault-funding-actions__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.vault-funding-actions__hint,
+.vault-funding-actions__status {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.vault-funding-actions__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 /* ---- Security Panel ---- */
 .vault-security-grid {
   display: grid;

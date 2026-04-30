@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+import { API_BASE } from "../lib/api";
 
 export type X402PublicConfig =
   | { enabled: false }
@@ -13,7 +12,9 @@ export type X402PublicConfig =
       facilitatorUrl: string;
       payoutAddress: string;
       asset: {
+        assetId: string;
         address: string;
+        symbol: string;
         name: string;
         version: string;
         decimals: number;

@@ -57,6 +57,18 @@ function createMappedTransport(bundlerUrl: string): (opts: any) => any {
 }
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
+const ERC20_APPROVE_ABI = [
+  {
+    type: "function",
+    name: "approve",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const;
 
 type StemMintedTransactionEvent = {
   tokenId: bigint;
@@ -1876,25 +1888,43 @@ export function useBuyStem() {
       try {
         const addresses = getContractAddresses(chainId);
 
-        // Get quote to know how much to send
+        // Get quote to know how much to send and listing to resolve native vs ERC-20 payment.
         const quote = await quoteBuy(publicClient, chainId, listingId, amount);
+        const listing = await getListing(publicClient, chainId, listingId);
 
-        // Execute buy
         const data = encodeFunctionData({
           abi: StemMarketplaceABI,
           functionName: "buy",
           args: [listingId, amount],
         });
 
-        const hash = await sendContractTransaction(
-          publicClient,
-          chainId,
-          addresses.marketplace,
-          data,
-          quote.totalPrice,
-          address as Address,
-          kernelAccount
-        );
+        const hash = listing.paymentToken.toLowerCase() === ZERO_ADDRESS
+          ? await sendContractTransaction(
+              publicClient,
+              chainId,
+              addresses.marketplace,
+              data,
+              quote.totalPrice,
+              address as Address,
+              kernelAccount
+            )
+          : await sendBatchContractTransactions(
+              publicClient,
+              chainId,
+              [
+                {
+                  to: listing.paymentToken,
+                  data: encodeFunctionData({
+                    abi: ERC20_APPROVE_ABI,
+                    functionName: "approve",
+                    args: [addresses.marketplace, quote.totalPrice],
+                  }),
+                },
+                { to: addresses.marketplace, data },
+              ],
+              address as Address,
+              kernelAccount
+            );
 
         setTxHash(hash);
         return hash;

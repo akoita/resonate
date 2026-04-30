@@ -116,7 +116,7 @@ export function BatchMintListModal({
         {phase === "confirm" && (
           <>
             <p className="batch-modal-desc">
-              The following <strong>{stems.length} stems</strong> will be minted as NFTs and listed on the marketplace at <strong>{listingPriceEth}</strong> each.
+              The following <strong>{stems.length} stems</strong> will be minted as NFTs and listed on the marketplace at <strong>{listingPriceEth}</strong> each using native ETH listings.
             </p>
 
             {listingPriceCapped && (

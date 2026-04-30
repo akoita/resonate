@@ -8,8 +8,10 @@ import {
 } from "../../lib/api";
 import { WalletRecord } from "../../lib/api";
 import { getKernelAccountConfig } from "../../lib/accountAbstraction";
+import { getExplorerAddressUrl, getExplorerTxUrl } from "../../lib/explorer";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
-import { getBrowserSafeRpcUrl, isLocalRpcUrl } from "../../lib/rpc";
+import { useFundingOptions } from "../../hooks/usePaymentAssets";
+import { FundingActions } from "../payments/FundingActions";
 
 type Props = {
     wallet: WalletRecord | null;
@@ -17,9 +19,6 @@ type Props = {
     isDeployed: boolean;
     recheck: () => void;
 };
-
-const EXPLORER_URL = "https://sepolia.etherscan.io";
-const FAUCET_URL = "https://www.alchemy.com/faucets/ethereum-sepolia";
 
 function AddressValue({ value, href, badge }: {
     value: string | null | undefined;
@@ -74,7 +73,7 @@ function AddressValue({ value, href, badge }: {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="vault-addr-action"
-                            title="View on Etherscan"
+                            title="View in explorer"
                             onClick={(e) => e.stopPropagation()}
                         >
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -93,14 +92,10 @@ function AddressValue({ value, href, badge }: {
     );
 }
 
-/** Detect if the RPC is a local Anvil instance */
-function isLocalRpc(): boolean {
-    return isLocalRpcUrl();
-}
-
 export default function VaultSmartAccountCard({ wallet, address, isDeployed, recheck }: Props) {
     const { token, refreshWallet, webAuthnKey } = useAuth();
-    const { publicClient } = useZeroDev();
+    const { publicClient, chainId } = useZeroDev();
+    const { options: fundingOptions } = useFundingOptions({ chainId, wallet: address });
     const [status, setStatus] = useState<string | null>(null);
     const [pending, setPending] = useState(false);
 
@@ -122,28 +117,6 @@ export default function VaultSmartAccountCard({ wallet, address, isDeployed, rec
             setPending(false);
         }
     };
-
-    /**
-     * Fund account via Anvil's anvil_setBalance.
-     * Same effect as a faucet, but instant and offline.
-     * In production, the user gets ETH from a real faucet or bridge.
-     */
-    const fundFromAnvil = useCallback(async () => {
-        if (!address) return;
-        const rpcUrl = getBrowserSafeRpcUrl();
-        const res = await fetch(rpcUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                jsonrpc: "2.0",
-                method: "anvil_setBalance",
-                params: [address, "0x8AC7230489E80000"], // 10 ETH in hex
-                id: 1,
-            }),
-        });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error.message);
-    }, [address]);
 
     /**
      * Deploy the smart account by sending a 0-value self-send UserOp.
@@ -231,8 +204,6 @@ export default function VaultSmartAccountCard({ wallet, address, isDeployed, rec
         console.log(`[Deploy] Smart account deployed at ${account.address}, tx: ${txHash}`);
     }, [address, publicClient, webAuthnKey]);
 
-    const isLocal = isLocalRpc();
-
     return (
         <div className="vault-card">
             <div className="vault-card-header">
@@ -254,15 +225,15 @@ export default function VaultSmartAccountCard({ wallet, address, isDeployed, rec
             <div className="vault-detail-list">
                 <div className="vault-detail-row">
                     <span className="vault-detail-label">Address</span>
-                    <AddressValue value={address} href={address ? `${EXPLORER_URL}/address/${address}` : undefined} />
+                    <AddressValue value={address} href={getExplorerAddressUrl(address)} />
                 </div>
                 <div className="vault-detail-row">
                     <span className="vault-detail-label">Entry Point</span>
-                    <AddressValue value={wallet?.entryPoint} href={wallet?.entryPoint ? `${EXPLORER_URL}/address/${wallet.entryPoint}` : undefined} />
+                    <AddressValue value={wallet?.entryPoint} href={getExplorerAddressUrl(wallet?.entryPoint)} />
                 </div>
                 <div className="vault-detail-row">
                     <span className="vault-detail-label">Factory</span>
-                    <AddressValue value={wallet?.factory} href={wallet?.factory ? `${EXPLORER_URL}/address/${wallet.factory}` : undefined} />
+                    <AddressValue value={wallet?.factory} href={getExplorerAddressUrl(wallet?.factory)} />
                 </div>
                 <div className="vault-detail-row">
                     <span className="vault-detail-label">Paymaster</span>
@@ -302,7 +273,7 @@ export default function VaultSmartAccountCard({ wallet, address, isDeployed, rec
                         <span className="vault-detail-label">Deploy TX</span>
                         <AddressValue
                             value={wallet.deploymentTxHash}
-                            href={`${EXPLORER_URL}/tx/${wallet.deploymentTxHash}`}
+                            href={getExplorerTxUrl(wallet.deploymentTxHash)}
                         />
                     </div>
                 )}
@@ -339,32 +310,18 @@ export default function VaultSmartAccountCard({ wallet, address, isDeployed, rec
                         </button>
                     </>
                 )}
-                {isLocal ? (
-                    <button
-                        className="vault-btn vault-btn--ghost vault-btn--sm"
-                        disabled={pending}
-                        onClick={() => run(async () => { await fundFromAnvil(); })}
-                    >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 2v20M2 12h20" />
-                        </svg>
-                        Fund 10 ETH
-                    </button>
-                ) : (
-                    <a
-                        href={FAUCET_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="vault-btn vault-btn--ghost vault-btn--sm"
-                        style={{ textDecoration: "none" }}
-                    >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 2v20M2 12h20" />
-                        </svg>
-                        Get Test ETH
-                    </a>
-                )}
             </div>
+
+            <FundingActions
+                options={fundingOptions}
+                wallet={address}
+                token={token}
+                disabled={pending}
+                onFunded={() => {
+                    refreshWallet();
+                    recheck();
+                }}
+            />
 
             {/* Status Message */}
             {status && (

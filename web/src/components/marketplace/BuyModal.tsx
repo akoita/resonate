@@ -2,16 +2,23 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useBuyQuote, useBuyStem, useListing } from "../../hooks/useContracts";
+import { usePaymentAssets } from "../../hooks/usePaymentAssets";
 import { useX402PublicConfig } from "../../hooks/useX402PublicConfig";
+import { useZeroDev } from "../auth/ZeroDevProviderClient";
+import { API_BASE } from "../../lib/api";
 import { formatPrice } from "../../lib/contracts";
+import { getExplorerTxUrl } from "../../lib/explorer";
+import {
+  findPaymentAssetForToken,
+  isNativePaymentToken,
+  paymentAssetSymbol,
+} from "../../lib/payments";
 import type { X402PaymentResult } from "../../lib/x402Pay";
 import { LicenseTypeSelector, type LicenseType } from "./LicenseTypeSelector";
 import { LicenseTermsPreview } from "./LicenseTermsPreview";
 import "../../styles/buy-modal.css";
 import "../../styles/license-badges.css";
 import "../../styles/license-terms.css";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 type X402StatusPhase = "challenging" | "signing" | "settling" | "downloading";
 
@@ -33,16 +40,19 @@ function getChainName(chainId: number | null | undefined) {
   return CHAIN_NAMES[chainId] ?? `chain ${chainId}`;
 }
 
-function getX402SmartAccountUnsupportedMessage(x402ChainId: number | null | undefined) {
+function getX402SmartAccountUnsupportedMessage(
+  x402ChainId: number | null | undefined,
+  assetSymbol: string,
+) {
   const appChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 11155111);
   const x402Chain = getChainName(x402ChainId);
   const appChain = getChainName(appChainId);
 
   if (x402ChainId && x402ChainId !== appChainId) {
-    return `USDC checkout is configured on ${x402Chain}, while the main app is on ${appChain}. It is temporarily unavailable for passkey accounts because the current x402 USDC settlement requires a compatible EOA authorization path, but Resonate login uses a Kernel smart account.`;
+    return `${assetSymbol} checkout is configured on ${x402Chain}, while the main app is on ${appChain}. It is temporarily unavailable for passkey accounts because the current x402 settlement requires a compatible EOA authorization path, but Resonate login uses a Kernel smart account.`;
   }
 
-  return `USDC checkout is configured on ${x402Chain}. It is temporarily unavailable for passkey accounts because the current x402 USDC settlement requires a compatible EOA authorization path, but Resonate login uses a Kernel smart account.`;
+  return `${assetSymbol} checkout is configured on ${x402Chain}. It is temporarily unavailable for passkey accounts because the current x402 settlement requires a compatible EOA authorization path, but Resonate login uses a Kernel smart account.`;
 }
 
 type X402QuoteInfo = {
@@ -69,20 +79,29 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   const [x402Status, setX402Status] = useState<X402StatusPhase | null>(null);
   const [x402Error, setX402Error] = useState<string | null>(null);
   const [x402Result, setX402Result] = useState<X402PaymentResult | null>(null);
+  const { chainId } = useZeroDev();
+  const { assets: paymentAssets } = usePaymentAssets(chainId);
   const { listing, loading: listingLoading } = useListing(listingId);
   const { quote, loading: quoteLoading } = useBuyQuote(listingId, amount);
   const { buy, pending, error, txHash } = useBuyStem();
   const { config: x402Config } = useX402PublicConfig();
+  const x402Asset = x402Config?.enabled ? x402Config.asset : null;
+  const x402Symbol = x402Asset?.symbol ?? "USDC";
   const x402Available = useMemo(
     () => Boolean(x402Config?.enabled && stemId),
     [x402Config, stemId],
   );
   const x402SmartAccountUnsupported = x402Available;
   const x402SmartAccountUnsupportedMessage = useMemo(
-    () => getX402SmartAccountUnsupportedMessage(x402Config?.enabled ? x402Config.chainId : null),
-    [x402Config],
+    () => getX402SmartAccountUnsupportedMessage(x402Config?.enabled ? x402Config.chainId : null, x402Symbol),
+    [x402Config, x402Symbol],
   );
-  const x402Asset = x402Config?.enabled ? x402Config.asset : null;
+  const onchainAsset = useMemo(
+    () => findPaymentAssetForToken(paymentAssets, chainId, listing?.paymentToken),
+    [paymentAssets, chainId, listing?.paymentToken],
+  );
+  const onchainSymbol = paymentAssetSymbol(onchainAsset, listing?.paymentToken);
+  const onchainIsNative = isNativePaymentToken(listing?.paymentToken);
   const x402DownloadUrl = useMemo(
     () => (x402Result ? URL.createObjectURL(x402Result.audio) : null),
     [x402Result],
@@ -153,6 +172,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   };
 
   const maxAmount = listing?.amount || 1n;
+  const txExplorerUrl = getExplorerTxUrl(txHash);
 
   return (
     <div className="buy-modal-overlay">
@@ -202,7 +222,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                   disabled={pending || x402Status !== null}
                 >
                   <span>On-chain</span>
-                  <span className="buy-modal__pay-method-sub">NFT mint · ETH</span>
+                  <span className="buy-modal__pay-method-sub">NFT mint · {onchainSymbol}</span>
                 </button>
                 <button
                   type="button"
@@ -212,7 +232,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                   onClick={() => setPaymentMethod("x402")}
                   disabled={pending || x402Status !== null}
                 >
-                  <span>USDC (x402)</span>
+                  <span>{x402Symbol} (x402)</span>
                   <span className="buy-modal__pay-method-sub">Pay-per-download</span>
                 </button>
               </div>
@@ -274,28 +294,33 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                     Price ({amount.toString()} × {formatPrice(listing.pricePerUnit)})
                   </span>
                   <span className="buy-modal__breakdown-value">
-                    {formatPrice(listing.pricePerUnit * amount)} ETH
+                    {formatPrice(listing.pricePerUnit * amount)} {onchainSymbol}
                   </span>
                 </div>
                 <div className="buy-modal__breakdown-row">
                   <span className="buy-modal__breakdown-label">Creator Royalty</span>
                   <span className="buy-modal__breakdown-value buy-modal__breakdown-value--royalty">
-                    {formatPrice(quote.royaltyAmount)} ETH
+                    {formatPrice(quote.royaltyAmount)} {onchainSymbol}
                   </span>
                 </div>
                 <div className="buy-modal__breakdown-row">
                   <span className="buy-modal__breakdown-label">Protocol Fee</span>
                   <span className="buy-modal__breakdown-value buy-modal__breakdown-value--fee">
-                    {formatPrice(quote.protocolFee)} ETH
+                    {formatPrice(quote.protocolFee)} {onchainSymbol}
                   </span>
                 </div>
                 <div className="buy-modal__breakdown-divider" />
                 <div className="buy-modal__breakdown-row buy-modal__breakdown-row--total">
                   <span className="buy-modal__breakdown-label">Total</span>
                   <span className="buy-modal__breakdown-value">
-                    {formatPrice(quote.totalPrice)} ETH
+                    {formatPrice(quote.totalPrice)} {onchainSymbol}
                   </span>
                 </div>
+                {!onchainIsNative && (
+                  <div className="buy-modal__breakdown-note">
+                    Checkout will approve {onchainSymbol} and purchase in one smart-account operation.
+                  </div>
+                )}
               </div>
             )}
 
@@ -308,7 +333,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 </div>
                 <div className="buy-modal__x402-row">
                   <span>Asset</span>
-                  <span>{x402Asset?.name ?? "USDC"}</span>
+                  <span>{x402Asset ? `${x402Asset.name} (${x402Symbol})` : x402Symbol}</span>
                 </div>
                 {x402Quote?.payTo && (
                   <div className="buy-modal__x402-row">
@@ -320,7 +345,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 )}
                 <div className="buy-modal__x402-row buy-modal__x402-row--total">
                   <span>Total</span>
-                  <span>{x402Quote?.amountUsd != null ? `$${x402Quote.amountUsd.toFixed(2)} USDC` : "—"}</span>
+                  <span>{x402Quote?.amountUsd != null ? `$${x402Quote.amountUsd.toFixed(2)} ${x402Symbol}` : "—"}</span>
                 </div>
                 {x402SmartAccountUnsupported && (
                   <div className="buy-modal__alert buy-modal__alert--warning">
@@ -351,13 +376,15 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
             {paymentMethod === "onchain" && txHash && (
               <div className="buy-modal__alert buy-modal__alert--success">
                 Purchase successful!{" "}
-                <a
-                  href={`https://sepolia.etherscan.io/tx/${txHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  View transaction →
-                </a>
+                {txExplorerUrl && (
+                  <a
+                    href={txExplorerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View transaction →
+                  </a>
+                )}
               </div>
             )}
             {paymentMethod === "x402" && x402Result && x402DownloadUrl && (
@@ -402,7 +429,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                     ? X402_STATUS_LABEL[x402Status]
                     : x402SmartAccountUnsupported
                       ? "Unsupported wallet"
-                      : "Pay with USDC"}
+                      : `Pay with ${x402Symbol}`}
                 </button>
               )}
             </div>
