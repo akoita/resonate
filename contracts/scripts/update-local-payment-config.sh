@@ -110,13 +110,17 @@ ASSETS_JSON=$(jq -cn \
     }] else [] end)')
 
 FUNDING_JSON=$(jq -cn \
+  --arg weth "$WETH" \
   '[
     {
       id: "local-eth-fund",
       assetId: "local:eth",
       kind: "local_faucet",
       label: "Fund local ETH",
-      endpoint: "/payments/dev/fund",
+      description: "Instantly set the local Anvil ETH balance for this wallet.",
+      provider: "Anvil",
+      endpoint: "/api/payments/dev/fund",
+      requiresWallet: true,
       localOnly: true
     },
     {
@@ -124,10 +128,23 @@ FUNDING_JSON=$(jq -cn \
       assetId: "local:usdc",
       kind: "local_faucet",
       label: "Mint local USDC",
-      endpoint: "/payments/dev/fund",
+      description: "Mint mock USDC to this wallet for local settlement tests.",
+      provider: "MockUSDC",
+      endpoint: "/api/payments/dev/fund",
+      requiresWallet: true,
       localOnly: true
     }
-  ]')
+  ] + (if ($weth | length) > 0 and $weth != "null" then [{
+      id: "local-weth-wrap",
+      assetId: "local:weth",
+      kind: "local_faucet",
+      label: "Wrap local WETH",
+      description: "Deposit local Anvil ETH into WrappedNativeMock and transfer WETH to this wallet.",
+      provider: "WrappedNativeMock",
+      endpoint: "/api/payments/dev/fund",
+      requiresWallet: true,
+      localOnly: true
+    }] else [] end)')
 
 jq -n \
   --argjson chainId "$CHAIN_ID" \

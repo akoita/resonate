@@ -62,6 +62,10 @@ When adding a new environment variable:
 | `PAYMENT_QUOTE_TTL_SECONDS` | Backend | Optional lifetime for backend payment quotes returned by `/payments/quote`. Defaults to `60` |
 | `PAYMENT_QUOTE_MAX_STALENESS_SECONDS` | Backend | Optional maximum age for timestamped backend oracle price entries. Defaults to `3600` |
 | `PAYMENT_FUNDING_OPTIONS_JSON` | Backend | JSON array of environment-aware funding actions exposed by the payment UX |
+| `PAYMENT_BASE_SEPOLIA_ETH_FAUCET_URL` | Backend | Optional Base Sepolia test ETH faucet URL. When set and no full funding JSON is provided, `/payments/funding-options` exposes a testnet ETH faucet action |
+| `PAYMENT_BASE_SEPOLIA_ETH_FAUCET_PROVIDER` | Backend | Optional display name for the configured Base Sepolia ETH faucet |
+| `PAYMENT_BASE_SEPOLIA_USDC_FAUCET_URL` | Backend | Optional Base Sepolia Circle USDC faucet URL. When set and no full funding JSON is provided, `/payments/funding-options` exposes a testnet USDC faucet action |
+| `PAYMENT_BASE_SEPOLIA_USDC_FAUCET_PROVIDER` | Backend | Optional display name for the configured Base Sepolia USDC faucet; defaults to `Circle` |
 | `PAYMENT_DEV_FAUCET_ENABLED` | Backend | Enables local-only payment funding endpoints. Must be `true` only on local Anvil |
 | `PAYMENT_DEV_ARTIFACT_PATH` | Backend | Optional path to the generated local payment artifact. Defaults to `contracts/deployments/local-payments.json` |
 | `PAYMENT_DEV_FUNDER_ADDRESS` | Backend | Local Anvil unlocked account used to send mock-token mint transactions for `POST /payments/dev/fund` |
@@ -167,6 +171,90 @@ X402_PAYOUT_ADDRESS=<base-mainnet-wallet>
 The backend refuses to boot with `X402_NETWORK=eip155:8453` unless
 `X402_FACILITATOR_URL` is set explicitly, which prevents accidentally pairing
 the Base mainnet flow with the default testnet facilitator.
+
+## Funding and On-ramp UX
+
+The wallet funding panel is driven by `GET /api/payments/funding-options`.
+Funding options are metadata only; they must not change settlement logic.
+
+Local Anvil uses the generated `contracts/deployments/local-payments.json`
+artifact. `make payments-dev-up` / `contracts/scripts/update-local-payment-config.sh`
+writes local-only endpoint actions for ETH, mock USDC, and WETH when WETH is
+enabled. Those actions call `POST /api/payments/dev/fund`, which is guarded by
+`PAYMENT_DEV_FAUCET_ENABLED=true` and must never be enabled in production.
+
+Base Sepolia can use explicit JSON:
+
+```env
+PAYMENT_FUNDING_OPTIONS_JSON=[
+  {
+    "id": "base-sepolia-eth-faucet",
+    "assetId": "base-sepolia:eth",
+    "chainId": 84532,
+    "kind": "testnet_faucet",
+    "label": "Get Base Sepolia ETH",
+    "description": "Use a configured testnet faucet to fund gas.",
+    "provider": "Configured faucet",
+    "url": "https://example.invalid/base-sepolia-eth",
+    "requiresWallet": true
+  },
+  {
+    "id": "base-sepolia-usdc-faucet",
+    "assetId": "base-sepolia:usdc",
+    "chainId": 84532,
+    "kind": "testnet_faucet",
+    "label": "Get Circle USDC",
+    "description": "Use the configured Circle USDC testnet faucet.",
+    "provider": "Circle",
+    "url": "https://example.invalid/base-sepolia-usdc",
+    "requiresWallet": true
+  }
+]
+```
+
+If `PAYMENT_FUNDING_OPTIONS_JSON` is omitted, the backend can synthesize Base
+Sepolia transfer actions and faucet actions from:
+
+```env
+PAYMENT_BASE_SEPOLIA_ETH_FAUCET_URL=<configured-test-eth-faucet-url>
+PAYMENT_BASE_SEPOLIA_USDC_FAUCET_URL=<configured-circle-usdc-faucet-url>
+```
+
+Production on-ramp and off-ramp providers are disabled by default. Enable them
+only by adding provider-gated entries to `PAYMENT_FUNDING_OPTIONS_JSON`, scoped
+to the eligible asset, chain, region, and provider:
+
+```json
+[
+  {
+    "id": "production-usdc-onramp",
+    "assetId": "base:usdc",
+    "chainId": 8453,
+    "kind": "onramp",
+    "label": "Buy USDC",
+    "description": "Provider-gated fiat-to-USDC funding.",
+    "provider": "Configured on-ramp",
+    "region": "eligible regions only",
+    "url": "https://provider.example/onramp",
+    "requiresWallet": true
+  },
+  {
+    "id": "production-usdc-offramp",
+    "assetId": "base:usdc",
+    "chainId": 8453,
+    "kind": "offramp",
+    "label": "Cash out USDC",
+    "description": "Optional cash-out for eligible production users.",
+    "provider": "Configured off-ramp",
+    "region": "eligible regions only",
+    "url": "https://provider.example/offramp",
+    "requiresWallet": true
+  }
+]
+```
+
+Use `"disabledReason": "Provider not enabled in this environment"` for visible
+but unavailable provider entries. Otherwise, omit unavailable providers entirely.
 
 ## Enabling Proof-of-Humanity Providers
 

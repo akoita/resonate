@@ -3321,6 +3321,12 @@ a {
   transform: none;
 }
 
+.vault-btn--disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .vault-funding-actions {
   margin-top: var(--space-4);
   padding-top: var(--space-4);
@@ -3348,10 +3354,67 @@ a {
   font-size: 12px;
 }
 
-.vault-funding-actions__buttons {
-  display: flex;
-  flex-wrap: wrap;
+.vault-funding-actions__groups {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.vault-funding-group {
+  display: grid;
   gap: var(--space-2);
+}
+
+.vault-funding-group__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.vault-funding-group__eyebrow {
+  padding: 2px 6px;
+  border: 1px solid var(--studio-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.vault-funding-group__title {
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.vault-funding-group__options {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.vault-funding-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+
+.vault-funding-option__copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.vault-funding-option__label {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.vault-funding-option__description {
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 /* ---- Security Panel ---- */
