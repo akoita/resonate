@@ -1,51 +1,58 @@
 # Smart Contract Scan Report
 
-Scope reviewed on April 30, 2026 for issue #742:
+Scope reviewed on April 30, 2026 for issue #760:
 
-- `contracts/src/core/RevenueEscrow.sol`
-- `contracts/test/unit/RevenueEscrow.t.sol`
-- plan artifact for the implementation slice
+- `contracts/src/core/StemMarketplaceV2.sol`
+- `contracts/test/unit/StemMarketplace.t.sol`
 
 ## Reconnaissance
 
 - Solidity version: `0.8.28`
 - Updated production-facing contract:
-  - `RevenueEscrow` now stores native ETH escrow state in the existing `escrows(tokenId)` slot and ERC20 escrow state by `tokenId => token`.
-- Native ETH remains represented by `address(0)`.
-- ERC20 transfers use OpenZeppelin `SafeERC20`.
-- Existing native ETH deposit, release, redirect, and view APIs remain available for compatibility.
+  - `StemMarketplaceV2` now checks listing expiry before narrowing it to `uint40`.
+- The change is intentionally narrow: listing creation reverts with
+  `ListingExpiryOverflow()` when `block.timestamp + duration` exceeds
+  `type(uint40).max`.
+- Solidity 0.8 checked arithmetic still protects the `uint256` addition from
+  overflowing before the explicit downcast bound is evaluated.
 
 ## Syntactic Sweep
 
-Patterns reviewed across changed contract code:
+Patterns reviewed in the changed contract:
 
 - external calls: `.call{}`
 - token transfer triggers: `safeTransferFrom`, `safeTransfer`
 - access control: `onlyOwner`
 - dangerous primitives: `selfdestruct`, `delegatecall`, `tx.origin`
 - unchecked arithmetic and inline `assembly`
+- narrowing casts: `uint40(...)`
 
 Observed matches relevant to this change:
 
-- `depositWithAsset()` collects ERC20 revenue using `safeTransferFrom` after escrow state is updated. If the token transfer fails, the full transaction reverts.
-- `releaseAsset()` and `redirectAsset()` pay ERC20 revenue through `safeTransfer` after balances are zeroed.
-- Native ETH release and redirect continue to use `.call{value: ...}` through `_pay()` after the escrow balance is zeroed.
-- Freeze, unfreeze, redirect, and content-protection cascade operations remain owner-gated.
+- `_checkedListingExpiry()` performs the only `uint40(...)` cast in the
+  contract and now bounds the value first.
+- `safeTransferFrom`, `safeTransfer`, and `.call{value: ...}` usages are in the
+  existing buy/payment and trapped-ETH paths; they were not changed by this
+  issue.
+- `setProtocolFee()`, `setFeeRecipient()`, and `withdrawTrappedETH()` remain
+  owner-gated.
 
-No `selfdestruct`, `delegatecall`, `tx.origin`, `unchecked`, or inline `assembly` usage was found in the changed contract.
+No `selfdestruct`, `delegatecall`, `tx.origin`, `unchecked`, or inline
+`assembly` usage was found in `StemMarketplaceV2`.
 
 ## Semantic Review
 
-- Revenue escrow balances are now distinguished by both token ID and payment asset.
-- Asset-aware events include the payment token so analytics, indexing, and receipt generation can distinguish ETH and ERC20 escrow movements.
-- `getEscrowAsset()` and `getEscrowAssets()` expose asset-specific escrow state for indexers and backend receipts.
-- Asset-specific release and redirect flows settle in the original escrow asset.
-- `freezeByTrack()` freezes every known escrow asset for the track and registered stems, preserving dispute behavior across native ETH and ERC20 revenue.
-- Unit tests cover native ETH regressions plus USDC deposit, release, redirect, independent native/USDC balances, unfreeze, and track-level freeze behavior.
+- Listing expiry remains stored as `uint40` to preserve the existing storage
+  layout and ABI shape.
+- Boundary tests now cover the maximum valid expiry (`type(uint40).max`) and
+  the first overflowing expiry.
+- The fix changes deployed bytecode. Base Sepolia will need the next contract
+  redeploy/upgrade before this hardening is live there.
 
 ## Findings
 
-No confirmed Critical, High, Medium, Low, or Informational security findings were identified in the reviewed changes.
+No confirmed Critical, High, Medium, Low, or Informational security findings
+were identified in the reviewed changes.
 
 | Severity | Count |
 | -------- | ----- |
@@ -58,7 +65,7 @@ No confirmed Critical, High, Medium, Low, or Informational security findings wer
 ## Commands Run
 
 ```bash
-rg '\.call\{|safeTransferFrom|safeTransfer|onlyOwner|delegatecall|tx\.origin|selfdestruct|unchecked|assembly' contracts/src/core/RevenueEscrow.sol -n
-cd contracts && forge test --match-path test/unit/RevenueEscrow.t.sol -vv
+rg '\.call\{|_safeMint|_safeTransfer|safeTransferFrom|onlyOwner|onlyRole|_checkRole|require.*msg\.sender|selfdestruct|delegatecall|tx\.origin|unchecked|assembly|uint40\(' contracts/src/core/StemMarketplaceV2.sol
+cd contracts && forge test --match-contract StemMarketplaceTest
 cd contracts && forge test
 ```
