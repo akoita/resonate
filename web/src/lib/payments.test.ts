@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   findPaymentAssetForToken,
+  fundLocalDevWallet,
   formatPaymentAmount,
+  getFundingOptions,
+  getPaymentAssets,
   groupFundingOptions,
   isNativePaymentToken,
   paymentAssetSymbol,
@@ -9,6 +12,8 @@ import {
   type FundingOption,
   type PaymentAsset,
 } from "./payments";
+
+const API_BASE = "http://localhost:3000";
 
 const assets: PaymentAsset[] = [
   {
@@ -71,5 +76,84 @@ describe("payment asset helpers", () => {
       { kind: "transfer", labels: ["Transfer ETH"] },
       { kind: "offramp", labels: ["Cash out USDC"] },
     ]);
+  });
+});
+
+describe("payment API routes", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("loads payment assets from the backend payments controller route", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        chainId: 84532,
+        assets: [],
+        defaultAsset: null,
+        source: "env",
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getPaymentAssets(84532);
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe(`${API_BASE}/payments/assets?chainId=84532`);
+  });
+
+  it("loads funding options from the backend payments controller route", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        chainId: 84532,
+        wallet: "0x7fa9b6d13bc29d60d3445922a5697d2f1b6c20e6",
+        options: [],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getFundingOptions({
+      chainId: 84532,
+      wallet: "0x7fa9b6d13bc29d60d3445922a5697d2f1b6c20e6",
+      surface: "upload_stake",
+    });
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    const parsed = new URL(url);
+    expect(`${parsed.origin}${parsed.pathname}`).toBe(
+      `${API_BASE}/payments/funding-options`,
+    );
+    expect(parsed.searchParams.get("chainId")).toBe("84532");
+    expect(parsed.searchParams.get("wallet")).toBe(
+      "0x7fa9b6d13bc29d60d3445922a5697d2f1b6c20e6",
+    );
+    expect(parsed.searchParams.get("surface")).toBe("upload_stake");
+  });
+
+  it("posts local dev funding to the configured payments endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: "funded",
+        assetId: "local:eth",
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fundLocalDevWallet({
+      wallet: "0x7fa9b6d13bc29d60d3445922a5697d2f1b6c20e6",
+      assetId: "local:eth",
+    });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${API_BASE}/payments/dev/fund`);
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(
+      JSON.stringify({
+        wallet: "0x7fa9b6d13bc29d60d3445922a5697d2f1b6c20e6",
+        assetId: "local:eth",
+      }),
+    );
   });
 });
