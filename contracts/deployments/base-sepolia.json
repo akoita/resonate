@@ -2,24 +2,24 @@
   "network": "base-sepolia",
   "chainId": 84532,
   "deployer": "0x3e19e4B2f22fC27B5105A6762FCC6C6f129550BE",
-  "deployedAt": "2026-04-29T13:24:17Z",
+  "deployedAt": "2026-04-30T14:11:27Z",
   "contracts": {
-    "StemNFT": "0x2ed745028cf200eaaa3779fece669f5ffd1b0814",
-    "StemMarketplaceV2": "0xb00842811ea1bf1194a4804759d88eb4a71f3c0d",
-    "TransferValidator": "0x8730bdd4c922e6333bc1c324d0735fd58f90baa6",
-    "ContentProtection": "0x5a7b149f0a663e57978b30eb6d54b86be296fdff",
-    "DisputeResolution": "0x35adbf46e80d5026add13e8e01c71126920aed17",
-    "CurationRewards": "0x56912168dd3b3ec667bc7d7d9aec90ec4946e934",
-    "RevenueEscrow": "0xfa1c04d8d1358bd13ee85a0f2ce7bf19abdef3c4"
+    "StemNFT": "0xab5c339447569928bb430c25dd0972c01ce1171f",
+    "StemMarketplaceV2": "0x0acb90f4eae705027d4458bbee5cb01be71b726e",
+    "TransferValidator": "0x07fea2b9db20f56001e52c2215c1f40a633fb1ee",
+    "ContentProtection": "0x1e7637fbc3c233fd9ed68a2f733a705c1d971746",
+    "DisputeResolution": "0x93e5e579d992c56c647707811bb1d905a69c20c9",
+    "CurationRewards": "0xb7b51ca529fb6783bb8f5ece1a1d60811055a41d",
+    "RevenueEscrow": "0xadc8eaf7e845678fb6c9ce3c8077b5f527929c64"
   },
   "verification": {
-    "basescan": "https://sepolia.basescan.org/address/0x2ed745028cf200eaaa3779fece669f5ffd1b0814",
-    "marketplace": "https://sepolia.basescan.org/address/0xb00842811ea1bf1194a4804759d88eb4a71f3c0d",
-    "validator": "https://sepolia.basescan.org/address/0x8730bdd4c922e6333bc1c324d0735fd58f90baa6",
-    "contentProtection": "https://sepolia.basescan.org/address/0x5a7b149f0a663e57978b30eb6d54b86be296fdff",
-    "disputeResolution": "https://sepolia.basescan.org/address/0x35adbf46e80d5026add13e8e01c71126920aed17",
-    "curationRewards": "https://sepolia.basescan.org/address/0x56912168dd3b3ec667bc7d7d9aec90ec4946e934",
-    "revenueEscrow": "https://sepolia.basescan.org/address/0xfa1c04d8d1358bd13ee85a0f2ce7bf19abdef3c4"
+    "basescan": "https://sepolia.basescan.org/address/0xab5c339447569928bb430c25dd0972c01ce1171f",
+    "marketplace": "https://sepolia.basescan.org/address/0x0acb90f4eae705027d4458bbee5cb01be71b726e",
+    "validator": "https://sepolia.basescan.org/address/0x07fea2b9db20f56001e52c2215c1f40a633fb1ee",
+    "contentProtection": "https://sepolia.basescan.org/address/0x1e7637fbc3c233fd9ed68a2f733a705c1d971746",
+    "disputeResolution": "https://sepolia.basescan.org/address/0x93e5e579d992c56c647707811bb1d905a69c20c9",
+    "curationRewards": "https://sepolia.basescan.org/address/0xb7b51ca529fb6783bb8f5ece1a1d60811055a41d",
+    "revenueEscrow": "https://sepolia.basescan.org/address/0xadc8eaf7e845678fb6c9ce3c8077b5f527929c64"
   },
-  "firstTransaction": "0x0be3d79189d566c27e26421248de5289826bdd68b0b07a7e7c8051037868c6f2"
+  "firstTransaction": "0x0db3484775e166d0db25bac462ca934fe29cf356699d61e5436e3b1b5f1463ac"
 }

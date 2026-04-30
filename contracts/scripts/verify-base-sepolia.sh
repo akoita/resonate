@@ -93,6 +93,9 @@ contract_id_for() {
         StemNFT)
             echo "src/core/StemNFT.sol:StemNFT"
             ;;
+        PaymentAssetRegistry)
+            echo "src/payments/PaymentAssetRegistry.sol:PaymentAssetRegistry"
+            ;;
         StemMarketplaceV2)
             echo "src/core/StemMarketplaceV2.sol:StemMarketplaceV2"
             ;;
@@ -135,7 +138,8 @@ build_standard_json_input() {
     forge build "$source_path" \
         --build-info \
         --build-info-path "$build_info_dir" \
-        --force >/dev/null
+        --force \
+        --quiet
 
     local build_info_file=""
     while IFS= read -r candidate; do
@@ -294,8 +298,11 @@ constructor_args_for() {
         StemNFT)
             cast abi-encode "constructor(string)" "${args[0]}" | sed 's/^0x//'
             ;;
+        PaymentAssetRegistry)
+            cast abi-encode "constructor(address)" "${args[0]}" | sed 's/^0x//'
+            ;;
         StemMarketplaceV2)
-            cast abi-encode "constructor(address,address,address,uint256)" "${args[0]}" "${args[1]}" "${args[2]}" "${args[3]}" | sed 's/^0x//'
+            cast abi-encode "constructor(address,address,address,address,uint256)" "${args[0]}" "${args[1]}" "${args[2]}" "${args[3]}" "${args[4]}" | sed 's/^0x//'
             ;;
         *)
             echo ""
@@ -356,6 +363,7 @@ CONTRACTS=(
     CurationRewards
     RevenueEscrow
     StemNFT
+    PaymentAssetRegistry
     StemMarketplaceV2
 )
 
