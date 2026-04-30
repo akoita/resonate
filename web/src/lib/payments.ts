@@ -150,7 +150,7 @@ async function paymentsGet<T>(path: string): Promise<T> {
 
 export function getPaymentAssets(chainId?: number) {
   return paymentsGet<PaymentAssetsResponse>(
-    appendQuery("/api/payments/assets", { chainId }),
+    appendQuery("/payments/assets", { chainId }),
   );
 }
 
@@ -161,13 +161,13 @@ export function getPaymentQuote(input: {
   surface?: PaymentSurface;
 }) {
   return paymentsGet<PaymentQuoteResponse>(
-    appendQuery("/api/payments/quote", input),
+    appendQuery("/payments/quote", input),
   );
 }
 
 export function getPaymentPolicy(input: { chainId?: number; surface?: PaymentSurface } = {}) {
   return paymentsGet<PaymentPolicyResponse>(
-    appendQuery("/api/payments/policy", input),
+    appendQuery("/payments/policy", input),
   );
 }
 
@@ -178,7 +178,7 @@ export function getFundingOptions(input: {
   surface?: PaymentSurface;
 } = {}) {
   return paymentsGet<FundingOptionsResponse>(
-    appendQuery("/api/payments/funding-options", {
+    appendQuery("/payments/funding-options", {
       chainId: input.chainId,
       wallet: input.wallet ?? undefined,
       assetId: input.assetId,
@@ -194,8 +194,8 @@ export async function fundLocalDevWallet(input: {
   token?: string | null;
   endpoint?: string;
 }) {
-  const endpoint = input.endpoint ?? "/api/payments/dev/fund";
-  const path = endpoint.startsWith("/api/") ? endpoint : `/api${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+  const endpoint = input.endpoint ?? "/payments/dev/fund";
+  const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     headers: {

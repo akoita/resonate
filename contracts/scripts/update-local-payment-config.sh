@@ -119,7 +119,7 @@ FUNDING_JSON=$(jq -cn \
       label: "Fund local ETH",
       description: "Instantly set the local Anvil ETH balance for this wallet.",
       provider: "Anvil",
-      endpoint: "/api/payments/dev/fund",
+      endpoint: "/payments/dev/fund",
       requiresWallet: true,
       localOnly: true
     },
@@ -130,7 +130,7 @@ FUNDING_JSON=$(jq -cn \
       label: "Mint local USDC",
       description: "Mint mock USDC to this wallet for local settlement tests.",
       provider: "MockUSDC",
-      endpoint: "/api/payments/dev/fund",
+      endpoint: "/payments/dev/fund",
       requiresWallet: true,
       localOnly: true
     }
@@ -141,7 +141,7 @@ FUNDING_JSON=$(jq -cn \
       label: "Wrap local WETH",
       description: "Deposit local Anvil ETH into WrappedNativeMock and transfer WETH to this wallet.",
       provider: "WrappedNativeMock",
-      endpoint: "/api/payments/dev/fund",
+      endpoint: "/payments/dev/fund",
       requiresWallet: true,
       localOnly: true
     }] else [] end)')
