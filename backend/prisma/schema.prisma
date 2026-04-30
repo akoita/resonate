@@ -288,6 +288,13 @@ model StemPurchase {
   buyerAddress    String
   amount          BigInt
   totalPaid       String
+  paymentToken    String      @default("0x0000000000000000000000000000000000000000")
+  paymentAssetId  String?
+  paymentAssetSymbol String    @default("ETH")
+  paymentAssetDecimals Int     @default(18)
+  settlementAmount String?
+  settlementAmountUnits String?
+  canonicalAmountUsd String?
   royaltyPaid     String
   protocolFeePaid String
   sellerReceived  String
@@ -309,6 +316,13 @@ model RoyaltyPayment {
   chainId          Int
   recipientAddress String
   amount           String
+  paymentToken     String   @default("0x0000000000000000000000000000000000000000")
+  paymentAssetId   String?
+  paymentAssetSymbol String @default("ETH")
+  paymentAssetDecimals Int  @default(18)
+  settlementAmount String?
+  settlementAmountUnits String?
+  canonicalAmountUsd String?
   transactionHash  String
   blockNumber      BigInt
   paidAt           DateTime
@@ -636,6 +650,13 @@ model ContentProtectionStake {
   chainId         Int
   stakerAddress   String
   amount          String // wei string
+  paymentToken    String    @default("0x0000000000000000000000000000000000000000")
+  paymentAssetId  String?
+  paymentAssetSymbol String  @default("ETH")
+  paymentAssetDecimals Int   @default(18)
+  settlementAmount String?
+  settlementAmountUnits String?
+  canonicalAmountUsd String?
   active          Boolean   @default(true)
   depositedAt     DateTime
   refundedAt      DateTime?
@@ -677,6 +698,20 @@ model Dispute {
   outcome          String? // upheld|rejected|inconclusive
   evidenceURI      String
   counterStake     String // wei
+  counterStakeToken String           @default("0x0000000000000000000000000000000000000000")
+  counterStakeAssetId String?
+  counterStakeAssetSymbol String     @default("ETH")
+  counterStakeAssetDecimals Int      @default(18)
+  counterStakeAmount String?
+  counterStakeAmountUnits String?
+  counterStakeAmountUsd String?
+  appealStakeToken String?
+  appealStakeAssetId String?
+  appealStakeAssetSymbol String?
+  appealStakeAssetDecimals Int?
+  appealStakeAmount String?
+  appealStakeAmountUnits String?
+  appealStakeAmountUsd String?
   chainId          Int?
   transactionHash  String?
   resolvedAt       DateTime?

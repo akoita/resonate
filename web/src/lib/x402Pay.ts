@@ -1,8 +1,7 @@
 import { x402Client } from "@x402/core/client";
 import { x402HTTPClient } from "@x402/core/http";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+import { API_BASE } from "./api";
 
 export type X402EvmSigner = {
   readonly address: `0x${string}`;
@@ -20,8 +19,27 @@ export type X402PaymentResult = {
   mimeType: string;
   receiptId: string | null;
   receiptHeader: string | null;
+  receipt: X402Receipt | null;
   licenseKey: string | null;
   transactionHash: string | null;
+};
+
+export type X402Receipt = {
+  receiptId: string;
+  payment?: {
+    currency?: string;
+    amount?: string;
+    amountUsd?: string;
+    canonicalAmountUsd?: string;
+    settlementAmount?: string;
+    settlementAmountUnits?: string;
+    asset?: {
+      symbol?: string;
+      decimals?: number;
+      tokenAddress?: string;
+      assetId?: string;
+    };
+  };
 };
 
 export class X402PaymentError extends Error {
@@ -120,9 +138,21 @@ async function decodeAudioResponse(response: Response): Promise<X402PaymentResul
     filename: dispositionFilename ?? "stem",
     receiptId: response.headers.get("x-resonate-receipt-id"),
     receiptHeader: response.headers.get("x-resonate-receipt"),
+    receipt: decodeReceiptHeader(response.headers.get("x-resonate-receipt")),
     licenseKey: response.headers.get("x-resonate-license"),
     transactionHash: response.headers.get("x-payment-response"),
   };
+}
+
+function decodeReceiptHeader(value: string | null): X402Receipt | null {
+  if (!value) return null;
+  try {
+    const binary = atob(value.replace(/-/g, "+").replace(/_/g, "/"));
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes)) as X402Receipt;
+  } catch {
+    return null;
+  }
 }
 
 function parseFilenameFromContentDisposition(value: string | null): string | null {

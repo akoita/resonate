@@ -147,6 +147,46 @@ describe('IndexerService (integration)', () => {
     expect(received[0].chainId).toBe(31337);
   });
 
+  it('publishes payment asset metadata from WithAsset events', async () => {
+    if (!anvilUrl()) return;
+
+    const received: any[] = [];
+    eventBus.subscribe('contract.stake_deposited', (data) => received.push(data));
+
+    const fakeLog = {
+      transactionHash: '0x' + 'e'.repeat(64),
+      blockNumber: 101n,
+      address: '0x' + 'd'.repeat(40),
+      blockHash: '0x' + 'c'.repeat(64),
+      logIndex: 1,
+      data: '0x',
+      topics: [],
+      removed: false,
+      transactionIndex: 0,
+    };
+
+    await (service as any).publishTypedEvent(
+      'StakeDepositedWithAsset',
+      {
+        tokenId: '77',
+        staker: '0xStaker',
+        token: '0x' + '1'.repeat(40),
+        amount: '10000000',
+      },
+      fakeLog,
+      31337,
+    );
+
+    expect(received).toHaveLength(1);
+    expect(received[0]).toEqual(
+      expect.objectContaining({
+        tokenId: '77',
+        paymentToken: '0x' + '1'.repeat(40),
+        amount: '10000000',
+      }),
+    );
+  });
+
   it('purges stale local-chain marketplace state after a reset', async () => {
     const userId = `${P}user`;
     const artistId = `${P}artist`;

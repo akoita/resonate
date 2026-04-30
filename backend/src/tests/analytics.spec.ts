@@ -19,13 +19,31 @@ describe("analytics", () => {
         trackId: "track-1",
         title: "Neon Drift",
         amountUsd: 1.5,
+        paymentToken: "0x0000000000000000000000000000000000000000",
+        paymentAssetId: "local:eth",
+        paymentAssetSymbol: "ETH",
+        paymentAssetDecimals: 18,
+        settlementAmount: "0.0005",
+        settlementAmountUnits: "500000000000000",
       },
     });
 
     const result = analytics.getArtistStats("artist-1", 7);
     expect(result.summary.totalPlays).toBe(1);
     expect(result.summary.totalPayoutUsd).toBe(1.5);
+    expect(result.summary.payoutsByAsset).toEqual([
+      expect.objectContaining({
+        paymentToken: "0x0000000000000000000000000000000000000000",
+        assetId: "local:eth",
+        symbol: "ETH",
+        settlementAmount: "0.0005",
+        settlementAmountUnits: "500000000000000",
+        canonicalAmountUsd: 1.5,
+        count: 1,
+      }),
+    ]);
     expect(result.tracks[0].payoutUsd).toBe(1.5);
+    expect(result.tracks[0].payoutsByAsset[0].symbol).toBe("ETH");
   });
 
   it("builds v1 dashboard breakdowns", () => {
@@ -53,12 +71,26 @@ describe("analytics", () => {
         sessionId: "session-9",
         source: "agent",
         amountUsd: 2,
+        paymentToken: "0x1111111111111111111111111111111111111111",
+        paymentAssetId: "base-sepolia:usdc",
+        paymentAssetSymbol: "USDC",
+        paymentAssetDecimals: 6,
+        settlementAmount: "2",
+        settlementAmountUnits: "2000000",
       },
     });
 
     const result = analytics.getArtistDashboard("artist-2", 30);
     expect(result.summary.totalPlays).toBe(1);
     expect(result.sessions[0].payoutUsd).toBe(2);
+    expect(result.sessions[0].payoutsByAsset[0]).toEqual(
+      expect.objectContaining({
+        symbol: "USDC",
+        settlementAmount: "2",
+        canonicalAmountUsd: 2,
+      }),
+    );
+    expect(result.export.payoutsByAsset[0].symbol).toBe("USDC");
     expect(result.sources[0].source).toBe("agent");
   });
 });
