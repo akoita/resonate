@@ -19,14 +19,21 @@ describe("trust tier config", () => {
         TRUST_STAKE_WEI_NEW: "100000000000000",
         TRUST_STAKE_WEI_ESTABLISHED: "200000000000000",
         TRUST_STAKE_WEI_TRUSTED: "300000000000000",
+        TRUST_STAKE_USD_NEW: "12.50",
+        TRUST_STAKE_USD_ESTABLISHED: "6.25",
+        TRUST_STAKE_USD_TRUSTED: "2",
       };
       return values[key];
     });
 
     expect(tiers.new.stakeAmountWei).toBe("100000000000000");
+    expect(tiers.new.stakeAmountUsd).toBe("12.50");
     expect(tiers.established.stakeAmountWei).toBe("200000000000000");
+    expect(tiers.established.stakeAmountUsd).toBe("6.25");
     expect(tiers.trusted.stakeAmountWei).toBe("300000000000000");
+    expect(tiers.trusted.stakeAmountUsd).toBe("2");
     expect(tiers.verified.stakeAmountWei).toBe("0");
+    expect(tiers.verified.stakeAmountUsd).toBe("0");
   });
 
   it("ignores blank overrides", () => {
@@ -36,5 +43,6 @@ describe("trust tier config", () => {
     });
 
     expect(tiers.new.stakeAmountWei).toBe(getDefaultTrustTier("new").stakeAmountWei);
+    expect(tiers.new.stakeAmountUsd).toBe(getDefaultTrustTier("new").stakeAmountUsd);
   });
 });

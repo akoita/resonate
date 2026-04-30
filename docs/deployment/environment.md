@@ -49,6 +49,10 @@ When adding a new environment variable:
 | `TRUST_STAKE_WEI_NEW` | Backend | Optional override for the new-creator content-protection stake requirement |
 | `TRUST_STAKE_WEI_ESTABLISHED` | Backend | Optional override for the established-tier content-protection stake requirement |
 | `TRUST_STAKE_WEI_TRUSTED` | Backend | Optional override for the trusted-tier content-protection stake requirement |
+| `TRUST_STAKE_USD_NEW` | Backend | Optional canonical USD stake requirement for new creators; quoted into the selected stake asset |
+| `TRUST_STAKE_USD_ESTABLISHED` | Backend | Optional canonical USD stake requirement for established creators; quoted into the selected stake asset |
+| `TRUST_STAKE_USD_TRUSTED` | Backend | Optional canonical USD stake requirement for trusted creators; quoted into the selected stake asset |
+| `TRUST_STAKE_USD_MIN` | Backend | Optional protocol minimum canonical USD stake requirement. Defaults to `10`, keeping current Base Sepolia USDC staking at 10 USDC |
 | `AGENT_KEY_ENCRYPTION_KEY` | Backend | Generate with `./backend/scripts/generate-agent-encryption-key.sh` for local KMS mode |
 | `X402_ENABLED` | Backend | Enables the x402 payment and storefront purchase surfaces |
 | `X402_PAYOUT_ADDRESS` | Backend | Required when x402 is enabled; receives USDC payments |

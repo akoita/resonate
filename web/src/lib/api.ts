@@ -415,12 +415,16 @@ export type TrustTier = {
   tier: string;
   economicTier?: string;
   stakeAmountWei: string;
+  stakeAmountUsd?: string;
   tierStakeAmountWei?: string;
+  tierStakeAmountUsd?: string;
   protocolMinimumStakeAmountWei?: string;
+  protocolMinimumStakeAmountUsd?: string;
   policySource?: "contract" | "fallback";
   escrowDays: number;
   maxPriceMultiplier: number;
   maxListingPriceWei: string | null;
+  maxListingPriceUsd?: string | null;
   maxListingPriceUncapped: boolean;
   totalUploads: number;
   cleanHistory: number;

@@ -14,10 +14,14 @@ import { getDefaultTrustTier, resolveTrustTiers, type TrustTierInfo } from "./tr
  */
 type TrustRequirement = Awaited<ReturnType<typeof prisma.creatorTrust.upsert>> & {
   tierStakeAmountWei: string;
+  tierStakeAmountUsd: string;
   protocolMinimumStakeAmountWei: string;
+  protocolMinimumStakeAmountUsd: string;
+  stakeAmountUsd: string;
   policySource: "contract" | "fallback";
   maxPriceMultiplier: number;
   maxListingPriceWei: string | null;
+  maxListingPriceUsd: string | null;
   maxListingPriceUncapped: boolean;
 };
 
@@ -56,11 +60,13 @@ const CONTENT_PROTECTION_CONFIG_ABI = [
 const DEFAULT_MAX_PRICE_MULTIPLIER = 10n;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const DEFAULT_SEPOLIA_RPC_URL = "https://sepolia.drpc.org";
+const DEFAULT_PROTOCOL_MINIMUM_STAKE_USD = "10";
 
 type TrustPolicyConfig = {
   source: "contract" | "fallback";
   tierPolicy: TrustTierInfo;
   protocolMinimumStakeAmountWei: bigint;
+  protocolMinimumStakeAmountUsd: string;
   maxPriceMultiplier: bigint;
 };
 
@@ -136,6 +142,7 @@ export class TrustService {
     const tierInfo = await this.calculateTier(artistId);
     const policy = await this.getPolicyConfig(tierInfo.tier);
     const effectiveStakeAmountWei = this.getEffectiveStakeAmountWei(policy);
+    const effectiveStakeAmountUsd = this.getEffectiveStakeAmountUsd(policy);
 
     // Upsert the trust record
     const trust = await prisma.creatorTrust.upsert({
@@ -159,12 +166,18 @@ export class TrustService {
     return {
       ...trust,
       tierStakeAmountWei: policy.tierPolicy.stakeAmountWei.toString(),
+      tierStakeAmountUsd: policy.tierPolicy.stakeAmountUsd,
       protocolMinimumStakeAmountWei: policy.protocolMinimumStakeAmountWei.toString(),
+      protocolMinimumStakeAmountUsd: policy.protocolMinimumStakeAmountUsd,
+      stakeAmountUsd: effectiveStakeAmountUsd,
       policySource: policy.source,
       maxPriceMultiplier: Number(policy.maxPriceMultiplier),
       maxListingPriceWei: maxListingPriceUncapped
         ? null
         : (stakeAmountWei * policy.maxPriceMultiplier).toString(),
+      maxListingPriceUsd: maxListingPriceUncapped
+        ? null
+        : this.multiplyDecimalString(effectiveStakeAmountUsd, policy.maxPriceMultiplier),
       maxListingPriceUncapped,
     };
   }
@@ -310,6 +323,7 @@ export class TrustService {
       const tierPolicy: TrustTierInfo = {
         tier: tierName,
         stakeAmountWei: tierPolicyTuple[0].toString(),
+        stakeAmountUsd: this.trustTiers[tierName]?.stakeAmountUsd ?? this.trustTiers.new.stakeAmountUsd,
         escrowDays: Number(tierPolicyTuple[1]),
       };
 
@@ -317,6 +331,7 @@ export class TrustService {
         source: "contract",
         tierPolicy,
         protocolMinimumStakeAmountWei,
+        protocolMinimumStakeAmountUsd: this.getProtocolMinimumStakeAmountUsd(),
         maxPriceMultiplier,
       };
     } catch (error) {
@@ -336,6 +351,7 @@ export class TrustService {
       source: "fallback",
       tierPolicy: fallbackTier,
       protocolMinimumStakeAmountWei: BigInt(fallbackTier.stakeAmountWei),
+      protocolMinimumStakeAmountUsd: this.getProtocolMinimumStakeAmountUsd(),
       maxPriceMultiplier: this.maxPriceMultiplierCache?.value || DEFAULT_MAX_PRICE_MULTIPLIER,
     };
   }
@@ -345,6 +361,30 @@ export class TrustService {
     return tierStakeAmountWei > policy.protocolMinimumStakeAmountWei
       ? tierStakeAmountWei
       : policy.protocolMinimumStakeAmountWei;
+  }
+
+  private getEffectiveStakeAmountUsd(policy: TrustPolicyConfig): string {
+    const tierStakeAmountUsd = Number(policy.tierPolicy.stakeAmountUsd);
+    const protocolMinimumStakeAmountUsd = Number(policy.protocolMinimumStakeAmountUsd);
+    if (!Number.isFinite(tierStakeAmountUsd) || tierStakeAmountUsd < 0) {
+      return policy.protocolMinimumStakeAmountUsd;
+    }
+    if (!Number.isFinite(protocolMinimumStakeAmountUsd) || protocolMinimumStakeAmountUsd < 0) {
+      return policy.tierPolicy.stakeAmountUsd;
+    }
+    return tierStakeAmountUsd > protocolMinimumStakeAmountUsd
+      ? policy.tierPolicy.stakeAmountUsd
+      : policy.protocolMinimumStakeAmountUsd;
+  }
+
+  private getProtocolMinimumStakeAmountUsd(): string {
+    return this.config.get<string>("TRUST_STAKE_USD_MIN")?.trim() || DEFAULT_PROTOCOL_MINIMUM_STAKE_USD;
+  }
+
+  private multiplyDecimalString(value: string, multiplier: bigint): string {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return value;
+    return (parsed * Number(multiplier)).toString();
   }
 
   private async getMaxPriceMultiplier(): Promise<bigint> {
