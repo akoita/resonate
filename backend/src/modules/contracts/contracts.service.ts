@@ -38,6 +38,10 @@ import {
   normalizeEvidenceBundleInput,
 } from "../rights/rights-evidence";
 import {
+  decoratePaymentAmount,
+  ZERO_PAYMENT_TOKEN,
+} from "../payments/payment-asset-metadata";
+import {
   dedupeFlags,
   getUploadRightsActions,
   type UploadRightsFlag,
@@ -681,6 +685,11 @@ export class ContractsService implements OnModuleInit {
         }
 
         // Create purchase record
+        const purchasePayment = decoratePaymentAmount({
+          chainId: event.chainId,
+          paymentToken: listing.paymentToken,
+          amountUnits: event.totalPaid,
+        });
         await prisma.stemPurchase.upsert({
           where: { transactionHash: event.transactionHash },
           create: {
@@ -688,6 +697,13 @@ export class ContractsService implements OnModuleInit {
             buyerAddress: event.buyerAddress.toLowerCase(),
             amount: BigInt(event.amount),
             totalPaid: event.totalPaid,
+            paymentToken: purchasePayment.paymentToken,
+            paymentAssetId: purchasePayment.paymentAssetId,
+            paymentAssetSymbol: purchasePayment.paymentAssetSymbol,
+            paymentAssetDecimals: purchasePayment.paymentAssetDecimals,
+            settlementAmount: purchasePayment.settlementAmount,
+            settlementAmountUnits: purchasePayment.settlementAmountUnits,
+            canonicalAmountUsd: purchasePayment.canonicalAmountUsd,
             royaltyPaid: "0", // Will be updated from RoyaltyPaid event
             protocolFeePaid: "0",
             sellerReceived: "0",
@@ -720,6 +736,12 @@ export class ContractsService implements OnModuleInit {
       this.logger.log(`Processing RoyaltyPaid: tokenId=${event.tokenId}, tx=${event.transactionHash}`);
 
       try {
+        const paymentToken = await this.findPaymentTokenForTokenId(event.tokenId, event.chainId);
+        const royaltyPayment = decoratePaymentAmount({
+          chainId: event.chainId,
+          paymentToken,
+          amountUnits: event.amount,
+        });
         // Use upsert to prevent duplicates on reindex (keyed on tx + tokenId)
         await prisma.royaltyPayment.upsert({
           where: {
@@ -733,6 +755,13 @@ export class ContractsService implements OnModuleInit {
             chainId: event.chainId,
             recipientAddress: event.recipientAddress,
             amount: event.amount,
+            paymentToken: royaltyPayment.paymentToken,
+            paymentAssetId: royaltyPayment.paymentAssetId,
+            paymentAssetSymbol: royaltyPayment.paymentAssetSymbol,
+            paymentAssetDecimals: royaltyPayment.paymentAssetDecimals,
+            settlementAmount: royaltyPayment.settlementAmount,
+            settlementAmountUnits: royaltyPayment.settlementAmountUnits,
+            canonicalAmountUsd: royaltyPayment.canonicalAmountUsd,
             transactionHash: event.transactionHash,
             blockNumber: BigInt(event.blockNumber),
             paidAt: new Date(event.occurredAt),
@@ -807,6 +836,11 @@ export class ContractsService implements OnModuleInit {
       this.logger.log(`Processing StakeDeposited: tokenId=${event.tokenId}, amount=${event.amount}, tx=${event.transactionHash}`);
 
       try {
+        const stakePayment = decoratePaymentAmount({
+          chainId: event.chainId,
+          paymentToken: event.paymentToken,
+          amountUnits: event.amount,
+        });
         await prisma.contentProtectionStake.upsert({
           where: {
             tokenId_chainId: {
@@ -819,6 +853,13 @@ export class ContractsService implements OnModuleInit {
             chainId: event.chainId,
             stakerAddress: event.stakerAddress.toLowerCase(),
             amount: event.amount,
+            paymentToken: stakePayment.paymentToken,
+            paymentAssetId: stakePayment.paymentAssetId,
+            paymentAssetSymbol: stakePayment.paymentAssetSymbol,
+            paymentAssetDecimals: stakePayment.paymentAssetDecimals,
+            settlementAmount: stakePayment.settlementAmount,
+            settlementAmountUnits: stakePayment.settlementAmountUnits,
+            canonicalAmountUsd: stakePayment.canonicalAmountUsd,
             active: true,
             depositedAt: new Date(event.occurredAt),
             transactionHash: event.transactionHash,
@@ -826,6 +867,13 @@ export class ContractsService implements OnModuleInit {
           },
           update: {
             amount: event.amount,
+            paymentToken: stakePayment.paymentToken,
+            paymentAssetId: stakePayment.paymentAssetId,
+            paymentAssetSymbol: stakePayment.paymentAssetSymbol,
+            paymentAssetDecimals: stakePayment.paymentAssetDecimals,
+            settlementAmount: stakePayment.settlementAmount,
+            settlementAmountUnits: stakePayment.settlementAmountUnits,
+            canonicalAmountUsd: stakePayment.canonicalAmountUsd,
             active: true,
             stakerAddress: event.stakerAddress.toLowerCase(),
           },
@@ -865,6 +913,11 @@ export class ContractsService implements OnModuleInit {
     this.eventBus.subscribe("contract.dispute_filed", async (event: any) => {
       this.logger.log(`Processing DisputeFiled: disputeId=${event.disputeId}, tokenId=${event.tokenId}`);
       try {
+        const counterStakePayment = decoratePaymentAmount({
+          chainId: event.chainId,
+          paymentToken: event.paymentToken,
+          amountUnits: event.counterStake || "0",
+        });
         await prisma.dispute.upsert({
           where: { id: `dispute_${event.disputeId}_${event.chainId}` },
           create: {
@@ -875,12 +928,26 @@ export class ContractsService implements OnModuleInit {
             creatorAddr: event.creatorAddress?.toLowerCase(),
             evidenceURI: event.evidenceURI || "",
             counterStake: event.counterStake || "0",
+            counterStakeToken: counterStakePayment.paymentToken,
+            counterStakeAssetId: counterStakePayment.paymentAssetId,
+            counterStakeAssetSymbol: counterStakePayment.paymentAssetSymbol,
+            counterStakeAssetDecimals: counterStakePayment.paymentAssetDecimals,
+            counterStakeAmount: counterStakePayment.settlementAmount,
+            counterStakeAmountUnits: counterStakePayment.settlementAmountUnits,
+            counterStakeAmountUsd: counterStakePayment.canonicalAmountUsd,
             status: "FILED",
             chainId: event.chainId,
             transactionHash: event.transactionHash,
           },
           update: {
             status: "FILED",
+            counterStakeToken: counterStakePayment.paymentToken,
+            counterStakeAssetId: counterStakePayment.paymentAssetId,
+            counterStakeAssetSymbol: counterStakePayment.paymentAssetSymbol,
+            counterStakeAssetDecimals: counterStakePayment.paymentAssetDecimals,
+            counterStakeAmount: counterStakePayment.settlementAmount,
+            counterStakeAmountUnits: counterStakePayment.settlementAmountUnits,
+            counterStakeAmountUsd: counterStakePayment.canonicalAmountUsd,
             transactionHash: event.transactionHash,
           },
         });
@@ -894,6 +961,11 @@ export class ContractsService implements OnModuleInit {
     this.eventBus.subscribe("contract.content_reported", async (event: any) => {
       this.logger.log(`Processing ContentReported: disputeId=${event.disputeId}, counterStake=${event.counterStake}`);
       try {
+        const counterStakePayment = decoratePaymentAmount({
+          chainId: event.chainId,
+          paymentToken: event.paymentToken,
+          amountUnits: event.counterStake || "0",
+        });
         await prisma.dispute.upsert({
           where: { id: `dispute_${event.disputeId}_${event.chainId}` },
           create: {
@@ -904,6 +976,13 @@ export class ContractsService implements OnModuleInit {
             creatorAddr: "",
             evidenceURI: event.evidenceURI || "",
             counterStake: event.counterStake || "0",
+            counterStakeToken: counterStakePayment.paymentToken,
+            counterStakeAssetId: counterStakePayment.paymentAssetId,
+            counterStakeAssetSymbol: counterStakePayment.paymentAssetSymbol,
+            counterStakeAssetDecimals: counterStakePayment.paymentAssetDecimals,
+            counterStakeAmount: counterStakePayment.settlementAmount,
+            counterStakeAmountUnits: counterStakePayment.settlementAmountUnits,
+            counterStakeAmountUsd: counterStakePayment.canonicalAmountUsd,
             status: "FILED",
             chainId: event.chainId,
             transactionHash: event.transactionHash,
@@ -912,6 +991,13 @@ export class ContractsService implements OnModuleInit {
             reporterAddr: event.reporterAddress?.toLowerCase(),
             evidenceURI: event.evidenceURI || "",
             counterStake: event.counterStake || "0",
+            counterStakeToken: counterStakePayment.paymentToken,
+            counterStakeAssetId: counterStakePayment.paymentAssetId,
+            counterStakeAssetSymbol: counterStakePayment.paymentAssetSymbol,
+            counterStakeAssetDecimals: counterStakePayment.paymentAssetDecimals,
+            counterStakeAmount: counterStakePayment.settlementAmount,
+            counterStakeAmountUnits: counterStakePayment.settlementAmountUnits,
+            counterStakeAmountUsd: counterStakePayment.canonicalAmountUsd,
             transactionHash: event.transactionHash,
           },
         });
@@ -970,6 +1056,32 @@ export class ContractsService implements OnModuleInit {
         this.logger.log(`Appealed dispute ${event.disputeId}`);
       } catch (error) {
         this.logger.error(`Failed to process DisputeAppealed: ${error}`);
+      }
+    });
+
+    this.eventBus.subscribe("contract.appeal_stake_deposited", async (event: any) => {
+      this.logger.log(`Processing AppealStakeDeposited: disputeId=${event.disputeId}, amount=${event.appealStake}`);
+      try {
+        const appealStakePayment = decoratePaymentAmount({
+          chainId: event.chainId,
+          paymentToken: event.paymentToken,
+          amountUnits: event.appealStake || "0",
+        });
+        await prisma.dispute.updateMany({
+          where: { disputeIdOnChain: event.disputeId },
+          data: {
+            appealStakeToken: appealStakePayment.paymentToken,
+            appealStakeAssetId: appealStakePayment.paymentAssetId,
+            appealStakeAssetSymbol: appealStakePayment.paymentAssetSymbol,
+            appealStakeAssetDecimals: appealStakePayment.paymentAssetDecimals,
+            appealStakeAmount: appealStakePayment.settlementAmount,
+            appealStakeAmountUnits: appealStakePayment.settlementAmountUnits,
+            appealStakeAmountUsd: appealStakePayment.canonicalAmountUsd,
+          },
+        });
+        this.logger.log(`Stored AppealStakeDeposited: disputeId=${event.disputeId}`);
+      } catch (error) {
+        this.logger.error(`Failed to process AppealStakeDeposited: ${error}`);
       }
     });
 
@@ -1188,6 +1300,19 @@ export class ContractsService implements OnModuleInit {
     });
   }
 
+  private async findPaymentTokenForTokenId(tokenId: string, chainId: number) {
+    const listing = await prisma.stemListing.findFirst({
+      where: {
+        tokenId: BigInt(tokenId),
+        chainId,
+      },
+      orderBy: { listedAt: "desc" },
+      select: { paymentToken: true },
+    });
+
+    return listing?.paymentToken ?? ZERO_PAYMENT_TOKEN;
+  }
+
   async getArtistEarnings(artistAddress: string) {
     // Sum all royalty payments for this artist
     const payments = await prisma.royaltyPayment.findMany({
@@ -1195,11 +1320,46 @@ export class ContractsService implements OnModuleInit {
     });
 
     const totalWei = payments.reduce((sum, p) => sum + BigInt(p.amount), 0n);
+    const assetMap = new Map<string, {
+      paymentToken: string;
+      paymentAssetId: string | null;
+      symbol: string;
+      decimals: number;
+      amountUnits: bigint;
+      canonicalAmountUsd: number;
+      count: number;
+    }>();
+    for (const payment of payments) {
+      const paymentToken = payment.paymentToken ?? ZERO_PAYMENT_TOKEN;
+      const stats = assetMap.get(paymentToken) ?? {
+        paymentToken,
+        paymentAssetId: payment.paymentAssetId,
+        symbol: payment.paymentAssetSymbol,
+        decimals: payment.paymentAssetDecimals,
+        amountUnits: 0n,
+        canonicalAmountUsd: 0,
+        count: 0,
+      };
+      stats.amountUnits += BigInt(payment.settlementAmountUnits ?? payment.amount);
+      stats.canonicalAmountUsd += Number(payment.canonicalAmountUsd ?? 0);
+      stats.count += 1;
+      assetMap.set(paymentToken, stats);
+    }
     const count = payments.length;
 
     return {
       totalWei: totalWei.toString(),
+      totalCanonicalUsd: [...assetMap.values()].reduce((sum, asset) => sum + asset.canonicalAmountUsd, 0),
       totalPayments: count,
+      assets: [...assetMap.values()].map((asset) => ({
+        paymentToken: asset.paymentToken,
+        paymentAssetId: asset.paymentAssetId,
+        symbol: asset.symbol,
+        decimals: asset.decimals,
+        amountUnits: asset.amountUnits.toString(),
+        canonicalAmountUsd: asset.canonicalAmountUsd,
+        count: asset.count,
+      })),
       payments: payments.slice(0, 10), // Last 10
     };
   }

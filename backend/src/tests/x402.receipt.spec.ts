@@ -50,7 +50,17 @@ describe('buildStemX402Receipt', () => {
       payTo: '0xPayTo',
       currency: 'USDC',
       amount: '0.75',
+      amountUsd: '0.75',
+      canonicalAmountUsd: '0.75',
+      settlementAmount: '0.75',
+      settlementAmountUnits: '750000',
       displayAmount: '0.75 USDC',
+      asset: {
+        assetId: 'x402:usdc',
+        tokenAddress: '0x0000000000000000000000000000000000000000',
+        symbol: 'USDC',
+        decimals: 6,
+      },
       paymentProofSha256: createHash('sha256')
         .update('proof-abc')
         .digest('hex'),
@@ -60,6 +70,9 @@ describe('buildStemX402Receipt', () => {
       name: 'Personal',
       currency: 'USDC',
       amount: '0.75',
+      amountUsd: '0.75',
+      settlementAmount: '0.75',
+      settlementAmountUnits: '750000',
       displayAmount: '0.75 USDC',
       scope: 'base stem download access via x402',
     });

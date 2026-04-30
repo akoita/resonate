@@ -1101,6 +1101,19 @@ Acceptance criteria:
 - Artist analytics can aggregate by asset.
 - Receipts display canonical USD and settlement asset amount.
 
+Implementation status:
+
+- Backend payment-bearing records now persist the token, asset id, symbol,
+  decimals, settlement amount, settlement units, and canonical USD where it can
+  be derived.
+- The indexer decodes `WithAsset` contract events for creator stakes,
+  counter-stakes, appeal stakes, bounty/escrow movements, and preserves token
+  metadata on typed events.
+- Artist analytics responses include `payoutsByAsset` alongside the existing
+  canonical USD totals.
+- x402 receipts include canonical USD and settlement asset fields, and browser
+  checkout renders those values when a receipt is present.
+
 ## Decisions
 
 - Asset governance has two levels: operators configure the accepted

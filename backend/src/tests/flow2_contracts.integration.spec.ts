@@ -153,6 +153,9 @@ describe('Choreography Flow 2: Contract Indexing → Marketplace Lifecycle', () 
     });
     expect(purchase).not.toBeNull();
     expect(purchase!.buyerAddress).toBe('0xbuyer');
+    expect(purchase!.paymentToken).toBe('0x0000000000000000000000000000000000000000');
+    expect(purchase!.paymentAssetSymbol).toBe('ETH');
+    expect(purchase!.settlementAmountUnits).toBe('250000000000000000');
   }, 20000);
 
   it('Listing cancellation', async () => {
@@ -220,5 +223,7 @@ describe('Choreography Flow 2: Contract Indexing → Marketplace Lifecycle', () 
     });
     expect(royalty).not.toBeNull();
     expect(royalty!.recipientAddress).toBe('0xCreator');
+    expect(royalty!.paymentAssetSymbol).toBe('ETH');
+    expect(royalty!.settlementAmountUnits).toBe('2500000000000000');
   }, 10000);
 });

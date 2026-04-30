@@ -399,6 +399,16 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 {x402Result.receiptId && (
                   <div className="buy-modal__x402-status">
                     Receipt {x402Result.receiptId}
+                    {x402Result.receipt?.payment && (
+                      <span>
+                        {" "}
+                        · {x402Result.receipt.payment.canonicalAmountUsd ?? x402Result.receipt.payment.amountUsd} USD
+                        {" "}
+                        settled as {x402Result.receipt.payment.settlementAmount ?? x402Result.receipt.payment.amount}
+                        {" "}
+                        {x402Result.receipt.payment.asset?.symbol ?? x402Result.receipt.payment.currency}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>

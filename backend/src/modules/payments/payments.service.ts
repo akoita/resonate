@@ -4,12 +4,16 @@ import { existsSync, readFileSync } from "fs";
 import path from "path";
 import { encodeFunctionData, formatUnits, parseEther, parseUnits } from "viem";
 import { EventBus } from "../shared/event_bus";
+import { decoratePaymentAmount, PaymentAmountMetadata } from "./payment-asset-metadata";
 
 interface PaymentRecord {
   id: string;
   sessionId: string;
   trackId?: string;
   amountUsd: number;
+  chainId: number;
+  assetId?: string;
+  asset?: PaymentAmountMetadata;
   status: "initiated" | "settled" | "failed";
   split?: { artistPct: number; mixerPct: number; platformPct: number };
   txHash?: string;
@@ -168,12 +172,36 @@ export class PaymentsService {
     private readonly config: ConfigService,
   ) {}
 
-  initiatePayment(input: { sessionId: string; amountUsd: number; trackId?: string }) {
+  initiatePayment(input: {
+    sessionId: string;
+    amountUsd: number;
+    trackId?: string;
+    chainId?: number;
+    assetId?: string;
+  }) {
+    const assets = this.loadPaymentAssets();
+    const chainId = input.chainId ?? this.getConfiguredChainId(assets);
+    const asset = this.resolveInitiatedPaymentAsset(assets, chainId, input.assetId);
+    const quote = this.buildAssetQuote(
+      asset,
+      this.parsePositiveDecimal(input.amountUsd, "amountUsd"),
+      new Date(Date.now() + DEFAULT_QUOTE_TTL_SECONDS * 1000).toISOString(),
+    );
+    const assetMetadata = decoratePaymentAmount({
+      chainId,
+      paymentToken: asset.tokenAddress,
+      amountUnits: quote.amountUnits,
+      assets,
+      canonicalAmountUsd: input.amountUsd,
+    });
     const payment: PaymentRecord = {
       id: this.generateId("pay"),
       sessionId: input.sessionId,
       trackId: input.trackId,
       amountUsd: input.amountUsd,
+      chainId,
+      assetId: asset.assetId,
+      asset: assetMetadata,
       status: "initiated",
     };
     if (input.trackId) {
@@ -191,7 +219,13 @@ export class PaymentsService {
       paymentId: payment.id,
       amountUsd: payment.amountUsd,
       sessionId: payment.sessionId,
-      chainId: 0,
+      chainId: payment.chainId,
+      paymentToken: assetMetadata.paymentToken,
+      paymentAssetId: assetMetadata.paymentAssetId,
+      paymentAssetSymbol: assetMetadata.paymentAssetSymbol,
+      paymentAssetDecimals: assetMetadata.paymentAssetDecimals,
+      settlementAmount: assetMetadata.settlementAmount,
+      settlementAmountUnits: assetMetadata.settlementAmountUnits,
     });
     return payment;
   }
@@ -230,6 +264,15 @@ export class PaymentsService {
       paymentId: payment.id,
       txHash: payment.txHash,
       status: payment.status,
+      amountUsd: payment.amountUsd,
+      trackId: payment.trackId,
+      chainId: payment.chainId,
+      paymentToken: payment.asset?.paymentToken,
+      paymentAssetId: payment.asset?.paymentAssetId,
+      paymentAssetSymbol: payment.asset?.paymentAssetSymbol,
+      paymentAssetDecimals: payment.asset?.paymentAssetDecimals,
+      settlementAmount: payment.asset?.settlementAmount,
+      settlementAmountUnits: payment.asset?.settlementAmountUnits,
     });
     return payment;
   }
@@ -650,6 +693,31 @@ export class PaymentsService {
       amountUnits: amountUnits.toString(),
       expiresAt,
     };
+  }
+
+  private resolveInitiatedPaymentAsset(assets: PaymentAsset[], chainId: number, assetId?: string) {
+    const chainAssets = assets.filter((asset) => asset.chainId === chainId);
+    const selected = assetId
+      ? chainAssets.find((asset) => asset.assetId === assetId)
+      : chainAssets.find((asset) => asset.assetId === this.resolveDefaultAssetId(chainAssets)) ?? chainAssets[0];
+    if (!selected) {
+      return {
+        assetId: `${chainId === LOCAL_CHAIN_ID ? "local" : `chain-${chainId}`}:eth`,
+        chainId,
+        symbol: "ETH",
+        name: "Native Ether",
+        kind: "native" as const,
+        tokenAddress: ZERO_ADDRESS,
+        decimals: 18,
+        enabled: true,
+        settlement: PAYMENT_SURFACES,
+        pricingStrategy: "fixed_test_price" as const,
+      };
+    }
+    if (!selected.enabled) {
+      throw new BadRequestException(`Payment asset ${selected.assetId} is disabled`);
+    }
+    return selected;
   }
 
   private quoteAssetUnits(

@@ -3,6 +3,7 @@ import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
 import { createPublicClient, http, parseAbiItem, decodeEventLog, type Log, type Address } from "viem";
 import { foundry, sepolia, baseSepolia } from "viem/chains";
+import { ZERO_PAYMENT_TOKEN } from "../payments/payment-asset-metadata";
 
 // Contract ABIs for event parsing
 const STEM_MINTED_EVENT = parseAbiItem(
@@ -34,15 +35,30 @@ const CONTENT_ATTESTED_EVENT = parseAbiItem(
 const STAKE_DEPOSITED_EVENT = parseAbiItem(
   "event StakeDeposited(uint256 indexed tokenId, address indexed staker, uint256 amount)"
 );
+const STAKE_DEPOSITED_WITH_ASSET_EVENT = parseAbiItem(
+  "event StakeDepositedWithAsset(uint256 indexed tokenId, address indexed staker, address indexed token, uint256 amount)"
+);
 const STAKE_SLASHED_EVENT = parseAbiItem(
   "event StakeSlashed(uint256 indexed tokenId, address indexed reporter, uint256 reporterAmount, uint256 treasuryAmount, uint256 burnedAmount)"
+);
+const STAKE_SLASHED_WITH_ASSET_EVENT = parseAbiItem(
+  "event StakeSlashedWithAsset(uint256 indexed tokenId, address indexed reporter, address indexed token, uint256 reporterAmount, uint256 treasuryAmount, uint256 burnedAmount)"
 );
 const ESCROW_RELEASED_EVENT = parseAbiItem(
   "event EscrowReleased(uint256 indexed tokenId, address indexed beneficiary, uint256 amount)"
 );
+const ESCROW_RELEASED_WITH_ASSET_EVENT = parseAbiItem(
+  "event EscrowReleasedWithAsset(uint256 indexed tokenId, address indexed beneficiary, address indexed token, uint256 amount)"
+);
 const ESCROW_FROZEN_EVENT = parseAbiItem("event EscrowFrozen(uint256 indexed tokenId)");
+const ESCROW_FROZEN_WITH_ASSET_EVENT = parseAbiItem(
+  "event EscrowFrozenWithAsset(uint256 indexed tokenId, address indexed token)"
+);
 const ESCROW_REDIRECTED_EVENT = parseAbiItem(
   "event EscrowRedirected(uint256 indexed tokenId, address indexed newRecipient, uint256 amount)"
+);
+const ESCROW_REDIRECTED_WITH_ASSET_EVENT = parseAbiItem(
+  "event EscrowRedirectedWithAsset(uint256 indexed tokenId, address indexed newRecipient, address token, uint256 amount)"
 );
 const BLACKLISTED_EVENT = parseAbiItem("event Blacklisted(address indexed account)");
 
@@ -59,8 +75,20 @@ const DISPUTE_APPEALED_EVENT = parseAbiItem(
 const CONTENT_REPORTED_EVENT = parseAbiItem(
   "event ContentReported(uint256 indexed disputeId, uint256 indexed tokenId, address indexed reporter, uint256 counterStake, string evidenceURI)"
 );
+const CONTENT_REPORTED_WITH_ASSET_EVENT = parseAbiItem(
+  "event ContentReportedWithAsset(uint256 indexed disputeId, uint256 indexed tokenId, address indexed reporter, address token, uint256 counterStake, string evidenceURI)"
+);
 const BOUNTY_CLAIMED_EVENT = parseAbiItem(
   "event BountyClaimed(uint256 indexed disputeId, address indexed reporter, uint256 amount)"
+);
+const BOUNTY_CLAIMED_WITH_ASSET_EVENT = parseAbiItem(
+  "event BountyClaimedWithAsset(uint256 indexed disputeId, address indexed reporter, address indexed token, uint256 amount)"
+);
+const APPEAL_STAKE_DEPOSITED_EVENT = parseAbiItem(
+  "event AppealStakeDeposited(uint256 indexed disputeId, address indexed appealer, uint256 amount)"
+);
+const APPEAL_STAKE_DEPOSITED_WITH_ASSET_EVENT = parseAbiItem(
+  "event AppealStakeDepositedWithAsset(uint256 indexed disputeId, address indexed appealer, address indexed token, uint256 amount)"
 );
 
 // ABI for querying on-chain listing state (to get actual expiry)
@@ -468,17 +496,26 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
       TRANSFER_SINGLE_EVENT,
       TRANSFER_BATCH_EVENT,
       CONTENT_ATTESTED_EVENT,
+      STAKE_DEPOSITED_WITH_ASSET_EVENT,
       STAKE_DEPOSITED_EVENT,
+      STAKE_SLASHED_WITH_ASSET_EVENT,
       STAKE_SLASHED_EVENT,
+      ESCROW_RELEASED_WITH_ASSET_EVENT,
       ESCROW_RELEASED_EVENT,
+      ESCROW_FROZEN_WITH_ASSET_EVENT,
       ESCROW_FROZEN_EVENT,
+      ESCROW_REDIRECTED_WITH_ASSET_EVENT,
       ESCROW_REDIRECTED_EVENT,
       BLACKLISTED_EVENT,
       DISPUTE_FILED_EVENT,
       DISPUTE_RESOLVED_EVENT,
       DISPUTE_APPEALED_EVENT,
+      CONTENT_REPORTED_WITH_ASSET_EVENT,
       CONTENT_REPORTED_EVENT,
+      BOUNTY_CLAIMED_WITH_ASSET_EVENT,
       BOUNTY_CLAIMED_EVENT,
+      APPEAL_STAKE_DEPOSITED_WITH_ASSET_EVENT,
+      APPEAL_STAKE_DEPOSITED_EVENT,
     ];
 
     for (const abiItem of ABIs) {
@@ -691,6 +728,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         break;
 
       case "StakeDeposited":
+      case "StakeDepositedWithAsset":
         this.eventBus.publish({
           eventName: "contract.stake_deposited",
           eventVersion: 1,
@@ -698,6 +736,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           tokenId: decodedArgs.tokenId?.toString(),
           stakerAddress: decodedArgs.staker,
           amount: decodedArgs.amount?.toString(),
+          paymentToken: decodedArgs.token ?? ZERO_PAYMENT_TOKEN,
           chainId,
           contractAddress: address,
           transactionHash: transactionHash!,
@@ -706,12 +745,14 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         break;
 
       case "StakeSlashed":
+      case "StakeSlashedWithAsset":
         this.eventBus.publish({
           eventName: "contract.stake_slashed",
           eventVersion: 1,
           occurredAt,
           tokenId: decodedArgs.tokenId?.toString(),
           reporterAddress: decodedArgs.reporter,
+          paymentToken: decodedArgs.token ?? ZERO_PAYMENT_TOKEN,
           reporterAmount: decodedArgs.reporterAmount?.toString(),
           treasuryAmount: decodedArgs.treasuryAmount?.toString(),
           burnedAmount: decodedArgs.burnedAmount?.toString(),
@@ -723,6 +764,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         break;
 
       case "EscrowReleased":
+      case "EscrowReleasedWithAsset":
         this.eventBus.publish({
           eventName: "contract.escrow_released",
           eventVersion: 1,
@@ -730,6 +772,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           tokenId: decodedArgs.tokenId?.toString(),
           beneficiaryAddress: decodedArgs.beneficiary,
           amount: decodedArgs.amount?.toString(),
+          paymentToken: decodedArgs.token ?? ZERO_PAYMENT_TOKEN,
           chainId,
           contractAddress: address,
           transactionHash: transactionHash!,
@@ -738,11 +781,13 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         break;
 
       case "EscrowFrozen":
+      case "EscrowFrozenWithAsset":
         this.eventBus.publish({
           eventName: "contract.escrow_frozen",
           eventVersion: 1,
           occurredAt,
           tokenId: decodedArgs.tokenId?.toString(),
+          paymentToken: decodedArgs.token ?? ZERO_PAYMENT_TOKEN,
           chainId,
           contractAddress: address,
           transactionHash: transactionHash!,
@@ -751,6 +796,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         break;
 
       case "EscrowRedirected":
+      case "EscrowRedirectedWithAsset":
         this.eventBus.publish({
           eventName: "contract.escrow_redirected",
           eventVersion: 1,
@@ -758,6 +804,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           tokenId: decodedArgs.tokenId?.toString(),
           newRecipient: decodedArgs.newRecipient,
           amount: decodedArgs.amount?.toString(),
+          paymentToken: decodedArgs.token ?? ZERO_PAYMENT_TOKEN,
           chainId,
           contractAddress: address,
           transactionHash: transactionHash!,
@@ -791,6 +838,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           creatorAddress: decodedArgs.creator,
           evidenceURI: decodedArgs.evidenceURI,
           counterStake: decodedArgs.counterStake?.toString(),
+          paymentToken: ZERO_PAYMENT_TOKEN,
           chainId,
           contractAddress: address,
           transactionHash: transactionHash!,
@@ -830,6 +878,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         break;
 
       case "ContentReported":
+      case "ContentReportedWithAsset":
         this.eventBus.publish({
           eventName: "contract.content_reported",
           eventVersion: 1,
@@ -838,6 +887,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           tokenId: decodedArgs.tokenId?.toString(),
           reporterAddress: decodedArgs.reporter,
           counterStake: decodedArgs.counterStake?.toString(),
+          paymentToken: decodedArgs.token ?? ZERO_PAYMENT_TOKEN,
           evidenceURI: decodedArgs.evidenceURI,
           chainId,
           contractAddress: address,
@@ -847,6 +897,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         break;
 
       case "BountyClaimed":
+      case "BountyClaimedWithAsset":
         this.eventBus.publish({
           eventName: "contract.bounty_claimed",
           eventVersion: 1,
@@ -854,6 +905,24 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
           disputeId: decodedArgs.disputeId?.toString(),
           reporterAddress: decodedArgs.reporter,
           amount: decodedArgs.amount?.toString(),
+          paymentToken: decodedArgs.token ?? ZERO_PAYMENT_TOKEN,
+          chainId,
+          contractAddress: address,
+          transactionHash: transactionHash!,
+          blockNumber: blockNumber!.toString(),
+        });
+        break;
+
+      case "AppealStakeDeposited":
+      case "AppealStakeDepositedWithAsset":
+        this.eventBus.publish({
+          eventName: "contract.appeal_stake_deposited",
+          eventVersion: 1,
+          occurredAt,
+          disputeId: decodedArgs.disputeId?.toString(),
+          appealerAddress: decodedArgs.appealer,
+          appealStake: decodedArgs.amount?.toString(),
+          paymentToken: decodedArgs.token ?? ZERO_PAYMENT_TOKEN,
           chainId,
           contractAddress: address,
           transactionHash: transactionHash!,

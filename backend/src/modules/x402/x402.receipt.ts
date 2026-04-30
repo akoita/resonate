@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { QuoteLicenseKey, formatUsdcAmount } from './x402.quote';
+import { ZERO_PAYMENT_TOKEN } from '../payments/payment-asset-metadata';
 
 export type X402ReceiptInput = {
   stemId: string;
@@ -12,6 +13,13 @@ export type X402ReceiptInput = {
   tokenId: string | null;
   licenseKey?: QuoteLicenseKey;
   amountUsd: number;
+  paymentAsset?: {
+    assetId: string;
+    tokenAddress: string;
+    symbol: string;
+    decimals: number;
+    amountUnits: string;
+  };
   network: string;
   payTo: string;
   resource: string;
@@ -33,6 +41,13 @@ export function buildStemX402Receipt(input: X402ReceiptInput) {
   const purchasedAt = input.purchasedAt ?? new Date();
   const licenseKey = input.licenseKey ?? 'personal';
   const normalizedAmount = formatUsdcAmount(input.amountUsd);
+  const paymentAsset = input.paymentAsset ?? {
+    assetId: 'x402:usdc',
+    tokenAddress: ZERO_PAYMENT_TOKEN,
+    symbol: 'USDC',
+    decimals: 6,
+    amountUnits: toTokenAmount(input.amountUsd, 6),
+  };
   const paymentProofDigest = input.paymentHeader
     ? createHash('sha256').update(input.paymentHeader).digest('hex')
     : null;
@@ -63,17 +78,30 @@ export function buildStemX402Receipt(input: X402ReceiptInput) {
       scheme: 'exact',
       network: input.network,
       payTo: input.payTo,
-      currency: 'USDC',
+      currency: paymentAsset.symbol,
       amount: normalizedAmount,
-      displayAmount: `${normalizedAmount} USDC`,
+      amountUsd: normalizedAmount,
+      canonicalAmountUsd: normalizedAmount,
+      settlementAmount: normalizedAmount,
+      settlementAmountUnits: paymentAsset.amountUnits,
+      displayAmount: `${normalizedAmount} ${paymentAsset.symbol}`,
+      asset: {
+        assetId: paymentAsset.assetId,
+        tokenAddress: paymentAsset.tokenAddress,
+        symbol: paymentAsset.symbol,
+        decimals: paymentAsset.decimals,
+      },
       paymentProofSha256: paymentProofDigest,
     },
     license: {
       key: licenseKey,
       name: LICENSE_NAMES[licenseKey],
-      currency: 'USDC',
+      currency: paymentAsset.symbol,
       amount: normalizedAmount,
-      displayAmount: `${normalizedAmount} USDC`,
+      amountUsd: normalizedAmount,
+      settlementAmount: normalizedAmount,
+      settlementAmountUnits: paymentAsset.amountUnits,
+      displayAmount: `${normalizedAmount} ${paymentAsset.symbol}`,
       scope: 'base stem download access via x402',
     },
     provenance: {
@@ -85,4 +113,10 @@ export function buildStemX402Receipt(input: X402ReceiptInput) {
 
 export function encodeX402ReceiptHeader(receipt: ReturnType<typeof buildStemX402Receipt>) {
   return Buffer.from(JSON.stringify(receipt)).toString('base64url');
+}
+
+function toTokenAmount(amount: number, decimals: number): string {
+  const [intPart, decPart = ''] = String(amount).split('.');
+  const paddedDec = decPart.padEnd(decimals, '0').slice(0, decimals);
+  return (intPart + paddedDec).replace(/^0+/, '') || '0';
 }

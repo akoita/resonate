@@ -110,9 +110,19 @@ Public quote and payment challenge pricing resolve in this order:
 - `payment`, `purchase`, and `x402` endpoint/protocol metadata for checkout clients
 - Optional `alternativeOffers` when an ETH marketplace listing exists, while keeping USDC as the canonical storefront price
 
-## Provenance
+## Provenance and Receipts
 
 x402 purchases are recorded as `ContractEvent` entries with `eventName: 'x402.purchase'`, using the chain ID derived from the configured x402 network. This remains separate from on-chain `StemPurchase` records (which require a FK to `StemListing`).
+
+Successful x402 responses include `X-Resonate-Receipt` and
+`X-Resonate-Receipt-Id`. The encoded receipt preserves both:
+
+- canonical USD amount: `payment.amountUsd` / `payment.canonicalAmountUsd`
+- settlement asset amount: `payment.settlementAmount`,
+  `payment.settlementAmountUnits`, and `payment.asset`
+
+This keeps marketplace, MCP, and browser checkout receipts comparable while
+still preserving the exact token used for settlement.
 
 ## Network Strategy
 

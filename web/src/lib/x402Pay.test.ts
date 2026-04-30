@@ -31,6 +31,14 @@ describe("payStemWithX402", () => {
 
   it("hands back audio directly when the server returns 200 with no challenge", async () => {
     const audio = new Blob([new Uint8Array([1, 2, 3])], { type: "audio/mpeg" });
+    const receipt = {
+      receiptId: "receipt_1",
+      payment: {
+        amountUsd: "0.75",
+        settlementAmount: "0.75",
+        currency: "USDC",
+      },
+    };
     fetchMock.mockResolvedValueOnce(
       new Response(audio, {
         status: 200,
@@ -38,6 +46,7 @@ describe("payStemWithX402", () => {
           "content-type": "audio/mpeg",
           "content-disposition": 'attachment; filename="kick.mp3"',
           "x-resonate-receipt-id": "receipt_1",
+          "x-resonate-receipt": Buffer.from(JSON.stringify(receipt)).toString("base64url"),
         },
       }),
     );
@@ -47,6 +56,7 @@ describe("payStemWithX402", () => {
     expect(result.filename).toBe("kick.mp3");
     expect(result.mimeType).toBe("audio/mpeg");
     expect(result.receiptId).toBe("receipt_1");
+    expect(result.receipt?.payment?.settlementAmount).toBe("0.75");
     expect(noopSigner.signTypedData).not.toHaveBeenCalled();
   });
 

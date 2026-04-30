@@ -254,6 +254,12 @@ export interface PaymentInitiatedEvent extends BaseEvent {
   amountUsd: number;
   sessionId: string;
   chainId: number;
+  paymentToken?: string;
+  paymentAssetId?: string;
+  paymentAssetSymbol?: string;
+  paymentAssetDecimals?: number;
+  settlementAmount?: string;
+  settlementAmountUnits?: string;
 }
 
 export interface PaymentSettledEvent extends BaseEvent {
@@ -261,6 +267,15 @@ export interface PaymentSettledEvent extends BaseEvent {
   paymentId: string;
   txHash: string;
   status: "settled" | "failed";
+  chainId?: number;
+  amountUsd?: number;
+  trackId?: string;
+  paymentToken?: string;
+  paymentAssetId?: string;
+  paymentAssetSymbol?: string;
+  paymentAssetDecimals?: number;
+  settlementAmount?: string;
+  settlementAmountUnits?: string;
 }
 
 export interface WalletFundedEvent extends BaseEvent {
@@ -365,6 +380,7 @@ export interface ContractStakeDepositedEvent extends BaseEvent {
   tokenId: string;
   stakerAddress: string;
   amount: string;
+  paymentToken?: string;
   chainId: number;
   contractAddress: string;
   transactionHash: string;
@@ -375,6 +391,7 @@ export interface ContractStakeSlashedEvent extends BaseEvent {
   eventName: "contract.stake_slashed";
   tokenId: string;
   reporterAddress: string;
+  paymentToken?: string;
   reporterAmount: string;
   treasuryAmount: string;
   burnedAmount: string;
@@ -389,6 +406,7 @@ export interface ContractEscrowReleasedEvent extends BaseEvent {
   tokenId: string;
   beneficiaryAddress: string;
   amount: string;
+  paymentToken?: string;
   chainId: number;
   contractAddress: string;
   transactionHash: string;
@@ -398,6 +416,7 @@ export interface ContractEscrowReleasedEvent extends BaseEvent {
 export interface ContractEscrowFrozenEvent extends BaseEvent {
   eventName: "contract.escrow_frozen";
   tokenId: string;
+  paymentToken?: string;
   chainId: number;
   contractAddress: string;
   transactionHash: string;
@@ -409,6 +428,7 @@ export interface ContractEscrowRedirectedEvent extends BaseEvent {
   tokenId: string;
   newRecipient: string;
   amount: string;
+  paymentToken?: string;
   chainId: number;
   contractAddress: string;
   transactionHash: string;
@@ -434,6 +454,7 @@ export interface ContractDisputeFiledEvent extends BaseEvent {
   creatorAddress: string;
   evidenceURI: string;
   counterStake: string;
+  paymentToken?: string;
   chainId: number;
   contractAddress: string;
   transactionHash: string;
@@ -457,6 +478,8 @@ export interface ContractDisputeAppealedEvent extends BaseEvent {
   disputeId: string;
   appealerAddress: string;
   appealNumber: string;
+  paymentToken?: string;
+  appealStake?: string;
   chainId: number;
   contractAddress: string;
   transactionHash: string;
@@ -469,6 +492,7 @@ export interface ContractContentReportedEvent extends BaseEvent {
   tokenId: string;
   reporterAddress: string;
   counterStake: string;
+  paymentToken?: string;
   evidenceURI: string;
   chainId: number;
   contractAddress: string;
@@ -481,6 +505,19 @@ export interface ContractBountyClaimedEvent extends BaseEvent {
   disputeId: string;
   reporterAddress: string;
   amount: string;
+  paymentToken?: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
+export interface ContractAppealStakeDepositedEvent extends BaseEvent {
+  eventName: "contract.appeal_stake_deposited";
+  disputeId: string;
+  appealerAddress: string;
+  appealStake: string;
+  paymentToken?: string;
   chainId: number;
   contractAddress: string;
   transactionHash: string;
@@ -656,6 +693,7 @@ export type ResonateEvent =
   | ContractDisputeAppealedEvent
   | ContractContentReportedEvent
   | ContractBountyClaimedEvent
+  | ContractAppealStakeDepositedEvent
   | AgentWalletEnabledEvent
   | AgentWalletDisabledEvent
   | AgentBudgetAlertEvent

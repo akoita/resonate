@@ -8,7 +8,13 @@ export class PaymentsController {
 
   @UseGuards(AuthGuard("jwt"))
   @Post("initiate")
-  initiate(@Body() body: { sessionId: string; amountUsd: number; trackId?: string }) {
+  initiate(@Body() body: {
+    sessionId: string;
+    amountUsd: number;
+    trackId?: string;
+    chainId?: number;
+    assetId?: string;
+  }) {
     return this.paymentsService.initiatePayment(body);
   }
 
