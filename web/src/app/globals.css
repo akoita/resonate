@@ -3417,6 +3417,43 @@ a {
   line-height: 1.35;
 }
 
+.upload-funding-panel {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid rgba(255, 159, 67, 0.28);
+  border-radius: var(--radius-md);
+  background: rgba(255, 159, 67, 0.07);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.upload-funding-panel .vault-funding-actions {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.upload-funding-panel__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+}
+
+.upload-funding-panel__title {
+  color: #ffb15c;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.upload-funding-panel__body {
+  margin: 4px 0 0;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 /* ---- Security Panel ---- */
 .vault-security-grid {
   display: grid;

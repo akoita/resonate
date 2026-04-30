@@ -14,6 +14,9 @@ import { getArtistMe, uploadStems, waitForReleaseAvailability, type ArtistProfil
 import { extractMetadata } from "../../../lib/metadataExtractor";
 import { useTrustTier } from "../../../hooks/useTrustTier";
 import { useAttestAndStake } from "../../../hooks/useContracts";
+import { useFundingOptions } from "../../../hooks/usePaymentAssets";
+import { useZeroDev } from "../../../components/auth/ZeroDevProviderClient";
+import { FundingActions } from "../../../components/payments/FundingActions";
 import StakeDepositCard from "../../../components/upload/StakeDepositCard";
 import { formatEth } from "../../../lib/stakeConstants";
 
@@ -53,19 +56,36 @@ type Stem = {
   };
 };
 
+function isStakeFundingError(message: string) {
+  return message.includes("Content Protection stake") && message.includes("smart account");
+}
+
 export default function ArtistUploadPage() {
   const router = useRouter();
-  const { token, address } = useAuth();
+  const { token, address, smartAccountAddress, refreshWallet } = useAuth();
+  const { chainId } = useZeroDev();
   const [stems, setStems] = useState<Stem[]>([]);
   const [selectedStemId, setSelectedStemId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [artistProfile, setArtistProfile] = useState<ArtistProfile | null>(null);
+  const [stakeFundingNotice, setStakeFundingNotice] = useState<string | null>(null);
   const { addToast } = useToast();
   const artworkInputRef = useRef<HTMLInputElement>(null);
+  const stakeFundingRef = useRef<HTMLDivElement>(null);
   const { trustTier, loading: trustLoading } = useTrustTier();
   const [stakeAcknowledged, setStakeAcknowledged] = useState(false);
   const { attestAndStake, pending: stakePending } = useAttestAndStake();
+  const fundingWallet = smartAccountAddress ?? address;
+  const {
+    options: stakeFundingOptions,
+    loading: stakeFundingLoading,
+    error: stakeFundingError,
+  } = useFundingOptions({
+    chainId,
+    wallet: fundingWallet,
+    surface: "upload_stake",
+  });
 
   // Stake is required unless tier is verified (waived) or trust data is still loading
   const stakeRequired = Boolean(!trustLoading && trustTier && trustTier.stakeAmountWei !== "0");
@@ -159,6 +179,7 @@ export default function ArtistUploadPage() {
     }
 
     setIsPublishing(true);
+    setStakeFundingNotice(null);
 
     try {
       if (!token || !address) {
@@ -308,6 +329,8 @@ export default function ArtistUploadPage() {
       let title = "Failed to publish";
       let message = msg || "An error occurred while publishing. Please try again.";
 
+      let onClick: (() => void) | undefined;
+
       if (msg.includes("Total upload size") || msg.includes("File too large")) {
         title = "Upload too large";
         message = msg;
@@ -317,9 +340,13 @@ export default function ArtistUploadPage() {
       } else if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("CORS")) {
         title = "Network error";
         message = "Could not reach the server. Please check your connection and try again.";
-      } else if (msg.includes("Content Protection stake") && msg.includes("smart account")) {
-        title = "Add Base Sepolia ETH";
-        message = msg;
+      } else if (isStakeFundingError(msg)) {
+        title = "Add stake ETH";
+        message = "Your smart account needs ETH for the Content Protection stake. Open funding options below, then try publishing again.";
+        setStakeFundingNotice(msg);
+        onClick = () => {
+          stakeFundingRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        };
       } else if (msg.includes("already been attested")) {
         title = "Already attested";
       } else if (msg.includes("already been deposited")) {
@@ -334,7 +361,8 @@ export default function ArtistUploadPage() {
         type: "error",
         title,
         message,
-        duration: 10000,
+        duration: onClick ? 15000 : 10000,
+        onClick,
       });
     } finally {
       setIsPublishing(false);
@@ -904,6 +932,58 @@ export default function ArtistUploadPage() {
                 }}>
                   <span style={{ fontSize: "18px" }}>🔒</span>
                   <span>Deposit your <strong>{trustTier ? (Number(trustTier.stakeAmountWei) / 1e18) : '...'} ETH</strong> native stake above to unlock publishing.</span>
+                </div>
+              )}
+
+              {stakeFundingNotice && (
+                <div ref={stakeFundingRef} className="upload-funding-panel">
+                  <div className="upload-funding-panel__header">
+                    <div>
+                      <div className="upload-funding-panel__title">Funding needed</div>
+                      <p className="upload-funding-panel__body">
+                        {stakeFundingNotice}
+                      </p>
+                    </div>
+                    <button
+                      className="vault-btn vault-btn--ghost vault-btn--sm"
+                      type="button"
+                      onClick={async () => {
+                        await refreshWallet();
+                        addToast({
+                          type: "info",
+                          title: "Balance refreshed",
+                          message: "Try publishing again after the funding transaction confirms.",
+                        });
+                      }}
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                  {stakeFundingLoading ? (
+                    <div className="vault-alert vault-alert--info">Loading funding options...</div>
+                  ) : stakeFundingError ? (
+                    <div className="vault-alert vault-alert--warning">
+                      Could not load funding options. Copy the smart account address from the error above and fund it manually.
+                    </div>
+                  ) : stakeFundingOptions.length > 0 ? (
+                    <FundingActions
+                      options={stakeFundingOptions}
+                      wallet={fundingWallet}
+                      token={token}
+                      onFunded={async () => {
+                        await refreshWallet();
+                        addToast({
+                          type: "success",
+                          title: "Funding submitted",
+                          message: "Once the transaction confirms, publish the release again.",
+                        });
+                      }}
+                    />
+                  ) : (
+                    <div className="vault-alert vault-alert--warning">
+                      No funding provider is configured for this network. Transfer ETH to the smart account address shown above, then refresh.
+                    </div>
+                  )}
                 </div>
               )}
 
