@@ -252,6 +252,23 @@ export function formatPaymentAmount(amountUnits: bigint | string, decimals: numb
   return trimmed ? `${whole}.${trimmed}` : whole;
 }
 
+export function formatPaymentAmountWithSymbol(
+  amountUnits: bigint | string,
+  decimals: number,
+  symbol: string,
+) {
+  return `${formatPaymentAmount(amountUnits, decimals)} ${symbol}`;
+}
+
+export function paymentAssetSupportsSurface(
+  asset: Pick<PaymentAsset, "enabled" | "settlement">,
+  surface: PaymentSurface,
+) {
+  if (!asset.enabled) return false;
+  return asset.settlement.includes(surface) ||
+    (surface === "upload_stake" && asset.settlement.includes("stake"));
+}
+
 export function getFundingGroup(kind: FundingOption["kind"]) {
   return FUNDING_GROUPS[kind];
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { decodeEventLog, type Address, encodeFunctionData, formatEther, type Hex, http, type PublicClient } from "viem";
+import { decodeEventLog, type Address, encodeFunctionData, formatEther, formatUnits, type Hex, http, type PublicClient } from "viem";
 import { useZeroDev } from "../components/auth/ZeroDevProviderClient";
 import { useAuth } from "../components/auth/AuthProvider";
 import {
@@ -57,7 +57,17 @@ function createMappedTransport(bundlerUrl: string): (opts: any) => any {
 }
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
-const ERC20_APPROVE_ABI = [
+const ERC20_STAKE_ABI = [
+  {
+    type: "function",
+    name: "allowance",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
   {
     type: "function",
     name: "approve",
@@ -67,6 +77,13 @@ const ERC20_APPROVE_ABI = [
       { name: "amount", type: "uint256" },
     ],
     outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
   },
 ] as const;
 
@@ -858,6 +875,12 @@ export function useAttestAndStake() {
       fingerprintHash: Hex;     // keccak256 of a client-side fingerprint (or placeholder)
       metadataURI: string;      // Release metadata URI (e.g., IPFS or API endpoint)
       stakeAmountWei?: bigint;  // Amount to stake (from trust tier)
+      stakeAsset?: {
+        tokenAddress: Address;
+        amountUnits: bigint;
+        symbol: string;
+        decimals: number;
+      };
       includeStake?: boolean;   // Set false for attestation-only flows
     }) => {
       if (status !== "authenticated" || !address) {
@@ -913,10 +936,19 @@ export function useAttestAndStake() {
         const attestationValid = Boolean(attestation[5]);
         const stakeActive = Boolean(stakeInfo[2]);
         const shouldStake = params.includeStake ?? true;
-        const effectiveStakeAmount = shouldStake && !stakeActive
+        const requestedStakeAsset = params.stakeAsset;
+        const hasAssetStake = Boolean(
+          requestedStakeAsset &&
+            requestedStakeAsset.tokenAddress.toLowerCase() !== ZERO_ADDRESS &&
+            requestedStakeAsset.amountUnits > 0n
+        );
+        const effectiveNativeStakeAmount = shouldStake && !stakeActive && !hasAssetStake
           ? ((params.stakeAmountWei ?? 0n) > (contractStakeAmount as bigint)
               ? (params.stakeAmountWei ?? 0n)
               : (contractStakeAmount as bigint))
+          : 0n;
+        const effectiveAssetStakeAmount = shouldStake && !stakeActive && hasAssetStake && requestedStakeAsset
+          ? requestedStakeAsset.amountUnits
           : 0n;
 
         if (
@@ -929,15 +961,43 @@ export function useAttestAndStake() {
           );
         }
 
-        if (effectiveStakeAmount > 0n) {
+        if (effectiveNativeStakeAmount > 0n) {
           const smartAccountBalance = await publicClient.getBalance({
             address: callerAddress,
           });
 
-          if (smartAccountBalance < effectiveStakeAmount) {
-            const missingStake = effectiveStakeAmount - smartAccountBalance;
+          if (smartAccountBalance < effectiveNativeStakeAmount) {
+            const missingStake = effectiveNativeStakeAmount - smartAccountBalance;
             throw new Error(
-              `Your smart account needs ${formatEther(effectiveStakeAmount)} ETH on Base Sepolia to deposit the Content Protection stake. Current balance: ${formatEther(smartAccountBalance)} ETH. Add at least ${formatEther(missingStake)} ETH to ${callerAddress} and try publishing again.`
+              `Your smart account needs ${formatEther(effectiveNativeStakeAmount)} ETH on Base Sepolia to deposit the Content Protection stake. Current balance: ${formatEther(smartAccountBalance)} ETH. Add at least ${formatEther(missingStake)} ETH to ${callerAddress} and try publishing again.`
+            );
+          }
+        }
+
+        let currentAssetAllowance = 0n;
+        if (effectiveAssetStakeAmount > 0n && requestedStakeAsset) {
+          const [assetBalance, assetAllowance] = await Promise.all([
+            publicClient.readContract({
+              address: requestedStakeAsset.tokenAddress,
+              abi: ERC20_STAKE_ABI,
+              functionName: "balanceOf",
+              args: [callerAddress],
+            }) as Promise<bigint>,
+            publicClient.readContract({
+              address: requestedStakeAsset.tokenAddress,
+              abi: ERC20_STAKE_ABI,
+              functionName: "allowance",
+              args: [callerAddress, cpAddress],
+            }) as Promise<bigint>,
+          ]);
+          currentAssetAllowance = assetAllowance;
+
+          if (assetBalance < effectiveAssetStakeAmount) {
+            const required = formatUnits(effectiveAssetStakeAmount, requestedStakeAsset.decimals);
+            const current = formatUnits(assetBalance, requestedStakeAsset.decimals);
+            const missing = formatUnits(effectiveAssetStakeAmount - assetBalance, requestedStakeAsset.decimals);
+            throw new Error(
+              `Your smart account needs ${required} ${requestedStakeAsset.symbol} on Base Sepolia to deposit the Content Protection stake. Current balance: ${current} ${requestedStakeAsset.symbol}. Add at least ${missing} ${requestedStakeAsset.symbol} to ${callerAddress} and try publishing again.`
             );
           }
         }
@@ -956,19 +1016,58 @@ export function useAttestAndStake() {
         }
 
         if (shouldStake && !stakeActive) {
-          calls.push({
-            to: cpAddress,
-            data: encodeFunctionData({
-              abi: ContentProtectionABI,
-              functionName: "stakeForRelease",
-              args: [releaseId],
-            }),
-            value: effectiveStakeAmount,
-          });
+          if (effectiveAssetStakeAmount > 0n && requestedStakeAsset) {
+            if (currentAssetAllowance < effectiveAssetStakeAmount) {
+              if (currentAssetAllowance > 0n) {
+                calls.push({
+                  to: requestedStakeAsset.tokenAddress,
+                  data: encodeFunctionData({
+                    abi: ERC20_STAKE_ABI,
+                    functionName: "approve",
+                    args: [cpAddress, 0n],
+                  }),
+                });
+              }
+              calls.push({
+                to: requestedStakeAsset.tokenAddress,
+                data: encodeFunctionData({
+                  abi: ERC20_STAKE_ABI,
+                  functionName: "approve",
+                  args: [cpAddress, effectiveAssetStakeAmount],
+                }),
+              });
+            }
+            calls.push({
+              to: cpAddress,
+              data: encodeFunctionData({
+                abi: ContentProtectionABI,
+                functionName: "stakeForReleaseWithAsset",
+                args: [releaseId, requestedStakeAsset.tokenAddress, effectiveAssetStakeAmount],
+              }),
+            });
+          } else {
+            calls.push({
+              to: cpAddress,
+              data: encodeFunctionData({
+                abi: ContentProtectionABI,
+                functionName: "stakeForRelease",
+                args: [releaseId],
+              }),
+              value: effectiveNativeStakeAmount,
+            });
+          }
         }
 
         if (calls.length === 0) {
-          return { hash: "", tokenId: releaseId, stakeAmountWei: 0n };
+          return {
+            hash: "",
+            tokenId: releaseId,
+            stakeAmountWei: 0n,
+            stakeAmountUnits: 0n,
+            stakeAssetSymbol: "ETH",
+            stakeAssetDecimals: 18,
+            stakeToken: ZERO_ADDRESS,
+          };
         }
 
         const hash = await sendBatchContractTransactions(
@@ -980,7 +1079,21 @@ export function useAttestAndStake() {
         );
 
         setTxHash(hash);
-        return { hash, tokenId: releaseId, stakeAmountWei: effectiveStakeAmount };
+        return {
+          hash,
+          tokenId: releaseId,
+          stakeAmountWei: effectiveNativeStakeAmount,
+          stakeAmountUnits: effectiveAssetStakeAmount || effectiveNativeStakeAmount,
+          stakeAssetSymbol: effectiveAssetStakeAmount > 0n && requestedStakeAsset
+            ? requestedStakeAsset.symbol
+            : "ETH",
+          stakeAssetDecimals: effectiveAssetStakeAmount > 0n && requestedStakeAsset
+            ? requestedStakeAsset.decimals
+            : 18,
+          stakeToken: effectiveAssetStakeAmount > 0n && requestedStakeAsset
+            ? requestedStakeAsset.tokenAddress
+            : ZERO_ADDRESS,
+        };
       } catch (err) {
         const error = normalizeContractWriteError(err);
         setError(error);
@@ -1915,7 +2028,7 @@ export function useBuyStem() {
                 {
                   to: listing.paymentToken,
                   data: encodeFunctionData({
-                    abi: ERC20_APPROVE_ABI,
+                    abi: ERC20_STAKE_ABI,
                     functionName: "approve",
                     args: [addresses.marketplace, quote.totalPrice],
                   }),

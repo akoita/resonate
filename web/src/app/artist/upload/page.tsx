@@ -14,11 +14,16 @@ import { getArtistMe, uploadStems, waitForReleaseAvailability, type ArtistProfil
 import { extractMetadata } from "../../../lib/metadataExtractor";
 import { useTrustTier } from "../../../hooks/useTrustTier";
 import { useAttestAndStake } from "../../../hooks/useContracts";
-import { useFundingOptions } from "../../../hooks/usePaymentAssets";
+import { useFundingOptions, usePaymentAssets } from "../../../hooks/usePaymentAssets";
 import { useZeroDev } from "../../../components/auth/ZeroDevProviderClient";
 import { FundingActions } from "../../../components/payments/FundingActions";
 import StakeDepositCard from "../../../components/upload/StakeDepositCard";
-import { formatEth } from "../../../lib/stakeConstants";
+import {
+  formatPaymentAmountWithSymbol,
+  paymentAssetSupportsSurface,
+} from "../../../lib/payments";
+import { ContentProtectionABI, getAddresses } from "../../../contracts_abi";
+import type { Address } from "viem";
 
 const MAX_FILE_SIZE_MB = 200;
 const MAX_TOTAL_SIZE_MB = 500;
@@ -63,7 +68,7 @@ function isStakeFundingError(message: string) {
 export default function ArtistUploadPage() {
   const router = useRouter();
   const { token, address, smartAccountAddress, refreshWallet } = useAuth();
-  const { chainId } = useZeroDev();
+  const { chainId, publicClient } = useZeroDev();
   const [stems, setStems] = useState<Stem[]>([]);
   const [selectedStemId, setSelectedStemId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -75,7 +80,9 @@ export default function ArtistUploadPage() {
   const stakeFundingRef = useRef<HTMLDivElement>(null);
   const { trustTier, loading: trustLoading } = useTrustTier();
   const [stakeAcknowledged, setStakeAcknowledged] = useState(false);
+  const [stableStakeAmountUnits, setStableStakeAmountUnits] = useState<bigint | null | undefined>(undefined);
   const { attestAndStake, pending: stakePending } = useAttestAndStake();
+  const { assets: paymentAssets } = usePaymentAssets(chainId);
   const fundingWallet = smartAccountAddress ?? address;
   const {
     options: stakeFundingOptions,
@@ -86,10 +93,34 @@ export default function ArtistUploadPage() {
     wallet: fundingWallet,
     surface: "upload_stake",
   });
+  const preferredStableStakeAsset = paymentAssets.find((asset) => {
+    return asset.kind === "stablecoin" && paymentAssetSupportsSurface(asset, "upload_stake");
+  }) ?? null;
+  const stableStakeRequirement = preferredStableStakeAsset && stableStakeAmountUnits && stableStakeAmountUnits > 0n
+    ? {
+        asset: preferredStableStakeAsset,
+        amountUnits: stableStakeAmountUnits,
+      }
+    : null;
+  const stakeAssetLabel = stableStakeRequirement
+    ? formatPaymentAmountWithSymbol(
+        stableStakeRequirement.amountUnits,
+        stableStakeRequirement.asset.decimals,
+        stableStakeRequirement.asset.symbol,
+      )
+    : null;
+  const stableMaxListingPriceLabel = stableStakeRequirement && trustTier && !trustTier.maxListingPriceUncapped
+    ? formatPaymentAmountWithSymbol(
+        stableStakeRequirement.amountUnits * BigInt(trustTier.maxPriceMultiplier),
+        stableStakeRequirement.asset.decimals,
+        stableStakeRequirement.asset.symbol,
+      )
+    : null;
 
   // Stake is required unless tier is verified (waived) or trust data is still loading
   const stakeRequired = Boolean(!trustLoading && trustTier && trustTier.stakeAmountWei !== "0");
-  const stakeReady = !stakeRequired || stakeAcknowledged;
+  const stableStakeLookupPending = Boolean(preferredStableStakeAsset && stableStakeAmountUnits === undefined);
+  const stakeReady = !stakeRequired || (!stableStakeLookupPending && stakeAcknowledged);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -132,6 +163,42 @@ export default function ArtistUploadPage() {
       cancelled = true;
     };
   }, [token]);
+
+  useEffect(() => {
+    if (!preferredStableStakeAsset || !publicClient) {
+      setStableStakeAmountUnits(null);
+      return;
+    }
+
+    let cancelled = false;
+    setStableStakeAmountUnits(undefined);
+    try {
+      const addresses = getAddresses(chainId);
+      if (addresses.contentProtection === "0x0000000000000000000000000000000000000000") {
+        setStableStakeAmountUnits(null);
+        return;
+      }
+
+      publicClient.readContract({
+        address: addresses.contentProtection,
+        abi: ContentProtectionABI,
+        functionName: "stakeAmountsByToken",
+        args: [preferredStableStakeAsset.tokenAddress as Address],
+      })
+        .then((amount) => {
+          if (!cancelled) setStableStakeAmountUnits(amount as bigint);
+        })
+        .catch(() => {
+          if (!cancelled) setStableStakeAmountUnits(null);
+        });
+    } catch {
+      setStableStakeAmountUnits(null);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chainId, preferredStableStakeAsset, publicClient]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -224,13 +291,25 @@ export default function ArtistUploadPage() {
           metadataURI,
           includeStake: stakeRequired,
           stakeAmountWei: stakeRequired && trustTier ? BigInt(trustTier.stakeAmountWei) : 0n,
+          stakeAsset: stakeRequired && stableStakeRequirement
+            ? {
+                tokenAddress: stableStakeRequirement.asset.tokenAddress as Address,
+                amountUnits: stableStakeRequirement.amountUnits,
+                symbol: stableStakeRequirement.asset.symbol,
+                decimals: stableStakeRequirement.asset.decimals,
+              }
+            : undefined,
         });
 
         addToast({
           type: "success",
           title: stakeRequired ? "Stake deposited!" : "Content Protection attested!",
           message: stakeRequired && trustTier
-            ? `${formatEth(attestationResult.stakeAmountWei || 0n)} staked. Now uploading release...`
+            ? `${formatPaymentAmountWithSymbol(
+                attestationResult.stakeAmountUnits || attestationResult.stakeAmountWei || 0n,
+                attestationResult.stakeAssetDecimals || 18,
+                attestationResult.stakeAssetSymbol || "ETH",
+              )} staked. Now uploading release...`
             : "Release attested on-chain. Now uploading release...",
           duration: 5000,
         });
@@ -341,8 +420,10 @@ export default function ArtistUploadPage() {
         title = "Network error";
         message = "Could not reach the server. Please check your connection and try again.";
       } else if (isStakeFundingError(msg)) {
-        title = "Add stake ETH";
-        message = "Your smart account needs ETH for the Content Protection stake. Open funding options below, then try publishing again.";
+        title = stableStakeRequirement ? `Add stake ${stableStakeRequirement.asset.symbol}` : "Add stake ETH";
+        message = stableStakeRequirement
+          ? `Your smart account needs ${stableStakeRequirement.asset.symbol} for the Content Protection stake. Open funding options below, then try publishing again.`
+          : "Your smart account needs ETH for the Content Protection stake. Open funding options below, then try publishing again.";
         setStakeFundingNotice(msg);
         onClick = () => {
           stakeFundingRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -915,7 +996,14 @@ export default function ArtistUploadPage() {
                 </div>
               )}
 
-              <StakeDepositCard trustTier={trustTier} loading={trustLoading} onStakeAcknowledged={() => setStakeAcknowledged(true)} />
+              <StakeDepositCard
+                trustTier={trustTier}
+                loading={trustLoading || stableStakeLookupPending}
+                stakeAssetLabel={stakeAssetLabel}
+                stakeAssetKind={stableStakeRequirement ? "stablecoin" : "native"}
+                maxListingPriceLabel={stableMaxListingPriceLabel}
+                onStakeAcknowledged={() => setStakeAcknowledged(true)}
+              />
 
               {!stakeReady && allReady && (
                 <div style={{
@@ -931,7 +1019,9 @@ export default function ArtistUploadPage() {
                   color: "#f59e0b",
                 }}>
                   <span style={{ fontSize: "18px" }}>🔒</span>
-                  <span>Deposit your <strong>{trustTier ? (Number(trustTier.stakeAmountWei) / 1e18) : '...'} ETH</strong> native stake above to unlock publishing.</span>
+                  <span>
+                    Acknowledge your <strong>{stakeAssetLabel ?? (trustTier ? `${Number(trustTier.stakeAmountWei) / 1e18} ETH` : "...")}</strong> Content Protection stake above to unlock publishing.
+                  </span>
                 </div>
               )}
 

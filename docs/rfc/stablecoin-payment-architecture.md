@@ -95,7 +95,7 @@ The payment asset registry should cover all protocol-level economic actions.
 | Human marketplace listing creation | `list()` and `listLastMint()` accept `paymentToken`, while web flows pass zero address | Operator controls the global allowlist; seller selects preferred accepted assets from that allowlist |
 | x402 stem download | USDC-only asset map inside x402 config | Use shared registry; USDC first because facilitator support is asset-specific |
 | Agent marketplace purchase | Session-key policy and purchase service call `buy()` with ETH-style value assumptions | Quote and enforce agent spend caps by canonical USD plus selected settlement asset |
-| Upload/content-protection stake | `ContentProtection.stake()` and `stakeForRelease()` are payable ETH | Support configured stake assets or intentionally mark upload staking as ETH-only with a reason |
+| Upload/content-protection stake | `ContentProtection.stakeForReleaseWithAsset()` accepts configured ERC-20 stake assets; web upload flow prefers enabled stablecoins and falls back to native ETH | Make the listing cap fully asset-aware with oracle conversion for non-USDC listing assets |
 | Stake refund/slash | Refunds, reporter reward, treasury share, and burn accounting are ETH transfers | Preserve deposited asset; slash/refund/reward in that same asset |
 | Dispute counter-stake | `CurationRewards.reportContent()` is payable ETH | Counter-stake can use any enabled dispute asset with oracle conversion to the required canonical value |
 | Dispute appeal stake | `CurationRewards.appealDispute()` is payable ETH | Appeal stake can use any enabled dispute asset with oracle conversion to the required canonical value |

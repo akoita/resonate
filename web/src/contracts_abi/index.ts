@@ -454,6 +454,17 @@ export const ContentProtectionABI = [
     outputs: [],
   },
   {
+    name: "stakeForReleaseWithAsset",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "releaseId", type: "uint256" },
+      { name: "token", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
     name: "stake",
     type: "function",
     stateMutability: "payable",
@@ -472,6 +483,13 @@ export const ContentProtectionABI = [
     type: "function",
     stateMutability: "view",
     inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "stakeAmountsByToken",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "token", type: "address" }],
     outputs: [{ name: "", type: "uint256" }],
   },
   {

@@ -42,12 +42,13 @@ Upload → Process (Demucs) → Publish → attestRelease() + stakeForRelease() 
 
 | Tier        | Stake     | Escrow Period | Max Listing Price (at 10× multiplier) |
 | ----------- | --------- | ------------- | ------------------------------------- |
-| New Creator | 0.01 ETH  | 30 days       | 0.1 ETH per unit                      |
-| Established | 0.005 ETH | 14 days       | 0.05 ETH per unit                     |
-| Trusted     | 0.001 ETH | 7 days        | 0.01 ETH per unit                     |
+| New Creator | 10 USDC when stablecoin staking is configured; native ETH fallback otherwise | 30 days | 100 USDC per unit when listed in USDC |
+| Established | 10 USDC when stablecoin staking is configured; native ETH fallback otherwise | 14 days | 100 USDC per unit when listed in USDC |
+| Trusted     | 10 USDC when stablecoin staking is configured; native ETH fallback otherwise | 7 days | 100 USDC per unit when listed in USDC |
 | Verified Trust Tier | Waived | 3 days | Uncapped |
 
 The trust tier above is an economic control, not an independent rights-verification badge. It affects stake, escrow, and listing economics only.
+Upload staking is stablecoin-first when an enabled `upload_stake` stablecoin has an on-chain stake amount. Native ETH remains a fallback for local or partially configured environments.
 
 ## Components
 
@@ -63,7 +64,7 @@ All hooks handle the zero-address case (contract not deployed) gracefully.
 
 Renders on **stem detail pages** (`/stem/[tokenId]`). Two modes:
 
-- **Compact** — inline pill: `🛡️ Active ✓ (0.01 ETH)`
+- **Compact** — inline pill: `Active ✓ (10 USDC)` or the deposited native fallback
 - **Expanded** — full card with status, amount, economic trust tier, escrow countdown, and self-attestation date
 
 Reads live on-chain data via `useStakeInfo` + `useAttestationInfo`. Fetches trust tier from backend (`/api/trust-tier/{address}`).
@@ -73,7 +74,7 @@ Reads live on-chain data via `useStakeInfo` + `useAttestationInfo`. Fetches trus
 Renders on **release detail pages** (`/release/[id]`) — visible to all users.
 
 - Fetches from backend indexer (`/api/content-protection/release/{id}`)
-- When indexer unavailable, shows program defaults (New Creator / 0.01 ETH / 30 days) — consistent with publish-time staking model
+- When indexer unavailable, shows program defaults, preferring configured stablecoin staking where available — consistent with publish-time staking model
 - When data available, shows live status pill, stake amount, economic tier, escrow countdown, provenance status, and rights-review status
 
 ### 4. My Stakes Dashboard (`components/wallet/MyStakesCard.tsx`)
@@ -104,7 +105,8 @@ Fetches from backend (`/api/metadata/stakes/analytics/{address}`).
 
 - `deriveStakeStatus(active, amount, depositedAt, escrowDays)` → `StakeStatus`
 - `deriveEscrowStatus(active, depositedAt, escrowDays)` → `{ status, daysRemaining }`
-- `formatEth(wei)` → `"0.01 ETH"` or `"Waived"`
+- `formatEth(wei)` → native fallback formatting such as `"0.01 ETH"` or `"Waived"`
+- `formatPaymentAmountWithSymbol(amountUnits, decimals, symbol)` → stablecoin stake formatting such as `"10 USDC"`
 - Label/color maps for all statuses and tiers
 
 ## Page Integration Map
