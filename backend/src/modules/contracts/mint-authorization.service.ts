@@ -49,7 +49,7 @@ const STEM_NFT_ADDRESSES: Record<number, () => string | undefined> = {
   31337: () => process.env.STEM_NFT_ADDRESS,
   11155111: () =>
     process.env.SEPOLIA_STEM_NFT_ADDRESS || process.env.STEM_NFT_ADDRESS,
-  84532: () => process.env.BASE_SEPOLIA_STEM_NFT_ADDRESS,
+  84532: () => process.env.BASE_SEPOLIA_STEM_NFT_ADDRESS || process.env.STEM_NFT_ADDRESS,
 };
 
 function getReleaseMetadataUriCandidates(title: string): string[] {
