@@ -1896,7 +1896,7 @@ async function sendBatchContractTransactions(
     throw normalizeContractWriteError(error);
   }
 
-  let receipt: { receipt: { transactionHash: string } };
+  let receipt: { success?: boolean; receipt: { status?: string; transactionHash: string } };
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     receipt = await (kernelClient as unknown as any).waitForUserOperationReceipt({
@@ -1907,6 +1907,14 @@ async function sendBatchContractTransactions(
   }
 
   const hash = receipt.receipt.transactionHash;
+  if (receipt.success === false || receipt.receipt.status === "reverted") {
+    throw normalizeContractWriteError(
+      new Error(
+        `Smart account transaction reverted on-chain. UserOp ${userOpHash} produced transaction ${hash}, but no contract changes were applied.`
+      )
+    );
+  }
+
   console.log("[AA] Batch Transaction submitted! Hash:", hash);
   return hash;
 }
