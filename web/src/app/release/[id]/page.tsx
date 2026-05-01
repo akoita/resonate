@@ -293,6 +293,7 @@ export default function ReleaseDetails() {
   }, [isPhone]);
   const [release, setRelease] = useState<Release | null>(null);
   const [loading, setLoading] = useState(true);
+  const [attestationFlowPending, setAttestationFlowPending] = useState(false);
   const [isUpdatingArtwork, setIsUpdatingArtwork] = useState(false);
   const [tracksToAddToPlaylist, setTracksToAddToPlaylist] = useState<LocalTrack[] | null>(null);
   const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(new Set());
@@ -386,11 +387,17 @@ export default function ReleaseDetails() {
     !!release?.id &&
     !!release?.tracks?.length &&
     !!token;
+  const attestationInProgress = attestationPending || attestationFlowPending;
   const mintingBlockedReason = marketplaceRestrictedByRights
     ? `Marketplace minting is disabled while this release is routed as ${rightsRouteLabel}.`
-    : needsAttestationForMinting
-      ? "Marketplace rights are approved. Complete the release's on-chain Content Protection attestation to mint and list stems."
+    : needsAttestationForMinting && !canCompleteAttestation
+      ? "Marketplace rights are approved. The creator wallet must protect this release on-chain before minting and listing stems."
       : null;
+  const attestationMintNotice = needsAttestationForMinting
+    ? canCompleteAttestation
+      ? "Marketplace rights are approved. Mint & List will protect this release on-chain first, then continue with the selected stems."
+      : mintingBlockedReason
+    : null;
   const effectiveListingPriceWei = resolveStakeSafeListingPriceWei({
     trustTier,
     releaseProtection,
@@ -942,15 +949,25 @@ export default function ReleaseDetails() {
     }
   };
 
-  const handleCompleteAttestation = useCallback(async () => {
-    if (!release?.id || !release.tracks?.length || !token) {
-      return;
+  const completeAttestationForMinting = useCallback(async () => {
+    if (!needsAttestationForMinting || releaseProtection?.attested) {
+      return true;
     }
 
+    if (!release?.id || !release.tracks?.length || !token || !canCompleteAttestation) {
+      addToast({
+        title: "Creator wallet required",
+        message: "This release must be protected on-chain by the creator wallet before minting.",
+        type: "warning",
+      });
+      return false;
+    }
+
+    setAttestationFlowPending(true);
     try {
       addToast({
         title: "Confirm passkey",
-        message: "Approve the Resonate passkey prompt so the smart account can submit the on-chain attestation.",
+        message: "Approve the passkey prompt so Resonate can protect this release before minting.",
         type: "info",
         duration: 10000,
       });
@@ -972,7 +989,7 @@ export default function ReleaseDetails() {
       const metadataURI = `resonate://release/${slugifyReleaseTitle(release.title)}`;
 
       addToast({
-        title: "Completing attestation",
+        title: "Protecting release",
         message: "Submitting this release's Content Protection attestation on-chain.",
         type: "info",
       });
@@ -986,7 +1003,7 @@ export default function ReleaseDetails() {
       });
 
       let refreshedProtection: ReleaseContentProtectionData | null = null;
-      for (let attempt = 0; attempt < 10; attempt += 1) {
+      for (let attempt = 0; attempt < 15; attempt += 1) {
         refreshedProtection = await getReleaseContentProtectionStatus(release.id);
         if (refreshedProtection?.attested) {
           break;
@@ -995,12 +1012,13 @@ export default function ReleaseDetails() {
       }
       setReleaseProtection(refreshedProtection);
       addToast({
-        title: "Attestation submitted",
+        title: refreshedProtection?.attested ? "Release protected" : "Protection submitted",
         message: refreshedProtection?.attested
-          ? "Content Protection attestation is complete. Minting is ready to proceed."
-          : "Content Protection attestation was submitted. Minting will unlock once the indexer reflects the on-chain update.",
-        type: "success",
+          ? "Content Protection is complete. Continuing to mint and list."
+          : "Minting will unlock as soon as the indexer reflects the on-chain protection.",
+        type: refreshedProtection?.attested ? "success" : "warning",
       });
+      return !!refreshedProtection?.attested;
     } catch (error) {
       console.error("Failed to complete release attestation", error);
       addToast({
@@ -1008,8 +1026,24 @@ export default function ReleaseDetails() {
         message: error instanceof Error ? error.message : "Failed to complete the on-chain attestation.",
         type: "error",
       });
+      return false;
+    } finally {
+      setAttestationFlowPending(false);
     }
-  }, [addToast, attestAndStake, login, release, token]);
+  }, [
+    addToast,
+    attestAndStake,
+    canCompleteAttestation,
+    login,
+    needsAttestationForMinting,
+    release,
+    releaseProtection?.attested,
+    token,
+  ]);
+
+  const handleCompleteAttestation = useCallback(async () => {
+    await completeAttestationForMinting();
+  }, [completeAttestationForMinting]);
 
   const handleArtworkChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1380,10 +1414,10 @@ export default function ReleaseDetails() {
                       <Button
                         variant="primary"
                         onClick={handleCompleteAttestation}
-                        disabled={attestationPending}
+                        disabled={attestationInProgress}
                         style={{ whiteSpace: "nowrap", flexShrink: 0 }}
                       >
-                        {attestationPending ? "Attesting..." : "Complete On-Chain Attestation"}
+                        {attestationInProgress ? "Protecting..." : "Protect Release"}
                       </Button>
                     )}
                   </div>
@@ -1876,7 +1910,7 @@ export default function ReleaseDetails() {
                     });
                   };
 
-                  const handleBatchMintSelected = () => {
+                  const handleBatchMintSelected = async () => {
                     if (mintingBlockedReason) {
                       addToast({
                         type: "warning",
@@ -1884,6 +1918,12 @@ export default function ReleaseDetails() {
                         message: mintingBlockedReason,
                       });
                       return;
+                    }
+                    if (needsAttestationForMinting) {
+                      const readyToMint = await completeAttestationForMinting();
+                      if (!readyToMint) {
+                        return;
+                      }
                     }
                     const selected = mintableStems
                       .filter(s => selectedNftStems.has(s.id))
@@ -1925,28 +1965,17 @@ export default function ReleaseDetails() {
                               <button
                                 className="nft-batch-btn"
                                 onClick={handleBatchMintSelected}
-                                disabled={!!mintingBlockedReason}
+                                disabled={!!mintingBlockedReason || attestationInProgress}
                                 title={mintingBlockedReason || undefined}
                               >
-                                Mint & List Selected ({selectedInTrack.length})
+                                {attestationInProgress ? "Protecting..." : `Mint & List Selected (${selectedInTrack.length})`}
                               </button>
                             )}
                           </div>
 
-                          {mintingBlockedReason && (
+                          {attestationMintNotice && (
                             <div className="nft-attestation-notice">
-                              <div>{mintingBlockedReason}</div>
-                              {canCompleteAttestation && (
-                                <div style={{ marginTop: "10px" }}>
-                                  <Button
-                                    variant="primary"
-                                    onClick={handleCompleteAttestation}
-                                    disabled={attestationPending}
-                                  >
-                                    {attestationPending ? "Attesting..." : "Complete On-Chain Attestation"}
-                                  </Button>
-                                </div>
-                              )}
+                              <div>{attestationMintNotice}</div>
                             </div>
                           )}
 
@@ -1976,8 +2005,15 @@ export default function ReleaseDetails() {
                                     stemId={stem.id}
                                     stemType={stem.type}
                                     listingPricePerUnit={effectiveListingPriceWei}
-                                    disabled={!!mintingBlockedReason}
-                                    disabledLabel={marketplaceRestrictedByRights ? "Marketplace Restricted" : "Attestation Required"}
+                                    onBeforeMint={needsAttestationForMinting && canCompleteAttestation ? completeAttestationForMinting : undefined}
+                                    disabled={!!mintingBlockedReason || attestationInProgress}
+                                    disabledLabel={
+                                      attestationInProgress
+                                        ? "Protecting..."
+                                        : marketplaceRestrictedByRights
+                                          ? "Marketplace Restricted"
+                                          : "Creator Wallet Required"
+                                    }
                                     disabledReason={mintingBlockedReason || undefined}
                                   />
                                 </div>

@@ -60,6 +60,7 @@ interface MintStemButtonProps {
     stemId: string;
     stemType: string;
     listingPricePerUnit: bigint;
+    onBeforeMint?: () => Promise<boolean>;
     disabled?: boolean;
     disabledReason?: string;
     disabledLabel?: string;
@@ -74,6 +75,7 @@ export function MintStemButton({
     stemId,
     stemType,
     listingPricePerUnit,
+    onBeforeMint,
     disabled = false,
     disabledReason,
     disabledLabel,
@@ -263,6 +265,13 @@ export function MintStemButton({
         }
 
         try {
+            if (onBeforeMint) {
+                const readyToMint = await onBeforeMint();
+                if (!readyToMint) {
+                    return;
+                }
+            }
+
             const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
 
             setState("confirming_mint");
