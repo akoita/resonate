@@ -243,6 +243,7 @@ async function resolveMintAuthorization(
     royaltyBps: params.royaltyBps,
     remixable: params.remixable,
     parentIds: params.parentIds.map((id) => id.toString()),
+    protectionId: params.protectionId?.toString(),
   });
 
   return toAuthorizedMintParams(authorization);
@@ -1620,6 +1621,7 @@ export function useBatchMintAndList() {
       options?: {
         pricePerUnit?: bigint;
         durationSeconds?: bigint;
+        releaseProtectionId?: bigint;
         onProgress?: (results: BatchStemResult[]) => void;
       }
     ) => {
@@ -1665,6 +1667,7 @@ export function useBatchMintAndList() {
             royaltyBps: 500,
             remixable: true,
             parentIds: [],
+            protectionId: options?.releaseProtectionId?.toString(),
           })),
         });
         await assertMintAuthorizationSupported(

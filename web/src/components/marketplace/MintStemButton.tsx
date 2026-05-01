@@ -60,7 +60,7 @@ interface MintStemButtonProps {
     stemId: string;
     stemType: string;
     listingPricePerUnit: bigint;
-    onBeforeMint?: () => Promise<boolean>;
+    onBeforeMint?: () => Promise<boolean | { ready: boolean; protectionId?: bigint }>;
     disabled?: boolean;
     disabledReason?: string;
     disabledLabel?: string;
@@ -265,8 +265,17 @@ export function MintStemButton({
         }
 
         try {
+            let releaseProtectionId: bigint | undefined;
             if (onBeforeMint) {
-                const readyToMint = await onBeforeMint();
+                const beforeMintResult = await onBeforeMint();
+                const readyToMint =
+                    typeof beforeMintResult === "boolean"
+                        ? beforeMintResult
+                        : beforeMintResult.ready;
+                releaseProtectionId =
+                    typeof beforeMintResult === "boolean"
+                        ? undefined
+                        : beforeMintResult.protectionId;
                 if (!readyToMint) {
                     return;
                 }
@@ -282,6 +291,7 @@ export function MintStemButton({
                 royaltyBps: 500,
                 remixable: true,
                 parentIds: [],
+                protectionId: releaseProtectionId,
                 pricePerUnit: listingPricePerUnit,
                 paymentToken: ZERO_ADDRESS,
                 durationSeconds: BigInt(7 * 24 * 60 * 60),

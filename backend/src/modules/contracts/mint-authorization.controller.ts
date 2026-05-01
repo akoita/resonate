@@ -21,6 +21,7 @@ type MintAuthorizationBody = {
   royaltyBps?: number;
   remixable?: boolean;
   parentIds?: Array<string | number>;
+  protectionId?: string | number;
 };
 
 @Controller("contracts/mint-authorizations")

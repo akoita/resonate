@@ -1086,6 +1086,7 @@ export async function createStemMintAuthorization(
     royaltyBps?: number;
     remixable?: boolean;
     parentIds?: string[];
+    protectionId?: string;
   }
 ) {
   return apiRequest<StemMintAuthorization>(
@@ -1108,6 +1109,7 @@ export async function createBatchStemMintAuthorizations(
       royaltyBps?: number;
       remixable?: boolean;
       parentIds?: string[];
+      protectionId?: string;
     }>;
   }
 ) {

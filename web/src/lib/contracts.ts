@@ -55,6 +55,7 @@ export interface MintParams {
   royaltyBps: number;
   remixable: boolean;
   parentIds: bigint[];
+  protectionId?: bigint;
   authorization?: {
     tokenURI: string;
     to: Address;
