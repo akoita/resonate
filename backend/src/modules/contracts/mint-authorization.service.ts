@@ -9,6 +9,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { randomBytes } from "crypto";
 import {
+  createPublicClient,
   createWalletClient,
   encodeAbiParameters,
   getAddress,
@@ -17,8 +18,10 @@ import {
   keccak256,
   stringToHex,
   type Address,
+  type Chain,
   type Hex,
 } from "viem";
+import { baseSepolia, foundry, sepolia } from "viem/chains";
 import type { Prisma } from "@prisma/client";
 import { privateKeyToAccount } from "viem/accounts";
 import { prisma } from "../../db/prisma";
@@ -52,6 +55,52 @@ const STEM_NFT_ADDRESSES: Record<number, () => string | undefined> = {
   84532: () => process.env.BASE_SEPOLIA_STEM_NFT_ADDRESS || process.env.STEM_NFT_ADDRESS,
 };
 
+const CONTENT_PROTECTION_ADDRESSES: Record<number, () => string | undefined> = {
+  31337: () => process.env.CONTENT_PROTECTION_ADDRESS,
+  11155111: () =>
+    process.env.SEPOLIA_CONTENT_PROTECTION_ADDRESS ||
+    process.env.CONTENT_PROTECTION_ADDRESS,
+  84532: () =>
+    process.env.BASE_SEPOLIA_CONTENT_PROTECTION_ADDRESS ||
+    process.env.CONTENT_PROTECTION_ADDRESS,
+};
+
+const RPC_OVERRIDE = process.env.RPC_URL || "";
+const CHAIN_CONFIGS: Record<number, () => { chain: Chain; rpcUrl?: string }> = {
+  31337: () => ({
+    chain: foundry,
+    rpcUrl: RPC_OVERRIDE || process.env.LOCAL_RPC_URL || "http://localhost:8545",
+  }),
+  11155111: () => ({
+    chain: sepolia,
+    rpcUrl:
+      RPC_OVERRIDE ||
+      process.env.LOCAL_RPC_URL ||
+      process.env.SEPOLIA_RPC_URL,
+  }),
+  84532: () => ({
+    chain: baseSepolia,
+    rpcUrl: RPC_OVERRIDE || process.env.BASE_SEPOLIA_RPC_URL,
+  }),
+};
+
+const CONTENT_PROTECTION_ABI = [
+  {
+    name: "attestations",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [
+      { name: "contentHash", type: "bytes32" },
+      { name: "fingerprintHash", type: "bytes32" },
+      { name: "metadataURI", type: "string" },
+      { name: "attester", type: "address" },
+      { name: "timestamp", type: "uint256" },
+      { name: "valid", type: "bool" },
+    ],
+  },
+] as const;
+
 function getReleaseMetadataUriCandidates(title: string): string[] {
   const canonicalSlug = title
     .toLowerCase()
@@ -80,6 +129,7 @@ type MintAuthorizationInput = {
   royaltyBps?: number;
   remixable?: boolean;
   parentIds?: Array<string | number>;
+  protectionId?: string | number;
 };
 
 export type MintAuthorizationResponse = {
@@ -237,7 +287,12 @@ export class MintAuthorizationService {
     const parentIds = (input.parentIds ?? []).map((parentId) =>
       this.parsePositiveBigInt(parentId, "parentIds"),
     );
-    const protectionId = await this.resolveReleaseProtectionId(stem, chainId);
+    const protectionId = await this.resolveReleaseProtectionId(
+      stem,
+      chainId,
+      minter,
+      input.protectionId,
+    );
 
     const tokenURI = this.buildTokenUri(backendBaseUrl, chainId, input.stemId);
     const deadline = BigInt(
@@ -283,21 +338,37 @@ export class MintAuthorizationService {
   private async resolveReleaseProtectionId(
     stem: StemAuthorizationRecord,
     chainId: number,
+    minter: Address,
+    protectionIdOverride?: string | number,
   ): Promise<bigint> {
     const release = stem.track?.release;
-    const artistAddress = release?.artist?.payoutAddress?.toLowerCase();
-    if (!release || !artistAddress) {
+    if (!release) {
       throw new BadRequestException(
-        "Release is missing an attesting payout address",
+        "Release is missing a content-protection root",
       );
     }
 
     const metadataUris = getReleaseMetadataUriCandidates(release.title);
+    const attesterCandidates = this.getAttesterCandidates(stem, minter);
+
+    if (protectionIdOverride != null) {
+      const protectionId = this.parsePositiveBigInt(
+        protectionIdOverride,
+        "protectionId",
+      );
+      await this.assertOnChainReleaseProtection({
+        chainId,
+        protectionId,
+        metadataUris,
+        attesterCandidates,
+      });
+      return protectionId;
+    }
 
     const attestation = await prisma.contentAttestation.findFirst({
       where: {
         chainId,
-        attesterAddress: artistAddress,
+        attesterAddress: { in: attesterCandidates },
         metadataURI: { in: metadataUris },
       },
       orderBy: { attestedAt: "desc" },
@@ -310,6 +381,75 @@ export class MintAuthorizationService {
     }
 
     return this.parsePositiveBigInt(attestation.tokenId, "protectionId");
+  }
+
+  private getAttesterCandidates(
+    stem: StemAuthorizationRecord,
+    minter: Address,
+  ): string[] {
+    const release = stem.track?.release;
+    return Array.from(
+      new Set(
+        [
+          minter,
+          release?.artist?.userId,
+          release?.artist?.payoutAddress,
+        ]
+          .filter((value): value is string => Boolean(value))
+          .map((value) => value.toLowerCase()),
+      ),
+    );
+  }
+
+  private async assertOnChainReleaseProtection(input: {
+    chainId: number;
+    protectionId: bigint;
+    metadataUris: string[];
+    attesterCandidates: string[];
+  }): Promise<void> {
+    const contentProtectionAddress = this.resolveContentProtectionAddress(
+      input.chainId,
+    );
+    const chainConfig = this.resolveChainConfig(input.chainId);
+    const client = createPublicClient({
+      chain: chainConfig.chain,
+      transport: http(chainConfig.rpcUrl),
+    });
+
+    const attestation = await client.readContract({
+      address: contentProtectionAddress,
+      abi: CONTENT_PROTECTION_ABI,
+      functionName: "attestations",
+      args: [input.protectionId],
+    });
+
+    const metadataURI = attestation[2];
+    const attester = String(attestation[3]).toLowerCase();
+    const valid = Boolean(attestation[5]);
+    const expectedAttesters = input.attesterCandidates.filter((candidate) =>
+      isAddress(candidate),
+    );
+
+    if (!valid) {
+      throw new BadRequestException(
+        `Release protection ${input.protectionId.toString()} has not been attested on-chain yet`,
+      );
+    }
+
+    if (!input.metadataUris.includes(metadataURI)) {
+      throw new BadRequestException(
+        "Release protection metadata does not match this release",
+      );
+    }
+
+    if (
+      expectedAttesters.length > 0 &&
+      !expectedAttesters.some((candidate) => candidate.toLowerCase() === attester)
+    ) {
+      throw new BadRequestException(
+        "Release protection attester does not match the minting wallet",
+      );
+    }
   }
 
   private getAuthorizationTtlSeconds(): number {
@@ -330,6 +470,29 @@ export class MintAuthorizationService {
       );
     }
     return getAddress(value);
+  }
+
+  private resolveContentProtectionAddress(chainId: number): Address {
+    const resolver = CONTENT_PROTECTION_ADDRESSES[chainId];
+    const value = resolver?.();
+    if (!value || !isAddress(value)) {
+      throw new BadRequestException(
+        `ContentProtection address is not configured for chain ${chainId}`,
+      );
+    }
+    return getAddress(value);
+  }
+
+  private resolveChainConfig(chainId: number) {
+    const resolver = CHAIN_CONFIGS[chainId];
+    if (!resolver) {
+      throw new BadRequestException(`Unsupported chain ${chainId}`);
+    }
+    const config = resolver();
+    if (!config.rpcUrl) {
+      throw new BadRequestException(`RPC URL is not configured for chain ${chainId}`);
+    }
+    return config as { chain: Chain; rpcUrl: string };
   }
 
   private normalizeAddress(value: string, field: string): Address {

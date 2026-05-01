@@ -103,6 +103,21 @@ const isPreviewBackedMixerStem = (
   return !stem.isEncrypted && stem.uri === getStemPreviewUrl(stem.id);
 };
 
+type MintReadiness = {
+  ready: boolean;
+  protectionId?: bigint;
+};
+
+function parseProtectionTokenId(value?: string | null): bigint | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = BigInt(value);
+    return parsed > 0n ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function slugifyReleaseTitle(value: string): string {
   return value
     .toLowerCase()
@@ -307,6 +322,8 @@ export default function ReleaseDetails() {
   const [trackProgress, setTrackProgress] = useState<Record<string, number>>({});
   const [selectedNftStems, setSelectedNftStems] = useState<Set<string>>(new Set());
   const [batchModalStems, setBatchModalStems] = useState<BatchStemItem[] | null>(null);
+  const [batchModalProtectionId, setBatchModalProtectionId] = useState<bigint | undefined>(undefined);
+  const [freshReleaseProtectionId, setFreshReleaseProtectionId] = useState<bigint | undefined>(undefined);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showRightsUpgradeModal, setShowRightsUpgradeModal] = useState(false);
   const [releaseProtection, setReleaseProtection] = useState<ReleaseContentProtectionData | null>(null);
@@ -949,9 +966,12 @@ export default function ReleaseDetails() {
     }
   };
 
-  const completeAttestationForMinting = useCallback(async () => {
+  const completeAttestationForMinting = useCallback(async (): Promise<MintReadiness> => {
     if (!needsAttestationForMinting || releaseProtection?.attested) {
-      return true;
+      return {
+        ready: true,
+        protectionId: parseProtectionTokenId(releaseProtection?.tokenId),
+      };
     }
 
     if (!release?.id || !release.tracks?.length || !token || !canCompleteAttestation) {
@@ -960,7 +980,7 @@ export default function ReleaseDetails() {
         message: "This release must be protected on-chain by the creator wallet before minting.",
         type: "warning",
       });
-      return false;
+      return { ready: false };
     }
 
     setAttestationFlowPending(true);
@@ -994,13 +1014,14 @@ export default function ReleaseDetails() {
         type: "info",
       });
 
-      await attestAndStake({
+      const attestationResult = await attestAndStake({
         contentHash,
         fingerprintHash: contentHash,
         metadataURI,
         includeStake: false,
         accountOverride,
       });
+      const attestedProtectionId = attestationResult.tokenId;
 
       let refreshedProtection: ReleaseContentProtectionData | null = null;
       for (let attempt = 0; attempt < 15; attempt += 1) {
@@ -1010,15 +1031,29 @@ export default function ReleaseDetails() {
         }
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
-      setReleaseProtection(refreshedProtection);
+      const optimisticProtection = refreshedProtection?.attested
+        ? refreshedProtection
+        : releaseProtection
+          ? {
+              ...releaseProtection,
+              tokenId: attestedProtectionId.toString(),
+              attested: true,
+              attestedAt: new Date().toISOString(),
+            }
+          : refreshedProtection;
+      setReleaseProtection(optimisticProtection);
       addToast({
-        title: refreshedProtection?.attested ? "Release protected" : "Protection submitted",
+        title: "Release protected",
         message: refreshedProtection?.attested
           ? "Content Protection is complete. Continuing to mint and list."
-          : "Minting will unlock as soon as the indexer reflects the on-chain protection.",
-        type: refreshedProtection?.attested ? "success" : "warning",
+          : "Content Protection is on-chain. Continuing to mint and list while the indexer catches up.",
+        type: "success",
       });
-      return !!refreshedProtection?.attested;
+      setFreshReleaseProtectionId(attestedProtectionId);
+      return {
+        ready: true,
+        protectionId: attestedProtectionId,
+      };
     } catch (error) {
       console.error("Failed to complete release attestation", error);
       addToast({
@@ -1026,7 +1061,7 @@ export default function ReleaseDetails() {
         message: error instanceof Error ? error.message : "Failed to complete the on-chain attestation.",
         type: "error",
       });
-      return false;
+      return { ready: false };
     } finally {
       setAttestationFlowPending(false);
     }
@@ -1037,7 +1072,7 @@ export default function ReleaseDetails() {
     login,
     needsAttestationForMinting,
     release,
-    releaseProtection?.attested,
+    releaseProtection,
     token,
   ]);
 
@@ -1919,11 +1954,13 @@ export default function ReleaseDetails() {
                       });
                       return;
                     }
+                    let releaseProtectionId = freshReleaseProtectionId;
                     if (needsAttestationForMinting) {
-                      const readyToMint = await completeAttestationForMinting();
-                      if (!readyToMint) {
+                      const mintReadiness = await completeAttestationForMinting();
+                      if (!mintReadiness.ready) {
                         return;
                       }
+                      releaseProtectionId = mintReadiness.protectionId;
                     }
                     const selected = mintableStems
                       .filter(s => selectedNftStems.has(s.id))
@@ -1933,6 +1970,7 @@ export default function ReleaseDetails() {
                         trackTitle: track.title,
                       }));
                     if (selected.length > 0) {
+                      setBatchModalProtectionId(releaseProtectionId);
                       setBatchModalStems(selected);
                     }
                   };
@@ -2005,7 +2043,13 @@ export default function ReleaseDetails() {
                                     stemId={stem.id}
                                     stemType={stem.type}
                                     listingPricePerUnit={effectiveListingPriceWei}
-                                    onBeforeMint={needsAttestationForMinting && canCompleteAttestation ? completeAttestationForMinting : undefined}
+                                    onBeforeMint={
+                                      needsAttestationForMinting && canCompleteAttestation
+                                        ? completeAttestationForMinting
+                                        : marketplaceApprovedByRights && freshReleaseProtectionId
+                                          ? async () => ({ ready: true, protectionId: freshReleaseProtectionId })
+                                          : undefined
+                                    }
                                     disabled={!!mintingBlockedReason || attestationInProgress}
                                     disabledLabel={
                                       attestationInProgress
@@ -2049,8 +2093,10 @@ export default function ReleaseDetails() {
           stems={batchModalStems}
           listingPriceWei={effectiveListingPriceWei}
           listingPriceCapped={listingPriceCapped}
+          releaseProtectionId={batchModalProtectionId}
           onClose={() => {
             setBatchModalStems(null);
+            setBatchModalProtectionId(undefined);
             setSelectedNftStems(new Set());
           }}
           onComplete={() => {
