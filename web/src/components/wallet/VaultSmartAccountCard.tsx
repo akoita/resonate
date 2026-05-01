@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import {
     enableSmartAccount,
@@ -10,8 +10,12 @@ import { WalletRecord } from "../../lib/api";
 import { getKernelAccountConfig } from "../../lib/accountAbstraction";
 import { getExplorerAddressUrl, getExplorerTxUrl } from "../../lib/explorer";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
-import { useFundingOptions } from "../../hooks/usePaymentAssets";
+import { useFundingOptions, usePaymentAssetBalances, usePaymentAssets } from "../../hooks/usePaymentAssets";
 import { FundingActions } from "../payments/FundingActions";
+import {
+    formatPaymentAmountWithSymbol,
+    ZERO_PAYMENT_TOKEN,
+} from "../../lib/payments";
 
 type Props = {
     wallet: WalletRecord | null;
@@ -95,9 +99,28 @@ function AddressValue({ value, href, badge }: {
 export default function VaultSmartAccountCard({ wallet, address, isDeployed, recheck }: Props) {
     const { token, refreshWallet, webAuthnKey } = useAuth();
     const { publicClient, chainId } = useZeroDev();
+    const { assets: paymentAssets, loading: paymentAssetsLoading } = usePaymentAssets(chainId);
     const { options: fundingOptions } = useFundingOptions({ chainId, wallet: address });
     const [status, setStatus] = useState<string | null>(null);
     const [pending, setPending] = useState(false);
+    const [balanceRefreshKey, setBalanceRefreshKey] = useState(0);
+    const supportedStableAssets = useMemo(() => {
+        return paymentAssets.filter((asset) => (
+            asset.enabled &&
+            asset.kind === "stablecoin" &&
+            (!chainId || asset.chainId === chainId) &&
+            asset.tokenAddress.toLowerCase() !== ZERO_PAYMENT_TOKEN
+        ));
+    }, [chainId, paymentAssets]);
+    const {
+        balances: stableBalances,
+        loading: stableBalancesLoading,
+        error: stableBalancesError,
+    } = usePaymentAssetBalances({
+        wallet: address,
+        assets: supportedStableAssets,
+        refreshKey: balanceRefreshKey,
+    });
 
     const run = async (action: () => Promise<void>) => {
         if (!address || !token) {
@@ -284,7 +307,10 @@ export default function VaultSmartAccountCard({ wallet, address, isDeployed, rec
                 <button
                     className="vault-btn vault-btn--ghost vault-btn--sm"
                     disabled={pending}
-                    onClick={() => run(async () => { await refreshSmartAccount(token!); })}
+                    onClick={() => run(async () => {
+                        await refreshSmartAccount(token!);
+                        setBalanceRefreshKey((key) => key + 1);
+                    })}
                 >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <polyline points="23 4 23 10 17 10" />
@@ -312,6 +338,41 @@ export default function VaultSmartAccountCard({ wallet, address, isDeployed, rec
                 )}
             </div>
 
+            <div className="vault-asset-balances">
+                <div className="vault-asset-balances__header">
+                    <span className="vault-asset-balances__title">Stablecoin balances</span>
+                    <span className="vault-asset-balances__hint">Enabled settlement assets</span>
+                </div>
+                {paymentAssetsLoading || stableBalancesLoading ? (
+                    <div className="vault-asset-balances__status">Loading balances...</div>
+                ) : stableBalancesError ? (
+                    <div className="vault-asset-balances__status vault-asset-balances__status--warning">
+                        Could not load stablecoin balances. Refresh and try again.
+                    </div>
+                ) : supportedStableAssets.length === 0 ? (
+                    <div className="vault-asset-balances__status">No stablecoins are enabled for this network.</div>
+                ) : (
+                    <div className="vault-asset-balances__list">
+                        {supportedStableAssets.map((asset) => {
+                            const balance = stableBalances.find((entry) => entry.asset.assetId === asset.assetId);
+                            return (
+                                <div key={`${asset.chainId}:${asset.assetId}`} className="vault-asset-balance-row">
+                                    <div className="vault-asset-balance-row__asset">
+                                        <span className="vault-asset-balance-row__symbol">{asset.symbol}</span>
+                                        <span className="vault-asset-balance-row__name">{asset.name}</span>
+                                    </div>
+                                    <div className="vault-asset-balance-row__amount">
+                                        {balance
+                                            ? formatPaymentAmountWithSymbol(balance.balanceUnits, asset.decimals, asset.symbol)
+                                            : `0 ${asset.symbol}`}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+
             <FundingActions
                 options={fundingOptions}
                 wallet={address}
@@ -320,6 +381,7 @@ export default function VaultSmartAccountCard({ wallet, address, isDeployed, rec
                 onFunded={() => {
                     refreshWallet();
                     recheck();
+                    setBalanceRefreshKey((key) => key + 1);
                 }}
             />
 

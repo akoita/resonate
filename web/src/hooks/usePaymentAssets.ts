@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { type Address } from "viem";
+import { useZeroDev } from "../components/auth/ZeroDevProviderClient";
 import {
   getFundingOptions,
   getPaymentAssets,
@@ -10,6 +12,16 @@ import {
   type PaymentAssetQuote,
   type PaymentSurface,
 } from "../lib/payments";
+
+const ERC20_BALANCE_ABI = [
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
 
 type PaymentAssetsState = {
   assets: PaymentAsset[];
@@ -186,5 +198,88 @@ export function usePaymentQuote(input: {
     : {
         ...state,
         loading: state.requestKey !== quoteKey,
+    };
+}
+
+export type PaymentAssetBalance = {
+  asset: PaymentAsset;
+  balanceUnits: bigint;
+};
+
+type PaymentAssetBalancesState = {
+  balances: PaymentAssetBalance[];
+  requestKey: string | null;
+  loading: boolean;
+  error: Error | null;
+};
+
+export function usePaymentAssetBalances(input: {
+  wallet?: string | null;
+  assets: PaymentAsset[];
+  refreshKey?: number;
+}) {
+  const { publicClient } = useZeroDev();
+  const wallet = input.wallet ?? null;
+  const assetKey = input.assets
+    .map((asset) => `${asset.chainId}:${asset.assetId}:${asset.tokenAddress}`)
+    .join("|");
+  const skipBalances = !wallet || !publicClient || input.assets.length === 0;
+  const requestKey = skipBalances
+    ? null
+    : `${wallet}|${assetKey}|${input.refreshKey ?? 0}`;
+  const [state, setState] = useState<PaymentAssetBalancesState>({
+    balances: [],
+    requestKey: null,
+    loading: false,
+    error: null,
+  });
+
+  useEffect(() => {
+    if (skipBalances) {
+      return;
+    }
+
+    let cancelled = false;
+
+    Promise.all(
+      input.assets.map(async (asset) => {
+        const balanceUnits = await publicClient.readContract({
+          address: asset.tokenAddress as Address,
+          abi: ERC20_BALANCE_ABI,
+          functionName: "balanceOf",
+          args: [wallet as Address],
+        });
+        return { asset, balanceUnits };
+      }),
+    )
+      .then((balances) => {
+        if (cancelled) return;
+        setState({ balances, requestKey, loading: false, error: null });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setState({
+          balances: [],
+          requestKey,
+          loading: false,
+          error: err instanceof Error ? err : new Error(String(err)),
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [skipBalances, wallet, publicClient, assetKey, requestKey, input.assets]);
+
+  return skipBalances
+    ? {
+        balances: [],
+        requestKey: null,
+        loading: false,
+        error: null,
+      }
+    : {
+        ...state,
+        loading: state.requestKey !== requestKey,
       };
 }
