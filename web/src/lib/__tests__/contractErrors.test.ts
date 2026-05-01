@@ -100,6 +100,16 @@ describe("normalizeContractWriteError", () => {
     errorName: "AlreadyReported",
   });
 
+  const unsupportedStakeAssetData = encodeErrorResult({
+    abi: knownContractErrorAbi,
+    errorName: "UnsupportedStakeAsset",
+  });
+
+  const invalidStakeAmountData = encodeErrorResult({
+    abi: knownContractErrorAbi,
+    errorName: "InvalidStakeAmount",
+  });
+
   it("decodes NotAttested and produces a human-readable message", () => {
     const raw = new Error(
       `UserOp failed simulation with reason: ${notAttestedData} Request Arguments: { to: 0x… }`
@@ -129,8 +139,24 @@ describe("normalizeContractWriteError", () => {
     );
     const result = normalizeContractWriteError(raw);
     expect(result.message).toBe(
-      "Execution reverted with reason:\nUserOperation reverted during simulation with reason: 0x."
+      "The smart account simulation reverted without a contract reason. Refresh balances and try publishing again."
     );
+  });
+
+  it("decodes UnsupportedStakeAsset", () => {
+    const raw = new Error(
+      `Execution reverted with reason:\nUserOperation reverted during simulation with reason: ${unsupportedStakeAssetData}`
+    );
+    const result = normalizeContractWriteError(raw);
+    expect(result.message).toBe("The selected stake asset is not enabled for Content Protection on the current chain.");
+  });
+
+  it("decodes InvalidStakeAmount", () => {
+    const raw = new Error(
+      `Execution reverted with reason:\nUserOperation reverted during simulation with reason: ${invalidStakeAmountData}`
+    );
+    const result = normalizeContractWriteError(raw);
+    expect(result.message).toBe("The selected stake asset does not have an on-chain Content Protection stake amount configured.");
   });
 
   it("decodes AlreadyReported", () => {

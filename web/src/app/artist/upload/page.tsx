@@ -112,9 +112,15 @@ export default function ArtistUploadPage() {
   const quotedStableStakeAmountUnits = stableStakeQuotes[0]?.amountUnits
     ? BigInt(stableStakeQuotes[0].amountUnits)
     : null;
-  const effectiveStableStakeAmountUnits = [stableStakeAmountUnits, quotedStableStakeAmountUnits]
-    .filter((amount): amount is bigint => Boolean(amount && amount > 0n))
-    .reduce<bigint | null>((max, amount) => (max === null || amount > max ? amount : max), null);
+  const contractStableStakeAmountUnits =
+    stableStakeAmountUnits && stableStakeAmountUnits > 0n
+      ? stableStakeAmountUnits
+      : null;
+  const effectiveStableStakeAmountUnits = contractStableStakeAmountUnits
+    ? [contractStableStakeAmountUnits, quotedStableStakeAmountUnits]
+        .filter((amount): amount is bigint => Boolean(amount && amount > 0n))
+        .reduce<bigint>((max, amount) => (amount > max ? amount : max), contractStableStakeAmountUnits)
+    : null;
   const stableStakeRequirement = preferredStableStakeAsset && effectiveStableStakeAmountUnits && effectiveStableStakeAmountUnits > 0n
     ? {
         asset: preferredStableStakeAsset,
