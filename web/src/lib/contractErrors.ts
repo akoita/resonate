@@ -55,6 +55,26 @@ export const knownContractErrorAbi = [
   },
   {
     type: "error",
+    name: "UnsupportedStakeAsset",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "UnexpectedETH",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "InvalidStakeAmount",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "TransferFailed",
+    inputs: [],
+  },
+  {
+    type: "error",
     name: "NotOwner",
     inputs: [],
   },
@@ -169,6 +189,22 @@ export function normalizeContractWriteError(error: unknown): Error {
         return new Error("The stake amount sent is below the current Content Protection requirement.");
       }
 
+      if (decoded.errorName === "UnsupportedStakeAsset") {
+        return new Error("The selected stake asset is not enabled for Content Protection on the current chain.");
+      }
+
+      if (decoded.errorName === "UnexpectedETH") {
+        return new Error("This Content Protection stake uses a token asset, but the transaction also included ETH.");
+      }
+
+      if (decoded.errorName === "InvalidStakeAmount") {
+        return new Error("The selected stake asset does not have an on-chain Content Protection stake amount configured.");
+      }
+
+      if (decoded.errorName === "TransferFailed") {
+        return new Error("The Content Protection stake transfer failed. Check the smart account balance and token allowance, then try again.");
+      }
+
       if (decoded.errorName === "NotOwner") {
         return new Error("The connected smart account does not own this Content Protection record.");
       }
@@ -195,6 +231,10 @@ export function normalizeContractWriteError(error: unknown): Error {
     } catch {
       // Fall back to the trimmed bundler error below.
     }
+  }
+
+  if (/UserOperation reverted during simulation with reason:\s*0x\.?$/i.test(trimmedMessage)) {
+    return new Error("The smart account simulation reverted without a contract reason. Refresh balances and try publishing again.");
   }
 
   return new Error(trimmedMessage || "Transaction failed");
