@@ -101,6 +101,9 @@ const CONTENT_PROTECTION_ABI = [
   },
 ] as const;
 
+const PROTECTION_READ_MAX_ATTEMPTS = 15;
+const PROTECTION_READ_RETRY_MS = 1000;
+
 function getReleaseMetadataUriCandidates(title: string): string[] {
   const canonicalSlug = title
     .toLowerCase()
@@ -416,40 +419,59 @@ export class MintAuthorizationService {
       transport: http(chainConfig.rpcUrl),
     });
 
-    const attestation = await client.readContract({
-      address: contentProtectionAddress,
-      abi: CONTENT_PROTECTION_ABI,
-      functionName: "attestations",
-      args: [input.protectionId],
-    });
-
-    const metadataURI = attestation[2];
-    const attester = String(attestation[3]).toLowerCase();
-    const valid = Boolean(attestation[5]);
     const expectedAttesters = input.attesterCandidates.filter((candidate) =>
       isAddress(candidate),
     );
 
-    if (!valid) {
-      throw new BadRequestException(
-        `Release protection ${input.protectionId.toString()} has not been attested on-chain yet`,
-      );
+    for (let attempt = 1; attempt <= PROTECTION_READ_MAX_ATTEMPTS; attempt += 1) {
+      const attestation = await client.readContract({
+        address: contentProtectionAddress,
+        abi: CONTENT_PROTECTION_ABI,
+        functionName: "attestations",
+        args: [input.protectionId],
+      });
+
+      const metadataURI = attestation[2];
+      const attester = String(attestation[3]).toLowerCase();
+      const valid = Boolean(attestation[5]);
+
+      if (
+        valid &&
+        input.metadataUris.includes(metadataURI) &&
+        (
+          expectedAttesters.length === 0 ||
+          expectedAttesters.some((candidate) => candidate.toLowerCase() === attester)
+        )
+      ) {
+        return;
+      }
+
+      if (valid && !input.metadataUris.includes(metadataURI)) {
+        throw new BadRequestException(
+          "Release protection metadata does not match this release",
+        );
+      }
+
+      if (
+        valid &&
+        expectedAttesters.length > 0 &&
+        !expectedAttesters.some((candidate) => candidate.toLowerCase() === attester)
+      ) {
+        throw new BadRequestException(
+          "Release protection attester does not match the minting wallet",
+        );
+      }
+
+      if (attempt < PROTECTION_READ_MAX_ATTEMPTS) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, PROTECTION_READ_RETRY_MS),
+        );
+      }
     }
 
-    if (!input.metadataUris.includes(metadataURI)) {
-      throw new BadRequestException(
-        "Release protection metadata does not match this release",
-      );
-    }
-
-    if (
-      expectedAttesters.length > 0 &&
-      !expectedAttesters.some((candidate) => candidate.toLowerCase() === attester)
-    ) {
-      throw new BadRequestException(
-        "Release protection attester does not match the minting wallet",
-      );
-    }
+    throw new BadRequestException(
+      `Release protection ${input.protectionId.toString()} has not been attested on-chain yet`,
+    );
   }
 
   private getAuthorizationTtlSeconds(): number {
