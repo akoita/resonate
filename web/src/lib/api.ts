@@ -664,7 +664,10 @@ export async function getHumanVerificationStatus(address: string) {
 }
 
 export async function getReleaseContentProtectionStatus(releaseId: string) {
-  const response = await fetch(`${API_BASE}/metadata/content-protection/release/${releaseId}`);
+  const response = await fetch(`${API_BASE}/metadata/content-protection/release/${releaseId}`, {
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache" },
+  });
   if (response.status === 404) {
     return null;
   }
