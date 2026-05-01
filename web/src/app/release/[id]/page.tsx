@@ -278,7 +278,7 @@ export default function ReleaseDetails() {
     currentTrack
   } = usePlayer();
   const { addToast } = useToast();
-  const { token, userId } = useAuth();
+  const { token, userId, login } = useAuth();
   const { trustTier } = useTrustTier();
   const { attestAndStake, pending: attestationPending } = useAttestAndStake();
   const { isPhone } = useBreakpoint();
@@ -948,6 +948,19 @@ export default function ReleaseDetails() {
     }
 
     try {
+      addToast({
+        title: "Confirm passkey",
+        message: "Approve the Resonate passkey prompt so the smart account can submit the on-chain attestation.",
+        type: "info",
+        duration: 10000,
+      });
+
+      const loginResult = await login();
+      const accountOverride = loginResult?.account;
+      if (!accountOverride) {
+        throw new Error("Passkey confirmation did not complete. Try again and approve the Resonate prompt.");
+      }
+
       const orderedTrackIds = [...release.tracks]
         .sort((left, right) => {
           const leftPosition = left.position ?? Number.MAX_SAFE_INTEGER;
@@ -969,6 +982,7 @@ export default function ReleaseDetails() {
         fingerprintHash: contentHash,
         metadataURI,
         includeStake: false,
+        accountOverride,
       });
 
       let refreshedProtection: ReleaseContentProtectionData | null = null;
@@ -995,7 +1009,7 @@ export default function ReleaseDetails() {
         type: "error",
       });
     }
-  }, [addToast, attestAndStake, release, token]);
+  }, [addToast, attestAndStake, login, release, token]);
 
   const handleArtworkChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

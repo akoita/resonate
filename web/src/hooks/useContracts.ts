@@ -882,6 +882,11 @@ export function useAttestAndStake() {
         decimals: number;
       };
       includeStake?: boolean;   // Set false for attestation-only flows
+      // Optional freshly recovered account from the click handler. This avoids
+      // relying on React state after a page reload, where kernelAccount can be
+      // null even though the stored JWT is still authenticated.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      accountOverride?: any;
     }) => {
       if (status !== "authenticated" || !address) {
         throw new Error("Wallet not connected");
@@ -900,8 +905,9 @@ export function useAttestAndStake() {
         }
 
         const cpAddress = addresses.contentProtection as Address;
+        const signingAccount = params.accountOverride ?? kernelAccount;
         const callerAddress =
-          (kernelAccount?.address as Address | undefined) ||
+          (signingAccount?.address as Address | undefined) ||
           (smartAccountAddress as Address | undefined) ||
           (address as Address);
 
@@ -1075,7 +1081,7 @@ export function useAttestAndStake() {
           chainId,
           calls,
           address as Address,
-          kernelAccount
+          signingAccount
         );
 
         setTxHash(hash);
