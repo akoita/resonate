@@ -13,6 +13,8 @@ import {
   isNativePaymentToken,
   paymentAssetSymbol,
 } from "../../lib/payments";
+import { createX402BrowserWalletSigner, getX402ChainName } from "../../lib/x402BrowserWallet";
+import { payStemWithX402 } from "../../lib/x402Pay";
 import type { X402PaymentResult } from "../../lib/x402Pay";
 import { LicenseTypeSelector, type LicenseType } from "./LicenseTypeSelector";
 import { LicenseTermsPreview } from "./LicenseTermsPreview";
@@ -29,30 +31,12 @@ const X402_STATUS_LABEL: Record<X402StatusPhase, string> = {
   downloading: "Downloading stem…",
 };
 
-const CHAIN_NAMES: Record<number, string> = {
-  84532: "Base Sepolia",
-  11155111: "Sepolia",
-  31337: "local Anvil",
-};
-
-function getChainName(chainId: number | null | undefined) {
-  if (!chainId) return "the configured chain";
-  return CHAIN_NAMES[chainId] ?? `chain ${chainId}`;
-}
-
-function getX402SmartAccountUnsupportedMessage(
+function getX402WalletNote(
   x402ChainId: number | null | undefined,
   assetSymbol: string,
 ) {
-  const appChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 11155111);
-  const x402Chain = getChainName(x402ChainId);
-  const appChain = getChainName(appChainId);
-
-  if (x402ChainId && x402ChainId !== appChainId) {
-    return `${assetSymbol} checkout is configured on ${x402Chain}, while the main app is on ${appChain}. It is temporarily unavailable for passkey accounts because the current x402 settlement requires a compatible EOA authorization path, but Resonate login uses a Kernel smart account.`;
-  }
-
-  return `${assetSymbol} checkout is configured on ${x402Chain}. It is temporarily unavailable for passkey accounts because the current x402 settlement requires a compatible EOA authorization path, but Resonate login uses a Kernel smart account.`;
+  const x402Chain = getX402ChainName(x402ChainId);
+  return `x402 checkout uses a browser wallet with ${assetSymbol} on ${x402Chain}. Your Resonate passkey account is still used for NFT mint purchases.`;
 }
 
 type X402QuoteInfo = {
@@ -79,6 +63,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   const [x402Status, setX402Status] = useState<X402StatusPhase | null>(null);
   const [x402Error, setX402Error] = useState<string | null>(null);
   const [x402Result, setX402Result] = useState<X402PaymentResult | null>(null);
+  const [x402Payer, setX402Payer] = useState<string | null>(null);
   const { chainId } = useZeroDev();
   const { assets: paymentAssets } = usePaymentAssets(chainId);
   const { listing, loading: listingLoading } = useListing(listingId);
@@ -91,9 +76,8 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
     () => Boolean(x402Config?.enabled && stemId),
     [x402Config, stemId],
   );
-  const x402SmartAccountUnsupported = x402Available;
-  const x402SmartAccountUnsupportedMessage = useMemo(
-    () => getX402SmartAccountUnsupportedMessage(x402Config?.enabled ? x402Config.chainId : null, x402Symbol),
+  const x402WalletNote = useMemo(
+    () => getX402WalletNote(x402Config?.enabled ? x402Config.chainId : null, x402Symbol),
     [x402Config, x402Symbol],
   );
   const onchainAsset = useMemo(
@@ -150,6 +134,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
     setX402Status(null);
     setX402Error(null);
     setX402Result(null);
+    setX402Payer(null);
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -165,10 +150,25 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   };
 
   const handleX402Pay = async () => {
-    if (!stemId) return;
+    if (!stemId || !x402Config?.enabled) return;
     setX402Error(null);
     setX402Result(null);
-    setX402Error(x402SmartAccountUnsupportedMessage);
+    setX402Payer(null);
+    try {
+      setX402Status("signing");
+      const { signer, address } = await createX402BrowserWalletSigner(x402Config.chainId);
+      setX402Payer(address);
+      const result = await payStemWithX402({
+        stemId,
+        signer,
+        onStatus: setX402Status,
+      });
+      setX402Result(result);
+    } catch (err) {
+      setX402Error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setX402Status(null);
+    }
   };
 
   const maxAmount = listing?.amount || 1n;
@@ -343,15 +343,21 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                     </span>
                   </div>
                 )}
+                {x402Payer && (
+                  <div className="buy-modal__x402-row">
+                    <span>Pay from</span>
+                    <span>
+                      {x402Payer.slice(0, 6)}…{x402Payer.slice(-4)}
+                    </span>
+                  </div>
+                )}
                 <div className="buy-modal__x402-row buy-modal__x402-row--total">
                   <span>Total</span>
                   <span>{x402Quote?.amountUsd != null ? `$${x402Quote.amountUsd.toFixed(2)} ${x402Symbol}` : "—"}</span>
                 </div>
-                {x402SmartAccountUnsupported && (
-                  <div className="buy-modal__alert buy-modal__alert--warning">
-                    {x402SmartAccountUnsupportedMessage}
-                  </div>
-                )}
+                <div className="buy-modal__breakdown-note">
+                  {x402WalletNote}
+                </div>
                 {x402Status && (
                   <div className="buy-modal__x402-status" role="status">
                     {X402_STATUS_LABEL[x402Status]}
@@ -432,14 +438,12 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 <button
                   className="buy-modal__btn buy-modal__btn--confirm"
                   onClick={handleX402Pay}
-                  disabled={x402Status !== null || !x402Quote || x402SmartAccountUnsupported}
+                  disabled={x402Status !== null || !x402Quote}
                 >
                   {x402Status !== null && <span className="buy-modal__spinner" />}
                   {x402Status !== null
                     ? X402_STATUS_LABEL[x402Status]
-                    : x402SmartAccountUnsupported
-                      ? "Unsupported wallet"
-                      : `Pay with ${x402Symbol}`}
+                    : `Pay with ${x402Symbol}`}
                 </button>
               )}
             </div>
