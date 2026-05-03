@@ -147,6 +147,64 @@ describe('LyriaClient', () => {
     expect(result.mimeType).toBe('audio/wav');
   });
 
+  it('falls back to Gemini Lyria 3 for 30-second generation when Vertex fails and an API key is configured', async () => {
+    setConfig({
+      LYRIA_PROJECT_ID: 'resonate-vertex',
+      LYRIA_LOCATION: 'us-central1',
+    });
+
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({
+        error: {
+          code: 403,
+          status: 'PERMISSION_DENIED',
+          message: 'Vertex Lyria is not enabled for this project',
+        },
+      }),
+    });
+
+    client = new LyriaClient(mockConfigService as any);
+    const result = await client.generate({ prompt: 'fallback groove', durationSeconds: 30, seed: 123 });
+
+    expect(global.fetch).toHaveBeenCalled();
+    expect(mockGenerateContent).toHaveBeenCalledWith({
+      model: 'lyria-3-pro-preview',
+      contents: 'Create a 30-second track. fallback groove',
+      config: {
+        responseModalities: ['AUDIO', 'TEXT'],
+      },
+    });
+    expect(result.provider).toBe('lyria-3-pro-preview');
+    expect(result.durationSeconds).toBe(30);
+  });
+
+  it('surfaces Vertex failure for 30-second generation when no API key fallback is configured', async () => {
+    setConfig({
+      LYRIA_PROJECT_ID: 'resonate-vertex',
+      LYRIA_LOCATION: 'us-central1',
+      GOOGLE_AI_API_KEY: '',
+    });
+
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({
+        error: {
+          code: 403,
+          status: 'PERMISSION_DENIED',
+          message: 'Vertex Lyria is not enabled for this project',
+        },
+      }),
+    });
+
+    client = new LyriaClient(mockConfigService as any);
+
+    await expect(client.generate({ prompt: 'no fallback', durationSeconds: 30 })).rejects.toThrow(
+      'Vertex Lyria is not enabled for this project',
+    );
+    expect(mockGenerateContent).not.toHaveBeenCalled();
+  });
+
   it('uses lyria-3-pro-preview with audio response modalities only', async () => {
     const result = await client.generate({ prompt: 'dreamy ambient' });
 

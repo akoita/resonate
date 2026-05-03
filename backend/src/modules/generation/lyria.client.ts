@@ -72,7 +72,23 @@ export class LyriaClient {
     const { prompt, negativePrompt, seed, durationSeconds = 30 } = params;
     const actualSeed = seed ?? Math.floor(Math.random() * 2147483647);
     if (durationSeconds === 30 && this.vertexAuth) {
-      return this.generateWithVertexLyria2({ prompt, negativePrompt, seed: actualSeed });
+      try {
+        return await this.generateWithVertexLyria2({ prompt, negativePrompt, seed: actualSeed });
+      } catch (error) {
+        if (!this.apiClient) {
+          throw error;
+        }
+
+        this.logger.warn(
+          `Vertex Lyria 2 failed for 30-second generation; falling back to Lyria 3 Pro: ${this.describeError(error)}`,
+        );
+        return this.generateWithGeminiLyria3({
+          prompt,
+          negativePrompt,
+          seed: actualSeed,
+          durationSeconds,
+        });
+      }
     }
 
     if (this.apiClient) {
@@ -91,6 +107,10 @@ export class LyriaClient {
     }
 
     throw new Error('Lyria generation is not configured');
+  }
+
+  private describeError(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   private async generateWithGeminiLyria3(params: {
