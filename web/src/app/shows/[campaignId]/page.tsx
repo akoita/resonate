@@ -163,7 +163,7 @@ export default function CampaignDetailPage({ params }: Props) {
             </h3>
             <p className="show-detail__notice-body">
               The pledge flow (wallet connect → tier → sign → receipt) ships
-              with the a16z Speedrun cohort demo day. Until then, this is an
+              with the upcoming cohort demo day. Until then, this is an
               honest preview: the contract is deployed, the rules are public,
               and the campaign math is visible.
             </p>
