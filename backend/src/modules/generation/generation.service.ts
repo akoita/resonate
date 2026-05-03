@@ -43,6 +43,17 @@ export function normalizeGenerationErrorMessage(error: unknown): string {
       if (status === 'INVALID_ARGUMENT' || code === 400) {
         return 'The prompt was rejected by the generation provider. Try rephrasing it.';
       }
+      if (
+        status === 'PERMISSION_DENIED' ||
+        status === 'UNAUTHENTICATED' ||
+        status === 'NOT_FOUND' ||
+        status === 'FAILED_PRECONDITION' ||
+        code === 401 ||
+        code === 403 ||
+        code === 404
+      ) {
+        return 'The generation provider is not available. Please check the Lyria configuration and try again.';
+      }
       return 'Generation failed. Please try again.';
     } catch {
       // Not JSON — fall through to the raw message.

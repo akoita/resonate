@@ -38,6 +38,21 @@ describe('normalizeGenerationErrorMessage', () => {
     );
   });
 
+  it('maps unavailable provider auth and model errors to a configuration message', () => {
+    const providerError = new Error(
+      JSON.stringify({
+        error: {
+          code: 403,
+          status: 'PERMISSION_DENIED',
+          message: 'Vertex Lyria is not enabled for this project',
+        },
+      }),
+    );
+    expect(normalizeGenerationErrorMessage(providerError)).toBe(
+      'The generation provider is not available. Please check the Lyria configuration and try again.',
+    );
+  });
+
   it('returns a generic message for unrecognized Google-shaped errors', () => {
     const googleError = new Error(
       JSON.stringify({ error: { code: 500, status: 'INTERNAL', message: 'boom' } }),
