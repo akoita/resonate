@@ -15,8 +15,9 @@ export class GenerationProcessor extends WorkerHost {
   async process(job: Job<any, any, string>): Promise<any> {
     this.logger.log(`[GenerationProcessor] Starting job ${job.id} for user ${job.data.userId}`);
     try {
-      await this.generationService.processGenerationJob(job.data);
+      const result = await this.generationService.processGenerationJob(job.data);
       this.logger.log(`[GenerationProcessor] Successfully completed job ${job.id}`);
+      return result;
     } catch (error: any) {
       this.logger.error(`[GenerationProcessor] Job ${job.id} failed: ${error?.message || error}`);
       throw error;

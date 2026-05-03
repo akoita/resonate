@@ -6,7 +6,7 @@ import Link from "next/link";
 import AuthGate from "../../components/auth/AuthGate";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { useGeneration } from "../../hooks/useGeneration";
-import { getArtistMe, getReleaseArtworkUrl, saveLibraryTrackAPI, getGenerationAnalytics, GenerationAnalytics, publishAiGeneration, retryRelease, waitForReleaseAvailability } from "../../lib/api";
+import { getArtistMe, getReleaseArtworkUrl, getReleaseTrackStreamUrl, saveLibraryTrackAPI, getGenerationAnalytics, GenerationAnalytics, publishAiGeneration, retryRelease, waitForReleaseAvailability } from "../../lib/api";
 import { AICreationPublishModal, PublishMetadata } from "../../components/create/AICreationPublishModal";
 import { DuplicatePublishWarningModal } from "../../components/create/DuplicatePublishWarningModal";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
@@ -211,7 +211,7 @@ export default function CreatePageContent() {
           genre: metadata.genre,
           year: metadata.releaseDate ? parseInt(metadata.releaseDate.split("-")[0]) : undefined,
           catalogTrackId: result.trackId,
-          remoteUrl: `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000"}/catalog/releases/${targetReleaseId}/tracks/${result.trackId}/stream`,
+          remoteUrl: getReleaseTrackStreamUrl(targetReleaseId, result.trackId),
           remoteArtworkUrl: getReleaseArtworkUrl(targetReleaseId),
         });
       } else if (publishActionQueue === "demucs") {
@@ -245,7 +245,7 @@ export default function CreatePageContent() {
 
   const getStreamUrl = useCallback(() => {
     if (!result) return "";
-    return `${getReleaseArtworkUrl(result.releaseId).replace("/artwork", `/tracks/${result.trackId}/stream`)}`;
+    return getReleaseTrackStreamUrl(result.releaseId, result.trackId);
   }, [result]);
 
   const handleDownload = useCallback(async () => {
@@ -485,7 +485,7 @@ export default function CreatePageContent() {
 
             <div className="result-audio">
               <audio controls preload="metadata">
-                <source src={getReleaseArtworkUrl(result.releaseId).replace("/artwork", `/tracks/${result.trackId}/stream`)} />
+                <source src={getStreamUrl()} />
               </audio>
             </div>
 

@@ -50,7 +50,8 @@ export type MarketplaceUpdate =
 
 export interface GenerationStatusUpdate {
     jobId: string;
-    userId: string;
+    userId?: string;
+    status?: 'generating' | 'completed' | 'failed';
     trackId?: string;
     releaseId?: string;
     error?: string;

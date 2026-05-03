@@ -1514,11 +1514,15 @@ export async function clearLocalLibraryAPI(token: string) {
 
 export type GenerationStatusResponse = {
   jobId: string;
-  status: "queued" | "generating" | "storing" | "complete" | "failed";
+  status: "queued" | "generating" | "storing" | "finalizing" | "complete" | "completed" | "failed";
   trackId?: string;
   releaseId?: string;
   error?: string;
 };
+
+export function isGenerationStatusComplete(status: GenerationStatusResponse["status"]) {
+  return status === "complete" || status === "completed";
+}
 
 export async function createGeneration(
   token: string,

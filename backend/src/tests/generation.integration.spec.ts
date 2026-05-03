@@ -164,7 +164,7 @@ describe('GenerationService (integration)', () => {
       eventBus.subscribe('generation.progress', (e: any) => events.push(e));
       eventBus.subscribe('generation.completed', (e: any) => events.push(e));
 
-      await service.processGenerationJob({
+      const jobResult = await service.processGenerationJob({
         jobId: 'job-1',
         userId: `${TEST_PREFIX}user`,
         artistId: `${TEST_PREFIX}artist`,
@@ -181,10 +181,20 @@ describe('GenerationService (integration)', () => {
       expect(completedEvent).toBeDefined();
       expect(completedEvent.trackId).toBeDefined();
       expect(completedEvent.releaseId).toBeDefined();
+      expect(jobResult).toEqual({
+        trackId: completedEvent.trackId,
+        releaseId: completedEvent.releaseId,
+      });
 
       // Verify real release was created in DB
       const release = await prisma.release.findUnique({ where: { id: completedEvent.releaseId } });
       expect(release).not.toBeNull();
+
+      await expect(service.getStatus('job-1')).resolves.toMatchObject({
+        status: 'completed',
+        trackId: completedEvent.trackId,
+        releaseId: completedEvent.releaseId,
+      });
 
       const masterStem = await prisma.stem.findFirst({
         where: {

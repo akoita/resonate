@@ -5,6 +5,7 @@ import {
   analyzeTrackStems,
   generateComplementaryStem,
   getGenerationStatus,
+  isGenerationStatusComplete,
   StemAnalysisResult,
 } from "../lib/api";
 import {
@@ -120,7 +121,7 @@ export function useComplementaryGeneration(
         const pollInterval = setInterval(async () => {
           try {
             const status = await getGenerationStatus(token, res.jobId);
-            if (status.status === "complete") {
+            if (isGenerationStatusComplete(status.status)) {
               setState("complete");
               setGeneratingStemType(null);
               activeJobRef.current = null;
