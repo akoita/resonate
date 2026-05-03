@@ -68,6 +68,14 @@ describe('API Client', () => {
     });
   });
 
+  describe('isGenerationStatusComplete', () => {
+    it('accepts backend and legacy completion status values', () => {
+      expect(api.isGenerationStatusComplete('completed')).toBe(true);
+      expect(api.isGenerationStatusComplete('complete')).toBe(true);
+      expect(api.isGenerationStatusComplete('generating')).toBe(false);
+    });
+  });
+
   describe('fetchNonce', () => {
     it('sends POST to /auth/nonce with address', async () => {
       mockFetch.mockResolvedValueOnce({

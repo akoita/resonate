@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { createGeneration, getGenerationStatus } from "../lib/api";
+import { createGeneration, getGenerationStatus, isGenerationStatusComplete } from "../lib/api";
 import { useWebSockets, GenerationStatusUpdate, GenerationProgressUpdate } from "./useWebSockets";
 
 export type GenerationState =
@@ -95,7 +95,7 @@ export function useGeneration(token: string | null, artistId: string | null) {
           try {
             const status = await getGenerationStatus(token, res.jobId);
             if (completedRef.current) return; // Double-check after async call
-            if (status.status === "complete" && status.trackId && status.releaseId) {
+            if (isGenerationStatusComplete(status.status) && status.trackId && status.releaseId) {
               completedRef.current = true;
               setResult({ trackId: status.trackId, releaseId: status.releaseId });
               setState("complete");
@@ -108,8 +108,8 @@ export function useGeneration(token: string | null, artistId: string | null) {
               setState("failed");
               clearInterval(pollInterval);
               pollRef.current = null;
-            } else if (status.status === "generating" || status.status === "storing") {
-              setState(status.status);
+            } else if (status.status === "generating" || status.status === "storing" || status.status === "finalizing") {
+              setState(status.status === "finalizing" ? "storing" : status.status);
             }
           } catch {
             // Ignore polling errors

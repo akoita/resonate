@@ -18,6 +18,11 @@ interface RateLimitEntry {
   timestamps: number[];
 }
 
+export interface GenerationJobResult {
+  trackId: string;
+  releaseId: string;
+}
+
 /**
  * Google GenAI SDK surfaces API errors by stringifying the full response body
  * into Error.message, including provider URLs and quota metric names. Strip
@@ -187,7 +192,7 @@ export class GenerationService {
     negativePrompt?: string;
     seed?: number;
     durationSeconds?: SupportedGenerationDuration;
-  }): Promise<void> {
+  }): Promise<GenerationJobResult> {
     const { jobId, userId, prompt, negativePrompt, seed, durationSeconds = 30 } = data;
     let { artistId } = data;
 
@@ -306,6 +311,7 @@ export class GenerationService {
       });
 
       this.logger.log(`Generation job ${jobId} completed: track=${trackId}, release=${release.id}`);
+      return { trackId, releaseId: release.id };
     } catch (error: any) {
       this.logger.error(`Generation job ${jobId} failed: ${error?.message || error}`);
 
@@ -330,20 +336,13 @@ export class GenerationService {
 
     if (!job) {
       // Job may have been cleaned up by BullMQ after completion — check DB
-      const release = await prisma.release.findFirst({
-        where: {
-          type: 'ai_generated',
-          tracks: { some: { generationMetadata: { path: ['jobId'], equals: jobId } } },
-        },
-        include: { tracks: { select: { id: true } } },
-      }).catch(() => null);
-
-      if (release && release.tracks.length > 0) {
+      const completed = await this.findGeneratedReleaseForJob(jobId);
+      if (completed) {
         return {
           jobId,
           status: 'completed',
-          trackId: release.tracks[0].id,
-          releaseId: release.id,
+          trackId: completed.trackId,
+          releaseId: completed.releaseId,
         };
       }
 
@@ -367,16 +366,44 @@ export class GenerationService {
       createdAt: job.timestamp ? new Date(job.timestamp).toISOString() : undefined,
     };
 
-    if (state === 'completed' && job.returnvalue) {
-      response.trackId = job.returnvalue.trackId;
-      response.releaseId = job.returnvalue.releaseId;
+    if (state === 'completed') {
+      const returned = job.returnvalue as Partial<GenerationJobResult> | undefined;
+      if (returned?.trackId && returned?.releaseId) {
+        response.trackId = returned.trackId;
+        response.releaseId = returned.releaseId;
+      } else {
+        const completed = await this.findGeneratedReleaseForJob(jobId);
+        if (completed) {
+          response.trackId = completed.trackId;
+          response.releaseId = completed.releaseId;
+        }
+      }
     }
 
     if (state === 'failed') {
-      response.error = job.failedReason || 'Unknown error';
+      response.error = normalizeGenerationErrorMessage(job.failedReason || 'Unknown error');
     }
 
     return response;
+  }
+
+  private async findGeneratedReleaseForJob(jobId: string): Promise<GenerationJobResult | null> {
+    const release = await prisma.release.findFirst({
+      where: {
+        type: 'ai_generated',
+        tracks: { some: { generationMetadata: { path: ['jobId'], equals: jobId } } },
+      },
+      include: { tracks: { select: { id: true } } },
+    }).catch(() => null);
+
+    if (!release || release.tracks.length === 0) {
+      return null;
+    }
+
+    return {
+      trackId: release.tracks[0].id,
+      releaseId: release.id,
+    };
   }
 
   /**
