@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useBuyQuote, useBuyStem, useListing } from "../../hooks/useContracts";
 import { usePaymentAssets } from "../../hooks/usePaymentAssets";
 import { useX402PublicConfig } from "../../hooks/useX402PublicConfig";
+import { useAuth } from "../auth/AuthProvider";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { API_BASE } from "../../lib/api";
 import { formatPrice } from "../../lib/contracts";
@@ -13,8 +14,8 @@ import {
   isNativePaymentToken,
   paymentAssetSymbol,
 } from "../../lib/payments";
-import { createX402BrowserWalletSigner, getX402ChainName } from "../../lib/x402BrowserWallet";
-import { payStemWithX402 } from "../../lib/x402Pay";
+import { getX402ChainName } from "../../lib/x402BrowserWallet";
+import { payStemWithX402SmartAccount } from "../../lib/x402SmartAccountPay";
 import type { X402PaymentResult } from "../../lib/x402Pay";
 import { LicenseTypeSelector, type LicenseType } from "./LicenseTypeSelector";
 import { LicenseTermsPreview } from "./LicenseTermsPreview";
@@ -27,7 +28,7 @@ type X402StatusPhase = "challenging" | "signing" | "settling" | "downloading";
 const X402_STATUS_LABEL: Record<X402StatusPhase, string> = {
   challenging: "Requesting payment quote…",
   signing: "Awaiting wallet signature…",
-  settling: "Settling payment with facilitator…",
+  settling: "Verifying payment on-chain…",
   downloading: "Downloading stem…",
 };
 
@@ -36,7 +37,7 @@ function getX402WalletNote(
   assetSymbol: string,
 ) {
   const x402Chain = getX402ChainName(x402ChainId);
-  return `x402 checkout uses a browser wallet with ${assetSymbol} on ${x402Chain}. Your Resonate passkey account is still used for NFT mint purchases.`;
+  return `x402 checkout uses your Resonate passkey wallet with ${assetSymbol} on ${x402Chain}.`;
 }
 
 type X402QuoteInfo = {
@@ -64,6 +65,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   const [x402Error, setX402Error] = useState<string | null>(null);
   const [x402Result, setX402Result] = useState<X402PaymentResult | null>(null);
   const [x402Payer, setX402Payer] = useState<string | null>(null);
+  const { status: authStatus, webAuthnKey, login } = useAuth();
   const { chainId } = useZeroDev();
   const { assets: paymentAssets } = usePaymentAssets(chainId);
   const { listing, loading: listingLoading } = useListing(listingId);
@@ -110,7 +112,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   useEffect(() => {
     if (!isOpen || paymentMethod !== "x402" || !stemId || !x402Available) return;
     let cancelled = false;
-    fetch(`${API_BASE}/api/stems/${stemId}/x402/info`)
+    fetch(`${API_BASE}/api/stems/${encodeURIComponent(stemId)}/x402/info`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (cancelled || !data?.x402) return;
@@ -151,17 +153,29 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
 
   const handleX402Pay = async () => {
     if (!stemId || !x402Config?.enabled) return;
+    if (!x402Quote?.payTo || !x402Asset?.address) return;
     setX402Error(null);
     setX402Result(null);
     setX402Payer(null);
     try {
+      let key = webAuthnKey;
+      if (!key || authStatus !== "authenticated") {
+        const result = await login();
+        key = result?.webAuthnKey;
+      }
+      if (!key) {
+        throw new Error("Sign in with your Resonate passkey before using x402 checkout.");
+      }
       setX402Status("signing");
-      const { signer, address } = await createX402BrowserWalletSigner(x402Config.chainId);
-      setX402Payer(address);
-      const result = await payStemWithX402({
+      const result = await payStemWithX402SmartAccount({
         stemId,
-        signer,
+        webAuthnKey: key,
+        chainId: x402Config.chainId,
+        assetAddress: x402Asset.address as `0x${string}`,
+        payTo: x402Quote.payTo as `0x${string}`,
+        amountUnits: toTokenAmount(x402Quote.amountUsd ?? 0, x402Asset.decimals),
         onStatus: setX402Status,
+        onPayer: setX402Payer,
       });
       setX402Result(result);
     } catch (err) {
@@ -345,10 +359,8 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 )}
                 {x402Payer && (
                   <div className="buy-modal__x402-row">
-                    <span>Pay from</span>
-                    <span>
-                      {x402Payer.slice(0, 6)}…{x402Payer.slice(-4)}
-                    </span>
+                    <span>Paid by</span>
+                    <span>{x402Payer.slice(0, 6)}…{x402Payer.slice(-4)}</span>
                   </div>
                 )}
                 <div className="buy-modal__x402-row buy-modal__x402-row--total">
@@ -454,4 +466,10 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
       </div>
     </div>
   );
+}
+
+function toTokenAmount(amount: number, decimals: number): string {
+  const [intPart, decPart = ""] = String(amount).split(".");
+  const paddedDec = decPart.padEnd(decimals, "0").slice(0, decimals);
+  return (intPart + paddedDec).replace(/^0+/, "") || "0";
 }

@@ -4,6 +4,9 @@ import { getX402ChainId } from './x402.public';
 
 const DEFAULT_TESTNET_FACILITATOR_URL = 'https://x402.org/facilitator';
 const DEFAULT_TESTNET_NETWORK = 'eip155:84532';
+const DEFAULT_BASE_MAINNET_RPC_URL = 'https://mainnet.base.org';
+const DEFAULT_BASE_SEPOLIA_RPC_URL = 'https://sepolia.base.org';
+const DEFAULT_LOCAL_RPC_URL = 'http://localhost:8545';
 
 /**
  * x402 Configuration — reads env vars for the x402 payment layer.
@@ -14,6 +17,7 @@ const DEFAULT_TESTNET_NETWORK = 'eip155:84532';
  * Optional env vars:
  *   X402_FACILITATOR_URL — facilitator endpoint (defaults to the x402 testnet facilitator)
  *   X402_NETWORK         — CAIP-2 chain identifier (default: Base Sepolia)
+ *   X402_RPC_URL         — RPC used to verify in-app smart-account payments
  *   X402_ENABLED         — feature flag (default: false)
  */
 @Injectable()
@@ -35,6 +39,9 @@ export class X402Config {
   /** Numeric chain id derived from the CAIP-2 network identifier */
   readonly chainId: number;
 
+  /** RPC used by smart-account x402 verification */
+  readonly rpcUrl: string;
+
   constructor(private readonly config: ConfigService) {
     this.enabled = this.config.get<string>('X402_ENABLED') === 'true';
     const configuredFacilitator = this.config.get<string>('X402_FACILITATOR_URL');
@@ -48,6 +55,7 @@ export class X402Config {
     this.network =
       this.config.get<string>('X402_NETWORK') || DEFAULT_TESTNET_NETWORK;
     this.chainId = getX402ChainId(this.network);
+    this.rpcUrl = this.resolveRpcUrl();
 
     if (this.enabled) {
       if (!this.payoutAddress) {
@@ -66,5 +74,27 @@ export class X402Config {
     } else {
       this.logger.log('x402 disabled (set X402_ENABLED=true to activate)');
     }
+  }
+
+  private resolveRpcUrl() {
+    const explicitRpc = this.config.get<string>('X402_RPC_URL')?.trim();
+    if (explicitRpc) return explicitRpc;
+
+    if (this.chainId === 84532) {
+      return (
+        this.config.get<string>('BASE_SEPOLIA_RPC_URL')?.trim() ||
+        DEFAULT_BASE_SEPOLIA_RPC_URL
+      );
+    }
+    if (this.chainId === 8453) {
+      return DEFAULT_BASE_MAINNET_RPC_URL;
+    }
+    if (this.chainId === 31337) {
+      return (
+        this.config.get<string>('LOCAL_RPC_URL')?.trim() ||
+        DEFAULT_LOCAL_RPC_URL
+      );
+    }
+    return '';
   }
 }

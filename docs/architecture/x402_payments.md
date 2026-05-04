@@ -39,6 +39,7 @@ Agent                     Resonate Backend              x402 Facilitator
 | `GET /api/storefront/stems/:id`    | None         | Public storefront detail for a specific stem            |
 | `GET /api/stems/:stemId/x402`      | x402 payment | Download stem after USDC payment                        |
 | `GET /api/stems/:stemId/x402/info` | None         | Free discovery — returns storefront-grade metadata, pricing, rights, and x402 config |
+| `POST /api/stems/:stemId/x402/smart-account` | Smart-account USDC transfer proof | Human checkout path: verifies an in-app Kernel account USDC transfer before download |
 | `POST /mcp`                        | Tool-level x402 for paid downloads | MCP tools for catalog search, stem quotes, and paid stem downloads |
 
 The MCP server reuses the same x402 challenge and proof-verification path for
@@ -81,6 +82,7 @@ Notes:
 - `X402_NETWORK=eip155:8453` now requires an explicit `X402_FACILITATOR_URL`; we do not silently reuse the testnet default on mainnet.
 - `https://x402.org/facilitator` is suitable for testnet-style flows, not the validated Base mainnet AgentCash path.
 - `X402_NETWORK=eip155:11155111` is not currently a supported staging profile. It would require a Sepolia x402 facilitator and a USDC contract that the facilitator accepts.
+- Human in-app checkout does not custody user funds. The passkey-controlled Kernel account signs a UserOperation that transfers USDC to `X402_PAYOUT_ADDRESS`; the backend verifies the resulting token `Transfer` log on `X402_RPC_URL` before serving the stem. Standard machine x402 clients still use `PAYMENT-REQUIRED` / facilitator verification on `GET /api/stems/:stemId/x402`.
 
 ## Module structure
 

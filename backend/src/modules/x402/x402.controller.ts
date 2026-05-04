@@ -1,13 +1,49 @@
-import { Controller, Get, Param, Req, Res, Logger, HttpStatus } from '@nestjs/common';
+import { Body, Controller, Get, Optional, Param, Post, Req, Res, Logger, HttpStatus } from '@nestjs/common';
 import { Request, Response } from 'express';
 import path from 'node:path';
+import {
+  createPublicClient,
+  decodeEventLog,
+  getAddress,
+  http,
+  type Address,
+  type TransactionReceipt,
+} from 'viem';
+import { base, baseSepolia, foundry } from 'viem/chains';
 import { X402Config } from './x402.config';
 import { prisma } from '../../db/prisma';
 import { EncryptionService } from '../encryption/encryption.service';
 import { buildStemX402Quote } from './x402.quote';
 import { buildStemX402Receipt, encodeX402ReceiptHeader } from './x402.receipt';
-import { getX402ChainId } from './x402.public';
+import { getX402ChainId, resolveX402AssetInfo, type X402AssetInfo } from './x402.public';
 import { buildStorefrontStemDetail } from '../storefront/storefront.presenter';
+import { PaymentsService } from '../payments/payments.service';
+
+type SmartAccountPaymentBody = {
+  txHash?: string;
+  payer?: string;
+};
+
+type VerifiedSmartAccountPayment = {
+  txHash: `0x${string}`;
+  payer: Address;
+  assetAddress: Address;
+  amountUnits: string;
+  logIndex: number;
+  blockNumber: bigint;
+  blockHash: string;
+};
+
+const TX_HASH_PATTERN = /^0x[a-fA-F0-9]{64}$/;
+const ERC20_TRANSFER_EVENT = {
+  type: 'event',
+  name: 'Transfer',
+  inputs: [
+    { indexed: true, name: 'from', type: 'address' },
+    { indexed: true, name: 'to', type: 'address' },
+    { indexed: false, name: 'value', type: 'uint256' },
+  ],
+} as const;
 
 /**
  * X402Controller — Public stem download endpoint gated by x402 USDC payment.
@@ -30,6 +66,8 @@ export class X402Controller {
   constructor(
     private readonly x402Config: X402Config,
     private readonly encryptionService: EncryptionService,
+    @Optional()
+    private readonly paymentsService?: PaymentsService,
   ) {}
 
   /**
@@ -51,7 +89,90 @@ export class X402Controller {
       return;
     }
 
+    const purchasedAt = new Date();
+    const paymentHeaderValue =
+      req.headers['payment-signature'] ?? req.headers['x-payment'];
+    const paymentHeader = Array.isArray(paymentHeaderValue)
+      ? paymentHeaderValue[0]
+      : paymentHeaderValue;
+
+    return this.servePaidStemDownload({
+      stemId,
+      req,
+      res,
+      purchasedAt,
+      eventTransactionHash: `x402:${stemId}:${purchasedAt.getTime()}`,
+      paymentProof: paymentHeader,
+      contractAddress: this.x402Config.payoutAddress,
+      logIndex: 0,
+      blockNumber: BigInt(0),
+      blockHash: '',
+    });
+  }
+
+  /**
+   * POST /api/stems/:stemId/x402/smart-account
+   *
+   * Human checkout path for Resonate passkey wallets. The frontend sends a
+   * Kernel UserOperation that transfers USDC from the user's smart account to
+   * the configured x402 payout address. This endpoint verifies the resulting
+   * chain transaction before serving the same receipt + stem artifact as the
+   * facilitator-backed x402 route.
+   */
+  @Post(':stemId/x402/smart-account')
+  async downloadWithSmartAccountPayment(
+    @Param('stemId') stemId: string,
+    @Body() body: SmartAccountPaymentBody,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    if (!this.x402Config.enabled) {
+      res.status(HttpStatus.NOT_FOUND).json({
+        error: 'x402 payments are not enabled on this server',
+      });
+      return;
+    }
+
     try {
+      const verified = await this.verifySmartAccountPayment(stemId, body);
+      return this.servePaidStemDownload({
+        stemId,
+        req,
+        res,
+        purchasedAt: new Date(),
+        eventTransactionHash: verified.txHash,
+        paymentProof: `smart-account:${verified.payer}:${verified.txHash}`,
+        contractAddress: verified.assetAddress,
+        logIndex: verified.logIndex,
+        blockNumber: verified.blockNumber,
+        blockHash: verified.blockHash,
+        payer: verified.payer,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`x402 smart-account verification failed for stem ${stemId}: ${message}`);
+      res.status(HttpStatus.PAYMENT_REQUIRED).json({
+        error: 'Smart-account payment verification failed',
+        message,
+      });
+    }
+  }
+
+  private async servePaidStemDownload(input: {
+    stemId: string;
+    req: Request;
+    res: Response;
+    purchasedAt: Date;
+    eventTransactionHash: string;
+    paymentProof?: string | null;
+    contractAddress: string;
+    logIndex: number;
+    blockNumber: bigint;
+    blockHash: string;
+    payer?: string;
+  }) {
+    try {
+      const { stemId, req, res } = input;
       // 1. Look up the stem
       const stem = await prisma.stem.findUnique({
         where: { id: stemId },
@@ -84,6 +205,8 @@ export class X402Controller {
       const pricing = await prisma.stemPricing.findUnique({
         where: { stemId: stem.id },
       });
+      const amountUsd = pricing?.basePlayPriceUsd ?? 0.05;
+      const assetInfo = this.resolveAssetInfo();
       const resolvedStemUrl = this.resolveStemUrl(stem.uri, req);
       const responseMimeType = stem.mimeType || 'audio/mpeg';
 
@@ -116,13 +239,6 @@ export class X402Controller {
       // 3. Log the x402 purchase for provenance
       // StemPurchase requires a FK to StemListing (on-chain marketplace),
       // so we log x402 purchases as ContractEvents instead.
-      const purchasedAt = new Date();
-      const transactionHash = `x402:${stemId}:${purchasedAt.getTime()}`;
-      const paymentHeaderValue =
-        req.headers['payment-signature'] ?? req.headers['x-payment'];
-      const paymentHeader = Array.isArray(paymentHeaderValue)
-        ? paymentHeaderValue[0]
-        : paymentHeaderValue;
       const receipt = buildStemX402Receipt({
         stemId: stem.id,
         stemType: stem.type,
@@ -132,32 +248,40 @@ export class X402Controller {
         releaseTitle: stem.track?.release?.title ?? null,
         hasNft: !!stem.nftMint,
         tokenId: stem.nftMint?.tokenId?.toString() ?? null,
-        amountUsd: pricing?.basePlayPriceUsd ?? 0.05,
+        amountUsd,
+        paymentAsset: {
+          assetId: assetInfo.assetId,
+          tokenAddress: assetInfo.address,
+          symbol: assetInfo.symbol,
+          decimals: assetInfo.decimals,
+          amountUnits: this.toTokenAmount(amountUsd, assetInfo.decimals),
+        },
         network: this.x402Config.network,
         payTo: this.x402Config.payoutAddress,
         resource: `/api/stems/${stem.id}/x402`,
         quoteUrl: `/api/stems/${stem.id}/x402/info`,
         mimeType: responseMimeType,
         contentLength: audioBuffer.length,
-        eventTransactionHash: transactionHash,
-        paymentHeader,
-        purchasedAt,
+        eventTransactionHash: input.eventTransactionHash,
+        paymentHeader: input.paymentProof,
+        purchasedAt: input.purchasedAt,
       });
 
       await prisma.contractEvent.create({
         data: {
           eventName: 'x402.purchase',
           chainId: getX402ChainId(this.x402Config.network),
-          contractAddress: this.x402Config.payoutAddress,
-          transactionHash,
-          logIndex: 0,
-          blockNumber: BigInt(0),
-          blockHash: '',
+          contractAddress: input.contractAddress,
+          transactionHash: input.eventTransactionHash,
+          logIndex: input.logIndex,
+          blockNumber: input.blockNumber,
+          blockHash: input.blockHash,
           args: {
             stemId,
             stemType: stem.type,
             trackTitle: stem.track?.title,
             payTo: this.x402Config.payoutAddress,
+            payer: input.payer,
             network: this.x402Config.network,
             receiptId: receipt.receiptId,
             licenseKey: receipt.license.key,
@@ -173,7 +297,7 @@ export class X402Controller {
             paymentAssetDecimals: receipt.payment.asset.decimals,
             paymentProofSha256: receipt.payment.paymentProofSha256,
           },
-          processedAt: purchasedAt,
+          processedAt: input.purchasedAt,
         },
       });
 
@@ -198,11 +322,175 @@ export class X402Controller {
       res.send(audioBuffer);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`x402 download failed for stem ${stemId}: ${message}`);
-      res
+      this.logger.error(`x402 download failed for stem ${input.stemId}: ${message}`);
+      input.res
         .status(HttpStatus.INTERNAL_SERVER_ERROR)
         .json({ error: 'Download failed', message });
     }
+  }
+
+  private async verifySmartAccountPayment(
+    stemId: string,
+    body: SmartAccountPaymentBody,
+  ): Promise<VerifiedSmartAccountPayment> {
+    if (!body.txHash || !TX_HASH_PATTERN.test(body.txHash)) {
+      throw new Error('A valid payment transaction hash is required.');
+    }
+    if (!body.payer) {
+      throw new Error('A paying smart-account address is required.');
+    }
+
+    const payer = getAddress(body.payer);
+    const txHash = body.txHash as `0x${string}`;
+    const existing = await prisma.contractEvent.findFirst({
+      where: {
+        eventName: 'x402.purchase',
+        transactionHash: txHash,
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new Error('This payment transaction has already been redeemed.');
+    }
+
+    const pricing = await prisma.stemPricing.findUnique({
+      where: { stemId },
+    });
+    const amountUsd = pricing?.basePlayPriceUsd ?? 0.05;
+    const asset = this.resolveAssetInfo();
+    const amountUnits = this.toTokenAmount(amountUsd, asset.decimals);
+    const payTo = getAddress(this.x402Config.payoutAddress);
+    const assetAddress = getAddress(asset.address);
+
+    const receipt = await this.getX402PublicClient().waitForTransactionReceipt({
+      hash: txHash,
+      timeout: 60_000,
+    });
+    if (receipt.status !== 'success') {
+      throw new Error('The smart-account payment transaction reverted.');
+    }
+
+    const transfer = this.findVerifiedTransfer(receipt, {
+      assetAddress,
+      payer,
+      payTo,
+      minAmountUnits: BigInt(amountUnits),
+    });
+    if (!transfer) {
+      throw new Error('No matching USDC transfer to the x402 payout address was found.');
+    }
+
+    return {
+      txHash,
+      payer,
+      assetAddress,
+      amountUnits,
+      logIndex: transfer.logIndex,
+      blockNumber: receipt.blockNumber,
+      blockHash: receipt.blockHash,
+    };
+  }
+
+  private findVerifiedTransfer(
+    receipt: TransactionReceipt,
+    input: {
+      assetAddress: Address;
+      payer: Address;
+      payTo: Address;
+      minAmountUnits: bigint;
+    },
+  ) {
+    for (const log of receipt.logs) {
+      if (getAddress(log.address) !== input.assetAddress) continue;
+      try {
+        const decoded = decodeEventLog({
+          abi: [ERC20_TRANSFER_EVENT],
+          data: log.data,
+          topics: log.topics,
+        });
+        if (decoded.eventName !== 'Transfer') continue;
+        const args = decoded.args as {
+          from: Address;
+          to: Address;
+          value: bigint;
+        };
+        if (
+          getAddress(args.from) === input.payer &&
+          getAddress(args.to) === input.payTo &&
+          args.value >= input.minAmountUnits
+        ) {
+          return { logIndex: log.logIndex };
+        }
+      } catch {
+        // Ignore unrelated logs emitted by the token contract.
+      }
+    }
+    return null;
+  }
+
+  private getX402PublicClient() {
+    const rpcUrl = this.x402Config.rpcUrl;
+    if (!rpcUrl) {
+      throw new Error(
+        `X402_RPC_URL is required for smart-account x402 verification on chain ${this.x402Config.chainId}`,
+      );
+    }
+    return createPublicClient({
+      chain: this.getX402ViemChain(rpcUrl),
+      transport: http(rpcUrl),
+    });
+  }
+
+  private resolveAssetInfo(): X402AssetInfo {
+    return resolveX402AssetInfo(
+      this.x402Config.network,
+      this.paymentsService?.getPaymentAssets(this.x402Config.chainId).assets,
+    );
+  }
+
+  private getX402ViemChain(rpcUrl: string) {
+    if (this.x402Config.chainId === baseSepolia.id) {
+      return {
+        ...baseSepolia,
+        rpcUrls: {
+          default: { http: [rpcUrl] },
+          public: { http: [rpcUrl] },
+        },
+      };
+    }
+    if (this.x402Config.chainId === base.id) {
+      return {
+        ...base,
+        rpcUrls: {
+          default: { http: [rpcUrl] },
+          public: { http: [rpcUrl] },
+        },
+      };
+    }
+    if (this.x402Config.chainId === foundry.id) {
+      return {
+        ...foundry,
+        rpcUrls: {
+          default: { http: [rpcUrl] },
+          public: { http: [rpcUrl] },
+        },
+      };
+    }
+    return {
+      id: this.x402Config.chainId,
+      name: `x402 chain ${this.x402Config.chainId}`,
+      nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+      rpcUrls: {
+        default: { http: [rpcUrl] },
+        public: { http: [rpcUrl] },
+      },
+    };
+  }
+
+  private toTokenAmount(amount: number, decimals: number): string {
+    const [intPart, decPart = ''] = String(amount).split('.');
+    const paddedDec = decPart.padEnd(decimals, '0').slice(0, decimals);
+    return (intPart + paddedDec).replace(/^0+/, '') || '0';
   }
 
   private resolveStemUrl(uri: string, req: Request) {

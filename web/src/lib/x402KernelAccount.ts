@@ -40,12 +40,15 @@ export type X402KernelAccount = {
 
 export type GetX402KernelAccountInput = {
   webAuthnKey: unknown;
-  /** Optional viem public client for Base Sepolia. Constructed if omitted. */
+  /** Optional viem public client for the x402 chain. Constructed for Base Sepolia if omitted. */
   publicClient?: PublicClient;
+  /** x402 settlement chain id. Defaults to Base Sepolia for staging. */
+  chainId?: number;
 };
 
 let cachedAccount: X402KernelAccount | null = null;
 let cachedKey: unknown = null;
+let cachedChainId: number | null = null;
 
 /**
  * Build (or reuse) the Base Sepolia Kernel smart account that x402 signs
@@ -60,7 +63,8 @@ export async function getX402KernelAccount(
       "x402 requires the user's WebAuthn passkey; sign in before invoking x402.",
     );
   }
-  if (cachedAccount && cachedKey === input.webAuthnKey) {
+  const chainId = input.chainId ?? input.publicClient?.chain?.id ?? X402_CHAIN.id;
+  if (cachedAccount && cachedKey === input.webAuthnKey && cachedChainId === chainId) {
     return cachedAccount;
   }
 
@@ -76,7 +80,7 @@ export async function getX402KernelAccount(
       transport: http(),
     });
 
-  const { entryPoint, factoryAddress } = getKernelAccountConfig(X402_CHAIN.id);
+  const { entryPoint, factoryAddress } = getKernelAccountConfig(chainId);
   const kernelVersion = constants.KERNEL_V3_1;
 
   const passkeyValidator = await toPasskeyValidator(publicClient, {
@@ -108,6 +112,7 @@ export async function getX402KernelAccount(
 
   cachedAccount = account;
   cachedKey = input.webAuthnKey;
+  cachedChainId = chainId;
   return account;
 }
 
@@ -117,6 +122,7 @@ export async function getX402KernelAccount(
 export function resetX402KernelAccountCache(): void {
   cachedAccount = null;
   cachedKey = null;
+  cachedChainId = null;
 }
 
 export const X402_CHAIN_ID = X402_CHAIN.id;

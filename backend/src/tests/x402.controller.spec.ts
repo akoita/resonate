@@ -1,5 +1,16 @@
 import { X402Controller } from '../modules/x402/x402.controller';
 import { X402Config } from '../modules/x402/x402.config';
+import { encodeAbiParameters, encodeEventTopics } from 'viem';
+
+const ERC20_TRANSFER_EVENT = {
+  type: 'event',
+  name: 'Transfer',
+  inputs: [
+    { indexed: true, name: 'from', type: 'address' },
+    { indexed: true, name: 'to', type: 'address' },
+    { indexed: false, name: 'value', type: 'uint256' },
+  ],
+} as const;
 
 jest.mock('../db/prisma', () => ({
   prisma: {
@@ -13,6 +24,7 @@ jest.mock('../db/prisma', () => ({
       findUnique: jest.fn(),
     },
     contractEvent: {
+      findFirst: jest.fn(),
       create: jest.fn(),
     },
   },
@@ -23,7 +35,7 @@ const { prisma } = jest.requireMock('../db/prisma') as {
     stem: { findUnique: jest.Mock };
     stemListing: { findFirst: jest.Mock };
     stemPricing: { findUnique: jest.Mock };
-    contractEvent: { create: jest.Mock };
+    contractEvent: { findFirst: jest.Mock; create: jest.Mock };
   };
 };
 
@@ -34,6 +46,7 @@ function createMockConfig(overrides: Partial<X402Config> = {}): X402Config {
     facilitatorUrl: 'https://x402.org/facilitator',
     network: 'eip155:84532',
     chainId: 84532,
+    rpcUrl: 'https://sepolia.base.org',
     ...overrides,
   } as X402Config;
 }
@@ -70,6 +83,7 @@ describe('X402Controller', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    prisma.contractEvent.findFirst.mockResolvedValue(null);
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       arrayBuffer: async () => Uint8Array.from([1, 2, 3, 4]).buffer,
@@ -190,6 +204,137 @@ describe('X402Controller', () => {
     );
     expect(decodedReceipt.payment.paymentProofSha256).toBeDefined();
     expect(decodedReceipt.resource.mimeType).toBe('audio/mp4');
+  });
+
+  it('serves downloads after verified smart-account x402 payments', async () => {
+    prisma.stem.findUnique.mockResolvedValue({
+      id: 'stem_smart',
+      type: 'vocals',
+      title: 'Passkey Stem',
+      uri: 'https://example.com/passkey.mp3',
+      mimeType: 'audio/mpeg',
+      encryptionMetadata: null,
+      nftMint: null,
+      track: {
+        title: 'Passkey Track',
+        release: {
+          title: 'Passkey Release',
+          primaryArtist: 'Koita',
+        },
+      },
+    });
+    prisma.stemPricing.findUnique.mockResolvedValue({
+      basePlayPriceUsd: 0.05,
+    });
+
+    const controller = new X402Controller(
+      createMockConfig(),
+      encryptionService as any,
+    );
+    jest.spyOn(controller as any, 'verifySmartAccountPayment').mockResolvedValue({
+      txHash: `0x${'a'.repeat(64)}`,
+      payer: '0x1111111111111111111111111111111111111111',
+      assetAddress: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+      amountUnits: '50000',
+      logIndex: 7,
+      blockNumber: BigInt(123),
+      blockHash: `0x${'b'.repeat(64)}`,
+    });
+
+    const req: any = { headers: {} };
+    const res = createMockRes();
+
+    await controller.downloadWithSmartAccountPayment(
+      'stem_smart',
+      {
+        txHash: `0x${'a'.repeat(64)}`,
+        payer: '0x1111111111111111111111111111111111111111',
+      },
+      req,
+      res,
+    );
+
+    expect(res.headers['X-Resonate-License']).toBe('personal');
+    expect(res.body).toBeInstanceOf(Buffer);
+    expect(prisma.contractEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        eventName: 'x402.purchase',
+        transactionHash: `0x${'a'.repeat(64)}`,
+        logIndex: 7,
+        blockNumber: BigInt(123),
+        blockHash: `0x${'b'.repeat(64)}`,
+        args: expect.objectContaining({
+          payer: '0x1111111111111111111111111111111111111111',
+          paymentProofSha256: expect.any(String),
+        }),
+      }),
+    });
+  });
+
+  it('verifies smart-account x402 payments from token Transfer logs', async () => {
+    const payer = '0x1111111111111111111111111111111111111111';
+    const payTo = '0x2222222222222222222222222222222222222222';
+    const asset = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
+    const txHash = `0x${'a'.repeat(64)}`;
+    prisma.stemPricing.findUnique.mockResolvedValue({
+      basePlayPriceUsd: 0.05,
+    });
+
+    const topics = encodeEventTopics({
+      abi: [ERC20_TRANSFER_EVENT],
+      eventName: 'Transfer',
+      args: { from: payer, to: payTo },
+    });
+    const receipt = {
+      status: 'success',
+      blockNumber: BigInt(123),
+      blockHash: `0x${'b'.repeat(64)}`,
+      logs: [
+        {
+          address: asset,
+          data: encodeAbiParameters([{ type: 'uint256' }], [BigInt(50_000)]),
+          topics,
+          logIndex: 7,
+        },
+      ],
+    };
+    const controller = new X402Controller(
+      createMockConfig({ payoutAddress: payTo }),
+      encryptionService as any,
+    );
+    jest.spyOn(controller as any, 'getX402PublicClient').mockReturnValue({
+      waitForTransactionReceipt: jest.fn().mockResolvedValue(receipt),
+    });
+
+    const verified = await (controller as any).verifySmartAccountPayment(
+      'stem_smart',
+      { txHash, payer },
+    );
+
+    expect(verified).toEqual({
+      txHash,
+      payer,
+      assetAddress: asset,
+      amountUnits: '50000',
+      logIndex: 7,
+      blockNumber: BigInt(123),
+      blockHash: `0x${'b'.repeat(64)}`,
+    });
+  });
+
+  it('rejects reused smart-account x402 payment transactions', async () => {
+    prisma.contractEvent.findFirst.mockResolvedValue({ id: 'evt_existing' });
+    const controller = new X402Controller(
+      createMockConfig(),
+      encryptionService as any,
+    );
+
+    await expect(
+      (controller as any).verifySmartAccountPayment('stem_smart', {
+        txHash: `0x${'a'.repeat(64)}`,
+        payer: '0x1111111111111111111111111111111111111111',
+      }),
+    ).rejects.toThrow('already been redeemed');
   });
 
   it('returns storefront-grade x402 info metadata with payment aliases', async () => {
