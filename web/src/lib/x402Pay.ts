@@ -125,7 +125,7 @@ export async function payStemWithX402(input: {
   return decodeAudioResponse(paidResponse);
 }
 
-async function decodeAudioResponse(response: Response): Promise<X402PaymentResult> {
+export async function decodeAudioResponse(response: Response): Promise<X402PaymentResult> {
   const mimeType = response.headers.get("content-type") ?? "audio/mpeg";
   const audio = await response.blob();
   const dispositionFilename = parseFilenameFromContentDisposition(
