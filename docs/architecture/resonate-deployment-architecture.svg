@@ -1,0 +1,228 @@
+<svg width="1600" height="1000" viewBox="0 0 1600 1000" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Resonate deployment architecture</title>
+  <desc id="desc">A deployment architecture diagram for Resonate showing human and agent clients, GitHub and Terraform delivery, Google Cloud Run services, Pub/Sub, private data services, storage, observability, x402 settlement, ERC-4337 smart accounts, and protocol contracts.</desc>
+  <defs>
+    <linearGradient id="hero" x1="80" y1="30" x2="1520" y2="940" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FBFF"/>
+      <stop offset="0.45" stop-color="#F5FFF8"/>
+      <stop offset="1" stop-color="#FFF9F1"/>
+    </linearGradient>
+    <linearGradient id="gcp" x1="280" y1="120" x2="1085" y2="880" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EFF7FF"/>
+      <stop offset="1" stop-color="#F8FFF3"/>
+    </linearGradient>
+    <linearGradient id="chain" x1="1120" y1="150" x2="1510" y2="850" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF6E9"/>
+      <stop offset="1" stop-color="#F5F0FF"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#1F2937" flood-opacity="0.12"/>
+    </filter>
+    <marker id="arrowBlue" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M1 1L11 6L1 11Z" fill="#2563EB"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M1 1L11 6L1 11Z" fill="#0F766E"/>
+    </marker>
+    <marker id="arrowOrange" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M1 1L11 6L1 11Z" fill="#C2410C"/>
+    </marker>
+    <style>
+      .bg { fill: url(#hero); }
+      .boundary { stroke: #CBD5E1; stroke-width: 2; rx: 24; }
+      .panel { fill: #FFFFFF; stroke: #D8E0EA; stroke-width: 1.6; rx: 16; filter: url(#shadow); }
+      .subpanel { fill: #FFFFFF; stroke: #D8E0EA; stroke-width: 1.4; rx: 14; }
+      .soft { fill: #F8FAFC; stroke: #D8E0EA; stroke-width: 1.3; rx: 12; }
+      .title { fill: #101828; font-family: Inter, Segoe UI, Arial, sans-serif; font-size: 42px; font-weight: 800; letter-spacing: 0; }
+      .subtitle { fill: #475467; font-family: Inter, Segoe UI, Arial, sans-serif; font-size: 18px; font-weight: 500; letter-spacing: 0; }
+      .h { fill: #101828; font-family: Inter, Segoe UI, Arial, sans-serif; font-size: 20px; font-weight: 800; letter-spacing: 0; }
+      .label { fill: #111827; font-family: Inter, Segoe UI, Arial, sans-serif; font-size: 16px; font-weight: 750; letter-spacing: 0; }
+      .small { fill: #475467; font-family: Inter, Segoe UI, Arial, sans-serif; font-size: 13px; font-weight: 520; letter-spacing: 0; }
+      .tiny { fill: #667085; font-family: Inter, Segoe UI, Arial, sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0; }
+      .chipText { fill: #334155; font-family: Inter, Segoe UI, Arial, sans-serif; font-size: 11px; font-weight: 750; letter-spacing: 0; }
+      .blue { fill: #DBEAFE; stroke: #93C5FD; }
+      .green { fill: #DCFCE7; stroke: #86EFAC; }
+      .teal { fill: #CCFBF1; stroke: #5EEAD4; }
+      .orange { fill: #FFEDD5; stroke: #FDBA74; }
+      .purple { fill: #EDE9FE; stroke: #C4B5FD; }
+      .rose { fill: #FFE4E6; stroke: #FDA4AF; }
+      .yellow { fill: #FEF9C3; stroke: #FDE047; }
+      .slate { fill: #F1F5F9; stroke: #CBD5E1; }
+      .blueLine { stroke: #2563EB; stroke-width: 2.4; marker-end: url(#arrowBlue); opacity: 0.82; }
+      .greenLine { stroke: #0F766E; stroke-width: 2.4; marker-end: url(#arrowGreen); opacity: 0.82; }
+      .orangeLine { stroke: #C2410C; stroke-width: 2.4; marker-end: url(#arrowOrange); opacity: 0.82; }
+      .dash { stroke-dasharray: 7 7; }
+      .thin { stroke-width: 1.8; }
+      .icon { fill: #FFFFFF; stroke: #64748B; stroke-width: 1.4; }
+      .rail { fill: #ECFDF5; stroke: #99F6E4; stroke-width: 1.3; rx: 10; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1600" height="1000"/>
+  <circle cx="122" cy="120" r="72" fill="#DBEAFE" opacity="0.45"/>
+  <circle cx="1464" cy="870" r="90" fill="#FFEDD5" opacity="0.55"/>
+
+  <text x="80" y="74" class="title">Resonate deployment architecture</text>
+  <text x="82" y="108" class="subtitle">Human music studio, agent-native commerce, smart accounts, AI stem processing, and GCP-managed cloud delivery.</text>
+
+  <rect x="60" y="150" width="205" height="690" class="boundary" fill="#FFFFFF" opacity="0.72"/>
+  <text x="84" y="188" class="h">Clients</text>
+
+  <rect x="84" y="216" width="157" height="150" class="panel"/>
+  <circle cx="111" cy="248" r="16" fill="#2563EB"/>
+  <text x="135" y="253" class="label">Human studio</text>
+  <text x="104" y="287" class="small">Artists, listeners,</text>
+  <text x="104" y="307" class="small">curators, admins</text>
+  <rect x="103" y="326" width="118" height="24" class="blue" rx="12"/>
+  <text x="118" y="342" class="chipText">Browser + passkey</text>
+
+  <rect x="84" y="404" width="157" height="174" class="panel"/>
+  <circle cx="111" cy="436" r="16" fill="#0F766E"/>
+  <text x="135" y="441" class="label">Agents</text>
+  <text x="104" y="475" class="small">Scripts, assistants,</text>
+  <text x="104" y="495" class="small">MCP clients</text>
+  <rect x="103" y="516" width="44" height="24" class="green" rx="12"/>
+  <text x="115" y="532" class="chipText">MCP</text>
+  <rect x="154" y="516" width="67" height="24" class="orange" rx="12"/>
+  <text x="166" y="532" class="chipText">x402</text>
+  <text x="104" y="557" class="tiny">OpenAPI storefront</text>
+
+  <rect x="84" y="616" width="157" height="142" class="panel"/>
+  <circle cx="111" cy="648" r="16" fill="#7C3AED"/>
+  <text x="135" y="653" class="label">Operators</text>
+  <text x="104" y="687" class="small">Deploys, rollbacks,</text>
+  <text x="104" y="707" class="small">contract handoff</text>
+  <rect x="103" y="728" width="118" height="24" class="purple" rx="12"/>
+  <text x="124" y="744" class="chipText">GitHub Actions</text>
+
+  <rect x="295" y="150" width="810" height="690" class="boundary" fill="url(#gcp)"/>
+  <text x="324" y="188" class="h">Google Cloud environment</text>
+  <text x="324" y="211" class="small">Terraform root per environment: dev, staging, prod. Region and secrets come from resonate-iac configuration.</text>
+
+  <rect x="320" y="238" width="760" height="115" class="subpanel"/>
+  <text x="342" y="270" class="label">Cloud delivery control plane</text>
+  <rect x="342" y="292" width="130" height="38" class="slate" rx="12"/>
+  <text x="361" y="315" class="small">resonate CI</text>
+  <rect x="502" y="292" width="130" height="38" class="slate" rx="12"/>
+  <text x="525" y="315" class="small">resonate-iac</text>
+  <rect x="662" y="292" width="145" height="38" class="blue" rx="12"/>
+  <text x="683" y="315" class="small">Artifact Registry</text>
+  <rect x="837" y="292" width="125" height="38" class="purple" rx="12"/>
+  <text x="858" y="315" class="small">WIF + IAM</text>
+  <rect x="982" y="292" width="72" height="38" class="yellow" rx="12"/>
+  <text x="1000" y="315" class="small">TF</text>
+  <path d="M473 311H494" class="blueLine thin"/>
+  <path d="M633 311H654" class="blueLine thin"/>
+  <path d="M808 311H829" class="blueLine thin"/>
+  <path d="M963 311H974" class="blueLine thin"/>
+
+  <rect x="320" y="390" width="270" height="322" class="panel"/>
+  <text x="342" y="423" class="label">Public Cloud Run edge</text>
+  <rect x="342" y="446" width="220" height="74" class="blue" rx="14"/>
+  <text x="365" y="476" class="label">Frontend</text>
+  <text x="365" y="499" class="small">Next.js app, wallet UX, player</text>
+  <rect x="342" y="548" width="220" height="132" class="green" rx="14"/>
+  <text x="365" y="578" class="label">Backend API</text>
+  <text x="365" y="602" class="small">NestJS BFF, REST, Socket.IO</text>
+  <text x="365" y="624" class="small">Storefront, x402, MCP, OpenAPI</text>
+  <text x="365" y="646" class="small">Indexer, uploads, catalog, rights</text>
+
+  <rect x="622" y="390" width="210" height="322" class="panel"/>
+  <text x="644" y="423" class="label">AI stem pipeline</text>
+  <rect x="644" y="446" width="166" height="74" class="orange" rx="14"/>
+  <text x="666" y="476" class="label">Pub/Sub</text>
+  <text x="666" y="499" class="small">jobs, results, dead letters</text>
+  <rect x="644" y="548" width="166" height="94" class="rose" rx="14"/>
+  <text x="666" y="578" class="label">Demucs worker</text>
+  <text x="666" y="602" class="small">Cloud Run FastAPI</text>
+  <text x="666" y="624" class="small">CPU or GPU, htdemucs_6s</text>
+  <rect x="644" y="662" width="166" height="30" class="slate" rx="12"/>
+  <text x="677" y="682" class="small">internal key auth</text>
+
+  <rect x="864" y="390" width="216" height="322" class="panel"/>
+  <text x="886" y="423" class="label">Private data plane</text>
+  <rect x="886" y="446" width="166" height="50" class="teal" rx="14"/>
+  <text x="915" y="477" class="label">Cloud SQL</text>
+  <rect x="886" y="516" width="166" height="50" class="teal" rx="14"/>
+  <text x="920" y="547" class="label">Redis</text>
+  <rect x="886" y="586" width="166" height="50" class="yellow" rx="14"/>
+  <text x="918" y="617" class="label">GCS stems</text>
+  <rect x="886" y="656" width="166" height="34" class="slate" rx="12"/>
+  <text x="918" y="678" class="small">optional IPFS mode</text>
+  <rect x="886" y="722" width="166" height="40" class="rail"/>
+  <text x="906" y="747" class="small">VPC connector + PSA</text>
+
+  <rect x="320" y="742" width="760" height="72" class="subpanel"/>
+  <text x="342" y="774" class="label">Security and observability</text>
+  <text x="342" y="798" class="small">Cloud Run service accounts, Secret Manager, Cloud Monitoring uptime checks, 5xx alerts, DB CPU, and Pub/Sub backlog alerts.</text>
+
+  <rect x="1135" y="150" width="405" height="690" class="boundary" fill="url(#chain)"/>
+  <text x="1164" y="188" class="h">Blockchain and payment networks</text>
+  <text x="1164" y="211" class="small">Base Sepolia staging; configured Base profiles for production.</text>
+
+  <rect x="1164" y="238" width="344" height="170" class="panel"/>
+  <text x="1188" y="270" class="label">ERC-4337 smart account layer</text>
+  <rect x="1188" y="292" width="138" height="38" class="purple" rx="12"/>
+  <text x="1207" y="315" class="small">Bundler</text>
+  <rect x="1346" y="292" width="138" height="38" class="purple" rx="12"/>
+  <text x="1363" y="315" class="small">EntryPoint v0.7</text>
+  <rect x="1188" y="346" width="138" height="38" class="purple" rx="12"/>
+  <text x="1207" y="369" class="small">Kernel accounts</text>
+  <rect x="1346" y="346" width="138" height="38" class="purple" rx="12"/>
+  <text x="1364" y="369" class="small">Session keys</text>
+  <path d="M1327 311H1338" class="orangeLine thin"/>
+  <path d="M1415 331V338" class="orangeLine thin"/>
+  <path d="M1345 365H1334" class="orangeLine thin"/>
+
+  <rect x="1164" y="438" width="344" height="232" class="panel"/>
+  <text x="1188" y="470" class="label">Resonate protocol contracts</text>
+  <rect x="1188" y="494" width="138" height="38" class="orange" rx="12"/>
+  <text x="1210" y="517" class="small">StemNFT</text>
+  <rect x="1346" y="494" width="138" height="38" class="orange" rx="12"/>
+  <text x="1364" y="517" class="small">MarketplaceV2</text>
+  <rect x="1188" y="548" width="138" height="38" class="orange" rx="12"/>
+  <text x="1201" y="571" class="small">ContentProtection</text>
+  <rect x="1346" y="548" width="138" height="38" class="orange" rx="12"/>
+  <text x="1365" y="571" class="small">Curation/Disputes</text>
+  <rect x="1188" y="602" width="138" height="38" class="orange" rx="12"/>
+  <text x="1207" y="625" class="small">RevenueEscrow</text>
+  <rect x="1346" y="602" width="138" height="38" class="orange" rx="12"/>
+  <text x="1358" y="625" class="small">Payment assets</text>
+
+  <rect x="1164" y="700" width="344" height="114" class="panel"/>
+  <text x="1188" y="732" class="label">x402 and stablecoin settlement</text>
+  <rect x="1188" y="754" width="138" height="38" class="green" rx="12"/>
+  <text x="1214" y="777" class="small">Facilitator</text>
+  <rect x="1346" y="754" width="138" height="38" class="green" rx="12"/>
+  <text x="1373" y="777" class="small">USDC payout</text>
+
+  <path d="M241 484C270 484 284 592 336 592" class="greenLine"/>
+  <text x="258" y="541" class="tiny">API / MCP / x402</text>
+  <path d="M241 286C281 286 282 480 336 480" class="blueLine"/>
+  <text x="260" y="369" class="tiny">HTTPS</text>
+  <path d="M453 520V540" class="blueLine"/>
+  <text x="466" y="539" class="tiny">REST + Socket.IO</text>
+  <path d="M562 614C588 614 606 484 638 484" class="greenLine"/>
+  <path d="M727 520V540" class="orangeLine"/>
+  <path d="M644 610C606 610 604 632 568 632" class="orangeLine dash"/>
+  <path d="M810 596C836 596 852 611 880 611" class="orangeLine"/>
+  <path d="M562 608C690 608 727 470 880 470" class="greenLine"/>
+  <path d="M562 635C702 635 722 541 880 541" class="greenLine"/>
+  <path d="M562 655C702 655 723 611 880 611" class="greenLine"/>
+
+  <path d="M562 584C710 342 1015 332 1182 365" class="orangeLine"/>
+  <text x="870" y="448" class="tiny">UserOps, sessions, buys</text>
+  <path d="M562 666C790 750 1000 660 1182 548" class="orangeLine dash"/>
+  <path d="M562 650C760 735 980 773 1182 773" class="greenLine"/>
+  <path d="M1327 773H1338" class="greenLine thin"/>
+
+  <path d="M241 688C280 688 286 311 336 311" class="blueLine dash"/>
+  <text x="254" y="640" class="tiny">deploy intent</text>
+  <path d="M735 330C735 360 454 360 454 440" class="blueLine dash"/>
+  <path d="M735 330C735 362 726 370 726 440" class="blueLine dash"/>
+  <text x="765" y="371" class="tiny">immutable images</text>
+
+  <rect x="86" y="872" width="1428" height="66" rx="20" fill="#FFFFFF" stroke="#D8E0EA"/>
+  <text x="112" y="903" class="label">What this diagram is showing</text>
+  <text x="112" y="925" class="small">The app is not a single web service: it joins a marketplace UI, public agent API, x402 commerce, ERC-4337 wallets, protocol contracts, AI audio processing, event queues, private data services, and a separate IaC delivery control plane.</text>
+</svg>

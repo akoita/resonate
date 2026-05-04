@@ -87,42 +87,27 @@ If you use an x402-capable client such as AgentCash, it can automate the proof e
 
 ## 🏗️ Architecture
 
-```mermaid
-graph TB
-    subgraph Frontend
-        Web[Next.js App]
-    end
+![Resonate deployment architecture](docs/architecture/resonate-deployment-architecture.svg)
 
-    subgraph Backend
-        API[NestJS API]
-        Worker[Demucs Worker]
-        Redis[(Redis Queue)]
-        PubSub[GCP Pub/Sub]
-    end
+Resonate is deployed as a full-stack music and agent-commerce system, not just a
+web app. The core runtime combines:
 
-    subgraph Blockchain
-        AA[ERC-4337 Accounts]
-        NFT[Stem NFTs]
-        Split[Payment Splitter]
-    end
+- **Human studio** — Next.js app for artists, listeners, marketplace, wallet UX,
+  uploads, playback, disputes, and curation.
+- **Agent-native commerce** — public storefront, OpenAPI, MCP tools, x402 quote
+  and paid download flow, and structured receipts.
+- **GCP runtime** — Cloud Run frontend/backend/Demucs services, Pub/Sub stem
+  jobs/results/DLQ, Cloud SQL, Redis, GCS, Secret Manager, Artifact Registry,
+  VPC private connectivity, and Cloud Monitoring.
+- **On-chain protocol** — ERC-4337 Kernel smart accounts, session keys, bundler,
+  EntryPoint, `StemNFT`, `StemMarketplaceV2`, content protection, curation
+  disputes, revenue escrow, and payment asset contracts.
+- **Separate cloud delivery plane** — application CI publishes immutable images;
+  [`resonate-iac`](https://github.com/akoita/resonate-iac) applies
+  Terraform-managed environment releases.
 
-    subgraph Storage
-        DB[(PostgreSQL)]
-        IPFS[IPFS/GCS]
-    end
-
-    Web --> API
-    API --> DB
-    API --> Redis
-    API -->|stem-separate| PubSub
-    PubSub -->|pull| Worker
-    Worker -->|stem-results| PubSub
-    PubSub -->|pull| API
-    API --> AA
-    Worker --> IPFS
-    AA --> NFT
-    NFT --> Split
-```
+See the [deployment architecture doc](docs/architecture/deployment_architecture.md)
+for the editable Mermaid model, source references, and component inventory.
 
 ---
 
@@ -323,6 +308,7 @@ repo-local `docker build`, `docker run`, stale-image recovery, and "stuck on Sep
 | Document                                                                   | Description                                    |
 | -------------------------------------------------------------------------- | ---------------------------------------------- |
 | [Project Specification](docs/rfc/RESONATE_SPECS.md)                        | Vision, architecture, and roadmap              |
+| [Deployment Architecture](docs/architecture/deployment_architecture.md)     | GCP, smart account, blockchain, x402, and delivery topology |
 | [Deployment Guide](docs/smart-contracts/deployment.md)                     | Repo split, contract deploys, and contract-adjacent local setup |
 | [Environment Variables](docs/deployment/environment.md)                    | App runtime, observability, x402, and provider configuration |
 | [Local AA Development](docs/account-abstraction/local-aa-development.md)   | Account abstraction setup guide                |
