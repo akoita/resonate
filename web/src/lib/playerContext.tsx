@@ -125,7 +125,7 @@ interface StemAudioProps {
     enabled: boolean;
     onMount: (type: string, el: HTMLAudioElement) => void;
     onUnmount: (type: string) => void;
-    onPlaybackStarted: () => void;
+    onPlaybackStarted: (type: string) => void;
 }
 
 const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolume, enabled, onMount, onUnmount, onPlaybackStarted }: StemAudioProps) => {
@@ -291,7 +291,7 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
                     }
                 }
                 audio.play()
-                    .then(onPlaybackStarted)
+                    .then(() => onPlaybackStarted(type))
                     .catch((err) => {
                         devLog(`[StemAudio:${type}] Play after load failed:`, err.name);
                     });
@@ -334,7 +334,7 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
                 }
             }
             audioRef.current.play()
-                .then(onPlaybackStarted)
+                .then(() => onPlaybackStarted(type))
                 .catch((err) => {
                     devLog(`[StemAudio:${type}] Play failed:`, err.name);
                 });
@@ -373,7 +373,7 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
             onPlay={() => {
                 devLog(`[StemAudio:${type}] onPlay - stem is now playing`);
                 if (enabled) {
-                    onPlaybackStarted();
+                    onPlaybackStarted(type);
                 }
             }}
             onPause={() => {
@@ -428,6 +428,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const repeatModeRef = useRef<"none" | "one" | "all">("none");
     const mixerModeRef = useRef(false); // Synchronous tracker for mixer mode
     const mixerAudioActiveRef = useRef(false);
+    const mixerVolumesRef = useRef(mixerVolumes);
 
     const currentTrack = currentIndex >= 0 ? queue[currentIndex] : null;
 
@@ -695,7 +696,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         nextTrackRef.current = nextTrack;
         shuffleRef.current = shuffle;
         repeatModeRef.current = repeatMode;
-    }, [queue, currentIndex, nextTrack, shuffle, repeatMode]);
+        mixerVolumesRef.current = mixerVolumes;
+    }, [queue, currentIndex, nextTrack, shuffle, repeatMode, mixerVolumes]);
 
     // Persistent Audio initialiser with stable listener bridge
     useEffect(() => {
@@ -850,13 +852,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         }
     }, [safePause]);
 
-    const handleStemPlaybackStarted = useCallback(() => {
+    const handleStemPlaybackStarted = useCallback((type: string) => {
+        const stemVolume = mixerVolumesRef.current[type.toLowerCase()] ?? 1;
+        if (stemVolume <= 0 || volume <= 0) {
+            devLog(`[Mixer] Stem ${type} started muted; keeping master audible until an audible stem plays`);
+            return;
+        }
+
         mixerAudioActiveRef.current = true;
         setMixerAudioActive(true);
         if (mixerModeRef.current && audioRef.current) {
             audioRef.current.volume = 0;
         }
-    }, []);
+    }, [volume]);
 
     // Sync stems with main audio
     useEffect(() => {
@@ -866,9 +874,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
         const syncStems = () => {
             const masterTime = mainAudio.currentTime;
-            const stems = Object.values(stemAudiosRef.current);
+            const stems = Object.entries(stemAudiosRef.current);
 
-            stems.forEach(stem => {
+            stems.forEach(([type, stem]) => {
                 // If it's more than 100ms off, snap it.
                 // Frequent snapping causes audio badness, so we only do it for large drifts.
                 if (Math.abs(stem.currentTime - masterTime) > 0.2) {
@@ -879,7 +887,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
                 if (mainAudio.paused && !stem.paused) stem.pause();
                 else if (!mainAudio.paused && stem.paused) {
                     stem.play()
-                        .then(handleStemPlaybackStarted)
+                        .then(() => handleStemPlaybackStarted(type))
                         .catch(() => { });
                 }
             });
@@ -905,13 +913,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             setIsPlaying(true);
             if (mixerMode) {
                 const masterTime = main.currentTime;
-                Object.values(stemAudiosRef.current).forEach(s => {
+                Object.entries(stemAudiosRef.current).forEach(([type, s]) => {
                     // Sync time BEFORE playing to prevent 1-second loop
                     if (Math.abs(s.currentTime - masterTime) > 0.1) {
                         s.currentTime = masterTime;
                     }
                     s.play()
-                        .then(handleStemPlaybackStarted)
+                        .then(() => handleStemPlaybackStarted(type))
                         .catch(() => { });
                 });
             }
@@ -957,7 +965,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const setVolume = useCallback((value: number) => {
         setVolumeState(value);
         if (audioRef.current) {
-            audioRef.current.volume = mixerMode ? 0 : value;
+            audioRef.current.volume = mixerMode && mixerAudioActiveRef.current ? 0 : value;
         }
         if (mixerMode) {
             Object.entries(mixerVolumes).forEach(([type, vol]) => {
@@ -996,12 +1004,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             // Synchronously update master volume to prevent leakage/phase issues
             if (audioRef.current) {
                 const hasStems = currentTrack?.stems?.some(s => s.type.toUpperCase() !== 'ORIGINAL');
-                const hasReadyStemAudio = Object.values(stemAudiosRef.current).some((stemAudio) => (
-                    stemAudio.readyState >= 2
-                ));
-                const newVolume = (nextMode && hasStems && hasReadyStemAudio) ? 0 : volume;
+                const newVolume = (nextMode && hasStems && mixerAudioActiveRef.current) ? 0 : volume;
                 const isActuallyPlaying = !audioRef.current.paused;
-                devLog('[toggleMixerMode] Setting main audio volume to', newVolume, 'hasStems:', hasStems, 'hasReadyStemAudio:', hasReadyStemAudio, 'isActuallyPlaying:', isActuallyPlaying);
+                devLog('[toggleMixerMode] Setting main audio volume to', newVolume, 'hasStems:', hasStems, 'mixerAudioActive:', mixerAudioActiveRef.current, 'isActuallyPlaying:', isActuallyPlaying);
                 audioRef.current.volume = newVolume;
             } else {
                 devLog('[toggleMixerMode] No audioRef.current!');
@@ -1012,6 +1017,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
     const setMixerVolumes = useCallback((v: Record<string, number>) => {
         devLog('[setMixerVolumes] Updating volumes:', v, 'registered stems:', Object.keys(stemAudiosRef.current));
+        mixerVolumesRef.current = v;
         setMixerVolumesState(v);
         Object.entries(v).forEach(([type, vol]) => {
             const audio = stemAudiosRef.current[type];
@@ -1023,6 +1029,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
                 devLog(`[setMixerVolumes] No audio element found for ${type}`);
             }
         });
+
+        if (mixerModeRef.current && audioRef.current) {
+            const hasAudiblePlayingStem = Object.entries(v).some(([type, vol]) => {
+                const audio = stemAudiosRef.current[type];
+                return vol > 0 && !!audio && !audio.paused;
+            });
+            mixerAudioActiveRef.current = hasAudiblePlayingStem;
+            setMixerAudioActive(hasAudiblePlayingStem);
+            audioRef.current.volume = hasAudiblePlayingStem ? 0 : volume;
+        }
     }, [volume]);
 
     const stemsToRender = currentTrack?.id
