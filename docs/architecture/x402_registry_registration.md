@@ -6,7 +6,7 @@ Current follow-up: [#783](https://github.com/akoita/resonate/issues/783)
 ## Current Status
 
 The app-side machine-first surfaces have been implemented, but registry
-validation is intentionally deferred because the staging API origin is not
+validation is intentionally deferred because the staging web/API hosts are not
 supposed to be publicly published at this stage. Staging is kept down/private
 while the project is not ready to absorb large public traffic or adversarial
 probing.
@@ -21,8 +21,9 @@ Rechecked at: `2026-05-09T14:28:00Z`
 | `https://api-staging.resonate.pydes.xyz/api/storefront/stems?limit=1` | HTTP 404 |
 
 These 404s are not a product bug to fix by republishing staging. They are the
-current operational posture until there is a hardened public validation window
-or production launch target with capacity and abuse controls in place.
+current operational posture for both `staging.resonate.pydes.xyz` and
+`api-staging.resonate.pydes.xyz` until there is a hardened public validation
+window or production launch target with capacity and abuse controls in place.
 
 ## Previous Submission Attempt
 
