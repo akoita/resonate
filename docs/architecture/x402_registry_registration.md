@@ -1,6 +1,28 @@
 # x402 Registry Submission Receipt
 
 Issue: [#520](https://github.com/akoita/resonate/issues/520)
+Current follow-up: [#783](https://github.com/akoita/resonate/issues/783)
+
+## Current Status
+
+The app-side machine-first surfaces have been implemented, but registry
+validation is not currently complete because the public staging API origin is
+not serving the required metadata endpoints.
+
+Rechecked at: `2026-05-09T14:28:00Z`
+
+| URL | Result |
+| --- | --- |
+| `https://api-staging.resonate.pydes.xyz/openapi.json` | HTTP 404 |
+| `https://api-staging.resonate.pydes.xyz/.well-known/x402` | HTTP 404 |
+| `https://api-staging.resonate.pydes.xyz/.well-known/mcp.json` | HTTP 404 |
+| `https://api-staging.resonate.pydes.xyz/api/storefront/stems?limit=1` | HTTP 404 |
+
+Until a public staging or production API origin serves those routes again, the
+AgentCash application epic remains operationally blocked even though the app
+code and local docs expose the intended storefront/x402/MCP contract.
+
+## Previous Submission Attempt
 
 Checked at: `2026-04-26T00:32:49Z`
 
@@ -109,7 +131,8 @@ the deployed staging x402 route does not emit a live 402 challenge yet.
 
 ## Follow-Up Required
 
-To complete registry validation, deploy staging with:
+To complete registry validation, restore the public API origin and deploy
+staging with:
 
 ```env
 X402_ENABLED=true
@@ -121,3 +144,9 @@ X402_PAYOUT_ADDRESS=<base-sepolia-wallet>
 Those values are defined in `resonate-iac`, which owns Cloud Run service
 configuration. After redeploy, rerun both submissions and update this receipt
 with the successful resource count or registry ID.
+
+The current tracker for this deployment/registry follow-up is
+[#783](https://github.com/akoita/resonate/issues/783). The parent AgentCash epic
+[#499](https://github.com/akoita/resonate/issues/499) should remain open until
+that validation is complete or explicitly moved to a separate operational
+roadmap.
