@@ -19,9 +19,10 @@ Enable the community to flag stolen content and resolve disputes through a struc
 This feature area is only partially shipped.
 
 - Sprint 3 notification work is shipped.
-- Sprint 4 jury arbitration remains tracked in open issue [#432](https://github.com/akoita/resonate/issues/432).
-- Sprint 5 proof-of-humanity gate and advanced reputation remain tracked in open issue [#433](https://github.com/akoita/resonate/issues/433).
-- The repo contains backend and UI groundwork in several places, but the GitHub tracker is the source of truth for what is fully delivered versus still in progress.
+- Sprint 4 jury arbitration capability shipped through [#432](https://github.com/akoita/resonate/issues/432), including lifecycle states, backend endpoints, assignment/voting/finalization paths, and user-facing jury panels.
+- Sprint 5 proof-of-humanity and advanced reputation capability shipped through [#433](https://github.com/akoita/resonate/issues/433), including reporting policy, proof-of-humanity status, curator profiles, and reputation-aware counter-stake tiers.
+- The remaining gap is production readiness: richer evidence UX, clearer juror onboarding, admin escalation/finalization ergonomics, appeal/post-resolution workflows, E2E/security/deployment validation, and analytics/anti-abuse hardening.
+- GitHub issue [#407](https://github.com/akoita/resonate/issues/407) remains the parent roadmap item for this area; open follow-ups are listed below so backend capability and product readiness are not conflated.
 
 ## Flow
 
@@ -141,20 +142,24 @@ Non-owners see a **🚩 Report stolen content** button on release pages. Clickin
 
 ### Dispute Dashboard (`/disputes`)
 
-Two tabs:
+Primary tabs:
 
 - **My Reports** — disputes filed by the connected wallet
 - **Against My Content** — disputes targeting the wallet's content
+- **Jury Duty** — disputes assigned to the connected wallet for jury voting
 
-Includes a **reputation badge** showing score, successful flags, and rejected flags.
+Includes a reputation badge showing score, successful flags, rejected flags, reporting policy, proof-of-humanity state, and jury panels when assignments exist.
 
 ## Testing
 
-| Layer     | Tests                                                        | Result      |
-| --------- | ------------------------------------------------------------ | ----------- |
-| Contracts | 40 Foundry tests (25 DisputeResolution + 15 CurationRewards) | ✅ Pass     |
-| Backend   | `tsc --noEmit`                                               | ✅ Clean    |
-| Frontend  | `npm run lint`                                               | ✅ 0 errors |
+The table below captures the historical verification for the shipped slices. Production readiness still needs the broader E2E/security work tracked in [#434](https://github.com/akoita/resonate/issues/434).
+
+| Layer     | Coverage                                                        | Status      |
+| --------- | --------------------------------------------------------------- | ----------- |
+| Contracts | Dispute and curation unit coverage, including jury primitives    | Shipped     |
+| Backend   | Dispute, jury, notification, reputation, and verification paths  | Shipped     |
+| Frontend  | Dashboard, notification, jury panel, curator profile surfaces    | Shipped     |
+| E2E / Ops | Full lifecycle E2E, security scan, deployment/load validation    | Open in #434 |
 
 ## Sprint 2 (Complete)
 
@@ -175,29 +180,49 @@ Delivered across PRs #436 (notification infrastructure), #461 (mounted notificat
 - ✅ `useDisputeNotifications` hook, `NotificationBell`, `NotificationPreferences`
 - ✅ Real-time auto-refresh in `DisputeDashboard`
 
-## Sprint 4 (Planned / In Progress)
+## Sprint 4 (Capability Shipped)
 
-Tracked by open issue [#432](https://github.com/akoita/resonate/issues/432).
+Tracked by closed issue [#432](https://github.com/akoita/resonate/issues/432).
 
-Target scope:
+Delivered capability:
 
-- DAO jury or Kleros-style arbitration path after admin review
-- Jury assignment, voting, and finalization
-- Juror-facing dashboard and arbitration timeline
-- Integration with the existing dispute lifecycle
+- DAO-style jury escalation after admin review
+- Jury assignment, voting, and finalization endpoints
+- Dispute lifecycle states for `Escalated` and `JuryVoting`
+- Juror-facing dashboard panels inside `/disputes`
+- Jury assignment notifications and timeline markers
 
-## Sprint 5 (Planned / In Progress)
+Remaining product hardening:
 
-Tracked by open issue [#433](https://github.com/akoita/resonate/issues/433).
+- [#466](https://github.com/akoita/resonate/issues/466) — juror onboarding, assignment visibility, and account guidance
+- [#468](https://github.com/akoita/resonate/issues/468) — admin jury escalation and finalization workflow
 
-Target scope:
+## Sprint 5 (Capability Shipped)
+
+Tracked by closed issue [#433](https://github.com/akoita/resonate/issues/433).
+
+Delivered capability:
 
 - Proof-of-humanity gate for higher-volume reporters
 - Advanced reputation decay, tiers, and badges
 - Curator profile and verification UX
 - Reputation-aware counter-stake policy
 
+Remaining product hardening:
+
+- [#469](https://github.com/akoita/resonate/issues/469) — in-app evidence submission workflow for reporter and creator
+- [#465](https://github.com/akoita/resonate/issues/465) — in-app appeal workflow and post-resolution actions
+
 ## Future Sprints
 
-- **Sprint 6:** E2E testing, security audit, deployment
-- **Sprint 7:** Public analytics, anti-abuse hardening
+- **Sprint 6:** E2E testing, security audit, deployment — tracked in [#434](https://github.com/akoita/resonate/issues/434)
+- **Sprint 7:** Public analytics, anti-abuse hardening — tracked in [#435](https://github.com/akoita/resonate/issues/435)
+
+## Open Product-Readiness Follow-Ups
+
+- [#465](https://github.com/akoita/resonate/issues/465) — Dispute Center: implement in-app appeal workflow and post-resolution actions
+- [#466](https://github.com/akoita/resonate/issues/466) — Juror UX: onboarding, assignment visibility, and account guidance
+- [#468](https://github.com/akoita/resonate/issues/468) — Dispute Center: add admin jury escalation and finalization workflow
+- [#469](https://github.com/akoita/resonate/issues/469) — Dispute Center: add in-app evidence submission workflow for reporter and creator
+- [#434](https://github.com/akoita/resonate/issues/434) — E2E testing, security audit, deployment
+- [#435](https://github.com/akoita/resonate/issues/435) — Public analytics and anti-abuse hardening

@@ -95,6 +95,8 @@ These areas already have concrete code-level support:
   - creator release-page state transitions
 - dispute reporting and curator reputation foundations
 - proof-of-humanity / anti-sybil integration path
+- DAO-style jury escalation, voting, finalization, and assignment surfaces
+- proof-of-humanity gating and advanced curator reputation capability
 
 ### Already planned in the backlog
 
@@ -110,8 +112,14 @@ These major tracks already exist as issues or epics:
 - `#477` copy and badge cleanup
 - `#492` manual release rights-upgrade flow
 - `#494` streamlined low-friction marketplace-rights onboarding
-- `#432` decentralized jury escalation
-- `#433` proof-of-humanity and advanced reputation
+- `#432` decentralized jury escalation (closed; capability shipped)
+- `#433` proof-of-humanity and advanced reputation (closed; capability shipped)
+- `#434` dispute E2E testing, security audit, and deployment validation
+- `#435` public dispute analytics and anti-abuse hardening
+- `#465` in-app appeal workflow and post-resolution actions
+- `#466` juror onboarding, assignment visibility, and account guidance
+- `#468` admin jury escalation and finalization workflow
+- `#469` in-app evidence submission workflow
 
 ## What Still Needs To Be Added
 
@@ -168,12 +176,19 @@ Still needed:
 - continuous monitoring of already-published releases
 - route re-evaluation after new evidence, disputes, or suspicious signals
 - sampling/audit on low-friction routes
-- escalation from automation → ops → dispute → jury
+- production-ready escalation from automation → ops → dispute → jury
+- dispute lifecycle E2E coverage, security scans, and deployment validation
+- anti-abuse controls for public reporting and curator activity
 
 Primary issues:
 
 - `#407`
-- `#432`
+- `#434`
+- `#435`
+- `#465`
+- `#466`
+- `#468`
+- `#469`
 - `#409`
 - `#496`
 
@@ -202,13 +217,14 @@ Why:
 
 ### Longer-term decentralization priorities
 
-8. `#433` proof-of-humanity and advanced reputation
-9. `#432` jury escalation
-10. `#409` public verification / cross-platform / governance
+8. Finish dispute product-readiness follow-ups (`#465`, `#466`, `#468`, `#469`)
+9. Run dispute E2E/security/deployment validation (`#434`)
+10. Add dispute analytics and anti-abuse hardening (`#435`)
+11. `#409` public verification / cross-platform / governance
 
 Why:
 
-- These matter, but they should sit on top of a system that already automates the obvious cases and reserves decentralized arbitration for the ambiguous ones.
+- The proof-of-humanity and jury primitives are no longer the missing pieces. The remaining risk is whether the full dispute flow is understandable, testable, abuse-resistant, and safe to operate.
 
 ## Decision Rules For Planning New Work
 
