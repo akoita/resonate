@@ -6,8 +6,10 @@ Current follow-up: [#783](https://github.com/akoita/resonate/issues/783)
 ## Current Status
 
 The app-side machine-first surfaces have been implemented, but registry
-validation is not currently complete because the public staging API origin is
-not serving the required metadata endpoints.
+validation is intentionally deferred because the staging API origin is not
+supposed to be publicly published at this stage. Staging is kept down/private
+while the project is not ready to absorb large public traffic or adversarial
+probing.
 
 Rechecked at: `2026-05-09T14:28:00Z`
 
@@ -18,9 +20,9 @@ Rechecked at: `2026-05-09T14:28:00Z`
 | `https://api-staging.resonate.pydes.xyz/.well-known/mcp.json` | HTTP 404 |
 | `https://api-staging.resonate.pydes.xyz/api/storefront/stems?limit=1` | HTTP 404 |
 
-Until a public staging or production API origin serves those routes again, the
-AgentCash application epic remains operationally blocked even though the app
-code and local docs expose the intended storefront/x402/MCP contract.
+These 404s are not a product bug to fix by republishing staging. They are the
+current operational posture until there is a hardened public validation window
+or production launch target with capacity and abuse controls in place.
 
 ## Previous Submission Attempt
 
@@ -131,8 +133,8 @@ the deployed staging x402 route does not emit a live 402 challenge yet.
 
 ## Follow-Up Required
 
-To complete registry validation, restore the public API origin and deploy
-staging with:
+To complete registry validation, choose an intentional public validation origin
+or launch window and deploy with:
 
 ```env
 X402_ENABLED=true
@@ -142,8 +144,11 @@ X402_PAYOUT_ADDRESS=<base-sepolia-wallet>
 ```
 
 Those values are defined in `resonate-iac`, which owns Cloud Run service
-configuration. After redeploy, rerun both submissions and update this receipt
-with the successful resource count or registry ID.
+configuration. Do not use the current staging host as an always-on public
+registration target until capacity, rate limiting, abuse monitoring, and
+adversarial-traffic readiness are explicitly in place. After an intentional
+public validation deploy, rerun both submissions and update this receipt with
+the successful resource count or registry ID.
 
 The current tracker for this deployment/registry follow-up is
 [#783](https://github.com/akoita/resonate/issues/783). The parent AgentCash epic
