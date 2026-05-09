@@ -268,14 +268,14 @@ describe("agent identity reputation scoring", () => {
       },
       chainId: 84532,
       registry: "0x1234567890123456789012345678901234567890",
-      publicBaseUrl: "https://staging.resonate.pydes.xyz/",
+      publicBaseUrl: "https://app.example.com/",
     });
 
     expect(file.type).toBe("https://eips.ethereum.org/EIPS/eip-8004#registration-v1");
     expect(file.name).toBe("Koita DJ");
     expect(file.services).toEqual([
-      { name: "web", endpoint: "https://staging.resonate.pydes.xyz" },
-      { name: "MCP", endpoint: "https://staging.resonate.pydes.xyz/mcp", version: "2025-06-18" },
+      { name: "web", endpoint: "https://app.example.com" },
+      { name: "MCP", endpoint: "https://app.example.com/mcp", version: "2025-06-18" },
     ]);
     expect(file.registrations).toEqual([{
       agentId: "42",

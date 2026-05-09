@@ -42,8 +42,9 @@ Still open from the foundation wave:
   public deployment validation is intentionally deferred. The previous submission
   attempt is tracked in [#520](https://github.com/akoita/resonate/issues/520);
   the active follow-up is [#783](https://github.com/akoita/resonate/issues/783)
-  because the staging web/API hosts are not supposed to be publicly published
-  until the project is ready for large public load and adversarial probing.
+  because staging web/API deployment details are intentionally kept out of this
+  public repository until the project is ready for large public load and
+  adversarial probing.
 
 Started beyond Wave 1:
 
@@ -362,7 +363,7 @@ These are the smallest slices that would keep momentum high and reviewable.
 ### Still on the roadmap (Wave 3), just not next
 
 - **Human-facing x402 checkout** — small wrapper around shipped middleware; ships whenever the buy modal gets its next pass.
-- **Agentic.Market / x402scan registration ([#783](https://github.com/akoita/resonate/issues/783), previous attempt [#520](https://github.com/akoita/resonate/issues/520))** — the app-code surface exists, but public staging web/API deployment is intentionally unpublished for now; rerun registry validation only during a hardened public validation or launch window.
+- **Agentic.Market / x402scan registration ([#783](https://github.com/akoita/resonate/issues/783), previous attempt [#520](https://github.com/akoita/resonate/issues/520))** — the app-code surface exists, but public staging deployment details are intentionally kept out of this repository; rerun registry validation only during a hardened public validation or launch window.
 
 ### What I would explicitly defer
 

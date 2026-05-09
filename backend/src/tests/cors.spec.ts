@@ -11,14 +11,14 @@ describe("getCorsAllowedOrigins", () => {
   it("adds origins from CORS and frontend env vars", () => {
     expect(
       getCorsAllowedOrigins({
-        CORS_ORIGIN: "https://staging.resonate.pydes.xyz, https://admin.example.com/",
-        FRONTEND_URL: "https://staging.resonate.pydes.xyz/app",
+        CORS_ORIGIN: "https://app.example.com, https://admin.example.com/",
+        FRONTEND_URL: "https://app.example.com/app",
         WEBAUTHN_ORIGIN: "https://passkeys.example.com",
       }),
     ).toEqual([
       "http://localhost:3001",
       "http://localhost:3000",
-      "https://staging.resonate.pydes.xyz",
+      "https://app.example.com",
       "https://admin.example.com",
       "https://passkeys.example.com",
     ]);

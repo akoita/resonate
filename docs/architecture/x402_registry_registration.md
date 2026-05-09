@@ -6,24 +6,23 @@ Current follow-up: [#783](https://github.com/akoita/resonate/issues/783)
 ## Current Status
 
 The app-side machine-first surfaces have been implemented, but registry
-validation is intentionally deferred because the staging web/API hosts are not
-supposed to be publicly published at this stage. Staging is kept down/private
-while the project is not ready to absorb large public traffic or adversarial
-probing.
+validation is intentionally deferred because staging web/API deployment details
+are not published from this public repository. Public validation should wait
+until a hardened validation or launch origin is explicitly approved.
 
 Rechecked at: `2026-05-09T14:28:00Z`
 
 | URL | Result |
 | --- | --- |
-| `https://api-staging.resonate.pydes.xyz/openapi.json` | HTTP 404 |
-| `https://api-staging.resonate.pydes.xyz/.well-known/x402` | HTTP 404 |
-| `https://api-staging.resonate.pydes.xyz/.well-known/mcp.json` | HTTP 404 |
-| `https://api-staging.resonate.pydes.xyz/api/storefront/stems?limit=1` | HTTP 404 |
+| `/openapi.json` | Deferred |
+| `/.well-known/x402` | Deferred |
+| `/.well-known/mcp.json` | Deferred |
+| `/api/storefront/stems?limit=1` | Deferred |
 
 These 404s are not a product bug to fix by republishing staging. They are the
-current operational posture for both `staging.resonate.pydes.xyz` and
-`api-staging.resonate.pydes.xyz` until there is a hardened public validation
-window or production launch target with capacity and abuse controls in place.
+current operational posture until there is a hardened public validation window
+or production launch target with capacity and abuse controls in place. Concrete
+staging URLs and deployment details belong in the private IaC repository.
 
 ## Previous Submission Attempt
 
@@ -31,7 +30,7 @@ Checked at: `2026-04-26T00:32:49Z`
 
 ## Public Metadata
 
-Base URL: `https://api-staging.resonate.pydes.xyz`
+Base URL: `<redacted-staging-api-origin>`
 
 Verified public endpoints:
 
@@ -55,7 +54,7 @@ clients to the paid x402 route plus the free quote route.
 Submitted origin:
 
 ```text
-https://api-staging.resonate.pydes.xyz
+<redacted-staging-api-origin>
 ```
 
 Discovery probe result:
@@ -68,7 +67,7 @@ Discovery probe result:
   "resources": [
     {
       "method": "GET",
-      "url": "https://api-staging.resonate.pydes.xyz/api/stems/%7BstemId%7D/x402",
+      "url": "<redacted-staging-api-origin>/api/stems/%7BstemId%7D/x402",
       "authMode": "paid"
     }
   ]
@@ -87,7 +86,7 @@ Registration mutation receipt:
   "originId": null,
   "failedDetails": [
     {
-      "url": "https://api-staging.resonate.pydes.xyz/api/stems/%7BstemId%7D/x402",
+      "url": "<redacted-staging-api-origin>/api/stems/%7BstemId%7D/x402",
       "error": "No valid x402 response found",
       "status": null
     }
@@ -112,7 +111,7 @@ for both `/api/stems/stem_1777163111376_f0c81f6d/x402/info` and
 Submitted origin:
 
 ```text
-https://api-staging.resonate.pydes.xyz
+<redacted-staging-api-origin>
 ```
 
 Registration response:
@@ -122,7 +121,7 @@ Registration response:
   "type": "done",
   "origin": {
     "id": "3ac4b7baee04e69605a7c9f85f35389c583a0634b773ce958ef4a9b309e85247",
-    "origin": "https://api-staging.resonate.pydes.xyz",
+    "origin": "<redacted-staging-api-origin>",
     "name": "Resonate API"
   },
   "resourceCount": 0
