@@ -1,3 +1,10 @@
+import type {
+  ContentProvenanceState,
+  HumanVerificationState,
+  PlatformReviewState,
+  RightsVerificationState,
+} from "./verificationSemantics";
+
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 const PUBLIC_RELEASE_ROUTES = new Set([
@@ -429,9 +436,9 @@ export type TrustTier = {
   totalUploads: number;
   cleanHistory: number;
   disputesLost: number;
-  humanVerificationStatus?: string;
+  humanVerificationStatus?: HumanVerificationState;
   humanVerifiedAt?: string | null;
-  platformReviewStatus?: string;
+  platformReviewStatus?: PlatformReviewState;
 };
 
 export type HumanVerificationStatus = {
@@ -498,12 +505,12 @@ export type ReleaseContentProtectionData = {
   escrowDays: number;
   trustTier: string;
   economicTrustTier?: string;
-  humanVerificationStatus?: string;
+  humanVerificationStatus?: HumanVerificationState;
   humanVerifiedAt?: string | null;
-  platformReviewStatus?: string;
+  platformReviewStatus?: PlatformReviewState;
   attestedAt: string;
-  provenanceStatus?: string;
-  rightsVerificationStatus?: string;
+  provenanceStatus?: ContentProvenanceState;
+  rightsVerificationStatus?: RightsVerificationState;
   rightsUpgradeRequestStatus?: ReleaseRightsUpgradeRequestStatus | null;
   rightsUpgradeRequestedRoute?: "STANDARD_ESCROW" | "TRUSTED_FAST_PATH" | null;
   rightsUpgradeDecisionReason?: string | null;
@@ -604,7 +611,7 @@ export type ReleaseRightsUpgradeRequestRecord = {
   artistId: string;
   requestedByAddress: string;
   status: ReleaseRightsUpgradeRequestStatus;
-  derivedRightsVerificationStatus?: string | null;
+  derivedRightsVerificationStatus?: RightsVerificationState | null;
   requestedRoute: ReleaseRightsUpgradeRequestedRoute;
   currentRouteAtSubmission?: string | null;
   summary?: string | null;

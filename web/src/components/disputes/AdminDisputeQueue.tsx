@@ -12,6 +12,10 @@ import {
   type ReleaseRightsUpgradeRequestRecord,
   type ReleaseRightsUpgradeRequestStatus,
 } from "../../lib/api";
+import {
+  RIGHTS_VERIFICATION_COPY,
+  normalizeRightsVerificationState,
+} from "../../lib/verificationSemantics";
 
 interface Dispute {
   id: string;
@@ -131,18 +135,22 @@ function formatRightsUpgradeStatusLabel(status: string) {
 }
 
 function formatDerivedRightsStateLabel(status?: string | null) {
-  switch (status) {
-    case "platform_review_pending":
-      return "Review pending";
-    case "platform_reviewed":
-      return "Platform reviewed";
-    case "rights_verified":
-      return "Rights verified";
-    case "rights_disputed":
-      return "Rights disputed";
-    default:
-      return "Not independently reviewed";
+  return RIGHTS_VERIFICATION_COPY[normalizeRightsVerificationState(status)].label;
+}
+
+function shouldShowDerivedRightsState(status?: string | null) {
+  return normalizeRightsVerificationState(status) !== "not_reviewed";
+}
+
+function getDerivedRightsStateTone(status?: string | null) {
+  const normalized = normalizeRightsVerificationState(status);
+  if (normalized === "rights_verified") {
+    return { background: "rgba(16,185,129,0.1)", color: "#10b981" };
   }
+  if (normalized === "rights_disputed") {
+    return { background: "rgba(239,68,68,0.1)", color: "#ef4444" };
+  }
+  return { background: "rgba(245,158,11,0.1)", color: "#f59e0b" };
 }
 
 function compactUrlLabel(value?: string | null) {
@@ -387,24 +395,23 @@ export default function AdminDisputeQueue() {
                       <span style={{ ...routeChipStyle, borderColor: "rgba(124,92,255,0.25)", color: "#a78bfa" }}>
                         {request.requestedRoute.replaceAll("_", " ")}
                       </span>
-                      {request.derivedRightsVerificationStatus && request.derivedRightsVerificationStatus !== "not_independently_reviewed" && (
-                        <span style={{
-                          padding: "2px 8px",
-                          borderRadius: "6px",
-                          fontSize: "10px",
-                          fontWeight: 600,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.04em",
-                          background: request.derivedRightsVerificationStatus === "rights_verified" ? "rgba(16,185,129,0.1)" :
-                            request.derivedRightsVerificationStatus === "rights_disputed" ? "rgba(239,68,68,0.1)" :
-                              "rgba(245,158,11,0.1)",
-                          color: request.derivedRightsVerificationStatus === "rights_verified" ? "#10b981" :
-                            request.derivedRightsVerificationStatus === "rights_disputed" ? "#ef4444" :
-                              "#f59e0b",
-                        }}>
-                          {formatDerivedRightsStateLabel(request.derivedRightsVerificationStatus)}
-                        </span>
-                      )}
+                      {shouldShowDerivedRightsState(request.derivedRightsVerificationStatus) && (() => {
+                        const tone = getDerivedRightsStateTone(request.derivedRightsVerificationStatus);
+                        return (
+                          <span style={{
+                            padding: "2px 8px",
+                            borderRadius: "6px",
+                            fontSize: "10px",
+                            fontWeight: 600,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.04em",
+                            background: tone.background,
+                            color: tone.color,
+                          }}>
+                            {formatDerivedRightsStateLabel(request.derivedRightsVerificationStatus)}
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
                   <span style={{ fontSize: "12px", opacity: 0.35, whiteSpace: "nowrap" }}>

@@ -110,13 +110,13 @@ const PROVIDERS = [
   {
     id: "passport",
     label: "Gitcoin Passport",
-    description: "Score-based verification",
+    description: "Anti-sybil wallet score",
     icon: IconFingerprint,
   },
   {
     id: "worldcoin",
     label: "World ID",
-    description: "Biometric proof",
+    description: "Personhood proof",
     icon: IconGlobe,
   },
   {
@@ -231,7 +231,7 @@ export default function HumanVerificationCard({ walletAddress, onVerified, compa
           <div style={{ fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", fontWeight: 600 }}>
             Proof of Humanity
           </div>
-          <h3 style={{ margin: "8px 0 10px", fontSize: compact ? "18px" : "22px", fontWeight: 700 }}>Verification Status</h3>
+          <h3 style={{ margin: "8px 0 10px", fontSize: compact ? "18px" : "22px", fontWeight: 700 }}>Human Verification Status</h3>
           <p style={{ margin: 0, opacity: 0.55, lineHeight: 1.6, fontSize: "13px" }}>
             Curators with {status.requiredAfterReports} or more reports need proof-of-humanity before they can keep filing disputes. This checks personhood, not music ownership rights.
           </p>

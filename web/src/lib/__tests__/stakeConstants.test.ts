@@ -130,6 +130,6 @@ describe("label maps", () => {
     expect(TIER_LABELS.new).toBeDefined();
     expect(TIER_LABELS.established).toBeDefined();
     expect(TIER_LABELS.trusted).toBeDefined();
-    expect(TIER_LABELS.verified).toBeDefined();
+    expect(TIER_LABELS.verified).toBe("Verified Economic Tier");
   });
 });

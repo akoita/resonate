@@ -249,14 +249,14 @@ export class MetadataController {
       },
       approved_standard_escrow: {
         type: "release_rights_approved_standard_escrow",
-        title: "Marketplace rights approved",
+        title: "Marketplace access approved",
         message:
           request.decisionReason ||
           `${releaseTitle} now has marketplace access under the standard escrow route.`,
       },
       approved_trusted_fast_path: {
         type: "release_rights_approved_trusted_fast_path",
-        title: "Marketplace rights approved",
+        title: "Marketplace access approved",
         message:
           request.decisionReason ||
           `${releaseTitle} now has marketplace access under the trusted fast path.`,

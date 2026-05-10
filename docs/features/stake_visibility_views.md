@@ -38,16 +38,16 @@ Upload → Process (Demucs) → Publish → attestRelease() + stakeForRelease() 
 | `maxPriceMultiplier()`        | `uint256` — current global multiplier (default: 10)                                                                   | Backend `TrustService`                     |
 | `refundStake(tokenId)`        | — (write)                                                                                                             | `useStakeRefund` hook                      |
 
-### Trust Tiers & Defaults
+### Economic Trust Tiers & Defaults
 
 | Tier        | Stake     | Escrow Period | Max Listing Price (at 10× multiplier) |
 | ----------- | --------- | ------------- | ------------------------------------- |
 | New Creator | 10 USDC when stablecoin staking is configured; native ETH fallback otherwise | 30 days | 100 USDC per unit when listed in USDC |
 | Established | 10 USDC when stablecoin staking is configured; native ETH fallback otherwise | 14 days | 100 USDC per unit when listed in USDC |
 | Trusted     | 10 USDC when stablecoin staking is configured; native ETH fallback otherwise | 7 days | 100 USDC per unit when listed in USDC |
-| Verified Trust Tier | Waived | 3 days | Uncapped |
+| Verified Economic Tier | Waived | 3 days | Uncapped |
 
-The trust tier above is an economic control, not an independent rights-verification badge. It affects stake, escrow, and listing economics only.
+The economic trust tier above is an economic control, not an independent rights-verification badge. It affects stake, escrow, and listing economics only.
 Upload staking is stablecoin-first when an enabled `upload_stake` stablecoin has an on-chain stake amount. Native ETH remains a fallback for local or partially configured environments.
 
 ## Components

@@ -50,6 +50,10 @@ import {
   isStakeCappedListingPrice,
   resolveStakeSafeListingPriceWei,
 } from "../../../lib/stakeSafeListingPrice";
+import {
+  RIGHTS_VERIFICATION_COPY,
+  normalizeRightsVerificationState,
+} from "../../../lib/verificationSemantics";
 import "../../../styles/license-badges.css";
 
 // Helper to get duration from track's first stem
@@ -379,6 +383,8 @@ export default function ReleaseDetails() {
   const rightsUpgradeStatus =
     rightsUpgradeRequest?.status || releaseProtection?.rightsUpgradeRequestStatus || null;
   const rightsUpgradeStatusLabel = formatRightsUpgradeStatusLabel(rightsUpgradeStatus);
+  const rightsReviewDisplay =
+    RIGHTS_VERIFICATION_COPY[normalizeRightsVerificationState(releaseProtection?.rightsVerificationStatus)];
   const rightsUpgradeDecisionReason =
     rightsUpgradeRequest?.decisionReason || releaseProtection?.rightsUpgradeDecisionReason || null;
   const canSubmitRightsUpgrade =
@@ -408,11 +414,11 @@ export default function ReleaseDetails() {
   const mintingBlockedReason = marketplaceRestrictedByRights
     ? `Marketplace minting is disabled while this release is routed as ${rightsRouteLabel}.`
     : needsAttestationForMinting && !canCompleteAttestation
-      ? "Marketplace rights are approved. The creator wallet must protect this release on-chain before minting and listing stems."
+      ? "Marketplace access is approved. The creator wallet must protect this release on-chain before minting and listing stems."
       : null;
   const attestationMintNotice = needsAttestationForMinting
     ? canCompleteAttestation
-      ? "Marketplace rights are approved. Mint & List will protect this release on-chain first, then continue with the selected stems."
+      ? "Marketplace access is approved. Mint & List will protect this release on-chain first, then continue with the selected stems."
       : mintingBlockedReason
     : null;
   const effectiveListingPriceWei = resolveStakeSafeListingPriceWei({
@@ -605,12 +611,12 @@ export default function ReleaseDetails() {
           type: "info",
         },
         approved_standard_escrow: {
-          title: "Marketplace rights approved",
+          title: "Marketplace access approved",
           message: "This release was approved under the standard escrow route.",
           type: "success",
         },
         approved_trusted_fast_path: {
-          title: "Marketplace rights approved",
+          title: "Marketplace access approved",
           message: "This release was approved under the trusted fast path.",
           type: "success",
         },
@@ -1427,7 +1433,10 @@ export default function ReleaseDetails() {
                   >
                     <div style={{ minWidth: 0, flex: "1 1 240px" }}>
                       <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.55)" }}>
-                        Marketplace access requires proof-of-control review.
+                        Marketplace access requires proof-of-control review. Current rights review state: {rightsReviewDisplay.label}.
+                      </div>
+                      <div style={{ marginTop: "4px", fontSize: "12px", color: "rgba(255,255,255,0.42)", lineHeight: 1.5 }}>
+                        {rightsReviewDisplay.description}
                       </div>
                       {rightsUpgradeDecisionReason && (
                         <div style={{ marginTop: "6px", fontSize: "13px", color: "rgba(255,255,255,0.75)", lineHeight: 1.5 }}>
@@ -1577,6 +1586,14 @@ export default function ReleaseDetails() {
                 </div>
               )}
             </div>
+            <p style={{
+              margin: "8px 0 0",
+              fontSize: "0.78rem",
+              opacity: 0.52,
+              lineHeight: 1.5,
+            }}>
+              {rightsReviewDisplay.description}
+            </p>
             {release.rightsReason && (
               <p style={{
                 margin: "8px 0 0",
@@ -1846,7 +1863,7 @@ export default function ReleaseDetails() {
                 <h3 className="nft-title">NFT Marketplace</h3>
                 <p className="nft-subtitle">
                   {marketplaceRestrictedByRights
-                    ? "Marketplace actions are currently restricted by this release's rights route"
+                    ? "Marketplace actions are restricted until release rights review allows access"
                     : "Mint and list your stems as NFTs"}
                 </p>
               </div>
@@ -1892,7 +1909,7 @@ export default function ReleaseDetails() {
                       {rightsUpgradeStatusLabel}
                     </span>
                     <span>
-                      {rightsUpgradeDecisionReason || "Review in progress."}
+                      {rightsUpgradeDecisionReason || rightsReviewDisplay.description}
                     </span>
                   </div>
                 );

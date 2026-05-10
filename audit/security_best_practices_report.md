@@ -2,20 +2,23 @@
 
 ## Executive Summary
 
-Reviewed the x402 smart-account checkout changes. No Critical or High findings
-were identified in the changed code.
+Reviewed the verification-semantics changes for #475. No Critical or High
+findings were identified in the changed code.
 
 ## Scope
 
-- `backend/src/modules/x402/x402.config.ts`
-- `backend/src/modules/x402/x402.controller.ts`
-- `backend/src/tests/x402.controller.spec.ts`
-- `web/src/components/marketplace/BuyModal.tsx`
-- `web/src/lib/accountAbstraction.ts`
-- `web/src/lib/x402KernelAccount.ts`
-- `web/src/lib/x402SmartAccountPay.ts`
-- `web/src/lib/x402Pay.ts`
-- x402 architecture and environment documentation updates
+- `backend/src/modules/contracts/metadata.controller.ts`
+- `backend/src/modules/trust/trust.controller.ts`
+- `backend/src/modules/trust/trust.service.ts`
+- `web/src/app/release/[id]/page.tsx`
+- `web/src/components/content-protection/ContentProtectionBadge.tsx`
+- `web/src/components/content-protection/ReleaseContentProtection.tsx`
+- `web/src/components/disputes/AdminDisputeQueue.tsx`
+- `web/src/components/disputes/HumanVerificationCard.tsx`
+- `web/src/components/upload/StakeDepositCard.tsx`
+- `web/src/lib/api.ts`
+- `web/src/lib/verificationSemantics.ts`
+- Related tests and documentation updates
 
 ## Critical Findings
 
@@ -35,27 +38,33 @@ None in the changed code.
 
 ## Informational Notes
 
-- The new smart-account endpoint is intentionally unauthenticated like the
-  facilitator-backed x402 download path, but it requires a successful on-chain
-  USDC `Transfer` from the claimed payer to `X402_PAYOUT_ADDRESS`.
-- The redemption path checks for previously recorded transaction hashes before
-  serving content, and the existing `ContractEvent` unique constraint on
-  `transactionHash` plus `logIndex` provides a database-level duplicate guard.
-- RPC configuration is centralized through `X402_RPC_URL` with documented
-  fallbacks; no API keys, private keys, or secrets were added.
-- The changed code does not add raw SQL, dynamic code execution, browser HTML
-  injection, insecure cookie handling, or new client-exposed secret variables.
+- The backend changes are notification/comment copy updates only; they do not
+  add endpoints, authorization paths, database writes, raw SQL, dynamic code
+  execution, or new input handling.
+- The frontend changes centralize label derivation for human verification,
+  release provenance, platform review, and rights verification. The new helper
+  uses static copy maps and enum-style normalization only.
+- No secrets, API keys, private keys, or new environment variables were added.
+- The frontend scan found existing `NEXT_PUBLIC_*_KEY` references outside this
+  change set. They are existing public client configuration paths, not new
+  findings introduced by #475.
+- The changed code does not add browser HTML injection, insecure cookie
+  handling, or new client-exposed secret variables.
 
 ## Commands Run
 
 ```bash
-rg 'password|secret|api_key|private_key' backend/src/modules/x402 backend/src/tests/x402.controller.spec.ts --iglob '!*.test.*' --iglob '!*.spec.*'
-rg 'rawQuery|executeRaw|\$queryRaw|JSON\.parse|eval\(' backend/src/modules/x402 backend/src/tests/x402.controller.spec.ts
-rg 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/components/marketplace/BuyModal.tsx web/src/lib/x402SmartAccountPay.ts web/src/lib/x402KernelAccount.ts web/src/lib/accountAbstraction.ts web/src/lib/x402Pay.ts
-npm test
-npx vitest run
+rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/ | grep -v 'Guard\|Auth'
+rg 'JSON\.parse|eval\(' backend/src/
+rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/ | grep -v 'Pipe\|Dto\|Validation'
+rg 'dangerouslySetInnerHTML|innerHTML' web/src/
+rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
+rg 'document\.cookie|setCookie|httpOnly.*false' web/src/
+npx vitest run src/lib/__tests__/verificationSemantics.test.ts src/lib/__tests__/stakeConstants.test.ts
+npm run test -- --runTestsByPath src/tests/verification-semantics.spec.ts src/tests/trust.controller.spec.ts
 npm run lint # backend
 npm run lint # web
-npx tsc --noEmit # web
 git diff --check
 ```
