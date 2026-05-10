@@ -13,7 +13,7 @@ export class TrustController {
 
   /**
    * GET /api/trust/:artistId
-   * Returns the trust tier and stake requirement for the given artist.
+   * Returns the economic trust tier and stake requirement for the given artist.
    */
   @Get(":artistId")
   @UseGuards(AuthGuard("jwt"))
@@ -55,7 +55,7 @@ export class TrustController {
 
   /**
    * POST /api/trust/:artistId/verify
-   * Admin: manually set an artist to the "verified" trust tier.
+   * Admin: manually set an artist to the "verified" economic tier.
    */
   @Post(":artistId/verify")
   @UseGuards(AuthGuard("jwt"), RolesGuard)

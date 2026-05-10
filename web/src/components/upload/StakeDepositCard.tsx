@@ -74,7 +74,7 @@ export default function StakeDepositCard({
       </div>
 
       <div style={rowStyle}>
-        <span style={{ opacity: 0.6, fontSize: "12px" }}>Trust Tier</span>
+        <span style={{ opacity: 0.6, fontSize: "12px" }}>Economic Trust Tier</span>
         <span style={{ fontWeight: 600, fontSize: "13px", color: tierColor }}>{tierLabel}</span>
       </div>
 
@@ -114,10 +114,11 @@ export default function StakeDepositCard({
         opacity: 0.5,
       }}>
         {isWaived ? (
-          <>Your verified trust tier waives the stake requirement. Revenue is held in escrow for {trustTier.escrowDays} days, and listings remain uncapped unless a stake is later configured.</>
+          <>Your economic trust tier waives the stake requirement. Revenue is held in escrow for {trustTier.escrowDays} days, and listings remain uncapped unless a stake is later configured. This tier does not independently verify ownership rights.</>
         ) : (
           <>A refundable stake of <strong style={{ color: "#f59e0b" }}>{stakeLabel}</strong> will be deposited
-            on publish to protect against copyright violations. Revenue is held in escrow for {trustTier.escrowDays} days.
+            on publish to discourage abuse and fund dispute accountability. Revenue is held in escrow for {trustTier.escrowDays} days.
+            This stake policy does not independently verify ownership rights.
             Your current max listing price per unit is <strong>{maxListingPrice}</strong>.</>
         )}
       </div>

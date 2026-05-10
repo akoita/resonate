@@ -10,7 +10,7 @@ import { getDefaultTrustTier, resolveTrustTiers, type TrustTierInfo } from "./tr
  *   New (0 uploads)       → 0.01 ETH, 30 days
  *   Established (5+)      → 0.005 ETH, 14 days
  *   Trusted (50+)         → 0.001 ETH, 7 days
- *   Verified trust tier   → waived, 3 days
+ *   Verified economic tier → waived, 3 days
  */
 type TrustRequirement = Awaited<ReturnType<typeof prisma.creatorTrust.upsert>> & {
   tierStakeAmountWei: string;
@@ -89,7 +89,7 @@ export class TrustService {
       where: { artistId },
     });
 
-    // Verified trust tier is set manually — if already present, keep it.
+    // Verified economic tier is set manually — if already present, keep it.
     if (trust?.tier === "verified") {
       return this.trustTiers.verified;
     }
@@ -212,7 +212,7 @@ export class TrustService {
   }
 
   /**
-   * Manually set an artist to the verified trust tier (admin action).
+   * Manually set an artist to the verified economic tier (admin action).
    */
   async setVerified(artistId: string) {
     const verifiedTier = await this.getPolicyConfig("verified");

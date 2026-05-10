@@ -14,6 +14,14 @@ import {
   TIER_COLORS,
   type StakeStatus,
 } from "../../lib/stakeConstants";
+import {
+  CONTENT_PROVENANCE_COPY,
+  HUMAN_VERIFICATION_COPY,
+  RIGHTS_VERIFICATION_COPY,
+  normalizeContentProvenanceState,
+  normalizeHumanVerificationState,
+  normalizeRightsVerificationState,
+} from "../../lib/verificationSemantics";
 
 interface ReleaseContentProtectionProps {
   /** Release ID to look up content protection status via backend. */
@@ -71,14 +79,14 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
           <div>
             <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 600 }}>Content Protection</h3>
             <p style={{ margin: 0, fontSize: "12px", opacity: 0.5 }}>
-              Staked at publish — protecting against copyright violations
+              Economic stake and provenance signals for this release
             </p>
           </div>
         </div>
 
         <div style={gridStyle}>
           <div style={statStyle}>
-            <span style={statLabelStyle}>Trust Tier</span>
+            <span style={statLabelStyle}>Economic Trust</span>
             <span style={{ fontWeight: 600, fontSize: "15px", color: TIER_COLORS["new"] }}>
               {TIER_LABELS["new"]}
             </span>
@@ -102,7 +110,7 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
           opacity: 0.7,
         }}>
           A refundable stake of <strong>0.01 ETH</strong> was deposited on publish.
-          Revenue is held in escrow for 30 days. As creators build clean history, their stake decreases.
+          Revenue is held in escrow for 30 days. This economic policy discourages abuse and funds dispute accountability; it is not independent rights verification.
         </div>
       </section>
     );
@@ -125,32 +133,14 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
     : { status: "none" as const, daysRemaining: 0 };
 
   const economicTier = data.economicTrustTier || data.trustTier;
-  const isSelfAttested =
-    data.provenanceStatus === "self_attested" ||
-    (data.provenanceStatus == null && data.attested);
   const tierLabel = TIER_LABELS[economicTier] || economicTier;
   const tierColor = TIER_COLORS[economicTier] || "#888";
-  const humanVerificationLabel =
-    data.humanVerificationStatus === "human_verified"
-      ? "Human Verified"
-      : "Not Human Verified";
-  const humanVerificationColor =
-    data.humanVerificationStatus === "human_verified" ? "#10b981" : "#6b7280";
-  const provenanceLabel = isSelfAttested
-      ? "Self-attested on-chain"
-      : data.provenanceStatus === "fingerprint_cleared"
-        ? "Fingerprint cleared"
-        : "Not attested";
-  const rightsReviewLabel =
-    data.rightsVerificationStatus === "platform_review_pending"
-      ? "Review pending"
-      : data.rightsVerificationStatus === "platform_reviewed"
-        ? "Platform reviewed"
-        : data.rightsVerificationStatus === "rights_verified"
-          ? "Rights verified"
-          : data.rightsVerificationStatus === "rights_disputed"
-            ? "Rights disputed"
-            : "Not independently reviewed";
+  const humanVerification =
+    HUMAN_VERIFICATION_COPY[normalizeHumanVerificationState(data.humanVerificationStatus)];
+  const provenance =
+    CONTENT_PROVENANCE_COPY[normalizeContentProvenanceState(data.provenanceStatus, data.attested)];
+  const rightsReview =
+    RIGHTS_VERIFICATION_COPY[normalizeRightsVerificationState(data.rightsVerificationStatus)];
   const rightsUpgradeLabel =
     data.rightsUpgradeRequestStatus === "submitted"
       ? "Submitted"
@@ -249,33 +239,35 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
       <div style={gridStyle}>
         <div style={statStyle}>
           <span style={statLabelStyle}>Human Verification</span>
-          <span style={{ fontWeight: 500, fontSize: "14px", color: humanVerificationColor }}>
-            {humanVerificationLabel}
+          <span
+            title={humanVerification.description}
+            style={{ fontWeight: 500, fontSize: "14px", color: humanVerification.color }}
+          >
+            {humanVerification.label}
           </span>
         </div>
 
         <div style={statStyle}>
           <span style={statLabelStyle}>Provenance</span>
-          <span style={{ fontWeight: 500, fontSize: "14px", color: isSelfAttested ? "#10b981" : "#6b7280" }}>
-            {provenanceLabel}
+          <span
+            title={provenance.description}
+            style={{ fontWeight: 500, fontSize: "14px", color: provenance.color }}
+          >
+            {provenance.label}
           </span>
         </div>
 
         <div style={statStyle}>
           <span style={statLabelStyle}>Rights Review</span>
           <span
+            title={rightsReview.description}
             style={{
               fontWeight: 500,
               fontSize: "14px",
-              color:
-                data.rightsVerificationStatus === "rights_disputed"
-                  ? "#ef4444"
-                  : data.rightsVerificationStatus === "platform_review_pending"
-                    ? "#f59e0b"
-                    : "#6b7280",
+              color: rightsReview.color,
             }}
           >
-            {rightsReviewLabel}
+            {rightsReview.label}
           </span>
         </div>
 
@@ -303,7 +295,7 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
           color: "rgba(255,255,255,0.48)",
         }}
       >
-        These signals are tracked independently. Human verification confirms the creator wallet passed a personhood check — it does not mean the platform verified ownership rights.
+        These signals are tracked independently. Human verification is anti-sybil/personhood only, self-attestation is a creator wallet statement, and economic trust controls stake and escrow. Only Rights Verified means reviewed evidence supports likely ownership or publishing authority.
       </div>
     </section>
   );

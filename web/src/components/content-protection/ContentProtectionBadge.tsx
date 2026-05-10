@@ -12,6 +12,7 @@ import {
   TIER_LABELS,
   TIER_COLORS,
 } from "../../lib/stakeConstants";
+import { CONTENT_PROVENANCE_COPY } from "../../lib/verificationSemantics";
 
 interface ContentProtectionBadgeProps {
   /** The on-chain tokenId to look up stake / attestation for. */
@@ -31,7 +32,7 @@ interface TrustTierInfo {
  * Public-facing Content Protection badge.
  *
  * Reads on-chain stake and attestation data for a given tokenId and displays
- * status, amount, trust tier, and escrow countdown. Visible to all users
+ * status, amount, economic trust tier, and escrow countdown. Visible to all users
  * on release / stem detail pages.
  */
 export default function ContentProtectionBadge({
@@ -44,7 +45,7 @@ export default function ContentProtectionBadge({
   const { data: stakeData, loading: stakeLoading } = useStakeInfo(protectionId);
   const { data: attestData, loading: attestLoading } = useAttestationInfo(protectionId);
 
-  // Fetch trust tier from backend (best-effort)
+  // Fetch economic trust tier from backend (best-effort)
   const [trustTier, setTrustTier] = useState<TrustTierInfo | null>(null);
 
   useEffect(() => {
@@ -131,10 +132,10 @@ export default function ContentProtectionBadge({
         </div>
       )}
 
-      {/* Trust Tier */}
+      {/* Economic trust tier */}
       {tierLabel && (
         <div style={rowStyle}>
-          <span style={{ opacity: 0.6, fontSize: "12px" }}>Creator Trust Tier</span>
+          <span style={{ opacity: 0.6, fontSize: "12px" }}>Economic Trust Tier</span>
           <span style={{ fontWeight: 600, fontSize: "13px", color: tierColor || undefined }}>
             {tierLabel}
           </span>
@@ -161,8 +162,10 @@ export default function ContentProtectionBadge({
           borderRadius: "8px",
           fontSize: "11px",
           color: "#10b981",
-        }}>
-          ✓ {inheritedProtection ? `Self-attestation inherited from track #${protectionId.toString()}` : "Self-attested on-chain"}
+          }}
+          title={CONTENT_PROVENANCE_COPY.self_attested.description}
+        >
+          ✓ {inheritedProtection ? `Self-attestation inherited from track #${protectionId.toString()}` : CONTENT_PROVENANCE_COPY.self_attested.label}
           {attestData.timestamp > 0n && (
             <span style={{ opacity: 0.6, marginLeft: "8px" }}>
               {new Date(Number(attestData.timestamp) * 1000).toLocaleDateString()}
@@ -170,6 +173,10 @@ export default function ContentProtectionBadge({
           )}
         </div>
       )}
+
+      <div style={noteStyle}>
+        Economic trust affects stake and escrow only. Self-attestation is a creator wallet statement, not independent rights verification.
+      </div>
     </div>
   );
 }
@@ -212,4 +219,11 @@ const rowStyle: React.CSSProperties = {
   justifyContent: "space-between",
   alignItems: "center",
   padding: "6px 0",
+};
+
+const noteStyle: React.CSSProperties = {
+  marginTop: "10px",
+  fontSize: "11px",
+  lineHeight: 1.5,
+  color: "rgba(255,255,255,0.42)",
 };
