@@ -16,6 +16,12 @@ import {
   RIGHTS_VERIFICATION_COPY,
   normalizeRightsVerificationState,
 } from "../../lib/verificationSemantics";
+import {
+  SUBMITTED_RIGHTS_EVIDENCE_COPY,
+  formatRightsEvidenceKindLabel,
+  formatRightsEvidenceVerificationStatusLabel,
+  getRightsEvidenceVerificationTone,
+} from "../../lib/rightsEvidence";
 
 interface Dispute {
   id: string;
@@ -439,105 +445,148 @@ export default function AdminDisputeQueue() {
 
                 {request.evidenceBundles && request.evidenceBundles.length > 0 && (
                   <div style={{ marginTop: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
-                    <div style={sectionLabelStyle}>Evidence packet</div>
-                    {request.evidenceBundles.flatMap((bundle) => bundle.evidences).map((evidence) => (
-                      <div
-                        key={evidence.id}
-                        className="adq-evidence-card"
-                        style={evidenceCardStyle}
-                      >
-                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <div>
+                      <div style={sectionLabelStyle}>Evidence packet</div>
+                      <div style={{ marginTop: "4px", fontSize: "12px", lineHeight: 1.45, color: "rgba(255,255,255,0.45)" }}>
+                        {SUBMITTED_RIGHTS_EVIDENCE_COPY}
+                      </div>
+                    </div>
+                    {request.evidenceBundles.map((bundle) => (
+                      <div key={bundle.id} style={evidenceBundleStyle}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                             <span style={{ ...badgeStyle, borderColor: "rgba(167,139,250,0.25)", color: "#a78bfa", background: "rgba(167,139,250,0.06)" }}>
-                              {evidence.kind.replaceAll("_", " ")}
+                              {bundle.purpose.replaceAll("_", " ")}
                             </span>
-                            {evidence.strength && (
-                              <span style={{
-                                ...badgeStyle,
-                                borderColor: evidence.strength === "very_high" || evidence.strength === "high" ? "rgba(16,185,129,0.25)" : "rgba(245,158,11,0.25)",
-                                color: evidence.strength === "very_high" ? "#10b981" : evidence.strength === "high" ? "#34d399" : "#f59e0b",
-                                background: evidence.strength === "very_high" || evidence.strength === "high" ? "rgba(16,185,129,0.06)" : "rgba(245,158,11,0.06)",
-                              }}>
-                                {evidence.strength.replaceAll("_", " ")}
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ display: "flex", alignItems: "baseline", gap: "10px", flexWrap: "wrap" }}>
-                            <span style={{ fontSize: "14px", fontWeight: 600, color: "rgba(255,255,255,0.9)" }}>
-                              {evidence.title}
+                            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.42)" }}>
+                              Submitted by {bundle.submittedByRole}
+                              {bundle.submittedByAddress ? ` ${bundle.submittedByAddress.slice(0, 6)}...${bundle.submittedByAddress.slice(-4)}` : ""}
                             </span>
-                            {evidence.sourceUrl && (
-                              <a href={evidence.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ ...linkStyle, fontSize: "12px" }}>
-                                <IconLink size={12} />
-                                <span>{compactUrlLabel(evidence.sourceUrl)}</span>
-                              </a>
-                            )}
                           </div>
+                          <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.32)" }}>
+                            {new Date(bundle.createdAt).toLocaleString()}
+                          </span>
                         </div>
 
-                        <div style={evidenceMetaGridStyle}>
-                          {evidence.claimedRightsholder && (
-                            <div style={evidenceMetaItemStyle}>
-                              <span style={evidenceMetaLabelStyle}>Rightsholder</span>
-                              <span style={evidenceMetaValueStyle}>{evidence.claimedRightsholder}</span>
-                            </div>
-                          )}
-                          {evidence.artistName && (
-                            <div style={evidenceMetaItemStyle}>
-                              <span style={evidenceMetaLabelStyle}>Artist</span>
-                              <span style={evidenceMetaValueStyle}>{evidence.artistName}</span>
-                            </div>
-                          )}
-                          {evidence.sourceLabel && (
-                            <div style={evidenceMetaItemStyle}>
-                              <span style={evidenceMetaLabelStyle}>Source</span>
-                              <span style={evidenceMetaValueStyle}>{evidence.sourceLabel}</span>
-                            </div>
-                          )}
-                          {evidence.publicationDate && (
-                            <div style={evidenceMetaItemStyle}>
-                              <span style={evidenceMetaLabelStyle}>Published</span>
-                              <span style={evidenceMetaValueStyle}>
-                                {new Date(evidence.publicationDate).toLocaleDateString()}
-                              </span>
-                            </div>
-                          )}
-                          {evidence.isrc && (
-                            <div style={evidenceMetaItemStyle}>
-                              <span style={evidenceMetaLabelStyle}>ISRC</span>
-                              <span style={{ ...evidenceMetaValueStyle, fontFamily: "monospace", fontSize: "11px" }}>{evidence.isrc}</span>
-                            </div>
-                          )}
-                          {evidence.upc && (
-                            <div style={evidenceMetaItemStyle}>
-                              <span style={evidenceMetaLabelStyle}>UPC</span>
-                              <span style={{ ...evidenceMetaValueStyle, fontFamily: "monospace", fontSize: "11px" }}>{evidence.upc}</span>
-                            </div>
-                          )}
-                          {/* strength shown as badge in header */}
-                          {evidence.attachments && evidence.attachments.length > 0 && (
-                            <div style={evidenceMetaItemStyle}>
-                              <span style={evidenceMetaLabelStyle}>Documents</span>
-                              <span style={evidenceMetaValueStyle}>
-                                {evidence.attachments.length} attached
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        {evidence.description && (
-                          <div style={{
-                            fontSize: "12px",
-                            lineHeight: 1.55,
-                            color: "rgba(255,255,255,0.6)",
-                            padding: "8px 10px",
-                            background: "rgba(255,255,255,0.02)",
-                            borderRadius: "8px",
-                            borderLeft: "2px solid rgba(255,255,255,0.06)",
-                          }}>
-                            {evidence.description}
+                        {bundle.summary && (
+                          <div style={{ marginTop: "8px", fontSize: "12px", lineHeight: 1.5, color: "rgba(255,255,255,0.58)" }}>
+                            {bundle.summary}
                           </div>
                         )}
+
+                        <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                          {bundle.evidences.map((evidence) => {
+                            const verificationTone = getRightsEvidenceVerificationTone(evidence.verificationStatus);
+                            return (
+                              <div
+                                key={evidence.id}
+                                className="adq-evidence-card"
+                                style={evidenceCardStyle}
+                              >
+                                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                                    <span style={{ ...badgeStyle, borderColor: "rgba(167,139,250,0.25)", color: "#a78bfa", background: "rgba(167,139,250,0.06)" }}>
+                                      {formatRightsEvidenceKindLabel(evidence.kind)}
+                                    </span>
+                                    <span style={{ ...badgeStyle, ...verificationTone }}>
+                                      {formatRightsEvidenceVerificationStatusLabel(evidence.verificationStatus)}
+                                    </span>
+                                    {evidence.strength && (
+                                      <span style={{
+                                        ...badgeStyle,
+                                        borderColor: evidence.strength === "very_high" || evidence.strength === "high" ? "rgba(16,185,129,0.25)" : "rgba(245,158,11,0.25)",
+                                        color: evidence.strength === "very_high" ? "#10b981" : evidence.strength === "high" ? "#34d399" : "#f59e0b",
+                                        background: evidence.strength === "very_high" || evidence.strength === "high" ? "rgba(16,185,129,0.06)" : "rgba(245,158,11,0.06)",
+                                      }}>
+                                        {evidence.strength.replaceAll("_", " ")}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div style={{ display: "flex", alignItems: "baseline", gap: "10px", flexWrap: "wrap" }}>
+                                    <span style={{ fontSize: "14px", fontWeight: 600, color: "rgba(255,255,255,0.9)" }}>
+                                      {evidence.title}
+                                    </span>
+                                    {evidence.sourceUrl && (
+                                      <a href={evidence.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ ...linkStyle, fontSize: "12px" }}>
+                                        <IconLink size={12} />
+                                        <span>{compactUrlLabel(evidence.sourceUrl)}</span>
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div style={evidenceMetaGridStyle}>
+                                  {evidence.claimedRightsholder && (
+                                    <div style={evidenceMetaItemStyle}>
+                                      <span style={evidenceMetaLabelStyle}>Rightsholder</span>
+                                      <span style={evidenceMetaValueStyle}>{evidence.claimedRightsholder}</span>
+                                    </div>
+                                  )}
+                                  {evidence.artistName && (
+                                    <div style={evidenceMetaItemStyle}>
+                                      <span style={evidenceMetaLabelStyle}>Artist</span>
+                                      <span style={evidenceMetaValueStyle}>{evidence.artistName}</span>
+                                    </div>
+                                  )}
+                                  {evidence.sourceLabel && (
+                                    <div style={evidenceMetaItemStyle}>
+                                      <span style={evidenceMetaLabelStyle}>Source</span>
+                                      <span style={evidenceMetaValueStyle}>{evidence.sourceLabel}</span>
+                                    </div>
+                                  )}
+                                  {evidence.publicationDate && (
+                                    <div style={evidenceMetaItemStyle}>
+                                      <span style={evidenceMetaLabelStyle}>Published</span>
+                                      <span style={evidenceMetaValueStyle}>
+                                        {new Date(evidence.publicationDate).toLocaleDateString()}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {evidence.isrc && (
+                                    <div style={evidenceMetaItemStyle}>
+                                      <span style={evidenceMetaLabelStyle}>ISRC</span>
+                                      <span style={{ ...evidenceMetaValueStyle, fontFamily: "monospace", fontSize: "11px" }}>{evidence.isrc}</span>
+                                    </div>
+                                  )}
+                                  {evidence.upc && (
+                                    <div style={evidenceMetaItemStyle}>
+                                      <span style={evidenceMetaLabelStyle}>UPC</span>
+                                      <span style={{ ...evidenceMetaValueStyle, fontFamily: "monospace", fontSize: "11px" }}>{evidence.upc}</span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {evidence.attachments && evidence.attachments.length > 0 && (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                                    <span style={evidenceMetaLabelStyle}>Supporting documents</span>
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                                      {evidence.attachments.map((attachment, index) => (
+                                        <a key={`${evidence.id}-attachment-${index}`} href={attachment} target="_blank" rel="noopener noreferrer" style={{ ...linkStyle, fontSize: "12px" }}>
+                                          <IconLink size={12} />
+                                          <span>{compactUrlLabel(attachment) || `Document ${index + 1}`}</span>
+                                        </a>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {evidence.description && (
+                                  <div style={{
+                                    fontSize: "12px",
+                                    lineHeight: 1.55,
+                                    color: "rgba(255,255,255,0.6)",
+                                    padding: "8px 10px",
+                                    background: "rgba(255,255,255,0.02)",
+                                    borderRadius: "8px",
+                                    borderLeft: "2px solid rgba(255,255,255,0.06)",
+                                  }}>
+                                    {evidence.description}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -604,7 +653,7 @@ export default function AdminDisputeQueue() {
                         disabled={actionLoading === request.id}
                         style={{ ...actionBtnStyle, borderColor: "rgba(34,197,94,0.3)", color: "#4ade80", background: "rgba(34,197,94,0.06)" }}
                       >
-                        {actionLoading === request.id ? "..." : "Verify Rights"}
+                        {actionLoading === request.id ? "..." : "Approve Rights Verified"}
                       </button>
                       <button
                         className="adq-action-btn"
@@ -893,6 +942,15 @@ const evidenceCardStyle: React.CSSProperties = {
   background: "rgba(255,255,255,0.02)",
   border: "1px solid rgba(255,255,255,0.05)",
   transition: "background 0.15s, border-color 0.15s",
+};
+
+const evidenceBundleStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  padding: "12px",
+  borderRadius: "12px",
+  background: "rgba(255,255,255,0.015)",
+  border: "1px solid rgba(255,255,255,0.05)",
 };
 
 const evidenceMetaGridStyle: React.CSSProperties = {

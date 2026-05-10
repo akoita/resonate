@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import AuthGate from "../../../components/auth/AuthGate";
 import ArtistGate from "../../../components/auth/ArtistGate";
@@ -10,8 +10,23 @@ import { Input } from "../../../components/ui/Input";
 import { FileDropZone } from "../../../components/ui/FileDropZone";
 import { useToast } from "../../../components/ui/Toast";
 import { useAuth } from "../../../components/auth/AuthProvider";
-import { getArtistMe, uploadStems, waitForReleaseAvailability, type ArtistProfile } from "../../../lib/api";
+import {
+  getArtistMe,
+  submitReleaseRightsUpgradeRequest,
+  uploadStems,
+  waitForReleaseAvailability,
+  type ArtistProfile,
+  type RightsEvidenceKind,
+  type RightsEvidenceStrength,
+} from "../../../lib/api";
 import { extractMetadata } from "../../../lib/metadataExtractor";
+import {
+  CREATOR_RIGHTS_EVIDENCE_OPTIONS,
+  RIGHTS_EVIDENCE_STRENGTH_OPTIONS,
+  SUBMITTED_RIGHTS_EVIDENCE_COPY,
+  getCreatorRightsEvidenceOption,
+  normalizeRightsEvidenceUrl,
+} from "../../../lib/rightsEvidence";
 import { useTrustTier } from "../../../hooks/useTrustTier";
 import { useAttestAndStake } from "../../../hooks/useContracts";
 import { useFundingOptions, usePaymentAssets, usePaymentQuote } from "../../../hooks/usePaymentAssets";
@@ -165,6 +180,42 @@ export default function ArtistUploadPage() {
     artworkUrl: "",
     artworkBlob: undefined as Blob | undefined,
   });
+  const [uploadRightsEvidence, setUploadRightsEvidence] = useState({
+    summary: "",
+    evidenceKind: "proof_of_control" as RightsEvidenceKind,
+    title: "",
+    sourceUrl: "",
+    claimedRightsholder: "",
+    sourceLabel: "",
+    artistName: "",
+    publicationDate: "",
+    isrc: "",
+    upc: "",
+    description: "",
+    strength: "high" as RightsEvidenceStrength,
+  });
+
+  const selectedUploadRightsEvidence = useMemo(
+    () => getCreatorRightsEvidenceOption(uploadRightsEvidence.evidenceKind),
+    [uploadRightsEvidence.evidenceKind],
+  );
+  const hasUploadRightsEvidenceDraft = [
+    uploadRightsEvidence.summary,
+    uploadRightsEvidence.title,
+    uploadRightsEvidence.sourceUrl,
+    uploadRightsEvidence.claimedRightsholder,
+    uploadRightsEvidence.sourceLabel,
+    uploadRightsEvidence.artistName,
+    uploadRightsEvidence.publicationDate,
+    uploadRightsEvidence.isrc,
+    uploadRightsEvidence.upc,
+    uploadRightsEvidence.description,
+  ].some((value) => value.trim().length > 0);
+  const canSubmitUploadRightsEvidence =
+    uploadRightsEvidence.summary.trim().length > 20 &&
+    uploadRightsEvidence.title.trim().length > 0 &&
+    uploadRightsEvidence.sourceUrl.trim().length > 0 &&
+    uploadRightsEvidence.claimedRightsholder.trim().length > 0;
 
   useEffect(() => {
     if (!token) return;
@@ -269,6 +320,30 @@ export default function ArtistUploadPage() {
         message: "Please enter the primary artist name.",
       });
       return;
+    }
+    if (hasUploadRightsEvidenceDraft && !canSubmitUploadRightsEvidence) {
+      addToast({
+        type: "warning",
+        title: "Rights evidence incomplete",
+        message: "Complete the rights summary, evidence title, evidence URL, and claimed rightsholder, or clear the evidence fields before publishing.",
+      });
+      return;
+    }
+    let normalizedUploadRightsEvidenceUrl: string | null = null;
+    if (hasUploadRightsEvidenceDraft) {
+      try {
+        normalizedUploadRightsEvidenceUrl = normalizeRightsEvidenceUrl(uploadRightsEvidence.sourceUrl);
+      } catch (error) {
+        addToast({
+          type: "warning",
+          title: "Invalid evidence URL",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Please provide a valid rights evidence URL before publishing.",
+        });
+        return;
+      }
     }
 
     setIsPublishing(true);
@@ -393,6 +468,59 @@ export default function ArtistUploadPage() {
 
       const result = await uploadStems(token, uploadPayload);
 
+      if (hasUploadRightsEvidenceDraft && result?.releaseId) {
+        try {
+          await waitForReleaseAvailability(result.releaseId, { token, timeoutMs: 6000 });
+          await submitReleaseRightsUpgradeRequest(
+            result.releaseId,
+            {
+              summary: uploadRightsEvidence.summary.trim(),
+              requestedRoute: "STANDARD_ESCROW",
+              evidences: [
+                {
+                  kind: uploadRightsEvidence.evidenceKind,
+                  title: uploadRightsEvidence.title.trim(),
+                  sourceUrl: normalizedUploadRightsEvidenceUrl,
+                  claimedRightsholder: uploadRightsEvidence.claimedRightsholder.trim(),
+                  sourceLabel: uploadRightsEvidence.sourceLabel.trim() || undefined,
+                  artistName: uploadRightsEvidence.artistName.trim() || formData.primaryArtist.trim() || undefined,
+                  releaseTitle: formData.releaseTitle.trim(),
+                  publicationDate: uploadRightsEvidence.publicationDate.trim() || undefined,
+                  isrc: uploadRightsEvidence.isrc.trim() || undefined,
+                  upc: uploadRightsEvidence.upc.trim() || undefined,
+                  description: uploadRightsEvidence.description.trim() || undefined,
+                  strength: uploadRightsEvidence.strength,
+                  verificationStatus: "unverified",
+                  metadata: {
+                    submissionContext: "upload_flow",
+                    evidenceLabel: selectedUploadRightsEvidence.label,
+                  },
+                },
+              ],
+            },
+            token,
+          );
+          addToast({
+            type: "success",
+            title: "Rights evidence submitted",
+            message: "Your structured evidence was attached to a marketplace-rights review request.",
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error && error.message.includes("already has marketplace access")
+              ? "The release already has marketplace access, so no rights-upgrade request was needed."
+              : "The release was uploaded. Submit the same evidence from the release page once rights routing is available.";
+          addToast({
+            type: error instanceof Error && error.message.includes("already has marketplace access") ? "info" : "warning",
+            title: error instanceof Error && error.message.includes("already has marketplace access")
+              ? "Rights evidence not needed"
+              : "Rights evidence saved for later",
+            message,
+            duration: 8000,
+          });
+        }
+      }
+
       addToast({
         type: "success",
         title: "Release submitted!",
@@ -427,6 +555,20 @@ export default function ArtistUploadPage() {
         commercialPrice: "25",
         artworkUrl: "", // Added for display
         artworkBlob: undefined,
+      });
+      setUploadRightsEvidence({
+        summary: "",
+        evidenceKind: "proof_of_control",
+        title: "",
+        sourceUrl: "",
+        claimedRightsholder: "",
+        sourceLabel: "",
+        artistName: "",
+        publicationDate: "",
+        isrc: "",
+        upc: "",
+        description: "",
+        strength: "high",
       });
       setSelectedStemId(null);
     } catch (err) {
@@ -959,6 +1101,184 @@ export default function ArtistUploadPage() {
                     Commercial price (USDC)
                     <Input name="commercialPrice" placeholder="25" value={formData.commercialPrice} onChange={handleInputChange} />
                   </label>
+
+                  <div style={{
+                    marginTop: "6px",
+                    padding: "14px",
+                    border: "1px solid rgba(245, 158, 11, 0.22)",
+                    borderRadius: "10px",
+                    background: "rgba(245, 158, 11, 0.06)",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "8px" }}>
+                      <div>
+                        <div className="studio-label" style={{ marginBottom: "4px" }}>
+                          Marketplace rights evidence
+                        </div>
+                        <p style={{ margin: 0, fontSize: "12px", lineHeight: 1.45, color: "rgba(255,255,255,0.52)" }}>
+                          Optional during upload. {SUBMITTED_RIGHTS_EVIDENCE_COPY}
+                        </p>
+                      </div>
+                      {hasUploadRightsEvidenceDraft && (
+                        <span style={{
+                          flexShrink: 0,
+                          padding: "3px 8px",
+                          borderRadius: "999px",
+                          border: canSubmitUploadRightsEvidence
+                            ? "1px solid rgba(16,185,129,0.3)"
+                            : "1px solid rgba(245,158,11,0.3)",
+                          color: canSubmitUploadRightsEvidence ? "#34d399" : "#f59e0b",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                        }}>
+                          {canSubmitUploadRightsEvidence ? "Ready" : "Incomplete"}
+                        </span>
+                      )}
+                    </div>
+
+                    <label>
+                      Evidence type
+                      <select
+                        className="track-select-dropdown"
+                        value={uploadRightsEvidence.evidenceKind}
+                        onChange={(e) => setUploadRightsEvidence((prev) => ({
+                          ...prev,
+                          evidenceKind: e.target.value as RightsEvidenceKind,
+                        }))}
+                      >
+                        {CREATOR_RIGHTS_EVIDENCE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="studio-field-help">
+                        {selectedUploadRightsEvidence.hint}
+                      </span>
+                    </label>
+
+                    <label>
+                      Rights summary
+                      <textarea
+                        value={uploadRightsEvidence.summary}
+                        onChange={(e) => setUploadRightsEvidence((prev) => ({ ...prev, summary: e.target.value }))}
+                        rows={3}
+                        className="track-select-dropdown"
+                        style={{ minHeight: "76px", resize: "vertical" }}
+                        placeholder="Summarize the rightsholder, publishing authority, prior distribution history, and proof-of-control context."
+                      />
+                      <span className="studio-field-help">
+                        Required only if you submit evidence during upload.
+                      </span>
+                    </label>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px" }}>
+                      <label>
+                        Evidence title
+                        <Input
+                          value={uploadRightsEvidence.title}
+                          onChange={(e) => setUploadRightsEvidence((prev) => ({ ...prev, title: e.target.value }))}
+                          placeholder={selectedUploadRightsEvidence.titlePlaceholder}
+                        />
+                      </label>
+                      <label>
+                        Claimed rightsholder
+                        <Input
+                          value={uploadRightsEvidence.claimedRightsholder}
+                          onChange={(e) => setUploadRightsEvidence((prev) => ({ ...prev, claimedRightsholder: e.target.value }))}
+                          placeholder="Artist, label, publisher, or company"
+                        />
+                      </label>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px" }}>
+                      <label>
+                        Evidence URL
+                        <Input
+                          value={uploadRightsEvidence.sourceUrl}
+                          onChange={(e) => setUploadRightsEvidence((prev) => ({ ...prev, sourceUrl: e.target.value }))}
+                          placeholder={selectedUploadRightsEvidence.sourceUrlPlaceholder}
+                        />
+                      </label>
+                      <label>
+                        Evidence strength
+                        <select
+                          className="track-select-dropdown"
+                          value={uploadRightsEvidence.strength}
+                          onChange={(e) => setUploadRightsEvidence((prev) => ({
+                            ...prev,
+                            strength: e.target.value as RightsEvidenceStrength,
+                          }))}
+                        >
+                          {RIGHTS_EVIDENCE_STRENGTH_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px" }}>
+                      <label>
+                        Source label
+                        <Input
+                          value={uploadRightsEvidence.sourceLabel}
+                          onChange={(e) => setUploadRightsEvidence((prev) => ({ ...prev, sourceLabel: e.target.value }))}
+                          placeholder={selectedUploadRightsEvidence.sourceLabelPlaceholder}
+                        />
+                      </label>
+                      <label>
+                        Official artist
+                        <Input
+                          value={uploadRightsEvidence.artistName}
+                          onChange={(e) => setUploadRightsEvidence((prev) => ({ ...prev, artistName: e.target.value }))}
+                          placeholder={formData.primaryArtist || "Official artist name"}
+                        />
+                      </label>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "10px" }}>
+                      <label>
+                        Publication date
+                        <Input
+                          type="date"
+                          value={uploadRightsEvidence.publicationDate}
+                          onChange={(e) => setUploadRightsEvidence((prev) => ({ ...prev, publicationDate: e.target.value }))}
+                          className="track-select-dropdown"
+                          style={{ colorScheme: "dark" }}
+                        />
+                      </label>
+                      <label>
+                        ISRC
+                        <Input
+                          value={uploadRightsEvidence.isrc}
+                          onChange={(e) => setUploadRightsEvidence((prev) => ({ ...prev, isrc: e.target.value.toUpperCase() }))}
+                          placeholder="USRC17607839"
+                        />
+                      </label>
+                      <label>
+                        UPC
+                        <Input
+                          value={uploadRightsEvidence.upc}
+                          onChange={(e) => setUploadRightsEvidence((prev) => ({ ...prev, upc: e.target.value }))}
+                          placeholder="012345678905"
+                        />
+                      </label>
+                    </div>
+
+                    <label>
+                      Evidence context
+                      <textarea
+                        value={uploadRightsEvidence.description}
+                        onChange={(e) => setUploadRightsEvidence((prev) => ({ ...prev, description: e.target.value }))}
+                        rows={2}
+                        className="track-select-dropdown"
+                        style={{ minHeight: "60px", resize: "vertical" }}
+                        placeholder={selectedUploadRightsEvidence.contextPlaceholder}
+                      />
+                    </label>
+                  </div>
                 </div>
               ) : (
                 <div className="settings-group">

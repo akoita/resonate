@@ -10,6 +10,13 @@ import {
   type RightsEvidenceKind,
   type RightsEvidenceStrength,
 } from "../../lib/api";
+import {
+  CREATOR_RIGHTS_EVIDENCE_OPTIONS,
+  RIGHTS_EVIDENCE_STRENGTH_OPTIONS,
+  SUBMITTED_RIGHTS_EVIDENCE_COPY,
+  normalizeRightsEvidenceUrl,
+  normalizeRightsEvidenceUrlList,
+} from "../../lib/rightsEvidence";
 
 type ReleaseRightsUpgradeModalProps = {
   releaseId: string;
@@ -18,66 +25,6 @@ type ReleaseRightsUpgradeModalProps = {
   onSubmitted: (request: ReleaseRightsUpgradeRequestRecord) => void;
   existingDecisionReason?: string | null;
 };
-
-const EVIDENCE_OPTIONS: Array<{
-  value: RightsEvidenceKind;
-  label: string;
-  hint: string;
-}> = [
-  {
-    value: "proof_of_control",
-    label: "Proof of control",
-    hint: "Official profile, verified social, artist website, or distributor dashboard proof.",
-  },
-  {
-    value: "prior_publication",
-    label: "Prior publication",
-    hint: "Canonical release pages, prior publication records, or official DSP links.",
-  },
-  {
-    value: "rights_metadata",
-    label: "Rights metadata",
-    hint: "ISRC, UPC, split sheet, label metadata, or rights package reference.",
-  },
-  {
-    value: "trusted_catalog_reference",
-    label: "Trusted catalog reference",
-    hint: "Label, distributor, or trusted catalog record that links you to this release.",
-  },
-  {
-    value: "legal_notice",
-    label: "Signed declaration",
-    hint: "Signed declaration, authorization letter, or formal rights statement from the rightsholder.",
-  },
-];
-
-const STRENGTH_OPTIONS: Array<{ value: RightsEvidenceStrength; label: string }> = [
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "very_high", label: "Very High" },
-];
-
-function normalizeEvidenceUrl(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return "";
-  }
-
-  const withProtocol =
-    /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) || trimmed.startsWith("ipfs://")
-      ? trimmed
-      : `https://${trimmed}`;
-
-  try {
-    const parsed = new URL(withProtocol);
-    if (!["http:", "https:", "ipfs:"].includes(parsed.protocol)) {
-      throw new Error("unsupported protocol");
-    }
-    return withProtocol;
-  } catch {
-    throw new Error("Please enter a valid URL, including https:// if needed.");
-  }
-}
 
 export default function ReleaseRightsUpgradeModal({
   releaseId,
@@ -107,7 +54,7 @@ export default function ReleaseRightsUpgradeModal({
   const [showOptional, setShowOptional] = useState(false);
 
   const selectedEvidence = useMemo(
-    () => EVIDENCE_OPTIONS.find((option) => option.value === evidenceKind),
+    () => CREATOR_RIGHTS_EVIDENCE_OPTIONS.find((option) => option.value === evidenceKind),
     [evidenceKind],
   );
 
@@ -155,12 +102,8 @@ export default function ReleaseRightsUpgradeModal({
       let normalizedAttachments: string[] = [];
 
       try {
-        normalizedSourceUrl = normalizeEvidenceUrl(sourceUrl);
-        normalizedAttachments = attachmentUrls
-          .split("\n")
-          .map((value) => value.trim())
-          .filter(Boolean)
-          .map((value) => normalizeEvidenceUrl(value));
+        normalizedSourceUrl = normalizeRightsEvidenceUrl(sourceUrl);
+        normalizedAttachments = normalizeRightsEvidenceUrlList(attachmentUrls);
       } catch (error) {
         addToast({
           type: "warning",
@@ -192,7 +135,12 @@ export default function ReleaseRightsUpgradeModal({
               isrc: isrc.trim() || undefined,
               upc: upc.trim() || undefined,
               strength,
+              verificationStatus: "unverified",
               attachments: normalizedAttachments,
+              metadata: {
+                submissionContext: "release_rights_upgrade",
+                evidenceLabel: selectedEvidence?.label,
+              },
             },
           ],
         },
@@ -235,10 +183,10 @@ export default function ReleaseRightsUpgradeModal({
         <div style={headerStyle}>
           <div>
             <h3 style={{ margin: 0, fontSize: "20px", fontWeight: 700 }}>
-              Unlock Marketplace Rights
+              Submit Rights Evidence
             </h3>
             <p style={{ margin: "6px 0 0", color: "rgba(255,255,255,0.48)", fontSize: "13px", lineHeight: 1.5 }}>
-              Prove you control <strong style={{ color: "rgba(255,255,255,0.72)" }}>{releaseTitle}</strong> so reviewers can promote it to a marketplace route.
+              Share structured evidence for <strong style={{ color: "rgba(255,255,255,0.72)" }}>{releaseTitle}</strong>. Reviewers decide whether it supports marketplace access.
             </p>
           </div>
           <button style={closeButtonStyle} onClick={onClose} aria-label="Close">
@@ -254,6 +202,11 @@ export default function ReleaseRightsUpgradeModal({
             <span>{existingDecisionReason}</span>
           </div>
         )}
+
+        <div style={submittedEvidenceNoticeStyle}>
+          <span style={submittedEvidenceBadgeStyle}>Submitted evidence</span>
+          <span>{SUBMITTED_RIGHTS_EVIDENCE_COPY}</span>
+        </div>
 
         {/* ── Required Fields ────────────────────────────────── */}
         <div style={sectionHeaderStyle}>Required</div>
@@ -280,7 +233,7 @@ export default function ReleaseRightsUpgradeModal({
               onChange={(event) => setEvidenceKind(event.target.value as RightsEvidenceKind)}
               style={inputStyle}
             >
-              {EVIDENCE_OPTIONS.map((option) => (
+              {CREATOR_RIGHTS_EVIDENCE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -299,7 +252,7 @@ export default function ReleaseRightsUpgradeModal({
             onChange={(event) => setSummary(event.target.value)}
             rows={3}
             style={{ ...inputStyle, resize: "vertical", minHeight: 80 }}
-            placeholder="Explain why you control this release, how the evidence links you to it, and what route you are requesting."
+            placeholder="Summarize the rightsholder, publishing authority, prior distribution history, and proof-of-control context reviewers should consider."
           />
           <span
             style={{
@@ -319,7 +272,7 @@ export default function ReleaseRightsUpgradeModal({
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               style={inputStyle}
-              placeholder="Official distributor dashboard"
+              placeholder={selectedEvidence?.titlePlaceholder || "Official distributor dashboard"}
             />
           </label>
 
@@ -341,7 +294,7 @@ export default function ReleaseRightsUpgradeModal({
               value={sourceUrl}
               onChange={(event) => setSourceUrl(event.target.value)}
               style={inputStyle}
-              placeholder="https://…"
+              placeholder={selectedEvidence?.sourceUrlPlaceholder || "https://..."}
             />
           </label>
 
@@ -352,7 +305,7 @@ export default function ReleaseRightsUpgradeModal({
               onChange={(event) => setStrength(event.target.value as RightsEvidenceStrength)}
               style={inputStyle}
             >
-              {STRENGTH_OPTIONS.map((option) => (
+              {RIGHTS_EVIDENCE_STRENGTH_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -403,7 +356,7 @@ export default function ReleaseRightsUpgradeModal({
                   value={sourceLabel}
                   onChange={(event) => setSourceLabel(event.target.value)}
                   style={inputStyle}
-                  placeholder="Spotify artist page, distributor portal"
+                  placeholder={selectedEvidence?.sourceLabelPlaceholder || "Spotify artist page, distributor portal"}
                 />
               </label>
 
@@ -473,13 +426,13 @@ export default function ReleaseRightsUpgradeModal({
             onChange={(event) => setDescription(event.target.value)}
             rows={2}
             style={{ ...inputStyle, resize: "vertical", minHeight: 60 }}
-            placeholder="Add any details that help a reviewer understand the evidence quickly."
+            placeholder={selectedEvidence?.contextPlaceholder || "Add any details that help a reviewer understand the evidence quickly."}
           />
         </label>
 
         <div style={footerStyle}>
           <div style={{ color: "rgba(255,255,255,0.45)", fontSize: "12px", lineHeight: 1.5 }}>
-            Human verification helps reviewer confidence, but this request is decided on proof-of-control and rights evidence.
+            This packet is stored as submitted evidence. Only reviewer approval can move the release to Platform Reviewed or Rights Verified.
           </div>
           <div style={{ display: "flex", gap: 10 }}>
             <button style={secondaryButtonStyle} onClick={onClose} disabled={submitting}>
@@ -559,6 +512,33 @@ const calloutStyle: React.CSSProperties = {
   color: "#fcd34d",
   fontSize: "13px",
   lineHeight: 1.5,
+};
+
+const submittedEvidenceNoticeStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  marginBottom: "18px",
+  padding: "12px 14px",
+  borderRadius: "14px",
+  border: "1px solid rgba(245, 158, 11, 0.22)",
+  background: "rgba(245, 158, 11, 0.07)",
+  color: "rgba(255,255,255,0.62)",
+  fontSize: "12px",
+  lineHeight: 1.45,
+};
+
+const submittedEvidenceBadgeStyle: React.CSSProperties = {
+  flexShrink: 0,
+  padding: "3px 8px",
+  borderRadius: "999px",
+  border: "1px solid rgba(245, 158, 11, 0.3)",
+  background: "rgba(245, 158, 11, 0.1)",
+  color: "#fbbf24",
+  fontSize: "10px",
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
 };
 
 const gridStyle: React.CSSProperties = {
