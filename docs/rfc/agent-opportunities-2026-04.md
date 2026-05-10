@@ -38,9 +38,13 @@ Still open from the foundation wave:
 - MCP does **not** yet expose `generate.track`.
 - The golden set is not yet the originally proposed ~100-200 case suite.
 - There is no LLM-as-judge grader or blocking CI quality gate for agent evals yet.
-- Agentic.Market / x402scan registration is past public endpoint
-  availability and now blocked on deployed x402 enablement; see
-  [#520](https://github.com/akoita/resonate/issues/520).
+- Agentic.Market / x402scan registration is past app-code availability, but
+  public deployment validation is intentionally deferred. The previous submission
+  attempt is tracked in [#520](https://github.com/akoita/resonate/issues/520);
+  the active follow-up is [#783](https://github.com/akoita/resonate/issues/783)
+  because staging web/API deployment details are intentionally kept out of this
+  public repository until the project is ready for large public load and
+  adversarial probing.
 
 Started beyond Wave 1:
 
@@ -162,7 +166,7 @@ Scored **1–5** where 5 = best. "Fit" = how natural to Resonate's goal, "Trend"
 | **8** | **Claude Agent SDK subagent for dispute triage** — classifier bot that comments on disputes, pre-tags evidence, suggests jury escalation; uses hooks to enforce evidence-quality thresholds | 4 | 5 | 3 | adjacent to [#408](https://github.com/akoita/resonate/issues/408), [#468](https://github.com/akoita/resonate/issues/468) |
 | **9** | **Mastra for the `/create` + `/agent` streaming UX** — TS-native, Next.js-shaped, talks to the NestJS runtime via HTTP | 4 | 5 | 3 | — |
 | **10** | **Real-time remix engine: Demucs `htdemucs_ft` + ACE-Step v1.5 melody-conditioned** — replaces `AgentMixerService.plan()` stub with actual audio | 5 | 5 | 5 | [#323](https://github.com/akoita/resonate/issues/323) |
-| **11** | **Register Resonate in Agentic.Market / x402scan / mppscan** — machine-discovery for the DJ economy; already partially scoped | 5 | 5 | 2 | [#520](https://github.com/akoita/resonate/issues/520) |
+| **11** | **Register Resonate in Agentic.Market / x402scan / mppscan** — machine-discovery for the DJ economy; app surface shipped, public endpoint validation deferred until a hardened launch/validation origin exists | 5 | 5 | 2 | [#783](https://github.com/akoita/resonate/issues/783), previous attempt [#520](https://github.com/akoita/resonate/issues/520) |
 | **12** | **Human-facing x402 checkout** — the rail is shipped for agents; surfacing it in the marketplace buy modal shows end-to-end ownership | 4 | 4 | 2 | *gap* |
 | **13** | **Letta + Mem0 memory stack for the DJ** — core/archival/recall + short-term user session memory; depth-signal uncommon in 2026 portfolios | 4 | 4 | 3 | supports [#290](https://github.com/akoita/resonate/issues/290), [#307](https://github.com/akoita/resonate/issues/307) |
 | **14** | **A2A (Agent-to-Agent) between Selector / Mixer / Negotiator** — turn the three-role orchestration into an A2A peer mesh; credible with the #424 extraction | 4 | 4 | 4 | extension of [#424](https://github.com/akoita/resonate/issues/424) |
@@ -249,7 +253,7 @@ Goal: the creative moonshot.
 
 10. **Human-facing x402 buy flow** — add a "Pay with USDC (x402)" option to the stem buy modal; reuses existing middleware. Closes the UX gap where x402 is agent-only today.
 
-11. **Register in Agentic.Market + x402scan** ([#520](https://github.com/akoita/resonate/issues/520)) — deploy the OpenAPI + MCP endpoints to a public host and submit.
+11. **Register in Agentic.Market + x402scan** ([#783](https://github.com/akoita/resonate/issues/783), previous attempt [#520](https://github.com/akoita/resonate/issues/520)) — wait for an intentional public validation or launch origin, validate a concrete 402 challenge, then resubmit.
 
 ---
 
@@ -265,10 +269,11 @@ read the original RFC as frozen history, the next bets are:
      LLM-as-judge grader once deterministic coverage stops catching the obvious
      regressions.
 
-2. **Register machine-discovery endpoints once public host availability is fixed**
-   - Complete [#520](https://github.com/akoita/resonate/issues/520) when
-     `/openapi.json`, `/.well-known/x402`, and MCP metadata are publicly
-     reachable from the deployed API.
+2. **Register machine-discovery endpoints once public exposure is intentional**
+   - Complete [#783](https://github.com/akoita/resonate/issues/783) when
+     `/openapi.json`, `/.well-known/x402`, MCP metadata, and storefront routes
+     are reachable from an intentionally published API origin and a concrete
+     x402 endpoint emits a valid unpaid 402 challenge.
 
 3. **Start Wave 2 with ERC-8004 identity/reputation**
    - This is the next differentiated on-chain agent primitive now that MCP and
@@ -358,7 +363,7 @@ These are the smallest slices that would keep momentum high and reviewable.
 ### Still on the roadmap (Wave 3), just not next
 
 - **Human-facing x402 checkout** — small wrapper around shipped middleware; ships whenever the buy modal gets its next pass.
-- **Agentic.Market / x402scan registration ([#520](https://github.com/akoita/resonate/issues/520))** — public metadata is live; staging still needs x402 enabled before scanners can validate a concrete 402 challenge.
+- **Agentic.Market / x402scan registration ([#783](https://github.com/akoita/resonate/issues/783), previous attempt [#520](https://github.com/akoita/resonate/issues/520))** — the app-code surface exists, but public staging deployment details are intentionally kept out of this repository; rerun registry validation only during a hardened public validation or launch window.
 
 ### What I would explicitly defer
 
@@ -393,7 +398,7 @@ Avoid the LangChain/Spleeter/Suno-wrapper dead ends.
 - [docs/features/agent-platform-refactor-backlog.md](../features/agent-platform-refactor-backlog.md)
 - [AGENTS.md](../../AGENTS.md)
 
-**Issues:** [#424](https://github.com/akoita/resonate/issues/424) · [#291](https://github.com/akoita/resonate/issues/291) · [#322](https://github.com/akoita/resonate/issues/322) · [#290](https://github.com/akoita/resonate/issues/290) · [#323](https://github.com/akoita/resonate/issues/323) · [#306](https://github.com/akoita/resonate/issues/306) · [#307](https://github.com/akoita/resonate/issues/307) · [#499](https://github.com/akoita/resonate/issues/499) · [#520](https://github.com/akoita/resonate/issues/520) · [#408](https://github.com/akoita/resonate/issues/408)
+**Issues:** [#424](https://github.com/akoita/resonate/issues/424) · [#291](https://github.com/akoita/resonate/issues/291) · [#322](https://github.com/akoita/resonate/issues/322) · [#290](https://github.com/akoita/resonate/issues/290) · [#323](https://github.com/akoita/resonate/issues/323) · [#306](https://github.com/akoita/resonate/issues/306) · [#307](https://github.com/akoita/resonate/issues/307) · [#499](https://github.com/akoita/resonate/issues/499) · [#520](https://github.com/akoita/resonate/issues/520) · [#783](https://github.com/akoita/resonate/issues/783) · [#408](https://github.com/akoita/resonate/issues/408)
 
 **Ecosystem primary sources (authoritative as of 2026-04-22):**
 - Claude Agent SDK — https://platform.claude.com/docs/en/agent-sdk/overview

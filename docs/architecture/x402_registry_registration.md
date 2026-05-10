@@ -1,12 +1,36 @@
 # x402 Registry Submission Receipt
 
 Issue: [#520](https://github.com/akoita/resonate/issues/520)
+Current follow-up: [#783](https://github.com/akoita/resonate/issues/783)
+
+## Current Status
+
+The app-side machine-first surfaces have been implemented, but registry
+validation is intentionally deferred because staging web/API deployment details
+are not published from this public repository. Public validation should wait
+until a hardened validation or launch origin is explicitly approved.
+
+Rechecked at: `2026-05-09T14:28:00Z`
+
+| URL | Result |
+| --- | --- |
+| `/openapi.json` | Deferred |
+| `/.well-known/x402` | Deferred |
+| `/.well-known/mcp.json` | Deferred |
+| `/api/storefront/stems?limit=1` | Deferred |
+
+These 404s are not a product bug to fix by republishing staging. They are the
+current operational posture until there is a hardened public validation window
+or production launch target with capacity and abuse controls in place. Concrete
+staging URLs and deployment details belong in the private IaC repository.
+
+## Previous Submission Attempt
 
 Checked at: `2026-04-26T00:32:49Z`
 
 ## Public Metadata
 
-Base URL: `https://api-staging.resonate.pydes.xyz`
+Base URL: `<redacted-staging-api-origin>`
 
 Verified public endpoints:
 
@@ -30,7 +54,7 @@ clients to the paid x402 route plus the free quote route.
 Submitted origin:
 
 ```text
-https://api-staging.resonate.pydes.xyz
+<redacted-staging-api-origin>
 ```
 
 Discovery probe result:
@@ -43,7 +67,7 @@ Discovery probe result:
   "resources": [
     {
       "method": "GET",
-      "url": "https://api-staging.resonate.pydes.xyz/api/stems/%7BstemId%7D/x402",
+      "url": "<redacted-staging-api-origin>/api/stems/%7BstemId%7D/x402",
       "authMode": "paid"
     }
   ]
@@ -62,7 +86,7 @@ Registration mutation receipt:
   "originId": null,
   "failedDetails": [
     {
-      "url": "https://api-staging.resonate.pydes.xyz/api/stems/%7BstemId%7D/x402",
+      "url": "<redacted-staging-api-origin>/api/stems/%7BstemId%7D/x402",
       "error": "No valid x402 response found",
       "status": null
     }
@@ -87,7 +111,7 @@ for both `/api/stems/stem_1777163111376_f0c81f6d/x402/info` and
 Submitted origin:
 
 ```text
-https://api-staging.resonate.pydes.xyz
+<redacted-staging-api-origin>
 ```
 
 Registration response:
@@ -97,7 +121,7 @@ Registration response:
   "type": "done",
   "origin": {
     "id": "3ac4b7baee04e69605a7c9f85f35389c583a0634b773ce958ef4a9b309e85247",
-    "origin": "https://api-staging.resonate.pydes.xyz",
+    "origin": "<redacted-staging-api-origin>",
     "name": "Resonate API"
   },
   "resourceCount": 0
@@ -109,7 +133,8 @@ the deployed staging x402 route does not emit a live 402 challenge yet.
 
 ## Follow-Up Required
 
-To complete registry validation, deploy staging with:
+To complete registry validation, choose an intentional public validation origin
+or launch window and deploy with:
 
 ```env
 X402_ENABLED=true
@@ -119,5 +144,14 @@ X402_PAYOUT_ADDRESS=<base-sepolia-wallet>
 ```
 
 Those values are defined in `resonate-iac`, which owns Cloud Run service
-configuration. After redeploy, rerun both submissions and update this receipt
-with the successful resource count or registry ID.
+configuration. Do not use the current staging host as an always-on public
+registration target until capacity, rate limiting, abuse monitoring, and
+adversarial-traffic readiness are explicitly in place. After an intentional
+public validation deploy, rerun both submissions and update this receipt with
+the successful resource count or registry ID.
+
+The current tracker for this deployment/registry follow-up is
+[#783](https://github.com/akoita/resonate/issues/783). The parent AgentCash epic
+[#499](https://github.com/akoita/resonate/issues/499) should remain open until
+that validation is complete or explicitly moved to a separate operational
+roadmap.
