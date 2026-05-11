@@ -16,9 +16,14 @@ import {
   type UploadRightsFlag,
   type UploadRightsRoute,
 } from "./upload-rights-policy";
+import { TrustedSourceService } from "./trusted-source.service";
 
 @Injectable()
 export class UploadRightsRoutingService {
+  constructor(
+    private readonly trustedSourceService: TrustedSourceService = new TrustedSourceService(),
+  ) {}
+
   private getTrustedSourceTypes() {
     return parseTrustedSourceTypes(process.env.TRUSTED_UPLOAD_SOURCES);
   }
@@ -37,10 +42,17 @@ export class UploadRightsRoutingService {
       title: input.title,
       primaryArtist: input.primaryArtist,
     });
+    const trustedSourceContext =
+      await this.trustedSourceService.getActiveTrustedSourceContext(input.artistId);
+    const effectiveSourceType =
+      trustedSourceContext?.sourceType || input.sourceType || "direct_upload";
+    const trustedSourceTypes = trustedSourceContext
+      ? dedupeStrings(this.getTrustedSourceTypes(), [trustedSourceContext.sourceType])
+      : this.getTrustedSourceTypes();
 
     const decision = evaluateUploadRightsDecision({
-      sourceType: input.sourceType || "direct_upload",
-      trustedSourceTypes: this.getTrustedSourceTypes(),
+      sourceType: effectiveSourceType,
+      trustedSourceTypes,
       uploaderTier,
       hasMetadataConflict: !!metadataConflict,
       hasQuarantinedContent: false,
@@ -60,6 +72,8 @@ export class UploadRightsRoutingService {
       flags,
       reason: metadataConflict
         ? `Upload metadata conflicts with existing release ${metadataConflict.id}. ${decision.reason}`
+        : trustedSourceContext && decision.route === "TRUSTED_FAST_PATH"
+          ? trustedSourceContext.reason
         : decision.reason,
     };
 
@@ -90,9 +104,16 @@ export class UploadRightsRoutingService {
     }
 
     const uploaderTier = await this.getUploaderTier(track.release.artistId);
+    const trustedSourceContext =
+      await this.trustedSourceService.getActiveTrustedSourceContext(track.release.artistId);
+    const effectiveSourceType =
+      trustedSourceContext?.sourceType || track.release.rightsSourceType || "direct_upload";
+    const trustedSourceTypes = trustedSourceContext
+      ? dedupeStrings(this.getTrustedSourceTypes(), [trustedSourceContext.sourceType])
+      : this.getTrustedSourceTypes();
     const decision = evaluateUploadRightsDecision({
-      sourceType: track.release.rightsSourceType || "direct_upload",
-      trustedSourceTypes: this.getTrustedSourceTypes(),
+      sourceType: effectiveSourceType,
+      trustedSourceTypes,
       uploaderTier,
       hasMetadataConflict: false,
       hasQuarantinedContent: track.contentStatus === "quarantined",
@@ -304,4 +325,14 @@ export class UploadRightsRoutingService {
 
     return value.filter((entry): entry is UploadRightsFlag => typeof entry === "string") as UploadRightsFlag[];
   }
+}
+
+function dedupeStrings(...sets: Array<ReadonlyArray<string> | null | undefined>) {
+  const values = new Set<string>();
+  for (const set of sets) {
+    for (const value of set || []) {
+      values.add(value);
+    }
+  }
+  return Array.from(values);
 }

@@ -13,6 +13,7 @@ export const RIGHTS_EVIDENCE_SUBJECT_TYPES = [
   "release",
   "track",
   "dispute",
+  "trusted_source_link_request",
 ] as const satisfies readonly RightsEvidenceSubjectType[];
 
 export const RIGHTS_EVIDENCE_ROLES = [
@@ -55,6 +56,7 @@ export const RIGHTS_EVIDENCE_BUNDLE_PURPOSES = [
   "ops_review",
   "jury_packet",
   "rights_upgrade_request",
+  "trusted_source_link_request",
 ] as const satisfies readonly RightsEvidenceBundlePurpose[];
 
 const DISPUTE_REPORT_PRIMARY_KINDS = new Set<RightsEvidenceKind>([
