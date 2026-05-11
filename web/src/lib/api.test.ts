@@ -539,6 +539,97 @@ describe('API Client', () => {
       });
     });
 
+    it('submits a trusted-source link request', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            id: 'tsr-1',
+            artistId: 'artist-1',
+            requesterAddress: '0xabc',
+            requestedSourceType: 'distributor',
+            sourceName: 'Distributor Portal',
+            sourceKey: 'distributor-portal',
+            requestedTrustLevel: 'high',
+            proofSummary: 'I control the distributor dashboard for this catalog.',
+            status: 'submitted',
+            createdAt: '2026-05-11T00:00:00.000Z',
+            updatedAt: '2026-05-11T00:00:00.000Z',
+            evidenceBundles: [],
+          }),
+      });
+
+      await api.submitTrustedSourceLinkRequest(
+        {
+          requestedSourceType: 'distributor',
+          sourceName: 'Distributor Portal',
+          requestedTrustLevel: 'high',
+          proofSummary: 'I control the distributor dashboard for this catalog.',
+          evidences: [
+            {
+              kind: 'proof_of_control',
+              title: 'Distributor dashboard',
+              sourceUrl: 'https://example.com/dashboard',
+              claimedRightsholder: 'Meta Artist',
+              strength: 'high',
+            },
+          ],
+        },
+        'test-token',
+      );
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/metadata/trusted-sources/link-requests');
+      expect(opts.method).toBe('POST');
+      expect(opts.headers.get('Authorization')).toBe('Bearer test-token');
+      expect(JSON.parse(opts.body)).toMatchObject({
+        requestedSourceType: 'distributor',
+        sourceName: 'Distributor Portal',
+        requestedTrustLevel: 'high',
+      });
+    });
+
+    it('reviews a trusted-source link request', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            id: 'tsr-1',
+            artistId: 'artist-1',
+            requesterAddress: '0xabc',
+            requestedSourceType: 'distributor',
+            sourceName: 'Distributor Portal',
+            sourceKey: 'distributor-portal',
+            requestedTrustLevel: 'high',
+            proofSummary: 'I control the distributor dashboard for this catalog.',
+            status: 'approved',
+            createdAt: '2026-05-11T00:00:00.000Z',
+            updatedAt: '2026-05-11T00:00:00.000Z',
+          }),
+      });
+
+      await api.reviewTrustedSourceLinkRequest(
+        'tsr-1',
+        {
+          action: 'approve',
+          trustLevel: 'high',
+          decisionReason: 'Distributor dashboard checked.',
+        },
+        'admin-token',
+      );
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/metadata/trusted-sources/link-requests/tsr-1/review');
+      expect(opts.method).toBe('PATCH');
+      expect(opts.headers.get('Authorization')).toBe('Bearer admin-token');
+      expect(JSON.parse(opts.body)).toMatchObject({
+        action: 'approve',
+        trustLevel: 'high',
+      });
+    });
+
     it('lists pending release rights-upgrade requests', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,

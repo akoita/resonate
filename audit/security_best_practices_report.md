@@ -2,23 +2,23 @@
 
 ## Executive Summary
 
-Reviewed the verification-semantics changes for #475. No Critical or High
-findings were identified in the changed code.
+Reviewed the trusted-source linking implementation for #495. No Critical or
+High findings were identified in the changed code.
 
 ## Scope
 
+- `backend/prisma/schema.prisma`
+- `backend/prisma/migrations/20260511010000_trusted_source_linking/migration.sql`
 - `backend/src/modules/contracts/metadata.controller.ts`
-- `backend/src/modules/trust/trust.controller.ts`
-- `backend/src/modules/trust/trust.service.ts`
-- `web/src/app/release/[id]/page.tsx`
-- `web/src/components/content-protection/ContentProtectionBadge.tsx`
-- `web/src/components/content-protection/ReleaseContentProtection.tsx`
-- `web/src/components/disputes/AdminDisputeQueue.tsx`
-- `web/src/components/disputes/HumanVerificationCard.tsx`
-- `web/src/components/upload/StakeDepositCard.tsx`
+- `backend/src/modules/rights/rights-evidence.ts`
+- `backend/src/modules/rights/rights.module.ts`
+- `backend/src/modules/rights/trusted-source.service.ts`
+- `backend/src/modules/rights/upload-rights-routing.service.ts`
+- `backend/src/tests/trusted-source.service.integration.spec.ts`
+- `backend/src/tests/upload-rights-routing.integration.spec.ts`
 - `web/src/lib/api.ts`
-- `web/src/lib/verificationSemantics.ts`
-- Related tests and documentation updates
+- `web/src/lib/api.test.ts`
+- Related architecture documentation updates
 
 ## Critical Findings
 
@@ -38,33 +38,34 @@ None in the changed code.
 
 ## Informational Notes
 
-- The backend changes are notification/comment copy updates only; they do not
-  add endpoints, authorization paths, database writes, raw SQL, dynamic code
-  execution, or new input handling.
-- The frontend changes centralize label derivation for human verification,
-  release provenance, platform review, and rights verification. The new helper
-  uses static copy maps and enum-style normalization only.
-- No secrets, API keys, private keys, or new environment variables were added.
-- The frontend scan found existing `NEXT_PUBLIC_*_KEY` references outside this
-  change set. They are existing public client configuration paths, not new
-  findings introduced by #475.
-- The changed code does not add browser HTML injection, insecure cookie
-  handling, or new client-exposed secret variables.
+- New creator-facing trusted-source endpoints require JWT auth. New admin review
+  and revocation endpoints require both JWT auth and the `admin` role guard.
+- Source-link submission resolves the authenticated artist by wallet/user id and
+  does not allow callers to choose an arbitrary artist id.
+- Source-link approvals and revocations are centralized in
+  `TrustedSourceService`; active links are checked by upload routing, and
+  revoked/suspended links no longer produce trusted-source routing context.
+- Prisma writes use structured client APIs. The changed code does not add raw
+  SQL, dynamic code execution, browser HTML injection, cookie handling, or new
+  public client secrets.
+- The broad scans still report pre-existing items outside this change set, such
+  as local-dev JWT fallbacks and existing raw SQL in unrelated modules. These
+  are not introduced by #495.
 
 ## Commands Run
 
 ```bash
 rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
 rg 'rawQuery|executeRaw|\$queryRaw' backend/src/
-rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/ | grep -v 'Guard\|Auth'
-rg 'JSON\.parse|eval\(' backend/src/
-rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/ | grep -v 'Pipe\|Dto\|Validation'
-rg 'dangerouslySetInnerHTML|innerHTML' web/src/
-rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
-rg 'document\.cookie|setCookie|httpOnly.*false' web/src/
-npx vitest run src/lib/__tests__/verificationSemantics.test.ts src/lib/__tests__/stakeConstants.test.ts
-npm run test -- --runTestsByPath src/tests/verification-semantics.spec.ts src/tests/trust.controller.spec.ts
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/rights backend/src/modules/contracts/metadata.controller.ts | grep -v 'Guard\|Auth' || true
+rg 'JSON\.parse|eval\(' backend/src/modules/rights backend/src/modules/contracts/metadata.controller.ts
+rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/rights backend/src/modules/contracts/metadata.controller.ts | grep -v 'Pipe\|Dto\|Validation' || true
+rg 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/lib/api.ts web/src/lib/api.test.ts
 npm run lint # backend
-npm run lint # web
+npx prisma validate # backend
+npx jest --runInBand --config jest.integration.config.js --testPathPattern='trusted-source.service.integration|upload-rights-routing.integration' # backend
+npx eslint src/lib/api.ts src/lib/api.test.ts # web
+npx tsc --noEmit # web
+npx vitest run src/lib/api.test.ts # web
 git diff --check
 ```

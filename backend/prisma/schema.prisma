@@ -72,6 +72,8 @@ model Artist {
   releases      Release[]
   creatorTrust  CreatorTrust?
   rightsUpgradeRequests ReleaseRightsUpgradeRequest[]
+  trustedSourceLinks TrustedSourceArtistLink[]
+  trustedSourceLinkRequests TrustedSourceLinkRequest[]
 }
 
 model Release {
@@ -738,6 +740,7 @@ enum RightsEvidenceSubjectType {
   release
   track
   dispute
+  trusted_source_link_request
 }
 
 enum RightsEvidenceRole {
@@ -780,6 +783,116 @@ enum RightsEvidenceBundlePurpose {
   ops_review
   jury_packet
   rights_upgrade_request
+  trusted_source_link_request
+}
+
+enum TrustedSourceType {
+  distributor
+  label
+  official_artist_team
+  catalog_operator
+}
+
+enum TrustedSourceTrustLevel {
+  standard
+  high
+  very_high
+}
+
+enum TrustedSourceReviewState {
+  pending_review
+  active
+  suspended
+  revoked
+  denied
+}
+
+enum TrustedSourceLinkStatus {
+  active
+  suspended
+  revoked
+}
+
+enum TrustedSourceLinkRequestStatus {
+  submitted
+  under_review
+  approved
+  denied
+}
+
+model TrustedSource {
+  id              String                    @id @default(uuid())
+  type            TrustedSourceType
+  name            String
+  sourceKey       String
+  trustLevel      TrustedSourceTrustLevel   @default(standard)
+  reviewState     TrustedSourceReviewState  @default(pending_review)
+  domain          String?
+  feedUrl         String?
+  traceability    Json?
+  createdByAddress String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  revokedAt       DateTime?
+  downgradedAt    DateTime?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  artistLinks     TrustedSourceArtistLink[]
+  linkRequests    TrustedSourceLinkRequest[]
+
+  @@unique([type, sourceKey])
+  @@index([reviewState])
+  @@index([type])
+  @@index([trustLevel])
+}
+
+model TrustedSourceArtistLink {
+  id              String                    @id @default(uuid())
+  artistId        String
+  trustedSourceId String
+  status          TrustedSourceLinkStatus   @default(active)
+  trustLevel      TrustedSourceTrustLevel   @default(standard)
+  sourceType      TrustedSourceType
+  approvedBy      String?
+  approvedAt      DateTime?
+  revokedBy       String?
+  revokedAt       DateTime?
+  revokeReason    String?                   @db.Text
+  metadata        Json?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  artist          Artist                    @relation(fields: [artistId], references: [id])
+  trustedSource   TrustedSource             @relation(fields: [trustedSourceId], references: [id])
+
+  @@unique([artistId, trustedSourceId])
+  @@index([artistId, status])
+  @@index([trustedSourceId, status])
+  @@index([sourceType])
+}
+
+model TrustedSourceLinkRequest {
+  id                  String                    @id @default(uuid())
+  artistId            String
+  trustedSourceId     String?
+  requesterAddress    String
+  requestedSourceType TrustedSourceType
+  sourceName          String
+  sourceKey           String
+  requestedTrustLevel TrustedSourceTrustLevel   @default(standard)
+  proofSummary        String                    @db.Text
+  status              TrustedSourceLinkRequestStatus @default(submitted)
+  decisionReason      String?                   @db.Text
+  reviewedBy          String?
+  reviewedAt          DateTime?
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  artist              Artist                    @relation(fields: [artistId], references: [id])
+  trustedSource       TrustedSource?            @relation(fields: [trustedSourceId], references: [id])
+
+  @@index([artistId, createdAt])
+  @@index([status, createdAt])
+  @@index([requestedSourceType])
+  @@index([trustedSourceId])
 }
 
 model ReleaseRightsUpgradeRequest {

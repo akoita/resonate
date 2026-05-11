@@ -30,6 +30,7 @@ import type {
   RightsEvidenceBundleInput,
   RightsEvidenceDraftInput,
 } from "../rights/rights-evidence";
+import { TrustedSourceService } from "../rights/trusted-source.service";
 
 const DEFAULT_SEPOLIA_RPC_URL = "https://sepolia.drpc.org";
 const DIAGNOSTIC_CHAIN_CONFIGS: Record<number, { chain: Chain; rpcUrl: string }> = {
@@ -156,6 +157,7 @@ export class MetadataController {
     private readonly indexerService: IndexerService,
     private readonly notificationService: NotificationService,
     private readonly eventBus: EventBus,
+    private readonly trustedSourceService: TrustedSourceService = new TrustedSourceService(),
   ) { }
 
   private getAdminAddresses() {
@@ -898,6 +900,127 @@ export class MetadataController {
     return this.contractsService.createEvidenceBundle({
       ...body,
       submittedByAddress,
+    });
+  }
+
+  /**
+   * Submit a trusted-source / distributor link request for the caller's artist profile.
+   * POST /api/metadata/trusted-sources/link-requests
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Post("trusted-sources/link-requests")
+  async submitTrustedSourceLinkRequest(
+    @Request() req: any,
+    @Body()
+    body: {
+      requestedSourceType?: string;
+      sourceName?: string;
+      sourceKey?: string;
+      requestedTrustLevel?: string;
+      proofSummary?: string;
+      domain?: string;
+      feedUrl?: string;
+      traceability?: Record<string, unknown>;
+      evidences?: RightsEvidenceDraftInput[];
+    },
+  ) {
+    return this.trustedSourceService.submitLinkRequest({
+      requesterAddress: String(req?.user?.userId || "").toLowerCase(),
+      requestedSourceType: body?.requestedSourceType,
+      sourceName: body?.sourceName,
+      sourceKey: body?.sourceKey,
+      requestedTrustLevel: body?.requestedTrustLevel,
+      proofSummary: body?.proofSummary,
+      domain: body?.domain,
+      feedUrl: body?.feedUrl,
+      traceability: body?.traceability,
+      evidences: body?.evidences || [],
+    });
+  }
+
+  /**
+   * List trusted-source link requests for the caller's artist profile.
+   * GET /api/metadata/trusted-sources/link-requests/me
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Get("trusted-sources/link-requests/me")
+  async listMyTrustedSourceLinkRequests(@Request() req: any) {
+    return this.trustedSourceService.listMyLinkRequests(
+      String(req?.user?.userId || "").toLowerCase(),
+    );
+  }
+
+  /**
+   * List active/revoked trusted-source links for the caller's artist profile.
+   * GET /api/metadata/trusted-sources/links/me
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Get("trusted-sources/links/me")
+  async listMyTrustedSourceLinks(@Request() req: any) {
+    return this.trustedSourceService.listMyTrustedSourceLinks(
+      String(req?.user?.userId || "").toLowerCase(),
+    );
+  }
+
+  /**
+   * List pending trusted-source link requests (admin).
+   * GET /api/metadata/trusted-sources/link-requests/pending
+   */
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
+  @Get("trusted-sources/link-requests/pending")
+  async listPendingTrustedSourceLinkRequests(@Query("limit") limitStr?: string) {
+    const limit = Math.min(parseInt(limitStr || "20", 10) || 20, 100);
+    return this.trustedSourceService.listPendingLinkRequests(limit);
+  }
+
+  /**
+   * Review a trusted-source link request (admin).
+   * PATCH /api/metadata/trusted-sources/link-requests/:id/review
+   */
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
+  @Patch("trusted-sources/link-requests/:id/review")
+  async reviewTrustedSourceLinkRequest(
+    @Request() req: any,
+    @Param("id") id: string,
+    @Body()
+    body: {
+      action?: "under_review" | "approve" | "deny";
+      decisionReason?: string;
+      trustLevel?: string;
+      reviewState?: string;
+    },
+  ) {
+    if (!body?.action) {
+      throw new BadRequestException("Review action is required");
+    }
+    return this.trustedSourceService.reviewLinkRequest({
+      id,
+      action: body.action,
+      reviewedBy: String(req?.user?.userId || "").toLowerCase(),
+      decisionReason: body.decisionReason,
+      trustLevel: body.trustLevel,
+      reviewState: body.reviewState,
+    });
+  }
+
+  /**
+   * Revoke an active trusted-source artist link (admin).
+   * PATCH /api/metadata/trusted-sources/links/:id/revoke
+   */
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
+  @Patch("trusted-sources/links/:id/revoke")
+  async revokeTrustedSourceArtistLink(
+    @Request() req: any,
+    @Param("id") id: string,
+    @Body() body: { reason?: string },
+  ) {
+    return this.trustedSourceService.revokeArtistLink({
+      linkId: id,
+      revokedBy: String(req?.user?.userId || "").toLowerCase(),
+      reason: body?.reason,
     });
   }
 

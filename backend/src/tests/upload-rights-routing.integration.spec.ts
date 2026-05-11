@@ -17,16 +17,19 @@ describe("UploadRightsRoutingService (integration)", () => {
   const newUserId = `${P}user_new`;
   const verifiedUserId = `${P}user_verified`;
   const trustedSourceUserId = `${P}user_trusted_source`;
+  const linkedSourceUserId = `${P}user_linked_source`;
   const catalogUserId = `${P}user_catalog`;
 
   const newArtistId = `${P}artist_new`;
   const verifiedArtistId = `${P}artist_verified`;
   const trustedSourceArtistId = `${P}artist_trusted_source`;
+  const linkedSourceArtistId = `${P}artist_linked_source`;
   const catalogArtistId = `${P}artist_catalog`;
 
   const limitedReleaseId = `${P}release_limited`;
   const standardReleaseId = `${P}release_standard`;
   const trustedReleaseId = `${P}release_trusted`;
+  const linkedSourceReleaseId = `${P}release_linked_source`;
   const conflictExistingReleaseId = `${P}release_conflict_existing`;
   const conflictIncomingReleaseId = `${P}release_conflict_incoming`;
   const blockedReleaseId = `${P}release_blocked`;
@@ -37,6 +40,7 @@ describe("UploadRightsRoutingService (integration)", () => {
     limited: `${P}track_limited`,
     standard: `${P}track_standard`,
     trusted: `${P}track_trusted`,
+    linkedSource: `${P}track_linked_source`,
     conflictExisting: `${P}track_conflict_existing`,
     conflictIncoming: `${P}track_conflict_incoming`,
     blocked: `${P}track_blocked`,
@@ -52,6 +56,7 @@ describe("UploadRightsRoutingService (integration)", () => {
         { id: newUserId, email: `${P}new@test.resonate` },
         { id: verifiedUserId, email: `${P}verified@test.resonate` },
         { id: trustedSourceUserId, email: `${P}trusted@test.resonate` },
+        { id: linkedSourceUserId, email: `${P}linked@test.resonate` },
         { id: catalogUserId, email: `${P}catalog@test.resonate` },
       ],
     });
@@ -75,6 +80,12 @@ describe("UploadRightsRoutingService (integration)", () => {
           userId: trustedSourceUserId,
           displayName: "Trusted Source Artist",
           payoutAddress: "0x" + "3".repeat(40),
+        },
+        {
+          id: linkedSourceArtistId,
+          userId: linkedSourceUserId,
+          displayName: "Linked Source Artist",
+          payoutAddress: "0x" + "5".repeat(40),
         },
         {
           id: catalogArtistId,
@@ -116,6 +127,13 @@ describe("UploadRightsRoutingService (integration)", () => {
           rightsSourceType: "trusted_distributor",
         },
         {
+          id: linkedSourceReleaseId,
+          artistId: linkedSourceArtistId,
+          title: "Linked Label Upload",
+          status: "ready",
+          rightsSourceType: "direct_upload",
+        },
+        {
           id: conflictExistingReleaseId,
           artistId: catalogArtistId,
           title: "In Da Club",
@@ -148,6 +166,7 @@ describe("UploadRightsRoutingService (integration)", () => {
         { id: trackIds.limited, releaseId: limitedReleaseId, title: "Fresh Upload" },
         { id: trackIds.standard, releaseId: standardReleaseId, title: "Verified Upload" },
         { id: trackIds.trusted, releaseId: trustedReleaseId, title: "Distributor Upload" },
+        { id: trackIds.linkedSource, releaseId: linkedSourceReleaseId, title: "Linked Label Upload" },
         { id: trackIds.conflictExisting, releaseId: conflictExistingReleaseId, title: "In Da Club" },
         { id: trackIds.conflictIncoming, releaseId: conflictIncomingReleaseId, title: "In Da Club" },
         {
@@ -173,6 +192,27 @@ describe("UploadRightsRoutingService (integration)", () => {
         uri: "/blocked-sibling.wav",
       },
     });
+
+    const trustedSource = await prisma.trustedSource.create({
+      data: {
+        type: "label",
+        name: "Verified Indie Label",
+        sourceKey: `${P}verified-indie-label`,
+        trustLevel: "high",
+        reviewState: "active",
+      },
+    });
+    await prisma.trustedSourceArtistLink.create({
+      data: {
+        artistId: linkedSourceArtistId,
+        trustedSourceId: trustedSource.id,
+        status: "active",
+        trustLevel: "high",
+        sourceType: "label",
+        approvedBy: "0xadmin",
+        approvedAt: new Date(),
+      },
+    });
   });
 
   afterAll(async () => {
@@ -180,6 +220,12 @@ describe("UploadRightsRoutingService (integration)", () => {
 
     await prisma.creatorTrust.deleteMany({
       where: { artistId: { in: [verifiedArtistId] } },
+    }).catch(() => {});
+    await prisma.trustedSourceArtistLink.deleteMany({
+      where: { artistId: { in: [linkedSourceArtistId] } },
+    }).catch(() => {});
+    await prisma.trustedSource.deleteMany({
+      where: { sourceKey: `${P}verified-indie-label` },
     }).catch(() => {});
     await prisma.stem.deleteMany({
       where: { id: { in: [blockedSiblingStemId] } },
@@ -194,6 +240,7 @@ describe("UploadRightsRoutingService (integration)", () => {
             limitedReleaseId,
             standardReleaseId,
             trustedReleaseId,
+            linkedSourceReleaseId,
             conflictExistingReleaseId,
             conflictIncomingReleaseId,
             blockedReleaseId,
@@ -208,6 +255,7 @@ describe("UploadRightsRoutingService (integration)", () => {
             newArtistId,
             verifiedArtistId,
             trustedSourceArtistId,
+            linkedSourceArtistId,
             catalogArtistId,
           ],
         },
@@ -216,7 +264,7 @@ describe("UploadRightsRoutingService (integration)", () => {
     await prisma.user.deleteMany({
       where: {
         id: {
-          in: [newUserId, verifiedUserId, trustedSourceUserId, catalogUserId],
+          in: [newUserId, verifiedUserId, trustedSourceUserId, linkedSourceUserId, catalogUserId],
         },
       },
     }).catch(() => {});
@@ -259,6 +307,20 @@ describe("UploadRightsRoutingService (integration)", () => {
 
     const release = await prisma.release.findUnique({ where: { id: trustedReleaseId } });
     expect(release?.rightsRoute).toBe("TRUSTED_FAST_PATH");
+  });
+
+  it("uses approved trusted-source links for direct uploads", async () => {
+    await routing.evaluateAndPersistInitialDecision({
+      releaseId: linkedSourceReleaseId,
+      artistId: linkedSourceArtistId,
+      title: "Linked Label Upload",
+      sourceType: "direct_upload",
+    });
+
+    const release = await prisma.release.findUnique({ where: { id: linkedSourceReleaseId } });
+    expect(release?.rightsRoute).toBe("TRUSTED_FAST_PATH");
+    expect(release?.rightsSourceType).toBe("trusted_label");
+    expect(release?.rightsReason).toContain("Verified Indie Label");
   });
 
   it("quarantines major catalog conflicts and records review flags", async () => {

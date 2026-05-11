@@ -329,6 +329,32 @@ Minimum trust-affecting factors:
 - linked trusted-source relationships,
 - fraud or abuse history.
 
+### Trusted-Source Registry
+
+Trusted ingestion is now represented as domain state rather than only an
+environment-configured upload source string.
+
+Core records:
+
+- `TrustedSource`: distributor, label, official artist-team account, or catalog
+  operator, with a source key, trust level, review state, and optional
+  traceability metadata such as a verified domain or catalog feed reference.
+- `TrustedSourceLinkRequest`: creator/operator request to link an artist profile
+  to a source, backed by structured rights evidence such as dashboard control,
+  domain verification, verified profile linkage, or catalog traceability.
+- `TrustedSourceArtistLink`: approved artist/source relationship used by the
+  routing service while active.
+
+An active artist/source link resolves to an effective source type such as
+`trusted_distributor` or `trusted_label`. The routing service treats that source
+as eligible for `TRUSTED_FAST_PATH` only when there are no stronger conflict
+signals. Metadata conflicts, quarantined content, or DMCA-blocked content still
+force the stricter route.
+
+Revoking or suspending the artist/source link removes that trusted-source
+context from future routing decisions. Existing releases keep their historical
+route until reassessed by the route reassessment workflow.
+
 ## Recommended Initial Threshold Policy
 
 These values are placeholders and should become environment-configurable policy, not hardcoded application constants.
@@ -348,7 +374,7 @@ To implement this policy, the platform will need:
 
 - rights routing service,
 - fingerprint result store,
-- trusted source registry,
+- trusted source registry and source-link request workflow,
 - uploader trust profile service,
 - ops review console,
 - evidence schema shared across upload, disputes, and jury,
@@ -401,6 +427,17 @@ Users should never be left guessing why an upload is stuck or why certain moneti
 4. wire upload flow to emit a rights route before publication,
 5. add ops review workflow,
 6. update frontend upload status and dispute UX to reflect the route.
+
+Current implementation status:
+
+- routing states, route actions, and typed evidence schema exist in backend
+  domain code;
+- trusted-source registry, source-link requests, source-link review, and active
+  artist/source links exist in backend/domain state;
+- upload routing consults active trusted-source links and preserves stricter
+  conflict routes when metadata or content signals require review;
+- richer creator/admin UX for source-link request management remains a follow-up
+  product surface.
 
 ## Open Questions
 

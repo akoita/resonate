@@ -66,7 +66,12 @@ type EvidenceStrength = "low" | "medium" | "high" | "very_high";
 
 type EvidenceObject = {
   id: string;
-  subjectType: "upload" | "release" | "track" | "dispute";
+  subjectType:
+    | "upload"
+    | "release"
+    | "track"
+    | "dispute"
+    | "trusted_source_link_request";
   subjectId: string;
   submittedByRole: EvidenceRole;
   submittedByAddress?: string | null;
@@ -266,7 +271,12 @@ Suggested wrapper:
 ```ts
 type EvidenceBundle = {
   id: string;
-  subjectType: "upload" | "release" | "track" | "dispute";
+  subjectType:
+    | "upload"
+    | "release"
+    | "track"
+    | "dispute"
+    | "trusted_source_link_request";
   subjectId: string;
   submittedByRole: EvidenceRole;
   submittedByAddress?: string | null;
@@ -275,7 +285,9 @@ type EvidenceBundle = {
     | "dispute_report"
     | "creator_response"
     | "ops_review"
-    | "jury_packet";
+    | "jury_packet"
+    | "rights_upgrade_request"
+    | "trusted_source_link_request";
   summary?: string | null;
   evidenceIds: string[];
   createdAt: string;

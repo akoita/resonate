@@ -517,7 +517,12 @@ export type ReleaseContentProtectionData = {
   rightsUpgradeReviewedAt?: string | null;
 };
 
-export type RightsEvidenceSubjectType = "upload" | "release" | "track" | "dispute";
+export type RightsEvidenceSubjectType =
+  | "upload"
+  | "release"
+  | "track"
+  | "dispute"
+  | "trusted_source_link_request";
 export type RightsEvidenceRole = "reporter" | "creator" | "ops" | "trusted_source" | "system";
 export type RightsEvidenceKind =
   | "trusted_catalog_reference"
@@ -540,7 +545,27 @@ export type RightsEvidenceBundlePurpose =
   | "creator_response"
   | "ops_review"
   | "jury_packet"
-  | "rights_upgrade_request";
+  | "rights_upgrade_request"
+  | "trusted_source_link_request";
+
+export type TrustedSourceType =
+  | "distributor"
+  | "label"
+  | "official_artist_team"
+  | "catalog_operator";
+export type TrustedSourceTrustLevel = "standard" | "high" | "very_high";
+export type TrustedSourceReviewState =
+  | "pending_review"
+  | "active"
+  | "suspended"
+  | "revoked"
+  | "denied";
+export type TrustedSourceLinkStatus = "active" | "suspended" | "revoked";
+export type TrustedSourceLinkRequestStatus =
+  | "submitted"
+  | "under_review"
+  | "approved"
+  | "denied";
 
 export type ReleaseRightsUpgradeRequestStatus =
   | "submitted"
@@ -603,6 +628,68 @@ export type RightsEvidenceBundleRecord = {
   summary?: string | null;
   createdAt: string;
   evidences: RightsEvidenceRecord[];
+};
+
+export type TrustedSourceRecord = {
+  id: string;
+  type: TrustedSourceType;
+  name: string;
+  sourceKey: string;
+  trustLevel: TrustedSourceTrustLevel;
+  reviewState: TrustedSourceReviewState;
+  domain?: string | null;
+  feedUrl?: string | null;
+  traceability?: Record<string, unknown> | null;
+  createdByAddress?: string | null;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  revokedAt?: string | null;
+  downgradedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TrustedSourceArtistLinkRecord = {
+  id: string;
+  artistId: string;
+  trustedSourceId: string;
+  status: TrustedSourceLinkStatus;
+  trustLevel: TrustedSourceTrustLevel;
+  sourceType: TrustedSourceType;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  revokedBy?: string | null;
+  revokedAt?: string | null;
+  revokeReason?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  trustedSource?: TrustedSourceRecord;
+};
+
+export type TrustedSourceLinkRequestRecord = {
+  id: string;
+  artistId: string;
+  trustedSourceId?: string | null;
+  requesterAddress: string;
+  requestedSourceType: TrustedSourceType;
+  sourceName: string;
+  sourceKey: string;
+  requestedTrustLevel: TrustedSourceTrustLevel;
+  proofSummary: string;
+  status: TrustedSourceLinkRequestStatus;
+  decisionReason?: string | null;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  artist?: {
+    id: string;
+    userId: string;
+    displayName: string;
+  };
+  trustedSource?: TrustedSourceRecord | null;
+  evidenceBundles?: RightsEvidenceBundleRecord[];
 };
 
 export type ReleaseRightsUpgradeRequestRecord = {
@@ -703,6 +790,92 @@ export async function submitRightsEvidenceBundle(
     method: "POST",
     body: JSON.stringify(input),
   }, token);
+}
+
+export async function submitTrustedSourceLinkRequest(
+  input: {
+    requestedSourceType: TrustedSourceType;
+    sourceName: string;
+    sourceKey?: string;
+    requestedTrustLevel?: TrustedSourceTrustLevel;
+    proofSummary: string;
+    domain?: string;
+    feedUrl?: string;
+    traceability?: Record<string, unknown>;
+    evidences?: RightsEvidenceInput[];
+  },
+  token: string,
+) {
+  return apiRequest<TrustedSourceLinkRequestRecord>(
+    "/metadata/trusted-sources/link-requests",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export async function listMyTrustedSourceLinkRequests(token: string) {
+  return apiRequest<TrustedSourceLinkRequestRecord[]>(
+    "/metadata/trusted-sources/link-requests/me",
+    {},
+    token,
+  );
+}
+
+export async function listMyTrustedSourceLinks(token: string) {
+  return apiRequest<TrustedSourceArtistLinkRecord[]>(
+    "/metadata/trusted-sources/links/me",
+    {},
+    token,
+  );
+}
+
+export async function listPendingTrustedSourceLinkRequests(
+  token: string,
+  limit = 20,
+) {
+  return apiRequest<TrustedSourceLinkRequestRecord[]>(
+    `/metadata/trusted-sources/link-requests/pending?limit=${limit}`,
+    {},
+    token,
+  );
+}
+
+export async function reviewTrustedSourceLinkRequest(
+  requestId: string,
+  input: {
+    action: "under_review" | "approve" | "deny";
+    decisionReason?: string;
+    trustLevel?: TrustedSourceTrustLevel;
+    reviewState?: "active" | "suspended" | "revoked";
+  },
+  token: string,
+) {
+  return apiRequest<TrustedSourceLinkRequestRecord>(
+    `/metadata/trusted-sources/link-requests/${requestId}/review`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export async function revokeTrustedSourceArtistLink(
+  linkId: string,
+  input: { reason?: string },
+  token: string,
+) {
+  return apiRequest<TrustedSourceArtistLinkRecord>(
+    `/metadata/trusted-sources/links/${linkId}/revoke`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
 }
 
 export async function getLatestReleaseRightsUpgradeRequest(
