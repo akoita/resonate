@@ -21,7 +21,7 @@ import { TrustedSourceService } from "./trusted-source.service";
 @Injectable()
 export class UploadRightsRoutingService {
   constructor(
-    private readonly trustedSourceService = new TrustedSourceService(),
+    private readonly trustedSourceService: TrustedSourceService = new TrustedSourceService(),
   ) {}
 
   private getTrustedSourceTypes() {
