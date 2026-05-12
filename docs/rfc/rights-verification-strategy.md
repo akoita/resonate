@@ -228,16 +228,46 @@ When creator proof-of-control or rights-upgrade evidence enters platform review,
 
 Recommended output states:
 
-- `platform_review_pending`
-  - creator evidence has been submitted or is under active ops review
-- `platform_reviewed`
-  - Resonate reviewed the evidence and approved marketplace access under the standard escrow route
+- `evidence_submitted`
+  - creator evidence has been submitted and is waiting for ops review
+- `evidence_requested`
+  - ops requested stronger or clearer evidence before making a decision
+- `under_review`
+  - submitted evidence is under active ops review
+- `approved_with_limits`
+  - Resonate reviewed the evidence and approved marketplace access under the standard escrow route; this is not ownership verification
 - `rights_verified`
   - Resonate granted the strongest approval state after higher-confidence review
-- `rights_disputed`
-  - review was denied, contradicted, or otherwise resolved into a failed/disputed state
+- `denied`
+  - submitted evidence was denied for marketplace access
+- `disputed`
+  - rights are blocked, contradicted, or otherwise resolved into a disputed state
 
 These states should be queryable from both release and review surfaces so content-protection badges, marketplace gating, and admin moderation tools all describe the same underlying decision.
+
+### Rights Review Transitions
+
+Creator actions:
+
+- `evidence_requested` -> `evidence_submitted`
+  - the creator submits additional evidence after ops asks for clarification
+
+Ops/admin actions:
+
+- `evidence_submitted` -> `under_review`
+- `evidence_submitted` -> `evidence_requested`
+- `evidence_submitted` -> `approved_with_limits`
+- `evidence_submitted` -> `rights_verified`
+- `evidence_submitted` -> `denied`
+- `under_review` -> `evidence_requested`
+- `under_review` -> `approved_with_limits`
+- `under_review` -> `rights_verified`
+- `under_review` -> `denied`
+
+Terminal states:
+
+- `approved_with_limits`, `rights_verified`, and `denied` are final for the current request.
+- `disputed` is derived from blocked or contradicted release-rights routing and is handled through a new review or reassessment path rather than by mutating a finalized request.
 
 ### Required Juror View
 

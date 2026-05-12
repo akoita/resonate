@@ -26,6 +26,7 @@ import { CuratorReputationService } from "./curator-reputation.service";
 import {
   deriveCreatorVerificationStates,
   deriveReleaseVerificationStates,
+  isReleaseRightsUpgradeTransitionAllowed,
 } from "../trust/verification-semantics";
 import { TrustService } from "../trust/trust.service";
 import type {
@@ -175,7 +176,7 @@ export class ContractsService implements OnModuleInit {
     "under_review",
   ] as const;
 
-  private getDerivedRightsVerificationStatus(input: {
+  private getDerivedRightsReviewState(input: {
     rightsRoute?: string | null;
     rightsUpgradeRequestStatus?: string | null;
   }) {
@@ -183,7 +184,7 @@ export class ContractsService implements OnModuleInit {
       attested: false,
       rightsRoute: input.rightsRoute,
       rightsUpgradeRequestStatus: input.rightsUpgradeRequestStatus,
-    }).rightsVerificationStatus;
+    }).rightsReviewState;
   }
 
   private decorateReleaseRightsUpgradeRequest<
@@ -191,13 +192,19 @@ export class ContractsService implements OnModuleInit {
       status: string;
       release?: { rightsRoute?: string | null } | null;
     },
-  >(request: T): T & { derivedRightsVerificationStatus: string } {
+  >(request: T): T & {
+    derivedRightsReviewState: string;
+    derivedRightsVerificationStatus: string;
+  } {
+    const derivedRightsReviewState = this.getDerivedRightsReviewState({
+      rightsRoute: request.release?.rightsRoute || null,
+      rightsUpgradeRequestStatus: request.status,
+    });
+
     return {
       ...request,
-      derivedRightsVerificationStatus: this.getDerivedRightsVerificationStatus({
-        rightsRoute: request.release?.rightsRoute || null,
-        rightsUpgradeRequestStatus: request.status,
-      }),
+      derivedRightsReviewState,
+      derivedRightsVerificationStatus: derivedRightsReviewState,
     };
   }
 
@@ -1682,6 +1689,7 @@ export class ContractsService implements OnModuleInit {
       platformReviewStatus: creatorVerification.platformReviewStatus,
       attestedAt: currentAttestation?.attestedAt?.toISOString() || "",
       provenanceStatus: verification.provenanceStatus,
+      rightsReviewState: verification.rightsReviewState,
       rightsVerificationStatus: verification.rightsVerificationStatus,
       rightsUpgradeRequestStatus: latestRightsUpgradeRequest?.status || null,
       rightsUpgradeRequestedRoute: latestRightsUpgradeRequest?.requestedRoute || null,
@@ -1955,6 +1963,15 @@ export class ContractsService implements OnModuleInit {
         orderBy: { createdAt: "desc" },
       });
 
+      if (
+        existingMoreEvidenceRequest &&
+        !isReleaseRightsUpgradeTransitionAllowed(existingMoreEvidenceRequest.status, "submitted")
+      ) {
+        throw new BadRequestException(
+          `Invalid rights-upgrade transition from ${existingMoreEvidenceRequest.status} to submitted`,
+        );
+      }
+
       const requestRecord = existingMoreEvidenceRequest
         ? await tx.releaseRightsUpgradeRequest.update({
             where: { id: existingMoreEvidenceRequest.id },
@@ -2060,6 +2077,12 @@ export class ContractsService implements OnModuleInit {
       request.status === "denied"
     ) {
       throw new BadRequestException("This rights-upgrade request has already been finalized");
+    }
+
+    if (!isReleaseRightsUpgradeTransitionAllowed(request.status, input.action)) {
+      throw new BadRequestException(
+        `Invalid rights-upgrade transition from ${request.status} to ${input.action}`,
+      );
     }
 
     await this.persistOpsReviewBundle({

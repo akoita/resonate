@@ -2,6 +2,7 @@ import type {
   ContentProvenanceState,
   HumanVerificationState,
   PlatformReviewState,
+  RightsReviewState,
   RightsVerificationState,
 } from "./verificationSemantics";
 
@@ -510,6 +511,7 @@ export type ReleaseContentProtectionData = {
   platformReviewStatus?: PlatformReviewState;
   attestedAt: string;
   provenanceStatus?: ContentProvenanceState;
+  rightsReviewState?: RightsReviewState;
   rightsVerificationStatus?: RightsVerificationState;
   rightsUpgradeRequestStatus?: ReleaseRightsUpgradeRequestStatus | null;
   rightsUpgradeRequestedRoute?: "STANDARD_ESCROW" | "TRUSTED_FAST_PATH" | null;
@@ -722,6 +724,7 @@ export type ReleaseRightsUpgradeRequestRecord = {
   artistId: string;
   requestedByAddress: string;
   status: ReleaseRightsUpgradeRequestStatus;
+  derivedRightsReviewState?: RightsReviewState | null;
   derivedRightsVerificationStatus?: RightsVerificationState | null;
   requestedRoute: ReleaseRightsUpgradeRequestedRoute;
   currentRouteAtSubmission?: string | null;

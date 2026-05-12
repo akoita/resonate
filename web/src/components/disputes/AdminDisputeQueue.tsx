@@ -153,8 +153,11 @@ function getDerivedRightsStateTone(status?: string | null) {
   if (normalized === "rights_verified") {
     return { background: "rgba(16,185,129,0.1)", color: "#10b981" };
   }
-  if (normalized === "rights_disputed") {
+  if (normalized === "denied" || normalized === "disputed") {
     return { background: "rgba(239,68,68,0.1)", color: "#ef4444" };
+  }
+  if (normalized === "approved_with_limits") {
+    return { background: "rgba(59,130,246,0.1)", color: "#3b82f6" };
   }
   return { background: "rgba(245,158,11,0.1)", color: "#f59e0b" };
 }
@@ -401,8 +404,8 @@ export default function AdminDisputeQueue() {
                       <span style={{ ...routeChipStyle, borderColor: "rgba(124,92,255,0.25)", color: "#a78bfa" }}>
                         {request.requestedRoute.replaceAll("_", " ")}
                       </span>
-                      {shouldShowDerivedRightsState(request.derivedRightsVerificationStatus) && (() => {
-                        const tone = getDerivedRightsStateTone(request.derivedRightsVerificationStatus);
+                      {shouldShowDerivedRightsState(request.derivedRightsReviewState || request.derivedRightsVerificationStatus) && (() => {
+                        const tone = getDerivedRightsStateTone(request.derivedRightsReviewState || request.derivedRightsVerificationStatus);
                         return (
                           <span style={{
                             padding: "2px 8px",
@@ -414,7 +417,7 @@ export default function AdminDisputeQueue() {
                             background: tone.background,
                             color: tone.color,
                           }}>
-                            {formatDerivedRightsStateLabel(request.derivedRightsVerificationStatus)}
+                            {formatDerivedRightsStateLabel(request.derivedRightsReviewState || request.derivedRightsVerificationStatus)}
                           </span>
                         );
                       })()}
