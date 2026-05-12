@@ -579,6 +579,30 @@ export type ReleaseRightsUpgradeRequestedRoute =
   | "STANDARD_ESCROW"
   | "TRUSTED_FAST_PATH";
 
+export type UploadRightsRoute =
+  | "BLOCKED"
+  | "QUARANTINED_REVIEW"
+  | "LIMITED_MONITORING"
+  | "STANDARD_ESCROW"
+  | "TRUSTED_FAST_PATH";
+
+export type RightsRouteReassessmentTrigger =
+  | "evidence_submitted"
+  | "trusted_source_linked"
+  | "trusted_source_revoked"
+  | "dispute_opened"
+  | "appeal_opened"
+  | "dmca_takedown"
+  | "fingerprint_conflict"
+  | "audit_sample"
+  | "manual_review";
+
+export type RightsRouteReassessmentStatus =
+  | "pending_review"
+  | "applied"
+  | "confirmed_current"
+  | "dismissed";
+
 export type RightsEvidenceInput = {
   kind: RightsEvidenceKind;
   title: string;
@@ -722,6 +746,42 @@ export type ReleaseRightsUpgradeRequestRecord = {
   evidenceBundles?: RightsEvidenceBundleRecord[];
 };
 
+export type RightsRouteReassessmentRecord = {
+  id: string;
+  releaseId: string;
+  trigger: RightsRouteReassessmentTrigger;
+  status: RightsRouteReassessmentStatus;
+  previousRoute?: UploadRightsRoute | string | null;
+  recommendedRoute?: UploadRightsRoute | string | null;
+  nextRoute?: UploadRightsRoute | string | null;
+  reason: string;
+  actorAddress?: string | null;
+  evidenceSubjectType?: string | null;
+  evidenceSubjectId?: string | null;
+  trustedSourceLinkId?: string | null;
+  rightsUpgradeRequestId?: string | null;
+  policyVersion?: string | null;
+  flags?: string[] | null;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  release?: {
+    id: string;
+    title: string;
+    artistId: string;
+    rightsRoute?: string | null;
+    rightsFlags?: string[] | null;
+    rightsReason?: string | null;
+    rightsSourceType?: string | null;
+    artist?: {
+      id: string;
+      userId: string;
+      displayName: string;
+    } | null;
+  } | null;
+};
+
 export async function getTrustTier(artistId: string, token: string) {
   return apiRequest<TrustTier>(`/api/trust/${artistId}`, { silentErrorCodes: [404] }, token);
 }
@@ -790,6 +850,85 @@ export async function submitRightsEvidenceBundle(
     method: "POST",
     body: JSON.stringify(input),
   }, token);
+}
+
+export async function createRightsRouteReassessment(
+  releaseId: string,
+  input: {
+    trigger?: RightsRouteReassessmentTrigger;
+    reason?: string;
+    recommendedRoute?: UploadRightsRoute;
+    evidenceSubjectType?: string;
+    evidenceSubjectId?: string;
+    trustedSourceLinkId?: string;
+    rightsUpgradeRequestId?: string;
+    flags?: string[];
+  },
+  token: string,
+) {
+  return apiRequest<RightsRouteReassessmentRecord>(
+    `/metadata/rights-reassessments/releases/${releaseId}`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export async function sampleRightsRouteAudits(
+  input: { limit?: number; reason?: string },
+  token: string,
+) {
+  return apiRequest<RightsRouteReassessmentRecord[]>(
+    "/metadata/rights-reassessments/audit-sample",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export async function listPendingRightsRouteReassessments(
+  token: string,
+  limit = 20,
+) {
+  return apiRequest<RightsRouteReassessmentRecord[]>(
+    `/metadata/rights-reassessments/pending?limit=${limit}`,
+    {},
+    token,
+  );
+}
+
+export async function listReleaseRightsRouteReassessmentHistory(
+  releaseId: string,
+  token: string,
+) {
+  return apiRequest<RightsRouteReassessmentRecord[]>(
+    `/metadata/rights-reassessments/releases/${releaseId}`,
+    {},
+    token,
+  );
+}
+
+export async function reviewRightsRouteReassessment(
+  reassessmentId: string,
+  input: {
+    action: "apply_route" | "confirm_current" | "dismiss";
+    nextRoute?: UploadRightsRoute;
+    reason?: string;
+  },
+  token: string,
+) {
+  return apiRequest<RightsRouteReassessmentRecord>(
+    `/metadata/rights-reassessments/${reassessmentId}/review`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
 }
 
 export async function submitTrustedSourceLinkRequest(

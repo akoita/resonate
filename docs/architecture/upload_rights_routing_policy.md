@@ -352,8 +352,38 @@ signals. Metadata conflicts, quarantined content, or DMCA-blocked content still
 force the stricter route.
 
 Revoking or suspending the artist/source link removes that trusted-source
-context from future routing decisions. Existing releases keep their historical
-route until reassessed by the route reassessment workflow.
+context from future routing decisions. Revocation also creates applied route
+reassessment records for matching `TRUSTED_FAST_PATH` releases and moves them
+back to `STANDARD_ESCROW` so fast-path privileges do not survive the source of
+trust.
+
+## Continuous Route Reassessment
+
+Initial routing is not final rights truth. Releases can be reassessed when new
+signals arrive after publication, including:
+
+- new release or track evidence,
+- trusted-source link revocation,
+- DMCA or fingerprint conflict signals,
+- dispute or appeal activity,
+- manual ops review,
+- policy audit sampling.
+
+The backend persists reassessment records with:
+
+- previous route,
+- recommended or applied next route,
+- trigger,
+- actor,
+- reason,
+- evidence/source references,
+- reviewed timestamp,
+- policy version and flags.
+
+Admin review can apply a new route, confirm the current route, or dismiss the
+sample/signal. Applied route changes update the release and all tracks together
+so marketplace and payout restrictions continue to flow from the existing route
+action profile.
 
 ## Recommended Initial Threshold Policy
 
@@ -436,6 +466,8 @@ Current implementation status:
   artist/source links exist in backend/domain state;
 - upload routing consults active trusted-source links and preserves stricter
   conflict routes when metadata or content signals require review;
+- rights-route reassessment records, audit sampling, admin review actions, and
+  trusted-source revocation downgrades exist in backend/API state;
 - richer creator/admin UX for source-link request management remains a follow-up
   product surface.
 

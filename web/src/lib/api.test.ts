@@ -630,6 +630,104 @@ describe('API Client', () => {
       });
     });
 
+    it('creates a manual rights route reassessment', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            id: 'rr-1',
+            releaseId: 'rel-1',
+            trigger: 'manual_review',
+            status: 'pending_review',
+            previousRoute: 'STANDARD_ESCROW',
+            recommendedRoute: 'QUARANTINED_REVIEW',
+            reason: 'New catalog signal requires review.',
+            createdAt: '2026-05-11T00:00:00.000Z',
+            updatedAt: '2026-05-11T00:00:00.000Z',
+          }),
+      });
+
+      await api.createRightsRouteReassessment(
+        'rel-1',
+        {
+          trigger: 'manual_review',
+          recommendedRoute: 'QUARANTINED_REVIEW',
+          reason: 'New catalog signal requires review.',
+        },
+        'admin-token',
+      );
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/metadata/rights-reassessments/releases/rel-1');
+      expect(opts.method).toBe('POST');
+      expect(opts.headers.get('Authorization')).toBe('Bearer admin-token');
+      expect(JSON.parse(opts.body)).toMatchObject({
+        trigger: 'manual_review',
+        recommendedRoute: 'QUARANTINED_REVIEW',
+      });
+    });
+
+    it('reviews a rights route reassessment', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            id: 'rr-1',
+            releaseId: 'rel-1',
+            trigger: 'fingerprint_conflict',
+            status: 'applied',
+            previousRoute: 'STANDARD_ESCROW',
+            nextRoute: 'QUARANTINED_REVIEW',
+            reason: 'Fingerprint conflict confirmed.',
+            createdAt: '2026-05-11T00:00:00.000Z',
+            updatedAt: '2026-05-11T00:00:00.000Z',
+          }),
+      });
+
+      await api.reviewRightsRouteReassessment(
+        'rr-1',
+        {
+          action: 'apply_route',
+          nextRoute: 'QUARANTINED_REVIEW',
+          reason: 'Fingerprint conflict confirmed.',
+        },
+        'admin-token',
+      );
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/metadata/rights-reassessments/rr-1/review');
+      expect(opts.method).toBe('PATCH');
+      expect(opts.headers.get('Authorization')).toBe('Bearer admin-token');
+      expect(JSON.parse(opts.body)).toMatchObject({
+        action: 'apply_route',
+        nextRoute: 'QUARANTINED_REVIEW',
+      });
+    });
+
+    it('samples low-friction releases for route audits', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify([]),
+      });
+
+      await api.sampleRightsRouteAudits(
+        { limit: 10, reason: 'Weekly policy sample.' },
+        'admin-token',
+      );
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/metadata/rights-reassessments/audit-sample');
+      expect(opts.method).toBe('POST');
+      expect(opts.headers.get('Authorization')).toBe('Bearer admin-token');
+      expect(JSON.parse(opts.body)).toEqual({
+        limit: 10,
+        reason: 'Weekly policy sample.',
+      });
+    });
+
     it('lists pending release rights-upgrade requests', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,

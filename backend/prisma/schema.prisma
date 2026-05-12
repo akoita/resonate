@@ -104,6 +104,7 @@ model Release {
   artist               Artist    @relation(fields: [artistId], references: [id])
   tracks               Track[]
   rightsUpgradeRequests ReleaseRightsUpgradeRequest[]
+  rightsReassessments  RightsRouteReassessment[]
 
   @@index([rightsRoute])
 }
@@ -916,6 +917,35 @@ model ReleaseRightsUpgradeRequest {
   @@index([releaseId, createdAt])
   @@index([artistId, createdAt])
   @@index([status, createdAt])
+}
+
+model RightsRouteReassessment {
+  id                    String   @id @default(uuid())
+  releaseId             String
+  trigger               String
+  status                String   @default("pending_review")
+  previousRoute         String?
+  recommendedRoute      String?
+  nextRoute             String?
+  reason                String   @db.Text
+  actorAddress          String?
+  evidenceSubjectType   String?
+  evidenceSubjectId     String?
+  trustedSourceLinkId   String?
+  rightsUpgradeRequestId String?
+  policyVersion         String?
+  flags                 Json?
+  reviewedBy            String?
+  reviewedAt            DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  release               Release  @relation(fields: [releaseId], references: [id])
+
+  @@index([releaseId, createdAt])
+  @@index([status, createdAt])
+  @@index([trigger, createdAt])
+  @@index([trustedSourceLinkId])
+  @@index([evidenceSubjectType, evidenceSubjectId])
 }
 
 model RightsEvidenceBundle {

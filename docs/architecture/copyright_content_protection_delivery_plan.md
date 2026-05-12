@@ -173,9 +173,9 @@ Primary issues:
 
 Still needed:
 
-- continuous monitoring of already-published releases
-- route re-evaluation after new evidence, disputes, or suspicious signals
-- sampling/audit on low-friction routes
+- broader trigger coverage for continuous monitoring of already-published releases
+- route re-evaluation after disputes, appeals, and suspicious signals
+- reviewer UX for sampled/audited low-friction routes
 - production-ready escalation from automation → ops → dispute → jury
 - dispute lifecycle E2E coverage, security scans, and deployment validation
 - anti-abuse controls for public reporting and curator activity
@@ -269,6 +269,11 @@ This audit found two scale-critical gaps that were described in RFCs but were no
 2. continuous route reassessment and audit sampling (`#496`)
 
 Those now exist as explicit issues so the roadmap reflects the actual scalable architecture rather than only the manual fallback path.
+
+Implementation note: #496 now has the backend/API foundation for persistent
+route reassessment records, low-friction audit sampling, evidence-submission
+reassessment triggers, and trusted-source revocation downgrades. Remaining work
+is mainly broader trigger wiring and review UX.
 
 ## Summary
 

@@ -30,6 +30,7 @@ import type {
   RightsEvidenceBundleInput,
   RightsEvidenceDraftInput,
 } from "../rights/rights-evidence";
+import { RightsRouteReassessmentService } from "../rights/rights-route-reassessment.service";
 import { TrustedSourceService } from "../rights/trusted-source.service";
 
 const DEFAULT_SEPOLIA_RPC_URL = "https://sepolia.drpc.org";
@@ -157,6 +158,7 @@ export class MetadataController {
     private readonly indexerService: IndexerService,
     private readonly notificationService: NotificationService,
     private readonly eventBus: EventBus,
+    private readonly rightsRouteReassessmentService: RightsRouteReassessmentService = new RightsRouteReassessmentService(),
     private readonly trustedSourceService: TrustedSourceService = new TrustedSourceService(),
   ) { }
 
@@ -897,9 +899,123 @@ export class MetadataController {
       throw new ForbiddenException("Evidence bundles can only be submitted for the authenticated wallet");
     }
 
-    return this.contractsService.createEvidenceBundle({
+    const bundle = await this.contractsService.createEvidenceBundle({
       ...body,
       submittedByAddress,
+    });
+    await this.rightsRouteReassessmentService.createReassessmentFromEvidenceBundle(bundle);
+    return bundle;
+  }
+
+  /**
+   * Create a manual route reassessment for a release (admin).
+   * POST /api/metadata/rights-reassessments/releases/:releaseId
+   */
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
+  @Post("rights-reassessments/releases/:releaseId")
+  async createRightsRouteReassessment(
+    @Request() req: any,
+    @Param("releaseId") releaseId: string,
+    @Body()
+    body: {
+      trigger?: string;
+      reason?: string;
+      recommendedRoute?: string;
+      evidenceSubjectType?: string;
+      evidenceSubjectId?: string;
+      trustedSourceLinkId?: string;
+      rightsUpgradeRequestId?: string;
+      flags?: string[];
+    },
+  ) {
+    return this.rightsRouteReassessmentService.createReassessment({
+      releaseId,
+      trigger: body?.trigger || "manual_review",
+      reason: body?.reason,
+      recommendedRoute: body?.recommendedRoute,
+      actorAddress: String(req?.user?.userId || "").toLowerCase(),
+      evidenceSubjectType: body?.evidenceSubjectType,
+      evidenceSubjectId: body?.evidenceSubjectId,
+      trustedSourceLinkId: body?.trustedSourceLinkId,
+      rightsUpgradeRequestId: body?.rightsUpgradeRequestId,
+      flags: body?.flags,
+    });
+  }
+
+  /**
+   * Create policy-driven audit samples for low-friction routes (admin).
+   * POST /api/metadata/rights-reassessments/audit-sample
+   */
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
+  @Post("rights-reassessments/audit-sample")
+  async sampleRightsRouteAudits(
+    @Request() req: any,
+    @Body() body: { limit?: number; reason?: string },
+  ) {
+    return this.rightsRouteReassessmentService.sampleLowFrictionAudits({
+      limit: body?.limit,
+      reason: body?.reason,
+      actorAddress: String(req?.user?.userId || "").toLowerCase(),
+    });
+  }
+
+  /**
+   * List pending rights-route reassessments for ops review (admin).
+   * GET /api/metadata/rights-reassessments/pending
+   */
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
+  @Get("rights-reassessments/pending")
+  async listPendingRightsRouteReassessments(@Query("limit") limitStr?: string) {
+    const limit = Math.min(parseInt(limitStr || "20", 10) || 20, 100);
+    return this.rightsRouteReassessmentService.listPendingReassessments(limit);
+  }
+
+  /**
+   * List route reassessment history for a release visible to owner/admin.
+   * GET /api/metadata/rights-reassessments/releases/:releaseId
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Get("rights-reassessments/releases/:releaseId")
+  async listRightsRouteReassessmentHistory(
+    @Request() req: any,
+    @Param("releaseId") releaseId: string,
+  ) {
+    return this.rightsRouteReassessmentService.listReleaseHistory(
+      releaseId,
+      String(req?.user?.userId || "").toLowerCase(),
+      String(req?.user?.role || "listener").toLowerCase(),
+    );
+  }
+
+  /**
+   * Review or apply a route reassessment (admin).
+   * PATCH /api/metadata/rights-reassessments/:id/review
+   */
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
+  @Patch("rights-reassessments/:id/review")
+  async reviewRightsRouteReassessment(
+    @Request() req: any,
+    @Param("id") id: string,
+    @Body()
+    body: {
+      action?: "apply_route" | "confirm_current" | "dismiss";
+      nextRoute?: string;
+      reason?: string;
+    },
+  ) {
+    if (!body?.action) {
+      throw new BadRequestException("Review action is required");
+    }
+    return this.rightsRouteReassessmentService.reviewReassessment({
+      reassessmentId: id,
+      action: body.action,
+      nextRoute: body.nextRoute,
+      reason: body.reason,
+      reviewedBy: String(req?.user?.userId || "").toLowerCase(),
     });
   }
 
@@ -1017,11 +1133,24 @@ export class MetadataController {
     @Param("id") id: string,
     @Body() body: { reason?: string },
   ) {
-    return this.trustedSourceService.revokeArtistLink({
+    const revokedBy = String(req?.user?.userId || "").toLowerCase();
+    const link = await this.trustedSourceService.revokeArtistLink({
       linkId: id,
-      revokedBy: String(req?.user?.userId || "").toLowerCase(),
+      revokedBy,
       reason: body?.reason,
     });
+    const reassessments =
+      await this.rightsRouteReassessmentService.createTrustedSourceRevocationReassessments({
+        linkId: link.id,
+        artistId: link.artistId,
+        sourceType: link.sourceType,
+        revokedBy,
+        reason: body?.reason,
+      });
+    return {
+      ...link,
+      reassessments,
+    };
   }
 
   /**
