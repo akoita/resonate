@@ -140,7 +140,7 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
   const provenance =
     CONTENT_PROVENANCE_COPY[normalizeContentProvenanceState(data.provenanceStatus, data.attested)];
   const rightsReview =
-    RIGHTS_VERIFICATION_COPY[normalizeRightsVerificationState(data.rightsVerificationStatus)];
+    RIGHTS_VERIFICATION_COPY[normalizeRightsVerificationState(data.rightsReviewState || data.rightsVerificationStatus)];
   const rightsUpgradeLabel =
     data.rightsUpgradeRequestStatus === "submitted"
       ? "Submitted"

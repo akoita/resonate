@@ -384,7 +384,9 @@ export default function ReleaseDetails() {
     rightsUpgradeRequest?.status || releaseProtection?.rightsUpgradeRequestStatus || null;
   const rightsUpgradeStatusLabel = formatRightsUpgradeStatusLabel(rightsUpgradeStatus);
   const rightsReviewDisplay =
-    RIGHTS_VERIFICATION_COPY[normalizeRightsVerificationState(releaseProtection?.rightsVerificationStatus)];
+    RIGHTS_VERIFICATION_COPY[normalizeRightsVerificationState(
+      releaseProtection?.rightsReviewState || releaseProtection?.rightsVerificationStatus,
+    )];
   const rightsUpgradeDecisionReason =
     rightsUpgradeRequest?.decisionReason || releaseProtection?.rightsUpgradeDecisionReason || null;
   const canSubmitRightsUpgrade =

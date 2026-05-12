@@ -85,10 +85,13 @@ These areas already have concrete code-level support:
 - admin review queue for release rights-upgrade requests
 - creator-facing restricted-release rights-upgrade request flow
 - explicit review-state mapping from review outcomes to:
-  - `platform_review_pending`
-  - `platform_reviewed`
+  - `evidence_submitted`
+  - `evidence_requested`
+  - `under_review`
+  - `approved_with_limits`
   - `rights_verified`
-  - `rights_disputed`
+  - `denied`
+  - `disputed`
 - in-app realtime release-rights review notifications and live status updates for:
   - admin queue intake,
   - admin decision delivery,

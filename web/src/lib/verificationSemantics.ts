@@ -7,10 +7,15 @@ export type ContentProvenanceState =
 
 export type RightsVerificationState =
   | "not_reviewed"
-  | "platform_review_pending"
-  | "platform_reviewed"
+  | "evidence_submitted"
+  | "evidence_requested"
+  | "under_review"
+  | "approved_with_limits"
   | "rights_verified"
-  | "rights_disputed";
+  | "denied"
+  | "disputed";
+
+export type RightsReviewState = RightsVerificationState;
 
 export type PlatformReviewState =
   | "not_reviewed"
@@ -60,14 +65,24 @@ export const RIGHTS_VERIFICATION_COPY: Record<RightsVerificationState, Verificat
     description: "Resonate has not independently reviewed rights evidence for this release.",
     color: "#6b7280",
   },
-  platform_review_pending: {
-    label: "Platform Review Pending",
-    description: "Rights evidence is waiting for platform review.",
+  evidence_submitted: {
+    label: "Evidence Submitted",
+    description: "The creator submitted rights evidence and it is waiting for ops review.",
     color: "#f59e0b",
   },
-  platform_reviewed: {
-    label: "Platform Reviewed",
-    description: "Resonate reviewed submitted evidence, but this is not the same as verified ownership rights.",
+  evidence_requested: {
+    label: "Evidence Requested",
+    description: "Ops requested stronger rights evidence before deciding marketplace access.",
+    color: "#f59e0b",
+  },
+  under_review: {
+    label: "Under Review",
+    description: "Ops is reviewing submitted release rights evidence.",
+    color: "#f59e0b",
+  },
+  approved_with_limits: {
+    label: "Approved With Limits",
+    description: "Resonate reviewed submitted evidence and approved marketplace access with standard escrow limits. This is not verified ownership rights.",
     color: "#3b82f6",
   },
   rights_verified: {
@@ -75,12 +90,19 @@ export const RIGHTS_VERIFICATION_COPY: Record<RightsVerificationState, Verificat
     description: "Resonate has enough evidence to represent likely recording ownership or publishing authority.",
     color: "#10b981",
   },
-  rights_disputed: {
-    label: "Rights Disputed",
-    description: "Rights are disputed, blocked, or denied for this release.",
+  denied: {
+    label: "Denied",
+    description: "The submitted rights evidence was denied for marketplace access.",
+    color: "#ef4444",
+  },
+  disputed: {
+    label: "Disputed",
+    description: "Rights are disputed, blocked, or contradicted for this release.",
     color: "#ef4444",
   },
 };
+
+export const RIGHTS_REVIEW_COPY = RIGHTS_VERIFICATION_COPY;
 
 export const PLATFORM_REVIEW_COPY: Record<PlatformReviewState, VerificationDisplay> = {
   not_reviewed: {
@@ -116,10 +138,17 @@ export function normalizeContentProvenanceState(
 }
 
 export function normalizeRightsVerificationState(status?: string | null): RightsVerificationState {
-  return status === "platform_review_pending" ||
-    status === "platform_reviewed" ||
+  if (status === "platform_review_pending") return "under_review";
+  if (status === "platform_reviewed") return "approved_with_limits";
+  if (status === "rights_disputed") return "disputed";
+
+  return status === "evidence_submitted" ||
+    status === "evidence_requested" ||
+    status === "under_review" ||
+    status === "approved_with_limits" ||
     status === "rights_verified" ||
-    status === "rights_disputed"
+    status === "denied" ||
+    status === "disputed"
     ? status
     : "not_reviewed";
 }

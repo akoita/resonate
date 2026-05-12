@@ -356,7 +356,8 @@ describe('MetadataController (integration)', () => {
 
       expect(request).not.toBeNull();
       expect(request!.status).toBe('submitted');
-      expect(request!.derivedRightsVerificationStatus).toBe('platform_review_pending');
+      expect(request!.derivedRightsReviewState).toBe('evidence_submitted');
+      expect(request!.derivedRightsVerificationStatus).toBe('evidence_submitted');
       expect(request!.requestedRoute).toBe('STANDARD_ESCROW');
       expect(request!.evidenceBundles?.[0]?.purpose).toBe('rights_upgrade_request');
       expect(request!.evidenceBundles?.[0]?.evidences).toHaveLength(1);
@@ -411,7 +412,8 @@ describe('MetadataController (integration)', () => {
       );
 
       expect(reviewed.status).toBe('approved_standard_escrow');
-      expect(reviewed.derivedRightsVerificationStatus).toBe('platform_reviewed');
+      expect(reviewed.derivedRightsReviewState).toBe('approved_with_limits');
+      expect(reviewed.derivedRightsVerificationStatus).toBe('approved_with_limits');
 
       const release = await prisma.release.findUnique({
         where: { id: `${TEST_PREFIX}release` },
@@ -421,7 +423,8 @@ describe('MetadataController (integration)', () => {
       expect(release?.rightsReason).toBe('Proof-of-control review passed for the release.');
 
       const contentProtection = await controller.getContentProtectionByRelease(`${TEST_PREFIX}release`);
-      expect(contentProtection?.rightsVerificationStatus).toBe('platform_reviewed');
+      expect(contentProtection?.rightsReviewState).toBe('approved_with_limits');
+      expect(contentProtection?.rightsVerificationStatus).toBe('approved_with_limits');
     });
   });
 
