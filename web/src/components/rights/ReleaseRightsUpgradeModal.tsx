@@ -17,6 +17,7 @@ import {
   normalizeRightsEvidenceUrl,
   normalizeRightsEvidenceUrlList,
 } from "../../lib/rightsEvidence";
+import type { RightsOnboardingContext } from "../../lib/rightsOnboarding";
 
 type ReleaseRightsUpgradeModalProps = {
   releaseId: string;
@@ -24,6 +25,7 @@ type ReleaseRightsUpgradeModalProps = {
   onClose: () => void;
   onSubmitted: (request: ReleaseRightsUpgradeRequestRecord) => void;
   existingDecisionReason?: string | null;
+  onboardingContext?: RightsOnboardingContext | null;
 };
 
 export default function ReleaseRightsUpgradeModal({
@@ -32,26 +34,36 @@ export default function ReleaseRightsUpgradeModal({
   onClose,
   onSubmitted,
   existingDecisionReason,
+  onboardingContext,
 }: ReleaseRightsUpgradeModalProps) {
   const { token } = useAuth();
   const { addToast } = useToast();
+  const guidedContext =
+    onboardingContext?.mode === "guided_trusted_source" ? onboardingContext : null;
+  const guidedPrefill = guidedContext?.prefill;
   const [requestedRoute, setRequestedRoute] =
-    useState<ReleaseRightsUpgradeRequestedRoute>("STANDARD_ESCROW");
-  const [summary, setSummary] = useState("");
-  const [evidenceKind, setEvidenceKind] = useState<RightsEvidenceKind>("proof_of_control");
-  const [title, setTitle] = useState("");
-  const [sourceUrl, setSourceUrl] = useState("");
-  const [claimedRightsholder, setClaimedRightsholder] = useState("");
-  const [sourceLabel, setSourceLabel] = useState("");
-  const [artistName, setArtistName] = useState("");
+    useState<ReleaseRightsUpgradeRequestedRoute>(guidedPrefill?.requestedRoute ?? "STANDARD_ESCROW");
+  const [summary, setSummary] = useState(guidedPrefill?.summary ?? "");
+  const [evidenceKind, setEvidenceKind] = useState<RightsEvidenceKind>(
+    guidedPrefill?.evidenceKind ?? "proof_of_control",
+  );
+  const [title, setTitle] = useState(guidedPrefill?.title ?? "");
+  const [sourceUrl, setSourceUrl] = useState(guidedPrefill?.sourceUrl ?? "");
+  const [claimedRightsholder, setClaimedRightsholder] = useState(
+    guidedPrefill?.claimedRightsholder ?? "",
+  );
+  const [sourceLabel, setSourceLabel] = useState(guidedPrefill?.sourceLabel ?? "");
+  const [artistName, setArtistName] = useState(guidedPrefill?.artistName ?? "");
   const [publicationDate, setPublicationDate] = useState("");
   const [isrc, setIsrc] = useState("");
   const [upc, setUpc] = useState("");
   const [attachmentUrls, setAttachmentUrls] = useState("");
-  const [description, setDescription] = useState("");
-  const [strength, setStrength] = useState<RightsEvidenceStrength>("high");
+  const [description, setDescription] = useState(guidedPrefill?.description ?? "");
+  const [strength, setStrength] = useState<RightsEvidenceStrength>(
+    guidedPrefill?.strength ?? "high",
+  );
   const [submitting, setSubmitting] = useState(false);
-  const [showOptional, setShowOptional] = useState(false);
+  const [showOptional, setShowOptional] = useState(Boolean(guidedPrefill));
 
   const selectedEvidence = useMemo(
     () => CREATOR_RIGHTS_EVIDENCE_OPTIONS.find((option) => option.value === evidenceKind),
@@ -71,11 +83,12 @@ export default function ReleaseRightsUpgradeModal({
 
   const toggleOptional = useCallback(() => setShowOptional((v) => !v), []);
 
+  const hasSourceEvidence = sourceUrl.trim().length > 0 || description.trim().length > 0;
   const canSubmit =
     summary.trim().length > 20 &&
     title.trim().length > 0 &&
-    sourceUrl.trim().length > 0 &&
-    claimedRightsholder.trim().length > 0;
+    claimedRightsholder.trim().length > 0 &&
+    (guidedContext ? hasSourceEvidence : sourceUrl.trim().length > 0);
 
   const handleSubmit = async () => {
     if (!token) {
@@ -90,9 +103,11 @@ export default function ReleaseRightsUpgradeModal({
     if (!canSubmit) {
       addToast({
         type: "warning",
-        title: "More information needed",
-        message: "Please complete the summary and primary evidence fields before submitting.",
-      });
+          title: "More information needed",
+          message: guidedContext
+            ? "Please complete the summary, rightsholder, and reviewer context before submitting."
+            : "Please complete the summary and primary evidence fields before submitting.",
+        });
       return;
     }
 
@@ -140,6 +155,12 @@ export default function ReleaseRightsUpgradeModal({
               metadata: {
                 submissionContext: "release_rights_upgrade",
                 evidenceLabel: selectedEvidence?.label,
+                onboardingMode: guidedContext ? "guided_trusted_source" : "manual",
+                trustedSourceLinkId: guidedContext?.trustedSourceLinkId,
+                trustedSourceId: guidedContext?.trustedSourceId,
+                trustedSourceType: guidedContext?.trustedSourceType,
+                trustedSourceTrustLevel: guidedContext?.trustedSourceTrustLevel,
+                recommendedRoute: guidedContext?.recommendedRoute,
               },
             },
           ],
@@ -183,10 +204,20 @@ export default function ReleaseRightsUpgradeModal({
         <div style={headerStyle}>
           <div>
             <h3 style={{ margin: 0, fontSize: "20px", fontWeight: 700 }}>
-              Submit Rights Evidence
+              {guidedContext ? "Guided Rights Evidence" : "Submit Rights Evidence"}
             </h3>
             <p style={{ margin: "6px 0 0", color: "rgba(255,255,255,0.48)", fontSize: "13px", lineHeight: 1.5 }}>
-              Share structured evidence for <strong style={{ color: "rgba(255,255,255,0.72)" }}>{releaseTitle}</strong>. Reviewers decide whether it supports marketplace access.
+              {guidedContext
+                ? (
+                    <>
+                      Use the trusted-source context for <strong style={{ color: "rgba(255,255,255,0.72)" }}>{releaseTitle}</strong>. Reviewers still decide whether it supports marketplace access.
+                    </>
+                  )
+                : (
+                    <>
+                      Share structured evidence for <strong style={{ color: "rgba(255,255,255,0.72)" }}>{releaseTitle}</strong>. Reviewers decide whether it supports marketplace access.
+                    </>
+                  )}
             </p>
           </div>
           <button style={closeButtonStyle} onClick={onClose} aria-label="Close">
@@ -200,6 +231,21 @@ export default function ReleaseRightsUpgradeModal({
           <div style={calloutStyle}>
             <strong style={{ display: "block", marginBottom: 6 }}>Latest reviewer note</strong>
             <span>{existingDecisionReason}</span>
+          </div>
+        )}
+
+        {guidedContext && (
+          <div style={guidedCalloutStyle}>
+            <span style={guidedBadgeStyle}>Guided proof-of-control</span>
+            <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.64)", lineHeight: 1.5 }}>
+              Suggested path: <strong>{guidedContext.recommendedRoute.replaceAll("_", " ")}</strong>.
+              This uses {guidedContext.signalLabel}; it is not ownership verification.
+            </div>
+            <div style={guidedReasonListStyle}>
+              {guidedContext.reasons.map((reason) => (
+                <span key={reason} style={guidedReasonStyle}>{reason}</span>
+              ))}
+            </div>
           </div>
         )}
 
@@ -289,13 +335,16 @@ export default function ReleaseRightsUpgradeModal({
 
         <div style={gridStyle}>
           <label style={fieldStyle}>
-            <span style={labelStyle}>Evidence URL *</span>
+            <span style={labelStyle}>Evidence URL {guidedContext ? "" : "*"}</span>
             <input
               value={sourceUrl}
               onChange={(event) => setSourceUrl(event.target.value)}
               style={inputStyle}
               placeholder={selectedEvidence?.sourceUrlPlaceholder || "https://..."}
             />
+            {guidedContext && (
+              <span style={hintStyle}>Optional when the trusted-source context below is enough for review.</span>
+            )}
           </label>
 
           <label style={fieldStyle}>
@@ -512,6 +561,45 @@ const calloutStyle: React.CSSProperties = {
   color: "#fcd34d",
   fontSize: "13px",
   lineHeight: 1.5,
+};
+
+const guidedCalloutStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "10px",
+  marginBottom: "18px",
+  padding: "14px 16px",
+  borderRadius: "14px",
+  border: "1px solid rgba(59, 130, 246, 0.24)",
+  background: "rgba(59, 130, 246, 0.08)",
+};
+
+const guidedBadgeStyle: React.CSSProperties = {
+  alignSelf: "flex-start",
+  padding: "3px 8px",
+  borderRadius: "999px",
+  border: "1px solid rgba(96, 165, 250, 0.32)",
+  background: "rgba(96, 165, 250, 0.12)",
+  color: "#93c5fd",
+  fontSize: "10px",
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+};
+
+const guidedReasonListStyle: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "6px",
+};
+
+const guidedReasonStyle: React.CSSProperties = {
+  padding: "3px 8px",
+  borderRadius: "999px",
+  border: "1px solid rgba(255,255,255,0.08)",
+  background: "rgba(255,255,255,0.04)",
+  color: "rgba(255,255,255,0.62)",
+  fontSize: "11px",
 };
 
 const submittedEvidenceNoticeStyle: React.CSSProperties = {

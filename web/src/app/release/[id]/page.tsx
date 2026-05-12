@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   getRelease,
@@ -16,6 +16,8 @@ import {
   waitForReleaseAvailability,
   getReleaseContentProtectionStatus,
   type ReleaseContentProtectionData,
+  listMyTrustedSourceLinks,
+  type TrustedSourceArtistLinkRecord,
 } from "../../../lib/api";
 import { LocalTrack, saveTracksMetadata } from "../../../lib/localLibrary";
 import { Button } from "../../../components/ui/Button";
@@ -54,6 +56,7 @@ import {
   RIGHTS_VERIFICATION_COPY,
   normalizeRightsVerificationState,
 } from "../../../lib/verificationSemantics";
+import { buildReleaseRightsOnboardingContext } from "../../../lib/rightsOnboarding";
 import "../../../styles/license-badges.css";
 
 // Helper to get duration from track's first stem
@@ -332,6 +335,7 @@ export default function ReleaseDetails() {
   const [showRightsUpgradeModal, setShowRightsUpgradeModal] = useState(false);
   const [releaseProtection, setReleaseProtection] = useState<ReleaseContentProtectionData | null>(null);
   const [rightsUpgradeRequest, setRightsUpgradeRequest] = useState<ReleaseRightsUpgradeRequestRecord | null>(null);
+  const [trustedSourceLinks, setTrustedSourceLinks] = useState<TrustedSourceArtistLinkRecord[]>([]);
   const [errorDetails, setErrorDetails] = useState<{ title: string; message: string } | null>(null);
   const shouldWaitForPendingRelease = searchParams.get("pending") === "1";
   const rightsTone = getRightsTone(release?.rightsRoute);
@@ -401,6 +405,17 @@ export default function ReleaseDetails() {
       : rightsUpgradeStatus === "denied"
         ? "Resubmit Request"
         : "Unlock Marketplace Rights";
+  const rightsOnboardingContext = useMemo(
+    () =>
+      buildReleaseRightsOnboardingContext({
+        release,
+        releaseProtection,
+        trustedSourceLinks,
+      }),
+    [release, releaseProtection, trustedSourceLinks],
+  );
+  const guidedRightsOnboarding =
+    rightsOnboardingContext.mode === "guided_trusted_source" ? rightsOnboardingContext : null;
   useEffect(() => {
     rightsUpgradeStatusRef.current = rightsUpgradeStatus;
   }, [rightsUpgradeStatus]);
@@ -716,6 +731,30 @@ export default function ReleaseDetails() {
       cancelled = true;
     };
   }, [isOwner, release?.id, token]);
+
+  useEffect(() => {
+    if (!token || !isOwner) {
+      setTrustedSourceLinks([]);
+      return;
+    }
+
+    let cancelled = false;
+    listMyTrustedSourceLinks(token)
+      .then((links) => {
+        if (!cancelled) {
+          setTrustedSourceLinks(links);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTrustedSourceLinks([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOwner, token]);
 
   useEffect(() => {
     if (!release?.id || !token || !isOwner) return;
@@ -1440,6 +1479,27 @@ export default function ReleaseDetails() {
                       <div style={{ marginTop: "4px", fontSize: "12px", color: "rgba(255,255,255,0.42)", lineHeight: 1.5 }}>
                         {rightsReviewDisplay.description}
                       </div>
+                      {canSubmitRightsUpgrade && guidedRightsOnboarding && (
+                        <div
+                          style={{
+                            marginTop: "10px",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "6px",
+                            padding: "10px 12px",
+                            borderRadius: "10px",
+                            border: "1px solid rgba(96,165,250,0.2)",
+                            background: "rgba(96,165,250,0.08)",
+                          }}
+                        >
+                          <div style={{ fontSize: "12px", color: "#93c5fd", fontWeight: 700 }}>
+                            Guided proof-of-control available
+                          </div>
+                          <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.56)", lineHeight: 1.5 }}>
+                            Suggested path: {guidedRightsOnboarding.recommendedRoute.replaceAll("_", " ")} via {guidedRightsOnboarding.signalLabel}. Reviewers still make the rights decision.
+                          </div>
+                        </div>
+                      )}
                       {rightsUpgradeDecisionReason && (
                         <div style={{ marginTop: "6px", fontSize: "13px", color: "rgba(255,255,255,0.75)", lineHeight: 1.5 }}>
                           {rightsUpgradeDecisionReason}
@@ -3222,6 +3282,7 @@ export default function ReleaseDetails() {
         releaseId={release.id}
         releaseTitle={release.title}
         existingDecisionReason={rightsUpgradeDecisionReason}
+        onboardingContext={rightsOnboardingContext}
         onClose={() => setShowRightsUpgradeModal(false)}
         onSubmitted={async (request) => {
           setRightsUpgradeRequest(request);
