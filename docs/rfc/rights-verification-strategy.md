@@ -316,6 +316,23 @@ Recommended verification ladder:
 
 For artists with no public footprint and no trusted source linkage, Resonate should not grant immediate full-trust publishing status. They may still upload, but under tighter controls.
 
+### Guided Proof-of-Control Requests
+
+When a restricted release belongs to a creator with an active trusted-source
+link, the product can offer a shorter proof-of-control request. The guided path
+uses the trusted-source link to prefill the requested route, evidence kind,
+rightsholder context, source label, and reviewer summary.
+
+This is a UX and evidence-collection shortcut only:
+
+- active trusted-source links can suggest `STANDARD_ESCROW` or
+  `TRUSTED_FAST_PATH`;
+- human verification can appear as supporting anti-sybil context, but never as
+  ownership proof;
+- blocked or conflict-heavy releases remain on manual review;
+- the request is still submitted as structured evidence and requires reviewer
+  approval before marketplace access changes.
+
 ## Practical Publishing Policy
 
 Recommended default behavior:

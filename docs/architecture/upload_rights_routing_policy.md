@@ -449,6 +449,26 @@ Examples:
 
 Users should never be left guessing why an upload is stuck or why certain monetization actions are unavailable.
 
+## Guided Marketplace-Rights Onboarding
+
+Restricted releases can enter a lower-friction rights-unlock request when the
+creator already has strong low-risk signals. This path does not approve
+marketplace access directly. It pre-fills a reviewable rights-upgrade request
+with known context so ops can make the same decision with less creator burden.
+
+Initial guided eligibility:
+
+- active trusted-source artist links are the primary signal;
+- high or very-high trust links suggest `TRUSTED_FAST_PATH`;
+- standard trust links suggest `STANDARD_ESCROW`;
+- human verification is only a supporting anti-sybil signal and never proves
+  release ownership;
+- blocked releases and conflict-heavy routes stay on the manual review path.
+
+The guided request should still persist structured rights evidence, a summary,
+the requested route, and trusted-source metadata. Marketplace restrictions remain
+enforced until a reviewer approves the request through the normal review flow.
+
 ## Near-Term Implementation Order
 
 1. define the decision object and routing states in backend domain language,
