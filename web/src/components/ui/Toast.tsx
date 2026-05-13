@@ -13,6 +13,7 @@ type ToastType = "success" | "error" | "warning" | "info";
 type Toast = {
     id: string;
     type: ToastType;
+    visual?: "funding";
     title: string;
     message?: string;
     duration?: number;
@@ -126,7 +127,7 @@ function ToastItem({
 
     return (
         <div
-            className={`toast toast-${toast.type} ${toast.onClick ? 'clickable' : ''}`}
+            className={`toast toast-${toast.type} ${toast.visual ? `toast--${toast.visual}` : ''} ${toast.onClick ? 'clickable' : ''}`}
             onClick={handleToastClick}
             style={toast.onClick ? { cursor: 'pointer' } : undefined}
         >

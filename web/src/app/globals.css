@@ -3659,6 +3659,53 @@ a {
   backdrop-filter: blur(12px);
   animation: toast-slide-in 0.3s ease;
   transition: all 0.2s ease;
+  overflow: hidden;
+  position: relative;
+}
+
+.toast--funding {
+  background:
+    radial-gradient(circle at 14% 18%, rgba(255, 255, 255, 0.18), transparent 22%),
+    linear-gradient(135deg, rgba(38, 166, 91, 0.18), rgba(124, 92, 255, 0.2)),
+    var(--color-surface);
+  border-color: rgba(74, 222, 128, 0.55);
+}
+
+.toast--funding::before,
+.toast--funding::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.toast--funding::before {
+  inset: -60% auto auto -15%;
+  width: 54%;
+  height: 220%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.24), transparent);
+  transform: rotate(18deg);
+  animation: funding-toast-shine 2.8s ease-in-out 0.25s 2;
+}
+
+.toast--funding::after {
+  inset: 7px 44px auto auto;
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  border: 1px solid rgba(74, 222, 128, 0.38);
+  box-shadow:
+    0 0 0 7px rgba(74, 222, 128, 0.06),
+    0 0 30px rgba(124, 92, 255, 0.22);
+  animation: funding-toast-pulse 1.8s ease-in-out 3;
+}
+
+.toast--funding .toast-icon {
+  background: rgba(74, 222, 128, 0.22);
+  box-shadow: 0 0 22px rgba(74, 222, 128, 0.34);
+}
+
+.toast--funding .toast-title {
+  color: #ecfff3;
 }
 
 .toast.clickable:hover {
@@ -3679,6 +3726,29 @@ a {
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+@keyframes funding-toast-shine {
+  from {
+    transform: translateX(-30%) rotate(18deg);
+  }
+
+  to {
+    transform: translateX(260%) rotate(18deg);
+  }
+}
+
+@keyframes funding-toast-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.88);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 

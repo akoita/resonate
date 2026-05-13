@@ -10,12 +10,14 @@ import {
   type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { foundry, sepolia } from "viem/chains";
+import { base, baseSepolia, foundry, sepolia } from "viem/chains";
 import { prisma } from "../../db/prisma";
 
 export const SIGNUP_FAUCET_STORE = "SIGNUP_FAUCET_STORE";
 export const SIGNUP_FAUCET_SENDER = "SIGNUP_FAUCET_SENDER";
 
+// Keep the original purpose string so existing idempotency records still apply
+// after the faucet is generalized beyond Ethereum Sepolia.
 const SIGNUP_FAUCET_PURPOSE = "signup-sepolia-faucet";
 const DEFAULT_FAUCET_CHAIN_ID = 11155111;
 const DEFAULT_FAUCET_AMOUNT_ETH = "0.1";
@@ -24,7 +26,7 @@ export type AuthMode = "login" | "register";
 
 export type SignupFaucetResult =
   | { status: "skipped"; reason: string }
-  | { status: "sent"; txHash: Hex }
+  | { status: "sent"; txHash: Hex; chainId: number; amountEth: string }
   | { status: "failed"; reason: string };
 
 type SignupFaucetConfig = {
@@ -74,8 +76,37 @@ function parseEnabled(value?: string | null) {
   return ["1", "true", "yes", "on"].includes((value ?? "").trim().toLowerCase());
 }
 
+function firstConfiguredValue(config: ConfigService, keys: string[]) {
+  for (const key of keys) {
+    const value = config.get<string>(key)?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function parseChainId(value?: string | null) {
+  if (!value?.trim()) return undefined;
+  const parsed = Number(value.trim());
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parseCaip2ChainId(value?: string | null) {
+  const match = /^eip155:(\d+)$/.exec(value?.trim() ?? "");
+  return match ? parseChainId(match[1]) : undefined;
+}
+
 function chainFor(chainId: number, rpcUrl?: string): Chain {
   if (chainId === 31337) return foundry;
+  if (chainId === 8453) {
+    return rpcUrl
+      ? { ...base, rpcUrls: { default: { http: [rpcUrl] } } }
+      : base;
+  }
+  if (chainId === 84532) {
+    return rpcUrl
+      ? { ...baseSepolia, rpcUrls: { default: { http: [rpcUrl] } } }
+      : baseSepolia;
+  }
   if (chainId === 11155111) {
     return rpcUrl
       ? { ...sepolia, rpcUrls: { default: { http: [rpcUrl] } } }
@@ -89,26 +120,70 @@ function chainFor(chainId: number, rpcUrl?: string): Chain {
   };
 }
 
-export function getSignupFaucetConfig(config: ConfigService): SignupFaucetConfig {
-  const chainId = Number(
-    config.get<string>("SIGNUP_SEPOLIA_FAUCET_CHAIN_ID") ?? DEFAULT_FAUCET_CHAIN_ID,
+function resolveSignupFaucetChainId(config: ConfigService, activeChainId?: number) {
+  return (
+    parseChainId(config.get<string>("SIGNUP_FAUCET_CHAIN_ID")) ??
+    activeChainId ??
+    parseChainId(config.get<string>("SIGNUP_SEPOLIA_FAUCET_CHAIN_ID")) ??
+    parseChainId(firstConfiguredValue(config, [
+      "PAYMENT_CHAIN_ID",
+      "AA_CHAIN_ID",
+      "CHAIN_ID",
+      "NEXT_PUBLIC_CHAIN_ID",
+      "INDEXER_CHAIN_ID",
+    ])) ??
+    parseCaip2ChainId(config.get<string>("X402_NETWORK")) ??
+    DEFAULT_FAUCET_CHAIN_ID
   );
+}
+
+function resolveSignupFaucetRpcUrl(config: ConfigService, chainId: number) {
+  const explicitRpc = firstConfiguredValue(config, [
+    "SIGNUP_FAUCET_RPC_URL",
+    "SIGNUP_SEPOLIA_FAUCET_RPC_URL",
+    "RPC_URL",
+  ]);
+  if (explicitRpc) return explicitRpc;
+
+  if (chainId === 84532) {
+    return config.get<string>("BASE_SEPOLIA_RPC_URL")?.trim() || "https://sepolia.base.org";
+  }
+  if (chainId === 8453) {
+    return config.get<string>("BASE_RPC_URL")?.trim() || "https://mainnet.base.org";
+  }
+  if (chainId === 11155111) {
+    return config.get<string>("SEPOLIA_RPC_URL")?.trim() || undefined;
+  }
+  if (chainId === 31337) {
+    return config.get<string>("LOCAL_RPC_URL")?.trim() || "http://localhost:8545";
+  }
+
+  return undefined;
+}
+
+export function getSignupFaucetConfig(config: ConfigService, activeChainId?: number): SignupFaucetConfig {
+  const chainId = resolveSignupFaucetChainId(config, activeChainId);
   const amountEth =
-    config.get<string>("SIGNUP_SEPOLIA_FAUCET_AMOUNT_ETH") ?? DEFAULT_FAUCET_AMOUNT_ETH;
+    firstConfiguredValue(config, [
+      "SIGNUP_FAUCET_AMOUNT_ETH",
+      "SIGNUP_SEPOLIA_FAUCET_AMOUNT_ETH",
+    ]) ?? DEFAULT_FAUCET_AMOUNT_ETH;
 
   return {
-    enabled: parseEnabled(config.get<string>("SIGNUP_SEPOLIA_FAUCET_ENABLED")),
+    enabled: parseEnabled(firstConfiguredValue(config, [
+      "SIGNUP_FAUCET_ENABLED",
+      "SIGNUP_SEPOLIA_FAUCET_ENABLED",
+    ])),
     chainId,
     amountEth,
     amountWei: parseEther(amountEth).toString(),
-    rpcUrl:
-      config.get<string>("SIGNUP_SEPOLIA_FAUCET_RPC_URL") ||
-      config.get<string>("RPC_URL") ||
-      config.get<string>("SEPOLIA_RPC_URL") ||
-      undefined,
+    rpcUrl: resolveSignupFaucetRpcUrl(config, chainId),
     funderPrivateKey: normalizePrivateKey(
-      config.get<string>("SIGNUP_SEPOLIA_FAUCET_FUNDER_PRIVATE_KEY") ||
-      config.get<string>("PRIVATE_KEY"),
+      firstConfiguredValue(config, [
+        "SIGNUP_FAUCET_FUNDER_PRIVATE_KEY",
+        "SIGNUP_SEPOLIA_FAUCET_FUNDER_PRIVATE_KEY",
+        "PRIVATE_KEY",
+      ]),
     ),
   };
 }
@@ -211,12 +286,12 @@ export class SignupFaucetService {
       return { status: "skipped", reason: "not_signup" };
     }
 
-    const faucetConfig = getSignupFaucetConfig(this.config);
+    const faucetConfig = getSignupFaucetConfig(this.config, input.verifiedChainId);
     if (!faucetConfig.enabled) {
       return { status: "skipped", reason: "disabled" };
     }
 
-    if (input.requestedChainId !== faucetConfig.chainId) {
+    if (input.requestedChainId && input.requestedChainId !== faucetConfig.chainId) {
       return { status: "skipped", reason: "request_chain_mismatch" };
     }
 
@@ -254,7 +329,7 @@ export class SignupFaucetService {
     if (!faucetConfig.funderPrivateKey) {
       const reason = "missing_funder_private_key";
       await store.markFailed(attempt.id, reason);
-      this.logger.error("Signup Sepolia faucet is enabled but no funder private key is configured");
+      this.logger.error(`Signup faucet is enabled for chain ${faucetConfig.chainId} but no funder private key is configured`);
       return { status: "failed", reason };
     }
 
@@ -268,9 +343,14 @@ export class SignupFaucetService {
       });
       await store.markSent(attempt.id, txHash);
       this.logger.log(
-        `Funded signup wallet ${normalizedWallet} with ${faucetConfig.amountEth} Sepolia ETH (${txHash})`,
+        `Funded signup wallet ${normalizedWallet} with ${faucetConfig.amountEth} native ETH on chain ${faucetConfig.chainId} (${txHash})`,
       );
-      return { status: "sent", txHash };
+      return {
+        status: "sent",
+        txHash,
+        chainId: faucetConfig.chainId,
+        amountEth: faucetConfig.amountEth,
+      };
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       await store.markFailed(attempt.id, reason);

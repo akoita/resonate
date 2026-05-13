@@ -730,8 +730,9 @@ Base Sepolia should provide faucet-oriented actions:
 - WETH: after the first USDC/native ETH milestone, provide a wrap action backed
   by a configured wrapped-native contract. Hide WETH until that contract and UX
   are ready.
-- Signup faucet can continue to send native test ETH, but should be generalized
-  or complemented by asset-specific funding options for USDC.
+- Signup faucet sends native test ETH on the active signup chain through the
+  generic `SIGNUP_FAUCET_*` env vars. Asset-specific funding options still cover
+  USDC and other settlement assets.
 
 References:
 

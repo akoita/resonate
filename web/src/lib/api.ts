@@ -59,7 +59,16 @@ export type WalletRecord = {
 };
 
 type AuthVerifyResponse =
-  | { accessToken: string; address?: string }
+  | {
+      accessToken: string;
+      address?: string;
+      signupFaucet?: {
+        status: "sent";
+        txHash: `0x${string}`;
+        chainId: number;
+        amountEth: string;
+      };
+    }
   | { status: "invalid_signature" | "invalid_nonce" };
 
 function formatApiErrorMessage(status: number, statusText: string, detail: string) {
