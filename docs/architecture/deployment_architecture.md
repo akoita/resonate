@@ -33,7 +33,7 @@ flowchart LR
   Backend --> Redis[("Memorystore Redis")]
   Backend --> GCS[("GCS stems bucket")]
   Backend --> Jobs["Pub/Sub stem-separate"]
-  Jobs --> Worker["Cloud Run Demucs worker"]
+  Jobs --> Worker["Cloud Run Demucs Job\non-demand"]
   Worker --> GCS
   Worker --> Results["Pub/Sub stem-results"]
   Results --> Backend
@@ -62,13 +62,13 @@ flowchart LR
 | Human app | Next.js frontend, passkey wallet UX, player, marketplace, upload and dispute surfaces | Deployed as a Cloud Run service and configured from environment-specific IaC values |
 | Agent API | OpenAPI, public storefront, `/mcp`, x402 quote/download endpoints | Allows machine clients to discover, quote, pay for, and download stems without a Resonate account |
 | Backend | NestJS modules for auth, catalog, storefront, x402, MCP, storage, generation, contracts, rights, payments, notifications, and indexing | Runs on Cloud Run with Secret Manager-backed configuration |
-| Stem processing | Pub/Sub topics `stem-separate`, `stem-results`, `stem-dlq`; Demucs worker on Cloud Run | Worker can run CPU or GPU mode and writes processed stems to durable storage |
+| Stem processing | Pub/Sub topics `stem-separate`, `stem-results`, `stem-dlq`; Demucs Cloud Run Job | Worker can run CPU or GPU mode, starts on demand per queued track, and writes processed stems to durable storage |
 | Data | Cloud SQL Postgres, Memorystore Redis, GCS stems bucket, optional IPFS storage mode | Cloud SQL and Redis are reached through private networking |
 | Smart accounts | ZeroDev/Kernel v3, ERC-4337 bundler, EntryPoint v0.7, session keys, passkeys | Users transact through smart accounts; agents can act through permissioned session keys |
 | Contracts | `StemNFT`, `StemMarketplaceV2`, `ContentProtection`, `CurationRewards`, `DisputeResolution`, `RevenueEscrow`, `TransferValidator`, payment asset contracts | Contract addresses are deployed from this repo and handed to `resonate-iac` for cloud runtime config |
 | x402 | x402 challenges, facilitator verify/settle, USDC payout wallet, receipt headers | Machine payment surface shares catalog and pricing data with the human app |
 | Delivery | GitHub Actions, Workload Identity Federation, Artifact Registry, Terraform, Cloud Run image overrides | App CI produces images; `resonate-iac` owns environment deploys and Terraform state |
-| Observability | Cloud Monitoring uptime checks, error-rate alerts, Demucs health, Pub/Sub backlog, DB CPU | Managed by the `observability` Terraform module |
+| Observability | Cloud Monitoring uptime checks, error-rate alerts, Pub/Sub backlog, DB CPU | Managed by the `observability` Terraform module; Demucs job mode is monitored through queue/backlog and job execution logs rather than a resident health endpoint |
 
 ## Source References
 

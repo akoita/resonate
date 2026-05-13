@@ -28,6 +28,9 @@ When adding a new environment variable:
 | `NEXT_PUBLIC_PASSKEY_RP_ID` | Frontend | Optional WebAuthn relying-party ID override. Leave unset for normal hostname-based passkeys; set only to recover or intentionally share passkeys across subdomains |
 | `RPC_URL` | Backend | RPC endpoint used by contract-aware backend flows |
 | `GCP_PROJECT_ID` | Backend | Recommended explicit GCP project for Pub/Sub-backed ingestion; when unset in Cloud Run the backend can also derive the project from Application Default Credentials |
+| `DEMUCS_CLOUD_RUN_JOB_PROJECT` | Backend | Optional project for on-demand Demucs Cloud Run Job execution. Defaults to `GCP_PROJECT_ID` when unset |
+| `DEMUCS_CLOUD_RUN_JOB_REGION` | Backend | Cloud Run region for on-demand Demucs jobs |
+| `DEMUCS_CLOUD_RUN_JOB_NAME` | Backend | Cloud Run Job name to execute after publishing each `stem-separate` message |
 | `GCP_BILLING_QUOTA_PROJECT` | CI | Optional quota/billing project for Cloud Build submission; deploy CI defaults it to `GCP_PROJECT_ID` |
 | `GCP_CLOUD_BUILD_SOURCE_STAGING_DIR` | CI | Optional Cloud Storage prefix for `gcloud builds submit` source archives; deploy CI defaults it from `GCP_PROJECT_ID` |
 | `AA_BUNDLER` | Backend / frontend server runtime | Server-side bundler URL used by account-abstraction flows and the `/api/bundler` proxy |
@@ -140,6 +143,9 @@ When adding a new environment variable:
   Credentials resolve automatically.
 - Other non-local environments: use Application Default Credentials via
   `GOOGLE_APPLICATION_CREDENTIALS` if metadata-server auth is not available.
+- On-demand Demucs environments also need Cloud Run Job execution permission for
+  the backend service account. `resonate-iac` grants this when
+  `demucs_deployment_mode = "job"`.
 
 If these variables are deployed through infrastructure, define them in
 `resonate-iac` alongside the backend service environment configuration.

@@ -134,6 +134,24 @@ describe('CatalogController (e2e)', () => {
     expect(res.headers['accept-ranges']).toBe('bytes');
   });
 
+  it('GET /catalog/stems/:id/blob → preserves provider-backed byte ranges', async () => {
+    mockCatalogService.getStemBlob.mockResolvedValue({
+      data: Buffer.alloc(20),
+      mimeType: 'audio/mpeg',
+      range: { start: 10, end: 29, total: 100 },
+    });
+
+    const res = await request(app.getHttpServer())
+      .get('/catalog/stems/stem-1/blob')
+      .set('Range', 'bytes=10-29')
+      .expect(206);
+
+    expect(res.headers['content-range']).toBe('bytes 10-29/100');
+    expect(res.headers['accept-ranges']).toBe('bytes');
+    expect(res.headers['content-length']).toBe('20');
+    expect(res.headers['content-type']).toContain('audio/mpeg');
+  });
+
   it('GET /catalog/stems/:id/preview → supports byte-range streaming', async () => {
     mockCatalogService.getStemPreview.mockResolvedValue({
       data: Buffer.alloc(100),

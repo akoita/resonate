@@ -23,17 +23,22 @@ The worker supports two processing modes, controlled by `PROCESSING_MODE`:
 
 | Mode     | Description                                                   | Use Case                          |
 | -------- | ------------------------------------------------------------- | --------------------------------- |
-| `http`   | Legacy HTTP endpoint — backend sends file, waits for response | Simple local dev without Pub/Sub  |
-| `pubsub` | GCP Pub/Sub event-driven — worker pulls jobs from topic       | Local dev (emulator) & production |
+| `http`        | Legacy HTTP endpoint — backend sends file, waits for response       | Simple local dev without Pub/Sub  |
+| `pubsub`      | Long-running Pub/Sub pull worker                                    | Local dev (emulator)              |
+| `pubsub-once` | Pull exactly one Pub/Sub message, process it, then exit             | Cloud Run Job / on-demand GPU     |
 
-In **pubsub mode**, the worker:
+In **pubsub** and **pubsub-once** modes, the worker:
 
-1. Subscribes to the `stem-separate` Pub/Sub topic (or emulator)
+1. Reads a job from the `stem-separate-worker` subscription
 2. Downloads audio from GCS or the backend HTTP URI in the message
 3. Runs Demucs separation + ffmpeg compression
 4. Uploads stems to GCS (or local `/outputs` volume)
 5. Publishes results to `stem-results` topic
 6. POSTs real-time progress callbacks to `{callbackUrl}/ingestion/progress/{releaseId}/{trackId}`
+
+Cloud deployments should prefer `pubsub-once` on a Cloud Run Job. The backend
+publishes the Pub/Sub message and then starts one job execution, so GPU capacity
+exists only while a track is being separated.
 
 > **Local dev:** Run `make dev-up` from the repo root to start Postgres, Redis, and the Pub/Sub
 > emulator defined in [`docker/docker-compose.local.yml`](../../docker/docker-compose.local.yml).
@@ -257,13 +262,14 @@ docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 
 | Variable                            | Default                | Description                                        |
 | ----------------------------------- | ---------------------- | -------------------------------------------------- |
-| `PROCESSING_MODE`                   | `pubsub`               | `http` (legacy) or `pubsub` (event-driven)         |
+| `PROCESSING_MODE`                   | `pubsub`               | `http`, `pubsub`, or `pubsub-once`                 |
 | `STORAGE_MODE`                      | `local`                | `local` (shared volume) or `gcs` (Cloud Storage)   |
 | `GCS_BUCKET`                        |                        | GCS bucket for stem storage (required in gcs mode) |
 | `OUTPUT_DIR`                        | `/outputs`             | Directory for generated stems (local mode)         |
 | `GCP_PROJECT_ID`                    |                        | GCP project ID (required in pubsub mode)           |
 | `PUBSUB_SUBSCRIPTION`               | `stem-separate-worker` | Pub/Sub subscription for job intake                |
 | `PUBSUB_RESULTS_TOPIC`              | `stem-results`         | Pub/Sub topic for publishing results               |
+| `PUBSUB_JOB_WAIT_SECONDS`           | `60`                   | How long `pubsub-once` waits for a message         |
 | `PUBSUB_EMULATOR_HOST`              |                        | Pub/Sub emulator address for local dev             |
 | `TORCHAUDIO_USE_BACKEND_DISPATCHER` | `1`                    | Enable torchaudio 2.x backend                      |
 

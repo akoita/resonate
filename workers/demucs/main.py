@@ -9,6 +9,8 @@ import tempfile
 import logging
 import httpx
 import json
+import threading
+import time
 from typing import Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor
 
@@ -608,6 +610,109 @@ def pubsub_consumer_with_retry():
             time.sleep(wait)
 
 
+def publish_failure_result(message_data: dict, error: Exception) -> bool:
+    """Publish a failed result message. Returns True only after Pub/Sub accepts it."""
+    try:
+        from google.cloud import pubsub_v1
+
+        publisher = pubsub_v1.PublisherClient()
+        topic_path = publisher.topic_path(PUBSUB_PROJECT, RESULTS_TOPIC)
+        fail_msg = {
+            "jobId": message_data.get("jobId", "unknown"),
+            "releaseId": message_data.get("releaseId", ""),
+            "artistId": message_data.get("artistId", ""),
+            "trackId": message_data.get("trackId", ""),
+            "status": "failed",
+            "error": str(error),
+        }
+        publisher.publish(topic_path, json.dumps(fail_msg).encode("utf-8")).result()
+        return True
+    except Exception as pub_err:
+        logger.error(f"[PubSub] Failed to publish failure result: {pub_err}")
+        return False
+
+
+def extend_ack_deadline_until_stopped(subscriber, subscription_path: str, ack_id: str, stop_event: threading.Event):
+    """Keep a long-running job message leased while Demucs is processing."""
+    while not stop_event.wait(240):
+        try:
+            subscriber.modify_ack_deadline(
+                request={
+                    "subscription": subscription_path,
+                    "ack_ids": [ack_id],
+                    "ack_deadline_seconds": 600,
+                }
+            )
+            logger.info("[PubSubJob] Extended ack deadline for active Demucs job")
+        except Exception as exc:
+            logger.warning(f"[PubSubJob] Failed to extend ack deadline: {exc}")
+
+
+def process_one_pubsub_message(wait_seconds: Optional[int] = None) -> bool:
+    """Pull, process, and ack one Pub/Sub message for Cloud Run Job execution."""
+    from google.api_core import exceptions as google_exceptions
+    from google.cloud import pubsub_v1
+
+    wait_seconds = wait_seconds if wait_seconds is not None else int(os.getenv("PUBSUB_JOB_WAIT_SECONDS", "60"))
+    subscriber = pubsub_v1.SubscriberClient()
+    subscription_path = subscriber.subscription_path(PUBSUB_PROJECT, SUBSCRIPTION_NAME)
+    deadline = time.monotonic() + wait_seconds
+
+    logger.info(f"[PubSubJob] Waiting up to {wait_seconds}s for one message on {subscription_path}")
+    received = None
+    while time.monotonic() < deadline and not received:
+        remaining = max(1, int(deadline - time.monotonic()))
+        try:
+            response = subscriber.pull(
+                request={"subscription": subscription_path, "max_messages": 1},
+                timeout=min(10, remaining),
+            )
+        except google_exceptions.DeadlineExceeded:
+            continue
+        if response.received_messages:
+            received = response.received_messages[0]
+            break
+        time.sleep(1)
+
+    if not received:
+        logger.info("[PubSubJob] No message available; exiting cleanly")
+        return False
+
+    stop_event = threading.Event()
+    extender = threading.Thread(
+        target=extend_ack_deadline_until_stopped,
+        args=(subscriber, subscription_path, received.ack_id, stop_event),
+        daemon=True,
+    )
+    extender.start()
+
+    try:
+        data = json.loads(received.message.data.decode("utf-8"))
+        logger.info(f"[PubSubJob] Processing message: jobId={data.get('jobId')}")
+        asyncio.run(process_pubsub_message(data))
+        subscriber.acknowledge(request={"subscription": subscription_path, "ack_ids": [received.ack_id]})
+        logger.info(f"[PubSubJob] Acked message for job {data.get('jobId')}")
+        return True
+    except json.JSONDecodeError as exc:
+        logger.error(f"[PubSubJob] Failed to parse message: {exc}")
+        subscriber.acknowledge(request={"subscription": subscription_path, "ack_ids": [received.ack_id]})
+        return True
+    except Exception as exc:
+        logger.error(f"[PubSubJob] Processing failed: {exc}")
+        data = locals().get("data", {})
+        if publish_failure_result(data, exc):
+            subscriber.acknowledge(request={"subscription": subscription_path, "ack_ids": [received.ack_id]})
+            logger.info(f"[PubSubJob] Acked failed message for job {data.get('jobId')} after publishing failure result")
+            return True
+        subscriber.modify_ack_deadline(
+            request={"subscription": subscription_path, "ack_ids": [received.ack_id], "ack_deadline_seconds": 0}
+        )
+        return False
+    finally:
+        stop_event.set()
+        extender.join(timeout=5)
+
+
 @app.on_event("startup")
 async def startup_event():
     """Start Pub/Sub consumer in background thread if in pubsub mode."""
@@ -627,3 +732,8 @@ def health():
         "processing_mode": PROCESSING_MODE,
         "demucs_device": DEMUCS_DEVICE or "auto",
     }
+
+
+if __name__ == "__main__":
+    if PROCESSING_MODE in ("pubsub-once", "job"):
+        process_one_pubsub_message()

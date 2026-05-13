@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { PubSub, Topic } from "@google-cloud/pubsub";
+import { GoogleAuth } from "google-auth-library";
 import { resolvePubSubRuntimeConfig } from "./pubsub-runtime";
 
 /**
@@ -52,6 +53,7 @@ export interface StemResultMessage {
 
 const TOPIC_SEPARATE = "stem-separate";
 const TOPIC_RESULTS = "stem-results";
+const CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 
 @Injectable()
 export class StemPubSubPublisher implements OnModuleInit {
@@ -107,6 +109,64 @@ export class StemPubSubPublisher implements OnModuleInit {
     this.logger.log("StemPubSubPublisher initialized");
   }
 
+  private cloudRunJobConfig() {
+    const projectId = process.env.DEMUCS_CLOUD_RUN_JOB_PROJECT || process.env.GCP_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT;
+    const region = process.env.DEMUCS_CLOUD_RUN_JOB_REGION;
+    const jobName = process.env.DEMUCS_CLOUD_RUN_JOB_NAME;
+
+    if (!projectId || !region || !jobName) {
+      return null;
+    }
+
+    return { projectId, region, jobName };
+  }
+
+  private normalizeAuthHeaders(headers: unknown): Record<string, string> {
+    const normalized: Record<string, string> = {};
+    if (headers && typeof (headers as any).forEach === "function") {
+      (headers as any).forEach((value: string, key: string) => {
+        normalized[key] = value;
+      });
+      return normalized;
+    }
+
+    for (const [key, value] of Object.entries((headers ?? {}) as Record<string, unknown>)) {
+      normalized[key] = String(value);
+    }
+    return normalized;
+  }
+
+  private async triggerCloudRunJob(jobId: string) {
+    const config = this.cloudRunJobConfig();
+    if (!config) {
+      return;
+    }
+
+    const endpoint =
+      `https://run.googleapis.com/v2/projects/${encodeURIComponent(config.projectId)}` +
+      `/locations/${encodeURIComponent(config.region)}` +
+      `/jobs/${encodeURIComponent(config.jobName)}:run`;
+
+    const auth = new GoogleAuth({ scopes: [CLOUD_PLATFORM_SCOPE] });
+    const client = await auth.getClient();
+    const authHeaders = this.normalizeAuthHeaders(await client.getRequestHeaders(endpoint));
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        ...authHeaders,
+        "content-type": "application/json",
+      },
+      body: "{}",
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(`Cloud Run Job ${config.jobName} execution failed for ${jobId}: HTTP ${response.status} ${body}`);
+    }
+
+    this.logger.log(`Triggered Demucs Cloud Run Job ${config.jobName} for ${jobId}`);
+  }
+
   /**
    * Publish a stem separation job to the `stem-separate` topic.
    * Returns immediately — worker picks it up asynchronously.
@@ -133,6 +193,7 @@ export class StemPubSubPublisher implements OnModuleInit {
     this.logger.log(
       `Published separation job ${message.jobId} (messageId=${messageId}) for track ${message.trackId}`
     );
+    await this.triggerCloudRunJob(message.jobId);
     return messageId;
   }
 }
