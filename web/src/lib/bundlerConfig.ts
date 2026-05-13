@@ -27,6 +27,13 @@ export function getBundlerUrl(chainId: number): string {
   return getPimlicoBundlerUrl(chainId, process.env.NEXT_PUBLIC_PIMLICO_API_KEY) || LOCAL_BUNDLER_PROXY_PATH;
 }
 
+export function isPaymasterEnabled(chainId: number): boolean {
+  if (isLocalDevEnvironment(chainId)) return false;
+
+  const configured = process.env.NEXT_PUBLIC_AA_PAYMASTER_ENABLED?.trim().toLowerCase();
+  return configured === "1" || configured === "true" || configured === "yes";
+}
+
 export function getServerBundlerChainId(): number {
   return Number(
     process.env.AA_CHAIN_ID ||

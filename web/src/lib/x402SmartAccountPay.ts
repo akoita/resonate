@@ -7,7 +7,7 @@ import {
 } from "viem";
 import { createZeroDevPaymasterClient, createKernelAccountClient } from "@zerodev/sdk";
 import { API_BASE } from "./api";
-import { getBundlerUrl, isLocalDevEnvironment } from "./bundlerConfig";
+import { getBundlerUrl, isPaymasterEnabled } from "./bundlerConfig";
 import { normalizeContractWriteError } from "./contractErrors";
 import { getX402Chain } from "./x402BrowserWallet";
 import { getX402KernelAccount } from "./x402KernelAccount";
@@ -138,7 +138,7 @@ async function sendSmartAccountCall(input: {
     bundlerTransport: createMappedTransport(bundlerUrl),
   };
 
-  if (!isLocalDevEnvironment(input.chainId)) {
+  if (isPaymasterEnabled(input.chainId)) {
     clientOpts.paymaster = createZeroDevPaymasterClient({
       chain: input.chain,
       transport: http(bundlerUrl),

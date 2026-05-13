@@ -5,7 +5,7 @@ import {
   normalizeContractWriteError,
   formatBatchErrorMessage,
 } from "../contractErrors";
-import { encodeErrorResult } from "viem";
+import { encodeAbiParameters, encodeErrorResult } from "viem";
 import { knownContractErrorAbi } from "../contractErrors";
 
 // ============ toError ============
@@ -165,6 +165,18 @@ describe("normalizeContractWriteError", () => {
     );
     const result = normalizeContractWriteError(raw);
     expect(result.message).toBe("This wallet has already reported this content record. Use the existing dispute or appeal flow instead.");
+  });
+
+  it("decodes standard Error(string) revert data", () => {
+    const errorStringData = `0x08c379a0${encodeAbiParameters(
+      [{ type: "string" }],
+      ["AA21 didn't pay prefund"],
+    ).slice(2)}`;
+    const raw = new Error(
+      `UserOperation reverted during simulation with reason: ${errorStringData} Request Arguments: { sender: 0xabc }`,
+    );
+    const result = normalizeContractWriteError(raw);
+    expect(result.message).toBe("AA21 didn't pay prefund");
   });
 
   it("falls back to 'Transaction failed' for an empty message", () => {
