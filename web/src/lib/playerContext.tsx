@@ -134,6 +134,7 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
     const [, setIsDecrypting] = useState(false);
     const { signMessage, address } = useAuth();
     const type = stem.type.toLowerCase();
+    const shouldLoad = enabled && mixerVolume > 0 && volume > 0;
 
     // 1. Handle Decryption and Object URLs
     useEffect(() => {
@@ -141,6 +142,12 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
         const currentUri = sanitizeStemUrl(stem.uri) || stem.uri;
 
         const loadAudio = async () => {
+            if (!shouldLoad) {
+                setStreamUrl(null);
+                setIsDecrypting(false);
+                return;
+            }
+
             // Check if we already have a cached blob URL
             const cachedUrl = decryptedBlobCache.get(currentUri);
             if (cachedUrl) {
@@ -242,7 +249,7 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
             active = false;
             // Don't revoke blob URLs - they're cached and shared
         };
-    }, [stem.uri, stem.isEncrypted, stem.encryptionMetadata, address, signMessage, type]);
+    }, [stem.uri, stem.isEncrypted, stem.encryptionMetadata, address, signMessage, type, shouldLoad]);
 
     useEffect(() => {
         const el = audioRef.current;
@@ -262,6 +269,11 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
     // When streamUrl changes (after decryption), explicitly load and play the audio
     useEffect(() => {
         if (!audioRef.current || !streamUrl) {
+            if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current.removeAttribute("src");
+                audioRef.current.load();
+            }
             return;
         }
 
@@ -349,7 +361,7 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
     return (
         <audio
             ref={audioRef}
-            preload="auto"
+            preload={shouldLoad ? "auto" : "none"}
             onLoadStart={() => {
                 devLog(`[StemAudio:${type}] onLoadStart - loading audio from blob`);
             }}
@@ -1041,8 +1053,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         }
     }, [volume]);
 
-    const stemsToRender = currentTrack?.id
-        ? (currentTrack.stems?.filter(s => s.type.toUpperCase() !== 'ORIGINAL') || [])
+    const stemsToRender = mixerMode && currentTrack?.id
+        ? (currentTrack.stems?.filter(s => {
+            const type = s.type.toUpperCase();
+            return type !== 'ORIGINAL' && type !== 'MASTER';
+        }) || [])
         : [];
 
     const contextValue = React.useMemo<PlayerContextType>(() => ({

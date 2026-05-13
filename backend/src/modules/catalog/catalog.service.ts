@@ -24,6 +24,10 @@ const PUBLIC_RELEASE_ROUTES: UploadRightsRoute[] = [
 ];
 const SOURCE_STEM_TYPES = new Set(["original", "master"]);
 
+type AudioRange = { start: number; end: number; total: number };
+type AudioPayload = { data: Buffer; mimeType?: string | null; range?: AudioRange };
+type AudioRequestOptions = { includeRestricted?: boolean; range?: string };
+
 function sameUserId(left?: string | null, right?: string | null) {
   return !!left && !!right && left.toLowerCase() === right.toLowerCase();
 }
@@ -1457,6 +1461,7 @@ export class CatalogService implements OnModuleInit {
     releaseId: string,
     trackId: string,
     userId: string,
+    options?: { range?: string },
   ) {
     const track = await prisma.track.findUnique({
       where: { id: trackId },
@@ -1480,10 +1485,10 @@ export class CatalogService implements OnModuleInit {
       return null;
     }
 
-    return this.getTrackStream(trackId, { includeRestricted: true });
+    return this.getTrackStream(trackId, { includeRestricted: true, range: options?.range });
   }
 
-  async getTrackStream(trackId: string, options?: { includeRestricted?: boolean }) {
+  async getTrackStream(trackId: string, options?: AudioRequestOptions) {
     // Find the track's stems, preferring unencrypted playable audio
     const track = await prisma.track.findUnique({
       where: { id: trackId },
@@ -1522,7 +1527,7 @@ export class CatalogService implements OnModuleInit {
     return this.getStemBlob(preferredStem.id, options);
   }
 
-  async getStemBlob(stemId: string, options?: { includeRestricted?: boolean }) {
+  async getStemBlob(stemId: string, options?: AudioRequestOptions): Promise<AudioPayload | null> {
     // Try finding by exact ID first
     let stem = await prisma.stem.findUnique({
       where: { id: stemId },
@@ -1608,6 +1613,25 @@ export class CatalogService implements OnModuleInit {
 
     // 3. Remote storage providers (GCS/IPFS/etc.) - prefer provider-aware download first.
     if (stem.uri && stem.storageProvider && stem.storageProvider !== "local") {
+      if (options?.range) {
+        try {
+          const rangedData = await this.storageProvider.downloadRange(stem.uri, options.range);
+          if (rangedData) {
+            return {
+              data: rangedData.data,
+              mimeType: stem.mimeType || rangedData.mimeType || "audio/mpeg",
+              range: {
+                start: rangedData.start,
+                end: rangedData.end,
+                total: rangedData.total,
+              },
+            };
+          }
+        } catch (err) {
+          console.error(`[Catalog] Failed to fetch range for stem ${stem.id} via storage provider:`, err);
+        }
+      }
+
       try {
         console.log(`[Catalog] Fetching stem ${stem.id} via storage provider: ${stem.uri}`);
         const fetchedData = await this.storageProvider.download(stem.uri);
@@ -1638,7 +1662,7 @@ export class CatalogService implements OnModuleInit {
     return null;
   }
 
-  async getStemPreview(stemId: string) {
+  async getStemPreview(stemId: string, _options?: { range?: string }) {
     const stem = await prisma.stem.findUnique({
       where: { id: stemId },
       select: {

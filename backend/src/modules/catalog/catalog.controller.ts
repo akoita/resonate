@@ -26,10 +26,23 @@ export class CatalogController {
   constructor(private readonly catalogService: CatalogService) { }
 
   private sendAudioResponse(
-    stem: { data: Buffer; mimeType?: string | null },
+    stem: { data: Buffer; mimeType?: string | null; range?: { start: number; end: number; total: number } },
     range: string,
     res: Response,
   ) {
+    if (stem.range) {
+      res.status(206).set({
+        "Content-Range": `bytes ${stem.range.start}-${stem.range.end}/${stem.range.total}`,
+        "Accept-Ranges": "bytes",
+        "Content-Length": stem.data.length,
+        "Content-Type": stem.mimeType || "audio/mpeg",
+        "Cache-Control": "public, max-age=31536000",
+      });
+
+      res.end(stem.data);
+      return;
+    }
+
     const fileSize = stem.data.length;
 
     if (range) {
@@ -89,49 +102,13 @@ export class CatalogController {
     @Headers("range") range: string,
     @Res() res: Response
   ) {
-    const stem = await this.catalogService.getStemBlob(stemId);
+    const stem = await this.catalogService.getStemBlob(stemId, { range });
     if (!stem) {
       res.status(404).send("Stem data not found");
       return;
     }
 
-    const fileSize = stem.data.length;
-
-    if (range) {
-      const parts = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-
-      if (start >= fileSize) {
-        res.status(416).set({
-          'Content-Range': `bytes */${fileSize}`,
-        }).send();
-        return;
-      }
-
-      const chunksize = (end - start) + 1;
-      const file = stem.data.subarray(start, end + 1);
-
-      res.status(206).set({
-        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': chunksize,
-        'Content-Type': stem.mimeType || 'audio/mpeg',
-        'Cache-Control': 'public, max-age=31536000',
-      });
-
-      res.end(file);
-      return;
-    }
-
-    res.set({
-      'Content-Length': fileSize,
-      'Content-Type': stem.mimeType || 'audio/mpeg',
-      'Accept-Ranges': 'bytes',
-      'Cache-Control': 'public, max-age=31536000',
-    });
-
-    res.end(stem.data);
+    this.sendAudioResponse(stem, range, res);
   }
 
   @Get("releases/:releaseId/tracks/:trackId/stream")
@@ -140,7 +117,7 @@ export class CatalogController {
     @Headers("range") range: string,
     @Res() res: Response,
   ) {
-    const streamData = await this.catalogService.getTrackStream(trackId);
+    const streamData = await this.catalogService.getTrackStream(trackId, { range });
     if (!streamData) {
       res.status(404).send("Track audio not found");
       return;
@@ -162,6 +139,7 @@ export class CatalogController {
       releaseId,
       trackId,
       req.user.userId,
+      { range },
     );
     if (!streamData) {
       res.status(404).send("Track audio not found");
@@ -177,7 +155,7 @@ export class CatalogController {
     @Headers("range") range: string,
     @Res() res: Response
   ) {
-    const stem = await this.catalogService.getStemPreview(stemId);
+    const stem = await this.catalogService.getStemPreview(stemId, { range });
     this.sendAudioResponse(stem, range, res);
   }
 

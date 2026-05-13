@@ -59,6 +59,46 @@ describe('GcsStorageProvider', () => {
     fetchSpy.mockRestore();
   });
 
+  it('passes byte ranges through to GCS downloads', async () => {
+    const provider = makeProvider();
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 206,
+      headers: {
+        get: (name: string) => {
+          if (name.toLowerCase() === 'content-range') return 'bytes 10-29/100';
+          if (name.toLowerCase() === 'content-type') return 'audio/mpeg';
+          return null;
+        },
+      },
+      arrayBuffer: async () => Buffer.alloc(20),
+    } as any);
+
+    const result = await provider.downloadRange(
+      'gs://resonate-stems-staging/originals/stem.mp3',
+      'bytes=10-29',
+    );
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://storage.googleapis.com/resonate-stems-staging/originals/stem.mp3',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer test-token',
+          Range: 'bytes=10-29',
+        }),
+      }),
+    );
+    expect(result).toEqual({
+      data: Buffer.alloc(20),
+      start: 10,
+      end: 29,
+      total: 100,
+      mimeType: 'audio/mpeg',
+    });
+
+    fetchSpy.mockRestore();
+  });
+
   it('normalizes gs:// URIs for delete', async () => {
     const provider = makeProvider();
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true } as any);

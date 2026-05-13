@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleAuth } from 'google-auth-library';
-import { StorageProvider, StorageResult } from './storage_provider';
+import { StorageProvider, StorageRangeResult, StorageResult } from './storage_provider';
 
 @Injectable()
 export class GcsStorageProvider extends StorageProvider {
@@ -143,6 +143,53 @@ export class GcsStorageProvider extends StorageProvider {
             return Buffer.from(await response.arrayBuffer());
         } catch (err) {
             this.logger.error(`Download failed for ${uri}: ${err}`);
+            return null;
+        }
+    }
+
+    async downloadRange(uri: string, range: string): Promise<StorageRangeResult | null> {
+        try {
+            const downloadUrl = this.resolveDownloadUrl(uri);
+            if (!downloadUrl) {
+                this.logger.warn(`Could not resolve GCS download URL for ${uri}`);
+                return null;
+            }
+
+            const token = await this.getAccessToken();
+            const headers = {
+                ...this.authHeaders(token),
+                Range: range,
+            };
+
+            const response = await fetch(downloadUrl, { headers, signal: AbortSignal.timeout(30000) });
+            if (!response.ok) return null;
+
+            const data = Buffer.from(await response.arrayBuffer());
+            const contentRange = response.headers.get('content-range');
+            const contentType = response.headers.get('content-type');
+
+            if (response.status === 206 && contentRange) {
+                const match = contentRange.match(/^bytes\s+(\d+)-(\d+)\/(\d+)$/i);
+                if (match) {
+                    return {
+                        data,
+                        start: Number(match[1]),
+                        end: Number(match[2]),
+                        total: Number(match[3]),
+                        mimeType: contentType,
+                    };
+                }
+            }
+
+            return {
+                data,
+                start: 0,
+                end: Math.max(data.length - 1, 0),
+                total: data.length,
+                mimeType: contentType,
+            };
+        } catch (err) {
+            this.logger.error(`Range download failed for ${uri}: ${err}`);
             return null;
         }
     }
