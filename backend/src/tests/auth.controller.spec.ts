@@ -177,6 +177,40 @@ describe('AuthController', () => {
       });
     });
 
+    it('issues token for canonical passkey owner returned by wallet identity upsert', async () => {
+      mockPublicClient.getChainId.mockResolvedValue(11155111);
+      mockPublicClient.getCode.mockResolvedValue('0x');
+      mockAuthService.upsertWalletIdentity.mockResolvedValueOnce({
+        id: 'wallet-1',
+        userId: '0xoriginalowner',
+      });
+      const ctrl = makeController();
+
+      const result = await ctrl.verify(body({
+        authMode: 'register',
+        chainId: 11155111,
+        pubKeyX: 'a'.repeat(64),
+        pubKeyY: 'b'.repeat(64),
+      }));
+
+      expect(mockAuthService.upsertWalletIdentity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: '0xsmartaccount',
+          walletAddress: '0xSmartAccount',
+          pubKeyX: 'a'.repeat(64),
+          pubKeyY: 'b'.repeat(64),
+        }),
+      );
+      expect(mockAuthService.issueTokenForAddress).toHaveBeenCalledWith(
+        '0xoriginalowner',
+        'listener',
+      );
+      expect(mockSignupFaucet.maybeFundOnSignup).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: '0xoriginalowner' }),
+      );
+      expect(result).toEqual({ accessToken: 'tok-addr', address: '0xoriginalowner' });
+    });
+
     it('signup faucet errors do not block token issuance', async () => {
       mockPublicClient.getChainId.mockResolvedValue(11155111);
       mockPublicClient.getCode.mockResolvedValue('0x');

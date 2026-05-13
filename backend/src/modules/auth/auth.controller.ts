@@ -39,6 +39,9 @@ export class AuthController {
       chainId?: number;
       /** Local dev (31337): EOA that signed; we verify this and issue token for address (smart account) */
       signerAddress?: string;
+      /** P-256 public key coordinates for passkey identity continuity */
+      pubKeyX?: string;
+      pubKeyY?: string;
     }
   ) {
     try {
@@ -69,6 +72,8 @@ export class AuthController {
           authMode: body.authMode,
           requestedChainId: body.chainId,
           verifiedChainId: chainId,
+          pubKeyX: body.pubKeyX,
+          pubKeyY: body.pubKeyY,
         });
       }
 
@@ -114,6 +119,8 @@ export class AuthController {
           authMode: body.authMode,
           requestedChainId: body.chainId,
           verifiedChainId: chainId,
+          pubKeyX: body.pubKeyX,
+          pubKeyY: body.pubKeyY,
         });
       }
 
@@ -160,6 +167,8 @@ export class AuthController {
           authMode: body.authMode,
           requestedChainId: body.chainId,
           verifiedChainId: chainId,
+          pubKeyX: body.pubKeyX,
+          pubKeyY: body.pubKeyY,
         });
       }
       const nonceMatch = /Nonce:\s*(.+)$/m.exec(body.message)?.[1] ?? "";
@@ -174,8 +183,12 @@ export class AuthController {
         authMode: body.authMode,
         requestedChainId: body.chainId,
         verifiedChainId: chainId,
+        pubKeyX: body.pubKeyX,
+        pubKeyY: body.pubKeyY,
       });
-      return issuedAddress !== body.address ? { ...result, address: issuedAddress } : result;
+      return issuedAddress !== body.address && !("address" in result)
+        ? { ...result, address: issuedAddress }
+        : result;
     } catch (err) {
       console.error(`[Auth] Error during verification:`, err);
       return { status: "error", message: (err as Error).message };
@@ -189,26 +202,33 @@ export class AuthController {
     authMode?: AuthMode;
     requestedChainId?: number;
     verifiedChainId: number;
+    pubKeyX?: string;
+    pubKeyY?: string;
   }) {
-    const result = this.authService.issueTokenForAddress(input.userId, input.role ?? "listener");
-    await this.authService.upsertWalletIdentity({
+    const wallet = await this.authService.upsertWalletIdentity({
       userId: input.userId,
       walletAddress: input.walletAddress,
       chainId: input.requestedChainId ?? input.verifiedChainId,
+      pubKeyX: input.pubKeyX,
+      pubKeyY: input.pubKeyY,
     });
+    const canonicalUserId = wallet.userId ?? input.userId;
+    const result = this.authService.issueTokenForAddress(canonicalUserId, input.role ?? "listener");
     if (this.signupFaucetService) {
       try {
         await this.signupFaucetService.maybeFundOnSignup({
           authMode: input.authMode,
           requestedChainId: input.requestedChainId,
           verifiedChainId: input.verifiedChainId,
-          userId: input.userId,
+          userId: canonicalUserId,
           walletAddress: input.walletAddress,
         });
       } catch (error) {
         console.error("[Auth] Signup faucet failed after token issuance:", error);
       }
     }
-    return result;
+    return canonicalUserId.toLowerCase() !== input.userId.toLowerCase()
+      ? { ...result, address: canonicalUserId.toLowerCase() }
+      : result;
   }
 }
