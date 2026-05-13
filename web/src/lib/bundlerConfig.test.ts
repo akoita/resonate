@@ -5,6 +5,7 @@ import {
   getServerBundlerChainId,
   getServerBundlerTarget,
   isLocalDevEnvironment,
+  isPaymasterEnabled,
 } from "./bundlerConfig";
 
 const envKeys = [
@@ -12,6 +13,7 @@ const envKeys = [
   "NEXT_PUBLIC_AA_BUNDLER",
   "NEXT_PUBLIC_PIMLICO_API_KEY",
   "NEXT_PUBLIC_CHAIN_ID",
+  "NEXT_PUBLIC_AA_PAYMASTER_ENABLED",
   "CHAIN_ID",
   "ALTO_BUNDLER_URL",
   "AA_BUNDLER",
@@ -80,6 +82,22 @@ describe("getBundlerUrl", () => {
 
   it("falls back to the server proxy when no public cloud bundler config exists", () => {
     expect(getBundlerUrl(11155111)).toBe("/api/bundler");
+  });
+});
+
+describe("isPaymasterEnabled", () => {
+  it("defaults to self-pay", () => {
+    expect(isPaymasterEnabled(84532)).toBe(false);
+  });
+
+  it("uses paymaster only when explicitly enabled", () => {
+    process.env.NEXT_PUBLIC_AA_PAYMASTER_ENABLED = "true";
+    expect(isPaymasterEnabled(84532)).toBe(true);
+  });
+
+  it("never enables paymaster for local environments", () => {
+    process.env.NEXT_PUBLIC_AA_PAYMASTER_ENABLED = "true";
+    expect(isPaymasterEnabled(31337)).toBe(false);
   });
 });
 

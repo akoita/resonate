@@ -5,7 +5,7 @@
  * tested without React, viem clients, or smart-account dependencies.
  */
 
-import { decodeErrorResult, type Hex } from "viem";
+import { decodeAbiParameters, decodeErrorResult, type Hex } from "viem";
 
 // ─── ABI fragments used only for error decoding ──────────────────────
 
@@ -133,6 +133,22 @@ export function extractRevertData(message: string): Hex | null {
   return null;
 }
 
+function decodeErrorString(data: Hex): string | null {
+  if (!data.toLowerCase().startsWith("0x08c379a0")) {
+    return null;
+  }
+
+  try {
+    const [reason] = decodeAbiParameters(
+      [{ type: "string" }],
+      `0x${data.slice(10)}` as Hex,
+    );
+    return typeof reason === "string" && reason.trim() ? reason : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Turn a raw contract-write / bundler error into a user-friendly Error.
  *
@@ -148,6 +164,11 @@ export function normalizeContractWriteError(error: unknown): Error {
   const revertData = extractRevertData(trimmedMessage);
 
   if (revertData) {
+    const decodedReason = decodeErrorString(revertData);
+    if (decodedReason) {
+      return new Error(decodedReason);
+    }
+
     try {
       const decoded = decodeErrorResult({
         abi: knownContractErrorAbi,

@@ -33,7 +33,7 @@ import { CurationRewardsABI, DisputeResolutionABI } from "../contracts_abi/index
 import { normalizeContractWriteError } from "../lib/contractErrors";
 import { getKernelAccountConfig } from "../lib/accountAbstraction";
 import { persistStemMarketplaceStatus } from "../lib/stemMarketplaceStatus";
-import { getBundlerUrl, isLocalDevEnvironment } from "../lib/bundlerConfig";
+import { getBundlerUrl, isLocalDevEnvironment, isPaymasterEnabled } from "../lib/bundlerConfig";
 import { getPasskeyRpId, getPasskeyServerUrl, getZeroDevProjectId } from "../lib/passkeyConfig";
 
 // Custom transport that maps ZeroDev-proprietary methods to Pimlico/Alto equivalents
@@ -270,7 +270,8 @@ async function ensureLocalFunding(
  * Send a transaction via the authenticated Kernel smart account.
  * Uses the same code path for both local dev and production:
  * - Local: passkey-signed UserOp → local Alto bundler (no paymaster)
- * - Production: passkey-signed UserOp → Pimlico bundler + paymaster
+ * - Testnet/production: passkey-signed UserOp → configured bundler,
+ *   optionally with paymaster sponsorship when enabled by environment config.
  */
 async function sendContractTransaction(
   publicClient: PublicClient,
@@ -333,8 +334,7 @@ async function sendContractTransaction(
     bundlerTransport: mappedTransport,
   };
 
-  // Only use paymaster on non-local environments (local dev is self-funded)
-  if (!isLocalDevEnvironment(chainId)) {
+  if (isPaymasterEnabled(chainId)) {
     const { createZeroDevPaymasterClient } = await import("@zerodev/sdk");
     clientOpts.paymaster = createZeroDevPaymasterClient({
       chain: publicClient.chain,
@@ -1874,7 +1874,7 @@ async function sendBatchContractTransactions(
     bundlerTransport: mappedTransport,
   };
 
-  if (!isLocalDevEnvironment(chainId)) {
+  if (isPaymasterEnabled(chainId)) {
     const { createZeroDevPaymasterClient } = await import("@zerodev/sdk");
     clientOpts.paymaster = createZeroDevPaymasterClient({
       chain: publicClient.chain,
