@@ -18,6 +18,10 @@ const WALLET_ADDRESS = addressFromOffset(2n);
 const EXISTING_USER_ID = addressFromOffset(3n);
 const EXISTING_FAKE_WALLET = addressFromOffset(4n);
 const EXISTING_REAL_WALLET = addressFromOffset(5n);
+const DRIFTED_USER_ID = addressFromOffset(6n);
+const DRIFTED_WALLET = addressFromOffset(7n);
+const PASSKEY_X = '1'.repeat(64);
+const PASSKEY_Y = '2'.repeat(64);
 
 const mockJwt = { sign: jest.fn().mockReturnValue('mock-jwt-token') };
 const mockAudit = { log: jest.fn() };
@@ -30,11 +34,14 @@ describe('AuthService wallet identity persistence (integration)', () => {
   });
 
   afterAll(async () => {
+    await prisma.passkeyIdentity.deleteMany({
+      where: { userId: { in: [USER_ID, EXISTING_USER_ID, DRIFTED_USER_ID] } },
+    }).catch(() => {});
     await prisma.wallet.deleteMany({
-      where: { userId: { in: [USER_ID, EXISTING_USER_ID] } },
+      where: { userId: { in: [USER_ID, EXISTING_USER_ID, DRIFTED_USER_ID] } },
     }).catch(() => {});
     await prisma.user.deleteMany({
-      where: { id: { in: [USER_ID, EXISTING_USER_ID] } },
+      where: { id: { in: [USER_ID, EXISTING_USER_ID, DRIFTED_USER_ID] } },
     }).catch(() => {});
   });
 
@@ -94,6 +101,39 @@ describe('AuthService wallet identity persistence (integration)', () => {
       balanceUsd: 42,
       monthlyCapUsd: 100,
       spentUsd: 7,
+    });
+  });
+
+  it('keeps the original owner when the same passkey derives a different smart account', async () => {
+    await service.upsertWalletIdentity({
+      userId: EXISTING_USER_ID,
+      walletAddress: EXISTING_REAL_WALLET,
+      chainId: 11155111,
+      pubKeyX: PASSKEY_X,
+      pubKeyY: PASSKEY_Y,
+    });
+
+    const wallet = await service.upsertWalletIdentity({
+      userId: DRIFTED_USER_ID,
+      walletAddress: DRIFTED_WALLET,
+      chainId: 11155111,
+      pubKeyX: PASSKEY_X,
+      pubKeyY: PASSKEY_Y,
+    });
+
+    const driftedUser = await prisma.user.findUnique({ where: { id: DRIFTED_USER_ID } });
+    const identity = await prisma.passkeyIdentity.findFirst({
+      where: { userId: EXISTING_USER_ID },
+    });
+
+    expect(wallet).toMatchObject({
+      userId: EXISTING_USER_ID,
+      address: DRIFTED_WALLET,
+    });
+    expect(driftedUser).toBeNull();
+    expect(identity).toMatchObject({
+      firstWalletAddress: EXISTING_REAL_WALLET,
+      lastWalletAddress: DRIFTED_WALLET,
     });
   });
 });

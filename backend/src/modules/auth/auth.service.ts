@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
+import { createHash } from "crypto";
 import { prisma } from "../../db/prisma";
 import { AuditService } from "../audit/audit.service";
 
@@ -32,10 +33,17 @@ export class AuthService {
     walletAddress: string;
     chainId?: number;
     ownerAddress?: string | null;
+    pubKeyX?: string | null;
+    pubKeyY?: string | null;
   }) {
-    const userId = input.userId.toLowerCase();
+    const walletUserId = input.userId.toLowerCase();
     const walletAddress = input.walletAddress.toLowerCase();
     const chainId = input.chainId ?? Number(process.env.AA_CHAIN_ID ?? 11155111);
+    const publicKeyHash = this.getPasskeyPublicKeyHash(input.pubKeyX, input.pubKeyY);
+    const existingPasskeyIdentity = publicKeyHash
+      ? await prisma.passkeyIdentity.findUnique({ where: { publicKeyHash } })
+      : null;
+    const userId = existingPasskeyIdentity?.userId.toLowerCase() ?? walletUserId;
     const ownerAddress =
       input.ownerAddress === null
         ? null
@@ -49,6 +57,21 @@ export class AuthService {
         email: `${userId}@wallet.resonate`,
       },
     });
+
+    if (publicKeyHash) {
+      await prisma.passkeyIdentity.upsert({
+        where: { publicKeyHash },
+        update: {
+          lastWalletAddress: walletAddress,
+        },
+        create: {
+          publicKeyHash,
+          userId,
+          firstWalletAddress: walletAddress,
+          lastWalletAddress: walletAddress,
+        },
+      });
+    }
 
     return prisma.wallet.upsert({
       where: { userId },
@@ -78,6 +101,18 @@ export class AuthService {
         salt: process.env.AA_SALT,
       },
     });
+  }
+
+  private getPasskeyPublicKeyHash(pubKeyX?: string | null, pubKeyY?: string | null) {
+    const x = pubKeyX?.trim().toLowerCase();
+    const y = pubKeyY?.trim().toLowerCase();
+    const hexCoordinate = /^[0-9a-f]{64}$/;
+
+    if (!x || !y || !hexCoordinate.test(x) || !hexCoordinate.test(y)) {
+      return null;
+    }
+
+    return createHash("sha256").update(`${x}:${y}`).digest("hex");
   }
 
   private resolveRole(userId: string, role: string) {
