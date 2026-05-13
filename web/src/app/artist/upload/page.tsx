@@ -82,7 +82,7 @@ function isStakeFundingError(message: string) {
 
 export default function ArtistUploadPage() {
   const router = useRouter();
-  const { token, address, smartAccountAddress, refreshWallet } = useAuth();
+  const { token, address, smartAccountAddress, refreshWallet, login } = useAuth();
   const { chainId, publicClient } = useZeroDev();
   const [stems, setStems] = useState<Stem[]>([]);
   const [selectedStemId, setSelectedStemId] = useState<string | null>(null);
@@ -385,6 +385,11 @@ export default function ArtistUploadPage() {
         const fingerprintHash = contentHash;
 
         const metadataURI = `resonate://release/${slugifyReleaseTitle(formData.releaseTitle)}`;
+        const loginResult = await login();
+        const accountOverride = loginResult?.account;
+        if (!accountOverride) {
+          throw new Error("Passkey confirmation did not complete. Try again and approve the Resonate prompt.");
+        }
 
         const attestationResult = await attestAndStake({
           contentHash,
@@ -400,6 +405,7 @@ export default function ArtistUploadPage() {
                 decimals: stableStakeRequirement.asset.decimals,
               }
             : undefined,
+          accountOverride,
         });
 
         addToast({
@@ -587,6 +593,15 @@ export default function ArtistUploadPage() {
       } else if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("CORS")) {
         title = "Network error";
         message = "Could not reach the server. Please check your connection and try again.";
+      } else if (msg.includes("ERC20: transfer amount exceeds balance")) {
+        title = stableStakeRequirement ? `Add stake ${stableStakeRequirement.asset.symbol}` : "Add stake token balance";
+        message = stableStakeRequirement
+          ? `Your smart account does not have enough ${stableStakeRequirement.asset.symbol} for the Content Protection stake. Expected ${stakeAssetLabel ?? stableStakeRequirement.asset.symbol}. Open funding options below, then try publishing again.`
+          : "Your smart account does not have enough token balance for the Content Protection stake. Open funding options below, then try publishing again.";
+        setStakeFundingNotice(message);
+        onClick = () => {
+          stakeFundingRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        };
       } else if (isStakeFundingError(msg)) {
         title = stableStakeRequirement ? `Add stake ${stableStakeRequirement.asset.symbol}` : "Add stake ETH";
         message = stableStakeRequirement
