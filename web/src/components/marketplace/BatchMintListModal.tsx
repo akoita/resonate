@@ -15,6 +15,7 @@ interface BatchMintListModalProps {
   listingPriceWei: bigint;
   listingPriceCapped?: boolean;
   releaseProtectionId?: bigint;
+  resolveReleaseProtectionId?: () => Promise<bigint | undefined | false>;
   onClose: () => void;
   onComplete?: () => void;
 }
@@ -40,6 +41,7 @@ export function BatchMintListModal({
   listingPriceWei,
   listingPriceCapped = false,
   releaseProtectionId,
+  resolveReleaseProtectionId,
   onClose,
   onComplete,
 }: BatchMintListModalProps) {
@@ -53,9 +55,16 @@ export function BatchMintListModal({
     setBatchError(null);
     setPhase("progress");
     try {
+      const resolvedProtectionId = resolveReleaseProtectionId
+        ? await resolveReleaseProtectionId()
+        : releaseProtectionId;
+      if (resolvedProtectionId === false) {
+        setPhase("confirm");
+        return;
+      }
       await executeBatch(stems, {
         pricePerUnit: listingPriceWei,
-        releaseProtectionId,
+        releaseProtectionId: resolvedProtectionId,
         onProgress: (r) => setResults([...r]),
       });
       onComplete?.();
@@ -65,7 +74,7 @@ export function BatchMintListModal({
         err instanceof Error ? err.message : "Batch transaction failed"
       );
     }
-  }, [stems, executeBatch, listingPriceWei, releaseProtectionId, onClose, onComplete]);
+  }, [stems, executeBatch, listingPriceWei, releaseProtectionId, resolveReleaseProtectionId, onClose, onComplete]);
 
   const handleRetryFailed = useCallback(async () => {
     const failedStems = stems.filter(s =>
@@ -75,9 +84,15 @@ export function BatchMintListModal({
 
     setBatchError(null);
     try {
+      const resolvedProtectionId = resolveReleaseProtectionId
+        ? await resolveReleaseProtectionId()
+        : releaseProtectionId;
+      if (resolvedProtectionId === false) {
+        return;
+      }
       await executeBatch(failedStems, {
         pricePerUnit: listingPriceWei,
-        releaseProtectionId,
+        releaseProtectionId: resolvedProtectionId,
         onProgress: (newResults) => {
           setResults(prev => {
             const updated = [...prev];
@@ -96,7 +111,7 @@ export function BatchMintListModal({
         err instanceof Error ? err.message : "Retry failed"
       );
     }
-  }, [stems, results, executeBatch, listingPriceWei, releaseProtectionId, onClose, onComplete]);
+  }, [stems, results, executeBatch, listingPriceWei, releaseProtectionId, resolveReleaseProtectionId, onClose, onComplete]);
 
   const doneCount = results.filter(r => r.status === "done").length;
   const failedCount = results.filter(r => r.status === "failed").length;
