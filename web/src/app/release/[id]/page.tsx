@@ -337,6 +337,8 @@ export default function ReleaseDetails() {
   const [rightsUpgradeRequest, setRightsUpgradeRequest] = useState<ReleaseRightsUpgradeRequestRecord | null>(null);
   const [trustedSourceLinks, setTrustedSourceLinks] = useState<TrustedSourceArtistLinkRecord[]>([]);
   const [errorDetails, setErrorDetails] = useState<{ title: string; message: string } | null>(null);
+  const indexedReleaseProtectionId = parseProtectionTokenId(releaseProtection?.tokenId);
+  const availableReleaseProtectionId = freshReleaseProtectionId ?? indexedReleaseProtectionId;
   const shouldWaitForPendingRelease = searchParams.get("pending") === "1";
   const rightsTone = getRightsTone(release?.rightsRoute);
   const rightsRouteLabel = formatRightsLabel(release?.rightsRoute) || "Not Evaluated";
@@ -661,6 +663,15 @@ export default function ReleaseDetails() {
     undefined,
     handleReleaseRightsRealtimeUpdate,
   );
+
+  useEffect(() => {
+    setReleaseProtection(null);
+    setRightsUpgradeRequest(null);
+    setFreshReleaseProtectionId(undefined);
+    setBatchModalProtectionId(undefined);
+    setBatchModalStems(null);
+    setSelectedNftStems(new Set());
+  }, [id]);
 
   useEffect(() => {
     if (typeof id === "string") {
@@ -2033,7 +2044,7 @@ export default function ReleaseDetails() {
                       });
                       return;
                     }
-                    let releaseProtectionId = freshReleaseProtectionId;
+                    let releaseProtectionId = availableReleaseProtectionId;
                     if (needsAttestationForMinting) {
                       const mintReadiness = await completeAttestationForMinting();
                       if (!mintReadiness.ready) {
@@ -2125,8 +2136,8 @@ export default function ReleaseDetails() {
                                     onBeforeMint={
                                       needsAttestationForMinting && canCompleteAttestation
                                         ? completeAttestationForMinting
-                                        : marketplaceApprovedByRights && freshReleaseProtectionId
-                                          ? async () => ({ ready: true, protectionId: freshReleaseProtectionId })
+                                        : marketplaceApprovedByRights && availableReleaseProtectionId
+                                          ? async () => ({ ready: true, protectionId: availableReleaseProtectionId })
                                           : undefined
                                     }
                                     disabled={!!mintingBlockedReason || attestationInProgress}
