@@ -30,6 +30,11 @@ class MemoryStore implements SignupFaucetStore {
     const key = `${input.userId}:${input.walletAddress}:${input.chainId}:${input.purpose}`;
     const existing = this.attempts.get(key);
     if (existing) {
+      if (existing.status === "failed") {
+        existing.status = "pending";
+        existing.txHash = null;
+        return { created: true, attempt: existing };
+      }
       return { created: false, attempt: existing };
     }
     const attempt = { id: `attempt-${this.attempts.size + 1}`, status: "pending", txHash: null };
@@ -39,10 +44,20 @@ class MemoryStore implements SignupFaucetStore {
 
   async markSent(id: string, txHash: `0x${string}`) {
     this.sent.push({ id, txHash });
+    this.findAttempt(id).status = "sent";
+    this.findAttempt(id).txHash = txHash;
   }
 
   async markFailed(id: string, reason: string) {
     this.failed.push({ id, reason });
+    this.findAttempt(id).status = "failed";
+  }
+
+  private findAttempt(id: string) {
+    for (const attempt of this.attempts.values()) {
+      if (attempt.id === id) return attempt;
+    }
+    throw new Error(`Attempt ${id} not found`);
   }
 }
 
@@ -95,6 +110,16 @@ describe("SignupFaucetService", () => {
     expect(parsed.enabled).toBe(true);
     expect(parsed.chainId).toBe(84532);
     expect(parsed.rpcUrl).toBe("https://sepolia.base.org");
+  });
+
+  it("prefers the active chain-specific RPC over generic RPC_URL for Base Sepolia", () => {
+    const parsed = getSignupFaucetConfig(config({
+      RPC_URL: "https://sepolia.example",
+      BASE_SEPOLIA_RPC_URL: "https://base-sepolia.example",
+    }), 84532);
+
+    expect(parsed.chainId).toBe(84532);
+    expect(parsed.rpcUrl).toBe("https://base-sepolia.example");
   });
 
   it("honors an explicit generic faucet chain override", () => {
@@ -233,6 +258,33 @@ describe("SignupFaucetService", () => {
 
     expect(result).toEqual({ status: "failed", reason: "insufficient funds" });
     expect(store.failed).toEqual([{ id: "attempt-1", reason: "insufficient funds" }]);
+  });
+
+  it("retries a failed funding attempt after configuration or balance is fixed", async () => {
+    const { service, store, sender } = makeService();
+    sender.failWith = new Error("insufficient funds");
+    const input = {
+      authMode: "register" as const,
+      requestedChainId: 11155111,
+      verifiedChainId: 11155111,
+      userId: WALLET,
+      walletAddress: WALLET,
+    };
+
+    const first = await service.maybeFundOnSignup(input);
+    sender.failWith = undefined;
+    const second = await service.maybeFundOnSignup(input);
+
+    expect(first).toEqual({ status: "failed", reason: "insufficient funds" });
+    expect(second).toEqual({
+      status: "sent",
+      txHash: "0xtx",
+      chainId: 11155111,
+      amountEth: "0.1",
+    });
+    expect(sender.calls).toHaveLength(2);
+    expect(store.failed).toEqual([{ id: "attempt-1", reason: "insufficient funds" }]);
+    expect(store.sent).toEqual([{ id: "attempt-1", txHash: "0xtx" }]);
   });
 
   it("records a failed attempt when the funder key is missing", async () => {
