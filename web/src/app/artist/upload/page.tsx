@@ -59,6 +59,28 @@ function slugifyReleaseTitle(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+function multiplyDecimalString(value: string | null | undefined, multiplier: number): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed || multiplier <= 0) return null;
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) return trimmed;
+
+  const [whole, fractional = ""] = trimmed.split(".");
+  const scale = 10n ** BigInt(fractional.length);
+  const baseUnits = BigInt(whole) * scale + BigInt(fractional || "0");
+  const multiplied = baseUnits * BigInt(multiplier);
+  const multipliedWhole = multiplied / scale;
+  const multipliedFractional = multiplied % scale;
+
+  if (fractional.length === 0) return multipliedWhole.toString();
+
+  const fractionalText = multipliedFractional
+    .toString()
+    .padStart(fractional.length, "0")
+    .replace(/0+$/, "");
+
+  return fractionalText ? `${multipliedWhole}.${fractionalText}` : multipliedWhole.toString();
+}
+
 type Stem = {
   id: string;
   name: string;
@@ -114,12 +136,17 @@ export default function ArtistUploadPage() {
 
   // Stake is required unless tier is verified (waived) or trust data is still loading
   const stakeRequired = Boolean(!trustLoading && trustTier && trustTier.stakeAmountWei !== "0");
+  const releaseTrackCountForStake = Math.max(stems.length, 1);
   const canonicalStakeAmountUsd = trustTier?.stakeAmountUsd ?? null;
+  const totalCanonicalStakeAmountUsd = multiplyDecimalString(
+    canonicalStakeAmountUsd,
+    releaseTrackCountForStake,
+  );
   const {
     quotes: stableStakeQuotes,
     loading: stableStakeQuoteLoading,
   } = usePaymentQuote({
-    amountUsd: stakeRequired ? canonicalStakeAmountUsd : null,
+    amountUsd: stakeRequired ? totalCanonicalStakeAmountUsd : null,
     chainId,
     assetId: preferredStableStakeAsset?.assetId,
     surface: "upload_stake",
@@ -129,7 +156,7 @@ export default function ArtistUploadPage() {
     : null;
   const contractStableStakeAmountUnits =
     stableStakeAmountUnits && stableStakeAmountUnits > 0n
-      ? stableStakeAmountUnits
+      ? stableStakeAmountUnits * BigInt(releaseTrackCountForStake)
       : null;
   const effectiveStableStakeAmountUnits = contractStableStakeAmountUnits
     ? [contractStableStakeAmountUnits, quotedStableStakeAmountUnits]
@@ -162,6 +189,10 @@ export default function ArtistUploadPage() {
       (stableStakeAmountUnits === undefined || stableStakeQuoteLoading)
   );
   const stakeReady = !stakeRequired || (!stableStakeLookupPending && stakeAcknowledged);
+
+  useEffect(() => {
+    setStakeAcknowledged(false);
+  }, [releaseTrackCountForStake, stakeAssetLabel, stakeRequired]);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -396,7 +427,9 @@ export default function ArtistUploadPage() {
           fingerprintHash,
           metadataURI,
           includeStake: stakeRequired,
-          stakeAmountWei: stakeRequired && trustTier ? BigInt(trustTier.stakeAmountWei) : 0n,
+          stakeAmountWei: stakeRequired && trustTier
+            ? BigInt(trustTier.stakeAmountWei) * BigInt(releaseTrackCountForStake)
+            : 0n,
           stakeAsset: stakeRequired && stableStakeRequirement
             ? {
                 tokenAddress: stableStakeRequirement.asset.tokenAddress as Address,
@@ -1358,11 +1391,13 @@ export default function ArtistUploadPage() {
               )}
 
               <StakeDepositCard
+                key={`${stakeAssetLabel ?? "native"}-${releaseTrackCountForStake}-${stakeRequired}`}
                 trustTier={trustTier}
                 loading={trustLoading || stableStakeLookupPending}
                 stakeAssetLabel={stakeAssetLabel}
                 stakeAssetKind={stableStakeRequirement ? "stablecoin" : "native"}
                 maxListingPriceLabel={stableMaxListingPriceLabel}
+                stakeTrackCount={releaseTrackCountForStake}
                 onStakeAcknowledged={() => setStakeAcknowledged(true)}
               />
 

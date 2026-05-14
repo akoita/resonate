@@ -2,22 +2,18 @@
 
 ## Executive Summary
 
-Reviewed the explicit rights review workflow state implementation for #785. No
-Critical or High findings were identified in the changed code.
+Reviewed the upload staking policy update that changes the configured per-track stake default and applies the release-track multiplier in the upload flow. No Critical or High findings were identified in the changed code.
 
 ## Scope
 
-- `backend/src/modules/contracts/contracts.service.ts`
-- `backend/src/modules/trust/verification-semantics.ts`
-- `backend/src/tests/metadata.controller.integration.spec.ts`
-- `backend/src/tests/verification-semantics.spec.ts`
-- `web/src/lib/api.ts`
-- `web/src/lib/verificationSemantics.ts`
-- `web/src/lib/__tests__/verificationSemantics.test.ts`
-- `web/src/app/release/[id]/page.tsx`
-- `web/src/components/content-protection/ReleaseContentProtection.tsx`
-- `web/src/components/disputes/AdminDisputeQueue.tsx`
-- Related architecture documentation updates
+- `backend/src/modules/trust/trust.service.ts`
+- `backend/src/modules/trust/trustTierConfig.ts`
+- `backend/src/tests/trust.controller.spec.ts`
+- `web/src/app/artist/upload/page.tsx`
+- `web/src/components/upload/StakeDepositCard.tsx`
+- `contracts/script/DeployProtocol.s.sol`
+- `contracts/script/DeployContentProtection.s.sol`
+- Related documentation updates
 
 ## Critical Findings
 
@@ -37,35 +33,26 @@ None in the changed code.
 
 ## Informational Notes
 
-- Rights-review state derivation is deterministic and does not add new external
-  inputs, persistence fields, or public endpoints.
-- Admin review actions continue to require the existing JWT auth plus `admin`
-  role guard on the controller.
-- The added transition guard prevents invalid rights-upgrade state jumps before
-  route promotion can be applied.
-- The changed service code uses existing structured Prisma updates. It does not
-  add dynamic raw SQL, dynamic code execution, browser HTML injection, cookie
-  handling, or new public client secrets.
-- The broad scans may still report pre-existing items outside this change set,
-  such as local-dev secret fallbacks and existing raw SQL in unrelated modules.
-  These are not introduced by #785.
+- The backend trust defaults remain environment-overridable and do not introduce new secrets, dynamic SQL, deserialization, or public endpoints.
+- The frontend multiplier uses existing payment quote and staking hooks; it does not add HTML injection, cookie handling, or client-exposed secret usage.
+- The upload flow now stakes `configured per-track amount * release track count`, but the smart contract still enforces the configured minimum on the release root. Direct contract callers are therefore constrained by on-chain minimums, while the app applies the higher per-track policy.
+- Existing deployed contracts need an owner transaction such as `setStakeAmountForAsset(USDC, 5000000)` or a redeploy before their on-chain USDC minimum reflects the new default.
+- Broad repository scans may still report pre-existing items outside this change set; no new Critical or High issue was introduced by this branch.
 
 ## Commands Run
 
 ```bash
-npm run lint # backend
-npm test # backend
-npm test -- --runInBand src/tests/verification-semantics.spec.ts # backend
-npx jest --runInBand --config jest.integration.config.js --testPathPattern='metadata.controller.integration' --testNamePattern='release rights-upgrade workflow' # backend
-npm run lint # web
-npx vitest run src/lib/__tests__/verificationSemantics.test.ts # web
+cd backend && npm run test -- --runTestsByPath src/tests/trust.controller.spec.ts src/tests/trust-tier-config.spec.ts
+cd backend && npm run lint
+cd web && npm run lint -- src/app/artist/upload/page.tsx src/components/upload/StakeDepositCard.tsx
+cd web && npx tsc --noEmit --pretty false
+cd contracts && forge build
 git diff --check
-rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
-rg 'rawQuery|executeRaw|\$queryRaw' backend/src/
-rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/ | grep -v 'Guard\|Auth'
-rg 'JSON\.parse|eval\(' backend/src/
-rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/ | grep -v 'Pipe\|Dto\|Validation'
-rg 'dangerouslySetInnerHTML|innerHTML' web/src/
-rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
-rg 'document\.cookie|setCookie|httpOnly.*false' web/src/
+rg 'password|secret|api_key|private_key' backend/src/modules/trust backend/src/tests/trust.controller.spec.ts --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/trust backend/src/tests/trust.controller.spec.ts
+rg 'JSON\.parse|eval\(' backend/src/modules/trust backend/src/tests/trust.controller.spec.ts
+rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/trust backend/src/tests/trust.controller.spec.ts
+rg 'dangerouslySetInnerHTML|innerHTML' web/src/app/artist/upload/page.tsx web/src/components/upload/StakeDepositCard.tsx
+rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/app/artist/upload/page.tsx web/src/components/upload/StakeDepositCard.tsx
+rg 'document\.cookie|setCookie|httpOnly.*false' web/src/app/artist/upload/page.tsx web/src/components/upload/StakeDepositCard.tsx
 ```

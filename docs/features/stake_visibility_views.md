@@ -42,13 +42,13 @@ Upload → Process (Demucs) → Publish → attestRelease() + stakeForRelease() 
 
 | Tier        | Stake     | Escrow Period | Max Listing Price (at 10× multiplier) |
 | ----------- | --------- | ------------- | ------------------------------------- |
-| New Creator | 10 USDC when stablecoin staking is configured; native ETH fallback otherwise | 30 days | 100 USDC per unit when listed in USDC |
-| Established | 10 USDC when stablecoin staking is configured; native ETH fallback otherwise | 14 days | 100 USDC per unit when listed in USDC |
-| Trusted     | 10 USDC when stablecoin staking is configured; native ETH fallback otherwise | 7 days | 100 USDC per unit when listed in USDC |
+| New Creator | 5 USDC per release track when stablecoin staking is configured; native ETH fallback otherwise | 30 days | 50 USDC per release track when listed in USDC |
+| Established | 5 USDC per release track when stablecoin staking is configured; native ETH fallback otherwise | 14 days | 50 USDC per release track when listed in USDC |
+| Trusted     | 5 USDC per release track when stablecoin staking is configured; native ETH fallback otherwise | 7 days | 50 USDC per release track when listed in USDC |
 | Verified Economic Tier | Waived | 3 days | Uncapped |
 
 The economic trust tier above is an economic control, not an independent rights-verification badge. It affects stake, escrow, and listing economics only.
-Upload staking is stablecoin-first when an enabled `upload_stake` stablecoin has an on-chain stake amount. Native ETH remains a fallback for local or partially configured environments.
+Upload staking is stablecoin-first when an enabled `upload_stake` stablecoin has an on-chain stake amount. The upload flow multiplies the per-track stake by the number of release tracks. Native ETH remains a fallback for local or partially configured environments.
 
 ## Components
 
@@ -64,7 +64,7 @@ All hooks handle the zero-address case (contract not deployed) gracefully.
 
 Renders on **stem detail pages** (`/stem/[tokenId]`). Two modes:
 
-- **Compact** — inline pill: `Active ✓ (10 USDC)` or the deposited native fallback
+- **Compact** — inline pill: `Active ✓ (5 USDC)` for a one-track release or the deposited native fallback
 - **Expanded** — full card with status, amount, economic trust tier, escrow countdown, and self-attestation date
 
 Reads live on-chain data via `useStakeInfo` + `useAttestationInfo`. Fetches trust tier from backend (`/api/trust-tier/{address}`).
@@ -105,8 +105,8 @@ Fetches from backend (`/api/metadata/stakes/analytics/{address}`).
 
 - `deriveStakeStatus(active, amount, depositedAt, escrowDays)` → `StakeStatus`
 - `deriveEscrowStatus(active, depositedAt, escrowDays)` → `{ status, daysRemaining }`
-- `formatEth(wei)` → native fallback formatting such as `"0.01 ETH"` or `"Waived"`
-- `formatPaymentAmountWithSymbol(amountUnits, decimals, symbol)` → stablecoin stake formatting such as `"10 USDC"`
+- `formatEth(wei)` → native fallback formatting such as `"0.005 ETH"` or `"Waived"`
+- `formatPaymentAmountWithSymbol(amountUnits, decimals, symbol)` → stablecoin stake formatting such as `"5 USDC"`
 - Label/color maps for all statuses and tiers
 
 ## Page Integration Map

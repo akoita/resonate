@@ -7,7 +7,7 @@ import { getDefaultTrustTier, resolveTrustTiers, type TrustTierInfo } from "./tr
 
 /**
  * Trust tier thresholds per issue #406:
- *   New (0 uploads)       → 0.01 ETH, 30 days
+ *   New (0 uploads)       → 0.005 ETH, 30 days
  *   Established (5+)      → 0.005 ETH, 14 days
  *   Trusted (50+)         → 0.001 ETH, 7 days
  *   Verified economic tier → waived, 3 days
@@ -60,7 +60,7 @@ const CONTENT_PROTECTION_CONFIG_ABI = [
 const DEFAULT_MAX_PRICE_MULTIPLIER = 10n;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const DEFAULT_SEPOLIA_RPC_URL = "https://sepolia.drpc.org";
-const DEFAULT_PROTOCOL_MINIMUM_STAKE_USD = "10";
+const DEFAULT_PROTOCOL_MINIMUM_STAKE_USD = "5";
 
 type TrustPolicyConfig = {
   source: "contract" | "fallback";

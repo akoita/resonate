@@ -1,58 +1,43 @@
 # Smart Contract Scan Report
 
-Scope reviewed on April 30, 2026 for issue #760:
+Scope reviewed on May 14, 2026 for the upload stake amount update:
 
-- `contracts/src/core/StemMarketplaceV2.sol`
-- `contracts/test/unit/StemMarketplace.t.sol`
+- `contracts/script/DeployProtocol.s.sol`
+- `contracts/script/DeployContentProtection.s.sol`
+- `contracts/README.md`
+- Related backend, frontend, and documentation changes that consume the configured stake amount
 
 ## Reconnaissance
 
 - Solidity version: `0.8.28`
-- Updated production-facing contract:
-  - `StemMarketplaceV2` now checks listing expiry before narrowing it to `uint40`.
-- The change is intentionally narrow: listing creation reverts with
-  `ListingExpiryOverflow()` when `block.timestamp + duration` exceeds
-  `type(uint40).max`.
-- Solidity 0.8 checked arithmetic still protects the `uint256` addition from
-  overflowing before the explicit downcast bound is evaluated.
+- No files under `contracts/src/` were changed in this branch.
+- The contract-facing change is limited to deploy-script defaults:
+  - Native fallback stake default changes from `0.01 ether` to `0.005 ether`.
+  - USDC stake default changes from `10_000000` to `5_000000`.
+- Runtime stake policy remains owner-configurable through existing `ContentProtection` admin functions, especially `setStakeAmountForAsset(address,uint256)`.
 
 ## Syntactic Sweep
 
-Patterns reviewed in the changed contract:
+The scan workflow was run against `contracts/src/` to confirm this branch does not add new contract-source patterns for:
 
 - external calls: `.call{}`
-- token transfer triggers: `safeTransferFrom`, `safeTransfer`
-- access control: `onlyOwner`
+- token transfer triggers: `_safeMint`, `_safeTransfer`, `safeTransferFrom`
+- access control: `onlyOwner`, `onlyRole`, `_checkRole`, `require(... msg.sender ...)`
 - dangerous primitives: `selfdestruct`, `delegatecall`, `tx.origin`
 - unchecked arithmetic and inline `assembly`
-- narrowing casts: `uint40(...)`
 
-Observed matches relevant to this change:
-
-- `_checkedListingExpiry()` performs the only `uint40(...)` cast in the
-  contract and now bounds the value first.
-- `safeTransferFrom`, `safeTransfer`, and `.call{value: ...}` usages are in the
-  existing buy/payment and trapped-ETH paths; they were not changed by this
-  issue.
-- `setProtocolFee()`, `setFeeRecipient()`, and `withdrawTrappedETH()` remain
-  owner-gated.
-
-No `selfdestruct`, `delegatecall`, `tx.origin`, `unchecked`, or inline
-`assembly` usage was found in `StemMarketplaceV2`.
+The matches observed are pre-existing in contract source and were not modified by this branch. No new Solidity source entry point, access-control path, external call, or token transfer path was introduced.
 
 ## Semantic Review
 
-- Listing expiry remains stored as `uint40` to preserve the existing storage
-  layout and ABI shape.
-- Boundary tests now cover the maximum valid expiry (`type(uint40).max`) and
-  the first overflowing expiry.
-- The fix changes deployed bytecode. Base Sepolia will need the next contract
-  redeploy/upgrade before this hardening is live there.
+- Lowering deploy defaults does not change deployed bytecode behavior unless the protocol is redeployed or an owner transaction updates on-chain settings.
+- Existing deployed contracts still enforce the stake amounts currently stored on-chain.
+- The frontend update multiplies the configured per-track stake by release track count before staking, while the contract still enforces the configured minimum stake amount for the release root.
+- A future admin console or operations script should update both the on-chain `stakeAmountsByToken` value and backend canonical USD configuration to avoid UI/backend/on-chain drift.
 
 ## Findings
 
-No confirmed Critical, High, Medium, Low, or Informational security findings
-were identified in the reviewed changes.
+No confirmed Critical, High, Medium, Low, or Informational security findings were identified in the reviewed changes.
 
 | Severity | Count |
 | -------- | ----- |
@@ -65,7 +50,12 @@ were identified in the reviewed changes.
 ## Commands Run
 
 ```bash
-rg '\.call\{|_safeMint|_safeTransfer|safeTransferFrom|onlyOwner|onlyRole|_checkRole|require.*msg\.sender|selfdestruct|delegatecall|tx\.origin|unchecked|assembly|uint40\(' contracts/src/core/StemMarketplaceV2.sol
-cd contracts && forge test --match-contract StemMarketplaceTest
-cd contracts && forge test
+find contracts/src -name '*.sol' -type f
+rg '\.call\{' contracts/src/
+rg '_safeMint|_safeTransfer|safeTransferFrom' contracts/src/
+rg 'onlyOwner|onlyRole|_checkRole|require.*msg\.sender' contracts/src/
+rg 'selfdestruct|delegatecall|tx\.origin' contracts/src/
+rg 'unchecked' contracts/src/
+rg 'assembly' contracts/src/
+cd contracts && forge build
 ```

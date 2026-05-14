@@ -45,7 +45,7 @@ contract DeployContentProtection is Script {
 
         // Config
         address feeRecipient = vm.envOr("FEE_RECIPIENT", deployer);
-        uint256 stakeAmountWei = vm.envOr("STAKE_AMOUNT", uint256(0.01 ether));
+        uint256 stakeAmountWei = vm.envOr("STAKE_AMOUNT", uint256(0.005 ether));
         uint256 escrowPeriod = vm.envOr("ESCROW_PERIOD", uint256(30 days));
 
         console.log("=== Deploying Content Protection (Phase 2) ===");

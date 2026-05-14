@@ -51,7 +51,7 @@ export RPC_URL=https://...
 export ETHERSCAN_API_KEY=...
 
 # Optional overrides (defaults shown)
-export STAKE_AMOUNT=10000000000000000   # 0.01 ETH in wei
+export STAKE_AMOUNT=5000000000000000    # 0.005 ETH in wei
 export ESCROW_PERIOD=2592000            # 30 days in seconds
 export PROTOCOL_FEE_BPS=250            # 2.5%
 
@@ -108,8 +108,8 @@ This will:
 | `BASE_URI`         | `https://api.resonate.fm/metadata/` | NFT metadata base URI                 |
 | `FEE_RECIPIENT`    | Deployer address                    | Protocol fee + treasury recipient     |
 | `PROTOCOL_FEE_BPS` | `250` (2.5%)                        | Marketplace fee in basis points       |
-| `STAKE_AMOUNT`     | `0.01 ether`                        | Default stake amount for new creators |
-| `STAKE_USDC_AMOUNT` | `10000000` (10 USDC)               | USDC stake amount when USDC is enabled |
+| `STAKE_AMOUNT`     | `0.005 ether`                       | Default stake amount for new creators |
+| `STAKE_USDC_AMOUNT` | `5000000` (5 USDC)                 | USDC stake amount when USDC is enabled |
 | `ESCROW_PERIOD`    | `30 days`                           | Default escrow hold duration          |
 
 ### Post-Deploy Checklist

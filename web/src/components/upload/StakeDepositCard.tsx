@@ -23,6 +23,7 @@ interface StakeDepositCardProps {
   stakeAssetLabel?: string | null;
   stakeAssetKind?: "stablecoin" | "native";
   maxListingPriceLabel?: string | null;
+  stakeTrackCount?: number;
   /** Called when user acknowledges the stake requirement. */
   onStakeAcknowledged?: () => void;
 }
@@ -40,6 +41,7 @@ export default function StakeDepositCard({
   stakeAssetLabel,
   stakeAssetKind = "native",
   maxListingPriceLabel,
+  stakeTrackCount = 1,
   onStakeAcknowledged,
 }: StakeDepositCardProps) {
   const [acknowledged, setAcknowledged] = useState(false);
@@ -117,7 +119,7 @@ export default function StakeDepositCard({
           <>Your economic trust tier waives the stake requirement. Revenue is held in escrow for {trustTier.escrowDays} days, and listings remain uncapped unless a stake is later configured. This tier does not independently verify ownership rights.</>
         ) : (
           <>A refundable stake of <strong style={{ color: "#f59e0b" }}>{stakeLabel}</strong> will be deposited
-            on publish to discourage abuse and fund dispute accountability. Revenue is held in escrow for {trustTier.escrowDays} days.
+            on publish for {stakeTrackCount} release track{stakeTrackCount === 1 ? "" : "s"} to discourage abuse and fund dispute accountability. Revenue is held in escrow for {trustTier.escrowDays} days.
             This stake policy does not independently verify ownership rights.
             Your current max listing price per unit is <strong>{maxListingPrice}</strong>.</>
         )}

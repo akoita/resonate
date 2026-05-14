@@ -57,7 +57,7 @@ When adding a new environment variable:
 | `TRUST_STAKE_USD_NEW` | Backend | Optional canonical USD stake requirement for new creators; quoted into the selected stake asset |
 | `TRUST_STAKE_USD_ESTABLISHED` | Backend | Optional canonical USD stake requirement for established creators; quoted into the selected stake asset |
 | `TRUST_STAKE_USD_TRUSTED` | Backend | Optional canonical USD stake requirement for trusted creators; quoted into the selected stake asset |
-| `TRUST_STAKE_USD_MIN` | Backend | Optional protocol minimum canonical USD stake requirement. Defaults to `10`, keeping current Base Sepolia USDC staking at 10 USDC |
+| `TRUST_STAKE_USD_MIN` | Backend | Optional protocol minimum canonical USD stake requirement per release track. Defaults to `5`, keeping USDC upload staking at 5 USDC per release track |
 | `AGENT_KEY_ENCRYPTION_KEY` | Backend | Generate with `./backend/scripts/generate-agent-encryption-key.sh` for local KMS mode |
 | `X402_ENABLED` | Backend | Enables the x402 payment and storefront purchase surfaces |
 | `X402_PAYOUT_ADDRESS` | Backend | Required when x402 is enabled; receives USDC payments |
@@ -82,7 +82,7 @@ When adding a new environment variable:
 | `PAYMENT_USDC_ADDRESS` | Contracts | Optional deployed USDC token address configured into the protocol payment asset registry during contract deployment |
 | `PAYMENT_WETH_ADDRESS` | Contracts | Optional deployed WETH token address configured into the protocol payment asset registry during contract deployment |
 | `PAYMENT_ENABLE_WETH` | Contracts | Enables WETH in the deployed payment asset registry when `PAYMENT_WETH_ADDRESS` is set. Defaults to `false` |
-| `STAKE_USDC_AMOUNT` | Contracts | Optional USDC-denominated content-protection stake amount, in USDC base units, configured when `PAYMENT_USDC_ADDRESS` is set. Defaults to `10000000` (10 USDC) |
+| `STAKE_USDC_AMOUNT` | Contracts | Optional USDC-denominated content-protection stake amount per release track, in USDC base units, configured when `PAYMENT_USDC_ADDRESS` is set. Defaults to `5000000` (5 USDC) |
 | `PAYMENT_ETH_USD_FEED` | Contracts | Optional Chainlink-compatible ETH/USD feed address wrapped by the deployed oracle adapter |
 | `PAYMENT_USDC_USD_FEED` | Contracts | Optional Chainlink-compatible USDC/USD feed address wrapped by the deployed oracle adapter |
 | `PAYMENT_ORACLE_MAX_STALENESS` | Contracts | Maximum accepted feed age in seconds for deployed oracle adapters. Defaults to `86400` |

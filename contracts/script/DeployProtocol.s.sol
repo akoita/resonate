@@ -45,7 +45,7 @@ contract DeployProtocol is Script {
         address feeRecipient = vm.envOr("FEE_RECIPIENT", deployer);
         address mintAuthorizer = vm.envOr("MINT_AUTHORIZER_ADDRESS", deployer);
         uint256 protocolFeeBps = vm.envOr("PROTOCOL_FEE_BPS", uint256(250)); // 2.5%
-        uint256 stakeAmountWei = vm.envOr("STAKE_AMOUNT", uint256(0.01 ether)); // Default 0.01 ETH
+        uint256 stakeAmountWei = vm.envOr("STAKE_AMOUNT", uint256(0.005 ether)); // Default 0.005 ETH
         uint256 escrowPeriod = vm.envOr("ESCROW_PERIOD", uint256(30 days)); // Default 30 days
         address usdcAddress = vm.envOr("PAYMENT_USDC_ADDRESS", address(0));
         address wethAddress = vm.envOr("PAYMENT_WETH_ADDRESS", address(0));
@@ -53,7 +53,7 @@ contract DeployProtocol is Script {
         address ethUsdFeed = vm.envOr("PAYMENT_ETH_USD_FEED", address(0));
         address usdcUsdFeed = vm.envOr("PAYMENT_USDC_USD_FEED", address(0));
         uint256 oracleMaxStaleness = vm.envOr("PAYMENT_ORACLE_MAX_STALENESS", uint256(1 days));
-        uint256 usdcStakeAmount = vm.envOr("STAKE_USDC_AMOUNT", uint256(10_000000)); // Default 10 USDC
+        uint256 usdcStakeAmount = vm.envOr("STAKE_USDC_AMOUNT", uint256(5_000000)); // Default 5 USDC
 
         vm.startBroadcast(deployerKey);
 
