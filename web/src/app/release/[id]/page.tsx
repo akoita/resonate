@@ -1024,14 +1024,7 @@ export default function ReleaseDetails() {
     }
   };
 
-  const completeAttestationForMinting = useCallback(async (): Promise<MintReadiness> => {
-    if (!needsAttestationForMinting || releaseProtection?.attested) {
-      return {
-        ready: true,
-        protectionId: parseProtectionTokenId(releaseProtection?.tokenId),
-      };
-    }
-
+  const resolveMintProtectionId = useCallback(async (): Promise<MintReadiness> => {
     if (!release?.id || !release.tracks?.length || !token || !canCompleteAttestation) {
       addToast({
         title: "Creator wallet required",
@@ -1084,27 +1077,32 @@ export default function ReleaseDetails() {
       let refreshedProtection: ReleaseContentProtectionData | null = null;
       for (let attempt = 0; attempt < 15; attempt += 1) {
         refreshedProtection = await getReleaseContentProtectionStatus(release.id);
-        if (refreshedProtection?.attested) {
+        if (
+          refreshedProtection?.attested &&
+          parseProtectionTokenId(refreshedProtection.tokenId) === attestedProtectionId
+        ) {
           break;
         }
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
-      const optimisticProtection = refreshedProtection?.attested
-        ? refreshedProtection
-        : releaseProtection
-          ? {
-              ...releaseProtection,
-              tokenId: attestedProtectionId.toString(),
-              attested: true,
-              attestedAt: new Date().toISOString(),
-            }
-          : refreshedProtection;
-      setReleaseProtection(optimisticProtection);
+
+      if (
+        !refreshedProtection?.attested ||
+        parseProtectionTokenId(refreshedProtection.tokenId) !== attestedProtectionId
+      ) {
+        setReleaseProtection(refreshedProtection);
+        addToast({
+          title: "Protection still syncing",
+          message: "Content Protection was submitted, but staging has not indexed this release yet. Wait a moment, then retry Mint & List.",
+          type: "info",
+        });
+        return { ready: false };
+      }
+
+      setReleaseProtection(refreshedProtection);
       addToast({
         title: "Release protected",
-        message: refreshedProtection?.attested
-          ? "Content Protection is complete. Continuing to mint and list."
-          : "Content Protection is on-chain. Continuing to mint and list while the indexer catches up.",
+        message: "Content Protection is complete. Continuing to mint and list.",
         type: "success",
       });
       setFreshReleaseProtectionId(attestedProtectionId);
@@ -1128,11 +1126,36 @@ export default function ReleaseDetails() {
     attestAndStake,
     canCompleteAttestation,
     login,
-    needsAttestationForMinting,
     release,
-    releaseProtection,
     token,
   ]);
+
+  const completeAttestationForMinting = useCallback(async (): Promise<MintReadiness> => {
+    const indexedProtectionId = parseProtectionTokenId(releaseProtection?.tokenId);
+
+    if (!needsAttestationForMinting && indexedProtectionId) {
+      return { ready: true, protectionId: indexedProtectionId };
+    }
+
+    if (releaseProtection?.attested && indexedProtectionId) {
+      return { ready: true, protectionId: indexedProtectionId };
+    }
+
+    return resolveMintProtectionId();
+  }, [
+    needsAttestationForMinting,
+    releaseProtection?.attested,
+    releaseProtection?.tokenId,
+    resolveMintProtectionId,
+  ]);
+
+  const resolveBatchReleaseProtectionId = useCallback(async (): Promise<bigint | undefined | false> => {
+    const readiness = await completeAttestationForMinting();
+    if (!readiness.ready) {
+      return false;
+    }
+    return readiness.protectionId;
+  }, [completeAttestationForMinting]);
 
   const handleCompleteAttestation = useCallback(async () => {
     await completeAttestationForMinting();
@@ -2184,6 +2207,7 @@ export default function ReleaseDetails() {
           listingPriceWei={effectiveListingPriceWei}
           listingPriceCapped={listingPriceCapped}
           releaseProtectionId={batchModalProtectionId}
+          resolveReleaseProtectionId={resolveBatchReleaseProtectionId}
           onClose={() => {
             setBatchModalStems(null);
             setBatchModalProtectionId(undefined);
