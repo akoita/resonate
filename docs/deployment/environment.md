@@ -105,7 +105,7 @@ When adding a new environment variable:
 | `SIGNUP_FAUCET_ENABLED` | Backend | Enables native ETH funding for newly registered wallets. Defaults to `false`; set `true` only in staging/testnet environments |
 | `SIGNUP_FAUCET_AMOUNT_ETH` | Backend | Native ETH amount sent to new signup wallets when the faucet is enabled; defaults to `0.1` |
 | `SIGNUP_FAUCET_CHAIN_ID` | Backend | Optional faucet chain guard. When omitted, signup funding uses the active chain verified by the backend auth RPC |
-| `SIGNUP_FAUCET_RPC_URL` | Backend | Optional faucet RPC override; falls back to `RPC_URL`, then known chain-specific RPC defaults such as `BASE_SEPOLIA_RPC_URL` / `SEPOLIA_RPC_URL` |
+| `SIGNUP_FAUCET_RPC_URL` | Backend | Optional faucet RPC override; otherwise resolves from the active chain (`BASE_SEPOLIA_RPC_URL`, `BASE_RPC_URL`, `SEPOLIA_RPC_URL`, `LOCAL_RPC_URL`) before falling back to `RPC_URL` |
 | `SIGNUP_FAUCET_FUNDER_PRIVATE_KEY` | Backend secret | Optional faucet funding key; falls back to the deployer `PRIVATE_KEY`. Store in secret manager/GitHub environment secrets, never source |
 | `SIGNUP_SEPOLIA_FAUCET_*` | Backend | Backward-compatible legacy aliases for the signup faucet variables above. Prefer `SIGNUP_FAUCET_*` for new environments; legacy chain ID is only a fallback when no active signup chain is available |
 | `LANGFUSE_ENABLED` | Backend | Optional agent observability switch. Set to `true` only when Langfuse credentials and host are configured |

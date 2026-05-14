@@ -7,6 +7,7 @@ import { syncPlaylists } from "../../lib/playlistStore";
 import { useZeroDev } from "./ZeroDevProviderClient";
 import { getKernelAccountConfig } from "../../lib/accountAbstraction";
 import { getNetworkLabel } from "../../lib/explorer";
+import { markFundingAnnouncementSeen } from "../../lib/fundingAnnouncement";
 import { getPasskeyRpId, getPasskeyServerUrl } from "../../lib/passkeyConfig";
 import type { WebAuthnMode } from "@zerodev/passkey-validator";
 import { useToast } from "../ui/Toast";
@@ -315,6 +316,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
       if (result.signupFaucet?.status === "sent") {
         const { amountEth, chainId: fundedChainId } = result.signupFaucet;
+        markFundingAnnouncementSeen(saAddress, fundedChainId);
         addToast({
           type: "success",
           visual: "funding",

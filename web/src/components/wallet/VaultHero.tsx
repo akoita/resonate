@@ -1,10 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { WalletRecord } from "../../lib/api";
 import { getExplorerAddressUrl, getNetworkLabel } from "../../lib/explorer";
+import {
+    hasSeenFundingAnnouncement,
+    markFundingAnnouncementSeen,
+    shouldAnnounceExceptionalFunding,
+} from "../../lib/fundingAnnouncement";
 import { useOnChainBalance } from "../../hooks/useOnChainBalance";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
+import { useToast } from "../ui/Toast";
 
 type VaultHeroProps = {
     wallet: WalletRecord | null;
@@ -17,15 +23,31 @@ type VaultHeroProps = {
 const ETH_PRICE_APPROX = 3000; // Approximate USD/ETH for display
 
 export default function VaultHero({ wallet, status, address, isDeployed, onRefresh }: VaultHeroProps) {
+    const { addToast } = useToast();
     const { chainId } = useZeroDev();
     const isSmartAccount = wallet?.accountType === "erc4337" || wallet?.accountType === "kernel";
-    const { balanceEth, loading: balanceLoading } = useOnChainBalance(address);
+    const { balance, balanceEth, loading: balanceLoading } = useOnChainBalance(address);
     const [copied, setCopied] = useState(false);
 
     const ethValue = balanceEth ? Number(balanceEth) : 0;
     const usdValue = (ethValue * ETH_PRICE_APPROX).toFixed(2);
     const shortAddress = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : null;
     const explorerAddressUrl = getExplorerAddressUrl(address);
+
+    useEffect(() => {
+        if (!address || !chainId || balanceLoading) return;
+        if (!shouldAnnounceExceptionalFunding(chainId, balance)) return;
+        if (hasSeenFundingAnnouncement(address, chainId)) return;
+
+        markFundingAnnouncementSeen(address, chainId);
+        addToast({
+            type: "success",
+            visual: "funding",
+            title: "Wallet funded for this environment",
+            message: `Happy news: your wallet was exceptionally funded with ${ethValue.toFixed(6)} ETH on ${getNetworkLabel(chainId)} for this environment. This is test funding, not normal production onboarding.`,
+            duration: 9000,
+        });
+    }, [addToast, address, balance, balanceLoading, chainId, ethValue]);
 
     const copyAddress = async () => {
         if (!address) return;

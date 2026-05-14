@@ -138,27 +138,27 @@ function resolveSignupFaucetChainId(config: ConfigService, activeChainId?: numbe
 }
 
 function resolveSignupFaucetRpcUrl(config: ConfigService, chainId: number) {
-  const explicitRpc = firstConfiguredValue(config, [
-    "SIGNUP_FAUCET_RPC_URL",
-    "SIGNUP_SEPOLIA_FAUCET_RPC_URL",
-    "RPC_URL",
-  ]);
+  const explicitRpc = firstConfiguredValue(config, ["SIGNUP_FAUCET_RPC_URL"]);
   if (explicitRpc) return explicitRpc;
 
   if (chainId === 84532) {
-    return config.get<string>("BASE_SEPOLIA_RPC_URL")?.trim() || "https://sepolia.base.org";
+    return firstConfiguredValue(config, ["BASE_SEPOLIA_RPC_URL", "RPC_URL"]) || "https://sepolia.base.org";
   }
   if (chainId === 8453) {
-    return config.get<string>("BASE_RPC_URL")?.trim() || "https://mainnet.base.org";
+    return firstConfiguredValue(config, ["BASE_RPC_URL", "RPC_URL"]) || "https://mainnet.base.org";
   }
   if (chainId === 11155111) {
-    return config.get<string>("SEPOLIA_RPC_URL")?.trim() || undefined;
+    return firstConfiguredValue(config, [
+      "SIGNUP_SEPOLIA_FAUCET_RPC_URL",
+      "SEPOLIA_RPC_URL",
+      "RPC_URL",
+    ]);
   }
   if (chainId === 31337) {
-    return config.get<string>("LOCAL_RPC_URL")?.trim() || "http://localhost:8545";
+    return firstConfiguredValue(config, ["LOCAL_RPC_URL", "RPC_URL"]) || "http://localhost:8545";
   }
 
-  return undefined;
+  return config.get<string>("RPC_URL")?.trim();
 }
 
 export function getSignupFaucetConfig(config: ConfigService, activeChainId?: number): SignupFaucetConfig {
@@ -221,6 +221,18 @@ export class PrismaSignupFaucetStore implements SignupFaucetStore {
           purpose: input.purpose,
         },
       });
+      if (attempt.status === "failed") {
+        const retryAttempt = await prisma.signupFaucetAttempt.update({
+          where: { id: attempt.id },
+          data: {
+            amountWei: input.amountWei,
+            status: "pending",
+            txHash: null,
+            failureReason: null,
+          },
+        });
+        return { created: true, attempt: retryAttempt };
+      }
       return { created: false, attempt };
     }
   }
@@ -288,14 +300,21 @@ export class SignupFaucetService {
 
     const faucetConfig = getSignupFaucetConfig(this.config, input.verifiedChainId);
     if (!faucetConfig.enabled) {
+      this.logger.log("Signup faucet skipped because SIGNUP_FAUCET_ENABLED is not enabled");
       return { status: "skipped", reason: "disabled" };
     }
 
     if (input.requestedChainId && input.requestedChainId !== faucetConfig.chainId) {
+      this.logger.warn(
+        `Signup faucet skipped because requested chain ${input.requestedChainId} does not match faucet chain ${faucetConfig.chainId}`,
+      );
       return { status: "skipped", reason: "request_chain_mismatch" };
     }
 
     if (input.verifiedChainId !== faucetConfig.chainId) {
+      this.logger.warn(
+        `Signup faucet skipped because verified chain ${input.verifiedChainId} does not match faucet chain ${faucetConfig.chainId}`,
+      );
       return { status: "skipped", reason: "server_chain_mismatch" };
     }
 

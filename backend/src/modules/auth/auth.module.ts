@@ -1,7 +1,7 @@
 import { Module, Global } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { createPublicClient, http, type Chain } from "viem";
-import { sepolia, foundry } from "viem/chains";
+import { base, baseSepolia, foundry, sepolia } from "viem/chains";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
 import { AuditModule } from "../audit/audit.module";
@@ -17,20 +17,65 @@ import {
   ViemSignupFaucetSender,
 } from "./signup_faucet.service";
 
-/**
- * Get chain config based on RPC URL
- * - Local (localhost:8545): Use foundry chain (31337)
- * - Otherwise: Use Sepolia
- */
-function getChainFromRpc(rpcUrl: string | undefined): { chain: Chain; transport: ReturnType<typeof http> } {
+function parseChainId(value?: string | null) {
+  if (!value?.trim()) return undefined;
+  const parsed = Number(value.trim());
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parseCaip2ChainId(value?: string | null) {
+  const match = /^eip155:(\d+)$/.exec(value?.trim() ?? "");
+  return match ? parseChainId(match[1]) : undefined;
+}
+
+function firstConfiguredChainId(config: ConfigService, keys: string[]) {
+  for (const key of keys) {
+    const chainId = parseChainId(config.get<string>(key));
+    if (chainId) return chainId;
+  }
+  return undefined;
+}
+
+function withRpcUrl(chain: Chain, rpcUrl?: string): Chain {
+  return rpcUrl
+    ? { ...chain, rpcUrls: { default: { http: [rpcUrl] } } }
+    : chain;
+}
+
+function chainForId(chainId: number, rpcUrl?: string): Chain {
+  if (chainId === foundry.id) return withRpcUrl(foundry, rpcUrl);
+  if (chainId === sepolia.id) return withRpcUrl(sepolia, rpcUrl);
+  if (chainId === baseSepolia.id) return withRpcUrl(baseSepolia, rpcUrl);
+  if (chainId === base.id) return withRpcUrl(base, rpcUrl);
+  return {
+    id: chainId,
+    name: `Chain ${chainId}`,
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrls: { default: { http: rpcUrl ? [rpcUrl] : [] } },
+  };
+}
+
+function getChainFromConfig(config: ConfigService): { chain: Chain; transport: ReturnType<typeof http> } {
+  const rpcUrl = config.get<string>("RPC_URL")?.trim();
+  const configuredChainId =
+    firstConfiguredChainId(config, [
+      "AA_CHAIN_ID",
+      "CHAIN_ID",
+      "PAYMENT_CHAIN_ID",
+      "NEXT_PUBLIC_CHAIN_ID",
+      "INDEXER_CHAIN_ID",
+    ]) ?? parseCaip2ChainId(config.get<string>("X402_NETWORK"));
+
   if (rpcUrl?.includes("localhost:8545") || rpcUrl?.includes("127.0.0.1:8545")) {
     return {
-      chain: foundry,
+      chain: chainForId(configuredChainId ?? foundry.id, rpcUrl),
       transport: http(rpcUrl),
     };
   }
+
+  const chain = chainForId(configuredChainId ?? sepolia.id, rpcUrl);
   return {
-    chain: sepolia,
+    chain,
     transport: rpcUrl ? http(rpcUrl) : http(),
   };
 }
@@ -67,9 +112,9 @@ function getChainFromRpc(rpcUrl: string | undefined): { chain: Chain; transport:
       provide: "PUBLIC_CLIENT",
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
+        const { chain, transport } = getChainFromConfig(config);
         const rpcUrl = config.get<string>("RPC_URL");
-        const { chain, transport } = getChainFromRpc(rpcUrl);
-        console.log(`[Auth] PUBLIC_CLIENT chain: ${chain.name} (${chain.id}), RPC: ${rpcUrl || 'default'}`);
+        console.log(`[Auth] PUBLIC_CLIENT chain: ${chain.name} (${chain.id}), RPC: ${rpcUrl || "default"}`);
         return createPublicClient({
           chain,
           transport,
