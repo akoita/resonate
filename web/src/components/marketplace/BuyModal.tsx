@@ -17,10 +17,8 @@ import {
 import { getX402ChainName } from "../../lib/x402BrowserWallet";
 import { payStemWithX402SmartAccount } from "../../lib/x402SmartAccountPay";
 import type { X402PaymentResult } from "../../lib/x402Pay";
-import { LicenseTypeSelector, type LicenseType } from "./LicenseTypeSelector";
 import { LicenseTermsPreview } from "./LicenseTermsPreview";
 import "../../styles/buy-modal.css";
-import "../../styles/license-badges.css";
 import "../../styles/license-terms.css";
 
 type X402StatusPhase = "challenging" | "signing" | "settling" | "downloading";
@@ -40,6 +38,12 @@ function getX402WalletNote(
   return `x402 checkout uses your Resonate passkey wallet with ${assetSymbol} on ${x402Chain}.`;
 }
 
+function formatStableAssetAmount(amountUsd: number | null | undefined, symbol: string) {
+  if (amountUsd == null) return "—";
+  const amount = amountUsd.toFixed(6).replace(/\.?0+$/, "");
+  return `${amount} ${symbol}`;
+}
+
 type X402QuoteInfo = {
   amountUsd: number | null;
   payTo: string | null;
@@ -55,10 +59,6 @@ interface BuyModalProps {
 
 export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyModalProps) {
   const [amount, setAmount] = useState(1n);
-  const [selectedLicense, setSelectedLicense] = useState<LicenseType>("personal");
-  const [stemPricing, setStemPricing] = useState<{
-    personal: number; remix: number; commercial: number;
-  } | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"onchain" | "x402">("onchain");
   const [x402Quote, setX402Quote] = useState<X402QuoteInfo | null>(null);
   const [x402Status, setX402Status] = useState<X402StatusPhase | null>(null);
@@ -97,17 +97,6 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
     return () => URL.revokeObjectURL(x402DownloadUrl);
   }, [x402DownloadUrl]);
 
-  // Fetch stem pricing for license type selector
-  useEffect(() => {
-    if (!stemId || !isOpen) return;
-    fetch(`${API_BASE}/api/stem-pricing/${stemId}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.computed) setStemPricing(data.computed);
-      })
-      .catch(err => console.error("Pricing fetch error:", err));
-  }, [stemId, isOpen]);
-
   // Fetch x402 quote when the user switches to the x402 method
   useEffect(() => {
     if (!isOpen || paymentMethod !== "x402" || !stemId || !x402Available) return;
@@ -143,7 +132,6 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
 
   const handleBuy = async () => {
     try {
-      // TODO Phase 2: Pass selectedLicense to LicenseRegistry.mintLicense()
       const hash = await buy(listingId, amount);
       onSuccess?.(hash);
     } catch {
@@ -286,19 +274,8 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
               </div>
             </div>
 
-            {/* License Type Selector */}
-            {stemPricing && (
-              <LicenseTypeSelector
-                selected={selectedLicense}
-                onSelect={setSelectedLicense}
-                personalPriceUsd={stemPricing.personal}
-                remixPriceUsd={stemPricing.remix}
-                commercialPriceUsd={stemPricing.commercial}
-              />
-            )}
-
             {/* License Terms Preview */}
-            <LicenseTermsPreview licenseType={selectedLicense} compact />
+            <LicenseTermsPreview licenseType="personal" compact />
 
             {/* Price Breakdown */}
             {paymentMethod === "onchain" && quote && !quoteLoading && (
@@ -343,7 +320,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
               <div className="buy-modal__x402-quote" data-testid="buy-modal-x402-quote">
                 <div className="buy-modal__x402-row">
                   <span>Stem download (personal license)</span>
-                  <span>{x402Quote?.amountUsd != null ? `$${x402Quote.amountUsd.toFixed(2)}` : "—"}</span>
+                  <span>{formatStableAssetAmount(x402Quote?.amountUsd, x402Symbol)}</span>
                 </div>
                 <div className="buy-modal__x402-row">
                   <span>Asset</span>
@@ -365,7 +342,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 )}
                 <div className="buy-modal__x402-row buy-modal__x402-row--total">
                   <span>Total</span>
-                  <span>{x402Quote?.amountUsd != null ? `$${x402Quote.amountUsd.toFixed(2)} ${x402Symbol}` : "—"}</span>
+                  <span>{formatStableAssetAmount(x402Quote?.amountUsd, x402Symbol)}</span>
                 </div>
                 <div className="buy-modal__breakdown-note">
                   {x402WalletNote}
