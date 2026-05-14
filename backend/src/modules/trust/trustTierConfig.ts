@@ -9,7 +9,7 @@ const DEFAULT_TRUST_TIERS: Record<string, TrustTierInfo> = {
   verified: { tier: "verified", stakeAmountWei: "0", stakeAmountUsd: "0", escrowDays: 3 },
   trusted: { tier: "trusted", stakeAmountWei: "1000000000000000", stakeAmountUsd: "1", escrowDays: 7 },
   established: { tier: "established", stakeAmountWei: "5000000000000000", stakeAmountUsd: "5", escrowDays: 14 },
-  new: { tier: "new", stakeAmountWei: "10000000000000000", stakeAmountUsd: "10", escrowDays: 30 },
+  new: { tier: "new", stakeAmountWei: "5000000000000000", stakeAmountUsd: "5", escrowDays: 30 },
 };
 
 function getConfiguredStakeAmountWei(
