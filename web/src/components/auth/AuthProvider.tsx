@@ -6,8 +6,10 @@ import { clearEmbeddedAccount } from "../../lib/embedded_wallet";
 import { syncPlaylists } from "../../lib/playlistStore";
 import { useZeroDev } from "./ZeroDevProviderClient";
 import { getKernelAccountConfig } from "../../lib/accountAbstraction";
+import { getNetworkLabel } from "../../lib/explorer";
 import { getPasskeyRpId, getPasskeyServerUrl } from "../../lib/passkeyConfig";
 import type { WebAuthnMode } from "@zerodev/passkey-validator";
+import { useToast } from "../ui/Toast";
 
 type AuthState = {
   status: "idle" | "loading" | "authenticated" | "error";
@@ -109,6 +111,7 @@ function isExistingPasskeyRegistrationError(error: unknown): boolean {
 }
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
+  const { addToast } = useToast();
   // Memoized wrapper for use in dependency arrays
   const resolveAuth = useCallback((jwt: string | null) => decodeAuthClaims(jwt), []);
 
@@ -310,6 +313,17 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       // Accumulate the SA address (the on-chain identity) for marketplace filtering
       addKnownAddress(saAddress);
 
+      if (result.signupFaucet?.status === "sent") {
+        const { amountEth, chainId: fundedChainId } = result.signupFaucet;
+        addToast({
+          type: "success",
+          visual: "funding",
+          title: "Wallet funded for staging",
+          message: `Happy news: your wallet was exceptionally funded with ${amountEth} ETH on ${getNetworkLabel(fundedChainId)} for this environment. This is test funding, not normal production onboarding.`,
+          duration: 9000,
+        });
+      }
+
       // Return the account and webAuthnKey so callers can use them
       // immediately (React state updates won't flush until next render).
       return { account, webAuthnKey };
@@ -320,7 +334,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       setStatus("error");
       return { account: null, webAuthnKey: null };
     }
-  }, [getOrConnectAccount, chainId, projectId, resolveAuth]);
+  }, [getOrConnectAccount, chainId, projectId, resolveAuth, addToast]);
 
   const signMessage = useCallback(async (message: string) => {
     // Default to Login mode for signing (as we assume user is registered)

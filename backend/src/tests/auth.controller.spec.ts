@@ -158,12 +158,18 @@ describe('AuthController', () => {
       );
     });
 
-    it('signup on Sepolia invokes the signup faucet after successful auth', async () => {
+    it('signup on the active chain invokes the signup faucet after successful auth', async () => {
       mockPublicClient.getChainId.mockResolvedValue(11155111);
       mockPublicClient.getCode.mockResolvedValue('0x'); // counterfactual
+      mockSignupFaucet.maybeFundOnSignup.mockResolvedValueOnce({
+        status: 'sent',
+        txHash: '0xtx',
+        chainId: 11155111,
+        amountEth: '0.1',
+      });
       const ctrl = makeController();
 
-      await ctrl.verify(body({
+      const result = await ctrl.verify(body({
         authMode: 'register',
         chainId: 11155111,
       }));
@@ -174,6 +180,15 @@ describe('AuthController', () => {
         verifiedChainId: 11155111,
         userId: '0xsmartaccount',
         walletAddress: '0xSmartAccount',
+      });
+      expect(result).toEqual({
+        accessToken: 'tok-addr',
+        signupFaucet: {
+          status: 'sent',
+          txHash: '0xtx',
+          chainId: 11155111,
+          amountEth: '0.1',
+        },
       });
     });
 

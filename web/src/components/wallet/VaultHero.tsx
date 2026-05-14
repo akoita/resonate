@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { WalletRecord } from "../../lib/api";
+import { getExplorerAddressUrl, getNetworkLabel } from "../../lib/explorer";
 import { useOnChainBalance } from "../../hooks/useOnChainBalance";
+import { useZeroDev } from "../auth/ZeroDevProviderClient";
 
 type VaultHeroProps = {
     wallet: WalletRecord | null;
@@ -12,10 +14,10 @@ type VaultHeroProps = {
     onRefresh: () => void;
 };
 
-const EXPLORER_URL = "https://sepolia.etherscan.io";
 const ETH_PRICE_APPROX = 3000; // Approximate USD/ETH for display
 
 export default function VaultHero({ wallet, status, address, isDeployed, onRefresh }: VaultHeroProps) {
+    const { chainId } = useZeroDev();
     const isSmartAccount = wallet?.accountType === "erc4337" || wallet?.accountType === "kernel";
     const { balanceEth, loading: balanceLoading } = useOnChainBalance(address);
     const [copied, setCopied] = useState(false);
@@ -23,6 +25,7 @@ export default function VaultHero({ wallet, status, address, isDeployed, onRefre
     const ethValue = balanceEth ? Number(balanceEth) : 0;
     const usdValue = (ethValue * ETH_PRICE_APPROX).toFixed(2);
     const shortAddress = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : null;
+    const explorerAddressUrl = getExplorerAddressUrl(address);
 
     const copyAddress = async () => {
         if (!address) return;
@@ -41,7 +44,7 @@ export default function VaultHero({ wallet, status, address, isDeployed, onRefre
                 <div className="vault-hero-top-row">
                     <div className="vault-network-badge">
                         <span className="vault-network-dot" />
-                        Sepolia Testnet
+                        {getNetworkLabel(chainId)}
                     </div>
                     <button className="vault-btn vault-btn--ghost vault-btn--sm" onClick={onRefresh}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -86,19 +89,21 @@ export default function VaultHero({ wallet, status, address, isDeployed, onRefre
                                 </svg>
                             )}
                         </button>
-                        <a
-                            href={`${EXPLORER_URL}/address/${address}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="vault-explorer-btn"
-                            title="View on Etherscan"
-                        >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-                                <polyline points="15 3 21 3 21 9" />
-                                <line x1="10" y1="14" x2="21" y2="3" />
-                            </svg>
-                        </a>
+                        {explorerAddressUrl && (
+                            <a
+                                href={explorerAddressUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="vault-explorer-btn"
+                                title={`View on ${getNetworkLabel(chainId)} explorer`}
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                                    <polyline points="15 3 21 3 21 9" />
+                                    <line x1="10" y1="14" x2="21" y2="3" />
+                                </svg>
+                            </a>
+                        )}
 
                         {/* Status Badges */}
                         <span

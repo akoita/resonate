@@ -63,9 +63,9 @@ class MemorySender implements SignupFaucetSender {
 
 function enabledConfig(overrides: Record<string, string | undefined> = {}) {
   return config({
-    SIGNUP_SEPOLIA_FAUCET_ENABLED: "true",
-    SIGNUP_SEPOLIA_FAUCET_FUNDER_PRIVATE_KEY: FUNDER_KEY,
-    SIGNUP_SEPOLIA_FAUCET_RPC_URL: "https://sepolia.example",
+    SIGNUP_FAUCET_ENABLED: "true",
+    SIGNUP_FAUCET_FUNDER_PRIVATE_KEY: FUNDER_KEY,
+    SIGNUP_FAUCET_RPC_URL: "https://sepolia.example",
     ...overrides,
   });
 }
@@ -85,6 +85,44 @@ describe("SignupFaucetService", () => {
     expect(parsed.amountWei).toBe("100000000000000000");
   });
 
+  it("defaults the faucet chain to the active verified chain", () => {
+    const parsed = getSignupFaucetConfig(config({
+      SIGNUP_FAUCET_ENABLED: "true",
+      SIGNUP_SEPOLIA_FAUCET_CHAIN_ID: "11155111",
+      X402_NETWORK: "eip155:11155111",
+    }), 84532);
+
+    expect(parsed.enabled).toBe(true);
+    expect(parsed.chainId).toBe(84532);
+    expect(parsed.rpcUrl).toBe("https://sepolia.base.org");
+  });
+
+  it("honors an explicit generic faucet chain override", () => {
+    const parsed = getSignupFaucetConfig(config({
+      SIGNUP_FAUCET_CHAIN_ID: "8453",
+      BASE_RPC_URL: "https://base.example",
+    }), 84532);
+
+    expect(parsed.chainId).toBe(8453);
+    expect(parsed.rpcUrl).toBe("https://base.example");
+  });
+
+  it("supports legacy Sepolia-prefixed faucet env vars", () => {
+    const parsed = getSignupFaucetConfig(config({
+      SIGNUP_SEPOLIA_FAUCET_ENABLED: "true",
+      SIGNUP_SEPOLIA_FAUCET_AMOUNT_ETH: "0.02",
+      SIGNUP_SEPOLIA_FAUCET_CHAIN_ID: "11155111",
+      SIGNUP_SEPOLIA_FAUCET_RPC_URL: "https://legacy-sepolia.example",
+      SIGNUP_SEPOLIA_FAUCET_FUNDER_PRIVATE_KEY: FUNDER_KEY,
+    }));
+
+    expect(parsed.enabled).toBe(true);
+    expect(parsed.chainId).toBe(11155111);
+    expect(parsed.amountWei).toBe("20000000000000000");
+    expect(parsed.rpcUrl).toBe("https://legacy-sepolia.example");
+    expect(parsed.funderPrivateKey).toBe(`0x${FUNDER_KEY}`);
+  });
+
   it("skips when the auth flow is not signup registration", async () => {
     const { service, sender } = makeService();
 
@@ -101,7 +139,7 @@ describe("SignupFaucetService", () => {
   });
 
   it("skips when the feature flag is disabled", async () => {
-    const { service, sender } = makeService(config({ SIGNUP_SEPOLIA_FAUCET_ENABLED: "false" }));
+    const { service, sender } = makeService(config({ SIGNUP_FAUCET_ENABLED: "false" }));
 
     const result = await service.maybeFundOnSignup({
       authMode: "register",
@@ -130,6 +168,30 @@ describe("SignupFaucetService", () => {
     expect(sender.calls).toHaveLength(0);
   });
 
+  it("funds on the active verified chain when no faucet chain override is configured", async () => {
+    const { service, sender } = makeService(enabledConfig({
+      SIGNUP_FAUCET_CHAIN_ID: undefined,
+    }));
+
+    const result = await service.maybeFundOnSignup({
+      authMode: "register",
+      requestedChainId: 84532,
+      verifiedChainId: 84532,
+      userId: WALLET,
+      walletAddress: WALLET,
+    });
+
+    expect(result).toEqual({
+      status: "sent",
+      txHash: "0xtx",
+      chainId: 84532,
+      amountEth: "0.1",
+    });
+    expect(sender.calls).toEqual([
+      { to: "0x00000000000000000000000000000000000000AA", amountWei: 100000000000000000n, chainId: 84532 },
+    ]);
+  });
+
   it("sends 0.1 Sepolia ETH once for a matching signup", async () => {
     const { service, store, sender } = makeService();
 
@@ -144,7 +206,12 @@ describe("SignupFaucetService", () => {
     const first = await service.maybeFundOnSignup(input);
     const second = await service.maybeFundOnSignup(input);
 
-    expect(first).toEqual({ status: "sent", txHash: "0xtx" });
+    expect(first).toEqual({
+      status: "sent",
+      txHash: "0xtx",
+      chainId: 11155111,
+      amountEth: "0.1",
+    });
     expect(second).toEqual({ status: "skipped", reason: "already_attempted" });
     expect(sender.calls).toEqual([
       { to: "0x00000000000000000000000000000000000000AA", amountWei: 100000000000000000n, chainId: 11155111 },
@@ -170,7 +237,7 @@ describe("SignupFaucetService", () => {
 
   it("records a failed attempt when the funder key is missing", async () => {
     const { service, store, sender } = makeService(enabledConfig({
-      SIGNUP_SEPOLIA_FAUCET_FUNDER_PRIVATE_KEY: undefined,
+      SIGNUP_FAUCET_FUNDER_PRIVATE_KEY: undefined,
     }));
 
     const result = await service.maybeFundOnSignup({

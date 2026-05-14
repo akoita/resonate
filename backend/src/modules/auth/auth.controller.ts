@@ -214,21 +214,31 @@ export class AuthController {
     });
     const canonicalUserId = wallet.userId ?? input.userId;
     const result = this.authService.issueTokenForAddress(canonicalUserId, input.role ?? "listener");
+    let signupFaucet:
+      | { status: "sent"; txHash: `0x${string}`; chainId: number; amountEth: string }
+      | undefined;
     if (this.signupFaucetService) {
       try {
-        await this.signupFaucetService.maybeFundOnSignup({
+        const faucetResult = await this.signupFaucetService.maybeFundOnSignup({
           authMode: input.authMode,
           requestedChainId: input.requestedChainId,
           verifiedChainId: input.verifiedChainId,
           userId: canonicalUserId,
           walletAddress: input.walletAddress,
         });
+        if (faucetResult.status === "sent") {
+          signupFaucet = faucetResult;
+        }
       } catch (error) {
         console.error("[Auth] Signup faucet failed after token issuance:", error);
       }
     }
-    return canonicalUserId.toLowerCase() !== input.userId.toLowerCase()
-      ? { ...result, address: canonicalUserId.toLowerCase() }
-      : result;
+    return {
+      ...result,
+      ...(canonicalUserId.toLowerCase() !== input.userId.toLowerCase()
+        ? { address: canonicalUserId.toLowerCase() }
+        : {}),
+      ...(signupFaucet ? { signupFaucet } : {}),
+    };
   }
 }

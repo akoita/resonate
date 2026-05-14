@@ -1,18 +1,17 @@
 "use client";
 
 import { WalletRecord } from "../../lib/api";
+import { getExplorerAddressUrl } from "../../lib/explorer";
 
 type VaultBalanceCardProps = {
     wallet: WalletRecord | null;
     address: string | null;
 };
 
-/** Sepolia block explorer base URL */
-const EXPLORER_URL = "https://sepolia.etherscan.io";
-
 export default function VaultBalanceCard({ wallet, address }: VaultBalanceCardProps) {
     const shortAddr = (addr: string | null | undefined) =>
         addr ? `${addr.slice(0, 8)}...${addr.slice(-6)}` : "N/A";
+    const explorerAddressUrl = getExplorerAddressUrl(address);
 
     return (
         <div className="vault-card">
@@ -31,9 +30,9 @@ export default function VaultBalanceCard({ wallet, address }: VaultBalanceCardPr
                 <div className="vault-meta-item" style={{ gridColumn: "1 / -1" }}>
                     <span className="vault-meta-label">Smart Account</span>
                     <span className="vault-meta-value">
-                        {address ? (
+                        {address && explorerAddressUrl ? (
                             <a
-                                href={`${EXPLORER_URL}/address/${address}`}
+                                href={explorerAddressUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="vault-address-link"
@@ -46,7 +45,7 @@ export default function VaultBalanceCard({ wallet, address }: VaultBalanceCardPr
                                     <line x1="10" y1="14" x2="21" y2="3" />
                                 </svg>
                             </a>
-                        ) : "N/A"}
+                        ) : address ? shortAddr(address) : "N/A"}
                     </span>
                 </div>
 
