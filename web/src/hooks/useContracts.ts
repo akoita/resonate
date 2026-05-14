@@ -912,11 +912,18 @@ export function useAttestAndStake() {
           (smartAccountAddress as Address | undefined) ||
           (address as Address);
 
-        // Generate a deterministic release protection id from address + contentHash.
-        // This remains the canonical release root that tracks and stems inherit from.
-        const { keccak256: viemKeccak256, encodePacked } = await import("viem");
+        // Generate a deterministic release protection id from wallet + audio + release metadata.
+        // Including metadataURI prevents two releases with the same audio hash from sharing a
+        // protection root that only indexes under the first release's metadata.
+        const { keccak256: viemKeccak256, encodePacked, stringToHex } = await import("viem");
+        const releaseMetadataHash = viemKeccak256(stringToHex(params.metadataURI));
         const releaseId = BigInt(
-          viemKeccak256(encodePacked(["address", "bytes32"], [callerAddress, params.contentHash]))
+          viemKeccak256(
+            encodePacked(
+              ["address", "bytes32", "bytes32"],
+              [callerAddress, params.contentHash, releaseMetadataHash],
+            ),
+          )
         );
 
         const [attestation, stakeInfo, contractStakeAmount] = await Promise.all([
