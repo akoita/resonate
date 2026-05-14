@@ -112,6 +112,23 @@ This will:
 | `STAKE_USDC_AMOUNT` | `5000000` (5 USDC)                 | USDC stake amount when USDC is enabled |
 | `ESCROW_PERIOD`    | `30 days`                           | Default escrow hold duration          |
 
+### Update Stablecoin Stake on an Existing Deployment
+
+Existing ContentProtection proxies keep their on-chain stake configuration until
+the owner updates it. To sync an already-deployed USDC stake amount to the
+current 5 USDC per release track default:
+
+```bash
+CONTENT_PROTECTION_ADDRESS=0x... \
+PAYMENT_USDC_ADDRESS=0x... \
+STAKE_USDC_AMOUNT=5000000 \
+RPC_URL=$RPC_URL \
+make sync-content-protection-stablecoin-stake
+```
+
+Use `STAKE_ASSET_ADDRESS`, `STAKE_ASSET_AMOUNT`, and `STAKE_ASSET_SYMBOL` for a
+non-USDC ERC-20 stake asset.
+
 ### Post-Deploy Checklist
 
 - [ ] Update `web/src/contracts_abi/index.ts` with new addresses for your chain ID
