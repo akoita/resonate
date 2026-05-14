@@ -65,7 +65,7 @@ export default function StakeDepositCard({
   const stakeLabel = stakeAssetLabel ?? stakeEth;
   const maxListingPrice = maxListingPriceLabel ?? formatMaxListingPrice(trustTier);
   const isWaived = trustTier.stakeAmountWei === "0";
-  const stakeLabelPrefix = stakeAssetKind === "stablecoin" ? "Stablecoin Stake Required" : "Native ETH Stake Required";
+  const stakeLabelPrefix = stakeAssetKind === "stablecoin" ? "Total Stablecoin Stake Required" : "Total Native ETH Stake Required";
 
   return (
     <div style={cardStyle}>

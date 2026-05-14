@@ -1,20 +1,19 @@
 # Smart Contract Scan Report
 
-Scope reviewed on May 14, 2026 for the upload stake amount update:
+Scope reviewed on May 14, 2026 for the staging USDC stake sync update:
 
-- `contracts/script/DeployProtocol.s.sol`
-- `contracts/script/DeployContentProtection.s.sol`
+- `contracts/script/SetContentProtectionStablecoinStake.s.sol`
+- `Makefile`
 - `contracts/README.md`
-- Related backend, frontend, and documentation changes that consume the configured stake amount
+- Related frontend and documentation changes that describe/display the configured stake amount
 
 ## Reconnaissance
 
 - Solidity version: `0.8.28`
 - No files under `contracts/src/` were changed in this branch.
-- The contract-facing change is limited to deploy-script defaults:
-  - Native fallback stake default changes from `0.01 ether` to `0.005 ether`.
-  - USDC stake default changes from `10_000000` to `5_000000`.
-- Runtime stake policy remains owner-configurable through existing `ContentProtection` admin functions, especially `setStakeAmountForAsset(address,uint256)`.
+- The contract-facing change is limited to a Foundry operations script that calls the existing owner-only `ContentProtection.setStakeAmountForAsset(address,uint256)` function.
+- The script has no embedded addresses, private keys, RPC URLs, or environment-specific secrets. It requires `CONTENT_PROTECTION_ADDRESS` plus `STAKE_ASSET_ADDRESS` or `PAYMENT_USDC_ADDRESS`, and defaults the amount to `5000000` base units.
+- Runtime stake policy remains owner-configurable through the existing `ContentProtection` admin function. The script does not change deployed bytecode or add a new on-chain entry point.
 
 ## Syntactic Sweep
 
@@ -30,10 +29,10 @@ The matches observed are pre-existing in contract source and were not modified b
 
 ## Semantic Review
 
-- Lowering deploy defaults does not change deployed bytecode behavior unless the protocol is redeployed or an owner transaction updates on-chain settings.
-- Existing deployed contracts still enforce the stake amounts currently stored on-chain.
-- The frontend update multiplies the configured per-track stake by release track count before staking, while the contract still enforces the configured minimum stake amount for the release root.
-- A future admin console or operations script should update both the on-chain `stakeAmountsByToken` value and backend canonical USD configuration to avoid UI/backend/on-chain drift.
+- The new script reads the current ERC-20 stake amount before broadcasting and exits without a transaction if the target amount is already configured.
+- The only state-changing call is `setStakeAmountForAsset`, which is protected by the existing `onlyOwner` modifier in `ContentProtection`.
+- The staging remediation transaction successfully changed Base Sepolia Circle USDC staking from `10000000` to `5000000` base units. A read-back confirmed the configured USDC stake asset now returns `5000000`.
+- The upload UI wording now labels the displayed stablecoin amount as a total stake, reducing ambiguity when the release has multiple tracks.
 
 ## Findings
 
@@ -58,4 +57,6 @@ rg 'selfdestruct|delegatecall|tx\.origin' contracts/src/
 rg 'unchecked' contracts/src/
 rg 'assembly' contracts/src/
 cd contracts && forge build
+cd web && npm run lint
+cast call "$CONTENT_PROTECTION_ADDRESS" 'stakeAmountsByToken(address)(uint256)' "$PAYMENT_USDC_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC_URL"
 ```

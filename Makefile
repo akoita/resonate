@@ -199,6 +199,10 @@ deploy-local-payments:
 	@rm -rf web/.next
 	@echo "✓ Local payment contracts and config are ready"
 
+sync-content-protection-stablecoin-stake:
+	cd contracts && forge script script/SetContentProtectionStablecoinStake.s.sol --rpc-url $${RPC_URL:-http://localhost:8545} --broadcast
+	@echo "✓ Content Protection stablecoin stake amount synced"
+
 payments-dev-up: dev-up local-aa-up
 	$(MAKE) local-aa-deploy
 	@sleep 1
