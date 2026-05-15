@@ -60,6 +60,43 @@ contract-adjacent local workflows.
 
 ---
 
+## 📚 Feature Catalog & Documentation Updates
+
+`docs/features/README.md` is the canonical human-readable catalog of Resonate
+features. Developers and agents should be able to discover what exists, what is
+partial/planned/retired, who it is for, and how to use or test it without
+reading the whole codebase.
+
+### Rules
+
+1. **Update the feature catalog for durable feature work.** When adding,
+   materially changing, exposing, hiding, or removing a user-facing,
+   developer-facing, API-facing, agent-facing, or protocol-facing feature:
+   - Update `docs/features/README.md`
+   - Add or update the feature's dedicated page under `docs/features/`
+
+2. **Feature pages must be practical.** A feature page should include:
+   - current status (`implemented`, `partial`, `in-progress`, `planned`, or `retired`)
+   - who the feature is for
+   - what value it provides
+   - how to use it as an end user, developer, or agent/API consumer
+   - relevant UI routes, API endpoints, env vars, events, services, and tests
+   - links to deeper RFCs, architecture docs, issues, PRs, and code references
+
+3. **Keep RFCs and feature docs distinct.**
+   - RFCs explain design intent, alternatives, and future architecture.
+   - Feature pages explain the current product/platform capability and how to
+     use or verify it today.
+
+4. **Update docs in the same branch as code.** Do not leave feature catalog
+   updates for a later cleanup PR unless the user explicitly scopes the work to
+   code only.
+
+5. **Use `/finish-issue` to enforce this.** The finish workflow includes the
+   feature catalog check alongside security scans, tests, commits, and PR work.
+
+---
+
 ## 🚨 Git Workflow — Branch & PR Only
 
 **NEVER push directly to `main`.** All changes must go through a feature branch and Pull Request.

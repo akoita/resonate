@@ -109,6 +109,11 @@ web app. The core runtime combines:
 See the [deployment architecture doc](docs/architecture/deployment_architecture.md)
 for the editable Mermaid model, source references, and component inventory.
 
+For a discoverable index of product and platform capabilities, see the
+[feature catalog](docs/features/README.md). It is the first stop for what is
+implemented, partial, planned, or retired, and links to usage/testing notes for
+each durable feature.
+
 ---
 
 ## 🚀 Quick Start
