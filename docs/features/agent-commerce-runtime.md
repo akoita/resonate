@@ -3,7 +3,7 @@ title: "Agent Commerce Runtime"
 status: implemented
 owner: "@akoita"
 issues: [805, 812]
-introduced_by: [808, 810, 811, 821, 823]
+introduced_by: [808, 810, 811, 821, 823, 824]
 ---
 
 # Agent Commerce Runtime
@@ -38,6 +38,7 @@ Available now:
 - The deterministic selector now produces a bounded scored shortlist with explanation signals for taste match, expanded taste match, learned preference, active listings, text similarity, recent-track exclusion, and versioned metadata-derived audio feature vectors.
 - Recommendation ranking now runs behind an adapter contract. `AGENT_RECOMMENDATION_STRATEGY` selects the strategy and defaults to `deterministic`; unsupported values fall back to the deterministic adapter rather than changing user-facing behavior.
 - Metadata-derived `agentAudioFeatures` are persisted on `Track.generationMetadata` as a first durable feature-vector seed. Current schema version `agent-audio-features/v2` exposes confidence, source, extractor version, tempo/duration/energy bands, normalized genre, descriptors, tags, warnings, and a normalized numeric vector while leaving full DSP/model extraction as a future implementation behind the same service boundary.
+- `npm run eval:recommendations` writes replayable JSON and Markdown eval artifacts for exact matches, semantic-near matches, recent-track rejection, sparse/strict no-match behavior, precision thresholds, listing coverage, novelty, and explanation coverage. The generated `eval-results/` directory stays ignored unless an artifact is intentionally promoted into docs.
 - `PolicyGuardService` centralizes pre-execution checks for budget and license policy.
 - `PaymentRouterService` centralizes ERC-4337 marketplace and x402 rail execution behind one result envelope.
 - The x402 rail builds a canonical challenge from `StemPricing`, blocks policy failures before verification, verifies/settles payment proofs, records `x402.purchase` provenance, and returns a structured receipt.
@@ -313,6 +314,32 @@ with taste-constrained candidate retrieval, tool-mediated LLM curation, budget
 guards, and purchase routing. The follow-up product claim is: richer taste
 matching through audio features, stronger embeddings, collaborative learning,
 and evaluation-backed recommendation quality.
+
+## Recommendation Evals
+
+Run:
+
+```bash
+cd backend
+npm run eval:recommendations
+```
+
+The command writes:
+
+- `eval-results/agent-recommendation-results.json` for machine-readable replay.
+- `eval-results/agent-recommendation-summary.md` for product-readable review.
+
+Important metrics:
+
+- `precision`: selected candidates marked exact or semantic divided by selected candidates with known relevance.
+- `refusalCorrectness`: strict no-match cases that correctly selected zero tracks.
+- `listingCoverage`: selected candidates with known active listing availability.
+- `noveltyCoverage`: selected candidates that were not recently played.
+- `explanationCoverage`: selected candidates with explanation text or top scoring signals.
+
+The eval suite intentionally fails if a strict no-match case selects unrelated
+catalog inventory, or if a semantic-match case falls below its configured
+precision threshold.
 
 ## Tests
 
