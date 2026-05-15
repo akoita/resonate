@@ -1,9 +1,9 @@
 ---
 title: "Agent Commerce Runtime"
-status: partial
+status: implemented
 owner: "@akoita"
-issues: [805]
-introduced_by: 808
+issues: [805, 812]
+introduced_by: [808, 810, 811]
 ---
 
 # Agent Commerce Runtime
@@ -26,7 +26,7 @@ each caller inventing its own response contract.
 
 ## Current Status
 
-Status: `partial`
+Status: `implemented`
 
 Available now:
 
@@ -39,10 +39,15 @@ Available now:
 - The AI DJ marketplace buy path routes through `PaymentRouterService` before calling the ERC-4337 purchase rail.
 - Session recommendation events publish `agent.track_selected` with `strategy: "runtime"`.
 
-Still to complete:
+Phase 1 is complete for the in-backend runtime-commerce boundary tracked by
+#805. Two follow-ups remain intentionally outside this feature's implemented
+surface:
 
-- Decide whether external authenticated clients need a dedicated payment-router API, or whether public x402 endpoints plus backend service calls are enough.
-- Phase 2 standalone runtime extraction remains tracked separately.
+- Public payment-router API decision: #812 decides whether external
+  authenticated clients need a dedicated router endpoint, or whether public
+  x402 endpoints plus trusted backend service calls are the supported model.
+- Standalone runtime extraction: #424 keeps the Phase 2 worker/process
+  extraction separate from this in-backend foundation.
 
 ## End-User Flow
 
@@ -121,8 +126,10 @@ Other useful responses:
 
 ## Developer Payment-Router Flow
 
-Use `PaymentRouterService.purchase(input)` when backend code needs one policy
-and result envelope across supported rails.
+Use `PaymentRouterService.purchase(input)` when trusted backend code needs one
+policy and result envelope across supported rails. External clients should use
+the public x402 stem endpoints for HTTP-native purchases until #812 decides
+whether a dedicated authenticated payment-router API should exist.
 
 ERC-4337 marketplace purchase:
 
@@ -270,3 +277,4 @@ npm run test
 - [Agent Platform Refactor Backlog](agent-platform-refactor-backlog.md)
 - [Agent Runtime Worker](../architecture/agent-runtime-worker.md)
 - [x402 Payments](../architecture/x402_payments.md)
+- [Public payment-router API decision](https://github.com/akoita/resonate/issues/812)

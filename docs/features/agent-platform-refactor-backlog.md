@@ -8,7 +8,7 @@ rewrite.
 
 ## Workstream A: Runtime Unification
 
-Status note (May 2026): the first backend slice now routes
+Status note (May 2026): the Phase 1 backend foundation now routes
 `SessionsService.agentNext()` through `AgentRuntimeService.runCommerce()` and
 normalizes runtime output for session consumers. The `/agent` dashboard also
 exposes a "Next AI Pick" card that calls this runtime-commerce path for the
@@ -49,7 +49,8 @@ Acceptance:
 Status note (May 2026): `PaymentRouterService` wraps the ERC-4337 marketplace
 purchase rail and includes an x402 rail that builds canonical payment
 challenges, verifies/settles x402 proofs, records `x402.purchase` provenance,
-and returns the same normalized envelope.
+and returns the same normalized envelope. Public payment-router API exposure is
+tracked separately in #812.
 
 ### B1. Add `PaymentRouterService`
 
