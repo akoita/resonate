@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { ToolRegistry } from "./tools/tool_registry";
+import { expandAgentTasteQueries } from "./agent_taste_expansion";
 
 export interface AgentSelectorInput {
   queries?: string[];
@@ -15,7 +16,7 @@ export class AgentSelectorService {
   constructor(private readonly tools: ToolRegistry) { }
 
   async select(input: AgentSelectorInput) {
-    const queries = (input.queries ?? []).filter(Boolean);
+    const queries = expandAgentTasteQueries((input.queries ?? []).filter(Boolean));
     const limit = input.limit ?? 5;
 
     // Gather candidates from all vibes/queries

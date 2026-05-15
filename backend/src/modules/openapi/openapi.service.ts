@@ -39,6 +39,9 @@ export class OpenApiService {
           '2. Call GET /api/storefront/stems/{stemId} or GET /api/stems/{stemId}/x402/info to inspect pricing and licensing.',
           `3. Call GET /api/stems/{stemId}/x402 and handle the 402 challenge via ${X402_RETRY_HEADERS.join(' or ')}.`,
           '4. Retry the paid GET request and read the response receipt headers.',
+          '',
+          'Agent commerce surface:',
+          'External clients should use storefront discovery, x402 payment endpoints, and MCP tools. Resonate does not expose a generic public payment-router endpoint yet; PaymentRouterService is a trusted backend boundary for app and worker flows.',
         ].join('\n'),
       },
       servers: [{ url: baseUrl }],
@@ -790,6 +793,7 @@ export class OpenApiService {
         'Discover public stems with GET /api/storefront/stems.',
         'Inspect pricing with GET /api/stems/{stemId}/x402/info.',
         `Handle the 402 challenge on GET /api/stems/{stemId}/x402 and retry with ${X402_RETRY_HEADERS.join(' or ')}.`,
+        'For agent commerce, this x402 surface is the public payment path; the generic payment router is an internal backend boundary.',
       ].join(' '),
     };
   }

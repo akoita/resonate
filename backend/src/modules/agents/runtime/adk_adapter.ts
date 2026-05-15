@@ -19,6 +19,7 @@ import {
   LlmGenerationPick,
 } from "./agent_runtime.adapter";
 import { ToolRegistry } from "../tools/tool_registry";
+import { getAgentTrackLimit } from "../agent_runtime.config";
 import { createCurationAgent, buildUserMessage } from "./adk_curation_agent";
 
 const TIMEOUT_MS = 30_000;
@@ -97,10 +98,11 @@ export class AdkAdapter implements AgentRuntimeAdapter {
     const trackPattern =
       /TRACK:\s*(.+?)\s*\|\s*LICENSE:\s*(\w+)\s*\|\s*PRICE:\s*\$?([\d.]+)/gi;
     const picks: LlmTrackPick[] = [];
+    const pickLimit = getAgentTrackLimit();
     let budgetLeft = input.budgetRemainingUsd;
     let match: RegExpExecArray | null;
 
-    while ((match = trackPattern.exec(text)) !== null) {
+    while (picks.length < pickLimit && (match = trackPattern.exec(text)) !== null) {
       const trackId = match[1].trim();
       const licenseType = match[2].trim().toLowerCase() as
         | "personal"

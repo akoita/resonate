@@ -13,6 +13,7 @@ import {
 } from "./agent_runtime.adapter";
 import { ToolRegistry } from "../tools/tool_registry";
 import { getToolDeclarations, executeTool } from "../tools/tool_declarations";
+import { getAgentTrackLimit } from "../agent_runtime.config";
 
 const MAX_TOOL_ROUNDS = 6;
 const TIMEOUT_MS = 30_000;
@@ -103,7 +104,7 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
   private buildSystemPrompt(input: AgentRuntimeInput): string {
     return [
       "You are a music curation DJ agent for the Resonate platform.",
-      "Your job is to find ALL tracks that match the user's taste and genre preferences.",
+      "Your job is to find a concise ranked shortlist of tracks that match the user's taste and genre preferences.",
       "",
       "You have access to tools to search the catalog, check pricing, get analytics, and rank tracks by similarity.",
       "",
@@ -113,11 +114,12 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
       "- Use pricing_quote to check if tracks fit within the remaining budget.",
       "- STRONGLY PREFER tracks where hasListing is true — these can be purchased on-chain.",
       "- Only recommend tracks without listings if no listed alternatives exist.",
-      "- Include EVERY listed track that matches the desired taste.",
+      "- Recommend only the strongest matching tracks; do not dump the whole catalog.",
+      "- If a genre search returns no tracks, treat that as no match for that genre.",
       "- Avoid recommending tracks the user has recently listened to.",
       "- Stay within the user's budget.",
       "",
-      "After using tools, respond with ALL matching tracks.",
+      "After using tools, respond with a concise ranked shortlist of matching tracks.",
       "List each track on its own line using this exact format:",
       "",
       "TRACK: <trackId> | LICENSE: <personal|remix|commercial> | PRICE: <price in USD>",
@@ -133,6 +135,7 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
     const parts: string[] = [
       `Session: ${input.sessionId}`,
       `Budget remaining: $${input.budgetRemainingUsd.toFixed(2)}`,
+      `Selection target: up to ${getAgentTrackLimit()} tracks`,
     ];
     if (input.preferences.mood) {
       parts.push(`Mood: ${input.preferences.mood}`);
@@ -163,10 +166,11 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
     // Parse multiple TRACK lines: "TRACK: <id> | LICENSE: <type> | PRICE: <price>"
     const trackPattern = /TRACK:\s*(.+?)\s*\|\s*LICENSE:\s*(\w+)\s*\|\s*PRICE:\s*\$?([\d.]+)/gi;
     const picks: LlmTrackPick[] = [];
+    const pickLimit = getAgentTrackLimit();
     let budgetLeft = input.budgetRemainingUsd;
     let match: RegExpExecArray | null;
 
-    while ((match = trackPattern.exec(text)) !== null) {
+    while (picks.length < pickLimit && (match = trackPattern.exec(text)) !== null) {
       const trackId = match[1].trim();
       const licenseType = (match[2].trim().toLowerCase()) as "personal" | "remix" | "commercial";
       const priceUsd = parseFloat(match[3]);
