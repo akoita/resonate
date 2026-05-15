@@ -113,7 +113,8 @@ Additional services should emerge only when pressure is real.
 Implementation note (May 2026): the first in-backend slices have landed for
 this shape. `SessionsService.agentNext()` calls
 `AgentRuntimeService.runCommerce()`, runtime results are normalized before
-session response shaping, and `PolicyGuardService` / `PaymentRouterService`
+session response shaping, and the `/agent` dashboard exposes a "Next AI Pick"
+control for manual runtime QA. `PolicyGuardService` / `PaymentRouterService`
 cover pre-execution policy checks plus ERC-4337 marketplace and x402 rail
 routing. Standalone runtime extraction remains follow-up work.
 

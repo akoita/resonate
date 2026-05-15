@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import AuthGate from "../../components/auth/AuthGate";
+import { useAuth } from "../../components/auth/AuthProvider";
 import { useAgentConfig } from "../../hooks/useAgentConfig";
 import { useAgentEvents } from "../../hooks/useAgentEvents";
 import { useAgentHistory } from "../../hooks/useAgentHistory";
 import { useAgentWallet } from "../../hooks/useAgentWallet";
+import { getAgentNextPick, type AgentNextPickResponse } from "../../lib/api";
 import AgentSetupWizard from "../../components/agent/AgentSetupWizard";
 import AgentStatusCard from "../../components/agent/AgentStatusCard";
 import AgentActivityFeed from "../../components/agent/AgentActivityFeed";
@@ -15,9 +17,11 @@ import AgentBudgetModal from "../../components/agent/AgentBudgetModal";
 import AgentTasteCard from "../../components/agent/AgentTasteCard";
 import AgentHistoryCard from "../../components/agent/AgentHistoryCard";
 import AgentSessionPresets from "../../components/agent/AgentSessionPresets";
+import AgentNextPickCard from "../../components/agent/AgentNextPickCard";
 import { useToast } from "../../components/ui/Toast";
 
 export default function AgentPage() {
+    const { token } = useAuth();
     const { config, isLoading, showWizard, setShowWizard, createConfig, updateConfig, mintIdentity, attestReputation, startSession, stopSession } =
         useAgentConfig();
     const events = useAgentEvents();
@@ -25,6 +29,13 @@ export default function AgentPage() {
     const wallet = useAgentWallet();
     const { addToast } = useToast();
     const [showBudgetModal, setShowBudgetModal] = useState(false);
+    const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+    const [nextPick, setNextPick] = useState<AgentNextPickResponse | null>(null);
+    const [isPickingNext, setIsPickingNext] = useState(false);
+
+    const openSessionId = useMemo(() => {
+        return activeSessionId ?? sessions.find((session) => !session.endedAt)?.id ?? null;
+    }, [activeSessionId, sessions]);
 
     const handleWizardComplete = async (data: {
         name: string;
@@ -59,6 +70,8 @@ export default function AgentPage() {
     const handleToggle = async () => {
         if (config?.isActive) {
             await stopSession();
+            setActiveSessionId(null);
+            setNextPick(null);
             addToast({
                 type: "info",
                 title: "Session Stopped",
@@ -67,7 +80,10 @@ export default function AgentPage() {
             // Refetch history to show the completed session
             setTimeout(() => refetchHistory(), 500);
         } else {
-            await startSession();
+            const result = await startSession();
+            if (result?.sessionId) {
+                setActiveSessionId(result.sessionId);
+            }
             addToast({
                 type: "info",
                 title: "Session Started",
@@ -77,6 +93,44 @@ export default function AgentPage() {
             setTimeout(() => refetchHistory(), 15000);
             // Safety-net refetch for slower LLM responses
             setTimeout(() => refetchHistory(), 35000);
+        }
+    };
+
+    const handleNextPick = async () => {
+        if (!token || !openSessionId || !config) return;
+        setIsPickingNext(true);
+        try {
+            const result = await getAgentNextPick(token, {
+                sessionId: openSessionId,
+                preferences: {
+                    genres: config.vibes,
+                    licenseType: "personal",
+                },
+            });
+            setNextPick(result);
+            if (result.status === "ok" && result.track) {
+                addToast({
+                    type: "success",
+                    title: "AI Pick Ready",
+                    message: `${result.track.title} · ${result.licenseType ?? "personal"} · $${(result.priceUsd ?? 0).toFixed(2)}`,
+                });
+            } else {
+                addToast({
+                    type: "info",
+                    title: "No Pick Returned",
+                    message: result.reason ?? result.status,
+                });
+            }
+            void refetchHistory();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Unable to request next pick.";
+            addToast({
+                type: "error",
+                title: "Runtime Pick Failed",
+                message,
+            });
+        } finally {
+            setIsPickingNext(false);
         }
     };
 
@@ -140,6 +194,13 @@ export default function AgentPage() {
                                 totalSpend={sessions.reduce((sum, s) => sum + s.spentUsd, 0)}
                             />
                             <AgentActivityFeed isActive={config.isActive} events={events} />
+                            <AgentNextPickCard
+                                config={config}
+                                activeSessionId={openSessionId}
+                                pick={nextPick}
+                                isLoading={isPickingNext}
+                                onPick={handleNextPick}
+                            />
                             <AgentBudgetCard
                                 config={config}
                                 spentUsd={sessions.reduce((sum, s) => sum + s.spentUsd, 0)}

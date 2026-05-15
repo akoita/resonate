@@ -10,7 +10,9 @@ rewrite.
 
 Status note (May 2026): the first backend slice now routes
 `SessionsService.agentNext()` through `AgentRuntimeService.runCommerce()` and
-normalizes runtime output for session consumers. The legacy
+normalizes runtime output for session consumers. The `/agent` dashboard also
+exposes a "Next AI Pick" card that calls this runtime-commerce path for the
+active session. The legacy
 `sessions/agent_orchestration.service.ts` remains in the tree for older isolated
 tests and compatibility, but it is no longer the session agent entrypoint.
 

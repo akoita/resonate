@@ -68,6 +68,49 @@ describe('API Client', () => {
     });
   });
 
+  describe('getAgentNextPick', () => {
+    it('posts to the session runtime next-pick endpoint', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            status: 'ok',
+            track: { id: 'track-1', title: 'Runtime Track', artistId: 'artist-1' },
+            licenseType: 'remix',
+            priceUsd: 5,
+            runtimeStatus: 'approved',
+            tracks: [{ trackId: 'track-1', licenseType: 'remix', priceUsd: 5 }],
+          }),
+      });
+
+      const result = await api.getAgentNextPick(
+        'listener-token',
+        {
+          sessionId: 'session-1',
+          preferences: {
+            genres: ['electronic'],
+            licenseType: 'remix',
+          },
+        },
+      );
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/sessions/agent/next');
+      expect(opts.method).toBe('POST');
+      expect(opts.headers.get('Authorization')).toBe('Bearer listener-token');
+      expect(JSON.parse(opts.body)).toEqual({
+        sessionId: 'session-1',
+        preferences: {
+          genres: ['electronic'],
+          licenseType: 'remix',
+        },
+      });
+      expect(result.status).toBe('ok');
+      expect(result.track?.title).toBe('Runtime Track');
+    });
+  });
+
   describe('isGenerationStatusComplete', () => {
     it('accepts backend and legacy completion status values', () => {
       expect(api.isGenerationStatusComplete('completed')).toBe(true);

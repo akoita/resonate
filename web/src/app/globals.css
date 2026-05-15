@@ -7255,6 +7255,10 @@ tr[draggable="true"]:hover {
   margin-bottom: var(--space-4);
 }
 
+.agent-card-header.compact {
+  margin-bottom: var(--space-3);
+}
+
 .agent-avatar {
   width: 56px;
   height: 56px;
@@ -7827,6 +7831,118 @@ tr[draggable="true"]:hover {
   background: rgba(255, 255, 255, 0.06);
   color: #fff;
   border-color: rgba(255, 255, 255, 0.15);
+}
+
+.agent-next-pick-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.agent-next-pick-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #67e8f9;
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.18), rgba(16, 185, 129, 0.12));
+  border: 1px solid rgba(103, 232, 249, 0.18);
+}
+
+.agent-next-pick-body {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  margin-bottom: var(--space-4);
+}
+
+.agent-next-pick-result,
+.agent-next-pick-empty {
+  width: 100%;
+  min-height: 128px;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.agent-next-pick-result h4 {
+  margin: 6px 0 14px;
+  color: #fff;
+  font-size: 20px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.agent-next-pick-kicker {
+  display: inline-flex;
+  color: #67e8f9;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.agent-next-pick-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.agent-next-pick-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.agent-next-pick-empty {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.agent-next-pick-empty p {
+  margin: 8px 0 0;
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.agent-next-pick-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(103, 232, 249, 0.24);
+  background: rgba(14, 165, 233, 0.13);
+  color: #e0f2fe;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.agent-next-pick-btn:hover:not(:disabled) {
+  background: rgba(14, 165, 233, 0.2);
+  border-color: rgba(103, 232, 249, 0.42);
+  transform: translateY(-1px);
+}
+
+.agent-next-pick-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
 }
 
 .agent-taste-section {
