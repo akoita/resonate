@@ -2,17 +2,31 @@ import { Injectable } from "@nestjs/common";
 import { WalletService } from "../identity/wallet.service";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
-import { AgentOrchestrationService, AgentPreferences } from "./agent_orchestration.service";
 import { AgentPurchaseService } from "../agents/agent_purchase.service";
+import { AgentRuntimeCommerceResult } from "../agents/agent_runtime.types";
+import { AgentRuntimeService } from "../agents/agent_runtime.service";
+
+export interface AgentPreferences {
+  mood?: string;
+  energy?: "low" | "medium" | "high";
+  genres?: string[];
+  stemTypes?: string[];
+  allowExplicit?: boolean;
+  licenseType?: "personal" | "remix" | "commercial";
+  learnedGenreWeights?: Record<string, number>;
+}
 
 @Injectable()
 export class SessionsService {
   private playlistCache = new Map<string, { items: unknown[]; cachedAt: number }>();
   private readonly playlistTtlMs = 15_000;
+  private agentPreferences = new Map<string, AgentPreferences>();
+  private recentTrackIds = new Map<string, string[]>();
+
   constructor(
     private readonly walletService: WalletService,
     private readonly eventBus: EventBus,
-    private readonly agentService: AgentOrchestrationService,
+    private readonly agentRuntimeService: AgentRuntimeService,
     private readonly agentPurchaseService: AgentPurchaseService
   ) {}
 
@@ -33,7 +47,7 @@ export class SessionsService {
       },
     });
     if (input.preferences) {
-      this.agentService.configureSession(session.id, input.preferences);
+      this.agentPreferences.set(session.id, input.preferences);
     }
     this.eventBus.publish({
       eventName: "session.started",
@@ -187,7 +201,23 @@ export class SessionsService {
   }
 
   async agentNext(input: { sessionId: string; preferences?: AgentPreferences }) {
-    return this.agentService.selectNextTrack(input);
+    const session = await prisma.session.findUnique({ where: { id: input.sessionId } });
+    if (!session || session.endedAt) {
+      return { status: "session_inactive" };
+    }
+
+    const preferences = this.mergeAgentPreferences(input.sessionId, input.preferences);
+    const recentTrackIds = this.recentTrackIds.get(input.sessionId) ?? [];
+    const budgetRemainingUsd = Math.max(0, session.budgetCapUsd - session.spentUsd);
+    const result = await this.agentRuntimeService.runCommerce({
+      sessionId: input.sessionId,
+      userId: session.userId,
+      recentTrackIds,
+      budgetRemainingUsd,
+      preferences,
+    });
+
+    return this.toAgentNextResponse(input.sessionId, result);
   }
 
   async getPlaylist(limit = 10) {
@@ -204,5 +234,84 @@ export class SessionsService {
     });
     this.playlistCache.set(cacheKey, { items, cachedAt: Date.now() });
     return { items };
+  }
+
+  private mergeAgentPreferences(
+    sessionId: string,
+    incoming?: AgentPreferences,
+  ): AgentPreferences {
+    const merged = {
+      ...(this.agentPreferences.get(sessionId) ?? {}),
+      ...(incoming ?? {}),
+    };
+    this.agentPreferences.set(sessionId, merged);
+    return merged;
+  }
+
+  private async toAgentNextResponse(
+    sessionId: string,
+    result: AgentRuntimeCommerceResult,
+  ) {
+    const selected = result.primaryTrack;
+    if (!selected) {
+      return {
+        status: result.status,
+        tracks: [],
+        reason: result.reason,
+        generationsUsed: result.generationsUsed,
+        generationSpendUsd: result.generationSpendUsd,
+      };
+    }
+
+    const track = await prisma.track.findUnique({
+      where: { id: selected.trackId },
+      include: { release: { select: { artistId: true } } },
+    });
+    if (!track) {
+      return {
+        status: "no_tracks",
+        tracks: [],
+        reason: "selected_track_not_found",
+      };
+    }
+
+    this.rememberRecentTrack(sessionId, track.id);
+    this.eventBus.publish({
+      eventName: "agent.track_selected",
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      sessionId,
+      trackId: track.id,
+      strategy: "runtime",
+      preferences: (this.agentPreferences.get(sessionId) ?? {}) as Record<string, unknown>,
+    });
+
+    return {
+      status: "ok",
+      track: {
+        id: track.id,
+        title: track.title,
+        artistId: track.release.artistId,
+      },
+      licenseType: selected.licenseType,
+      priceUsd: selected.priceUsd,
+      runtimeStatus: result.status,
+      tracks: result.tracks.map((item) => ({
+        trackId: item.trackId,
+        licenseType: item.licenseType,
+        priceUsd: item.priceUsd,
+        reason: item.reason,
+      })),
+      generationsUsed: result.generationsUsed,
+      generationSpendUsd: result.generationSpendUsd,
+    };
+  }
+
+  private rememberRecentTrack(sessionId: string, trackId: string) {
+    const recent = this.recentTrackIds.get(sessionId) ?? [];
+    this.recentTrackIds.set(
+      sessionId,
+      [trackId, ...recent.filter((id) => id !== trackId)].slice(0, 20),
+    );
   }
 }

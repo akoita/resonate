@@ -1,7 +1,11 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { AgentRuntimeExecutorService } from "./agent_runtime.executor.service";
 import { AgentRuntimeRemoteClient } from "./agent_runtime_remote.client";
-import { AgentRuntimeRunResult } from "./agent_runtime.types";
+import {
+  AgentRuntimeCommerceResult,
+  AgentRuntimeRunResult,
+  normalizeAgentRuntimeResult,
+} from "./agent_runtime.types";
 import { AgentRuntimeInput } from "./runtime/agent_runtime.adapter";
 
 @Injectable()
@@ -29,5 +33,9 @@ export class AgentRuntimeService {
       );
       return this.executor.run(input);
     }
+  }
+
+  async runCommerce(input: AgentRuntimeInput): Promise<AgentRuntimeCommerceResult> {
+    return normalizeAgentRuntimeResult(await this.run(input));
   }
 }
