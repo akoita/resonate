@@ -218,6 +218,7 @@ export interface AgentSelectionEvent extends BaseEvent {
   trackId: string;
   candidates: string[];
   count?: number;
+  strategy?: string;
 }
 
 export interface AgentMixPlannedEvent extends BaseEvent {

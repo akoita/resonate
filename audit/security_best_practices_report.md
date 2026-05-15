@@ -164,3 +164,55 @@ rg 'password|secret|api_key|private_key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY' back
 rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/agents backend/src/modules/sessions
 rg 'dangerouslySetInnerHTML|innerHTML|document\.cookie|setCookie|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/components/agent web/src/lib/api.ts
 ```
+
+## Addendum: #821 Recommendation Adapter Strategy Switch
+
+Reviewed the AI DJ recommendation adapter refactor and strategy switch. No
+Critical or High findings were identified in the changed code.
+
+### Scope
+
+- `backend/src/modules/agents/agent_recommendation.adapter.ts`
+- `backend/src/modules/agents/agent_recommendation.service.ts`
+- `backend/src/modules/agents/deterministic_recommendation.adapter.ts`
+- `backend/src/modules/agents/agent_orchestrator.service.ts`
+- `backend/src/modules/agents/agent_runtime.providers.ts`
+- `backend/src/events/event_types.ts`
+- `backend/src/tests/agent_recommendation_adapter.spec.ts`
+- `backend/src/tests/agent_orchestrator.integration.spec.ts`
+- `docs/deployment/environment.md`
+- `docs/features/agent-commerce-runtime.md`
+- `docs/features/README.md`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none.
+- Low: none in the changed code.
+
+### Notes
+
+- `AGENT_RECOMMENDATION_STRATEGY` is a non-secret backend behavior switch. It
+  defaults to deterministic ranking and unsupported values fall back to the
+  deterministic adapter.
+- The adapter boundary introduces no new controller, public endpoint, network
+  client, dynamic SQL, deserialization path, or secret handling.
+- The deterministic adapter preserves strict no-match behavior by routing
+  through the existing selector contract.
+- Secret-pattern scans report existing environment-variable documentation names
+  in `docs/deployment/environment.md`; no literal credentials or new secret
+  material were introduced.
+
+### Commands Run
+
+```bash
+cd backend && npm run lint
+cd backend && npx jest --runInBand src/tests/agent_recommendation_adapter.spec.ts src/tests/agent_learning.spec.ts src/tests/agent_runtime_normalization.spec.ts
+cd backend && npx jest --runInBand --config jest.integration.config.js --testPathPattern='agent_orchestrator.integration|sessions.integration|flow3_session.integration'
+cd backend && npm run eval:recommendations
+cd backend && npm run test
+git diff --check
+rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|gho_[A-Za-z0-9_]+|sk-[A-Za-z0-9]' backend/src/modules/agents/agent_recommendation.adapter.ts backend/src/modules/agents/agent_recommendation.service.ts backend/src/modules/agents/deterministic_recommendation.adapter.ts backend/src/modules/agents/agent_orchestrator.service.ts backend/src/modules/agents/agent_runtime.providers.ts backend/src/events/event_types.ts backend/src/tests/agent_recommendation_adapter.spec.ts backend/src/tests/agent_orchestrator.integration.spec.ts docs/deployment/environment.md docs/features/agent-commerce-runtime.md docs/features/README.md
+rg -n 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/agents/agent_recommendation.adapter.ts backend/src/modules/agents/agent_recommendation.service.ts backend/src/modules/agents/deterministic_recommendation.adapter.ts backend/src/modules/agents/agent_orchestrator.service.ts backend/src/modules/agents/agent_runtime.providers.ts backend/src/events/event_types.ts
+```

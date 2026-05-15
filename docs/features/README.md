@@ -34,7 +34,7 @@ that answers:
 
 | Feature | Status | Audience | Where To Use/Test | Notes |
 | --- | --- | --- | --- | --- |
-| [Agent Commerce Runtime](agent-commerce-runtime.md) | `implemented` | listeners, backend developers, agent developers | `/agent` Next AI Pick, `POST /sessions/agent/next`, storefront x402/MCP, `PaymentRouterService` | Runtime-commerce boundary, policy guard, payment-router envelope, scored recommendation explanations, and metadata-derived audio feature seeds are live; external clients use storefront x402/MCP while the router remains a trusted backend boundary. |
+| [Agent Commerce Runtime](agent-commerce-runtime.md) | `implemented` | listeners, backend developers, agent developers | `/agent` Next AI Pick, `POST /sessions/agent/next`, storefront x402/MCP, `PaymentRouterService` | Runtime-commerce boundary, policy guard, payment-router envelope, recommendation adapter contract, scored explanations, and metadata-derived audio feature seeds are live; external clients use storefront x402/MCP while the router remains a trusted backend boundary. |
 | [Stake Visibility Views](stake_visibility_views.md) | `implemented` | artists, listeners | release/stem pages, wallet stake dashboard | Public trust signals and artist stake management. |
 | [Playback Session MVP](playback_session_mvp.md) | `draft` | listeners, backend developers | `/sessions/start`, `/sessions/play`, `/sessions/stop` | Earlier session API reference; confirm current behavior before relying on it. |
 | [Wallet Funding And Budget Cap](wallet_funding_budget_cap.md) | see page | listeners, developers | wallet and agent budget surfaces | Budget controls used by autonomous agent spend. |
