@@ -25,6 +25,10 @@ export interface AgentRuntimeCommerceTrack {
   licenseType: AgentLicenseType;
   priceUsd: number;
   reason?: string;
+  score?: number;
+  explanation?: string[];
+  signals?: Array<{ label: string; weight: number; reason: string }>;
+  audioFeatures?: unknown;
   mixPlan?: unknown;
   negotiation?: unknown;
 }
@@ -64,15 +68,25 @@ export function normalizeAgentRuntimeResult(
       const negotiation = track.negotiation as
         | {
             licenseType?: unknown;
-            priceUsd?: unknown;
-            reason?: string;
-          }
+          priceUsd?: unknown;
+          reason?: string;
+          recommendation?: {
+            score?: number;
+            explanation?: string[];
+            signals?: Array<{ label: string; weight: number; reason: string }>;
+            audioFeatures?: unknown;
+          };
+        }
         | undefined;
       return {
         trackId: track.trackId,
         licenseType: normalizeLicenseType(negotiation?.licenseType),
         priceUsd: normalizePriceUsd(negotiation?.priceUsd),
         reason: negotiation?.reason,
+        score: negotiation?.recommendation?.score,
+        explanation: negotiation?.recommendation?.explanation,
+        signals: negotiation?.recommendation?.signals,
+        audioFeatures: negotiation?.recommendation?.audioFeatures,
         mixPlan: track.mixPlan,
         negotiation: track.negotiation,
       };

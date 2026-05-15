@@ -260,7 +260,11 @@ export class AgentConfigController {
                                     sessionId: session.id,
                                     trackId: track.trackId,
                                     action: "accept",
-                                    metadata: { source: "agent_session" },
+                                    metadata: {
+                                        source: "agent_session",
+                                        recommendation: track.negotiation.recommendation ?? null,
+                                        reason: track.negotiation.reason,
+                                    },
                                 });
                                 this.logger.log(`[Agent] Processing track ${track.trackId} in mode ${config.sessionMode}`);
                                 if (config.sessionMode === "buy") {
@@ -314,7 +318,12 @@ export class AgentConfigController {
                                     sessionId: session.id,
                                     trackId: pick.trackId,
                                     action: "accept",
-                                    metadata: { source: "agent_session", runtime: "llm" },
+                                    metadata: {
+                                        source: "agent_session",
+                                        runtime: "llm",
+                                        reason: result.reason ?? "llm",
+                                        reasoning: result.reasoning,
+                                    },
                                 });
                                 if (config.sessionMode === "buy") {
                                     // Fetch actual listings to ensure we can buy
@@ -434,9 +443,26 @@ export class AgentConfigController {
                 },
                 agentTransactions: {
                     orderBy: { createdAt: "desc" }
-                }
+                },
+                agentSignals: {
+                    where: { action: "accept" },
+                    orderBy: { createdAt: "desc" },
+                    select: {
+                        trackId: true,
+                        metadata: true,
+                    },
+                },
             },
         });
+
+        for (const session of sessions) {
+            const signalByTrack = new Map(session.agentSignals.map((signal) => [signal.trackId, signal.metadata]));
+            // @ts-ignore - hydrating dynamic props for frontend
+            session.licenses = session.licenses.map((license) => ({
+                ...license,
+                recommendation: signalByTrack.get(license.trackId) ?? null,
+            }));
+        }
 
         // Hydrate transactions with Stem info (same pattern as AgentPurchaseService)
         const allTx = sessions.flatMap(s => s.agentTransactions);

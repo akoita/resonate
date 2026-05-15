@@ -20,6 +20,13 @@ function formatMoney(value?: number) {
     return `$${value.toFixed(2)}`;
 }
 
+function humanReason(status?: string, reason?: string) {
+    if (status === "no_tracks") return "No matching tracks found for the selected taste profile.";
+    if (status === "all_rejected") return "Matching tracks were found, but none passed budget or policy checks.";
+    if (reason === "no_matching_taste_candidates") return "No catalog candidates matched the selected vibes.";
+    return reason ? formatStatus(reason) : "No runtime pick returned.";
+}
+
 export default function AgentNextPickCard({
     config,
     activeSessionId,
@@ -62,13 +69,31 @@ export default function AgentNextPickCard({
                         <div className="agent-next-pick-meta">
                             <span>{pick.licenseType ?? "personal"}</span>
                             <span>{formatMoney(pick.priceUsd)}</span>
+                            {typeof pick.score === "number" && <span>score {pick.score}</span>}
                             {pick.reason && <span>{formatStatus(pick.reason)}</span>}
                         </div>
+                        {pick.explanation?.length ? (
+                            <div className="agent-next-pick-reasons">
+                                {pick.explanation.slice(0, 3).map((item) => (
+                                    <span key={item} className="agent-identity-pill">{item}</span>
+                                ))}
+                            </div>
+                        ) : null}
+                        {pick.audioFeatures ? (
+                            <p className="agent-taste-hint">
+                                Audio signal: {pick.audioFeatures.energyBand ?? "unknown"} energy
+                                {pick.audioFeatures.tempoBpm ? `, ${pick.audioFeatures.tempoBpm} BPM` : ""}
+                                {pick.audioFeatures.source ? ` (${formatStatus(pick.audioFeatures.source)})` : ""}
+                            </p>
+                        ) : null}
                     </div>
                 ) : emptyStatus ? (
                     <div className="agent-next-pick-empty">
                         <span className="agent-next-pick-kicker">{formatStatus(pick.status)}</span>
-                        <p>{pick.reason ? formatStatus(pick.reason) : "No runtime pick returned."}</p>
+                        <p>{humanReason(pick.status, pick.reason)}</p>
+                        {pick.generationsUsed ? (
+                            <p className="agent-taste-hint">Generated fallback queued after sparse catalog search.</p>
+                        ) : null}
                     </div>
                 ) : (
                     <div className="agent-next-pick-empty">

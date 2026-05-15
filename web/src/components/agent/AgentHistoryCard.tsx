@@ -31,6 +31,20 @@ function licenseIcon(type: string) {
     }
 }
 
+function recommendationText(recommendation: AgentSession["licenses"][number]["recommendation"]) {
+    const summary = recommendation?.recommendation;
+    if (summary?.explanation?.length) {
+        return summary.explanation.slice(0, 2).join(" · ");
+    }
+    if (recommendation?.reason) {
+        return recommendation.reason.replace(/_/g, " ");
+    }
+    if (recommendation?.runtime === "llm") {
+        return "LLM-curated pick";
+    }
+    return "Curated within session policy";
+}
+
 export default function AgentHistoryCard({ sessions, isLoading }: Props) {
     if (isLoading) {
         return (
@@ -121,11 +135,19 @@ export default function AgentHistoryCard({ sessions, isLoading }: Props) {
                                                 <span className="agent-history-license-artist">
                                                     {lic.track.artist || lic.track.release?.title || "Unknown Artist"}
                                                 </span>
+                                                <span className="agent-taste-hint">
+                                                    {recommendationText(lic.recommendation)}
+                                                </span>
                                             </div>
                                             <div className="agent-history-license-meta">
                                                 <span className="agent-history-license-type-badge">
                                                     {licenseIcon(lic.type)} {lic.type}
                                                 </span>
+                                                {typeof lic.recommendation?.recommendation?.score === "number" && (
+                                                    <span className="agent-history-license-type-badge">
+                                                        score {lic.recommendation.recommendation.score}
+                                                    </span>
+                                                )}
                                                 <span className="agent-history-license-price">${lic.priceUsd.toFixed(2)}</span>
                                             </div>
                                             <svg className="agent-history-license-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
