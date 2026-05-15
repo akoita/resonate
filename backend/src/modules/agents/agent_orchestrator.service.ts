@@ -4,6 +4,7 @@ import { AgentMixerService } from "./agent_mixer.service";
 import { AgentNegotiatorService } from "./agent_negotiator.service";
 import { AgentSelectorService } from "./agent_selector.service";
 import { GenerationService } from "../generation/generation.service";
+import { getAgentTrackLimit } from "./agent_runtime.config";
 
 const COST_PER_GENERATION = 0.06;
 const SPARSE_CATALOG_THRESHOLD = 3; // trigger generation if fewer than this many matches
@@ -69,7 +70,7 @@ export class AgentOrchestratorService {
       recentTrackIds: input.recentTrackIds,
       allowExplicit: input.preferences.allowExplicit,
       useEmbeddings: queries.length > 0,
-      limit: parseInt(process.env.AGENT_TRACK_LIMIT ?? "5", 10),
+      limit: getAgentTrackLimit(),
       learnedGenreWeights: input.preferences.learnedGenreWeights,
     });
 

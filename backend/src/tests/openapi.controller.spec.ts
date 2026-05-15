@@ -24,6 +24,9 @@ describe('OpenApiService', () => {
     expect(doc.openapi).toBe('3.1.0');
     expect(doc.servers).toEqual([{ url: 'http://localhost:3000' }]);
     expect(doc.info['x-guidance']).toContain('/api/storefront/stems');
+    expect(doc.info['x-guidance']).toContain(
+      'does not expose a generic public payment-router endpoint yet',
+    );
 
     expect(doc.paths['/api/storefront/stems']).toBeDefined();
     expect(doc.paths['/api/storefront/stems/{stemId}']).toBeDefined();
@@ -118,6 +121,7 @@ describe('OpenApiService', () => {
       'GET http://localhost:3000/api/stems/{stemId}/x402',
     ]);
     expect(doc.instructions).toContain('PAYMENT-SIGNATURE');
+    expect(doc.instructions).toContain('public payment path');
   });
 
   it('builds a well-known MCP discovery document', () => {

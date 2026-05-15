@@ -9,6 +9,7 @@ import { FunctionTool, LlmAgent } from "@google/adk";
 import { z } from "zod";
 import { ToolRegistry } from "../tools/tool_registry";
 import type { AgentRuntimeInput } from "./agent_runtime.adapter";
+import { getAgentTrackLimit } from "../agent_runtime.config";
 
 // ---------------------------------------------------------------------------
 // Tool definitions — each delegates to the existing ToolRegistry
@@ -192,7 +193,8 @@ function buildSystemPrompt(): string {
     "- Use pricing_quote to check if tracks fit within the remaining budget.",
     "- STRONGLY PREFER tracks where hasListing is true — these can be purchased on-chain.",
     "- Only recommend tracks without listings if no listed alternatives exist.",
-    "- Include EVERY listed track that matches the desired taste.",
+    "- Recommend only the strongest matching tracks; do not dump the whole catalog.",
+    "- If a genre search returns no tracks, treat that as no match for that genre.",
     "- Avoid recommending tracks the user has recently listened to.",
     "- Stay within the user's budget.",
     "",
@@ -204,7 +206,7 @@ function buildSystemPrompt(): string {
     "- PREFER catalog tracks over generated ones — generation is a last resort to fill gaps.",
     "- Generated content is tagged with GENERATED: prefix in the response.",
     "",
-    "After using tools, respond with ALL matching and generated tracks.",
+    "After using tools, respond with a concise ranked shortlist of matching and generated tracks.",
     "List each track on its own line using this exact format:",
     "",
     "TRACK: <trackId> | LICENSE: <personal|remix|commercial> | PRICE: <price in USD>",
@@ -224,6 +226,7 @@ export function buildUserMessage(input: AgentRuntimeInput): string {
   const parts: string[] = [
     `Session: ${input.sessionId}`,
     `Budget remaining: $${input.budgetRemainingUsd.toFixed(2)}`,
+    `Selection target: up to ${getAgentTrackLimit()} tracks`,
   ];
   if (input.generationBudgetUsd !== undefined) {
     parts.push(`Generation budget: $${input.generationBudgetUsd.toFixed(2)} (~${Math.floor(input.generationBudgetUsd / 0.06)} clips available)`);

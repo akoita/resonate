@@ -46,6 +46,13 @@ The MCP server reuses the same x402 challenge and proof-verification path for
 `stem.quote` and `stem.download`. See [MCP Server](mcp_server.md) for client
 configuration and the `/.well-known/mcp.json` discovery document.
 
+For external agent commerce, these storefront, x402, and MCP routes are the
+supported public payment surface. `PaymentRouterService` remains an internal
+backend boundary for trusted app, session, and worker flows; Resonate does not
+currently expose a generic public payment-router endpoint. See
+[Agent Commerce Runtime](../features/agent-commerce-runtime.md) for the runtime
+and policy boundary.
+
 ## Configuration
 
 | Env var                | Default                        | Description                                                                 |

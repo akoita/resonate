@@ -74,3 +74,33 @@ git diff --check
 rg 'password|secret|api_key|private_key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY' backend/src/modules/agents/payment_router.service.ts backend/src/modules/agents/agent_config.controller.ts backend/src/modules/agents/agents.module.ts backend/src/tests/payment_router.spec.ts backend/src/tests/payment_router_x402.integration.spec.ts
 rg 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/agents/payment_router.service.ts backend/src/modules/agents/agent_config.controller.ts backend/src/modules/agents/agents.module.ts backend/src/tests/payment_router.spec.ts backend/src/tests/payment_router_x402.integration.spec.ts
 ```
+
+## Addendum: #812 Public Payment-Router API Surface
+
+Reviewed the #812 OpenAPI guidance change. The update documents that external
+agent clients should use storefront discovery, x402 payment endpoints, and MCP
+tools, while `PaymentRouterService` remains a trusted backend boundary. No new
+controller, authentication path, payment execution path, environment variable,
+secret, dynamic SQL, or deserialization surface was introduced.
+
+### Scope
+
+- `backend/src/modules/openapi/openapi.service.ts`
+- `backend/src/tests/openapi.controller.spec.ts`
+- `docs/architecture/x402_payments.md`
+- `docs/features/agent-commerce-runtime.md`
+- `docs/features/README.md`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none.
+- Low: none.
+
+### Commands Run
+
+```bash
+cd backend && npx jest --runInBand src/tests/openapi.controller.spec.ts
+cd backend && npm run lint
+```

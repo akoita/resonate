@@ -70,27 +70,6 @@ export class ToolRegistry {
           take,
         });
 
-        // Fallback: if no genre/title match, return the most recent tracks
-        if (items.length === 0 && query) {
-          items = await prisma.track.findMany({
-            where: whereBase,
-            include: {
-              release: { select: { title: true, genre: true, artworkUrl: true } },
-              stems: {
-                select: {
-                  listings: {
-                    where: { status: "active" },
-                    select: { id: true },
-                    take: 1,
-                  },
-                },
-              },
-            },
-            orderBy: { createdAt: "desc" },
-            take,
-          });
-        }
-
         // Annotate and sort: listed tracks first
         const annotated = items.map((t) => {
           const hasListing = (t.stems ?? []).some((s) => s.listings.length > 0);

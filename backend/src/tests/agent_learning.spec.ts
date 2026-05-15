@@ -55,4 +55,44 @@ describe("agent learning loop", () => {
 
     expect(result.selected.map((track: any) => track.id)).toEqual(["listed", "house", "jazz"]);
   });
+
+  it("expands common taste vocabulary without falling back to unrelated catalog items", async () => {
+    const tool = {
+      run: jest.fn().mockImplementation(async (input: { query: string }) => ({
+        items: input.query === "rap"
+          ? [{ id: "rap-track", title: "Rap Track", hasListing: false, release: { genre: "Rap" } }]
+          : [],
+      })),
+    };
+    const selector = new AgentSelectorService({
+      get: jest.fn().mockReturnValue(tool),
+    } as any);
+
+    const result = await selector.select({
+      queries: ["Hip Hop"],
+      recentTrackIds: [],
+      limit: 3,
+    });
+
+    expect(tool.run).toHaveBeenCalledWith(expect.objectContaining({ query: "Hip Hop" }));
+    expect(tool.run).toHaveBeenCalledWith(expect.objectContaining({ query: "rap" }));
+    expect(result.selected.map((track: any) => track.id)).toEqual(["rap-track"]);
+  });
+
+  it("returns no selections when original and expanded taste queries miss", async () => {
+    const tool = {
+      run: jest.fn().mockResolvedValue({ items: [] }),
+    };
+    const selector = new AgentSelectorService({
+      get: jest.fn().mockReturnValue(tool),
+    } as any);
+
+    const result = await selector.select({
+      queries: ["Reggaeton"],
+      recentTrackIds: [],
+      limit: 3,
+    });
+
+    expect(result.selected).toEqual([]);
+  });
 });

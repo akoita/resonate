@@ -33,6 +33,8 @@ Available now:
 - `SessionsService.agentNext()` routes through `AgentRuntimeService.runCommerce()`.
 - Runtime output is normalized into `status`, `tracks`, `primaryTrack`, `licenseType`, and `priceUsd`.
 - The `/agent` dashboard exposes a "Next AI Pick" control that calls the shared runtime-commerce path for the active session and shows track, license, price, and runtime status.
+- Runtime catalog search treats explicit genre/taste queries as hard candidate constraints. A query with no catalog matches returns no candidates instead of falling back to unrelated recent tracks.
+- LLM adapters can curate over the shared catalog/pricing/analytics tools when configured, but the current content-understanding layer is still metadata and embedding based; audio-feature and collaborative ranking remain follow-up work.
 - `PolicyGuardService` centralizes pre-execution checks for budget and license policy.
 - `PaymentRouterService` centralizes ERC-4337 marketplace and x402 rail execution behind one result envelope.
 - The x402 rail builds a canonical challenge from `StemPricing`, blocks policy failures before verification, verifies/settles payment proofs, records `x402.purchase` provenance, and returns a structured receipt.
@@ -40,14 +42,11 @@ Available now:
 - Session recommendation events publish `agent.track_selected` with `strategy: "runtime"`.
 
 Phase 1 is complete for the in-backend runtime-commerce boundary tracked by
-#805. Two follow-ups remain intentionally outside this feature's implemented
-surface:
+#805. Issue #812 resolved the public API surface decision: external clients use
+the public storefront x402/MCP surfaces, while `PaymentRouterService` remains a
+trusted backend boundary rather than a generic public command endpoint.
 
-- Public payment-router API decision: #812 decides whether external
-  authenticated clients need a dedicated router endpoint, or whether public
-  x402 endpoints plus trusted backend service calls are the supported model.
-- Standalone runtime extraction: #424 keeps the Phase 2 worker/process
-  extraction separate from this in-backend foundation.
+Standalone runtime extraction remains a separate Phase 2 follow-up in #424.
 
 ## End-User Flow
 
@@ -124,12 +123,32 @@ Other useful responses:
 | `no_tracks` | Runtime found no candidate track. |
 | `all_rejected` | Candidates were found but rejected by policy/runtime constraints. |
 
+## External API Decision
+
+Resonate does not expose a generic public payment-router endpoint today.
+External clients should use the protocol-native surfaces that already map to a
+stable public contract:
+
+- Discover purchasable stems with `GET /api/storefront/stems` or `POST /mcp`.
+- Inspect quote, license, rights, and x402 metadata with `GET /api/stems/:stemId/x402/info`.
+- Purchase and download through `GET /api/stems/:stemId/x402` by satisfying the
+  `PAYMENT-REQUIRED` challenge with `PAYMENT-SIGNATURE` or `X-PAYMENT`.
+- Use `/.well-known/x402`, `/.well-known/mcp.json`, and `/openapi.json` for
+  machine-readable discovery.
+
+The generic router stays internal because it accepts trusted runtime context
+such as `userId`, `sessionId`, budget state, allowed rails, marketplace listing
+data, and rail-specific proof material. Exposing that as a public endpoint now
+would freeze an authenticated command API before Resonate has a concrete first
+external client that needs one. When that client exists, the new API should be
+designed as a narrow command surface that still returns the existing normalized
+router result envelope and enforces `PolicyGuardService` before rail execution.
+
 ## Developer Payment-Router Flow
 
 Use `PaymentRouterService.purchase(input)` when trusted backend code needs one
-policy and result envelope across supported rails. External clients should use
-the public x402 stem endpoints for HTTP-native purchases until #812 decides
-whether a dedicated authenticated payment-router API should exist.
+policy and result envelope across supported rails. This is a backend service
+contract, not a public HTTP endpoint.
 
 ERC-4337 marketplace purchase:
 
@@ -214,6 +233,7 @@ Key inputs:
 - `recentTrackIds`
 - `budgetRemainingUsd`
 - `preferences.genres`
+- `preferences.stemTypes`
 - `preferences.energy`
 - `preferences.allowExplicit`
 - `preferences.licenseType`
@@ -244,6 +264,21 @@ Key output fields:
 | x402 challenge/verification helper | `backend/src/modules/x402/x402.payment.service.ts` |
 | x402 receipt builder | `backend/src/modules/x402/x402.receipt.ts` |
 | Runtime providers | `backend/src/modules/agents/agent_runtime.providers.ts` |
+
+## Current Recommendation Limits
+
+The runtime is intentionally a hybrid foundation, not a Spotify-scale
+recommendation system yet. The live stack can use ADK/Gemini or other adapters
+to call tools and reason over candidates, and it can use embeddings for semantic
+ranking. It does not yet extract audio spectrogram features, train collaborative
+models from behavior logs, or run diversity re-ranking across a large candidate
+pool.
+
+For investor-facing demos, the reliable claim is: policy-bounded agent commerce
+with taste-constrained candidate retrieval, tool-mediated LLM curation, budget
+guards, and purchase routing. The follow-up product claim is: richer taste
+matching through audio features, stronger embeddings, collaborative learning,
+and evaluation-backed recommendation quality.
 
 ## Tests
 
