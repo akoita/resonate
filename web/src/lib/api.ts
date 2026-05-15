@@ -1614,6 +1614,35 @@ export interface AgentSession {
   agentTransactions: AgentTransaction[];
 }
 
+export type AgentNextPreferences = {
+  mood?: string;
+  energy?: "low" | "medium" | "high";
+  genres?: string[];
+  allowExplicit?: boolean;
+  licenseType?: "personal" | "remix" | "commercial";
+};
+
+export type AgentNextPickResponse = {
+  status: "ok" | "session_inactive" | "no_tracks" | "all_rejected" | "rejected" | string;
+  track?: {
+    id: string;
+    title: string;
+    artistId: string;
+  };
+  licenseType?: "personal" | "remix" | "commercial";
+  priceUsd?: number;
+  runtimeStatus?: string;
+  reason?: string;
+  tracks?: Array<{
+    trackId: string;
+    licenseType: "personal" | "remix" | "commercial";
+    priceUsd: number;
+    reason?: string;
+  }>;
+  generationsUsed?: number;
+  generationSpendUsd?: number;
+};
+
 export async function getAgentHistory(token: string): Promise<AgentSession[]> {
   const sessions = await apiRequest<AgentSession[]>("/agents/config/history", {}, token);
   // Compute artworkUrl from release id, same pattern as getRelease/getTrack
@@ -1625,6 +1654,17 @@ export async function getAgentHistory(token: string): Promise<AgentSession[]> {
     }
   }
   return sessions;
+}
+
+export async function getAgentNextPick(
+  token: string,
+  input: { sessionId: string; preferences?: AgentNextPreferences },
+): Promise<AgentNextPickResponse> {
+  return apiRequest<AgentNextPickResponse>(
+    "/sessions/agent/next",
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
 }
 
 // ========== Agent Wallet API ==========

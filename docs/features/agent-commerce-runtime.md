@@ -32,6 +32,7 @@ Available now:
 
 - `SessionsService.agentNext()` routes through `AgentRuntimeService.runCommerce()`.
 - Runtime output is normalized into `status`, `tracks`, `primaryTrack`, `licenseType`, and `priceUsd`.
+- The `/agent` dashboard exposes a "Next AI Pick" control that calls the shared runtime-commerce path for the active session and shows track, license, price, and runtime status.
 - `PolicyGuardService` centralizes pre-execution checks for budget and license policy.
 - `PaymentRouterService` centralizes ERC-4337 marketplace and x402 rail execution behind one result envelope.
 - The x402 rail builds a canonical challenge from `StemPricing`, blocks policy failures before verification, verifies/settles payment proofs, records `x402.purchase` provenance, and returns a structured receipt.
@@ -40,7 +41,6 @@ Available now:
 
 Still to complete:
 
-- Decide whether to expose a dedicated frontend "next AI pick" control.
 - Decide whether external authenticated clients need a dedicated payment-router API, or whether public x402 endpoints plus backend service calls are enough.
 - Phase 2 standalone runtime extraction remains tracked separately.
 
@@ -50,11 +50,13 @@ Still to complete:
 2. Go to `/agent`.
 3. Connect a wallet and configure the AI DJ.
 4. Start a session.
-5. Watch the activity feed/history for selected tracks and spend.
+5. Use the "Next Pick" button in the "Next AI Pick" card.
+6. Review the selected track, license type, price, runtime status, and any no-pick/policy status shown in the card.
+7. Watch the activity feed/history for selected tracks and spend.
 
-This verifies that the user-facing AI DJ still operates through the deployed
-runtime stack. The specific `agent/next` call is currently a backend/API surface,
-not a separate visible frontend button.
+This verifies that the user-facing AI DJ operates through the deployed runtime
+stack and gives developers a simple manual QA path for `POST
+/sessions/agent/next`.
 
 ## Developer API Flow
 
@@ -224,6 +226,8 @@ Key output fields:
 
 | Concern | File |
 | --- | --- |
+| `/agent` UI card | `web/src/components/agent/AgentNextPickCard.tsx` |
+| Frontend API helper | `web/src/lib/api.ts` |
 | Session API route | `backend/src/modules/sessions/sessions.controller.ts` |
 | Session integration | `backend/src/modules/sessions/sessions.service.ts` |
 | Runtime entrypoint | `backend/src/modules/agents/agent_runtime.service.ts` |
@@ -242,6 +246,13 @@ Run the focused tests:
 cd backend
 npx jest --runInBand src/tests/agent_runtime_normalization.spec.ts src/tests/policy_guard.spec.ts src/tests/payment_router.spec.ts
 npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='payment_router_x402.integration|sessions.integration|flow3_session.integration'
+```
+
+Run the focused frontend API test:
+
+```bash
+cd web
+npx vitest run src/lib/api.test.ts
 ```
 
 Run the broader backend suite:
