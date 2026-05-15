@@ -303,3 +303,57 @@ git diff --check
 rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|gho_[A-Za-z0-9_]+|sk-[A-Za-z0-9]' backend/src/modules/agents/agent_recommendation_eval.service.ts backend/src/tests/agent_recommendation_eval.spec.ts docs/features/agent-commerce-runtime.md docs/features/README.md
 rg -n 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/agents/agent_recommendation_eval.service.ts backend/src/tests/agent_recommendation_eval.spec.ts
 ```
+
+## Addendum: #822 Model-Assisted Recommendation Ranking
+
+Reviewed the AI DJ model-assisted recommendation adapter and strict relevance
+guards. No Critical or High findings were identified in the changed code.
+
+### Scope
+
+- `backend/src/modules/agents/agent_recommendation.adapter.ts`
+- `backend/src/modules/agents/agent_recommendation.service.ts`
+- `backend/src/modules/agents/agent_runtime.providers.ts`
+- `backend/src/modules/agents/agent_selector.service.ts`
+- `backend/src/modules/agents/model_assisted_recommendation.adapter.ts`
+- `backend/src/tests/agent_recommendation_adapter.spec.ts`
+- `docs/deployment/environment.md`
+- `docs/features/agent-commerce-runtime.md`
+- `docs/features/README.md`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none.
+- Low: none in the changed code.
+
+### Notes
+
+- The adapter is disabled unless `AGENT_RECOMMENDATION_STRATEGY=model-assisted`
+  is configured, and falls back to deterministic ranking when
+  `GOOGLE_AI_API_KEY` is absent, model output is malformed, a timeout occurs, or
+  the SDK call fails.
+- The model receives bounded catalog candidate summaries, taste preferences,
+  recent track IDs, budget, and non-secret feature summaries. It does not receive
+  user tokens, private keys, session keys, wallet credentials, or raw secrets.
+- Structured JSON output is validated before use. Post-model guards reject
+  unknown track IDs, recent tracks, `none` relevance, and confidence below the
+  configured threshold.
+- No controller, public endpoint, dynamic SQL, file parser, or persistent secret
+  store was introduced.
+- Changed-file secret-pattern scans reported environment variable names and
+  test-only placeholder strings such as `test-key`; no literal credentials or
+  private material were introduced. Dynamic SQL/eval scans returned no matches.
+
+### Commands Run
+
+```bash
+cd backend && npm run lint
+cd backend && npx jest --runInBand src/tests/agent_recommendation_adapter.spec.ts src/tests/agent_recommendation_eval.spec.ts src/tests/agent_runtime_normalization.spec.ts
+cd backend && npm run eval:recommendations
+cd backend && npm run test
+git diff --check
+rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|gho_[A-Za-z0-9_]+|sk-[A-Za-z0-9]' backend/src/modules/agents/agent_recommendation.adapter.ts backend/src/modules/agents/agent_selector.service.ts backend/src/modules/agents/model_assisted_recommendation.adapter.ts backend/src/modules/agents/agent_recommendation.service.ts backend/src/modules/agents/agent_runtime.providers.ts backend/src/tests/agent_recommendation_adapter.spec.ts docs/deployment/environment.md docs/features/agent-commerce-runtime.md docs/features/README.md
+rg -n 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/agents/agent_recommendation.adapter.ts backend/src/modules/agents/agent_selector.service.ts backend/src/modules/agents/model_assisted_recommendation.adapter.ts backend/src/modules/agents/agent_recommendation.service.ts backend/src/modules/agents/agent_runtime.providers.ts backend/src/tests/agent_recommendation_adapter.spec.ts
+```

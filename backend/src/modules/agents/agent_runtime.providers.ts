@@ -20,6 +20,7 @@ import { AgentRuntimeService } from "./agent_runtime.service";
 import { AgentRuntimeRemoteClient } from "./agent_runtime_remote.client";
 import { AgentSelectorService } from "./agent_selector.service";
 import { DeterministicRecommendationAdapter } from "./deterministic_recommendation.adapter";
+import { ModelAssistedRecommendationAdapter } from "./model_assisted_recommendation.adapter";
 import { ToolRegistry } from "./tools/tool_registry";
 import { AdkAdapter } from "./runtime/adk_adapter";
 import { LangGraphAdapter } from "./runtime/langgraph_adapter";
@@ -46,6 +47,7 @@ export const AGENT_RUNTIME_CORE_PROVIDERS = [
   AgentRecommendationService,
   AgentSelectorService,
   DeterministicRecommendationAdapter,
+  ModelAssistedRecommendationAdapter,
   AgentMixerService,
   AgentNegotiatorService,
   AgentOrchestratorService,

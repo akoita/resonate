@@ -37,6 +37,7 @@ Available now:
 - LLM adapters can curate over the shared catalog/pricing/analytics tools when configured, but the current content-understanding layer is still metadata and embedding based; audio-feature and collaborative ranking remain follow-up work.
 - The deterministic selector now produces a bounded scored shortlist with explanation signals for taste match, expanded taste match, learned preference, active listings, text similarity, recent-track exclusion, and versioned metadata-derived audio feature vectors.
 - Recommendation ranking now runs behind an adapter contract. `AGENT_RECOMMENDATION_STRATEGY` selects the strategy and defaults to `deterministic`; unsupported values fall back to the deterministic adapter rather than changing user-facing behavior.
+- `AGENT_RECOMMENDATION_STRATEGY=model-assisted` enables structured Gemini ranking over a bounded deterministic candidate pool when `GOOGLE_AI_API_KEY` is configured. The model returns ranked decisions, explanations, and rejection reasons; strict post-model guards reject unknown IDs, recent tracks, `none` relevance, and low-confidence selections. Missing credentials, malformed output, timeouts, and model errors fall back to deterministic ranking.
 - Metadata-derived `agentAudioFeatures` are persisted on `Track.generationMetadata` as a first durable feature-vector seed. Current schema version `agent-audio-features/v2` exposes confidence, source, extractor version, tempo/duration/energy bands, normalized genre, descriptors, tags, warnings, and a normalized numeric vector while leaving full DSP/model extraction as a future implementation behind the same service boundary.
 - `npm run eval:recommendations` writes replayable JSON and Markdown eval artifacts for exact matches, semantic-near matches, recent-track rejection, sparse/strict no-match behavior, precision thresholds, listing coverage, novelty, and explanation coverage. The generated `eval-results/` directory stays ignored unless an artifact is intentionally promoted into docs.
 - `PolicyGuardService` centralizes pre-execution checks for budget and license policy.
@@ -285,6 +286,7 @@ Key output fields:
 | Normalized result contract | `backend/src/modules/agents/agent_runtime.types.ts` |
 | Recommendation adapter contract | `backend/src/modules/agents/agent_recommendation.adapter.ts` |
 | Deterministic recommendation adapter | `backend/src/modules/agents/deterministic_recommendation.adapter.ts` |
+| Model-assisted recommendation adapter | `backend/src/modules/agents/model_assisted_recommendation.adapter.ts` |
 | Recommendation strategy switch | `backend/src/modules/agents/agent_recommendation.service.ts` |
 | Track feature vectors | `backend/src/modules/agents/agent_audio_feature.service.ts` |
 | Policy guard | `backend/src/modules/agents/policy_guard.service.ts` |
@@ -299,10 +301,12 @@ The runtime is intentionally a hybrid foundation, not a Spotify-scale
 recommendation system yet. The live stack can use ADK/Gemini or other runtime
 adapters to call tools and reason over candidates, while recommendation ranking
 itself now has a smaller adapter boundary for deterministic, model-assisted, or
-future specialized ranking strategies. Today only the deterministic
-recommendation strategy is implemented. It uses bounded taste expansion,
-persists metadata-derived audio feature vectors, and ranks candidates with
-explainable signals. The feature vector is lazily backfilled with
+future specialized ranking strategies. The default deterministic strategy uses
+bounded taste expansion, persists metadata-derived audio feature vectors, and
+ranks candidates with explainable signals. The optional model-assisted strategy
+uses Gemini structured output to rerank or refuse that bounded candidate pool,
+then applies backend relevance guards so no-match remains valid. The feature
+vector is lazily backfilled with
 `getOrCreate()` and old schema versions are recomputed into the current schema
 without blocking recommendations. Confidence and source fields indicate whether
 the vector came from fingerprint metadata, generated metadata, or metadata-only
