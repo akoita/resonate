@@ -110,6 +110,13 @@ Keep the initial split intentionally small:
 
 Additional services should emerge only when pressure is real.
 
+Implementation note (May 2026): the first in-backend slice has landed for this
+shape. `SessionsService.agentNext()` calls `AgentRuntimeService.runCommerce()`,
+runtime results are normalized before session response shaping, and initial
+`PolicyGuardService` / `PaymentRouterService` seams exist for pre-execution
+policy checks and ERC-4337 marketplace routing. x402 rail execution, storefront
+quote normalization, and standalone runtime extraction remain follow-up work.
+
 ### Responsibilities
 
 #### `AgentRuntimeService`

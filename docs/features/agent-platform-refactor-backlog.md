@@ -8,6 +8,12 @@ rewrite.
 
 ## Workstream A: Runtime Unification
 
+Status note (May 2026): the first backend slice now routes
+`SessionsService.agentNext()` through `AgentRuntimeService.runCommerce()` and
+normalizes runtime output for session consumers. The legacy
+`sessions/agent_orchestration.service.ts` remains in the tree for older isolated
+tests and compatibility, but it is no longer the session agent entrypoint.
+
 ### A1. Make `AgentRuntimeService` the canonical orchestration entrypoint
 
 - remove business ownership ambiguity between sessions and agents modules
@@ -37,6 +43,10 @@ Acceptance:
 - runtime returns a stable structure for picks, quotes, purchases, and receipts
 
 ## Workstream B: Payment Rail Abstraction
+
+Status note (May 2026): an initial `PaymentRouterService` seam exists and wraps
+the ERC-4337 marketplace purchase rail with a normalized result envelope. The
+x402 rail and full quote normalization are still open.
 
 ### B1. Add `PaymentRouterService`
 
@@ -74,6 +84,10 @@ Acceptance:
 - agent pricing decisions always use quote/tool outputs, not embedded defaults
 
 ## Workstream C: Policy & Evaluation
+
+Status note (May 2026): an initial `PolicyGuardService` exists for
+pre-execution budget, license allowlist, and rail allowlist checks. Post-action
+allowlists and replay metrics remain open.
 
 ### C1. Add `PolicyGuardService`
 

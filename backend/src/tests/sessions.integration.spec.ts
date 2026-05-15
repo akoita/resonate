@@ -11,7 +11,6 @@ import { prisma } from '../db/prisma';
 import { SessionsService } from '../modules/sessions/sessions.service';
 import { WalletService } from '../modules/identity/wallet.service';
 import { EventBus } from '../modules/shared/event_bus';
-import { AgentOrchestrationService } from '../modules/sessions/agent_orchestration.service';
 
 const TEST_PREFIX = `sess_${Date.now()}_`;
 
@@ -20,6 +19,30 @@ describe('SessionsService (integration)', () => {
     await prisma.user.create({
       data: { id: `${TEST_PREFIX}user`, email: `${TEST_PREFIX}user@test.resonate` },
     });
+    await prisma.artist.create({
+      data: {
+        id: `${TEST_PREFIX}artist`,
+        userId: `${TEST_PREFIX}user`,
+        displayName: 'Session Runtime Artist',
+        payoutAddress: '0x' + 'B'.repeat(40),
+      },
+    });
+    await prisma.release.create({
+      data: {
+        id: `${TEST_PREFIX}release`,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Session Runtime Release',
+        status: 'published',
+      },
+    });
+    await prisma.track.create({
+      data: {
+        id: `${TEST_PREFIX}track`,
+        releaseId: `${TEST_PREFIX}release`,
+        title: 'Session Runtime Track',
+        position: 1,
+      },
+    });
   });
 
   afterAll(async () => {
@@ -27,12 +50,14 @@ describe('SessionsService (integration)', () => {
     await prisma.license.deleteMany({ where: { track: { release: { artist: { userId: `${TEST_PREFIX}user` } } } } }).catch(() => {});
     await prisma.session.deleteMany({ where: { userId: `${TEST_PREFIX}user` } }).catch(() => {});
     await prisma.wallet.deleteMany({ where: { userId: `${TEST_PREFIX}user` } }).catch(() => {});
+    await prisma.track.deleteMany({ where: { releaseId: `${TEST_PREFIX}release` } }).catch(() => {});
+    await prisma.release.delete({ where: { id: `${TEST_PREFIX}release` } }).catch(() => {});
+    await prisma.artist.delete({ where: { id: `${TEST_PREFIX}artist` } }).catch(() => {});
     await prisma.user.delete({ where: { id: `${TEST_PREFIX}user` } }).catch(() => {});
   });
 
-  it('creates a session with budget cap', async () => {
+  function makeService(runtimeService: any = { runCommerce: jest.fn() }) {
     const eventBus = new EventBus();
-    // Real WalletService — providerRegistry stub returns deterministic address
     const providerRegistry = {
       getProvider: () => ({
         getAccount: (uid: string) => ({
@@ -52,10 +77,15 @@ describe('SessionsService (integration)', () => {
       {} as any, // PaymasterService — not called
       {} as any, // KernelAccountService — not called
     );
-    const agentService = new AgentOrchestrationService(eventBus);
     const agentPurchaseService = { purchase: async () => {} } as any;
-    const service = new SessionsService(walletService, eventBus, agentService, agentPurchaseService);
+    return {
+      eventBus,
+      service: new SessionsService(walletService, eventBus, runtimeService, agentPurchaseService),
+    };
+  }
 
+  it('creates a session with budget cap', async () => {
+    const { service } = makeService();
     const session = await service.startSession({
       userId: `${TEST_PREFIX}user`,
       budgetCapUsd: 10,
@@ -73,5 +103,61 @@ describe('SessionsService (integration)', () => {
     expect(wallet).not.toBeNull();
     expect(wallet!.monthlyCapUsd).toBe(10);
   });
-});
 
+  it('routes agentNext through AgentRuntimeService with session budget and recent tracks', async () => {
+    const runtimeService = {
+      runCommerce: jest.fn().mockResolvedValue({
+        status: 'approved',
+        tracks: [
+          {
+            trackId: `${TEST_PREFIX}track`,
+            licenseType: 'remix',
+            priceUsd: 5,
+            reason: 'within_budget',
+          },
+        ],
+        primaryTrack: {
+          trackId: `${TEST_PREFIX}track`,
+          licenseType: 'remix',
+          priceUsd: 5,
+          reason: 'within_budget',
+        },
+      }),
+    };
+    const { service } = makeService(runtimeService);
+    const session = await service.startSession({
+      userId: `${TEST_PREFIX}user`,
+      budgetCapUsd: 10,
+      preferences: { genres: ['electronic'] },
+    });
+
+    const first = await service.agentNext({
+      sessionId: session.id,
+      preferences: { licenseType: 'remix' },
+    }) as any;
+    const second = await service.agentNext({ sessionId: session.id }) as any;
+
+    expect(first.status).toBe('ok');
+    expect(first.track?.id).toBe(`${TEST_PREFIX}track`);
+    expect(first.licenseType).toBe('remix');
+    expect(first.priceUsd).toBe(5);
+    expect(runtimeService.runCommerce).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        sessionId: session.id,
+        userId: `${TEST_PREFIX}user`,
+        recentTrackIds: [],
+        budgetRemainingUsd: 10,
+        preferences: { genres: ['electronic'], licenseType: 'remix' },
+      }),
+    );
+    expect(runtimeService.runCommerce).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        recentTrackIds: [`${TEST_PREFIX}track`],
+        preferences: { genres: ['electronic'], licenseType: 'remix' },
+      }),
+    );
+    expect(second.status).toBe('ok');
+  });
+});

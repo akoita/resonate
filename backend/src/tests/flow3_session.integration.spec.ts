@@ -2,10 +2,10 @@
  * Choreography Flow 3 — Agent Session Lifecycle
  *
  * Tests the event chain: SessionsService.startSession → session.started →
- * AgentOrchestrationService.selectNextTrack → agent.track_selected + agent.decision_made
+ * AgentRuntimeService.runCommerce → agent.track_selected + agent.decision_made
  *
  * Real WalletService (setBudget writes to real Postgres via prisma.wallet).
- * Real SessionsService, real AgentOrchestrationService.
+ * Real SessionsService, runtime boundary stub.
  * Real AgentPurchaseService (full dep chain: KernelAccountService → Anvil,
  *   ZeroDevSessionKeyService → CryptoService + KeyAuditService).
  *
@@ -17,7 +17,6 @@ import { prisma } from '../db/prisma';
 import { EventBus } from '../modules/shared/event_bus';
 import { WalletService } from '../modules/identity/wallet.service';
 import { SessionsService } from '../modules/sessions/sessions.service';
-import { AgentOrchestrationService } from '../modules/sessions/agent_orchestration.service';
 import { AgentPurchaseService } from '../modules/agents/agent_purchase.service';
 import { AgentWalletService } from '../modules/agents/agent_wallet.service';
 import { KernelAccountService } from '../modules/identity/kernel_account.service';
@@ -38,7 +37,6 @@ function eventSpy(eventBus: EventBus, eventName: string): ResonateEvent[] {
 describe('Choreography Flow 3: Agent Session Lifecycle', () => {
   let eventBus: EventBus;
   let walletService: WalletService;
-  let agentService: AgentOrchestrationService;
   let sessionsService: SessionsService;
 
   const userId = `${P}user`;
@@ -93,7 +91,37 @@ describe('Choreography Flow 3: Agent Session Lifecycle', () => {
       new KernelAccountService(configService),
     );
 
-    agentService = new AgentOrchestrationService(eventBus as any);
+    const agentRuntimeService = {
+      runCommerce: jest.fn(async () => {
+        eventBus.publish({
+          eventName: 'agent.decision_made',
+          eventVersion: 1,
+          occurredAt: new Date().toISOString(),
+          sessionId: 'runtime-session',
+          trackId,
+          licenseType: 'personal',
+          priceUsd: 0.05,
+          reason: 'approved',
+        });
+        return {
+          status: 'approved',
+          tracks: [
+            {
+              trackId,
+              licenseType: 'personal',
+              priceUsd: 0.05,
+              reason: 'within_budget',
+            },
+          ],
+          primaryTrack: {
+            trackId,
+            licenseType: 'personal',
+            priceUsd: 0.05,
+            reason: 'within_budget',
+          },
+        };
+      }),
+    };
 
     // Real AgentPurchaseService — full dep chain, no external calls in constructor
     // purchase() is never invoked in this test (session choreography only)
@@ -106,7 +134,12 @@ describe('Choreography Flow 3: Agent Session Lifecycle', () => {
       walletService, agentWalletService, kernelAccountService, eventBus,
     );
 
-    sessionsService = new SessionsService(walletService, eventBus as any, agentService, agentPurchaseService);
+    sessionsService = new SessionsService(
+      walletService,
+      eventBus as any,
+      agentRuntimeService as any,
+      agentPurchaseService,
+    );
   });
 
   afterAll(async () => {
@@ -152,11 +185,11 @@ describe('Choreography Flow 3: Agent Session Lifecycle', () => {
     expect(dbSession).not.toBeNull();
     expect(dbSession!.budgetCapUsd).toBe(5.0);
 
-    // Step 2: Select track (real AgentOrchestrationService queries real Postgres)
-    const selection = await agentService.selectNextTrack({
+    // Step 2: Select track through the session-owned runtime boundary
+    const selection = await sessionsService.agentNext({
       sessionId: session.id,
       preferences: { genres: ['electronic'] },
-    });
+    }) as any;
 
     expect(selection.status).toBe('ok');
     expect(selection.track).toBeDefined();

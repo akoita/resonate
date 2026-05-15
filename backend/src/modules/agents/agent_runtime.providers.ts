@@ -9,6 +9,8 @@ import { AgentNegotiatorService } from "./agent_negotiator.service";
 import { AgentObservabilityService } from "./agent_observability.service";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentPolicyService } from "./agent_policy.service";
+import { PaymentRouterService } from "./payment_router.service";
+import { PolicyGuardService } from "./policy_guard.service";
 import { AgentRunnerService } from "./agent_runner.service";
 import { AgentRuntimeExecutorService } from "./agent_runtime.executor.service";
 import { AgentRuntimeService } from "./agent_runtime.service";
@@ -25,6 +27,8 @@ export const AGENT_RUNTIME_CORE_PROVIDERS = [
   EmbeddingStore,
   ToolRegistry,
   AgentPolicyService,
+  PolicyGuardService,
+  PaymentRouterService,
   AgentRunnerService,
   AgentRuntimeService,
   AgentRuntimeExecutorService,
