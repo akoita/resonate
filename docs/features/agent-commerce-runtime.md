@@ -10,7 +10,7 @@ introduced_by: 808
 
 The Agent Commerce Runtime is the shared backend path for AI DJ recommendations
 that need commerce-aware output: selected tracks, license type, normalized price,
-runtime status, and future payment-rail routing.
+runtime status, and payment-rail routing.
 
 It lets Resonate keep the AI DJ product surface, backend agent runtime, and
 future machine-commerce integrations aligned around one result shape instead of
@@ -22,7 +22,7 @@ each caller inventing its own response contract.
 | --- | --- |
 | Listener | Starts an AI DJ session and receives track recommendations within budget and taste constraints. |
 | Backend developer | Calls the session recommendation API or `AgentRuntimeService.runCommerce()` for a normalized commerce result. |
-| Agent/API developer | Uses the normalized result as the stable boundary for future x402 and ERC-4337 payment routing. |
+| Agent/API developer | Uses the normalized result and payment-router boundary for x402 and ERC-4337 payment routing. |
 
 ## Current Status
 
@@ -33,14 +33,16 @@ Available now:
 - `SessionsService.agentNext()` routes through `AgentRuntimeService.runCommerce()`.
 - Runtime output is normalized into `status`, `tracks`, `primaryTrack`, `licenseType`, and `priceUsd`.
 - `PolicyGuardService` centralizes pre-execution checks for budget and license policy.
-- `PaymentRouterService` exists as the boundary for ERC-4337 and x402 rails.
+- `PaymentRouterService` centralizes ERC-4337 marketplace and x402 rail execution behind one result envelope.
+- The x402 rail builds a canonical challenge from `StemPricing`, blocks policy failures before verification, verifies/settles payment proofs, records `x402.purchase` provenance, and returns a structured receipt.
+- The AI DJ marketplace buy path routes through `PaymentRouterService` before calling the ERC-4337 purchase rail.
 - Session recommendation events publish `agent.track_selected` with `strategy: "runtime"`.
 
 Still to complete:
 
-- Implement the AgentCash/x402 rail behind `PaymentRouterService`.
 - Decide whether to expose a dedicated frontend "next AI pick" control.
-- Close issue #805 only after both rails share the final production envelope.
+- Decide whether external authenticated clients need a dedicated payment-router API, or whether public x402 endpoints plus backend service calls are enough.
+- Phase 2 standalone runtime extraction remains tracked separately.
 
 ## End-User Flow
 
@@ -115,6 +117,82 @@ Other useful responses:
 | `no_tracks` | Runtime found no candidate track. |
 | `all_rejected` | Candidates were found but rejected by policy/runtime constraints. |
 
+## Developer Payment-Router Flow
+
+Use `PaymentRouterService.purchase(input)` when backend code needs one policy
+and result envelope across supported rails.
+
+ERC-4337 marketplace purchase:
+
+```typescript
+await paymentRouter.purchase({
+  sessionId,
+  userId,
+  rail: "erc4337_marketplace",
+  licenseType: "remix",
+  listingId,
+  tokenId,
+  amount: 1n,
+  totalPriceWei,
+  priceUsd,
+  budgetRemainingUsd,
+});
+```
+
+x402 purchase challenge:
+
+```typescript
+const challenge = await paymentRouter.purchase({
+  sessionId,
+  userId,
+  rail: "x402",
+  stemId,
+  licenseType: "remix",
+  budgetRemainingUsd,
+});
+```
+
+When no proof is supplied, the result has `status: "payment_required"` and
+contains `paymentChallenge.paymentRequirements`. An x402-capable client such as
+AgentCash can satisfy that challenge.
+
+x402 settlement with proof:
+
+```typescript
+const result = await paymentRouter.purchase({
+  sessionId,
+  userId,
+  rail: "x402",
+  stemId,
+  licenseType: "remix",
+  budgetRemainingUsd,
+  paymentProof,
+  paymentRequirements,
+});
+```
+
+Expected confirmed x402 result:
+
+```json
+{
+  "success": true,
+  "rail": "x402",
+  "status": "confirmed",
+  "reason": "payment_confirmed",
+  "stemId": "stem-id",
+  "licenseType": "remix",
+  "priceUsd": 5,
+  "receiptId": "x402r_...",
+  "receipt": {
+    "type": "resonate.x402.purchase_receipt",
+    "protocol": "x402"
+  }
+}
+```
+
+Policy failures return `status: "rejected"` before any x402 verification or
+chain/payment call.
+
 ## Developer Service Flow
 
 Use `AgentRuntimeService.runCommerce(input)` when backend code needs normalized
@@ -152,6 +230,8 @@ Key output fields:
 | Normalized result contract | `backend/src/modules/agents/agent_runtime.types.ts` |
 | Policy guard | `backend/src/modules/agents/policy_guard.service.ts` |
 | Payment routing boundary | `backend/src/modules/agents/payment_router.service.ts` |
+| x402 challenge/verification helper | `backend/src/modules/x402/x402.payment.service.ts` |
+| x402 receipt builder | `backend/src/modules/x402/x402.receipt.ts` |
 | Runtime providers | `backend/src/modules/agents/agent_runtime.providers.ts` |
 
 ## Tests
@@ -161,7 +241,7 @@ Run the focused tests:
 ```bash
 cd backend
 npx jest --runInBand src/tests/agent_runtime_normalization.spec.ts src/tests/policy_guard.spec.ts src/tests/payment_router.spec.ts
-npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='sessions.integration|flow3_session.integration'
+npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='payment_router_x402.integration|sessions.integration|flow3_session.integration'
 ```
 
 Run the broader backend suite:

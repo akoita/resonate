@@ -95,4 +95,31 @@ describe("PaymentRouterService", () => {
       }),
     );
   });
+
+  it("rejects x402 when the rail is not configured", async () => {
+    const erc4337Rail = { purchase: jest.fn() };
+    const service = new PaymentRouterService(
+      new PolicyGuardService(),
+      erc4337Rail as any,
+    );
+
+    const result = await service.purchase({
+      sessionId: "session-1",
+      userId: "user-1",
+      rail: "x402",
+      stemId: "stem-1",
+      licenseType: "personal",
+      budgetRemainingUsd: 5,
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: false,
+        rail: "x402",
+        status: "rejected",
+        reason: "x402_not_configured",
+      }),
+    );
+    expect(erc4337Rail.purchase).not.toHaveBeenCalled();
+  });
 });

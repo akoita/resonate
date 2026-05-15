@@ -44,9 +44,10 @@ Acceptance:
 
 ## Workstream B: Payment Rail Abstraction
 
-Status note (May 2026): an initial `PaymentRouterService` seam exists and wraps
-the ERC-4337 marketplace purchase rail with a normalized result envelope. The
-x402 rail and full quote normalization are still open.
+Status note (May 2026): `PaymentRouterService` wraps the ERC-4337 marketplace
+purchase rail and includes an x402 rail that builds canonical payment
+challenges, verifies/settles x402 proofs, records `x402.purchase` provenance,
+and returns the same normalized envelope.
 
 ### B1. Add `PaymentRouterService`
 
