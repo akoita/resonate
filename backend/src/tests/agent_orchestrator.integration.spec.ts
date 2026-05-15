@@ -13,6 +13,8 @@ import { AgentMixerService } from '../modules/agents/agent_mixer.service';
 import { AgentNegotiatorService } from '../modules/agents/agent_negotiator.service';
 import { AgentOrchestratorService } from '../modules/agents/agent_orchestrator.service';
 import { AgentSelectorService } from '../modules/agents/agent_selector.service';
+import { AgentRecommendationService } from '../modules/agents/agent_recommendation.service';
+import { DeterministicRecommendationAdapter } from '../modules/agents/deterministic_recommendation.adapter';
 import { ToolRegistry } from '../modules/agents/tools/tool_registry';
 import { EmbeddingService } from '../modules/embeddings/embedding.service';
 import { EmbeddingStore } from '../modules/embeddings/embedding.store';
@@ -49,8 +51,9 @@ describe('AgentOrchestratorService (integration)', () => {
 
   it('orchestrates selection, mix, negotiation', async () => {
     const tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
+    const selector = new AgentSelectorService(tools);
     const orchestrator = new AgentOrchestratorService(
-      new AgentSelectorService(tools),
+      new AgentRecommendationService(new DeterministicRecommendationAdapter(selector)),
       new AgentMixerService(mockGenerationService),
       new AgentNegotiatorService(tools),
       new EventBus(),

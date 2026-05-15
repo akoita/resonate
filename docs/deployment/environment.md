@@ -120,6 +120,7 @@ When adding a new environment variable:
 | `AGENT_RUNTIME_WORKER_URL` | Backend | Optional base URL for the standalone agent runtime worker. When unset, `AgentRuntimeService` runs in-process |
 | `AGENT_RUNTIME_WORKER_TIMEOUT_MS` | Backend | Optional timeout for backend-to-worker runtime calls; defaults to `5000` |
 | `AGENT_RUNTIME_WORKER_REQUIRED` | Backend | Optional fail-closed switch. Set `true` to disable in-process fallback when the worker is configured but unavailable |
+| `AGENT_RECOMMENDATION_STRATEGY` | Backend | Optional AI DJ recommendation ranking strategy. Defaults to `deterministic`; unsupported values fall back to deterministic ranking |
 | `ERC8004_ENABLED` | Backend | Enables ERC-8004 identity registration and reputation metadata writes. Defaults to disabled |
 | `ERC8004_IDENTITY_REGISTRY_ADDRESS` | Backend | Optional ERC-8004 Identity Registry override. When omitted, the backend selects the official mainnet or testnet registry for supported chain IDs |
 | `ERC8004_CHAIN_ID` | Backend | Optional ERC-8004 chain override; falls back to `AA_CHAIN_ID`, then `CHAIN_ID`, then local Anvil |

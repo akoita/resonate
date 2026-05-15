@@ -3,7 +3,7 @@ title: "Agent Commerce Runtime"
 status: implemented
 owner: "@akoita"
 issues: [805, 812]
-introduced_by: [808, 810, 811]
+introduced_by: [808, 810, 811, 821]
 ---
 
 # Agent Commerce Runtime
@@ -36,6 +36,7 @@ Available now:
 - Runtime catalog search treats explicit genre/taste queries as hard candidate constraints. A query with no catalog matches returns no candidates instead of falling back to unrelated recent tracks.
 - LLM adapters can curate over the shared catalog/pricing/analytics tools when configured, but the current content-understanding layer is still metadata and embedding based; audio-feature and collaborative ranking remain follow-up work.
 - The deterministic selector now produces a bounded scored shortlist with explanation signals for taste match, expanded taste match, learned preference, active listings, text similarity, recent-track exclusion, and metadata-derived audio features.
+- Recommendation ranking now runs behind an adapter contract. `AGENT_RECOMMENDATION_STRATEGY` selects the strategy and defaults to `deterministic`; unsupported values fall back to the deterministic adapter rather than changing user-facing behavior.
 - Metadata-derived `agentAudioFeatures` are persisted on `Track.generationMetadata` as a first durable feature seed. They expose confidence, tempo, energy band, tags, source, and warnings while leaving full DSP/model extraction as a future implementation behind the same service boundary.
 - `PolicyGuardService` centralizes pre-execution checks for budget and license policy.
 - `PaymentRouterService` centralizes ERC-4337 marketplace and x402 rail execution behind one result envelope.
@@ -281,6 +282,9 @@ Key output fields:
 | Session integration | `backend/src/modules/sessions/sessions.service.ts` |
 | Runtime entrypoint | `backend/src/modules/agents/agent_runtime.service.ts` |
 | Normalized result contract | `backend/src/modules/agents/agent_runtime.types.ts` |
+| Recommendation adapter contract | `backend/src/modules/agents/agent_recommendation.adapter.ts` |
+| Deterministic recommendation adapter | `backend/src/modules/agents/deterministic_recommendation.adapter.ts` |
+| Recommendation strategy switch | `backend/src/modules/agents/agent_recommendation.service.ts` |
 | Policy guard | `backend/src/modules/agents/policy_guard.service.ts` |
 | Payment routing boundary | `backend/src/modules/agents/payment_router.service.ts` |
 | x402 challenge/verification helper | `backend/src/modules/x402/x402.payment.service.ts` |
@@ -290,11 +294,14 @@ Key output fields:
 ## Current Recommendation Limits
 
 The runtime is intentionally a hybrid foundation, not a Spotify-scale
-recommendation system yet. The live stack can use ADK/Gemini or other adapters
-to call tools and reason over candidates, use bounded taste expansion, persist
-metadata-derived audio feature seeds, and rank candidates with explainable
-signals. It does not yet extract audio spectrogram features or train
-collaborative models from behavior logs.
+recommendation system yet. The live stack can use ADK/Gemini or other runtime
+adapters to call tools and reason over candidates, while recommendation ranking
+itself now has a smaller adapter boundary for deterministic, model-assisted, or
+future specialized ranking strategies. Today only the deterministic
+recommendation strategy is implemented. It uses bounded taste expansion,
+persists metadata-derived audio feature seeds, and ranks candidates with
+explainable signals. It does not yet extract audio spectrogram features or
+train collaborative models from behavior logs.
 
 For investor-facing demos, the reliable claim is: policy-bounded agent commerce
 with taste-constrained candidate retrieval, tool-mediated LLM curation, budget
@@ -308,7 +315,7 @@ Run the focused tests:
 
 ```bash
 cd backend
-npx jest --runInBand src/tests/agent_runtime_normalization.spec.ts src/tests/policy_guard.spec.ts src/tests/payment_router.spec.ts
+npx jest --runInBand src/tests/agent_recommendation_adapter.spec.ts src/tests/agent_runtime_normalization.spec.ts src/tests/policy_guard.spec.ts src/tests/payment_router.spec.ts
 npm run eval:recommendations
 npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='payment_router_x402.integration|sessions.integration|flow3_session.integration'
 ```

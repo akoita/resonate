@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { EventBus } from "../shared/event_bus";
 import { AgentMixerService } from "./agent_mixer.service";
 import { AgentNegotiatorService } from "./agent_negotiator.service";
-import { AgentSelectorService } from "./agent_selector.service";
+import { AgentRecommendationService } from "./agent_recommendation.service";
 import { GenerationService } from "../generation/generation.service";
 import { getAgentTrackLimit } from "./agent_runtime.config";
 
@@ -42,7 +42,7 @@ export class AgentOrchestratorService {
   private readonly logger = new Logger(AgentOrchestratorService.name);
 
   constructor(
-    private readonly selector: AgentSelectorService,
+    private readonly recommendations: AgentRecommendationService,
     private readonly mixer: AgentMixerService,
     private readonly negotiator: AgentNegotiatorService,
     private readonly eventBus: EventBus,
@@ -55,24 +55,13 @@ export class AgentOrchestratorService {
     generationsUsed?: number;
     generationSpendUsd?: number;
   }> {
-    // Build queries from ALL vibes + mood
-    const queries: string[] = [];
-    if (input.preferences.genres?.length) {
-      queries.push(...input.preferences.genres);
-    }
-    if (input.preferences.mood && !queries.includes(input.preferences.mood)) {
-      queries.push(input.preferences.mood);
-    }
-
-    // Select multiple candidates across all vibes
-    const selection = await this.selector.select({
-      queries,
+    const selection = await this.recommendations.recommend({
+      sessionId: input.sessionId,
+      userId: input.userId,
       recentTrackIds: input.recentTrackIds,
-      allowExplicit: input.preferences.allowExplicit,
-      useEmbeddings: queries.length > 0,
+      budgetRemainingUsd: input.budgetRemainingUsd,
+      preferences: input.preferences,
       limit: getAgentTrackLimit(),
-      energy: input.preferences.energy,
-      learnedGenreWeights: input.preferences.learnedGenreWeights,
     });
 
     const selectedCount = selection.selected?.length ?? 0;
@@ -145,6 +134,7 @@ export class AgentOrchestratorService {
         trackId: selection.selected[0]?.id,
         candidates: selection.candidates,
         count: selection.selected.length,
+        strategy: selection.strategy,
       });
     }
 
