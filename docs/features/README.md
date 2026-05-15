@@ -34,7 +34,7 @@ that answers:
 
 | Feature | Status | Audience | Where To Use/Test | Notes |
 | --- | --- | --- | --- | --- |
-| [Agent Commerce Runtime](agent-commerce-runtime.md) | `partial` | listeners, backend developers, agent developers | `POST /sessions/agent/next`, `/agent` dashboard | Unified runtime-commerce boundary is live; AgentCash/x402 rail remains follow-up. |
+| [Agent Commerce Runtime](agent-commerce-runtime.md) | `partial` | listeners, backend developers, agent developers | `POST /sessions/agent/next`, `PaymentRouterService`, `/agent` dashboard | Unified runtime-commerce boundary and ERC-4337/x402 rail envelope are live; dedicated UI/API controls remain follow-up. |
 | [Stake Visibility Views](stake_visibility_views.md) | `implemented` | artists, listeners | release/stem pages, wallet stake dashboard | Public trust signals and artist stake management. |
 | [Playback Session MVP](playback_session_mvp.md) | `draft` | listeners, backend developers | `/sessions/start`, `/sessions/play`, `/sessions/stop` | Earlier session API reference; confirm current behavior before relying on it. |
 | [Wallet Funding And Budget Cap](wallet_funding_budget_cap.md) | see page | listeners, developers | wallet and agent budget surfaces | Budget controls used by autonomous agent spend. |

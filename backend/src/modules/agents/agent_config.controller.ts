@@ -4,7 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentRuntimeService } from "./agent_runtime.service";
-import { AgentPurchaseService } from "./agent_purchase.service";
+import { PaymentRouterService } from "./payment_router.service";
 import { AgentNegotiatorService } from "./agent_negotiator.service";
 import { AgentIdentityService } from "./agent_identity.service";
 import { AgentLearningService, isAgentSignalAction, type AgentSignalAction } from "./agent_learning.service";
@@ -19,7 +19,7 @@ export class AgentConfigController {
     constructor(
         private readonly orchestrator: AgentOrchestratorService,
         private readonly runtimeService: AgentRuntimeService,
-        private readonly purchaseService: AgentPurchaseService,
+        private readonly paymentRouter: PaymentRouterService,
         private readonly negotiatorService: AgentNegotiatorService,
         private readonly identityService: AgentIdentityService,
         private readonly learningService: AgentLearningService,
@@ -496,24 +496,36 @@ export class AgentConfigController {
             return;
         }
 
+        const session = await prisma.session.findUnique({
+            where: { id: sessionId },
+            select: { budgetCapUsd: true, spentUsd: true },
+        });
+        let budgetRemainingUsd = Math.max(
+            0,
+            (session?.budgetCapUsd ?? negotiation.priceUsd) - (session?.spentUsd ?? 0),
+        );
         let purchaseSignalRecorded = false;
         for (const listing of listings) {
             try {
                 this.logger.log(`[Agent] Purchasing listing ${listing.listingId} price=${listing.pricePerUnit}`);
-                const result = await this.purchaseService.purchase({
+                const result = await this.paymentRouter.purchase({
                     sessionId,
                     userId,
+                    rail: "erc4337_marketplace",
+                    licenseType: negotiation.licenseType,
                     listingId: listing.listingId,
                     tokenId: listing.tokenId,
                     amount: 1n,
                     totalPriceWei: listing.pricePerUnit,
                     priceUsd: negotiation.priceUsd,
+                    budgetRemainingUsd,
                 });
                 if (!result.success) {
                     this.logger.warn(
                         `Purchase failed for listing ${listing.listingId} (${listing.stemType}): ${result.reason}`,
                     );
                 } else {
+                    budgetRemainingUsd = result.remaining ?? Math.max(0, budgetRemainingUsd - negotiation.priceUsd);
                     if (!purchaseSignalRecorded) {
                         await this.learningService.recordSignal({
                             userId,

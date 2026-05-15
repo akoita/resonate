@@ -2,14 +2,15 @@
 
 ## Executive Summary
 
-Reviewed the agent commerce runtime unification slice for #805. No Critical or
-High findings were identified in the changed backend code.
+Reviewed the agent commerce runtime x402 payment-router slice for #805. No
+Critical or High findings were identified in the changed backend code.
 
 ## Scope
 
 - `backend/src/modules/agents/agent_runtime.providers.ts`
 - `backend/src/modules/agents/agent_runtime.service.ts`
 - `backend/src/modules/agents/agent_runtime.types.ts`
+- `backend/src/modules/agents/agent_config.controller.ts`
 - `backend/src/modules/agents/agents.module.ts`
 - `backend/src/modules/agents/payment_router.service.ts`
 - `backend/src/modules/agents/policy_guard.service.ts`
@@ -17,10 +18,13 @@ High findings were identified in the changed backend code.
 - `backend/src/modules/sessions/sessions.service.ts`
 - `backend/src/tests/agent_runtime_normalization.spec.ts`
 - `backend/src/tests/payment_router.spec.ts`
+- `backend/src/tests/payment_router_x402.integration.spec.ts`
 - `backend/src/tests/policy_guard.spec.ts`
 - `backend/src/tests/flow3_session.integration.spec.ts`
 - `backend/src/tests/sessions.integration.spec.ts`
 - `docs/features/agent-platform-refactor-backlog.md`
+- `docs/features/agent-commerce-runtime.md`
+- `docs/features/README.md`
 - `docs/rfc/agent-platform-refactor.md`
 
 ## Critical Findings
@@ -44,9 +48,15 @@ None in the changed code.
 - The new `PolicyGuardService` is a positive security boundary: it rejects
   over-budget purchases and disallowed license or rail choices before purchase
   execution.
-- The new `PaymentRouterService` normalizes the existing ERC-4337 marketplace
-  purchase result and does not introduce new external network calls beyond the
-  existing purchase rail.
+- The updated `PaymentRouterService` normalizes the existing ERC-4337
+  marketplace purchase result and the x402 proof-settlement path behind one
+  result envelope.
+- The x402 rail builds payment requirements from the existing x402 helper and
+  `StemPricing`, applies policy before verification/settlement, and records
+  only receipt/provenance metadata after a verified proof.
+- The AI DJ marketplace buy path now passes through `PaymentRouterService`
+  before the ERC-4337 purchase rail, preserving the existing purchase execution
+  service while adding a pre-execution policy boundary.
 - The session runtime path keeps using server-side session IDs and user IDs from
   existing session records; it does not introduce new public identifiers,
   secrets, dynamic SQL, unsafe deserialization, or new controllers.
@@ -58,11 +68,9 @@ None in the changed code.
 
 ```bash
 cd backend && npm run lint
-cd backend && npm run test
-cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='sessions.integration|flow3_session.integration'
+cd backend && npx jest --runInBand src/tests/payment_router.spec.ts src/tests/agent_runtime_normalization.spec.ts src/tests/policy_guard.spec.ts
+cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='payment_router_x402.integration|sessions.integration|flow3_session.integration'
 git diff --check
-rg 'password|secret|api_key|private_key' backend/src/modules/agents/agent_runtime.providers.ts backend/src/modules/agents/agent_runtime.service.ts backend/src/modules/agents/agent_runtime.types.ts backend/src/modules/agents/agents.module.ts backend/src/modules/agents/payment_router.service.ts backend/src/modules/agents/policy_guard.service.ts backend/src/modules/sessions/sessions.module.ts backend/src/modules/sessions/sessions.service.ts --iglob '!*.test.*' --iglob '!*.spec.*'
-rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/agents/agent_runtime.providers.ts backend/src/modules/agents/agent_runtime.service.ts backend/src/modules/agents/agent_runtime.types.ts backend/src/modules/agents/agents.module.ts backend/src/modules/agents/payment_router.service.ts backend/src/modules/agents/policy_guard.service.ts backend/src/modules/sessions/sessions.module.ts backend/src/modules/sessions/sessions.service.ts
-rg 'JSON\.parse|eval\(' backend/src/modules/agents/agent_runtime.providers.ts backend/src/modules/agents/agent_runtime.service.ts backend/src/modules/agents/agent_runtime.types.ts backend/src/modules/agents/agents.module.ts backend/src/modules/agents/payment_router.service.ts backend/src/modules/agents/policy_guard.service.ts backend/src/modules/sessions/sessions.module.ts backend/src/modules/sessions/sessions.service.ts
-rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/agents/agent_runtime.providers.ts backend/src/modules/agents/agent_runtime.service.ts backend/src/modules/agents/agent_runtime.types.ts backend/src/modules/agents/agents.module.ts backend/src/modules/agents/payment_router.service.ts backend/src/modules/agents/policy_guard.service.ts backend/src/modules/sessions/sessions.module.ts backend/src/modules/sessions/sessions.service.ts
+rg 'password|secret|api_key|private_key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY' backend/src/modules/agents/payment_router.service.ts backend/src/modules/agents/agent_config.controller.ts backend/src/modules/agents/agents.module.ts backend/src/tests/payment_router.spec.ts backend/src/tests/payment_router_x402.integration.spec.ts
+rg 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/agents/payment_router.service.ts backend/src/modules/agents/agent_config.controller.ts backend/src/modules/agents/agents.module.ts backend/src/tests/payment_router.spec.ts backend/src/tests/payment_router_x402.integration.spec.ts
 ```
