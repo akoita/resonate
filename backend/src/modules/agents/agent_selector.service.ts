@@ -30,6 +30,7 @@ export interface AgentCandidateTrack {
     signals: AgentSelectionSignal[];
     explanation: string[];
     audioFeatures?: AgentAudioFeatures;
+    trace?: Record<string, unknown>;
   };
 }
 

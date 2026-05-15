@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import {
   AgentRecommendationAdapter,
   AgentRecommendationInput,
@@ -6,6 +6,7 @@ import {
   AgentRecommendationStrategy,
 } from "./agent_recommendation.adapter";
 import { DeterministicRecommendationAdapter } from "./deterministic_recommendation.adapter";
+import { ModelAssistedRecommendationAdapter } from "./model_assisted_recommendation.adapter";
 
 const DEFAULT_RECOMMENDATION_STRATEGY: AgentRecommendationStrategy = "deterministic";
 
@@ -15,6 +16,7 @@ export function resolveAgentRecommendationStrategy(
   const normalized = value?.trim().toLowerCase();
   if (!normalized) return DEFAULT_RECOMMENDATION_STRATEGY;
   if (normalized === "deterministic") return "deterministic";
+  if (normalized === "model-assisted" || normalized === "model_assisted") return "model-assisted";
   return DEFAULT_RECOMMENDATION_STRATEGY;
 }
 
@@ -22,7 +24,11 @@ export function resolveAgentRecommendationStrategy(
 export class AgentRecommendationService {
   private readonly logger = new Logger(AgentRecommendationService.name);
 
-  constructor(private readonly deterministicAdapter: DeterministicRecommendationAdapter) {}
+  constructor(
+    private readonly deterministicAdapter: DeterministicRecommendationAdapter,
+    @Optional()
+    private readonly modelAssistedAdapter?: ModelAssistedRecommendationAdapter,
+  ) {}
 
   async recommend(input: AgentRecommendationInput): Promise<AgentRecommendationResult> {
     const requested = process.env.AGENT_RECOMMENDATION_STRATEGY;
@@ -36,6 +42,9 @@ export class AgentRecommendationService {
   }
 
   private getAdapter(strategy: AgentRecommendationStrategy): AgentRecommendationAdapter {
+    if (strategy === "model-assisted") {
+      return this.modelAssistedAdapter ?? this.deterministicAdapter;
+    }
     if (strategy === "deterministic") {
       return this.deterministicAdapter;
     }
