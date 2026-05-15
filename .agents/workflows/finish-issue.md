@@ -50,9 +50,12 @@ Check the changed files (`git diff --name-only main`) and run the appropriate se
 - Check if the change affects any existing docs (READMEs, RFCs, specs, API docs)
 - If so, update them in the same branch — keep docs close to the code they describe
 - For new features or architectural changes, add documentation in the appropriate location:
-  - `docs/phase0/` or `docs/phase1/` for phase-specific specs
+  - `docs/features/` for user-facing or developer-facing feature references
   - `docs/rfc/` for design proposals
   - Inline JSDoc / NatSpec for code-level APIs
+- For every durable feature that is added, materially changed, exposed, hidden, or removed:
+  - update `docs/features/README.md`
+  - add or update the feature's dedicated page with status, use cases, API/UI entry points, test steps, and related docs
 - Skip this step if the change is trivial or purely internal refactoring
 
 ## 7. Update architecture docs
