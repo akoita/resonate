@@ -71,6 +71,7 @@ export class AgentOrchestratorService {
       allowExplicit: input.preferences.allowExplicit,
       useEmbeddings: queries.length > 0,
       limit: getAgentTrackLimit(),
+      energy: input.preferences.energy,
       learnedGenreWeights: input.preferences.learnedGenreWeights,
     });
 
@@ -191,7 +192,14 @@ export class AgentOrchestratorService {
 
       if (negotiation.allowed) {
         budgetLeft -= negotiation.priceUsd;
-        tracks.push({ trackId: track.id, mixPlan, negotiation });
+        tracks.push({
+          trackId: track.id,
+          mixPlan,
+          negotiation: {
+            ...negotiation,
+            recommendation: (track as any).agentRecommendation,
+          },
+        });
       }
 
       previousTrackId = track.id;

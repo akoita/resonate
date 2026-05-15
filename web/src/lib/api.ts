@@ -1595,6 +1595,7 @@ export interface AgentSessionLicense {
   trackId: string;
   type: string;
   priceUsd: number;
+  recommendation?: AgentRecommendationSummary | null;
   track: {
     id: string;
     title: string;
@@ -1603,6 +1604,33 @@ export interface AgentSessionLicense {
     release: { id: string; artworkMimeType: string | null; artworkUrl?: string | null; title: string };
   };
 }
+
+export type AgentRecommendationSignal = {
+  label: string;
+  weight: number;
+  reason: string;
+};
+
+export type AgentAudioFeatureSummary = {
+  source?: string;
+  confidence?: number;
+  tempoBpm?: number;
+  energyBand?: "low" | "medium" | "high";
+  warnings?: string[];
+};
+
+export type AgentRecommendationSummary = {
+  recommendation?: {
+    score?: number;
+    explanation?: string[];
+    signals?: AgentRecommendationSignal[];
+    audioFeatures?: AgentAudioFeatureSummary;
+  } | null;
+  reason?: string;
+  reasoning?: string;
+  source?: string;
+  runtime?: string;
+};
 
 export interface AgentSession {
   id: string;
@@ -1631,6 +1659,10 @@ export type AgentNextPickResponse = {
   };
   licenseType?: "personal" | "remix" | "commercial";
   priceUsd?: number;
+  score?: number;
+  explanation?: string[];
+  signals?: AgentRecommendationSignal[];
+  audioFeatures?: AgentAudioFeatureSummary;
   runtimeStatus?: string;
   reason?: string;
   tracks?: Array<{
@@ -1638,6 +1670,9 @@ export type AgentNextPickResponse = {
     licenseType: "personal" | "remix" | "commercial";
     priceUsd: number;
     reason?: string;
+    score?: number;
+    explanation?: string[];
+    signals?: AgentRecommendationSignal[];
   }>;
   generationsUsed?: number;
   generationSpendUsd?: number;

@@ -35,6 +35,8 @@ Available now:
 - The `/agent` dashboard exposes a "Next AI Pick" control that calls the shared runtime-commerce path for the active session and shows track, license, price, and runtime status.
 - Runtime catalog search treats explicit genre/taste queries as hard candidate constraints. A query with no catalog matches returns no candidates instead of falling back to unrelated recent tracks.
 - LLM adapters can curate over the shared catalog/pricing/analytics tools when configured, but the current content-understanding layer is still metadata and embedding based; audio-feature and collaborative ranking remain follow-up work.
+- The deterministic selector now produces a bounded scored shortlist with explanation signals for taste match, expanded taste match, learned preference, active listings, text similarity, recent-track exclusion, and metadata-derived audio features.
+- Metadata-derived `agentAudioFeatures` are persisted on `Track.generationMetadata` as a first durable feature seed. They expose confidence, tempo, energy band, tags, source, and warnings while leaving full DSP/model extraction as a future implementation behind the same service boundary.
 - `PolicyGuardService` centralizes pre-execution checks for budget and license policy.
 - `PaymentRouterService` centralizes ERC-4337 marketplace and x402 rail execution behind one result envelope.
 - The x402 rail builds a canonical challenge from `StemPricing`, blocks policy failures before verification, verifies/settles payment proofs, records `x402.purchase` provenance, and returns a structured receipt.
@@ -122,6 +124,26 @@ Other useful responses:
 | `session_inactive` | Session does not exist or has ended. |
 | `no_tracks` | Runtime found no candidate track. |
 | `all_rejected` | Candidates were found but rejected by policy/runtime constraints. |
+
+Recommendation explanations are returned on commerce-aware picks when available:
+
+```json
+{
+  "score": 72,
+  "explanation": ["Nearby vibe match", "Purchasable stem available"],
+  "signals": [
+    { "label": "expanded_taste_match", "weight": 28, "reason": "matches nearby taste rap" },
+    { "label": "listed", "weight": 14, "reason": "has active stem listing" }
+  ],
+  "audioFeatures": {
+    "source": "metadata_inferred",
+    "confidence": 0.6,
+    "tempoBpm": 124,
+    "energyBand": "high",
+    "warnings": ["fingerprint_unavailable"]
+  }
+}
+```
 
 ## External API Decision
 
@@ -269,10 +291,10 @@ Key output fields:
 
 The runtime is intentionally a hybrid foundation, not a Spotify-scale
 recommendation system yet. The live stack can use ADK/Gemini or other adapters
-to call tools and reason over candidates, and it can use embeddings for semantic
-ranking. It does not yet extract audio spectrogram features, train collaborative
-models from behavior logs, or run diversity re-ranking across a large candidate
-pool.
+to call tools and reason over candidates, use bounded taste expansion, persist
+metadata-derived audio feature seeds, and rank candidates with explainable
+signals. It does not yet extract audio spectrogram features or train
+collaborative models from behavior logs.
 
 For investor-facing demos, the reliable claim is: policy-bounded agent commerce
 with taste-constrained candidate retrieval, tool-mediated LLM curation, budget
@@ -287,6 +309,7 @@ Run the focused tests:
 ```bash
 cd backend
 npx jest --runInBand src/tests/agent_runtime_normalization.spec.ts src/tests/policy_guard.spec.ts src/tests/payment_router.spec.ts
+npm run eval:recommendations
 npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='payment_router_x402.integration|sessions.integration|flow3_session.integration'
 ```
 

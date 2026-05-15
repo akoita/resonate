@@ -32,7 +32,7 @@ describe("agent learning loop", () => {
     expect(profile.favoredGenres).toEqual([]);
   });
 
-  it("boosts learned genres after listing priority in selector ranking", async () => {
+  it("scores listed tracks and learned genres in selector ranking", async () => {
     const tool = {
       run: jest.fn().mockResolvedValue({
         items: [
@@ -53,7 +53,12 @@ describe("agent learning loop", () => {
       limit: 3,
     });
 
-    expect(result.selected.map((track: any) => track.id)).toEqual(["listed", "house", "jazz"]);
+    expect(result.selected.map((track: any) => track.id)).toEqual(["house", "listed", "jazz"]);
+    expect(result.selected[0]?.agentRecommendation?.signals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "learned_preference" }),
+      ]),
+    );
   });
 
   it("expands common taste vocabulary without falling back to unrelated catalog items", async () => {
@@ -77,6 +82,7 @@ describe("agent learning loop", () => {
     expect(tool.run).toHaveBeenCalledWith(expect.objectContaining({ query: "Hip Hop" }));
     expect(tool.run).toHaveBeenCalledWith(expect.objectContaining({ query: "rap" }));
     expect(result.selected.map((track: any) => track.id)).toEqual(["rap-track"]);
+    expect(result.selected[0]?.agentRecommendation?.explanation).toContain("Nearby vibe match");
   });
 
   it("returns no selections when original and expanded taste queries miss", async () => {
@@ -94,5 +100,27 @@ describe("agent learning loop", () => {
     });
 
     expect(result.selected).toEqual([]);
+  });
+
+  it("excludes recently played tracks instead of falling back to duplicates", async () => {
+    const tool = {
+      run: jest.fn().mockResolvedValue({
+        items: [
+          { id: "recent", title: "Recent Track", hasListing: true, release: { genre: "Techno" } },
+        ],
+      }),
+    };
+    const selector = new AgentSelectorService({
+      get: jest.fn().mockReturnValue(tool),
+    } as any);
+
+    const result = await selector.select({
+      queries: ["Techno"],
+      recentTrackIds: ["recent"],
+      limit: 3,
+    });
+
+    expect(result.selected).toEqual([]);
+    expect(result.rejected).toEqual([{ trackId: "recent", reason: "recently_played" }]);
   });
 });
