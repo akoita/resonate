@@ -259,3 +259,47 @@ git diff --check
 rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|gho_[A-Za-z0-9_]+|sk-[A-Za-z0-9]' backend/src/modules/agents/agent_audio_feature.service.ts backend/src/tests/agent_audio_feature.integration.spec.ts docs/features/agent-commerce-runtime.md docs/features/README.md
 rg -n 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/agents/agent_audio_feature.service.ts
 ```
+
+## Addendum: #824 Recommendation Eval Expansion
+
+Reviewed the expanded AI DJ recommendation eval suite for semantic matches,
+strict no-match cases, and product-readable eval metrics. No Critical or High
+findings were identified in the changed code.
+
+### Scope
+
+- `backend/src/modules/agents/agent_recommendation_eval.service.ts`
+- `backend/src/tests/agent_recommendation_eval.spec.ts`
+- `docs/features/agent-commerce-runtime.md`
+- `docs/features/README.md`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none.
+- Low: none in the changed code.
+
+### Notes
+
+- The eval service writes deterministic JSON and Markdown artifacts under the
+  ignored `eval-results/` directory; no new controller, public endpoint,
+  external network client, dynamic SQL, or secret handling was introduced.
+- Candidate and signal fields are local eval metadata only and do not carry
+  user tokens, private keys, or credentials.
+- Strict no-match cases now fail when unrelated catalog candidates are selected,
+  and semantic-match cases can enforce precision thresholds, listed-track
+  coverage, novelty, and explanation coverage.
+- Changed-file secret and dynamic SQL scans returned no matches.
+
+### Commands Run
+
+```bash
+cd backend && npm run lint
+cd backend && npm run eval:recommendations
+cd backend && npx jest --runInBand src/tests/agent_recommendation_eval.spec.ts
+cd backend && npm run test
+git diff --check
+rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|gho_[A-Za-z0-9_]+|sk-[A-Za-z0-9]' backend/src/modules/agents/agent_recommendation_eval.service.ts backend/src/tests/agent_recommendation_eval.spec.ts docs/features/agent-commerce-runtime.md docs/features/README.md
+rg -n 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/agents/agent_recommendation_eval.service.ts backend/src/tests/agent_recommendation_eval.spec.ts
+```
