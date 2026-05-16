@@ -105,6 +105,11 @@ When adding a new environment variable:
 | `INTERNAL_SERVICE_KEY` | Backend + internal workers | Shared secret for backend-originated privileged requests and Demucs callback authentication; required in production for internal worker callbacks |
 | `STEM_WATCHDOG_TIMEOUT_MS` | Backend | Optional timeout before active stem-processing tracks are failed as stale; defaults to `900000` locally |
 | `STEM_WATCHDOG_INTERVAL_MS` | Backend | Optional watchdog sweep interval for stale stem-processing tracks; defaults to `60000` locally |
+| `ENABLE_CONTRACT_INDEXER` | Backend | Enables background contract event indexing when set to `true`; deployed environments should only enable it when contract addresses are configured |
+| `INDEXER_POLL_INTERVAL_MS` | Backend | Optional contract indexer poll interval in milliseconds; defaults to `5000` |
+| `INDEXER_BLOCKS_PER_BATCH` | Backend | Optional maximum block range fetched per indexer batch; defaults to `1000` |
+| `INDEXER_MAX_BATCHES_PER_CYCLE` | Backend | Optional maximum indexer batches processed per poll cycle; defaults to `20` |
+| `INDEXER_PROGRESS_LOG_LEVEL` | Backend | Optional progress log level for per-batch indexing messages: `silent`, `debug`, or `log`; defaults to `silent` |
 | `SIGNUP_FAUCET_ENABLED` | Backend | Enables native ETH funding for newly registered wallets. Defaults to `false`; set `true` only in staging/testnet environments |
 | `SIGNUP_FAUCET_AMOUNT_ETH` | Backend | Native ETH amount sent to new signup wallets when the faucet is enabled; defaults to `0.1` |
 | `SIGNUP_FAUCET_CHAIN_ID` | Backend | Optional faucet chain guard. When omitted, signup funding uses the active chain verified by the backend auth RPC |

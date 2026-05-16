@@ -167,13 +167,33 @@ function isEphemeralLocalRpc(rpcUrl: string): boolean {
   return /localhost|127\.0\.0\.1|host\.docker\.internal/i.test(rpcUrl);
 }
 
+type IndexerProgressLogLevel = "silent" | "debug" | "log";
+
+function parsePositiveIntegerEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+
+  const value = Number.parseInt(raw, 10);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function parseIndexerProgressLogLevel(): IndexerProgressLogLevel {
+  const raw = process.env.INDEXER_PROGRESS_LOG_LEVEL?.trim().toLowerCase();
+  if (raw === "debug" || raw === "log" || raw === "silent") {
+    return raw;
+  }
+  return "silent";
+}
+
 @Injectable()
 export class IndexerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(IndexerService.name);
   private indexingInterval: NodeJS.Timeout | null = null;
   private isIndexing = false;
-  private readonly POLL_INTERVAL_MS = 5000; // 5 seconds
-  private readonly BLOCKS_PER_BATCH = 1000;
+  private readonly pollIntervalMs = parsePositiveIntegerEnv("INDEXER_POLL_INTERVAL_MS", 5000);
+  private readonly blocksPerBatch = parsePositiveIntegerEnv("INDEXER_BLOCKS_PER_BATCH", 1000);
+  private readonly maxBatchesPerCycle = parsePositiveIntegerEnv("INDEXER_MAX_BATCHES_PER_CYCLE", 20);
+  private readonly progressLogLevel = parseIndexerProgressLogLevel();
   private clientCache = new Map<number, any>();
 
   constructor(private readonly eventBus: EventBus) { }
@@ -197,7 +217,9 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    this.logger.log("Starting contract indexer...");
+    this.logger.log(
+      `Starting contract indexer (poll=${this.pollIntervalMs}ms, blocksPerBatch=${this.blocksPerBatch}, maxBatchesPerCycle=${this.maxBatchesPerCycle}, progressLogLevel=${this.progressLogLevel})`,
+    );
     await this.startIndexing();
   }
 
@@ -214,7 +236,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
       if (!this.isIndexing) {
         await this.runIndexCycle();
       }
-    }, this.POLL_INTERVAL_MS);
+    }, this.pollIntervalMs);
   }
 
   private stopIndexing() {
@@ -266,6 +288,14 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         where: { id: { in: Array.from(affectedStemIds) } },
         data: { ipnftId: null },
       });
+    }
+  }
+
+  private logIndexProgress(message: string) {
+    if (this.progressLogLevel === "debug") {
+      this.logger.debug(message);
+    } else if (this.progressLogLevel === "log") {
+      this.logger.log(message);
     }
   }
 
@@ -338,17 +368,16 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      // Process multiple batches in one cycle to catch up quickly.
-      // Cap at 20 batches per cycle to avoid blocking too long.
-      const MAX_BATCHES_PER_CYCLE = 20;
+      // Process multiple batches in one cycle to catch up quickly, bounded by
+      // environment configuration so shared environments can reduce idle churn.
       let batchCount = 0;
       let totalEvents = 0;
 
-      while (fromBlock <= currentBlock && batchCount < MAX_BATCHES_PER_CYCLE) {
-        const toBlock = fromBlock + BigInt(this.BLOCKS_PER_BATCH) - 1n;
+      while (fromBlock <= currentBlock && batchCount < this.maxBatchesPerCycle) {
+        const toBlock = fromBlock + BigInt(this.blocksPerBatch) - 1n;
         const effectiveToBlock = toBlock > currentBlock ? currentBlock : toBlock;
 
-        this.logger.debug(`Indexing blocks ${fromBlock} to ${effectiveToBlock} on chain ${chainId} (batch ${batchCount + 1})`);
+        this.logIndexProgress(`Indexing blocks ${fromBlock} to ${effectiveToBlock} on chain ${chainId} (batch ${batchCount + 1})`);
 
         // Fetch logs for StemNFT contract
         const stemNftLogs = await client.getLogs({
