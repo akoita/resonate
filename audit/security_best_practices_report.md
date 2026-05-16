@@ -553,3 +553,50 @@ PY
 git diff --check
 rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|gho_[A-Za-z0-9_]+|sk-[A-Za-z0-9]'
 ```
+
+## Addendum: x402 Encrypted Stem Download Redemption
+
+Reviewed the x402 paid-download source-loading change for backend data handling,
+authorization bypass risk, and secret exposure. No Critical or High findings
+were identified in the changed code.
+
+### Scope
+
+- `backend/src/modules/encryption/encryption.service.ts`
+- `backend/src/modules/x402/x402.controller.ts`
+- `backend/src/tests/encryption.spec.ts`
+- `backend/src/tests/x402.controller.spec.ts`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none.
+- Low: none in the changed code.
+
+### Notes
+
+- The x402 controller still verifies payment before the paid download path runs.
+  The change only alters how already-authorized downloads load encrypted source
+  bytes: DB/storage first, then HTTP fallback.
+- The new `decryptBuffer` helper reuses the existing AES metadata validation,
+  provider access checks for cached content, and server-side auth context; it
+  does not introduce a new public endpoint.
+- Secret-pattern scanning found only the existing `INTERNAL_SERVICE_KEY`
+  environment variable reference, not a literal credential.
+- Dynamic SQL/eval scans found no raw SQL or `eval` usage in the changed
+  backend files. `JSON.parse` remains limited to AES metadata parsing with raw
+  buffer fallback on invalid/non-AES metadata.
+
+### Commands Run
+
+```bash
+cd backend && npx jest --runInBand --testPathPattern='x402.controller.spec|encryption.spec'
+cd backend && npx jest --runInBand --testPathPattern='x402.controller.http.spec'
+cd backend && npm run lint
+cd backend && npm test
+git diff --check
+rg -n "(PRIVATE KEY|BEGIN [A-Z ]*PRIVATE KEY|sk-[A-Za-z0-9]|ghp_|gho_|AIza|password\\s*=|api[_-]?key\\s*=|secret\\s*=|token\\s*=|https://staging|pydes\\.xyz)" backend/src/modules/encryption/encryption.service.ts backend/src/modules/x402/x402.controller.ts backend/src/tests/encryption.spec.ts backend/src/tests/x402.controller.spec.ts -S
+rg -n "(JSON\\.parse|eval\\(|\\$queryRaw|\\$executeRaw|@Body\\(\\)|@Query\\(\\)|@Param\\(\\))" backend/src/modules/encryption/encryption.service.ts backend/src/modules/x402/x402.controller.ts -S
+rg -n "(password|secret|api_key|private_key|INTERNAL_SERVICE_KEY|PRIVATE KEY|sk-[A-Za-z0-9]|ghp_|gho_)" backend/src/modules/encryption/encryption.service.ts backend/src/modules/x402/x402.controller.ts -S
+```

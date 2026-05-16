@@ -79,11 +79,17 @@ function createMockRes() {
 describe('X402Controller', () => {
   const encryptionService = {
     decrypt: jest.fn(),
+    decryptBuffer: jest.fn(),
+  };
+  const storageProvider = {
+    download: jest.fn(),
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
     prisma.contractEvent.findFirst.mockResolvedValue(null);
+    storageProvider.download.mockReset();
+    encryptionService.decryptBuffer.mockReset();
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       arrayBuffer: async () => Uint8Array.from([1, 2, 3, 4]).buffer,
@@ -269,6 +275,69 @@ describe('X402Controller', () => {
         }),
       }),
     });
+  });
+
+  it('decrypts paid x402 downloads from storage before falling back to public blob URLs', async () => {
+    const encryptedData = Buffer.from('encrypted-stem');
+    const decryptedData = Buffer.from('decrypted-stem');
+    storageProvider.download.mockResolvedValue(encryptedData);
+    encryptionService.decryptBuffer.mockResolvedValue(decryptedData);
+    prisma.stem.findUnique.mockResolvedValue({
+      id: 'stem_encrypted',
+      type: 'drums',
+      title: 'Encrypted Stem',
+      uri: '/catalog/stems/stem_encrypted/blob',
+      mimeType: 'audio/mpeg',
+      encryptionMetadata: JSON.stringify({
+        iv: 'aa',
+        authTag: 'bb',
+        keyId: 'stem_encrypted',
+      }),
+      data: null,
+      nftMint: null,
+      track: {
+        title: 'Encrypted Track',
+        release: {
+          title: 'Encrypted Release',
+          primaryArtist: 'Koita',
+        },
+      },
+    });
+    prisma.stemPricing.findUnique.mockResolvedValue({
+      basePlayPriceUsd: 0.05,
+    });
+
+    const controller = new X402Controller(
+      createMockConfig(),
+      encryptionService as any,
+      undefined,
+      storageProvider as any,
+    );
+    const req: any = {
+      protocol: 'https',
+      headers: { 'payment-signature': 'proof-v2' },
+      get: jest.fn((header: string) =>
+        header.toLowerCase() === 'host' ? 'api.example.test' : undefined,
+      ),
+    };
+    const res = createMockRes();
+
+    await controller.downloadWithPayment('stem_encrypted', req, res);
+
+    expect(storageProvider.download).toHaveBeenCalledWith(
+      '/catalog/stems/stem_encrypted/blob',
+    );
+    expect(encryptionService.decryptBuffer).toHaveBeenCalledWith(
+      encryptedData,
+      expect.any(String),
+      expect.objectContaining({
+        sig: 'x402-payment-verified',
+      }),
+      '/catalog/stems/stem_encrypted/blob',
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(res.body).toEqual(decryptedData);
+    expect(res.headers['X-Resonate-License']).toBe('personal');
   });
 
   it('verifies smart-account x402 payments from token Transfer logs', async () => {

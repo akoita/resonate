@@ -17,9 +17,16 @@ const TEST_STEM_CACHE_PATH = join(
   'decrypted_cache',
   `${createHash('sha256').update(TEST_STEM_URI).digest('hex')}.mp3`,
 );
+const TEST_BUFFER_CACHE_PATH = join(
+  process.cwd(),
+  'uploads',
+  'decrypted_cache',
+  `${createHash('sha256').update('stem-1').digest('hex')}.mp3`,
+);
 
 const clearTestStemCache = () => {
   rmSync(TEST_STEM_CACHE_PATH, { force: true });
+  rmSync(TEST_BUFFER_CACHE_PATH, { force: true });
 };
 
 const mockProvider = {
@@ -155,6 +162,29 @@ describe('EncryptionService', () => {
       expect(mockStorageProvider.download).toHaveBeenCalledWith(
         TEST_STEM_URI,
       );
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
+
+    it('decrypts an already-loaded encrypted buffer without fetching', async () => {
+      const encryptedData = Buffer.from('ciphertext');
+      const fetchSpy = jest.spyOn(global, 'fetch');
+
+      const result = await service.decryptBuffer(
+        encryptedData,
+        JSON.stringify({ iv: 'aa', authTag: 'bb', keyId: 'stem-1' }),
+        { address: '0xABC', sig: '0x1234', signedMessage: 'test' },
+        'stem-1',
+      );
+
+      expect(result).toEqual(Buffer.from('decrypted'));
+      expect(mockProvider.decrypt).toHaveBeenCalledWith(
+        encryptedData,
+        expect.objectContaining({
+          requesterAddress: '0xABC',
+        }),
+      );
+      expect(mockStorageProvider.download).not.toHaveBeenCalled();
       expect(fetchSpy).not.toHaveBeenCalled();
       fetchSpy.mockRestore();
     });
