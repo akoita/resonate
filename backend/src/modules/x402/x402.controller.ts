@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Optional, Param, Post, Req, Res, Logger, HttpStatus } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Optional, Param, Post, Req, Res, Logger, HttpStatus } from '@nestjs/common';
 import { Request, Response } from 'express';
 import path from 'node:path';
 import {
@@ -18,6 +18,7 @@ import { buildStemX402Receipt, encodeX402ReceiptHeader } from './x402.receipt';
 import { getX402ChainId, resolveX402AssetInfo, type X402AssetInfo } from './x402.public';
 import { buildStorefrontStemDetail } from '../storefront/storefront.presenter';
 import { PaymentsService } from '../payments/payments.service';
+import { StorageProvider } from '../storage/storage_provider';
 
 type SmartAccountPaymentBody = {
   txHash?: string;
@@ -68,6 +69,9 @@ export class X402Controller {
     private readonly encryptionService: EncryptionService,
     @Optional()
     private readonly paymentsService?: PaymentsService,
+    @Optional()
+    @Inject(StorageProvider)
+    private readonly storageProvider?: StorageProvider,
   ) {}
 
   /**
@@ -214,6 +218,12 @@ export class X402Controller {
       let audioBuffer: Buffer;
 
       if (stem.encryptionMetadata) {
+        const encryptedBuffer = await this.fetchPaidStemSourceBuffer({
+          uri: stem.uri,
+          resolvedUri: resolvedStemUrl,
+          data: stem.data,
+          errorLabel: 'encrypted data',
+        });
         // Decrypt using the encryption service with a server-side auth sig
         const serverAuthSig = {
           address: this.x402Config.payoutAddress.toLowerCase(),
@@ -221,19 +231,19 @@ export class X402Controller {
           signedMessage: 'Download authorized via x402 payment verification',
           internalKey: process.env.INTERNAL_SERVICE_KEY,
         };
-        audioBuffer = await this.encryptionService.decrypt(
-          resolvedStemUrl,
+        audioBuffer = await this.encryptionService.decryptBuffer(
+          encryptedBuffer,
           stem.encryptionMetadata,
-          [],
           serverAuthSig,
+          stem.uri,
         );
       } else {
-        // Unencrypted — fetch directly
-        const response = await fetch(resolvedStemUrl);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch stem: ${response.status}`);
-        }
-        audioBuffer = Buffer.from(await response.arrayBuffer());
+        audioBuffer = await this.fetchPaidStemSourceBuffer({
+          uri: stem.uri,
+          resolvedUri: resolvedStemUrl,
+          data: stem.data,
+          errorLabel: 'stem',
+        });
       }
 
       // 3. Log the x402 purchase for provenance
@@ -505,6 +515,38 @@ export class X402Controller {
     const host = req.get('host') || process.env.BACKEND_HOST || 'localhost:3000';
 
     return new URL(uri, `${protocol}://${host}`).toString();
+  }
+
+  private async fetchPaidStemSourceBuffer(input: {
+    uri: string;
+    resolvedUri: string;
+    data?: Buffer | Uint8Array | null;
+    errorLabel: string;
+  }): Promise<Buffer> {
+    if (input.data && input.data.length > 0) {
+      return Buffer.isBuffer(input.data) ? input.data : Buffer.from(input.data);
+    }
+
+    if (this.storageProvider) {
+      for (const candidate of [input.uri, input.resolvedUri]) {
+        try {
+          const downloaded = await this.storageProvider.download(candidate);
+          if (downloaded) {
+            this.logger.log(`x402 loaded paid stem source via storage provider: ${candidate}`);
+            return downloaded;
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.warn(`x402 storage download failed for ${candidate}: ${message}`);
+        }
+      }
+    }
+
+    const response = await fetch(input.resolvedUri);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch ${input.errorLabel}: ${response.status}`);
+    }
+    return Buffer.from(await response.arrayBuffer());
   }
 
   private getDownloadExtension(uri: string, mimeType: string) {

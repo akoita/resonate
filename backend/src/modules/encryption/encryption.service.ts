@@ -190,6 +190,62 @@ export class EncryptionService {
         return decrypted;
     }
 
+    async decryptBuffer(
+        encryptedData: Buffer,
+        metadata: string,
+        authSig: { address: string; sig: string; signedMessage: string },
+        cacheKey?: string,
+    ): Promise<Buffer> {
+        if (this.provider.providerName === 'none') {
+            return encryptedData;
+        }
+
+        if (!metadata || metadata === '{}' || metadata.trim() === '') {
+            return encryptedData;
+        }
+
+        try {
+            const parsed = JSON.parse(metadata);
+            if (!parsed.iv || !parsed.authTag || !parsed.keyId) {
+                this.logger.log('[Decrypt] Metadata is not AES format, returning raw buffer');
+                return encryptedData;
+            }
+        } catch (e) {
+            this.logger.log('[Decrypt] Invalid metadata JSON, returning raw buffer');
+            return encryptedData;
+        }
+
+        const context: DecryptionContext = {
+            metadata,
+            authSig,
+            requesterAddress: authSig.address,
+        };
+
+        if (cacheKey) {
+            const cachePath = join(
+                this.cacheDir,
+                `${createHash('sha256').update(cacheKey).digest('hex')}.mp3`,
+            );
+            this.ensureCacheDir();
+
+            if (existsSync(cachePath)) {
+                this.logger.log(`[Cache] Hit for source: ${cacheKey}`);
+                const hasAccess = await this.provider.verifyAccess(context);
+                if (hasAccess) {
+                    return readFileSync(cachePath);
+                }
+                this.logger.warn(`[Cache] Access denied for ${authSig.address}, decrypting fresh`);
+            }
+
+            const decrypted = await this.provider.decrypt(encryptedData, context);
+            writeFileSync(cachePath, decrypted);
+            this.logger.log(`[Cache] Saved decrypted content for ${cacheKey}`);
+            return decrypted;
+        }
+
+        return this.provider.decrypt(encryptedData, context);
+    }
+
     /**
      * Legacy decrypt method for backward compatibility with existing controller
      */
