@@ -9,10 +9,16 @@ import { LyriaClient } from './lyria.client';
 import { CreateGenerationDto, GenerationStatusResponse, GenerationMetadata, ALL_STEM_TYPES, StemAnalysisResult, PublishGenerationDto, SupportedGenerationDuration } from './generation.dto';
 import { prisma } from '../../db/prisma';
 import { randomUUID } from 'crypto';
+import { UPLOAD_RIGHTS_POLICY_VERSION } from '../rights/upload-rights-policy';
+import type { Prisma } from '@prisma/client';
 
 const COST_PER_30_SECONDS = 0.06; // Estimated cost baseline for 30 seconds of generated audio
 const DEFAULT_RATE_LIMIT = 50; // max generations per hour per user
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const AI_GENERATION_RIGHTS_SOURCE = 'ai_generation';
+const AI_GENERATION_RIGHTS_ACTOR = 'system:ai-generation';
+const AI_GENERATION_RIGHTS_REASON =
+  'Resonate generated this release and recorded system provenance automatically. Marketplace access uses the platform AI-generated-work policy rather than creator proof-of-control evidence.';
 
 interface RateLimitEntry {
   timestamps: number[];
@@ -281,31 +287,60 @@ export class GenerationService {
       };
 
       // Create Release + Track via Prisma
-      const release = await prisma.release.create({
-        data: {
-          artistId,
-          title: `AI Generated: ${prompt.substring(0, 80)}`,
-          status: 'ready',
-          type: 'ai_generated',
-          tracks: {
-            create: {
-              title: prompt.substring(0, 120),
-              processingStatus: 'complete',
-              generationMetadata: generationMetadata as any,
-              stems: {
-                create: {
-                  type: 'master',
-                  uri: storageResult.uri,
-                  storageProvider: storageResult.provider,
-                  data: storageResult.provider === 'local' ? finalAudioBytes : undefined,
-                  durationSeconds: result.durationSeconds,
-                  mimeType: audioMimeType,
+      const release = await prisma.$transaction(async (tx) => {
+        const createdRelease = await tx.release.create({
+          data: {
+            artistId,
+            title: `AI Generated: ${prompt.substring(0, 80)}`,
+            status: 'ready',
+            type: 'ai_generated',
+            tracks: {
+              create: {
+                title: prompt.substring(0, 120),
+                processingStatus: 'complete',
+                generationMetadata: generationMetadata as any,
+                rightsRoute: 'STANDARD_ESCROW',
+                rightsFlags: [],
+                rightsReason: AI_GENERATION_RIGHTS_REASON,
+                rightsPolicyVersion: UPLOAD_RIGHTS_POLICY_VERSION,
+                rightsEvaluatedAt: new Date(),
+                stems: {
+                  create: {
+                    type: 'master',
+                    uri: storageResult.uri,
+                    storageProvider: storageResult.provider,
+                    data: storageResult.provider === 'local' ? finalAudioBytes : undefined,
+                    durationSeconds: result.durationSeconds,
+                    mimeType: audioMimeType,
+                  },
                 },
               },
             },
+            rightsRoute: 'STANDARD_ESCROW',
+            rightsFlags: [],
+            rightsReason: AI_GENERATION_RIGHTS_REASON,
+            rightsPolicyVersion: UPLOAD_RIGHTS_POLICY_VERSION,
+            rightsSourceType: AI_GENERATION_RIGHTS_SOURCE,
+            rightsEvaluatedAt: new Date(),
           },
-        },
-        include: { tracks: true },
+          include: { tracks: true },
+        });
+
+        await this.recordAiGenerationRightsProvenance(tx, {
+          releaseId: createdRelease.id,
+          artistId,
+          trackId: createdRelease.tracks[0].id,
+          title: createdRelease.tracks[0].title,
+          prompt,
+          provider: generationMetadata.provider,
+          generatedAt: generationMetadata.generatedAt,
+          synthIdPresent: generationMetadata.synthIdPresent,
+          seed: generationMetadata.seed,
+          durationSeconds: generationMetadata.durationSeconds,
+          userId,
+        });
+
+        return createdRelease;
       });
 
       const trackId = release.tracks[0].id;
@@ -695,7 +730,184 @@ export class GenerationService {
       },
     });
 
+    await this.ensureAiGenerationRightsProvenance(track.releaseId);
+
     return { success: true, releaseId: track.releaseId };
+  }
+
+  private async ensureAiGenerationRightsProvenance(releaseId: string) {
+    await prisma.$transaction(async (tx) => {
+      const release = await tx.release.findUnique({
+        where: { id: releaseId },
+        include: {
+          artist: { select: { id: true, userId: true } },
+          tracks: {
+            select: {
+              id: true,
+              title: true,
+              generationMetadata: true,
+            },
+          },
+        },
+      });
+
+      if (!release || release.type !== 'ai_generated') {
+        return;
+      }
+
+      const generatedTrackIds = release.tracks
+        .filter((candidate) => candidate.generationMetadata)
+        .map((candidate) => candidate.id);
+      const generatedTrack = release.tracks.find((candidate) => candidate.generationMetadata);
+      if (!generatedTrack) {
+        return;
+      }
+
+      const metadata = (generatedTrack.generationMetadata as GenerationMetadata | null) || null;
+
+      await tx.release.update({
+        where: { id: release.id },
+        data: {
+          rightsRoute: 'STANDARD_ESCROW',
+          rightsFlags: [],
+          rightsReason: AI_GENERATION_RIGHTS_REASON,
+          rightsPolicyVersion: UPLOAD_RIGHTS_POLICY_VERSION,
+          rightsSourceType: AI_GENERATION_RIGHTS_SOURCE,
+          rightsEvaluatedAt: new Date(),
+        },
+      });
+
+      await tx.track.updateMany({
+        where: {
+          releaseId: release.id,
+          id: { in: generatedTrackIds },
+        },
+        data: {
+          rightsRoute: 'STANDARD_ESCROW',
+          rightsFlags: [],
+          rightsReason: AI_GENERATION_RIGHTS_REASON,
+          rightsPolicyVersion: UPLOAD_RIGHTS_POLICY_VERSION,
+          rightsEvaluatedAt: new Date(),
+        },
+      });
+
+      await this.recordAiGenerationRightsProvenance(tx, {
+        releaseId: release.id,
+        artistId: release.artist.id,
+        trackId: generatedTrack.id,
+        title: generatedTrack.title,
+        prompt: metadata?.prompt || generatedTrack.title,
+        provider: metadata?.provider || 'unknown',
+        generatedAt: metadata?.generatedAt || release.createdAt.toISOString(),
+        synthIdPresent: Boolean(metadata?.synthIdPresent),
+        seed: metadata?.seed,
+        durationSeconds: metadata?.durationSeconds,
+        userId: release.artist.userId,
+      });
+    });
+  }
+
+  private async recordAiGenerationRightsProvenance(
+    tx: Prisma.TransactionClient,
+    input: {
+      releaseId: string;
+      artistId: string;
+      trackId: string;
+      title: string;
+      prompt: string;
+      provider: string;
+      generatedAt: string;
+      synthIdPresent?: boolean;
+      seed?: number | null;
+      durationSeconds?: number | null;
+      userId: string;
+    },
+  ) {
+    const latestRequest = await tx.releaseRightsUpgradeRequest.findFirst({
+      where: {
+        releaseId: input.releaseId,
+      },
+      orderBy: { createdAt: 'desc' },
+      include: { evidenceBundles: true },
+    });
+    const existingRequest =
+      latestRequest?.requestedByAddress === AI_GENERATION_RIGHTS_ACTOR ? latestRequest : null;
+
+    const request = existingRequest
+      ? await tx.releaseRightsUpgradeRequest.update({
+          where: { id: existingRequest.id },
+          data: {
+            status: 'approved_standard_escrow',
+            requestedRoute: 'STANDARD_ESCROW',
+            currentRouteAtSubmission: 'STANDARD_ESCROW',
+            summary: AI_GENERATION_RIGHTS_REASON,
+            decisionReason: AI_GENERATION_RIGHTS_REASON,
+            reviewedBy: AI_GENERATION_RIGHTS_ACTOR,
+            reviewedAt: new Date(),
+          },
+          include: { evidenceBundles: true },
+        })
+      : await tx.releaseRightsUpgradeRequest.create({
+          data: {
+            releaseId: input.releaseId,
+            artistId: input.artistId,
+            requestedByAddress: AI_GENERATION_RIGHTS_ACTOR,
+            status: 'approved_standard_escrow',
+            requestedRoute: 'STANDARD_ESCROW',
+            currentRouteAtSubmission: 'STANDARD_ESCROW',
+            summary: AI_GENERATION_RIGHTS_REASON,
+            decisionReason: AI_GENERATION_RIGHTS_REASON,
+            reviewedBy: AI_GENERATION_RIGHTS_ACTOR,
+            reviewedAt: new Date(),
+          },
+          include: { evidenceBundles: true },
+        });
+
+    if (request.evidenceBundles.some((bundle) => bundle.purpose === 'ops_review')) {
+      return;
+    }
+
+    await tx.rightsEvidenceBundle.create({
+      data: {
+        rightsUpgradeRequestId: request.id,
+        subjectType: 'release',
+        subjectId: input.releaseId,
+        submittedByRole: 'system',
+        submittedByAddress: AI_GENERATION_RIGHTS_ACTOR,
+        purpose: 'ops_review',
+        summary: AI_GENERATION_RIGHTS_REASON,
+        evidences: {
+          create: [
+            {
+              subjectType: 'release',
+              subjectId: input.releaseId,
+              submittedByRole: 'system',
+              submittedByAddress: AI_GENERATION_RIGHTS_ACTOR,
+              kind: 'rights_metadata',
+              title: 'Resonate AI generation provenance',
+              description:
+                `Track "${input.title}" was generated by ${input.provider} through Resonate on ${input.generatedAt}.`,
+              sourceLabel: 'Resonate generation service',
+              claimedRightsholder: 'Resonate AI generation policy',
+              releaseTitle: input.title,
+              strength: 'very_high',
+              verificationStatus: 'system_generated',
+              metadata: {
+                source: AI_GENERATION_RIGHTS_SOURCE,
+                trackId: input.trackId,
+                userId: input.userId,
+                prompt: input.prompt,
+                provider: input.provider,
+                generatedAt: input.generatedAt,
+                synthIdPresent: Boolean(input.synthIdPresent),
+                seed: input.seed ?? null,
+                durationSeconds: input.durationSeconds ?? null,
+              },
+            },
+          ],
+        },
+      },
+    });
   }
 
   /**

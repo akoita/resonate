@@ -16,6 +16,14 @@ type UploadStatus = "queued" | "processing" | "complete" | "failed";
 const ACTIVE_PROCESSING_STAGES = new Set(["separating", "encrypting", "storing"]);
 const SOURCE_STEM_TYPES = new Set(["original", "master"]);
 
+function cleanMetadataString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function resolveTrackArtist(trackMeta: any, primaryArtist?: string, extractedArtist?: string) {
+  return cleanMetadataString(trackMeta?.artist) || cleanMetadataString(primaryArtist) || cleanMetadataString(extractedArtist);
+}
+
 interface UploadRecord {
   trackId: string;
   artistId: string;
@@ -197,8 +205,10 @@ export class IngestionService {
       tracks.push({
         id: trackId,
         title: trackMeta?.title || extractedTitle,
-        artist: trackMeta?.artist || extractedArtist,
+        artist: resolveTrackArtist(trackMeta, input.metadata?.primaryArtist, extractedArtist),
         position: index + 1,
+        explicit: trackMeta?.explicit ?? false,
+        isrc: trackMeta?.isrc,
         stems: [{
           id: stemId,
           uri: publicUri,

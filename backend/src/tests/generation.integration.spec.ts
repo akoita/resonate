@@ -71,6 +71,16 @@ describe('GenerationService (integration)', () => {
   afterAll(async () => {
     // Clean up generated releases
     const releases = await prisma.release.findMany({ where: { artistId: `${TEST_PREFIX}artist` } });
+    const releaseIds = releases.map((release) => release.id);
+    if (releaseIds.length > 0) {
+      const evidenceBundleIds = (await prisma.rightsEvidenceBundle.findMany({
+        where: { subjectType: 'release', subjectId: { in: releaseIds } },
+        select: { id: true },
+      })).map((bundle) => bundle.id);
+      await prisma.rightsEvidence.deleteMany({ where: { bundleId: { in: evidenceBundleIds } } }).catch(() => {});
+      await prisma.rightsEvidenceBundle.deleteMany({ where: { id: { in: evidenceBundleIds } } }).catch(() => {});
+      await prisma.releaseRightsUpgradeRequest.deleteMany({ where: { releaseId: { in: releaseIds } } }).catch(() => {});
+    }
     for (const r of releases) {
       await prisma.stem.deleteMany({ where: { track: { releaseId: r.id } } }).catch(() => {});
       await prisma.track.deleteMany({ where: { releaseId: r.id } }).catch(() => {});
@@ -189,6 +199,9 @@ describe('GenerationService (integration)', () => {
       // Verify real release was created in DB
       const release = await prisma.release.findUnique({ where: { id: completedEvent.releaseId } });
       expect(release).not.toBeNull();
+      expect(release?.rightsRoute).toBe('STANDARD_ESCROW');
+      expect(release?.rightsSourceType).toBe('ai_generation');
+      expect(release?.rightsFlags).toEqual([]);
 
       await expect(service.getStatus('job-1')).resolves.toMatchObject({
         status: 'completed',
@@ -208,6 +221,25 @@ describe('GenerationService (integration)', () => {
       });
       expect(masterStem?.storageProvider).toBe('local');
       expect(masterStem?.data?.equals(Buffer.from('fake-audio-data'))).toBe(true);
+
+      const rightsRequest = await prisma.releaseRightsUpgradeRequest.findFirst({
+        where: {
+          releaseId: completedEvent.releaseId,
+          requestedByAddress: 'system:ai-generation',
+        },
+        include: {
+          evidenceBundles: {
+            include: { evidences: true },
+          },
+        },
+      });
+      expect(rightsRequest?.status).toBe('approved_standard_escrow');
+      expect(rightsRequest?.evidenceBundles[0]?.submittedByRole).toBe('system');
+      expect(rightsRequest?.evidenceBundles[0]?.evidences[0]).toMatchObject({
+        kind: 'rights_metadata',
+        strength: 'very_high',
+        verificationStatus: 'system_generated',
+      });
     });
 
     it('emits generation.failed on LyriaClient error', async () => {
@@ -229,6 +261,70 @@ describe('GenerationService (integration)', () => {
 
       expect(failedEvent).toBeDefined();
       expect(failedEvent.eventName).toBe('generation.failed');
+    });
+  });
+
+  describe('publishGeneration', () => {
+    it('backfills automated rights provenance for legacy AI-generated releases', async () => {
+      const legacyRelease = await prisma.release.create({
+        data: {
+          artistId: `${TEST_PREFIX}artist`,
+          title: 'Legacy AI Draft',
+          status: 'ready',
+          type: 'ai_generated',
+          rightsRoute: 'LIMITED_MONITORING',
+          rightsFlags: ['NEEDS_PROOF_OF_CONTROL', 'RESTRICT_MARKETPLACE'],
+          tracks: {
+            create: {
+              title: 'Legacy AI Draft',
+              processingStatus: 'complete',
+              generationMetadata: {
+                jobId: 'legacy-job',
+                provider: 'lyria-3-pro-preview',
+                prompt: 'Legacy generated track',
+                generatedAt: '2026-05-16T00:00:00.000Z',
+                synthIdPresent: true,
+                durationSeconds: 30,
+              },
+            },
+          },
+        },
+        include: { tracks: true },
+      });
+
+      await service.publishGeneration(
+        legacyRelease.tracks[0].id,
+        {
+          title: 'Published Legacy AI',
+          artist: 'AI (Lyria)',
+          genre: 'Electronic',
+          label: 'Resonate Records',
+        } as any,
+        `${TEST_PREFIX}user`,
+      );
+
+      const release = await prisma.release.findUnique({
+        where: { id: legacyRelease.id },
+      });
+      expect(release?.rightsRoute).toBe('STANDARD_ESCROW');
+      expect(release?.rightsSourceType).toBe('ai_generation');
+      expect(release?.rightsFlags).toEqual([]);
+
+      const rightsRequest = await prisma.releaseRightsUpgradeRequest.findFirst({
+        where: {
+          releaseId: legacyRelease.id,
+          requestedByAddress: 'system:ai-generation',
+        },
+        include: {
+          evidenceBundles: {
+            include: { evidences: true },
+          },
+        },
+      });
+      expect(rightsRequest?.status).toBe('approved_standard_escrow');
+      expect(rightsRequest?.evidenceBundles[0]?.evidences[0]?.verificationStatus).toBe(
+        'system_generated',
+      );
     });
   });
 

@@ -7,6 +7,12 @@ import { useX402PublicConfig } from "../../hooks/useX402PublicConfig";
 import { useAuth } from "../auth/AuthProvider";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { API_BASE } from "../../lib/api";
+import {
+  defaultBuyPaymentMethod,
+  formatStableAssetAmount,
+  formatUsdPrice,
+  type BuyPaymentMethod,
+} from "../../lib/buyPricing";
 import { formatPrice } from "../../lib/contracts";
 import { getExplorerTxUrl } from "../../lib/explorer";
 import {
@@ -38,12 +44,6 @@ function getX402WalletNote(
   return `x402 checkout uses your Resonate passkey wallet with ${assetSymbol} on ${x402Chain}.`;
 }
 
-function formatStableAssetAmount(amountUsd: number | null | undefined, symbol: string) {
-  if (amountUsd == null) return "—";
-  const amount = amountUsd.toFixed(6).replace(/\.?0+$/, "");
-  return `${amount} ${symbol}`;
-}
-
 type X402QuoteInfo = {
   amountUsd: number | null;
   payTo: string | null;
@@ -59,8 +59,9 @@ interface BuyModalProps {
 
 export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyModalProps) {
   const [amount, setAmount] = useState(1n);
-  const [paymentMethod, setPaymentMethod] = useState<"onchain" | "x402">("onchain");
+  const [paymentMethod, setPaymentMethod] = useState<BuyPaymentMethod>("onchain");
   const [x402Quote, setX402Quote] = useState<X402QuoteInfo | null>(null);
+  const [x402QuoteLoading, setX402QuoteLoading] = useState(false);
   const [x402Status, setX402Status] = useState<X402StatusPhase | null>(null);
   const [x402Error, setX402Error] = useState<string | null>(null);
   const [x402Result, setX402Result] = useState<X402PaymentResult | null>(null);
@@ -78,6 +79,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
     () => Boolean(x402Config?.enabled && stemId),
     [x402Config, stemId],
   );
+  const activePaymentMethod = x402Available ? paymentMethod : "onchain";
   const x402WalletNote = useMemo(
     () => getX402WalletNote(x402Config?.enabled ? x402Config.chainId : null, x402Symbol),
     [x402Config, x402Symbol],
@@ -97,10 +99,21 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
     return () => URL.revokeObjectURL(x402DownloadUrl);
   }, [x402DownloadUrl]);
 
-  // Fetch x402 quote when the user switches to the x402 method
+  // Prefer stablecoin checkout when it is available for this stem.
   useEffect(() => {
-    if (!isOpen || paymentMethod !== "x402" || !stemId || !x402Available) return;
+    if (!isOpen) return;
+    setPaymentMethod(defaultBuyPaymentMethod(x402Available));
+  }, [isOpen, listingId, stemId, x402Available]);
+
+  // Fetch x402 quote when stablecoin checkout is active.
+  useEffect(() => {
+    if (!isOpen || activePaymentMethod !== "x402" || !stemId || !x402Available) {
+      setX402QuoteLoading(false);
+      return;
+    }
     let cancelled = false;
+    setX402Quote(null);
+    setX402QuoteLoading(true);
     fetch(`${API_BASE}/api/stems/${encodeURIComponent(stemId)}/x402/info`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
@@ -113,11 +126,15 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
       .catch((err) => {
         if (cancelled) return;
         console.error("x402 quote fetch error:", err);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setX402QuoteLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [isOpen, paymentMethod, stemId, x402Available]);
+  }, [isOpen, activePaymentMethod, stemId, x402Available]);
 
   // Reset x402 transient state whenever the modal is closed/reopened
   useEffect(() => {
@@ -126,6 +143,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
     setX402Error(null);
     setX402Result(null);
     setX402Payer(null);
+    setX402QuoteLoading(false);
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -218,24 +236,24 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={paymentMethod === "onchain"}
-                  className={`buy-modal__pay-method${paymentMethod === "onchain" ? " buy-modal__pay-method--active" : ""}`}
-                  onClick={() => setPaymentMethod("onchain")}
+                  aria-selected={activePaymentMethod === "x402"}
+                  className={`buy-modal__pay-method${activePaymentMethod === "x402" ? " buy-modal__pay-method--active" : ""}`}
+                  onClick={() => setPaymentMethod("x402")}
                   disabled={pending || x402Status !== null}
                 >
-                  <span>On-chain</span>
-                  <span className="buy-modal__pay-method-sub">NFT mint · {onchainSymbol}</span>
+                  <span>{x402Symbol}</span>
+                  <span className="buy-modal__pay-method-sub">Stablecoin checkout</span>
                 </button>
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={paymentMethod === "x402"}
-                  className={`buy-modal__pay-method${paymentMethod === "x402" ? " buy-modal__pay-method--active" : ""}`}
-                  onClick={() => setPaymentMethod("x402")}
+                  aria-selected={activePaymentMethod === "onchain"}
+                  className={`buy-modal__pay-method${activePaymentMethod === "onchain" ? " buy-modal__pay-method--active" : ""}`}
+                  onClick={() => setPaymentMethod("onchain")}
                   disabled={pending || x402Status !== null}
                 >
-                  <span>{x402Symbol} (x402)</span>
-                  <span className="buy-modal__pay-method-sub">Pay-per-download</span>
+                  <span>NFT mint</span>
+                  <span className="buy-modal__pay-method-sub">On-chain · {onchainSymbol}</span>
                 </button>
               </div>
             )}
@@ -278,7 +296,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
             <LicenseTermsPreview licenseType="personal" compact />
 
             {/* Price Breakdown */}
-            {paymentMethod === "onchain" && quote && !quoteLoading && (
+            {activePaymentMethod === "onchain" && quote && !quoteLoading && (
               <div className="buy-modal__breakdown">
                 <div className="buy-modal__breakdown-row">
                   <span className="buy-modal__breakdown-label">
@@ -316,11 +334,19 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
             )}
 
             {/* x402 Quote */}
-            {paymentMethod === "x402" && (
+            {activePaymentMethod === "x402" && (
               <div className="buy-modal__x402-quote" data-testid="buy-modal-x402-quote">
                 <div className="buy-modal__x402-row">
-                  <span>Stem download (personal license)</span>
-                  <span>{formatStableAssetAmount(x402Quote?.amountUsd, x402Symbol)}</span>
+                  <span>Price (USD)</span>
+                  <span>{x402QuoteLoading ? "Loading..." : formatUsdPrice(x402Quote?.amountUsd)}</span>
+                </div>
+                <div className="buy-modal__x402-row">
+                  <span>Stablecoin settlement</span>
+                  <span>
+                    {x402QuoteLoading
+                      ? "Loading..."
+                      : formatStableAssetAmount(x402Quote?.amountUsd, x402Symbol)}
+                  </span>
                 </div>
                 <div className="buy-modal__x402-row">
                   <span>Asset</span>
@@ -342,7 +368,11 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 )}
                 <div className="buy-modal__x402-row buy-modal__x402-row--total">
                   <span>Total</span>
-                  <span>{formatStableAssetAmount(x402Quote?.amountUsd, x402Symbol)}</span>
+                  <span>
+                    {x402QuoteLoading
+                      ? "Loading..."
+                      : formatStableAssetAmount(x402Quote?.amountUsd, x402Symbol)}
+                  </span>
                 </div>
                 <div className="buy-modal__breakdown-note">
                   {x402WalletNote}
@@ -356,19 +386,19 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
             )}
 
             {/* Error */}
-            {paymentMethod === "onchain" && error && (
+            {activePaymentMethod === "onchain" && error && (
               <div className="buy-modal__alert buy-modal__alert--error">
                 {error.message}
               </div>
             )}
-            {paymentMethod === "x402" && x402Error && (
+            {activePaymentMethod === "x402" && x402Error && (
               <div className="buy-modal__alert buy-modal__alert--error">
                 {x402Error}
               </div>
             )}
 
             {/* Success */}
-            {paymentMethod === "onchain" && txHash && (
+            {activePaymentMethod === "onchain" && txHash && (
               <div className="buy-modal__alert buy-modal__alert--success">
                 Purchase successful!{" "}
                 {txExplorerUrl && (
@@ -382,7 +412,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 )}
               </div>
             )}
-            {paymentMethod === "x402" && x402Result && x402DownloadUrl && (
+            {activePaymentMethod === "x402" && x402Result && x402DownloadUrl && (
               <div className="buy-modal__alert buy-modal__alert--success">
                 Payment settled.{" "}
                 <a
@@ -414,7 +444,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
               <button className="buy-modal__btn buy-modal__btn--cancel" onClick={onClose}>
                 Cancel
               </button>
-              {paymentMethod === "onchain" ? (
+              {activePaymentMethod === "onchain" ? (
                 <button
                   className="buy-modal__btn buy-modal__btn--confirm"
                   onClick={handleBuy}
@@ -427,12 +457,16 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 <button
                   className="buy-modal__btn buy-modal__btn--confirm"
                   onClick={handleX402Pay}
-                  disabled={x402Status !== null || !x402Quote}
+                  disabled={x402Status !== null || x402QuoteLoading || !x402Quote}
                 >
                   {x402Status !== null && <span className="buy-modal__spinner" />}
                   {x402Status !== null
                     ? X402_STATUS_LABEL[x402Status]
-                    : `Pay with ${x402Symbol}`}
+                    : x402QuoteLoading
+                      ? "Loading quote..."
+                      : x402Quote?.amountUsd != null
+                        ? `Pay ${formatStableAssetAmount(x402Quote.amountUsd, x402Symbol)}`
+                        : `Pay with ${x402Symbol}`}
                 </button>
               )}
             </div>

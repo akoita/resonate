@@ -217,6 +217,70 @@ rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|O
 rg -n 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/agents/agent_recommendation.adapter.ts backend/src/modules/agents/agent_recommendation.service.ts backend/src/modules/agents/deterministic_recommendation.adapter.ts backend/src/modules/agents/agent_orchestrator.service.ts backend/src/modules/agents/agent_runtime.providers.ts backend/src/events/event_types.ts
 ```
 
+## Addendum: Stablecoin-First Checkout, AI Generation Provenance, and Catalog Actions
+
+Reviewed the combined branch for listener purchase defaults, catalog action
+buttons, AI-generated release provenance, and upload metadata handling. No
+Critical or High findings were identified in the changed code.
+
+### Scope
+
+- `backend/src/modules/generation/generation.service.ts`
+- `backend/src/modules/ingestion/ingestion.service.ts`
+- `backend/src/tests/generation.integration.spec.ts`
+- `backend/src/tests/ingestion_metadata.spec.ts`
+- `web/src/components/marketplace/BuyModal.tsx`
+- `web/src/lib/buyPricing.ts`
+- `web/src/lib/buyPricing.test.ts`
+- `web/src/app/page.tsx`
+- `web/src/app/artist/upload/page.tsx`
+- `web/src/app/release/[id]/page.tsx`
+- `web/tests/catalog.spec.ts`
+- `docs/features/README.md`
+- `docs/features/agent-commerce-runtime.md`
+- `docs/features/ai_music_generation.md`
+- `docs/features/catalog_indexing_mvp.md`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- The stablecoin-first purchase default only changes the client-side rail
+  preference when the x402 quote endpoint is available. Payment settlement
+  remains behind the existing backend x402 verification path.
+- AI-generated releases now record system provenance in existing rights review
+  tables through Prisma transactions. The implementation does not add a public
+  controller, dynamic SQL, unsafe deserialization, or secret handling.
+- Catalog release actions reuse existing playlist and library APIs on the
+  client and do not expose new backend authorization surfaces.
+- Upload metadata changes prefer explicit artist metadata supplied by the
+  artist/upload form over stale embedded file tags.
+- Secret-pattern scans found the pre-existing `GOOGLE_AI_API_KEY` environment
+  variable usage in generation artwork code. No literal credential or new secret
+  material was introduced.
+
+### Commands Run
+
+```bash
+cd backend && npm run lint
+cd backend && npm run test -- ingestion_metadata.spec.ts generation.error_normalization.spec.ts generation.controller.spec.ts
+cd backend && npm run test:integration -- generation.integration.spec.ts
+cd web && npm run lint
+cd web && npm run test:unit -- buyPricing.test.ts
+cd web && npm run build
+cd web && npm run test:e2e -- catalog.spec.ts --project=chromium
+npm run security:lock-sources
+git diff --check
+rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|gho_[A-Za-z0-9_]+|sk-[A-Za-z0-9]' backend/src/modules/generation/generation.service.ts backend/src/modules/ingestion/ingestion.service.ts web/src/components/marketplace/BuyModal.tsx web/src/lib/buyPricing.ts web/src/app/page.tsx web/src/app/artist/upload/page.tsx 'web/src/app/release/[id]/page.tsx' --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/generation/generation.service.ts backend/src/modules/ingestion/ingestion.service.ts web/src/components/marketplace/BuyModal.tsx web/src/lib/buyPricing.ts web/src/app/page.tsx web/src/app/artist/upload/page.tsx 'web/src/app/release/[id]/page.tsx'
+rg -n 'dangerouslySetInnerHTML|innerHTML|document\.cookie|setCookie|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/components/marketplace/BuyModal.tsx web/src/lib/buyPricing.ts web/src/app/page.tsx web/src/app/artist/upload/page.tsx 'web/src/app/release/[id]/page.tsx'
+```
+
 ## Addendum: #823 Track Feature Vectors
 
 Reviewed the richer AI DJ track feature vector changes. No Critical or High
