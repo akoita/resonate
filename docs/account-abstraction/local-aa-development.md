@@ -24,6 +24,7 @@ Cloud deployment infrastructure still lives in [`akoita/resonate-iac`](https://g
 
 ```bash
 cd contracts && ./scripts/install-deps.sh
+npm install -g npm@11.14.1
 cd ../backend && npm ci
 cd ../web && npm ci --legacy-peer-deps
 cd ..

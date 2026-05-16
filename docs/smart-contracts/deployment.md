@@ -19,6 +19,7 @@ This repository keeps the application code, smart contracts, and local developme
 
 ```bash
 cd contracts && ./scripts/install-deps.sh
+npm install -g npm@11.14.1
 cd ../backend && npm ci
 cd ../web && npm ci --legacy-peer-deps
 cd ..

@@ -23,7 +23,8 @@ Add pre-commit hooks to enforce staged linting for web and backend changes.
 
 ## MVP Acceptance Criteria
 
-- `npm install` at repo root installs Husky + lint-staged.
+- `npm install` at repo root installs Husky + lint-staged. Use npm 11.14.1 or
+  newer so the repo `.npmrc` supply-chain protections are enforced.
 - `npm run prepare` registers the Git hooks.
 - Staged changes in `web/` run `npm --prefix web run lint`.
 - Staged changes in `backend/` run `npm --prefix backend run lint`.

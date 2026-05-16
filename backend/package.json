@@ -2,6 +2,11 @@
   "name": "resonate-backend",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@11.14.1",
+  "engines": {
+    "node": ">=20.17.0",
+    "npm": ">=11.10.0"
+  },
   "description": "Backend services for Project Resonate (MVP).",
   "scripts": {
     "start": "node dist/main.js",
@@ -16,7 +21,7 @@
     "eval:recommendations": "jest --runInBand src/tests/agent_recommendation_eval.spec.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "db:seed": "npx prisma db seed"
+    "db:seed": "prisma db seed"
   },
   "dependencies": {
     "@google-cloud/kms": "^5.4.0",
@@ -59,6 +64,7 @@
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "permissionless": "^0.3.4",
+    "prisma": "^5.18.0",
     "redis": "^5.11.0",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1",
@@ -77,7 +83,6 @@
     "@types/passport-jwt": "^3.0.9",
     "@types/supertest": "^2.0.16",
     "jest": "^29.7.0",
-    "prisma": "^5.18.0",
     "supertest": "^6.3.4",
     "testcontainers": "^11.12.0",
     "ts-jest": "^29.1.2",

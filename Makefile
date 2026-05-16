@@ -139,7 +139,7 @@ grant-admin-dev:
 	./backend/scripts/grant-admin-dev.sh "$(ADDRESS)"
 
 db-reset:
-	cd backend && npx prisma migrate reset --force
+	cd backend && npm exec -- prisma migrate reset --force
 
 dev-clean:
 	@echo "Cleaning up dev ports 3000, 3001..."
