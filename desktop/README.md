@@ -11,6 +11,7 @@ external-link handling, download save prompts, and future desktop adapters.
 Install dependencies once:
 
 ```bash
+nvm use 22
 npm install -g npm@11.14.1
 cd web && npm ci --legacy-peer-deps
 cd ../desktop && npm ci

@@ -127,7 +127,7 @@ before adding or upgrading packages.
 
 | Tool                                    | Install                                                       |
 | --------------------------------------- | ------------------------------------------------------------- |
-| **Node.js** 18+                         | [nodejs.org](https://nodejs.org/) or `nvm install 18`         |
+| **Node.js** 22.12+                      | [nodejs.org](https://nodejs.org/) or `nvm install 22`         |
 | **Docker**                              | [docker.com/get-started](https://www.docker.com/get-started/) |
 | **Make**                                | Pre-installed on macOS/Linux; Windows: use WSL                |
 | **Foundry** _(for contract deployment)_ | [getfoundry.sh](https://getfoundry.sh/)                       |

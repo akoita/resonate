@@ -4,13 +4,17 @@ inputs:
   cache-dependency-path:
     description: Newline-separated lockfile paths used by setup-node cache.
     required: true
+  node-version:
+    description: Node.js version to install.
+    required: false
+    default: "20"
 runs:
   using: composite
   steps:
     - name: Setup Node.js
       uses: actions/setup-node@v5
       with:
-        node-version: "20"
+        node-version: ${{ inputs.node-version }}
         cache: "npm"
         cache-dependency-path: ${{ inputs.cache-dependency-path }}
 

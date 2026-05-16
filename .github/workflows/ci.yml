@@ -227,14 +227,12 @@ jobs:
         if: needs.changes.outputs.docs_only == 'true'
         run: echo "Docs-only change detected; skipping backend/web lint."
 
-      - name: Setup hardened npm
-        if: needs.changes.outputs.docs_only != 'true' && (needs.changes.outputs.desktop == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+      - name: Setup hardened npm for desktop
+        if: needs.changes.outputs.docs_only != 'true' && (needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
         uses: ./.github/actions/setup-npm-hardened
         with:
-          cache-dependency-path: |
-            desktop/package-lock.json
-            web/package-lock.json
-            backend/package-lock.json
+          node-version: "22.12.0"
+          cache-dependency-path: desktop/package-lock.json
 
       - name: Install desktop dependencies
         if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
@@ -245,6 +243,14 @@ jobs:
         if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
         run: npm run lint
         working-directory: desktop
+
+      - name: Setup hardened npm for web/backend
+        if: needs.changes.outputs.docs_only != 'true' && (needs.changes.outputs.web == 'true' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+        uses: ./.github/actions/setup-npm-hardened
+        with:
+          cache-dependency-path: |
+            web/package-lock.json
+            backend/package-lock.json
 
       - name: Install web dependencies
         if: needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
@@ -514,6 +520,7 @@ jobs:
       - name: Setup hardened npm
         uses: ./.github/actions/setup-npm-hardened
         with:
+          node-version: "22.12.0"
           cache-dependency-path: desktop/package-lock.json
 
       - name: Install dependencies
