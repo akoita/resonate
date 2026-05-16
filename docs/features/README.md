@@ -43,6 +43,7 @@ that answers:
 | [Community Curation Disputes](community_curation_disputes.md) | see page | curators, admins, reporters | dispute dashboard | Human curation and dispute workflows. |
 | [Payment Splitter Integration](payment_splitter_integration.md) | see page | artists, protocol developers | contracts/backend payment flow | Revenue split and settlement integration. |
 | [Analytics Dashboard v0](analytics_dashboard_v0.md) | see page | artists, admins | analytics dashboard | Reporting surface for usage and revenue. |
+| [Desktop App](desktop_app.md) | `partial` | listeners, artists, developers | `desktop/`, `npm run desktop:dev`, `npm --prefix desktop run package:dir` | Electron shell reuses the existing web experience with native windowing, external-link handling, save prompts, and packaging scripts. Signed release automation and full OS QA remain follow-up work. |
 | [Punchline Drops](punchline_drops_mvp.md) | `planned` | artists, listeners | planned drop/shows surfaces | See also [execution plan](punchline_drops_execution_plan.md). |
 
 ## Architecture And Protocol Entry Points

@@ -71,6 +71,9 @@ backend/parse-*.js
 web/check-*.cjs
 web/lint_output.txt
 
+# Desktop build artifacts
+desktop/dist/
+
 
 # evmbench contract archive (generated)
 resonate-contracts.zip

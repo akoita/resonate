@@ -1,0 +1,27 @@
+{
+  "name": "@resonate/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "author": "Resonate",
+  "description": "Native desktop shell for the Resonate web experience.",
+  "main": "src/main.cjs",
+  "packageManager": "npm@11.14.1",
+  "engines": {
+    "node": ">=20.17.0",
+    "npm": ">=11.10.0"
+  },
+  "scripts": {
+    "dev": "node scripts/start-dev.mjs",
+    "start": "electron .",
+    "lint": "node scripts/validate-config.mjs",
+    "package:dir": "electron-builder --dir --config electron-builder.yml",
+    "dist": "electron-builder --config electron-builder.yml",
+    "dist:win": "electron-builder --win nsis portable --config electron-builder.yml",
+    "dist:mac": "electron-builder --mac dmg zip --config electron-builder.yml",
+    "dist:linux": "electron-builder --linux AppImage deb --config electron-builder.yml"
+  },
+  "devDependencies": {
+    "electron": "40.9.3",
+    "electron-builder": "26.9.1"
+  }
+}

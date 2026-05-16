@@ -151,6 +151,7 @@ npm install -g npm@11.14.1
 cd contracts && ./scripts/install-deps.sh
 cd ../backend && npm ci
 cd ../web && npm ci --legacy-peer-deps
+cd ../desktop && npm ci
 cd ..
 
 # 1. Set env vars
@@ -169,6 +170,7 @@ make deploy-contracts
 # 5. Start services (separate terminals)
 make backend-dev     # NestJS API on port 3000; expects Postgres/Redis/PubSub from make dev-up
 make web-dev-fork    # Next.js on port 3001 (chainId 11155111, local RPC)
+npm run desktop:dev  # Optional native desktop shell wrapping the web app
 ```
 
 > **Note:** `make local-aa-fork` starts a Sepolia fork on `localhost:8545`, starts the local Alto bundler on `localhost:4337`, and refreshes AA env vars for fork mode. Then `make deploy-contracts` deploys a fresh copy of the Resonate protocol contracts to that local fork and updates `backend/.env` and `web/.env.local` with those fork-local addresses. `make web-dev-fork` is the correct frontend command for this mode because it targets chain `11155111` while still using your local RPC at `localhost:8545`.

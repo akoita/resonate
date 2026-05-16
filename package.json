@@ -10,6 +10,8 @@
     "prepare": "husky",
     "lint:staged": "lint-staged",
     "security:lock-sources": "node scripts/check-npm-lock-sources.mjs",
+    "desktop:dev": "npm --prefix desktop run dev",
+    "desktop:package": "npm --prefix desktop run package:dir",
     "test:web": "npm --prefix web run test:unit --"
   },
   "devDependencies": {
@@ -22,6 +24,9 @@
     ],
     "web/**/*.{js,jsx,ts,tsx}": [
       "bash -lc \"npm --prefix web run lint\""
+    ],
+    "desktop/**/*.{js,cjs,mjs,json,yml,md}": [
+      "bash -lc \"npm --prefix desktop run lint\""
     ]
   },
   "dependencies": {

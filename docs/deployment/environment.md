@@ -123,6 +123,10 @@ When adding a new environment variable:
 | `AGENT_RECOMMENDATION_STRATEGY` | Backend | Optional AI DJ recommendation ranking strategy. Defaults to `deterministic`; set `model-assisted` to enable structured Gemini ranking when credentials are available. Unsupported values fall back to deterministic ranking |
 | `AGENT_RECOMMENDATION_MODEL` | Backend | Optional model name for `model-assisted` recommendation ranking. Falls back to `VERTEX_AI_MODEL`, then the backend default model |
 | `AGENT_RECOMMENDATION_MIN_CONFIDENCE` | Backend | Optional minimum model confidence for accepted model-assisted recommendation decisions. Defaults to `0.55`; lower-confidence selections are rejected by post-model guards |
+| `RESONATE_DESKTOP_WEB_URL` | Desktop shell | Absolute web app URL loaded by the desktop shell. Defaults to `http://localhost:3001` for local development. Set to an approved deployed web origin for packaged validation builds |
+| `RESONATE_DESKTOP_START_WEB` | Desktop shell | Set to `false` when `npm run desktop:dev` should connect to an already-running web app instead of starting `web/` |
+| `RESONATE_DESKTOP_ALLOWED_ORIGINS` | Desktop shell | Optional comma-separated extra origins allowed to remain in-app. External origins open in the system browser |
+| `RESONATE_DESKTOP_DEVTOOLS` | Desktop shell | Optional local debugging flag; set to `true` to open Chromium DevTools on launch |
 | `ERC8004_ENABLED` | Backend | Enables ERC-8004 identity registration and reputation metadata writes. Defaults to disabled |
 | `ERC8004_IDENTITY_REGISTRY_ADDRESS` | Backend | Optional ERC-8004 Identity Registry override. When omitted, the backend selects the official mainnet or testnet registry for supported chain IDs |
 | `ERC8004_CHAIN_ID` | Backend | Optional ERC-8004 chain override; falls back to `AA_CHAIN_ID`, then `CHAIN_ID`, then local Anvil |

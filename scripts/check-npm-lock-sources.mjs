@@ -3,6 +3,7 @@ import fs from 'node:fs';
 const lockfiles = [
   'package-lock.json',
   'backend/package-lock.json',
+  'desktop/package-lock.json',
   'web/package-lock.json',
 ];
 

@@ -29,6 +29,7 @@ jobs:
       backend_generation: ${{ steps.detect.outputs.backend_generation }}
       backend_marketplace: ${{ steps.detect.outputs.backend_marketplace }}
       backend_shared: ${{ steps.detect.outputs.backend_shared }}
+      desktop: ${{ steps.detect.outputs.desktop }}
       web: ${{ steps.detect.outputs.web }}
       contracts: ${{ steps.detect.outputs.contracts }}
       shared: ${{ steps.detect.outputs.shared }}
@@ -55,6 +56,7 @@ jobs:
           backend_generation=false
           backend_marketplace=false
           backend_shared=false
+          desktop=false
           web=false
           contracts=false
           shared=false
@@ -131,6 +133,9 @@ jobs:
                     backend=true
                     backend_shared=true
                     ;;
+                  desktop/*)
+                    desktop=true
+                    ;;
                   workers/demucs/*)
                     demucs=true
                     ;;
@@ -163,7 +168,7 @@ jobs:
           docs_only=false
           # Infra-only and docs-only changes can skip module-specific jobs, but
           # anything that doesn't classify cleanly falls back to a full run.
-          if [[ "${run_all}" == "false" && "${backend}" == "false" && "${demucs}" == "false" && "${web}" == "false" && "${contracts}" == "false" && "${shared}" == "false" ]]; then
+          if [[ "${run_all}" == "false" && "${backend}" == "false" && "${demucs}" == "false" && "${desktop}" == "false" && "${web}" == "false" && "${contracts}" == "false" && "${shared}" == "false" ]]; then
             if [[ "${docs}" == "true" || "${infra}" == "true" ]]; then
               docs_only=true
             else
@@ -180,6 +185,7 @@ jobs:
           echo "backend_generation=${backend_generation}" >> "${GITHUB_OUTPUT}"
           echo "backend_marketplace=${backend_marketplace}" >> "${GITHUB_OUTPUT}"
           echo "backend_shared=${backend_shared}" >> "${GITHUB_OUTPUT}"
+          echo "desktop=${desktop}" >> "${GITHUB_OUTPUT}"
           echo "web=${web}" >> "${GITHUB_OUTPUT}"
           echo "contracts=${contracts}" >> "${GITHUB_OUTPUT}"
           echo "shared=${shared}" >> "${GITHUB_OUTPUT}"
@@ -198,6 +204,7 @@ jobs:
             echo "- backend_generation: ${backend_generation}"
             echo "- backend_marketplace: ${backend_marketplace}"
             echo "- backend_shared: ${backend_shared}"
+            echo "- desktop: ${desktop}"
             echo "- web: ${web}"
             echo "- contracts: ${contracts}"
             echo "- shared: ${shared}"
@@ -221,12 +228,23 @@ jobs:
         run: echo "Docs-only change detected; skipping backend/web lint."
 
       - name: Setup hardened npm
-        if: needs.changes.outputs.docs_only != 'true' && (needs.changes.outputs.web == 'true' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+        if: needs.changes.outputs.docs_only != 'true' && (needs.changes.outputs.desktop == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
         uses: ./.github/actions/setup-npm-hardened
         with:
           cache-dependency-path: |
+            desktop/package-lock.json
             web/package-lock.json
             backend/package-lock.json
+
+      - name: Install desktop dependencies
+        if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
+        run: npm ci
+        working-directory: desktop
+
+      - name: Run desktop lint
+        if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
+        run: npm run lint
+        working-directory: desktop
 
       - name: Install web dependencies
         if: needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
@@ -257,7 +275,7 @@ jobs:
     name: npm Lockfile Source Scan
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.web == 'true' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.desktop == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     steps:
       - uses: actions/checkout@v5
         with:
@@ -268,6 +286,7 @@ jobs:
         with:
           cache-dependency-path: |
             package-lock.json
+            desktop/package-lock.json
             web/package-lock.json
             backend/package-lock.json
 
@@ -469,6 +488,52 @@ jobs:
       - name: Run Demucs worker unit tests
         run: python -m unittest test_main.py
         working-directory: workers/demucs
+
+  desktop-package:
+    name: Desktop Package Smoke
+    runs-on: ${{ matrix.os }}
+    needs: [changes, lint]
+    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact-name: desktop-win-unpacked
+          - os: macos-latest
+            artifact-name: desktop-mac-unpacked
+          - os: ubuntu-latest
+            artifact-name: desktop-linux-unpacked
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Setup hardened npm
+        uses: ./.github/actions/setup-npm-hardened
+        with:
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: desktop
+
+      - name: Validate shell config
+        run: npm run lint
+        working-directory: desktop
+
+      - name: Package unpacked desktop app
+        run: npm run package:dir
+        working-directory: desktop
+
+      - name: Upload desktop package smoke artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: desktop/dist/
+          retention-days: 3
 
   build:
     name: Build
