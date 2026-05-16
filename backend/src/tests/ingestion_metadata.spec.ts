@@ -81,6 +81,47 @@ describe("IngestionService metadata", () => {
     expect(processed?.tracks?.[0]?.stems?.length).toBe(2);
   });
 
+  it("uses edited release artist as the track artist when embedded metadata is stale", async () => {
+    const eventBus = new EventBus();
+    const mockCatalogService = {} as any;
+    const service = new IngestionService(
+      eventBus,
+      mockStorageProvider as any,
+      mockEncryptionService as any,
+      mockArtistService as any,
+      mockCatalogService as any,
+      mockQueue as any,
+    );
+    const uploadedPromise = new Promise<any>((resolve) => {
+      eventBus.subscribe("stems.uploaded", resolve);
+    });
+    const mockFile: Express.Multer.File = {
+      buffer: Buffer.from("not real audio"),
+      originalname: "Wrong Embedded Artist - Correct Title.mp3",
+      mimetype: "audio/mpeg",
+      fieldname: "files",
+      encoding: "7bit",
+      size: 14,
+      destination: "",
+      filename: "",
+      path: "",
+      stream: null as any,
+    };
+
+    await service.handleFileUpload({
+      artistId: "artist_1",
+      files: [mockFile],
+      metadata: {
+        title: "Correct Release",
+        primaryArtist: "Correct Artist",
+        tracks: [{ title: "Correct Title" }],
+      },
+    });
+
+    const uploaded = await uploadedPromise;
+    expect(uploaded.metadata.tracks[0].artist).toBe("Correct Artist");
+  });
+
   it("queues an existing ready AI-generated release that only has a master stem", async () => {
     const eventBus = new EventBus();
     const mockCatalogService = {

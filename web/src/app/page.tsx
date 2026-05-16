@@ -7,6 +7,8 @@ import { useAuth } from "../components/auth/AuthProvider";
 import {
   createAgentConfig,
   getAgentConfig,
+  getReleaseTrackStreamUrl,
+  getStemPreviewUrl,
   getSongRecommendations,
   listMyReleases,
   listPublishedReleases,
@@ -14,10 +16,13 @@ import {
   startAgentSession,
   updateAgentConfig,
   type SongRecommendationItem,
+  type Track,
 } from "../lib/api";
 import { artistProfileHref } from "../lib/artistRoutes";
+import { type LocalTrack, saveTracksMetadata } from "../lib/localLibrary";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
 import { useToast } from "../components/ui/Toast";
+import { AddToPlaylistModal } from "../components/library/AddToPlaylistModal";
 import { listCampaignsSync, getFeaturedCampaignSync, daysUntil, type Campaign } from "../lib/shows";
 import AgentSessionPresets from "../components/agent/AgentSessionPresets";
 
@@ -92,6 +97,8 @@ export default function Home() {
   const [catalogSearch, setCatalogSearch] = useState("");
   const [songRecommendations, setSongRecommendations] = useState<SongRecommendationItem[]>([]);
   const [startingSeed, setStartingSeed] = useState<string | null>(null);
+  const [tracksToAddToPlaylist, setTracksToAddToPlaylist] = useState<LocalTrack[] | null>(null);
+  const [savingReleaseId, setSavingReleaseId] = useState<string | null>(null);
   const { status, token, userId } = useAuth();
   const { addToast } = useToast();
 
@@ -256,6 +263,52 @@ export default function Home() {
       });
     } finally {
       setStartingSeed(null);
+    }
+  };
+
+  const getReleaseActionTracks = (release: Release) => mapReleaseToLocalTracks(release);
+
+  const handleAddReleaseToPlaylist = (release: Release) => {
+    const tracks = getReleaseActionTracks(release);
+    if (tracks.length === 0) {
+      addToast({
+        type: "info",
+        title: "No tracks yet",
+        message: `${release.title} does not have playable tracks in the catalog yet.`,
+      });
+      return;
+    }
+    setTracksToAddToPlaylist(tracks);
+  };
+
+  const handleSaveReleaseToLibrary = async (release: Release) => {
+    const tracks = getReleaseActionTracks(release);
+    if (tracks.length === 0) {
+      addToast({
+        type: "info",
+        title: "No tracks yet",
+        message: `${release.title} does not have playable tracks in the catalog yet.`,
+      });
+      return;
+    }
+
+    setSavingReleaseId(release.id);
+    try {
+      await saveTracksMetadata(tracks, "remote");
+      addToast({
+        type: "success",
+        title: "Saved to Library",
+        message: `Saved ${tracks.length} track${tracks.length > 1 ? "s" : ""} from ${release.title}.`,
+      });
+    } catch (error) {
+      console.error("Failed to save catalog release to library:", error);
+      addToast({
+        type: "error",
+        title: "Save failed",
+        message: "Could not save this release to your library.",
+      });
+    } finally {
+      setSavingReleaseId(null);
     }
   };
 
@@ -444,21 +497,49 @@ export default function Home() {
               <div className="ng-resource-grid ng-resource-grid--releases">
                 {browseReleases.length > 0 ? (
                   browseReleases.map((release) => (
-                    <Link
+                    <article
                       key={release.id}
-                      href={`/release/${release.id}`}
                       className="ng-resource-card"
                     >
-                      <ReleaseThumb release={release} />
-                      <div className="ng-resource-card__body">
-                        <h4>{release.title}</h4>
-                        <p>{getArtistName(release)}</p>
-                        <div className="ng-resource-card__meta">
-                          <span>{release.type || "Release"}</span>
-                          <span>{release.genre || "Uncategorized"}</span>
+                      <Link
+                        href={`/release/${release.id}`}
+                        className="ng-resource-card__link"
+                      >
+                        <ReleaseThumb release={release} />
+                        <div className="ng-resource-card__body">
+                          <h4>{release.title}</h4>
+                          <p>{getArtistName(release)}</p>
+                          <div className="ng-resource-card__meta">
+                            <span>{release.type || "Release"}</span>
+                            <span>{release.genre || "Uncategorized"}</span>
+                          </div>
                         </div>
+                      </Link>
+                      <div className="ng-resource-card__actions">
+                        <button
+                          type="button"
+                          className="ng-resource-card__action"
+                          onClick={() => handleAddReleaseToPlaylist(release)}
+                          disabled={!release.tracks?.length}
+                          aria-label={`Add ${release.title} to playlist`}
+                          title="Add to playlist"
+                        >
+                          <span className="ms-icon" aria-hidden>playlist_add</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="ng-resource-card__action"
+                          onClick={() => void handleSaveReleaseToLibrary(release)}
+                          disabled={!release.tracks?.length || savingReleaseId === release.id}
+                          aria-label={`Save ${release.title} to library`}
+                          title="Save to library"
+                        >
+                          <span className="ms-icon" data-fill={savingReleaseId === release.id ? "1" : undefined} aria-hidden>
+                            {savingReleaseId === release.id ? "progress_activity" : "library_add"}
+                          </span>
+                        </button>
                       </div>
-                    </Link>
+                    </article>
                   ))
                 ) : (
                   <div className="ng-empty-state">
@@ -738,6 +819,10 @@ export default function Home() {
           </section>
         )}
       </main>
+      <AddToPlaylistModal
+        tracks={tracksToAddToPlaylist}
+        onClose={() => setTracksToAddToPlaylist(null)}
+      />
     </div>
   );
 }
@@ -775,6 +860,41 @@ function getReleaseResourceCount(release: Release) {
     0,
   ) ?? 0;
   return Math.max(1, 1 + stemCount);
+}
+
+function getTrackDuration(track: Track) {
+  return track.stems?.[0]?.durationSeconds ?? null;
+}
+
+function isMixerStem(type?: string | null) {
+  const normalized = type?.trim().toLowerCase();
+  return !!normalized && normalized !== "original" && normalized !== "master";
+}
+
+function mapReleaseToLocalTracks(release: Release): LocalTrack[] {
+  return (release.tracks ?? []).map((track) => ({
+    id: track.id,
+    title: track.title,
+    artist: track.artist || getArtistName(release),
+    albumArtist: null,
+    album: release.title,
+    year: release.releaseDate ? new Date(release.releaseDate).getFullYear() : null,
+    genre: release.genre || null,
+    duration: getTrackDuration(track),
+    createdAt: track.createdAt ? new Date(track.createdAt).toISOString() : release.createdAt,
+    catalogTrackId: track.id,
+    remoteUrl: getReleaseTrackStreamUrl(release.id, track.id),
+    remoteArtworkUrl: release.artworkUrl || undefined,
+    source: "remote",
+    stems: track.stems?.map((stem) => ({
+      id: stem.id,
+      type: stem.type,
+      uri: isMixerStem(stem.type) ? getStemPreviewUrl(stem.id) : stem.uri,
+      durationSeconds: stem.durationSeconds,
+      isEncrypted: isMixerStem(stem.type) ? false : stem.isEncrypted,
+      encryptionMetadata: isMixerStem(stem.type) ? null : stem.encryptionMetadata,
+    })),
+  }));
 }
 
 function flattenStems(releases: Release[]): StemSummary[] {

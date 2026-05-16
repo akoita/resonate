@@ -343,6 +343,10 @@ export default function ReleaseDetails() {
   const rightsTone = getRightsTone(release?.rightsRoute);
   const rightsRouteLabel = formatRightsLabel(release?.rightsRoute) || "Not Evaluated";
   const rightsSourceLabel = formatRightsLabel(release?.rightsSourceType);
+  const isAiGeneratedRelease = release?.type?.toLowerCase() === "ai_generated";
+  const rightsFlagsForDisplay = isAiGeneratedRelease
+    ? release?.rightsFlags?.filter((flag) => flag !== "NEEDS_PROOF_OF_CONTROL")
+    : release?.rightsFlags;
   const isOwner = release?.artist?.userId?.toLowerCase() === userId?.toLowerCase();
   const hasFailedProcessing = release?.status === "failed" || release?.tracks?.some(t => t.processingStatus === "failed");
   const isProcessingRelease = release?.status === "processing";
@@ -388,15 +392,24 @@ export default function ReleaseDetails() {
   ];
   const rightsUpgradeStatus =
     rightsUpgradeRequest?.status || releaseProtection?.rightsUpgradeRequestStatus || null;
-  const rightsUpgradeStatusLabel = formatRightsUpgradeStatusLabel(rightsUpgradeStatus);
+  const rightsUpgradeStatusLabel =
+    isAiGeneratedRelease && !rightsUpgradeStatus
+      ? "Automated Provenance"
+      : formatRightsUpgradeStatusLabel(rightsUpgradeStatus);
   const rightsReviewDisplay =
     RIGHTS_VERIFICATION_COPY[normalizeRightsVerificationState(
       releaseProtection?.rightsReviewState || releaseProtection?.rightsVerificationStatus,
     )];
+  const rightsReviewDescription = isAiGeneratedRelease
+    ? marketplaceApprovedByRights
+      ? "Resonate generated this release and recorded system provenance automatically. Marketplace access uses the platform AI-generated-work policy rather than creator proof-of-control evidence."
+      : "Resonate generated this release and recorded system provenance automatically. Marketplace and payout restrictions are platform policy for AI-generated work, not missing artist proof-of-control evidence."
+    : rightsReviewDisplay.description;
   const rightsUpgradeDecisionReason =
     rightsUpgradeRequest?.decisionReason || releaseProtection?.rightsUpgradeDecisionReason || null;
   const canSubmitRightsUpgrade =
     isOwner &&
+    !isAiGeneratedRelease &&
     marketplaceRestrictedByRights &&
     (!rightsUpgradeStatus ||
       rightsUpgradeStatus === "more_evidence_requested" ||
@@ -1508,10 +1521,12 @@ export default function ReleaseDetails() {
                   >
                     <div style={{ minWidth: 0, flex: "1 1 240px" }}>
                       <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.55)" }}>
-                        Marketplace access requires proof-of-control review. Current rights review state: {rightsReviewDisplay.label}.
+                        {isAiGeneratedRelease
+                          ? `AI-generated marketplace access uses automated Resonate provenance. Current rights review state: ${rightsReviewDisplay.label}.`
+                          : `Marketplace access requires proof-of-control review. Current rights review state: ${rightsReviewDisplay.label}.`}
                       </div>
                       <div style={{ marginTop: "4px", fontSize: "12px", color: "rgba(255,255,255,0.42)", lineHeight: 1.5 }}>
-                        {rightsReviewDisplay.description}
+                        {rightsReviewDescription}
                       </div>
                       {canSubmitRightsUpgrade && guidedRightsOnboarding && (
                         <div
@@ -1665,9 +1680,9 @@ export default function ReleaseDetails() {
                   {new Date(release.rightsEvaluatedAt).toLocaleString()}
                 </span>
               )}
-              {release.rightsFlags && release.rightsFlags.length > 0 && (
+              {rightsFlagsForDisplay && rightsFlagsForDisplay.length > 0 && (
                 <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginLeft: "auto" }}>
-                  {release.rightsFlags.map((flag) => (
+                  {rightsFlagsForDisplay.map((flag) => (
                     <span key={flag} style={{
                       borderRadius: "4px",
                       padding: "2px 6px",
@@ -1688,7 +1703,7 @@ export default function ReleaseDetails() {
               opacity: 0.52,
               lineHeight: 1.5,
             }}>
-              {rightsReviewDisplay.description}
+              {rightsReviewDescription}
             </p>
             {release.rightsReason && (
               <p style={{

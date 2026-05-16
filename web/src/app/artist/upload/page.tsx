@@ -92,6 +92,7 @@ type Stem = {
   file?: File;
   metadata: {
     title: string;
+    artist: string;
     isrc: string;
     explicit: boolean;
     featuredArtists: string;
@@ -470,6 +471,7 @@ export default function ArtistUploadPage() {
         commercialPrice: formData.commercialPrice || undefined,
         tracks: stems.map(s => ({
           title: s.metadata.title,
+          artist: s.metadata.artist || formData.primaryArtist || undefined,
           isrc: s.metadata.isrc || undefined,
           explicit: s.metadata.explicit,
           featuredArtists: s.metadata.featuredArtists ? s.metadata.featuredArtists.split(",").map((str: string) => str.trim()) : [],
@@ -700,6 +702,9 @@ export default function ArtistUploadPage() {
       // Auto-extract metadata to pre-fill individual track metadata
       extractMetadata(file).then(meta => {
         const extractedArtworkUrl = meta.artworkBlob ? URL.createObjectURL(meta.artworkBlob) : undefined;
+        const extractedArtistCredit = !formData.primaryArtist && !artistProfile?.displayName
+          ? meta.artist || meta.albumArtist || ""
+          : "";
 
         setStems(prev => prev.map(s => {
           if (s.file === file) {
@@ -710,8 +715,8 @@ export default function ArtistUploadPage() {
               metadata: {
                 ...s.metadata,
                 title: meta.title || s.metadata.title,
+                artist: s.metadata.artist || extractedArtistCredit,
                 isrc: meta.isrc || s.metadata.isrc,
-                featuredArtists: meta.artist && meta.artist !== formData.primaryArtist ? meta.artist : s.metadata.featuredArtists,
               }
             };
           }
@@ -746,6 +751,7 @@ export default function ArtistUploadPage() {
         file,
         metadata: {
           title: file.name.replace(/\.[^/.]+$/, ""),
+          artist: "",
           isrc: "",
           explicit: false,
           featuredArtists: "",
@@ -1351,6 +1357,17 @@ export default function ArtistUploadPage() {
                           onChange={(e) => {
                             const val = e.target.value;
                             setStems(prev => prev.map(s => s.id === selectedStemId ? { ...s, metadata: { ...s.metadata, title: val } } : s));
+                          }}
+                        />
+                      </label>
+                      <label>
+                        Track artist
+                        <Input
+                          value={stems.find(s => s.id === selectedStemId)?.metadata.artist || ""}
+                          placeholder={formData.primaryArtist || "Official artist name"}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setStems(prev => prev.map(s => s.id === selectedStemId ? { ...s, metadata: { ...s.metadata, artist: val } } : s));
                           }}
                         />
                       </label>

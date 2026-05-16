@@ -11,6 +11,16 @@ issue: 21
 
 Expose a minimal catalog service to store, index, and query tracks and stems.
 
+## Current User Surfaces
+
+- The home page catalog browser (`/`) lists published releases, artists, and
+  stems from `GET /catalog/published`.
+- Release rows in the home catalog expose direct listener actions:
+  - add all release tracks to a playlist using the existing playlist modal
+  - save all release tracks to the listener library as remote catalog tracks
+- Full release details, track-level actions, mixer previews, and owner tools
+  remain available from `/release/:id`.
+
 ## Actions
 
 1. **Schema & CRUD**
@@ -28,6 +38,8 @@ Expose a minimal catalog service to store, index, and query tracks and stems.
 - Catalog returns a track with associated stems.
 - Search returns results within 1 second for small datasets.
 - Index updates occur within 1 minute of ingestion events.
+- Listeners can add or save catalog release tracks from the home catalog
+  browser without opening the release detail page.
 
 ## Dependencies
 
