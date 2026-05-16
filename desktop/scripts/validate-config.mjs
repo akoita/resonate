@@ -9,6 +9,7 @@ const requiredFiles = [
   "src/main.cjs",
   "src/preload.cjs",
   "src/runtime-config.cjs",
+  "scripts/write-runtime-config.mjs",
   "electron-builder.yml",
   "README.md",
 ];
@@ -27,7 +28,7 @@ if (packageJson.main !== "src/main.cjs") {
   throw new Error("desktop/package.json must point main at src/main.cjs");
 }
 
-for (const script of ["dev", "start", "lint", "package:dir", "dist"]) {
+for (const script of ["dev", "start", "lint", "prepare:runtime-config", "package:dir", "dist"]) {
   if (!packageJson.scripts?.[script]) {
     throw new Error(`Missing desktop npm script: ${script}`);
   }
@@ -40,6 +41,10 @@ const runtimeSource = readFileSync(
 
 if (!runtimeSource.includes("RESONATE_DESKTOP_WEB_URL")) {
   throw new Error("Desktop runtime must be configured through env vars.");
+}
+
+if (!runtimeSource.includes("runtime-config.json")) {
+  throw new Error("Desktop runtime must read packaged runtime config.");
 }
 
 console.log("Desktop shell configuration is valid.");

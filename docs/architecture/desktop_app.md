@@ -23,6 +23,9 @@ The initial desktop shell loads a configured web origin:
 - `desktop/npm run dev` can start the existing `web/` Next dev server
 - packaged builds can point to an approved deployed web origin with
   `RESONATE_DESKTOP_WEB_URL`
+- packaging scripts write `desktop/generated/runtime-config.json` from the
+  current `RESONATE_DESKTOP_*` values so unpacked apps and installers can be
+  double-clicked without requiring launch-time environment variables
 
 The shell does not duplicate routes or screens. The frontend remains in `web/`,
 and desktop-specific APIs are exposed through a small preload bridge only when
@@ -37,6 +40,12 @@ the Windows path is stable.
 
 Desktop-specific configuration uses `RESONATE_DESKTOP_*` variables documented in
 `docs/deployment/environment.md` and `desktop/README.md`.
+
+Runtime precedence is:
+
+1. launch-time environment variables
+2. bundled `generated/runtime-config.json`
+3. local development defaults
 
 The frontend still owns:
 

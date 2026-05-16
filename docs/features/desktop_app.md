@@ -19,6 +19,7 @@ product screens.
 - Root-level `desktop/` package using Electron and electron-builder
 - local development against the existing Next.js app
 - environment-driven shell URL configuration
+- generated packaged runtime config for double-click QA builds
 - external navigation opens in the system browser
 - downloads prompt for a save location
 - narrow preload bridge for runtime detection and future native file picker
@@ -40,6 +41,13 @@ cd desktop
 npm run package:dir
 ```
 
+Build an unpacked app that opens staging when double-clicked:
+
+```bash
+cd desktop
+RESONATE_DESKTOP_WEB_URL=https://staging.resonate.pydes.xyz npm run package:dir
+```
+
 ## Configuration
 
 Desktop-specific environment variables:
@@ -51,6 +59,10 @@ Desktop-specific environment variables:
 
 Frontend API, wallet, chain, RPC, and x402 values still come from the existing
 `web/` environment variables.
+
+Packaging scripts write the desktop variables into ignored
+`desktop/generated/runtime-config.json` before electron-builder runs. Runtime
+environment variables still override the bundled config.
 
 ## Verification
 

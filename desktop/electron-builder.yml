@@ -5,6 +5,7 @@ directories:
   output: dist
 files:
   - src/**/*
+  - generated/**/*
   - package.json
 asar: true
 compression: normal
