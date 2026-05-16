@@ -14,11 +14,12 @@
     "dev": "node scripts/start-dev.mjs",
     "start": "electron .",
     "lint": "node scripts/validate-config.mjs",
-    "package:dir": "electron-builder --dir --config electron-builder.yml",
-    "dist": "electron-builder --config electron-builder.yml",
-    "dist:win": "electron-builder --win nsis portable --config electron-builder.yml",
-    "dist:mac": "electron-builder --mac dmg zip --config electron-builder.yml",
-    "dist:linux": "electron-builder --linux AppImage deb --config electron-builder.yml"
+    "prepare:runtime-config": "node scripts/write-runtime-config.mjs",
+    "package:dir": "npm run prepare:runtime-config && electron-builder --dir --config electron-builder.yml",
+    "dist": "npm run prepare:runtime-config && electron-builder --config electron-builder.yml",
+    "dist:win": "npm run prepare:runtime-config && electron-builder --win nsis portable --config electron-builder.yml",
+    "dist:mac": "npm run prepare:runtime-config && electron-builder --mac dmg zip --config electron-builder.yml",
+    "dist:linux": "npm run prepare:runtime-config && electron-builder --linux AppImage deb --config electron-builder.yml"
   },
   "devDependencies": {
     "electron": "40.9.3",

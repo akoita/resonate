@@ -73,6 +73,7 @@ web/lint_output.txt
 
 # Desktop build artifacts
 desktop/dist/
+desktop/generated/
 
 
 # evmbench contract archive (generated)

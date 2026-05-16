@@ -45,6 +45,18 @@ cd desktop
 npm run package:dir
 ```
 
+Package the app so double-click launches a deployed environment:
+
+```bash
+cd desktop
+RESONATE_DESKTOP_WEB_URL=https://staging.resonate.pydes.xyz npm run package:dir
+```
+
+The package scripts write `generated/runtime-config.json` before invoking
+electron-builder. That generated file is bundled into the desktop app and is
+ignored by git. Runtime environment variables still take precedence, so QA can
+override the URL without rebuilding.
+
 Platform-specific build commands:
 
 ```bash
@@ -65,6 +77,10 @@ need final release work before public distribution.
 | `RESONATE_DESKTOP_START_WEB` | Set to `false` to skip starting `web/` from `npm run dev`. |
 | `RESONATE_DESKTOP_ALLOWED_ORIGINS` | Comma-separated extra origins allowed to remain in-app. Other links open in the system browser. |
 | `RESONATE_DESKTOP_DEVTOOLS` | Set to `true` to open Chromium DevTools on launch. |
+
+Package scripts bake these values into `generated/runtime-config.json`, so an
+unpacked app or installer can be double-clicked without requiring the tester to
+set environment variables at launch time.
 
 Frontend API, wallet, RPC, and chain configuration remains owned by `web/`
 through the existing `NEXT_PUBLIC_*` variables. The desktop package should not
