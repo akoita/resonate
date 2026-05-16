@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "prepare": "husky",
-    "lint:staged": "lint-staged"
+    "lint:staged": "lint-staged",
+    "test:web": "npm --prefix web run test:unit --"
   },
   "devDependencies": {
     "husky": "^9.1.7",

@@ -1,8 +1,11 @@
-import { defineConfig } from 'vitest/config';
-import path from 'path';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-export default defineConfig({
-  root: __dirname,
+const repoRoot = path.dirname(fileURLToPath(import.meta.url));
+const webRoot = path.join(repoRoot, 'web');
+
+export default {
+  root: webRoot,
   test: {
     environment: 'node',
     globals: true,
@@ -18,7 +21,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.join(webRoot, 'src'),
     },
   },
-});
+};
