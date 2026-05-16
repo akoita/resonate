@@ -1223,6 +1223,42 @@ export async function listPublishedReleases(limit = 20, primaryArtist?: string) 
   }));
 }
 
+export type SongRecommendationItem = {
+  id: string;
+  title: string;
+  artistId: string;
+  artist?: string | null;
+  releaseId?: string;
+  releaseTitle?: string;
+  genre?: string | null;
+  score?: number;
+  reasons?: string[];
+};
+
+export type SongRecommendationsResponse = {
+  userId: string;
+  preferences: {
+    mood?: string;
+    energy?: "low" | "medium" | "high";
+    genres?: string[];
+    allowExplicit?: boolean;
+  };
+  items: SongRecommendationItem[];
+};
+
+export async function getSongRecommendations(
+  userId: string,
+  token: string,
+  limit = 6,
+): Promise<SongRecommendationsResponse> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return apiRequest<SongRecommendationsResponse>(
+    `/recommendations/${encodeURIComponent(userId)}?${params}`,
+    {},
+    token,
+  );
+}
+
 export async function uploadStems(
   token: string,
   formData: FormData

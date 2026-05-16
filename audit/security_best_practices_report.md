@@ -357,3 +357,57 @@ git diff --check
 rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|gho_[A-Za-z0-9_]+|sk-[A-Za-z0-9]' backend/src/modules/agents/agent_recommendation.adapter.ts backend/src/modules/agents/agent_selector.service.ts backend/src/modules/agents/model_assisted_recommendation.adapter.ts backend/src/modules/agents/agent_recommendation.service.ts backend/src/modules/agents/agent_runtime.providers.ts backend/src/tests/agent_recommendation_adapter.spec.ts docs/deployment/environment.md docs/features/agent-commerce-runtime.md docs/features/README.md
 rg -n 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/agents/agent_recommendation.adapter.ts backend/src/modules/agents/agent_selector.service.ts backend/src/modules/agents/model_assisted_recommendation.adapter.ts backend/src/modules/agents/agent_recommendation.service.ts backend/src/modules/agents/agent_runtime.providers.ts backend/src/tests/agent_recommendation_adapter.spec.ts
 ```
+
+## Addendum: #250 AI-Driven Song Recommendations
+
+Reviewed the Home "Recommended for You" surface, recommendation API enrichment,
+and AI DJ seeded-session entry point. No Critical or High findings were
+identified in the changed code.
+
+### Scope
+
+- `backend/src/modules/recommendations/recommendations.service.ts`
+- `backend/src/tests/recommendations.integration.spec.ts`
+- `web/src/app/page.tsx`
+- `web/src/lib/api.ts`
+- `web/src/lib/api.test.ts`
+- `web/src/styles/home-nextgen.css`
+- `docs/features/agent-commerce-runtime.md`
+- `docs/features/README.md`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none.
+- Low: none in the changed code.
+
+### Notes
+
+- Recommendation retrieval remains behind the existing JWT guard and now filters
+  to published/ready public-catalog releases before scoring tracks.
+- The Home seeded-session action uses existing authenticated agent-config and
+  session endpoints. It does not expose new credentials, payment rails, or
+  privileged backend commands.
+- The recommendation mapper uses Prisma structured filters and in-memory scoring;
+  no dynamic SQL, raw query construction, external network client, or file parser
+  was introduced.
+- Changed-file secret-pattern scans reported environment variable documentation
+  names and CSS `mask-*` properties that match the generic `sk-` token pattern;
+  no literal credentials or private material were introduced. Dynamic SQL/eval
+  scans returned no matches.
+
+### Commands Run
+
+```bash
+cd backend && npm run lint
+cd backend && npx jest --runInBand src/tests/recommendations.controller.spec.ts
+cd backend && npx jest --runInBand --config jest.integration.config.js --testPathPattern='recommendations.integration'
+cd backend && npm run test
+cd web && npm run lint
+cd web && npx vitest run src/lib/api.test.ts
+cd web && npm run build
+git diff --check
+rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|gho_[A-Za-z0-9_]+|sk-[A-Za-z0-9]' backend/src/modules/recommendations/recommendations.service.ts backend/src/tests/recommendations.integration.spec.ts web/src/app/page.tsx web/src/lib/api.ts web/src/lib/api.test.ts web/src/styles/home-nextgen.css docs/features/README.md docs/features/agent-commerce-runtime.md
+rg -n 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/recommendations/recommendations.service.ts backend/src/tests/recommendations.integration.spec.ts web/src/app/page.tsx web/src/lib/api.ts web/src/lib/api.test.ts
+```

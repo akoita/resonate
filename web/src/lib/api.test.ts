@@ -111,6 +111,38 @@ describe('API Client', () => {
     });
   });
 
+  describe('getSongRecommendations', () => {
+    it('fetches personalized recommendations for a user', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            userId: 'user-1',
+            preferences: { genres: ['Hip Hop'] },
+            items: [
+              {
+                id: 'track-1',
+                title: 'Cipher Loop',
+                artistId: 'artist-1',
+                releaseId: 'release-1',
+                genre: 'Hip Hop',
+                score: 55,
+                reasons: ['genre:Hip Hop'],
+              },
+            ],
+          }),
+      });
+
+      const result = await api.getSongRecommendations('user-1', 'listener-token', 4);
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/recommendations/user-1?limit=4');
+      expect(opts.headers.get('Authorization')).toBe('Bearer listener-token');
+      expect(result.items[0].title).toBe('Cipher Loop');
+    });
+  });
+
   describe('isGenerationStatusComplete', () => {
     it('accepts backend and legacy completion status values', () => {
       expect(api.isGenerationStatusComplete('completed')).toBe(true);

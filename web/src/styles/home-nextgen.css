@@ -732,6 +732,131 @@
   max-width: 300px;
 }
 
+/* ---------- Recommended for You -------------------------------- */
+
+.home-ng .ng-recommendation-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--ds-gutter);
+}
+
+.home-ng .ng-recommendation-card {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  min-height: 148px;
+  overflow: hidden;
+  border-radius: 20px;
+}
+
+.home-ng .ng-recommendation-card__art {
+  position: relative;
+  min-width: 0;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(168, 95, 255, 0.34), transparent 48%),
+    linear-gradient(135deg, #23143f 0%, #0b0713 100%);
+  color: inherit;
+  text-decoration: none;
+}
+
+.home-ng .ng-recommendation-card__art img {
+  width: 100%;
+  height: 100%;
+  min-height: 148px;
+  object-fit: cover;
+  display: block;
+}
+
+.home-ng .ng-recommendation-card__score {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  min-width: 34px;
+  height: 26px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.home-ng .ng-recommendation-card__body {
+  min-width: 0;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.home-ng .ng-recommendation-card__body h4 {
+  margin: 0;
+  color: #fff;
+  font-size: 16px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-ng .ng-recommendation-card__body p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-ng .ng-recommendation-card__meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.home-ng .ng-recommendation-card__meta span {
+  max-width: 100%;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: rgba(124, 92, 255, 0.14);
+  color: #ddd6fe;
+  font-size: 11px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-ng .ng-recommendation-card__action {
+  margin-top: auto;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(196, 181, 253, 0.28);
+  border-radius: 10px;
+  background: rgba(124, 92, 255, 0.16);
+  color: #f5f3ff;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.home-ng .ng-recommendation-card__action:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.home-ng .ng-recommendation-card__action .ms-icon {
+  font-size: 16px;
+}
+
 /* ---------- Resume Playing / Release card row ----------------- */
 
 .home-ng .ng-grid-4 {
@@ -1477,6 +1602,7 @@
 
 @media (max-width: 1279px) {
   .home-ng .ng-grid-4 { grid-template-columns: repeat(3, 1fr); }
+  .home-ng .ng-recommendation-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .home-ng .ng-resource-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .home-ng .ng-grid-5 { grid-template-columns: repeat(4, 1fr); }
   .home-ng .ng-hero { aspect-ratio: 16 / 9; padding: 32px; }
@@ -1500,6 +1626,9 @@
   .home-ng .ng-grid-3 { grid-template-columns: 1fr; }
   .home-ng .ng-grid-4 { grid-template-columns: 1fr; }
   .home-ng .ng-resource-grid { grid-template-columns: 1fr; }
+  .home-ng .ng-recommendation-grid { grid-template-columns: 1fr; }
+  .home-ng .ng-recommendation-card { grid-template-columns: 96px minmax(0, 1fr); }
+  .home-ng .ng-recommendation-card__art img { min-height: 132px; }
   .home-ng .ng-grid-5 { grid-template-columns: repeat(2, 1fr); gap: 16px; }
   .home-ng .ng-section { padding: 0 16px; margin-bottom: 32px; }
   .home-ng .ng-chips { padding: 0 16px; }
