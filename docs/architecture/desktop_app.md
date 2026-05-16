@@ -111,5 +111,13 @@ CI runs `npm run package:dir` on Windows, macOS, and Linux for pull requests
 that touch the desktop package and uploads the unpacked app directories as
 short-lived smoke artifacts.
 
+The `Desktop Release Artifacts` workflow builds installer/distribution files
+with `npm run dist:win`, `npm run dist:mac`, and `npm run dist:linux`. It runs
+automatically for `v*` and `desktop-v*` tags, can be started manually for one or
+all platforms, uploads downloadable workflow artifacts, and attaches artifacts
+to a GitHub Release for tag builds. Tag builds require the `DESKTOP_WEB_URL`
+repository variable so release packages do not accidentally ship with the local
+development fallback.
+
 Windows is the first manual QA target. macOS and Linux use the same
 configuration, but release signing and notarization are still follow-up work.

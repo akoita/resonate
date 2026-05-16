@@ -13,6 +13,13 @@ win:
   target:
     - nsis
     - portable
+portable:
+  artifactName: "Resonate-${version}-win-${arch}-portable.${ext}"
+nsis:
+  artifactName: "Resonate-${version}-win-${arch}-setup.${ext}"
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
 mac:
   category: public.app-category.music
   target:
@@ -20,10 +27,7 @@ mac:
     - zip
 linux:
   category: Audio;Music
+  maintainer: Resonate
   target:
     - AppImage
     - deb
-nsis:
-  oneClick: false
-  perMachine: false
-  allowToChangeInstallationDirectory: true

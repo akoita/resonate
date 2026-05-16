@@ -65,6 +65,13 @@ npm run dist:mac
 npm run dist:linux
 ```
 
+GitHub Actions can build downloadable desktop artifacts from
+`Desktop Release Artifacts`. The workflow runs automatically for `v*` and
+`desktop-v*` tags and can also be started manually from the Actions tab. Tag
+builds require the `DESKTOP_WEB_URL` repository variable so release artifacts do
+not accidentally point at localhost. Manual runs can override that value with
+the `desktop_web_url` input.
+
 Windows is the first supported QA target. macOS and Linux share the same shell
 configuration, but signing/notarization and release-channel automation still
 need final release work before public distribution.
