@@ -132,6 +132,8 @@ When adding a new environment variable:
 | `RESONATE_DESKTOP_START_WEB` | Desktop shell | Set to `false` when `npm run desktop:dev` should connect to an already-running web app instead of starting `web/` |
 | `RESONATE_DESKTOP_ALLOWED_ORIGINS` | Desktop shell | Optional comma-separated extra origins allowed to remain in-app. External origins open in the system browser |
 | `RESONATE_DESKTOP_DEVTOOLS` | Desktop shell | Optional local debugging flag; set to `true` to open Chromium DevTools on launch |
+| `DESKTOP_WEB_URL` | GitHub repository variable | Deployed web URL used by the `Desktop Release Artifacts` workflow when baking desktop packages from tags or manual runs. Manual workflow input `desktop_web_url` takes precedence |
+| `DESKTOP_ALLOWED_ORIGINS` | GitHub repository variable | Optional comma-separated extra origins passed to `RESONATE_DESKTOP_ALLOWED_ORIGINS` during desktop artifact builds |
 | `ERC8004_ENABLED` | Backend | Enables ERC-8004 identity registration and reputation metadata writes. Defaults to disabled |
 | `ERC8004_IDENTITY_REGISTRY_ADDRESS` | Backend | Optional ERC-8004 Identity Registry override. When omitted, the backend selects the official mainnet or testnet registry for supported chain IDs |
 | `ERC8004_CHAIN_ID` | Backend | Optional ERC-8004 chain override; falls back to `AA_CHAIN_ID`, then `CHAIN_ID`, then local Anvil |

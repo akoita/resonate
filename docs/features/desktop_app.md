@@ -20,6 +20,7 @@ product screens.
 - local development against the existing Next.js app
 - environment-driven shell URL configuration
 - generated packaged runtime config for double-click QA builds
+- tag-triggered and manually-triggered GitHub Actions release artifacts
 - external navigation opens in the system browser
 - downloads prompt for a save location
 - narrow preload bridge for runtime detection and future native file picker
@@ -47,6 +48,16 @@ Build an unpacked app that opens staging when double-clicked:
 cd desktop
 RESONATE_DESKTOP_WEB_URL=https://staging.resonate.pydes.xyz npm run package:dir
 ```
+
+Build downloadable installers from GitHub Actions:
+
+1. Open the `Desktop Release Artifacts` workflow.
+2. Run it manually for `all`, `windows`, `macos`, or `linux`.
+3. Provide `desktop_web_url` when the build should open a deployed environment.
+4. Download the uploaded artifacts from the workflow run.
+
+The same workflow runs automatically when `v*` or `desktop-v*` tags are pushed.
+Tag builds require the `DESKTOP_WEB_URL` repository variable.
 
 ## Configuration
 

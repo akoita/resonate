@@ -4,6 +4,7 @@
   "private": true,
   "author": "Resonate",
   "description": "Native desktop shell for the Resonate web experience.",
+  "homepage": "https://github.com/akoita/resonate",
   "main": "src/main.cjs",
   "packageManager": "npm@11.14.1",
   "engines": {

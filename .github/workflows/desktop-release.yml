@@ -1,0 +1,188 @@
+name: Desktop Release Artifacts
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "desktop-v*"
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Desktop platform to build.
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - windows
+          - macos
+          - linux
+      desktop_web_url:
+        description: Optional deployed web URL to bake into the desktop package. Falls back to the DESKTOP_WEB_URL repository variable.
+        required: false
+        type: string
+      publish_release:
+        description: Attach artifacts to a GitHub Release. Tag pushes always publish a release.
+        required: true
+        default: false
+        type: boolean
+      release_tag:
+        description: Required for manual release publishing. Ignored for tag pushes.
+        required: false
+        type: string
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || '' }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }} desktop artifacts
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            os: windows-latest
+            build_script: npm run dist:win
+            artifact_paths: |
+              desktop/dist/*.exe
+          - platform: macos
+            os: macos-latest
+            build_script: npm run dist:mac
+            artifact_paths: |
+              desktop/dist/*.dmg
+              desktop/dist/*.zip
+          - platform: linux
+            os: ubuntu-latest
+            build_script: npm run dist:linux
+            artifact_paths: |
+              desktop/dist/*.AppImage
+              desktop/dist/*.deb
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      RESONATE_DESKTOP_ALLOWED_ORIGINS: ${{ vars.DESKTOP_ALLOWED_ORIGINS || '' }}
+      RESONATE_DESKTOP_START_WEB: "false"
+      RESONATE_DESKTOP_WEB_URL: ${{ inputs.desktop_web_url || vars.DESKTOP_WEB_URL || '' }}
+      SHOULD_BUILD: ${{ github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == matrix.platform }}
+    steps:
+      - name: Checkout
+        if: env.SHOULD_BUILD == 'true'
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Setup hardened npm
+        if: env.SHOULD_BUILD == 'true'
+        uses: ./.github/actions/setup-npm-hardened
+        with:
+          node-version: "22.12.0"
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Resolve desktop runtime target
+        if: env.SHOULD_BUILD == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${RESONATE_DESKTOP_WEB_URL}" ]]; then
+            if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+              echo "::error::Set the DESKTOP_WEB_URL repository variable before creating desktop release tags."
+              exit 1
+            fi
+
+            echo "No desktop web URL supplied; the package will use the local development fallback."
+            exit 0
+          fi
+
+          node -e '
+            const value = process.env.RESONATE_DESKTOP_WEB_URL;
+            const parsed = new URL(value);
+            if (!["http:", "https:"].includes(parsed.protocol)) {
+              throw new Error("RESONATE_DESKTOP_WEB_URL must use http or https");
+            }
+          '
+          echo "Desktop package will load ${RESONATE_DESKTOP_WEB_URL}"
+
+      - name: Install desktop dependencies
+        if: env.SHOULD_BUILD == 'true'
+        run: npm ci
+        working-directory: desktop
+
+      - name: Validate desktop package config
+        if: env.SHOULD_BUILD == 'true'
+        run: npm run lint
+        working-directory: desktop
+
+      - name: Build desktop artifacts
+        if: env.SHOULD_BUILD == 'true'
+        run: ${{ matrix.build_script }}
+        working-directory: desktop
+
+      - name: List desktop artifacts
+        if: env.SHOULD_BUILD == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          find desktop/dist -maxdepth 1 -type f -print | sort
+
+      - name: Upload desktop artifacts
+        if: env.SHOULD_BUILD == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: resonate-desktop-${{ matrix.platform }}
+          path: ${{ matrix.artifact_paths }}
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' || inputs.publish_release == true
+    permissions:
+      contents: write
+    steps:
+      - name: Download desktop artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: desktop-artifacts
+          merge-multiple: true
+
+      - name: Publish release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${RELEASE_TAG}" ]]; then
+            echo "::error::Manual release publishing requires the release_tag input."
+            exit 1
+          fi
+
+          mkdir -p release-assets
+          find desktop-artifacts -type f \
+            \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.AppImage' -o -name '*.deb' \) \
+            -exec cp {} release-assets/ \;
+
+          if [[ -z "$(find release-assets -type f -print -quit)" ]]; then
+            echo "::error::No desktop release artifacts were downloaded."
+            exit 1
+          fi
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" release-assets/* --clobber
+          else
+            gh release create "${RELEASE_TAG}" release-assets/* \
+              --target "${GITHUB_SHA}" \
+              --title "Resonate Desktop ${RELEASE_TAG}" \
+              --generate-notes
+          fi
