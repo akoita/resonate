@@ -162,6 +162,12 @@ stable public contract:
 - Use `/.well-known/x402`, `/.well-known/mcp.json`, and `/openapi.json` for
   machine-readable discovery.
 
+Public registry validation for these machine-readable surfaces is intentionally
+deferred until an approved hardened validation or launch origin exists. Do not
+point x402scan, mppscan, Agentic.Market, or AgentCash registry checks at
+unpublished staging hosts. The current receipt and validation-window checklist
+live in [x402 Registry Submission Receipt](../architecture/x402_registry_registration.md).
+
 The generic router stays internal because it accepts trusted runtime context
 such as `userId`, `sessionId`, budget state, allowed rails, marketplace listing
 data, and rail-specific proof material. Exposing that as a public endpoint now
@@ -382,4 +388,5 @@ npm run test
 - [Agent Platform Refactor Backlog](agent-platform-refactor-backlog.md)
 - [Agent Runtime Worker](../architecture/agent-runtime-worker.md)
 - [x402 Payments](../architecture/x402_payments.md)
+- [x402 Registry Submission Receipt](../architecture/x402_registry_registration.md)
 - [Public payment-router API decision](https://github.com/akoita/resonate/issues/812)

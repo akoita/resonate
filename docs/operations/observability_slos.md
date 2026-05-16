@@ -39,6 +39,20 @@
 - License grants
 - Payment initiation/settlement counts
 
+### Public x402 Validation Window
+
+Track these during any approved public registry-validation or launch-readiness
+window:
+
+- Unpaid x402 challenges issued by route, stem id, network, and response status
+- Paid retries by proof header (`PAYMENT-SIGNATURE` or legacy `X-PAYMENT`)
+- Facilitator verify and settle attempts by result
+- x402 receipt issuance count and failure count
+- Storefront seed availability for `GET /api/storefront/stems?limit=1`
+- Rate-limit decisions for `/.well-known/*`, `/openapi.json`, storefront, MCP,
+  and x402 purchase routes
+- Scanner-origin traffic volume when identifiable from request metadata
+
 ## SLO Targets (Initial)
 - API availability: 99.5% monthly
 - P95 latency: < 500ms for read endpoints, < 1s for writes
@@ -50,6 +64,12 @@
 - Ingestion backlog > 200 items
 - Demucs worker unhealthy (health check failing)
 - Stem separation duration > 15 minutes (CPU) or > 2 minutes (GPU)
+- During public x402 validation: x402 challenge route 5xx rate > 1% for
+  5 minutes
+- During public x402 validation: storefront seed check returns zero purchasable
+  stems for 2 consecutive probes
+- During public x402 validation: facilitator verify/settle failure rate > 5%
+  for 5 minutes, excluding expected unpaid probes and invalid proofs
 
 ## Dashboards (Stub)
 - API overview (latency, error rate, throughput)
