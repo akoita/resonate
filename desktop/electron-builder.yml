@@ -1,0 +1,28 @@
+appId: app.resonate.desktop
+productName: Resonate
+artifactName: "Resonate-${version}-${os}-${arch}.${ext}"
+directories:
+  output: dist
+files:
+  - src/**/*
+  - package.json
+asar: true
+compression: normal
+win:
+  target:
+    - nsis
+    - portable
+mac:
+  category: public.app-category.music
+  target:
+    - dmg
+    - zip
+linux:
+  category: Audio;Music
+  target:
+    - AppImage
+    - deb
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
