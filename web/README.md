@@ -14,11 +14,31 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3001](http://localhost:3001) with your browser to see the result.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+## Testing
+
+Run the web unit suite from either the repository root or the web workspace:
+
+```bash
+npm run test:web
+cd web && npm run test:unit
+```
+
+Both commands use the Vitest config that scopes unit tests to `web/src/**/*.test.ts`
+and `web/src/**/*.test.tsx`. This keeps Vitest out of Playwright E2E specs,
+backend build output, and vendored smart-contract dependency tests under
+`contracts/lib/**`.
+
+Run Playwright E2E tests from `web/`:
+
+```bash
+npm run test:e2e
+```
 
 ## Learn More
 
