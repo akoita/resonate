@@ -33,6 +33,7 @@ Available now:
 - `SessionsService.agentNext()` routes through `AgentRuntimeService.runCommerce()`.
 - Runtime output is normalized into `status`, `tracks`, `primaryTrack`, `licenseType`, and `priceUsd`.
 - The `/agent` dashboard exposes a "Next AI Pick" control that calls the shared runtime-commerce path for the active session and shows track, license, price, and runtime status.
+- The Home page exposes a "Recommended for You" row backed by `GET /recommendations/:userId`, with a seeded "Start session" action that creates or updates the listener's AI DJ taste seed before opening `/agent`.
 - Runtime catalog search treats explicit genre/taste queries as hard candidate constraints. A query with no catalog matches returns no candidates instead of falling back to unrelated recent tracks.
 - LLM adapters can curate over the shared catalog/pricing/analytics tools when configured, but the current content-understanding layer is still metadata and embedding based; audio-feature and collaborative ranking remain follow-up work.
 - The deterministic selector now produces a bounded scored shortlist with explanation signals for taste match, expanded taste match, learned preference, active listings, text similarity, recent-track exclusion, and versioned metadata-derived audio feature vectors.
@@ -282,6 +283,9 @@ Key output fields:
 | Frontend API helper | `web/src/lib/api.ts` |
 | Session API route | `backend/src/modules/sessions/sessions.controller.ts` |
 | Session integration | `backend/src/modules/sessions/sessions.service.ts` |
+| Home recommendation surface | `web/src/app/page.tsx` |
+| Recommendation API surface | `backend/src/modules/recommendations/recommendations.controller.ts` |
+| Recommendation preference mapper | `backend/src/modules/recommendations/recommendations.service.ts` |
 | Runtime entrypoint | `backend/src/modules/agents/agent_runtime.service.ts` |
 | Normalized result contract | `backend/src/modules/agents/agent_runtime.types.ts` |
 | Recommendation adapter contract | `backend/src/modules/agents/agent_recommendation.adapter.ts` |

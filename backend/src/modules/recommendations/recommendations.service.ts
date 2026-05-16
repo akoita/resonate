@@ -2,6 +2,12 @@ import { Injectable } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
 
+const PUBLIC_RELEASE_ROUTES = [
+  "LIMITED_MONITORING",
+  "STANDARD_ESCROW",
+  "TRUSTED_FAST_PATH",
+];
+
 export interface UserPreferences {
   mood?: string;
   energy?: "low" | "medium" | "high";
@@ -37,22 +43,86 @@ export class RecommendationsService {
   async getRecommendations(userId: string, limit = 10) {
     const prefs = this.getPreferences(userId);
     const allowExplicit = prefs.allowExplicit ?? false;
+    const normalizedGenres = (prefs.genres ?? [])
+      .map((genre) => genre.trim())
+      .filter(Boolean);
+    const normalizedMood = prefs.mood?.trim();
     const candidates = await prisma.track.findMany({
       where: {
-        ...(prefs.genres?.length ? { release: { genre: { in: prefs.genres } } } : {}),
+        release: {
+          status: { in: ["ready", "published"] },
+          OR: [
+            { rightsRoute: null },
+            { rightsRoute: { in: PUBLIC_RELEASE_ROUTES } },
+          ],
+        },
         ...(allowExplicit ? {} : { explicit: false }),
       },
-      include: { release: true },
+      include: {
+        release: {
+          include: {
+            artist: { select: { id: true, displayName: true } },
+          },
+        },
+      },
       take: 50,
       orderBy: { createdAt: "desc" },
     });
 
     const recent = this.recentTrackIds.get(userId) ?? [];
-    const filtered = candidates.filter((track) => !recent.includes(track.id));
-    const selected = (filtered.length ? filtered : candidates).slice(0, limit);
+    const scored = candidates.map((track) => {
+      const genre = track.release.genre ?? "";
+      const reasons: string[] = [];
+      let score = 0;
+
+      if (normalizedGenres.length) {
+        const matchedGenre = normalizedGenres.find((candidate) =>
+          genre.toLowerCase().includes(candidate.toLowerCase()),
+        );
+        if (matchedGenre) {
+          score += 50;
+          reasons.push(`genre:${matchedGenre}`);
+        }
+      }
+
+      if (normalizedMood) {
+        const moodNeedle = normalizedMood.toLowerCase();
+        if (
+          track.title.toLowerCase().includes(moodNeedle) ||
+          track.release.title.toLowerCase().includes(moodNeedle) ||
+          genre.toLowerCase().includes(moodNeedle)
+        ) {
+          score += 20;
+          reasons.push(`mood:${normalizedMood}`);
+        }
+      }
+
+      if (track.release.genre) {
+        score += 5;
+      }
+      if (recent.includes(track.id)) {
+        score -= 100;
+        reasons.push("recently_played");
+      }
+
+      return { track, score, reasons };
+    });
+
+    scored.sort((a, b) => {
+      if (a.score !== b.score) return b.score - a.score;
+      return b.track.createdAt.getTime() - a.track.createdAt.getTime();
+    });
+
+    const preferenceMatches = scored.filter((entry) =>
+      !recent.includes(entry.track.id)
+      && entry.reasons.some((reason) => reason.startsWith("genre:") || reason.startsWith("mood:")),
+    );
+    const freshFallback = scored.filter((entry) => !recent.includes(entry.track.id));
+    const selected = (preferenceMatches.length ? preferenceMatches : freshFallback.length ? freshFallback : scored)
+      .slice(0, limit);
 
     const updatedRecent = [
-      ...selected.map((track) => track.id),
+      ...selected.map((entry) => entry.track.id),
       ...recent,
     ].slice(0, 50);
     this.recentTrackIds.set(userId, updatedRecent);
@@ -62,17 +132,23 @@ export class RecommendationsService {
       eventVersion: 1,
       occurredAt: new Date().toISOString(),
       userId,
-      trackIds: selected.map((track) => track.id),
-      strategy: prefs.genres?.length ? "genre_match" : "recent_first",
+      trackIds: selected.map((entry) => entry.track.id),
+      strategy: normalizedGenres.length || normalizedMood ? "preference_mapping" : "recent_first",
     });
 
     return {
       userId,
       preferences: prefs,
-      items: selected.map((track) => ({
+      items: selected.map(({ track, score, reasons }) => ({
         id: track.id,
         title: track.title,
         artistId: track.release.artistId,
+        artist: track.artist || track.release.primaryArtist || track.release.artist?.displayName || null,
+        releaseId: track.releaseId,
+        releaseTitle: track.release.title,
+        genre: track.release.genre,
+        score: Math.max(0, score),
+        reasons: reasons.filter((reason) => reason !== "recently_played"),
       })),
     };
   }

@@ -4,7 +4,17 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../components/auth/AuthProvider";
-import { listMyReleases, listPublishedReleases, Release } from "../lib/api";
+import {
+  createAgentConfig,
+  getAgentConfig,
+  getSongRecommendations,
+  listMyReleases,
+  listPublishedReleases,
+  Release,
+  startAgentSession,
+  updateAgentConfig,
+  type SongRecommendationItem,
+} from "../lib/api";
 import { artistProfileHref } from "../lib/artistRoutes";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
 import { useToast } from "../components/ui/Toast";
@@ -52,6 +62,18 @@ type StemSummary = {
   createdAt: string;
 };
 
+type HomeRecommendation = {
+  key: string;
+  trackId?: string;
+  title: string;
+  artist: string;
+  releaseId?: string;
+  genre?: string | null;
+  score?: number;
+  reasons: string[];
+  release?: Release;
+};
+
 const FILTERS: { id: FilterOption; label: string }[] = [
   { id: "all", label: "All Trending" },
   { id: "electronic", label: "Electronic" },
@@ -68,7 +90,9 @@ export default function Home() {
   const [activeFilter, setActiveFilter] = useState<FilterOption>("all");
   const [catalogView, setCatalogView] = useState<CatalogView>("releases");
   const [catalogSearch, setCatalogSearch] = useState("");
-  const { status, token } = useAuth();
+  const [songRecommendations, setSongRecommendations] = useState<SongRecommendationItem[]>([]);
+  const [startingSeed, setStartingSeed] = useState<string | null>(null);
+  const { status, token, userId } = useAuth();
   const { addToast } = useToast();
 
   useWebSockets((data: ReleaseStatusUpdate) => {
@@ -90,6 +114,7 @@ export default function Home() {
 
   useEffect(() => {
     if (status !== "authenticated" || !token) {
+      setSongRecommendations([]);
       return;
     }
 
@@ -106,6 +131,26 @@ export default function Home() {
       cancelled = true;
     };
   }, [status, token]);
+
+  useEffect(() => {
+    if (status !== "authenticated" || !token || !userId) {
+      setSongRecommendations([]);
+      return;
+    }
+
+    let cancelled = false;
+    getSongRecommendations(userId, token, 6)
+      .then((result) => {
+        if (!cancelled) setSongRecommendations(result.items ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setSongRecommendations([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status, token, userId]);
 
   const displayReleases = releases;
 
@@ -144,6 +189,10 @@ export default function Home() {
     () => filterStems(catalogStems, normalizedSearch).slice(0, 12),
     [catalogStems, normalizedSearch],
   );
+  const recommendedForYou = useMemo(
+    () => buildHomeRecommendations(songRecommendations, displayReleases).slice(0, 4),
+    [songRecommendations, displayReleases],
+  );
   const managedArtists = summarizeArtists(status === "authenticated" ? myReleases : []).slice(0, 5);
   const recentUploads = (status === "authenticated" ? myReleases : [])
     .slice()
@@ -157,6 +206,58 @@ export default function Home() {
       artistId: a.artistId,
     }));
   }, [catalogArtists]);
+
+  const handleStartRecommendedSession = async (recommendation: HomeRecommendation) => {
+    const seedGenre = recommendation.genre || recommendation.reasons[0]?.replace(/^genre:/, "") || "Discovery";
+    const seedKey = recommendation.trackId || recommendation.releaseId || recommendation.key;
+    if (status !== "authenticated" || !token) {
+      addToast({
+        type: "info",
+        title: "Connect wallet",
+        message: "Open AI DJ to start a personalized session.",
+      });
+      router.push("/agent");
+      return;
+    }
+
+    setStartingSeed(seedKey);
+    try {
+      const existing = await getAgentConfig(token);
+      const vibes = [seedGenre].filter(Boolean);
+      if (existing) {
+        await updateAgentConfig(token, { vibes, sessionMode: "curate" });
+      } else {
+        await createAgentConfig(token, {
+          name: "Home DJ",
+          vibes,
+          monthlyCapUsd: 10,
+        });
+      }
+      const result = await startAgentSession(token);
+      if (result.status === "started") {
+        addToast({
+          type: "success",
+          title: "Session started",
+          message: `${recommendation.title} seeded your AI DJ.`,
+        });
+      } else {
+        addToast({
+          type: "info",
+          title: "AI DJ ready",
+          message: "Open the dashboard to finish session setup.",
+        });
+      }
+      router.push("/agent");
+    } catch (error) {
+      addToast({
+        type: "error",
+        title: "Session start failed",
+        message: error instanceof Error ? error.message : "Unable to start AI DJ.",
+      });
+    } finally {
+      setStartingSeed(null);
+    }
+  };
 
   return (
     <div className="home-ng">
@@ -228,6 +329,67 @@ export default function Home() {
             </button>
           ))}
         </div>
+
+        {/* 3. RECOMMENDED FOR YOU ——————————————————————————————— */}
+        {recommendedForYou.length > 0 && (
+          <section className="ng-section">
+            <header className="ng-section-header">
+              <div>
+                <span className="ng-kicker ng-kicker--violet">Personalized picks</span>
+                <h3 className="ng-section-title">Recommended for You</h3>
+              </div>
+              <Link href="/agent" className="ng-section-link">
+                Open AI DJ
+                <span className="ms-icon" aria-hidden style={{ fontSize: 14 }}>arrow_forward</span>
+              </Link>
+            </header>
+            <div className="ng-recommendation-grid">
+              {recommendedForYou.map((item) => {
+                const seedKey = item.trackId || item.releaseId || item.key;
+                return (
+                  <article key={item.key} className="ng-recommendation-card ng-glass">
+                    <Link
+                      href={item.releaseId ? `/release/${item.releaseId}` : "/agent"}
+                      className="ng-recommendation-card__art"
+                      aria-label={`Open ${item.title}`}
+                    >
+                      {item.release?.artworkUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={item.release.artworkUrl} alt="" />
+                      ) : (
+                        <span className="ng-monogram" aria-hidden>
+                          {(item.title[0] ?? "?").toUpperCase()}
+                        </span>
+                      )}
+                      <span className="ng-recommendation-card__score">
+                        {Math.round(item.score ?? 0)}
+                      </span>
+                    </Link>
+                    <div className="ng-recommendation-card__body">
+                      <h4>{item.title}</h4>
+                      <p>{item.artist}</p>
+                      <div className="ng-recommendation-card__meta">
+                        <span>{item.genre || "Discovery"}</span>
+                        <span>{formatRecommendationReason(item.reasons)}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="ng-recommendation-card__action"
+                        onClick={() => void handleStartRecommendedSession(item)}
+                        disabled={startingSeed === seedKey}
+                      >
+                        <span className="ms-icon" data-fill="1" aria-hidden>
+                          {startingSeed === seedKey ? "hourglass_top" : "play_arrow"}
+                        </span>
+                        {startingSeed === seedKey ? "Starting" : "Start session"}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {/* 3. CATALOG BROWSER ——————————————————————————————————— */}
         <section className="ng-section">
@@ -705,6 +867,58 @@ function filterStems(stems: StemSummary[], query: string) {
       stem.artistName,
     ].some((value) => value.toLowerCase().includes(query)),
   );
+}
+
+function buildHomeRecommendations(
+  items: SongRecommendationItem[],
+  releases: Release[],
+): HomeRecommendation[] {
+  const releaseById = new Map(releases.map((release) => [release.id, release]));
+  const releaseByTrackId = new Map<string, Release>();
+  for (const release of releases) {
+    for (const track of release.tracks ?? []) {
+      releaseByTrackId.set(track.id, release);
+    }
+  }
+
+  const mapped = items.map((item) => {
+    const release = (item.releaseId ? releaseById.get(item.releaseId) : undefined)
+      ?? releaseByTrackId.get(item.id);
+    return {
+      key: item.id,
+      trackId: item.id,
+      title: item.title,
+      artist: item.artist || (release ? getArtistName(release) : "Unknown Artist"),
+      releaseId: item.releaseId || release?.id,
+      genre: item.genre ?? release?.genre,
+      score: item.score,
+      reasons: item.reasons ?? [],
+      release,
+    };
+  });
+
+  if (mapped.length > 0) {
+    return mapped;
+  }
+
+  return releases.slice(0, 4).map((release) => ({
+    key: release.id,
+    title: release.title,
+    artist: getArtistName(release),
+    releaseId: release.id,
+    genre: release.genre,
+    score: release.genre ? 35 : 20,
+    reasons: release.genre ? [`genre:${release.genre}`] : ["catalog_seed"],
+    release,
+  }));
+}
+
+function formatRecommendationReason(reasons: string[]) {
+  const first = reasons.find(Boolean);
+  if (!first) return "Catalog signal";
+  if (first.startsWith("genre:")) return "Taste match";
+  if (first.startsWith("mood:")) return "Mood match";
+  return first.replace(/_/g, " ");
 }
 
 function formatStatus(status?: string | null) {

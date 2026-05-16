@@ -31,6 +31,7 @@ describe('RecommendationsService (integration)', () => {
         title: 'Rec Test Album',
         artistId: `${TEST_PREFIX}artist`,
         status: 'published',
+        genre: 'Hip Hop',
       },
     });
     await prisma.track.createMany({
@@ -51,11 +52,13 @@ describe('RecommendationsService (integration)', () => {
 
   it('returns recommended tracks with preferences', async () => {
     const service = new RecommendationsService(new EventBus());
-    service.setPreferences(`${TEST_PREFIX}user`, { energy: 'high' });
+    service.setPreferences(`${TEST_PREFIX}user`, { energy: 'high', genres: ['Hip Hop'] });
 
     const result = await service.getRecommendations(`${TEST_PREFIX}user`, 2);
     expect(result.items.length).toBeGreaterThanOrEqual(1);
     expect(result.preferences.energy).toBe('high');
+    expect(result.items[0].genre).toBe('Hip Hop');
+    expect(result.items[0].reasons).toContain('genre:Hip Hop');
   });
 
   it('returns tracks from real DB when no preferences set', async () => {
