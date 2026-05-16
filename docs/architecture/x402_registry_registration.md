@@ -10,19 +10,97 @@ validation is intentionally deferred because staging web/API deployment details
 are not published from this public repository. Public validation should wait
 until a hardened validation or launch origin is explicitly approved.
 
-Rechecked at: `2026-05-09T14:28:00Z`
+Rechecked at: `2026-05-16T12:00:00+02:00`
 
-| URL | Result |
-| --- | --- |
-| `/openapi.json` | Deferred |
-| `/.well-known/x402` | Deferred |
-| `/.well-known/mcp.json` | Deferred |
-| `/api/storefront/stems?limit=1` | Deferred |
+| Check | App-repo evidence | Public-origin status |
+| --- | --- | --- |
+| `GET /openapi.json` | `OpenApiController`, `OpenApiService`, `openapi.controller.spec.ts` | Deferred until approved validation origin |
+| `GET /.well-known/x402` | `WellKnownController`, `buildWellKnownDocument`, `openapi.controller.spec.ts` | Deferred until approved validation origin |
+| `GET /.well-known/mcp.json` | `WellKnownController`, `buildMcpWellKnownDocument`, `openapi.controller.spec.ts` | Deferred until approved validation origin |
+| `GET /api/storefront/stems?limit=1` | `StorefrontController`, `StorefrontService`, `storefront.service.spec.ts` | Deferred until seeded public origin |
+| `GET /api/stems/:stemId/x402/info` | `X402Controller`, `buildStemX402Quote`, `storefront.service.spec.ts` | Deferred until seeded public origin |
+| `GET /api/stems/:stemId/x402` unpaid challenge | `X402Middleware`, `X402PaymentService`, `x402.controller.http.spec.ts` | Deferred until seeded public origin |
 
 These 404s are not a product bug to fix by republishing staging. They are the
 current operational posture until there is a hardened public validation window
 or production launch target with capacity and abuse controls in place. Concrete
 staging URLs and deployment details belong in the private IaC repository.
+
+## #783 Deferral Decision
+
+Issue [#783](https://github.com/akoita/resonate/issues/783) closes the public
+app-repo decision to **not** run x402scan, mppscan, Agentic.Market, or
+AgentCash registry validation against unpublished staging hosts.
+
+Validation may resume only when all of the following are true:
+
+- An explicit public validation origin and time window are approved by the
+  project owner.
+- The origin is intended to receive scanner, bot, and adversarial probing
+  traffic.
+- The backend is deployed with `X402_ENABLED=true`, a valid
+  `X402_PAYOUT_ADDRESS`, and either the Base Sepolia or Base x402 profile.
+- The public storefront is seeded with at least one clean, purchasable stem that
+  has canonical USDC pricing.
+- Basic rate limiting, abuse-response ownership, and payment-path observability
+  are active for the validation window.
+- The validation run records scanner receipts here without publishing private
+  staging URLs.
+
+Until those gates are met, the expected result for registry validation is
+`Deferred`, not `Failed`.
+
+## Validation Window Runbook
+
+Use this checklist only after the public validation origin/window is approved.
+Do not replace `PUBLIC_API_ORIGIN` with a private staging URL in commits, issue
+comments, PR descriptions, or public logs.
+
+```bash
+export PUBLIC_API_ORIGIN="https://<approved-public-api-origin>"
+
+curl -fsS "$PUBLIC_API_ORIGIN/openapi.json" >/tmp/resonate-openapi.json
+curl -fsS "$PUBLIC_API_ORIGIN/.well-known/x402" >/tmp/resonate-x402.json
+curl -fsS "$PUBLIC_API_ORIGIN/.well-known/mcp.json" >/tmp/resonate-mcp.json
+curl -fsS "$PUBLIC_API_ORIGIN/api/storefront/stems?limit=1" >/tmp/resonate-storefront.json
+
+node - <<'NODE'
+const fs = require('node:fs');
+const storefront = JSON.parse(fs.readFileSync('/tmp/resonate-storefront.json', 'utf8'));
+const stem = storefront.items?.[0];
+if (!stem?.id) throw new Error('No public purchasable stem returned');
+if (stem.price?.currency !== 'USDC') throw new Error('Stem price is not canonical USDC');
+console.log(stem.id);
+NODE
+```
+
+Then run the concrete-stem payment checks:
+
+```bash
+export STEM_ID="<stem-id-from-storefront>"
+
+curl -fsS "$PUBLIC_API_ORIGIN/api/stems/$STEM_ID/x402/info" >/tmp/resonate-x402-info.json
+curl -isS "$PUBLIC_API_ORIGIN/api/stems/$STEM_ID/x402" >/tmp/resonate-x402-challenge.txt
+grep -i '^HTTP/.* 402' /tmp/resonate-x402-challenge.txt
+grep -i '^payment-required:' /tmp/resonate-x402-challenge.txt
+```
+
+Only after those checks pass should scanners be pointed at the public origin.
+Capture the scanner timestamps, resource counts, origin IDs, and any failure
+details in this document.
+
+## Validation Observability Expectations
+
+For the public window, operators should be able to answer:
+
+- How many unpaid x402 challenges were issued per route and stem?
+- How many retries used `PAYMENT-SIGNATURE` versus legacy `X-PAYMENT`?
+- How many facilitator verification, settlement, and receipt issuance attempts
+  succeeded or failed?
+- Which failures were expected unpaid probes, invalid proofs, rate limits,
+  missing seeded data, or facilitator/network errors?
+- Whether scanner traffic caused API latency, error rate, queue depth, or spend
+  anomalies outside the documented SLO envelope.
 
 ## Previous Submission Attempt
 
@@ -152,6 +230,6 @@ the successful resource count or registry ID.
 
 The current tracker for this deployment/registry follow-up is
 [#783](https://github.com/akoita/resonate/issues/783). The parent AgentCash epic
-[#499](https://github.com/akoita/resonate/issues/499) should remain open until
-that validation is complete or explicitly moved to a separate operational
-roadmap.
+[#499](https://github.com/akoita/resonate/issues/499) is closed for the shipped
+app-foundation work; future public scanner runs are operational launch-window
+work and should not reopen private staging details in this public repository.
