@@ -114,6 +114,11 @@ For a discoverable index of product and platform capabilities, see the
 implemented, partial, planned, or retired, and links to usage/testing notes for
 each durable feature.
 
+Node dependency installs are hardened with npm 11 and a seven-day minimum
+release age. See the
+[npm supply-chain hardening guide](docs/operations/npm_supply_chain_hardening.md)
+before adding or upgrading packages.
+
 ---
 
 ## 🚀 Quick Start
@@ -142,6 +147,7 @@ Two AA modes are available — see [AA Integration](docs/account-abstraction/acc
 
 ```bash
 # 0. Install dependencies (once per clone)
+npm install -g npm@11.14.1
 cd contracts && ./scripts/install-deps.sh
 cd ../backend && npm ci
 cd ../web && npm ci --legacy-peer-deps

@@ -2,7 +2,8 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
+RUN npm install -g npm@11.14.1
 RUN npm ci --legacy-peer-deps
 
 # ---- Stage 2: Build ----

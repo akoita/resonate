@@ -411,3 +411,81 @@ git diff --check
 rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|gho_[A-Za-z0-9_]+|sk-[A-Za-z0-9]' backend/src/modules/recommendations/recommendations.service.ts backend/src/tests/recommendations.integration.spec.ts web/src/app/page.tsx web/src/lib/api.ts web/src/lib/api.test.ts web/src/styles/home-nextgen.css docs/features/README.md docs/features/agent-commerce-runtime.md
 rg -n 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/recommendations/recommendations.service.ts backend/src/tests/recommendations.integration.spec.ts web/src/app/page.tsx web/src/lib/api.ts web/src/lib/api.test.ts
 ```
+
+## Addendum: #806 npm Supply-Chain Hardening
+
+Reviewed the package-manager hardening change for npm install, CI, Docker, and
+runtime-startup behavior. No Critical or High findings were identified in the
+changed code.
+
+### Scope
+
+- `.npmrc`
+- `backend/.npmrc`
+- `web/.npmrc`
+- `.github/actions/setup-npm-hardened/action.yml`
+- `.github/workflows/ci.yml`
+- `scripts/check-npm-lock-sources.mjs`
+- `package.json`
+- `backend/package.json`
+- `web/package.json`
+- `backend/Dockerfile`
+- `web/Dockerfile`
+- `docs/operations/npm_supply_chain_hardening.md`
+- dependency lockfile metadata updates
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none.
+- Low: existing npm audit advisories remain in the dependency graph and require
+  separate dependency-remediation work.
+
+### Notes
+
+- npm is pinned to `11.14.1` in package metadata, CI, and Docker installs so
+  npm 11 `min-release-age` enforcement is available.
+- `.npmrc` enables `min-release-age=7` and `engine-strict=true`; the web
+  workspace keeps `legacy-peer-deps=true` to preserve the current peer-dependency
+  resolution behavior.
+- CI adds a lockfile source scan that rejects git, tarball, or unexpected
+  registry sources in committed npm lockfiles.
+- Backend Docker no longer uses runtime `npx` for migrations. The Prisma CLI is
+  installed from the committed backend lockfile and executed from
+  `node_modules`.
+- The change does not introduce new secrets, credential material, public
+  endpoints, dynamic SQL, or new file upload/parsing surfaces.
+- Existing npm audit advisories are not resolved by this package-manager
+  hardening PR; the new controls reduce future compromised-release exposure and
+  install-source drift.
+
+### Commands Run
+
+```bash
+npm install -g npm@11.14.1
+npm install --package-lock-only --ignore-scripts
+cd backend && npm install --package-lock-only --ignore-scripts
+cd web && npm install --package-lock-only --ignore-scripts --legacy-peer-deps
+npm ci --ignore-scripts
+cd backend && npm ci
+cd web && npm ci --legacy-peer-deps
+npm run security:lock-sources
+cd backend && npm run lint
+cd backend && npm run test
+cd web && npm run lint
+cd web && npm run build
+cd web && npm run test:unit
+docker build --target deps -t resonate-backend-npm-hardening-check ./backend
+docker build --target deps -t resonate-web-npm-hardening-check ./web
+docker build -t resonate-backend-npm-hardening-runtime-check ./backend
+docker run --rm --entrypoint sh resonate-backend-npm-hardening-runtime-check -c 'test -x ./node_modules/.bin/prisma && ./node_modules/.bin/prisma --version | head -1'
+python3 - <<'PY'
+from pathlib import Path
+import yaml
+for path in ['.github/workflows/ci.yml', '.github/actions/setup-npm-hardened/action.yml']:
+    yaml.safe_load(Path(path).read_text())
+PY
+git diff --check
+rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|gho_[A-Za-z0-9_]+|sk-[A-Za-z0-9]'
+```

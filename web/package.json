@@ -2,6 +2,11 @@
   "name": "web",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@11.14.1",
+  "engines": {
+    "node": ">=20.17.0",
+    "npm": ">=11.10.0"
+  },
   "scripts": {
     "dev": "NODE_OPTIONS='--max-old-space-size=4096' next dev -p 3001 --webpack",
     "build": "next build",

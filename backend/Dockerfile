@@ -7,7 +7,8 @@ WORKDIR /app
 RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
+RUN npm install -g npm@11.14.1
 RUN npm ci
 
 # ---- Stage 2: Build ----
@@ -15,7 +16,7 @@ FROM deps AS build
 
 # Copy Prisma schema and generate client
 COPY prisma ./prisma
-RUN npx prisma generate
+RUN ./node_modules/.bin/prisma generate
 
 # Copy source and build
 COPY tsconfig.json ./
@@ -37,7 +38,7 @@ RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists
 # Copy production dependencies, Prisma schema, and generated client.
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY prisma ./prisma
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 
 # Copy compiled output
 COPY --from=build /app/dist ./dist
@@ -53,4 +54,4 @@ EXPOSE 3000
 USER node
 
 # Run migrations then start
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && node dist/main.js"]

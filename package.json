@@ -1,9 +1,15 @@
 {
   "name": "resonate",
   "private": true,
+  "packageManager": "npm@11.14.1",
+  "engines": {
+    "node": ">=20.17.0",
+    "npm": ">=11.10.0"
+  },
   "scripts": {
     "prepare": "husky",
     "lint:staged": "lint-staged",
+    "security:lock-sources": "node scripts/check-npm-lock-sources.mjs",
     "test:web": "npm --prefix web run test:unit --"
   },
   "devDependencies": {
