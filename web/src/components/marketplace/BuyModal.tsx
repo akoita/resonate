@@ -94,6 +94,16 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   const onchainIsNative = isNativePaymentToken(listing?.paymentToken);
   const onchainDecimals = onchainAsset?.decimals ?? 18;
   const onchainIsStablecoin = onchainAsset?.kind === "stablecoin";
+  const onchainAssetLabel = onchainAsset
+    ? `${onchainAsset.name} (${onchainSymbol})`
+    : onchainIsNative
+      ? `Native ${onchainSymbol}`
+      : onchainSymbol;
+  const onchainTokenLabel = listing?.paymentToken
+    ? onchainIsNative
+      ? "Native token"
+      : `${listing.paymentToken.slice(0, 6)}…${listing.paymentToken.slice(-4)}`
+    : "-";
   const formatOnchainAmount = (amountUnits: bigint) =>
     `${formatPaymentAmount(amountUnits, onchainDecimals)} ${onchainSymbol}`;
   const x402DownloadUrl = useMemo(
@@ -339,14 +349,20 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                     {formatOnchainAmount(quote.totalPrice)}
                   </span>
                 </div>
+                <div className="buy-modal__breakdown-row">
+                  <span className="buy-modal__breakdown-label">Settlement asset</span>
+                  <span className="buy-modal__breakdown-value">
+                    {onchainAssetLabel} · {onchainTokenLabel}
+                  </span>
+                </div>
                 {!onchainIsNative && (
                   <div className="buy-modal__breakdown-note">
-                    Direct on-chain checkout will approve {onchainSymbol} and purchase in one smart-account operation.
+                    Direct on-chain checkout signs a wallet transaction that approves {onchainSymbol} and buys the listed stem in one smart-account operation.
                   </div>
                 )}
                 {onchainIsNative && (
                   <div className="buy-modal__breakdown-note">
-                    This listing was created with native {onchainSymbol}; stablecoin listings use the same on-chain rail with ERC-20 approval.
+                    This legacy listing uses native {onchainSymbol}; stablecoin listings use the same wallet rail with ERC-20 approval.
                   </div>
                 )}
               </div>
@@ -482,7 +498,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                   disabled={pending || !quote}
                 >
                   {pending && <span className="buy-modal__spinner" />}
-                  {pending ? "Confirming…" : "Confirm Purchase"}
+                  {pending ? "Confirming…" : "Confirm wallet purchase"}
                 </button>
               ) : (
                 <button

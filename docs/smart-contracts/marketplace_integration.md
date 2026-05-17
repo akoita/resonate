@@ -61,9 +61,10 @@ The AI agent prioritizes tracks with active marketplace listings for real on-cha
 
 The direct on-chain buy path reads each listing's `paymentToken`. Native-token
 listings send value with the marketplace purchase call. ERC-20 listings batch a
-token approval and marketplace purchase in one smart-account operation, so a
-USDC listing remains a stablecoin purchase even though it uses the on-chain
-wallet transaction rail.
+token approval and marketplace purchase in one smart-account operation. The
+transaction shape is planned in `web/src/lib/onchainCheckout.ts`, so a USDC
+listing remains a stablecoin purchase even though it uses the on-chain wallet
+transaction rail.
 
 The x402 rail records a durable `X402Settlement` row for paid downloads and
 links the receipt to the active marketplace listing when one exists. Until x402

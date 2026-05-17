@@ -159,16 +159,17 @@ Current behavior:
   the same receipt; trying to redeem it for a different stem is rejected.
 - Direct marketplace checkout submits a wallet transaction against
   `StemMarketplaceV2`; native listings pay with the chain coin, while ERC-20
-  listings approve the payment token and buy in one smart-account operation.
+  listings use `web/src/lib/onchainCheckout.ts` to plan an approval plus
+  marketplace buy in one smart-account operation.
 - Marketplace listing APIs expose `paymentToken` so browser clients can display
   the on-chain rail as a stablecoin rail when the listing uses a configured
   stablecoin such as USDC.
 
-Known limitation tracked by issue #841: contract-backed x402 settlement now
-covers active marketplace ownership purchases when explicitly enabled and when
-the listing is priced in the configured x402 stablecoin. License NFT purchase
-semantics and non-matching listing payment assets still remain future work and
-continue to surface as `settlement.status = "contract_required_missing"`.
+Known limitation: contract-backed x402 settlement now covers active marketplace
+ownership purchases when explicitly enabled and when the listing is priced in
+the configured x402 stablecoin. License NFT purchase semantics and non-matching
+listing payment assets still remain future work and continue to surface as
+`settlement.status = "contract_required_missing"`.
 
 ## Provenance and Receipts
 

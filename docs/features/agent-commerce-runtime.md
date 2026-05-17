@@ -2,7 +2,7 @@
 title: "Agent Commerce Runtime"
 status: implemented
 owner: "@akoita"
-issues: [805, 812, 841]
+issues: [805, 812, 841, 846]
 introduced_by: [808, 810, 811, 821, 823, 824]
 ---
 
@@ -44,7 +44,7 @@ Available now:
 - `PolicyGuardService` centralizes pre-execution checks for budget and license policy.
 - `PaymentRouterService` centralizes ERC-4337 marketplace and x402 rail execution behind one result envelope.
 - The x402 rail builds a canonical challenge from `StemPricing` or a matching active stablecoin listing, blocks policy failures before verification, verifies/settles payment proofs, records `X402Settlement` plus `x402.purchase` provenance, and returns a structured receipt with explicit settlement status. When contract settlement is enabled, listed-stem x402 redemptions execute marketplace `buyFor` to the requested buyer wallet before download.
-- The listener purchase modal defaults to the stablecoin x402 rail when it is available, presents the quote in USD first, and settles the download in USDC. The direct on-chain option remains available as a separate wallet transaction rail and uses the listing payment asset, including ERC-20 stablecoins when the listing was created with one.
+- The listener purchase modal defaults to the stablecoin x402 rail when it is available, presents the quote in USD first, and settles the download in USDC. The direct on-chain option remains available as a separate wallet transaction rail, displays the listing payment asset, and uses a tested approval-plus-buy transaction plan for ERC-20 stablecoin listings.
 - The AI DJ marketplace buy path routes through `PaymentRouterService` before calling the ERC-4337 purchase rail.
 - Session recommendation events publish `agent.track_selected` with `strategy: "runtime"`.
 
