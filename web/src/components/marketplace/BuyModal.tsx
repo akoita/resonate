@@ -22,6 +22,7 @@ import {
   isNativePaymentToken,
   paymentAssetSymbol,
 } from "../../lib/payments";
+import { hasStablecoinMarketplaceAsset } from "../../lib/listingPricing";
 import { getX402ChainName } from "../../lib/x402BrowserWallet";
 import { payStemWithX402SmartAccount } from "../../lib/x402SmartAccountPay";
 import type { X402PaymentResult } from "../../lib/x402Pay";
@@ -94,6 +95,11 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   const onchainIsNative = isNativePaymentToken(listing?.paymentToken);
   const onchainDecimals = onchainAsset?.decimals ?? 18;
   const onchainIsStablecoin = onchainAsset?.kind === "stablecoin";
+  const stablecoinMarketplaceConfigured = hasStablecoinMarketplaceAsset({
+    assets: paymentAssets,
+    chainId,
+  });
+  const isLegacyNativeListing = Boolean(listing) && onchainIsNative && stablecoinMarketplaceConfigured;
   const onchainAssetLabel = onchainAsset
     ? `${onchainAsset.name} (${onchainSymbol})`
     : onchainIsNative
@@ -268,15 +274,18 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                   aria-selected={activePaymentMethod === "onchain"}
                   className={`buy-modal__pay-method${activePaymentMethod === "onchain" ? " buy-modal__pay-method--active" : ""}`}
                   onClick={() => setPaymentMethod("onchain")}
-                  disabled={pending || x402Status !== null}
+                  disabled={pending || x402Status !== null || isLegacyNativeListing}
+                  title={isLegacyNativeListing ? "This listing was created with native ETH and must be relisted in stablecoin for wallet checkout." : undefined}
                 >
                   <span>{getCheckoutRailLabel("onchain")}</span>
                   <span className="buy-modal__pay-method-sub">
-                    {getCheckoutRailSubLabel({
-                      method: "onchain",
-                      symbol: onchainSymbol,
-                      isStablecoin: onchainIsStablecoin,
-                    })}
+                    {isLegacyNativeListing
+                      ? `Legacy listing · ${onchainSymbol}`
+                      : getCheckoutRailSubLabel({
+                          method: "onchain",
+                          symbol: onchainSymbol,
+                          isStablecoin: onchainIsStablecoin,
+                        })}
                   </span>
                 </button>
               </div>
@@ -362,7 +371,9 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 )}
                 {onchainIsNative && (
                   <div className="buy-modal__breakdown-note">
-                    This legacy listing uses native {onchainSymbol}; stablecoin listings use the same wallet rail with ERC-20 approval.
+                    {isLegacyNativeListing
+                      ? `This listing was created with legacy native ${onchainSymbol}. Re-list it with the configured marketplace stablecoin to enable on-chain wallet checkout.`
+                      : `This legacy listing uses native ${onchainSymbol}; stablecoin listings use the same wallet rail with ERC-20 approval.`}
                   </div>
                 )}
               </div>
@@ -424,6 +435,11 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
             {activePaymentMethod === "onchain" && error && (
               <div className="buy-modal__alert buy-modal__alert--error">
                 {error.message}
+              </div>
+            )}
+            {activePaymentMethod === "onchain" && isLegacyNativeListing && (
+              <div className="buy-modal__alert buy-modal__alert--error">
+                This listing is denominated in native {onchainSymbol}. Current on-chain marketplace checkout is stablecoin-native, so this item must be re-listed in the configured stablecoin before wallet purchase.
               </div>
             )}
             {activePaymentMethod === "x402" && x402Error && (
@@ -495,7 +511,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 <button
                   className="buy-modal__btn buy-modal__btn--confirm"
                   onClick={handleBuy}
-                  disabled={pending || !quote}
+                  disabled={pending || !quote || isLegacyNativeListing}
                 >
                   {pending && <span className="buy-modal__spinner" />}
                   {pending ? "Confirming…" : "Confirm wallet purchase"}

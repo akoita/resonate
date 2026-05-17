@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   convertCanonicalListingPriceToAssetUnits,
   formatListingPrice,
+  hasStablecoinMarketplaceAsset,
   listingPaymentToken,
   parseListingPriceUnits,
   selectDefaultMarketplaceListingAsset,
@@ -44,6 +45,7 @@ describe("marketplace listing pricing", () => {
 
     expect(asset?.assetId).toBe(usdc.assetId);
     expect(listingPaymentToken(asset)).toBe(usdc.tokenAddress);
+    expect(hasStablecoinMarketplaceAsset({ assets: [native, usdc], chainId: 84532 })).toBe(true);
   });
 
   it("falls back to native listings when no stablecoin marketplace asset exists", () => {
@@ -55,6 +57,7 @@ describe("marketplace listing pricing", () => {
 
     expect(asset?.assetId).toBe(native.assetId);
     expect(listingPaymentToken(asset)).toBe(ZERO_PAYMENT_TOKEN);
+    expect(hasStablecoinMarketplaceAsset({ assets: [native], chainId: 84532 })).toBe(false);
   });
 
   it("parses and formats stablecoin prices with token decimals", () => {
