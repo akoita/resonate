@@ -2,6 +2,32 @@
 
 > **Goal:** Define how full audio tracks and stems coexist commercially on Resonate, producing a model that is original, defensible, and valuable to all user personas.
 
+## Executive Positioning
+
+Resonate is an AI-native music platform, not another streaming app. It uses AI,
+agent interfaces, and blockchain rails as product primitives for new experiences
+in and around music: creation, listening, remixing, licensing, agent commerce,
+fan coordination, live demand, programmable rights, and machine-to-machine
+catalog access.
+
+Stems and escrow-backed fan campaigns are first proof points, not the whole
+company. The same foundation also supports agentic commerce, MCP tools,
+x402-native checkout, machine-readable receipts, autonomous discovery and
+purchase flows, programmable royalties, and future music experiences that do not
+fit the shape of a traditional streaming product. AI agents become a new class
+of buyer, able to discover catalog, quote usage, pay in stablecoin, and receive
+machine-readable receipts without accounts or dashboards.
+
+The platform combines four connected loops:
+
+- **Creation** — artists generate or upload tracks and split them into stems.
+- **Discovery** — listeners and agents discover catalog through the app, API,
+  and MCP surfaces.
+- **Commerce** — licenses, collectibles, access, and other music-native assets
+  can sell through stablecoin-native marketplace and x402 flows.
+- **Demand formation** — fan-funded escrow campaigns turn city-level show demand
+  into a money-backed signal before artists take production risk.
+
 ---
 
 ## 1. The Core Tension
@@ -34,7 +60,7 @@ Spotify's economics are brutal: ~$0.003/stream, requiring billions of plays to p
 | **BeatStars**   | ❌                   | ✅ Beats/instrumentals | ❌                | ❌                  | Marketplace (per-license)       |
 | **STEMS**       | ❌                   | ✅ Full stems          | ❌                | ✅ (NFTs)           | Per-stem purchase               |
 | **Udio/Suno**   | AI-generated         | ❌                     | ✅ Generative     | ❌                  | Subscription                    |
-| **Resonate**    | ✅ (source material) | ✅ (AI-separated)      | ✅ (AI DJ agents) | ✅ (ERC-1155, 4337) | **?**                           |
+| **Resonate**    | ✅ (source material) | ✅ (AI-separated)      | ✅ (AI DJ agents) | ✅ (ERC-1155, 4337) | Pro + licensing + escrow-backed fan campaigns |
 
 ### Key Gap in the Market
 
@@ -42,18 +68,68 @@ Nobody combines **listening** (the discovery moment) with **licensing** (the com
 
 ---
 
-## 3. Recommended Model: "Listen → Discover → License"
+## 3. Recommended Model: "Listen → Signal → License"
 
 ### The Thesis
 
-> **Full tracks are the storefront. Stems are the product.**
+> **Full tracks are the storefront. Stems, campaigns, agent tools, and programmable rights are early primitives. The broader product is a new generation of music app.**
 
-The full track is how users _discover_ music on Resonate. Stems are what they _buy_. The platform's unique value is collapsing the discovery-to-licensing pipeline into a single, AI-assisted flow.
+The full track is how users _discover_ music on Resonate. Stems are an early
+asset type that people and agents can buy, license, remix, or automate around.
+Campaigns are an early fan coordination primitive. MCP and x402 make the catalog
+addressable by software agents. The platform's unique value is collapsing
+discovery, commerce, rights, fan demand, and agent access into one AI-assisted
+music app.
 
-### Three Revenue Layers
+Resonate Shows adds a second, highly legible fan-commerce wedge:
+
+> **Fans bring the show. Artists get a booking signal backed by money, not likes.**
+
+Where stem licensing answers "who wants to reuse this music?", escrow-backed
+campaigns answer "where is there enough committed demand for the artist to act?"
+The same listener base that discovers an artist can coordinate around a city,
+threshold, deadline, and pledge tiers. If the signal clears, the artist has
+evidence to start a booking conversation; if it misses, pledges refund
+automatically instead of becoming a vague donation.
+
+### External Market Signal: Japanese Music Touring Risk
+
+On May 17, 2026, [NANO-ナノ-OFFICIAL](https://x.com/nanonano_me/status/2055828277185687878)
+published a public English-language post to overseas Japanese music fans
+explaining why more Japanese artists do not tour internationally. The stated
+blocker was not lack of desire; it was the risk and cost of selling enough
+tickets outside Japan, especially when only a small percentage of artists have
+major label or agency support for international promotion.
+
+At review time, public X metadata identified the account as a Tokyo-based
+musician account with roughly 172k followers. Treat the follower count as
+directional and refresh it before investor or press use, but the strategic
+signal is durable: a popular niche artist articulated the exact job
+escrow-backed campaigns serve.
+
+Implications for Resonate:
+
+- Soft engagement is insufficient. Follows, comments, saves, streams, and shares
+  help artists, but they do not reliably de-risk a venue deposit, travel budget,
+  or promoter conversation.
+- Fans need a concrete action beyond "support more." A campaign can turn
+  interest into pledge amount, city, deadline, backer count, and refund terms.
+- Artists need demand evidence before committing. A funded campaign becomes a
+  booking signal with economic weight, not a vanity metric.
+- International niche scenes are an ideal beachhead. Japanese music fans outside
+  Japan, anime music communities, diaspora scenes, underground rap, metal,
+  Afrobeats, and electronic subcultures often have globally distributed demand
+  that is passionate but hard to aggregate.
+
+### Four Revenue Layers
 
 ```
 ┌────────────────────────────────────────────────────────────┐
+│  LAYER 4: ESCROW-BACKED FAN CAMPAIGNS                      │
+│  City/show/drop campaigns with pledge tiers, deadlines,     │
+│  thresholds, refund logic, and artist booking signals       │
+│  Revenue: Campaign fees + ticket/drop conversion            │
+├────────────────────────────────────────────────────────────┤
 │  LAYER 3: STEM LICENSING MARKETPLACE                       │
 │  Per-license purchases (Personal / Remix / Commercial /    │
 │  Sync / Sample / Broadcast)                                │
@@ -92,7 +168,7 @@ The full track is how users _discover_ music on Resonate. Stems are what they _b
 **Artist incentive to upload here vs. Spotify?** On Resonate, their music is not just streamed — it's a _storefront_ for stem licensing. Every play is a potential licensing lead. Artists earn from stems, not from streams.
 
 > [!IMPORTANT]
-> Free streaming is a **marketing cost**, not a revenue center. It exists solely to funnel users toward Layer 2 and Layer 3.
+> Free streaming is a **marketing cost**, not a revenue center. It exists solely to funnel users toward Layer 2, Layer 3, and Layer 4.
 
 ### Layer 2 — Resonate Pro (the Engine)
 
@@ -154,6 +230,32 @@ This is Resonate's primary revenue engine and its deepest moat.
 3. **AI-assisted negotiation** — The agent can negotiate license terms within the buyer's budget. No more back-and-forth emails with labels.
 4. **Stem-level granularity** — License just the vocals, just the drums, or any combination. Not possible on BeatStars (whole beat or nothing).
 
+### Layer 4 — Escrow-Backed Fan Campaigns (the Demand Signal)
+
+Shows are the first campaign type. They let listeners prove city-level demand
+before an artist takes booking risk.
+
+| Campaign Element | Purpose |
+| --- | --- |
+| Artist + city | Makes demand local and actionable. |
+| Deadline | Creates a real decision point for artist teams and venues. |
+| Funding goal | Converts vague enthusiasm into production-relevant money. |
+| Backer threshold | Prevents one whale from masquerading as broad local demand. |
+| Pledge tiers | Gives fans understandable ways to signal intent. |
+| Smart-contract escrow | Keeps funds conditional and refund-first. |
+| Public campaign page | Gives artists, promoters, and fans a shared source of truth. |
+
+**Why this belongs in the business model:** every successful campaign creates
+ticket/drop conversion opportunities, campaign fees, and stronger artist
+retention. Every failed campaign still teaches the artist where demand is not yet
+production-ready, while protecting fan trust through refunds.
+
+The first beachhead is international niche music: artists with passionate global
+fans but limited certainty around which cities can support a show. Japanese music
+outside Japan is the clearest example surfaced by the NANO post, but the pattern
+also applies to diaspora scenes, underground rap, metal, Afrobeats, electronic
+subcultures, and creator-led communities.
+
 ---
 
 ## 5. How the Model Maps to Existing Infrastructure
@@ -166,16 +268,18 @@ The proposed model leverages what's already built:
 | AI DJ Agent              | Selector/Mixer/Negotiator services, Agent wallet, Sonic Radar | ✅ Built          |
 | Stem preview in player   | Stem separation (Demucs), Mixer UI, stem toggles              | ✅ Built          |
 | Agent wallet + budget    | ERC-4337, ZeroDev, session keys, budget caps                  | ✅ Built          |
+| Shows web wedge          | Home hero, `/shows`, `/shows/sennarin-paris`, seeded campaigns | 🟡 Partial        |
 | Stem marketplace         | StemNFT, StemMarketplaceV2, IndexerService                    | ✅ Built          |
 | License types            | LicenseType enum, StemPricing model, pricing panel            | ✅ Built          |
 | On-chain royalties       | EIP-2981, 0xSplits, RoyaltyPayment model                      | ✅ Built          |
 | License NFTs             | LicenseRegistry contract interface                            | 📋 Designed (RFC) |
 | Recursive royalties      | RoyaltySplitter, AncestryTracker interfaces                   | 📋 Designed (RFC) |
+| Campaign contract/API    | Campaign-specific escrow, pledge flow, `/api/campaigns`       | ❌ Not started    |
 | Subscription billing     | —                                                             | ❌ Not started    |
 | Free tier access control | —                                                             | ❌ Not started    |
 
 > [!NOTE]
-> The only net-new infrastructure needed is subscription billing (Stripe or on-chain subscription) and tier-based access gating. Everything else is already built or designed.
+> For the licensing/subscription model, the only net-new infrastructure needed is subscription billing (Stripe or on-chain subscription) and tier-based access gating. Shows adds a separate follow-up track: campaign-specific escrow, pledge settlement, campaign APIs, and artist/admin campaign creation.
 
 ---
 

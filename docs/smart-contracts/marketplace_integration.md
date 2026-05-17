@@ -71,6 +71,16 @@ redemption executes or proves the marketplace contract purchase, those receipts
 use `settlement.status = "contract_required_missing"` rather than claiming the
 same ownership state as a direct `StemMarketplaceV2.buy`.
 
+`StemMarketplaceV2` also exposes `buyFor(listingId, amount, recipient)` for
+server-mediated rails such as x402. The original `buy(listingId, amount)` keeps
+transferring ownership to `msg.sender`; `buyFor` collects payment from
+`msg.sender` but transfers the purchased ERC-1155 stem units to `recipient` and
+emits `Sold(listingId, recipient, amount, totalPaid)`. When
+`X402_CONTRACT_SETTLEMENT_ENABLED=true`, the backend verifies the x402 payment,
+requires `X-Resonate-Buyer` or `?buyer=`, approves the listing payment token
+from the payout wallet, calls `buyFor`, waits for `Sold`, and only then serves
+the paid stem with `settlement.status = "contract_backed"`.
+
 ```typescript
 import { useMintStem, useListStem, useBuyQuote } from "@/hooks/useContracts";
 

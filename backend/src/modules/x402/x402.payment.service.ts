@@ -1,5 +1,6 @@
 import { Injectable, Logger, Optional } from "@nestjs/common";
 import path from "node:path";
+import { formatUnits } from "viem";
 import { PaymentsService } from "../payments/payments.service";
 import { X402Config } from "./x402.config";
 import { formatUsdcAmount, QuoteLicenseKey } from "./x402.quote";
@@ -16,6 +17,7 @@ const {
 export type X402ProtectedResource = {
   stemId: string;
   licenseType?: QuoteLicenseKey;
+  contractSettlement?: boolean;
   resourceUrl: string;
   description: string;
   mimeType?: string | null;
@@ -42,8 +44,15 @@ export class X402PaymentService {
     const pricing = await prisma.stemPricing.findUnique({
       where: { stemId: resource.stemId },
     });
-    const amountUsd = this.resolveLicenseAmountUsd(pricing, licenseType);
     const assetInfo = this.resolveAssetInfo();
+    const amountUsd = await this.resolvePaymentAmountUsd({
+      stemId: resource.stemId,
+      pricing,
+      licenseType,
+      contractSettlement: resource.contractSettlement === true,
+      assetAddress: assetInfo.address,
+      assetDecimals: assetInfo.decimals,
+    });
     const displayPrice = `${formatUsdcAmount(amountUsd)} ${assetInfo.symbol}`;
 
     return {
@@ -142,11 +151,51 @@ export class X402PaymentService {
     return (intPart + paddedDec).replace(/^0+/, "") || "0";
   }
 
-  private resolveAssetInfo() {
+  resolveAssetInfo() {
     return resolveX402AssetInfo(
       this.x402Config.network,
       this.paymentsService?.getPaymentAssets(this.x402Config.chainId).assets,
     );
+  }
+
+  private async resolvePaymentAmountUsd(input: {
+    stemId: string;
+    pricing:
+      | {
+          basePlayPriceUsd?: number | null;
+          remixLicenseUsd?: number | null;
+          commercialLicenseUsd?: number | null;
+        }
+      | null
+      | undefined;
+    licenseType: QuoteLicenseKey;
+    contractSettlement: boolean;
+    assetAddress: string;
+    assetDecimals: number;
+  }) {
+    if (input.contractSettlement && this.x402Config.contractSettlementEnabled) {
+      const listing = await prisma.stemListing.findFirst({
+        where: {
+          stemId: input.stemId,
+          status: "active",
+          amount: { gt: 0 },
+          expiresAt: { gt: new Date() },
+        },
+        select: {
+          pricePerUnit: true,
+          paymentToken: true,
+        },
+        orderBy: { listedAt: "desc" },
+      });
+      if (
+        listing &&
+        listing.paymentToken.toLowerCase() === input.assetAddress.toLowerCase()
+      ) {
+        return Number(formatUnits(BigInt(listing.pricePerUnit), input.assetDecimals));
+      }
+    }
+
+    return this.resolveLicenseAmountUsd(input.pricing, input.licenseType);
   }
 
   private async verifyPayment(

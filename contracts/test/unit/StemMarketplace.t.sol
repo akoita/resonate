@@ -31,6 +31,7 @@ contract StemMarketplaceTest is Test {
     address public royaltyReceiver = makeAddr("royaltyReceiver");
     address public seller = makeAddr("seller");
     address public buyer = makeAddr("buyer");
+    address public recipient = makeAddr("recipient");
     address public authorizer;
 
     uint256 constant PROTOCOL_FEE_BPS = 250; // 2.5%
@@ -612,6 +613,76 @@ contract StemMarketplaceTest is Test {
         assertTrue(paymentToken.balanceOf(seller) > sellerBefore);
     }
 
+    function test_BuyFor_WithERC20_TransfersStemToRecipient() public {
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(
+            1,
+            50,
+            100e18,
+            address(paymentToken),
+            LISTING_DURATION
+        );
+
+        uint256 buyerBefore = paymentToken.balanceOf(buyer);
+        uint256 sellerBefore = paymentToken.balanceOf(seller);
+        uint256 recipientBefore = stemNFT.balanceOf(recipient, 1);
+
+        vm.prank(buyer);
+        marketplace.buyFor(listingId, 10, recipient);
+
+        assertEq(buyerBefore - paymentToken.balanceOf(buyer), 1000e18);
+        assertTrue(paymentToken.balanceOf(seller) > sellerBefore);
+        assertEq(stemNFT.balanceOf(recipient, 1) - recipientBefore, 10);
+        assertEq(stemNFT.balanceOf(buyer, 1), 0);
+    }
+
+    function test_BuyFor_EmitsRecipientAsBuyer() public {
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(
+            1,
+            50,
+            100_000000,
+            address(usdc),
+            LISTING_DURATION
+        );
+
+        vm.expectEmit(true, true, false, true);
+        emit Sold(listingId, recipient, 1, 100_000000);
+
+        vm.prank(buyer);
+        marketplace.buyFor(listingId, 1, recipient);
+    }
+
+    function test_BuyFor_RevertZeroRecipient() public {
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(
+            1,
+            50,
+            100e18,
+            address(paymentToken),
+            LISTING_DURATION
+        );
+
+        vm.prank(buyer);
+        vm.expectRevert(StemMarketplaceV2.InvalidRecipient.selector);
+        marketplace.buyFor(listingId, 1, address(0));
+    }
+
+    function test_BuyFor_RevertSellerRecipient() public {
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(
+            1,
+            50,
+            100e18,
+            address(paymentToken),
+            LISTING_DURATION
+        );
+
+        vm.prank(buyer);
+        vm.expectRevert(StemMarketplaceV2.CannotBuyOwnListing.selector);
+        marketplace.buyFor(listingId, 1, seller);
+    }
+
     function test_Buy_WithUSDC() public {
         vm.prank(seller);
         uint256 listingId = marketplace.list(
@@ -861,13 +932,13 @@ contract StemMarketplaceTest is Test {
         // Send ETH directly to marketplace
         vm.deal(address(marketplace), 5 ether);
 
-        address recipient = makeAddr("ethRecipient");
-        uint256 before = recipient.balance;
+        address ethRecipient = makeAddr("ethRecipient");
+        uint256 before = ethRecipient.balance;
 
         vm.prank(admin);
-        marketplace.withdrawTrappedETH(recipient);
+        marketplace.withdrawTrappedETH(ethRecipient);
 
-        assertEq(recipient.balance - before, 5 ether);
+        assertEq(ethRecipient.balance - before, 5 ether);
         assertEq(address(marketplace).balance, 0);
     }
 

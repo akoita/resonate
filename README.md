@@ -22,13 +22,51 @@
 
 ## 🌟 Overview
 
-Resonate is an on-chain music platform where artists publish programmable stem IP and both humans and AI agents can discover, license, and remix it. A machine-first API surface (x402-native, no-account checkout) keeps that same catalog usable by agents as they become first-class consumers alongside the human studio app.
+Resonate is an AI-native music platform, not another streaming app. It uses AI,
+agent interfaces, and blockchain rails as product primitives for new experiences
+in and around music: creation, listening, remixing, licensing, agent commerce,
+fan coordination, live demand, programmable rights, and machine-to-machine
+catalog access.
+
+Stems and escrow-backed fan campaigns are early proof points, not the platform's
+ceiling. The same foundation also supports agentic commerce, MCP tools,
+x402-native checkout, machine-readable receipts, autonomous discovery and
+purchase flows, programmable royalties, and future music experiences that do not
+fit the shape of a traditional streaming product. The goal is a new generation
+of music app where these capabilities feel native to the listening experience,
+not bolted on after the track ends.
+
+Artists can generate or upload music, split songs into stems, sell licensed
+assets in stablecoin, expose the same catalog to both people and agents, and use
+fan-funded escrow campaigns to measure live demand. The human app, storefront
+API, x402 payment flow, and MCP interface are peers over the same catalog, so
+listeners, creators, and agents can each participate through the surface that
+makes sense for them.
 
 Three first-class audiences, one catalog:
 
 - **Artists** — upload releases, mint stems as NFTs, price them per-license type (personal / remix / commercial), and earn royalties via an on-chain payment splitter.
 - **Listeners** — use a full music app: player, library, playlists, marketplace, an AI DJ that curates against the catalog, and curator-resolved dispute flows. Purchases are wallet-native; you own what you buy.
 - **Agents** — hit storefront endpoints, inspect licensing-aware quotes, pay over HTTP with x402, and receive machine-readable purchase proof. No account, no OAuth, no dashboard.
+
+### Resonate Shows: fan demand with economic weight
+
+Resonate Shows is one expression of the broader platform thesis: listeners can
+rally around an artist, city, deadline, and funding threshold, then turn soft
+demand into an escrow-backed campaign signal. The product promise is simple:
+
+> **Fans bring the show. Artists get a booking signal backed by money, not likes.**
+
+This matters because international touring is often blocked by demand risk, not
+only by artist popularity. Overseas fans may exist, but artists and teams still
+need credible booking signals before committing travel, venue, and production
+budget. Resonate Shows turns that pain into a product surface: city campaigns,
+pledge tiers, thresholds, smart-contract escrow, automatic refund logic, and a
+public trail artists can use before committing production budget.
+
+The current UI exposes the wedge through the home campaign hero, `/shows`, and
+`/shows/sennarin-paris`; the full campaign backend and purpose-built campaign
+contract remain follow-up work.
 
 ### Copy-paste demo: discover -> quote -> pay -> receipt
 
@@ -79,7 +117,9 @@ If you use an x402-capable client such as AgentCash, it can automate the proof e
 
 ### Product framing
 
-- **Stems are the primitive** — pricing, receipts, remix lineage, and royalties all compose on top of stem NFTs
+- **AI, agents, and blockchain are product primitives** — stems, programmable licenses, stablecoin payments, MCP tools, agent receipts, and escrow campaigns are first examples, not the full ceiling
+- **Stems unlock active listening** — pricing, receipts, remix lineage, and royalties can compose on top of stem-native assets
+- **Campaigns make demand legible** — Shows convert scattered fan enthusiasm into city-level, escrow-backed intent before artists take booking risk
 - **The app and the API are peers** — the human studio and the x402 storefront API both ride the same on-chain catalog; neither is a subset of the other
 - **Why the agent surface matters** — as AI systems become catalog consumers, a commerce path that's just `curl` + USDC + a signed receipt (no dashboard, no account, no OAuth) lands on the right side of how agents actually buy
 

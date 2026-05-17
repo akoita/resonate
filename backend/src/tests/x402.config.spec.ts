@@ -63,4 +63,24 @@ describe('X402Config', () => {
       });
     }).toThrow('X402_FACILITATOR_URL must be set explicitly for Base mainnet');
   });
+
+  it('requires a settlement private key when contract settlement is enabled', () => {
+    expect(() => {
+      createConfig({
+        X402_ENABLED: 'true',
+        X402_CONTRACT_SETTLEMENT_ENABLED: 'true',
+      });
+    }).toThrow('X402_SETTLEMENT_PRIVATE_KEY is required');
+  });
+
+  it('normalizes settlement private keys when contract settlement is enabled', () => {
+    const cfg = createConfig({
+      X402_ENABLED: 'true',
+      X402_CONTRACT_SETTLEMENT_ENABLED: 'true',
+      X402_SETTLEMENT_PRIVATE_KEY: '1'.repeat(64),
+    });
+
+    expect(cfg.contractSettlementEnabled).toBe(true);
+    expect(cfg.settlementPrivateKey).toBe(`0x${'1'.repeat(64)}`);
+  });
 });

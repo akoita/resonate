@@ -3,13 +3,16 @@ import { Request, Response } from 'express';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import {
+  createWalletClient,
   createPublicClient,
   decodeEventLog,
+  formatUnits,
   getAddress,
   http,
   type Address,
   type TransactionReceipt,
 } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
 import { base, baseSepolia, foundry } from 'viem/chains';
 import { X402Config } from './x402.config';
 import { prisma } from '../../db/prisma';
@@ -42,9 +45,12 @@ type ActiveX402Listing = {
   tokenId: bigint;
   chainId: number;
   contractAddress: string;
+  pricePerUnit: string;
+  paymentToken: string;
 };
 
 type X402SettlementReceipt = ReturnType<typeof buildStemX402Receipt>;
+type X402SettlementStatus = X402SettlementReceipt['settlement']['status'];
 
 const TX_HASH_PATTERN = /^0x[a-fA-F0-9]{64}$/;
 const ERC20_TRANSFER_EVENT = {
@@ -54,6 +60,41 @@ const ERC20_TRANSFER_EVENT = {
     { indexed: true, name: 'from', type: 'address' },
     { indexed: true, name: 'to', type: 'address' },
     { indexed: false, name: 'value', type: 'uint256' },
+  ],
+} as const;
+const ERC20_APPROVE_ABI = [
+  {
+    type: 'function',
+    name: 'approve',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+] as const;
+const MARKETPLACE_BUY_FOR_ABI = [
+  {
+    type: 'function',
+    name: 'buyFor',
+    stateMutability: 'payable',
+    inputs: [
+      { name: 'listingId', type: 'uint256' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'recipient', type: 'address' },
+    ],
+    outputs: [],
+  },
+] as const;
+const MARKETPLACE_SOLD_EVENT = {
+  type: 'event',
+  name: 'Sold',
+  inputs: [
+    { indexed: true, name: 'listingId', type: 'uint256' },
+    { indexed: true, name: 'buyer', type: 'address' },
+    { indexed: false, name: 'amount', type: 'uint256' },
+    { indexed: false, name: 'totalPaid', type: 'uint256' },
   ],
 } as const;
 
@@ -220,7 +261,6 @@ export class X402Controller {
       const pricing = await prisma.stemPricing.findUnique({
         where: { stemId: stem.id },
       });
-      const amountUsd = pricing?.basePlayPriceUsd ?? 0.05;
       const assetInfo = this.resolveAssetInfo();
       const paymentProofSha256 = this.hashPaymentProof(input.paymentProof);
       const existingSettlement = await this.findExistingSettlement({
@@ -238,6 +278,17 @@ export class X402Controller {
           return;
         }
         const receipt = existingSettlement.receipt as X402SettlementReceipt;
+        if (existingSettlement.status !== 'download_granted') {
+          res.status(HttpStatus.BAD_GATEWAY).json({
+            error: 'Contract settlement not complete',
+            message:
+              existingSettlement.contractSettlementReason ||
+              'This x402 payment has not produced a downloadable settlement.',
+            receiptId: existingSettlement.receiptId,
+            settlement: receipt.settlement,
+          });
+          return;
+        }
         const audioBuffer = await this.loadPaidStemAudio({
           stem,
           req,
@@ -254,8 +305,89 @@ export class X402Controller {
       }
 
       const activeListing = await this.findActiveListing(stem.id);
+      const amountUsd = this.resolveReceiptAmountUsd({
+        pricing,
+        activeListing,
+        assetInfo,
+      });
+      const buyerAddress = this.resolveBuyerAddress(req, input.payer);
+      const contractSettlement = await this.resolveContractSettlement({
+        listing: activeListing,
+        buyerAddress,
+        assetInfo,
+      });
       const resolvedStemUrl = this.resolveStemUrl(stem.uri, req);
       const responseMimeType = stem.mimeType || 'audio/mpeg';
+
+      if (contractSettlement.status === 'contract_failed') {
+        const receipt = buildStemX402Receipt({
+          stemId: stem.id,
+          stemType: stem.type,
+          stemTitle: stem.title ?? null,
+          trackTitle: stem.track?.title ?? null,
+          artist: stem.track?.release?.primaryArtist ?? null,
+          releaseTitle: stem.track?.release?.title ?? null,
+          hasNft: !!stem.nftMint,
+          tokenId: stem.nftMint?.tokenId?.toString() ?? null,
+          amountUsd,
+          paymentAsset: {
+            assetId: assetInfo.assetId,
+            tokenAddress: assetInfo.address,
+            symbol: assetInfo.symbol,
+            decimals: assetInfo.decimals,
+            amountUnits: this.toTokenAmount(amountUsd, assetInfo.decimals),
+          },
+          network: this.x402Config.network,
+          payTo: this.x402Config.payoutAddress,
+          resource: `/api/stems/${stem.id}/x402`,
+          quoteUrl: `/api/stems/${stem.id}/x402/info`,
+          mimeType: responseMimeType,
+          contentLength: 0,
+          eventTransactionHash: input.eventTransactionHash,
+          paymentHeader: input.paymentProof,
+          purchasedAt: input.purchasedAt,
+          settlement: contractSettlement,
+        });
+        await prisma.x402Settlement.create({
+          data: {
+            stemId: stem.id,
+            listingId: activeListing?.id ?? null,
+            listingChainId: activeListing?.chainId ?? null,
+            listingContractAddress: activeListing?.contractAddress ?? null,
+            listingTokenId: activeListing?.tokenId ?? null,
+            payerAddress: buyerAddress?.toLowerCase() ?? input.payer?.toLowerCase() ?? null,
+            paymentRail: TX_HASH_PATTERN.test(input.eventTransactionHash)
+              ? 'smart_account'
+              : 'facilitator',
+            paymentProofSha256,
+            paymentTransactionHash: TX_HASH_PATTERN.test(input.eventTransactionHash)
+              ? input.eventTransactionHash
+              : null,
+            receiptId: receipt.receiptId,
+            receipt,
+            status: 'contract_settlement_failed',
+            contractSettlementStatus: receipt.settlement.status,
+            contractSettlementTxHash: receipt.settlement.transactionHash,
+            contractSettlementEventName: receipt.settlement.eventName,
+            contractSettlementReason: receipt.settlement.reason,
+            paymentToken: receipt.payment.asset.tokenAddress,
+            paymentAssetId: receipt.payment.asset.assetId,
+            paymentAssetSymbol: receipt.payment.asset.symbol,
+            paymentAssetDecimals: receipt.payment.asset.decimals,
+            settlementAmount: receipt.payment.settlementAmount,
+            settlementAmountUnits: receipt.payment.settlementAmountUnits,
+            canonicalAmountUsd: receipt.payment.canonicalAmountUsd,
+            purchasedAt: input.purchasedAt,
+          },
+        });
+        res.status(HttpStatus.BAD_GATEWAY).json({
+          error: 'Contract settlement failed',
+          message: contractSettlement.reason,
+          receiptId: receipt.receiptId,
+          settlement: receipt.settlement,
+        });
+        return;
+      }
 
       // 2. Fetch/decrypt the audio content
       let audioBuffer: Buffer;
@@ -318,7 +450,7 @@ export class X402Controller {
         eventTransactionHash: input.eventTransactionHash,
         paymentHeader: input.paymentProof,
         purchasedAt: input.purchasedAt,
-        settlement: this.describeContractSettlement(activeListing),
+        settlement: contractSettlement,
       });
 
       await prisma.$transaction([
@@ -329,7 +461,7 @@ export class X402Controller {
             listingChainId: activeListing?.chainId ?? null,
             listingContractAddress: activeListing?.contractAddress ?? null,
             listingTokenId: activeListing?.tokenId ?? null,
-            payerAddress: input.payer?.toLowerCase() ?? null,
+            payerAddress: buyerAddress?.toLowerCase() ?? input.payer?.toLowerCase() ?? null,
             paymentRail: TX_HASH_PATTERN.test(input.eventTransactionHash)
               ? 'smart_account'
               : 'facilitator',
@@ -574,28 +706,224 @@ export class X402Controller {
         tokenId: true,
         chainId: true,
         contractAddress: true,
+        pricePerUnit: true,
+        paymentToken: true,
       },
       orderBy: { listedAt: 'desc' },
     });
   }
 
-  private describeContractSettlement(listing: ActiveX402Listing | null) {
+  private resolveReceiptAmountUsd(input: {
+    pricing:
+      | {
+          basePlayPriceUsd?: number | null;
+        }
+      | null
+      | undefined;
+    activeListing: ActiveX402Listing | null;
+    assetInfo: X402AssetInfo;
+  }) {
+    if (
+      this.x402Config.contractSettlementEnabled &&
+      input.activeListing &&
+      input.activeListing.paymentToken.toLowerCase() === input.assetInfo.address.toLowerCase()
+    ) {
+      return Number(formatUnits(BigInt(input.activeListing.pricePerUnit), input.assetInfo.decimals));
+    }
+    return input.pricing?.basePlayPriceUsd ?? 0.05;
+  }
+
+  private resolveBuyerAddress(req: Request, fallback?: string | null) {
+    const header =
+      (req.headers['x-resonate-buyer'] as string | undefined) ??
+      (req.headers['x-buyer-address'] as string | undefined);
+    const queryBuyer = req.query?.buyer ?? req.query?.recipient;
+    const raw = header || (Array.isArray(queryBuyer) ? queryBuyer[0] : queryBuyer) || fallback;
+    if (typeof raw !== 'string' || !raw.trim()) return null;
+    try {
+      return getAddress(raw.trim());
+    } catch {
+      return null;
+    }
+  }
+
+  private async resolveContractSettlement(input: {
+    listing: ActiveX402Listing | null;
+    buyerAddress: Address | null;
+    assetInfo: X402AssetInfo;
+  }) {
+    if (!input.listing) {
+      return this.describeContractSettlement(null);
+    }
+
+    if (input.listing.paymentToken.toLowerCase() !== input.assetInfo.address.toLowerCase()) {
+      if (this.x402Config.contractSettlementEnabled) {
+        return this.describeContractSettlement(input.listing, {
+          status: 'contract_failed',
+          reason:
+            'The active marketplace listing is not priced in the configured x402 stablecoin asset.',
+        });
+      }
+      return this.describeContractSettlement(input.listing, {
+        reason:
+          'An active marketplace listing exists, but it is not priced in the configured x402 stablecoin asset.',
+      });
+    }
+
+    if (!this.x402Config.contractSettlementEnabled) {
+      return this.describeContractSettlement(input.listing);
+    }
+
+    if (input.listing.chainId !== this.x402Config.chainId) {
+      return this.describeContractSettlement(input.listing, {
+        status: 'contract_failed',
+        reason:
+          'The active marketplace listing is on a different chain than the configured x402 network.',
+      });
+    }
+
+    if (!input.buyerAddress) {
+      return this.describeContractSettlement(input.listing, {
+        status: 'contract_failed',
+        reason:
+          'Listed x402 purchases require a buyer wallet address to receive contract ownership.',
+      });
+    }
+
+    try {
+      const settlement = await this.executeMarketplaceSettlement({
+        listing: input.listing,
+        buyerAddress: input.buyerAddress,
+      });
+      return this.describeContractSettlement(input.listing, {
+        status: 'contract_backed',
+        transactionHash: settlement.transactionHash,
+        eventName: settlement.eventName,
+        reason: 'x402 payment was settled through the Resonate marketplace contract.',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`x402 contract settlement failed: ${message}`);
+      return this.describeContractSettlement(input.listing, {
+        status: 'contract_failed',
+        reason: message,
+      });
+    }
+  }
+
+  private async executeMarketplaceSettlement(input: {
+    listing: ActiveX402Listing;
+    buyerAddress: Address;
+  }): Promise<{
+    transactionHash: `0x${string}`;
+    eventName: 'Sold';
+  }> {
+    if (!this.x402Config.settlementPrivateKey) {
+      throw new Error('X402 settlement wallet is not configured.');
+    }
+
+    const account = privateKeyToAccount(this.x402Config.settlementPrivateKey);
+    if (getAddress(account.address) !== getAddress(this.x402Config.payoutAddress)) {
+      throw new Error('X402 settlement wallet must match X402_PAYOUT_ADDRESS.');
+    }
+
+    const publicClient = this.getX402PublicClient();
+    const walletClient = createWalletClient({
+      account,
+      chain: this.getX402ViemChain(this.x402Config.rpcUrl),
+      transport: http(this.x402Config.rpcUrl),
+    });
+    const marketplaceAddress = getAddress(input.listing.contractAddress);
+    const paymentToken = getAddress(input.listing.paymentToken);
+    const pricePerUnit = BigInt(input.listing.pricePerUnit);
+
+    const approveHash = await walletClient.writeContract({
+      address: paymentToken,
+      abi: ERC20_APPROVE_ABI,
+      functionName: 'approve',
+      args: [marketplaceAddress, pricePerUnit],
+    });
+    const approveReceipt = await publicClient.waitForTransactionReceipt({
+      hash: approveHash,
+      timeout: 60_000,
+    });
+    if (approveReceipt.status !== 'success') {
+      throw new Error('Marketplace payment-token approval reverted.');
+    }
+
+    const buyHash = await walletClient.writeContract({
+      address: marketplaceAddress,
+      abi: MARKETPLACE_BUY_FOR_ABI,
+      functionName: 'buyFor',
+      args: [input.listing.listingId, BigInt(1), input.buyerAddress],
+      value: BigInt(0),
+    });
+    const buyReceipt = await publicClient.waitForTransactionReceipt({
+      hash: buyHash,
+      timeout: 60_000,
+    });
+    if (buyReceipt.status !== 'success') {
+      throw new Error('Marketplace buyFor transaction reverted.');
+    }
+
+    const soldLog = buyReceipt.logs.find((log) => {
+      if (getAddress(log.address) !== marketplaceAddress) return false;
+      try {
+        const decoded = decodeEventLog({
+          abi: [MARKETPLACE_SOLD_EVENT],
+          data: log.data,
+          topics: log.topics,
+        });
+        if (decoded.eventName !== 'Sold') return false;
+        const args = decoded.args as {
+          listingId: bigint;
+          buyer: Address;
+        };
+        return args.listingId === input.listing.listingId &&
+          getAddress(args.buyer) === input.buyerAddress;
+      } catch {
+        return false;
+      }
+    });
+    if (!soldLog) {
+      throw new Error('Marketplace buyFor receipt did not include the expected Sold event.');
+    }
+
+    return {
+      transactionHash: buyHash,
+      eventName: 'Sold',
+    };
+  }
+
+  private describeContractSettlement(
+    listing: ActiveX402Listing | null,
+    overrides: {
+      status?: X402SettlementStatus;
+      transactionHash?: string | null;
+      eventName?: string | null;
+      reason?: string | null;
+    } = {},
+  ) {
     if (!listing) {
       return {
         status: 'download_only' as const,
         entitlement: 'download_access' as const,
+        transactionHash: overrides.transactionHash ?? null,
+        eventName: overrides.eventName ?? null,
         reason: 'No active marketplace listing was linked to this x402 redemption.',
       };
     }
 
     return {
-      status: 'contract_required_missing' as const,
+      status: overrides.status ?? 'contract_required_missing',
       entitlement: 'marketplace_purchase' as const,
       listingId: listing.listingId.toString(),
       listingChainId: listing.chainId,
       listingContractAddress: listing.contractAddress,
       tokenId: listing.tokenId.toString(),
-      reason:
+      transactionHash: overrides.transactionHash ?? null,
+      eventName: overrides.eventName ?? null,
+      reason: overrides.reason ??
         'An active marketplace listing exists, but this x402 rail has not yet executed or verified the marketplace contract purchase.',
     };
   }

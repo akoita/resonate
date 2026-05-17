@@ -43,7 +43,7 @@ Available now:
 - `npm run eval:recommendations` writes replayable JSON and Markdown eval artifacts for exact matches, semantic-near matches, recent-track rejection, sparse/strict no-match behavior, precision thresholds, listing coverage, novelty, and explanation coverage. The generated `eval-results/` directory stays ignored unless an artifact is intentionally promoted into docs.
 - `PolicyGuardService` centralizes pre-execution checks for budget and license policy.
 - `PaymentRouterService` centralizes ERC-4337 marketplace and x402 rail execution behind one result envelope.
-- The x402 rail builds a canonical challenge from `StemPricing`, blocks policy failures before verification, verifies/settles payment proofs, records `X402Settlement` plus `x402.purchase` provenance, and returns a structured receipt with explicit settlement status.
+- The x402 rail builds a canonical challenge from `StemPricing` or a matching active stablecoin listing, blocks policy failures before verification, verifies/settles payment proofs, records `X402Settlement` plus `x402.purchase` provenance, and returns a structured receipt with explicit settlement status. When contract settlement is enabled, listed-stem x402 redemptions execute marketplace `buyFor` to the requested buyer wallet before download.
 - The listener purchase modal defaults to the stablecoin x402 rail when it is available, presents the quote in USD first, and settles the download in USDC. The direct on-chain option remains available as a separate wallet transaction rail and uses the listing payment asset, including ERC-20 stablecoins when the listing was created with one.
 - The AI DJ marketplace buy path routes through `PaymentRouterService` before calling the ERC-4337 purchase rail.
 - Session recommendation events publish `agent.track_selected` with `strategy: "runtime"`.
@@ -257,10 +257,11 @@ chain/payment call.
 Today the x402 rail grants the paid download entitlement, records durable
 `X402Settlement` state, and writes `x402.purchase` provenance after facilitator
 settlement. Receipts include `settlement.status` so clients can distinguish
-`download_only`, `contract_required_missing`, and future `contract_backed`
-outcomes. Issue #841 still tracks the next step: make the x402 rail call, prove,
-or map to the marketplace/license contract path so both rails grant the same
-durable ownership/license outcome.
+`download_only`, `contract_required_missing`, `contract_backed`, and
+`contract_failed` outcomes. Issue #841 still tracks the remaining license-NFT
+work and non-matching payment-asset cases; active marketplace ownership
+purchases can now be contract-backed when `X402_CONTRACT_SETTLEMENT_ENABLED`
+is enabled and the listing is priced in the configured x402 stablecoin.
 
 ## Developer Service Flow
 

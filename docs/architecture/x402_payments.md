@@ -67,6 +67,8 @@ and policy boundary.
 | `X402_PAYOUT_ADDRESS`  | —                              | Wallet receiving USDC (required when enabled)                               |
 | `X402_FACILITATOR_URL` | `https://x402.org/facilitator` | Verify/settle endpoint; set explicitly for Base mainnet or any custom facilitator |
 | `X402_NETWORK`         | `eip155:84532`                 | CAIP-2 chain ID (`eip155:84532` Base Sepolia, `eip155:8453` Base mainnet)   |
+| `X402_CONTRACT_SETTLEMENT_ENABLED` | `false` | When `true`, listed x402 redemptions must execute marketplace settlement before download |
+| `X402_SETTLEMENT_PRIVATE_KEY` | — | Backend settlement wallet key; required only when contract settlement is enabled and must control `X402_PAYOUT_ADDRESS` |
 
 ### Recommended local/test profiles
 
@@ -79,6 +81,9 @@ X402_ENABLED=true
 X402_NETWORK=eip155:84532
 X402_FACILITATOR_URL=https://x402.org/facilitator
 X402_PAYOUT_ADDRESS=<base-sepolia-wallet>
+# Optional, only after the payout wallet is funded and approved for contract-backed settlement:
+X402_CONTRACT_SETTLEMENT_ENABLED=true
+X402_SETTLEMENT_PRIVATE_KEY=<base-sepolia-payout-wallet-private-key>
 ```
 
 Base mainnet AgentCash flow:
@@ -96,6 +101,11 @@ Notes:
 - `https://x402.org/facilitator` is suitable for testnet-style flows, not the validated Base mainnet AgentCash path.
 - `X402_NETWORK=eip155:11155111` is not currently a supported staging profile. It would require a Sepolia x402 facilitator and a USDC contract that the facilitator accepts.
 - Human in-app checkout does not custody user funds. The passkey-controlled Kernel account signs a UserOperation that transfers USDC to `X402_PAYOUT_ADDRESS`; the backend verifies the resulting token `Transfer` log on `X402_RPC_URL` before serving the stem. Standard machine x402 clients still use `PAYMENT-REQUIRED` / facilitator verification on `GET /api/stems/:stemId/x402`.
+- Contract-backed x402 settlement is opt-in. When enabled, listed-stem requests
+  must include a recipient wallet through `X-Resonate-Buyer` or `?buyer=`, the
+  listing must be priced in the configured x402 stablecoin, and the settlement
+  wallet derived from `X402_SETTLEMENT_PRIVATE_KEY` must match
+  `X402_PAYOUT_ADDRESS`.
 
 ## Module structure
 
@@ -112,8 +122,11 @@ backend/src/modules/x402/
 
 Public quote and payment challenge pricing resolve in this order:
 
-1. `StemPricing.basePlayPriceUsd` (direct USD from DB)
-2. `$0.05` storefront fallback when no canonical USD price is stored
+1. Active marketplace listing `pricePerUnit` when contract-backed x402
+   settlement is enabled and the listing payment token matches the configured
+   x402 stablecoin.
+2. `StemPricing.basePlayPriceUsd` (direct USD from DB)
+3. `$0.05` storefront fallback when no canonical USD price is stored
 
 ## Discovery contract
 
@@ -132,6 +145,15 @@ Current behavior:
 - x402 verifies and settles an HTTP payment proof, records an `X402Settlement`
   ledger row plus `x402.purchase` provenance, and returns the paid download with
   receipt headers.
+- When `X402_CONTRACT_SETTLEMENT_ENABLED=true`, listed-stem x402 redemptions
+  execute `StemMarketplaceV2.buyFor(listingId, 1, recipient)` from the payout
+  wallet after x402 payment verification and before the stem is served. Receipts
+  then use `settlement.status = "contract_backed"` and include the marketplace
+  settlement transaction and event name.
+- If contract settlement is enabled but the marketplace transaction fails, the
+  backend records `status = "contract_settlement_failed"` in `X402Settlement`
+  and does not serve the paid stem. Same-payment retries return the stored
+  non-downloadable settlement instead of bypassing the failure.
 - x402 redemptions are idempotent by payment proof hash or smart-account
   payment transaction hash. Retrying the same payment for the same stem returns
   the same receipt; trying to redeem it for a different stem is rejected.
@@ -142,12 +164,11 @@ Current behavior:
   the on-chain rail as a stablecoin rail when the listing uses a configured
   stablecoin such as USDC.
 
-Known limitation tracked by issue #841: x402 settlement is now durable and
-idempotent, but it does not yet execute the same marketplace ownership or
-License NFT state transition as the direct on-chain rail. When a paid x402
-download is associated with an active marketplace listing, the receipt and
-ledger mark `settlement.status = "contract_required_missing"` instead of
-claiming contract-backed ownership.
+Known limitation tracked by issue #841: contract-backed x402 settlement now
+covers active marketplace ownership purchases when explicitly enabled and when
+the listing is priced in the configured x402 stablecoin. License NFT purchase
+semantics and non-matching listing payment assets still remain future work and
+continue to surface as `settlement.status = "contract_required_missing"`.
 
 ## Provenance and Receipts
 

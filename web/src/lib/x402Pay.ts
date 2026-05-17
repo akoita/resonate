@@ -42,7 +42,7 @@ export type X402Receipt = {
   };
   settlement?: {
     rail?: string;
-    status?: "download_only" | "contract_required_missing" | "contract_backed";
+    status?: "download_only" | "contract_required_missing" | "contract_backed" | "contract_failed";
     entitlement?: string;
     listingId?: string | null;
     transactionHash?: string | null;

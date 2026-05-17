@@ -34,6 +34,8 @@ function createMockConfig(overrides: Partial<X402Config> = {}): X402Config {
     facilitatorUrl: 'https://x402.org/facilitator',
     network: 'eip155:84532',
     chainId: 84532,
+    contractSettlementEnabled: false,
+    settlementPrivateKey: null,
     ...overrides,
   } as X402Config;
 }
@@ -56,6 +58,7 @@ function createMockReq(path: string, headers: Record<string, string> = {}): Part
   return {
     path,
     headers: { ...headers },
+    query: {},
   };
 }
 
@@ -196,6 +199,95 @@ describe('X402Middleware', () => {
           resource: expect.objectContaining({
             url: '/api/stems/my-stem-123/x402',
           }),
+        }),
+      );
+    });
+
+    it('requires a buyer wallet before challenging listed contract-settled x402 stems', async () => {
+      const { prisma } = jest.requireMock('../db/prisma') as {
+        prisma: {
+          stemListing: { findFirst: jest.Mock };
+        };
+      };
+      prisma.stemListing.findFirst.mockResolvedValue({
+        paymentToken: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+      });
+      const config = createMockConfig({ contractSettlementEnabled: true });
+      const middleware = createMiddleware(config);
+      const req = createMockReq('/api/stems/test-stem-id/x402');
+      const { res } = createMockRes();
+      const next = jest.fn();
+
+      await middleware.use(req as Request, res as Response, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: 'Buyer wallet required',
+        }),
+      );
+    });
+
+    it('rejects listed contract-settled x402 stems when the listing token is not the x402 asset', async () => {
+      const { prisma } = jest.requireMock('../db/prisma') as {
+        prisma: {
+          stemListing: { findFirst: jest.Mock };
+        };
+      };
+      prisma.stemListing.findFirst.mockResolvedValue({
+        paymentToken: '0x9999999999999999999999999999999999999999',
+      });
+      const config = createMockConfig({ contractSettlementEnabled: true });
+      const middleware = createMiddleware(config);
+      const req = createMockReq('/api/stems/test-stem-id/x402', {
+        'x-resonate-buyer': '0x1111111111111111111111111111111111111111',
+      });
+      const { res } = createMockRes();
+      const next = jest.fn();
+
+      await middleware.use(req as Request, res as Response, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: 'Unsupported listing payment asset',
+        }),
+      );
+    });
+
+    it('uses the active listing price for contract-settled x402 challenges', async () => {
+      const { prisma } = jest.requireMock('../db/prisma') as {
+        prisma: {
+          stemListing: { findFirst: jest.Mock };
+        };
+      };
+      prisma.stemListing.findFirst.mockResolvedValue({
+        paymentToken: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+        pricePerUnit: '125000',
+      });
+      const config = createMockConfig({ contractSettlementEnabled: true });
+      const middleware = createMiddleware(config);
+      const req = createMockReq('/api/stems/test-stem-id/x402', {
+        'x-resonate-buyer': '0x1111111111111111111111111111111111111111',
+      });
+      const { res } = createMockRes();
+      const next = jest.fn();
+
+      await middleware.use(req as Request, res as Response, next);
+
+      expect(res.status).toHaveBeenCalledWith(402);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accepts: expect.arrayContaining([
+            expect.objectContaining({
+              amount: '125000',
+              extra: expect.objectContaining({
+                displayPrice: '0.125 USDC',
+              }),
+            }),
+          ]),
         }),
       );
     });

@@ -54,6 +54,8 @@ function createMockConfig(overrides: Partial<X402Config> = {}): X402Config {
     network: 'eip155:84532',
     chainId: 84532,
     rpcUrl: 'https://sepolia.base.org',
+    contractSettlementEnabled: false,
+    settlementPrivateKey: null,
     ...overrides,
   } as X402Config;
 }
@@ -201,6 +203,8 @@ describe('X402Controller', () => {
       tokenId: BigInt(77),
       chainId: 84532,
       contractAddress: '0xMarketplace',
+      pricePerUnit: '50000',
+      paymentToken: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
     });
     prisma.stemPricing.findUnique.mockResolvedValue({
       basePlayPriceUsd: 0.05,
@@ -242,6 +246,148 @@ describe('X402Controller', () => {
     });
   });
 
+  it('marks listed x402 receipts contract-backed after marketplace settlement succeeds', async () => {
+    prisma.stem.findUnique.mockResolvedValue({
+      id: 'stem_backed',
+      type: 'bass',
+      title: 'Backed Bass',
+      uri: 'https://example.com/backed.mp3',
+      encryptionMetadata: null,
+      nftMint: { tokenId: BigInt(77) },
+      track: {
+        title: 'Backed Track',
+        release: {
+          title: 'Backed Release',
+          primaryArtist: 'Koita',
+        },
+      },
+    });
+    prisma.stemListing.findFirst.mockResolvedValue({
+      id: 'listing_row_backed',
+      listingId: BigInt(841),
+      tokenId: BigInt(77),
+      chainId: 84532,
+      contractAddress: '0x3333333333333333333333333333333333333333',
+      pricePerUnit: '125000',
+      paymentToken: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+    });
+    prisma.stemPricing.findUnique.mockResolvedValue({
+      basePlayPriceUsd: 0.05,
+    });
+
+    const controller = new X402Controller(
+      createMockConfig({ contractSettlementEnabled: true }),
+      encryptionService as any,
+    );
+    jest.spyOn(controller as any, 'executeMarketplaceSettlement').mockResolvedValue({
+      transactionHash: `0x${'c'.repeat(64)}`,
+      eventName: 'Sold',
+    });
+    const req: any = {
+      headers: {
+        'payment-signature': 'proof-backed',
+        'x-resonate-buyer': '0x1111111111111111111111111111111111111111',
+      },
+      query: {},
+    };
+    const res = createMockRes();
+
+    await controller.downloadWithPayment('stem_backed', req, res);
+
+    const decodedReceipt = JSON.parse(
+      Buffer.from(res.headers['X-Resonate-Receipt'], 'base64url').toString(
+        'utf8',
+      ),
+    );
+
+    expect(decodedReceipt.payment.amount).toBe('0.125');
+    expect(decodedReceipt.settlement).toEqual(expect.objectContaining({
+      status: 'contract_backed',
+      entitlement: 'marketplace_purchase',
+      listingId: '841',
+      transactionHash: `0x${'c'.repeat(64)}`,
+      eventName: 'Sold',
+    }));
+    expect(res.headers['X-Resonate-Settlement-Status']).toBe('contract_backed');
+    expect(res.body).toBeInstanceOf(Buffer);
+    expect(prisma.x402Settlement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        stemId: 'stem_backed',
+        listingId: 'listing_row_backed',
+        payerAddress: '0x1111111111111111111111111111111111111111',
+        contractSettlementStatus: 'contract_backed',
+        contractSettlementTxHash: `0x${'c'.repeat(64)}`,
+        contractSettlementEventName: 'Sold',
+        settlementAmountUnits: '125000',
+      }),
+    });
+  });
+
+  it('records failed contract settlement and does not serve audio', async () => {
+    prisma.stem.findUnique.mockResolvedValue({
+      id: 'stem_failed',
+      type: 'drums',
+      title: 'Failed Drums',
+      uri: 'https://example.com/failed.mp3',
+      encryptionMetadata: null,
+      nftMint: { tokenId: BigInt(77) },
+      track: {
+        title: 'Failed Track',
+        release: {
+          title: 'Failed Release',
+          primaryArtist: 'Koita',
+        },
+      },
+    });
+    prisma.stemListing.findFirst.mockResolvedValue({
+      id: 'listing_row_failed',
+      listingId: BigInt(842),
+      tokenId: BigInt(77),
+      chainId: 84532,
+      contractAddress: '0x3333333333333333333333333333333333333333',
+      pricePerUnit: '50000',
+      paymentToken: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+    });
+    prisma.stemPricing.findUnique.mockResolvedValue({
+      basePlayPriceUsd: 0.05,
+    });
+
+    const controller = new X402Controller(
+      createMockConfig({ contractSettlementEnabled: true }),
+      encryptionService as any,
+    );
+    jest.spyOn(controller as any, 'executeMarketplaceSettlement').mockRejectedValue(
+      new Error('buyFor reverted'),
+    );
+    const req: any = {
+      headers: {
+        'payment-signature': 'proof-failed',
+        'x-resonate-buyer': '0x1111111111111111111111111111111111111111',
+      },
+      query: {},
+    };
+    const res = createMockRes();
+
+    await controller.downloadWithPayment('stem_failed', req, res);
+
+    expect(res.statusCode).toBe(502);
+    expect(res.body.error).toBe('Contract settlement failed');
+    expect(res.body.settlement).toEqual(expect.objectContaining({
+      status: 'contract_failed',
+      reason: 'buyFor reverted',
+    }));
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(prisma.contractEvent.create).not.toHaveBeenCalled();
+    expect(prisma.x402Settlement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        stemId: 'stem_failed',
+        status: 'contract_settlement_failed',
+        contractSettlementStatus: 'contract_failed',
+        contractSettlementReason: 'buyFor reverted',
+      }),
+    });
+  });
+
   it('reuses an existing x402 settlement for same-stem payment retries', async () => {
     const receipt = {
       receiptId: 'x402r_existing',
@@ -252,6 +398,9 @@ describe('X402Controller', () => {
     prisma.x402Settlement.findFirst.mockResolvedValue({
       id: 'settlement_existing',
       stemId: 'stem_1',
+      receiptId: 'x402r_existing',
+      status: 'download_granted',
+      contractSettlementReason: null,
       receipt,
     });
     prisma.stem.findUnique.mockResolvedValue({
