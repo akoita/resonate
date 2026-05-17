@@ -35,6 +35,7 @@ import { getKernelAccountConfig } from "../lib/accountAbstraction";
 import { persistStemMarketplaceStatus } from "../lib/stemMarketplaceStatus";
 import { getBundlerUrl, isLocalDevEnvironment, isPaymasterEnabled } from "../lib/bundlerConfig";
 import { getPasskeyRpId, getPasskeyServerUrl, getZeroDevProjectId } from "../lib/passkeyConfig";
+import { buildDirectMarketplaceBuyPlan } from "../lib/onchainCheckout";
 
 // Custom transport that maps ZeroDev-proprietary methods to Pimlico/Alto equivalents
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2029,19 +2030,21 @@ export function useBuyStem() {
         const quote = await quoteBuy(publicClient, chainId, listingId, amount);
         const listing = await getListing(publicClient, chainId, listingId);
 
-        const data = encodeFunctionData({
-          abi: StemMarketplaceABI,
-          functionName: "buy",
-          args: [listingId, amount],
+        const plan = buildDirectMarketplaceBuyPlan({
+          marketplaceAddress: addresses.marketplace,
+          listingId,
+          amount,
+          paymentToken: listing.paymentToken,
+          totalPrice: quote.totalPrice,
         });
 
-        const hash = listing.paymentToken.toLowerCase() === ZERO_ADDRESS
+        const hash = plan.rail === "native"
           ? await sendContractTransaction(
               publicClient,
               chainId,
-              addresses.marketplace,
-              data,
-              quote.totalPrice,
+              plan.calls[0].to,
+              plan.calls[0].data,
+              plan.value,
               address as Address,
               kernelAccount
             )
@@ -2049,15 +2052,7 @@ export function useBuyStem() {
               publicClient,
               chainId,
               [
-                {
-                  to: listing.paymentToken,
-                  data: encodeFunctionData({
-                    abi: ERC20_STAKE_ABI,
-                    functionName: "approve",
-                    args: [addresses.marketplace, quote.totalPrice],
-                  }),
-                },
-                { to: addresses.marketplace, data },
+                ...plan.calls,
               ],
               address as Address,
               kernelAccount
