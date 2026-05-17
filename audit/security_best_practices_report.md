@@ -660,3 +660,78 @@ rg 'dangerouslySetInnerHTML|innerHTML' web/src/components/marketplace web/src/li
 rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/components/marketplace web/src/lib/buyPricing.ts
 rg 'document\.cookie|setCookie|httpOnly.*false' web/src/components/marketplace web/src/lib/buyPricing.ts
 ```
+
+## Addendum: #841 x402 Settlement Ledger
+
+Reviewed the #841 x402 settlement-ledger slice for payment replay handling,
+receipt contents, backend data handling, and frontend rendering safety. No
+Critical or High findings were identified in the changed code.
+
+### Scope
+
+- `backend/prisma/schema.prisma`
+- `backend/prisma/migrations/20260517010000_x402_settlement_ledger/migration.sql`
+- `backend/src/modules/x402/x402.controller.ts`
+- `backend/src/modules/x402/x402.middleware.ts`
+- `backend/src/modules/x402/x402.receipt.ts`
+- `backend/src/tests/x402.controller.http.spec.ts`
+- `backend/src/tests/x402.controller.spec.ts`
+- `backend/src/tests/x402.middleware.spec.ts`
+- `backend/src/tests/x402.receipt.spec.ts`
+- `web/src/components/marketplace/BuyModal.tsx`
+- `web/src/lib/x402Pay.ts`
+- `docs/architecture/x402_payments.md`
+- `docs/features/README.md`
+- `docs/features/agent-commerce-runtime.md`
+- `docs/smart-contracts/marketplace_integration.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- The new `X402Settlement` table stores receipt/provenance metadata and hashes
+  the x402 payment proof before persistence. It does not store private keys,
+  bearer tokens, API credentials, or raw wallet secrets.
+- Replay protection is explicit: same-stem retries reuse the stored settlement
+  receipt, while proof/transaction reuse for a different stem returns a
+  conflict instead of re-serving content.
+- The middleware checks existing settlement hashes before calling the
+  facilitator, which avoids settling the same proof twice for idempotent client
+  retries.
+- The smart-account path validates a successful ERC-20 transfer to the
+  configured payout address before recording settlement metadata.
+- Listed-stem receipts are marked `contract_required_missing` until a future
+  contract execution/verification step can produce canonical marketplace or
+  license settlement. This avoids falsely treating an x402 download payment as
+  protocol ownership.
+- Broad repository scans still report pre-existing development JWT fallbacks,
+  environment-variable names, raw Prisma template queries, and controller input
+  validation backlog outside this change set. No new Critical or High issue was
+  introduced by this branch.
+
+### Commands Run
+
+```bash
+cd backend && npx prisma generate
+cd backend && npx jest --runInBand src/tests/x402.middleware.spec.ts src/tests/x402.controller.spec.ts src/tests/x402.controller.http.spec.ts src/tests/x402.receipt.spec.ts
+cd backend && npm run lint
+cd backend && npm test
+cd web && npm run lint
+cd web && npx vitest run src/lib/x402Pay.test.ts src/lib/buyPricing.test.ts
+git diff --check
+rg -n 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw' backend/src/
+rg -n '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/ | grep -v 'Guard\|Auth'
+rg -n 'JSON\.parse|eval\(' backend/src/
+rg -n '@Body\(\)|@Query\(\)|@Param\(' backend/src/ | grep -v 'Pipe\|Dto\|Validation'
+rg -n 'dangerouslySetInnerHTML|innerHTML' web/src/
+rg -n 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
+rg -n 'document\.cookie|setCookie|httpOnly.*false' web/src/
+rg -n 'password|secret|api_key|private_key|process\.env' backend/src/modules/x402 backend/prisma --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw|JSON\.parse|eval\(' backend/src/modules/x402 backend/prisma
+```

@@ -129,8 +129,12 @@ Public quote and payment challenge pricing resolve in this order:
 
 Current behavior:
 
-- x402 verifies and settles an HTTP payment proof, records `x402.purchase`
-  provenance, and returns the paid download with receipt headers.
+- x402 verifies and settles an HTTP payment proof, records an `X402Settlement`
+  ledger row plus `x402.purchase` provenance, and returns the paid download with
+  receipt headers.
+- x402 redemptions are idempotent by payment proof hash or smart-account
+  payment transaction hash. Retrying the same payment for the same stem returns
+  the same receipt; trying to redeem it for a different stem is rejected.
 - Direct marketplace checkout submits a wallet transaction against
   `StemMarketplaceV2`; native listings pay with the chain coin, while ERC-20
   listings approve the payment token and buy in one smart-account operation.
@@ -138,15 +142,25 @@ Current behavior:
   the on-chain rail as a stablecoin rail when the listing uses a configured
   stablecoin such as USDC.
 
-Known limitation tracked by issue #841: x402 settlement does not yet update the
-same marketplace ownership or License NFT state as the direct on-chain rail.
-The next implementation phase should make the x402 rail invoke, prove, or map
-to the canonical marketplace/license settlement path before Resonate treats the
-two rails as equivalent for ownership and licensing.
+Known limitation tracked by issue #841: x402 settlement is now durable and
+idempotent, but it does not yet execute the same marketplace ownership or
+License NFT state transition as the direct on-chain rail. When a paid x402
+download is associated with an active marketplace listing, the receipt and
+ledger mark `settlement.status = "contract_required_missing"` instead of
+claiming contract-backed ownership.
 
 ## Provenance and Receipts
 
-x402 purchases are recorded as `ContractEvent` entries with `eventName: 'x402.purchase'`, using the chain ID derived from the configured x402 network. This remains separate from on-chain `StemPurchase` records (which require a FK to `StemListing`).
+x402 purchases are recorded in two places:
+
+- `X402Settlement`: idempotency, receipt payload, payment proof hash or
+  smart-account payment transaction hash, linked listing metadata when present,
+  and contract-settlement status.
+- `ContractEvent` entries with `eventName: 'x402.purchase'`, using the chain ID
+  derived from the configured x402 network.
+
+This remains separate from on-chain `StemPurchase` records, which require a
+real indexed marketplace sale.
 
 Successful x402 responses include `X-Resonate-Receipt` and
 `X-Resonate-Receipt-Id`. The encoded receipt preserves both:
@@ -154,6 +168,9 @@ Successful x402 responses include `X-Resonate-Receipt` and
 - canonical USD amount: `payment.amountUsd` / `payment.canonicalAmountUsd`
 - settlement asset amount: `payment.settlementAmount`,
   `payment.settlementAmountUnits`, and `payment.asset`
+- entitlement status: `settlement.status`, `settlement.entitlement`,
+  `settlement.listingId`, and optional contract settlement event/transaction
+  references
 
 This keeps marketplace, MCP, and browser checkout receipts comparable while
 still preserving the exact token used for settlement.

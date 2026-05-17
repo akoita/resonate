@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Inject, Optional, Param, Post, Req, Res, Logger, HttpStatus } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import {
   createPublicClient,
@@ -34,6 +35,16 @@ type VerifiedSmartAccountPayment = {
   blockNumber: bigint;
   blockHash: string;
 };
+
+type ActiveX402Listing = {
+  id: string;
+  listingId: bigint;
+  tokenId: bigint;
+  chainId: number;
+  contractAddress: string;
+};
+
+type X402SettlementReceipt = ReturnType<typeof buildStemX402Receipt>;
 
 const TX_HASH_PATTERN = /^0x[a-fA-F0-9]{64}$/;
 const ERC20_TRANSFER_EVENT = {
@@ -211,6 +222,38 @@ export class X402Controller {
       });
       const amountUsd = pricing?.basePlayPriceUsd ?? 0.05;
       const assetInfo = this.resolveAssetInfo();
+      const paymentProofSha256 = this.hashPaymentProof(input.paymentProof);
+      const existingSettlement = await this.findExistingSettlement({
+        paymentProofSha256,
+        paymentTransactionHash: TX_HASH_PATTERN.test(input.eventTransactionHash)
+          ? input.eventTransactionHash
+          : null,
+      });
+      if (existingSettlement) {
+        if (existingSettlement.stemId !== stem.id) {
+          res.status(HttpStatus.CONFLICT).json({
+            error: 'Payment already redeemed',
+            message: 'This x402 payment proof has already been redeemed for a different stem.',
+          });
+          return;
+        }
+        const receipt = existingSettlement.receipt as X402SettlementReceipt;
+        const audioBuffer = await this.loadPaidStemAudio({
+          stem,
+          req,
+          responseMimeType: stem.mimeType || 'audio/mpeg',
+        });
+        this.writePaidStemResponse({
+          res,
+          stem,
+          audioBuffer,
+          responseMimeType: stem.mimeType || 'audio/mpeg',
+          receipt,
+        });
+        return;
+      }
+
+      const activeListing = await this.findActiveListing(stem.id);
       const resolvedStemUrl = this.resolveStemUrl(stem.uri, req);
       const responseMimeType = stem.mimeType || 'audio/mpeg';
 
@@ -275,61 +318,91 @@ export class X402Controller {
         eventTransactionHash: input.eventTransactionHash,
         paymentHeader: input.paymentProof,
         purchasedAt: input.purchasedAt,
+        settlement: this.describeContractSettlement(activeListing),
       });
 
-      await prisma.contractEvent.create({
-        data: {
-          eventName: 'x402.purchase',
-          chainId: getX402ChainId(this.x402Config.network),
-          contractAddress: input.contractAddress,
-          transactionHash: input.eventTransactionHash,
-          logIndex: input.logIndex,
-          blockNumber: input.blockNumber,
-          blockHash: input.blockHash,
-          args: {
-            stemId,
-            stemType: stem.type,
-            trackTitle: stem.track?.title,
-            payTo: this.x402Config.payoutAddress,
-            payer: input.payer,
-            network: this.x402Config.network,
+      await prisma.$transaction([
+        prisma.x402Settlement.create({
+          data: {
+            stemId: stem.id,
+            listingId: activeListing?.id ?? null,
+            listingChainId: activeListing?.chainId ?? null,
+            listingContractAddress: activeListing?.contractAddress ?? null,
+            listingTokenId: activeListing?.tokenId ?? null,
+            payerAddress: input.payer?.toLowerCase() ?? null,
+            paymentRail: TX_HASH_PATTERN.test(input.eventTransactionHash)
+              ? 'smart_account'
+              : 'facilitator',
+            paymentProofSha256,
+            paymentTransactionHash: TX_HASH_PATTERN.test(input.eventTransactionHash)
+              ? input.eventTransactionHash
+              : null,
             receiptId: receipt.receiptId,
-            licenseKey: receipt.license.key,
-            amount: receipt.payment.amount,
-            amountUsd: receipt.payment.amountUsd,
-            canonicalAmountUsd: receipt.payment.canonicalAmountUsd,
-            settlementAmount: receipt.payment.settlementAmount,
-            settlementAmountUnits: receipt.payment.settlementAmountUnits,
-            currency: receipt.payment.currency,
+            receipt,
+            status: 'download_granted',
+            contractSettlementStatus: receipt.settlement.status,
+            contractSettlementTxHash: receipt.settlement.transactionHash,
+            contractSettlementEventName: receipt.settlement.eventName,
+            contractSettlementReason: receipt.settlement.reason,
             paymentToken: receipt.payment.asset.tokenAddress,
             paymentAssetId: receipt.payment.asset.assetId,
             paymentAssetSymbol: receipt.payment.asset.symbol,
             paymentAssetDecimals: receipt.payment.asset.decimals,
-            paymentProofSha256: receipt.payment.paymentProofSha256,
+            settlementAmount: receipt.payment.settlementAmount,
+            settlementAmountUnits: receipt.payment.settlementAmountUnits,
+            canonicalAmountUsd: receipt.payment.canonicalAmountUsd,
+            purchasedAt: input.purchasedAt,
           },
-          processedAt: input.purchasedAt,
-        },
-      });
+        }),
+        prisma.contractEvent.create({
+          data: {
+            eventName: 'x402.purchase',
+            chainId: getX402ChainId(this.x402Config.network),
+            contractAddress: input.contractAddress,
+            transactionHash: input.eventTransactionHash,
+            logIndex: input.logIndex,
+            blockNumber: input.blockNumber,
+            blockHash: input.blockHash,
+            args: {
+              stemId,
+              stemType: stem.type,
+              trackTitle: stem.track?.title,
+              payTo: this.x402Config.payoutAddress,
+              payer: input.payer,
+              network: this.x402Config.network,
+              receiptId: receipt.receiptId,
+              licenseKey: receipt.license.key,
+              amount: receipt.payment.amount,
+              amountUsd: receipt.payment.amountUsd,
+              canonicalAmountUsd: receipt.payment.canonicalAmountUsd,
+              settlementAmount: receipt.payment.settlementAmount,
+              settlementAmountUnits: receipt.payment.settlementAmountUnits,
+              currency: receipt.payment.currency,
+              paymentToken: receipt.payment.asset.tokenAddress,
+              paymentAssetId: receipt.payment.asset.assetId,
+              paymentAssetSymbol: receipt.payment.asset.symbol,
+              paymentAssetDecimals: receipt.payment.asset.decimals,
+              paymentProofSha256: receipt.payment.paymentProofSha256,
+              settlementStatus: receipt.settlement.status,
+              settlementEntitlement: receipt.settlement.entitlement,
+              settlementListingId: receipt.settlement.listingId,
+              settlementTxHash: receipt.settlement.transactionHash,
+            },
+            processedAt: input.purchasedAt,
+          },
+        }),
+      ]);
 
       this.logger.log(`x402 purchase recorded for stem ${stemId}`);
 
       // 4. Serve the audio
-      const filename = `${stem.title || stem.type || 'stem'}${this.getDownloadExtension(stem.uri, responseMimeType)}`;
-      const encodedReceipt = encodeX402ReceiptHeader(receipt);
-      res.set({
-        'Content-Type': responseMimeType,
-        'Content-Length': String(audioBuffer.length),
-        'Content-Disposition': `attachment; filename="${filename}"`,
-        'Access-Control-Expose-Headers':
-          'X-Resonate-Receipt,X-Resonate-Receipt-Id,X-Resonate-Receipt-Content-Type,X-Resonate-License,X-Payment-Response',
-        'X-Resonate-License': receipt.license.key,
-        'X-Resonate-Receipt': encodedReceipt,
-        'X-Resonate-Receipt-Content-Type':
-          'application/vnd.resonate.purchase-receipt+json',
-        'X-Resonate-Receipt-Id': receipt.receiptId,
+      this.writePaidStemResponse({
+        res,
+        stem,
+        audioBuffer,
+        responseMimeType,
+        receipt,
       });
-
-      res.send(audioBuffer);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`x402 download failed for stem ${input.stemId}: ${message}`);
@@ -352,15 +425,14 @@ export class X402Controller {
 
     const payer = getAddress(body.payer);
     const txHash = body.txHash as `0x${string}`;
-    const existing = await prisma.contractEvent.findFirst({
+    const existing = await prisma.x402Settlement.findFirst({
       where: {
-        eventName: 'x402.purchase',
-        transactionHash: txHash,
+        paymentTransactionHash: txHash,
       },
-      select: { id: true },
+      select: { id: true, stemId: true },
     });
-    if (existing) {
-      throw new Error('This payment transaction has already been redeemed.');
+    if (existing && existing.stemId !== stemId) {
+      throw new Error('This payment transaction has already been redeemed for a different stem.');
     }
 
     const pricing = await prisma.stemPricing.findUnique({
@@ -399,6 +471,138 @@ export class X402Controller {
       blockNumber: receipt.blockNumber,
       blockHash: receipt.blockHash,
     };
+  }
+
+  private async loadPaidStemAudio(input: {
+    stem: {
+      uri: string;
+      data?: Buffer | Uint8Array | null;
+      encryptionMetadata?: string | null;
+    };
+    req: Request;
+    responseMimeType: string;
+  }) {
+    const resolvedStemUrl = this.resolveStemUrl(input.stem.uri, input.req);
+    if (input.stem.encryptionMetadata) {
+      const encryptedBuffer = await this.fetchPaidStemSourceBuffer({
+        uri: input.stem.uri,
+        resolvedUri: resolvedStemUrl,
+        data: input.stem.data,
+        errorLabel: 'encrypted data',
+      });
+      const serverAuthSig = {
+        address: this.x402Config.payoutAddress.toLowerCase(),
+        sig: 'x402-payment-verified',
+        signedMessage: 'Download authorized via x402 payment verification',
+        internalKey: process.env.INTERNAL_SERVICE_KEY,
+      };
+      return this.encryptionService.decryptBuffer(
+        encryptedBuffer,
+        input.stem.encryptionMetadata,
+        serverAuthSig,
+        input.stem.uri,
+      );
+    }
+
+    return this.fetchPaidStemSourceBuffer({
+      uri: input.stem.uri,
+      resolvedUri: resolvedStemUrl,
+      data: input.stem.data,
+      errorLabel: 'stem',
+    });
+  }
+
+  private writePaidStemResponse(input: {
+    res: Response;
+    stem: { title?: string | null; type?: string | null; uri: string };
+    audioBuffer: Buffer;
+    responseMimeType: string;
+    receipt: X402SettlementReceipt;
+  }) {
+    const filename = `${input.stem.title || input.stem.type || 'stem'}${this.getDownloadExtension(input.stem.uri, input.responseMimeType)}`;
+    const encodedReceipt = encodeX402ReceiptHeader(input.receipt);
+    input.res.set({
+      'Content-Type': input.responseMimeType,
+      'Content-Length': String(input.audioBuffer.length),
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Access-Control-Expose-Headers':
+        'X-Resonate-Receipt,X-Resonate-Receipt-Id,X-Resonate-Receipt-Content-Type,X-Resonate-License,X-Resonate-Settlement-Status,X-Payment-Response',
+      'X-Resonate-License': input.receipt.license.key,
+      'X-Resonate-Receipt': encodedReceipt,
+      'X-Resonate-Receipt-Content-Type':
+        'application/vnd.resonate.purchase-receipt+json',
+      'X-Resonate-Receipt-Id': input.receipt.receiptId,
+      'X-Resonate-Settlement-Status': input.receipt.settlement.status,
+    });
+
+    input.res.send(input.audioBuffer);
+  }
+
+  private async findExistingSettlement(input: {
+    paymentProofSha256: string | null;
+    paymentTransactionHash: string | null;
+  }) {
+    const or = [
+      input.paymentProofSha256
+        ? { paymentProofSha256: input.paymentProofSha256 }
+        : null,
+      input.paymentTransactionHash
+        ? { paymentTransactionHash: input.paymentTransactionHash }
+        : null,
+    ].filter(Boolean) as Array<
+      { paymentProofSha256: string } | { paymentTransactionHash: string }
+    >;
+
+    if (or.length === 0) return null;
+
+    return prisma.x402Settlement.findFirst({
+      where: { OR: or },
+    });
+  }
+
+  private findActiveListing(stemId: string): Promise<ActiveX402Listing | null> {
+    return prisma.stemListing.findFirst({
+      where: {
+        stemId,
+        status: 'active',
+        amount: { gt: 0 },
+        expiresAt: { gt: new Date() },
+      },
+      select: {
+        id: true,
+        listingId: true,
+        tokenId: true,
+        chainId: true,
+        contractAddress: true,
+      },
+      orderBy: { listedAt: 'desc' },
+    });
+  }
+
+  private describeContractSettlement(listing: ActiveX402Listing | null) {
+    if (!listing) {
+      return {
+        status: 'download_only' as const,
+        entitlement: 'download_access' as const,
+        reason: 'No active marketplace listing was linked to this x402 redemption.',
+      };
+    }
+
+    return {
+      status: 'contract_required_missing' as const,
+      entitlement: 'marketplace_purchase' as const,
+      listingId: listing.listingId.toString(),
+      listingChainId: listing.chainId,
+      listingContractAddress: listing.contractAddress,
+      tokenId: listing.tokenId.toString(),
+      reason:
+        'An active marketplace listing exists, but this x402 rail has not yet executed or verified the marketplace contract purchase.',
+    };
+  }
+
+  private hashPaymentProof(paymentProof?: string | null) {
+    if (!paymentProof) return null;
+    return createHash('sha256').update(paymentProof).digest('hex');
   }
 
   private findVerifiedTransfer(

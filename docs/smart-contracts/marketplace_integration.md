@@ -65,6 +65,12 @@ token approval and marketplace purchase in one smart-account operation, so a
 USDC listing remains a stablecoin purchase even though it uses the on-chain
 wallet transaction rail.
 
+The x402 rail records a durable `X402Settlement` row for paid downloads and
+links the receipt to the active marketplace listing when one exists. Until x402
+redemption executes or proves the marketplace contract purchase, those receipts
+use `settlement.status = "contract_required_missing"` rather than claiming the
+same ownership state as a direct `StemMarketplaceV2.buy`.
+
 ```typescript
 import { useMintStem, useListStem, useBuyQuote } from "@/hooks/useContracts";
 

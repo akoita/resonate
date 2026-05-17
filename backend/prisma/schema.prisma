@@ -10,20 +10,20 @@ datasource db {
 }
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  createdAt     DateTime       @default(now())
-  artist        Artist?
-  agentConfig   AgentConfig?
-  agentSignals  AgentSignal[]
-  folders       Folder[]
-  libraryTracks LibraryTrack[]
-  playlists     Playlist[]
-  sessions      Session[]
-  wallet        Wallet?
-  passkeyIdentities PasskeyIdentity[]
-  sessionKeys   SessionKey[]
-  stemQualityRatings StemQualityRating[]
+  id                          String                    @id @default(uuid())
+  email                       String                    @unique
+  createdAt                   DateTime                  @default(now())
+  artist                      Artist?
+  agentConfig                 AgentConfig?
+  agentSignals                AgentSignal[]
+  folders                     Folder[]
+  libraryTracks               LibraryTrack[]
+  playlists                   Playlist[]
+  sessions                    Session[]
+  wallet                      Wallet?
+  passkeyIdentities           PasskeyIdentity[]
+  sessionKeys                 SessionKey[]
+  stemQualityRatings          StemQualityRating[]
   reputationFeedbackSubmitted AgentReputationFeedback[] @relation("AgentReputationFeedbackSubmitter")
 }
 
@@ -79,94 +79,94 @@ model PasskeyIdentity {
 }
 
 model Artist {
-  id            String        @id @default(uuid())
-  userId        String        @unique
-  displayName   String
-  payoutAddress String
-  user          User          @relation(fields: [userId], references: [id])
-  releases      Release[]
-  creatorTrust  CreatorTrust?
-  rightsUpgradeRequests ReleaseRightsUpgradeRequest[]
-  trustedSourceLinks TrustedSourceArtistLink[]
+  id                        String                        @id @default(uuid())
+  userId                    String                        @unique
+  displayName               String
+  payoutAddress             String
+  user                      User                          @relation(fields: [userId], references: [id])
+  releases                  Release[]
+  creatorTrust              CreatorTrust?
+  rightsUpgradeRequests     ReleaseRightsUpgradeRequest[]
+  trustedSourceLinks        TrustedSourceArtistLink[]
   trustedSourceLinkRequests TrustedSourceLinkRequest[]
 }
 
 model Release {
-  id                   String    @id @default(uuid())
-  artistId             String
-  title                String
-  status               String    @default("processing")
-  processingError      String?   @db.Text
-  type                 String    @default("single")
-  primaryArtist        String?
-  featuredArtists      String?
-  genre                String?
-  label                String?
-  releaseDate          DateTime?
-  explicit             Boolean   @default(false)
-  createdAt            DateTime  @default(now())
-  artworkUrl           String?
-  artworkData          Bytes?
-  artworkMimeType      String?
-  attestation          String?   @db.Text // JSON: {contentHash, isOriginalWork, sourceCredits[]}
-  attestationSignature String?   @db.Text // Wallet signature of the attestation
-  rightsRoute          String?
-  rightsFlags          Json?
-  rightsReason         String?   @db.Text
-  rightsPolicyVersion  String?
-  rightsSourceType     String?
-  rightsEvaluatedAt    DateTime?
-  artist               Artist    @relation(fields: [artistId], references: [id])
-  tracks               Track[]
+  id                    String                        @id @default(uuid())
+  artistId              String
+  title                 String
+  status                String                        @default("processing")
+  processingError       String?                       @db.Text
+  type                  String                        @default("single")
+  primaryArtist         String?
+  featuredArtists       String?
+  genre                 String?
+  label                 String?
+  releaseDate           DateTime?
+  explicit              Boolean                       @default(false)
+  createdAt             DateTime                      @default(now())
+  artworkUrl            String?
+  artworkData           Bytes?
+  artworkMimeType       String?
+  attestation           String?                       @db.Text // JSON: {contentHash, isOriginalWork, sourceCredits[]}
+  attestationSignature  String?                       @db.Text // Wallet signature of the attestation
+  rightsRoute           String?
+  rightsFlags           Json?
+  rightsReason          String?                       @db.Text
+  rightsPolicyVersion   String?
+  rightsSourceType      String?
+  rightsEvaluatedAt     DateTime?
+  artist                Artist                        @relation(fields: [artistId], references: [id])
+  tracks                Track[]
   rightsUpgradeRequests ReleaseRightsUpgradeRequest[]
-  rightsReassessments  RightsRouteReassessment[]
+  rightsReassessments   RightsRouteReassessment[]
 
   @@index([rightsRoute])
 }
 
 model Track {
-  id                 String            @id @default(uuid())
-  title              String
-  isrc               String?
-  explicit           Boolean           @default(false)
-  createdAt          DateTime          @default(now())
-  position           Int               @default(1)
-  releaseId          String
-  artist             String?
-  processingStatus   String            @default("pending") // pending, processing, complete, failed
-  processingError    String?           @db.Text
+  id                  String            @id @default(uuid())
+  title               String
+  isrc                String?
+  explicit            Boolean           @default(false)
+  createdAt           DateTime          @default(now())
+  position            Int               @default(1)
+  releaseId           String
+  artist              String?
+  processingStatus    String            @default("pending") // pending, processing, complete, failed
+  processingError     String?           @db.Text
   processingStartedAt DateTime?
-  lastProgressAt     DateTime?
-  contentStatus      String            @default("clean") // clean, quarantined, dmca_removed
-  generationMetadata Json? // { provider, prompt, negativePrompt, seed, generatedAt, synthIdPresent, durationSeconds, sampleRate, cost }
-  licenses           License[]
-  agentSignals       AgentSignal[]
-  stems              Stem[]
-  embedding          TrackEmbedding?
-  fingerprint        AudioFingerprint?
-  dmcaReports        DmcaReport[]
-  release            Release           @relation(fields: [releaseId], references: [id])
-  rightsRoute        String?
-  rightsFlags        Json?
-  rightsReason       String?           @db.Text
+  lastProgressAt      DateTime?
+  contentStatus       String            @default("clean") // clean, quarantined, dmca_removed
+  generationMetadata  Json? // { provider, prompt, negativePrompt, seed, generatedAt, synthIdPresent, durationSeconds, sampleRate, cost }
+  licenses            License[]
+  agentSignals        AgentSignal[]
+  stems               Stem[]
+  embedding           TrackEmbedding?
+  fingerprint         AudioFingerprint?
+  dmcaReports         DmcaReport[]
+  release             Release           @relation(fields: [releaseId], references: [id])
+  rightsRoute         String?
+  rightsFlags         Json?
+  rightsReason        String?           @db.Text
   rightsPolicyVersion String?
-  rightsEvaluatedAt  DateTime?
+  rightsEvaluatedAt   DateTime?
 
   @@index([rightsRoute])
 }
 
 model TrackEmbedding {
-  trackId   String                  @id
+  trackId   String                    @id
   vector    Unsupported("vector(16)")
-  createdAt DateTime                @default(now())
-  updatedAt DateTime                @updatedAt
-  track     Track                   @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  createdAt DateTime                  @default(now())
+  updatedAt DateTime                  @updatedAt
+  track     Track                     @relation(fields: [trackId], references: [id], onDelete: Cascade)
 
   @@index([updatedAt])
 }
 
 model Stem {
-  id                 String        @id @default(uuid())
+  id                 String              @id @default(uuid())
   trackId            String
   type               String
   uri                String
@@ -179,13 +179,14 @@ model Stem {
   mimeType           String?
   durationSeconds    Float?
   encryptionMetadata String?
-  isEncrypted        Boolean       @default(false)
-  storageProvider    String        @default("local")
-  track              Track         @relation(fields: [trackId], references: [id])
+  isEncrypted        Boolean             @default(false)
+  storageProvider    String              @default("local")
+  track              Track               @relation(fields: [trackId], references: [id])
   listings           StemListing[]
   nftMint            StemNftMint?
   pricing            StemPricing?
   qualityRatings     StemQualityRating[]
+  x402Settlements    X402Settlement[]
 }
 
 model StemQualityRating {
@@ -261,7 +262,7 @@ model StemNftMint {
 }
 
 model StemListing {
-  id              String         @id @default(uuid())
+  id              String           @id @default(uuid())
   listingId       BigInt
   stemId          String?
   tokenId         BigInt
@@ -274,13 +275,14 @@ model StemListing {
   expiresAt       DateTime
   transactionHash String
   blockNumber     BigInt
-  status          String         @default("active")
+  status          String           @default("active")
   listedAt        DateTime
   soldAt          DateTime?
   cancelledAt     DateTime?
-  createdAt       DateTime       @default(now())
-  stem            Stem?          @relation(fields: [stemId], references: [id])
+  createdAt       DateTime         @default(now())
+  stem            Stem?            @relation(fields: [stemId], references: [id])
   purchases       StemPurchase[]
+  x402Settlements X402Settlement[]
 
   @@unique([transactionHash, listingId], name: "transactionHash_listingId")
   @@index([listingId, chainId])
@@ -301,27 +303,27 @@ enum LicenseType {
 }
 
 model StemPurchase {
-  id              String      @id @default(uuid())
-  listingId       String
-  buyerAddress    String
-  amount          BigInt
-  totalPaid       String
-  paymentToken    String      @default("0x0000000000000000000000000000000000000000")
-  paymentAssetId  String?
-  paymentAssetSymbol String    @default("ETH")
-  paymentAssetDecimals Int     @default(18)
-  settlementAmount String?
+  id                    String      @id @default(uuid())
+  listingId             String
+  buyerAddress          String
+  amount                BigInt
+  totalPaid             String
+  paymentToken          String      @default("0x0000000000000000000000000000000000000000")
+  paymentAssetId        String?
+  paymentAssetSymbol    String      @default("ETH")
+  paymentAssetDecimals  Int         @default(18)
+  settlementAmount      String?
   settlementAmountUnits String?
-  canonicalAmountUsd String?
-  royaltyPaid     String
-  protocolFeePaid String
-  sellerReceived  String
-  licenseType     LicenseType @default(personal)
-  transactionHash String      @unique
-  blockNumber     BigInt
-  purchasedAt     DateTime
-  createdAt       DateTime    @default(now())
-  listing         StemListing @relation(fields: [listingId], references: [id])
+  canonicalAmountUsd    String?
+  royaltyPaid           String
+  protocolFeePaid       String
+  sellerReceived        String
+  licenseType           LicenseType @default(personal)
+  transactionHash       String      @unique
+  blockNumber           BigInt
+  purchasedAt           DateTime
+  createdAt             DateTime    @default(now())
+  listing               StemListing @relation(fields: [listingId], references: [id])
 
   @@index([buyerAddress])
   @@index([purchasedAt])
@@ -329,22 +331,22 @@ model StemPurchase {
 }
 
 model RoyaltyPayment {
-  id               String   @id @default(uuid())
-  tokenId          BigInt
-  chainId          Int
-  recipientAddress String
-  amount           String
-  paymentToken     String   @default("0x0000000000000000000000000000000000000000")
-  paymentAssetId   String?
-  paymentAssetSymbol String @default("ETH")
-  paymentAssetDecimals Int  @default(18)
-  settlementAmount String?
+  id                    String   @id @default(uuid())
+  tokenId               BigInt
+  chainId               Int
+  recipientAddress      String
+  amount                String
+  paymentToken          String   @default("0x0000000000000000000000000000000000000000")
+  paymentAssetId        String?
+  paymentAssetSymbol    String   @default("ETH")
+  paymentAssetDecimals  Int      @default(18)
+  settlementAmount      String?
   settlementAmountUnits String?
-  canonicalAmountUsd String?
-  transactionHash  String
-  blockNumber      BigInt
-  paidAt           DateTime
-  createdAt        DateTime @default(now())
+  canonicalAmountUsd    String?
+  transactionHash       String
+  blockNumber           BigInt
+  paidAt                DateTime
+  createdAt             DateTime @default(now())
 
   @@unique([transactionHash, tokenId], name: "transactionHash_tokenId")
   @@index([recipientAddress])
@@ -369,6 +371,42 @@ model ContractEvent {
   @@index([eventName])
   @@index([blockNumber])
   @@index([contractAddress, chainId])
+}
+
+model X402Settlement {
+  id                          String       @id @default(uuid())
+  stemId                      String
+  listingId                   String?
+  listingChainId              Int?
+  listingContractAddress      String?
+  listingTokenId              BigInt?
+  payerAddress                String?
+  paymentRail                 String       @default("facilitator")
+  paymentProofSha256          String?      @unique
+  paymentTransactionHash      String?      @unique
+  receiptId                   String       @unique
+  receipt                     Json
+  status                      String       @default("download_granted")
+  contractSettlementStatus    String       @default("not_applicable")
+  contractSettlementTxHash    String?
+  contractSettlementEventName String?
+  contractSettlementReason    String?
+  paymentToken                String
+  paymentAssetId              String?
+  paymentAssetSymbol          String
+  paymentAssetDecimals        Int
+  settlementAmount            String
+  settlementAmountUnits       String
+  canonicalAmountUsd          String?
+  purchasedAt                 DateTime
+  createdAt                   DateTime     @default(now())
+  updatedAt                   DateTime     @updatedAt
+  stem                        Stem         @relation(fields: [stemId], references: [id])
+  listing                     StemListing? @relation(fields: [listingId], references: [id])
+
+  @@index([stemId])
+  @@index([status])
+  @@index([contractSettlementStatus])
 }
 
 model IndexerState {
@@ -475,50 +513,50 @@ model Folder {
 }
 
 model AgentConfig {
-  id                    String    @id @default(uuid())
-  userId                String    @unique
-  name                  String    @default("My DJ")
-  vibes                 String[]  @default(["Focus"])
-  sessionMode           String    @default("curate") // "curate" | "buy"
-  stemTypes             String[]  @default([])
-  monthlyCapUsd         Float     @default(10)
-  isActive              Boolean   @default(false)
-  identityStatus        String    @default("local") // "local" | "pending" | "minted" | "attested"
-  identityChainId       Int?
-  identityRegistry      String?
-  identityTokenId       String?
-  identityTxHash        String?
-  identityCredential    Json?
-  learnedTasteProfile   Json?
-  tasteScore            Int       @default(0)
-  tasteUpdatedAt        DateTime?
-  reputationScore       Int       @default(0)
-  reputationSnapshot    Json?
-  reputationAttestedAt  DateTime?
-  reputationTxHash      String?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  user                  User      @relation(fields: [userId], references: [id])
-  reputationFeedback    AgentReputationFeedback[] @relation("AgentReputationFeedbackSubject")
+  id                   String                    @id @default(uuid())
+  userId               String                    @unique
+  name                 String                    @default("My DJ")
+  vibes                String[]                  @default(["Focus"])
+  sessionMode          String                    @default("curate") // "curate" | "buy"
+  stemTypes            String[]                  @default([])
+  monthlyCapUsd        Float                     @default(10)
+  isActive             Boolean                   @default(false)
+  identityStatus       String                    @default("local") // "local" | "pending" | "minted" | "attested"
+  identityChainId      Int?
+  identityRegistry     String?
+  identityTokenId      String?
+  identityTxHash       String?
+  identityCredential   Json?
+  learnedTasteProfile  Json?
+  tasteScore           Int                       @default(0)
+  tasteUpdatedAt       DateTime?
+  reputationScore      Int                       @default(0)
+  reputationSnapshot   Json?
+  reputationAttestedAt DateTime?
+  reputationTxHash     String?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  user                 User                      @relation(fields: [userId], references: [id])
+  reputationFeedback   AgentReputationFeedback[] @relation("AgentReputationFeedbackSubject")
 }
 
 model AgentReputationFeedback {
-  id                   String      @id @default(uuid())
+  id                   String   @id @default(uuid())
   subjectAgentConfigId String
   submitterUserId      String?
-  submitterRole        String      // "BuyerAgent" | "CuratorAgent" | "ExternalClient" | "PlatformReviewer"
+  submitterRole        String // "BuyerAgent" | "CuratorAgent" | "ExternalClient" | "PlatformReviewer"
   submitterIdentifier  String?
-  feedbackKind         String      // "QualityValidation" | "TasteEndorsement" | "DisputeOutcome" | "GeneralReview"
+  feedbackKind         String // "QualityValidation" | "TasteEndorsement" | "DisputeOutcome" | "GeneralReview"
   score                Int
   weight               Float
   evidenceUri          String?
   notes                String?
   referenceType        String?
   referenceId          String?
-  replayHash           String      @unique
-  onchainStatus        String      @default("Pending") // "Pending" | "Published" | "NotApplicable"
+  replayHash           String   @unique
+  onchainStatus        String   @default("Pending") // "Pending" | "Published" | "NotApplicable"
   onchainTxHash        String?
-  createdAt            DateTime    @default(now())
+  createdAt            DateTime @default(now())
 
   subject   AgentConfig @relation("AgentReputationFeedbackSubject", fields: [subjectAgentConfigId], references: [id], onDelete: Cascade)
   submitter User?       @relation("AgentReputationFeedbackSubmitter", fields: [submitterUserId], references: [id])
@@ -663,26 +701,26 @@ model CreatorTrust {
 }
 
 model ContentProtectionStake {
-  id              String    @id @default(uuid())
-  tokenId         String
-  chainId         Int
-  stakerAddress   String
-  amount          String // wei string
-  paymentToken    String    @default("0x0000000000000000000000000000000000000000")
-  paymentAssetId  String?
-  paymentAssetSymbol String  @default("ETH")
-  paymentAssetDecimals Int   @default(18)
-  settlementAmount String?
+  id                    String    @id @default(uuid())
+  tokenId               String
+  chainId               Int
+  stakerAddress         String
+  amount                String // wei string
+  paymentToken          String    @default("0x0000000000000000000000000000000000000000")
+  paymentAssetId        String?
+  paymentAssetSymbol    String    @default("ETH")
+  paymentAssetDecimals  Int       @default(18)
+  settlementAmount      String?
   settlementAmountUnits String?
-  canonicalAmountUsd String?
-  active          Boolean   @default(true)
-  depositedAt     DateTime
-  refundedAt      DateTime?
-  slashedAt       DateTime?
-  transactionHash String
-  blockNumber     BigInt
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  canonicalAmountUsd    String?
+  active                Boolean   @default(true)
+  depositedAt           DateTime
+  refundedAt            DateTime?
+  slashedAt             DateTime?
+  transactionHash       String
+  blockNumber           BigInt
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   @@unique([tokenId, chainId])
   @@index([stakerAddress])
@@ -707,42 +745,42 @@ model ContentAttestation {
 }
 
 model Dispute {
-  id               String            @id @default(uuid())
-  disputeIdOnChain String?           @unique
-  tokenId          String
-  reporterAddr     String
-  creatorAddr      String
-  status           String            @default("filed") // filed|evidence|review|escalated|jury_voting|resolved|appealed
-  outcome          String? // upheld|rejected|inconclusive
-  evidenceURI      String
-  counterStake     String // wei
-  counterStakeToken String           @default("0x0000000000000000000000000000000000000000")
-  counterStakeAssetId String?
-  counterStakeAssetSymbol String     @default("ETH")
-  counterStakeAssetDecimals Int      @default(18)
-  counterStakeAmount String?
-  counterStakeAmountUnits String?
-  counterStakeAmountUsd String?
-  appealStakeToken String?
-  appealStakeAssetId String?
-  appealStakeAssetSymbol String?
-  appealStakeAssetDecimals Int?
-  appealStakeAmount String?
-  appealStakeAmountUnits String?
-  appealStakeAmountUsd String?
-  chainId          Int?
-  transactionHash  String?
-  resolvedAt       DateTime?
-  escalatedToJuryAt DateTime?
-  juryDeadlineAt   DateTime?
-  jurySize         Int?
-  juryVotesForReporter Int @default(0)
-  juryVotesForCreator  Int @default(0)
-  juryFinalizedAt  DateTime?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  evidences        DisputeEvidence[]
-  juryAssignments  DisputeJurorAssignment[]
+  id                        String                   @id @default(uuid())
+  disputeIdOnChain          String?                  @unique
+  tokenId                   String
+  reporterAddr              String
+  creatorAddr               String
+  status                    String                   @default("filed") // filed|evidence|review|escalated|jury_voting|resolved|appealed
+  outcome                   String? // upheld|rejected|inconclusive
+  evidenceURI               String
+  counterStake              String // wei
+  counterStakeToken         String                   @default("0x0000000000000000000000000000000000000000")
+  counterStakeAssetId       String?
+  counterStakeAssetSymbol   String                   @default("ETH")
+  counterStakeAssetDecimals Int                      @default(18)
+  counterStakeAmount        String?
+  counterStakeAmountUnits   String?
+  counterStakeAmountUsd     String?
+  appealStakeToken          String?
+  appealStakeAssetId        String?
+  appealStakeAssetSymbol    String?
+  appealStakeAssetDecimals  Int?
+  appealStakeAmount         String?
+  appealStakeAmountUnits    String?
+  appealStakeAmountUsd      String?
+  chainId                   Int?
+  transactionHash           String?
+  resolvedAt                DateTime?
+  escalatedToJuryAt         DateTime?
+  juryDeadlineAt            DateTime?
+  jurySize                  Int?
+  juryVotesForReporter      Int                      @default(0)
+  juryVotesForCreator       Int                      @default(0)
+  juryFinalizedAt           DateTime?
+  createdAt                 DateTime                 @default(now())
+  updatedAt                 DateTime                 @updatedAt
+  evidences                 DisputeEvidence[]
+  juryAssignments           DisputeJurorAssignment[]
 
   @@index([tokenId])
   @@index([reporterAddr])
@@ -837,24 +875,24 @@ enum TrustedSourceLinkRequestStatus {
 }
 
 model TrustedSource {
-  id              String                    @id @default(uuid())
-  type            TrustedSourceType
-  name            String
-  sourceKey       String
-  trustLevel      TrustedSourceTrustLevel   @default(standard)
-  reviewState     TrustedSourceReviewState  @default(pending_review)
-  domain          String?
-  feedUrl         String?
-  traceability    Json?
+  id               String                     @id @default(uuid())
+  type             TrustedSourceType
+  name             String
+  sourceKey        String
+  trustLevel       TrustedSourceTrustLevel    @default(standard)
+  reviewState      TrustedSourceReviewState   @default(pending_review)
+  domain           String?
+  feedUrl          String?
+  traceability     Json?
   createdByAddress String?
-  reviewedBy      String?
-  reviewedAt      DateTime?
-  revokedAt       DateTime?
-  downgradedAt    DateTime?
-  createdAt       DateTime                  @default(now())
-  updatedAt       DateTime                  @updatedAt
-  artistLinks     TrustedSourceArtistLink[]
-  linkRequests    TrustedSourceLinkRequest[]
+  reviewedBy       String?
+  reviewedAt       DateTime?
+  revokedAt        DateTime?
+  downgradedAt     DateTime?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+  artistLinks      TrustedSourceArtistLink[]
+  linkRequests     TrustedSourceLinkRequest[]
 
   @@unique([type, sourceKey])
   @@index([reviewState])
@@ -863,22 +901,22 @@ model TrustedSource {
 }
 
 model TrustedSourceArtistLink {
-  id              String                    @id @default(uuid())
+  id              String                  @id @default(uuid())
   artistId        String
   trustedSourceId String
-  status          TrustedSourceLinkStatus   @default(active)
-  trustLevel      TrustedSourceTrustLevel   @default(standard)
+  status          TrustedSourceLinkStatus @default(active)
+  trustLevel      TrustedSourceTrustLevel @default(standard)
   sourceType      TrustedSourceType
   approvedBy      String?
   approvedAt      DateTime?
   revokedBy       String?
   revokedAt       DateTime?
-  revokeReason    String?                   @db.Text
+  revokeReason    String?                 @db.Text
   metadata        Json?
-  createdAt       DateTime                  @default(now())
-  updatedAt       DateTime                  @updatedAt
-  artist          Artist                    @relation(fields: [artistId], references: [id])
-  trustedSource   TrustedSource             @relation(fields: [trustedSourceId], references: [id])
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  artist          Artist                  @relation(fields: [artistId], references: [id])
+  trustedSource   TrustedSource           @relation(fields: [trustedSourceId], references: [id])
 
   @@unique([artistId, trustedSourceId])
   @@index([artistId, status])
@@ -887,23 +925,23 @@ model TrustedSourceArtistLink {
 }
 
 model TrustedSourceLinkRequest {
-  id                  String                    @id @default(uuid())
+  id                  String                         @id @default(uuid())
   artistId            String
   trustedSourceId     String?
   requesterAddress    String
   requestedSourceType TrustedSourceType
   sourceName          String
   sourceKey           String
-  requestedTrustLevel TrustedSourceTrustLevel   @default(standard)
-  proofSummary        String                    @db.Text
+  requestedTrustLevel TrustedSourceTrustLevel        @default(standard)
+  proofSummary        String                         @db.Text
   status              TrustedSourceLinkRequestStatus @default(submitted)
-  decisionReason      String?                   @db.Text
+  decisionReason      String?                        @db.Text
   reviewedBy          String?
   reviewedAt          DateTime?
-  createdAt           DateTime                  @default(now())
-  updatedAt           DateTime                  @updatedAt
-  artist              Artist                    @relation(fields: [artistId], references: [id])
-  trustedSource       TrustedSource?            @relation(fields: [trustedSourceId], references: [id])
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+  artist              Artist                         @relation(fields: [artistId], references: [id])
+  trustedSource       TrustedSource?                 @relation(fields: [trustedSourceId], references: [id])
 
   @@index([artistId, createdAt])
   @@index([status, createdAt])
@@ -912,21 +950,21 @@ model TrustedSourceLinkRequest {
 }
 
 model ReleaseRightsUpgradeRequest {
-  id                       String   @id @default(uuid())
+  id                       String                 @id @default(uuid())
   releaseId                String
   artistId                 String
   requestedByAddress       String
-  status                   String   @default("submitted")
-  requestedRoute           String   @default("STANDARD_ESCROW")
+  status                   String                 @default("submitted")
+  requestedRoute           String                 @default("STANDARD_ESCROW")
   currentRouteAtSubmission String?
-  summary                  String?  @db.Text
-  decisionReason           String?  @db.Text
+  summary                  String?                @db.Text
+  decisionReason           String?                @db.Text
   reviewedBy               String?
   reviewedAt               DateTime?
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
-  release                  Release  @relation(fields: [releaseId], references: [id])
-  artist                   Artist   @relation(fields: [artistId], references: [id])
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+  release                  Release                @relation(fields: [releaseId], references: [id])
+  artist                   Artist                 @relation(fields: [artistId], references: [id])
   evidenceBundles          RightsEvidenceBundle[]
 
   @@index([releaseId, createdAt])
@@ -935,26 +973,26 @@ model ReleaseRightsUpgradeRequest {
 }
 
 model RightsRouteReassessment {
-  id                    String   @id @default(uuid())
-  releaseId             String
-  trigger               String
-  status                String   @default("pending_review")
-  previousRoute         String?
-  recommendedRoute      String?
-  nextRoute             String?
-  reason                String   @db.Text
-  actorAddress          String?
-  evidenceSubjectType   String?
-  evidenceSubjectId     String?
-  trustedSourceLinkId   String?
+  id                     String    @id @default(uuid())
+  releaseId              String
+  trigger                String
+  status                 String    @default("pending_review")
+  previousRoute          String?
+  recommendedRoute       String?
+  nextRoute              String?
+  reason                 String    @db.Text
+  actorAddress           String?
+  evidenceSubjectType    String?
+  evidenceSubjectId      String?
+  trustedSourceLinkId    String?
   rightsUpgradeRequestId String?
-  policyVersion         String?
-  flags                 Json?
-  reviewedBy            String?
-  reviewedAt            DateTime?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  release               Release  @relation(fields: [releaseId], references: [id])
+  policyVersion          String?
+  flags                  Json?
+  reviewedBy             String?
+  reviewedAt             DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  release                Release   @relation(fields: [releaseId], references: [id])
 
   @@index([releaseId, createdAt])
   @@index([status, createdAt])
@@ -964,18 +1002,18 @@ model RightsRouteReassessment {
 }
 
 model RightsEvidenceBundle {
-  id                 String                     @id @default(uuid())
+  id                     String                       @id @default(uuid())
   rightsUpgradeRequestId String?
-  subjectType        RightsEvidenceSubjectType
-  subjectId          String
-  submittedByRole    RightsEvidenceRole
-  submittedByAddress String?
-  purpose            RightsEvidenceBundlePurpose
-  summary            String?
-  createdAt          DateTime                   @default(now())
-  updatedAt          DateTime                   @updatedAt
-  evidences          RightsEvidence[]
-  rightsUpgradeRequest ReleaseRightsUpgradeRequest? @relation(fields: [rightsUpgradeRequestId], references: [id])
+  subjectType            RightsEvidenceSubjectType
+  subjectId              String
+  submittedByRole        RightsEvidenceRole
+  submittedByAddress     String?
+  purpose                RightsEvidenceBundlePurpose
+  summary                String?
+  createdAt              DateTime                     @default(now())
+  updatedAt              DateTime                     @updatedAt
+  evidences              RightsEvidence[]
+  rightsUpgradeRequest   ReleaseRightsUpgradeRequest? @relation(fields: [rightsUpgradeRequestId], references: [id])
 
   @@index([subjectType, subjectId])
   @@index([purpose])
@@ -984,31 +1022,31 @@ model RightsEvidenceBundle {
 }
 
 model RightsEvidence {
-  id                  String                             @id @default(uuid())
-  bundleId            String?
-  subjectType         RightsEvidenceSubjectType
-  subjectId           String
-  submittedByRole     RightsEvidenceRole
-  submittedByAddress  String?
-  kind                RightsEvidenceKind
-  title               String
-  description         String?
-  sourceUrl           String?
-  sourceLabel         String?
-  claimedRightsholder String?
-  artistName          String?
-  releaseTitle        String?
-  publicationDate     DateTime?
-  isrc                String?
-  upc                 String?
+  id                    String                           @id @default(uuid())
+  bundleId              String?
+  subjectType           RightsEvidenceSubjectType
+  subjectId             String
+  submittedByRole       RightsEvidenceRole
+  submittedByAddress    String?
+  kind                  RightsEvidenceKind
+  title                 String
+  description           String?
+  sourceUrl             String?
+  sourceLabel           String?
+  claimedRightsholder   String?
+  artistName            String?
+  releaseTitle          String?
+  publicationDate       DateTime?
+  isrc                  String?
+  upc                   String?
   fingerprintConfidence Float?
-  strength            RightsEvidenceStrength
-  verificationStatus  RightsEvidenceVerificationStatus  @default(unverified)
-  attachments         Json?
-  metadata            Json?
-  createdAt           DateTime                           @default(now())
-  updatedAt           DateTime                           @updatedAt
-  bundle              RightsEvidenceBundle?              @relation(fields: [bundleId], references: [id])
+  strength              RightsEvidenceStrength
+  verificationStatus    RightsEvidenceVerificationStatus @default(unverified)
+  attachments           Json?
+  metadata              Json?
+  createdAt             DateTime                         @default(now())
+  updatedAt             DateTime                         @updatedAt
+  bundle                RightsEvidenceBundle?            @relation(fields: [bundleId], references: [id])
 
   @@index([subjectType, subjectId])
   @@index([bundleId])
@@ -1031,13 +1069,13 @@ model DisputeEvidence {
 }
 
 model DisputeJurorAssignment {
-  id          String   @id @default(uuid())
-  disputeId   String
-  jurorAddr   String
-  vote        String? // reporter|creator
-  assignedAt  DateTime @default(now())
-  votedAt     DateTime?
-  dispute     Dispute  @relation(fields: [disputeId], references: [id])
+  id         String    @id @default(uuid())
+  disputeId  String
+  jurorAddr  String
+  vote       String? // reporter|creator
+  assignedAt DateTime  @default(now())
+  votedAt    DateTime?
+  dispute    Dispute   @relation(fields: [disputeId], references: [id])
 
   @@unique([disputeId, jurorAddr])
   @@index([jurorAddr])
