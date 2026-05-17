@@ -40,6 +40,16 @@ export function listingAssetDecimals(asset: MarketplaceListingAsset): number {
   return asset?.decimals ?? 18;
 }
 
+export function hasStablecoinMarketplaceAsset(input: {
+  assets: PaymentAsset[];
+  chainId?: number;
+}): boolean {
+  return input.assets.some((asset) => {
+    if (input.chainId && asset.chainId !== input.chainId) return false;
+    return asset.kind === "stablecoin" && paymentAssetSupportsSurface(asset, "marketplace");
+  });
+}
+
 export function parseListingPriceUnits(input: {
   price: string;
   asset: MarketplaceListingAsset;
