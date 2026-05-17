@@ -642,6 +642,32 @@ export type AgentTransaction = {
   trackArtist: string | null;
 };
 
+export type AgentNextPickResponse = {
+  status: "ok" | "no_tracks" | "all_rejected" | "error";
+  runtimeStatus?: string;
+  reason?: string;
+  licenseType?: string;
+  priceUsd?: number;
+  score?: number;
+  explanation?: string[];
+  audioFeatures?: {
+    energyBand?: string;
+    tempoBpm?: number;
+  };
+  track?: {
+    id: string;
+    title: string;
+    artist?: string | null;
+    releaseId: string;
+    release?: {
+      id: string;
+      title: string;
+      artworkMimeType?: string | null;
+      artworkUrl?: string | null;
+    };
+  };
+};
+
 export async function enableAgentWallet(token: string): Promise<AgentWalletStatus> {
   return apiRequest<AgentWalletStatus>(
     "/wallet/agent/enable",
