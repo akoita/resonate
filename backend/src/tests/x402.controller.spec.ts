@@ -14,11 +14,16 @@ const ERC20_TRANSFER_EVENT = {
 
 jest.mock('../db/prisma', () => ({
   prisma: {
+    $transaction: jest.fn((operations) => Promise.all(operations)),
     stem: {
       findUnique: jest.fn(),
     },
     stemListing: {
       findFirst: jest.fn(),
+    },
+    x402Settlement: {
+      findFirst: jest.fn(),
+      create: jest.fn(),
     },
     stemPricing: {
       findUnique: jest.fn(),
@@ -32,8 +37,10 @@ jest.mock('../db/prisma', () => ({
 
 const { prisma } = jest.requireMock('../db/prisma') as {
   prisma: {
+    $transaction: jest.Mock;
     stem: { findUnique: jest.Mock };
     stemListing: { findFirst: jest.Mock };
+    x402Settlement: { findFirst: jest.Mock; create: jest.Mock };
     stemPricing: { findUnique: jest.Mock };
     contractEvent: { findFirst: jest.Mock; create: jest.Mock };
   };
@@ -88,6 +95,8 @@ describe('X402Controller', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prisma.contractEvent.findFirst.mockResolvedValue(null);
+    prisma.x402Settlement.findFirst.mockResolvedValue(null);
+    prisma.stemListing.findFirst.mockResolvedValue(null);
     storageProvider.download.mockReset();
     encryptionService.decryptBuffer.mockReset();
     global.fetch = jest.fn().mockResolvedValue({
@@ -140,6 +149,11 @@ describe('X402Controller', () => {
     expect(decodedReceipt.resource.stemId).toBe('stem_1');
     expect(decodedReceipt.payment.amount).toBe('0.75');
     expect(decodedReceipt.license.key).toBe('personal');
+    expect(decodedReceipt.settlement).toEqual(expect.objectContaining({
+      rail: 'x402',
+      status: 'download_only',
+      entitlement: 'download_access',
+    }));
     expect(res.body).toBeInstanceOf(Buffer);
 
     expect(prisma.contractEvent.create).toHaveBeenCalledWith({
@@ -154,6 +168,156 @@ describe('X402Controller', () => {
         }),
       }),
     });
+    expect(prisma.x402Settlement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        stemId: 'stem_1',
+        receiptId: decodedReceipt.receiptId,
+        status: 'download_granted',
+        contractSettlementStatus: 'download_only',
+        settlementAmountUnits: '750000',
+      }),
+    });
+  });
+
+  it('marks receipts as requiring contract settlement when an active marketplace listing exists', async () => {
+    prisma.stem.findUnique.mockResolvedValue({
+      id: 'stem_listed',
+      type: 'bass',
+      title: 'Listed Bass',
+      uri: 'https://example.com/listed.mp3',
+      encryptionMetadata: null,
+      nftMint: { tokenId: BigInt(77) },
+      track: {
+        title: 'Listed Track',
+        release: {
+          title: 'Listed Release',
+          primaryArtist: 'Koita',
+        },
+      },
+    });
+    prisma.stemListing.findFirst.mockResolvedValue({
+      id: 'listing_row_1',
+      listingId: BigInt(841),
+      tokenId: BigInt(77),
+      chainId: 84532,
+      contractAddress: '0xMarketplace',
+    });
+    prisma.stemPricing.findUnique.mockResolvedValue({
+      basePlayPriceUsd: 0.05,
+    });
+
+    const controller = new X402Controller(
+      createMockConfig(),
+      encryptionService as any,
+    );
+    const req: any = { headers: { 'payment-signature': 'proof-listed' } };
+    const res = createMockRes();
+
+    await controller.downloadWithPayment('stem_listed', req, res);
+
+    const decodedReceipt = JSON.parse(
+      Buffer.from(res.headers['X-Resonate-Receipt'], 'base64url').toString(
+        'utf8',
+      ),
+    );
+
+    expect(decodedReceipt.settlement).toEqual(expect.objectContaining({
+      status: 'contract_required_missing',
+      entitlement: 'marketplace_purchase',
+      listingId: '841',
+      listingChainId: 84532,
+      tokenId: '77',
+    }));
+    expect(res.headers['X-Resonate-Settlement-Status']).toBe(
+      'contract_required_missing',
+    );
+    expect(prisma.x402Settlement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        stemId: 'stem_listed',
+        listingId: 'listing_row_1',
+        listingChainId: 84532,
+        listingTokenId: BigInt(77),
+        contractSettlementStatus: 'contract_required_missing',
+      }),
+    });
+  });
+
+  it('reuses an existing x402 settlement for same-stem payment retries', async () => {
+    const receipt = {
+      receiptId: 'x402r_existing',
+      license: { key: 'personal' },
+      settlement: { status: 'download_only' },
+      payment: { amount: '0.05' },
+    };
+    prisma.x402Settlement.findFirst.mockResolvedValue({
+      id: 'settlement_existing',
+      stemId: 'stem_1',
+      receipt,
+    });
+    prisma.stem.findUnique.mockResolvedValue({
+      id: 'stem_1',
+      type: 'vocals',
+      title: 'Hook Vocals',
+      uri: 'https://example.com/stem.mp3',
+      encryptionMetadata: null,
+      nftMint: null,
+      track: {
+        title: 'Midnight Run',
+        release: {
+          title: 'Neon Heat',
+          primaryArtist: 'Koita',
+        },
+      },
+    });
+
+    const controller = new X402Controller(
+      createMockConfig(),
+      encryptionService as any,
+    );
+    const req: any = { headers: { 'payment-signature': 'proof-abc' } };
+    const res = createMockRes();
+
+    await controller.downloadWithPayment('stem_1', req, res);
+
+    expect(res.headers['X-Resonate-Receipt-Id']).toBe('x402r_existing');
+    expect(prisma.contractEvent.create).not.toHaveBeenCalled();
+    expect(prisma.x402Settlement.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects an x402 payment proof that was redeemed for another stem', async () => {
+    prisma.x402Settlement.findFirst.mockResolvedValue({
+      id: 'settlement_existing',
+      stemId: 'other_stem',
+      receipt: {},
+    });
+    prisma.stem.findUnique.mockResolvedValue({
+      id: 'stem_1',
+      type: 'vocals',
+      title: 'Hook Vocals',
+      uri: 'https://example.com/stem.mp3',
+      encryptionMetadata: null,
+      nftMint: null,
+      track: {
+        title: 'Midnight Run',
+        release: {
+          title: 'Neon Heat',
+          primaryArtist: 'Koita',
+        },
+      },
+    });
+
+    const controller = new X402Controller(
+      createMockConfig(),
+      encryptionService as any,
+    );
+    const req: any = { headers: { 'payment-signature': 'proof-abc' } };
+    const res = createMockRes();
+
+    await controller.downloadWithPayment('stem_1', req, res);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.message).toContain('different stem');
+    expect(prisma.contractEvent.create).not.toHaveBeenCalled();
   });
 
   it('resolves relative local blob URLs and records PAYMENT-SIGNATURE receipts', async () => {
@@ -275,6 +439,14 @@ describe('X402Controller', () => {
         }),
       }),
     });
+    expect(prisma.x402Settlement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        stemId: 'stem_smart',
+        paymentRail: 'smart_account',
+        paymentTransactionHash: `0x${'a'.repeat(64)}`,
+        payerAddress: '0x1111111111111111111111111111111111111111',
+      }),
+    });
   });
 
   it('decrypts paid x402 downloads from storage before falling back to public blob URLs', async () => {
@@ -391,8 +563,11 @@ describe('X402Controller', () => {
     });
   });
 
-  it('rejects reused smart-account x402 payment transactions', async () => {
-    prisma.contractEvent.findFirst.mockResolvedValue({ id: 'evt_existing' });
+  it('rejects smart-account x402 payment transactions redeemed for another stem', async () => {
+    prisma.x402Settlement.findFirst.mockResolvedValue({
+      id: 'settlement_existing',
+      stemId: 'other_stem',
+    });
     const controller = new X402Controller(
       createMockConfig(),
       encryptionService as any,
@@ -403,7 +578,7 @@ describe('X402Controller', () => {
         txHash: `0x${'a'.repeat(64)}`,
         payer: '0x1111111111111111111111111111111111111111',
       }),
-    ).rejects.toThrow('already been redeemed');
+    ).rejects.toThrow('already been redeemed for a different stem');
   });
 
   it('returns storefront-grade x402 info metadata with payment aliases', async () => {

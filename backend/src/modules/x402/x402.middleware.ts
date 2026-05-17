@@ -1,5 +1,6 @@
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
+import { createHash } from 'node:crypto';
 import { X402Config } from './x402.config';
 import { prisma } from '../../db/prisma';
 import { X402PaymentService } from './x402.payment.service';
@@ -62,6 +63,18 @@ export class X402Middleware implements NestMiddleware {
     if (!paymentHeader) {
       // No payment — return 402 with payment instructions
       return this.send402(res, stemId, stem.mimeType);
+    }
+
+    const existingSettlement = await this.findExistingSettlement(paymentHeader);
+    if (existingSettlement) {
+      if (existingSettlement.stemId !== stemId) {
+        return res.status(409).json({
+          error: 'Payment already redeemed',
+          message: 'This x402 payment proof has already been redeemed for a different stem.',
+        });
+      }
+      this.logger.log(`x402 payment replay accepted for stem ${stemId}`);
+      return next();
     }
 
     // Payment header present — verify with facilitator
@@ -140,5 +153,16 @@ export class X402Middleware implements NestMiddleware {
       description: `Purchase stem ${stemId} via x402`,
       mimeType,
     };
+  }
+
+  private findExistingSettlement(paymentHeader: string) {
+    return prisma.x402Settlement.findUnique({
+      where: {
+        paymentProofSha256: createHash('sha256')
+          .update(paymentHeader)
+          .digest('hex'),
+      },
+      select: { id: true, stemId: true },
+    });
   }
 }

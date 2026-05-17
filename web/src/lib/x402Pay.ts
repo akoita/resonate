@@ -40,6 +40,14 @@ export type X402Receipt = {
       assetId?: string;
     };
   };
+  settlement?: {
+    rail?: string;
+    status?: "download_only" | "contract_required_missing" | "contract_backed";
+    entitlement?: string;
+    listingId?: string | null;
+    transactionHash?: string | null;
+    reason?: string | null;
+  };
 };
 
 export class X402PaymentError extends Error {

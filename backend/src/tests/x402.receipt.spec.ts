@@ -76,6 +76,18 @@ describe('buildStemX402Receipt', () => {
       displayAmount: '0.75 USDC',
       scope: 'base stem download access via x402',
     });
+    expect(receipt.settlement).toEqual({
+      rail: 'x402',
+      status: 'download_only',
+      entitlement: 'download_access',
+      listingId: null,
+      listingChainId: null,
+      listingContractAddress: null,
+      tokenId: '42',
+      transactionHash: null,
+      eventName: null,
+      reason: null,
+    });
     expect(receipt.provenance).toEqual({
       eventName: 'x402.purchase',
       transactionHash: 'x402:stem_1:12345',
@@ -107,5 +119,6 @@ describe('buildStemX402Receipt', () => {
 
     expect(decoded.receiptId).toBe(receipt.receiptId);
     expect(decoded.payment.amount).toBe('0.05');
+    expect(decoded.settlement.status).toBe('download_only');
   });
 });

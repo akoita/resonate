@@ -453,6 +453,18 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                         {x402Result.receipt.payment.asset?.symbol ?? x402Result.receipt.payment.currency}
                       </span>
                     )}
+                    {x402Result.receipt?.settlement?.status === "contract_required_missing" && (
+                      <span>
+                        {" "}
+                        · contract settlement pending
+                      </span>
+                    )}
+                    {x402Result.receipt?.settlement?.status === "contract_backed" && (
+                      <span>
+                        {" "}
+                        · contract-backed
+                      </span>
+                    )}
                   </div>
                 )}
               </div>

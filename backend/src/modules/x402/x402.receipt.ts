@@ -29,6 +29,17 @@ export type X402ReceiptInput = {
   eventTransactionHash: string;
   paymentHeader?: string | null;
   purchasedAt?: Date;
+  settlement?: {
+    status: 'download_only' | 'contract_required_missing' | 'contract_backed';
+    entitlement: 'download_access' | 'marketplace_purchase' | 'license';
+    listingId?: string | null;
+    listingChainId?: number | null;
+    listingContractAddress?: string | null;
+    tokenId?: string | null;
+    transactionHash?: string | null;
+    eventName?: string | null;
+    reason?: string | null;
+  };
 };
 
 const LICENSE_NAMES: Record<QuoteLicenseKey, string> = {
@@ -103,6 +114,18 @@ export function buildStemX402Receipt(input: X402ReceiptInput) {
       settlementAmountUnits: paymentAsset.amountUnits,
       displayAmount: `${normalizedAmount} ${paymentAsset.symbol}`,
       scope: 'base stem download access via x402',
+    },
+    settlement: {
+      rail: 'x402',
+      status: input.settlement?.status ?? 'download_only',
+      entitlement: input.settlement?.entitlement ?? 'download_access',
+      listingId: input.settlement?.listingId ?? null,
+      listingChainId: input.settlement?.listingChainId ?? null,
+      listingContractAddress: input.settlement?.listingContractAddress ?? null,
+      tokenId: input.settlement?.tokenId ?? input.tokenId,
+      transactionHash: input.settlement?.transactionHash ?? null,
+      eventName: input.settlement?.eventName ?? null,
+      reason: input.settlement?.reason ?? null,
     },
     provenance: {
       eventName: 'x402.purchase',

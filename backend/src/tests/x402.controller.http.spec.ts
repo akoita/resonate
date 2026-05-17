@@ -16,8 +16,17 @@ import { X402PaymentService } from '../modules/x402/x402.payment.service';
 
 jest.mock('../db/prisma', () => ({
   prisma: {
+    $transaction: jest.fn((operations) => Promise.all(operations)),
     stem: {
       findUnique: jest.fn(),
+    },
+    stemListing: {
+      findFirst: jest.fn(),
+    },
+    x402Settlement: {
+      findUnique: jest.fn(),
+      findFirst: jest.fn(),
+      create: jest.fn(),
     },
     stemPricing: {
       findUnique: jest.fn(),
@@ -30,7 +39,10 @@ jest.mock('../db/prisma', () => ({
 
 const { prisma } = jest.requireMock('../db/prisma') as {
   prisma: {
+    $transaction: jest.Mock;
     stem: { findUnique: jest.Mock };
+    stemListing: { findFirst: jest.Mock };
+    x402Settlement: { findUnique: jest.Mock; findFirst: jest.Mock; create: jest.Mock };
     stemPricing: { findUnique: jest.Mock };
     contractEvent: { create: jest.Mock };
   };
@@ -90,6 +102,9 @@ describe('X402Controller HTTP contract', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    prisma.x402Settlement.findUnique.mockResolvedValue(null);
+    prisma.x402Settlement.findFirst.mockResolvedValue(null);
+    prisma.stemListing.findFirst.mockResolvedValue(null);
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       arrayBuffer: async () => Uint8Array.from([1, 2, 3, 4]).buffer,

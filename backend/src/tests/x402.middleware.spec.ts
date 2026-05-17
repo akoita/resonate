@@ -18,6 +18,9 @@ jest.mock('../db/prisma', () => ({
     stemListing: {
       findFirst: jest.fn().mockResolvedValue(null),
     },
+    x402Settlement: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
     stemPricing: {
       findUnique: jest.fn().mockResolvedValue(null),
     },
@@ -78,6 +81,7 @@ describe('X402Middleware', () => {
       prisma: {
         stem: { findUnique: jest.Mock };
         stemListing: { findFirst: jest.Mock };
+        x402Settlement: { findUnique: jest.Mock };
         stemPricing: { findUnique: jest.Mock };
       };
     };
@@ -88,6 +92,7 @@ describe('X402Middleware', () => {
       mimeType: 'audio/mpeg',
     });
     prisma.stemListing.findFirst.mockResolvedValue(null);
+    prisma.x402Settlement.findUnique.mockResolvedValue(null);
     prisma.stemPricing.findUnique.mockResolvedValue(null);
     global.fetch = jest.fn();
   });
@@ -320,6 +325,68 @@ describe('X402Middleware', () => {
         { scheme: 'exact', network: 'eip155:84532' },
       );
       expect(next).toHaveBeenCalled();
+    });
+
+    it('should reuse same-stem x402 settlements without settling the payment again', async () => {
+      const { prisma } = jest.requireMock('../db/prisma') as {
+        prisma: {
+          x402Settlement: { findUnique: jest.Mock };
+        };
+      };
+      prisma.x402Settlement.findUnique.mockResolvedValue({
+        id: 'settlement_1',
+        stemId: 'stem_1',
+      });
+      const config = createMockConfig();
+      const paymentService = {
+        buildPaymentChallenge: jest.fn(),
+        verifyAndSettle: jest.fn(),
+      } as unknown as X402PaymentService;
+      const middleware = createMiddleware(config, paymentService);
+      const req = createMockReq('/api/stems/stem_1/x402', {
+        'payment-signature': 'proof-v2',
+      });
+      const { res } = createMockRes();
+      const next = jest.fn();
+
+      await middleware.use(req as Request, res as Response, next);
+
+      expect(paymentService.verifyAndSettle).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalled();
+    });
+
+    it('should reject x402 payment proof reuse across stems', async () => {
+      const { prisma } = jest.requireMock('../db/prisma') as {
+        prisma: {
+          x402Settlement: { findUnique: jest.Mock };
+        };
+      };
+      prisma.x402Settlement.findUnique.mockResolvedValue({
+        id: 'settlement_1',
+        stemId: 'other_stem',
+      });
+      const config = createMockConfig();
+      const paymentService = {
+        buildPaymentChallenge: jest.fn(),
+        verifyAndSettle: jest.fn(),
+      } as unknown as X402PaymentService;
+      const middleware = createMiddleware(config, paymentService);
+      const req = createMockReq('/api/stems/stem_1/x402', {
+        'payment-signature': 'proof-v2',
+      });
+      const { res } = createMockRes();
+      const next = jest.fn();
+
+      await middleware.use(req as Request, res as Response, next);
+
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: 'Payment already redeemed',
+        }),
+      );
+      expect(paymentService.verifyAndSettle).not.toHaveBeenCalled();
+      expect(next).not.toHaveBeenCalled();
     });
 
     it('should send x402 v2 verification payloads to the facilitator', async () => {
