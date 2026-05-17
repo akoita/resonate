@@ -7543,6 +7543,7 @@ tr[draggable="true"]:hover {
   display: flex;
   align-items: center;
   gap: var(--space-5);
+  min-width: 0;
 }
 
 .afc-ring-wrap {
@@ -7599,6 +7600,7 @@ tr[draggable="true"]:hover {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
 }
 
 .afc-budget-bar-section {
@@ -7649,6 +7651,7 @@ tr[draggable="true"]:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 12px 14px;
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.02);
@@ -7676,7 +7679,10 @@ tr[draggable="true"]:hover {
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  min-height: 32px;
+  white-space: nowrap;
 }
 
 .afc-enable-btn:hover {
@@ -7693,6 +7699,19 @@ tr[draggable="true"]:hover {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+@media (max-width: 640px) {
+  .afc-budget-row,
+  .afc-wallet-disabled {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .afc-edit-btn,
+  .afc-enable-btn {
+    width: 100%;
+  }
 }
 
 /* ── Session Mode Toggle ── */
