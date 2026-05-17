@@ -18,6 +18,8 @@ const DEFAULT_LOCAL_RPC_URL = 'http://localhost:8545';
  *   X402_FACILITATOR_URL — facilitator endpoint (defaults to the x402 testnet facilitator)
  *   X402_NETWORK         — CAIP-2 chain identifier (default: Base Sepolia)
  *   X402_RPC_URL         — RPC used to verify in-app smart-account payments
+ *   X402_CONTRACT_SETTLEMENT_ENABLED — execute marketplace settlement for listed stems
+ *   X402_SETTLEMENT_PRIVATE_KEY — settlement wallet key; must control X402_PAYOUT_ADDRESS
  *   X402_ENABLED         — feature flag (default: false)
  */
 @Injectable()
@@ -42,9 +44,16 @@ export class X402Config {
   /** RPC used by smart-account x402 verification */
   readonly rpcUrl: string;
 
+  /** Whether listed x402 stems should execute marketplace settlement before download */
+  readonly contractSettlementEnabled: boolean;
+
+  /** Private key for the x402 settlement wallet. Secret; never log. */
+  readonly settlementPrivateKey: `0x${string}` | null;
+
   constructor(private readonly config: ConfigService) {
     this.enabled = this.config.get<string>('X402_ENABLED') === 'true';
     const configuredFacilitator = this.config.get<string>('X402_FACILITATOR_URL');
+    const settlementPrivateKey = this.config.get<string>('X402_SETTLEMENT_PRIVATE_KEY')?.trim();
 
     this.payoutAddress =
       this.config.get<string>('X402_PAYOUT_ADDRESS') || '';
@@ -56,6 +65,11 @@ export class X402Config {
       this.config.get<string>('X402_NETWORK') || DEFAULT_TESTNET_NETWORK;
     this.chainId = getX402ChainId(this.network);
     this.rpcUrl = this.resolveRpcUrl();
+    this.contractSettlementEnabled =
+      this.config.get<string>('X402_CONTRACT_SETTLEMENT_ENABLED') === 'true';
+    this.settlementPrivateKey = settlementPrivateKey
+      ? this.normalizePrivateKey(settlementPrivateKey)
+      : null;
 
     if (this.enabled) {
       if (!this.payoutAddress) {
@@ -66,6 +80,11 @@ export class X402Config {
       if (this.network === 'eip155:8453' && !configuredFacilitator) {
         throw new Error(
           'X402_FACILITATOR_URL must be set explicitly for Base mainnet x402 payments',
+        );
+      }
+      if (this.contractSettlementEnabled && !this.settlementPrivateKey) {
+        throw new Error(
+          'X402_SETTLEMENT_PRIVATE_KEY is required when X402_CONTRACT_SETTLEMENT_ENABLED=true',
         );
       }
       this.logger.log(
@@ -96,5 +115,13 @@ export class X402Config {
       );
     }
     return '';
+  }
+
+  private normalizePrivateKey(value: string): `0x${string}` {
+    const normalized = value.startsWith('0x') ? value : `0x${value}`;
+    if (!/^0x[a-fA-F0-9]{64}$/.test(normalized)) {
+      throw new Error('X402_SETTLEMENT_PRIVATE_KEY must be a 32-byte hex private key');
+    }
+    return normalized as `0x${string}`;
   }
 }

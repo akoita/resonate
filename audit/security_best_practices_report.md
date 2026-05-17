@@ -735,3 +735,76 @@ rg -n 'document\.cookie|setCookie|httpOnly.*false' web/src/
 rg -n 'password|secret|api_key|private_key|process\.env' backend/src/modules/x402 backend/prisma --iglob '!*.test.*' --iglob '!*.spec.*'
 rg -n 'rawQuery|executeRaw|\$queryRaw|JSON\.parse|eval\(' backend/src/modules/x402 backend/prisma
 ```
+
+## Addendum: #841 Contract-Backed x402 Marketplace Settlement
+
+Reviewed the #841 x402 settlement execution slice for backend secret handling,
+payment replay behavior, contract-call safety, receipt correctness, and
+frontend receipt parsing. No Critical or High findings were identified in the
+changed code.
+
+### Scope
+
+- `backend/src/modules/x402/x402.config.ts`
+- `backend/src/modules/x402/x402.controller.ts`
+- `backend/src/modules/x402/x402.middleware.ts`
+- `backend/src/modules/x402/x402.payment.service.ts`
+- `backend/src/modules/x402/x402.receipt.ts`
+- `backend/src/tests/x402.config.spec.ts`
+- `backend/src/tests/x402.controller.spec.ts`
+- `backend/src/tests/x402.middleware.spec.ts`
+- `contracts/src/core/StemMarketplaceV2.sol`
+- `contracts/test/unit/StemMarketplace.t.sol`
+- `web/src/lib/x402Pay.ts`
+- `docs/architecture/x402_payments.md`
+- `docs/deployment/environment.md`
+- `docs/features/README.md`
+- `docs/features/agent-commerce-runtime.md`
+- `docs/smart-contracts/marketplace_integration.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- `X402_SETTLEMENT_PRIVATE_KEY` is read from backend configuration, validated as
+  a 32-byte hex private key, and never exposed to browser code or docs as a
+  literal value.
+- The backend requires the settlement wallet derived from
+  `X402_SETTLEMENT_PRIVATE_KEY` to match `X402_PAYOUT_ADDRESS`, so the same
+  wallet that receives facilitator-settled USDC performs the marketplace
+  `approve` and `buyFor` calls.
+- Listed x402 purchases require a buyer wallet before a 402 challenge is issued
+  and reject active listings that are not priced in the configured x402
+  stablecoin asset.
+- Failed contract settlement is recorded as a non-downloadable
+  `contract_settlement_failed` ledger row, and the controller does not fetch or
+  serve audio until settlement is `contract_backed` or otherwise
+  `download_granted`.
+- The backend verifies the marketplace transaction receipt contains the expected
+  `Sold(listingId,buyer,...)` event before marking a receipt as
+  `contract_backed`.
+- Secret, dynamic SQL, unsafe deserialization, and frontend XSS/cookie scans
+  found no new issue in the changed files. Broad matches are existing env-var
+  names and server-side `process.env` reads.
+
+### Commands Run
+
+```bash
+cd backend && npx jest --runInBand src/tests/x402.controller.spec.ts src/tests/x402.middleware.spec.ts src/tests/x402.config.spec.ts src/tests/x402.receipt.spec.ts src/tests/payment_router.spec.ts
+cd backend && npm run lint
+cd backend && npm test
+cd web && npm run lint
+cd web && npx vitest run src/lib/x402Pay.test.ts src/lib/buyPricing.test.ts
+forge test --match-contract StemMarketplaceTest
+forge test
+git diff --check
+rg -n 'password|secret|api_key|private_key|process\.env|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|sk-[A-Za-z0-9]|ghp_|gho_|AIza' backend/src/modules/x402 backend/src/tests/x402.config.spec.ts backend/src/tests/x402.controller.spec.ts backend/src/tests/x402.middleware.spec.ts web/src/lib/x402Pay.ts docs/architecture/x402_payments.md docs/deployment/environment.md docs/features/agent-commerce-runtime.md docs/features/README.md docs/smart-contracts/marketplace_integration.md --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw|JSON\.parse|eval\(' backend/src/modules/x402
+rg -n 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/lib/x402Pay.ts
+rg -n '\.call\{|_safeMint|_safeTransfer|safeTransferFrom|onlyOwner|onlyRole|_checkRole|require.*msg\.sender|selfdestruct|delegatecall|tx\.origin|unchecked|assembly' contracts/src
+```

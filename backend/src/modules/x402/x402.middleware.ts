@@ -1,6 +1,7 @@
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { createHash } from 'node:crypto';
+import { getAddress } from 'viem';
 import { X402Config } from './x402.config';
 import { prisma } from '../../db/prisma';
 import { X402PaymentService } from './x402.payment.service';
@@ -51,6 +52,16 @@ export class X402Middleware implements NestMiddleware {
     // Skip the /info sub-route — it's free
     if (req.path.endsWith('/x402/info')) {
       return next();
+    }
+
+    if (this.x402Config.contractSettlementEnabled) {
+      const listedSettlementCheck = await this.validateListedStemSettlementRequest(req, stemId);
+      if (!listedSettlementCheck.ok) {
+        return res.status(listedSettlementCheck.status).json({
+          error: listedSettlementCheck.error,
+          message: listedSettlementCheck.message,
+        });
+      }
     }
 
     // AgentCash/x402 v2 retries with PAYMENT-SIGNATURE, while older flows may
@@ -149,6 +160,7 @@ export class X402Middleware implements NestMiddleware {
     return {
       stemId,
       licenseType: "personal" as const,
+      contractSettlement: this.x402Config.contractSettlementEnabled,
       resourceUrl: `/api/stems/${stemId}/x402`,
       description: `Purchase stem ${stemId} via x402`,
       mimeType,
@@ -164,5 +176,61 @@ export class X402Middleware implements NestMiddleware {
       },
       select: { id: true, stemId: true },
     });
+  }
+
+  private async validateListedStemSettlementRequest(req: Request, stemId: string) {
+    const listing = await prisma.stemListing.findFirst({
+      where: {
+        stemId,
+        status: 'active',
+        amount: { gt: 0 },
+        expiresAt: { gt: new Date() },
+      },
+      select: {
+        paymentToken: true,
+      },
+      orderBy: { listedAt: 'desc' },
+    });
+    if (!listing) {
+      return { ok: true as const };
+    }
+
+    const buyer = this.resolveBuyerAddress(req);
+    if (!buyer) {
+      return {
+        ok: false as const,
+        status: 400,
+        error: 'Buyer wallet required',
+        message:
+          'Listed x402 purchases require a buyer wallet address via X-Resonate-Buyer or ?buyer= before payment.',
+      };
+    }
+
+    const asset = this.paymentService.resolveAssetInfo();
+    if (listing.paymentToken.toLowerCase() !== asset.address.toLowerCase()) {
+      return {
+        ok: false as const,
+        status: 409,
+        error: 'Unsupported listing payment asset',
+        message:
+          'The active marketplace listing is not priced in the configured x402 stablecoin asset.',
+      };
+    }
+
+    return { ok: true as const };
+  }
+
+  private resolveBuyerAddress(req: Request) {
+    const header =
+      (req.headers['x-resonate-buyer'] as string | undefined) ??
+      (req.headers['x-buyer-address'] as string | undefined);
+    const queryBuyer = req.query?.buyer ?? req.query?.recipient;
+    const raw = header || (Array.isArray(queryBuyer) ? queryBuyer[0] : queryBuyer);
+    if (typeof raw !== 'string' || !raw.trim()) return null;
+    try {
+      return getAddress(raw.trim());
+    } catch {
+      return null;
+    }
   }
 }

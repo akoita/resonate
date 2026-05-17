@@ -234,11 +234,29 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
         uint256 listingId,
         uint256 amount
     ) external payable nonReentrant {
+        _buy(listingId, amount, msg.sender);
+    }
+
+    function buyFor(
+        uint256 listingId,
+        uint256 amount,
+        address recipient
+    ) external payable nonReentrant {
+        if (recipient == address(0)) revert InvalidRecipient();
+        _buy(listingId, amount, recipient);
+    }
+
+    function _buy(
+        uint256 listingId,
+        uint256 amount,
+        address recipient
+    ) internal {
         Listing storage listing = listings[listingId];
 
         // Validate (Checks)
         if (listing.seller == address(0)) revert InvalidListing();
         if (listing.seller == msg.sender) revert CannotBuyOwnListing();
+        if (listing.seller == recipient) revert CannotBuyOwnListing();
         if (block.timestamp > listing.expiry) revert Expired();
         if (amount > listing.amount) revert InsufficientAmount();
 
@@ -276,9 +294,9 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
         _pay(paymentToken, seller, sellerAmount);
 
         // Transfer NFT (using cached values)
-        stemNFT.safeTransferFrom(seller, msg.sender, tokenId, amount, "");
+        stemNFT.safeTransferFrom(seller, recipient, tokenId, amount, "");
 
-        emit Sold(listingId, msg.sender, amount, totalPrice);
+        emit Sold(listingId, recipient, amount, totalPrice);
     }
 
     // ============ Admin ============

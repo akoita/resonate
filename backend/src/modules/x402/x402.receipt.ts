@@ -30,7 +30,7 @@ export type X402ReceiptInput = {
   paymentHeader?: string | null;
   purchasedAt?: Date;
   settlement?: {
-    status: 'download_only' | 'contract_required_missing' | 'contract_backed';
+    status: 'download_only' | 'contract_required_missing' | 'contract_backed' | 'contract_failed';
     entitlement: 'download_access' | 'marketplace_purchase' | 'license';
     listingId?: string | null;
     listingChainId?: number | null;
