@@ -48,16 +48,11 @@ export default function AgentNextPickCard({ config, activeSessionId, pick, isLoa
             <div className="aid-np-body">
                 {hasTrack ? (
                     <>
-                        {/* Art + info */}
+                        {/* Art placeholder — track type has no release/artwork field */}
                         <div className="aid-np-art">
-                            {pick!.track?.release?.artworkUrl ? (
-                                /* eslint-disable-next-line @next/next/no-img-element */
-                                <img src={pick!.track!.release!.artworkUrl} alt="" width={80} height={80} />
-                            ) : (
-                                <div className="aid-np-art-placeholder">
-                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>
-                                </div>
-                            )}
+                            <div className="aid-np-art-placeholder">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>
+                            </div>
                         </div>
                         <div className="aid-np-info">
                             <p className="aid-np-kicker">{humanStatus(pick!.runtimeStatus)}</p>
