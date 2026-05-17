@@ -161,6 +161,10 @@ Current behavior:
   `StemMarketplaceV2`; native listings pay with the chain coin, while ERC-20
   listings use `web/src/lib/onchainCheckout.ts` to plan an approval plus
   marketplace buy in one smart-account operation.
+- Creator listing flows use `web/src/lib/listingPricing.ts` to prefer the
+  configured marketplace stablecoin asset, convert listing prices to the
+  selected token decimals, and fall back to native-token listings only when no
+  stablecoin marketplace asset is configured.
 - Marketplace listing APIs expose `paymentToken` so browser clients can display
   the on-chain rail as a stablecoin rail when the listing uses a configured
   stablecoin such as USDC.

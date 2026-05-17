@@ -1628,6 +1628,7 @@ export function useBatchMintAndList() {
       stems: BatchStemItem[],
       options?: {
         pricePerUnit?: bigint;
+        paymentToken?: Address;
         durationSeconds?: bigint;
         releaseProtectionId?: bigint;
         onProgress?: (results: BatchStemResult[]) => void;
@@ -1641,7 +1642,8 @@ export function useBatchMintAndList() {
       setPending(true);
       setError(null);
 
-      const pricePerUnit = options?.pricePerUnit ?? BigInt("10000000000000000"); // 0.01 ETH
+      const pricePerUnit = options?.pricePerUnit ?? BigInt("10000000000000000"); // 0.01 in 18-decimal fallback units
+      const paymentToken = options?.paymentToken ?? ZERO_ADDRESS;
       const durationSeconds = options?.durationSeconds ?? BigInt(7 * 24 * 60 * 60); // 7 days
 
       // Initialize all stems as pending
@@ -1727,7 +1729,7 @@ export function useBatchMintAndList() {
               args: [
                 BigInt(1),
                 pricePerUnit,
-                ZERO_ADDRESS,
+                paymentToken,
                 durationSeconds,
                 authorization.protectionId,
               ],
@@ -1789,7 +1791,7 @@ export function useBatchMintAndList() {
               seller: callerAddress,
               price: pricePerUnit.toString(),
               amount: "1",
-              paymentToken: ZERO_ADDRESS,
+              paymentToken,
               durationSeconds: durationSeconds.toString(),
               transactionHash: hash,
               stemId: stems[i].stemId,
