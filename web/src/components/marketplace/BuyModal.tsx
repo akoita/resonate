@@ -11,12 +11,14 @@ import {
   defaultBuyPaymentMethod,
   formatStableAssetAmount,
   formatUsdPrice,
+  getCheckoutRailLabel,
+  getCheckoutRailSubLabel,
   type BuyPaymentMethod,
 } from "../../lib/buyPricing";
-import { formatPrice } from "../../lib/contracts";
 import { getExplorerTxUrl } from "../../lib/explorer";
 import {
   findPaymentAssetForToken,
+  formatPaymentAmount,
   isNativePaymentToken,
   paymentAssetSymbol,
 } from "../../lib/payments";
@@ -90,6 +92,10 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   );
   const onchainSymbol = paymentAssetSymbol(onchainAsset, listing?.paymentToken);
   const onchainIsNative = isNativePaymentToken(listing?.paymentToken);
+  const onchainDecimals = onchainAsset?.decimals ?? 18;
+  const onchainIsStablecoin = onchainAsset?.kind === "stablecoin";
+  const formatOnchainAmount = (amountUnits: bigint) =>
+    `${formatPaymentAmount(amountUnits, onchainDecimals)} ${onchainSymbol}`;
   const x402DownloadUrl = useMemo(
     () => (x402Result ? URL.createObjectURL(x402Result.audio) : null),
     [x402Result],
@@ -241,8 +247,10 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                   onClick={() => setPaymentMethod("x402")}
                   disabled={pending || x402Status !== null}
                 >
-                  <span>{x402Symbol}</span>
-                  <span className="buy-modal__pay-method-sub">Stablecoin checkout</span>
+                  <span>{getCheckoutRailLabel("x402")}</span>
+                  <span className="buy-modal__pay-method-sub">
+                    {getCheckoutRailSubLabel({ method: "x402", symbol: x402Symbol })}
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -252,8 +260,14 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                   onClick={() => setPaymentMethod("onchain")}
                   disabled={pending || x402Status !== null}
                 >
-                  <span>NFT mint</span>
-                  <span className="buy-modal__pay-method-sub">On-chain · {onchainSymbol}</span>
+                  <span>{getCheckoutRailLabel("onchain")}</span>
+                  <span className="buy-modal__pay-method-sub">
+                    {getCheckoutRailSubLabel({
+                      method: "onchain",
+                      symbol: onchainSymbol,
+                      isStablecoin: onchainIsStablecoin,
+                    })}
+                  </span>
                 </button>
               </div>
             )}
@@ -300,34 +314,39 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
               <div className="buy-modal__breakdown">
                 <div className="buy-modal__breakdown-row">
                   <span className="buy-modal__breakdown-label">
-                    Price ({amount.toString()} × {formatPrice(listing.pricePerUnit)})
+                    Price ({amount.toString()} × {formatOnchainAmount(listing.pricePerUnit)})
                   </span>
                   <span className="buy-modal__breakdown-value">
-                    {formatPrice(listing.pricePerUnit * amount)} {onchainSymbol}
+                    {formatOnchainAmount(listing.pricePerUnit * amount)}
                   </span>
                 </div>
                 <div className="buy-modal__breakdown-row">
                   <span className="buy-modal__breakdown-label">Creator Royalty</span>
                   <span className="buy-modal__breakdown-value buy-modal__breakdown-value--royalty">
-                    {formatPrice(quote.royaltyAmount)} {onchainSymbol}
+                    {formatOnchainAmount(quote.royaltyAmount)}
                   </span>
                 </div>
                 <div className="buy-modal__breakdown-row">
                   <span className="buy-modal__breakdown-label">Protocol Fee</span>
                   <span className="buy-modal__breakdown-value buy-modal__breakdown-value--fee">
-                    {formatPrice(quote.protocolFee)} {onchainSymbol}
+                    {formatOnchainAmount(quote.protocolFee)}
                   </span>
                 </div>
                 <div className="buy-modal__breakdown-divider" />
                 <div className="buy-modal__breakdown-row buy-modal__breakdown-row--total">
                   <span className="buy-modal__breakdown-label">Total</span>
                   <span className="buy-modal__breakdown-value">
-                    {formatPrice(quote.totalPrice)} {onchainSymbol}
+                    {formatOnchainAmount(quote.totalPrice)}
                   </span>
                 </div>
                 {!onchainIsNative && (
                   <div className="buy-modal__breakdown-note">
-                    Checkout will approve {onchainSymbol} and purchase in one smart-account operation.
+                    Direct on-chain checkout will approve {onchainSymbol} and purchase in one smart-account operation.
+                  </div>
+                )}
+                {onchainIsNative && (
+                  <div className="buy-modal__breakdown-note">
+                    This listing was created with native {onchainSymbol}; stablecoin listings use the same on-chain rail with ERC-20 approval.
                   </div>
                 )}
               </div>

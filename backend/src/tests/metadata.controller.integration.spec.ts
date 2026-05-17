@@ -141,6 +141,7 @@ describe('MetadataController (integration)', () => {
     await prisma.releaseRightsUpgradeRequest.deleteMany({ where: { releaseId: `${TEST_PREFIX}release` } }).catch(() => {});
     await prisma.dispute.deleteMany({ where: { tokenId: `${TEST_PREFIX}typed-token` } }).catch(() => {});
     await prisma.curatorReputation.deleteMany({ where: { walletAddress: creatorWalletAddress } }).catch(() => {});
+    await prisma.stemListing.deleteMany({ where: { stemId } }).catch(() => {});
     await prisma.stemNftMint.deleteMany({ where: { stemId } }).catch(() => {});
     await prisma.stem.deleteMany({ where: { trackId: `${TEST_PREFIX}track` } }).catch(() => {});
     await prisma.track.deleteMany({ where: { releaseId: `${TEST_PREFIX}release` } }).catch(() => {});
@@ -188,6 +189,41 @@ describe('MetadataController (integration)', () => {
       expect(result.total).toBe(0);
       expect(result.limit).toBe(20);
       expect(result.offset).toBe(0);
+    });
+
+    it('returns the payment token for ERC-20 marketplace listings', async () => {
+      const paymentToken = ('0x' + '3'.repeat(40)).toLowerCase();
+      const transactionHash = '0x' + 'e'.repeat(64);
+
+      await prisma.stemListing.create({
+        data: {
+          listingId: 841n,
+          stemId,
+          tokenId: 42n,
+          chainId: 31337,
+          contractAddress: '0xStemNFT',
+          sellerAddress: creatorWalletAddress,
+          pricePerUnit: '50000',
+          amount: 1n,
+          paymentToken,
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+          transactionHash,
+          blockNumber: 103n,
+          status: 'active',
+          listedAt: new Date(),
+        },
+      });
+
+      try {
+        const result = await controller.getListings(undefined, undefined, '31337');
+        const listing = result.listings.find((item) => item.listingId === '841');
+
+        expect(listing).toBeDefined();
+        expect(listing!.paymentToken).toBe(paymentToken);
+        expect(listing!.price).toBe('50000');
+      } finally {
+        await prisma.stemListing.deleteMany({ where: { transactionHash } });
+      }
     });
   });
 

@@ -6,7 +6,7 @@ Frontend and backend integration for the Stem NFT marketplace.
 
 | Route             | Description                                      |
 | ----------------- | ------------------------------------------------ |
-| `/marketplace`    | Browse and purchase stem NFT listings            |
+| `/marketplace`    | Browse and purchase stem NFT listings through x402 or direct on-chain rails |
 | `/stem/[tokenId]` | View stem metadata, royalties, and remix lineage |
 
 ## Backend Services
@@ -29,7 +29,7 @@ Polls blockchain for contract events and stores in database:
 | Endpoint                              | Description                 |
 | ------------------------------------- | --------------------------- |
 | `GET /api/metadata/:chainId/:tokenId` | ERC-1155 token metadata     |
-| `GET /api/metadata/listings`          | Active marketplace listings |
+| `GET /api/metadata/listings`          | Active marketplace listings, including `paymentToken` for stablecoin/ERC-20 display |
 | `GET /api/metadata/earnings/:address` | Artist royalty earnings     |
 
 ## Environment Variables
@@ -58,6 +58,12 @@ The AI agent prioritizes tracks with active marketplace listings for real on-cha
 7. Agent purchases always use session-key-scoped UserOps through the bundler
 
 ## Frontend Hooks
+
+The direct on-chain buy path reads each listing's `paymentToken`. Native-token
+listings send value with the marketplace purchase call. ERC-20 listings batch a
+token approval and marketplace purchase in one smart-account operation, so a
+USDC listing remains a stablecoin purchase even though it uses the on-chain
+wallet transaction rail.
 
 ```typescript
 import { useMintStem, useListStem, useBuyQuote } from "@/hooks/useContracts";

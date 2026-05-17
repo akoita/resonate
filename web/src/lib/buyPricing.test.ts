@@ -3,6 +3,8 @@ import {
   defaultBuyPaymentMethod,
   formatStableAssetAmount,
   formatUsdPrice,
+  getCheckoutRailLabel,
+  getCheckoutRailSubLabel,
 } from "./buyPricing";
 
 describe("buy pricing helpers", () => {
@@ -14,5 +16,18 @@ describe("buy pricing helpers", () => {
   it("formats the user-facing price in USD and settlement amount in stablecoin units", () => {
     expect(formatUsdPrice(0.05)).toBe("$0.05 USD");
     expect(formatStableAssetAmount(0.05, "USDC")).toBe("0.05 USDC");
+  });
+
+  it("labels checkout choices as rails rather than currencies", () => {
+    expect(getCheckoutRailLabel("x402")).toBe("x402 rail");
+    expect(getCheckoutRailLabel("onchain")).toBe("On-chain rail");
+    expect(getCheckoutRailSubLabel({ method: "x402", symbol: "USDC" })).toBe(
+      "HTTP payment · USDC",
+    );
+    expect(getCheckoutRailSubLabel({
+      method: "onchain",
+      symbol: "USDC",
+      isStablecoin: true,
+    })).toBe("Wallet transaction · stablecoin USDC");
   });
 });

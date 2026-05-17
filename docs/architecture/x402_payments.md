@@ -1,6 +1,12 @@
 # x402 HTTP Payment Layer
 
-Machine-to-machine payment surface for AI agents to discover, quote, pay for, and download stems via the [x402 protocol](https://x402.org) using USDC.
+Machine-to-machine payment surface for AI agents to discover, quote, pay for,
+and download stems via the [x402 protocol](https://x402.org) using USDC.
+
+In Resonate, x402 is a payment rail, not a separate product entitlement. The
+direct marketplace flow is the on-chain wallet-transaction rail. Both should
+prefer stablecoin settlement when the payment asset is configured; the long-term
+contract is that either rail grants the same ownership/license result.
 
 ## Overview
 
@@ -118,6 +124,25 @@ Public quote and payment challenge pricing resolve in this order:
 - `preview`, `rights`, and `asset` metadata for discovery tooling
 - `payment`, `purchase`, and `x402` endpoint/protocol metadata for checkout clients
 - Optional `alternativeOffers` when an ETH marketplace listing exists, while keeping USDC as the canonical storefront price
+
+## Rail Semantics
+
+Current behavior:
+
+- x402 verifies and settles an HTTP payment proof, records `x402.purchase`
+  provenance, and returns the paid download with receipt headers.
+- Direct marketplace checkout submits a wallet transaction against
+  `StemMarketplaceV2`; native listings pay with the chain coin, while ERC-20
+  listings approve the payment token and buy in one smart-account operation.
+- Marketplace listing APIs expose `paymentToken` so browser clients can display
+  the on-chain rail as a stablecoin rail when the listing uses a configured
+  stablecoin such as USDC.
+
+Known limitation tracked by issue #841: x402 settlement does not yet update the
+same marketplace ownership or License NFT state as the direct on-chain rail.
+The next implementation phase should make the x402 rail invoke, prove, or map
+to the canonical marketplace/license settlement path before Resonate treats the
+two rails as equivalent for ownership and licensing.
 
 ## Provenance and Receipts
 
