@@ -148,34 +148,63 @@ export default function AgentPage() {
 
     return (
         <AuthGate title="Connect your wallet to access your AI DJ.">
-            <main className="agent-dashboard">
-                <div className="agent-dashboard-header">
-                    <h1 className="agent-dashboard-title">
-                        <span className="text-gradient">AI DJ</span>
-                    </h1>
-                    <p className="agent-dashboard-subtitle">
-                        Your personal AI agent that curates, negotiates, and remixes in real-time.
-                    </p>
-                </div>
-
+            <div className="aid-page">
                 {isLoading ? (
-                    <div className="agent-loading">
-                        <div className="animate-spin">✨</div>
-                        <span>Loading your DJ...</span>
+                    <div className="aid-loader-wrap">
+                        <span className="aid-spinner" />
+                        <span>Loading your DJ…</span>
                     </div>
                 ) : !config ? (
-                    <div className="agent-empty-state">
-                        <div className="agent-empty-icon">🤖</div>
+                    <div className="aid-empty">
+                        <div className="aid-empty-icon">🤖</div>
                         <h2>Set Up Your AI DJ</h2>
                         <p>Deploy a personal AI agent to scan the catalog, match your mood, and negotiate micro-payments.</p>
-                        <button className="ui-btn ui-btn-primary" onClick={() => setShowWizard(true)}>
+                        <button className="aid-primary-btn" onClick={() => setShowWizard(true)}>
                             Get Started
                         </button>
                     </div>
                 ) : (
                     <>
+                        {/* Command bar */}
+                        <div className="aid-command">
+                            <div className="aid-orb">
+                                <span className="aid-orb-badge">{config.name.slice(0, 2).toUpperCase()}</span>
+                            </div>
+                            <div className="aid-command-info">
+                                <span className="aid-command-name">{config.name}</span>
+                                <span className={`aid-command-status ${config.isActive ? "active" : ""}`}>
+                                    {config.isActive ? "● Live" : "○ Inactive"}
+                                </span>
+                            </div>
+                            <div className="aid-command-actions">
+                                <div className="aid-mode-seg">
+                                    <button
+                                        className={`aid-mode-btn ${config.sessionMode === "curate" ? "active" : ""}`}
+                                        onClick={() => updateConfig({ sessionMode: "curate" })}
+                                    >
+                                        Curate Only
+                                    </button>
+                                    <button
+                                        className={`aid-mode-btn ${config.sessionMode === "buy" ? "active" : ""}`}
+                                        onClick={() => updateConfig({ sessionMode: "buy" })}
+                                    >
+                                        Buy Stems
+                                    </button>
+                                </div>
+                                <button
+                                    className={`aid-toggle-btn ${config.isActive ? "stop" : "start"}`}
+                                    onClick={handleToggle}
+                                >
+                                    {config.isActive ? "Stop Session" : "Start Session"}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Preset strip */}
                         <AgentSessionPresets />
-                        <div className="agent-dashboard-grid">
+
+                        {/* Middle row: Status | Activity | Next Pick */}
+                        <div className="aid-middle-row">
                             <AgentStatusCard
                                 config={config}
                                 onToggle={handleToggle}
@@ -201,6 +230,10 @@ export default function AgentPage() {
                                 isLoading={isPickingNext}
                                 onPick={handleNextPick}
                             />
+                        </div>
+
+                        {/* Bottom row: Finance | Taste */}
+                        <div className="aid-bottom-row">
                             <AgentBudgetCard
                                 config={config}
                                 spentUsd={sessions.reduce((sum, s) => sum + s.spentUsd, 0)}
@@ -213,76 +246,67 @@ export default function AgentPage() {
                                 onDisable={wallet.disable}
                                 onRefreshTransactions={wallet.refetchTransactions}
                             />
-                            <div className="agent-card-wide">
-                                <AgentTasteCard
-                                    config={config}
-                                    onUpdateVibes={async (vibes) => {
-                                        await updateConfig({ vibes });
-                                        addToast({ type: "success", title: "Vibes Updated", message: "Your DJ's taste has been updated." });
-                                    }}
-                                    onUpdateStemTypes={async (stemTypes) => {
-                                        await updateConfig({ stemTypes });
-                                        addToast({
-                                            type: "success",
-                                            title: "Stem Types Updated",
-                                            message: stemTypes.length === 0
-                                                ? "Your DJ will buy all available stems."
-                                                : `Your DJ will buy: ${stemTypes.join(", ")}`,
-                                        });
-                                    }}
-                                    onMintIdentity={async () => {
-                                        const result = await mintIdentity();
-                                        const reason = result?.onchain?.reason;
-                                        addToast({
-                                            type: result?.identityStatus === "minted" || result?.identityStatus === "attested" ? "success" : "info",
-                                            title: reason === "erc8004_disabled" ? "Identity Local" : "Identity Updated",
-                                            message: result?.identityTxHash
-                                                ? "ERC-8004 identity transaction recorded."
-                                                : reason === "erc8004_disabled"
-                                                    ? "ERC-8004 registry writes are not configured for this environment."
-                                                    : "Enable the smart wallet session key to mint on-chain.",
-                                        });
-                                    }}
-                                    onAttestReputation={async () => {
-                                        const result = await attestReputation();
-                                        const reason = result?.onchain?.reason;
-                                        addToast({
-                                            type: result?.reputationTxHash ? "success" : "info",
-                                            title: result?.reputationTxHash ? "Reputation Attested" : "Attestation Pending",
-                                            message: result?.reputationTxHash
-                                                ? "Taste and reputation snapshot published on-chain."
-                                                : reason === "erc8004_disabled"
-                                                    ? "ERC-8004 registry writes are not configured for this environment."
-                                                    : "Mint an ERC-8004 identity and enable the smart wallet session key first.",
-                                        });
-                                    }}
-                                />
-                            </div>
+                            <AgentTasteCard
+                                config={config}
+                                onUpdateVibes={async (vibes) => {
+                                    await updateConfig({ vibes });
+                                    addToast({ type: "success", title: "Vibes Updated", message: "Your DJ's taste has been updated." });
+                                }}
+                                onUpdateStemTypes={async (stemTypes) => {
+                                    await updateConfig({ stemTypes });
+                                    addToast({
+                                        type: "success",
+                                        title: "Stem Types Updated",
+                                        message: stemTypes.length === 0
+                                            ? "Your DJ will buy all available stems."
+                                            : `Your DJ will buy: ${stemTypes.join(", ")}`,
+                                    });
+                                }}
+                                onMintIdentity={async () => {
+                                    const result = await mintIdentity();
+                                    const reason = result?.onchain?.reason;
+                                    addToast({
+                                        type: result?.identityStatus === "minted" || result?.identityStatus === "attested" ? "success" : "info",
+                                        title: reason === "erc8004_disabled" ? "Identity Local" : "Identity Updated",
+                                        message: result?.identityTxHash
+                                            ? "ERC-8004 identity transaction recorded."
+                                            : reason === "erc8004_disabled"
+                                                ? "ERC-8004 registry writes are not configured for this environment."
+                                                : "Enable the smart wallet session key to mint on-chain.",
+                                    });
+                                }}
+                                onAttestReputation={async () => {
+                                    const result = await attestReputation();
+                                    const reason = result?.onchain?.reason;
+                                    addToast({
+                                        type: result?.reputationTxHash ? "success" : "info",
+                                        title: result?.reputationTxHash ? "Reputation Attested" : "Attestation Pending",
+                                        message: result?.reputationTxHash
+                                            ? "Taste and reputation snapshot published on-chain."
+                                            : reason === "erc8004_disabled"
+                                                ? "ERC-8004 registry writes are not configured for this environment."
+                                                : "Mint an ERC-8004 identity and enable the smart wallet session key first.",
+                                    });
+                                }}
+                            />
                         </div>
+
+                        {/* Discovery banner */}
                         {!historyLoading && sessions.some(s => s.licenses.length > 0) && (
-                            <div className="agent-discovery-banner">
-                                <div className="agent-discovery-info">
-                                    <svg className="agent-discovery-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <circle cx="12" cy="12" r="2" />
-                                        <path d="M16.24 7.76a6 6 0 0 1 0 8.49" />
-                                        <path d="M7.76 16.24a6 6 0 0 1 0-8.49" />
-                                    </svg>
-                                    <span className="agent-discovery-text">
-                                        <strong>{sessions.reduce((sum, s) => sum + s.licenses.length, 0)}</strong> track{sessions.reduce((sum, s) => sum + s.licenses.length, 0) !== 1 ? "s" : ""} discovered across <strong>{sessions.filter(s => s.licenses.length > 0).length}</strong> session{sessions.filter(s => s.licenses.length > 0).length !== 1 ? "s" : ""}
-                                    </span>
-                                </div>
-                                <Link href="/sonic-radar" className="agent-discovery-link">
-                                    View all on Sonic Radar
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                        <polyline points="9 18 15 12 9 6" />
-                                    </svg>
-                                </Link>
+                            <div className="aid-discovery-banner">
+                                <span>
+                                    <strong>{sessions.reduce((sum, s) => sum + s.licenses.length, 0)}</strong> tracks discovered across{" "}
+                                    <strong>{sessions.filter(s => s.licenses.length > 0).length}</strong> sessions
+                                </span>
+                                <Link href="/sonic-radar" className="aid-ghost-btn">View on Sonic Radar →</Link>
                             </div>
                         )}
+
+                        {/* History */}
                         <AgentHistoryCard sessions={sessions} isLoading={historyLoading} />
                     </>
                 )}
-            </main>
+            </div>
 
             {showWizard && (
                 <AgentSetupWizard

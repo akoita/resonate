@@ -607,3 +607,54 @@
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
+/* ── Page layout rows ───────────────────────────────────────────── */
+.aid-bottom-row {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+@media (max-width: 900px)  { .aid-bottom-row { grid-template-columns: 1fr; } }
+
+/* ── Discovery banner ────────────────────────────────────────────── */
+.aid-discovery-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  background: rgba(124,58,237,0.12);
+  border: 1px solid rgba(124,58,237,0.25);
+  border-radius: 12px;
+  color: rgba(240,234,255,0.7);
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+}
+.aid-discovery-banner strong { color: #c4b5fd; }
+
+/* ── Empty / loading states ─────────────────────────────────────── */
+.aid-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 4rem 2rem;
+  text-align: center;
+  color: rgba(240,234,255,0.6);
+}
+.aid-empty h2 { color: #f0eaff; font-size: 1.4rem; margin: 0; }
+.aid-empty p  { margin: 0; max-width: 420px; line-height: 1.6; }
+.aid-empty-icon { font-size: 3rem; opacity: 0.3; }
+
+.aid-loader-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 4rem 2rem;
+  color: rgba(240,234,255,0.5);
+  font-size: 0.9rem;
+}
