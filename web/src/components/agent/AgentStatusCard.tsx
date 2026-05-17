@@ -11,89 +11,89 @@ type Props = {
     totalSpend: number;
 };
 
+/**
+ * AgentStatusCard — stripped-down card version for contexts that render it
+ * standalone (e.g. outside AgentDashboard). When used inside AgentDashboard,
+ * the Command Center strip replaces the top-level toggle/mode controls.
+ */
 export default function AgentStatusCard({ config, onToggle, onModeChange, sessionCount, trackCount, totalSpend }: Props) {
     return (
-        <div className="agent-card agent-status-card">
-            <div className="agent-card-header">
-                <div className="agent-avatar">
-                    <span className="agent-avatar-emoji">🤖</span>
-                    <div className={`agent-status-dot ${config.isActive ? "active" : ""}`} />
+        <div className="aid-card aid-card--status">
+            {/* Avatar orb */}
+            <div className="aid-sc-header">
+                <div className="aid-orb-wrap aid-orb-wrap--sm">
+                    <div className="aid-orb" />
+                    <span className={`aid-orb-badge ${config.isActive ? "active" : ""}`}>
+                        {config.isActive ? "LIVE" : "IDLE"}
+                    </span>
                 </div>
-                <div className="agent-card-info">
-                    <h3 className="agent-card-name">{config.name}</h3>
-                    <div className="agent-status-row">
-                        <span className={`agent-status-label ${config.isActive ? "active" : ""}`}>
-                            {config.isActive ? "Active" : "Inactive"}
-                        </span>
-                        <span className={`agent-mode-badge ${config.sessionMode}`}>
-                            {config.sessionMode === "buy" ? "💰 Buy" : "🔍 Curate"}
-                        </span>
-                    </div>
+                <div>
+                    <p className="aid-sc-name">{config.name}</p>
+                    <span className={`aid-status-pill ${config.isActive ? "active" : ""}`}>
+                        {config.isActive ? "● Active" : "○ Inactive"}
+                    </span>
                 </div>
             </div>
 
-            <div className="agent-card-body">
-                <div className="agent-vibes-row">
-                    {config.vibes.map((vibe) => (
-                        <span key={vibe} className="vibe-chip selected small">{vibe}</span>
-                    ))}
-                </div>
+            {/* Vibes */}
+            <div className="aid-sc-vibes">
+                {config.vibes.slice(0, 6).map((v) => (
+                    <span key={v} className="aid-vibe-chip aid-vibe-chip--active">{v}</span>
+                ))}
             </div>
 
-            {/* Session Mode Toggle */}
-            <div className="agent-mode-toggle">
-                <span className="agent-mode-label">Session Mode</span>
-                <div className="agent-mode-options">
+            {/* Session mode toggle */}
+            <div className="aid-sc-mode">
+                <span className="aid-mode-label">Mode</span>
+                <div className="aid-mode-seg">
                     <button
-                        className={`agent-mode-chip ${config.sessionMode === "curate" ? "active" : ""}`}
+                        className={`aid-mode-btn ${config.sessionMode === "curate" ? "active" : ""}`}
                         onClick={() => onModeChange("curate")}
                     >
-                        🔍 Curate Only
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+                        Curate Only
                     </button>
                     <button
-                        className={`agent-mode-chip ${config.sessionMode === "buy" ? "active" : ""}`}
+                        className={`aid-mode-btn ${config.sessionMode === "buy" ? "active" : ""}`}
                         onClick={() => onModeChange("buy")}
                     >
-                        💰 Buy Stems
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
+                        Buy Stems
                     </button>
                 </div>
-                <span className="agent-mode-hint">
-                    {config.sessionMode === "curate"
-                        ? "Discover tracks without purchasing"
-                        : "Discover and purchase stems on-chain"}
-                </span>
             </div>
 
-            {/* Summary stats */}
-            <div className="agent-stats-row">
-                <div className="agent-stat">
-                    <span className="agent-stat-value">{sessionCount}</span>
-                    <span className="agent-stat-label">Sessions</span>
+            {/* Stats */}
+            <div className="aid-sc-stats">
+                <div className="aid-sc-stat">
+                    <span className="aid-sc-stat-val">{sessionCount}</span>
+                    <span className="aid-sc-stat-lbl">Sessions</span>
                 </div>
-                <div className="agent-stat-divider" />
-                <div className="agent-stat">
-                    <span className="agent-stat-value">{trackCount}</span>
-                    <span className="agent-stat-label">Tracks</span>
+                <div className="aid-sc-stat-divider" />
+                <div className="aid-sc-stat">
+                    <span className="aid-sc-stat-val">{trackCount}</span>
+                    <span className="aid-sc-stat-lbl">Tracks</span>
                 </div>
-                <div className="agent-stat-divider" />
-                <div className="agent-stat">
-                    <span className="agent-stat-value">${totalSpend.toFixed(2)}</span>
-                    <span className="agent-stat-label">Spent</span>
+                <div className="aid-sc-stat-divider" />
+                <div className="aid-sc-stat">
+                    <span className="aid-sc-stat-val">${totalSpend.toFixed(2)}</span>
+                    <span className="aid-sc-stat-lbl">Spent</span>
                 </div>
             </div>
 
+            {/* Toggle CTA */}
             <button
-                className={`agent-toggle-btn ${config.isActive ? "stop" : "start"}`}
+                className={`aid-toggle-btn ${config.isActive ? "stop" : "start"}`}
                 onClick={onToggle}
             >
                 {config.isActive ? (
                     <>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
                         Stop Session
                     </>
                 ) : (
                     <>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
                         Start Session
                     </>
                 )}
@@ -101,4 +101,3 @@ export default function AgentStatusCard({ config, onToggle, onModeChange, sessio
         </div>
     );
 }
-
