@@ -2,9 +2,15 @@
 
 import { useState } from "react";
 import { useListStem, useStemBalance } from "../../hooks/useContracts";
-import { parsePrice } from "../../lib/contracts";
+import { usePaymentAssets } from "../../hooks/usePaymentAssets";
+import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { getExplorerTxUrl } from "../../lib/explorer";
-import { type Address } from "viem";
+import {
+  formatListingPrice,
+  listingPaymentToken,
+  parseListingPriceUnits,
+  selectDefaultMarketplaceListingAsset,
+} from "../../lib/listingPricing";
 
 interface ListStemModalProps {
   tokenId: bigint;
@@ -16,10 +22,30 @@ interface ListStemModalProps {
 export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemModalProps) {
   const { balance } = useStemBalance(tokenId);
   const { list, pending, error, txHash } = useListStem();
+  const { chainId } = useZeroDev();
+  const {
+    assets: paymentAssets,
+    defaultAsset,
+    loading: paymentAssetsLoading,
+  } = usePaymentAssets(chainId);
 
   const [price, setPrice] = useState("0.01");
   const [amount, setAmount] = useState("1");
   const [duration, setDuration] = useState("7"); // Days
+  const listingAsset = selectDefaultMarketplaceListingAsset({
+    assets: paymentAssets,
+    chainId,
+    defaultAssetId: defaultAsset,
+  });
+  const listingToken = listingPaymentToken(listingAsset);
+  const listingSymbol = listingAsset?.symbol ?? "ETH";
+  const listingStep = listingAsset?.decimals === 6 ? "0.000001" : "0.000000000000000001";
+  let priceUnits = 0n;
+  try {
+    priceUnits = parseListingPriceUnits({ price: price || "0", asset: listingAsset });
+  } catch {
+    priceUnits = 0n;
+  }
 
   if (!isOpen) return null;
 
@@ -28,8 +54,8 @@ export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemM
       const hash = await list({
         tokenId,
         amount: BigInt(amount),
-        pricePerUnit: parsePrice(price),
-        paymentToken: "0x0000000000000000000000000000000000000000" as Address, // ETH
+        pricePerUnit: priceUnits,
+        paymentToken: listingToken,
         durationSeconds: BigInt(parseInt(duration) * 24 * 60 * 60),
       });
       onSuccess?.(hash);
@@ -75,12 +101,12 @@ export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemM
           {/* Price Input */}
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-1">
-              Native ETH price per edition
+              {listingSymbol} price per edition
             </label>
             <input
               type="number"
               min="0"
-              step="0.001"
+              step={listingStep}
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-white"
@@ -130,7 +156,16 @@ export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemM
             <div className="flex justify-between text-sm">
               <span className="text-zinc-400">Total Value</span>
               <span className="text-white">
-                {(parseFloat(price) * parseInt(amount || "1")).toFixed(4)} ETH
+                {formatListingPrice({
+                  priceUnits: priceUnits * BigInt(parseInt(amount || "1")),
+                  asset: listingAsset,
+                })}
+              </span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-zinc-400">Settlement Asset</span>
+              <span className="text-white">
+                {listingAsset ? `${listingAsset.name} (${listingSymbol})` : "Native ETH"}
               </span>
             </div>
             <div className="flex justify-between text-sm">
@@ -145,9 +180,9 @@ export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemM
 
           {/* Info */}
           <p className="text-xs text-zinc-500">
-            This listing form currently creates native ETH listings. Buyer checkout supports ERC-20
-            listings when the listing payment token is USDC or WETH. Royalties and protocol fees are
-            automatically deducted from sales.
+            Listings default to the configured marketplace stablecoin when available. Native ETH
+            remains a fallback for local or legacy deployments. Royalties and protocol fees are
+            automatically deducted from sales in the listing asset.
           </p>
 
           {/* Error */}
@@ -186,10 +221,10 @@ export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemM
             </button>
             <button
               onClick={handleList}
-              disabled={pending || maxAmount === 0n || !price || parseFloat(price) <= 0}
+              disabled={pending || paymentAssetsLoading || maxAmount === 0n || !price || priceUnits <= 0n}
               className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white py-3 rounded-md transition-colors"
             >
-              {pending ? "Listing..." : "List for Sale"}
+              {paymentAssetsLoading ? "Loading asset..." : pending ? "Listing..." : "List for Sale"}
             </button>
           </div>
         </div>

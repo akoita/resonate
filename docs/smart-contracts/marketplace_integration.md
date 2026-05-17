@@ -59,6 +59,14 @@ The AI agent prioritizes tracks with active marketplace listings for real on-cha
 
 ## Frontend Hooks
 
+Creator listing surfaces default to the configured marketplace stablecoin asset
+when one is available. `ListStemModal`, `MintStemButton`, and
+`BatchMintListModal` all resolve the default listing asset from `/payments/assets`
+and convert the creator-facing decimal price into that asset's units before
+calling `StemMarketplaceV2.list` or `listLastMint`. If no configured stablecoin
+marketplace asset exists, they fall back to native-token listings for local and
+legacy deployments.
+
 The direct on-chain buy path reads each listing's `paymentToken`. Native-token
 listings send value with the marketplace purchase call. ERC-20 listings batch a
 token approval and marketplace purchase in one smart-account operation. The
