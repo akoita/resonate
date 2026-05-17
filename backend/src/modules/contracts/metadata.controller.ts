@@ -610,6 +610,7 @@ export class MetadataController {
           tokenId: l.tokenId.toString(),
           seller: l.sellerAddress,
           price: l.pricePerUnit,
+          paymentToken: l.paymentToken,
           amount: l.amount.toString(),
           status: l.status,
           expiresAt: l.expiresAt.toISOString(),

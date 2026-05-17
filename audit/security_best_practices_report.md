@@ -600,3 +600,63 @@ rg -n "(PRIVATE KEY|BEGIN [A-Z ]*PRIVATE KEY|sk-[A-Za-z0-9]|ghp_|gho_|AIza|passw
 rg -n "(JSON\\.parse|eval\\(|\\$queryRaw|\\$executeRaw|@Body\\(\\)|@Query\\(\\)|@Param\\(\\))" backend/src/modules/encryption/encryption.service.ts backend/src/modules/x402/x402.controller.ts -S
 rg -n "(password|secret|api_key|private_key|INTERNAL_SERVICE_KEY|PRIVATE KEY|sk-[A-Za-z0-9]|ghp_|gho_)" backend/src/modules/encryption/encryption.service.ts backend/src/modules/x402/x402.controller.ts -S
 ```
+
+## Addendum: #841 Marketplace Checkout Rail Semantics
+
+Reviewed the #841 checkout rail semantics slice for backend data exposure,
+frontend rendering safety, and secret handling. No Critical or High findings
+were identified in the changed code.
+
+### Scope
+
+- `backend/src/modules/contracts/metadata.controller.ts`
+- `backend/src/tests/metadata.controller.integration.spec.ts`
+- `web/src/components/marketplace/BuyModal.tsx`
+- `web/src/lib/buyPricing.ts`
+- `web/src/lib/buyPricing.test.ts`
+- `docs/architecture/x402_payments.md`
+- `docs/features/README.md`
+- `docs/features/agent-commerce-runtime.md`
+- `docs/smart-contracts/marketplace_integration.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- The backend change exposes `StemListing.paymentToken`, an existing indexed
+  on-chain listing field, through the existing public marketplace listing
+  response. It does not expose wallet private data, proofs, keys, or new
+  settlement authority.
+- The frontend change formats on-chain listing amounts with configured payment
+  asset decimals and labels checkout choices as rails. It does not introduce
+  HTML injection, cookie access, client-side secrets, or new network origins.
+- Broad repository scans still report pre-existing development JWT fallbacks,
+  environment-variable names, and raw Prisma template queries outside this
+  change set. No new Critical or High issue was introduced by this branch.
+- The x402 rail remains documented as not yet equivalent to direct
+  contract-backed ownership/license settlement; that limitation is product
+  scope, not a newly introduced security regression.
+
+### Commands Run
+
+```bash
+cd backend && npm run lint
+cd backend && npm test
+cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='metadata.controller.integration' -t 'returns the payment token for ERC-20 marketplace listings'
+cd web && npm run lint
+cd web && npm run test:unit
+git diff --check
+rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/contracts/metadata.controller.ts
+rg 'JSON\.parse|eval\(' backend/src/modules/contracts/metadata.controller.ts
+rg '@Body\(\)|@Query\(\)|@Param\(' backend/src/modules/contracts/metadata.controller.ts
+rg 'dangerouslySetInnerHTML|innerHTML' web/src/components/marketplace web/src/lib/buyPricing.ts
+rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/components/marketplace web/src/lib/buyPricing.ts
+rg 'document\.cookie|setCookie|httpOnly.*false' web/src/components/marketplace web/src/lib/buyPricing.ts
+```

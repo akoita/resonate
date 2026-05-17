@@ -2,7 +2,7 @@
 title: "Agent Commerce Runtime"
 status: implemented
 owner: "@akoita"
-issues: [805, 812]
+issues: [805, 812, 841]
 introduced_by: [808, 810, 811, 821, 823, 824]
 ---
 
@@ -44,7 +44,7 @@ Available now:
 - `PolicyGuardService` centralizes pre-execution checks for budget and license policy.
 - `PaymentRouterService` centralizes ERC-4337 marketplace and x402 rail execution behind one result envelope.
 - The x402 rail builds a canonical challenge from `StemPricing`, blocks policy failures before verification, verifies/settles payment proofs, records `x402.purchase` provenance, and returns a structured receipt.
-- The listener purchase modal defaults to the stablecoin x402 rail when it is available, presents the quote in USD first, and settles the download in USDC. The NFT mint path remains available as the secondary on-chain option.
+- The listener purchase modal defaults to the stablecoin x402 rail when it is available, presents the quote in USD first, and settles the download in USDC. The direct on-chain option remains available as a separate wallet transaction rail and uses the listing payment asset, including ERC-20 stablecoins when the listing was created with one.
 - The AI DJ marketplace buy path routes through `PaymentRouterService` before calling the ERC-4337 purchase rail.
 - Session recommendation events publish `agent.track_selected` with `strategy: "runtime"`.
 
@@ -253,6 +253,13 @@ Expected confirmed x402 result:
 
 Policy failures return `status: "rejected"` before any x402 verification or
 chain/payment call.
+
+Today the x402 rail grants the paid download entitlement and records
+`x402.purchase` provenance after facilitator settlement. It does not yet settle
+the same smart-contract ownership or License NFT state as a direct marketplace
+buy. Issue #841 tracks the next step: make x402 settlement call, prove, or map
+to the marketplace/license contract path so both rails grant the same durable
+ownership/license outcome.
 
 ## Developer Service Flow
 
