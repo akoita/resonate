@@ -346,6 +346,7 @@ export function MintStemButton({
                         price: listingPriceUnits.toString(),
                         amount: "1",
                         paymentToken: listingToken,
+                        licenseType: "personal",
                         durationSeconds: String(7 * 24 * 60 * 60),
                         transactionHash: hash,
                         stemId,

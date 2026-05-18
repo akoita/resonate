@@ -11,7 +11,7 @@ import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
 import { createPublicClient, http, type Address } from "viem";
 import { foundry, sepolia, baseSepolia } from "viem/chains";
-import { Prisma } from "@prisma/client";
+import { LicenseType, Prisma } from "@prisma/client";
 import type {
   ContractStemMintedEvent,
   ContractStemListedEvent,
@@ -123,6 +123,18 @@ const MARKETPLACE_ADDRESSES: Record<number, Address> = {
   11155111: (process.env.SEPOLIA_MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
   84532: (process.env.BASE_SEPOLIA_MARKETPLACE_ADDRESS || process.env.MARKETPLACE_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
 };
+
+const LISTING_LICENSE_TYPES = new Set<LicenseType>([
+  LicenseType.personal,
+  LicenseType.remix,
+  LicenseType.commercial,
+]);
+
+function normalizeListingLicenseType(value?: string | null): LicenseType {
+  return value && LISTING_LICENSE_TYPES.has(value as LicenseType)
+    ? (value as LicenseType)
+    : LicenseType.personal;
+}
 
 const CONTENT_PROTECTION_ADDRESSES: Record<number, Address> = {
   31337: (process.env.CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as Address,
@@ -603,6 +615,16 @@ export class ContractsService implements OnModuleInit {
             chainId: event.chainId,
           },
         });
+        const listingIntent = await prisma.stemListingIntent.findFirst({
+          where: {
+            transactionHash: event.transactionHash,
+            tokenId: BigInt(event.tokenId),
+          },
+          orderBy: { createdAt: "desc" },
+        });
+        const licenseType = normalizeListingLicenseType(
+          event.licenseType ?? listingIntent?.licenseType,
+        );
 
         let expiresAt = new Date(parseInt(event.expiresAt) * 1000);
         // If expiresAt is 0 (on-chain query failed or not available), default to 1 year
@@ -624,12 +646,15 @@ export class ContractsService implements OnModuleInit {
           expiresAt,
           transactionHash: event.transactionHash,
           blockNumber: BigInt(event.blockNumber),
+          licenseType,
           status: "active",
           listedAt: new Date(event.occurredAt),
         };
 
         if (nftMint?.stemId) {
           listingData.stem = { connect: { id: nftMint.stemId } };
+        } else if (listingIntent?.stemId) {
+          listingData.stem = { connect: { id: listingIntent.stemId } };
         } else {
           // Fallback: try finding stem via ipnftId (handles race condition
           // where Listed event arrives before StemMinted is fully processed)
@@ -646,7 +671,8 @@ export class ContractsService implements OnModuleInit {
           where: {
             tokenId: BigInt(event.tokenId),
             chainId: event.chainId,
-            sellerAddress: event.sellerAddress,
+            sellerAddress: event.sellerAddress.toLowerCase(),
+            licenseType,
             status: "active",
             NOT: { transactionHash: event.transactionHash } // Don't cancel the one we just (might) have upserted
           },
@@ -714,6 +740,7 @@ export class ContractsService implements OnModuleInit {
             royaltyPaid: "0", // Will be updated from RoyaltyPaid event
             protocolFeePaid: "0",
             sellerReceived: "0",
+            licenseType: listing.licenseType,
             transactionHash: event.transactionHash,
             blockNumber: BigInt(event.blockNumber),
             purchasedAt: new Date(event.occurredAt),
@@ -1177,6 +1204,7 @@ export class ContractsService implements OnModuleInit {
         pricePerUnit: true,
         amount: true,
         paymentToken: true,
+        licenseType: true,
         status: true,
         expiresAt: true,
         listedAt: true,
@@ -1203,11 +1231,11 @@ export class ContractsService implements OnModuleInit {
       // We don't take/skip yet because we need to deduplicate in-memory
     });
 
-    // Deduplicate: Keep only the latest listing for each (tokenId, sellerAddress, chainId)
+    // Deduplicate: Keep only the latest listing for each (tokenId, sellerAddress, chainId, licenseType)
     // Since we ordered by listedAt desc, the first one we encounter is the most recent
     const dedupedMap = new Map<string, typeof listings[number]>();
     for (const l of listings) {
-      const key = `${l.chainId}-${l.tokenId}-${l.sellerAddress.toLowerCase()}`;
+      const key = `${l.chainId}-${l.tokenId}-${l.sellerAddress.toLowerCase()}-${l.licenseType}`;
       if (!dedupedMap.has(key)) {
         dedupedMap.set(key, l);
       }

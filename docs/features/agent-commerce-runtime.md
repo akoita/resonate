@@ -2,7 +2,7 @@
 title: "Agent Commerce Runtime"
 status: implemented
 owner: "@akoita"
-issues: [805, 812, 841, 846]
+issues: [356, 805, 812, 841, 846]
 introduced_by: [808, 810, 811, 821, 823, 824]
 ---
 
@@ -46,6 +46,7 @@ Available now:
 - The x402 rail builds a canonical challenge from `StemPricing` or a matching active stablecoin listing, blocks policy failures before verification, verifies/settles payment proofs, records `X402Settlement` plus `x402.purchase` provenance, and returns a structured receipt with explicit settlement status. When contract settlement is enabled, listed-stem x402 redemptions execute marketplace `buyFor` to the requested buyer wallet before download.
 - Creator listing flows default to the configured marketplace stablecoin asset when available and convert listing prices with the selected token decimals before calling the marketplace contract.
 - The listener purchase modal defaults to the stablecoin x402 rail when it is available, presents the quote in USD first, and settles the download in USDC. The direct on-chain option remains available as a separate wallet transaction rail, displays the listing payment asset, and uses a tested approval-plus-buy transaction plan for ERC-20 stablecoin listings.
+- Marketplace listings carry an enforced `licenseType`. The listener buy modal switches to the selected tier's active listing ID before quoting or buying, disables tiers without an active listing, and persists the enforced tier onto `StemPurchase` records. The browser x402 checkout remains limited to the personal tier until the x402 stem endpoint accepts tier-specific resources.
 - The AI DJ marketplace buy path routes through `PaymentRouterService` before calling the ERC-4337 purchase rail.
 - Session recommendation events publish `agent.track_selected` with `strategy: "runtime"`.
 
@@ -263,6 +264,8 @@ settlement. Receipts include `settlement.status` so clients can distinguish
 work and non-matching payment-asset cases; active marketplace ownership
 purchases can now be contract-backed when `X402_CONTRACT_SETTLEMENT_ENABLED`
 is enabled and the listing is priced in the configured x402 stablecoin.
+The browser marketplace modal disables x402 for remix and commercial tier
+selection today so those tiers cannot accidentally settle as personal licenses.
 
 ## Developer Service Flow
 

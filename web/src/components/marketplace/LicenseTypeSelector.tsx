@@ -11,6 +11,10 @@ interface LicenseTypeSelectorProps {
   personalPriceUsd: number;
   remixPriceUsd: number;
   commercialPriceUsd: number;
+  availability?: Partial<Record<LicenseType, {
+    enabled: boolean;
+    reason?: string;
+  }>>;
 }
 
 const LICENSE_OPTIONS: {
@@ -55,6 +59,7 @@ export function LicenseTypeSelector({
   personalPriceUsd,
   remixPriceUsd,
   commercialPriceUsd,
+  availability,
 }: LicenseTypeSelectorProps) {
   const priceMap: Record<LicenseType, number> = {
     personal: personalPriceUsd,
@@ -65,23 +70,34 @@ export function LicenseTypeSelector({
   return (
     <div className="license-selector">
       <span className="license-selector__label">License Type</span>
-      {LICENSE_OPTIONS.map((opt) => (
+      {LICENSE_OPTIONS.map((opt) => {
+        const optionAvailability = availability?.[opt.type];
+        const disabled = optionAvailability?.enabled === false;
+        return (
         <label
           key={opt.type}
-          className={`license-option ${selected === opt.type ? "license-option--selected" : ""}`}
-          onClick={() => onSelect(opt.type)}
+          className={`license-option ${selected === opt.type ? "license-option--selected" : ""}${disabled ? " license-option--disabled" : ""}`}
+          title={optionAvailability?.reason}
+          onClick={() => {
+            if (!disabled) onSelect(opt.type);
+          }}
         >
           <input
             type="radio"
             name="licenseType"
             value={opt.type}
             checked={selected === opt.type}
-            onChange={() => onSelect(opt.type)}
+            disabled={disabled}
+            onChange={() => {
+              if (!disabled) onSelect(opt.type);
+            }}
           />
           <span className="license-option__radio" />
           <div className="license-option__content">
             <div className="license-option__name">{opt.label}</div>
-            <div className="license-option__desc">{opt.desc}</div>
+            <div className="license-option__desc">
+              {disabled ? optionAvailability?.reason ?? "No active listing for this license" : opt.desc}
+            </div>
             {opt.includes && (
               <div className="license-option__includes">✓ {opt.includes}</div>
             )}
@@ -91,7 +107,8 @@ export function LicenseTypeSelector({
             <small>USD</small>
           </div>
         </label>
-      ))}
+        );
+      })}
     </div>
   );
 }
