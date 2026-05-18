@@ -138,13 +138,14 @@ web app. The core runtime combines:
   and paid download flow, and structured receipts.
 - **GCP runtime** — Cloud Run frontend/backend/Demucs services, Pub/Sub stem
   jobs/results/DLQ, Cloud SQL, Redis, GCS, Secret Manager, Artifact Registry,
-  VPC private connectivity, and Cloud Monitoring.
+  VPC private connectivity, Cloud Monitoring, and a global HTTPS edge with
+  managed TLS, Cloud Armor, and serverless NEGs in front of Cloud Run.
 - **On-chain protocol** — ERC-4337 Kernel smart accounts, session keys, bundler,
   EntryPoint, `StemNFT`, `StemMarketplaceV2`, content protection, curation
   disputes, revenue escrow, and payment asset contracts.
 - **Separate cloud delivery plane** — application CI publishes immutable images;
   [`resonate-iac`](https://github.com/akoita/resonate-iac) applies
-  Terraform-managed environment releases.
+  Terraform-managed environment releases, edge routing, IAM, and validation.
 
 See the [deployment architecture doc](docs/architecture/deployment_architecture.md)
 for the editable Mermaid model, source references, and component inventory.
