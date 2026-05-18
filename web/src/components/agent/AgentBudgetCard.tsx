@@ -20,6 +20,13 @@ type Props = {
     sessionKeyPermissions?: { target: string; function: string; totalCapWei: string; perTxCapWei: string; rateLimit: number } | null;
 };
 
+const BAR_GRADIENTS: Record<string, string> = {
+    none: "linear-gradient(90deg, #34d399, #10b981)",
+    warning: "linear-gradient(90deg, #fbbf24, #f59e0b)",
+    critical: "linear-gradient(90deg, #f87171, #ef4444)",
+    exhausted: "linear-gradient(90deg, #ef4444, #dc2626)",
+};
+
 export default function AgentBudgetCard({
     config,
     spentUsd,
@@ -59,22 +66,16 @@ export default function AgentBudgetCard({
         exhausted: "Budget exhausted",
     };
 
-    const barColorClass = alertLevel === "none"
-        ? "bar-healthy"
-        : alertLevel === "warning"
-            ? "bar-warning"
-            : "bar-critical";
-
     const formatAddress = (addr: string | null) => {
-        if (!addr) return "—";
-        return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+        if (!addr) return "\u2014";
+        return `${addr.slice(0, 6)}\u2026${addr.slice(-4)}`;
     };
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     const now = useMemo(() => Date.now(), [walletStatus]);
 
     const formatExpiry = (ts: number | null) => {
-        if (!ts) return "—";
+        if (!ts) return "\u2014";
         const diff = ts - now;
         if (diff <= 0) return "Expired";
         const hours = Math.floor(diff / 3600000);
@@ -91,107 +92,115 @@ export default function AgentBudgetCard({
     };
 
     return (
-        <div className={`agent-card agent-finance-card ${alertLevel !== "none" ? `alert-${alertLevel}` : ""}`}>
-            <h3 className="agent-card-title">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                </svg>
-                Finance
-            </h3>
+        <div className="aid-card aid-card--finance">
+            <div className="aid-card-header">
+                <div className="aid-card-title-row">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                    </svg>
+                    <span className="aid-card-title">Finance</span>
+                </div>
+            </div>
 
-            {/* ── Budget Overview: Ring + Progress ── */}
-            <div className="afc-budget-row">
-                <div className="afc-ring-wrap">
-                    <svg viewBox="0 0 100 100" className="afc-ring">
-                        <circle cx="50" cy="50" r="45" className="afc-ring-bg" />
+            {/* ── Budget Overview: Donut + Progress ── */}
+            <div className="aid-fin-donut-row">
+                <div className="aid-fin-donut">
+                    <svg viewBox="0 0 100 100">
+                        <defs>
+                            <linearGradient id="aid-donut-grad" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stopColor="#34d399" />
+                                <stop offset="100%" stopColor="#10b981" />
+                            </linearGradient>
+                        </defs>
+                        <circle cx="50" cy="50" r="45" className="aid-fin-donut-bg" />
                         <circle
                             cx="50"
                             cy="50"
                             r="45"
-                            className="afc-ring-fill"
+                            className="aid-fin-donut-fill"
                             strokeDasharray={circumference}
                             strokeDashoffset={dashOffset}
-                            transform="rotate(-90 50 50)"
                         />
                     </svg>
-                    <div className="afc-ring-center">
-                        <span className="afc-ring-amount">${spentUsd.toFixed(2)}</span>
-                        <span className="afc-ring-cap">of ${config.monthlyCapUsd}/mo</span>
+                    <div className="aid-fin-donut-center">
+                        <span className="aid-fin-donut-amount">${spentUsd.toFixed(2)}</span>
+                        <span className="aid-fin-donut-cap">of ${config.monthlyCapUsd}/mo</span>
                     </div>
                 </div>
-                <div className="afc-budget-details">
-                    <div className="afc-budget-bar-section">
-                        <div className="awc-budget-bar-track">
-                            <div
-                                className={`awc-budget-bar-fill ${barColorClass}`}
-                                style={{ width: `${pct}%` }}
-                            />
-                        </div>
-                        <div className="afc-budget-meta">
-                            <span className="afc-budget-remaining">${remaining.toFixed(2)} remaining</span>
-                            <span className="afc-budget-pct">{pct.toFixed(0)}%</span>
-                        </div>
+                <div className="aid-fin-budget-detail">
+                    <div className="aid-fin-bar-track">
+                        <div
+                            className="aid-fin-bar-fill"
+                            style={{
+                                width: `${pct}%`,
+                                ...(alertLevel !== "none" ? { background: BAR_GRADIENTS[alertLevel] } : {}),
+                            }}
+                        />
                     </div>
-                    <button className="afc-edit-btn" onClick={onEdit}>Edit Budget</button>
+                    <div className="aid-fin-bar-meta">
+                        <span>${remaining.toFixed(2)} remaining</span>
+                        <span>{pct.toFixed(0)}%</span>
+                    </div>
+                    <button className="aid-ghost-btn" onClick={onEdit}>Edit Budget</button>
                 </div>
             </div>
 
             {/* ── Smart Wallet Section ── */}
             {!isEnabled ? (
-                <div className="afc-wallet-disabled">
-                    <div className="afc-wallet-disabled-info">
+                <div className="aid-wallet-off">
+                    <div className="aid-wallet-off-info">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.5">
                             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                         </svg>
                         <span>Smart Wallet not enabled</span>
                     </div>
                     <button
-                        className="afc-enable-btn"
+                        className="aid-enable-btn"
                         onClick={onEnable}
                         disabled={isEnabling}
                     >
                         {isEnabling ? (
-                            <><span className="agent-wallet-spinner" /> Enabling…</>
+                            <><span className="aid-spinner" /> Enabling&hellip;</>
                         ) : (
                             "Enable Wallet"
                         )}
                     </button>
                 </div>
             ) : (
-                <div className="afc-wallet-active">
+                <div className="aid-wallet-on">
                     {/* Account Details */}
-                    <div className="awc-details-grid">
-                        <div className="awc-detail">
-                            <span className="awc-detail-label">Address</span>
-                            <span className="awc-detail-value mono">
+                    <div className="aid-wallet-grid">
+                        <div className="aid-wallet-row">
+                            <span className="aid-wallet-lbl">Address</span>
+                            <span className="aid-wallet-val mono">
                                 {formatAddress(walletStatus?.walletAddress ?? null)}
                             </span>
                         </div>
-                        <div className="awc-detail">
-                            <span className="awc-detail-label">Account Type</span>
-                            <span className={`awc-detail-badge ${walletStatus?.accountType === "erc4337" ? "badge-smart" : "badge-local"}`}>
+                        <div className="aid-wallet-row">
+                            <span className="aid-wallet-lbl">Account Type</span>
+                            <span className={`aid-wallet-badge ${walletStatus?.accountType === "erc4337" ? "smart" : "local"}`}>
                                 {walletStatus?.accountType === "erc4337" ? "Smart Account" : "Local"}
                             </span>
                         </div>
-                        <div className="awc-detail">
-                            <span className="awc-detail-label">Session Key</span>
-                            <span className={`awc-detail-value ${walletStatus?.sessionKeyValid ? "valid" : "invalid"}`}>
+                        <div className="aid-wallet-row">
+                            <span className="aid-wallet-lbl">Session Key</span>
+                            <span className={`aid-wallet-val ${walletStatus?.sessionKeyValid ? "valid" : "invalid"}`}>
                                 {walletStatus?.sessionKeyValid ? (
                                     <>
-                                        <span className="awc-dot active" />
+                                        <span className="aid-dot active" />
                                         {formatExpiry(walletStatus.sessionKeyExpiresAt)}
                                     </>
                                 ) : (
                                     <>
-                                        <span className="awc-dot" />
+                                        <span className="aid-dot" />
                                         Inactive
                                     </>
                                 )}
                             </span>
                         </div>
-                        <div className="awc-detail">
-                            <span className="awc-detail-label">Budget Alert</span>
-                            <span className="awc-detail-value" style={{ color: alertColors[alertLevel] }}>
+                        <div className="aid-wallet-row">
+                            <span className="aid-wallet-lbl">Budget Alert</span>
+                            <span className="aid-wallet-val" style={{ color: alertColors[alertLevel] }}>
                                 {alertLabels[alertLevel]}
                             </span>
                         </div>
@@ -199,15 +208,15 @@ export default function AgentBudgetCard({
 
                     {/* On-chain Session Key Info */}
                     {(sessionKeyTxHash || walletStatus?.sessionKeyTxHash) && (
-                        <div className="afc-session-key-info" style={{ marginTop: 12, padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, fontSize: "0.8rem" }}>
+                        <div className="aid-session-key-info">
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                                <span className="awc-detail-label">Session Key Tx</span>
+                                <span className="aid-wallet-lbl">Session Key Tx</span>
                                 {(sessionKeyExplorerUrl || walletStatus?.sessionKeyExplorerUrl) ? (
                                     <a
                                         href={sessionKeyExplorerUrl || walletStatus?.sessionKeyExplorerUrl || "#"}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        style={{ color: "var(--accent)", display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" }}
+                                        className="aid-tx-link"
                                     >
                                         {formatAddress(sessionKeyTxHash || walletStatus?.sessionKeyTxHash || null)}
                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -217,15 +226,15 @@ export default function AgentBudgetCard({
                                         </svg>
                                     </a>
                                 ) : (
-                                    <span className="mono" style={{ opacity: 0.6 }}>{formatAddress(sessionKeyTxHash || walletStatus?.sessionKeyTxHash || null)}</span>
+                                    <span className="aid-tx-hash">{formatAddress(sessionKeyTxHash || walletStatus?.sessionKeyTxHash || null)}</span>
                                 )}
                             </div>
                             {(sessionKeyPermissions || walletStatus?.sessionKeyPermissions) && (
-                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-                                    <span style={{ padding: "2px 6px", background: "rgba(99,102,241,0.15)", borderRadius: 4, fontSize: "0.7rem" }}>
+                                <div className="aid-sk-tags">
+                                    <span className="aid-sk-tag">
                                         fn: {(sessionKeyPermissions || walletStatus?.sessionKeyPermissions)?.function}
                                     </span>
-                                    <span style={{ padding: "2px 6px", background: "rgba(99,102,241,0.15)", borderRadius: 4, fontSize: "0.7rem" }}>
+                                    <span className="aid-sk-tag">
                                         rate: {(sessionKeyPermissions || walletStatus?.sessionKeyPermissions)?.rateLimit} tx/hr
                                     </span>
                                 </div>
@@ -234,10 +243,10 @@ export default function AgentBudgetCard({
                     )}
 
                     {/* Transactions */}
-                    <div className="awc-tx-section">
-                        <div className="awc-tx-header">
-                            <span className="awc-tx-title">Recent Transactions</span>
-                            <button className="awc-tx-refresh" onClick={onRefreshTransactions} title="Refresh">
+                    <div className="aid-tx-section">
+                        <div className="aid-tx-header">
+                            <span className="aid-tx-title">Recent Transactions</span>
+                            <button className="aid-icon-btn" onClick={onRefreshTransactions} title="Refresh">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M21 2v6h-6" />
                                     <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
@@ -247,45 +256,41 @@ export default function AgentBudgetCard({
                             </button>
                         </div>
                         {transactions.length === 0 ? (
-                            <p className="awc-tx-empty">No transactions yet.</p>
+                            <p className="aid-tx-empty">No transactions yet.</p>
                         ) : (
                             <>
-                                <div className="awc-tx-list">
+                                <div className="aid-tx-list">
                                     {transactions.slice(0, txLimit).map((tx) => (
-                                        <div key={tx.id} className="awc-tx-row">
-                                            <div className="awc-tx-left">
-                                                <span className={`awc-tx-status ${tx.status}`}>
-                                                    {tx.status === "confirmed" ? "✓" : tx.status === "pending" ? "⏳" : tx.status === "curated" ? "🎧" : "✗"}
+                                        <div key={tx.id} className="aid-tx-row">
+                                            <span className={`aid-tx-status ${tx.status}`}>
+                                                {tx.status === "confirmed" ? "\u2713" : tx.status === "pending" ? "\u23F3" : tx.status === "curated" ? "\u{1F3A7}" : "\u2717"}
+                                            </span>
+                                            <span className="aid-tx-price">${tx.priceUsd.toFixed(2)}</span>
+                                            <span className={`aid-tx-mode ${tx.status === "curated" ? "curated" : "onchain"}`}>
+                                                {tx.status === "curated" ? "curated" : "on-chain"}
+                                            </span>
+                                            {(tx.stemName || tx.trackTitle) && (
+                                                <span className="aid-tx-stem" title={`${tx.stemName ?? "Stem"} \u00B7 ${tx.trackTitle ?? "Unknown"}`}>
+                                                    {tx.stemName ?? "Stem"}
+                                                    {tx.trackTitle && <span className="aid-tx-track"> &middot; {tx.trackTitle}</span>}
                                                 </span>
-                                                <span className="awc-tx-price">${tx.priceUsd.toFixed(2)}</span>
-                                                <span className={`awc-tx-mode ${tx.status === "curated" ? "curated" : "onchain"}`}>
-                                                    {tx.status === "curated" ? "curated" : "on-chain"}
-                                                </span>
-                                                {(tx.stemName || tx.trackTitle) && (
-                                                    <span className="awc-tx-stem" title={`${tx.stemName ?? "Stem"} · ${tx.trackTitle ?? "Unknown"}`}>
-                                                        {tx.stemName ?? "Stem"}
-                                                        {tx.trackTitle && <span className="awc-tx-track"> · {tx.trackTitle}</span>}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div className="awc-tx-right">
-                                                <span className="awc-tx-time">{formatRelativeTime(tx.createdAt)}</span>
-                                                <span className={`awc-tx-hash mono ${tx.status === "failed" ? "tx-failed" : ""}`}
-                                                    title={tx.status === "failed" && tx.errorMessage ? tx.errorMessage : undefined}
-                                                >
-                                                    {tx.txHash
-                                                        ? `${tx.txHash.slice(0, 10)}…`
-                                                        : tx.status === "failed"
-                                                            ? "failed"
-                                                            : tx.status}
-                                                </span>
-                                            </div>
+                                            )}
+                                            <span className="aid-tx-time">{formatRelativeTime(tx.createdAt)}</span>
+                                            <span className={`aid-tx-hash mono ${tx.status === "failed" ? "tx-failed" : ""}`}
+                                                title={tx.status === "failed" && tx.errorMessage ? tx.errorMessage : undefined}
+                                            >
+                                                {tx.txHash
+                                                    ? `${tx.txHash.slice(0, 10)}\u2026`
+                                                    : tx.status === "failed"
+                                                        ? "failed"
+                                                        : tx.status}
+                                            </span>
                                         </div>
                                     ))}
                                 </div>
                                 {transactions.length > txLimit && (
                                     <button
-                                        className="awc-tx-more"
+                                        className="aid-tx-more"
                                         onClick={() => setTxLimit((prev) => prev + 5)}
                                     >
                                         Show more ({transactions.length - txLimit} remaining)
@@ -296,13 +301,13 @@ export default function AgentBudgetCard({
                     </div>
 
                     {/* Actions */}
-                    <div className="awc-actions">
+                    <div className="aid-wallet-actions">
                         <button
-                            className="awc-revoke-btn"
+                            className="aid-danger-btn"
                             onClick={onDisable}
                             disabled={isDisabling}
                         >
-                            {isDisabling ? "Revoking…" : "Revoke Key"}
+                            {isDisabling ? "Revoking\u2026" : "Revoke Key"}
                         </button>
                     </div>
                 </div>

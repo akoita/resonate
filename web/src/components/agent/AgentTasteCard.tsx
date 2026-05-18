@@ -144,21 +144,24 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
     };
 
     return (
-        <div className="agent-card agent-taste-card">
-            <h3 className="agent-card-title">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
-                </svg>
-                Taste Profile
-            </h3>
+        <div className="aid-card aid-card--taste">
+            <div className="aid-card-header">
+                <div className="aid-card-title-row">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
+                    </svg>
+                    <span className="aid-card-title">Taste Profile</span>
+                </div>
+            </div>
 
-            <div className="agent-taste-content">
-                <div className="agent-taste-col-main">
-                    <div className="agent-taste-section">
-                        <div className="agent-taste-section-header">
-                            <span className="agent-taste-label">Selected Vibes</span>
+            <div className="aid-taste-grid" style={{ gridTemplateColumns: "1.3fr 1fr" }}>
+                {/* ── Main column: Vibes + Stem Types ── */}
+                <div className="aid-taste-col">
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div className="aid-taste-col-header">
+                            <span className="aid-taste-lbl">Selected Vibes</span>
                             {onUpdateVibes && !editing && (
-                                <button className="agent-taste-edit-btn" onClick={handleEdit}>
+                                <button className="aid-ghost-btn" onClick={handleEdit}>
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
                                         <path d="m15 5 4 4" />
@@ -170,11 +173,11 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
 
                         {editing ? (
                             <>
-                                <div className="agent-vibes-grid">
+                                <div className="aid-vibes-grid">
                                     {PRESET_VIBES.map((vibe) => (
                                         <button
                                             key={vibe}
-                                            className={`vibe-chip ${draft.includes(vibe) ? "selected" : ""}`}
+                                            className={`aid-vibe-chip ${draft.includes(vibe) ? "aid-vibe-chip--active" : ""}`}
                                             onClick={() => toggleVibe(vibe)}
                                         >
                                             {vibe}
@@ -184,17 +187,17 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
                                     {customVibes.map((vibe) => (
                                         <button
                                             key={vibe}
-                                            className="vibe-chip selected custom"
+                                            className="aid-vibe-chip aid-vibe-chip--active aid-vibe-chip--custom"
                                             onClick={() => toggleVibe(vibe)}
                                             title="Click to remove"
                                         >
-                                            {vibe} ×
+                                            {vibe} &times;
                                         </button>
                                     ))}
                                 </div>
-                                <div className="agent-custom-genre-row">
+                                <div className="aid-custom-row">
                                     <input
-                                        className="agent-custom-genre-input"
+                                        className="aid-custom-input"
                                         type="text"
                                         placeholder="Add custom genre..."
                                         value={customInput}
@@ -202,19 +205,19 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
                                         onKeyDown={handleKeyDown}
                                     />
                                     <button
-                                        className="ui-btn ui-btn-ghost ui-btn-sm"
+                                        className="aid-ghost-btn"
                                         onClick={addCustomGenre}
                                         disabled={!customInput.trim()}
                                     >
                                         + Add
                                     </button>
                                 </div>
-                                <div className="agent-taste-edit-actions">
-                                    <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={handleCancel}>
+                                <div className="aid-edit-actions">
+                                    <button className="aid-ghost-btn" onClick={handleCancel}>
                                         Cancel
                                     </button>
                                     <button
-                                        className="ui-btn ui-btn-primary ui-btn-sm"
+                                        className="aid-primary-btn"
                                         onClick={handleSave}
                                         disabled={saving || draft.length === 0}
                                     >
@@ -223,19 +226,19 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
                                 </div>
                             </>
                         ) : (
-                            <div className="agent-vibes-row">
+                            <div className="aid-vibes-row">
                                 {config.vibes.map((vibe) => (
-                                    <span key={vibe} className="vibe-chip selected small">{vibe}</span>
+                                    <span key={vibe} className="aid-vibe-chip aid-vibe-chip--active">{vibe}</span>
                                 ))}
                             </div>
                         )}
                     </div>
 
-                    <div className="agent-taste-section">
-                        <div className="agent-taste-section-header">
-                            <span className="agent-taste-label">Stem Types to Buy</span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div className="aid-taste-col-header">
+                            <span className="aid-taste-lbl">Stem Types to Buy</span>
                             {onUpdateStemTypes && !editingStems && (
-                                <button className="agent-taste-edit-btn" onClick={handleEditStems}>
+                                <button className="aid-ghost-btn" onClick={handleEditStems}>
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
                                         <path d="m15 5 4 4" />
@@ -247,28 +250,28 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
 
                         {editingStems ? (
                             <>
-                                <div className="agent-vibes-grid">
+                                <div className="aid-vibes-grid">
                                     {STEM_TYPES.map((type) => (
                                         <button
                                             key={type}
-                                            className={`vibe-chip ${stemDraft.includes(type) ? "selected" : ""}`}
+                                            className={`aid-vibe-chip ${stemDraft.includes(type) ? "aid-vibe-chip--active" : ""}`}
                                             onClick={() => toggleStemType(type)}
                                         >
                                             {type}
                                         </button>
                                     ))}
                                 </div>
-                                <p className="agent-taste-hint" style={{ marginTop: 6 }}>
+                                <p className="aid-taste-hint" style={{ marginTop: 6 }}>
                                     {stemDraft.length === 0
-                                        ? "No filter — agent will buy all available stems."
+                                        ? "No filter \u2014 agent will buy all available stems."
                                         : `Agent will only buy: ${stemDraft.join(", ")}`}
                                 </p>
-                                <div className="agent-taste-edit-actions">
-                                    <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setEditingStems(false)}>
+                                <div className="aid-edit-actions">
+                                    <button className="aid-ghost-btn" onClick={() => setEditingStems(false)}>
                                         Cancel
                                     </button>
                                     <button
-                                        className="ui-btn ui-btn-primary ui-btn-sm"
+                                        className="aid-primary-btn"
                                         onClick={handleSaveStems}
                                         disabled={savingStems}
                                     >
@@ -278,16 +281,16 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
                             </>
                         ) : (
                             <>
-                                <div className="agent-vibes-row">
+                                <div className="aid-vibes-row">
                                     {activeStemTypes.length === 0 ? (
-                                        <span className="vibe-chip selected small">All stems</span>
+                                        <span className="aid-vibe-chip aid-vibe-chip--active">All stems</span>
                                     ) : (
                                         activeStemTypes.map((type) => (
-                                            <span key={type} className="vibe-chip selected small">{type}</span>
+                                            <span key={type} className="aid-vibe-chip aid-vibe-chip--active">{type}</span>
                                         ))
                                     )}
                                 </div>
-                                <p className="agent-taste-hint">
+                                <p className="aid-taste-hint">
                                     {activeStemTypes.length === 0
                                         ? "Your DJ buys every listed stem for a track."
                                         : `Your DJ only buys ${activeStemTypes.join(", ")} stems.`}
@@ -297,47 +300,48 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
                     </div>
                 </div>
 
-                <div className="agent-taste-col-side">
-                    <div className="agent-taste-section">
-                        <span className="agent-taste-label">Taste Score</span>
-                        <div className="agent-taste-score">
-                            <div className="agent-taste-score-bar">
-                                <div className="agent-taste-score-fill" style={{ width: `${score}%` }} />
+                {/* ── Side column: Score + Genres + Identity ── */}
+                <div className="aid-taste-col">
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <span className="aid-taste-lbl">Taste Score</span>
+                        <div className="aid-score-bar-wrap">
+                            <div className="aid-score-bar-track">
+                                <div className="aid-score-bar-fill" style={{ width: `${score}%` }} />
                             </div>
-                            <span className="agent-taste-score-value">{score}</span>
+                            <span className="aid-score-val">{score}</span>
                         </div>
-                        <div className="agent-identity-row">
-                            <span className="agent-identity-pill">{tier}</span>
-                            <span className="agent-identity-pill">{config.identityStatus}</span>
+                        <div className="aid-score-pills">
+                            <span className="aid-tier-pill">{tier}</span>
+                            <span className="aid-tier-pill">{config.identityStatus}</span>
                         </div>
-                        <p className="agent-taste-hint">
+                        <p className="aid-taste-hint">
                             {learnedTaste
                                 ? `${signalCount} signals learned, ${acceptanceRate}% positive.`
                                 : reputation
                                     ? `${reputation.tracksCurated} tracks curated across ${reputation.sessions} sessions.`
-                                : "Start a session to build your score."}
+                                    : "Start a session to build your score."}
                         </p>
                     </div>
 
-                    <div className="agent-taste-section">
-                        <span className="agent-taste-label">Genres Explored</span>
-                        <div className="agent-taste-genres">
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <span className="aid-taste-lbl">Genres Explored</span>
+                        <div className="aid-genre-tags">
                             {exploredGenres.map((genre) => (
-                                <span key={genre} className="agent-genre-tag">{genre}</span>
+                                <span key={genre} className="aid-genre-tag">{genre}</span>
                             ))}
                         </div>
                         {learnedTaste?.favoredGenres?.length ? (
-                            <p className="agent-taste-hint">
+                            <p className="aid-taste-hint">
                                 Favors {learnedTaste.favoredGenres.slice(0, 3).join(", ")}.
                             </p>
                         ) : null}
                     </div>
 
-                    <div className="agent-taste-section">
-                        <div className="agent-taste-section-header">
-                            <span className="agent-taste-label">Portable Identity</span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div className="aid-taste-col-header">
+                            <span className="aid-taste-lbl">Portable Identity</span>
                             <button
-                                className="agent-taste-edit-btn"
+                                className="aid-ghost-btn"
                                 onClick={handleCredentialExport}
                                 disabled={!credentialAvailable}
                             >
@@ -349,21 +353,21 @@ export default function AgentTasteCard({ config, onUpdateVibes, onUpdateStemType
                                 VC
                             </button>
                         </div>
-                        <p className="agent-taste-hint">
+                        <p className="aid-taste-hint">
                             {config.identityTokenId
                                 ? `ERC-8004 token ${config.identityTokenId}`
                                 : "Local identity ready for ERC-8004 minting."}
                         </p>
-                        <div className="agent-identity-actions">
+                        <div className="aid-identity-actions">
                             <button
-                                className="agent-taste-edit-btn"
+                                className="aid-ghost-btn"
                                 onClick={handleMintIdentity}
                                 disabled={!onMintIdentity || mintingIdentity || config.identityStatus === "minted" || config.identityStatus === "attested"}
                             >
                                 {mintingIdentity ? "Minting..." : "Mint"}
                             </button>
                             <button
-                                className="agent-taste-edit-btn"
+                                className="aid-ghost-btn"
                                 onClick={handleAttestReputation}
                                 disabled={!onAttestReputation || attestingReputation || !config.identityTokenId}
                             >

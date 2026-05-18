@@ -24,17 +24,17 @@ function formatDuration(startedAt: string, endedAt: string | null) {
 
 function licenseIcon(type: string) {
     switch (type) {
-        case "personal": return "🎧";
-        case "remix": return "🎛️";
-        case "commercial": return "💼";
-        default: return "📄";
+        case "personal": return "\u{1F3A7}";
+        case "remix": return "\u{1F39B}\uFE0F";
+        case "commercial": return "\u{1F4BC}";
+        default: return "\u{1F4C4}";
     }
 }
 
 function recommendationText(recommendation: AgentSession["licenses"][number]["recommendation"]) {
     const summary = recommendation?.recommendation;
     if (summary?.explanation?.length) {
-        return summary.explanation.slice(0, 2).join(" · ");
+        return summary.explanation.slice(0, 2).join(" \u00B7 ");
     }
     if (recommendation?.reason) {
         return recommendation.reason.replace(/_/g, " ");
@@ -48,76 +48,80 @@ function recommendationText(recommendation: AgentSession["licenses"][number]["re
 export default function AgentHistoryCard({ sessions, isLoading }: Props) {
     if (isLoading) {
         return (
-            <div className="agent-card agent-history-card">
-                <h3 className="agent-card-title">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="12" cy="12" r="10" />
-                        <polyline points="12 6 12 12 16 14" />
-                    </svg>
-                    Session History
-                </h3>
-                <div className="agent-history-loading">
-                    <div className="agent-history-skeleton" />
-                    <div className="agent-history-skeleton" />
+            <div className="aid-card aid-card--history">
+                <div className="aid-card-header">
+                    <div className="aid-card-title-row">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                        <span className="aid-card-title">Session History</span>
+                    </div>
+                </div>
+                <div className="aid-history-loading" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div className="aid-skeleton" style={{ height: 56 }} />
+                    <div className="aid-skeleton" style={{ height: 56 }} />
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="agent-card agent-history-card">
-            <h3 className="agent-card-title">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10" />
-                    <polyline points="12 6 12 12 16 14" />
-                </svg>
-                Session History
+        <div className="aid-card aid-card--history">
+            <div className="aid-card-header">
+                <div className="aid-card-title-row">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                    </svg>
+                    <span className="aid-card-title">Session History</span>
+                </div>
                 {sessions.length > 0 && (
-                    <span className="agent-history-count">{sessions.length}</span>
+                    <span className="aid-count-badge">{sessions.length}</span>
                 )}
-            </h3>
+            </div>
 
             {sessions.length === 0 ? (
-                <div className="agent-history-empty">
-                    <div className="agent-history-empty-icon">🎵</div>
+                <div className="aid-history-empty">
+                    <div className="aid-history-empty-icon">{"\u{1F3B5}"}</div>
                     <p>No sessions yet. Start your DJ to begin!</p>
                 </div>
             ) : (
-                <div className="agent-history-list">
+                <div className="aid-history-list">
                     {sessions.map((session) => (
-                        <details key={session.id} className="agent-history-item">
-                            <summary className="agent-history-summary">
-                                <div className="agent-history-indicator">
+                        <details key={session.id} className="aid-history-item">
+                            <summary className="aid-history-summary">
+                                <div className="aid-history-indicator">
                                     {!session.endedAt ? (
-                                        <span className="agent-history-pulse" />
+                                        <span className="aid-pulse-dot" />
                                     ) : (
-                                        <span className="agent-history-dot" />
+                                        <span className="aid-dot" />
                                     )}
                                 </div>
-                                <div className="agent-history-info">
-                                    <span className="agent-history-date">{formatDate(session.startedAt)}</span>
-                                    <span className="agent-history-duration">{formatDuration(session.startedAt, session.endedAt)}</span>
+                                <div className="aid-history-info">
+                                    <span className="aid-history-date">{formatDate(session.startedAt)}</span>
+                                    <span className="aid-history-duration">{formatDuration(session.startedAt, session.endedAt)}</span>
                                 </div>
-                                <div className="agent-history-stats">
-                                    <span className="agent-history-tracks">
+                                <div className="aid-history-stats">
+                                    <span className="aid-history-tracks">
                                         {session.licenses.length} track{session.licenses.length !== 1 ? "s" : ""}
                                     </span>
-                                    <span className="agent-history-spend">${session.spentUsd.toFixed(2)}</span>
+                                    <span className="aid-history-spend">${session.spentUsd.toFixed(2)}</span>
                                 </div>
-                                {!session.endedAt && <span className="agent-live-badge">LIVE</span>}
-                                <svg className="agent-history-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                {!session.endedAt && <span className="aid-live-badge">LIVE</span>}
+                                <svg className="aid-history-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                     <polyline points="6 9 12 15 18 9" />
                                 </svg>
                             </summary>
                             {session.licenses.length > 0 && (
-                                <div className="agent-history-details">
+                                <div className="aid-history-details">
                                     {session.licenses.map((lic) => (
                                         <Link
                                             key={lic.id}
                                             href={`/release/${lic.track.releaseId}`}
-                                            className="agent-history-license"
+                                            className="aid-history-license"
                                         >
-                                            <div className="agent-history-license-art">
+                                            <div className="aid-history-lic-art">
                                                 {lic.track.release?.artworkUrl ? (
                                                     /* eslint-disable-next-line @next/next/no-img-element */
                                                     <img
@@ -127,30 +131,30 @@ export default function AgentHistoryCard({ sessions, isLoading }: Props) {
                                                         height={40}
                                                     />
                                                 ) : (
-                                                    <div className="agent-history-license-art-placeholder">♫</div>
+                                                    <div className="aid-history-lic-art-ph">{"\u266B"}</div>
                                                 )}
                                             </div>
-                                            <div className="agent-history-license-info">
-                                                <span className="agent-history-license-track">{lic.track.title}</span>
-                                                <span className="agent-history-license-artist">
+                                            <div className="aid-history-lic-info">
+                                                <span className="aid-history-lic-track">{lic.track.title}</span>
+                                                <span className="aid-history-lic-artist">
                                                     {lic.track.artist || lic.track.release?.title || "Unknown Artist"}
                                                 </span>
-                                                <span className="agent-taste-hint">
+                                                <span className="aid-taste-hint">
                                                     {recommendationText(lic.recommendation)}
                                                 </span>
                                             </div>
-                                            <div className="agent-history-license-meta">
-                                                <span className="agent-history-license-type-badge">
+                                            <div className="aid-history-lic-meta">
+                                                <span className="aid-lic-badge">
                                                     {licenseIcon(lic.type)} {lic.type}
                                                 </span>
                                                 {typeof lic.recommendation?.recommendation?.score === "number" && (
-                                                    <span className="agent-history-license-type-badge">
+                                                    <span className="aid-lic-badge">
                                                         score {lic.recommendation.recommendation.score}
                                                     </span>
                                                 )}
-                                                <span className="agent-history-license-price">${lic.priceUsd.toFixed(2)}</span>
+                                                <span className="aid-history-lic-price">${lic.priceUsd.toFixed(2)}</span>
                                             </div>
-                                            <svg className="agent-history-license-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <svg className="aid-history-lic-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                 <polyline points="9 18 15 12 9 6" />
                                             </svg>
                                         </Link>
