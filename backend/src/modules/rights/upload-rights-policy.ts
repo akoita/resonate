@@ -30,12 +30,23 @@ export type UploadRightsActionProfile = {
   escrowProfile: "max" | "strong" | "standard" | "trusted";
 };
 
+export const RIGHTS_UPLOADER_CLASSIFICATIONS = [
+  "unverified_uploader",
+  "verified_independent",
+  "trusted_creator",
+  "trusted_source_account",
+] as const;
+
+export type RightsUploaderClassification =
+  (typeof RIGHTS_UPLOADER_CLASSIFICATIONS)[number];
+
 export type UploadRightsDecision = {
   route: UploadRightsRoute;
   flags: UploadRightsFlag[];
   reason: string;
   policyVersion: string;
   sourceType: string;
+  uploaderClassification: RightsUploaderClassification;
   actions: UploadRightsActionProfile;
 };
 
@@ -120,6 +131,11 @@ export function evaluateUploadRightsDecision(
 ): UploadRightsDecision {
   const normalizedSource = normalizeSourceType(input.sourceType);
   const tier = (input.uploaderTier || "new").toLowerCase();
+  const trustedSourceType = input.trustedSourceTypes.includes(normalizedSource);
+  const uploaderClassification = classifyUploader({
+    trustedSourceType,
+    uploaderTier: tier,
+  });
   const flags = new Set<UploadRightsFlag>();
   let route: UploadRightsRoute;
   let reason: string;
@@ -147,7 +163,7 @@ export function evaluateUploadRightsDecision(
     flags.add("RESTRICT_PAYOUTS");
     reason =
       "Upload metadata conflicts with an existing catalog release and requires manual rights review.";
-  } else if (input.trustedSourceTypes.includes(normalizedSource)) {
+  } else if (trustedSourceType) {
     route = "TRUSTED_FAST_PATH";
     reason =
       "Upload came from a trusted source and can follow the lowest-friction publication path.";
@@ -170,8 +186,27 @@ export function evaluateUploadRightsDecision(
     reason,
     policyVersion: UPLOAD_RIGHTS_POLICY_VERSION,
     sourceType: normalizedSource,
+    uploaderClassification,
     actions: getUploadRightsActions(route),
   };
+}
+
+export function classifyUploader(input: {
+  trustedSourceType?: boolean;
+  uploaderTier?: string | null;
+}): RightsUploaderClassification {
+  if (input.trustedSourceType) {
+    return "trusted_source_account";
+  }
+
+  const tier = (input.uploaderTier || "new").toLowerCase();
+  if (tier === "trusted") {
+    return "trusted_creator";
+  }
+  if (tier === "verified") {
+    return "verified_independent";
+  }
+  return "unverified_uploader";
 }
 
 export function normalizeSourceType(sourceType?: string | null): string {

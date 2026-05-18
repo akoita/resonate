@@ -217,6 +217,67 @@ rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|O
 rg -n 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/agents/agent_recommendation.adapter.ts backend/src/modules/agents/agent_recommendation.service.ts backend/src/modules/agents/deterministic_recommendation.adapter.ts backend/src/modules/agents/agent_orchestrator.service.ts backend/src/modules/agents/agent_runtime.providers.ts backend/src/events/event_types.ts
 ```
 
+## Addendum: #279 Mood And Vibe Discovery
+
+Reviewed the functional mood/vibe discovery branch. No Critical or High
+findings were identified in the changed code.
+
+### Scope
+
+- `backend/prisma/schema.prisma`
+- `backend/src/events/event_types.ts`
+- `backend/src/modules/catalog/catalog.controller.ts`
+- `backend/src/modules/catalog/catalog.service.ts`
+- `backend/src/modules/ingestion/ingestion.service.ts`
+- `backend/src/modules/recommendations/recommendations.controller.ts`
+- `backend/src/modules/recommendations/recommendations.service.ts`
+- `backend/src/tests/recommendations.controller.spec.ts`
+- `backend/src/tests/recommendations.integration.spec.ts`
+- `web/src/app/artist/upload/page.tsx`
+- `web/src/app/page.tsx`
+- `web/src/lib/api.ts`
+- `web/src/lib/api.test.ts`
+- `web/src/styles/home-nextgen.css`
+- `docs/features/README.md`
+- `docs/features/mood_vibe_discovery.md`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none.
+- Low: none in the changed code.
+
+### Notes
+
+- Mood and genre overrides are request-scoped recommendation inputs; they do
+  not replace persisted listener preferences unless the existing preference API
+  is called.
+- Artist-provided mood tags are normalized, bounded to eight entries, and
+  stored as release metadata. They are not executed, rendered as HTML, or used
+  to construct raw SQL.
+- The new Home vibe signal records structured metadata through the existing
+  authenticated agent signal endpoint.
+- Broad scans still show pre-existing raw Prisma template queries and guarded
+  JSON parsing in the ingestion/catalog modules. No new unsafe deserialization,
+  dynamic SQL, secret handling, authentication bypass, or client-side XSS sink
+  was introduced by this branch.
+
+### Commands Run
+
+```bash
+cd backend && npm run lint
+cd backend && npm test
+cd backend && npm run test:integration -- --testPathPattern='catalog.mcp.integration|recommendations.integration'
+cd web && npm run lint
+cd web && npm run test:unit
+git diff --check
+rg -n "password|secret|api_key|private_key" backend/src/modules/catalog backend/src/modules/recommendations backend/src/modules/ingestion backend/src/events --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n "rawQuery|executeRaw|\$queryRaw" backend/src/modules/catalog backend/src/modules/recommendations backend/src/modules/ingestion backend/src/events
+rg -n "JSON\.parse|eval\(" backend/src/modules/catalog backend/src/modules/recommendations backend/src/modules/ingestion backend/src/events
+rg -n "dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false" web/src/app/page.tsx web/src/app/artist/upload/page.tsx web/src/lib/api.ts
+```
+
 ## Addendum: Stablecoin-First Checkout, AI Generation Provenance, and Catalog Actions
 
 Reviewed the combined branch for listener purchase defaults, catalog action
@@ -807,4 +868,128 @@ rg -n 'password|secret|api_key|private_key|process\.env|BEGIN (RSA|EC|OPENSSH|PR
 rg -n 'rawQuery|executeRaw|\$queryRaw|JSON\.parse|eval\(' backend/src/modules/x402
 rg -n 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/lib/x402Pay.ts
 rg -n '\.call\{|_safeMint|_safeTransfer|safeTransferFrom|onlyOwner|onlyRole|_checkRole|require.*msg\.sender|selfdestruct|delegatecall|tx\.origin|unchecked|assembly' contracts/src
+```
+
+## Addendum: #472 Rights Verification Workflow
+
+Reviewed the #472 rights-verification workflow changes for backend routing
+classification, trusted-source operator review, evidence handling, and frontend
+rendering. No Critical or High findings were identified in the changed code.
+
+### Scope
+
+- `backend/src/modules/rights/upload-rights-policy.ts`
+- `backend/src/tests/upload-rights-policy.spec.ts`
+- `backend/src/tests/upload-rights-routing.integration.spec.ts`
+- `web/src/components/disputes/AdminDisputeQueue.tsx`
+- `web/src/lib/verificationSemantics.ts`
+- `docs/architecture/upload_rights_routing_policy.md`
+- `docs/features/README.md`
+- `docs/features/rights_verification_workflow.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- The backend change adds deterministic uploader classification to the existing
+  upload-rights policy. It does not add a new controller, authentication path,
+  database query shape, raw SQL, deserialization path, secret handling, or
+  environment-specific configuration value.
+- Trusted-source review actions in the admin queue use existing authenticated
+  API client methods and existing backend review endpoints.
+- The frontend renders trusted-source and evidence data as React text nodes and
+  regular links with `rel="noopener noreferrer"`; no `innerHTML` or
+  `dangerouslySetInnerHTML` path is introduced.
+- The only external URL composition added in the admin queue normalizes a
+  trusted-source domain into an HTTPS URL for reviewer convenience; it does not
+  execute user-provided markup.
+- Secret, dynamic SQL, unsafe deserialization, and frontend XSS/cookie scans
+  found no new issue in the changed files.
+
+### Commands Run
+
+```bash
+cd backend && npm run test -- upload-rights-policy.spec.ts
+cd backend && npm run test:integration -- --testPathPattern='trusted-source.service.integration|upload-rights-routing.integration|rights-route-reassessment.integration'
+cd backend && npm run lint
+cd web && npx vitest run src/lib/api.test.ts src/lib/__tests__/rightsOnboarding.test.ts
+cd web && npm run lint
+git diff --check
+rg -n 'password|secret|api_key|private_key' backend/src/modules/rights backend/src/tests/upload-rights-policy.spec.ts backend/src/tests/upload-rights-routing.integration.spec.ts --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/rights
+rg -n 'JSON\.parse|eval\(' backend/src/modules/rights
+rg -n 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/components/disputes web/src/lib/verificationSemantics.ts
+```
+
+## Addendum: #356 License-Tier Marketplace Listings
+
+Reviewed the #356 license-tier listing changes for backend listing indexing,
+metadata API output, purchase persistence, and frontend tier selection. No
+Critical or High findings were identified in the changed code.
+
+### Scope
+
+- `backend/prisma/schema.prisma`
+- `backend/prisma/migrations/20260518173000_stem_listing_license_type/migration.sql`
+- `backend/src/events/event_types.ts`
+- `backend/src/modules/contracts/contracts.service.ts`
+- `backend/src/modules/contracts/metadata.controller.ts`
+- `backend/src/modules/shared/events.gateway.ts`
+- `backend/src/tests/flow2_contracts.integration.spec.ts`
+- `web/src/app/marketplace/page.tsx`
+- `web/src/components/marketplace/BuyModal.tsx`
+- `web/src/components/marketplace/LicenseTypeSelector.tsx`
+- `web/src/components/marketplace/MintStemButton.tsx`
+- `web/src/hooks/useContracts.ts`
+- `web/src/hooks/useWebSockets.ts`
+- `web/src/lib/api.ts`
+- `web/src/styles/license-badges.css`
+- `docs/features/agent-commerce-runtime.md`
+- `docs/features/README.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- `licenseType` is constrained to the existing Prisma enum and normalized to
+  the three currently purchasable listing tiers before persistence.
+- `StemListingIntent` stores post-transaction listing metadata from the
+  frontend notification path and is keyed by transaction hash plus token ID; it
+  does not store secrets or payment proofs.
+- Marketplace listing reads continue to use Prisma query builders and enum
+  filters, not dynamic SQL.
+- The public metadata listing endpoint still returns marketplace metadata only;
+  it does not add new authentication bypasses or owner-only state.
+- Frontend tier selection renders structured React state and disables missing
+  tier listings; it does not introduce `innerHTML`, cookie handling, or exposed
+  client secrets.
+- Broad security scans still report pre-existing development secret names,
+  Prisma raw queries, and JSON parsing outside this change set. No new Critical
+  or High issue was introduced by this branch.
+
+### Commands Run
+
+```bash
+cd backend && npm run lint
+cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='flow2_contracts.integration'
+cd web && npm run lint -- src/app/marketplace/page.tsx src/components/marketplace/BuyModal.tsx src/components/marketplace/LicenseTypeSelector.tsx src/hooks/useContracts.ts src/hooks/useWebSockets.ts src/lib/api.ts
+git diff --check
+rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/
+rg 'JSON\.parse|eval\(' backend/src/
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/contracts/metadata.controller.ts backend/src/modules/contracts/contracts.service.ts
+rg '@Body\(\)|@Query\(\)|@Param\(' backend/src/modules/contracts/metadata.controller.ts
+rg 'dangerouslySetInnerHTML|innerHTML' web/src/
+rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
+rg 'document\.cookie|setCookie|httpOnly.*false' web/src/
 ```

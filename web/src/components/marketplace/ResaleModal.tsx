@@ -2,10 +2,18 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { parseEther, type Address } from "viem";
 import { Button } from "../ui/Button";
 import { useListStem } from "../../hooks/useContracts";
+import { usePaymentAssets } from "../../hooks/usePaymentAssets";
 import { useToast } from "../ui/Toast";
+import { useZeroDev } from "../auth/ZeroDevProviderClient";
+import {
+    formatListingPrice,
+    listingAssetSymbol,
+    listingPaymentToken,
+    parseListingPriceUnits,
+    selectDefaultMarketplaceListingAsset,
+} from "../../lib/listingPricing";
 
 interface ResaleModalProps {
     modal: {
@@ -33,31 +41,45 @@ function ResaleModalInner({ modal, onClose }: ResaleModalProps) {
     const [duration, setDuration] = useState("7"); // days
     const { list, pending, error } = useListStem();
     const { addToast } = useToast();
+    const { chainId } = useZeroDev();
+    const { assets: paymentAssets, defaultAsset, loading: paymentAssetsLoading } = usePaymentAssets(chainId);
 
     const { stemTitle, tokenId, onSuccess } = modal!;
+    const listingAsset = selectDefaultMarketplaceListingAsset({
+        assets: paymentAssets,
+        chainId,
+        defaultAssetId: defaultAsset,
+    });
+    const listingSymbol = listingAssetSymbol(listingAsset);
+    const listingToken = listingPaymentToken(listingAsset);
 
     const handleList = async () => {
         if (!price || parseFloat(price) <= 0) {
             addToast({ type: "error", title: "Invalid Price", message: "Please enter a valid price" });
             return;
         }
+        if (paymentAssetsLoading) {
+            addToast({ type: "info", title: "Loading Asset", message: "Payment asset configuration is still loading." });
+            return;
+        }
 
         try {
-            const priceInWei = parseEther(price);
+            const priceUnits = parseListingPriceUnits({ price, asset: listingAsset });
             const durationSeconds = BigInt(parseInt(duration) * 24 * 60 * 60);
+            const priceLabel = formatListingPrice({ priceUnits, asset: listingAsset });
 
             await list({
                 tokenId: BigInt(tokenId),
                 amount: BigInt(1),
-                pricePerUnit: priceInWei,
-                paymentToken: "0x0000000000000000000000000000000000000000" as Address, // ETH
+                pricePerUnit: priceUnits,
+                paymentToken: listingToken,
                 durationSeconds,
             });
 
             addToast({
                 type: "success",
                 title: "Listed for Resale!",
-                message: `${stemTitle} is now listed for ${price} ETH`,
+                message: `${stemTitle} is now listed for ${priceLabel}`,
             });
 
             onSuccess?.();
@@ -114,7 +136,7 @@ function ResaleModalInner({ modal, onClose }: ResaleModalProps) {
                 {/* Price Input */}
                 <div style={{ marginBottom: 24 }}>
                     <label style={{ display: "block", color: "white", fontSize: 13, fontWeight: 700, marginBottom: 10, opacity: 0.8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                        Price (ETH)
+                        Price ({listingSymbol})
                     </label>
                     <div style={{ position: "relative" }}>
                         <input
@@ -137,7 +159,7 @@ function ResaleModalInner({ modal, onClose }: ResaleModalProps) {
                             }}
                         />
                         <div style={{ position: "absolute", right: 20, top: "50%", transform: "translateY(-50%)", color: "var(--color-accent)", fontSize: 14, fontWeight: 700 }}>
-                            ETH
+                            {listingSymbol}
                         </div>
                     </div>
                 </div>
@@ -192,7 +214,7 @@ function ResaleModalInner({ modal, onClose }: ResaleModalProps) {
                     <Button
                         variant="primary"
                         onClick={handleList}
-                        disabled={pending || !price}
+                        disabled={pending || paymentAssetsLoading || !price}
                         style={{
                             flex: 1,
                             padding: "16px",
@@ -203,7 +225,7 @@ function ResaleModalInner({ modal, onClose }: ResaleModalProps) {
                             border: "none"
                         }}
                     >
-                        {pending ? "Listing..." : "Confirm Listing"}
+                        {pending ? "Listing..." : paymentAssetsLoading ? "Loading Asset..." : "Confirm Listing"}
                     </Button>
                 </div>
 

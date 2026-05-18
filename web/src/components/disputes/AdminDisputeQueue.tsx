@@ -7,10 +7,14 @@ import { formatEth } from "../../lib/stakeConstants";
 import { useAuth } from "../auth/AuthProvider";
 import { useWebSockets, type ReleaseRightsRequestUpdate } from "../../hooks/useWebSockets";
 import {
+  listPendingTrustedSourceLinkRequests,
   listPendingReleaseRightsUpgradeRequests,
+  reviewTrustedSourceLinkRequest,
   reviewReleaseRightsUpgradeRequest,
   type ReleaseRightsUpgradeRequestRecord,
   type ReleaseRightsUpgradeRequestStatus,
+  type TrustedSourceLinkRequestRecord,
+  type TrustedSourceTrustLevel,
 } from "../../lib/api";
 import {
   RIGHTS_VERIFICATION_COPY,
@@ -53,6 +57,8 @@ type RightsUpgradeAction =
   | "approved_standard_escrow"
   | "approved_trusted_fast_path"
   | "denied";
+
+type TrustedSourceReviewAction = "under_review" | "approve" | "deny";
 
 /* ── Inline SVG Icons ──────────────────────────────────────────── */
 
@@ -140,6 +146,29 @@ function formatRightsUpgradeStatusLabel(status: string) {
   }
 }
 
+function formatTrustedSourceStatusLabel(status: string) {
+  switch (status) {
+    case "submitted":
+      return "Submitted";
+    case "under_review":
+      return "Under Review";
+    case "approved":
+      return "Approved";
+    case "denied":
+      return "Denied";
+    default:
+      return status.replaceAll("_", " ");
+  }
+}
+
+function formatSourceTypeLabel(value: string) {
+  return value.replaceAll("_", " ");
+}
+
+function formatTrustLevelLabel(value: string) {
+  return value.replaceAll("_", " ");
+}
+
 function formatDerivedRightsStateLabel(status?: string | null) {
   return RIGHTS_VERIFICATION_COPY[normalizeRightsVerificationState(status)].label;
 }
@@ -178,6 +207,7 @@ export default function AdminDisputeQueue() {
   const { addToast } = useToast();
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [rightsRequests, setRightsRequests] = useState<ReleaseRightsUpgradeRequestRecord[]>([]);
+  const [trustedSourceRequests, setTrustedSourceRequests] = useState<TrustedSourceLinkRequestRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [expandedEvidence, setExpandedEvidence] = useState<Set<string>>(new Set());
@@ -188,13 +218,15 @@ export default function AdminDisputeQueue() {
       setLoading(true);
     }
     try {
-      const [disputeRes, pendingRights] = await Promise.all([
+      const [disputeRes, pendingRights, pendingTrustedSources] = await Promise.all([
         fetch("/api/metadata/disputes/pending?limit=50"),
         token ? listPendingReleaseRightsUpgradeRequests(token, 50) : Promise.resolve([]),
+        token ? listPendingTrustedSourceLinkRequests(token, 50) : Promise.resolve([]),
       ]);
 
       if (disputeRes.ok) setDisputes(await disputeRes.json());
       setRightsRequests(pendingRights);
+      setTrustedSourceRequests(pendingTrustedSources);
     } finally {
       if (!options?.silent) {
         setLoading(false);
@@ -257,6 +289,41 @@ export default function AdminDisputeQueue() {
         type: "error",
         title: "Review failed",
         message: error instanceof Error ? error.message : "Could not update the release-rights request.",
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const reviewTrustedSourceRequest = async (
+    id: string,
+    action: TrustedSourceReviewAction,
+    decisionReason?: string,
+    trustLevel?: TrustedSourceTrustLevel,
+  ) => {
+    if (!token) return;
+    setActionLoading(id);
+    try {
+      const updatedRequest = await reviewTrustedSourceLinkRequest(
+        id,
+        {
+          action,
+          decisionReason,
+          trustLevel,
+        },
+        token,
+      );
+      addToast({
+        type: "success",
+        title: "Trusted-source review updated",
+        message: `Trusted-source request is now ${formatTrustedSourceStatusLabel(updatedRequest.status)}.`,
+      });
+      await fetchPending({ silent: true });
+    } catch (error) {
+      addToast({
+        type: "error",
+        title: "Trusted-source review failed",
+        message: error instanceof Error ? error.message : "Could not update the trusted-source request.",
       });
     } finally {
       setActionLoading(null);
@@ -360,14 +427,219 @@ export default function AdminDisputeQueue() {
               Admin Dispute Queue
             </h1>
             <span style={pendingBadgeStyle}>
-              {disputes.length + rightsRequests.length} pending
+              {disputes.length + rightsRequests.length + trustedSourceRequests.length} pending
             </span>
           </div>
           <p style={{ margin: 0, fontSize: "13px", color: "rgba(255,255,255,0.4)" }}>
-            Review pending content disputes and release-rights upgrade requests
+            Review pending content disputes, release-rights upgrades, and trusted-source links
           </p>
         </div>
       </div>
+
+      {trustedSourceRequests.length > 0 && (
+        <section style={{ marginBottom: "26px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px", gap: "12px" }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700 }}>Trusted Source Requests</h2>
+              <p style={{ margin: "4px 0 0", fontSize: "12px", color: "rgba(255,255,255,0.42)" }}>
+                Proof-of-control requests that can upgrade an artist into the trusted-source account path.
+              </p>
+            </div>
+            <span style={{ ...pendingBadgeStyle, background: "rgba(14,165,233,0.12)", color: "#38bdf8" }}>
+              {trustedSourceRequests.length} requests
+            </span>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            {trustedSourceRequests.map((request) => (
+              <div key={request.id} className="adq-card" style={{ ...cardStyle, borderLeftColor: "#38bdf8" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "6px" }}>
+                      <span style={{ fontWeight: 700, fontSize: "14px" }}>
+                        {request.artist?.displayName || request.artistId}
+                      </span>
+                      <span style={{ ...badgeStyle, borderColor: "#38bdf8", color: "#38bdf8" }}>
+                        {formatTrustedSourceStatusLabel(request.status)}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginTop: "4px" }}>
+                      <span style={routeChipStyle}>{formatSourceTypeLabel(request.requestedSourceType)}</span>
+                      <span style={{ ...routeChipStyle, borderColor: "rgba(56,189,248,0.25)", color: "#38bdf8" }}>
+                        {formatTrustLevelLabel(request.requestedTrustLevel)}
+                      </span>
+                      <span style={{ ...routeChipStyle, textTransform: "none", fontFamily: "monospace" }}>
+                        {request.requesterAddress.slice(0, 6)}...{request.requesterAddress.slice(-4)}
+                      </span>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: "12px", opacity: 0.35, whiteSpace: "nowrap" }}>
+                    {new Date(request.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+
+                <div style={summaryBlockStyle}>
+                  <div style={sectionLabelStyle}>Requested source</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: "13px", fontWeight: 700, color: "rgba(255,255,255,0.84)" }}>
+                      {request.sourceName}
+                    </span>
+                    <span style={{ fontSize: "11px", fontFamily: "monospace", color: "rgba(255,255,255,0.42)" }}>
+                      {request.sourceKey}
+                    </span>
+                    {request.trustedSource?.domain && (
+                      <a href={`https://${request.trustedSource.domain.replace(/^https?:\/\//, "")}`} target="_blank" rel="noopener noreferrer" style={{ ...linkStyle, fontSize: "12px" }}>
+                        <IconLink size={12} />
+                        <span>{request.trustedSource.domain}</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                <div style={summaryBlockStyle}>
+                  <div style={sectionLabelStyle}>Proof of control</div>
+                  <div style={{ fontSize: "13px", lineHeight: 1.55, color: "rgba(255,255,255,0.78)" }}>
+                    {request.proofSummary}
+                  </div>
+                </div>
+
+                {request.decisionReason && (
+                  <div style={reviewerNoteStyle}>
+                    <div style={sectionLabelStyle}>Latest reviewer note</div>
+                    <div style={{ fontSize: "12px", lineHeight: 1.5, color: "rgba(255,255,255,0.64)" }}>
+                      {request.decisionReason}
+                    </div>
+                  </div>
+                )}
+
+                {request.evidenceBundles && request.evidenceBundles.length > 0 && (
+                  <div style={{ marginTop: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <div>
+                      <div style={sectionLabelStyle}>Evidence packet</div>
+                      <div style={{ marginTop: "4px", fontSize: "12px", lineHeight: 1.45, color: "rgba(255,255,255,0.45)" }}>
+                        {SUBMITTED_RIGHTS_EVIDENCE_COPY}
+                      </div>
+                    </div>
+                    {request.evidenceBundles.map((bundle) => (
+                      <div key={bundle.id} style={evidenceBundleStyle}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                            <span style={{ ...badgeStyle, borderColor: "rgba(56,189,248,0.25)", color: "#38bdf8", background: "rgba(56,189,248,0.06)" }}>
+                              {bundle.purpose.replaceAll("_", " ")}
+                            </span>
+                            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.42)" }}>
+                              Submitted by {bundle.submittedByRole}
+                            </span>
+                          </div>
+                          <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.32)" }}>
+                            {new Date(bundle.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+
+                        {bundle.summary && (
+                          <div style={{ marginTop: "8px", fontSize: "12px", lineHeight: 1.5, color: "rgba(255,255,255,0.58)" }}>
+                            {bundle.summary}
+                          </div>
+                        )}
+
+                        <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                          {bundle.evidences.map((evidence) => {
+                            const verificationTone = getRightsEvidenceVerificationTone(evidence.verificationStatus);
+                            return (
+                              <div key={evidence.id} className="adq-evidence-card" style={evidenceCardStyle}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                                    <span style={{ ...badgeStyle, borderColor: "rgba(56,189,248,0.25)", color: "#38bdf8", background: "rgba(56,189,248,0.06)" }}>
+                                      {formatRightsEvidenceKindLabel(evidence.kind)}
+                                    </span>
+                                    <span style={{ ...badgeStyle, ...verificationTone }}>
+                                      {formatRightsEvidenceVerificationStatusLabel(evidence.verificationStatus)}
+                                    </span>
+                                    {evidence.strength && (
+                                      <span style={{ ...badgeStyle, borderColor: "rgba(16,185,129,0.25)", color: "#10b981", background: "rgba(16,185,129,0.06)" }}>
+                                        {evidence.strength.replaceAll("_", " ")}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {evidence.sourceUrl && (
+                                    <a href={evidence.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ ...linkStyle, fontSize: "12px" }}>
+                                      <IconLink size={12} />
+                                      <span>{compactUrlLabel(evidence.sourceUrl)}</span>
+                                    </a>
+                                  )}
+                                </div>
+                                <div style={{ fontSize: "13px", fontWeight: 600, color: "rgba(255,255,255,0.9)" }}>
+                                  {evidence.title}
+                                </div>
+                                {evidence.description && (
+                                  <div style={{ fontSize: "12px", lineHeight: 1.55, color: "rgba(255,255,255,0.6)" }}>
+                                    {evidence.description}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={actionsContainerStyle}>
+                  <div style={actionGroupStyle}>
+                    <span style={actionGroupLabelStyle}>Triage</span>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <button
+                        className="adq-action-btn"
+                        onClick={() => reviewTrustedSourceRequest(request.id, "under_review", "Trusted-source proof is under operator review.")}
+                        disabled={actionLoading === request.id}
+                        style={{ ...actionBtnStyle, borderColor: "rgba(139,92,246,0.3)", color: "#8b5cf6", background: "rgba(139,92,246,0.06)" }}
+                      >
+                        {actionLoading === request.id ? "..." : "Under Review"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={actionGroupStyle}>
+                    <span style={actionGroupLabelStyle}>Decision</span>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <button
+                        className="adq-action-btn"
+                        onClick={() =>
+                          reviewTrustedSourceRequest(
+                            request.id,
+                            "approve",
+                            "Proof of control and source traceability reviewed; trusted-source link approved.",
+                            request.requestedTrustLevel,
+                          )
+                        }
+                        disabled={actionLoading === request.id}
+                        style={{ ...actionBtnStyle, borderColor: "rgba(16,185,129,0.3)", color: "#10b981", background: "rgba(16,185,129,0.06)" }}
+                      >
+                        {actionLoading === request.id ? "..." : "Approve Link"}
+                      </button>
+                      <button
+                        className="adq-action-btn"
+                        onClick={() =>
+                          reviewTrustedSourceRequest(
+                            request.id,
+                            "deny",
+                            "The submitted source proof was not sufficient to establish trusted-source control.",
+                          )
+                        }
+                        disabled={actionLoading === request.id}
+                        style={{ ...actionBtnStyle, borderColor: "rgba(239,68,68,0.3)", color: "#ef4444", background: "rgba(239,68,68,0.06)" }}
+                      >
+                        {actionLoading === request.id ? "..." : "Deny"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {rightsRequests.length > 0 && (
         <section style={{ marginBottom: "26px" }}>
@@ -682,7 +954,7 @@ export default function AdminDisputeQueue() {
       )}
 
       {/* Content */}
-      {disputes.length === 0 && rightsRequests.length === 0 ? (
+      {disputes.length === 0 && rightsRequests.length === 0 && trustedSourceRequests.length === 0 ? (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "80px 20px", gap: "16px" }}>
           <div style={{
             width: "72px",
@@ -698,7 +970,7 @@ export default function AdminDisputeQueue() {
             <IconCheckCircle />
           </div>
           <div style={{ fontSize: "16px", fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>Queue cleared</div>
-          <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)" }}>No disputes or release-rights reviews require attention right now</div>
+          <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)" }}>No disputes or rights reviews require attention right now</div>
         </div>
       ) : disputes.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>

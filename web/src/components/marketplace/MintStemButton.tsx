@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../auth/AuthProvider";
+import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { useListStem, useMintAndListStem } from "../../hooks/useContracts";
+import { usePaymentAssets } from "../../hooks/usePaymentAssets";
 import { getListingsByStem, getStemNftInfo } from "../../lib/api";
 import {
     clearStemMarketplaceStatus,
@@ -9,8 +11,12 @@ import {
     type StemMarketplaceStatusEventDetail,
 } from "../../lib/stemMarketplaceStatus";
 import { useToast } from "../ui/Toast";
-import { type Address } from "viem";
-import { formatPrice } from "../../lib/contracts";
+import {
+    convertCanonicalListingPriceToAssetUnits,
+    formatListingPrice,
+    listingPaymentToken,
+    selectDefaultMarketplaceListingAsset,
+} from "../../lib/listingPricing";
 
 // Poll backend until the minted token ID is indexed (max ~30s)
 async function pollForMintedTokenId(
@@ -81,9 +87,29 @@ export function MintStemButton({
     disabledLabel,
 }: MintStemButtonProps) {
     const { address, status, smartAccountAddress } = useAuth();
+    const { chainId } = useZeroDev();
+    const {
+        assets: paymentAssets,
+        defaultAsset,
+        loading: paymentAssetsLoading,
+    } = usePaymentAssets(chainId);
     const { list, pending: listPending } = useListStem();
     const { mintAndList, pending: mintAndListPending } = useMintAndListStem();
     const { addToast } = useToast();
+    const listingAsset = selectDefaultMarketplaceListingAsset({
+        assets: paymentAssets,
+        chainId,
+        defaultAssetId: defaultAsset,
+    });
+    const listingPriceUnits = convertCanonicalListingPriceToAssetUnits({
+        canonicalPriceWei: listingPricePerUnit,
+        asset: listingAsset,
+    });
+    const listingToken = listingPaymentToken(listingAsset);
+    const listingPriceLabel = formatListingPrice({
+        priceUnits: listingPriceUnits,
+        asset: listingAsset,
+    });
     // State machine: "idle" -> "minted" -> "listed"
     // "confirming_mint" and "confirming_list" are transient states while polling the backend
     const [state, setState] = useState<"idle" | "confirming_mint" | "minted" | "confirming_list" | "listed">("idle");
@@ -216,13 +242,11 @@ export function MintStemButton({
 
         try {
             // List for the resolved marketplace price, 1 unit, 7 days
-            const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
-
             await list({
                 tokenId: mintedTokenId,
-                pricePerUnit: listingPricePerUnit,
+                pricePerUnit: listingPriceUnits,
                 amount: BigInt(1),
-                paymentToken: ZERO_ADDRESS,
+                paymentToken: listingToken,
                 durationSeconds: BigInt(7 * 24 * 60 * 60),
             });
 
@@ -236,7 +260,7 @@ export function MintStemButton({
                 addToast({
                     type: "success",
                     title: "Listed for Sale!",
-                    message: `${stemType} stem (Token #${mintedTokenId}) is now on the marketplace for ${formatPrice(listingPricePerUnit)} ETH`,
+                    message: `${stemType} stem (Token #${mintedTokenId}) is now on the marketplace for ${listingPriceLabel}`,
                 });
             } else {
                 // Listing tx went through but indexer hasn't confirmed yet
@@ -281,8 +305,6 @@ export function MintStemButton({
                 }
             }
 
-            const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
-
             setState("confirming_mint");
 
             const { hash, tokenId } = await mintAndList({
@@ -292,8 +314,8 @@ export function MintStemButton({
                 remixable: true,
                 parentIds: [],
                 protectionId: releaseProtectionId,
-                pricePerUnit: listingPricePerUnit,
-                paymentToken: ZERO_ADDRESS,
+                pricePerUnit: listingPriceUnits,
+                paymentToken: listingToken,
                 durationSeconds: BigInt(7 * 24 * 60 * 60),
             });
 
@@ -309,7 +331,7 @@ export function MintStemButton({
             addToast({
                 type: "success",
                 title: "Minted & Listed!",
-                message: `${stemType} stem (Token #${actualTokenId}) is now on the marketplace for ${formatPrice(listingPricePerUnit)} ETH`,
+                message: `${stemType} stem (Token #${actualTokenId}) is now on the marketplace for ${listingPriceLabel}`,
             });
 
             // Notify backend to create listing in DB + broadcast WebSocket
@@ -321,9 +343,10 @@ export function MintStemButton({
                     body: JSON.stringify({
                         tokenId: actualTokenId.toString(),
                         seller: smartAccountAddress || address,
-                        price: listingPricePerUnit.toString(),
+                        price: listingPriceUnits.toString(),
                         amount: "1",
-                        paymentToken: "0x0000000000000000000000000000000000000000",
+                        paymentToken: listingToken,
+                        licenseType: "personal",
                         durationSeconds: String(7 * 24 * 60 * 60),
                         transactionHash: hash,
                         stemId,
@@ -442,22 +465,22 @@ export function MintStemButton({
         return (
             <button
                 onClick={handleList}
-                disabled={listPending}
+                disabled={listPending || paymentAssetsLoading}
                 style={{
                     width: "100%",
                     padding: "8px 12px",
-                    background: listPending ? "rgba(63,63,70,0.5)" : "#8b5cf6",
+                    background: listPending || paymentAssetsLoading ? "rgba(63,63,70,0.5)" : "#8b5cf6",
                     color: "#fff",
                     border: "none",
                     borderRadius: 10,
                     fontSize: 13,
                     fontWeight: 600,
-                    cursor: listPending ? "wait" : "pointer",
-                    opacity: listPending ? 0.7 : 1,
+                    cursor: listPending || paymentAssetsLoading ? "wait" : "pointer",
+                    opacity: listPending || paymentAssetsLoading ? 0.7 : 1,
                     transition: "all 0.2s",
                 }}
             >
-                {listPending ? "Listing..." : "List for Sale"}
+                {paymentAssetsLoading ? "Loading asset..." : listPending ? "Listing..." : "List for Sale"}
             </button>
         );
     }
@@ -465,22 +488,22 @@ export function MintStemButton({
     return (
         <button
             onClick={handleMintAndList}
-            disabled={mintAndListPending}
+            disabled={mintAndListPending || paymentAssetsLoading}
             style={{
                 width: "100%",
                 padding: "8px 12px",
-                background: mintAndListPending ? "rgba(63,63,70,0.5)" : "#8b5cf6",
+                background: mintAndListPending || paymentAssetsLoading ? "rgba(63,63,70,0.5)" : "#8b5cf6",
                 color: "#fff",
                 border: "none",
                 borderRadius: 10,
                 fontSize: 13,
                 fontWeight: 600,
-                cursor: mintAndListPending ? "wait" : "pointer",
-                opacity: mintAndListPending ? 0.7 : 1,
+                cursor: mintAndListPending || paymentAssetsLoading ? "wait" : "pointer",
+                opacity: mintAndListPending || paymentAssetsLoading ? 0.7 : 1,
                 transition: "all 0.2s",
             }}
         >
-            {mintAndListPending ? "Processing..." : "Mint & List"}
+            {paymentAssetsLoading ? "Loading asset..." : mintAndListPending ? "Processing..." : "Mint & List"}
         </button>
     );
 }

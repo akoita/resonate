@@ -44,6 +44,7 @@ const MAX_FILE_SIZE_MB = 200;
 const MAX_TOTAL_SIZE_MB = 500;
 const MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024;
 const MAX_TOTAL_SIZE = MAX_TOTAL_SIZE_MB * 1024 * 1024;
+const MOOD_TAG_OPTIONS = ["Focus", "Hype", "Chill", "Dark", "Zen", "Club", "Late Night", "Warm"];
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -203,6 +204,7 @@ export default function ArtistUploadPage() {
     primaryArtist: "",
     featuredArtists: "",
     genre: "",
+    moods: [] as string[],
     isrc: "",
     label: "",
     releaseDate: new Date().toISOString().split('T')[0],
@@ -314,6 +316,15 @@ export default function ArtistUploadPage() {
     setFormData(prev => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
+    }));
+  };
+
+  const toggleMoodTag = (mood: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      moods: prev.moods.includes(mood)
+        ? prev.moods.filter((entry) => entry !== mood)
+        : [...prev.moods, mood],
     }));
   };
 
@@ -465,6 +476,7 @@ export default function ArtistUploadPage() {
         title: formData.releaseTitle,
         primaryArtist: formData.primaryArtist,
         genre: formData.genre || undefined,
+        moods: formData.moods,
         label: formData.label || undefined,
         releaseDate: formData.releaseDate || undefined,
         remixPrice: formData.remixPrice || undefined,
@@ -588,6 +600,7 @@ export default function ArtistUploadPage() {
         primaryArtist: artistProfile?.displayName || "",
         featuredArtists: "",
         genre: "",
+        moods: [],
         isrc: "",
         label: "",
         releaseDate: new Date().toISOString().split('T')[0],
@@ -1131,6 +1144,34 @@ export default function ArtistUploadPage() {
                       <option value="Vaporwave" />
                       <option value="World" />
                     </datalist>
+                  </label>
+                  <label>
+                    Mood tags
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
+                      {MOOD_TAG_OPTIONS.map((mood) => {
+                        const selected = formData.moods.includes(mood);
+                        return (
+                          <button
+                            key={mood}
+                            type="button"
+                            onClick={() => toggleMoodTag(mood)}
+                            style={{
+                              border: selected ? "1px solid rgba(124,58,237,0.6)" : "1px solid rgba(255,255,255,0.12)",
+                              borderRadius: "999px",
+                              padding: "6px 11px",
+                              fontSize: "12px",
+                              fontWeight: 700,
+                              color: selected ? "#c4b5fd" : "rgba(255,255,255,0.72)",
+                              background: selected ? "rgba(124,58,237,0.18)" : "rgba(255,255,255,0.04)",
+                              cursor: "pointer",
+                            }}
+                            aria-pressed={selected}
+                          >
+                            {mood}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </label>
                   <label>
                     Label (optional)

@@ -2,13 +2,20 @@
 
 import { useState, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import {
   useBatchMintAndList,
   type BatchStemItem,
   type BatchStemResult,
   type BatchStemStatus,
 } from "../../hooks/useContracts";
-import { formatPrice } from "../../lib/contracts";
+import { usePaymentAssets } from "../../hooks/usePaymentAssets";
+import {
+  convertCanonicalListingPriceToAssetUnits,
+  formatListingPrice,
+  listingPaymentToken,
+  selectDefaultMarketplaceListingAsset,
+} from "../../lib/listingPricing";
 
 interface BatchMintListModalProps {
   stems: BatchStemItem[];
@@ -46,10 +53,29 @@ export function BatchMintListModal({
   onComplete,
 }: BatchMintListModalProps) {
   const { executeBatch, pending } = useBatchMintAndList();
+  const { chainId } = useZeroDev();
+  const {
+    assets: paymentAssets,
+    defaultAsset,
+    loading: paymentAssetsLoading,
+  } = usePaymentAssets(chainId);
   const [phase, setPhase] = useState<"confirm" | "progress">("confirm");
   const [results, setResults] = useState<BatchStemResult[]>([]);
   const [batchError, setBatchError] = useState<string | null>(null);
-  const listingPriceEth = `${formatPrice(listingPriceWei)} ETH`;
+  const listingAsset = selectDefaultMarketplaceListingAsset({
+    assets: paymentAssets,
+    chainId,
+    defaultAssetId: defaultAsset,
+  });
+  const listingPriceUnits = convertCanonicalListingPriceToAssetUnits({
+    canonicalPriceWei: listingPriceWei,
+    asset: listingAsset,
+  });
+  const listingToken = listingPaymentToken(listingAsset);
+  const listingPriceLabel = formatListingPrice({
+    priceUnits: listingPriceUnits,
+    asset: listingAsset,
+  });
 
   const handleConfirm = useCallback(async () => {
     setBatchError(null);
@@ -63,7 +89,8 @@ export function BatchMintListModal({
         return;
       }
       await executeBatch(stems, {
-        pricePerUnit: listingPriceWei,
+        pricePerUnit: listingPriceUnits,
+        paymentToken: listingToken,
         releaseProtectionId: resolvedProtectionId,
         onProgress: (r) => setResults([...r]),
       });
@@ -74,7 +101,7 @@ export function BatchMintListModal({
         err instanceof Error ? err.message : "Batch transaction failed"
       );
     }
-  }, [stems, executeBatch, listingPriceWei, releaseProtectionId, resolveReleaseProtectionId, onClose, onComplete]);
+  }, [stems, executeBatch, listingPriceUnits, listingToken, releaseProtectionId, resolveReleaseProtectionId, onClose, onComplete]);
 
   const handleRetryFailed = useCallback(async () => {
     const failedStems = stems.filter(s =>
@@ -91,7 +118,8 @@ export function BatchMintListModal({
         return;
       }
       await executeBatch(failedStems, {
-        pricePerUnit: listingPriceWei,
+        pricePerUnit: listingPriceUnits,
+        paymentToken: listingToken,
         releaseProtectionId: resolvedProtectionId,
         onProgress: (newResults) => {
           setResults(prev => {
@@ -111,7 +139,7 @@ export function BatchMintListModal({
         err instanceof Error ? err.message : "Retry failed"
       );
     }
-  }, [stems, results, executeBatch, listingPriceWei, releaseProtectionId, resolveReleaseProtectionId, onClose, onComplete]);
+  }, [stems, results, executeBatch, listingPriceUnits, listingToken, releaseProtectionId, resolveReleaseProtectionId, onClose, onComplete]);
 
   const doneCount = results.filter(r => r.status === "done").length;
   const failedCount = results.filter(r => r.status === "failed").length;
@@ -135,12 +163,12 @@ export function BatchMintListModal({
         {phase === "confirm" && (
           <>
             <p className="batch-modal-desc">
-              The following <strong>{stems.length} stems</strong> will be minted as NFTs and listed on the marketplace at <strong>{listingPriceEth}</strong> each using native ETH listings.
+              The following <strong>{stems.length} stems</strong> will be minted as NFTs and listed on the marketplace at <strong>{listingPriceLabel}</strong> each using the configured marketplace settlement asset.
             </p>
 
             {listingPriceCapped && (
               <div className="batch-cap-note">
-                Current Content Protection stake caps this release to <strong>{listingPriceEth}</strong> per stem listing.
+                Current Content Protection stake caps this release to <strong>{listingPriceLabel}</strong> per stem listing.
               </div>
             )}
 
@@ -156,7 +184,7 @@ export function BatchMintListModal({
                     </span>
                     <span className="batch-stem-track">{stem.trackTitle}</span>
                   </div>
-                  <span className="batch-stem-price">{listingPriceEth}</span>
+                  <span className="batch-stem-price">{listingPriceLabel}</span>
                 </div>
               ))}
             </div>
@@ -168,9 +196,9 @@ export function BatchMintListModal({
               <button
                 className="batch-btn-confirm"
                 onClick={handleConfirm}
-                disabled={pending}
+                disabled={pending || paymentAssetsLoading}
               >
-                {pending ? "Starting..." : `Confirm All (${stems.length})`}
+                {paymentAssetsLoading ? "Loading asset..." : pending ? "Starting..." : `Confirm All (${stems.length})`}
               </button>
             </div>
           </>

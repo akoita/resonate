@@ -63,7 +63,7 @@ describe("CatalogService MCP catalog search (integration)", () => {
     await prisma.user.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
   });
 
-  it("returns the stable nine-field MCP release shape with licensable status", async () => {
+  it("returns the stable MCP release shape with mood tags and licensable status", async () => {
     const releaseId = `${TEST_PREFIX}release`;
     const trackId = `${TEST_PREFIX}track`;
     const stemId = `${TEST_PREFIX}stem`;
@@ -76,6 +76,7 @@ describe("CatalogService MCP catalog search (integration)", () => {
         status: "published",
         primaryArtist: "MCP Primary Artist",
         genre: "electronic",
+        moods: ["Focus"],
         releaseDate: new Date("2026-04-22T00:00:00.000Z"),
         artworkMimeType: "image/png",
       },
@@ -124,6 +125,7 @@ describe("CatalogService MCP catalog search (integration)", () => {
         title: "The Horizon Is Home",
         artist: "MCP Primary Artist",
         genre: "electronic",
+        moods: ["Focus"],
         releaseDate: "2026-04-22T00:00:00.000Z",
         artworkUrl: `http://localhost:3000/catalog/releases/${releaseId}/artwork`,
         trackCount: 1,

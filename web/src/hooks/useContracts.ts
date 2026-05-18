@@ -627,10 +627,14 @@ export function useListing(listingId: bigint | undefined) {
   }, []);
 
   useEffect(() => {
-    if (listingId === undefined) return;
+    if (listingId === undefined) {
+      return;
+    }
 
     const fetchListing = async () => {
       try {
+        setLoading(true);
+        setError(null);
         const result = await getListing(publicClient, chainId, listingId);
         if (mountedRef.current) {
           setListing(result);
@@ -667,10 +671,14 @@ export function useBuyQuote(listingId: bigint | undefined, amount: bigint) {
   }, []);
 
   useEffect(() => {
-    if (listingId === undefined || amount === 0n) return;
+    if (listingId === undefined || amount === 0n) {
+      return;
+    }
 
     const fetchQuote = async () => {
       try {
+        setLoading(true);
+        setError(null);
         const result = await quoteBuy(publicClient, chainId, listingId, amount);
         if (mountedRef.current) {
           setQuote(result);
@@ -1628,6 +1636,7 @@ export function useBatchMintAndList() {
       stems: BatchStemItem[],
       options?: {
         pricePerUnit?: bigint;
+        paymentToken?: Address;
         durationSeconds?: bigint;
         releaseProtectionId?: bigint;
         onProgress?: (results: BatchStemResult[]) => void;
@@ -1641,7 +1650,8 @@ export function useBatchMintAndList() {
       setPending(true);
       setError(null);
 
-      const pricePerUnit = options?.pricePerUnit ?? BigInt("10000000000000000"); // 0.01 ETH
+      const pricePerUnit = options?.pricePerUnit ?? BigInt("10000000000000000"); // 0.01 in 18-decimal fallback units
+      const paymentToken = options?.paymentToken ?? ZERO_ADDRESS;
       const durationSeconds = options?.durationSeconds ?? BigInt(7 * 24 * 60 * 60); // 7 days
 
       // Initialize all stems as pending
@@ -1727,7 +1737,7 @@ export function useBatchMintAndList() {
               args: [
                 BigInt(1),
                 pricePerUnit,
-                ZERO_ADDRESS,
+                paymentToken,
                 durationSeconds,
                 authorization.protectionId,
               ],
@@ -1789,7 +1799,8 @@ export function useBatchMintAndList() {
               seller: callerAddress,
               price: pricePerUnit.toString(),
               amount: "1",
-              paymentToken: ZERO_ADDRESS,
+              paymentToken,
+              licenseType: "personal",
               durationSeconds: durationSeconds.toString(),
               transactionHash: hash,
               stemId: stems[i].stemId,

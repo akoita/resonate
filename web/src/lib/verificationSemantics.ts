@@ -17,6 +17,12 @@ export type RightsVerificationState =
 
 export type RightsReviewState = RightsVerificationState;
 
+export type RightsUploaderClassification =
+  | "unverified_uploader"
+  | "verified_independent"
+  | "trusted_creator"
+  | "trusted_source_account";
+
 export type PlatformReviewState =
   | "not_reviewed"
   | "platform_review_pending"
@@ -103,6 +109,32 @@ export const RIGHTS_VERIFICATION_COPY: Record<RightsVerificationState, Verificat
 };
 
 export const RIGHTS_REVIEW_COPY = RIGHTS_VERIFICATION_COPY;
+
+export const RIGHTS_UPLOADER_CLASSIFICATION_COPY: Record<
+  RightsUploaderClassification,
+  VerificationDisplay
+> = {
+  unverified_uploader: {
+    label: "Unverified Uploader",
+    description: "Uploads can publish under limited monitoring while proof of control is collected.",
+    color: "#f59e0b",
+  },
+  verified_independent: {
+    label: "Verified Independent",
+    description: "The artist has enough account trust to use standard escrow, but rights remain release-scoped.",
+    color: "#3b82f6",
+  },
+  trusted_creator: {
+    label: "Trusted Creator",
+    description: "The creator has stronger platform trust and still uses auditable release rights review.",
+    color: "#8b5cf6",
+  },
+  trusted_source_account: {
+    label: "Trusted Source Account",
+    description: "An approved distributor, label, artist-team, or catalog-operator link can use the trusted fast path.",
+    color: "#10b981",
+  },
+};
 
 export const PLATFORM_REVIEW_COPY: Record<PlatformReviewState, VerificationDisplay> = {
   not_reviewed: {

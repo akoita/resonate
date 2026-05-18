@@ -22,10 +22,12 @@ import {
   isNativePaymentToken,
   paymentAssetSymbol,
 } from "../../lib/payments";
+import { hasStablecoinMarketplaceAsset } from "../../lib/listingPricing";
 import { getX402ChainName } from "../../lib/x402BrowserWallet";
 import { payStemWithX402SmartAccount } from "../../lib/x402SmartAccountPay";
 import type { X402PaymentResult } from "../../lib/x402Pay";
 import { LicenseTermsPreview } from "./LicenseTermsPreview";
+import { LicenseTypeSelector, type LicenseType } from "./LicenseTypeSelector";
 import "../../styles/buy-modal.css";
 import "../../styles/license-terms.css";
 
@@ -51,16 +53,33 @@ type X402QuoteInfo = {
   payTo: string | null;
 };
 
+type TierListings = Partial<Record<LicenseType, string>>;
+
 interface BuyModalProps {
   listingId: bigint;
   stemId?: string;
+  licenseType?: LicenseType;
+  tierListings?: TierListings;
+  tierPricesUsd?: Partial<Record<LicenseType, number>>;
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: (txHash: string) => void;
 }
 
-export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyModalProps) {
+const LICENSE_TYPES: LicenseType[] = ["personal", "remix", "commercial"];
+
+export function BuyModal({
+  listingId,
+  stemId,
+  licenseType = "personal",
+  tierListings,
+  tierPricesUsd,
+  isOpen,
+  onClose,
+  onSuccess,
+}: BuyModalProps) {
   const [amount, setAmount] = useState(1n);
+  const [selectedLicense, setSelectedLicense] = useState<LicenseType>(licenseType);
   const [paymentMethod, setPaymentMethod] = useState<BuyPaymentMethod>("onchain");
   const [x402Quote, setX402Quote] = useState<X402QuoteInfo | null>(null);
   const [x402QuoteLoading, setX402QuoteLoading] = useState(false);
@@ -71,8 +90,13 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   const { status: authStatus, webAuthnKey, login } = useAuth();
   const { chainId } = useZeroDev();
   const { assets: paymentAssets } = usePaymentAssets(chainId);
-  const { listing, loading: listingLoading } = useListing(listingId);
-  const { quote, loading: quoteLoading } = useBuyQuote(listingId, amount);
+  const selectedListingId = useMemo(() => {
+    const tierListingId = tierListings?.[selectedLicense];
+    if (tierListingId) return BigInt(tierListingId);
+    return selectedLicense === licenseType ? listingId : undefined;
+  }, [licenseType, listingId, selectedLicense, tierListings]);
+  const { listing, loading: listingLoading } = useListing(selectedListingId);
+  const { quote, loading: quoteLoading } = useBuyQuote(selectedListingId, amount);
   const { buy, pending, error, txHash } = useBuyStem();
   const { config: x402Config } = useX402PublicConfig();
   const x402Asset = x402Config?.enabled ? x402Config.asset : null;
@@ -81,7 +105,8 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
     () => Boolean(x402Config?.enabled && stemId),
     [x402Config, stemId],
   );
-  const activePaymentMethod = x402Available ? paymentMethod : "onchain";
+  const x402AvailableForSelectedLicense = x402Available && selectedLicense === "personal";
+  const activePaymentMethod = x402AvailableForSelectedLicense ? paymentMethod : "onchain";
   const x402WalletNote = useMemo(
     () => getX402WalletNote(x402Config?.enabled ? x402Config.chainId : null, x402Symbol),
     [x402Config, x402Symbol],
@@ -94,6 +119,11 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   const onchainIsNative = isNativePaymentToken(listing?.paymentToken);
   const onchainDecimals = onchainAsset?.decimals ?? 18;
   const onchainIsStablecoin = onchainAsset?.kind === "stablecoin";
+  const stablecoinMarketplaceConfigured = hasStablecoinMarketplaceAsset({
+    assets: paymentAssets,
+    chainId,
+  });
+  const isLegacyNativeListing = Boolean(listing) && onchainIsNative && stablecoinMarketplaceConfigured;
   const onchainAssetLabel = onchainAsset
     ? `${onchainAsset.name} (${onchainSymbol})`
     : onchainIsNative
@@ -119,11 +149,18 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   useEffect(() => {
     if (!isOpen) return;
     setPaymentMethod(defaultBuyPaymentMethod(x402Available));
-  }, [isOpen, listingId, stemId, x402Available]);
+    setSelectedLicense(licenseType);
+  }, [isOpen, listingId, stemId, x402Available, licenseType]);
+
+  useEffect(() => {
+    if (selectedLicense !== "personal" && paymentMethod === "x402") {
+      setPaymentMethod("onchain");
+    }
+  }, [paymentMethod, selectedLicense]);
 
   // Fetch x402 quote when stablecoin checkout is active.
   useEffect(() => {
-    if (!isOpen || activePaymentMethod !== "x402" || !stemId || !x402Available) {
+    if (!isOpen || activePaymentMethod !== "x402" || !stemId || !x402AvailableForSelectedLicense) {
       setX402QuoteLoading(false);
       return;
     }
@@ -150,7 +187,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
     return () => {
       cancelled = true;
     };
-  }, [isOpen, activePaymentMethod, stemId, x402Available]);
+  }, [isOpen, activePaymentMethod, stemId, x402AvailableForSelectedLicense]);
 
   // Reset x402 transient state whenever the modal is closed/reopened
   useEffect(() => {
@@ -162,11 +199,32 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
     setX402QuoteLoading(false);
   }, [isOpen]);
 
+  const maxAmount = listing?.amount || 1n;
+  const txExplorerUrl = getExplorerTxUrl(txHash);
+  useEffect(() => {
+    if (amount > maxAmount) {
+      setAmount(maxAmount > 0n ? maxAmount : 1n);
+    }
+  }, [amount, maxAmount]);
+  const licenseAvailability = useMemo(
+    () => LICENSE_TYPES.reduce<Partial<Record<LicenseType, { enabled: boolean; reason?: string }>>>((acc, tier) => {
+      const hasListing = Boolean(tierListings?.[tier]) || tier === licenseType;
+      acc[tier] = {
+        enabled: hasListing,
+        reason: hasListing ? undefined : "No active marketplace listing for this license",
+      };
+      return acc;
+    }, {}),
+    [licenseType, tierListings],
+  );
+  const hasTierChoices = Boolean(tierListings && Object.keys(tierListings).length > 1);
+
   if (!isOpen) return null;
 
   const handleBuy = async () => {
+    if (!selectedListingId) return;
     try {
-      const hash = await buy(listingId, amount);
+      const hash = await buy(selectedListingId, amount);
       onSuccess?.(hash);
     } catch {
       // Error handled by hook
@@ -174,7 +232,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
   };
 
   const handleX402Pay = async () => {
-    if (!stemId || !x402Config?.enabled) return;
+    if (!stemId || !x402Config?.enabled || selectedLicense !== "personal") return;
     if (!x402Quote?.payTo || !x402Asset?.address) return;
     setX402Error(null);
     setX402Result(null);
@@ -206,9 +264,6 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
       setX402Status(null);
     }
   };
-
-  const maxAmount = listing?.amount || 1n;
-  const txExplorerUrl = getExplorerTxUrl(txHash);
 
   return (
     <div className="buy-modal-overlay">
@@ -255,7 +310,8 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                   aria-selected={activePaymentMethod === "x402"}
                   className={`buy-modal__pay-method${activePaymentMethod === "x402" ? " buy-modal__pay-method--active" : ""}`}
                   onClick={() => setPaymentMethod("x402")}
-                  disabled={pending || x402Status !== null}
+                  disabled={pending || x402Status !== null || selectedLicense !== "personal"}
+                  title={selectedLicense !== "personal" ? "x402 browser checkout currently settles the personal license tier only." : undefined}
                 >
                   <span>{getCheckoutRailLabel("x402")}</span>
                   <span className="buy-modal__pay-method-sub">
@@ -268,18 +324,32 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                   aria-selected={activePaymentMethod === "onchain"}
                   className={`buy-modal__pay-method${activePaymentMethod === "onchain" ? " buy-modal__pay-method--active" : ""}`}
                   onClick={() => setPaymentMethod("onchain")}
-                  disabled={pending || x402Status !== null}
+                  disabled={pending || x402Status !== null || isLegacyNativeListing}
+                  title={isLegacyNativeListing ? "This listing was created with native ETH and must be relisted in stablecoin for wallet checkout." : undefined}
                 >
                   <span>{getCheckoutRailLabel("onchain")}</span>
                   <span className="buy-modal__pay-method-sub">
-                    {getCheckoutRailSubLabel({
-                      method: "onchain",
-                      symbol: onchainSymbol,
-                      isStablecoin: onchainIsStablecoin,
-                    })}
+                    {isLegacyNativeListing
+                      ? `Legacy listing · ${onchainSymbol}`
+                      : getCheckoutRailSubLabel({
+                          method: "onchain",
+                          symbol: onchainSymbol,
+                          isStablecoin: onchainIsStablecoin,
+                        })}
                   </span>
                 </button>
               </div>
+            )}
+
+            {hasTierChoices && (
+              <LicenseTypeSelector
+                selected={selectedLicense}
+                onSelect={setSelectedLicense}
+                personalPriceUsd={tierPricesUsd?.personal ?? 0.05}
+                remixPriceUsd={tierPricesUsd?.remix ?? 5}
+                commercialPriceUsd={tierPricesUsd?.commercial ?? 25}
+                availability={licenseAvailability}
+              />
             )}
 
             {/* Quantity */}
@@ -317,7 +387,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
             </div>
 
             {/* License Terms Preview */}
-            <LicenseTermsPreview licenseType="personal" compact />
+            <LicenseTermsPreview licenseType={selectedLicense} compact />
 
             {/* Price Breakdown */}
             {activePaymentMethod === "onchain" && quote && !quoteLoading && (
@@ -350,6 +420,12 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                   </span>
                 </div>
                 <div className="buy-modal__breakdown-row">
+                  <span className="buy-modal__breakdown-label">License</span>
+                  <span className="buy-modal__breakdown-value">
+                    {selectedLicense}
+                  </span>
+                </div>
+                <div className="buy-modal__breakdown-row">
                   <span className="buy-modal__breakdown-label">Settlement asset</span>
                   <span className="buy-modal__breakdown-value">
                     {onchainAssetLabel} · {onchainTokenLabel}
@@ -362,7 +438,9 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 )}
                 {onchainIsNative && (
                   <div className="buy-modal__breakdown-note">
-                    This legacy listing uses native {onchainSymbol}; stablecoin listings use the same wallet rail with ERC-20 approval.
+                    {isLegacyNativeListing
+                      ? `This listing was created with legacy native ${onchainSymbol}. Re-list it with the configured marketplace stablecoin to enable on-chain wallet checkout.`
+                      : `This legacy listing uses native ${onchainSymbol}; stablecoin listings use the same wallet rail with ERC-20 approval.`}
                   </div>
                 )}
               </div>
@@ -374,6 +452,10 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 <div className="buy-modal__x402-row">
                   <span>Price (USD)</span>
                   <span>{x402QuoteLoading ? "Loading..." : formatUsdPrice(x402Quote?.amountUsd)}</span>
+                </div>
+                <div className="buy-modal__x402-row">
+                  <span>License</span>
+                  <span>{selectedLicense}</span>
                 </div>
                 <div className="buy-modal__x402-row">
                   <span>Stablecoin settlement</span>
@@ -424,6 +506,16 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
             {activePaymentMethod === "onchain" && error && (
               <div className="buy-modal__alert buy-modal__alert--error">
                 {error.message}
+              </div>
+            )}
+            {selectedLicense !== "personal" && x402Available && (
+              <div className="buy-modal__alert">
+                x402 checkout is available for the personal license tier. This {selectedLicense} purchase uses the direct on-chain listing rail.
+              </div>
+            )}
+            {activePaymentMethod === "onchain" && isLegacyNativeListing && (
+              <div className="buy-modal__alert buy-modal__alert--error">
+                This listing is denominated in native {onchainSymbol}. Current on-chain marketplace checkout is stablecoin-native, so this item must be re-listed in the configured stablecoin before wallet purchase.
               </div>
             )}
             {activePaymentMethod === "x402" && x402Error && (
@@ -495,7 +587,7 @@ export function BuyModal({ listingId, stemId, isOpen, onClose, onSuccess }: BuyM
                 <button
                   className="buy-modal__btn buy-modal__btn--confirm"
                   onClick={handleBuy}
-                  disabled={pending || !quote}
+                  disabled={pending || !quote || !selectedListingId || isLegacyNativeListing}
                 >
                   {pending && <span className="buy-modal__spinner" />}
                   {pending ? "Confirming…" : "Confirm wallet purchase"}

@@ -60,6 +60,6 @@ describe("AgentNextPickCard", () => {
     expect(html).toContain("Boom Bap Signal");
     expect(html).toContain("score 72");
     expect(html).toContain("Nearby vibe match");
-    expect(html).toContain("Audio signal: high energy, 124 BPM");
+    expect(html).toContain("high energy · 124 BPM");
   });
 });

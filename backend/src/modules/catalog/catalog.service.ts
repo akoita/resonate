@@ -32,11 +32,19 @@ function sameUserId(left?: string | null, right?: string | null) {
   return !!left && !!right && left.toLowerCase() === right.toLowerCase();
 }
 
+function normalizeMoodTags(value?: string[] | null) {
+  const normalized = (value || [])
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return Array.from(new Set(normalized)).slice(0, 8);
+}
+
 export type McpCatalogSearchItem = {
   id: string;
   title: string;
   artist: string;
   genre: string | null;
+  moods: string[];
   releaseDate: string | null;
   artworkUrl: string | null;
   trackCount: number;
@@ -317,6 +325,7 @@ export class CatalogService implements OnModuleInit {
             primaryArtist: event.metadata?.primaryArtist ?? undefined,
             featuredArtists: event.metadata?.featuredArtists?.join(", ") ?? undefined,
             genre: event.metadata?.genre ?? undefined,
+            moods: normalizeMoodTags(event.metadata?.moods),
             label: event.metadata?.label ?? undefined,
             releaseDate: event.metadata?.releaseDate ? new Date(event.metadata.releaseDate) : undefined,
             explicit: event.metadata?.explicit ?? undefined,
@@ -343,6 +352,7 @@ export class CatalogService implements OnModuleInit {
             primaryArtist: event.metadata?.primaryArtist,
             featuredArtists: event.metadata?.featuredArtists?.join(", "),
             genre: event.metadata?.genre,
+            moods: normalizeMoodTags(event.metadata?.moods),
             label: event.metadata?.label,
             releaseDate: event.metadata?.releaseDate
               ? new Date(event.metadata.releaseDate)
@@ -613,6 +623,7 @@ export class CatalogService implements OnModuleInit {
         primaryArtist: true,
         featuredArtists: true,
         genre: true,
+        moods: true,
         label: true,
         releaseDate: true,
         explicit: true,
@@ -685,6 +696,7 @@ export class CatalogService implements OnModuleInit {
     primaryArtist?: string;
     featuredArtists?: string[];
     genre?: string;
+    moods?: string[];
     label?: string;
     releaseDate?: string;
     explicit?: boolean;
@@ -710,6 +722,7 @@ export class CatalogService implements OnModuleInit {
         primaryArtist,
         featuredArtists: input.featuredArtists?.join(", "),
         genre: input.genre,
+        moods: normalizeMoodTags(input.moods),
         label: input.label,
         releaseDate: input.releaseDate ? new Date(input.releaseDate) : undefined,
         explicit: input.explicit ?? false,
@@ -812,6 +825,7 @@ export class CatalogService implements OnModuleInit {
         primaryArtist: true,
         featuredArtists: true,
         genre: true,
+        moods: true,
         label: true,
         releaseDate: true,
         explicit: true,
@@ -881,6 +895,7 @@ export class CatalogService implements OnModuleInit {
             primaryArtist: true,
             featuredArtists: true,
             genre: true,
+            moods: true,
             label: true,
             releaseDate: true,
             explicit: true,
@@ -977,6 +992,7 @@ export class CatalogService implements OnModuleInit {
         primaryArtist: true,
         featuredArtists: true,
         genre: true,
+        moods: true,
         label: true,
         releaseDate: true,
         explicit: true,
@@ -1233,6 +1249,7 @@ export class CatalogService implements OnModuleInit {
         primaryArtist: true,
         featuredArtists: true,
         genre: true,
+        moods: true,
         label: true,
         releaseDate: true,
         explicit: true,
@@ -1307,6 +1324,7 @@ export class CatalogService implements OnModuleInit {
                         mode: "insensitive",
                       },
                     },
+                    { moods: { has: trimmedQuery } },
                     {
                       tracks: {
                         some: {
@@ -1338,6 +1356,7 @@ export class CatalogService implements OnModuleInit {
         title: true,
         primaryArtist: true,
         genre: true,
+        moods: true,
         releaseDate: true,
         artworkUrl: true,
         artworkMimeType: true,
@@ -1376,6 +1395,7 @@ export class CatalogService implements OnModuleInit {
           release.artist?.displayName ||
           "Unknown Artist",
         genre: release.genre,
+        moods: release.moods,
         releaseDate: release.releaseDate?.toISOString() ?? null,
         artworkUrl: this.buildMcpArtworkUrl(release),
         trackCount: release.tracks.length,

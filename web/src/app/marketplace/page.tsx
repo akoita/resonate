@@ -17,6 +17,7 @@ import {
 import { ExpiryBadge } from "../../components/marketplace/ExpiryBadge";
 import { LicenseBadges } from "../../components/marketplace/LicenseBadges";
 import { BuyModal } from "../../components/marketplace/BuyModal";
+import type { LicenseType } from "../../components/marketplace/LicenseTypeSelector";
 import { artistProfileHref } from "../../lib/artistRoutes";
 import "./marketplace.css";
 import "../../styles/license-badges.css";
@@ -35,6 +36,8 @@ interface ListingData {
     seller: string;
     price: string;
     paymentToken?: string;
+    licenseType?: LicenseType;
+    tierListings?: Partial<Record<LicenseType, string>> | null;
     amount: string;
     status: string;
     expiresAt: string;
@@ -55,6 +58,18 @@ interface ListingData {
         synthIdConfidence?: number;
     } | null;
 }
+
+type StemPricing = {
+    basePlayPriceUsd: number;
+    remixLicenseUsd: number;
+    commercialLicenseUsd: number;
+};
+
+const LICENSE_LABELS: Record<LicenseType, string> = {
+    personal: "Personal",
+    remix: "Remix",
+    commercial: "Commercial",
+};
 
 const STEM_TYPES = ["all", "vocals", "drums", "bass", "melody", "guitar", "piano", "other"] as const;
 const SORT_OPTIONS = [
@@ -127,9 +142,9 @@ export default function MarketplacePage() {
     const [playingId, setPlayingId] = useState<string | null>(null);
     const [hasMore, setHasMore] = useState(false);
     const [offset, setOffset] = useState(0);
-    const [pricingMap, setPricingMap] = useState<Record<string, { remixLicenseUsd: number; commercialLicenseUsd: number }>>({});
+    const [pricingMap, setPricingMap] = useState<Record<string, StemPricing>>({});
     const [hideOwnListings, setHideOwnListings] = useState(true);
-    const [buyModalListing, setBuyModalListing] = useState<{ listingId: string; stemId: string } | null>(null);
+    const [buyModalListing, setBuyModalListing] = useState<{ listingId: string; stemId: string; licenseType: LicenseType } | null>(null);
     const [hasStaleData, setHasStaleData] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -254,6 +269,21 @@ export default function MarketplacePage() {
             .then(data => setPricingMap(data))
             .catch(err => console.error("Batch pricing fetch error:", err));
     }, [batchStemIdsKey]);
+
+    const tierListingsByStem = useMemo(() => {
+        const byStem: Record<string, Partial<Record<LicenseType, string>>> = {};
+        for (const listing of listings) {
+            const stemId = listing.stem?.id;
+            if (!stemId) continue;
+            const licenseType = listing.licenseType ?? "personal";
+            byStem[stemId] = {
+                ...byStem[stemId],
+                ...(listing.tierListings ?? {}),
+                [licenseType]: listing.listingId,
+            };
+        }
+        return byStem;
+    }, [listings]);
 
     // ---- Real-time marketplace updates via WebSocket ----
     const listingsCountRef = useRef(0);
@@ -634,12 +664,17 @@ export default function MarketplacePage() {
                                         {listing.seller.slice(0, 6)}…{listing.seller.slice(-4)}
                                     </div>
                                     {/* License price badges */}
-                                    {listing.stem?.id && pricingMap[listing.stem.id] && (
+                                    {listing.stem?.id && tierListingsByStem[listing.stem.id] && (
                                         <LicenseBadges
-                                            remixLicenseUsd={pricingMap[listing.stem.id].remixLicenseUsd}
-                                            commercialLicenseUsd={pricingMap[listing.stem.id].commercialLicenseUsd}
+                                            remixLicenseUsd={tierListingsByStem[listing.stem.id].remix ? pricingMap[listing.stem.id]?.remixLicenseUsd : undefined}
+                                            commercialLicenseUsd={tierListingsByStem[listing.stem.id].commercial ? pricingMap[listing.stem.id]?.commercialLicenseUsd : undefined}
                                         />
                                     )}
+                                    <div className="license-badges">
+                                        <span className={`license-badge license-badge--${listing.licenseType ?? "personal"}`}>
+                                            <span className="license-badge__price">{LICENSE_LABELS[listing.licenseType ?? "personal"]} listing</span>
+                                        </span>
+                                    </div>
                                     <div className="stem-card__amount">{listing.amount} edition{listing.amount !== "1" ? "s" : ""} left</div>
 
                                     {/* Footer */}
@@ -658,7 +693,11 @@ export default function MarketplacePage() {
                                         ) : (
                                             <button
                                                 className="stem-card__buy"
-                                                onClick={() => setBuyModalListing({ listingId: listing.listingId, stemId: listing.stem?.id || "" })}
+                                                onClick={() => setBuyModalListing({
+                                                    listingId: listing.listingId,
+                                                    stemId: listing.stem?.id || "",
+                                                    licenseType: listing.licenseType ?? "personal",
+                                                })}
                                                 disabled={buyPending}
                                             >
                                                 Buy
@@ -685,6 +724,13 @@ export default function MarketplacePage() {
                 <BuyModal
                     listingId={BigInt(buyModalListing.listingId)}
                     stemId={buyModalListing.stemId}
+                    licenseType={buyModalListing.licenseType}
+                    tierListings={buyModalListing.stemId ? tierListingsByStem[buyModalListing.stemId] : undefined}
+                    tierPricesUsd={buyModalListing.stemId && pricingMap[buyModalListing.stemId] ? {
+                        personal: pricingMap[buyModalListing.stemId].basePlayPriceUsd,
+                        remix: pricingMap[buyModalListing.stemId].remixLicenseUsd,
+                        commercial: pricingMap[buyModalListing.stemId].commercialLicenseUsd,
+                    } : undefined}
                     isOpen={true}
                     onClose={() => setBuyModalListing(null)}
                     onSuccess={() => {

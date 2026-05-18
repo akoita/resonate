@@ -12,6 +12,7 @@ import {
   getSongRecommendations,
   listMyReleases,
   listPublishedReleases,
+  recordAgentSignal,
   Release,
   startAgentSession,
   updateAgentConfig,
@@ -20,6 +21,7 @@ import {
 } from "../lib/api";
 import { artistProfileHref } from "../lib/artistRoutes";
 import { type LocalTrack, saveTracksMetadata } from "../lib/localLibrary";
+import { usePlayer } from "../lib/playerContext";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
 import { useToast } from "../components/ui/Toast";
 import { AddToPlaylistModal } from "../components/library/AddToPlaylistModal";
@@ -42,7 +44,14 @@ import AgentSessionPresets from "../components/agent/AgentSessionPresets";
  * Icons use Material Symbols (loaded in app/layout.tsx).
  */
 
-type FilterOption = "all" | "electronic" | "hip-hop" | "afrobeat" | "indie" | "jazz";
+type FilterId = "all" | "electronic" | "hip-hop" | "afrobeat" | "indie" | "jazz" | "focus" | "hype" | "chill" | "late-night";
+type FilterOption = {
+  id: FilterId;
+  label: string;
+  kind: "all" | "genre" | "mood";
+  value?: string;
+  energy?: "low" | "medium" | "high";
+};
 type CatalogView = "releases" | "artists" | "stems";
 
 type ArtistSummary = {
@@ -74,33 +83,44 @@ type HomeRecommendation = {
   artist: string;
   releaseId?: string;
   genre?: string | null;
+  moods?: string[];
   score?: number;
   reasons: string[];
   release?: Release;
 };
 
-const FILTERS: { id: FilterOption; label: string }[] = [
-  { id: "all", label: "All Trending" },
-  { id: "electronic", label: "Electronic" },
-  { id: "hip-hop", label: "Hip-Hop" },
-  { id: "afrobeat", label: "Afrobeat" },
-  { id: "indie", label: "Indie" },
-  { id: "jazz", label: "Jazz" },
+const FILTERS: FilterOption[] = [
+  { id: "all", label: "All Trending", kind: "all" },
+  { id: "electronic", label: "Electronic", kind: "genre", value: "Electronic", energy: "medium" },
+  { id: "hip-hop", label: "Hip-Hop", kind: "genre", value: "Hip Hop", energy: "high" },
+  { id: "afrobeat", label: "Afrobeat", kind: "genre", value: "Afrobeat", energy: "high" },
+  { id: "indie", label: "Indie", kind: "genre", value: "Indie", energy: "medium" },
+  { id: "jazz", label: "Jazz", kind: "genre", value: "Jazz", energy: "low" },
+  { id: "focus", label: "Focus", kind: "mood", value: "Focus", energy: "low" },
+  { id: "hype", label: "Hype", kind: "mood", value: "Hype", energy: "high" },
+  { id: "chill", label: "Chill", kind: "mood", value: "Chill", energy: "low" },
+  { id: "late-night", label: "Late Night", kind: "mood", value: "Late Night", energy: "medium" },
 ];
 
 export default function Home() {
   const router = useRouter();
   const [releases, setReleases] = useState<Release[]>([]);
   const [myReleases, setMyReleases] = useState<Release[]>([]);
-  const [activeFilter, setActiveFilter] = useState<FilterOption>("all");
+  const [activeFilter, setActiveFilter] = useState<FilterId>("all");
   const [catalogView, setCatalogView] = useState<CatalogView>("releases");
   const [catalogSearch, setCatalogSearch] = useState("");
   const [songRecommendations, setSongRecommendations] = useState<SongRecommendationItem[]>([]);
   const [startingSeed, setStartingSeed] = useState<string | null>(null);
+  const [startingVibe, setStartingVibe] = useState<FilterId | null>(null);
   const [tracksToAddToPlaylist, setTracksToAddToPlaylist] = useState<LocalTrack[] | null>(null);
   const [savingReleaseId, setSavingReleaseId] = useState<string | null>(null);
   const { status, token, userId } = useAuth();
   const { addToast } = useToast();
+  const { playQueue } = usePlayer();
+  const activeFilterConfig = useMemo(
+    () => FILTERS.find((filter) => filter.id === activeFilter) ?? FILTERS[0],
+    [activeFilter],
+  );
 
   useWebSockets((data: ReleaseStatusUpdate) => {
     if (data.status === "ready") {
@@ -146,7 +166,7 @@ export default function Home() {
     }
 
     let cancelled = false;
-    getSongRecommendations(userId, token, 6)
+    getSongRecommendations(userId, token, 6, recommendationPreferencesForFilter(activeFilterConfig))
       .then((result) => {
         if (!cancelled) setSongRecommendations(result.items ?? []);
       })
@@ -157,17 +177,15 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [status, token, userId]);
+  }, [activeFilterConfig, status, token, userId]);
 
   const displayReleases = releases;
 
   // Client-side filter (genre match on `release.genre`, case-insensitive).
   const filteredReleases = useMemo<Release[]>(() => {
-    if (activeFilter === "all") return displayReleases;
-    return displayReleases.filter(
-      (r) => (r.genre ?? "").toLowerCase().replace(/[\s/]/g, "-").includes(activeFilter),
-    );
-  }, [displayReleases, activeFilter]);
+    if (activeFilterConfig.kind === "all") return displayReleases;
+    return displayReleases.filter((release) => releaseMatchesFilter(release, activeFilterConfig));
+  }, [activeFilterConfig, displayReleases]);
 
   // Row data derivation.
   const resumeRow = filteredReleases.slice(0, 4);
@@ -215,7 +233,7 @@ export default function Home() {
   }, [catalogArtists]);
 
   const handleStartRecommendedSession = async (recommendation: HomeRecommendation) => {
-    const seedGenre = recommendation.genre || recommendation.reasons[0]?.replace(/^genre:/, "") || "Discovery";
+    const seedGenre = recommendation.moods?.[0] || recommendation.genre || recommendation.reasons[0]?.replace(/^(genre|mood):/, "") || "Discovery";
     const seedKey = recommendation.trackId || recommendation.releaseId || recommendation.key;
     if (status !== "authenticated" || !token) {
       addToast({
@@ -263,6 +281,73 @@ export default function Home() {
       });
     } finally {
       setStartingSeed(null);
+    }
+  };
+
+  const handleStartVibeSession = async (filter: FilterOption) => {
+    if (filter.kind === "all") return;
+    const vibe = filter.value || filter.label;
+    if (status !== "authenticated" || !token) {
+      addToast({
+        type: "info",
+        title: "Connect wallet",
+        message: `Open AI DJ to start a ${filter.label} vibe session.`,
+      });
+      router.push("/agent");
+      return;
+    }
+
+    setStartingVibe(filter.id);
+    try {
+      const queue = buildVibeQueue(recommendedForYou, filteredReleases);
+      if (queue.length > 0) {
+        await saveTracksMetadata(queue, "remote");
+        await playQueue(queue, 0);
+      }
+
+      const existing = await getAgentConfig(token);
+      if (existing) {
+        await updateAgentConfig(token, { vibes: [vibe], sessionMode: "curate" });
+      } else {
+        await createAgentConfig(token, {
+          name: `${filter.label} DJ`,
+          vibes: [vibe],
+          monthlyCapUsd: 10,
+        });
+      }
+
+      const result = await startAgentSession(token);
+      const firstTrack = queue[0]?.catalogTrackId || queue[0]?.id;
+      if (firstTrack) {
+        await recordAgentSignal(token, {
+          trackId: firstTrack,
+          action: "accept",
+          sessionId: result.sessionId,
+          metadata: {
+            source: "home_vibe_session",
+            vibe,
+            filterKind: filter.kind,
+            autoQueuedTracks: queue.length,
+          },
+        }).catch(() => undefined);
+      }
+
+      addToast({
+        type: "success",
+        title: `${filter.label} session started`,
+        message: queue.length > 0
+          ? `${queue.length} matching track${queue.length > 1 ? "s" : ""} queued.`
+          : "AI DJ is ready with your vibe.",
+      });
+      router.push("/agent");
+    } catch (error) {
+      addToast({
+        type: "error",
+        title: "Vibe session failed",
+        message: error instanceof Error ? error.message : "Unable to start this vibe session.",
+      });
+    } finally {
+      setStartingVibe(null);
     }
   };
 
@@ -382,6 +467,28 @@ export default function Home() {
             </button>
           ))}
         </div>
+        {activeFilterConfig.kind !== "all" && (
+          <div className="ng-vibe-session-strip ng-glass">
+            <div>
+              <span className="ng-kicker ng-kicker--tertiary">Vibe session</span>
+              <strong>{activeFilterConfig.label}</strong>
+              <p>
+                {filteredReleases.length} catalog match{filteredReleases.length === 1 ? "" : "es"} ready for this {activeFilterConfig.kind}.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="ng-btn ng-btn--primary"
+              onClick={() => void handleStartVibeSession(activeFilterConfig)}
+              disabled={startingVibe === activeFilterConfig.id}
+            >
+              <span className="ms-icon" data-fill="1" aria-hidden>
+                {startingVibe === activeFilterConfig.id ? "hourglass_top" : "play_arrow"}
+              </span>
+              {startingVibe === activeFilterConfig.id ? "Starting" : "Start Vibe Session"}
+            </button>
+          </div>
+        )}
 
         {/* 3. RECOMMENDED FOR YOU ——————————————————————————————— */}
         {recommendedForYou.length > 0 && (
@@ -989,6 +1096,52 @@ function filterStems(stems: StemSummary[], query: string) {
   );
 }
 
+function recommendationPreferencesForFilter(filter: FilterOption) {
+  if (filter.kind === "genre" && filter.value) {
+    return { genres: [filter.value], energy: filter.energy };
+  }
+  if (filter.kind === "mood" && filter.value) {
+    return { mood: filter.value, energy: filter.energy };
+  }
+  return undefined;
+}
+
+function releaseMatchesFilter(release: Release, filter: FilterOption) {
+  const value = filter.value?.toLowerCase();
+  if (!value) return true;
+  if (filter.kind === "genre") {
+    return (release.genre ?? "").toLowerCase().replace(/[\s/]/g, "-").includes(filter.id);
+  }
+  if (filter.kind === "mood") {
+    return (release.moods ?? []).some((mood) => mood.toLowerCase() === value)
+      || release.title.toLowerCase().includes(value)
+      || (release.genre ?? "").toLowerCase().includes(value);
+  }
+  return true;
+}
+
+function mapRecommendationToLocalTrack(item: HomeRecommendation): LocalTrack | null {
+  const release = item.release;
+  if (!release) return null;
+  const tracks = mapReleaseToLocalTracks(release);
+  return tracks.find((track) => track.catalogTrackId === item.trackId || track.id === item.trackId) ?? tracks[0] ?? null;
+}
+
+function buildVibeQueue(recommendations: HomeRecommendation[], releases: Release[]) {
+  const byId = new Map<string, LocalTrack>();
+  for (const recommendation of recommendations) {
+    const track = mapRecommendationToLocalTrack(recommendation);
+    if (track) byId.set(track.id, track);
+  }
+  for (const release of releases) {
+    for (const track of mapReleaseToLocalTracks(release)) {
+      if (byId.size >= 12) break;
+      byId.set(track.id, track);
+    }
+  }
+  return Array.from(byId.values()).slice(0, 12);
+}
+
 function buildHomeRecommendations(
   items: SongRecommendationItem[],
   releases: Release[],
@@ -1011,6 +1164,7 @@ function buildHomeRecommendations(
       artist: item.artist || (release ? getArtistName(release) : "Unknown Artist"),
       releaseId: item.releaseId || release?.id,
       genre: item.genre ?? release?.genre,
+      moods: item.moods ?? release?.moods ?? [],
       score: item.score,
       reasons: item.reasons ?? [],
       release,
@@ -1027,6 +1181,7 @@ function buildHomeRecommendations(
     artist: getArtistName(release),
     releaseId: release.id,
     genre: release.genre,
+    moods: release.moods ?? [],
     score: release.genre ? 35 : 20,
     reasons: release.genre ? [`genre:${release.genre}`] : ["catalog_seed"],
     release,

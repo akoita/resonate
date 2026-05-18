@@ -59,15 +59,15 @@
 
 /* ── Command Center bar ─────────────────────────────────── */
 .aid-command {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 20px;
-  flex-wrap: wrap;
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);
   border-left: 3px solid #7c3aed;
   border-radius: 20px;
-  padding: 20px 24px;
+  padding: 18px 22px;
   backdrop-filter: blur(12px);
 }
 
@@ -76,12 +76,47 @@
 .aid-command-mode     { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
 .aid-command-cta      { flex: 0 0 auto; }
 
-/* Page-level command bar variant (page.tsx) */
-.aid-command-info    { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
-.aid-command-name    { font-size: 0.95rem; font-weight: 700; color: #f0eaff; }
-.aid-command-status  { font-size: 0.72rem; color: rgba(240,234,255,0.45); }
+.aid-command > .aid-orb {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  animation: aid-pulse 3s ease-in-out infinite;
+}
+
+.aid-command-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.aid-command-name {
+  color: #f0eaff;
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aid-command-status {
+  color: rgba(240,234,255,0.55);
+  font-size: 0.74rem;
+  font-weight: 650;
+  line-height: 1;
+}
+
 .aid-command-status.active { color: #4ade80; }
-.aid-command-actions { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; flex-wrap: wrap; }
+
+.aid-command-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: min(100%, 310px);
+}
 
 /* ── Orb ────────────────────────────────────────────────── */
 .aid-orb-wrap {
@@ -174,6 +209,7 @@
 }
 .aid-mode-seg {
   display: flex;
+  min-width: 0;
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 10px;
@@ -190,6 +226,9 @@
   background: transparent;
   border: none;
   cursor: pointer;
+  justify-content: center;
+  min-height: 32px;
+  white-space: nowrap;
   transition: background 0.18s, color 0.18s;
 }
 .aid-mode-btn:hover { color: #f0eaff; background: rgba(255,255,255,0.06); }
@@ -203,6 +242,7 @@
 .aid-toggle-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
   padding: 10px 22px;
   border-radius: 12px;
@@ -210,6 +250,8 @@
   font-weight: 700;
   border: none;
   cursor: pointer;
+  min-height: 38px;
+  white-space: nowrap;
   transition: opacity 0.18s, transform 0.12s, box-shadow 0.18s;
 }
 .aid-toggle-btn:hover  { opacity: 0.88; transform: translateY(-1px); }
@@ -240,6 +282,7 @@
 .aid-middle-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  align-items: stretch;
   gap: 16px;
 }
 @media (max-width: 1100px) { .aid-middle-row { grid-template-columns: 1fr 1fr; } }
@@ -256,12 +299,13 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  min-width: 0;
   backdrop-filter: blur(10px);
   animation: aid-fade-in 0.35s ease;
 }
 
-.aid-card-header    { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.aid-card-title-row { display: flex; align-items: center; gap: 8px; }
+.aid-card-header    { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.aid-card-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .aid-card-title     { font-size: 0.85rem; font-weight: 700; color: rgba(240,234,255,0.9); letter-spacing: 0.02em; text-transform: uppercase; }
 
 /* card variants */
@@ -277,6 +321,11 @@
 .aid-sc-name   { font-size: 0.95rem; font-weight: 700; color: #f0eaff; margin: 0; }
 .aid-sc-vibes  { display: flex; flex-wrap: wrap; gap: 6px; }
 .aid-sc-mode   { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.aid-card--status .aid-toggle-btn {
+  width: 100%;
+  margin-top: auto;
+}
 
 .aid-sc-stats {
   display: flex;
@@ -380,7 +429,7 @@
 }
 
 /* ── Next-pick card ─────────────────────────────────────── */
-.aid-np-body { display: flex; gap: 14px; align-items: flex-start; }
+.aid-np-body { display: flex; gap: 14px; align-items: flex-start; min-width: 0; }
 
 .aid-np-art {
   width: 72px;
@@ -429,7 +478,12 @@
 .aid-np-hint { font-size: 0.75rem; color: rgba(240,234,255,0.4); }
 
 .aid-np-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   width: 100%;
+  margin-top: auto;
   padding: 10px;
   border-radius: 10px;
   background: linear-gradient(135deg, rgba(124,58,237,0.3), rgba(109,40,217,0.3));
@@ -444,12 +498,85 @@
   background: linear-gradient(135deg, rgba(124,58,237,0.5), rgba(109,40,217,0.5));
   border-color: rgba(168,85,247,0.5);
 }
+.aid-np-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+.aid-np-btn:disabled:hover {
+  background: linear-gradient(135deg, rgba(124,58,237,0.3), rgba(109,40,217,0.3));
+  border-color: rgba(124,58,237,0.4);
+}
 
 .aid-np-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 24px 0;
+  min-height: 102px;
+  padding: 16px 0;
+  text-align: center;
 }
 .aid-np-empty-icon { font-size: 2rem; opacity: 0.3; }
+
+@media (max-width: 820px) {
+  .aid-command {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .aid-command-actions {
+    grid-column: 1 / -1;
+    justify-content: stretch;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .aid-command-actions .aid-mode-seg,
+  .aid-command-actions .aid-toggle-btn {
+    flex: 1 1 0;
+  }
+
+  .aid-command-actions .aid-mode-btn {
+    flex: 1 1 0;
+    padding-inline: 10px;
+  }
+}
+
+@media (max-width: 520px) {
+  .aid-page {
+    padding-inline: 14px;
+  }
+
+  .aid-command {
+    padding: 16px;
+  }
+
+  .aid-command-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .aid-command-actions .aid-mode-seg {
+    width: 100%;
+    flex: 0 0 auto;
+  }
+
+  .aid-command-actions .aid-toggle-btn {
+    width: 100%;
+    flex: 0 0 auto;
+  }
+
+  .aid-sc-mode {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .aid-sc-mode .aid-mode-seg {
+    width: 100%;
+  }
+
+  .aid-sc-mode .aid-mode-btn {
+    flex: 1 1 0;
+  }
+}

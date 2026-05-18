@@ -20,7 +20,7 @@ import { ContractsService } from "./contracts.service";
 import { IndexerService } from "./indexer.service";
 import { NotificationService } from "../notifications/notification.service";
 import { EventBus } from "../shared/event_bus";
-import type { Prisma } from "@prisma/client";
+import { LicenseType, type Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { createPublicClient, http, keccak256, toHex, type Address, type Chain } from "viem";
 import { foundry, sepolia, baseSepolia } from "viem/chains";
@@ -585,6 +585,41 @@ export class MetadataController {
       offset,
     });
 
+    const stemIds = Array.from(
+      new Set(
+        listings
+          .map((listing) => listing.stem?.id)
+          .filter((stemId): stemId is string => Boolean(stemId)),
+      ),
+    );
+    const tierListingRows = stemIds.length
+      ? await prisma.stemListing.findMany({
+        where: {
+          stemId: { in: stemIds },
+          status: "active",
+          amount: { gt: 0 },
+          expiresAt: { gt: new Date() },
+          licenseType: {
+            in: [LicenseType.personal, LicenseType.remix, LicenseType.commercial],
+          },
+        },
+        select: {
+          stemId: true,
+          listingId: true,
+          licenseType: true,
+        },
+        orderBy: { listedAt: "desc" },
+      })
+      : [];
+    const tierListingsByStem = new Map<string, Partial<Record<"personal" | "remix" | "commercial", string>>>();
+    for (const row of tierListingRows) {
+      if (!row.stemId) continue;
+      const tierMap = tierListingsByStem.get(row.stemId) ?? {};
+      if (row.licenseType === "personal" || row.licenseType === "remix" || row.licenseType === "commercial") {
+        tierMap[row.licenseType] ??= row.listingId.toString();
+      }
+      tierListingsByStem.set(row.stemId, tierMap);
+    }
 
     return {
       listings: listings.map((l) => {
@@ -611,9 +646,11 @@ export class MetadataController {
           seller: l.sellerAddress,
           price: l.pricePerUnit,
           paymentToken: l.paymentToken,
+          licenseType: l.licenseType,
           amount: l.amount.toString(),
           status: l.status,
           expiresAt: l.expiresAt.toISOString(),
+          tierListings: stem?.id ? tierListingsByStem.get(stem.id) ?? null : null,
           stem: stem
             ? {
               id: stem.id,
@@ -668,6 +705,7 @@ export class MetadataController {
       price: listing.pricePerUnit,
       amount: listing.amount.toString(),
       paymentToken: listing.paymentToken,
+      licenseType: listing.licenseType,
       status: listing.status,
       expiresAt: listing.expiresAt.toISOString(),
       listedAt: listing.listedAt.toISOString(),
@@ -689,6 +727,7 @@ export class MetadataController {
         buyer: p.buyerAddress,
         amount: p.amount.toString(),
         totalPaid: p.totalPaid,
+        licenseType: p.licenseType,
         purchasedAt: p.purchasedAt.toISOString(),
       })),
     };
@@ -1849,6 +1888,7 @@ export class MetadataController {
     durationSeconds?: string;
     transactionHash?: string;
     stemId?: string;
+    licenseType?: "personal" | "remix" | "commercial";
   }) {
     this.logger.log(`Notify listing: tokenId=${body.tokenId}, stemId=${body.stemId}`);
 
@@ -1862,6 +1902,35 @@ export class MetadataController {
           where: { id: body.stemId },
           data: { ipnftId: body.tokenId },
         }).catch((e) => this.logger.warn(`Failed to set ipnftId on stem: ${e}`));
+      }
+      if (body.transactionHash && body.tokenId) {
+        await prisma.stemListingIntent.upsert({
+          where: {
+            transactionHash_tokenId: {
+              transactionHash: body.transactionHash,
+              tokenId: BigInt(body.tokenId),
+            },
+          },
+          create: {
+            transactionHash: body.transactionHash,
+            tokenId: BigInt(body.tokenId),
+            chainId,
+            stemId: body.stemId,
+            sellerAddress: body.seller?.toLowerCase(),
+            pricePerUnit: body.price,
+            amount: body.amount ? BigInt(body.amount) : undefined,
+            paymentToken: body.paymentToken,
+            licenseType: body.licenseType ?? "personal",
+          },
+          update: {
+            stemId: body.stemId,
+            sellerAddress: body.seller?.toLowerCase(),
+            pricePerUnit: body.price,
+            amount: body.amount ? BigInt(body.amount) : undefined,
+            paymentToken: body.paymentToken,
+            licenseType: body.licenseType ?? "personal",
+          },
+        }).catch((e) => this.logger.warn(`Failed to store listing intent: ${e}`));
       }
 
       // Broadcast WebSocket notification for instant UI feedback.
@@ -1878,6 +1947,7 @@ export class MetadataController {
         sellerAddress: (body.seller || "").toLowerCase(),
         amount: body.amount || "1",
         pricePerUnit: body.price || "10000000000000000",
+        licenseType: body.licenseType ?? "personal",
         stemId: body.stemId,
         transactionHash: body.transactionHash,
       } as any);
