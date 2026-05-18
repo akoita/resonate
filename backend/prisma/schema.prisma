@@ -276,6 +276,7 @@ model StemListing {
   expiresAt       DateTime
   transactionHash String
   blockNumber     BigInt
+  licenseType     LicenseType      @default(personal)
   status          String           @default("active")
   listedAt        DateTime
   soldAt          DateTime?
@@ -289,7 +290,28 @@ model StemListing {
   @@index([listingId, chainId])
   @@index([sellerAddress])
   @@index([tokenId, chainId])
+  @@index([licenseType])
   @@index([status])
+}
+
+model StemListingIntent {
+  id              String      @id @default(uuid())
+  transactionHash String
+  tokenId         BigInt?
+  stemId          String?
+  chainId         Int
+  sellerAddress   String?
+  pricePerUnit    String?
+  amount          BigInt?
+  paymentToken    String?
+  licenseType     LicenseType @default(personal)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([transactionHash, tokenId], name: "transactionHash_tokenId")
+  @@index([transactionHash])
+  @@index([stemId])
+  @@index([licenseType])
 }
 
 // License type enum — matches RFC #310 License NFT Schema

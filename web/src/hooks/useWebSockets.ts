@@ -32,6 +32,7 @@ export interface MarketplaceListingCreated {
     seller: string;
     price: string;
     amount: string;
+    licenseType?: 'personal' | 'remix' | 'commercial';
 }
 export interface MarketplaceListingSold {
     type: 'sold';

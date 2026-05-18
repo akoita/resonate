@@ -323,6 +323,7 @@ export interface ContractStemListedEvent extends BaseEvent {
   amount: string;
   pricePerUnit: string;
   paymentToken: string;
+  licenseType?: "personal" | "remix" | "commercial";
   expiresAt: string;
   chainId: number;
   contractAddress: string;
@@ -647,6 +648,7 @@ export interface MarketplaceListingNotifyEvent extends BaseEvent {
   sellerAddress: string;
   pricePerUnit: string;
   amount: string;
+  licenseType?: "personal" | "remix" | "commercial";
 }
 
 export type ResonateEvent =

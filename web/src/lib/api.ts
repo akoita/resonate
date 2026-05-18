@@ -1401,6 +1401,8 @@ export type APIListing = {
   price: string;
   amount: string;
   paymentToken: string;
+  licenseType?: "personal" | "remix" | "commercial";
+  tierListings?: Partial<Record<"personal" | "remix" | "commercial", string>> | null;
   status: string;
   expiresAt: string;
   listedAt: string;

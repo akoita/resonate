@@ -627,10 +627,14 @@ export function useListing(listingId: bigint | undefined) {
   }, []);
 
   useEffect(() => {
-    if (listingId === undefined) return;
+    if (listingId === undefined) {
+      return;
+    }
 
     const fetchListing = async () => {
       try {
+        setLoading(true);
+        setError(null);
         const result = await getListing(publicClient, chainId, listingId);
         if (mountedRef.current) {
           setListing(result);
@@ -667,10 +671,14 @@ export function useBuyQuote(listingId: bigint | undefined, amount: bigint) {
   }, []);
 
   useEffect(() => {
-    if (listingId === undefined || amount === 0n) return;
+    if (listingId === undefined || amount === 0n) {
+      return;
+    }
 
     const fetchQuote = async () => {
       try {
+        setLoading(true);
+        setError(null);
         const result = await quoteBuy(publicClient, chainId, listingId, amount);
         if (mountedRef.current) {
           setQuote(result);
@@ -1792,6 +1800,7 @@ export function useBatchMintAndList() {
               price: pricePerUnit.toString(),
               amount: "1",
               paymentToken,
+              licenseType: "personal",
               durationSeconds: durationSeconds.toString(),
               transactionHash: hash,
               stemId: stems[i].stemId,

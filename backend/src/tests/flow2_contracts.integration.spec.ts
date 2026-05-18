@@ -111,6 +111,7 @@ describe('Choreography Flow 2: Contract Indexing → Marketplace Lifecycle', () 
       amount: '5',
       pricePerUnit: '50000000000000000',
       paymentToken: '0x0000000000000000000000000000000000000000',
+      licenseType: 'remix',
       expiresAt: String(Math.floor(Date.now() / 1000) + 86400),
       chainId,
       contractAddress: contractAddr,
@@ -125,6 +126,29 @@ describe('Choreography Flow 2: Contract Indexing → Marketplace Lifecycle', () 
     });
     expect(listing).not.toBeNull();
     expect(listing!.status).toBe('active');
+    expect(listing!.licenseType).toBe('remix');
+
+    const commercialListEvent: ContractStemListedEvent = {
+      ...listEvent,
+      listingId: '11',
+      amount: '2',
+      pricePerUnit: '250000000000000000',
+      licenseType: 'commercial',
+      transactionHash: `0x${P}list_commercial_tx`,
+      blockNumber: '3',
+    };
+    eventBus.publish(commercialListEvent);
+    await wait(1000);
+
+    const remixListingAfterCommercial = await prisma.stemListing.findFirst({
+      where: { transactionHash: `0x${P}list_tx` },
+    });
+    const commercialListing = await prisma.stemListing.findFirst({
+      where: { transactionHash: `0x${P}list_commercial_tx` },
+    });
+    expect(remixListingAfterCommercial!.status).toBe('active');
+    expect(commercialListing!.status).toBe('active');
+    expect(commercialListing!.licenseType).toBe('commercial');
 
     // Step 3: Sell (full amount to trigger "sold" status)
     const soldEvent: ContractStemSoldEvent = {
@@ -138,7 +162,7 @@ describe('Choreography Flow 2: Contract Indexing → Marketplace Lifecycle', () 
       chainId,
       contractAddress: contractAddr,
       transactionHash: `0x${P}sold_tx`,
-      blockNumber: '3',
+      blockNumber: '4',
     };
     eventBus.publish(soldEvent);
     await wait(1000);
@@ -156,6 +180,7 @@ describe('Choreography Flow 2: Contract Indexing → Marketplace Lifecycle', () 
     expect(purchase!.paymentToken).toBe('0x0000000000000000000000000000000000000000');
     expect(purchase!.paymentAssetSymbol).toBe('ETH');
     expect(purchase!.settlementAmountUnits).toBe('250000000000000000');
+    expect(purchase!.licenseType).toBe('remix');
   }, 20000);
 
   it('Listing cancellation', async () => {

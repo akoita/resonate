@@ -925,3 +925,71 @@ rg -n 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/rights
 rg -n 'JSON\.parse|eval\(' backend/src/modules/rights
 rg -n 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/components/disputes web/src/lib/verificationSemantics.ts
 ```
+
+## Addendum: #356 License-Tier Marketplace Listings
+
+Reviewed the #356 license-tier listing changes for backend listing indexing,
+metadata API output, purchase persistence, and frontend tier selection. No
+Critical or High findings were identified in the changed code.
+
+### Scope
+
+- `backend/prisma/schema.prisma`
+- `backend/prisma/migrations/20260518173000_stem_listing_license_type/migration.sql`
+- `backend/src/events/event_types.ts`
+- `backend/src/modules/contracts/contracts.service.ts`
+- `backend/src/modules/contracts/metadata.controller.ts`
+- `backend/src/modules/shared/events.gateway.ts`
+- `backend/src/tests/flow2_contracts.integration.spec.ts`
+- `web/src/app/marketplace/page.tsx`
+- `web/src/components/marketplace/BuyModal.tsx`
+- `web/src/components/marketplace/LicenseTypeSelector.tsx`
+- `web/src/components/marketplace/MintStemButton.tsx`
+- `web/src/hooks/useContracts.ts`
+- `web/src/hooks/useWebSockets.ts`
+- `web/src/lib/api.ts`
+- `web/src/styles/license-badges.css`
+- `docs/features/agent-commerce-runtime.md`
+- `docs/features/README.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- `licenseType` is constrained to the existing Prisma enum and normalized to
+  the three currently purchasable listing tiers before persistence.
+- `StemListingIntent` stores post-transaction listing metadata from the
+  frontend notification path and is keyed by transaction hash plus token ID; it
+  does not store secrets or payment proofs.
+- Marketplace listing reads continue to use Prisma query builders and enum
+  filters, not dynamic SQL.
+- The public metadata listing endpoint still returns marketplace metadata only;
+  it does not add new authentication bypasses or owner-only state.
+- Frontend tier selection renders structured React state and disables missing
+  tier listings; it does not introduce `innerHTML`, cookie handling, or exposed
+  client secrets.
+- Broad security scans still report pre-existing development secret names,
+  Prisma raw queries, and JSON parsing outside this change set. No new Critical
+  or High issue was introduced by this branch.
+
+### Commands Run
+
+```bash
+cd backend && npm run lint
+cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='flow2_contracts.integration'
+cd web && npm run lint -- src/app/marketplace/page.tsx src/components/marketplace/BuyModal.tsx src/components/marketplace/LicenseTypeSelector.tsx src/hooks/useContracts.ts src/hooks/useWebSockets.ts src/lib/api.ts
+git diff --check
+rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/
+rg 'JSON\.parse|eval\(' backend/src/
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/contracts/metadata.controller.ts backend/src/modules/contracts/contracts.service.ts
+rg '@Body\(\)|@Query\(\)|@Param\(' backend/src/modules/contracts/metadata.controller.ts
+rg 'dangerouslySetInnerHTML|innerHTML' web/src/
+rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
+rg 'document\.cookie|setCookie|httpOnly.*false' web/src/
+```

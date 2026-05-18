@@ -222,6 +222,7 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
                     seller: event.sellerAddress,
                     price: event.pricePerUnit,
                     amount: event.amount,
+                    licenseType: event.licenseType ?? 'personal',
                 });
             }
         }));
@@ -238,6 +239,7 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
                     seller: event.sellerAddress,
                     price: event.pricePerUnit,
                     amount: event.amount,
+                    licenseType: event.licenseType ?? 'personal',
                 });
             }
         }));

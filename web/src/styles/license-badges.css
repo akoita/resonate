@@ -30,6 +30,12 @@
   border: 1px solid rgba(168, 85, 247, 0.2);
 }
 
+.license-badge--personal {
+  background: rgba(139, 92, 246, 0.13);
+  color: #d8b4fe;
+  border: 1px solid rgba(139, 92, 246, 0.18);
+}
+
 .license-badge--commercial {
   background: rgba(59, 130, 246, 0.15);
   color: #60a5fa;
@@ -78,6 +84,16 @@
 .license-option:hover {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.12);
+}
+
+.license-option--disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.license-option--disabled:hover {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.06);
 }
 
 .license-option--selected {
@@ -338,4 +354,3 @@
   padding: 0 var(--space-4, 1.5rem) var(--space-4, 1.5rem);
   border-top: 1px solid rgba(255, 255, 255, 0.04);
 }
-
