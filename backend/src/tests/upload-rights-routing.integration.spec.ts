@@ -271,7 +271,7 @@ describe("UploadRightsRoutingService (integration)", () => {
   });
 
   it("persists limited monitoring for new uploaders and syncs the track route", async () => {
-    await routing.evaluateAndPersistInitialDecision({
+    const decision = await routing.evaluateAndPersistInitialDecision({
       releaseId: limitedReleaseId,
       artistId: newArtistId,
       title: "Fresh Upload",
@@ -283,10 +283,11 @@ describe("UploadRightsRoutingService (integration)", () => {
 
     expect(release?.rightsRoute).toBe("LIMITED_MONITORING");
     expect(track?.rightsRoute).toBe("LIMITED_MONITORING");
+    expect(decision.uploaderClassification).toBe("unverified_uploader");
   });
 
   it("persists standard escrow for verified uploaders", async () => {
-    await routing.evaluateAndPersistInitialDecision({
+    const decision = await routing.evaluateAndPersistInitialDecision({
       releaseId: standardReleaseId,
       artistId: verifiedArtistId,
       title: "Verified Upload",
@@ -295,10 +296,11 @@ describe("UploadRightsRoutingService (integration)", () => {
 
     const release = await prisma.release.findUnique({ where: { id: standardReleaseId } });
     expect(release?.rightsRoute).toBe("STANDARD_ESCROW");
+    expect(decision.uploaderClassification).toBe("verified_independent");
   });
 
   it("persists trusted fast path for approved sources", async () => {
-    await routing.evaluateAndPersistInitialDecision({
+    const decision = await routing.evaluateAndPersistInitialDecision({
       releaseId: trustedReleaseId,
       artistId: trustedSourceArtistId,
       title: "Distributor Upload",
@@ -307,10 +309,11 @@ describe("UploadRightsRoutingService (integration)", () => {
 
     const release = await prisma.release.findUnique({ where: { id: trustedReleaseId } });
     expect(release?.rightsRoute).toBe("TRUSTED_FAST_PATH");
+    expect(decision.uploaderClassification).toBe("trusted_source_account");
   });
 
   it("uses approved trusted-source links for direct uploads", async () => {
-    await routing.evaluateAndPersistInitialDecision({
+    const decision = await routing.evaluateAndPersistInitialDecision({
       releaseId: linkedSourceReleaseId,
       artistId: linkedSourceArtistId,
       title: "Linked Label Upload",
@@ -321,6 +324,7 @@ describe("UploadRightsRoutingService (integration)", () => {
     expect(release?.rightsRoute).toBe("TRUSTED_FAST_PATH");
     expect(release?.rightsSourceType).toBe("trusted_label");
     expect(release?.rightsReason).toContain("Verified Indie Label");
+    expect(decision.uploaderClassification).toBe("trusted_source_account");
   });
 
   it("quarantines major catalog conflicts and records review flags", async () => {

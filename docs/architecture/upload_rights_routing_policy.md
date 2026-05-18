@@ -482,14 +482,19 @@ Current implementation status:
 
 - routing states, route actions, and typed evidence schema exist in backend
   domain code;
+- upload-rights decisions expose product-facing uploader classes:
+  `unverified_uploader`, `verified_independent`, `trusted_creator`, and
+  `trusted_source_account`;
 - trusted-source registry, source-link requests, source-link review, and active
   artist/source links exist in backend/domain state;
 - upload routing consults active trusted-source links and preserves stricter
   conflict routes when metadata or content signals require review;
 - rights-route reassessment records, audit sampling, admin review actions, and
   trusted-source revocation downgrades exist in backend/API state;
-- richer creator/admin UX for source-link request management remains a follow-up
-  product surface.
+- the admin dispute queue surfaces trusted-source link requests alongside
+  release-rights requests and disputes;
+- richer artist-side source-link request management remains a follow-up product
+  surface.
 
 ## Open Questions
 

@@ -808,3 +808,59 @@ rg -n 'rawQuery|executeRaw|\$queryRaw|JSON\.parse|eval\(' backend/src/modules/x4
 rg -n 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/lib/x402Pay.ts
 rg -n '\.call\{|_safeMint|_safeTransfer|safeTransferFrom|onlyOwner|onlyRole|_checkRole|require.*msg\.sender|selfdestruct|delegatecall|tx\.origin|unchecked|assembly' contracts/src
 ```
+
+## Addendum: #472 Rights Verification Workflow
+
+Reviewed the #472 rights-verification workflow changes for backend routing
+classification, trusted-source operator review, evidence handling, and frontend
+rendering. No Critical or High findings were identified in the changed code.
+
+### Scope
+
+- `backend/src/modules/rights/upload-rights-policy.ts`
+- `backend/src/tests/upload-rights-policy.spec.ts`
+- `backend/src/tests/upload-rights-routing.integration.spec.ts`
+- `web/src/components/disputes/AdminDisputeQueue.tsx`
+- `web/src/lib/verificationSemantics.ts`
+- `docs/architecture/upload_rights_routing_policy.md`
+- `docs/features/README.md`
+- `docs/features/rights_verification_workflow.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- The backend change adds deterministic uploader classification to the existing
+  upload-rights policy. It does not add a new controller, authentication path,
+  database query shape, raw SQL, deserialization path, secret handling, or
+  environment-specific configuration value.
+- Trusted-source review actions in the admin queue use existing authenticated
+  API client methods and existing backend review endpoints.
+- The frontend renders trusted-source and evidence data as React text nodes and
+  regular links with `rel="noopener noreferrer"`; no `innerHTML` or
+  `dangerouslySetInnerHTML` path is introduced.
+- The only external URL composition added in the admin queue normalizes a
+  trusted-source domain into an HTTPS URL for reviewer convenience; it does not
+  execute user-provided markup.
+- Secret, dynamic SQL, unsafe deserialization, and frontend XSS/cookie scans
+  found no new issue in the changed files.
+
+### Commands Run
+
+```bash
+cd backend && npm run test -- upload-rights-policy.spec.ts
+cd backend && npm run test:integration -- --testPathPattern='trusted-source.service.integration|upload-rights-routing.integration|rights-route-reassessment.integration'
+cd backend && npm run lint
+cd web && npx vitest run src/lib/api.test.ts src/lib/__tests__/rightsOnboarding.test.ts
+cd web && npm run lint
+git diff --check
+rg -n 'password|secret|api_key|private_key' backend/src/modules/rights backend/src/tests/upload-rights-policy.spec.ts backend/src/tests/upload-rights-routing.integration.spec.ts --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/rights
+rg -n 'JSON\.parse|eval\(' backend/src/modules/rights
+rg -n 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/components/disputes web/src/lib/verificationSemantics.ts
+```
