@@ -141,6 +141,35 @@ describe('API Client', () => {
       expect(opts.headers.get('Authorization')).toBe('Bearer listener-token');
       expect(result.items[0].title).toBe('Cipher Loop');
     });
+
+    it('sends vibe preference overrides as recommendation query params', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            userId: 'user-1',
+            preferences: { mood: 'Focus', energy: 'low', genres: ['Ambient', 'Electronic'] },
+            items: [],
+          }),
+      });
+
+      await api.getSongRecommendations('user-1', 'listener-token', 6, {
+        mood: 'Focus',
+        energy: 'low',
+        genres: ['Ambient', 'Electronic'],
+        allowExplicit: true,
+      });
+
+      const [url] = mockFetch.mock.calls[0];
+      const parsed = new URL(url);
+      expect(parsed.pathname).toBe('/recommendations/user-1');
+      expect(parsed.searchParams.get('limit')).toBe('6');
+      expect(parsed.searchParams.get('mood')).toBe('Focus');
+      expect(parsed.searchParams.get('energy')).toBe('low');
+      expect(parsed.searchParams.get('genres')).toBe('Ambient,Electronic');
+      expect(parsed.searchParams.get('allowExplicit')).toBe('true');
+    });
   });
 
   describe('isGenerationStatusComplete', () => {

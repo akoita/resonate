@@ -23,19 +23,30 @@ describe('RecommendationsController', () => {
     it('defaults to 10 when limit is undefined', () => {
       const ctrl = makeController();
       ctrl.getRecommendations('user-1', undefined);
-      expect(mockService.getRecommendations).toHaveBeenCalledWith('user-1', 10);
+      expect(mockService.getRecommendations).toHaveBeenCalledWith('user-1', 10, {});
     });
 
     it('parses valid limit', () => {
       const ctrl = makeController();
       ctrl.getRecommendations('user-1', '15');
-      expect(mockService.getRecommendations).toHaveBeenCalledWith('user-1', 15);
+      expect(mockService.getRecommendations).toHaveBeenCalledWith('user-1', 15, {});
     });
 
     it('falls back to 10 for NaN', () => {
       const ctrl = makeController();
       ctrl.getRecommendations('user-1', 'abc');
-      expect(mockService.getRecommendations).toHaveBeenCalledWith('user-1', 10);
+      expect(mockService.getRecommendations).toHaveBeenCalledWith('user-1', 10, {});
+    });
+
+    it('passes vibe query overrides to the recommendation service', () => {
+      const ctrl = makeController();
+      ctrl.getRecommendations('user-1', '6', 'Focus', 'Ambient,Electronic', 'medium', 'true');
+      expect(mockService.getRecommendations).toHaveBeenCalledWith('user-1', 6, {
+        mood: 'Focus',
+        genres: ['Ambient', 'Electronic'],
+        energy: 'medium',
+        allowExplicit: true,
+      });
     });
   });
 });

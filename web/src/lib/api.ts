@@ -334,6 +334,7 @@ export type Release = {
   primaryArtist?: string | null;
   featuredArtists?: string | null;
   genre?: string | null;
+  moods?: string[];
   label?: string | null;
   releaseDate?: string | null;
   explicit: boolean;
@@ -1109,6 +1110,7 @@ export async function createRelease(
     primaryArtist?: string;
     featuredArtists?: string[];
     genre?: string;
+    moods?: string[];
     label?: string;
     releaseDate?: string;
     explicit?: boolean;
@@ -1231,6 +1233,7 @@ export type SongRecommendationItem = {
   releaseId?: string;
   releaseTitle?: string;
   genre?: string | null;
+  moods?: string[];
   score?: number;
   reasons?: string[];
 };
@@ -1250,8 +1253,20 @@ export async function getSongRecommendations(
   userId: string,
   token: string,
   limit = 6,
+  preferences?: {
+    mood?: string;
+    energy?: "low" | "medium" | "high";
+    genres?: string[];
+    allowExplicit?: boolean;
+  },
 ): Promise<SongRecommendationsResponse> {
   const params = new URLSearchParams({ limit: String(limit) });
+  if (preferences?.mood) params.set("mood", preferences.mood);
+  if (preferences?.energy) params.set("energy", preferences.energy);
+  if (preferences?.genres?.length) params.set("genres", preferences.genres.join(","));
+  if (preferences?.allowExplicit !== undefined) {
+    params.set("allowExplicit", String(preferences.allowExplicit));
+  }
   return apiRequest<SongRecommendationsResponse>(
     `/recommendations/${encodeURIComponent(userId)}?${params}`,
     {},

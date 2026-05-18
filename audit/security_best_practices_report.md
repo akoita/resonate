@@ -217,6 +217,67 @@ rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|O
 rg -n 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/agents/agent_recommendation.adapter.ts backend/src/modules/agents/agent_recommendation.service.ts backend/src/modules/agents/deterministic_recommendation.adapter.ts backend/src/modules/agents/agent_orchestrator.service.ts backend/src/modules/agents/agent_runtime.providers.ts backend/src/events/event_types.ts
 ```
 
+## Addendum: #279 Mood And Vibe Discovery
+
+Reviewed the functional mood/vibe discovery branch. No Critical or High
+findings were identified in the changed code.
+
+### Scope
+
+- `backend/prisma/schema.prisma`
+- `backend/src/events/event_types.ts`
+- `backend/src/modules/catalog/catalog.controller.ts`
+- `backend/src/modules/catalog/catalog.service.ts`
+- `backend/src/modules/ingestion/ingestion.service.ts`
+- `backend/src/modules/recommendations/recommendations.controller.ts`
+- `backend/src/modules/recommendations/recommendations.service.ts`
+- `backend/src/tests/recommendations.controller.spec.ts`
+- `backend/src/tests/recommendations.integration.spec.ts`
+- `web/src/app/artist/upload/page.tsx`
+- `web/src/app/page.tsx`
+- `web/src/lib/api.ts`
+- `web/src/lib/api.test.ts`
+- `web/src/styles/home-nextgen.css`
+- `docs/features/README.md`
+- `docs/features/mood_vibe_discovery.md`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none.
+- Low: none in the changed code.
+
+### Notes
+
+- Mood and genre overrides are request-scoped recommendation inputs; they do
+  not replace persisted listener preferences unless the existing preference API
+  is called.
+- Artist-provided mood tags are normalized, bounded to eight entries, and
+  stored as release metadata. They are not executed, rendered as HTML, or used
+  to construct raw SQL.
+- The new Home vibe signal records structured metadata through the existing
+  authenticated agent signal endpoint.
+- Broad scans still show pre-existing raw Prisma template queries and guarded
+  JSON parsing in the ingestion/catalog modules. No new unsafe deserialization,
+  dynamic SQL, secret handling, authentication bypass, or client-side XSS sink
+  was introduced by this branch.
+
+### Commands Run
+
+```bash
+cd backend && npm run lint
+cd backend && npm test
+cd backend && npm run test:integration -- --testPathPattern='catalog.mcp.integration|recommendations.integration'
+cd web && npm run lint
+cd web && npm run test:unit
+git diff --check
+rg -n "password|secret|api_key|private_key" backend/src/modules/catalog backend/src/modules/recommendations backend/src/modules/ingestion backend/src/events --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n "rawQuery|executeRaw|\$queryRaw" backend/src/modules/catalog backend/src/modules/recommendations backend/src/modules/ingestion backend/src/events
+rg -n "JSON\.parse|eval\(" backend/src/modules/catalog backend/src/modules/recommendations backend/src/modules/ingestion backend/src/events
+rg -n "dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false" web/src/app/page.tsx web/src/app/artist/upload/page.tsx web/src/lib/api.ts
+```
+
 ## Addendum: Stablecoin-First Checkout, AI Generation Provenance, and Catalog Actions
 
 Reviewed the combined branch for listener purchase defaults, catalog action

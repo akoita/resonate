@@ -101,6 +101,7 @@ model Release {
   primaryArtist         String?
   featuredArtists       String?
   genre                 String?
+  moods                 String[]                      @default([])
   label                 String?
   releaseDate           DateTime?
   explicit              Boolean                       @default(false)
