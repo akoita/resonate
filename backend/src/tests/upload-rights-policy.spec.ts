@@ -1,4 +1,5 @@
 import {
+  classifyUploader,
   evaluateUploadRightsDecision,
   getUploadRightsActions,
   parseTrustedSourceTypes,
@@ -16,6 +17,7 @@ describe("upload rights policy", () => {
     });
 
     expect(decision.route).toBe("LIMITED_MONITORING");
+    expect(decision.uploaderClassification).toBe("unverified_uploader");
     expect(decision.flags).toContain("NEEDS_PROOF_OF_CONTROL");
     expect(decision.actions.marketplaceAllowed).toBe(false);
   });
@@ -31,7 +33,22 @@ describe("upload rights policy", () => {
     });
 
     expect(decision.route).toBe("STANDARD_ESCROW");
+    expect(decision.uploaderClassification).toBe("verified_independent");
     expect(decision.actions.marketplaceAllowed).toBe(true);
+  });
+
+  it("distinguishes trusted creators from verified independent uploaders", () => {
+    const decision = evaluateUploadRightsDecision({
+      sourceType: "direct_upload",
+      trustedSourceTypes: ["trusted_distributor"],
+      uploaderTier: "trusted",
+      hasMetadataConflict: false,
+      hasQuarantinedContent: false,
+      hasDmcaContent: false,
+    });
+
+    expect(decision.route).toBe("STANDARD_ESCROW");
+    expect(decision.uploaderClassification).toBe("trusted_creator");
   });
 
   it("routes trusted sources to trusted fast path", () => {
@@ -45,6 +62,7 @@ describe("upload rights policy", () => {
     });
 
     expect(decision.route).toBe("TRUSTED_FAST_PATH");
+    expect(decision.uploaderClassification).toBe("trusted_source_account");
     expect(decision.actions.payoutRelease).toBe("trusted");
   });
 
@@ -94,5 +112,14 @@ describe("upload rights policy", () => {
     expect(parseTrustedSourceTypes("direct_upload,trusted_distributor")).toEqual([
       "trusted_distributor",
     ]);
+  });
+
+  it("classifies uploader verification states for product and ops surfaces", () => {
+    expect(classifyUploader({ uploaderTier: "new" })).toBe("unverified_uploader");
+    expect(classifyUploader({ uploaderTier: "verified" })).toBe("verified_independent");
+    expect(classifyUploader({ uploaderTier: "trusted" })).toBe("trusted_creator");
+    expect(classifyUploader({ trustedSourceType: true, uploaderTier: "new" })).toBe(
+      "trusted_source_account",
+    );
   });
 });
