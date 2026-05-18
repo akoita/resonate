@@ -76,6 +76,13 @@
 .aid-command-mode     { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
 .aid-command-cta      { flex: 0 0 auto; }
 
+/* Page-level command bar variant (page.tsx) */
+.aid-command-info    { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.aid-command-name    { font-size: 0.95rem; font-weight: 700; color: #f0eaff; }
+.aid-command-status  { font-size: 0.72rem; color: rgba(240,234,255,0.45); }
+.aid-command-status.active { color: #4ade80; }
+.aid-command-actions { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; flex-wrap: wrap; }
+
 /* ── Orb ────────────────────────────────────────────────── */
 .aid-orb-wrap {
   position: relative;

@@ -359,17 +359,32 @@
 /* ── History card ───────────────────────────────────────── */
 .aid-history-list     { display: flex; flex-direction: column; gap: 8px; }
 .aid-history-item {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  padding: 12px;
   border-radius: 12px;
   background: rgba(255,255,255,0.025);
   border: 1px solid rgba(255,255,255,0.06);
-  cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
 .aid-history-item:hover { background: rgba(255,255,255,0.05); border-color: rgba(124,58,237,0.25); }
+.aid-history-item[open] .aid-history-chevron { transform: rotate(180deg); }
+
+.aid-history-summary {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+.aid-history-summary::-webkit-details-marker { display: none; }
+
+.aid-history-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 12px 12px;
+  max-height: 320px;
+  overflow-y: auto;
+}
 
 .aid-history-indicator {
   width: 3px;
@@ -406,7 +421,7 @@
 .aid-history-duration{ font-size: 0.7rem; color: rgba(240,234,255,0.4); }
 .aid-history-spend   { font-size: 0.75rem; font-weight: 700; color: #4ade80; }
 .aid-history-stats   { display: flex; flex-wrap: wrap; gap: 6px; }
-.aid-history-chevron { flex-shrink: 0; color: rgba(240,234,255,0.25); }
+.aid-history-chevron { flex-shrink: 0; color: rgba(240,234,255,0.25); transition: transform 0.2s ease; }
 
 .aid-history-tracks { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 .aid-history-license {
