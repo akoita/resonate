@@ -354,6 +354,46 @@
   border-color: var(--ds-primary);
 }
 
+.home-ng .ng-vibe-session-strip {
+  width: calc(100% - (var(--ds-margin) * 2));
+  max-width: var(--ds-content);
+  margin: calc(var(--ds-stack-md) * -0.35) auto var(--ds-stack-lg);
+  padding: 18px 20px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 96px;
+}
+
+.home-ng .ng-vibe-session-strip > div {
+  min-width: 0;
+}
+
+.home-ng .ng-vibe-session-strip strong {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--ds-font-display);
+  font-size: 22px;
+  line-height: 1.1;
+  color: #fff;
+}
+
+.home-ng .ng-vibe-session-strip p {
+  margin: 6px 0 0;
+  max-width: 640px;
+  color: var(--ds-text-secondary);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.home-ng .ng-vibe-session-strip .ng-btn {
+  flex: 0 0 auto;
+  min-width: 184px;
+  justify-content: center;
+}
+
 /* ---------- Catalog browser / upload operations ---------------- */
 
 .home-ng .ng-catalog-shell,
@@ -1664,6 +1704,7 @@
   .home-ng .ng-grid-5 { grid-template-columns: repeat(3, 1fr); }
   .home-ng .ng-section { padding: 0 24px; }
   .home-ng .ng-chips { padding: 0 24px; }
+  .home-ng .ng-vibe-session-strip { width: calc(100% - 48px); }
   .home-ng .ng-hero { aspect-ratio: auto; min-height: 360px; padding: 28px; }
   .home-ng .ng-hero__card { padding: 28px; }
   .home-ng .ng-hero__title { font-size: 36px; }
@@ -1680,6 +1721,16 @@
   .home-ng .ng-grid-5 { grid-template-columns: repeat(2, 1fr); gap: 16px; }
   .home-ng .ng-section { padding: 0 16px; margin-bottom: 32px; }
   .home-ng .ng-chips { padding: 0 16px; }
+  .home-ng .ng-vibe-session-strip {
+    width: calc(100% - 32px);
+    align-items: stretch;
+    flex-direction: column;
+    padding: 16px;
+  }
+  .home-ng .ng-vibe-session-strip .ng-btn {
+    width: 100%;
+    min-width: 0;
+  }
   .home-ng .ng-catalog-shell,
   .home-ng .ng-ops-panel { padding: 16px; }
   .home-ng .ng-catalog-header,

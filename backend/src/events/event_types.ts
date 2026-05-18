@@ -18,6 +18,7 @@ export interface StemsUploadedEvent extends BaseEvent {
     primaryArtist?: string;
     featuredArtists?: string[];
     genre?: string;
+    moods?: string[];
     label?: string;
     releaseDate?: string;
     explicit?: boolean;

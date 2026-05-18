@@ -32,6 +32,7 @@ describe('RecommendationsService (integration)', () => {
         artistId: `${TEST_PREFIX}artist`,
         status: 'published',
         genre: 'Hip Hop',
+        moods: ['Focus', 'Late Night'],
       },
     });
     await prisma.track.createMany({
@@ -52,13 +53,30 @@ describe('RecommendationsService (integration)', () => {
 
   it('returns recommended tracks with preferences', async () => {
     const service = new RecommendationsService(new EventBus());
-    service.setPreferences(`${TEST_PREFIX}user`, { energy: 'high', genres: ['Hip Hop'] });
+    service.setPreferences(`${TEST_PREFIX}user`, { energy: 'high', genres: ['Hip Hop'], mood: 'Focus' });
 
     const result = await service.getRecommendations(`${TEST_PREFIX}user`, 2);
     expect(result.items.length).toBeGreaterThanOrEqual(1);
     expect(result.preferences.energy).toBe('high');
     expect(result.items[0].genre).toBe('Hip Hop');
+    expect(result.items[0].moods).toContain('Focus');
     expect(result.items[0].reasons).toContain('genre:Hip Hop');
+    expect(result.items[0].reasons).toContain('mood:Focus');
+  });
+
+  it('accepts per-request vibe overrides without replacing stored preferences', async () => {
+    const service = new RecommendationsService(new EventBus());
+    service.setPreferences(`${TEST_PREFIX}user`, { genres: ['Jazz'] });
+
+    const result = await service.getRecommendations(`${TEST_PREFIX}user`, 2, {
+      mood: 'Late Night',
+      genres: ['Hip Hop'],
+    });
+
+    expect(result.preferences.genres).toEqual(['Hip Hop']);
+    expect(result.preferences.mood).toBe('Late Night');
+    expect(service.getPreferences(`${TEST_PREFIX}user`).genres).toEqual(['Jazz']);
+    expect(result.items[0].reasons).toEqual(expect.arrayContaining(['mood:Late Night']));
   });
 
   it('returns tracks from real DB when no preferences set', async () => {

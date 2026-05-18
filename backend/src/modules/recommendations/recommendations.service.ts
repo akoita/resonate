@@ -40,8 +40,8 @@ export class RecommendationsService {
     return this.preferences.get(userId) ?? {};
   }
 
-  async getRecommendations(userId: string, limit = 10) {
-    const prefs = this.getPreferences(userId);
+  async getRecommendations(userId: string, limit = 10, preferenceOverrides?: UserPreferences) {
+    const prefs = { ...this.getPreferences(userId), ...(preferenceOverrides ?? {}) };
     const allowExplicit = prefs.allowExplicit ?? false;
     const normalizedGenres = (prefs.genres ?? [])
       .map((genre) => genre.trim())
@@ -72,6 +72,7 @@ export class RecommendationsService {
     const recent = this.recentTrackIds.get(userId) ?? [];
     const scored = candidates.map((track) => {
       const genre = track.release.genre ?? "";
+      const moods = track.release.moods ?? [];
       const reasons: string[] = [];
       let score = 0;
 
@@ -90,9 +91,10 @@ export class RecommendationsService {
         if (
           track.title.toLowerCase().includes(moodNeedle) ||
           track.release.title.toLowerCase().includes(moodNeedle) ||
-          genre.toLowerCase().includes(moodNeedle)
+          genre.toLowerCase().includes(moodNeedle) ||
+          moods.some((mood) => mood.toLowerCase().includes(moodNeedle))
         ) {
-          score += 20;
+          score += 35;
           reasons.push(`mood:${normalizedMood}`);
         }
       }
@@ -147,6 +149,7 @@ export class RecommendationsService {
         releaseId: track.releaseId,
         releaseTitle: track.release.title,
         genre: track.release.genre,
+        moods: track.release.moods,
         score: Math.max(0, score),
         reasons: reasons.filter((reason) => reason !== "recently_played"),
       })),

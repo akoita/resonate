@@ -14,11 +14,27 @@ export class RecommendationsController {
 
   @UseGuards(AuthGuard("jwt"))
   @Get(":userId")
-  getRecommendations(@Param("userId") userId: string, @Query("limit") limit?: string) {
+  getRecommendations(
+    @Param("userId") userId: string,
+    @Query("limit") limit?: string,
+    @Query("mood") mood?: string,
+    @Query("genres") genres?: string,
+    @Query("energy") energy?: "low" | "medium" | "high",
+    @Query("allowExplicit") allowExplicit?: string,
+  ) {
     const parsed = limit ? Number(limit) : 10;
+    const parsedEnergy = energy === "low" || energy === "medium" || energy === "high"
+      ? energy
+      : undefined;
     return this.recommendationsService.getRecommendations(
       userId,
-      Number.isNaN(parsed) ? 10 : parsed
+      Number.isNaN(parsed) ? 10 : parsed,
+      {
+        ...(mood ? { mood } : {}),
+        ...(genres ? { genres: genres.split(",").map((genre) => genre.trim()).filter(Boolean) } : {}),
+        ...(parsedEnergy ? { energy: parsedEnergy } : {}),
+        ...(allowExplicit === undefined ? {} : { allowExplicit: allowExplicit === "true" }),
+      },
     );
   }
 }

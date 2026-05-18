@@ -35,6 +35,7 @@ interface UploadRecord {
     primaryArtist?: string;
     featuredArtists?: string[];
     genre?: string;
+    moods?: string[];
     isrc?: string;
     label?: string;
     releaseDate?: string;
