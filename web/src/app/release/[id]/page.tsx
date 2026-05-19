@@ -48,10 +48,7 @@ import { summarizeProcessingFailure } from "../../../components/release/processi
 import ReleaseContentProtection from "../../../components/content-protection/ReleaseContentProtection";
 import ReportContentModal from "../../../components/disputes/ReportContentModal";
 import ReleaseRightsUpgradeModal from "../../../components/rights/ReleaseRightsUpgradeModal";
-import {
-  isStakeCappedListingPrice,
-  resolveStakeSafeListingPriceWei,
-} from "../../../lib/stakeSafeListingPrice";
+import { DEFAULT_MARKETPLACE_LISTING_PRICE_WEI } from "../../../lib/stakeSafeListingPrice";
 import {
   RIGHTS_VERIFICATION_COPY,
   normalizeRightsVerificationState,
@@ -453,14 +450,7 @@ export default function ReleaseDetails() {
       ? "Marketplace access is approved. Mint & List will protect this release on-chain first, then continue with the selected stems."
       : mintingBlockedReason
     : null;
-  const effectiveListingPriceWei = resolveStakeSafeListingPriceWei({
-    trustTier,
-    releaseProtection,
-  });
-  const listingPriceCapped = isStakeCappedListingPrice({
-    trustTier,
-    releaseProtection,
-  });
+  const requestedListingPriceWei = DEFAULT_MARKETPLACE_LISTING_PRICE_WEI;
 
   const handleRetryProcessing = useCallback(async () => {
     if (!token || !release?.id) return;
@@ -2170,7 +2160,9 @@ export default function ReleaseDetails() {
                                   <MintStemButton
                                     stemId={stem.id}
                                     stemType={stem.type}
-                                    listingPricePerUnit={effectiveListingPriceWei}
+                                    listingPricePerUnit={requestedListingPriceWei}
+                                    releaseProtection={releaseProtection}
+                                    trustTier={trustTier}
                                     onBeforeMint={
                                       needsAttestationForMinting && canCompleteAttestation
                                         ? completeAttestationForMinting
@@ -2219,8 +2211,9 @@ export default function ReleaseDetails() {
       {batchModalStems && batchModalStems.length > 0 && (
         <BatchMintListModal
           stems={batchModalStems}
-          listingPriceWei={effectiveListingPriceWei}
-          listingPriceCapped={listingPriceCapped}
+          listingPriceWei={requestedListingPriceWei}
+          releaseProtection={releaseProtection}
+          trustTier={trustTier}
           releaseProtectionId={batchModalProtectionId}
           resolveReleaseProtectionId={resolveBatchReleaseProtectionId}
           onClose={() => {
