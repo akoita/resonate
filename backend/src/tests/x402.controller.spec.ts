@@ -219,31 +219,26 @@ describe('X402Controller', () => {
 
     await controller.downloadWithPayment('stem_listed', req, res);
 
-    const decodedReceipt = JSON.parse(
-      Buffer.from(res.headers['X-Resonate-Receipt'], 'base64url').toString(
-        'utf8',
-      ),
-    );
-
-    expect(decodedReceipt.settlement).toEqual(expect.objectContaining({
+    expect(res.statusCode).toBe(409);
+    expect(res.body.error).toBe('Marketplace contract settlement required');
+    expect(res.body.settlement).toEqual(expect.objectContaining({
       status: 'contract_required_missing',
       entitlement: 'marketplace_purchase',
       listingId: '841',
       listingChainId: 84532,
       tokenId: '77',
     }));
-    expect(res.headers['X-Resonate-Settlement-Status']).toBe(
-      'contract_required_missing',
-    );
     expect(prisma.x402Settlement.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         stemId: 'stem_listed',
         listingId: 'listing_row_1',
         listingChainId: 84532,
         listingTokenId: BigInt(77),
+        status: 'contract_settlement_failed',
         contractSettlementStatus: 'contract_required_missing',
       }),
     });
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it('marks listed x402 receipts contract-backed after marketplace settlement succeeds', async () => {
@@ -755,7 +750,10 @@ describe('X402Controller', () => {
       nftMint: { tokenId: BigInt(42) },
     });
     prisma.stemListing.findFirst.mockResolvedValue({
+      listingId: BigInt(123),
+      chainId: 84532,
       pricePerUnit: '12300000000000000',
+      paymentToken: '0x0000000000000000000000000000000000000000',
     });
     prisma.stemPricing.findUnique.mockResolvedValue({
       basePlayPriceUsd: 0.05,
@@ -885,6 +883,14 @@ describe('X402Controller', () => {
         scheme: 'exact',
         endpoint: '/api/stems/stem_1/x402',
         quoteUrl: '/api/stems/stem_1/x402/info',
+      },
+      marketplaceSettlement: {
+        required: true,
+        available: false,
+        contractSettlementEnabled: false,
+        listingId: '123',
+        chainId: 84532,
+        paymentToken: '0x0000000000000000000000000000000000000000',
       },
     });
   });

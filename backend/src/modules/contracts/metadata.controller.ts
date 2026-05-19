@@ -1931,6 +1931,22 @@ export class MetadataController {
             licenseType: body.licenseType ?? "personal",
           },
         }).catch((e) => this.logger.warn(`Failed to store listing intent: ${e}`));
+
+        await prisma.stemListing.updateMany({
+          where: {
+            transactionHash: body.transactionHash,
+            tokenId: BigInt(body.tokenId),
+            chainId,
+          },
+          data: {
+            stemId: body.stemId,
+            sellerAddress: body.seller?.toLowerCase(),
+            pricePerUnit: body.price,
+            amount: body.amount ? BigInt(body.amount) : undefined,
+            paymentToken: body.paymentToken,
+            licenseType: body.licenseType ?? "personal",
+          },
+        }).catch((e) => this.logger.warn(`Failed to reconcile listing intent: ${e}`));
       }
 
       // Broadcast WebSocket notification for instant UI feedback.
@@ -1947,6 +1963,7 @@ export class MetadataController {
         sellerAddress: (body.seller || "").toLowerCase(),
         amount: body.amount || "1",
         pricePerUnit: body.price || "10000000000000000",
+        paymentToken: body.paymentToken,
         licenseType: body.licenseType ?? "personal",
         stemId: body.stemId,
         transactionHash: body.transactionHash,

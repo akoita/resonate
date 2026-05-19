@@ -101,6 +101,19 @@ describe('Choreography Flow 2: Contract Indexing → Marketplace Lifecycle', () 
     expect(stemAfterMint!.ipnftId).toBe(tokenId);
 
     // Step 2: List
+    await prisma.stemListingIntent.create({
+      data: {
+        transactionHash: `0x${P}list_tx`,
+        tokenId: BigInt(tokenId),
+        stemId,
+        chainId,
+        sellerAddress: '0xcreator',
+        pricePerUnit: '50000',
+        amount: 5n,
+        paymentToken: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+        licenseType: 'remix',
+      },
+    });
     const listEvent: ContractStemListedEvent = {
       eventName: 'contract.stem_listed',
       eventVersion: 1,
@@ -109,7 +122,7 @@ describe('Choreography Flow 2: Contract Indexing → Marketplace Lifecycle', () 
       sellerAddress: '0xCreator',
       tokenId,
       amount: '5',
-      pricePerUnit: '50000000000000000',
+      pricePerUnit: '50000',
       paymentToken: '0x0000000000000000000000000000000000000000',
       licenseType: 'remix',
       expiresAt: String(Math.floor(Date.now() / 1000) + 86400),
@@ -127,6 +140,7 @@ describe('Choreography Flow 2: Contract Indexing → Marketplace Lifecycle', () 
     expect(listing).not.toBeNull();
     expect(listing!.status).toBe('active');
     expect(listing!.licenseType).toBe('remix');
+    expect(listing!.paymentToken).toBe('0x036CbD53842c5426634e7929541eC2318f3dCF7e');
 
     const commercialListEvent: ContractStemListedEvent = {
       ...listEvent,
@@ -158,7 +172,7 @@ describe('Choreography Flow 2: Contract Indexing → Marketplace Lifecycle', () 
       listingId: '10',
       buyerAddress: '0xBuyer',
       amount: '5',
-      totalPaid: '250000000000000000',
+      totalPaid: '250000',
       chainId,
       contractAddress: contractAddr,
       transactionHash: `0x${P}sold_tx`,
@@ -177,9 +191,9 @@ describe('Choreography Flow 2: Contract Indexing → Marketplace Lifecycle', () 
     });
     expect(purchase).not.toBeNull();
     expect(purchase!.buyerAddress).toBe('0xbuyer');
-    expect(purchase!.paymentToken).toBe('0x0000000000000000000000000000000000000000');
-    expect(purchase!.paymentAssetSymbol).toBe('ETH');
-    expect(purchase!.settlementAmountUnits).toBe('250000000000000000');
+    expect(purchase!.paymentToken).toBe('0x036cbd53842c5426634e7929541ec2318f3dcf7e');
+    expect(purchase!.paymentAssetSymbol).toBe('TOKEN');
+    expect(purchase!.settlementAmountUnits).toBe('250000');
     expect(purchase!.licenseType).toBe('remix');
   }, 20000);
 

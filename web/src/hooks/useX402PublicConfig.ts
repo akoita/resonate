@@ -11,6 +11,7 @@ export type X402PublicConfig =
       chainId: number;
       facilitatorUrl: string;
       payoutAddress: string;
+      contractSettlementEnabled: boolean;
       asset: {
         assetId: string;
         address: string;

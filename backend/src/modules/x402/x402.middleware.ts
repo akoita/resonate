@@ -54,14 +54,12 @@ export class X402Middleware implements NestMiddleware {
       return next();
     }
 
-    if (this.x402Config.contractSettlementEnabled) {
-      const listedSettlementCheck = await this.validateListedStemSettlementRequest(req, stemId);
-      if (!listedSettlementCheck.ok) {
-        return res.status(listedSettlementCheck.status).json({
-          error: listedSettlementCheck.error,
-          message: listedSettlementCheck.message,
-        });
-      }
+    const listedSettlementCheck = await this.validateListedStemSettlementRequest(req, stemId);
+    if (!listedSettlementCheck.ok) {
+      return res.status(listedSettlementCheck.status).json({
+        error: listedSettlementCheck.error,
+        message: listedSettlementCheck.message,
+      });
     }
 
     // AgentCash/x402 v2 retries with PAYMENT-SIGNATURE, while older flows may
@@ -193,6 +191,16 @@ export class X402Middleware implements NestMiddleware {
     });
     if (!listing) {
       return { ok: true as const };
+    }
+
+    if (!this.x402Config.contractSettlementEnabled) {
+      return {
+        ok: false as const,
+        status: 409,
+        error: 'Marketplace settlement unavailable',
+        message:
+          'This stem has an active marketplace listing. x402 checkout is disabled until marketplace contract settlement is configured.',
+      };
     }
 
     const buyer = this.resolveBuyerAddress(req);

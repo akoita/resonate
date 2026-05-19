@@ -642,7 +642,7 @@ export class ContractsService implements OnModuleInit {
           sellerAddress: event.sellerAddress.toLowerCase(),
           pricePerUnit: event.pricePerUnit,
           amount: BigInt(event.amount),
-          paymentToken: event.paymentToken,
+          paymentToken: listingIntent?.paymentToken ?? event.paymentToken,
           expiresAt,
           transactionHash: event.transactionHash,
           blockNumber: BigInt(event.blockNumber),
@@ -1231,10 +1231,12 @@ export class ContractsService implements OnModuleInit {
       // We don't take/skip yet because we need to deduplicate in-memory
     });
 
+    const hydratedListings = await this.hydrateListingsFromIntents(listings);
+
     // Deduplicate: Keep only the latest listing for each (tokenId, sellerAddress, chainId, licenseType)
     // Since we ordered by listedAt desc, the first one we encounter is the most recent
-    const dedupedMap = new Map<string, typeof listings[number]>();
-    for (const l of listings) {
+    const dedupedMap = new Map<string, typeof hydratedListings[number]>();
+    for (const l of hydratedListings) {
       const key = `${l.chainId}-${l.tokenId}-${l.sellerAddress.toLowerCase()}-${l.licenseType}`;
       if (!dedupedMap.has(key)) {
         dedupedMap.set(key, l);
@@ -1263,6 +1265,72 @@ export class ContractsService implements OnModuleInit {
 
     // Apply pagination manually after deduplication + sorting
     return sorted.slice(offset, offset + limit);
+  }
+
+  private async hydrateListingsFromIntents<T extends {
+    id: string;
+    transactionHash: string;
+    tokenId: bigint;
+    paymentToken: string;
+    pricePerUnit: string;
+  }>(listings: T[]): Promise<T[]> {
+    const nativeListings = listings.filter((listing) =>
+      listing.paymentToken.toLowerCase() === ZERO_PAYMENT_TOKEN,
+    );
+    if (nativeListings.length === 0) return listings;
+
+    const intents = await prisma.stemListingIntent.findMany({
+      where: {
+        OR: nativeListings.map((listing) => ({
+          transactionHash: listing.transactionHash,
+          tokenId: listing.tokenId,
+        })),
+      },
+      select: {
+        transactionHash: true,
+        tokenId: true,
+        paymentToken: true,
+        pricePerUnit: true,
+      },
+    });
+    if (intents.length === 0) return listings;
+
+    const intentByListingKey = new Map<string, typeof intents[number]>();
+    for (const intent of intents) {
+      if (intent.tokenId === null) continue;
+      intentByListingKey.set(`${intent.transactionHash}:${intent.tokenId.toString()}`, intent);
+    }
+    const updates: Promise<unknown>[] = [];
+
+    const hydrated = listings.map((listing) => {
+      if (listing.paymentToken.toLowerCase() !== ZERO_PAYMENT_TOKEN) return listing;
+      const intent = intentByListingKey.get(`${listing.transactionHash}:${listing.tokenId.toString()}`);
+      if (!intent?.paymentToken || intent.paymentToken.toLowerCase() === ZERO_PAYMENT_TOKEN) return listing;
+
+      const data = {
+        paymentToken: intent.paymentToken,
+        pricePerUnit: intent.pricePerUnit ?? listing.pricePerUnit,
+      };
+      updates.push(
+        prisma.stemListing.update({
+          where: { id: listing.id },
+          data,
+        }).catch((error) => {
+          this.logger.warn(`Failed to hydrate listing payment token from intent: ${error}`);
+        }),
+      );
+
+      return {
+        ...listing,
+        ...data,
+      };
+    });
+
+    if (updates.length > 0) {
+      await Promise.all(updates);
+    }
+
+    return hydrated;
   }
 
   /**
