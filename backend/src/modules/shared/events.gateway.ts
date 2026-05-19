@@ -221,6 +221,7 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
                     tokenId: event.tokenId,
                     seller: event.sellerAddress,
                     price: event.pricePerUnit,
+                    paymentToken: event.paymentToken,
                     amount: event.amount,
                     licenseType: event.licenseType ?? 'personal',
                 });

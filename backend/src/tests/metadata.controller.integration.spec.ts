@@ -79,7 +79,12 @@ describe('MetadataController (integration)', () => {
     const eventBus = new EventBus();
     const trustService = new TrustService(new ConfigService());
     contractsService = new ContractsService(eventBus as any, trustService);
-    controller = new MetadataController(contractsService);
+    controller = new MetadataController(
+      contractsService,
+      undefined as any,
+      undefined as any,
+      eventBus,
+    );
 
     await prisma.curatorReputation.create({
       data: {
@@ -141,6 +146,7 @@ describe('MetadataController (integration)', () => {
     await prisma.releaseRightsUpgradeRequest.deleteMany({ where: { releaseId: `${TEST_PREFIX}release` } }).catch(() => {});
     await prisma.dispute.deleteMany({ where: { tokenId: `${TEST_PREFIX}typed-token` } }).catch(() => {});
     await prisma.curatorReputation.deleteMany({ where: { walletAddress: creatorWalletAddress } }).catch(() => {});
+    await prisma.stemListingIntent.deleteMany({ where: { stemId } }).catch(() => {});
     await prisma.stemListing.deleteMany({ where: { stemId } }).catch(() => {});
     await prisma.stemNftMint.deleteMany({ where: { stemId } }).catch(() => {});
     await prisma.stem.deleteMany({ where: { trackId: `${TEST_PREFIX}track` } }).catch(() => {});
@@ -222,6 +228,116 @@ describe('MetadataController (integration)', () => {
         expect(listing!.paymentToken).toBe(paymentToken);
         expect(listing!.price).toBe('50000');
       } finally {
+        await prisma.stemListing.deleteMany({ where: { transactionHash } });
+      }
+    });
+
+    it('hydrates an indexed listing when the frontend listing intent arrives after the indexer', async () => {
+      const previousChainId = process.env.AA_CHAIN_ID;
+      process.env.AA_CHAIN_ID = '31337';
+      const transactionHash = '0x' + 'f'.repeat(64);
+      const stablecoinToken = ('0x' + '4'.repeat(40)).toLowerCase();
+
+      await prisma.stemListing.create({
+        data: {
+          listingId: 859n,
+          stemId,
+          tokenId: 42n,
+          chainId: 31337,
+          contractAddress: '0xMarketplace',
+          sellerAddress: creatorWalletAddress,
+          pricePerUnit: '0',
+          amount: 1n,
+          paymentToken: '0x0000000000000000000000000000000000000000',
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+          transactionHash,
+          blockNumber: 104n,
+          status: 'active',
+          listedAt: new Date(),
+        },
+      });
+
+      try {
+        await controller.notifyListingCreated({
+          tokenId: '42',
+          seller: creatorWalletAddress,
+          price: '50000',
+          amount: '1',
+          paymentToken: stablecoinToken,
+          durationSeconds: '86400',
+          transactionHash,
+          stemId,
+          licenseType: 'personal',
+        });
+
+        const listing = await prisma.stemListing.findFirst({
+          where: { transactionHash, listingId: 859n },
+        });
+        expect(listing).not.toBeNull();
+        expect(listing!.paymentToken).toBe(stablecoinToken);
+        expect(listing!.pricePerUnit).toBe('50000');
+        expect(listing!.sellerAddress).toBe(creatorWalletAddress);
+      } finally {
+        if (previousChainId === undefined) {
+          delete process.env.AA_CHAIN_ID;
+        } else {
+          process.env.AA_CHAIN_ID = previousChainId;
+        }
+        await prisma.stemListingIntent.deleteMany({ where: { transactionHash } });
+        await prisma.stemListing.deleteMany({ where: { transactionHash } });
+      }
+    });
+
+    it('backfills native fallback listing rows from stored listing intents', async () => {
+      const transactionHash = '0x' + 'b'.repeat(64);
+      const stablecoinToken = ('0x' + '5'.repeat(40)).toLowerCase();
+
+      await prisma.stemListingIntent.create({
+        data: {
+          transactionHash,
+          tokenId: 42n,
+          chainId: 31337,
+          stemId,
+          sellerAddress: creatorWalletAddress,
+          pricePerUnit: '50000',
+          amount: 1n,
+          paymentToken: stablecoinToken,
+          licenseType: 'personal',
+        },
+      });
+      await prisma.stemListing.create({
+        data: {
+          listingId: 860n,
+          stemId,
+          tokenId: 42n,
+          chainId: 31337,
+          contractAddress: '0xMarketplace',
+          sellerAddress: creatorWalletAddress,
+          pricePerUnit: '0',
+          amount: 1n,
+          paymentToken: '0x0000000000000000000000000000000000000000',
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+          transactionHash,
+          blockNumber: 105n,
+          status: 'active',
+          listedAt: new Date(),
+        },
+      });
+
+      try {
+        const result = await controller.getListings(undefined, undefined, '31337');
+        const listing = result.listings.find((item) => item.listingId === '860');
+        expect(listing).toBeDefined();
+        expect(listing!.paymentToken).toBe(stablecoinToken);
+        expect(listing!.price).toBe('50000');
+
+        const persisted = await prisma.stemListing.findFirst({
+          where: { transactionHash, listingId: 860n },
+        });
+        expect(persisted!.paymentToken).toBe(stablecoinToken);
+        expect(persisted!.pricePerUnit).toBe('50000');
+      } finally {
+        await prisma.stemListingIntent.deleteMany({ where: { transactionHash } });
         await prisma.stemListing.deleteMany({ where: { transactionHash } });
       }
     });

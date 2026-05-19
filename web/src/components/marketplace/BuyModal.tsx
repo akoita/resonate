@@ -102,8 +102,16 @@ export function BuyModal({
   const x402Asset = x402Config?.enabled ? x402Config.asset : null;
   const x402Symbol = x402Asset?.symbol ?? "USDC";
   const x402Available = useMemo(
-    () => Boolean(x402Config?.enabled && stemId),
-    [x402Config, stemId],
+    () => Boolean(
+      x402Config?.enabled &&
+      stemId &&
+      listing &&
+      x402Config.contractSettlementEnabled &&
+      x402Asset?.address &&
+      listing.paymentToken.toLowerCase() === x402Asset.address.toLowerCase() &&
+      chainId === x402Config.chainId,
+    ),
+    [chainId, listing, stemId, x402Asset?.address, x402Config],
   );
   const x402AvailableForSelectedLicense = x402Available && selectedLicense === "personal";
   const activePaymentMethod = x402AvailableForSelectedLicense ? paymentMethod : "onchain";
@@ -301,7 +309,7 @@ export function BuyModal({
               </div>
             </div>
 
-            {/* Payment method (#705) — only shown when x402 is configured for this server */}
+            {/* Payment method (#705) — x402 is shown only when it can settle the marketplace listing */}
             {x402Available && (
               <div className="buy-modal__pay-methods" role="tablist" aria-label="Payment method">
                 <button

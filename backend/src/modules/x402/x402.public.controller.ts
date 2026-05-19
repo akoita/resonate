@@ -11,6 +11,7 @@ export type X402PublicConfig =
       chainId: number;
       facilitatorUrl: string;
       payoutAddress: string;
+      contractSettlementEnabled: boolean;
       asset: X402AssetInfo;
     };
 
@@ -33,6 +34,7 @@ export class X402PublicController {
       chainId: this.x402Config.chainId,
       facilitatorUrl: this.x402Config.facilitatorUrl,
       payoutAddress: this.x402Config.payoutAddress,
+      contractSettlementEnabled: this.x402Config.contractSettlementEnabled,
       asset: resolveX402AssetInfo(
         this.x402Config.network,
         this.paymentsService?.getPaymentAssets(this.x402Config.chainId).assets,

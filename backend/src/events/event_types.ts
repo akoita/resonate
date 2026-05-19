@@ -647,6 +647,7 @@ export interface MarketplaceListingNotifyEvent extends BaseEvent {
   tokenId: string;
   sellerAddress: string;
   pricePerUnit: string;
+  paymentToken?: string;
   amount: string;
   licenseType?: "personal" | "remix" | "commercial";
 }

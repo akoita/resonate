@@ -203,6 +203,32 @@ describe('X402Middleware', () => {
       );
     });
 
+    it('rejects listed stems when marketplace contract settlement is not enabled', async () => {
+      const { prisma } = jest.requireMock('../db/prisma') as {
+        prisma: {
+          stemListing: { findFirst: jest.Mock };
+        };
+      };
+      prisma.stemListing.findFirst.mockResolvedValue({
+        paymentToken: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+      });
+      const config = createMockConfig({ contractSettlementEnabled: false });
+      const middleware = createMiddleware(config);
+      const req = createMockReq('/api/stems/test-stem-id/x402');
+      const { res } = createMockRes();
+      const next = jest.fn();
+
+      await middleware.use(req as Request, res as Response, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: 'Marketplace settlement unavailable',
+        }),
+      );
+    });
+
     it('requires a buyer wallet before challenging listed contract-settled x402 stems', async () => {
       const { prisma } = jest.requireMock('../db/prisma') as {
         prisma: {
@@ -357,7 +383,7 @@ describe('X402Middleware', () => {
       );
     });
 
-    it('should ignore legacy ETH listings when no canonical USD price is stored', async () => {
+    it('rejects listed stems before challenging when settlement would leave the listing active', async () => {
       const { prisma } = jest.requireMock('../db/prisma') as {
         prisma: {
           stemListing: { findFirst: jest.Mock };
@@ -366,6 +392,7 @@ describe('X402Middleware', () => {
       };
       prisma.stemListing.findFirst.mockResolvedValue({
         pricePerUnit: '1000000000000000000',
+        paymentToken: '0x0000000000000000000000000000000000000000',
       });
       prisma.stemPricing.findUnique.mockResolvedValue(null);
 
@@ -377,13 +404,10 @@ describe('X402Middleware', () => {
 
       await middleware.use(req as Request, res as Response, next);
 
+      expect(res.status).toHaveBeenCalledWith(409);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          accepts: expect.arrayContaining([
-            expect.objectContaining({
-              amount: '50000',
-            }),
-          ]),
+          error: 'Marketplace settlement unavailable',
         }),
       );
     });

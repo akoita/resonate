@@ -319,7 +319,10 @@ export class X402Controller {
       const resolvedStemUrl = this.resolveStemUrl(stem.uri, req);
       const responseMimeType = stem.mimeType || 'audio/mpeg';
 
-      if (contractSettlement.status === 'contract_failed') {
+      if (
+        contractSettlement.status === 'contract_failed' ||
+        contractSettlement.status === 'contract_required_missing'
+      ) {
         const receipt = buildStemX402Receipt({
           stemId: stem.id,
           stemType: stem.type,
@@ -380,8 +383,14 @@ export class X402Controller {
             purchasedAt: input.purchasedAt,
           },
         });
-        res.status(HttpStatus.BAD_GATEWAY).json({
-          error: 'Contract settlement failed',
+        res.status(
+          contractSettlement.status === 'contract_required_missing'
+            ? HttpStatus.CONFLICT
+            : HttpStatus.BAD_GATEWAY,
+        ).json({
+          error: contractSettlement.status === 'contract_required_missing'
+            ? 'Marketplace contract settlement required'
+            : 'Contract settlement failed',
           message: contractSettlement.reason,
           receiptId: receipt.receiptId,
           settlement: receipt.settlement,
@@ -771,7 +780,10 @@ export class X402Controller {
     }
 
     if (!this.x402Config.contractSettlementEnabled) {
-      return this.describeContractSettlement(input.listing);
+      return this.describeContractSettlement(input.listing, {
+        reason:
+          'This stem has an active marketplace listing, but x402 marketplace contract settlement is not configured.',
+      });
     }
 
     if (input.listing.chainId !== this.x402Config.chainId) {
@@ -1203,6 +1215,27 @@ export class X402Controller {
       tokenId: quote.tokenId,
       purchase: quote.purchase,
       x402: quote.x402,
+      marketplaceSettlement: listing
+        ? {
+            required: true,
+            available:
+              this.x402Config.contractSettlementEnabled &&
+              listing.paymentToken.toLowerCase() === this.x402ConfigAssetAddress().toLowerCase() &&
+              listing.chainId === this.x402Config.chainId,
+            contractSettlementEnabled: this.x402Config.contractSettlementEnabled,
+            listingId: listing.listingId.toString(),
+            chainId: listing.chainId,
+            paymentToken: listing.paymentToken,
+          }
+        : {
+            required: false,
+            available: false,
+            contractSettlementEnabled: this.x402Config.contractSettlementEnabled,
+          },
     };
+  }
+
+  private x402ConfigAssetAddress() {
+    return this.resolveAssetInfo().address;
   }
 }

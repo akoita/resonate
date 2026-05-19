@@ -993,3 +993,67 @@ rg 'dangerouslySetInnerHTML|innerHTML' web/src/
 rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
 rg 'document\.cookie|setCookie|httpOnly.*false' web/src/
 ```
+
+## Addendum: #859 Listed x402 Settlement Gating
+
+Reviewed the #859 listed-stem x402 settlement gating changes for public config,
+middleware preflight, controller settlement handling, marketplace listing
+payment-token reconciliation, WebSocket listing notifications, and the
+marketplace buy modal. No Critical or High findings were identified in the
+changed code.
+
+### Scope
+
+- `backend/src/modules/x402/x402.public.controller.ts`
+- `backend/src/modules/x402/x402.middleware.ts`
+- `backend/src/modules/x402/x402.controller.ts`
+- `backend/src/modules/contracts/contracts.service.ts`
+- `backend/src/modules/contracts/metadata.controller.ts`
+- `backend/src/modules/shared/events.gateway.ts`
+- `backend/src/events/event_types.ts`
+- `backend/src/tests/flow2_contracts.integration.spec.ts`
+- `backend/src/tests/metadata.controller.integration.spec.ts`
+- `backend/src/tests/x402.public-config.spec.ts`
+- `backend/src/tests/x402.middleware.spec.ts`
+- `backend/src/tests/x402.controller.spec.ts`
+- `web/src/hooks/useX402PublicConfig.ts`
+- `web/src/components/marketplace/BuyModal.tsx`
+- `docs/features/agent-commerce-runtime.md`
+- `docs/features/README.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- Listed-stem x402 requests are rejected before payment challenge when
+  marketplace contract settlement is not configured.
+- The smart-account/controller path no longer serves audio for listed stems
+  that would produce `contract_required_missing`.
+- Public x402 config exposes only a boolean settlement capability flag, not
+  secrets or private settlement wallet data.
+- Listing intent reconciliation and listing-read backfill update native fallback
+  rows with the frontend selected payment token, keeping stablecoin listing
+  display consistent without exposing privileged signer data.
+- The marketplace modal hides x402 for finite listings unless the selected
+  listing uses the configured x402 asset on the configured x402 chain and
+  contract-backed settlement is enabled.
+
+### Commands Run
+
+```bash
+cd backend && npm run lint
+cd backend && npx jest --runInBand src/tests/x402.controller.spec.ts src/tests/x402.middleware.spec.ts src/tests/x402.public-config.spec.ts
+cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='metadata.controller.integration' --testNamePattern='hydrates an indexed listing|backfills native fallback listing rows'
+cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='flow2_contracts.integration'
+cd web && npm run lint -- src/components/marketplace/BuyModal.tsx src/hooks/useX402PublicConfig.ts
+```
+
+The broader `metadata.controller.integration` suite was also sampled while
+testing the reconciliation path; it still has an unrelated content-protection
+diagnostic assertion that fails when the local Anvil fallback contract is not
+deployed.

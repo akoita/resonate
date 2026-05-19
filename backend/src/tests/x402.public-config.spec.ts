@@ -43,6 +43,7 @@ describe('X402PublicController', () => {
       chainId: 84532,
       facilitatorUrl: 'https://example.test/facilitator',
       payoutAddress: '0x1234567890abcdef1234567890abcdef12345678',
+      contractSettlementEnabled: false,
       asset: {
         assetId: 'base-sepolia:usdc',
         address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
@@ -64,6 +65,7 @@ describe('X402PublicController', () => {
     const cfg = controller.getPublicConfig();
     expect(cfg.enabled).toBe(true);
     if (!cfg.enabled) return;
+    expect(cfg.contractSettlementEnabled).toBe(false);
     expect(cfg.chainId).toBe(8453);
     expect(cfg.asset.address).toBe('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913');
     expect(cfg.asset.name).toBe('USD Coin');
@@ -104,6 +106,7 @@ describe('X402PublicController', () => {
     const cfg = controller.getPublicConfig();
     expect(cfg.enabled).toBe(true);
     if (!cfg.enabled) return;
+    expect(cfg.contractSettlementEnabled).toBe(false);
     expect(cfg.asset).toEqual({
       assetId: 'base-sepolia:usdc',
       address: '0x1111111111111111111111111111111111111111',
