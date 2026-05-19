@@ -10,17 +10,22 @@ import {
   type BatchStemStatus,
 } from "../../hooks/useContracts";
 import { usePaymentAssets } from "../../hooks/usePaymentAssets";
+import type { ReleaseContentProtectionData, TrustTier } from "../../lib/api";
 import {
-  convertCanonicalListingPriceToAssetUnits,
   formatListingPrice,
   listingPaymentToken,
   selectDefaultMarketplaceListingAsset,
 } from "../../lib/listingPricing";
+import {
+  isStakeCappedListingPriceUnits,
+  resolveStakeSafeListingPriceUnits,
+} from "../../lib/stakeSafeListingPrice";
 
 interface BatchMintListModalProps {
   stems: BatchStemItem[];
   listingPriceWei: bigint;
-  listingPriceCapped?: boolean;
+  releaseProtection?: Pick<ReleaseContentProtectionData, "active" | "stakeAmount" | "staked"> | null;
+  trustTier?: Pick<TrustTier, "maxListingPriceWei" | "maxListingPriceUncapped" | "maxPriceMultiplier"> | null;
   releaseProtectionId?: bigint;
   resolveReleaseProtectionId?: () => Promise<bigint | undefined | false>;
   onClose: () => void;
@@ -46,7 +51,8 @@ const STATUS_ICON: Record<BatchStemStatus, string> = {
 export function BatchMintListModal({
   stems,
   listingPriceWei,
-  listingPriceCapped = false,
+  releaseProtection,
+  trustTier,
   releaseProtectionId,
   resolveReleaseProtectionId,
   onClose,
@@ -67,18 +73,29 @@ export function BatchMintListModal({
     chainId,
     defaultAssetId: defaultAsset,
   });
-  const listingPriceUnits = convertCanonicalListingPriceToAssetUnits({
-    canonicalPriceWei: listingPriceWei,
+  const listingPriceUnits = resolveStakeSafeListingPriceUnits({
     asset: listingAsset,
-  });
+    releaseProtection,
+    trustTier,
+  }, listingPriceWei);
+  const listingPriceCapped = isStakeCappedListingPriceUnits({
+    asset: listingAsset,
+    releaseProtection,
+    trustTier,
+  }, listingPriceWei);
   const listingToken = listingPaymentToken(listingAsset);
   const listingPriceLabel = formatListingPrice({
     priceUnits: listingPriceUnits,
     asset: listingAsset,
   });
+  const listingPriceUnavailable = !paymentAssetsLoading && listingPriceUnits <= 0n;
 
   const handleConfirm = useCallback(async () => {
     setBatchError(null);
+    if (listingPriceUnits <= 0n) {
+      setBatchError("Marketplace listing price must be greater than zero.");
+      return;
+    }
     setPhase("progress");
     try {
       const resolvedProtectionId = resolveReleaseProtectionId
@@ -172,6 +189,12 @@ export function BatchMintListModal({
               </div>
             )}
 
+            {listingPriceUnavailable && (
+              <div className="batch-error">
+                Marketplace listing price must be greater than zero.
+              </div>
+            )}
+
             <div className="batch-stems-list">
               {stems.map(stem => (
                 <div key={stem.stemId} className="batch-stem-row">
@@ -196,9 +219,9 @@ export function BatchMintListModal({
               <button
                 className="batch-btn-confirm"
                 onClick={handleConfirm}
-                disabled={pending || paymentAssetsLoading}
+                disabled={pending || paymentAssetsLoading || listingPriceUnavailable}
               >
-                {paymentAssetsLoading ? "Loading asset..." : pending ? "Starting..." : `Confirm All (${stems.length})`}
+                {paymentAssetsLoading ? "Loading asset..." : pending ? "Starting..." : listingPriceUnavailable ? "Price unavailable" : `Confirm All (${stems.length})`}
               </button>
             </div>
           </>

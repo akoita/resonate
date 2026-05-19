@@ -3,7 +3,12 @@ import { useAuth } from "../auth/AuthProvider";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { useListStem, useMintAndListStem } from "../../hooks/useContracts";
 import { usePaymentAssets } from "../../hooks/usePaymentAssets";
-import { getListingsByStem, getStemNftInfo } from "../../lib/api";
+import {
+    getListingsByStem,
+    getStemNftInfo,
+    type ReleaseContentProtectionData,
+    type TrustTier,
+} from "../../lib/api";
 import {
     clearStemMarketplaceStatus,
     persistStemMarketplaceStatus,
@@ -12,11 +17,11 @@ import {
 } from "../../lib/stemMarketplaceStatus";
 import { useToast } from "../ui/Toast";
 import {
-    convertCanonicalListingPriceToAssetUnits,
     formatListingPrice,
     listingPaymentToken,
     selectDefaultMarketplaceListingAsset,
 } from "../../lib/listingPricing";
+import { resolveStakeSafeListingPriceUnits } from "../../lib/stakeSafeListingPrice";
 
 // Poll backend until the minted token ID is indexed (max ~30s)
 async function pollForMintedTokenId(
@@ -66,6 +71,8 @@ interface MintStemButtonProps {
     stemId: string;
     stemType: string;
     listingPricePerUnit: bigint;
+    releaseProtection?: Pick<ReleaseContentProtectionData, "active" | "stakeAmount" | "staked"> | null;
+    trustTier?: Pick<TrustTier, "maxListingPriceWei" | "maxListingPriceUncapped" | "maxPriceMultiplier"> | null;
     onBeforeMint?: () => Promise<boolean | { ready: boolean; protectionId?: bigint }>;
     disabled?: boolean;
     disabledReason?: string;
@@ -81,6 +88,8 @@ export function MintStemButton({
     stemId,
     stemType,
     listingPricePerUnit,
+    releaseProtection,
+    trustTier,
     onBeforeMint,
     disabled = false,
     disabledReason,
@@ -101,15 +110,17 @@ export function MintStemButton({
         chainId,
         defaultAssetId: defaultAsset,
     });
-    const listingPriceUnits = convertCanonicalListingPriceToAssetUnits({
-        canonicalPriceWei: listingPricePerUnit,
+    const listingPriceUnits = resolveStakeSafeListingPriceUnits({
         asset: listingAsset,
-    });
+        releaseProtection,
+        trustTier,
+    }, listingPricePerUnit);
     const listingToken = listingPaymentToken(listingAsset);
     const listingPriceLabel = formatListingPrice({
         priceUnits: listingPriceUnits,
         asset: listingAsset,
     });
+    const listingPriceUnavailable = !paymentAssetsLoading && listingPriceUnits <= 0n;
     // State machine: "idle" -> "minted" -> "listed"
     // "confirming_mint" and "confirming_list" are transient states while polling the backend
     const [state, setState] = useState<"idle" | "confirming_mint" | "minted" | "confirming_list" | "listed">("idle");
@@ -239,6 +250,14 @@ export function MintStemButton({
             });
             return;
         }
+        if (listingPriceUnits <= 0n) {
+            addToast({
+                type: "error",
+                title: "Listing price unavailable",
+                message: "Marketplace listing price must be greater than zero.",
+            });
+            return;
+        }
 
         try {
             // List for the resolved marketplace price, 1 unit, 7 days
@@ -285,6 +304,14 @@ export function MintStemButton({
     const handleMintAndList = async () => {
         if (!address) {
             addToast({ type: "error", title: "Wallet Required", message: "Connect your wallet" });
+            return;
+        }
+        if (listingPriceUnits <= 0n) {
+            addToast({
+                type: "error",
+                title: "Listing price unavailable",
+                message: "Marketplace listing price must be greater than zero.",
+            });
             return;
         }
 
@@ -465,22 +492,22 @@ export function MintStemButton({
         return (
             <button
                 onClick={handleList}
-                disabled={listPending || paymentAssetsLoading}
+                disabled={listPending || paymentAssetsLoading || listingPriceUnavailable}
                 style={{
                     width: "100%",
                     padding: "8px 12px",
-                    background: listPending || paymentAssetsLoading ? "rgba(63,63,70,0.5)" : "#8b5cf6",
+                    background: listPending || paymentAssetsLoading || listingPriceUnavailable ? "rgba(63,63,70,0.5)" : "#8b5cf6",
                     color: "#fff",
                     border: "none",
                     borderRadius: 10,
                     fontSize: 13,
                     fontWeight: 600,
-                    cursor: listPending || paymentAssetsLoading ? "wait" : "pointer",
-                    opacity: listPending || paymentAssetsLoading ? 0.7 : 1,
+                    cursor: listPending || paymentAssetsLoading ? "wait" : listingPriceUnavailable ? "not-allowed" : "pointer",
+                    opacity: listPending || paymentAssetsLoading || listingPriceUnavailable ? 0.7 : 1,
                     transition: "all 0.2s",
                 }}
             >
-                {paymentAssetsLoading ? "Loading asset..." : listPending ? "Listing..." : "List for Sale"}
+                {paymentAssetsLoading ? "Loading asset..." : listPending ? "Listing..." : listingPriceUnavailable ? "Price unavailable" : "List for Sale"}
             </button>
         );
     }
@@ -488,22 +515,22 @@ export function MintStemButton({
     return (
         <button
             onClick={handleMintAndList}
-            disabled={mintAndListPending || paymentAssetsLoading}
+            disabled={mintAndListPending || paymentAssetsLoading || listingPriceUnavailable}
             style={{
                 width: "100%",
                 padding: "8px 12px",
-                background: mintAndListPending || paymentAssetsLoading ? "rgba(63,63,70,0.5)" : "#8b5cf6",
+                background: mintAndListPending || paymentAssetsLoading || listingPriceUnavailable ? "rgba(63,63,70,0.5)" : "#8b5cf6",
                 color: "#fff",
                 border: "none",
                 borderRadius: 10,
                 fontSize: 13,
                 fontWeight: 600,
-                cursor: mintAndListPending || paymentAssetsLoading ? "wait" : "pointer",
-                opacity: mintAndListPending || paymentAssetsLoading ? 0.7 : 1,
+                cursor: mintAndListPending || paymentAssetsLoading ? "wait" : listingPriceUnavailable ? "not-allowed" : "pointer",
+                opacity: mintAndListPending || paymentAssetsLoading || listingPriceUnavailable ? 0.7 : 1,
                 transition: "all 0.2s",
             }}
         >
-            {paymentAssetsLoading ? "Loading asset..." : mintAndListPending ? "Processing..." : "Mint & List"}
+            {paymentAssetsLoading ? "Loading asset..." : mintAndListPending ? "Processing..." : listingPriceUnavailable ? "Price unavailable" : "Mint & List"}
         </button>
     );
 }
