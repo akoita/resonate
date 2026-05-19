@@ -3,8 +3,7 @@
 This diagram is the high-level deployment view for Resonate. It combines the
 application repository, the `resonate-iac` infrastructure repository, the
 Google Cloud edge/runtime platform, smart account infrastructure, protocol
-contracts, and the x402 payment surface into one recruiter-readable
-architecture view.
+contracts, and the x402 payment surface into one high-level architecture view.
 
 ![Resonate deployment architecture](./resonate-deployment-architecture.svg)
 
@@ -139,6 +138,7 @@ endpoint.
 ## Source References
 
 - Application overview and local topology: [README.md](../../README.md)
+- Application component model: [application_architecture.md](./application_architecture.md)
 - Service boundaries: [architecture_service_boundaries.md](./architecture_service_boundaries.md)
 - x402 payment layer: [x402_payments.md](./x402_payments.md)
 - MCP server: [mcp_server.md](./mcp_server.md)

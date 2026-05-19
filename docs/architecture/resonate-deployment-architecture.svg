@@ -78,7 +78,7 @@
   <rect x="861" y="282" width="150" height="38" class="secure"/>
   <text x="884" y="306" class="small">Cloud Armor</text>
 
-  <rect x="330" y="390" width="345" height="230" class="panel"/>
+  <rect x="330" y="390" width="345" height="250" class="panel"/>
   <text x="354" y="424" class="label">Application containers</text>
   <rect x="358" y="454" width="278" height="42" class="sub"/>
   <text x="382" y="481" class="small">Cloud Run frontend - Next.js</text>
@@ -87,7 +87,7 @@
   <rect x="358" y="578" width="278" height="42" class="sub"/>
   <text x="382" y="605" class="small">Cloud Run Demucs Job - on demand</text>
 
-  <rect x="705" y="390" width="345" height="230" class="panel"/>
+  <rect x="705" y="390" width="345" height="250" class="panel"/>
   <text x="729" y="424" class="label">Private data and media</text>
   <rect x="733" y="454" width="125" height="42" class="data"/>
   <text x="757" y="481" class="small">Cloud SQL</text>
@@ -100,16 +100,16 @@
   <rect x="733" y="578" width="270" height="42" class="data"/>
   <text x="775" y="605" class="small">Pub/Sub jobs, results, DLQ</text>
 
-  <rect x="330" y="662" width="720" height="132" class="panel"/>
-  <text x="354" y="696" class="label">Delivery and operations</text>
-  <rect x="358" y="724" width="155" height="40" class="ops"/>
-  <text x="381" y="749" class="small">GitHub Actions</text>
-  <rect x="535" y="724" width="170" height="40" class="ops"/>
-  <text x="557" y="749" class="small">Artifact Registry</text>
-  <rect x="727" y="724" width="136" height="40" class="ops"/>
-  <text x="758" y="749" class="small">Terraform</text>
-  <rect x="885" y="724" width="128" height="40" class="ops"/>
-  <text x="916" y="749" class="small">Monitoring</text>
+  <rect x="330" y="672" width="720" height="132" class="panel"/>
+  <text x="354" y="706" class="label">Delivery and operations</text>
+  <rect x="358" y="734" width="155" height="40" class="ops"/>
+  <text x="381" y="759" class="small">GitHub Actions</text>
+  <rect x="535" y="734" width="170" height="40" class="ops"/>
+  <text x="557" y="759" class="small">Artifact Registry</text>
+  <rect x="727" y="734" width="136" height="40" class="ops"/>
+  <text x="758" y="759" class="small">Terraform</text>
+  <rect x="885" y="734" width="128" height="40" class="ops"/>
+  <text x="916" y="759" class="small">Monitoring</text>
 
   <rect x="1130" y="150" width="415" height="700" class="zone"/>
   <text x="1158" y="188" class="h">Protocol and payments</text>
@@ -149,13 +149,13 @@
   <path d="M675 537 C705 490 720 475 733 475" class="greenLine"/>
   <path d="M675 537 C705 520 718 537 733 537" class="greenLine"/>
   <path d="M675 537 C704 570 720 599 733 599" class="greenLine"/>
-  <path d="M1013 744 C1080 744 1090 520 1160 520" class="orangeLine dash"/>
-  <path d="M636 537 C900 640 930 736 1160 736" class="orangeLine"/>
-  <path d="M636 537 C890 430 945 305 1160 305" class="orangeLine"/>
-  <path d="M236 652 C280 705 310 744 358 744" class="blueLine dash"/>
-  <path d="M513 744 C520 744 528 744 535 744" class="blueLine"/>
-  <path d="M705 744 C712 744 720 744 727 744" class="blueLine"/>
-  <path d="M863 744 C870 744 878 744 885 744" class="blueLine"/>
+  <path d="M1013 754 C1084 754 1092 520 1160 520" class="orangeLine dash"/>
+  <path d="M636 537 C652 600 660 626 675 640 C760 720 990 800 1160 736" class="orangeLine"/>
+  <path d="M636 537 C652 460 660 410 675 390 C800 350 990 350 1160 305" class="orangeLine"/>
+  <path d="M236 652 C280 710 310 754 358 754" class="blueLine dash"/>
+  <path d="M513 754 C520 754 528 754 535 754" class="blueLine"/>
+  <path d="M705 754 C712 754 720 754 727 754" class="blueLine"/>
+  <path d="M863 754 C870 754 878 754 885 754" class="blueLine"/>
 
   <rect x="70" y="890" width="1460" height="54" class="sub"/>
   <text x="96" y="922" class="small">Public traffic terminates at the edge; Cloud Run stays behind serverless NEGs. App CI publishes immutable images, while resonate-iac owns Terraform state, IAM, routing, and environment validation.</text>

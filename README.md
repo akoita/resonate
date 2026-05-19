@@ -127,6 +127,33 @@ If you use an x402-capable client such as AgentCash, it can automate the proof e
 
 ## 🏗️ Architecture
 
+Resonate has two complementary architecture views:
+
+- **Application architecture** — how the product is decomposed into human app,
+  agent storefront, marketplace, x402, smart-account, ingestion, rights, and
+  realtime components.
+- **Deployment architecture** — how those components run across Cloud Run,
+  private data services, protocol contracts, and the Terraform-managed GCP edge.
+
+```mermaid
+flowchart LR
+  Studio["Human Studio\nNext.js"] --> API["NestJS API\nmodular backend"]
+  Agents["Agents\nOpenAPI + MCP + x402"] --> API
+  API --> Catalog["Catalog, pricing,\nrights, library"]
+  API --> Commerce["Marketplace + x402\nstablecoin settlement"]
+  API --> Runtime["AI DJ + agent runtime"]
+  API --> Ingestion["Upload + stem processing"]
+  Commerce --> Chain["Smart accounts +\nResonate contracts"]
+  Ingestion --> Worker["Demucs worker"]
+  Catalog --> Data["Postgres, Redis,\nGCS, Pub/Sub"]
+  Runtime --> Data
+  Worker --> Data
+```
+
+See the [application architecture doc](docs/architecture/application_architecture.md)
+for component diagrams, key runtime flows, bounded contexts, and the main
+design patterns used across the codebase.
+
 ![Resonate deployment architecture](docs/architecture/resonate-deployment-architecture.svg)
 
 Resonate is deployed as a full-stack music and agent-commerce system, not just a
