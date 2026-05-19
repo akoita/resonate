@@ -148,8 +148,8 @@
   <path d="M675 537 C705 490 720 475 733 475" class="greenLine"/>
   <path d="M675 537 C705 520 718 537 733 537" class="greenLine"/>
   <path d="M675 537 C704 570 720 599 733 599" class="greenLine"/>
-  <path d="M636 537 C650 590 660 625 690 650 C820 650 1010 650 1088 650 C1100 700 1112 736 1160 736" class="orangeLine"/>
-  <path d="M636 537 C650 480 660 420 690 360 C820 360 1020 330 1088 305 C1104 305 1120 305 1160 305" class="orangeLine"/>
+  <path d="M636 537 H675 V360 H1088 C1116 360 1130 320 1160 305" class="orangeLine"/>
+  <path d="M636 537 H675 V650 H1088 C1118 650 1128 720 1160 736" class="orangeLine"/>
   <path d="M236 652 C280 710 310 754 358 754" class="blueLine dash"/>
   <path d="M513 754 C520 754 528 754 535 754" class="blueLine"/>
   <path d="M705 754 C712 754 720 754 727 754" class="blueLine"/>
