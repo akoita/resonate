@@ -28,7 +28,7 @@ export function CampaignCard({ campaign }: Props) {
       onClick={() => router.push(`/shows/${campaign.id}`)}
       aria-label={`Open campaign — ${campaign.artistName} in ${campaign.city}`}
     >
-      <div className="campaign-card__art">
+      <div className="campaign-card__art" data-city={campaign.city}>
         <span className="campaign-card__city-chip">{campaign.city}</span>
         <span className="campaign-card__monogram" aria-hidden>
           {monogram}

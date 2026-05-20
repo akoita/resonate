@@ -1,350 +1,510 @@
-/* Resonate Shows — fan-funded booking surface
+/* Resonate Shows v3 — "Signal" identity (2026-05)
  *
  * All Shows-specific styles live here as a global stylesheet to avoid
  * the styled-jsx backtick-in-comment trap that has broken builds in
- * prior PRs. The amber `--color-signal` accent is scoped to
- * `.shows-surface` and never leaks — Resonate's dominant purple
- * palette stays untouched everywhere else. */
+ * prior PRs. The `--color-signal` teal accent is scoped to
+ * `.shows-surface` and never leaks — Resonate's dominant Coral palette
+ * stays untouched everywhere else.
+ *
+ * v3 improvements:
+ * - Explorer: cinematic intro with animated background, bigger hero copy,
+ *   campaign cards with city atmosphere gradients + real visual structure
+ * - Detail: full-bleed immersive hero, dramatic stat cards, elegant tiers
+ * - Micro-animations throughout: pulse, shimmer, hover lift
+ * -------------------------------------------------------------------- */
+
+/* ══════════════════════════════════════════════════════════════════
+ * SURFACE & TOKENS
+ * ══════════════════════════════════════════════════════════════════ */
 
 .shows-surface {
-  /* Shows palette: cool "signal teal" — semantically reads as a
-   * broadcast/wave (the Shows core concept is a verifiable demand
-   * signal) and harmonizes with the rest of the app's cool palette
-   * (violet on home, mint/cyan on Create) instead of the warm amber
-   * that previously stood out. Scoped here, never leaks. */
-  --color-signal: #5eead4;
-  --color-signal-soft: color-mix(in srgb, #5eead4 12%, transparent);
-  --color-signal-border: color-mix(in srgb, #5eead4 28%, transparent);
-  --color-signal-glow: color-mix(in srgb, #5eead4 38%, transparent);
+  --color-signal:        #5eead4;
+  --color-signal-mid:    #2dd4bf;
+  --color-signal-deep:   #0d9488;
+  --color-signal-soft:   color-mix(in srgb, #5eead4 10%, transparent);
+  --color-signal-border: color-mix(in srgb, #5eead4 22%, transparent);
+  --color-signal-glow:   color-mix(in srgb, #5eead4 35%, transparent);
+  --shows-canvas:        #080c10;
+  --shows-surface-low:   #0e1319;
+  --shows-surface-mid:   #121a22;
+  --shows-surface-high:  #1a2530;
+  --shows-chrome:        rgba(255, 255, 255, 0.04);
+  --shows-chrome-border: rgba(255, 255, 255, 0.07);
+  --shows-chrome-hover:  rgba(255, 255, 255, 0.08);
+
   position: relative;
   isolation: isolate;
+  background:
+    radial-gradient(ellipse at 60% -10%, color-mix(in srgb, var(--color-signal) 6%, transparent), transparent 52%),
+    radial-gradient(ellipse at 5% 40%,   color-mix(in srgb, var(--color-signal) 4%, transparent), transparent 45%),
+    radial-gradient(ellipse at 95% 85%,  color-mix(in srgb, var(--color-signal-deep) 4%, transparent), transparent 50%);
 }
 
-/* Numeric stats inside the Shows surface read as "contract", not "album":
- * fixed-width digits for the progress bar, backer count, countdown. */
 .shows-surface .tabular {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
 }
 
-/* -------------------------------------------------------------------
- * Campaign hero
- * -----------------------------------------------------------------*/
+/* ══════════════════════════════════════════════════════════════════
+ * KEYFRAMES
+ * ══════════════════════════════════════════════════════════════════ */
 
-.campaign-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-  gap: 48px;
-  padding: 40px;
-  min-height: min(560px, 55vh);
-  border-radius: 28px;
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px),
-    radial-gradient(at 0% 0%, var(--color-signal-soft), transparent 55%),
-    linear-gradient(170deg, rgba(15, 22, 30, 0.96) 0%, rgba(18, 14, 20, 0.98) 100%);
-  background-size: 44px 44px, 44px 44px, auto, auto;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  overflow: hidden;
+@keyframes shows-progress-sheen {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
-.campaign-hero::before {
-  /* subtle animated amber glow in the top-left */
-  content: "";
-  position: absolute;
-  left: -20%;
-  top: -25%;
-  width: 60%;
-  height: 60%;
-  background: radial-gradient(closest-side, var(--color-signal-glow), transparent 70%);
-  opacity: 0.35;
-  pointer-events: none;
-  z-index: 0;
+@keyframes shows-dot-pulse {
+  0%   { box-shadow: 0 0 0 0   color-mix(in srgb, var(--color-signal) 60%, transparent); }
+  70%  { box-shadow: 0 0 0 8px color-mix(in srgb, var(--color-signal) 0%,  transparent); }
+  100% { box-shadow: 0 0 0 0   color-mix(in srgb, var(--color-signal) 0%,  transparent); }
 }
 
-.campaign-hero__body {
+@keyframes shows-eq-pulse {
+  0%, 100% { filter: brightness(1); }
+  50%       { filter: brightness(1.2) saturate(1.1); }
+}
+
+@keyframes shows-hero-float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-6px); }
+}
+
+@keyframes shows-fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shows-surface *,
+  .shows-surface *::before,
+  .shows-surface *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * EXPLORER PAGE — /shows
+ * ══════════════════════════════════════════════════════════════════ */
+
+.shows-page {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 48px 36px 100px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 18px;
-  min-width: 0;
+  gap: 56px;
+  animation: shows-fade-up 0.5s ease both;
+}
+
+/* ─── Cinematic intro banner ─────────────────────────────────────── */
+
+.shows-page__intro {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 32px;
+  padding: 56px 56px 52px;
+  border-radius: 28px;
   position: relative;
-  z-index: 1;
-}
-
-.campaign-hero__eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 12px;
-  align-self: flex-start;
-  border-radius: 999px;
-  border: 1px solid var(--color-signal-border);
-  background: var(--color-signal-soft);
-  color: var(--color-signal);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.campaign-hero__eyebrow::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-signal);
-  box-shadow: 0 0 8px var(--color-signal-glow);
-}
-
-.campaign-hero__title {
-  font-size: clamp(32px, 4.8vw, 56px);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  color: #fff;
-  line-height: 1.05;
-  margin: 0;
-}
-
-.campaign-hero__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.65);
-}
-
-.campaign-hero__meta strong {
-  color: #fff;
-  font-weight: 600;
-}
-
-.campaign-hero__tagline {
-  font-size: 15px;
-  color: rgba(255, 255, 255, 0.72);
-  line-height: 1.5;
-  max-width: 52ch;
-  margin: 0;
-}
-
-.campaign-hero__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 8px;
-}
-
-.campaign-hero__cta-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 26px;
-  border-radius: 999px;
-  border: 0;
-  background: var(--color-signal);
-  color: #03201c;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
-  box-shadow: 0 10px 28px rgba(94, 234, 212, 0.35);
-  font-family: inherit;
-  text-decoration: none;
-}
-
-.campaign-hero__cta-primary:hover {
-  transform: translateY(-1px);
-  filter: brightness(1.06);
-  box-shadow: 0 14px 32px rgba(94, 234, 212, 0.45);
-}
-
-.campaign-hero__cta-primary:active {
-  transform: translateY(0);
-}
-
-.campaign-hero__cta-secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 14px 22px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(255, 255, 255, 0.86);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: inherit;
-  text-decoration: none;
-}
-
-.campaign-hero__cta-secondary:hover {
-  border-color: rgba(255, 255, 255, 0.28);
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
-}
-
-.campaign-hero__trust {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
-  line-height: 1.5;
-  max-width: 52ch;
-}
-
-.campaign-hero__art {
-  position: relative;
-  border-radius: 20px;
   overflow: hidden;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.07), transparent 1px),
-    linear-gradient(160deg, #0e1a26, #0f1620 60%, #0a1218);
-  background-size: 26px 26px, auto;
-  min-height: 280px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-start;
-  padding: 24px;
-  z-index: 1;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    radial-gradient(ellipse at 100% 0%, color-mix(in srgb, var(--color-signal) 20%, transparent), transparent 48%),
+    radial-gradient(ellipse at 0% 100%, rgba(13, 148, 136, 0.18), transparent 52%),
+    linear-gradient(160deg, var(--shows-canvas) 0%, var(--shows-surface-low) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-signal) 10%, transparent),
+    0 32px 80px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-.campaign-hero__art::before {
-  /* diagonal mesh so a partner visually reads "this card is on-brand
-   * but not just another album cover" */
+/* Top-edge sheen */
+.shows-page__intro::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, transparent 22%);
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* Decorative teal grid overlay */
+.shows-page__intro::after {
   content: "";
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 20% 20%, rgba(94, 234, 212, 0.35), transparent 45%),
-    radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.25), transparent 55%),
-    linear-gradient(135deg, rgba(94, 234, 212, 0.1), transparent 60%);
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+  background-size: 44px 44px;
   pointer-events: none;
+  border-radius: inherit;
 }
 
-.campaign-hero__art::after {
+.shows-page__intro-body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 640px;
+}
+
+.shows-page__intro-art {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* Floating stat pill in the intro */
+.shows-page__intro-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 24px;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--color-signal-border);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--color-signal-border);
+  animation: shows-hero-float 6s ease-in-out infinite;
+}
+
+.shows-page__intro-stat-num {
+  font-size: 2.2rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--color-signal);
+  line-height: 1;
+  text-shadow: 0 0 20px var(--color-signal-glow);
+}
+
+.shows-page__intro-stat-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: 4px;
+}
+
+/* ─── Kicker & Title ─────────────────────────────────────────────── */
+
+.shows-home-section__kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-signal);
+}
+
+.shows-page__intro .shows-home-section__kicker::before,
+.shows-home-section__kicker.pulsing::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-signal);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-signal) 60%, transparent);
+  animation: shows-dot-pulse 2.4s ease-out infinite;
+  flex-shrink: 0;
+}
+
+.shows-page__title {
+  font-size: clamp(36px, 5.5vw, 60px);
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.035em;
+  margin: 0;
+  line-height: 1.02;
+  background: linear-gradient(160deg, #fff 0%, color-mix(in srgb, var(--color-signal) 45%, #fff) 100%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.shows-page__lede {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.62);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 58ch;
+}
+
+/* ─── Toolbar ────────────────────────────────────────────────────── */
+
+.shows-page__toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.shows-page__toolbar-heading {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * CAMPAIGN GRID & CARDS
+ * ══════════════════════════════════════════════════════════════════ */
+
+.campaign-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+
+/* ─── Card shell ─────────────────────────────────────────────────── */
+
+.campaign-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--shows-surface-low);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.3s ease,
+              box-shadow 0.3s ease;
+  text-decoration: none;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  padding: 0;
+  position: relative;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 12%, transparent);
+}
+
+.campaign-card:hover {
+  transform: translateY(-6px);
+  border-color: var(--color-signal-border);
+  box-shadow:
+    0 24px 56px rgba(0, 0, 0, 0.5),
+    0 0 0 1px var(--color-signal-border),
+    0 12px 40px -10px color-mix(in srgb, var(--color-signal) 30%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 25%, transparent);
+}
+
+.campaign-card:focus-visible {
+  outline: 2px solid var(--color-signal);
+  outline-offset: 3px;
+}
+
+/* ─── Card art panel ─────────────────────────────────────────────── */
+
+.campaign-card__art {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  padding: 16px;
+}
+
+/* Default city atmosphere – overridden by data-city below */
+.campaign-card__art {
+  background:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.04) 1px, transparent 1.4px) 0 0 / 14px 14px,
+    radial-gradient(circle at 22% 32%, color-mix(in srgb, var(--color-signal) 28%, transparent), transparent 52%),
+    radial-gradient(circle at 82% 68%, rgba(13, 148, 136, 0.2), transparent 58%),
+    linear-gradient(145deg, #0a141e 0%, #060d14 100%);
+}
+
+/* Per-city atmosphere via data attribute */
+.campaign-card__art[data-city="Paris"] {
+  background:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.04) 1px, transparent 1.4px) 0 0 / 14px 14px,
+    radial-gradient(ellipse at 30% 80%, rgba(94, 234, 212, 0.25), transparent 55%),
+    radial-gradient(ellipse at 75% 20%, rgba(45, 212, 191, 0.12), transparent 50%),
+    linear-gradient(160deg, #071018 0%, #050c14 60%, #060e16 100%);
+}
+
+.campaign-card__art[data-city="Tokyo"] {
+  background:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.04) 1px, transparent 1.4px) 0 0 / 14px 14px,
+    radial-gradient(ellipse at 50% 70%, rgba(99, 102, 241, 0.22), transparent 55%),
+    radial-gradient(ellipse at 20% 20%, rgba(94, 234, 212, 0.12), transparent 48%),
+    linear-gradient(160deg, #0a0916 0%, #070614 60%, #090716 100%);
+}
+
+.campaign-card__art[data-city="Lagos"] {
+  background:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.04) 1px, transparent 1.4px) 0 0 / 14px 14px,
+    radial-gradient(ellipse at 60% 80%, rgba(251, 146, 60, 0.18), transparent 52%),
+    radial-gradient(ellipse at 20% 30%, rgba(94, 234, 212, 0.14), transparent 48%),
+    linear-gradient(160deg, #10090a 0%, #0c0608 60%, #0e0709 100%);
+}
+
+/* EQ ribbon at the bottom of the art */
+.campaign-card__art::before {
   content: "";
   position: absolute;
-  inset: 18px;
-  border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow:
-    inset 0 0 60px rgba(94, 234, 212, 0.08),
-    0 20px 60px rgba(0, 0, 0, 0.22);
+  inset: auto 14px 14px 14px;
+  height: 28px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--color-signal) 65%, transparent) 0 3px,
+      transparent 3px 9px
+    );
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 50%, #000 100%);
+          mask-image: linear-gradient(180deg, transparent 0%, #000 50%, #000 100%);
+  opacity: 0.45;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Hover brightens the EQ */
+.campaign-card:hover .campaign-card__art::before {
+  opacity: 0.7;
+}
+
+/* Top-left teal glow that grows on hover */
+.campaign-card__art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--color-signal) 20%, transparent), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
   pointer-events: none;
 }
 
-.campaign-hero__art-ribbon {
-  position: absolute;
-  z-index: 2;
-  top: 24px;
-  left: 24px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(94, 234, 212, 0.28);
-  background: rgba(0, 0, 0, 0.26);
-  color: rgba(255, 255, 255, 0.82);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  backdrop-filter: blur(10px);
+.campaign-card:hover .campaign-card__art::after {
+  opacity: 1;
 }
 
-.campaign-hero__art-grid {
-  position: absolute;
-  z-index: 1;
-  inset: 72px 34px 82px;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-  opacity: 0.8;
-}
+/* ─── Monogram ────────────────────────────────────────────────────── */
 
-.campaign-hero__art-grid span {
-  border-radius: 999px;
-  background:
-    linear-gradient(180deg, rgba(167, 243, 208, 0.18), rgba(139, 92, 246, 0.08)),
-    rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.campaign-hero__art-monogram {
+.campaign-card__monogram {
   position: relative;
-  font-size: 84px;
+  font-size: 60px;
   font-weight: 800;
-  color: rgba(255, 255, 255, 0.92);
-  letter-spacing: -0.04em;
+  letter-spacing: -0.05em;
   line-height: 1;
-  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-}
-
-.campaign-hero__art-city {
-  position: relative;
-  margin-left: 12px;
-  margin-bottom: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.7);
-  align-self: flex-end;
-}
-
-.campaign-hero__art-footer {
-  position: absolute;
   z-index: 2;
-  left: 24px;
-  right: 24px;
-  bottom: 22px;
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  color: rgba(255, 255, 255, 0.56);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), color-mix(in srgb, var(--color-signal) 45%, #fff));
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 4px 20px color-mix(in srgb, var(--color-signal) 22%, transparent));
+  transition: filter 0.3s ease;
+}
+
+.campaign-card:hover .campaign-card__monogram {
+  filter: drop-shadow(0 4px 28px color-mix(in srgb, var(--color-signal) 40%, transparent));
+}
+
+/* ─── City chip ───────────────────────────────────────────────────── */
+
+.campaign-card__city-chip {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 3;
+  padding: 5px 10px 5px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.9);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
-@media (max-width: 1023px) {
-  .campaign-hero {
-    grid-template-columns: 1fr;
-    gap: 20px;
-    padding: 28px;
-    min-height: auto;
-  }
-  .campaign-hero__art {
-    order: -1;
-    aspect-ratio: 16 / 9;
-    min-height: 0;
-  }
-  .campaign-hero__art-monogram {
-    font-size: 72px;
-  }
+.campaign-card__city-chip::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--color-signal);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--color-signal) 70%, transparent);
+  flex-shrink: 0;
 }
 
-@media (max-width: 767px) {
-  .campaign-hero {
-    padding: 20px;
-    border-radius: 20px;
-  }
-  .campaign-hero__cta-primary {
-    padding: 12px 20px;
-    font-size: 14px;
-  }
-  .campaign-hero__cta-secondary {
-    padding: 12px 16px;
-  }
+/* ─── Ticket perforation ─────────────────────────────────────────── */
+
+.campaign-card__body {
+  padding: 20px 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+  position: relative;
+  padding-top: 24px;
 }
 
-/* -------------------------------------------------------------------
- * Campaign progress — shared by hero / card / detail
- * -----------------------------------------------------------------*/
+/* Dotted perforation line */
+.campaign-card__body::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 0;
+  height: 1px;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.28) 1px, transparent 1.5px);
+  background-size: 8px 1px;
+  background-repeat: repeat-x;
+  background-position: 0 50%;
+}
+
+/* Punched-out semicircles at the edges */
+.campaign-card__body::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -9px;
+  height: 18px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle 9px at 0 50%, var(--shows-canvas) 95%, transparent 100%),
+    radial-gradient(circle 9px at 100% 50%, var(--shows-canvas) 95%, transparent 100%);
+}
+
+.campaign-card__title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.campaign-card__meta {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.42);
+  margin: -8px 0 0;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * CAMPAIGN PROGRESS BAR — shared
+ * ══════════════════════════════════════════════════════════════════ */
 
 .campaign-progress {
   display: flex;
@@ -356,19 +516,20 @@
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
+  gap: 10px;
 }
 
 .campaign-progress__raised {
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 800;
   color: #fff;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
+  line-height: 1;
 }
 
 .campaign-progress__goal {
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.55);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.45);
   font-weight: 500;
 }
 
@@ -376,720 +537,306 @@
   font-size: 13px;
   color: var(--color-signal);
   font-weight: 700;
+  text-shadow: 0 0 10px var(--color-signal-glow);
 }
 
 .campaign-progress__bar {
   position: relative;
-  height: 8px;
+  height: 7px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
   overflow: hidden;
+  background-color: rgba(255, 255, 255, 0.06);
+  background-image:
+    linear-gradient(90deg, transparent calc(25% - 0.5px), rgba(255, 255, 255, 0.12) calc(25% - 0.5px), rgba(255, 255, 255, 0.12) 25%, transparent 25%),
+    linear-gradient(90deg, transparent calc(50% - 0.5px), rgba(255, 255, 255, 0.12) calc(50% - 0.5px), rgba(255, 255, 255, 0.12) 50%, transparent 50%),
+    linear-gradient(90deg, transparent calc(75% - 0.5px), rgba(255, 255, 255, 0.12) calc(75% - 0.5px), rgba(255, 255, 255, 0.12) 75%, transparent 75%);
 }
 
 .campaign-progress__fill {
   position: absolute;
   inset: 0;
   transform-origin: left center;
-  background: linear-gradient(
-    90deg,
-    var(--color-signal) 0%,
-    #a7f3d8 60%,
-    var(--color-signal) 100%
-  );
+  background: linear-gradient(90deg, var(--color-signal-deep) 0%, var(--color-signal) 60%, #a7f3d8 100%);
   background-size: 200% 100%;
   border-radius: 999px;
-  box-shadow: 0 0 12px var(--color-signal-glow);
-  animation: shows-progress-sheen 3s ease-in-out infinite;
-}
-
-@keyframes shows-progress-sheen {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+  box-shadow:
+    0 0 10px var(--color-signal-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  animation: shows-progress-sheen 3.5s ease-in-out infinite;
 }
 
 .campaign-progress__stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 20px;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.62);
+  gap: 4px 16px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .campaign-progress__stats strong {
-  color: #fff;
+  color: rgba(255, 255, 255, 0.88);
   font-weight: 700;
 }
 
 .campaign-progress__stats .campaign-stat-sep {
-  color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.18);
 }
 
 .campaign-progress--compact .campaign-progress__raised {
-  font-size: 20px;
+  font-size: 19px;
 }
 
 .campaign-progress--compact .campaign-progress__bar {
-  height: 6px;
+  height: 5px;
 }
 
-/* -------------------------------------------------------------------
- * Campaign card (3-up grid)
- * -----------------------------------------------------------------*/
-
-.campaign-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 24px;
-}
-
-@media (max-width: 1023px) {
-  .campaign-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 20px;
-  }
-}
-
-@media (max-width: 639px) {
-  .campaign-grid {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-}
-
-.campaign-card {
-  display: flex;
-  flex-direction: column;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(175deg, rgba(28, 22, 18, 0.92) 0%, rgba(18, 14, 20, 0.96) 100%);
-  overflow: hidden;
-  cursor: pointer;
-  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
-  text-decoration: none;
-  color: inherit;
-  font-family: inherit;
-  text-align: left;
-  padding: 0;
-}
-
-.campaign-card:hover {
-  transform: translateY(-4px);
-  border-color: var(--color-signal-border);
-  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--color-signal-border);
-}
-
-.campaign-card:focus-visible {
-  outline: 2px solid var(--color-signal);
-  outline-offset: 2px;
-}
-
-.campaign-card__art {
-  position: relative;
-  aspect-ratio: 16 / 9;
-  background: linear-gradient(135deg, #0e1a26, #0f1620 55%, #0a1218);
-  display: flex;
-  align-items: flex-end;
-  padding: 16px;
-}
-
-.campaign-card__art::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at 25% 30%, rgba(94, 234, 212, 0.28), transparent 50%),
-    radial-gradient(circle at 85% 75%, rgba(139, 92, 246, 0.18), transparent 60%);
-  pointer-events: none;
-}
-
-.campaign-card__monogram {
-  position: relative;
-  font-size: 44px;
-  font-weight: 800;
-  color: rgba(255, 255, 255, 0.9);
-  letter-spacing: -0.04em;
-  line-height: 1;
-}
-
-.campaign-card__city-chip {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.92);
-}
-
-.campaign-card__body {
-  padding: 18px 18px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  flex: 1;
-}
-
-.campaign-card__title {
-  font-size: 17px;
-  font-weight: 700;
-  color: #fff;
-  margin: 0;
-  letter-spacing: -0.01em;
-  line-height: 1.25;
-}
-
-.campaign-card__meta {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.52);
-  margin: -8px 0 0;
-}
-
-/* -------------------------------------------------------------------
- * Section framing on the home page
- * -----------------------------------------------------------------*/
+/* ══════════════════════════════════════════════════════════════════
+ * HOME SECTION (shows preview on home page)
+ * ══════════════════════════════════════════════════════════════════ */
 
 .shows-home-section {
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 24px;
 }
 
 .shows-home-section__header {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-}
-
-.shows-home-section__kicker {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--color-signal);
+  gap: 5px;
 }
 
 .shows-home-section__title {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 800;
   color: #fff;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
   margin: 0;
 }
 
 .shows-home-section__sub {
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.55);
   max-width: 60ch;
 }
 
-/* -------------------------------------------------------------------
- * /shows explorer + /shows/[id] detail
- * -----------------------------------------------------------------*/
-
-.shows-page {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 40px 32px 80px;
-  display: flex;
-  flex-direction: column;
-  gap: 40px;
-}
-
-@media (max-width: 767px) {
-  .shows-page {
-    padding: 24px 16px 64px;
-    gap: 28px;
-  }
-}
-
-.shows-page__intro {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-width: 760px;
-}
-
-.shows-page__title {
-  font-size: clamp(32px, 4.5vw, 48px);
-  font-weight: 800;
-  color: #fff;
-  letter-spacing: -0.03em;
-  margin: 0;
-  line-height: 1.05;
-}
-
-.shows-page__lede {
-  font-size: 16px;
-  color: rgba(255, 255, 255, 0.68);
-  line-height: 1.5;
-  margin: 0;
-}
-
-.shows-page__toolbar {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.shows-page__sort {
-  padding: 8px 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  cursor: not-allowed;
-  font-family: inherit;
-}
-
-.shows-page__sort-note {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.35);
-  letter-spacing: 0.04em;
-}
-
-/* -------- detail page ---------------------------------------------*/
-
-.show-detail {
-  display: flex;
-  flex-direction: column;
-  gap: 40px;
-}
-
-.show-detail__breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: -18px;
-  color: rgba(255, 255, 255, 0.42);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.show-detail__breadcrumb a {
-  color: var(--color-signal);
-  text-decoration: none;
-}
-
-.show-detail__breadcrumb a:hover {
-  color: #fff;
-}
-
-.show-detail__snapshot {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.show-detail__signal-card {
-  min-height: 148px;
-  padding: 18px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  background:
-    radial-gradient(circle at top left, rgba(94, 234, 212, 0.08), transparent 46%),
-    rgba(255, 255, 255, 0.025);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.show-detail__signal-card--primary {
-  border-color: var(--color-signal-border);
-  background:
-    radial-gradient(circle at top left, var(--color-signal-soft), transparent 52%),
-    rgba(255, 255, 255, 0.035);
-}
-
-.show-detail__signal-label {
-  color: rgba(255, 255, 255, 0.48);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.show-detail__signal-card strong {
-  color: #fff;
-  font-size: clamp(22px, 3vw, 32px);
-  line-height: 1;
-  letter-spacing: -0.03em;
-}
-
-.show-detail__signal-card p {
-  margin: 0;
-  color: rgba(255, 255, 255, 0.58);
-  font-size: 12.5px;
-  line-height: 1.45;
-}
-
-.show-detail__brief-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
-  gap: 18px;
-}
-
-.show-detail__brief,
-.show-detail__pledge-panel {
-  border-radius: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018));
-  padding: 24px;
-}
-
-.show-detail__brief p,
-.show-detail__pledge-panel p {
-  margin: 12px 0 0;
-  color: rgba(255, 255, 255, 0.64);
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.show-detail__brief-points {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 18px;
-}
-
-.show-detail__brief-points span {
-  padding: 7px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(94, 234, 212, 0.18);
-  background: rgba(94, 234, 212, 0.07);
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.show-detail__pledge-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.show-detail__soon-pill {
-  padding: 4px 9px;
-  border-radius: 999px;
-  color: rgba(255, 255, 255, 0.72);
-  background: rgba(255, 255, 255, 0.055);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.show-detail__tiers {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.show-detail__tier {
-  min-height: 96px;
-  padding: 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  background: rgba(0, 0, 0, 0.16);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-
-.show-detail__tier--featured {
-  border-color: var(--color-signal-border);
-  background: var(--color-signal-soft);
-}
-
-.show-detail__tier strong {
-  color: #fff;
-  font-size: 24px;
-  letter-spacing: -0.04em;
-}
-
-.show-detail__tier span {
-  color: rgba(255, 255, 255, 0.58);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.show-detail__how {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-}
-
-@media (max-width: 767px) {
-  .show-detail__snapshot,
-  .show-detail__brief-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .show-detail__breadcrumb {
-    margin-bottom: -12px;
-  }
-
-  .show-detail__tiers {
-    grid-template-columns: 1fr;
-  }
-
-  .show-detail__how {
-    grid-template-columns: 1fr;
-  }
-}
-
-.show-detail__step {
-  padding: 20px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.018));
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.show-detail__step-num {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--color-signal);
-}
-
-.show-detail__step-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: #fff;
-  margin: 0;
-}
-
-.show-detail__step-body {
-  font-size: 13.5px;
-  line-height: 1.5;
-  color: rgba(255, 255, 255, 0.62);
-  margin: 0;
-}
-
-.show-detail__notice {
-  padding: 24px;
-  border-radius: 20px;
-  border: 1px dashed var(--color-signal-border);
-  background: var(--color-signal-soft);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-}
-
-.show-detail__notice-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: #fff;
-  margin: 0;
-}
-
-.show-detail__notice-body {
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.72);
-  line-height: 1.5;
-  margin: 0;
-}
-
-.show-detail__notice-body a {
-  color: var(--color-signal);
-  text-decoration: underline;
-  text-decoration-color: var(--color-signal-border);
-  text-underline-offset: 3px;
-}
-
-.show-detail__notice-link {
-  flex: 0 0 auto;
-  padding: 12px 16px;
-  border-radius: 999px;
-  border: 1px solid var(--color-signal-border);
-  background: rgba(0, 0, 0, 0.18);
-  color: #fff;
-  text-decoration: none;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-}
-
-.show-detail__notice-link:hover {
-  background: rgba(0, 0, 0, 0.28);
-  border-color: rgba(94, 234, 212, 0.5);
-}
-
-@media (max-width: 767px) {
-  .show-detail__notice {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .show-detail__notice-link {
-    text-align: center;
-  }
-}
-
-/* -------------------------------------------------------------------
- * Sidebar "NEW" pill on the Shows nav entry
- * -----------------------------------------------------------------*/
-
-.sidebar-link__new {
-  margin-left: auto;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: #5eead4;
-  color: #03201c;
-  line-height: 1;
-}
-
-/* ===================================================================
- * Theme v2 — "ticket stub" identity (2026-04)
- *
- * Brings Shows in line with the home-hero polish language (hairline
- * gradient borders, top-edge sheen, gradient text, live pulse) while
- * adding one Shows-only motif: a perforated edge between the card art
- * and body that reads as a physical concert ticket. All amber accents
- * stay scoped to `.shows-surface`.
- * ================================================================ */
-
-/* --- Surface atmosphere ------------------------------------------- */
-
-.shows-surface {
-  /* A soft warm vignette in the top-third stops the page from reading
-   * as "rectangles on a flat dark canvas." */
-  background:
-    radial-gradient(ellipse at 50% -10%, color-mix(in srgb, var(--color-signal) 8%, transparent), transparent 55%),
-    radial-gradient(ellipse at 0% 30%, color-mix(in srgb, var(--ds-primary-container) 6%, transparent), transparent 50%);
-}
-
-/* --- Page intro: title gets the same luster as the home hero ------ */
-
-.shows-page__title {
-  background: linear-gradient(180deg, #ffffff 0%, color-mix(in srgb, var(--color-signal) 35%, #ffffff) 100%);
-  -webkit-background-clip: text;
-          background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.shows-home-section__kicker,
-.shows-page__intro .shows-home-section__kicker {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.shows-page__intro .shows-home-section__kicker::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--color-signal);
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-signal) 60%, transparent);
-  animation: shows-dot-pulse 2.4s ease-out infinite;
-}
-
-@keyframes shows-dot-pulse {
-  0%   { box-shadow: 0 0 0 0   color-mix(in srgb, var(--color-signal) 60%, transparent); }
-  70%  { box-shadow: 0 0 0 8px color-mix(in srgb, var(--color-signal) 0%,  transparent); }
-  100% { box-shadow: 0 0 0 0   color-mix(in srgb, var(--color-signal) 0%,  transparent); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .shows-page__intro .shows-home-section__kicker::before { animation: none; }
-}
-
-/* --- Hero: hairline gradient border + richer atmosphere ----------- */
+/* ══════════════════════════════════════════════════════════════════
+ * CAMPAIGN HERO — detail page
+ * ══════════════════════════════════════════════════════════════════ */
 
 .campaign-hero {
-  background:
-    radial-gradient(at 100% 0%, color-mix(in srgb, var(--color-signal) 18%, transparent), transparent 45%),
-    radial-gradient(at 0% 100%, color-mix(in srgb, var(--ds-primary-container) 14%, transparent), transparent 50%),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px),
-    radial-gradient(at 0% 0%, var(--color-signal-soft), transparent 55%),
-    linear-gradient(170deg, rgba(15, 22, 30, 0.96) 0%, rgba(18, 14, 20, 0.98) 100%);
-  background-size: auto, auto, 44px 44px, 44px 44px, auto, auto;
-  /* Layered shadows: outer warm bloom, deep depth, top-edge highlight,
-   * hairline ring, and a top-left amber stroke that fakes a gradient
-   * border without an extra wrapping element. */
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 0;
+  min-height: min(580px, 58vh);
+  border-radius: 28px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  position: relative;
   box-shadow:
-    0 30px 80px -28px color-mix(in srgb, var(--color-signal) 38%, transparent),
-    0 24px 80px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
-    inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 22%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--color-signal) 12%, transparent),
+    0 32px 80px -24px color-mix(in srgb, var(--color-signal) 25%, transparent),
+    0 24px 80px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
-/* Top-edge sheen — same trick as the home hero, in warm tone. */
+/* Top-edge sheen */
 .campaign-hero::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, transparent 22%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, transparent 18%);
   pointer-events: none;
-  border-radius: inherit;
   z-index: 0;
+  border-radius: inherit;
 }
 
-/* Hero title gets the same luster as the home hero (white → warm). */
+/* ─── Hero body (left) ────────────────────────────────────────────── */
+
+.campaign-hero__body {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 20px;
+  padding: 48px;
+  position: relative;
+  z-index: 1;
+  background:
+    radial-gradient(at 100% 0%, color-mix(in srgb, var(--color-signal) 14%, transparent), transparent 42%),
+    radial-gradient(at 0% 100%, rgba(13, 148, 136, 0.12), transparent 50%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(170deg, rgba(8, 14, 22, 0.97) 0%, rgba(10, 14, 18, 0.98) 100%);
+  background-size: auto, auto, 44px 44px, 44px 44px, auto;
+}
+
+.campaign-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  align-self: flex-start;
+  border-radius: 999px;
+  border: 1px solid var(--color-signal-border);
+  background: var(--color-signal-soft);
+  color: var(--color-signal);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.campaign-hero__eyebrow::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-signal);
+  box-shadow: 0 0 10px var(--color-signal-glow);
+  animation: shows-dot-pulse 2s ease-out infinite;
+}
+
 .campaign-hero__title {
-  background: linear-gradient(180deg, #ffffff 0%, color-mix(in srgb, var(--color-signal) 30%, #ffffff) 100%);
+  font-size: clamp(30px, 4.2vw, 52px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  margin: 0;
+  background: linear-gradient(165deg, #fff 0%, color-mix(in srgb, var(--color-signal) 35%, #fff) 100%);
   -webkit-background-clip: text;
           background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-/* --- Hero art: real EQ columns + amber halo behind monogram ------ */
+.campaign-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.campaign-hero__meta strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+.campaign-hero__tagline {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.55;
+  max-width: 52ch;
+  margin: 0;
+}
+
+/* progress displayed inside the hero body */
+.campaign-hero__progress {
+  margin-top: 4px;
+}
+
+.campaign-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.campaign-hero__trust {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.38);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ─── CTA buttons ─────────────────────────────────────────────────── */
+
+.campaign-hero__cta-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 28px;
+  border-radius: 999px;
+  border: 0;
+  background: var(--color-signal);
+  color: #03201c;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  box-shadow:
+    0 10px 28px -8px color-mix(in srgb, var(--color-signal) 65%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  font-family: inherit;
+  text-decoration: none;
+}
+
+.campaign-hero__cta-primary:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.08);
+  box-shadow:
+    0 14px 36px -6px color-mix(in srgb, var(--color-signal) 80%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.campaign-hero__cta-primary:active {
+  transform: translateY(0);
+}
+
+.campaign-hero__cta-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 13px 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  text-decoration: none;
+}
+
+.campaign-hero__cta-secondary:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+/* ─── Hero art (right panel) ─────────────────────────────────────── */
 
 .campaign-hero__art {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: 28px;
+  z-index: 1;
+  overflow: hidden;
   background:
-    radial-gradient(at 50% 35%, color-mix(in srgb, var(--color-signal) 22%, transparent), transparent 55%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.07), transparent 1px),
-    linear-gradient(160deg, #0e1a26, #0f1620 60%, #0a1218);
+    radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--color-signal) 22%, transparent), transparent 56%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.06), transparent 1px),
+    linear-gradient(155deg, #0e1a26, #0f1620 58%, #090e16);
   background-size: auto, 26px 26px, auto;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.04),
-    inset 0 0 80px color-mix(in srgb, var(--color-signal) 14%, transparent);
+    inset 0 0 80px color-mix(in srgb, var(--color-signal) 12%, transparent),
+    inset -1px 0 0 rgba(255, 255, 255, 0.04);
 }
 
-/* Reposition / restyle the 4 art bars as a proper EQ snapshot. Each
- * column shows a "filled" amber portion at a different height so they
- * read as a vertical equalizer, not just decorative pills. */
+/* EQ columns */
 .campaign-hero__art-grid {
-  /* Bottom inset clears the monogram (84px tall) + 24px panel padding
-   * + a small breathing gap, so the EQ columns sit cleanly above the
-   * "S PARIS" signature instead of overlapping it. */
+  position: absolute;
+  z-index: 1;
   inset: 56px 28px 130px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 14px;
   align-items: end;
-  opacity: 1;
 }
 
 .campaign-hero__art-grid span {
@@ -1100,21 +847,20 @@
       180deg,
       transparent 0%,
       transparent var(--eq-empty, 50%),
-      color-mix(in srgb, var(--color-signal) 60%, transparent) var(--eq-empty, 50%),
+      color-mix(in srgb, var(--color-signal) 55%, transparent) var(--eq-empty, 50%),
       var(--color-signal) 100%
     ),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.04);
   box-shadow:
-    inset 0 0 24px color-mix(in srgb, var(--color-signal) 18%, transparent),
-    0 6px 20px color-mix(in srgb, var(--color-signal) 8%, transparent);
+    inset 0 0 24px color-mix(in srgb, var(--color-signal) 16%, transparent),
+    0 6px 20px color-mix(in srgb, var(--color-signal) 6%, transparent);
   overflow: hidden;
   animation: shows-eq-pulse 3.6s ease-in-out infinite;
 }
 
 .campaign-hero__art-grid span::after {
-  /* Top cap — looks like the "current peak" indicator on a real EQ. */
   content: "";
   position: absolute;
   left: 8%;
@@ -1132,193 +878,153 @@
 .campaign-hero__art-grid span:nth-child(3) { --eq-empty: 52%; animation-delay: 0.5s; }
 .campaign-hero__art-grid span:nth-child(4) { --eq-empty: 28%; animation-delay: 0.75s; }
 
-@keyframes shows-eq-pulse {
-  0%, 100% { filter: brightness(1); }
-  50%      { filter: brightness(1.15); }
+/* Ribbon badge */
+.campaign-hero__art-ribbon {
+  position: absolute;
+  z-index: 3;
+  top: 22px;
+  left: 22px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(94, 234, 212, 0.28);
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  backdrop-filter: blur(12px);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .campaign-hero__art-grid span { animation: none; }
-}
-
-/* Soft amber halo behind the big monogram. The ::before sits behind
- * the letter and provides the warm bloom; the letter itself stays
- * white and crisp. */
+/* Monogram */
 .campaign-hero__art-monogram {
   position: relative;
   z-index: 2;
+  font-size: 88px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.92);
   isolation: isolate;
-  filter: drop-shadow(0 6px 24px color-mix(in srgb, var(--color-signal) 28%, transparent));
+  filter: drop-shadow(0 6px 24px color-mix(in srgb, var(--color-signal) 30%, transparent));
 }
 
 .campaign-hero__art-monogram::before {
   content: "";
   position: absolute;
-  inset: -32px;
+  inset: -36px;
   z-index: -1;
-  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--color-signal) 35%, transparent), transparent 60%);
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--color-signal) 32%, transparent), transparent 62%);
   pointer-events: none;
 }
 
-/* --- Hero CTA: matched glow technique with home hero ------------- */
-
-.campaign-hero__cta-primary {
-  box-shadow:
-    0 10px 28px -8px color-mix(in srgb, var(--color-signal) 65%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.45);
-}
-
-.campaign-hero__cta-primary:hover {
-  box-shadow:
-    0 14px 36px -6px color-mix(in srgb, var(--color-signal) 80%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.55);
-}
-
-/* --- Card: hairline gradient border + ticket-stub perforation ---- */
-
-.campaign-card {
+.campaign-hero__art-city {
   position: relative;
-  /* Reuse the box-shadow trick to fake a gradient stroke without an
-   * extra wrapping element — top-left amber hint, dark base. */
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 18%, transparent);
+  z-index: 2;
+  margin-left: 14px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+  align-self: flex-end;
 }
 
-.campaign-card:hover {
-  box-shadow:
-    0 16px 44px rgba(0, 0, 0, 0.45),
-    0 0 0 1px var(--color-signal-border),
-    0 12px 36px -10px color-mix(in srgb, var(--color-signal) 38%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 28%, transparent);
-}
-
-/* Ticket perforation line between art and body. The dotted gradient
- * trick uses a horizontal repeating-linear with sharp transparent gaps,
- * plus two small "punched out" semicircles on the edges. */
-.campaign-card__body {
-  position: relative;
-  /* extra top padding to make room for the perforation line above */
-  padding-top: 22px;
-}
-
-.campaign-card__body::before {
-  content: "";
+.campaign-hero__art-footer {
   position: absolute;
-  left: 16px;
-  right: 16px;
-  top: 0;
-  height: 1px;
-  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.32) 1px, transparent 1.5px);
-  background-size: 8px 1px;
-  background-repeat: repeat-x;
-  background-position: 0 50%;
-  opacity: 0.7;
+  z-index: 3;
+  left: 22px;
+  right: 22px;
+  bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }
 
-/* The "punched-out" half-circles at the perforation ends — reads as a
- * physical ticket stub. Centers sit on the card edges so the inner half
- * is what stays visible after `overflow: hidden` clips the outer half;
- * fill matches the page canvas so they look cut out of the card. */
-.campaign-card__body::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: -8px;
-  height: 16px;
-  pointer-events: none;
-  background:
-    radial-gradient(circle 8px at 0 50%, var(--ds-surface) 95%, transparent 100%),
-    radial-gradient(circle 8px at 100% 50%, var(--ds-surface) 95%, transparent 100%);
+/* ══════════════════════════════════════════════════════════════════
+ * DETAIL PAGE — /shows/[campaignId]
+ * ══════════════════════════════════════════════════════════════════ */
+
+.show-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+  animation: shows-fade-up 0.5s ease both;
 }
 
-/* --- Card art: subtle halftone + EQ ribbon at the bottom --------- */
-
-.campaign-card__art {
-  /* Slightly tighter aspect so the empty-feeling fade doesn't dominate. */
-  aspect-ratio: 16 / 8;
-  background:
-    /* faint halftone dot pattern */
-    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 1.4px) 0 0 / 14px 14px,
-    radial-gradient(circle at 22% 32%, color-mix(in srgb, var(--color-signal) 32%, transparent), transparent 50%),
-    radial-gradient(circle at 84% 70%, color-mix(in srgb, var(--ds-primary-container) 22%, transparent), transparent 60%),
-    linear-gradient(135deg, #0e1a26, #0f1620 55%, #0a1218);
-}
-
-.campaign-card__art::before {
-  /* Override the original radial — replaced by the layered background
-   * above. Repurpose this pseudo as a thin EQ ribbon at the bottom of
-   * the art panel using a repeating-linear-gradient (no JSX needed).
-   *
-   * `inset` shorthand here is critical: the original rule sets
-   * `inset: 0`, which would otherwise leak `top: 0` and make `height`
-   * a no-op (the strip would fill the whole panel). */
-  content: "";
-  position: absolute;
-  inset: auto 14px 14px 14px;
-  height: 22px;
-  background:
-    repeating-linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--color-signal) 70%, transparent) 0 3px,
-      transparent 3px 9px
-    );
-  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 40%, #000 100%);
-          mask-image: linear-gradient(180deg, transparent 0%, #000 40%, #000 100%);
-  opacity: 0.55;
-  pointer-events: none;
-}
-
-.campaign-card__monogram {
-  /* Bigger watermark feel without overpowering the card. */
-  font-size: 56px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), color-mix(in srgb, var(--color-signal) 40%, #ffffff));
-  -webkit-background-clip: text;
-          background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 4px 18px color-mix(in srgb, var(--color-signal) 25%, transparent));
-}
-
-/* City chip: add a small pin glyph so it reads as "location" not "tag". */
-.campaign-card__city-chip {
-  display: inline-flex;
+.show-detail__breadcrumb {
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  margin-bottom: -14px;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
-.campaign-card__city-chip::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--color-signal);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--color-signal) 60%, transparent);
+.show-detail__breadcrumb a {
+  color: var(--color-signal);
+  text-decoration: none;
+  transition: color 0.15s ease;
 }
 
-/* --- Stat snapshot cards: hairline gradient stroke + leading bar -- */
+.show-detail__breadcrumb a:hover {
+  color: #fff;
+}
+
+/* ─── 4-up signal snapshot cards ─────────────────────────────────── */
+
+.show-detail__snapshot {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
 
 .show-detail__signal-card {
+  min-height: 152px;
+  padding: 20px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background:
+    radial-gradient(circle at top left, rgba(94, 234, 212, 0.06), transparent 48%),
+    rgba(255, 255, 255, 0.02);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
   position: relative;
   overflow: hidden;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 12%, transparent);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 10%, transparent);
 }
 
 .show-detail__signal-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-3px);
   border-color: var(--color-signal-border);
   box-shadow:
-    0 12px 32px -12px color-mix(in srgb, var(--color-signal) 35%, transparent),
+    0 14px 36px -12px color-mix(in srgb, var(--color-signal) 30%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 22%, transparent);
+    inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 20%, transparent);
 }
 
-/* Primary card: 3px amber rail down the left edge + amber gradient on
- * the headline number to make it read as the primary signal. */
+.show-detail__signal-card--primary {
+  border-color: var(--color-signal-border);
+  background:
+    radial-gradient(circle at top left, var(--color-signal-soft), transparent 54%),
+    rgba(255, 255, 255, 0.03);
+}
+
+/* Teal left rail on primary card */
 .show-detail__signal-card--primary::before {
   content: "";
   position: absolute;
@@ -1327,62 +1033,239 @@
   bottom: 14px;
   width: 3px;
   border-radius: 0 3px 3px 0;
-  background: linear-gradient(180deg, var(--color-signal), color-mix(in srgb, var(--color-signal) 30%, transparent));
+  background: linear-gradient(180deg, var(--color-signal), color-mix(in srgb, var(--color-signal) 28%, transparent));
   box-shadow: 0 0 14px color-mix(in srgb, var(--color-signal) 50%, transparent);
 }
 
+.show-detail__signal-label {
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.show-detail__signal-card strong {
+  color: #fff;
+  font-size: clamp(22px, 3vw, 30px);
+  line-height: 1;
+  letter-spacing: -0.035em;
+  display: block;
+}
+
 .show-detail__signal-card--primary strong {
-  background: linear-gradient(180deg, #fff 0%, color-mix(in srgb, var(--color-signal) 60%, #fff) 100%);
+  background: linear-gradient(165deg, #fff 0%, color-mix(in srgb, var(--color-signal) 62%, #fff) 100%);
   -webkit-background-clip: text;
           background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-/* --- Pledge tier "featured" — stronger gold treatment ------------- */
+.show-detail__signal-card p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.52);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ─── Brief + pledge panel grid ───────────────────────────────────── */
+
+.show-detail__brief-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(300px, 0.7fr);
+  gap: 16px;
+}
+
+.show-detail__brief,
+.show-detail__pledge-panel {
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015));
+  padding: 28px;
+}
+
+.show-detail__brief h2,
+.show-detail__pledge-panel h2 {
+  margin: 8px 0 0;
+}
+
+.show-detail__brief p,
+.show-detail__pledge-panel p {
+  margin: 14px 0 0;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.show-detail__brief-points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.show-detail__brief-points span {
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-signal) 22%, transparent);
+  background: color-mix(in srgb, var(--color-signal) 8%, transparent);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ─── Pledge tiers ────────────────────────────────────────────────── */
+
+.show-detail__pledge-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.show-detail__soon-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.show-detail__tiers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
 
 .show-detail__tier {
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  min-height: 100px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  cursor: default;
+}
+
+.show-detail__tier:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 
 .show-detail__tier--featured {
-  transform: translateY(-2px);
+  border-color: var(--color-signal-border);
+  background: var(--color-signal-soft);
+  transform: translateY(-3px);
   box-shadow:
-    0 14px 36px -12px color-mix(in srgb, var(--color-signal) 45%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--color-signal) 25%, transparent);
+    0 16px 40px -12px color-mix(in srgb, var(--color-signal) 42%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--color-signal) 28%, transparent);
+}
+
+.show-detail__tier--featured:hover {
+  transform: translateY(-5px);
+  box-shadow:
+    0 20px 48px -10px color-mix(in srgb, var(--color-signal) 55%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--color-signal) 35%, transparent);
+}
+
+.show-detail__tier strong {
+  color: #fff;
+  font-size: 22px;
+  letter-spacing: -0.04em;
+  line-height: 1;
 }
 
 .show-detail__tier--featured strong {
-  background: linear-gradient(180deg, #fff 0%, color-mix(in srgb, var(--color-signal) 65%, #fff) 100%);
+  background: linear-gradient(165deg, #fff 0%, color-mix(in srgb, var(--color-signal) 65%, #fff) 100%);
   -webkit-background-clip: text;
           background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-/* --- Progress bar: tick marks at 25 / 50 / 75 -------------------- */
-
-.campaign-progress__bar {
-  background-image:
-    linear-gradient(90deg, transparent calc(25% - 1px), rgba(255, 255, 255, 0.18) calc(25% - 1px), rgba(255, 255, 255, 0.18) 25%, transparent 25%),
-    linear-gradient(90deg, transparent calc(50% - 1px), rgba(255, 255, 255, 0.18) calc(50% - 1px), rgba(255, 255, 255, 0.18) 50%, transparent 50%),
-    linear-gradient(90deg, transparent calc(75% - 1px), rgba(255, 255, 255, 0.18) calc(75% - 1px), rgba(255, 255, 255, 0.18) 75%, transparent 75%);
-  background-color: rgba(255, 255, 255, 0.06);
+.show-detail__tier span {
+  color: rgba(255, 255, 255, 0.52);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
-.campaign-progress__fill {
-  /* Slight inner highlight so the fill reads as 3D, not flat. */
-  box-shadow:
-    0 0 12px var(--color-signal-glow),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+/* ─── How it works ────────────────────────────────────────────────── */
+
+.show-detail__how {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
 }
 
-/* --- Notice strip: warmer treatment with a side glow ------------ */
+.show-detail__step {
+  padding: 24px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.show-detail__step:hover {
+  border-color: var(--color-signal-border);
+  transform: translateY(-2px);
+}
+
+.show-detail__step-num {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--color-signal);
+}
+
+.show-detail__step-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.show-detail__step-body {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.58);
+  margin: 0;
+}
+
+/* ─── Notice strip ────────────────────────────────────────────────── */
 
 .show-detail__notice {
+  padding: 24px 28px;
+  border-radius: 20px;
+  border: 1px dashed var(--color-signal-border);
+  background: var(--color-signal-soft);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
   position: relative;
   overflow: hidden;
   box-shadow:
-    inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 20%, transparent),
-    0 14px 40px -16px color-mix(in srgb, var(--color-signal) 28%, transparent);
+    inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 18%, transparent),
+    0 12px 36px -16px color-mix(in srgb, var(--color-signal) 25%, transparent);
 }
 
 .show-detail__notice::before {
@@ -1392,11 +1275,172 @@
   top: -40%;
   width: 50%;
   height: 180%;
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--color-signal) 22%, transparent), transparent 70%);
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--color-signal) 18%, transparent), transparent 70%);
   pointer-events: none;
 }
 
 .show-detail__notice > * {
   position: relative;
   z-index: 1;
+}
+
+.show-detail__notice-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+
+.show-detail__notice-body {
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.68);
+  line-height: 1.55;
+  margin: 8px 0 0;
+}
+
+.show-detail__notice-body a {
+  color: var(--color-signal);
+  text-decoration: underline;
+  text-decoration-color: var(--color-signal-border);
+  text-underline-offset: 3px;
+}
+
+.show-detail__notice-link {
+  flex: 0 0 auto;
+  padding: 12px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--color-signal-border);
+  background: rgba(0, 0, 0, 0.22);
+  color: #fff;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.show-detail__notice-link:hover {
+  background: rgba(0, 0, 0, 0.38);
+  border-color: color-mix(in srgb, var(--color-signal) 55%, transparent);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * SIDEBAR "NEW" PILL
+ * ══════════════════════════════════════════════════════════════════ */
+
+.sidebar-link__new {
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #5eead4;
+  color: #03201c;
+  line-height: 1;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * RESPONSIVE
+ * ══════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 1100px) {
+  .campaign-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .show-detail__snapshot {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .show-detail__brief-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1023px) {
+  .shows-page__intro {
+    grid-template-columns: 1fr;
+    padding: 36px;
+    gap: 24px;
+  }
+
+  .shows-page__intro-art {
+    align-items: flex-start;
+    flex-direction: row;
+    gap: 12px;
+  }
+
+  .campaign-hero {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .campaign-hero__art {
+    order: -1;
+    aspect-ratio: 16 / 8;
+    min-height: 0;
+  }
+
+  .campaign-hero__art-monogram {
+    font-size: 72px;
+  }
+
+  .show-detail__how {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 767px) {
+  .shows-page {
+    padding: 24px 18px 72px;
+    gap: 36px;
+  }
+
+  .shows-page__intro {
+    padding: 24px;
+    border-radius: 20px;
+  }
+
+  .shows-page__title {
+    font-size: 36px;
+  }
+
+  .campaign-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .campaign-hero__body {
+    padding: 28px;
+  }
+
+  .campaign-hero__cta-primary {
+    padding: 12px 22px;
+    font-size: 14px;
+  }
+
+  .campaign-hero__cta-secondary {
+    padding: 12px 18px;
+  }
+
+  .show-detail__snapshot {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .show-detail__tiers {
+    grid-template-columns: 1fr;
+  }
+
+  .show-detail__notice {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .show-detail__notice-link {
+    text-align: center;
+  }
 }

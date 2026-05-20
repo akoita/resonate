@@ -5,39 +5,56 @@ import { listCampaignsSync } from "../../lib/shows";
 
 export default function ShowsExplorerPage() {
   const campaigns = listCampaignsSync();
+  const totalBackers = campaigns.reduce((s, c) => s + c.backerCount, 0);
 
   return (
     <main className="shows-surface shows-page">
+      {/* ── Cinematic intro banner ── */}
       <header className="shows-page__intro">
-        <span className="shows-home-section__kicker">Resonate Shows</span>
-        <h1 className="shows-page__title">Fans bring the show.</h1>
-        <p className="shows-page__lede">
-          Pick an artist and a city, lock funds in a smart-contract escrow,
-          and if enough fans commit, the artist&apos;s team gets a demand signal
-          backed by money — not likes. If they don&apos;t confirm, every pledge
-          is refunded automatically.
-        </p>
+        <div className="shows-page__intro-body">
+          <span className="shows-home-section__kicker">Resonate Shows</span>
+          <h1 className="shows-page__title">Fans bring the&nbsp;show.</h1>
+          <p className="shows-page__lede">
+            Pick an artist and a city, lock funds in a smart-contract escrow,
+            and if enough fans commit, the artist&apos;s team gets a demand
+            signal backed by money&nbsp;— not likes. If they don&apos;t
+            confirm, every pledge is refunded automatically.
+          </p>
+        </div>
+
+        <div className="shows-page__intro-art">
+          <div className="shows-page__intro-stat" aria-label="Active campaigns">
+            <span className="shows-page__intro-stat-num tabular">
+              {campaigns.length}
+            </span>
+            <span className="shows-page__intro-stat-label">
+              Active campaigns
+            </span>
+          </div>
+          <div
+            className="shows-page__intro-stat"
+            aria-label="Total backers"
+            style={{ animationDelay: "1s" }}
+          >
+            <span className="shows-page__intro-stat-num tabular">
+              {totalBackers}
+            </span>
+            <span className="shows-page__intro-stat-label">Fans signalled</span>
+          </div>
+        </div>
       </header>
 
-      <div className="shows-page__toolbar">
-        <button
-          type="button"
-          className="shows-page__sort"
-          disabled
-          title="Sorting ships alongside the pledge flow with the cohort demo"
-        >
-          Sort: Most funded
-        </button>
-        <span className="shows-page__sort-note">
-          Sorting ships with the pledge flow.
-        </span>
-      </div>
-
-      <div className="campaign-grid">
-        {campaigns.map((c) => (
-          <CampaignCard key={c.id} campaign={c} />
-        ))}
-      </div>
+      {/* ── Campaign grid ── */}
+      <section aria-label="All campaigns">
+        <h2 className="shows-page__toolbar-heading" style={{ marginBottom: 20 }}>
+          All campaigns
+        </h2>
+        <div className="campaign-grid">
+          {campaigns.map((c) => (
+            <CampaignCard key={c.id} campaign={c} />
+          ))}
+        </div>
+      </section>
     </main>
   );
 }
