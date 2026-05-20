@@ -1,274 +1,816 @@
 ---
-name: Resonate — Next-Gen Music Platform
+name: "Resonate — Design System v2: Obsidian Frequency"
+status: proposed
+owner: "@akoita"
+revision: "2026-05-20"
 colors:
-  surface: "#15121c"
-  surface-dim: "#15121c"
-  surface-bright: "#3c3743"
-  surface-container-lowest: "#100c16"
-  surface-container-low: "#1e1a24"
-  surface-container: "#221e28"
-  surface-container-high: "#2c2833"
-  surface-container-highest: "#37333e"
-  on-surface: "#e8dfef"
-  on-surface-variant: "#cdc2d8"
-  inverse-surface: "#e8dfef"
-  inverse-on-surface: "#332e3a"
-  outline: "#968da1"
-  outline-variant: "#4b4455"
-  surface-tint: "#d4bbff"
-  primary: "#d4bbff"
-  on-primary: "#41008b"
-  primary-container: "#8a3ffc"
-  on-primary-container: "#faf1ff"
-  inverse-primary: "#7825ea"
-  secondary: "#d4bbff"
-  on-secondary: "#3d1a74"
-  secondary-container: "#55348c"
-  on-secondary-container: "#c6a5ff"
-  tertiary: "#ffb782"
-  on-tertiary: "#4f2500"
-  tertiary-container: "#ad5900"
-  on-tertiary-container: "#fff2eb"
-  error: "#ffb4ab"
-  on-error: "#690005"
-  error-container: "#93000a"
-  on-error-container: "#ffdad6"
-  primary-fixed: "#ebdcff"
-  primary-fixed-dim: "#d4bbff"
-  on-primary-fixed: "#270058"
-  on-primary-fixed-variant: "#5d00c2"
-  secondary-fixed: "#ebdcff"
-  secondary-fixed-dim: "#d4bbff"
-  on-secondary-fixed: "#270058"
-  on-secondary-fixed-variant: "#55348c"
-  tertiary-fixed: "#ffdcc5"
-  tertiary-fixed-dim: "#ffb782"
-  on-tertiary-fixed: "#301400"
-  on-tertiary-fixed-variant: "#703800"
-  background: "#15121c"
-  on-background: "#e8dfef"
-  surface-variant: "#37333e"
-  chrome-glass: rgba(255, 255, 255, 0.04)
-  chrome-border: rgba(255, 255, 255, 0.10)
-  text-high-contrast: rgba(255, 255, 255, 0.92)
+  canvas: "#0A0A0F"
+  canvas-warm: "#0D0B12"
+  surface-lowest: "#0F0D14"
+  surface-low: "#151320"
+  surface-mid: "#1A1826"
+  surface-high: "#22202E"
+  surface-highest: "#2C2A38"
+  on-surface: "#E8E0F0"
+  on-surface-variant: "#A8A0B8"
+  on-surface-muted: "#6E6880"
+  outline: "#3A3548"
+  outline-variant: "#2A2636"
+  primary: "#FF6B4A"
+  primary-soft: "#FF8F6B"
+  primary-glow: "rgba(255, 107, 74, 0.35)"
+  on-primary: "#1A0800"
+  primary-container: "#C84A2A"
+  secondary: "#8B5CF6"
+  secondary-soft: "#A78BFA"
+  secondary-glow: "rgba(139, 92, 246, 0.30)"
+  on-secondary: "#1A0042"
+  tertiary: "#FFB782"
+  tertiary-soft: "#FFDCC5"
+  on-tertiary: "#4F2500"
+  signal: "#5EEAD4"
+  signal-soft: "rgba(94, 234, 212, 0.12)"
+  signal-glow: "rgba(94, 234, 212, 0.35)"
+  error: "#FF6B6B"
+  success: "#34D399"
+  chrome-glass: "rgba(255, 255, 255, 0.03)"
+  chrome-border: "rgba(255, 255, 255, 0.06)"
+  chrome-hover: "rgba(255, 255, 255, 0.08)"
+  chrome-active: "rgba(255, 255, 255, 0.12)"
 typography:
+  display-hero:
+    fontFamily: "Space Grotesk"
+    fontSize: "clamp(40px, 5.5vw, 72px)"
+    fontWeight: "800"
+    lineHeight: "1.02"
+    letterSpacing: "-0.03em"
   display-xl:
-    fontFamily: Space Grotesk
-    fontSize: 56px
+    fontFamily: "Space Grotesk"
+    fontSize: "48px"
     fontWeight: "700"
-    lineHeight: "1.1"
-    letterSpacing: -0.02em
+    lineHeight: "1.08"
+    letterSpacing: "-0.025em"
+  display-lg:
+    fontFamily: "Space Grotesk"
+    fontSize: "32px"
+    fontWeight: "700"
+    lineHeight: "1.15"
+    letterSpacing: "-0.015em"
   display-md:
-    fontFamily: Space Grotesk
-    fontSize: 28px
+    fontFamily: "Space Grotesk"
+    fontSize: "24px"
     fontWeight: "600"
     lineHeight: "1.2"
-    letterSpacing: -0.01em
+    letterSpacing: "-0.01em"
   body-lg:
-    fontFamily: Be Vietnam Pro
-    fontSize: 16px
+    fontFamily: "Be Vietnam Pro"
+    fontSize: "16px"
+    fontWeight: "400"
+    lineHeight: "1.6"
+    letterSpacing: "0"
+  body-md:
+    fontFamily: "Be Vietnam Pro"
+    fontSize: "14px"
     fontWeight: "400"
     lineHeight: "1.5"
     letterSpacing: "0"
   body-sm:
-    fontFamily: Be Vietnam Pro
-    fontSize: 14px
+    fontFamily: "Be Vietnam Pro"
+    fontSize: "12px"
     fontWeight: "400"
-    lineHeight: "1.5"
-    letterSpacing: "0"
+    lineHeight: "1.4"
+    letterSpacing: "0.01em"
   kicker:
-    fontFamily: Space Grotesk
-    fontSize: 11px
+    fontFamily: "Space Grotesk"
+    fontSize: "10px"
     fontWeight: "700"
     lineHeight: "1"
-    letterSpacing: 0.15em
+    letterSpacing: "0.18em"
+  mono:
+    fontFamily: "'JetBrains Mono', 'SF Mono', monospace"
+    fontSize: "13px"
+    fontWeight: "400"
+    lineHeight: "1.4"
+    letterSpacing: "0"
 rounded:
-  sm: 0.25rem
-  DEFAULT: 0.5rem
-  md: 0.75rem
-  lg: 1rem
-  xl: 1.5rem
-  full: 9999px
+  xs: "6px"
+  sm: "10px"
+  md: "14px"
+  lg: "20px"
+  xl: "28px"
+  hero: "32px"
+  full: "9999px"
 spacing:
-  unit: 4px
-  stack-xs: 8px
-  gutter: 24px
-  stack-md: 24px
-  margin: 40px
-  stack-lg: 48px
+  unit: "4px"
+  xs: "8px"
+  sm: "12px"
+  md: "16px"
+  lg: "24px"
+  xl: "32px"
+  2xl: "48px"
+  3xl: "64px"
+  section: "80px"
 ---
 
-## Brand & Style
+# Resonate — Design System v2: Obsidian Frequency
 
-Resonate is a music platform for the agent era — where listeners discover and pay for music through on-chain primitives, artists reach fans everywhere, and a fan-funded booking layer turns passion into live shows. The design system is built to make all of that legible at the same time without any one feature dominating the surface.
+> **Status**: Proposed redesign. This document replaces the prior Stitch-era
+> design.md and defines a new visual identity for the entire Resonate app.
 
-The visual language is **Hyper-Fidelity Digital** — the transparency of glassmorphism on top of the structural precision of a Web3 interface. Mesh gradients and blurring evoke the fluid nature of sound; strict geometry and vibrant accents keep the platform tech-forward. The UI reads like a high-end hardware interface reimagined for a digital, AI-driven era — tactile yet ethereal.
+---
 
-Tone: direct, low-ego, confident. Copy is engineering-precise, never marketing-fluffy. Numbers (pledge amounts, stake sizes, contract addresses) are first-class content, rendered with monospace digits. Deep-tech capabilities (stems, smart-contract escrow, AI DJ agents, on-chain identity) appear as **metadata** on content, not as labeled features — the platform _is_ the tech, it doesn't _advertise_ it.
+## 1. Design Philosophy
 
-## Colors
+### 1.1 Identity: "Obsidian Frequency"
 
-A deep-space dark canvas with two chromatic anchors:
+Resonate is not another Spotify wrapper. It is an **AI-native music studio
+and marketplace** where stems, smart-contract escrow, autonomous agents, and
+fan-funded campaigns are first-class product surfaces — not feature labels.
 
-- **Primary (purple)** — the platform's core identity and the dominant accent. Used for headlines' kickers, primary CTAs, focus rings, stem highlights, progress bars outside the Shows surface, and any "agentic" / "AI" context (AI DJ, generated mixes, taste profile).
-- **Tertiary (amber)** — reserved for **live events and real-time commitment**. Shows campaigns, "Live in 2h" badges, fan-funded pledge progress. The amber must never appear on a non-Shows surface; if it does, the semantic promise breaks.
+The new identity, **Obsidian Frequency**, communicates this through three
+visual pillars:
 
-**Chrome** is a scale of white tints (4 % to 92 % opacity):
+1. **Cinematic Depth** — Deep obsidian-black canvases with layered mesh
+   gradients that drift like slow-moving nebulae. Every surface has depth;
+   flat cards do not exist. The app feels like looking into an infinite
+   recording studio suspended in space.
 
-- 4–12 % — glass panels, borders, divider lines.
-- 64–92 % — primary text, icons, high-contrast interactive states.
+2. **Ember Warmth** — A warm coral-to-amber primary accent replaces the
+   prior cold purple-only palette. Coral (#FF6B4A → #FF8F6B) is the new
+   dominant action color — it reads as energy, creativity, and heat. Violet
+   (#8B5CF6) shifts to a supporting role for AI/agent contexts. This
+   two-accent pairing gives Resonate its own chromatic fingerprint that no
+   competitor uses.
 
-Mesh gradients blend primary purple with deep indigo and near-black to create depth behind glass panels. Solid fills are avoided on content surfaces — every panel maintains translucency so album art, generated artwork, and city imagery can bleed through.
+3. **Studio Precision** — Grid-aligned typography, tabular numerics,
+   monospace contract data, waveform visualizations, and fader-style UI
+   elements echo a professional recording console. The interface
+   communicates that music production, not just consumption, happens here.
 
-**Tokens**: the Stitch palette is the canonical source (`--ds-*` in `web/src/styles/tokens.css`). Legacy `--color-*` tokens are thin aliases of the `--ds-*` equivalents so every surface gets the palette for free without per-component edits.
+### 1.2 Competitive Differentiation
 
-## Typography
+| Platform     | Signature Look              | Resonate Difference                              |
+| ------------ | --------------------------- | ------------------------------------------------ |
+| Spotify      | Green + white on dark gray  | Coral ember warmth, glass depth, stem faders      |
+| Apple Music  | Pastel gradients, light/dark toggle | Always-dark cinematic canvas, no light mode |
+| Tidal        | Teal on black               | Richer layered glass, AI visualizations           |
+| Deezer       | Purple gradients            | Dual coral+violet accent system, studio precision |
+| SoundCloud   | Orange on white             | Deep-dark premium feel, on-chain metadata         |
 
-A two-family pairing:
+### 1.3 Tone & Copy
 
-- **Space Grotesk** — geometric, technical, slightly rounded. Display headlines, section titles, kickers, numeric stats, buttons, navigation. Every `h1`..`h4` inherits Space Grotesk app-wide via a single global rule.
-- **Be Vietnam Pro** — humanist, warm, highly legible at body sizes. Long-form copy, card descriptions, form labels, tooltips.
+Direct. Engineering-precise. Never marketing-fluffy.
 
-**Roles**:
+- Numbers (€67,200 raised, 127 backers, BPM 124, 2.5% fee) are **first-class
+  content** rendered in tabular monospace.
+- On-chain primitives (stakes, escrow, attestation hashes, token IDs) appear
+  as **inline metadata**, not as labeled "blockchain features."
+- The AI DJ and agent surfaces feel like **mission control**, not chatbots.
 
-| Role       | Face           | Size | Weight | Tracking | Line-height |
-| ---------- | -------------- | ---- | ------ | -------- | ----------- |
-| display-xl | Space Grotesk  | 56px | 700    | -0.02em  | 1.1         |
-| display-md | Space Grotesk  | 28px | 600    | -0.01em  | 1.2         |
-| body-lg    | Be Vietnam Pro | 16px | 400    | 0        | 1.5         |
-| body-sm    | Be Vietnam Pro | 14px | 400    | 0        | 1.5         |
-| kicker     | Space Grotesk  | 11px | 700    | 0.15em   | 1           |
+---
 
-The **kicker** is a navigational element: always uppercase, wide letter-spacing, placed _above_ section titles to categorize content ("Featured Campaign", "Continue your journey", "Granular breakdowns", "Real-time performance", "AI generated sessions", "Pioneer network"). Color-coded by surface — primary purple for AI/agent contexts, tertiary amber for Shows/live, muted violet for personal/library contexts.
+## 2. Color System
 
-**Numerics**: every stat with a unit (€67,200, 127 backers, 14 days left, BPM 124, 67 %) uses `font-variant-numeric: tabular-nums` so values align vertically in tables and avoid jitter during live updates.
+### 2.1 Canvas & Surfaces
 
-## Layout & Spacing
+The background is pure obsidian with a subtle blue-violet undertone — warmer
+than pure black, cooler than charcoal.
 
-Desktop uses a 12-column fluid grid with a 1280 px reference, scaling to a 4-column grid below 768 px. Every element aligns to a 4 px baseline grid so waveforms, stem indicators, and on-chain data line up at small sizes.
+| Token              | Value     | Use                                        |
+| ------------------ | --------- | ------------------------------------------ |
+| `--r-canvas`       | `#0A0A0F` | Root `<body>` background                   |
+| `--r-canvas-warm`  | `#0D0B12` | Alternate canvas with warmer cast           |
+| `--r-surface-lowest` | `#0F0D14` | Deepest panel insets                      |
+| `--r-surface-low`  | `#151320` | Sidebar, bottom player bar                 |
+| `--r-surface-mid`  | `#1A1826` | Standard card/panel backgrounds            |
+| `--r-surface-high` | `#22202E` | Hover states, raised interactive elements  |
+| `--r-surface-highest` | `#2C2A38` | Modal/dialog backgrounds, active tabs   |
 
-**Spacing scale**:
+### 2.2 Chrome (Glass) Scale
 
-| Token           | Value  | Use                                                     |
-| --------------- | ------ | ------------------------------------------------------- |
-| `--ds-unit`     | 4 px   | Atomic baseline                                         |
-| `--ds-stack-xs` | 8 px   | Tight metadata (artist-name under title, BPM under mix) |
-| `--ds-gutter`   | 24 px  | Card gutters inside a row                               |
-| `--ds-stack-md` | 24 px  | Vertical rhythm between a section header and its grid   |
-| `--ds-margin`   | 40 px  | Horizontal gutters of the content column                |
-| `--ds-stack-lg` | 48 px+ | Major-section separation                                |
+Glass surfaces use white-tint overlays at precise opacities:
 
-Large margins (40 px+) let the mesh gradients "breathe" around the edges of the central content. Phone viewports drop margins to 16 px; tablets 24 px.
+| Opacity | Use                                           |
+| ------- | --------------------------------------------- |
+| 3%      | Default glass panel fill                      |
+| 6%      | Borders, dividers                             |
+| 8%      | Hover state fill                              |
+| 12%     | Active/pressed state fill, floating panels    |
+| 18%     | High-emphasis interactive (selected tab)      |
 
-**Home layout contract**: the home page is a row-based hub. Every discovery row follows the same structure — `kicker` + `section-title` + optional "view-all" link, followed by a grid or horizontal scroller. Adding a new feature adds a new row; nothing requires a surface-level redesign.
+### 2.3 Accent Colors
 
-## Elevation & Depth
+```
+PRIMARY:   Coral Ember
+           #FF6B4A  ━━━━━━━►  #FF8F6B (gradient)
+           Hero CTAs, play buttons, active states, progress fills
 
-Depth is communicated through **glassmorphism**, not traditional drop shadows.
+SECONDARY: Electric Violet
+           #8B5CF6  ━━━━━━━►  #A78BFA (gradient)
+           AI/agent contexts, session indicators, kickers, focus rings
 
-- **Base layer** — `--ds-surface` (#15121c) or a mesh-gradient backdrop.
-- **Panel layer** — `.glass-panel` / `.ng-glass`: 4 % white fill + 1 px border at 10 % white + `backdrop-filter: blur(32px) saturate(140%)`. Subtle inner-glow on hover.
-- **Floating layer** — 12 % white fill + `backdrop-filter: blur(64px)` for menus, popovers, and modals. Add a subtle primary-tinted outer glow to suggest "energy".
+TERTIARY:  Warm Amber
+           #FFB782
+           Soft highlights, "NEW" badges, accent details
 
-Solid fills are avoided on content surfaces. Every surface should maintain a level of translucency so album art, campaign artwork, or mesh gradients can bleed through — preserving spatial awareness.
+SIGNAL:    Teal Broadcast
+           #5EEAD4
+           Shows/live campaigns only — never leaks to other surfaces
+```
 
-Drop shadows are used sparingly and only on the bottom player bar (`0 -10px 50px rgba(138,63,252,0.2)`) to signal its persistent-chrome role.
+### 2.4 Semantic Colors
 
-## Shapes
+- **Error**: `#FF6B6B` — warm red that harmonizes with the coral primary.
+- **Success**: `#34D399` — emerald green for confirmations, "complete" states.
+- **Warning**: `#FBBF24` — gold for attention without alarm.
+- **Info**: `#60A5FA` — cool blue for neutral notices.
 
-The shape language is **The Rounded Edge**: 0.5 rem (8 px) default radius — modern without becoming playful.
+### 2.5 Accent Rules
 
-Shape is semantic; each content type has a signature geometry:
+> [!IMPORTANT]
+> - **Coral** is the dominant interactive accent. Every primary CTA, play
+>   button, and progress indicator uses coral.
+> - **Violet** is reserved for AI/agent/generated contexts. It must not be
+>   used as a generic accent — it semantically means "an AI produced or
+>   influenced this."
+> - **Signal teal** is reserved for Shows/campaign surfaces. It must never
+>   appear outside `.shows-surface`.
+> - **Amber** is a warm highlight — "NEW" pills, tertiary badges, soft
+>   data-visualization accents. Not for primary actions.
 
-- **Releases** — perfect squares with a 1 px inner stroke. Discover and library grid units.
-- **Stems** — rectangles with a waveform-visualization header (height 96 px, 10 colored bars, peak bar glows with the stem's tone color).
-- **Campaigns (Shows)** — 16 : 9 widescreen cards. The aspect ratio communicates "cinematic / event" vs "album".
-- **Artist pills** — fully pill-shaped (capsule) containers with a 40 px avatar + name; act as a tag for the creator.
-- **Agent mixes** — circles with a 4 px violet-tinted ring; evoke a disc, distinguish from square releases.
-- **Progress bars** — 8 px-tall rounded capsules with animated gradient sheen on the fill.
-- **Interactive badges** — 4 px radius rectangles for status tags ("LIVE IN 2H", "DRUMS", "NEW"). Lower radius = more structured / informative feel.
+---
 
-## Components
+## 3. Typography
 
-### Buttons
+### 3.1 Font Pairing
 
-- **Primary** — solid `--ds-primary` fill, `--ds-on-primary` text, 14 px border-radius, `translateY(-1px)` on hover, subtle primary-tinted box-shadow for ambient glow. Used for the single hero CTA on a page.
-- **Glass (secondary)** — 6 % white fill, 16 % white 1 px border, backdrop-blur 12 px. Used for secondary actions ("View Campaign", "View Stems", "Isolate").
-- **Chip (filter)** — pill-shaped, Space Grotesk kicker case, active state takes solid primary fill. Used on the home filter row; genre/mood selection elsewhere.
-- **Icon-only** — 40 × 40 px min touch target; download, upload, mixer affordances. Material Symbols Outlined at 16–20 px.
+| Face               | Role       | Load Strategy                         |
+| ------------------ | ---------- | ------------------------------------- |
+| **Space Grotesk**  | Display    | `next/font/google`, weights 300–700, `--font-display` |
+| **Be Vietnam Pro** | Body       | `next/font/google`, weights 300–600, `--font-body`    |
+| **JetBrains Mono** | Monospace  | `next/font/google`, weight 400, `--font-mono`         |
 
-### Cards
+Space Grotesk is geometric but slightly rounded — technical without being
+cold. Be Vietnam Pro is humanist and warm at body sizes. JetBrains Mono
+renders contract addresses, hashes, and BPM values with fixed-width clarity.
 
-| Card          | Surface                             | Aspect                                   | Interaction                                    |
-| ------------- | ----------------------------------- | ---------------------------------------- | ---------------------------------------------- |
-| Release card  | `.ng-play-card`                     | 1 : 1 art + 2-line caption               | Hover reveals a centered `play_circle` overlay |
-| Stem card     | `.ng-stem-card`                     | Waveform header + body                   | "Isolate" primary action + icon download       |
-| Campaign hero | `.campaign-hero`                    | 21 : 9 with glass-card overlay           | Live countdown + CTA pair + escrow link        |
-| Campaign card | `.campaign-card`                    | 16 : 9 art + progress block              | Entire card is a link to `/shows/[id]`         |
-| Event card    | `.ng-event-card` (on Shows surface) | 16 : 9 with gradient-up-to-black overlay | "Live in 2h" badge top-left                    |
-| Artist pill   | `.ng-artist-pill`                   | Capsule                                  | Click opens `/artist/[id]`                     |
-| Agent mix     | `.ng-mix`                           | Circle                                   | Click opens `/agent`                           |
+### 3.2 Type Scale
 
-### Persistent chrome
+| Role          | Face           | Size                       | Weight | Tracking  | Line-height |
+| ------------- | -------------- | -------------------------- | ------ | --------- | ----------- |
+| `display-hero`| Space Grotesk  | clamp(40px, 5.5vw, 72px)   | 800    | -0.03em   | 1.02        |
+| `display-xl`  | Space Grotesk  | 48px                       | 700    | -0.025em  | 1.08        |
+| `display-lg`  | Space Grotesk  | 32px                       | 700    | -0.015em  | 1.15        |
+| `display-md`  | Space Grotesk  | 24px                       | 600    | -0.01em   | 1.2         |
+| `body-lg`     | Be Vietnam Pro | 16px                       | 400    | 0         | 1.6         |
+| `body-md`     | Be Vietnam Pro | 14px                       | 400    | 0         | 1.5         |
+| `body-sm`     | Be Vietnam Pro | 12px                       | 400    | 0.01em    | 1.4         |
+| `kicker`      | Space Grotesk  | 10px                       | 700    | 0.18em    | 1           |
+| `mono`        | JetBrains Mono | 13px                       | 400    | 0         | 1.4         |
 
-- **Sidebar** — 256 px fixed, `bg-black/20` with 32 px backdrop blur. Nav entries use kicker-case labels. "NEW" pill (amber) marks newly-shipped surfaces.
-- **Topbar** — 80 px transparent with blur. Search in the left slot, notifications + user chip on the right.
-- **Player bar** — fixed bottom, 96 px tall, 12 % white fill + 64 px backdrop blur + primary-tinted outer glow. Controls use the white-on-dark primary play button + muted side controls.
+### 3.3 Headline Gradient
 
-### Input fields
+Hero and display-xl headlines use a CSS gradient fill for visual richness:
 
-Minimalist under-lines or 4 % white tint fills; focus state glows with the primary purple (`ring-violet-500/40` equivalent).
+```css
+.text-gradient-warm {
+  background: linear-gradient(
+    135deg,
+    #ffffff 0%,
+    #FFD4C7 45%,
+    #FF8F6B 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+```
 
-### Waveform
+### 3.4 Numerics
 
-A dedicated component for track / stem breakdowns. Transparent background, 1 px border, 10 vertical bars at varying heights (seeded deterministically from the stem id to avoid render jitter). The peak bar glows with the tone color of the stem category:
+All numeric displays with units (€67,200, 127 backers, 14 days, BPM 124)
+use `font-variant-numeric: tabular-nums` and `font-feature-settings: "tnum"`.
+Financial amounts and contract values render in `--font-mono`.
 
-- `data-tone="primary"` — violet (default synth / electronic).
-- `data-tone="tertiary"` — amber (vocals / lead).
-- `data-tone="secondary"` — light purple (drums / bass).
+---
 
-### Progress bar (Shows + generation)
+## 4. Layout & Spacing
 
-8 px-tall capsule; fill uses a gradient sheen animated at 3 s (`shows-progress-sheen`). Above the bar: large display-md raised amount + muted goal. Below the bar: tabular-nums backer count + days-left + threshold.
+### 4.1 Grid System
 
-### Surfaces
+Desktop uses a **fluid 12-column grid** at 1440px max-width, collapsing to
+4 columns below 768px. Content aligns to a **4px baseline grid**.
 
-- **`.home-ng`** — scopes the home page's design-system classes so they don't leak into surfaces still on the legacy styling.
-- **`.shows-surface`** — scopes the amber Shows accent. Applied to `/shows`, `/shows/[id]`, and the home's Active Campaigns / Upcoming Live Events rows. The amber token (`--color-signal`) is an alias of `--ds-tertiary`.
-- **`.glass-panel`** — global class for any glass-effect surface across the app. Matches `.ng-glass` by design (same blur / saturate / tint values).
+### 4.2 Spacing Tokens
 
-### Iconography
+| Token           | Value  | Use                                          |
+| --------------- | ------ | -------------------------------------------- |
+| `--r-unit`      | 4px    | Atomic baseline                              |
+| `--r-xs`        | 8px    | Tight metadata gaps                          |
+| `--r-sm`        | 12px   | Interior card padding, chip gaps             |
+| `--r-md`        | 16px   | Standard component padding                   |
+| `--r-lg`        | 24px   | Card gutters, section header margins         |
+| `--r-xl`        | 32px   | Panel padding, major component spacing       |
+| `--r-2xl`       | 48px   | Section separation                           |
+| `--r-3xl`       | 64px   | Content column horizontal margins            |
+| `--r-section`   | 80px   | Major section vertical separation            |
 
-**Material Symbols Outlined** — the full-weight-variable font. Loaded app-wide. Per-surface rules:
+### 4.3 Responsive Breakpoints
 
-- Nav: 20 px.
-- Inline text icons: 14–16 px.
-- Buttons: 20 px.
-- Play-circle overlay on release art: 54 px, `FILL 1`.
-- Secondary actions (upload, notifications): 22 px.
+| Name     | Width    | Columns | Margin  |
+| -------- | -------- | ------- | ------- |
+| Phone    | < 640px  | 1       | 16px    |
+| Tablet   | 640–1023 | 2       | 24px    |
+| Desktop  | 1024–1439| 12      | 48px    |
+| Wide     | ≥ 1440   | 12      | 64px    |
 
-Favor icons with metaphoric clarity (`library_music`, `graphic_eq`, `play_arrow`) over abstract glyphs. Legacy inline-SVG icons in the sidebar remain until that chrome is migrated.
+---
 
-### Kicker palette
+## 5. Elevation & Depth
 
-The kicker color is a subtle navigational cue — readers use it to tell surfaces apart at a glance:
+### 5.1 The Glass Idiom
 
-| Kicker color    | Semantic               | Example                 |
-| --------------- | ---------------------- | ----------------------- |
-| `--ds-primary`  | AI / agent / generated | "AI Generated Sessions" |
-| `--ds-tertiary` | Live / real-time       | "Real-time Performance" |
-| muted violet    | Personal / continuity  | "Continue your journey" |
+Depth is communicated through **translucent glass layers**, not drop shadows.
+Every surface maintains translucency so album art, mesh gradients, and
+campaign artwork bleed through — preserving spatial awareness.
 
-## Out-of-scope for this document
+| Layer       | Fill                          | Blur          | Border                        | Use                          |
+| ----------- | ----------------------------- | ------------- | ----------------------------- | ---------------------------- |
+| **Canvas**  | `--r-canvas`                  | none          | none                          | Root background              |
+| **Panel**   | `rgba(255,255,255, 0.03)`     | `blur(32px) saturate(140%)` | `1px solid rgba(255,255,255, 0.06)` | Cards, sidebar, sections |
+| **Raised**  | `rgba(255,255,255, 0.06)`     | `blur(40px) saturate(150%)` | `1px solid rgba(255,255,255, 0.10)` | Hover states, popups     |
+| **Floating**| `rgba(255,255,255, 0.10)`     | `blur(64px) saturate(180%)` | `1px solid rgba(255,255,255, 0.14)` | Modals, menus, toasts    |
 
-- Navigation information architecture (see [docs/ui/ux_research_ia.md](./ux_research_ia.md)).
-- Usability test plan (see [docs/ui/usability_test_plan.md](./usability_test_plan.md)).
-- Per-page layout specs — each page owns its layout within these tokens.
+### 5.2 Mesh Gradient Backdrop
 
-## Source of truth
+The root canvas uses a slow-drifting mesh gradient that creates ambient
+depth without distracting from content:
 
-- `web/src/styles/tokens.css` — all design-system tokens (`--ds-*`).
-- `web/src/styles/home-nextgen.css` — Stitch-aligned component classes (`.ng-*`).
-- `web/src/styles/shows.css` — Shows surface amber scoping.
-- `web/src/app/globals.css` — base typography, `.glass-panel`, `--studio-*` glass vocabulary.
-- This document is the human-readable mirror of those files. If a token value here disagrees with the code, **the code wins** and this file must be updated.
+```css
+.mesh-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse at 15% 5%, rgba(255, 107, 74, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 15%, rgba(139, 92, 246, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 95%, rgba(255, 183, 130, 0.03) 0%, transparent 40%);
+  background-color: var(--r-canvas);
+  animation: mesh-drift 30s ease infinite;
+}
+```
+
+The coral radial in the top-left creates a warm "sunrise" feel that
+distinguishes Resonate from every dark-mode competitor's neutral gray.
+
+### 5.3 Glow Effects
+
+Interactive elements emit **ambient glow** in their accent color on hover
+and focus. This replaces traditional box-shadows:
+
+```css
+/* Primary button hover glow */
+.btn-primary:hover {
+  box-shadow:
+    0 8px 32px rgba(255, 107, 74, 0.30),
+    0 0 0 1px rgba(255, 107, 74, 0.15);
+}
+
+/* Violet AI-context glow */
+.agent-card:hover {
+  box-shadow:
+    0 8px 32px rgba(139, 92, 246, 0.25),
+    0 0 0 1px rgba(139, 92, 246, 0.12);
+}
+```
+
+---
+
+## 6. Shapes & Geometry
+
+Each content type has a signature geometry that lets users identify it at a
+glance without reading labels:
+
+| Content Type      | Shape               | Radius  | Aspect Ratio | Signature Detail                    |
+| ----------------- | ------------------- | ------- | ------------ | ----------------------------------- |
+| **Release card**  | Rounded square      | 16px    | 1:1 art      | 1px inner stroke, hover play icon   |
+| **Stem card**     | Rectangle + header  | 14px    | Auto         | Waveform header (colored bars)      |
+| **Campaign card** | Wide rectangle      | 20px    | 16:9 art     | Progress bar, backer count          |
+| **Campaign hero** | Full-width banner   | 28px    | 21:9         | Glass overlay card, live dot        |
+| **Artist pill**   | Capsule             | 9999px  | Auto         | 40px avatar + name                  |
+| **Agent mix**     | Circle              | 50%     | 1:1          | 3px violet ring                     |
+| **Filter chip**   | Pill                | 9999px  | Auto         | Active = coral gradient fill        |
+| **Status badge**  | Small rectangle     | 6px     | Auto         | Monospace, uppercase kicker         |
+| **Button**        | Rounded rectangle   | 14px    | Auto         | Subtle inner-top highlight          |
+
+---
+
+## 7. Components
+
+### 7.1 Buttons
+
+#### Primary (Coral)
+```
+Background: linear-gradient(135deg, #FF6B4A 0%, #FF8F6B 100%)
+Text:       #1A0800
+Radius:     14px
+Padding:    14px 28px
+Shadow:     0 8px 24px rgba(255, 107, 74, 0.25)
+Hover:      translateY(-1px), brightness(1.08), shadow intensify
+Active:     translateY(0), scale(0.98)
+```
+
+Top-edge inner highlight: `inset 0 1px 0 rgba(255, 255, 255, 0.25)` — gives
+the button a subtle 3D bevel that reads as premium hardware.
+
+#### Ghost (Glass)
+```
+Background: rgba(255, 255, 255, 0.06)
+Border:     1px solid rgba(255, 255, 255, 0.14)
+Text:       #E8E0F0
+Blur:       backdrop-filter: blur(12px)
+Hover:      background 0.10, border 0.22
+```
+
+#### Chip (Filter)
+```
+Inactive:   rgba(255, 255, 255, 0.04), border rgba(255, 255, 255, 0.08)
+Active:     linear-gradient(135deg, #FF6B4A, #FF8F6B), text #1A0800
+Font:       Kicker case (10px, 700, 0.18em tracking, uppercase)
+Shape:      Pill (border-radius: 9999px)
+```
+
+#### Icon Button
+```
+Size:       40 × 40px (minimum touch target 44px on coarse pointers)
+Radius:     12px
+Background: rgba(255, 255, 255, 0.04)
+Hover:      rgba(255, 107, 74, 0.15), border rgba(255, 107, 74, 0.20)
+```
+
+### 7.2 Cards
+
+| Card Type          | Surface Class        | Layout                        | Interaction                          |
+| ------------------ | -------------------- | ----------------------------- | ------------------------------------ |
+| Release card       | `.r-release-card`    | 1:1 art + 2-line caption     | Hover: centered play overlay, glow   |
+| Recommendation card| `.r-rec-card`        | Art + body + score badge      | "Start session" CTA, score ring      |
+| Stem row           | `.r-stem-row`        | Icon + title + type badge     | Click opens mixer                    |
+| Campaign hero      | `.r-campaign-hero`   | 21:9 banner, glass info card  | CTA pair, live pulse dot             |
+| Campaign card      | `.r-campaign-card`   | 16:9 art + progress block     | Full-card link to `/shows/[id]`      |
+| Artist pill         | `.r-artist-pill`    | Avatar circle + name          | Click opens `/artist/[id]`           |
+| Agent mix          | `.r-agent-mix`       | Circle with violet ring       | Click opens `/agent`                 |
+
+### 7.3 Persistent Chrome
+
+#### Sidebar: Icon Rail + Expandable Drawer
+
+The sidebar uses a **narrow icon rail** (72px) as its default state — not a
+wide panel like Spotify. This maximizes content area and feels more like a
+professional tool.
+
+```
+COLLAPSED (default):
+  Width:    72px
+  Content:  App logo (small), icon-only nav, user avatar at bottom
+  Surface:  rgba(255, 255, 255, 0.02), border-right rgba(255, 255, 255, 0.04)
+
+EXPANDED (hover or pin):
+  Width:    260px
+  Content:  Logo + "Resonate", icon + label nav, playlist shortcuts, user chip
+  Surface:  Same glass, smooth 300ms slide transition
+  Trigger:  Hover (auto-collapse on leave) or pin toggle
+
+Active indicator: 3px coral pill on the left edge of the active nav item
+```
+
+On mobile: the sidebar becomes a bottom tab bar (5 primary items) with the
+rest accessible via a "More" sheet.
+
+#### Topbar
+
+```
+Height:     64px
+Background: rgba(10, 10, 15, 0.55)
+Blur:       backdrop-filter: blur(48px) saturate(140%)
+Border:     bottom 1px solid rgba(255, 255, 255, 0.04)
+Position:   sticky top: 0
+
+Left:       Breadcrumb / page title
+Center:     Global search (expandable, glass input)
+Right:      Notification bell, wallet connect button
+```
+
+#### Player Bar
+
+The player bar is the most-touched surface in the app. It should feel like a
+**physical mixing console** — weighty, tactile, always-present.
+
+```
+Height:     88px
+Position:   fixed bottom
+Background: rgba(15, 13, 20, 0.85)
+Blur:       backdrop-filter: blur(64px) saturate(180%)
+Border-top: 1px solid rgba(255, 255, 255, 0.06)
+Glow:       0 -12px 48px rgba(255, 107, 74, 0.08) (when playing)
+
+Layout:     3-column grid
+  Left:     Album art (56px, rounded 10px) + title + artist
+  Center:   Transport controls (prev, play/pause, next, shuffle, repeat)
+            + progress bar (4px tall, coral fill, hover expands to 8px)
+  Right:    Volume slider, stem mixer toggle, queue toggle, fullscreen
+
+Play button: 48px circle, coral gradient fill, white play icon
+             Hover: scale(1.08), glow pulse
+```
+
+### 7.4 Input Fields
+
+```
+Background: rgba(0, 0, 0, 0.25)
+Border:     1px solid rgba(255, 255, 255, 0.08)
+Radius:     12px
+Padding:    12px 16px
+Font:       body-md
+Focus:      border-color var(--r-secondary), box-shadow 0 0 0 3px rgba(139, 92, 246, 0.20)
+```
+
+### 7.5 Waveform Visualization
+
+Each stem type has a signature color for its waveform bars:
+
+| Stem     | Color                   | Hue  |
+| -------- | ----------------------- | ---- |
+| Vocals   | `#FF6B4A` (coral)       | Warm |
+| Drums    | `#8B5CF6` (violet)      | Cool |
+| Bass     | `#34D399` (emerald)     | Cool |
+| Guitar   | `#FBBF24` (gold)        | Warm |
+| Piano    | `#60A5FA` (blue)        | Cool |
+| Other    | `#A78BFA` (light violet)| Cool |
+
+Bars: 10 vertical bars per stem, heights seeded deterministically from stem
+ID. Peak bar glows with the stem's assigned color. On hover, bars animate
+a subtle upward pulse.
+
+### 7.6 Progress Bars
+
+```
+Track:  height 4px, rounded 9999px, fill rgba(255,255,255, 0.06)
+Fill:   coral gradient with animated sheen (3s cycle)
+Hover:  track expands to 8px, fill brightens
+Thumb:  hidden by default, appears on hover as 14px coral circle
+```
+
+### 7.7 Kicker Palette
+
+The kicker color is a navigational cue — readers use it to tell surfaces
+apart at a glance:
+
+| Kicker Color           | Semantic                | Example                    |
+| ---------------------- | ----------------------- | -------------------------- |
+| `--r-primary` (coral)  | Featured / promoted     | "Featured Campaign"        |
+| `--r-secondary` (violet) | AI / agent / generated | "Personalized Picks"     |
+| `--r-tertiary` (amber) | Personal / continuity   | "Release Queue"            |
+| `--r-signal` (teal)    | Live / real-time / Shows| "Active Campaigns"         |
+| `--r-on-surface-muted` | Neutral / informational | "Global Catalog"           |
+
+---
+
+## 8. Page Layouts
+
+### 8.1 Home Page
+
+The home page is the catalog discovery hub. It is a **vertically-scrolling
+feed of discovery rows**, each following the same `kicker → title → grid`
+structure.
+
+**Sections (top to bottom):**
+
+1. **Hero Banner** — 21:9 aspect ratio, cinematic mesh gradient background
+   with floating concentric ring motif. Glass info card overlaid with
+   featured campaign or release. Two CTAs: coral primary + glass ghost.
+   Live pulse dot before the kicker.
+
+2. **Filter Chips** — Horizontal scrollable row of pill-shaped genre/mood
+   filters. Active chip takes coral gradient fill. Tapping a non-"All"
+   chip surfaces a "Vibe Session" strip with a "Start Vibe Session" CTA.
+
+3. **Recommended For You** — 4-card horizontal grid (only shown when
+   authenticated). Each card: album art, title, artist, match score badge
+   (circular ring fill), explanation signals, "Start session" action. Cards
+   use panel-layer glass with coral-tinted hover glow.
+
+4. **Browse Everything** — Full-width glass panel containing:
+   - Search bar (glass input with icon)
+   - Stat counters (Releases / Artists / Stems)
+   - Segmented tab control (releases / artists / stems)
+   - Content grid/list below
+
+5. **Upload Operations** — Two-column glass panel grid:
+   - Left: Managed Catalog (artist rows, upload link)
+   - Right: Your Releases (recent uploads with status pills)
+
+6. **Upcoming Shows** — Campaign cards in 3-column grid with teal accent
+   (`.shows-surface` scoping). Only visible when campaigns exist.
+
+7. **AI DJ Presets** — Intent-led session cards ("Focus Flow", "Hype Mix",
+   etc.) with mood-colored borders.
+
+8. **Top Artists** — Horizontal scrollable pill row.
+
+### 8.2 Release Detail Page
+
+```
+┌─────────────────────────────────────────┐
+│ ← Back to Browse                        │
+├─────────────────────────────────────────┤
+│ ┌──────────┐                            │
+│ │          │  Album Title (display-xl)   │
+│ │  280×280 │  Artist Name (link)         │
+│ │  Artwork │  Genre · Year · Tracks      │
+│ │          │                             │
+│ │          │  [▶ Play All] [Buy Stems]   │
+│ └──────────┘  ✓ Rights Verified          │
+├─────────────────────────────────────────┤
+│ TRACK LIST                              │
+│ ┌─ # │ Title          │ Status │ Stems ┐│
+│ │ 1  │ Track One      │ ●      │ 6/6   ││
+│ │ 2  │ Track Two      │ ◐      │ 3/6   ││
+│ └────┴────────────────┴────────┴───────┘│
+├─────────────────────────────────────────┤
+│ STEM MIXER (expandable per track)       │
+│ [VOC] [DRM] [BAS] [GTR] [PNO] [OTH]    │
+│  ║     ║     ║     ║     ║     ║        │
+│  ║     ║     ║     ║     ║     ║        │ ← vertical faders
+│  M S   M S   M S   M S   M S   M S     │ ← mute/solo
+│                                         │
+│ [List on Marketplace ►]                 │
+├─────────────────────────────────────────┤
+│ STAKE & RIGHTS                          │
+│ Glass card: stake amount, escrow status │
+└─────────────────────────────────────────┘
+```
+
+### 8.3 AI DJ Page
+
+```
+┌─────────────────────────────────────────┐
+│ AMBIENT HEADER                          │
+│ Pulsing concentric rings visualization  │
+│ "Your AI DJ" (display-xl, centered)     │
+│ Session status indicator                │
+├──────────────────┬──────────────────────┤
+│ NEXT AI PICK     │ DJ CONFIGURATION     │
+│ (60% width)      │ (40% width)          │
+│                  │                      │
+│ Album art        │ Agent name input     │
+│ Track + Artist   │ Vibe chips           │
+│ License badge    │ Budget slider        │
+│ Price (USD/USDC) │ Mode toggle          │
+│ Score ring (72)  │ [Start Session]      │
+│ Explanations     │                      │
+│ [Buy] [Skip]     ├──────────────────────┤
+│                  │ WALLET & BUDGET      │
+├──────────────────┤ Balance display      │
+│ SESSION HISTORY  │ Spend progress       │
+│ Timeline feed    │ Recent transactions  │
+│ of past picks    │                      │
+└──────────────────┴──────────────────────┘
+```
+
+The ambient header uses a living particle visualization (concentric rings
+with slow rotation + pulse) rendered in coral and violet gradients. This
+communicates "the AI is active and thinking."
+
+### 8.4 Shows Page
+
+The Shows surface is scoped with `.shows-surface` which overrides the coral
+accent with **signal teal** (#5EEAD4). This color shift is the primary
+visual cue that the user has entered the live/campaign domain.
+
+- Campaign hero: 21:9 banner with teal mesh gradient, glass info card
+- Campaign grid: 3-column card layout with teal-tinted progress bars
+- Detail page: signal cards (backers, raised, days left, threshold),
+  brief + pledge panel, artist audio preview
+
+### 8.5 Marketplace
+
+Glass grid of stem listings with:
+- Stem artwork (from parent release)
+- Stem type badge (colored by waveform palette)
+- License type pill (personal / remix / commercial)
+- Price in USD + USDC equivalent
+- "Buy" CTA (coral) + "Preview" (ghost)
+- Staking/escrow status indicator
+
+### 8.6 Library
+
+Two-panel layout: left panel is a vertical playlist/folder list; right panel
+is the track grid/list. Uses the same glass card treatment as the rest of the
+app. Drag-and-drop reordering with subtle ghost animation.
+
+---
+
+## 9. Motion & Animation
+
+### 9.1 Principles
+
+- **Purposeful**: Animations communicate state change, not decoration.
+- **Quick**: Most transitions complete in 200–300ms.
+- **Easing**: `cubic-bezier(0.2, 0.8, 0.2, 1)` for entrances (overshoot),
+  `cubic-bezier(0.4, 0, 0.2, 1)` for exits (decelerate).
+
+### 9.2 Standard Animations
+
+| Animation         | Duration | Easing                          | Use                          |
+| ----------------- | -------- | ------------------------------- | ---------------------------- |
+| `fade-in-up`      | 600ms    | `cubic-bezier(0.2, 0.8, 0.2, 1)` | Page sections on scroll    |
+| `card-hover`      | 200ms    | ease-out                        | Card lift + glow             |
+| `mesh-drift`      | 30s      | ease                            | Background mesh movement     |
+| `hero-motif-spin` | 28s      | linear                          | Hero ring rotation           |
+| `hero-ping`       | 3.4s     | ease-out                        | Hero center ring pulse       |
+| `progress-sheen`  | 3s       | ease-in-out                     | Progress bar gradient shift  |
+| `dot-pulse`       | 2.2s     | ease-out                        | Live indicator pulse         |
+| `shimmer`         | 2s       | linear                          | Skeleton loading states      |
+
+### 9.3 Reduced Motion
+
+All animations respect `prefers-reduced-motion: reduce`. When active:
+- Mesh drift, ring rotation, and ping are disabled
+- Fade-in-up becomes instant opacity transition
+- Hover transforms are removed; only color changes remain
+
+---
+
+## 10. Accessibility
+
+- **Contrast**: All text meets WCAG 2.1 AA (4.5:1 for body, 3:1 for large
+  text) against the darkest surface.
+- **Focus rings**: Violet outline (`box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.35)`)
+  on all interactive elements.
+- **Touch targets**: 44px minimum on `pointer: coarse` devices.
+- **Semantic HTML**: `<nav>`, `<main>`, `<section>`, `<article>`, `role` attributes.
+- **Screen reader**: All icon-only buttons have `aria-label`.
+- **Color-blind safe**: The coral/violet/teal triple is distinguishable
+  across all common color vision deficiencies (verified with Sim Daltonism).
+
+---
+
+## 11. Iconography
+
+**Material Symbols Outlined** — full weight-variable font, loaded app-wide.
+
+| Context         | Size   | Weight | Fill |
+| --------------- | ------ | ------ | ---- |
+| Sidebar nav     | 22px   | 400    | 0    |
+| Inline text     | 16px   | 400    | 0    |
+| Buttons         | 20px   | 400    | 0    |
+| Play overlay    | 48px   | 400    | 1    |
+| Transport       | 24px   | 400    | 1    |
+
+Favor icons with metaphoric clarity (`library_music`, `graphic_eq`,
+`play_arrow`, `equalizer`) over abstract glyphs. The sidebar icon rail
+uses slightly larger icons (22px) for clarity at the collapsed width.
+
+---
+
+## 12. Migration Notes
+
+### From v1 (Stitch era) to v2 (Obsidian Frequency)
+
+| Change                         | v1                              | v2                              |
+| ------------------------------ | ------------------------------- | ------------------------------- |
+| Canvas background              | `#15121c`                       | `#0A0A0F`                       |
+| Primary accent                 | Purple `#8a3ffc` / `#d4bbff`   | Coral `#FF6B4A` / `#FF8F6B`    |
+| Secondary accent               | Same as primary                 | Violet `#8B5CF6` (AI-only)     |
+| Sidebar width                  | 280px fixed                     | 72px icon rail, 260px expanded |
+| Hero aspect                    | 21:9                            | 21:9 (kept)                    |
+| Glass blur                     | `blur(32px) sat(140%)`         | `blur(32px) sat(140%)` (kept)  |
+| Button radius                  | 14px                            | 14px (kept)                    |
+| Font: display                  | Space Grotesk                   | Space Grotesk (kept)           |
+| Font: body                     | Be Vietnam Pro                  | Be Vietnam Pro (kept)          |
+| Font: mono (new)               | —                               | JetBrains Mono                 |
+| Token prefix                   | `--ds-*`                        | `--r-*`                        |
+
+### Token Alias Strategy
+
+During migration, `--ds-*` tokens become thin aliases of `--r-*` tokens so
+existing components keep working. The migration proceeds surface-by-surface:
+home → release → agent → marketplace → library → shows → settings.
+
+---
+
+## 13. Source of Truth
+
+- `web/src/styles/tokens.css` — all design-system tokens (`--r-*` and legacy `--ds-*` aliases).
+- `web/src/styles/home-nextgen.css` — home page component classes (`.ng-*`).
+- `web/src/styles/shows.css` — Shows surface teal scoping.
+- `web/src/app/globals.css` — base typography, `.glass-panel`, persistent chrome.
+- This document is the human-readable specification. If a token value here
+  disagrees with the code, **the code wins** and this file must be updated.
+
+## 14. Out-of-Scope
+
+- Navigation information architecture — see `docs/ui/ux_research_ia.md`.
+- Usability test plan — see `docs/ui/usability_test_plan.md`.
+- Per-component implementation details — each component owns its behavior
+  within these visual tokens.

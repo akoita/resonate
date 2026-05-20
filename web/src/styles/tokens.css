@@ -13,7 +13,7 @@
   --color-text: var(--ds-on-surface);
   --color-muted: var(--ds-on-surface-variant);
   --color-accent: var(--ds-primary-container);
-  --color-accent-rgb: 138, 63, 252;
+  --color-accent-rgb: 255, 107, 74;
   --color-accent-2: var(--ds-tertiary);
   --color-border: rgba(255, 255, 255, 0.08);
 
@@ -57,38 +57,109 @@
 
   --touch-target: 44px;
 
+  /* ══════════════════════════════════════════════════════════════
+   * Obsidian Frequency Design System v2 (2026-05)
+   * Token prefix: --r-*
+   * ══════════════════════════════════════════════════════════════ */
+
+  /* Canvas & Surfaces */
+  --r-canvas: #0A0A0F;
+  --r-canvas-warm: #0D0B12;
+  --r-surface-lowest: #0F0D14;
+  --r-surface-low: #151320;
+  --r-surface-mid: #1A1826;
+  --r-surface-high: #22202E;
+  --r-surface-highest: #2C2A38;
+
+  /* Text & Content */
+  --r-on-surface: #E8E0F0;
+  --r-on-surface-variant: #A8A0B8;
+  --r-on-surface-muted: #6E6880;
+
+  /* Outlines */
+  --r-outline: #3A3548;
+  --r-outline-variant: #2A2636;
+
+  /* Primary: Coral Ember */
+  --r-primary: #FF6B4A;
+  --r-primary-soft: #FF8F6B;
+  --r-primary-glow: rgba(255, 107, 74, 0.35);
+  --r-on-primary: #1A0800;
+  --r-primary-container: #C84A2A;
+
+  /* Secondary: Electric Violet */
+  --r-secondary: #8B5CF6;
+  --r-secondary-soft: #A78BFA;
+  --r-secondary-glow: rgba(139, 92, 246, 0.30);
+  --r-on-secondary: #1A0042;
+
+  /* Tertiary: Warm Amber */
+  --r-tertiary: #FFB782;
+  --r-tertiary-soft: #FFDCC5;
+  --r-on-tertiary: #4F2500;
+
+  /* Semantic */
+  --r-error: #FF6B6B;
+  --r-success: #34D399;
+  --r-warning: #FBBF24;
+  --r-info: #60A5FA;
+
+  /* Chrome (Glass) */
+  --r-chrome-glass: rgba(255, 255, 255, 0.03);
+  --r-chrome-border: rgba(255, 255, 255, 0.06);
+  --r-chrome-hover: rgba(255, 255, 255, 0.08);
+  --r-chrome-active: rgba(255, 255, 255, 0.12);
+
+  /* Spacing */
+  --r-unit: 4px;
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 24px;
+  --r-xl: 32px;
+  --r-2xl: 48px;
+  --r-3xl: 64px;
+  --r-section: 80px;
+
+  /* Radii */
+  --r-radius-xs: 6px;
+  --r-radius-sm: 10px;
+  --r-radius-md: 14px;
+  --r-radius-lg: 20px;
+  --r-radius-xl: 28px;
+  --r-radius-hero: 32px;
+  --r-radius-full: 9999px;
+
   /*
-   * Next-Gen Music Platform design system (Stitch, Apr 2026).
-   * Deep-space dark canvas, purple primary, amber tertiary (Shows/live only).
-   * Used by the home page and any component built against the Stitch
-   * "Hyper-Fidelity Digital" aesthetic. Existing `--color-*` tokens above
-   * remain so the rest of the app (marketplace, library, etc.) doesn't
-   * break until it's migrated intentionally.
+   * Legacy design-system tokens (Stitch, Apr 2026).
+   * Now aliased to the canonical --r-* tokens above.
+   * Existing `--color-*` tokens remain so the rest of the app
+   * doesn't break until it's migrated intentionally.
    */
-  --ds-surface: #15121c;
-  --ds-surface-dim: #15121c;
+  --ds-surface: var(--r-canvas);           /* was #15121c */
+  --ds-surface-dim: var(--r-canvas);        /* was #15121c */
   --ds-surface-bright: #3c3743;
-  --ds-surface-lowest: #100c16;
-  --ds-surface-low: #1e1a24;
-  --ds-surface-mid: #221e28;
-  --ds-surface-high: #2c2833;
-  --ds-surface-highest: #37333e;
-  --ds-on-surface: #e8dfef;
-  --ds-on-surface-variant: #cdc2d8;
+  --ds-surface-lowest: var(--r-surface-lowest);  /* was #100c16 */
+  --ds-surface-low: var(--r-surface-low);   /* was #1e1a24 */
+  --ds-surface-mid: var(--r-surface-mid);   /* was #221e28 */
+  --ds-surface-high: var(--r-surface-high); /* was #2c2833 */
+  --ds-surface-highest: var(--r-surface-highest); /* was #37333e */
+  --ds-on-surface: var(--r-on-surface);     /* was #e8dfef */
+  --ds-on-surface-variant: var(--r-on-surface-variant); /* was #cdc2d8 */
   --ds-outline: #968da1;
   --ds-outline-variant: #4b4455;
-  --ds-primary: #d4bbff;
-  --ds-on-primary: #41008b;
-  --ds-primary-container: #8a3ffc;
+  --ds-primary: var(--r-primary-soft);      /* was #d4bbff — now coral soft */
+  --ds-on-primary: var(--r-on-primary);     /* was #41008b */
+  --ds-primary-container: var(--r-primary); /* was #8a3ffc — now coral */
   --ds-on-primary-container: #faf1ff;
   --ds-secondary: #d4bbff;
   --ds-secondary-container: #55348c;
-  --ds-tertiary: #ffb782;
+  --ds-tertiary: var(--r-tertiary);         /* was #ffb782 — kept */
   --ds-on-tertiary: #4f2500;
   --ds-tertiary-container: #ad5900;
   --ds-tertiary-fixed: #ffdcc5;
   --ds-tertiary-fixed-dim: #ffb782;
-  --ds-error: #ffb4ab;
+  --ds-error: var(--r-error);               /* was #ffb4ab */
 
   --ds-font-display: "Space Grotesk", system-ui, -apple-system, sans-serif;
   --ds-font-body: "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
@@ -109,18 +180,18 @@
  * it's clear which side of the migration a class comes from.
  */
 @theme {
-  --color-ds-surface: #15121c;
-  --color-ds-surface-low: #1e1a24;
-  --color-ds-surface-mid: #221e28;
-  --color-ds-surface-high: #2c2833;
-  --color-ds-on-surface: #e8dfef;
-  --color-ds-on-surface-variant: #cdc2d8;
+  --color-ds-surface: #0A0A0F;
+  --color-ds-surface-low: #151320;
+  --color-ds-surface-mid: #1A1826;
+  --color-ds-surface-high: #22202E;
+  --color-ds-on-surface: #E8E0F0;
+  --color-ds-on-surface-variant: #A8A0B8;
   --color-ds-outline: #968da1;
-  --color-ds-primary: #d4bbff;
-  --color-ds-on-primary: #41008b;
-  --color-ds-primary-container: #8a3ffc;
-  --color-ds-secondary: #d4bbff;
-  --color-ds-tertiary: #ffb782;
+  --color-ds-primary: #FF8F6B;
+  --color-ds-on-primary: #1A0800;
+  --color-ds-primary-container: #FF6B4A;
+  --color-ds-secondary: #8B5CF6;
+  --color-ds-tertiary: #FFB782;
   --color-ds-on-tertiary: #4f2500;
   --color-ds-tertiary-fixed: #ffdcc5;
   --color-ds-tertiary-fixed-dim: #ffb782;

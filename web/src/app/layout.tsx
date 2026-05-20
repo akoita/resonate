@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Inter, Space_Grotesk, Be_Vietnam_Pro } from "next/font/google";
+import { Geist, Geist_Mono, Inter, Space_Grotesk, Be_Vietnam_Pro, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import AppShell from "../components/layout/AppShell";
 import AuthProvider from "../components/auth/AuthProvider";
@@ -18,6 +18,11 @@ const geistMono = Geist_Mono({
 
 const inter = Inter({
   variable: "--font-sans",
+  subsets: ["latin"],
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-mono",
   subsets: ["latin"],
 });
 
@@ -82,7 +87,7 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
         />
       </head>
-      <body className={`${inter.variable} ${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} ${beVietnamPro.variable}`}>
+      <body className={`${inter.variable} ${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} ${beVietnamPro.variable} ${jetbrainsMono.variable}`}>
         <ToastProvider>
           <ZeroDevProviderClient projectId={process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID}>
             <AuthProvider>

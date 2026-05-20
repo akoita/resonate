@@ -1676,7 +1676,7 @@ export default function ReleaseDetails() {
                 </span>
               )}
               {release.rightsEvaluatedAt && (
-                <span style={{ fontSize: "0.72rem", opacity: 0.35, fontFamily: "monospace" }}>
+                <span style={{ fontSize: "0.72rem", opacity: 0.35, fontFamily: "var(--font-mono)" }}>
                   {new Date(release.rightsEvaluatedAt).toLocaleString()}
                 </span>
               )}
@@ -2624,6 +2624,7 @@ export default function ReleaseDetails() {
           width: 40px;
           color: var(--color-muted);
           text-align: center;
+          font-family: var(--font-mono);
         }
 
         .track-title-cell {
@@ -2695,7 +2696,7 @@ export default function ReleaseDetails() {
         .track-duration {
           text-align: right;
           color: var(--color-muted);
-          font-family: monospace;
+          font-family: var(--font-mono);
         }
 
         .track-actions-cell {
@@ -3178,6 +3179,7 @@ export default function ReleaseDetails() {
             font-size: 13px;
             color: var(--color-muted);
             text-align: left;
+            font-family: var(--font-mono);
           }
 
           /* Title takes the rest of the first row alongside num; use
