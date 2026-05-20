@@ -1132,3 +1132,59 @@ cd backend && npx jest --runInBand --forceExit --config jest.integration.config.
 cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js src/tests/analytics_governance.integration.spec.ts
 git diff --check
 ```
+
+## Addendum: #879 Analytics Warehouse Loading And Backfill
+
+Reviewed the analytics warehouse loader/backfill slice for #879, including
+scoped event listing, schema-version quarantine, local JSONL loading, BigQuery
+insert-all loading, admin maintenance endpoints, and related tests/docs. No
+Critical or High findings were identified in the changed code.
+
+### Scope
+
+- `backend/src/modules/analytics/analytics_event_store.ts`
+- `backend/src/modules/analytics/analytics_warehouse.ts`
+- `backend/src/modules/analytics/analytics_warehouse_loader.ts`
+- `backend/src/modules/analytics/analytics.module.ts`
+- `backend/src/modules/maintenance/maintenance.controller.ts`
+- `backend/src/modules/maintenance/maintenance.service.ts`
+- `backend/src/tests/analytics_warehouse_loader.spec.ts`
+- `backend/src/tests/analytics_warehouse_loader.integration.spec.ts`
+- `docs/architecture/data_model_storage_plan.md`
+- `docs/deployment/environment.md`
+- `docs/features/README.md`
+- `docs/features/analytics_event_ledger.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- The new loader/backfill routes are admin-only under the existing JWT and
+  roles guards.
+- The local JSONL target writes to a configured server-side directory and uses
+  idempotent row keys, atomic temp-file replacement, and no user-controlled file
+  names.
+- The BigQuery target uses Google ADC through `google-auth-library`; no service
+  account keys, tokens, or credentials are stored in source.
+- Unsupported event versions are written to raw/quarantine and do not get
+  promoted into clean/fact/view layers.
+- No raw SQL, dynamic query construction, shell execution, or new unauthenticated
+  controller path was introduced.
+
+### Commands Run
+
+```bash
+rg -n 'password|secret|api_key|private_key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|ghp_|gho_|sk-[A-Za-z0-9]' backend/src/modules/analytics backend/src/modules/maintenance backend/src/tests/analytics_warehouse_loader.spec.ts backend/src/tests/analytics_warehouse_loader.integration.spec.ts --iglob '!*.test.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/analytics backend/src/modules/maintenance backend/src/tests/analytics_warehouse_loader.spec.ts backend/src/tests/analytics_warehouse_loader.integration.spec.ts
+rg -n 'JSON\.parse|client\.request|readFile|writeFile|rename|mkdir' backend/src/modules/analytics/analytics_warehouse_loader.ts backend/src/modules/maintenance backend/src/tests/analytics_warehouse_loader.spec.ts backend/src/tests/analytics_warehouse_loader.integration.spec.ts
+rg -n '@Controller|@Get|@Post|@Put|@Delete|@Patch|@UseGuards|@Roles|@Body' backend/src/modules/maintenance backend/src/modules/analytics
+cd backend && npm run lint
+cd backend && npm run test -- --runInBand
+cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js src/tests/analytics_warehouse_loader.integration.spec.ts
+git diff --check
+```

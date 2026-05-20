@@ -146,10 +146,12 @@ export function buildAnalyticsWarehouseExport(
   options?: {
     generatedAt?: Date;
     config?: AnalyticsWarehouseConfig;
+    supportedEventVersions?: number[];
   },
 ): AnalyticsWarehouseExport {
   const generatedAt = (options?.generatedAt ?? new Date()).toISOString();
   const config = options?.config ?? analyticsWarehouseConfigFromEnv();
+  const supportedEventVersions = new Set(options?.supportedEventVersions ?? [1]);
   const eventsRaw: EventsRawRow[] = [];
   const eventsClean: EventsCleanRow[] = [];
   const analyticsFacts: AnalyticsFactRow[] = [];
@@ -163,6 +165,17 @@ export function buildAnalyticsWarehouseExport(
     }
 
     eventsRaw.push(toRawRow(event));
+
+    if (!supportedEventVersions.has(event.eventVersion)) {
+      analyticsQuarantine.push({
+        eventId: event.eventId,
+        eventName: event.eventName,
+        reason: `unsupported event version: ${event.eventVersion}`,
+        receivedAt: generatedAt,
+        raw: event,
+      });
+      continue;
+    }
 
     const eventFamily = event.eventName.split(".")[0];
     if (!SUPPORTED_EVENT_FAMILIES.has(eventFamily)) {

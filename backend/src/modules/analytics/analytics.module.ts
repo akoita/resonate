@@ -6,6 +6,11 @@ import { AnalyticsInstrumentationService } from "./analytics_instrumentation.ser
 import { AnalyticsGovernanceService } from "./analytics_governance.service";
 import { ANALYTICS_EVENT_STORE, PrismaAnalyticsEventStore } from "./analytics_event_store";
 import { AnalyticsWarehouseExportService } from "./analytics_warehouse";
+import {
+  ANALYTICS_WAREHOUSE_TARGET,
+  AnalyticsWarehouseLoaderService,
+  analyticsWarehouseTargetFromEnv,
+} from "./analytics_warehouse_loader";
 
 @Module({
   controllers: [AnalyticsController],
@@ -15,10 +20,15 @@ import { AnalyticsWarehouseExportService } from "./analytics_warehouse";
     AnalyticsInstrumentationService,
     AnalyticsGovernanceService,
     AnalyticsWarehouseExportService,
+    AnalyticsWarehouseLoaderService,
     PrismaAnalyticsEventStore,
     {
       provide: ANALYTICS_EVENT_STORE,
       useExisting: PrismaAnalyticsEventStore,
+    },
+    {
+      provide: ANALYTICS_WAREHOUSE_TARGET,
+      useFactory: analyticsWarehouseTargetFromEnv,
     },
   ],
   exports: [
@@ -26,6 +36,7 @@ import { AnalyticsWarehouseExportService } from "./analytics_warehouse";
     AnalyticsInstrumentationService,
     AnalyticsGovernanceService,
     AnalyticsWarehouseExportService,
+    AnalyticsWarehouseLoaderService,
   ],
 })
 export class AnalyticsModule {}
