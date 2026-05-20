@@ -2,17 +2,20 @@ import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/co
 import { AuthGuard } from "@nestjs/passport";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
 import { AnalyticsService } from "./analytics.service";
+import { AnalyticsEventInput } from "./analytics_event";
+import { AnalyticsWarehouseExportService } from "./analytics_warehouse";
 
 @UseGuards(AuthGuard("jwt"))
 @Controller("analytics")
 export class AnalyticsController {
   constructor(
     private readonly analyticsService: AnalyticsService,
-    private readonly analyticsIngestService: AnalyticsIngestService
+    private readonly analyticsIngestService: AnalyticsIngestService,
+    private readonly warehouseExportService: AnalyticsWarehouseExportService
   ) {}
 
   @Get("artist/:id")
-  getArtist(
+  async getArtist(
     @Param("id") artistId: string,
     @Query("days") days?: string
   ) {
@@ -20,7 +23,7 @@ export class AnalyticsController {
   }
 
   @Get("artist/:id/v1")
-  getArtistDashboard(
+  async getArtistDashboard(
     @Param("id") artistId: string,
     @Query("days") days?: string
   ) {
@@ -28,16 +31,17 @@ export class AnalyticsController {
   }
 
   @Post("ingest")
-  ingest(@Body() body: { eventName: string; payload: Record<string, unknown> }) {
-    return this.analyticsIngestService.ingest({
-      eventName: body.eventName,
-      payload: body.payload,
-      occurredAt: new Date().toISOString(),
-    });
+  async ingest(@Body() body: AnalyticsEventInput) {
+    return this.analyticsIngestService.ingest(body);
   }
 
   @Get("rollup/daily")
-  rollup() {
+  async rollup() {
     return this.analyticsIngestService.dailyRollup();
+  }
+
+  @Get("export/layers")
+  async exportLayers() {
+    return this.warehouseExportService.exportLayers();
   }
 }

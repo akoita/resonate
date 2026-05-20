@@ -22,8 +22,27 @@
 - Deleted tracks: purge within 30 days
 
 ### Analytics
-- Event logs: 90 days in OLTP, 24 months in BigQuery
-- Aggregates: retain 36 months
+- Personal raw event logs: 90 days in OLTP/log systems, 13 months in the
+  warehouse unless a documented security, abuse, or compliance purpose requires
+  longer retention.
+- Pseudonymous raw analytics events: 24 months by default, extendable only with
+  documented privacy review.
+- Financial, payout, royalty, dispute, and audit facts: 7-10 years when needed
+  for accounting, settlement, fraud, rights, or legal history.
+- Anonymous aggregates: retain indefinitely while commercially useful, provided
+  they cannot reasonably identify a person.
+- Deletion/redaction lineage: retain indefinitely to prove downstream cleanup
+  occurred.
+
+See [Long-Term Analytics Event Ledger](../rfc/analytics-event-ledger.md) for
+the analytics retention classes and governance model.
+
+Operational knobs:
+- `ANALYTICS_RETENTION_PERSONAL_DAYS` defaults to 395 days.
+- `ANALYTICS_RETENTION_SENSITIVE_DAYS` defaults to 90 days.
+- `ANALYTICS_RETENTION_PSEUDONYMOUS_DAYS` defaults to 730 days.
+- `POST /admin/retention/cleanup` runs analytics retention cleanup and records
+  deletion/redaction lineage in `AnalyticsGovernanceLog`.
 
 ### Compliance Notes
 - GDPR/CCPA deletion within 30 days of request

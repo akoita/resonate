@@ -28,7 +28,11 @@ owner: "@akoita"
 
 ## Event Taxonomy
 
-All events are emitted with `event_version` and `occurred_at` timestamps.
+All analytics events are emitted with a stable envelope that includes
+`event_id`, `event_name`, `event_version`, `occurred_at`, `received_at`,
+`producer`, `privacy_tier`, and schema metadata. See
+[Long-Term Analytics Event Ledger](../rfc/analytics-event-ledger.md) for the
+canonical envelope, retention tiers, and warehouse layers.
 
 ### Ingestion & Catalog
 
@@ -69,6 +73,39 @@ All events are emitted with `event_version` and `occurred_at` timestamps.
   - owner: Analytics Pipeline
   - payload: event_name, event_id, processed_at
 
+### Playback & Engagement
+
+- `playback.started`
+  - owner: Playback Service
+  - payload: track_id, artist_id, session_id, source, listener_cohort_id
+- `playback.completed`
+  - owner: Playback Service
+  - payload: track_id, artist_id, session_id, completion_ratio, duration_ms
+- `library.saved`
+  - owner: Library Service
+  - payload: user_cohort_id, track_id, release_id, source
+
+### Commerce & Settlement
+
+- `commerce.settled`
+  - owner: Payments Service
+  - payload: payment_id, artist_id, track_id, canonical_amount_usd, settlement_asset, tx_hash
+
+### Rights, Agents, And Experiments
+
+- `rights.route_decided`
+  - owner: Rights Service
+  - payload: release_id, artist_id, route, evidence_types, decision_reason
+- `agent.recommendation_selected`
+  - owner: Agent Runtime
+  - payload: agent_id, session_id, track_id, strategy, candidate_count
+- `generation.created`
+  - owner: Generation Service
+  - payload: generation_id, user_id, track_id, artist_id, model, prompt_policy
+- `experiment.exposed`
+  - owner: Experiment Service
+  - payload: experiment_key, variant_key, subject_cohort_id, surface
+
 ## Versioning Strategy
 
 - Use `event_version` as a semantic integer (v1, v2...).
@@ -79,3 +116,4 @@ All events are emitted with `event_version` and `occurred_at` timestamps.
 
 - Which events must be published to external partners?
 - Do we need PII redaction at event source or sink?
+- Which event families should become public partner/export contracts first?

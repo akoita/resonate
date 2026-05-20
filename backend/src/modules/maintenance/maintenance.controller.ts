@@ -11,7 +11,7 @@ export class MaintenanceController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Post("retention/cleanup")
-  cleanup() {
+  async cleanup() {
     return this.maintenanceService.runRetentionCleanup();
   }
 

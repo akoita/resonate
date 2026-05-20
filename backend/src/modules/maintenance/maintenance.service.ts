@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
+import { AnalyticsGovernanceService } from "../analytics/analytics_governance.service";
 
 const prisma = new PrismaClient();
 
@@ -7,13 +8,22 @@ const prisma = new PrismaClient();
 export class MaintenanceService {
   private readonly logger = new Logger(MaintenanceService.name);
 
-  runRetentionCleanup() {
+  constructor(private readonly analyticsGovernanceService: AnalyticsGovernanceService) {}
+
+  async runRetentionCleanup() {
+    const analytics = await this.analyticsGovernanceService.runRetentionCleanup();
     return {
       status: "ok",
       purged: {
         sessions: 0,
         uploads: 0,
-        analytics: 0,
+        analytics: analytics.deleted,
+      },
+      redacted: {
+        analytics: analytics.redacted,
+      },
+      lineageRecords: {
+        analytics: analytics.lineageRecords,
       },
       ranAt: new Date().toISOString(),
     };
