@@ -10325,19 +10325,15 @@ tr[draggable="true"]:hover {
     border-right: 1px solid rgba(255, 107, 74, 0.15);
   }
 
-  /* Hide label text / env badges when collapsed — use visibility:hidden
-   * so Playwright's toBeHidden() assertion passes (opacity:0 is still
-   * considered "visible" by Playwright). */
+  /* Hide label text / env badges when collapsed — display:none satisfies
+   * Playwright's toBeHidden() assertion (the original code on main used
+   * display:none here). On hover-expand, labels reappear. */
   .app-sidebar .link-text,
   .app-sidebar .logo-text,
   .app-sidebar .env-badge,
   .app-sidebar .sidebar-link__new,
   .app-sidebar .sidebar-footer .user-info {
-    visibility: hidden;
-    opacity: 0;
-    transition: opacity 0.15s ease, visibility 0.15s ease;
-    pointer-events: none;
-    white-space: nowrap;
+    display: none;
   }
 
   .app-sidebar:hover .link-text,
@@ -10345,7 +10341,7 @@ tr[draggable="true"]:hover {
   .app-sidebar:hover .env-badge,
   .app-sidebar:hover .sidebar-link__new,
   .app-sidebar:hover .sidebar-footer .user-info {
-    visibility: visible;
+    display: inline;
     opacity: 1;
     pointer-events: auto;
   }
