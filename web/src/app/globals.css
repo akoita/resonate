@@ -10294,102 +10294,44 @@ tr[draggable="true"]:hover {
   to   { opacity: 1; }
 }
 
-/* Tablet: icon-only rail with hover-expand (768px - 1279px) */
+/* Tablet: icon-only rail */
 @media (max-width: 1279px) and (min-width: 768px) {
   .app-shell {
     grid-template-columns: 72px 1fr;
   }
 
-  .app-main {
-    grid-column: 2;
-  }
-
-  .app-sidebar {
-    position: relative;
-    width: 72px;
-    height: 100%;
-    z-index: 5000;
-    overflow: hidden;
-  }
-
-  .app-sidebar:hover {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: 260px;
-    overflow: visible;
-    background: rgba(10, 10, 15, 0.96);
-    backdrop-filter: blur(24px) saturate(140%);
-    box-shadow: 15px 0 40px rgba(0, 0, 0, 0.7);
-    border-right: 1px solid rgba(255, 107, 74, 0.15);
-  }
-
-  /* Hide label text / env badges when collapsed — display:none satisfies
-   * Playwright's toBeHidden() assertion (the original code on main used
-   * display:none here). On hover-expand, labels reappear. */
   .app-sidebar .link-text,
-  .app-sidebar .logo-text,
-  .app-sidebar .env-badge,
-  .app-sidebar .sidebar-link__new,
+  .app-sidebar .logo-text {
+    display: none;
+  }
+
+  /* Tablet rail keeps the account chip, but collapses to an avatar
+   * puck — hide the text info so the 36px avatar fits the 72px rail
+   * and identity stays visible even when labels don't (#549). */
+  .app-sidebar .sidebar-footer {
+    padding: var(--space-3) 0;
+    display: flex;
+    justify-content: center;
+  }
+
+  .app-sidebar .sidebar-footer .user-profile {
+    padding: 4px;
+    background: transparent;
+    border: none;
+  }
+
   .app-sidebar .sidebar-footer .user-info {
     display: none;
   }
 
-  .app-sidebar:hover .link-text,
-  .app-sidebar:hover .logo-text,
-  .app-sidebar:hover .env-badge,
-  .app-sidebar:hover .sidebar-link__new,
-  .app-sidebar:hover .sidebar-footer .user-info {
-    display: inline;
-    opacity: 1;
-    pointer-events: auto;
-  }
-
   .sidebar-logo {
-    padding: var(--space-6) 16px var(--space-4);
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
-
-  .sidebar-logo .logo-icon {
-    min-width: 40px;
-    display: flex;
+    padding: var(--space-5) var(--space-3) var(--space-3);
     justify-content: center;
-    font-size: 24px;
   }
 
   .sidebar-link {
-    width: 100%;
-    padding: 10px 16px;
-    justify-content: flex-start;
-  }
-
-  .sidebar-link .link-icon {
-    min-width: 40px;
-    display: flex;
     justify-content: center;
-    align-items: center;
-  }
-
-  .app-sidebar .sidebar-footer {
-    padding: var(--space-4) 16px;
-    background: rgba(0, 0, 0, 0.15);
-    border-top: 1px solid var(--color-border);
-    display: flex;
-    justify-content: flex-start;
-  }
-
-  .app-sidebar .sidebar-footer .user-profile {
-    padding: 8px;
-    background: rgba(255, 255, 255, 0.02);
-    border-radius: var(--radius-md);
-    width: 100%;
-  }
-
-  .app-sidebar .sidebar-footer .user-avatar {
-    flex-shrink: 0;
+    padding: 10px 0;
   }
 
   .app-topbar {
