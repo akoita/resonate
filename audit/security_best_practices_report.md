@@ -1057,3 +1057,78 @@ The broader `metadata.controller.integration` suite was also sampled while
 testing the reconciliation path; it still has an unrelated content-protection
 diagnostic assertion that fails when the local Anvil fallback contract is not
 deployed.
+
+## Addendum: #867 Analytics Event Ledger
+
+Reviewed the analytics event ledger branch covering shared event validation,
+durable Postgres analytics event storage, warehouse export layers, producer
+instrumentation helpers, retention/deletion/consent governance, maintenance
+cleanup wiring, and current artist report reads from generated analytics facts.
+No Critical or High findings were identified in the changed code.
+
+### Scope
+
+- `backend/prisma/schema.prisma`
+- `backend/prisma/migrations/20260520090000_analytics_event_ledger/migration.sql`
+- `backend/src/modules/analytics/analytics_event.ts`
+- `backend/src/modules/analytics/analytics_event_store.ts`
+- `backend/src/modules/analytics/analytics_governance.service.ts`
+- `backend/src/modules/analytics/analytics_instrumentation.service.ts`
+- `backend/src/modules/analytics/analytics_warehouse.ts`
+- `backend/src/modules/analytics/analytics_ingest.service.ts`
+- `backend/src/modules/analytics/analytics.service.ts`
+- `backend/src/modules/analytics/analytics.controller.ts`
+- `backend/src/modules/analytics/analytics.module.ts`
+- `backend/src/modules/maintenance/maintenance.controller.ts`
+- `backend/src/modules/maintenance/maintenance.module.ts`
+- `backend/src/modules/maintenance/maintenance.service.ts`
+- `backend/src/tests/analytics*.spec.ts`
+- `docs/rfc/analytics-event-ledger.md`
+- `docs/features/analytics_event_ledger.md`
+- `docs/features/analytics_dashboard_v0.md`
+- `docs/features/README.md`
+- `docs/architecture/data_model_storage_plan.md`
+- `docs/architecture/event_taxonomy_domain_model.md`
+- `docs/compliance/security_review_data_retention.md`
+- `docs/deployment/environment.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- The analytics controller remains protected by the existing JWT guard, and the
+  new retention cleanup endpoint remains admin-only behind the JWT and roles
+  guards.
+- Event ingestion now validates envelopes with Zod before persistence, requires
+  a consent basis for personal/sensitive events, and quarantines invalid or
+  unsupported records in the export layer instead of silently accepting them as
+  report facts.
+- Durable storage uses Prisma model operations and idempotent `eventId` upserts;
+  no dynamic raw SQL was introduced in the analytics ledger path.
+- Warehouse project/dataset and retention windows are configurable through
+  documented environment variables with local-development fallbacks.
+- Broad repository scans still report pre-existing items outside this branch,
+  including development JWT fallbacks and existing raw Prisma template queries.
+  No new Critical or High issue was introduced by this branch.
+
+### Commands Run
+
+```bash
+rg -n 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw' backend/src/
+rg -n 'JSON\.parse|eval\(' backend/src/
+rg -n '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/analytics backend/src/modules/maintenance
+rg -n '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/analytics backend/src/modules/maintenance
+rg -n 'ANALYTICS_|GCP_PROJECT_ID|dev-secret|0x[0-9a-fA-F]{64}|AIza|ghp_|gho_|sk-[A-Za-z0-9]' backend/src/modules/analytics backend/src/modules/maintenance backend/prisma docs/rfc/analytics-event-ledger.md docs/features/analytics_event_ledger.md docs/deployment/environment.md
+cd backend && npm run lint
+cd backend && npm run test -- --runInBand
+cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js src/tests/analytics_event_store.integration.spec.ts
+cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js src/tests/analytics_instrumentation.integration.spec.ts
+cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js src/tests/analytics_governance.integration.spec.ts
+git diff --check
+```

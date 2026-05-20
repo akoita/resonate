@@ -1,5 +1,11 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
+import {
+  AnalyticsFactRow,
+  AnalyticsWarehouseExport,
+  AnalyticsWarehouseExportService,
+  buildAnalyticsWarehouseExport,
+} from "./analytics_warehouse";
 
 interface TrackStats {
   trackId: string;
@@ -39,17 +45,13 @@ type MutableAssetPayoutStats = Omit<AssetPayoutStats, "settlementAmountUnits" | 
 
 @Injectable()
 export class AnalyticsService {
-  constructor(private readonly ingestService: AnalyticsIngestService) {}
+  constructor(
+    private readonly ingestService: AnalyticsIngestService,
+    @Optional() private readonly warehouseExportService?: AnalyticsWarehouseExportService,
+  ) {}
 
-  getArtistStats(artistId: string, days: number) {
-    const since = Date.now() - days * 24 * 60 * 60 * 1000;
-    const events = this.ingestService
-      .listEvents()
-      .filter((event) => new Date(event.occurredAt).getTime() >= since);
-    const filtered = events.filter((event) => {
-      const payload = event.payload as Record<string, unknown>;
-      return payload.artistId === artistId;
-    });
+  async getArtistStats(artistId: string, days: number) {
+    const facts = await this.listArtistFacts(artistId, days);
 
     const summary = {
       artistId,
@@ -60,20 +62,24 @@ export class AnalyticsService {
     const tracks: TrackStats[] = [];
     const trackMap = new Map<string, TrackStats>();
 
-    filtered.forEach((event) => {
-      const payload = event.payload as Record<string, any>;
-      const trackId = payload.trackId ?? "unknown";
-      const title = payload.title ?? "Unknown Track";
+    facts.forEach((fact) => {
+      const dimensions = fact.dimensions;
+      const eventName = this.stringDimension(dimensions, "eventName");
+      const trackId = fact.trackId ?? "unknown";
+      const title = this.stringDimension(dimensions, "title") ?? "Unknown Track";
       const stats =
         trackMap.get(trackId) ?? { trackId, title, plays: 0, payoutUsd: 0, payoutsByAsset: [] };
-      if (event.eventName === "license.granted") {
+      if (stats.title === "Unknown Track" && title !== "Unknown Track") {
+        stats.title = title;
+      }
+      if (this.isPlayEvent(eventName)) {
         stats.plays += 1;
         summary.totalPlays += 1;
       }
-      if (event.eventName === "payment.settled") {
-        const amount = this.canonicalUsdAmount(payload);
+      if (this.isPayoutEvent(eventName)) {
+        const amount = this.canonicalUsdAmount(fact);
         stats.payoutUsd += amount;
-        stats.payoutsByAsset = this.addAssetPayout(stats.payoutsByAsset, payload, amount);
+        stats.payoutsByAsset = this.addAssetPayout(stats.payoutsByAsset, dimensions, amount);
         summary.totalPayoutUsd += amount;
       }
       trackMap.set(trackId, stats);
@@ -83,15 +89,8 @@ export class AnalyticsService {
     return { summary: { ...summary, payoutsByAsset: this.aggregateAssetPayouts(tracks.flatMap((track) => track.payoutsByAsset)) }, tracks };
   }
 
-  getArtistDashboard(artistId: string, days: number) {
-    const since = Date.now() - days * 24 * 60 * 60 * 1000;
-    const events = this.ingestService
-      .listEvents()
-      .filter((event) => new Date(event.occurredAt).getTime() >= since);
-    const filtered = events.filter((event) => {
-      const payload = event.payload as Record<string, unknown>;
-      return payload.artistId === artistId;
-    });
+  async getArtistDashboard(artistId: string, days: number) {
+    const facts = await this.listArtistFacts(artistId, days);
 
     const summary = {
       artistId,
@@ -103,12 +102,13 @@ export class AnalyticsService {
     const sessionMap = new Map<string, SessionStats>();
     const sourceMap = new Map<string, SourceStats>();
 
-    filtered.forEach((event) => {
-      const payload = event.payload as Record<string, any>;
-      const trackId = payload.trackId ?? "unknown";
-      const title = payload.title ?? "Unknown Track";
-      const sessionId = payload.sessionId ?? "unknown";
-      const source = payload.source ?? "unknown";
+    facts.forEach((fact) => {
+      const dimensions = fact.dimensions;
+      const eventName = this.stringDimension(dimensions, "eventName");
+      const trackId = fact.trackId ?? "unknown";
+      const title = this.stringDimension(dimensions, "title") ?? "Unknown Track";
+      const sessionId = this.stringDimension(dimensions, "sessionId") ?? "unknown";
+      const source = this.stringDimension(dimensions, "source") ?? "unknown";
 
       const trackStats =
         trackMap.get(trackId) ?? { trackId, title, plays: 0, payoutUsd: 0, payoutsByAsset: [] };
@@ -116,18 +116,21 @@ export class AnalyticsService {
         sessionMap.get(sessionId) ?? { sessionId, plays: 0, payoutUsd: 0, payoutsByAsset: [] };
       const sourceStats = sourceMap.get(source) ?? { source, plays: 0 };
 
-      if (event.eventName === "license.granted") {
+      if (trackStats.title === "Unknown Track" && title !== "Unknown Track") {
+        trackStats.title = title;
+      }
+      if (this.isPlayEvent(eventName)) {
         trackStats.plays += 1;
         sessionStats.plays += 1;
         sourceStats.plays += 1;
         summary.totalPlays += 1;
       }
-      if (event.eventName === "payment.settled") {
-        const amount = this.canonicalUsdAmount(payload);
+      if (this.isPayoutEvent(eventName)) {
+        const amount = this.canonicalUsdAmount(fact);
         trackStats.payoutUsd += amount;
         sessionStats.payoutUsd += amount;
-        trackStats.payoutsByAsset = this.addAssetPayout(trackStats.payoutsByAsset, payload, amount);
-        sessionStats.payoutsByAsset = this.addAssetPayout(sessionStats.payoutsByAsset, payload, amount);
+        trackStats.payoutsByAsset = this.addAssetPayout(trackStats.payoutsByAsset, dimensions, amount);
+        sessionStats.payoutsByAsset = this.addAssetPayout(sessionStats.payoutsByAsset, dimensions, amount);
         summary.totalPayoutUsd += amount;
       }
 
@@ -159,24 +162,47 @@ export class AnalyticsService {
     };
   }
 
-  private canonicalUsdAmount(payload: Record<string, any>) {
-    return Number(payload.canonicalAmountUsd ?? payload.amountUsd ?? 0);
+  private async listArtistFacts(artistId: string, days: number) {
+    const since = Date.now() - days * 24 * 60 * 60 * 1000;
+    const exportPayload = await this.exportLayers();
+    return exportPayload.analyticsFacts.filter(
+      (fact) => fact.artistId === artistId && new Date(fact.occurredAt).getTime() >= since,
+    );
+  }
+
+  private async exportLayers(): Promise<AnalyticsWarehouseExport> {
+    if (this.warehouseExportService) {
+      return this.warehouseExportService.exportLayers();
+    }
+    return buildAnalyticsWarehouseExport(await this.ingestService.listEvents());
+  }
+
+  private isPlayEvent(eventName?: string) {
+    return eventName === "license.granted" || eventName === "playback.completed";
+  }
+
+  private isPayoutEvent(eventName?: string) {
+    return eventName === "payment.settled" || eventName === "commerce.settled";
+  }
+
+  private canonicalUsdAmount(fact: AnalyticsFactRow) {
+    return Number(fact.canonicalAmountUsd ?? this.numberDimension(fact.dimensions, "amountUsd") ?? 0);
   }
 
   private addAssetPayout(
     payouts: AssetPayoutStats[],
-    payload: Record<string, any>,
+    dimensions: Record<string, unknown>,
     canonicalAmountUsd: number,
   ): AssetPayoutStats[] {
     return this.aggregateAssetPayouts([
       ...payouts,
       {
-        paymentToken: payload.paymentToken ?? "0x0000000000000000000000000000000000000000",
-        assetId: payload.paymentAssetId ?? null,
-        symbol: payload.paymentAssetSymbol ?? payload.currency ?? "USD",
-        decimals: Number(payload.paymentAssetDecimals ?? 2),
-        settlementAmount: String(payload.settlementAmount ?? payload.amount ?? payload.amountUsd ?? "0"),
-        settlementAmountUnits: String(payload.settlementAmountUnits ?? payload.amountUnits ?? "0"),
+        paymentToken: this.stringDimension(dimensions, "paymentToken") ?? "0x0000000000000000000000000000000000000000",
+        assetId: this.stringDimension(dimensions, "paymentAssetId") ?? null,
+        symbol: this.stringDimension(dimensions, "paymentAssetSymbol") ?? this.stringDimension(dimensions, "currency") ?? "USD",
+        decimals: this.numberDimension(dimensions, "paymentAssetDecimals") ?? 2,
+        settlementAmount: this.stringDimension(dimensions, "settlementAmount") ?? this.stringDimension(dimensions, "amount") ?? String(canonicalAmountUsd),
+        settlementAmountUnits: this.stringDimension(dimensions, "settlementAmountUnits") ?? this.stringDimension(dimensions, "amountUnits") ?? "0",
         canonicalAmountUsd,
         count: 1,
       },
@@ -222,5 +248,15 @@ export class AnalyticsService {
     }
     const fractionText = fraction.toString().padStart(decimals, "0").replace(/0+$/, "");
     return `${sign}${integer.toString()}.${fractionText}`;
+  }
+
+  private stringDimension(dimensions: Record<string, unknown>, key: string) {
+    const value = dimensions[key];
+    return typeof value === "string" ? value : undefined;
+  }
+
+  private numberDimension(dimensions: Record<string, unknown>, key: string) {
+    const value = dimensions[key];
+    return typeof value === "number" && Number.isFinite(value) ? value : undefined;
   }
 }

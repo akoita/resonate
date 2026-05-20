@@ -46,7 +46,8 @@ that answers:
 | [Community Curation Disputes](community_curation_disputes.md) | see page | curators, admins, reporters | dispute dashboard | Human curation and dispute workflows. |
 | [Rights Verification Workflow](rights_verification_workflow.md) | `partial` | artists, operators, backend developers, protocol agents | release detail marketplace-rights modal, admin dispute queue, trusted-source APIs, `upload-rights-policy.ts` | Upload routing now distinguishes `unverified_uploader`, `verified_independent`, `trusted_creator`, and `trusted_source_account`; trusted-source requests are visible in the admin queue and approval/revocation feeds route decisions and reassessments. Artist-side trusted-source request management and broader policy analytics remain follow-up work. |
 | [Payment Splitter Integration](payment_splitter_integration.md) | see page | artists, protocol developers | contracts/backend payment flow | Revenue split and settlement integration. |
-| [Analytics Dashboard v0](analytics_dashboard_v0.md) | see page | artists, admins | analytics dashboard | Reporting surface for usage and revenue. |
+| [Analytics Dashboard v0](analytics_dashboard_v0.md) | see page | artists, admins | `GET /analytics/artist/:id`, `GET /analytics/artist/:id/v1` | Reporting surface for usage and revenue; current backend responses are built from normalized analytics fact/view layers rather than direct raw-event reads. |
+| [Analytics Event Ledger](analytics_event_ledger.md) | `partial` | product, artists, operators, agents, backend developers | analytics event RFC, event taxonomy, backend event envelope SDK, Postgres raw event ledger, warehouse export layers | Long-term analytics platform for versioned domain events, pseudonymous facts, governed retention, future reports, exports, audits, agent datasets, and dashboards. Shared event envelope validation, Postgres raw event persistence, warehouse/fact/view exports, current artist report reads, producer helpers, and governance jobs are implemented. Production warehouse loading remains follow-up work. |
 | [Desktop App](desktop_app.md) | `partial` | listeners, artists, developers | `desktop/`, `npm run desktop:dev`, `npm --prefix desktop run package:dir`, `Desktop Release Artifacts` workflow | Electron shell reuses the existing web experience with native windowing, external-link handling, save prompts, packaging scripts, and downloadable CI-built artifacts. Signing, notarization, auto-update, and full OS QA remain follow-up work. |
 | [Punchline Drops](punchline_drops_mvp.md) | `planned` | artists, listeners | planned drop/shows surfaces | See also [execution plan](punchline_drops_execution_plan.md). |
 
@@ -60,6 +61,7 @@ that answers:
 | MCP server | [MCP Server](../architecture/mcp_server.md) |
 | Account abstraction | [Account Abstraction](../account-abstraction/account-abstraction.md) |
 | Rights and content protection | [Content Protection Architecture](../rfc/content-protection-architecture.md) |
+| Analytics event ledger | [Long-Term Analytics Event Ledger RFC](../rfc/analytics-event-ledger.md) |
 | Deployment environment | [Environment Variables](../deployment/environment.md) |
 
 ## Maintenance Rule

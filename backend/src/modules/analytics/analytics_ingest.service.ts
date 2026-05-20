@@ -1,25 +1,51 @@
-import { Injectable } from "@nestjs/common";
-
-interface AnalyticsEvent {
-  eventName: string;
-  occurredAt: string;
-  payload: Record<string, unknown>;
-}
+import { BadRequestException, Inject, Injectable, Optional } from "@nestjs/common";
+import {
+  AnalyticsEventEnvelope,
+  AnalyticsEventInput,
+  AnalyticsEventValidationError,
+  normalizeAnalyticsEventInput,
+} from "./analytics_event";
+import {
+  ANALYTICS_EVENT_STORE,
+  AnalyticsEventStore,
+  InMemoryAnalyticsEventStore,
+} from "./analytics_event_store";
 
 @Injectable()
 export class AnalyticsIngestService {
-  private events: AnalyticsEvent[] = [];
+  private readonly eventStore: AnalyticsEventStore;
 
-  ingest(event: AnalyticsEvent) {
-    this.events.push(event);
-    return { status: "ok", ingested: this.events.length };
+  constructor(
+    @Optional()
+    @Inject(ANALYTICS_EVENT_STORE)
+    eventStore?: AnalyticsEventStore,
+  ) {
+    this.eventStore = eventStore ?? new InMemoryAnalyticsEventStore();
   }
 
-  listEvents() {
-    return this.events.slice();
+  async ingest(input: AnalyticsEventInput) {
+    const event = this.normalize(input);
+    const stored = await this.eventStore.ingest(event);
+    const count = await this.eventStore.countEvents();
+    return { status: "ok", eventId: stored.eventId, ingested: count };
   }
 
-  dailyRollup() {
-    return { totalEvents: this.events.length };
+  async listEvents() {
+    return this.eventStore.listEvents();
+  }
+
+  async dailyRollup() {
+    return { totalEvents: await this.eventStore.countEvents() };
+  }
+
+  private normalize(input: AnalyticsEventInput) {
+    try {
+      return normalizeAnalyticsEventInput(input);
+    } catch (error) {
+      if (error instanceof AnalyticsEventValidationError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
   }
 }

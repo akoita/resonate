@@ -677,6 +677,56 @@ model KeyAuditLog {
   @@index([createdAt])
 }
 
+// ============ Analytics Event Ledger (append-only raw envelope) ============
+
+model AnalyticsEvent {
+  id           String   @id @default(uuid())
+  eventId      String   @unique
+  eventName    String
+  eventVersion Int
+  occurredAt   DateTime
+  receivedAt   DateTime
+  producer     String
+  environment  String
+  privacyTier  String
+  subjectType  String?
+  subjectId    String?
+  actorId      String?
+  sessionId    String?
+  traceId      String?
+  schemaUri    String?
+  consentBasis String?
+  payload      Json
+  sourceRefs   Json?
+  envelope     Json
+  createdAt    DateTime @default(now())
+
+  @@index([eventName, occurredAt])
+  @@index([producer, occurredAt])
+  @@index([privacyTier, occurredAt])
+  @@index([subjectType, subjectId])
+  @@index([createdAt])
+}
+
+model AnalyticsGovernanceLog {
+  id          String   @id @default(uuid())
+  action      String
+  eventId     String?
+  eventName   String?
+  subjectType String?
+  subjectId   String?
+  actorId     String?
+  privacyTier String?
+  reason      String
+  details     Json?
+  createdAt   DateTime @default(now())
+
+  @@index([action, createdAt])
+  @@index([eventId])
+  @@index([actorId])
+  @@index([subjectType, subjectId])
+}
+
 // ============ Content Protection ============
 
 model AudioFingerprint {

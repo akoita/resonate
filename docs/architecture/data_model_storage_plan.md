@@ -37,15 +37,34 @@ Relationships:
 
 Datasets:
 
-- `events_raw`: raw Pub/Sub events with schema evolution.
+- `events_raw`: append-only event envelopes with schema evolution.
 - `events_clean`: validated, normalized events.
-- `analytics_views`: daily aggregates and payout reports.
+- `analytics_facts`: long-lived pseudonymous commerce, playback, rights,
+  catalog, agent, and generation facts.
+- `analytics_views`: daily aggregates, funnel views, payout reports, exports,
+  audit/reporting tables, API-ready tables, and dashboard-ready tables.
+- `analytics_quarantine`: invalid envelopes and unsupported event families held
+  for schema fixes or replay instead of silently dropped.
 
 Core event fields:
 
-- event_name, event_version, occurred_at, producer
+- event_id, event_name, event_version, occurred_at, received_at, producer
+- privacy_tier, consent_basis, environment, schema_uri
 - actor_id, track_id, stem_id, session_id
 - amount, currency, tx_hash
+- source_refs for transaction hashes, job ids, object URIs, or source row ids
+
+See [Long-Term Analytics Event Ledger](../rfc/analytics-event-ledger.md) for
+the canonical event envelope and retention model.
+
+Current backend implementation persists the raw envelope locally in Postgres via
+the `AnalyticsEvent` table. Warehouse export to the raw/clean/fact/view and
+quarantine layers is exposed by `AnalyticsWarehouseExportService`; production
+loading into the configured warehouse remains follow-up work.
+The current artist analytics endpoints build their report responses from the
+generated fact/view layers, using fact dimensions for legacy response fields.
+Deletion, redaction, consent withdrawal, and retention cleanup lineage is
+recorded in `AnalyticsGovernanceLog`.
 
 ## Storage Layout (GCS/IPFS)
 
@@ -64,7 +83,12 @@ IPFS:
 
 - Raw uploads retained for 90 days.
 - Derived stems retained for 12 months.
-- Event logs retained for 24 months.
+- Personal raw analytics events retained for short operational windows by
+  default.
+- Pseudonymous analytics events retained for multi-year replay/backfill.
+- Financial and audit facts retained 7-10 years where needed for accounting,
+  royalty, settlement, and dispute history.
+- Anonymous aggregates can be retained indefinitely while commercially useful.
 
 ## Open Questions
 

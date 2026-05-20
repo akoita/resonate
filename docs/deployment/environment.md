@@ -29,6 +29,11 @@ When adding a new environment variable:
 | `NEXT_PUBLIC_PASSKEY_RP_ID` | Frontend | Optional WebAuthn relying-party ID override. Leave unset for normal hostname-based passkeys; set only to recover or intentionally share passkeys across subdomains |
 | `RPC_URL` | Backend | RPC endpoint used by contract-aware backend flows |
 | `GCP_PROJECT_ID` | Backend | Recommended explicit GCP project for Pub/Sub-backed ingestion; when unset in Cloud Run the backend can also derive the project from Application Default Credentials |
+| `ANALYTICS_WAREHOUSE_PROJECT_ID` | Backend | Optional analytics warehouse project/target id for export metadata. Falls back to `GCP_PROJECT_ID`, then `local` for local development. |
+| `ANALYTICS_WAREHOUSE_DATASET_PREFIX` | Backend | Optional dataset/table prefix for analytics export layer metadata. Defaults to `analytics_local` for local development. |
+| `ANALYTICS_RETENTION_PERSONAL_DAYS` | Backend | Optional personal raw analytics event retention window. Defaults to `395` days. |
+| `ANALYTICS_RETENTION_SENSITIVE_DAYS` | Backend | Optional sensitive raw analytics event retention window. Defaults to `90` days. |
+| `ANALYTICS_RETENTION_PSEUDONYMOUS_DAYS` | Backend | Optional pseudonymous raw analytics event retention window. Defaults to `730` days. |
 | `DEMUCS_CLOUD_RUN_JOB_PROJECT` | Backend | Optional project for on-demand Demucs Cloud Run Job execution. Defaults to `GCP_PROJECT_ID` when unset |
 | `DEMUCS_CLOUD_RUN_JOB_REGION` | Backend | Cloud Run region for on-demand Demucs jobs |
 | `DEMUCS_CLOUD_RUN_JOB_NAME` | Backend | Cloud Run Job name to execute after publishing each `stem-separate` message |
