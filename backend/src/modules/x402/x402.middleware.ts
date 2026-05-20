@@ -5,6 +5,7 @@ import { getAddress } from 'viem';
 import { X402Config } from './x402.config';
 import { prisma } from '../../db/prisma';
 import { X402PaymentService } from './x402.payment.service';
+import { writeStructuredLog } from '../shared/structured_logging';
 
 /**
  * X402Middleware — NestJS adapter for the x402 Express payment middleware.
@@ -71,18 +72,30 @@ export class X402Middleware implements NestMiddleware {
 
     if (!paymentHeader) {
       // No payment — return 402 with payment instructions
+      this.logX402Event(req, "x402.challenge.issued", "x402 payment challenge issued", {
+        stemId,
+        statusCode: 402,
+      });
       return this.send402(res, stemId, stem.mimeType);
     }
 
     const existingSettlement = await this.findExistingSettlement(paymentHeader);
     if (existingSettlement) {
       if (existingSettlement.stemId !== stemId) {
+        this.logX402Event(req, "x402.payment.replay_rejected", "x402 payment replay rejected", {
+          stemId,
+          statusCode: 409,
+          reason: "different_stem",
+        });
         return res.status(409).json({
           error: 'Payment already redeemed',
           message: 'This x402 payment proof has already been redeemed for a different stem.',
         });
       }
       this.logger.log(`x402 payment replay accepted for stem ${stemId}`);
+      this.logX402Event(req, "x402.payment.replay_accepted", "x402 payment replay accepted", {
+        stemId,
+      });
       return next();
     }
 
@@ -97,6 +110,11 @@ export class X402Middleware implements NestMiddleware {
       );
       if (!result.ok) {
         this.logger.warn(`Invalid x402 payment for stem ${stemId}: ${result.reason}`);
+        this.logX402Event(req, "x402.payment.verify_failed", "x402 payment verification failed", {
+          stemId,
+          statusCode: 402,
+          reason: result.reason,
+        });
         return res.status(402).json({
           error: 'Payment verification failed',
           message: result.reason,
@@ -104,11 +122,19 @@ export class X402Middleware implements NestMiddleware {
       }
 
       this.logger.log(`x402 payment verified and settled for stem ${stemId}`);
+      this.logX402Event(req, "x402.payment.settled", "x402 payment verified and settled", {
+        stemId,
+      });
 
       return next();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`x402 verification error for stem ${stemId}: ${message}`);
+      this.logX402Event(req, "x402.payment.error", "x402 payment verification error", {
+        stemId,
+        statusCode: 500,
+        reason: message,
+      });
       return res.status(500).json({
         error: 'Payment verification error',
         message,
@@ -240,5 +266,22 @@ export class X402Middleware implements NestMiddleware {
     } catch {
       return null;
     }
+  }
+
+  private logX402Event(
+    req: Request,
+    event: string,
+    message: string,
+    fields: Record<string, unknown>,
+  ) {
+    writeStructuredLog({
+      level: event.endsWith(".error") || event.endsWith("_failed") || event.endsWith("_rejected") ? "warn" : "info",
+      event,
+      message,
+      requestId: (req as Request & { requestId?: string }).requestId,
+      path: req.path,
+      method: req.method,
+      ...fields,
+    });
   }
 }
