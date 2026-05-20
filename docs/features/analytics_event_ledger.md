@@ -25,9 +25,15 @@ in `backend/src/modules/analytics/analytics_instrumentation.service.ts`.
 Retention cleanup, deletion propagation, consent withdrawal, and governance
 lineage are available in
 `backend/src/modules/analytics/analytics_governance.service.ts`, and the admin
-retention endpoint invokes analytics cleanup. Production warehouse loading is
-not implemented yet. Current artist analytics endpoints consume the generated
-fact/view layers instead of aggregating directly from raw in-memory events.
+retention endpoint invokes analytics cleanup. A first operational warehouse
+loader is available in
+`backend/src/modules/analytics/analytics_warehouse_loader.ts`; it can backfill
+stored events into idempotent JSONL layer files outside process memory and
+quarantines unsupported event versions before they reach clean/fact/view layers.
+Deployed environments can set `ANALYTICS_WAREHOUSE_TARGET=bigquery_insert_all`
+to stream those layers into the configured BigQuery dataset through Google ADC.
+Current artist analytics endpoints consume the generated fact/view layers
+instead of aggregating directly from raw in-memory events.
 
 ## Who It Is For
 
@@ -68,18 +74,22 @@ aggregates, not from retaining raw personal data forever.
   - `GET /analytics/artist/:id/v1`
   - `GET /analytics/rollup/daily`
   - `GET /analytics/export/layers`
+- Admin/operator warehouse load surfaces:
+  - `POST /admin/analytics/warehouse/load`
+  - `POST /admin/analytics/warehouse/backfill`
 
 ## Expected Platform Surfaces
 
 | Surface | Purpose |
 | --- | --- |
 | Analytics event SDK | Implemented in `backend/src/modules/analytics/analytics_event.ts`: shared event envelope, validators, schema examples, privacy tiers, and idempotency helper conventions. |
-| Durable ingestion | Implemented for local/backend runtime with the Postgres `AnalyticsEvent` raw ledger and idempotent `eventId` upserts. Pub/Sub/production warehouse loading remains follow-up. |
+| Durable ingestion | Implemented for local/backend runtime with the Postgres `AnalyticsEvent` raw ledger and idempotent `eventId` upserts. |
 | `events_raw` | Implemented export layer for append-only received events used for replay and backfill. |
 | `events_clean` | Implemented export layer for validated, normalized event records. |
 | `analytics_facts` | Implemented export layer for long-lived pseudonymous product, commerce, rights, and agent facts. |
 | `analytics_views` | Implemented export layer for report/API/export/UI-ready aggregates. |
 | `analytics_quarantine` | Implemented export layer for invalid or unsupported records that must not be silently dropped. |
+| Warehouse loading/backfill | Implemented through `ANALYTICS_WAREHOUSE_TARGET=local_json` for idempotent JSONL files and `ANALYTICS_WAREHOUSE_TARGET=bigquery_insert_all` for BigQuery streaming inserts across raw, clean, fact, view, and quarantine layers. Dataflow-style managed transforms remain future infrastructure scope. |
 | Current artist reports | Implemented for `GET /analytics/artist/:id` and `GET /analytics/artist/:id/v1`; reports read generated analytics facts and fact dimensions while preserving response compatibility. |
 | Core producer helpers | Implemented in `backend/src/modules/analytics/analytics_instrumentation.service.ts` for playback, library, commerce, rights, agent, and generation events. |
 | Retention/deletion jobs | Implemented in `backend/src/modules/analytics/analytics_governance.service.ts`: retention cleanup, deletion propagation, consent withdrawal, redaction, and lineage audit. |
@@ -118,6 +128,10 @@ Current verification:
   `backend/src/tests/analytics_event.spec.ts`.
 - Warehouse export transforms and quarantine behavior are covered by
   `backend/src/tests/analytics_warehouse.spec.ts`.
+- Warehouse loader idempotency, schema quarantine, and event-version parsing are
+  covered by `backend/src/tests/analytics_warehouse_loader.spec.ts`.
+- Durable backfill scoping is covered by
+  `backend/src/tests/analytics_warehouse_loader.integration.spec.ts`.
 - Core producer helper behavior is covered by
   `backend/src/tests/analytics_instrumentation.spec.ts` and
   `backend/src/tests/analytics_instrumentation.integration.spec.ts`.
@@ -129,16 +143,7 @@ Current verification:
 
 ## Follow-Up Work
 
-- [#868](https://github.com/akoita/resonate/issues/868) — implement shared
-  TypeScript event envelope types and validation.
-- [#871](https://github.com/akoita/resonate/issues/871) — replace in-memory
-  analytics ingestion with durable event storage.
-- [#869](https://github.com/akoita/resonate/issues/869) — add warehouse
-  transforms for raw, clean, fact, and view layers.
-- [#870](https://github.com/akoita/resonate/issues/870) — instrument playback,
-  commerce, rights, agent, and generation events.
-- [#873](https://github.com/akoita/resonate/issues/873) — add retention,
-  deletion, consent, and lineage governance jobs.
-- [#872](https://github.com/akoita/resonate/issues/872) — current artist
-  reports now read generated facts/views; remaining work is to migrate future
-  feature reports and production exports onto the same model.
+- [#879](https://github.com/akoita/resonate/issues/879) — add operational
+  warehouse loading/backfill. JSONL and BigQuery insert-all targets are
+  implemented; remaining future work is a managed Dataflow-style transform once
+  that infrastructure dependency is chosen.

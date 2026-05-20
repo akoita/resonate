@@ -6,8 +6,14 @@ export const ANALYTICS_EVENT_STORE = Symbol("ANALYTICS_EVENT_STORE");
 
 export interface AnalyticsEventStore {
   ingest(event: AnalyticsEventEnvelope): Promise<AnalyticsEventEnvelope>;
-  listEvents(): Promise<AnalyticsEventEnvelope[]>;
+  listEvents(filters?: AnalyticsEventListFilters): Promise<AnalyticsEventEnvelope[]>;
   countEvents(): Promise<number>;
+}
+
+export interface AnalyticsEventListFilters {
+  occurredFrom?: Date;
+  occurredTo?: Date;
+  eventFamily?: string;
 }
 
 export class InMemoryAnalyticsEventStore implements AnalyticsEventStore {
@@ -23,8 +29,8 @@ export class InMemoryAnalyticsEventStore implements AnalyticsEventStore {
     return event;
   }
 
-  async listEvents() {
-    return this.events.slice();
+  async listEvents(filters?: AnalyticsEventListFilters) {
+    return this.events.filter((event) => matchesFilters(event, filters)).slice();
   }
 
   async countEvents() {
@@ -62,8 +68,15 @@ export class PrismaAnalyticsEventStore implements AnalyticsEventStore {
     return rowToEnvelope(row);
   }
 
-  async listEvents() {
+  async listEvents(filters?: AnalyticsEventListFilters) {
     const rows = await prisma.analyticsEvent.findMany({
+      where: {
+        occurredAt: {
+          gte: filters?.occurredFrom,
+          lt: filters?.occurredTo,
+        },
+        eventName: filters?.eventFamily ? { startsWith: `${filters.eventFamily}.` } : undefined,
+      },
       orderBy: { occurredAt: "asc" },
     });
 
@@ -73,6 +86,24 @@ export class PrismaAnalyticsEventStore implements AnalyticsEventStore {
   async countEvents() {
     return prisma.analyticsEvent.count();
   }
+}
+
+function matchesFilters(event: AnalyticsEventEnvelope, filters?: AnalyticsEventListFilters) {
+  if (!filters) {
+    return true;
+  }
+
+  const occurredAt = new Date(event.occurredAt).getTime();
+  if (filters.occurredFrom && occurredAt < filters.occurredFrom.getTime()) {
+    return false;
+  }
+  if (filters.occurredTo && occurredAt >= filters.occurredTo.getTime()) {
+    return false;
+  }
+  if (filters.eventFamily && !event.eventName.startsWith(`${filters.eventFamily}.`)) {
+    return false;
+  }
+  return true;
 }
 
 function rowToEnvelope(row: {

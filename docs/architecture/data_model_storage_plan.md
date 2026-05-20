@@ -59,8 +59,14 @@ the canonical event envelope and retention model.
 
 Current backend implementation persists the raw envelope locally in Postgres via
 the `AnalyticsEvent` table. Warehouse export to the raw/clean/fact/view and
-quarantine layers is exposed by `AnalyticsWarehouseExportService`; production
-loading into the configured warehouse remains follow-up work.
+quarantine layers is exposed by `AnalyticsWarehouseExportService`. Operational
+loading/backfill is exposed by `AnalyticsWarehouseLoaderService`; the first
+durable target is `ANALYTICS_WAREHOUSE_TARGET=local_json`, which writes
+idempotent JSONL files outside process memory and can be scoped by date or event
+family. Deployed environments can set
+`ANALYTICS_WAREHOUSE_TARGET=bigquery_insert_all` to stream the same generated
+layers into the configured BigQuery dataset through Google ADC. Managed
+Dataflow-style transforms remain infrastructure follow-up work.
 The current artist analytics endpoints build their report responses from the
 generated fact/view layers, using fact dimensions for legacy response fields.
 Deletion, redaction, consent withdrawal, and retention cleanup lineage is

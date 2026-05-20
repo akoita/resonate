@@ -31,6 +31,9 @@ When adding a new environment variable:
 | `GCP_PROJECT_ID` | Backend | Recommended explicit GCP project for Pub/Sub-backed ingestion; when unset in Cloud Run the backend can also derive the project from Application Default Credentials |
 | `ANALYTICS_WAREHOUSE_PROJECT_ID` | Backend | Optional analytics warehouse project/target id for export metadata. Falls back to `GCP_PROJECT_ID`, then `local` for local development. |
 | `ANALYTICS_WAREHOUSE_DATASET_PREFIX` | Backend | Optional dataset/table prefix for analytics export layer metadata. Defaults to `analytics_local` for local development. |
+| `ANALYTICS_WAREHOUSE_TARGET` | Backend | Warehouse loader target provider. Defaults to `local_json`, which writes idempotent JSONL layer files outside process memory. Set `bigquery_insert_all` to stream rows to BigQuery through Google ADC. |
+| `ANALYTICS_WAREHOUSE_LOCAL_DIR` | Backend | Output directory for the `local_json` analytics warehouse target. Defaults to `.analytics/warehouse` in the backend process working directory. |
+| `ANALYTICS_WAREHOUSE_SUPPORTED_EVENT_VERSIONS` | Backend | Comma-separated analytics event versions that may be promoted into clean/fact/view layers. Defaults to `1`; unsupported versions are loaded raw and quarantined. |
 | `ANALYTICS_RETENTION_PERSONAL_DAYS` | Backend | Optional personal raw analytics event retention window. Defaults to `395` days. |
 | `ANALYTICS_RETENTION_SENSITIVE_DAYS` | Backend | Optional sensitive raw analytics event retention window. Defaults to `90` days. |
 | `ANALYTICS_RETENTION_PSEUDONYMOUS_DAYS` | Backend | Optional pseudonymous raw analytics event retention window. Defaults to `730` days. |
