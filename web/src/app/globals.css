@@ -10305,10 +10305,9 @@ tr[draggable="true"]:hover {
   }
 
   .app-sidebar {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
+    /* Stay in the 72px grid cell — no absolute positioning when collapsed
+     * so the sidebar never overlaps main content or intercepts clicks. */
+    position: relative;
     width: 72px;
     height: 100%;
     z-index: 5000;
@@ -10316,6 +10315,11 @@ tr[draggable="true"]:hover {
   }
 
   .app-sidebar:hover {
+    /* Break out of the grid cell to overlay main content on expand */
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
     width: 260px;
     overflow: visible;
     background: rgba(10, 10, 15, 0.96);
