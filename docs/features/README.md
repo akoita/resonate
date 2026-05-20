@@ -48,6 +48,7 @@ that answers:
 | [Payment Splitter Integration](payment_splitter_integration.md) | see page | artists, protocol developers | contracts/backend payment flow | Revenue split and settlement integration. |
 | [Analytics Dashboard v0](analytics_dashboard_v0.md) | see page | artists, admins | analytics dashboard | Reporting surface for usage and revenue. |
 | [Desktop App](desktop_app.md) | `partial` | listeners, artists, developers | `desktop/`, `npm run desktop:dev`, `npm --prefix desktop run package:dir`, `Desktop Release Artifacts` workflow | Electron shell reuses the existing web experience with native windowing, external-link handling, save prompts, packaging scripts, and downloadable CI-built artifacts. Signing, notarization, auto-update, and full OS QA remain follow-up work. |
+| [Obsidian Frequency Design System](obsidian_frequency_design_system.md) | `implemented` | frontend developers, UX contributors | All web views; `web/src/styles/tokens.css`, `web/src/app/globals.css` | v2 visual language — Coral Ember primary, Electric Violet agent-only accent, Obsidian canvas, JetBrains Mono tabular typography. All values centralized in `--r-*` CSS tokens; backward-compat `--ds-*` aliases maintained. Electric Violet is reserved exclusively for AI-agent context (AI DJ orb, wallet badges, session keys). |
 | [Punchline Drops](punchline_drops_mvp.md) | `planned` | artists, listeners | planned drop/shows surfaces | See also [execution plan](punchline_drops_execution_plan.md). |
 
 ## Architecture And Protocol Entry Points

@@ -102,33 +102,23 @@ video {
 }
 
 .player-btn-side.active {
-  color: var(--color-accent);
-  filter: drop-shadow(0 0 8px var(--color-accent));
+  color: var(--r-primary);
+  filter: drop-shadow(0 0 8px var(--r-primary-glow));
 }
 
 :root {
   /*
-   * Studio / glass vocabulary aligned with the Stitch "Next-Gen Music
-   * Platform" aesthetic — single glass idiom across the whole app.
-   *
-   *   `--studio-bg`        base canvas (Stitch surface #15121c)
-   *   `--studio-surface`   4% white tint for glass panels
-   *   `--studio-raised`    ~10% tint for hover/raised state
-   *   `--studio-border`    1px internal edge at 10% white
-   *
-   * Blur values bumped from 20/180% to 32/140% to match the Stitch
-   * `.ng-glass` spec, so any `.glass-panel` surface now looks the same
-   * as the home page's glass cards at a glance.
+   * Studio / glass vocabulary aligned with the Obsidian Frequency aesthetic.
    */
-  --studio-bg: var(--ds-surface);
-  --studio-surface: rgba(255, 255, 255, 0.04);
-  --studio-surface-raised: rgba(255, 255, 255, 0.1);
-  --studio-border: rgba(255, 255, 255, 0.1);
-  --studio-border-glow: rgba(138, 63, 252, 0.32);
+  --studio-bg: var(--r-canvas);
+  --studio-surface: var(--r-chrome-glass);
+  --studio-surface-raised: var(--r-chrome-hover);
+  --studio-border: var(--r-chrome-border);
+  --studio-border-glow: rgba(255, 107, 74, 0.32);  /* was purple, now coral */
 
   --accent-glow: radial-gradient(
     circle at center,
-    var(--color-accent) 0%,
+    var(--r-primary) 0%,
     transparent 70%
   );
   --glass-blur: blur(32px);
@@ -163,12 +153,12 @@ video {
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(at 0% 0%, hsla(253, 16%, 7%, 1) 0, transparent 50%),
-    radial-gradient(at 50% 0%, hsla(225, 39%, 30%, 0.15) 0, transparent 50%),
-    radial-gradient(at 100% 0%, hsla(339, 49%, 30%, 0.1) 0, transparent 50%);
-  background-color: var(--studio-bg);
+    radial-gradient(ellipse at 15% 5%, rgba(255, 107, 74, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 15%, rgba(139, 92, 246, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 95%, rgba(255, 183, 130, 0.03) 0%, transparent 40%);
+  background-color: var(--r-canvas);
   background-size: 200% 200%;
-  animation: mesh-drift 20s ease infinite;
+  animation: mesh-drift 30s ease infinite;
 }
 
 .fade-in-up {
@@ -198,7 +188,7 @@ video {
 }
 
 .text-gradient {
-  background: linear-gradient(135deg, #fff 30%, var(--color-accent) 100%);
+  background: linear-gradient(135deg, #fff 0%, #FFD4C7 45%, #FF8F6B 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -255,8 +245,8 @@ input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
   outline: none;
-  border-color: var(--ds-primary);
-  box-shadow: 0 0 0 3px rgba(138, 63, 252, 0.25);
+  border-color: var(--r-secondary);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25);
 }
 
 /* `.kicker` utility — design.md §Typography kicker role. Drop this
@@ -308,15 +298,15 @@ select:focus-visible {
 }
 
 .ui-btn-primary {
-  background: var(--ds-primary);
-  color: var(--ds-on-primary);
-  box-shadow: 0 10px 24px rgba(138, 63, 252, 0.22);
+  background: linear-gradient(135deg, #FF6B4A, #FF8F6B);
+  color: #1A0800;
+  box-shadow: 0 10px 24px rgba(255, 107, 74, 0.22);
 }
 
 .ui-btn-primary:hover:not(:disabled):not([aria-disabled="true"]) {
   transform: translateY(-1px);
-  filter: brightness(1.06);
-  box-shadow: 0 14px 32px rgba(138, 63, 252, 0.3);
+  filter: brightness(1.08);
+  box-shadow: 0 14px 32px rgba(255, 107, 74, 0.3);
 }
 
 .ui-btn-primary:active:not(:disabled):not([aria-disabled="true"]) {
@@ -404,7 +394,7 @@ a {
   overflow: hidden;
   padding: 0;
   gap: 0;
-  background: var(--studio-bg);
+  background: var(--r-canvas);
 }
 
 .app-sidebar {
@@ -420,8 +410,10 @@ a {
   position: relative;
   z-index: 5000;
   transition:
+    width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
     transform 0.3s ease,
-    background 0.3s ease;
+    background 0.3s ease,
+    box-shadow 0.22s ease;
 }
 
 .app-sidebar::before {
@@ -430,7 +422,7 @@ a {
   inset: 0;
   background: radial-gradient(
     circle at 0% 0%,
-    rgba(124, 92, 255, 0.03) 0%,
+    rgba(255, 107, 74, 0.03) 0%,
     transparent 100%
   );
   pointer-events: none;
@@ -438,7 +430,7 @@ a {
 
 .app-sidebar:hover {
   background: rgba(255, 255, 255, 0.05);
-  border-right-color: rgba(255, 255, 255, 0.06);
+  border-right-color: rgba(255, 107, 74, 0.15);
 }
 
 .sidebar-logo {
@@ -487,7 +479,7 @@ a {
   font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.03em;
-  background: linear-gradient(135deg, #fff 0%, var(--color-accent) 100%);
+  background: linear-gradient(135deg, #fff 0%, var(--r-primary) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -525,15 +517,15 @@ a {
 }
 
 .sidebar-link.active {
-  background: rgba(124, 92, 255, 0.1);
+  background: rgba(255, 107, 74, 0.10);
   color: #fff;
-  border: 1px solid rgba(124, 92, 255, 0.15);
-  box-shadow: inset 0 0 12px rgba(124, 92, 255, 0.05);
+  border: 1px solid rgba(255, 107, 74, 0.15);
+  box-shadow: inset 0 0 12px rgba(255, 107, 74, 0.05);
 }
 
 .sidebar-link.active .link-icon {
-  color: var(--color-accent);
-  filter: drop-shadow(0 0 8px rgba(124, 92, 255, 0.5));
+  color: var(--r-primary);
+  filter: drop-shadow(0 0 8px rgba(255, 107, 74, 0.5));
 }
 
 .link-icon {
@@ -548,9 +540,9 @@ a {
   transform: translateY(-50%);
   width: 3px;
   height: 20px;
-  background: var(--color-accent);
+  background: var(--r-primary);
   border-radius: 0 4px 4px 0;
-  box-shadow: 2px 0 10px rgba(124, 92, 255, 0.5);
+  box-shadow: 2px 0 10px rgba(255, 107, 74, 0.5);
 }
 
 .sidebar-footer {
@@ -585,8 +577,8 @@ a {
   border-radius: 50%;
   background: linear-gradient(
     135deg,
-    var(--color-accent),
-    var(--color-accent-2)
+    var(--r-primary),
+    var(--r-tertiary)
   );
   display: flex;
   align-items: center;
@@ -594,7 +586,7 @@ a {
   font-weight: 700;
   color: #fff;
   font-size: 14px;
-  box-shadow: 0 4px 12px rgba(124, 92, 255, 0.3);
+  box-shadow: 0 4px 12px rgba(255, 107, 74, 0.3);
 }
 
 .user-info {
@@ -1758,7 +1750,7 @@ a {
   z-index: 1000;
   box-shadow:
     0 20px 50px rgba(0, 0, 0, 0.6),
-    inset 0 0 30px rgba(124, 92, 255, 0.05);
+    inset 0 0 30px rgba(255, 107, 74, 0.05);
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: visible;
   /* Allow floating indicators to stick out */
@@ -1779,9 +1771,9 @@ a {
 
 .app-player:hover {
   transform: translateY(-2px);
-  background: rgba(124, 92, 255, 0.05);
+  background: rgba(255, 107, 74, 0.05);
   /* Subtle tint on hover */
-  border-color: rgba(124, 92, 255, 0.3);
+  border-color: rgba(255, 107, 74, 0.3);
 }
 
 /* Consolidated progress styles below */
@@ -1808,8 +1800,8 @@ a {
   top: -1px;
   left: 0;
   height: 2px;
-  background: var(--color-accent);
-  box-shadow: 0 0 15px var(--color-accent);
+  background: var(--r-primary);
+  box-shadow: 0 0 15px var(--r-primary-glow);
   transition:
     width 0.1s linear,
     height 0.2s ease,
@@ -1990,8 +1982,8 @@ a {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: var(--color-accent);
-  color: white;
+  background: linear-gradient(135deg, #FF6B4A, #FF8F6B);
+  color: #1A0800;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1999,14 +1991,14 @@ a {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   border: none;
   cursor: pointer;
-  box-shadow: 0 4px 15px rgba(124, 92, 255, 0.4);
+  box-shadow: 0 4px 15px rgba(255, 107, 74, 0.4);
 }
 
 .player-btn-play:hover {
   transform: scale(1.1);
-  background: #8e73ff;
+  background: linear-gradient(135deg, #FF8F6B, #FFB782);
   /* Lighter accent */
-  box-shadow: 0 6px 20px rgba(124, 92, 255, 0.6);
+  box-shadow: 0 6px 20px rgba(255, 107, 74, 0.6);
 }
 
 .player-btn-side {
