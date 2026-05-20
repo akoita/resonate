@@ -503,8 +503,8 @@
   opacity: 0.62;
 }
 .aid-np-btn:disabled:hover {
-  background: linear-gradient(135deg, rgba(124,58,237,0.3), rgba(109,40,217,0.3));
-  border-color: rgba(124,58,237,0.4);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(139, 92, 246, 0.1));
+  border-color: rgba(139, 92, 246, 0.3);
 }
 
 .aid-np-empty {

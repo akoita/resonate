@@ -639,14 +639,14 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 0.75rem 1.25rem;
-  background: rgba(124,58,237,0.12);
-  border: 1px solid rgba(124,58,237,0.25);
+  background: rgba(139, 92, 246, 0.12);
+  border: 1px solid rgba(139, 92, 246, 0.25);
   border-radius: 12px;
   color: rgba(240,234,255,0.7);
   font-size: 0.875rem;
   margin-bottom: 1rem;
 }
-.aid-discovery-banner strong { color: #c4b5fd; }
+.aid-discovery-banner strong { color: var(--r-secondary-soft); }
 
 /* ── Empty / loading states ─────────────────────────────────────── */
 .aid-empty {
