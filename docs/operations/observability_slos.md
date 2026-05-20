@@ -10,6 +10,8 @@
 - Required fields: `level`, `message`, `service`, `requestId`, `timestamp`.
 - Use `requestId` from `x-request-id` header or generated server-side.
 - Avoid logging PII or secrets; redact wallet addresses beyond last 6 chars.
+- See [Production Observability Contract](./production_observability_contract.md)
+  for stable event names consumed by infrastructure dashboards and alerts.
 
 ## Trace IDs
 - Accept inbound `x-request-id` and propagate to downstream calls.

@@ -1,14 +1,13 @@
 import "dotenv/config";
 import "reflect-metadata";
-import { randomUUID } from "crypto";
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
-import { type NextFunction, type Request, type Response } from "express";
 import { join } from "path";
 import * as express from "express";
 import { AppModule } from "./modules/app.module";
 import { RedisIoAdapter } from "./modules/shared/redis.adapter";
 import { getCorsAllowedOrigins } from "./config/cors";
+import { requestObservabilityMiddleware } from "./modules/shared/request_observability.middleware";
 
 async function bootstrap() {
   console.log("========================================");
@@ -68,24 +67,7 @@ async function bootstrap() {
     credentials: true,
   });
 
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    const incoming = req.headers["x-request-id"];
-    const requestId = Array.isArray(incoming) ? incoming[0] : incoming;
-    const id = requestId ?? randomUUID();
-    res.setHeader("x-request-id", id);
-    (req as any).requestId = id;
-    console.info(
-      JSON.stringify({
-        level: "info",
-        message: "request",
-        requestId: id,
-        method: req.method,
-        path: req.url,
-        hasAuth: !!req.headers["authorization"],
-      })
-    );
-    next();
-  });
+  app.use(requestObservabilityMiddleware());
   const port = process.env.PORT || 3000;
   await app.listen(port);
   console.log(`🚀 Backend is running on: http://localhost:${port}`);
