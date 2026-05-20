@@ -388,7 +388,7 @@ a {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 72px 1fr;
+  grid-template-columns: 280px 1fr;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
@@ -10294,8 +10294,8 @@ tr[draggable="true"]:hover {
   to   { opacity: 1; }
 }
 
-/* Tablet & Desktop: Hover-Expand Rail */
-@media (min-width: 768px) {
+/* Tablet: icon-only rail with hover-expand (768px - 1279px) */
+@media (max-width: 1279px) and (min-width: 768px) {
   .app-shell {
     grid-template-columns: 72px 1fr;
   }
@@ -10305,8 +10305,6 @@ tr[draggable="true"]:hover {
   }
 
   .app-sidebar {
-    /* Stay in the 72px grid cell — no absolute positioning when collapsed
-     * so the sidebar never overlaps main content or intercepts clicks. */
     position: relative;
     width: 72px;
     height: 100%;
@@ -10315,7 +10313,6 @@ tr[draggable="true"]:hover {
   }
 
   .app-sidebar:hover {
-    /* Break out of the grid cell to overlay main content on expand */
     position: absolute;
     top: 0;
     bottom: 0;
@@ -10328,14 +10325,17 @@ tr[draggable="true"]:hover {
     border-right: 1px solid rgba(255, 107, 74, 0.15);
   }
 
-  /* Fade out label text / env badges / secondary badge when collapsed */
+  /* Hide label text / env badges when collapsed — use visibility:hidden
+   * so Playwright's toBeHidden() assertion passes (opacity:0 is still
+   * considered "visible" by Playwright). */
   .app-sidebar .link-text,
   .app-sidebar .logo-text,
   .app-sidebar .env-badge,
   .app-sidebar .sidebar-link__new,
   .app-sidebar .sidebar-footer .user-info {
+    visibility: hidden;
     opacity: 0;
-    transition: opacity 0.15s ease;
+    transition: opacity 0.15s ease, visibility 0.15s ease;
     pointer-events: none;
     white-space: nowrap;
   }
@@ -10345,6 +10345,7 @@ tr[draggable="true"]:hover {
   .app-sidebar:hover .env-badge,
   .app-sidebar:hover .sidebar-link__new,
   .app-sidebar:hover .sidebar-footer .user-info {
+    visibility: visible;
     opacity: 1;
     pointer-events: auto;
   }
