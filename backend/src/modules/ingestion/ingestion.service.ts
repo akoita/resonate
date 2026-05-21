@@ -20,8 +20,28 @@ function cleanMetadataString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function resolveTrackArtist(trackMeta: any, primaryArtist?: string, extractedArtist?: string) {
-  return cleanMetadataString(trackMeta?.artist) || cleanMetadataString(primaryArtist) || cleanMetadataString(extractedArtist);
+function normalizeCreditString(value: unknown) {
+  return typeof value === "string"
+    ? value
+      .trim()
+      .toLowerCase()
+      .replace(/^[\s._-]*\d+[\s._-]+/, "")
+      .replace(/[\s._-]+/g, " ")
+    : "";
+}
+
+function isTitleEchoArtist(candidate: unknown, title: unknown) {
+  const normalizedCandidate = normalizeCreditString(candidate);
+  const normalizedTitle = normalizeCreditString(title);
+  return !!normalizedCandidate && !!normalizedTitle && normalizedCandidate === normalizedTitle;
+}
+
+function resolveTrackArtist(trackMeta: any, primaryArtist?: string, extractedArtist?: string, trackTitle?: string) {
+  const trackArtist = cleanMetadataString(trackMeta?.artist);
+  if (trackArtist && !isTitleEchoArtist(trackArtist, trackMeta?.title || trackTitle)) {
+    return trackArtist;
+  }
+  return cleanMetadataString(primaryArtist) || cleanMetadataString(extractedArtist);
 }
 
 interface UploadRecord {
@@ -206,7 +226,7 @@ export class IngestionService {
       tracks.push({
         id: trackId,
         title: trackMeta?.title || extractedTitle,
-        artist: resolveTrackArtist(trackMeta, input.metadata?.primaryArtist, extractedArtist),
+        artist: resolveTrackArtist(trackMeta, input.metadata?.primaryArtist, extractedArtist, extractedTitle),
         position: index + 1,
         explicit: trackMeta?.explicit ?? false,
         isrc: trackMeta?.isrc,

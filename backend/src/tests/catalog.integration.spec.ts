@@ -98,6 +98,37 @@ describe('CatalogService (integration)', () => {
     expect(release!.tracks[0].title).toBe('Solo Track');
   });
 
+  it('separates public artist discography from managed uploader catalog', async () => {
+    const officialRelease = await prisma.release.create({
+      data: {
+        id: `${TEST_PREFIX}official-credit`,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Official Credit Release',
+        status: 'ready',
+        type: 'single',
+        primaryArtist: 'TC Test Artist',
+      },
+    });
+    const managedOnlyRelease = await prisma.release.create({
+      data: {
+        id: `${TEST_PREFIX}managed-credit`,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Managed External Credit',
+        status: 'ready',
+        type: 'single',
+        primaryArtist: 'External Credited Artist',
+      },
+    });
+
+    const publicArtistReleases = await catalog.listByArtist(`${TEST_PREFIX}artist`);
+    expect(publicArtistReleases.some((release) => release.id === officialRelease.id)).toBe(true);
+    expect(publicArtistReleases.some((release) => release.id === managedOnlyRelease.id)).toBe(false);
+
+    const ownerReleases = await catalog.listByUserId(`${TEST_PREFIX}user`);
+    expect(ownerReleases.some((release) => release.id === officialRelease.id)).toBe(true);
+    expect(ownerReleases.some((release) => release.id === managedOnlyRelease.id)).toBe(true);
+  });
+
   it('consolidates an AI-generated release with its legacy Demucs duplicate', async () => {
     const canonicalReleaseId = `${TEST_PREFIX}ai_canonical`;
     const canonicalTrackId = `${TEST_PREFIX}ai_track`;

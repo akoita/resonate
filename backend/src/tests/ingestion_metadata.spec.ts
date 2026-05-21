@@ -122,6 +122,50 @@ describe("IngestionService metadata", () => {
     expect(uploaded.metadata.tracks[0].artist).toBe("Correct Artist");
   });
 
+  it("falls back to the release artist when track artist metadata echoes the title", async () => {
+    const eventBus = new EventBus();
+    const mockCatalogService = {} as any;
+    const service = new IngestionService(
+      eventBus,
+      mockStorageProvider as any,
+      mockEncryptionService as any,
+      mockArtistService as any,
+      mockCatalogService as any,
+      mockQueue as any,
+    );
+    const uploadedPromise = new Promise<any>((resolve) => {
+      eventBus.subscribe("stems.uploaded", resolve);
+    });
+    const mockFile: Express.Multer.File = {
+      buffer: Buffer.from("not real audio"),
+      originalname: "01 Si demain (turn around).mp3",
+      mimetype: "audio/mpeg",
+      fieldname: "files",
+      encoding: "7bit",
+      size: 14,
+      destination: "",
+      filename: "",
+      path: "",
+      stream: null as any,
+    };
+
+    await service.handleFileUpload({
+      artistId: "artist_1",
+      files: [mockFile],
+      metadata: {
+        title: "Simply believe",
+        primaryArtist: "Bonnie Tyler",
+        tracks: [{
+          title: "Si demain (turn around)",
+          artist: "01 Si demain (turn around)",
+        }],
+      },
+    });
+
+    const uploaded = await uploadedPromise;
+    expect(uploaded.metadata.tracks[0].artist).toBe("Bonnie Tyler");
+  });
+
   it("queues an existing ready AI-generated release that only has a master stem", async () => {
     const eventBus = new EventBus();
     const mockCatalogService = {
