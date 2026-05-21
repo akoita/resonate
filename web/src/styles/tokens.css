@@ -63,40 +63,40 @@
    * ══════════════════════════════════════════════════════════════ */
 
   /* Canvas & Surfaces */
-  --r-canvas: #0A0A0F;
-  --r-canvas-warm: #0D0B12;
-  --r-surface-lowest: #0F0D14;
-  --r-surface-low: #151320;
-  --r-surface-mid: #1A1826;
-  --r-surface-high: #22202E;
-  --r-surface-highest: #2C2A38;
+  --r-canvas: #08080F;
+  --r-canvas-warm: #0A0912;
+  --r-surface-lowest: #0B0B13;
+  --r-surface-low: #11101E;
+  --r-surface-mid: #161427;
+  --r-surface-high: #1D1B32;
+  --r-surface-highest: #282542;
 
   /* Text & Content */
-  --r-on-surface: #E8E0F0;
-  --r-on-surface-variant: #A8A0B8;
-  --r-on-surface-muted: #6E6880;
+  --r-on-surface: #FFFFFF;
+  --r-on-surface-variant: #C4B5FD;
+  --r-on-surface-muted: #797295;
 
   /* Outlines */
-  --r-outline: #3A3548;
-  --r-outline-variant: #2A2636;
+  --r-outline: #2C293F;
+  --r-outline-variant: #1D1B2D;
 
-  /* Primary: Coral Ember */
-  --r-primary: #FF6B4A;
-  --r-primary-soft: #FF8F6B;
-  --r-primary-glow: rgba(255, 107, 74, 0.35);
-  --r-on-primary: #1A0800;
-  --r-primary-container: #C84A2A;
+  /* Primary: Hyacinth Blue */
+  --r-primary: #7C5CFF;
+  --r-primary-soft: #9880FF;
+  --r-primary-glow: rgba(124, 92, 255, 0.35);
+  --r-on-primary: #FFFFFF;
+  --r-primary-container: #6242E6;
 
-  /* Secondary: Electric Violet */
-  --r-secondary: #8B5CF6;
-  --r-secondary-soft: #A78BFA;
-  --r-secondary-glow: rgba(139, 92, 246, 0.30);
-  --r-on-secondary: #1A0042;
+  /* Secondary: Lavender Blue */
+  --r-secondary: #C4B5FD;
+  --r-secondary-soft: #DCD3FF;
+  --r-secondary-glow: rgba(196, 181, 253, 0.30);
+  --r-on-secondary: #08080F;
 
-  /* Tertiary: Warm Amber */
-  --r-tertiary: #FFB782;
-  --r-tertiary-soft: #FFDCC5;
-  --r-on-tertiary: #4F2500;
+  /* Tertiary: Silver Lavender */
+  --r-tertiary: #E2DCFF;
+  --r-tertiary-soft: #F0EDFF;
+  --r-on-tertiary: #08080F;
 
   /* Semantic */
   --r-error: #FF6B6B;
@@ -180,21 +180,21 @@
  * it's clear which side of the migration a class comes from.
  */
 @theme {
-  --color-ds-surface: #0A0A0F;
-  --color-ds-surface-low: #151320;
-  --color-ds-surface-mid: #1A1826;
-  --color-ds-surface-high: #22202E;
-  --color-ds-on-surface: #E8E0F0;
-  --color-ds-on-surface-variant: #A8A0B8;
-  --color-ds-outline: #968da1;
-  --color-ds-primary: #FF8F6B;
-  --color-ds-on-primary: #1A0800;
-  --color-ds-primary-container: #FF6B4A;
-  --color-ds-secondary: #8B5CF6;
-  --color-ds-tertiary: #FFB782;
-  --color-ds-on-tertiary: #4f2500;
-  --color-ds-tertiary-fixed: #ffdcc5;
-  --color-ds-tertiary-fixed-dim: #ffb782;
+  --color-ds-surface: #08080F;
+  --color-ds-surface-low: #11101E;
+  --color-ds-surface-mid: #161427;
+  --color-ds-surface-high: #1D1B32;
+  --color-ds-on-surface: #FFFFFF;
+  --color-ds-on-surface-variant: #C4B5FD;
+  --color-ds-outline: #2C293F;
+  --color-ds-primary: #9880FF;
+  --color-ds-on-primary: #FFFFFF;
+  --color-ds-primary-container: #7C5CFF;
+  --color-ds-secondary: #C4B5FD;
+  --color-ds-tertiary: #E2DCFF;
+  --color-ds-on-tertiary: #08080F;
+  --color-ds-tertiary-fixed: #F0EDFF;
+  --color-ds-tertiary-fixed-dim: #E2DCFF;
   --font-ds-display: "Space Grotesk", system-ui, sans-serif;
   --font-ds-body: "Be Vietnam Pro", system-ui, sans-serif;
 }

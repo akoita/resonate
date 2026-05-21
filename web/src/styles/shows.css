@@ -18,23 +18,23 @@
 /* ─── Surface & Scoped Tokens ────────────────────────────────────── */
 
 .shows-surface {
-  /* Neon Teal Identity */
-  --color-signal:         #5eead4;
-  --color-signal-mid:     #2dd4bf;
-  --color-signal-deep:    #0d9488;
-  --color-signal-dark:    #042f2e;
+  /* Neon Teal Identity migrated to Pomelli Brandbook (Hyacinth & Lavender) */
+  --color-signal:         #7C5CFF;
+  --color-signal-mid:     #C4B5FD;
+  --color-signal-deep:    #6242E6;
+  --color-signal-dark:    #1E163F;
   
   /* Cosmic Glass Color-mixes */
-  --color-signal-soft:    color-mix(in srgb, #5eead4 8%, transparent);
-  --color-signal-border:  color-mix(in srgb, #5eead4 18%, transparent);
-  --color-signal-glow:    color-mix(in srgb, #5eead4 30%, transparent);
+  --color-signal-soft:    color-mix(in srgb, var(--color-signal) 8%, transparent);
+  --color-signal-border:  color-mix(in srgb, var(--color-signal) 18%, transparent);
+  --color-signal-glow:    color-mix(in srgb, var(--color-signal) 30%, transparent);
   
-  /* Cybernetic Grayscale Canvas */
-  --shows-canvas:         #030708;
-  --shows-surface-lowest: #050b0c;
-  --shows-surface-low:    #081012;
-  --shows-surface-mid:    #0e1b1e;
-  --shows-surface-high:   #15282c;
+  /* Cybernetic Grayscale Canvas migrated to Pomelli Jet Black depth */
+  --shows-canvas:         #08080F;
+  --shows-surface-lowest: #0B0B13;
+  --shows-surface-low:    #11101E;
+  --shows-surface-mid:    #161427;
+  --shows-surface-high:   #1D1B32;
   
   /* Glass Chrome */
   --shows-chrome:         rgba(255, 255, 255, 0.015);
@@ -132,7 +132,7 @@
   overflow: hidden;
   background:
     radial-gradient(ellipse at 85% 0%, color-mix(in srgb, var(--color-signal) 24%, transparent), transparent 48%),
-    radial-gradient(ellipse at 15% 100%, rgba(13, 148, 136, 0.16), transparent 52%),
+    radial-gradient(ellipse at 15% 100%, color-mix(in srgb, var(--color-signal-deep) 16%, transparent), transparent 52%),
     linear-gradient(155deg, var(--shows-surface-lowest) 0%, var(--shows-surface-low) 100%);
   border: 1px solid rgba(255, 255, 255, 0.05);
   box-shadow:
@@ -157,8 +157,8 @@
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(90deg, rgba(94, 234, 212, 0.015) 1px, transparent 1px),
-    linear-gradient(0deg, rgba(94, 234, 212, 0.012) 1px, transparent 1px);
+    linear-gradient(90deg, color-mix(in srgb, var(--color-signal) 1.5%, transparent) 1px, transparent 1px),
+    linear-gradient(0deg, color-mix(in srgb, var(--color-signal) 1.2%, transparent) 1px, transparent 1px);
   background-size: 32px 32px;
   pointer-events: none;
   border-radius: inherit;
@@ -213,7 +213,7 @@
   line-height: 1;
   text-shadow:
     0 0 20px var(--color-signal-glow),
-    0 0 40px rgba(94, 234, 212, 0.2);
+    0 0 40px color-mix(in srgb, var(--color-signal) 20%, transparent);
 }
 
 .shows-page__intro-stat-label {
@@ -335,10 +335,10 @@
 
 .campaign-card:hover {
   transform: translateY(-10px) scale(1.015);
-  border-color: rgba(94, 234, 212, 0.35);
+  border-color: color-mix(in srgb, var(--color-signal) 35%, transparent);
   box-shadow:
     0 32px 72px -16px rgba(0, 0, 0, 0.7),
-    0 0 0 1px rgba(94, 234, 212, 0.25),
+    0 0 0 1px color-mix(in srgb, var(--color-signal) 25%, transparent),
     0 16px 40px -12px color-mix(in srgb, var(--color-signal) 22%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 15%, transparent);
@@ -365,30 +365,30 @@
 .campaign-card__art {
   background:
     radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--color-signal) 32%, transparent), transparent 60%),
-    radial-gradient(circle at 80% 80%, rgba(13, 148, 136, 0.25), transparent 65%),
-    linear-gradient(155deg, #020708 0%, #081114 100%);
+    radial-gradient(circle at 80% 80%, color-mix(in srgb, var(--color-signal-deep) 25%, transparent), transparent 65%),
+    linear-gradient(155deg, var(--shows-canvas) 0%, var(--shows-surface-low) 100%);
 }
 
 /* Atmospheric Gradients by City */
 .campaign-card__art[data-city="Paris"] {
   background:
-    radial-gradient(circle at 35% 75%, rgba(94, 234, 212, 0.32), transparent 58%),
-    radial-gradient(circle at 75% 20%, rgba(13, 148, 136, 0.16), transparent 55%),
-    linear-gradient(155deg, #02080a 0%, #071317 65%, #040c0f 100%);
+    radial-gradient(circle at 35% 75%, color-mix(in srgb, var(--color-signal) 32%, transparent), transparent 58%),
+    radial-gradient(circle at 75% 20%, color-mix(in srgb, var(--color-signal-deep) 16%, transparent), transparent 55%),
+    linear-gradient(155deg, var(--shows-canvas) 0%, var(--shows-surface-low) 65%, var(--shows-canvas) 100%);
 }
 
 .campaign-card__art[data-city="Tokyo"] {
   background:
-    radial-gradient(circle at 50% 70%, rgba(99, 102, 241, 0.26), transparent 60%),
-    radial-gradient(circle at 15% 20%, rgba(94, 234, 212, 0.16), transparent 50%),
-    linear-gradient(155deg, #03040f 0%, #0b0c22 65%, #050613 100%);
+    radial-gradient(circle at 50% 70%, rgba(124, 92, 255, 0.26), transparent 60%),
+    radial-gradient(circle at 15% 20%, rgba(196, 181, 253, 0.16), transparent 50%),
+    linear-gradient(155deg, #05050C 0%, #0E0D22 65%, #070712 100%);
 }
 
 .campaign-card__art[data-city="Lagos"] {
   background:
     radial-gradient(circle at 65% 75%, rgba(251, 146, 60, 0.22), transparent 58%),
-    radial-gradient(circle at 20% 25%, rgba(94, 234, 212, 0.18), transparent 50%),
-    linear-gradient(155deg, #080304 0%, #1c0a0c 65%, #0d0406 100%);
+    radial-gradient(circle at 20% 25%, color-mix(in srgb, var(--color-signal) 18%, transparent), transparent 50%),
+    linear-gradient(155deg, #090505 0%, #1F0E10 65%, #0E0708 100%);
 }
 
 /* Grid & Retro Sound Wave lines overlay */
@@ -718,7 +718,7 @@
   z-index: 2;
   background:
     radial-gradient(at 100% 0%, color-mix(in srgb, var(--color-signal) 15%, transparent), transparent 45%),
-    radial-gradient(at 0% 100%, rgba(13, 148, 136, 0.14), transparent 50%),
+    radial-gradient(at 0% 100%, color-mix(in srgb, var(--color-signal-deep) 14%, transparent), transparent 50%),
     linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
     linear-gradient(180deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
     linear-gradient(165deg, rgba(3, 7, 8, 0.98) 0%, rgba(6, 11, 13, 0.99) 100%);
@@ -945,7 +945,7 @@
   left: 30px;
   padding: 6px 14px;
   border-radius: 999px;
-  border: 1px solid rgba(94, 234, 212, 0.35);
+  border: 1px solid color-mix(in srgb, var(--color-signal) 35%, transparent);
   background: rgba(3, 7, 8, 0.65);
   color: rgba(255, 255, 255, 0.9);
   font-size: 10px;
@@ -1054,7 +1054,7 @@
   border-radius: 24px;
   border: 1px solid rgba(255, 255, 255, 0.05);
   background:
-    radial-gradient(circle at 0% 0%, rgba(94, 234, 212, 0.06), transparent 50%),
+    radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--color-signal) 6%, transparent), transparent 50%),
     rgba(255, 255, 255, 0.015);
   backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);
@@ -1076,7 +1076,7 @@
 
 .show-detail__signal-card:hover {
   transform: translateY(-5px);
-  border-color: rgba(94, 234, 212, 0.3);
+  border-color: color-mix(in srgb, var(--color-signal) 30%, transparent);
   box-shadow:
     0 20px 48px -12px color-mix(in srgb, var(--color-signal) 28%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
@@ -1085,7 +1085,7 @@
 
 /* Featured / primary snapshot card */
 .show-detail__signal-card--primary {
-  border-color: rgba(94, 234, 212, 0.22);
+  border-color: color-mix(in srgb, var(--color-signal) 22%, transparent);
   background:
     radial-gradient(circle at 0% 0%, var(--color-signal-soft), transparent 55%),
     rgba(255, 255, 255, 0.025);
@@ -1126,7 +1126,7 @@
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 2px 10px rgba(94, 234, 212, 0.15));
+  filter: drop-shadow(0 2px 10px color-mix(in srgb, var(--color-signal) 15%, transparent));
 }
 
 .show-detail__signal-card p {
@@ -1245,7 +1245,7 @@
 
 /* Featured Digital Ticket Tier */
 .show-detail__tier--featured {
-  border-color: rgba(94, 234, 212, 0.3);
+  border-color: color-mix(in srgb, var(--color-signal) 30%, transparent);
   background: var(--color-signal-soft);
   transform: translateY(-4px);
   box-shadow:
@@ -1322,7 +1322,7 @@
   right: -5px;
   font-size: 110px;
   font-weight: 900;
-  color: rgba(94, 234, 212, 0.015);
+  color: color-mix(in srgb, var(--color-signal) 1.5%, transparent);
   line-height: 1;
   pointer-events: none;
   font-family: inherit;
@@ -1335,12 +1335,12 @@
 .show-detail__step:nth-child(3)::before { content: "03"; }
 
 .show-detail__step:hover::before {
-  color: rgba(94, 234, 212, 0.035);
+  color: color-mix(in srgb, var(--color-signal) 3.5%, transparent);
   transform: translateY(-5px) scale(1.05);
 }
 
 .show-detail__step:hover {
-  border-color: rgba(94, 234, 212, 0.25);
+  border-color: color-mix(in srgb, var(--color-signal) 25%, transparent);
   transform: translateY(-4px);
   box-shadow:
     0 16px 40px -12px color-mix(in srgb, var(--color-signal) 18%, transparent),
