@@ -114,7 +114,7 @@ video {
   --studio-surface: var(--r-chrome-glass);
   --studio-surface-raised: var(--r-chrome-hover);
   --studio-border: var(--r-chrome-border);
-  --studio-border-glow: rgba(255, 107, 74, 0.32);  /* was purple, now coral */
+  --studio-border-glow: rgba(124, 92, 255, 0.32);  /* was coral, now Hyacinth Blue */
 
   --accent-glow: radial-gradient(
     circle at center,
@@ -153,9 +153,9 @@ video {
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(ellipse at 15% 5%, rgba(255, 107, 74, 0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at 85% 15%, rgba(139, 92, 246, 0.04) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 95%, rgba(255, 183, 130, 0.03) 0%, transparent 40%);
+    radial-gradient(ellipse at 15% 5%, rgba(124, 92, 255, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 15%, rgba(196, 181, 253, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 95%, rgba(240, 237, 255, 0.03) 0%, transparent 40%);
   background-color: var(--r-canvas);
   background-size: 200% 200%;
   animation: mesh-drift 30s ease infinite;
@@ -188,7 +188,7 @@ video {
 }
 
 .text-gradient {
-  background: linear-gradient(135deg, #fff 0%, #FFD4C7 45%, #FF8F6B 100%);
+  background: linear-gradient(135deg, #FFFFFF 0%, #DCD3FF 45%, #7C5CFF 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -298,15 +298,15 @@ select:focus-visible {
 }
 
 .ui-btn-primary {
-  background: linear-gradient(135deg, #FF6B4A, #FF8F6B);
-  color: #1A0800;
-  box-shadow: 0 10px 24px rgba(255, 107, 74, 0.22);
+  background: linear-gradient(135deg, #7C5CFF, #A085FF);
+  color: #FFFFFF;
+  box-shadow: 0 10px 24px rgba(124, 92, 255, 0.22);
 }
 
 .ui-btn-primary:hover:not(:disabled):not([aria-disabled="true"]) {
   transform: translateY(-1px);
   filter: brightness(1.08);
-  box-shadow: 0 14px 32px rgba(255, 107, 74, 0.3);
+  box-shadow: 0 14px 32px rgba(124, 92, 255, 0.3);
 }
 
 .ui-btn-primary:active:not(:disabled):not([aria-disabled="true"]) {

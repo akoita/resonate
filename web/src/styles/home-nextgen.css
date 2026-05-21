@@ -115,13 +115,13 @@
   align-items: center;
   padding: 48px;
   background:
-    radial-gradient(at 18% 18%, rgba(255, 107, 74, 0.45), transparent 52%),
-    radial-gradient(at 82% 78%, rgba(139, 92, 246, 0.15), transparent 58%),
-    radial-gradient(at 60% 110%, rgba(255, 183, 130, 0.18), transparent 60%),
-    linear-gradient(135deg, #1a0c08 0%, #0a0714 58%, #0f0d14 100%);
+    radial-gradient(at 18% 18%, rgba(124, 92, 255, 0.45), transparent 52%),
+    radial-gradient(at 82% 78%, rgba(196, 181, 253, 0.15), transparent 58%),
+    radial-gradient(at 60% 110%, rgba(240, 237, 255, 0.08), transparent 60%),
+    linear-gradient(135deg, #08080f 0%, #11101e 58%, #161427 100%);
   border: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow:
-    0 30px 80px -30px rgba(255, 107, 74, 0.25),
+    0 30px 80px -30px rgba(124, 92, 255, 0.25),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
@@ -146,11 +146,11 @@
   width: 620px;
   height: 620px;
   transform: translateY(-50%);
-  color: rgba(255, 143, 107, 0.55);
+  color: rgba(196, 181, 253, 0.55);
   opacity: 0.7;
   pointer-events: none;
   animation: ngHeroMotifDrift 28s linear infinite;
-  filter: drop-shadow(0 0 24px rgba(255, 107, 74, 0.25));
+  filter: drop-shadow(0 0 24px rgba(124, 92, 255, 0.25));
 }
 
 .home-ng .ng-hero__motif-ping {
@@ -180,7 +180,7 @@
   padding: 40px;
   border-radius: 20px;
   background:
-    linear-gradient(160deg, rgba(40, 15, 10, 0.55) 0%, rgba(0, 0, 0, 0.45) 100%);
+    linear-gradient(160deg, rgba(28, 25, 56, 0.55) 0%, rgba(8, 8, 15, 0.65) 100%);
   border: 1px solid rgba(255, 255, 255, 0.10);
   backdrop-filter: blur(24px) saturate(140%);
   -webkit-backdrop-filter: blur(24px) saturate(140%);
@@ -198,10 +198,10 @@
   padding: 1px;
   background: linear-gradient(
     140deg,
-    rgba(255, 143, 107, 0.55) 0%,
-    rgba(255, 143, 107, 0) 38%,
+    rgba(196, 181, 253, 0.55) 0%,
+    rgba(196, 181, 253, 0) 38%,
     rgba(255, 255, 255, 0) 70%,
-    rgba(255, 107, 74, 0.35) 100%
+    rgba(124, 92, 255, 0.35) 100%
   );
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
@@ -246,7 +246,7 @@
   letter-spacing: -0.02em;
   color: #fff;
   margin: 16px 0 16px;
-  background: linear-gradient(180deg, #ffffff 0%, #FFD4C7 100%);
+  background: linear-gradient(180deg, #ffffff 30%, #C4B5FD 100%);
   -webkit-background-clip: text;
           background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -287,17 +287,17 @@
 .home-ng .ng-btn:active { transform: scale(0.98); }
 
 .home-ng .ng-btn--primary {
-  background: linear-gradient(135deg, #FF6B4A, #FF8F6B);
-  color: #1A0800;
+  background: linear-gradient(135deg, #7C5CFF, #A085FF);
+  color: #FFFFFF;
   box-shadow:
-    0 8px 24px -8px rgba(255, 107, 74, 0.50),
+    0 8px 24px -8px rgba(124, 92, 255, 0.50),
     inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
 .home-ng .ng-btn--primary:hover {
   filter: brightness(1.08);
   box-shadow:
-    0 12px 32px -8px rgba(255, 107, 74, 0.65),
+    0 12px 32px -8px rgba(124, 92, 255, 0.65),
     inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
@@ -349,9 +349,9 @@
 }
 
 .home-ng .ng-chip--active {
-  background: linear-gradient(135deg, #FF6B4A, #FF8F6B);
-  color: #1A0800;
-  border-color: #FF6B4A;
+  background: linear-gradient(135deg, #7C5CFF, #A085FF);
+  color: #FFFFFF;
+  border-color: #7C5CFF;
 }
 
 .home-ng .ng-vibe-session-strip {
@@ -501,8 +501,8 @@
 }
 
 .home-ng .ng-segmented__item.active {
-  color: #1A0800;
-  background: linear-gradient(135deg, #FF6B4A, #FF8F6B);
+  color: #FFFFFF;
+  background: linear-gradient(135deg, #7C5CFF, #A085FF);
 }
 
 .home-ng .ng-resource-grid {
@@ -577,8 +577,8 @@
 .home-ng .ng-resource-card__action:focus-visible {
   transform: translateY(-1px);
   color: #fff;
-  background: rgba(255, 107, 74, 0.2);
-  border-color: rgba(255, 143, 107, 0.22);
+  background: rgba(124, 92, 255, 0.2);
+  border-color: rgba(196, 181, 253, 0.22);
   outline: none;
 }
 
@@ -600,7 +600,7 @@
   justify-content: center;
   overflow: hidden;
   border-radius: 12px;
-  background: linear-gradient(135deg, #2a1208 0%, #0f0d14 100%);
+  background: linear-gradient(135deg, #0d0c1b 0%, #08080f 100%);
   color: #fff;
   font-family: var(--ds-font-display);
   font-size: 26px;
@@ -727,8 +727,8 @@
   justify-content: center;
   flex: 0 0 auto;
   color: #fff;
-  background: rgba(255, 107, 74, 0.18);
-  border: 1px solid rgba(255, 143, 107, 0.18);
+  background: rgba(124, 92, 255, 0.18);
+  border: 1px solid rgba(196, 181, 253, 0.18);
 }
 
 .home-ng .ng-artist-row__avatar,
@@ -774,14 +774,14 @@
 
 .home-ng .ng-icon-link:hover {
   transform: translateY(-1px);
-  background: rgba(255, 107, 74, 0.28);
+  background: rgba(124, 92, 255, 0.28);
 }
 
 .home-ng .ng-status-pill {
   justify-self: end;
-  color: #1A0800;
-  background: rgba(255, 107, 74, 0.34);
-  border-color: rgba(255, 143, 107, 0.18);
+  color: #FFFFFF;
+  background: rgba(124, 92, 255, 0.34);
+  border-color: rgba(196, 181, 253, 0.18);
 }
 
 .home-ng .ng-status-pill.published,

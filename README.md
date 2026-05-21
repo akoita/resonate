@@ -1,16 +1,44 @@
 <div align="center">
 
-# 🎵 Resonate
+<svg width="100%" height="220" viewBox="0 0 800 220" fill="none" xmlns="http://www.w3.org/2000/svg" style="background: #08080F; border-radius: 16px; border: 1px solid rgba(124, 92, 255, 0.2); box-shadow: 0 20px 40px rgba(8, 8, 15, 0.5);">
+  <!-- Background Patterns / Ambient Glow -->
+  <defs>
+    <linearGradient id="hyacinthGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7C5CFF" stop-opacity="0.25"/>
+      <stop offset="50%" stop-color="#C4B5FD" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#08080F" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="60%" stop-color="#C4B5FD"/>
+      <stop offset="100%" stop-color="#7C5CFF"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Glow -->
+  <rect width="800" height="220" fill="url(#hyacinthGlow)"/>
+  
+  <!-- Concentric design waves (Electric minimalist) -->
+  <circle cx="700" cy="110" r="150" stroke="#7C5CFF" stroke-opacity="0.15" stroke-width="1.5" stroke-dasharray="10 15"/>
+  <circle cx="700" cy="110" r="110" stroke="#7C5CFF" stroke-opacity="0.25" stroke-width="1.5"/>
+  <circle cx="700" cy="110" r="70" stroke="#C4B5FD" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="5 5"/>
+  <circle cx="700" cy="110" r="30" stroke="#7C5CFF" stroke-opacity="0.45" stroke-width="2"/>
+  <circle cx="700" cy="110" r="4" fill="#FFFFFF" opacity="0.9"/>
+  
+  <!-- Clean Minimalist Typographic Header -->
+  <text x="60" y="95" fill="url(#textGrad)" font-family="system-ui, -apple-system, sans-serif" font-weight="800" font-size="44" letter-spacing="-0.03em">RESONATE</text>
+  <text x="62" y="130" fill="#C4B5FD" font-family="system-ui, -apple-system, sans-serif" font-weight="600" font-size="14" letter-spacing="0.18em">FANS BRING THE SHOW • ON-CHAIN AUDIO IP</text>
+  <text x="62" y="165" fill="rgba(255,255,255,0.6)" font-family="system-ui, -apple-system, sans-serif" font-weight="400" font-size="12" letter-spacing="0.02em">Programmable Stems • Human Studio • x402 Commerce • MCP Server</text>
+</svg>
 
-### On-chain music for artists, listeners, and agents.
+<br/>
+<br/>
 
-**Programmable Stem IP • Human Studio • x402-native API • MCP Server**
-
-[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=for-the-badge&logo=nestjs&logoColor=white)](https://nestjs.com/)
-[![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
-[![Solidity](https://img.shields.io/badge/Solidity-363636?style=for-the-badge&logo=solidity&logoColor=white)](https://soliditylang.org/)
-[![Foundry](https://img.shields.io/badge/Foundry-1C1C1C?style=for-the-badge&logo=ethereum&logoColor=white)](https://book.getfoundry.sh/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-7C5CFF?style=for-the-badge&logo=typescript&logoColor=white&labelColor=08080F)](https://www.typescriptlang.org/)
+[![NestJS](https://img.shields.io/badge/NestJS-7C5CFF?style=for-the-badge&logo=nestjs&logoColor=white&labelColor=08080F)](https://nestjs.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-7C5CFF?style=for-the-badge&logo=nextdotjs&logoColor=white&labelColor=08080F)](https://nextjs.org/)
+[![Solidity](https://img.shields.io/badge/Solidity-C4B5FD?style=for-the-badge&logo=solidity&logoColor=08080F&labelColor=08080F)](https://soliditylang.org/)
+[![Foundry](https://img.shields.io/badge/Foundry-C4B5FD?style=for-the-badge&logo=ethereum&logoColor=08080F&labelColor=08080F)](https://book.getfoundry.sh/)
 
 <br/>
 
@@ -121,7 +149,25 @@ If you use an x402-capable client such as AgentCash, it can automate the proof e
 - **Stems unlock active listening** — pricing, receipts, remix lineage, and royalties can compose on top of stem-native assets
 - **Campaigns make demand legible** — Shows convert scattered fan enthusiasm into city-level, escrow-backed intent before artists take booking risk
 - **The app and the API are peers** — the human studio and the x402 storefront API both ride the same on-chain catalog; neither is a subset of the other
-- **Why the agent surface matters** — as AI systems become catalog consumers, a commerce path that's just `curl` + USDC + a signed receipt (no dashboard, no account, no OAuth) lands on the right side of how agents actually buy
+- **Why the agent surface matters** — as AI systems become catalog consumers, a commerce path that's just `curl` + USDC + a signed receipt (no dashboard, no account, no OAuth) lands on the right side of how agents actually buy---
+
+## 🎨 Brand & Design System (Pomelli Specs)
+
+Resonate uses a cohesive visual vocabulary designed by **Pomelli** to balance future-forward sonic technology with immersive utility.
+
+| Identity Token | Value | Hex / Spec | Mapping |
+| :--- | :--- | :--- | :--- |
+| **Canvas** | Jet Black | `#08080F` | Page backgrounds, deep surfaces |
+| **Primary** | Hyacinth Blue | `#7C5CFF` | Accent, high-contrast actions, key brand cues |
+| **Secondary** | Lavender Blue | `#C4B5FD` | High-legibility text, secondary interactive states |
+| **Typography** | Space Grotesk | Display / Title font | Headings, Kickers, Actions |
+| **Typography** | Be Vietnam Pro | Body / Sans font | Content, metadata, labels |
+
+### Design Aesthetics & Voice
+
+- **Vibe**: Cyber-lounge chic, web3-native professional, electric minimalist, immersive dark-mode.
+- **Brand Voice**: Tech-forward, Direct, Empowering, Transparent.
+- **Core Signal**: *"Fans bring the show. Artists get a booking signal backed by money, not likes."*
 
 ---
 
