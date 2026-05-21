@@ -1251,3 +1251,51 @@ cd backend && npm run test -- --runInBand
 cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js src/tests/analytics_warehouse_loader.integration.spec.ts
 git diff --check
 ```
+
+## Addendum: #886 Analytics Pub/Sub Event Publisher
+
+Reviewed the backend analytics Pub/Sub publisher slice for #886, including
+disabled-by-default publishing configuration, Pub/Sub message attributes,
+non-strict and strict publish-failure behavior, structured logging, and related
+tests/docs. No Critical or High findings were identified in the changed code.
+
+### Scope
+
+- `backend/src/modules/analytics/analytics_event_publisher.ts`
+- `backend/src/modules/analytics/analytics_ingest.service.ts`
+- `backend/src/modules/analytics/analytics.module.ts`
+- `backend/src/tests/analytics_event_publisher.spec.ts`
+- `docs/deployment/environment.md`
+- `docs/features/README.md`
+- `docs/features/analytics_event_ledger.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- Pub/Sub publishing is disabled by default and must be explicitly enabled by
+  environment configuration.
+- The publisher uses Google Cloud Pub/Sub Application Default Credentials
+  through the existing runtime environment; no service account key, token, or
+  credential value is stored in source.
+- Non-strict publish failures are logged with structured metadata and do not
+  replace or interrupt analytics ledger persistence.
+- Strict mode is opt-in for environments that intentionally want analytics
+  ingestion to fail when Pub/Sub publishing fails.
+- No raw SQL, shell execution, dynamic code execution, new unauthenticated
+  controller path, or user-controlled filesystem path was introduced.
+
+### Commands Run
+
+```bash
+rg -n '(secret|password|private[_-]?key|api[_-]?key|token|authorization|Bearer|BEGIN |0x[a-fA-F0-9]{64})' backend/src/modules/analytics backend/src/tests/analytics_event_publisher.spec.ts docs/deployment/environment.md docs/features/analytics_event_ledger.md docs/features/README.md
+cd backend && npx jest --runInBand src/tests/analytics_event_publisher.spec.ts src/tests/analytics_event.spec.ts
+cd backend && npm run lint
+cd backend && npm run test
+git diff --check
+```

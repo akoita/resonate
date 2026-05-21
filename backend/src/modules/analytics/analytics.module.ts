@@ -11,6 +11,7 @@ import {
   AnalyticsWarehouseLoaderService,
   analyticsWarehouseTargetFromEnv,
 } from "./analytics_warehouse_loader";
+import { ANALYTICS_EVENT_PUBLISHER, analyticsEventPublisherFromEnv } from "./analytics_event_publisher";
 
 @Module({
   controllers: [AnalyticsController],
@@ -25,6 +26,10 @@ import {
     {
       provide: ANALYTICS_EVENT_STORE,
       useExisting: PrismaAnalyticsEventStore,
+    },
+    {
+      provide: ANALYTICS_EVENT_PUBLISHER,
+      useFactory: analyticsEventPublisherFromEnv,
     },
     {
       provide: ANALYTICS_WAREHOUSE_TARGET,
