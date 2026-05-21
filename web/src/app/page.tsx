@@ -57,7 +57,7 @@ type CatalogView = "releases" | "artists" | "stems";
 type ArtistSummary = {
   key: string;
   name: string;
-  artistId: string;
+  artistId: string | null;
   releaseCount: number;
   stemCount: number;
   latestRelease?: Release;
@@ -198,7 +198,7 @@ export default function Home() {
     [displayReleases],
   );
   const catalogArtists = useMemo<ArtistSummary[]>(
-    () => summarizeArtists(displayReleases),
+    () => summarizeCreditedArtists(displayReleases),
     [displayReleases],
   );
   const normalizedSearch = catalogSearch.trim().toLowerCase();
@@ -218,7 +218,7 @@ export default function Home() {
     () => buildHomeRecommendations(songRecommendations, displayReleases).slice(0, 4),
     [songRecommendations, displayReleases],
   );
-  const managedArtists = summarizeArtists(status === "authenticated" ? myReleases : []).slice(0, 5);
+  const managedArtists = summarizeManagedArtists(status === "authenticated" ? myReleases : []).slice(0, 5);
   const recentUploads = (status === "authenticated" ? myReleases : [])
     .slice()
     .sort((a, b) => getReleaseTime(b) - getReleaseTime(a))
@@ -660,29 +660,41 @@ export default function Home() {
             {catalogView === "artists" && (
               <div className="ng-artist-browser">
                 {browseArtists.length > 0 ? (
-                  browseArtists.map((artist) => (
-                    <Link
-                      key={artist.key}
-                      href={artistProfileHref(artist.artistId)}
-                      className="ng-artist-row"
-                    >
-                      <span className="ng-artist-row__avatar" aria-hidden>
-                        {artist.name[0]?.toUpperCase() ?? "?"}
-                      </span>
-                      <span className="ng-artist-row__main">
-                        <strong>{artist.name}</strong>
-                        <small>{artist.latestRelease?.title ?? "No recent release"}</small>
-                      </span>
-                      <span className="ng-artist-row__metric">
-                        {artist.releaseCount}
-                        <small>releases</small>
-                      </span>
-                      <span className="ng-artist-row__metric">
-                        {artist.stemCount}
-                        <small>stems</small>
-                      </span>
-                    </Link>
-                  ))
+                  browseArtists.map((artist) => {
+                    const rowContent = (
+                      <>
+                        <span className="ng-artist-row__avatar" aria-hidden>
+                          {artist.name[0]?.toUpperCase() ?? "?"}
+                        </span>
+                        <span className="ng-artist-row__main">
+                          <strong>{artist.name}</strong>
+                          <small>{artist.latestRelease?.title ?? "No recent release"}</small>
+                        </span>
+                        <span className="ng-artist-row__metric">
+                          {artist.releaseCount}
+                          <small>releases</small>
+                        </span>
+                        <span className="ng-artist-row__metric">
+                          {artist.stemCount}
+                          <small>stems</small>
+                        </span>
+                      </>
+                    );
+
+                    return artist.artistId ? (
+                      <Link
+                        key={artist.key}
+                        href={artistProfileHref(artist.artistId)}
+                        className="ng-artist-row"
+                      >
+                        {rowContent}
+                      </Link>
+                    ) : (
+                      <div key={artist.key} className="ng-artist-row">
+                        {rowContent}
+                      </div>
+                    );
+                  })
                 ) : (
                   <div className="ng-empty-state">
                     <span className="ms-icon" aria-hidden>person_search</span>
@@ -737,11 +749,26 @@ export default function Home() {
               </header>
               <div className="ng-uploader-list">
                 {managedArtists.length > 0 ? managedArtists.map((artist) => (
-                  <Link
-                    key={artist.key}
-                    href={artistProfileHref(artist.artistId)}
-                    className="ng-uploader-row"
-                  >
+                  artist.artistId ? (
+                    <Link
+                      key={artist.key}
+                      href={artistProfileHref(artist.artistId)}
+                      className="ng-uploader-row"
+                    >
+                      <span className="ng-uploader-row__avatar" aria-hidden>
+                        {artist.name[0]?.toUpperCase() ?? "?"}
+                      </span>
+                      <span className="ng-uploader-row__main">
+                        <strong>{artist.name}</strong>
+                        <small>{formatRelativeTime(artist.latestAt)}</small>
+                      </span>
+                      <span className="ng-uploader-row__count">
+                        {artist.releaseCount}
+                        <small>releases</small>
+                      </span>
+                    </Link>
+                  ) : (
+                    <div key={artist.key} className="ng-uploader-row">
                     <span className="ng-uploader-row__avatar" aria-hidden>
                       {artist.name[0]?.toUpperCase() ?? "?"}
                     </span>
@@ -753,7 +780,8 @@ export default function Home() {
                       {artist.releaseCount}
                       <small>releases</small>
                     </span>
-                  </Link>
+                    </div>
+                  )
                 )) : (
                   <div className="ng-empty-state">
                     <span className="ms-icon" aria-hidden>person_add</span>
@@ -910,18 +938,30 @@ export default function Home() {
               </div>
             </header>
             <div className="ng-artist-pills">
-              {topArtists.map((a) => (
-                <Link
-                  key={a.name}
-                  href={artistProfileHref(a.artistId)}
-                  className="ng-artist-pill"
-                >
-                  <span className="ng-artist-pill__avatar" aria-hidden>
-                    {a.name[0]?.toUpperCase() ?? "?"}
+              {topArtists.map((a) => {
+                const pillContent = (
+                  <>
+                    <span className="ng-artist-pill__avatar" aria-hidden>
+                      {a.name[0]?.toUpperCase() ?? "?"}
+                    </span>
+                    <span>{a.name}</span>
+                  </>
+                );
+
+                return a.artistId ? (
+                  <Link
+                    key={a.name}
+                    href={artistProfileHref(a.artistId)}
+                    className="ng-artist-pill"
+                  >
+                    {pillContent}
+                  </Link>
+                ) : (
+                  <span key={a.name} className="ng-artist-pill">
+                    {pillContent}
                   </span>
-                  <span>{a.name}</span>
-                </Link>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}
@@ -955,6 +995,37 @@ function getArtistProfileName(release: Release) {
   return release.artist?.displayName || release.primaryArtist || "Unknown Artist";
 }
 
+function normalizeArtistName(value?: string | null) {
+  return (value || "").trim().toLowerCase();
+}
+
+function normalizeArtistCreditValue(value?: string | null) {
+  return (value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^[\s._-]*\d+[\s._-]+/, "")
+    .replace(/[\s._-]+/g, " ");
+}
+
+function getReleaseCreditProfileId(release: Release) {
+  const primaryArtist = normalizeArtistName(release.primaryArtist);
+  const profileName = normalizeArtistName(release.artist?.displayName);
+  if (!release.artist?.id) return null;
+  return !primaryArtist || primaryArtist === profileName ? release.artist.id : null;
+}
+
+function getTrackArtistName(track: Track, release: Release) {
+  const trackArtist = track.artist?.trim();
+  const releaseArtist = getArtistName(release);
+  if (!trackArtist) return releaseArtist;
+
+  if (normalizeArtistCreditValue(trackArtist) === normalizeArtistCreditValue(track.title)) {
+    return releaseArtist;
+  }
+
+  return trackArtist;
+}
+
 function getReleaseTime(release: Release) {
   const raw = release.releaseDate || release.createdAt;
   const time = raw ? new Date(raw).getTime() : 0;
@@ -982,7 +1053,7 @@ function mapReleaseToLocalTracks(release: Release): LocalTrack[] {
   return (release.tracks ?? []).map((track) => ({
     id: track.id,
     title: track.title,
-    artist: track.artist || getArtistName(release),
+    artist: getTrackArtistName(track, release),
     albumArtist: null,
     album: release.title,
     year: release.releaseDate ? new Date(release.releaseDate).getFullYear() : null,
@@ -1013,7 +1084,7 @@ function flattenStems(releases: Release[]): StemSummary[] {
         releaseTitle: release.title,
         title: stem.title || track.title,
         type: stem.type || "stem",
-        artistName: stem.artist || track.artist || getArtistName(release),
+        artistName: stem.artist || getTrackArtistName(track, release),
         artworkUrl: stem.artworkUrl || release.artworkUrl,
         createdAt: track.createdAt || release.createdAt,
       })),
@@ -1021,12 +1092,13 @@ function flattenStems(releases: Release[]): StemSummary[] {
   );
 }
 
-function summarizeArtists(releases: Release[]): ArtistSummary[] {
+function summarizeCreditedArtists(releases: Release[]): ArtistSummary[] {
   const byArtist = new Map<string, ArtistSummary>();
 
   for (const release of releases) {
-    const name = getArtistProfileName(release);
-    const key = release.artist?.id || release.artistId || name.toLowerCase();
+    const name = getArtistName(release);
+    const key = normalizeArtistName(name) || release.id;
+    const artistId = getReleaseCreditProfileId(release);
     const stemCount = release.tracks?.reduce(
       (sum, track) => sum + (track.stems?.length ?? 0),
       0,
@@ -1038,7 +1110,7 @@ function summarizeArtists(releases: Release[]): ArtistSummary[] {
       byArtist.set(key, {
         key,
         name,
-        artistId: release.artist?.id || release.artistId,
+        artistId,
         releaseCount: 1,
         stemCount,
         latestRelease: release,
@@ -1051,6 +1123,48 @@ function summarizeArtists(releases: Release[]): ArtistSummary[] {
     existing.releaseCount += 1;
     existing.stemCount += stemCount;
     if (release.genre) existing.genres.add(release.genre);
+    if (!existing.artistId && artistId) existing.artistId = artistId;
+    if (latestAt > existing.latestAt) {
+      existing.latestAt = latestAt;
+      existing.latestRelease = release;
+    }
+  }
+
+  return Array.from(byArtist.values()).sort((a, b) => b.latestAt - a.latestAt);
+}
+
+function summarizeManagedArtists(releases: Release[]): ArtistSummary[] {
+  const byArtist = new Map<string, ArtistSummary>();
+
+  for (const release of releases) {
+    const name = getArtistProfileName(release);
+    const artistId = release.artist?.id || release.artistId || null;
+    const key = artistId || normalizeArtistName(name) || release.id;
+    const stemCount = release.tracks?.reduce(
+      (sum, track) => sum + (track.stems?.length ?? 0),
+      0,
+    ) ?? 0;
+    const latestAt = getReleaseTime(release);
+    const existing = byArtist.get(key);
+
+    if (!existing) {
+      byArtist.set(key, {
+        key,
+        name,
+        artistId,
+        releaseCount: 1,
+        stemCount,
+        latestRelease: release,
+        latestAt,
+        genres: new Set(release.genre ? [release.genre] : []),
+      });
+      continue;
+    }
+
+    existing.releaseCount += 1;
+    existing.stemCount += stemCount;
+    if (release.genre) existing.genres.add(release.genre);
+    if (!existing.artistId && artistId) existing.artistId = artistId;
     if (latestAt > existing.latestAt) {
       existing.latestAt = latestAt;
       existing.latestRelease = release;

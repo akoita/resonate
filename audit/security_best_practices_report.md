@@ -1133,6 +1133,69 @@ cd backend && npx jest --runInBand --forceExit --config jest.integration.config.
 git diff --check
 ```
 
+## Addendum: Release Artist Credits And Uploader Catalog Split
+
+Reviewed the release/track artist-credit fix, including public catalog artist
+grouping, authenticated managed-catalog grouping, public artist discography
+filtering, ingestion metadata normalization, release-page display logic, tests,
+and feature docs. No Critical or High findings were identified in the changed
+code.
+
+### Scope
+
+- `backend/src/modules/catalog/catalog.service.ts`
+- `backend/src/modules/ingestion/ingestion.service.ts`
+- `backend/src/tests/catalog.integration.spec.ts`
+- `backend/src/tests/ingestion_metadata.spec.ts`
+- `web/src/app/page.tsx`
+- `web/src/app/release/[id]/page.tsx`
+- `docs/features/README.md`
+- `docs/features/catalog_indexing_mvp.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- The catalog change narrows public artist discography reads by matching
+  `primaryArtist` to the profile display name, while keeping authenticated
+  owner reads scoped to the uploader profile. It does not introduce a new
+  controller or authentication boundary.
+- The new Prisma filtering composes the public rights-route filter and the
+  artist-credit filter under `AND`, avoiding dynamic SQL and preserving the
+  existing public visibility policy.
+- The ingestion metadata cleanup normalizes plain strings only and does not
+  deserialize untrusted structures beyond the pre-existing upload metadata JSON
+  parse in the controller.
+- The frontend changes render existing catalog strings through React text nodes;
+  no `dangerouslySetInnerHTML`, direct cookie access, or client-exposed secret
+  configuration was introduced.
+- Broad scoped scans still report pre-existing public catalog endpoints and
+  existing Prisma template raw queries used for legacy cleanup; no new Critical
+  or High issue was introduced by this branch.
+
+### Commands Run
+
+```bash
+rg -n 'password|secret|api_key|private_key' backend/src/modules/catalog backend/src/modules/ingestion --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw|\$executeRaw' backend/src/modules/catalog backend/src/modules/ingestion
+rg -n '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/catalog backend/src/modules/ingestion | grep -v 'Guard\|Auth'
+rg -n 'JSON\.parse|eval\(' backend/src/modules/catalog backend/src/modules/ingestion
+rg -n '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/catalog backend/src/modules/ingestion | grep -v 'Pipe\|Dto\|Validation'
+rg -n 'dangerouslySetInnerHTML|innerHTML' web/src/app/page.tsx 'web/src/app/release/[id]/page.tsx'
+rg -n 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/app/page.tsx 'web/src/app/release/[id]/page.tsx'
+cd backend && npx jest --runInBand src/tests/ingestion_metadata.spec.ts
+cd backend && npm run lint
+cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js src/tests/catalog.integration.spec.ts
+cd web && npm run lint
+cd web && npm run build
+git diff --check
+```
+
 ## Addendum: #879 Analytics Warehouse Loading And Backfill
 
 Reviewed the analytics warehouse loader/backfill slice for #879, including

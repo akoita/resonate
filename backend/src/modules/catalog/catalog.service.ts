@@ -966,18 +966,42 @@ export class CatalogService implements OnModuleInit {
     return sameUserId(release.artist?.userId, userId) ? release : null;
   }
 
-  async listByArtist(artistId: string, options?: { includeRestricted?: boolean }) {
+  async listByArtist(
+    artistId: string,
+    options?: { includeRestricted?: boolean; includeManagedCredits?: boolean },
+  ) {
+    const artist = await prisma.artist.findUnique({
+      where: { id: artistId },
+      select: { displayName: true },
+    });
+
+    if (!artist) {
+      return [];
+    }
+
+    const andFilters: Prisma.ReleaseWhereInput[] = [];
+    if (!options?.includeManagedCredits) {
+      andFilters.push({
+        OR: [
+          { primaryArtist: null },
+          { primaryArtist: "" },
+          { primaryArtist: { equals: artist.displayName, mode: "insensitive" as const } },
+        ],
+      });
+    }
+    if (!options?.includeRestricted) {
+      andFilters.push({
+        OR: [
+          { rightsRoute: null },
+          { rightsRoute: { in: PUBLIC_RELEASE_ROUTES } },
+        ],
+      });
+    }
+
     return prisma.release.findMany({
       where: {
         artistId,
-        ...(options?.includeRestricted
-          ? {}
-          : {
-              OR: [
-                { rightsRoute: null },
-                { rightsRoute: { in: PUBLIC_RELEASE_ROUTES } },
-              ],
-            }),
+        ...(andFilters.length > 0 ? { AND: andFilters } : {}),
       },
       select: {
         id: true,
@@ -1041,7 +1065,10 @@ export class CatalogService implements OnModuleInit {
       where: { userId: { equals: userId, mode: "insensitive" } },
     });
     if (!artist) return [];
-    return this.listByArtist(artist.id, { includeRestricted: true });
+    return this.listByArtist(artist.id, {
+      includeRestricted: true,
+      includeManagedCredits: true,
+    });
   }
 
   async updateRelease(

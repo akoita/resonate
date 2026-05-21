@@ -61,6 +61,30 @@ const getTrackDuration = (track: { stems?: Array<{ durationSeconds?: number | nu
   return track.stems?.[0]?.durationSeconds ?? 0;
 };
 
+const normalizeArtistCredit = (value?: string | null) =>
+  (value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^[\s._-]*\d+[\s._-]+/, "")
+    .replace(/[\s._-]+/g, " ");
+
+const getReleaseArtistCredit = (release?: Release | null) =>
+  release?.primaryArtist || release?.artist?.displayName || "Unknown Artist";
+
+const getTrackArtistCredit = (track: Track, release?: Release | null) => {
+  const trackArtist = track.artist?.trim();
+  const releaseArtist = getReleaseArtistCredit(release);
+  if (!trackArtist) return releaseArtist;
+
+  const normalizedTrackArtist = normalizeArtistCredit(trackArtist);
+  const normalizedTitle = normalizeArtistCredit(track.title);
+  if (normalizedTrackArtist && normalizedTrackArtist === normalizedTitle) {
+    return releaseArtist;
+  }
+
+  return trackArtist;
+};
+
 const MIXER_STEM_TYPES = ["vocals", "drums", "bass", "piano", "guitar", "other"] as const;
 
 const normalizeStemType = (type?: string | null): string => type?.trim().toLowerCase() ?? "";
@@ -887,7 +911,7 @@ export default function ReleaseDetails() {
       return {
         id: t.id,
         title: t.title,
-        artist: t.artist || release.primaryArtist || release.artist?.displayName || "Unknown Artist",
+        artist: getTrackArtistCredit(t, release),
         albumArtist: null,
         album: release.title,
         year: release.releaseDate ? new Date(release.releaseDate).getFullYear() : null,
@@ -974,7 +998,7 @@ export default function ReleaseDetails() {
     return {
       id: t.id,
       title: t.title,
-      artist: t.artist || release?.primaryArtist || release?.artist?.displayName || "Unknown Artist",
+      artist: getTrackArtistCredit(t, release),
       albumArtist: null,
       album: release?.title || "Unknown Album",
       year: release?.releaseDate ? new Date(release.releaseDate).getFullYear() : null,
@@ -1921,16 +1945,13 @@ export default function ReleaseDetails() {
                       className={`track-artist ${releaseArtistCreditHref(release) ? "clickable" : ""}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        // Track might have its own artist override, but usually it's string only in this object structure unless we expand it.
-                        // For now, if track.artist matches release primary, we use release IDs.
-                        // Otherwise fall back to name string.
-                        const name = track.artist || release.primaryArtist || release.artist?.displayName;
-                        const isMain = name === (release.primaryArtist || release.artist?.displayName);
+                        const name = getTrackArtistCredit(track, release);
+                        const isMain = name === getReleaseArtistCredit(release);
                         const target = isMain ? releaseArtistCreditHref(release) : null;
                         if (target) router.push(target);
                       }}
                     >
-                      {track.artist || release.primaryArtist || release.artist?.displayName || "Unknown Artist"}
+                      {getTrackArtistCredit(track, release)}
                     </td>
                     <td className="track-genre">{release.genre || "---"}</td>
                     <td className="track-duration">{formatDuration(getTrackDuration(track))}</td>
