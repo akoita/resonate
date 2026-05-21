@@ -6,6 +6,10 @@ export function libraryArtistHref(artistName: string) {
   return `/library/artists/${encodeURIComponent(artistName)}`;
 }
 
+export function catalogArtistHref(artistName: string) {
+  return `/catalog/artists/${encodeURIComponent(artistName)}`;
+}
+
 export function releaseArtistProfileHref(input: {
   artist?: { id?: string | null } | null;
   artistId?: string | null;

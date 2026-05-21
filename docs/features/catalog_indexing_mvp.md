@@ -17,7 +17,9 @@ Expose a minimal catalog service to store, index, and query tracks and stems.
   stems from `GET /catalog/published`.
 - Global artist discovery groups releases by credited artist name
   (`primaryArtist`) rather than by the Resonate uploader profile. Rows only link
-  to `/artist/:id` when the credited artist matches that profile.
+  to `/artist/:id` when the credited artist matches that profile; otherwise
+  they link to `/catalog/artists/:name`, which lists releases credited to that
+  artist name.
 - Public artist pages show official profile discography only; uploader-owned
   releases credited to another artist remain in the authenticated managed
   catalog but are not presented as official artist releases.

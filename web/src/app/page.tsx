@@ -19,7 +19,7 @@ import {
   type SongRecommendationItem,
   type Track,
 } from "../lib/api";
-import { artistProfileHref } from "../lib/artistRoutes";
+import { artistProfileHref, catalogArtistHref } from "../lib/artistRoutes";
 import { type LocalTrack, saveTracksMetadata } from "../lib/localLibrary";
 import { usePlayer } from "../lib/playerContext";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
@@ -681,18 +681,14 @@ export default function Home() {
                       </>
                     );
 
-                    return artist.artistId ? (
+                    return (
                       <Link
                         key={artist.key}
-                        href={artistProfileHref(artist.artistId)}
+                        href={artist.artistId ? artistProfileHref(artist.artistId) : catalogArtistHref(artist.name)}
                         className="ng-artist-row"
                       >
                         {rowContent}
                       </Link>
-                    ) : (
-                      <div key={artist.key} className="ng-artist-row">
-                        {rowContent}
-                      </div>
                     );
                   })
                 ) : (
@@ -948,18 +944,14 @@ export default function Home() {
                   </>
                 );
 
-                return a.artistId ? (
+                return (
                   <Link
                     key={a.name}
-                    href={artistProfileHref(a.artistId)}
+                    href={a.artistId ? artistProfileHref(a.artistId) : catalogArtistHref(a.name)}
                     className="ng-artist-pill"
                   >
                     {pillContent}
                   </Link>
-                ) : (
-                  <span key={a.name} className="ng-artist-pill">
-                    {pillContent}
-                  </span>
                 );
               })}
             </div>
