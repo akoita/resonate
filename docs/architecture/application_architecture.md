@@ -14,22 +14,22 @@ composed.
 
 ```mermaid
 flowchart LR
-  Artist["Artists"] --> Web["Human Studio\nNext.js app"]
+  Artist["Artists"] --> Web["Human Studio<br>Next.js app"]
   Listener["Listeners"] --> Web
   Curator["Curators / operators"] --> Web
-  Agent["AI agents\nMCP + OpenAPI + x402"] --> Storefront["Agent storefront\nHTTP + MCP tools"]
+  Agent["AI agents<br>MCP + OpenAPI + x402"] --> Storefront["Agent storefront<br>HTTP + MCP tools"]
 
-  Web --> Backend["Resonate API\nNestJS modular backend"]
+  Web --> Backend["Resonate API<br>NestJS modular backend"]
   Storefront --> Backend
 
-  Backend --> Catalog["Catalog, pricing,\nrights, library"]
-  Backend --> Commerce["Marketplace, x402,\npayment router"]
+  Backend --> Catalog["Catalog, pricing,<br>rights, library"]
+  Backend --> Commerce["Marketplace, x402,<br>payment router"]
   Backend --> Runtime["AI DJ + agent runtime"]
   Backend --> Ingestion["Upload + stem processing"]
 
-  Commerce --> Chain["Smart accounts +\nprotocol contracts"]
+  Commerce --> Chain["Smart accounts +<br>protocol contracts"]
   Ingestion --> Worker["Demucs worker"]
-  Catalog --> Storage["Postgres, GCS,\nRedis, Pub/Sub"]
+  Catalog --> Storage["Postgres, GCS,<br>Redis, Pub/Sub"]
   Runtime --> Storage
   Worker --> Storage
 ```
@@ -52,10 +52,10 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-  Controllers["Controllers\nREST, OpenAPI, MCP, x402"] --> Services["Application services"]
+  Controllers["Controllers<br>REST, OpenAPI, MCP, x402"] --> Services["Application services"]
   Services --> Policies["Policy and quote services"]
-  Services --> ReadModels["Read-model queries\nPrisma"]
-  Services --> EventBus["In-process event bus\n+ Socket.IO gateway"]
+  Services --> ReadModels["Read-model queries<br>Prisma"]
+  Services --> EventBus["In-process event bus<br>+ Socket.IO gateway"]
   Services --> Ports["External ports"]
 
   Policies --> Pricing["Pricing / licensing"]
@@ -66,8 +66,8 @@ flowchart TB
   EventBus --> Realtime["Realtime UI updates"]
   EventBus --> Indexer["Contract/indexer handlers"]
 
-  Ports --> Storage["Storage providers\nlocal, GCS, IPFS"]
-  Ports --> Chain["viem + ERC-4337\ncontracts/bundler"]
+  Ports --> Storage["Storage providers<br>local, GCS, IPFS"]
+  Ports --> Chain["viem + ERC-4337<br>contracts/bundler"]
   Ports --> X402["x402 facilitator"]
   Ports --> AI["AI generation / Demucs"]
 ```
@@ -82,7 +82,7 @@ visible.
 
 ```mermaid
 flowchart TB
-  Routes["Next.js app routes"] --> Shell["Authenticated app shell\nnavigation + player"]
+  Routes["Next.js app routes"] --> Shell["Authenticated app shell<br>navigation + player"]
   Shell --> ProductViews["Product views"]
   ProductViews --> Components["Domain components"]
   Components --> Hooks["Hooks and client services"]
@@ -95,7 +95,7 @@ flowchart TB
   ProductViews --> Library["Library + player"]
   ProductViews --> Rights["Disputes + rights"]
 
-  Components --> DesignSystem["Shared UI primitives\nand feature styles"]
+  Components --> DesignSystem["Shared UI primitives<br>and feature styles"]
 ```
 
 The frontend is product-surface oriented: routes own workflow composition, domain

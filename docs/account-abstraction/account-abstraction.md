@@ -11,29 +11,29 @@ Every Resonate user interacts through a **Kernel v3 Smart Account** (ZeroDev). T
 ```mermaid
 flowchart TB
     subgraph Frontend["Frontend — Next.js"]
-        AP["AuthProvider\n(sign-up / login)"]
-        ZD["ZeroDevProviderClient\n(chain + RPC config)"]
-        SK["useSessionKey\n(grant / revoke)"]
+        AP["AuthProvider<br>(sign-up / login)"]
+        ZD["ZeroDevProviderClient<br>(chain + RPC config)"]
+        SK["useSessionKey<br>(grant / revoke)"]
         AP --> ZD --> SK
     end
 
     subgraph Backend["Backend — NestJS"]
         WC["WalletController"]
-        WC --> WS["WalletService\n(wallet CRUD)"]
-        WC --> AWS["AgentWalletService\n(session keys)"]
-        WC --> APS["AgentPurchaseService\n(buy stems)"]
-        WC --> ZDSK["ZeroDevSessionKeyService\n(key storage)"]
-        APS --> KAS["KernelAccountService\n(ZeroDev SDK → bundler)"]
+        WC --> WS["WalletService<br>(wallet CRUD)"]
+        WC --> AWS["AgentWalletService<br>(session keys)"]
+        WC --> APS["AgentPurchaseService<br>(buy stems)"]
+        WC --> ZDSK["ZeroDevSessionKeyService<br>(key storage)"]
+        APS --> KAS["KernelAccountService<br>(ZeroDev SDK → bundler)"]
     end
 
     subgraph Infra["ERC-4337 Infrastructure"]
-        B["Bundler\n(Alto / ZeroDev)"] --> EP["EntryPoint v0.7"]
-        EP --> KSA["Kernel Smart Account\n(user's on-chain wallet)"]
-        PM["Paymaster\n(sponsors gas)"] -.-> EP
+        B["Bundler<br>(Alto / ZeroDev)"] --> EP["EntryPoint v0.7"]
+        EP --> KSA["Kernel Smart Account<br>(user's on-chain wallet)"]
+        PM["Paymaster<br>(sponsors gas)"] -.-> EP
     end
 
     subgraph Contracts["Smart Contracts"]
-        NFT["StemNFT\n(ERC-1155)"]
+        NFT["StemNFT<br>(ERC-1155)"]
         MKT["StemMarketplaceV2"]
         PAY["PaymentSplitter"]
     end
@@ -136,12 +136,12 @@ Smart account addresses are **deterministic** — generated at the backend using
 ```mermaid
 stateDiagram-v2
     [*] --> Counterfactual : User signs up
-    Counterfactual --> Stored : Backend generates SA address\n(Create2, no deployment)
-    Stored --> Deployed : First UserOp triggers\non-chain deployment
+    Counterfactual --> Stored : Backend generates SA address<br>(Create2, no deployment)
+    Stored --> Deployed : First UserOp triggers<br>on-chain deployment
     Deployed --> Active : Smart account live
 
-    note right of Counterfactual : Address is deterministic —\nusable before deployment
-    note right of Deployed : EntryPoint deploys via\nKernelFactory.createAccount()
+    note right of Counterfactual : Address is deterministic —<br>usable before deployment
+    note right of Deployed : EntryPoint deploys via<br>KernelFactory.createAccount()
 ```
 
 ---

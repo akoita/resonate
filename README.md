@@ -183,15 +183,15 @@ Resonate has two complementary architecture views:
 
 ```mermaid
 flowchart LR
-  Studio["Human Studio\nNext.js"] --> API["NestJS API\nmodular backend"]
-  Agents["Agents\nOpenAPI + MCP + x402"] --> API
-  API --> Catalog["Catalog, pricing,\nrights, library"]
-  API --> Commerce["Marketplace + x402\nstablecoin settlement"]
+  Studio["Human Studio<br>Next.js"] --> API["NestJS API<br>modular backend"]
+  Agents["Agents<br>OpenAPI + MCP + x402"] --> API
+  API --> Catalog["Catalog, pricing,<br>rights, library"]
+  API --> Commerce["Marketplace + x402<br>stablecoin settlement"]
   API --> Runtime["AI DJ + agent runtime"]
   API --> Ingestion["Upload + stem processing"]
-  Commerce --> Chain["Smart accounts +\nResonate contracts"]
+  Commerce --> Chain["Smart accounts +<br>Resonate contracts"]
   Ingestion --> Worker["Demucs worker"]
-  Catalog --> Data["Postgres, Redis,\nGCS, Pub/Sub"]
+  Catalog --> Data["Postgres, Redis,<br>GCS, Pub/Sub"]
   Runtime --> Data
   Worker --> Data
 ```

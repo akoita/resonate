@@ -26,22 +26,22 @@ module diagram. It follows a C4-style container/deployment view:
 
 ```mermaid
 flowchart LR
-  Human["Human studio users"] --> DNS["Environment DNS\nweb hostname"]
-  Agent["AI agents / MCP clients"] --> DNSApi["Environment DNS\nAPI hostname"]
-  DNS --> Edge["Global HTTPS edge\nmanaged TLS + redirect"]
+  Human["Human studio users"] --> DNS["Environment DNS<br>web hostname"]
+  Agent["AI agents / MCP clients"] --> DNSApi["Environment DNS<br>API hostname"]
+  DNS --> Edge["Global HTTPS edge<br>managed TLS + redirect"]
   DNSApi --> Edge
-  Edge --> Armor["Cloud Armor\nWAF + rate-limit policy"]
-  Armor --> FrontendNEG["Serverless NEG\nfrontend"]
-  Armor --> BackendNEG["Serverless NEG\nbackend"]
-  FrontendNEG --> Frontend["Cloud Run frontend\nNext.js"]
-  BackendNEG --> Backend["Cloud Run backend\nNestJS API"]
+  Edge --> Armor["Cloud Armor<br>WAF + rate-limit policy"]
+  Armor --> FrontendNEG["Serverless NEG<br>frontend"]
+  Armor --> BackendNEG["Serverless NEG<br>backend"]
+  FrontendNEG --> Frontend["Cloud Run frontend<br>Next.js"]
+  BackendNEG --> Backend["Cloud Run backend<br>NestJS API"]
   Frontend --> Backend
 
   Backend --> SQL[("Cloud SQL Postgres")]
   Backend --> Redis[("Memorystore Redis")]
   Backend --> GCS[("GCS stems bucket")]
   Backend --> Jobs["Pub/Sub stem-separate"]
-  Jobs --> Worker["Cloud Run Demucs Job\non-demand"]
+  Jobs --> Worker["Cloud Run Demucs Job<br>on-demand"]
   Worker --> GCS
   Worker --> Results["Pub/Sub stem-results"]
   Results --> Backend
@@ -56,8 +56,8 @@ flowchart LR
   Kernel --> Contracts["Resonate protocol contracts"]
   Backend --> Contracts
 
-  CI["resonate CI"] --> Images["Artifact Registry\nimmutable images"]
-  Images --> IaC["resonate-iac Terraform\nGCS state + WIF"]
+  CI["resonate CI"] --> Images["Artifact Registry<br>immutable images"]
+  Images --> IaC["resonate-iac Terraform<br>GCS state + WIF"]
   IaC --> Edge
   IaC --> Frontend
   IaC --> Backend
