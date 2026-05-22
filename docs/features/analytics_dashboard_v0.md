@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Analytics Dashboard v0"
-status: draft
+status: partial
 owner: "@akoita"
 issue: 25
 ---
@@ -18,7 +18,14 @@ dashboards lives in
 [Analytics Event Ledger](analytics_event_ledger.md) and the
 [Long-Term Analytics Event Ledger RFC](../rfc/analytics-event-ledger.md).
 
-## Current Backend Path
+## Current Path
+
+The `/artist/analytics` frontend now fetches the authenticated artist profile,
+calls `GET /analytics/artist/:id/v1`, and renders API-backed totals, freshness
+metadata, plays-over-time rows, source breakdowns, and track-performance rows.
+It has explicit loading, no-artist, empty-data, and error states. Content
+Protection staking remains visually separate because those numbers are not yet
+backed by analytics events.
 
 The artist analytics endpoints now read from normalized analytics layers. Local
 development and tests use the existing `AnalyticsWarehouseExportService`
@@ -41,23 +48,22 @@ metadata. BigQuery reads are bounded by artist id and explicit time windows,
 use named query parameters, have a configurable maximum-bytes-billed guard, and
 are cached briefly in-process to avoid repeated identical dashboard queries.
 
-## Actions
+## Implemented Surface
 
-1. **Aggregation job**
-   - Daily rollup of plays and payout totals.
-   - Store in analytics view table.
-2. **API endpoint**
-   - `GET /analytics/artist/:id` with date range.
-   - Return totals and per-track breakdown.
-3. **UI stub**
-   - Simple table of plays + payouts.
-   - CSV export optional.
+- Time-window selector for 7, 30, and 90 day windows.
+- KPI cards for total plays, total payout, top track, and explicit unavailable
+  follower growth.
+- Status strip for data source, freshness, selected window, and cache state.
+- Plays-over-time chart from `playsOverTime`.
+- Track performance table from `trackPerformance`.
+- Empty and error states that do not display fake values as real metrics.
 
 ## MVP Acceptance Criteria
 
-- Artists can view totals for last 7/30 days.
-- Per-track breakdown visible.
-- Data updates daily.
+- Artists can view totals for 7/30/90 day windows.
+- Per-track breakdown is visible when the API has rows.
+- Data freshness is communicated from API metadata.
+- New artists with no rows see an explicit empty state.
 
 ## Dependencies
 
@@ -66,3 +72,10 @@ are cached briefly in-process to avoid repeated identical dashboard queries.
 - Durable event ledger facts/views for current backend reads; production
   BigQuery reporting mode requires Google ADC and the `ANALYTICS_REPORT_SOURCE`
   / `ANALYTICS_BIGQUERY_*` backend environment variables.
+
+## Verification
+
+- Frontend API wrapper coverage:
+  `web/src/lib/api.test.ts`.
+- Dashboard loading, error, empty, no-artist, and populated rendering coverage:
+  `web/src/components/analytics/ArtistAnalyticsDashboard.test.tsx`.

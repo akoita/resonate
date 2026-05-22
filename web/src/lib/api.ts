@@ -414,6 +414,98 @@ export type ArtistProfile = {
   payoutAddress: string;
 };
 
+export type ArtistAnalyticsPayout = {
+  paymentToken: string;
+  assetId: string | null;
+  symbol: string;
+  decimals: number;
+  settlementAmount: string;
+  settlementAmountUnits: string;
+  canonicalAmountUsd: number;
+  count: number;
+};
+
+export type ArtistAnalyticsTrack = {
+  trackId: string;
+  title: string;
+  plays: number;
+  payoutUsd: number;
+  payoutsByAsset: ArtistAnalyticsPayout[];
+};
+
+export type ArtistAnalyticsTimePoint = {
+  date: string;
+  plays: number;
+  payoutUsd: number;
+};
+
+export type ArtistAnalyticsMeta = {
+  source: "warehouse_export" | "bigquery";
+  generatedAt: string;
+  timeWindow: {
+    from: string;
+    to: string;
+    days: number;
+  };
+  freshness: {
+    asOf: string | null;
+    lagSeconds: number | null;
+  };
+  isEmpty: boolean;
+  cache: {
+    hit: boolean;
+    ttlSeconds: number;
+  };
+  query?: {
+    projectId: string;
+    datasetId: string;
+    factsTable: string;
+    viewsTable: string;
+    maximumBytesBilled: string;
+    totalBytesProcessed?: string;
+    cacheHit?: boolean;
+  };
+};
+
+export type ArtistAnalyticsDashboard = {
+  summary: {
+    artistId: string;
+    days: number;
+    totalPlays: number;
+    totalPayoutUsd: number;
+    payoutsByAsset: ArtistAnalyticsPayout[];
+  };
+  tracks: ArtistAnalyticsTrack[];
+  topTracks: ArtistAnalyticsTrack[];
+  sessions: Array<{
+    sessionId: string;
+    plays: number;
+    payoutUsd: number;
+    payoutsByAsset: ArtistAnalyticsPayout[];
+  }>;
+  sources: Array<{
+    source: string;
+    plays: number;
+  }>;
+  playsOverTime: ArtistAnalyticsTimePoint[];
+  trackPerformance: ArtistAnalyticsTrack[];
+  listenerGrowth?: {
+    status: "unavailable";
+    reason: string;
+  };
+  export: {
+    artistId: string;
+    days: number;
+    totalPlays: number;
+    totalPayoutUsd: number;
+    payoutsByAsset: ArtistAnalyticsPayout[];
+    generatedAt: string;
+    source: "warehouse_export" | "bigquery";
+    freshness: ArtistAnalyticsMeta["freshness"];
+  };
+  meta: ArtistAnalyticsMeta;
+};
+
 export async function getArtistMe(token: string) {
   const isMockAuth = (typeof window !== "undefined" && localStorage.getItem("resonate.mock_auth") === "true") || process.env.NEXT_PUBLIC_MOCK_AUTH === "true";
 
@@ -426,6 +518,19 @@ export async function getArtistMe(token: string) {
     };
   }
   return apiRequest<ArtistProfile | null>("/artists/me", { silentErrorCodes: [401] }, token);
+}
+
+export async function getArtistAnalyticsDashboard(
+  token: string,
+  artistId: string,
+  days = 30,
+) {
+  const search = new URLSearchParams({ days: String(days) });
+  return apiRequest<ArtistAnalyticsDashboard>(
+    `/analytics/artist/${encodeURIComponent(artistId)}/v1?${search.toString()}`,
+    { cache: "no-store" },
+    token,
+  );
 }
 
 export type TrustTier = {
