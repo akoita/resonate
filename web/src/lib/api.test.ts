@@ -68,6 +68,62 @@ describe('API Client', () => {
     });
   });
 
+  describe('getArtistAnalyticsDashboard', () => {
+    it('fetches the artist dashboard from the authenticated analytics endpoint', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            summary: {
+              artistId: 'artist-1',
+              days: 30,
+              totalPlays: 4,
+              totalPayoutUsd: 1.25,
+              payoutsByAsset: [],
+            },
+            tracks: [],
+            topTracks: [],
+            sessions: [],
+            sources: [],
+            playsOverTime: [],
+            trackPerformance: [],
+            export: {
+              artistId: 'artist-1',
+              days: 30,
+              totalPlays: 4,
+              totalPayoutUsd: 1.25,
+              payoutsByAsset: [],
+              generatedAt: '2026-05-22T12:00:00.000Z',
+              source: 'bigquery',
+              freshness: { asOf: null, lagSeconds: null },
+            },
+            meta: {
+              source: 'bigquery',
+              generatedAt: '2026-05-22T12:00:00.000Z',
+              timeWindow: {
+                from: '2026-04-22T12:00:00.000Z',
+                to: '2026-05-22T12:00:00.000Z',
+                days: 30,
+              },
+              freshness: { asOf: null, lagSeconds: null },
+              isEmpty: false,
+              cache: { hit: false, ttlSeconds: 60 },
+            },
+          }),
+      });
+
+      const result = await api.getArtistAnalyticsDashboard('artist-token', 'artist-1', 30);
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/analytics/artist/artist-1/v1?days=30');
+      expect(opts.headers.get('Authorization')).toBe('Bearer artist-token');
+      expect(opts.cache).toBe('no-store');
+      expect(result.summary.totalPlays).toBe(4);
+      expect(result.meta.source).toBe('bigquery');
+    });
+  });
+
   describe('getAgentNextPick', () => {
     it('posts to the session runtime next-pick endpoint', async () => {
       mockFetch.mockResolvedValueOnce({
