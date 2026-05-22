@@ -72,10 +72,48 @@ Deploy the `LicenseRegistry` and `AncestryTracker` contracts. Mint License NFTs 
 
 ---
 
+## Phase 2A: Remix Studio Foundation
+
+**Priority:** P1 — Parallel Product Track
+**Depends on:** Phase 1, rights routing, AI generation provenance
+
+### Scope
+
+Build the rights-gated remix product surface before advanced on-chain remix
+royalties are complete. This phase turns the remix license tier into an actual
+creation workflow while preserving enough provenance to connect later to
+`LicenseRegistry`, `AncestryTracker`, and recursive royalties.
+
+| Task | Component | Related Doc |
+| --- | --- | --- |
+| Add remix eligibility service | Backend | [Remix Studio RFC](./remix-studio.md) |
+| Add durable `RemixProject` records | Backend (Prisma) | [Remix Studio Backlog](../features/remix_studio_backlog.md) |
+| Add release/stem Remix CTA | Frontend | [Remix Studio](../features/remix_studio.md) |
+| Add Remix Studio page | Frontend | [Remix Studio RFC](./remix-studio.md) |
+| Add AI remix generation provider boundary | Backend | [AI Derivative Rights Policy](./ai-derivative-rights-policy.md) |
+| Persist generation provenance and source lineage | Backend | [AI Derivative Rights Policy](./ai-derivative-rights-policy.md) |
+| Emit remix lifecycle events | Backend/Analytics | [Remix Studio Backlog](../features/remix_studio_backlog.md) |
+
+### Deliverables
+
+- Users can start private remix projects only for eligible source material
+- Remix license state controls generation, publication, and export actions
+- AI-assisted draft generation stores source IDs, prompt, provider, job ID,
+  policy version, and attribution
+- Published remix data is shaped so it can later mint License NFTs and ancestry
+  records without reprocessing old projects
+
+### Estimated Effort
+
+3-5 sprints, depending on first AI provider capabilities and frontend audio
+preview depth
+
+---
+
 ## Phase 3: Multi-Generational Royalties
 
 **Priority:** P1 — Next Sprint
-**Depends on:** Phase 2 (`AncestryTracker`)
+**Depends on:** Phase 2 (`AncestryTracker`), Phase 2A for product lineage
 
 ### Scope
 
@@ -171,12 +209,16 @@ Phase 1: License Metadata Extension
     │
     ▼
 Phase 2: LicenseRegistry + AncestryTracker
-    │                    │
-    ▼                    ▼
-Phase 3: RoyaltySplitter    Phase 4: Exclusive + Legal
-                                │
-                                ▼
-                         Phase 5: Cross-Platform Enforcement
+    │
+    ├──► Phase 2A: Remix Studio Foundation
+    │        │
+    │        ▼
+    ├──► Phase 3: RoyaltySplitter
+    │
+    └──► Phase 4: Exclusive + Legal
+             │
+             ▼
+      Phase 5: Cross-Platform Enforcement
 ```
 
 ---

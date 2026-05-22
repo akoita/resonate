@@ -378,7 +378,10 @@ Given this model, the immediate priorities shift slightly:
 | **P0**   | Tier-based access gating (free vs. pro)             | Foundation for the business model |
 | **P0**   | Subscription billing integration                    | Revenue enablement                |
 | **P0**   | Stem preview toggle in the main player (for Pro)    | Core differentiator UX            |
+| **P0**   | Remix Studio RFC and eligibility policy             | Turn remix rights into a product workflow |
 | **P1**   | License type selector in buy flow (#311)            | Marketplace revenue               |
+| **P1**   | Rights-gated Remix Studio MVP                       | Capture the licensed AI-remix market signal |
 | **P1**   | Agent wallet pre-funding from subscription          | Seamless micro-payment UX         |
 | **P2**   | LicenseRegistry contract deployment                 | On-chain proof of licensing       |
+| **P2**   | Remix lineage and in-platform publish flow          | Attribution, provenance, and future recursive royalties |
 | **P2**   | Artist landing page ("Your stems, your storefront") | Artist onboarding narrative       |
