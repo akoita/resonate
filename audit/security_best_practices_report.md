@@ -1299,3 +1299,55 @@ cd backend && npm run lint
 cd backend && npm run test
 git diff --check
 ```
+
+## Addendum: #898 Shows Campaign And Pledge Models
+
+Reviewed the Shows backend truth-layer slice for #898, including Prisma schema
+models, the SQL migration, shared status-validation constants, Testcontainer
+integration coverage, and feature docs. No Critical or High findings were
+identified in the changed code.
+
+### Scope
+
+- `backend/prisma/schema.prisma`
+- `backend/prisma/migrations/20260522143000_show_campaign_models/migration.sql`
+- `backend/src/modules/shows/show-status.ts`
+- `backend/src/tests/shows_campaign_models.integration.spec.ts`
+- `docs/features/README.md`
+- `docs/features/resonate_shows.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- This slice adds durable data structures only; it does not introduce a new
+  controller, unauthenticated route, queue consumer, filesystem path, external
+  network client, or raw SQL execution path in application code.
+- Campaign, pledge, confirmation, and event lifecycle values are constrained
+  by Prisma enums and mirrored in backend validation constants for the upcoming
+  public API slice.
+- Payment asset and chain fields are stored as per-record metadata; the models
+  do not hardcode a production token address, chain, project ID, URL, or secret.
+- The secret-pattern scan reports the pre-existing `agentPrivateKey` schema
+  field comment outside this change's Shows model block. No literal credential
+  or private key material was introduced by #898.
+
+### Commands Run
+
+```bash
+cd backend && npx prisma validate
+cd backend && npx prisma generate
+cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='shows_campaign_models.integration'
+cd backend && npm run lint
+cd backend && npm run test
+DATABASE_URL='postgresql://test:test@localhost:<throwaway-port>/resonate_test' npx prisma migrate deploy
+git diff --check
+rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|ghp_|gho_|sk-[A-Za-z0-9]' backend/prisma/schema.prisma backend/prisma/migrations/20260522143000_show_campaign_models/migration.sql backend/src/modules/shows/show-status.ts backend/src/tests/shows_campaign_models.integration.spec.ts docs/features/README.md docs/features/resonate_shows.md
+rg -n 'rawQuery|executeRaw|\$queryRaw|eval\(|JSON\.parse' backend/prisma/schema.prisma backend/prisma/migrations/20260522143000_show_campaign_models/migration.sql backend/src/modules/shows/show-status.ts backend/src/tests/shows_campaign_models.integration.spec.ts
+rg -n '@Controller|@Get|@Post|@Put|@Delete|@Patch|@Body|@Query|@Param|@UseGuards|@Roles' backend/src/modules/shows/show-status.ts backend/src/tests/shows_campaign_models.integration.spec.ts
+```

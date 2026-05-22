@@ -11,11 +11,12 @@ owner: "@akoita"
 `partial`
 
 The fan-funded Shows wedge is visible in the web app through the home campaign
-hero, `/shows`, and `/shows/sennarin-paris`. The current implementation uses
-client-side seeded campaign data and links to an existing Sepolia
-`RevenueEscrow` contract as an honest stand-in. The production campaign backend,
-campaign creation flow, pledge transaction flow, and purpose-built campaign
-contract are follow-up work.
+hero, `/shows`, and `/shows/sennarin-paris`. The current implementation still
+uses client-side seeded campaign data and links to an existing Sepolia
+`RevenueEscrow` contract as an honest stand-in. The backend truth layer has
+started with Prisma models for campaigns, pledge tiers, pledge receipts, and
+lifecycle events; public APIs, campaign creation, pledge transactions, and a
+purpose-built campaign contract remain follow-up work.
 
 The next step is documented in
 [Resonate Shows Production Plan](resonate_shows_production_plan.md): replace the
@@ -103,7 +104,7 @@ Positioning:
 | `/shows/sennarin-paris` | implemented | Detail page with funding progress, signal tiers, and how-it-works copy. |
 | Escrow contract link | partial | Links to deployed Sepolia `RevenueEscrow` as a placeholder until campaign-specific escrow ships. |
 | Pledge flow | planned | Current UI communicates tiers; wallet transaction path is not live. |
-| Campaign backend | planned | `web/src/lib/shows.ts` preserves API-shaped functions for future `/api/campaigns` integration. |
+| Campaign backend | partial | Prisma models exist for `ShowCampaign`, `ShowCampaignTier`, `ShowPledge`, and `ShowCampaignEvent`; public API routes are not live yet. |
 
 ## Production Beta Requirements
 
@@ -130,6 +131,9 @@ donation. The fan-facing promise is:
 - `web/src/lib/shows.ts` defines the current seeded campaign model and the
   planned async shape for a future backend API.
 - `web/src/styles/shows.css` scopes the Shows presentation layer.
+- `backend/src/tests/shows_campaign_models.integration.spec.ts` verifies the
+  campaign, tier, pledge, and lifecycle-event data model against Testcontainer
+  Postgres.
 
 ## Product Notes
 
