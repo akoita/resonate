@@ -56,6 +56,10 @@ When adding a new environment variable:
 | `DEMUCS_CLOUD_RUN_JOB_NAME` | Backend | Cloud Run Job name to execute after publishing each `stem-separate` message |
 | `GCP_BILLING_QUOTA_PROJECT` | CI | Optional quota/billing project for Cloud Build submission; deploy CI defaults it to `GCP_PROJECT_ID` |
 | `GCP_CLOUD_BUILD_SOURCE_STAGING_DIR` | CI | Optional Cloud Storage prefix for `gcloud builds submit` source archives; deploy CI defaults it from `GCP_PROJECT_ID` |
+| `ANALYTICS_DATAFLOW_ARTIFACT_REGISTRY_REPOSITORY` | CI | Optional Artifact Registry repository for the analytics Dataflow Flex Template image. Defaults to `resonate-<environment>` |
+| `ANALYTICS_DATAFLOW_TEMPLATE_BUCKET` | CI | Optional GCS bucket for analytics Dataflow template, staging, and temp artifacts. Defaults to `<GCP_PROJECT_ID>-analytics-dataflow` |
+| `ANALYTICS_DATAFLOW_TEMPLATE_PREFIX` | CI | Optional GCS prefix for analytics Dataflow `template.json`. Defaults to `templates/<environment>/analytics-dataflow` |
+| `ANALYTICS_DATAFLOW_TEMPLATE_GCS_PATH` | CI | Optional full `gs://.../template.json` override for the analytics Dataflow Flex Template publish workflow |
 | `AA_BUNDLER` | Backend / frontend server runtime | Server-side bundler URL used by account-abstraction flows and the `/api/bundler` proxy |
 | `PIMLICO_API_KEY` | Frontend server runtime | Optional server-side Pimlico key used by `/api/bundler` without exposing it to the browser |
 | `FRONTEND_URL` | Backend | Public frontend origin used for generated metadata links, self-hosted WebAuthn fallback, and CORS allowlisting |

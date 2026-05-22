@@ -1,0 +1,201 @@
+name: Publish Analytics Dataflow Flex Template
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub environment and Resonate deploy environment.
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - dev
+      image_tag:
+        description: Optional container tag. Defaults to the GitHub SHA.
+        required: false
+        default: ""
+        type: string
+      artifact_registry_repository:
+        description: Optional Artifact Registry repo name. Defaults to resonate-<environment>.
+        required: false
+        default: ""
+        type: string
+      template_gcs_path:
+        description: Optional full gs:// path for template.json. Overrides template bucket/prefix inputs.
+        required: false
+        default: ""
+        type: string
+      template_bucket:
+        description: Optional GCS bucket for templates/staging/temp. Defaults to <project>-analytics-dataflow.
+        required: false
+        default: ""
+        type: string
+      template_prefix:
+        description: Optional GCS prefix for template.json. Defaults to templates/<environment>/analytics-dataflow.
+        required: false
+        default: ""
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-analytics-dataflow-flex-template.yml"
+      - ".github/scripts/submit-cloud-build.sh"
+      - "workers/analytics-dataflow/**"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish Flex Template
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'staging' }}
+    outputs:
+      image_uri: ${{ steps.coordinates.outputs.image_uri }}
+      template_gcs_path: ${{ steps.coordinates.outputs.template_gcs_path }}
+      staging_location: ${{ steps.coordinates.outputs.staging_location }}
+      temp_location: ${{ steps.coordinates.outputs.temp_location }}
+      artifact_bucket: ${{ steps.coordinates.outputs.artifact_bucket }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Resolve artifact coordinates
+        id: coordinates
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_ENVIRONMENT: ${{ inputs.environment }}
+          INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
+          INPUT_ARTIFACT_REGISTRY_REPOSITORY: ${{ inputs.artifact_registry_repository }}
+          INPUT_TEMPLATE_GCS_PATH: ${{ inputs.template_gcs_path }}
+          INPUT_TEMPLATE_BUCKET: ${{ inputs.template_bucket }}
+          INPUT_TEMPLATE_PREFIX: ${{ inputs.template_prefix }}
+          DEFAULT_ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ANALYTICS_DATAFLOW_ARTIFACT_REGISTRY_REPOSITORY }}
+          DEFAULT_TEMPLATE_GCS_PATH: ${{ vars.ANALYTICS_DATAFLOW_TEMPLATE_GCS_PATH }}
+          DEFAULT_TEMPLATE_BUCKET: ${{ vars.ANALYTICS_DATAFLOW_TEMPLATE_BUCKET }}
+          DEFAULT_TEMPLATE_PREFIX: ${{ vars.ANALYTICS_DATAFLOW_TEMPLATE_PREFIX }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            environment="${INPUT_ENVIRONMENT}"
+          else
+            environment="staging"
+          fi
+
+          if [[ -z "${GCP_PROJECT_ID}" || -z "${GCP_REGION}" ]]; then
+            echo "Missing required GitHub environment variables: GCP_PROJECT_ID and/or GCP_REGION" >&2
+            exit 1
+          fi
+
+          tag="${INPUT_IMAGE_TAG:-${GITHUB_SHA}}"
+          repository="${INPUT_ARTIFACT_REGISTRY_REPOSITORY:-${DEFAULT_ARTIFACT_REGISTRY_REPOSITORY:-resonate-${environment}}}"
+          explicit_template_bucket="${INPUT_TEMPLATE_BUCKET:-${DEFAULT_TEMPLATE_BUCKET:-}}"
+          template_gcs_path="${INPUT_TEMPLATE_GCS_PATH:-${DEFAULT_TEMPLATE_GCS_PATH:-}}"
+          if [[ -n "${explicit_template_bucket}" ]]; then
+            artifact_bucket="${explicit_template_bucket}"
+          elif [[ -n "${template_gcs_path}" ]]; then
+            if [[ "${template_gcs_path}" != gs://*/* ]]; then
+              echo "template_gcs_path must be a gs:// URI with a bucket and object path." >&2
+              exit 1
+            fi
+            artifact_bucket="${template_gcs_path#gs://}"
+            artifact_bucket="${artifact_bucket%%/*}"
+          else
+            artifact_bucket="${GCP_PROJECT_ID}-analytics-dataflow"
+          fi
+          template_prefix="${INPUT_TEMPLATE_PREFIX:-${DEFAULT_TEMPLATE_PREFIX:-templates/${environment}/analytics-dataflow}}"
+          template_prefix="${template_prefix#/}"
+          template_prefix="${template_prefix%/}"
+
+          image_uri="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${repository}/analytics-dataflow:${tag}"
+          if [[ -z "${template_gcs_path}" ]]; then
+            template_gcs_path="gs://${artifact_bucket}/${template_prefix}/template.json"
+          fi
+          if [[ "${template_gcs_path}" != gs://* ]]; then
+            echo "template_gcs_path must be a gs:// URI." >&2
+            exit 1
+          fi
+
+          staging_location="gs://${artifact_bucket}/staging/${environment}/analytics-dataflow"
+          temp_location="gs://${artifact_bucket}/temp/${environment}/analytics-dataflow"
+
+          {
+            echo "environment=${environment}"
+            echo "image_uri=${image_uri}"
+            echo "template_gcs_path=${template_gcs_path}"
+            echo "staging_location=${staging_location}"
+            echo "temp_location=${temp_location}"
+            echo "artifact_bucket=${artifact_bucket}"
+          } >> "${GITHUB_OUTPUT}"
+
+          {
+            echo "### Analytics Dataflow Flex Template"
+            echo ""
+            echo "- environment: \`${environment}\`"
+            echo "- image: \`${image_uri}\`"
+            echo "- template: \`${template_gcs_path}\`"
+            echo "- staging: \`${staging_location}\`"
+            echo "- temp: \`${temp_location}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Build and push analytics Dataflow image
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          IMAGE_URI: ${{ steps.coordinates.outputs.image_uri }}
+        run: |
+          bash .github/scripts/submit-cloud-build.sh \
+            --project "${GCP_PROJECT_ID}" \
+            --context workers/analytics-dataflow \
+            --dockerfile Dockerfile \
+            --git-source-url "https://github.com/${GITHUB_REPOSITORY}" \
+            --git-source-revision "${GITHUB_SHA}" \
+            --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
+            --image "${IMAGE_URI}"
+
+      - name: Publish Dataflow Flex Template spec
+        env:
+          IMAGE_URI: ${{ steps.coordinates.outputs.image_uri }}
+          TEMPLATE_GCS_PATH: ${{ steps.coordinates.outputs.template_gcs_path }}
+        run: ./build-flex-template.sh
+        working-directory: workers/analytics-dataflow
+
+      - name: Write resonate-iac handoff
+        env:
+          TEMPLATE_GCS_PATH: ${{ steps.coordinates.outputs.template_gcs_path }}
+          STAGING_LOCATION: ${{ steps.coordinates.outputs.staging_location }}
+          TEMP_LOCATION: ${{ steps.coordinates.outputs.temp_location }}
+          ARTIFACT_BUCKET: ${{ steps.coordinates.outputs.artifact_bucket }}
+        run: |
+          {
+            echo "### resonate-iac launch inputs"
+            echo ""
+            echo "\`\`\`text"
+            echo "analytics_dataflow_launch_enabled=true"
+            echo "analytics_dataflow_flex_template_gcs_path=${TEMPLATE_GCS_PATH}"
+            echo "analytics_dataflow_staging_location=${STAGING_LOCATION}"
+            echo "analytics_dataflow_temp_location=${TEMP_LOCATION}"
+            echo "analytics_dataflow_template_bucket_names=[\"${ARTIFACT_BUCKET}\"]"
+            echo "analytics_dataflow_worker_bucket_names=[\"${ARTIFACT_BUCKET}\"]"
+            echo "\`\`\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
