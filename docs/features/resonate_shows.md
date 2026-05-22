@@ -17,6 +17,12 @@ client-side seeded campaign data and links to an existing Sepolia
 campaign creation flow, pledge transaction flow, and purpose-built campaign
 contract are follow-up work.
 
+The next step is documented in
+[Resonate Shows Production Plan](resonate_shows_production_plan.md): replace the
+placeholder wedge with a working fan-funded live campaign loop backed by
+backend campaign state, pledge receipts, and a campaign-specific escrow
+contract.
+
 ## Who It Is For
 
 - Listeners who want to bring an artist to their city.
@@ -65,6 +71,18 @@ Treat the follower count as time-sensitive and refresh it before investor, press
 or launch material. The durable insight is the demand-risk problem, not the exact
 count.
 
+On May 21, 2026, Spotify announced Reserved, a Premium fan ticket-access feature
+that uses signals such as listening history, sharing, and location to reserve
+limited concert tickets for eligible fans. That announcement validates the
+broader live-fandom opportunity, but it targets access after a show already
+exists. Shows should differentiate upstream: fans help create the booking signal
+before the artist, venue, or promoter takes production risk.
+
+Positioning:
+
+> Spotify rewards super-fans with access to existing tours. Resonate lets fans
+> create the demand signal that gets the show booked.
+
 ## How It Works
 
 1. A campaign defines an artist, city, venue target, deadline, funding goal, and
@@ -86,6 +104,24 @@ count.
 | Escrow contract link | partial | Links to deployed Sepolia `RevenueEscrow` as a placeholder until campaign-specific escrow ships. |
 | Pledge flow | planned | Current UI communicates tiers; wallet transaction path is not live. |
 | Campaign backend | planned | `web/src/lib/shows.ts` preserves API-shaped functions for future `/api/campaigns` integration. |
+
+## Production Beta Requirements
+
+The placeholder copy should be removed once these production surfaces are live:
+
+- campaign data loads from backend APIs rather than seeded client data;
+- fans can select a tier, submit an on-chain pledge, and receive a receipt;
+- campaign progress is backed by persisted pledge records reconciled to on-chain
+  events;
+- failed or cancelled campaigns expose refunds;
+- cleared and booking-confirmed campaigns expose release/fulfillment state;
+- artists or approved operators can create and manage campaigns.
+
+The core fan incentive should be ticket credit or priority allocation, not a
+donation. The fan-facing promise is:
+
+> Pledge now. If the campaign clears, your pledge becomes ticket credit or
+> priority access. If it misses, you are refunded.
 
 ## Verification
 
@@ -110,3 +146,7 @@ same escrow-backed campaign primitive can later validate:
 The strategic wedge is international niche demand: passionate, distributed fan
 bases that are visible in social feeds but hard for artists to convert into
 production-safe booking decisions.
+
+For the production implementation plan, including API shape, contract scope,
+delivery slices, issue breakdown, and verification, see
+[Resonate Shows Production Plan](resonate_shows_production_plan.md).
