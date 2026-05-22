@@ -1,5 +1,6 @@
 import { AnalyticsIngestService } from "../modules/analytics/analytics_ingest.service";
 import { AnalyticsService } from "../modules/analytics/analytics.service";
+import { ArtistAnalyticsReportSource } from "../modules/analytics/analytics_bigquery_report";
 import { AnalyticsWarehouseExportService } from "../modules/analytics/analytics_warehouse";
 
 describe("analytics", () => {
@@ -9,12 +10,12 @@ describe("analytics", () => {
 
     await ingest.ingest({
       eventName: "license.granted",
-      occurredAt: new Date().toISOString(),
+      occurredAt: "2026-05-20T08:00:00.000Z",
       payload: { artistId: "artist-1", trackId: "track-1", title: "Neon Drift" },
     });
     await ingest.ingest({
       eventName: "payment.settled",
-      occurredAt: new Date().toISOString(),
+      occurredAt: "2026-05-20T08:01:00.000Z",
       payload: {
         artistId: "artist-1",
         trackId: "track-1",
@@ -53,7 +54,7 @@ describe("analytics", () => {
 
     await ingest.ingest({
       eventName: "license.granted",
-      occurredAt: new Date().toISOString(),
+      occurredAt: "2026-05-20T08:30:00.000Z",
       payload: {
         artistId: "artist-2",
         trackId: "track-9",
@@ -64,7 +65,7 @@ describe("analytics", () => {
     });
     await ingest.ingest({
       eventName: "payment.settled",
-      occurredAt: new Date().toISOString(),
+      occurredAt: "2026-05-20T08:31:00.000Z",
       payload: {
         artistId: "artist-2",
         trackId: "track-9",
@@ -102,7 +103,7 @@ describe("analytics", () => {
 
     await ingest.ingest({
       eventName: "playback.completed",
-      occurredAt: new Date().toISOString(),
+      occurredAt: "2026-05-20T09:00:00.000Z",
       payload: {
         artistId: "artist-warehouse",
         trackId: "track-warehouse",
@@ -113,7 +114,7 @@ describe("analytics", () => {
     });
     await ingest.ingest({
       eventName: "commerce.settled",
-      occurredAt: new Date().toISOString(),
+      occurredAt: "2026-05-20T09:01:00.000Z",
       payload: {
         artistId: "artist-warehouse",
         trackId: "track-warehouse",
@@ -150,5 +151,141 @@ describe("analytics", () => {
       }),
     );
     expect(result.sources[0]).toEqual(expect.objectContaining({ source: "web", plays: 1 }));
+  });
+
+  it("returns explicit no-data metadata instead of placeholder dashboard values", async () => {
+    const ingest = new AnalyticsIngestService();
+    const analytics = new AnalyticsService(ingest);
+
+    const result = await analytics.getArtistDashboard("artist-empty", 30);
+
+    expect(result.summary.totalPlays).toBe(0);
+    expect(result.summary.totalPayoutUsd).toBe(0);
+    expect(result.tracks).toEqual([]);
+    expect(result.playsOverTime).toEqual([]);
+    expect(result.meta).toEqual(
+      expect.objectContaining({
+        source: "warehouse_export",
+        isEmpty: true,
+        freshness: { asOf: null, lagSeconds: null },
+      }),
+    );
+    expect(result.listenerGrowth.status).toBe("unavailable");
+  });
+
+  it("aggregates dashboard metrics from a BigQuery-backed report source", async () => {
+    const ingest = new AnalyticsIngestService();
+    const reportSource: ArtistAnalyticsReportSource = {
+      async listArtistFacts() {
+        return {
+          facts: [
+            {
+              factId: "fact_play",
+              factType: "playback_event",
+              eventId: "evt_play",
+              occurredAt: "2026-05-20T10:00:00.000Z",
+              occurredDate: "2026-05-20",
+              artistId: "artist-bq",
+              trackId: "track-bq",
+              count: 1,
+              dimensions: {
+                eventName: "playback.completed",
+                title: "Warehouse Signal",
+                sessionId: "session-bq",
+                source: "web",
+              },
+            },
+            {
+              factId: "fact_payout",
+              factType: "commerce_event",
+              eventId: "evt_payout",
+              occurredAt: "2026-05-20T10:01:00.000Z",
+              occurredDate: "2026-05-20",
+              artistId: "artist-bq",
+              trackId: "track-bq",
+              canonicalAmountUsd: 4.5,
+              count: 1,
+              dimensions: {
+                eventName: "commerce.settled",
+                title: "Warehouse Signal",
+                sessionId: "session-bq",
+                source: "web",
+                paymentToken: "0x3333333333333333333333333333333333333333",
+                paymentAssetId: "base:usdc",
+                paymentAssetSymbol: "USDC",
+                paymentAssetDecimals: 6,
+                settlementAmountUnits: "4500000",
+              },
+            },
+          ],
+          views: [
+            {
+              viewName: "daily_event_artist_track",
+              grain: "day_event_artist_track",
+              date: "2026-05-20",
+              eventName: "playback.completed",
+              artistId: "artist-bq",
+              trackId: "track-bq",
+              eventCount: 1,
+              playCount: 1,
+              payoutUsd: 0,
+            },
+            {
+              viewName: "daily_event_artist_track",
+              grain: "day_event_artist_track",
+              date: "2026-05-20",
+              eventName: "commerce.settled",
+              artistId: "artist-bq",
+              trackId: "track-bq",
+              eventCount: 1,
+              playCount: 0,
+              payoutUsd: 4.5,
+            },
+          ],
+          metadata: {
+            source: "bigquery",
+            generatedAt: "2026-05-22T12:00:00.000Z",
+            timeWindow: {
+              from: "2026-04-22T12:00:00.000Z",
+              to: "2026-05-22T12:00:00.000Z",
+              days: 30,
+            },
+            freshness: {
+              asOf: "2026-05-20T10:01:00.000Z",
+              lagSeconds: 179940,
+            },
+            isEmpty: false,
+            cache: {
+              hit: false,
+              ttlSeconds: 60,
+            },
+          },
+        };
+      },
+    };
+    const analytics = new AnalyticsService(ingest, undefined, reportSource);
+
+    const result = await analytics.getArtistDashboard("artist-bq", 30);
+
+    expect(result.summary.totalPlays).toBe(1);
+    expect(result.summary.totalPayoutUsd).toBe(4.5);
+    expect(result.topTracks[0]).toEqual(
+      expect.objectContaining({
+        trackId: "track-bq",
+        title: "Warehouse Signal",
+        plays: 1,
+        payoutUsd: 4.5,
+      }),
+    );
+    expect(result.playsOverTime).toEqual([{ date: "2026-05-20", plays: 1, payoutUsd: 4.5 }]);
+    expect(result.trackPerformance[0].payoutsByAsset[0]).toEqual(
+      expect.objectContaining({
+        symbol: "USDC",
+        settlementAmount: "4.5",
+        canonicalAmountUsd: 4.5,
+      }),
+    );
+    expect(result.meta.source).toBe("bigquery");
+    expect(result.export.freshness.asOf).toBe("2026-05-20T10:01:00.000Z");
   });
 });

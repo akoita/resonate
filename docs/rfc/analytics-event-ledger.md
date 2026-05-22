@@ -257,8 +257,11 @@ Deletion should not mean corrupting financial history. Instead:
 6. **Reporting and dashboard migration**
    - Tracking issue:
      [#872](https://github.com/akoita/resonate/issues/872)
-   - Move artist analytics, Punchline Drops funnels, and public dispute
-     analytics/reporting onto facts/views instead of in-memory events.
+   - Artist analytics can now read BigQuery `analytics_facts` and
+     `analytics_views` by setting `ANALYTICS_REPORT_SOURCE=bigquery`; responses
+     include time-window, freshness, source, cache, and no-data metadata.
+   - Punchline Drops funnels and public dispute analytics/reporting remain
+     follow-up candidates for facts/views-backed reports.
 
 ## Open Questions
 
