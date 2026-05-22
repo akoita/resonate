@@ -53,6 +53,50 @@ IMAGE_URI="$IMAGE_URI" TEMPLATE_GCS_PATH="$TEMPLATE_GCS_PATH" ./build-flex-templ
 `resonate-iac` should set `analytics_dataflow_flex_template_gcs_path` to the
 same `TEMPLATE_GCS_PATH` when `analytics_dataflow_launch_enabled=true`.
 
+## Publish From GitHub Actions
+
+Use the **Publish Analytics Dataflow Flex Template** workflow in this repository
+to publish the staging artifact. On `main`, changes under
+`workers/analytics-dataflow/` publish the staging artifact automatically. An
+operator can also run the workflow manually with `workflow_dispatch`.
+
+The workflow uses the same GitHub environment variables and secrets as app image
+publication:
+
+| Name | Type | Purpose |
+| --- | --- | --- |
+| `GCP_PROJECT_ID` | environment variable | Target GCP project. |
+| `GCP_REGION` | environment variable | Artifact Registry and Dataflow region, for example `europe-west1`. |
+| `GCP_WIF_PROVIDER` | secret | Workload Identity Federation provider. |
+| `GCP_ARTIFACT_REGISTRY_SA_EMAIL` | secret | Publisher service account used for Cloud Build, Artifact Registry, Dataflow template build, and GCS object writes. |
+| `ANALYTICS_DATAFLOW_ARTIFACT_REGISTRY_REPOSITORY` | optional environment variable | Artifact Registry repository. Defaults to `resonate-<environment>`. |
+| `ANALYTICS_DATAFLOW_TEMPLATE_BUCKET` | optional environment variable | GCS bucket for template, staging, and temp artifacts. Defaults to `<GCP_PROJECT_ID>-analytics-dataflow`. |
+| `ANALYTICS_DATAFLOW_TEMPLATE_PREFIX` | optional environment variable | Prefix for `template.json`. Defaults to `templates/<environment>/analytics-dataflow`. |
+| `ANALYTICS_DATAFLOW_TEMPLATE_GCS_PATH` | optional environment variable | Full `gs://.../template.json` override. |
+
+Default staging convention:
+
+```text
+IMAGE_URI=europe-west1-docker.pkg.dev/<project>/resonate-staging/analytics-dataflow:<sha>
+TEMPLATE_GCS_PATH=gs://<project>-analytics-dataflow/templates/staging/analytics-dataflow/template.json
+analytics_dataflow_staging_location=gs://<project>-analytics-dataflow/staging/staging/analytics-dataflow
+analytics_dataflow_temp_location=gs://<project>-analytics-dataflow/temp/staging/analytics-dataflow
+```
+
+The workflow writes the resolved `IMAGE_URI`, `TEMPLATE_GCS_PATH`,
+`analytics_dataflow_staging_location`, and `analytics_dataflow_temp_location`
+to the GitHub Actions job summary. Pass those values to the `resonate-iac`
+deploy workflow when enabling Terraform-managed launch:
+
+```text
+analytics_dataflow_launch_enabled=true
+analytics_dataflow_flex_template_gcs_path=<published TEMPLATE_GCS_PATH>
+analytics_dataflow_staging_location=<published staging location>
+analytics_dataflow_temp_location=<published temp location>
+analytics_dataflow_template_bucket_names=["<template bucket>"]
+analytics_dataflow_worker_bucket_names=["<staging/temp bucket>"]
+```
+
 ## Behavior
 
 - Valid envelopes are written to `events_raw`, `events_clean`,

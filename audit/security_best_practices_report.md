@@ -1351,3 +1351,58 @@ rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|O
 rg -n 'rawQuery|executeRaw|\$queryRaw|eval\(|JSON\.parse' backend/prisma/schema.prisma backend/prisma/migrations/20260522143000_show_campaign_models/migration.sql backend/src/modules/shows/show-status.ts backend/src/tests/shows_campaign_models.integration.spec.ts
 rg -n '@Controller|@Get|@Post|@Put|@Delete|@Patch|@Body|@Query|@Param|@UseGuards|@Roles' backend/src/modules/shows/show-status.ts backend/src/tests/shows_campaign_models.integration.spec.ts
 ```
+
+## Addendum: #911 Analytics Dataflow Flex Template Publishing
+
+Reviewed the analytics Dataflow Flex Template publication workflow for #911,
+including GitHub Actions GCP authentication, Cloud Build image publication,
+GCS template publication, operator handoff output, and docs. No Critical or
+High findings were identified in the changed code.
+
+### Scope
+
+- `.github/workflows/publish-analytics-dataflow-flex-template.yml`
+- `.agents/plans/issue-911.md`
+- `workers/analytics-dataflow/README.md`
+- `docs/deployment/environment.md`
+- `docs/features/README.md`
+- `docs/features/analytics_event_ledger.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- The workflow authenticates through GitHub OIDC / Workload Identity Federation
+  and references secret names only; it does not store service account keys,
+  tokens, passwords, private keys, project IDs, bucket names, or production URLs
+  in source.
+- Artifact Registry and GCS locations are derived from GitHub environment
+  variables or workflow inputs. Defaults use `GCP_PROJECT_ID`,
+  `GCP_REGION`, and the selected environment instead of hardcoded deployed
+  values.
+- The workflow does not execute untrusted user input as shell code. Inputs are
+  treated as strings for image tags, repository names, and GCS paths, with a
+  `gs://` guard for the template path.
+- The workflow writes `resonate-iac` launch inputs to the GitHub Actions summary
+  so operators can copy values without exposing secrets.
+
+### Commands Run
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+import yaml
+yaml.safe_load(Path('.github/workflows/publish-analytics-dataflow-flex-template.yml').read_text())
+PY
+bash -n workers/analytics-dataflow/build-flex-template.sh
+cd workers/analytics-dataflow && python3 -m unittest test_analytics_transform.py
+cd workers/analytics-dataflow && python3 -m py_compile analytics_transform.py main.py
+git diff --check
+rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|ghp_|gho_|sk-[A-Za-z0-9]' .github/workflows/publish-analytics-dataflow-flex-template.yml workers/analytics-dataflow/README.md docs/deployment/environment.md docs/features/README.md docs/features/analytics_event_ledger.md .agents/plans/issue-911.md
+rg -n 'eval\(|curl .*\||bash -c|rm -rf|docker login|gcloud auth print-access-token|set-output' .github/workflows/publish-analytics-dataflow-flex-template.yml workers/analytics-dataflow/README.md docs/deployment/environment.md docs/features/analytics_event_ledger.md
+```

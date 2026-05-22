@@ -43,7 +43,11 @@ persistence by setting `ANALYTICS_EVENT_PUBLISHING_ENABLED=true` and
 first Dataflow processor artifact is available in
 `workers/analytics-dataflow/`; it packages an Apache Beam streaming pipeline as
 a Flex Template that can consume the Terraform-managed subscription and write
-raw, clean, fact, view, and quarantine rows to BigQuery.
+raw, clean, fact, view, and quarantine rows to BigQuery. The
+`Publish Analytics Dataflow Flex Template` GitHub Actions workflow builds the
+worker image, pushes it to environment-scoped Artifact Registry, publishes the
+Flex Template spec JSON to GCS, and prints the `resonate-iac` launch inputs for
+`analytics_dataflow_launch_enabled=true`.
 
 ## Who It Is For
 
@@ -101,6 +105,7 @@ aggregates, not from retaining raw personal data forever.
 | `analytics_quarantine` | Implemented export layer for invalid or unsupported records that must not be silently dropped. |
 | Pub/Sub event publishing | Implemented as a disabled-by-default backend publisher. When enabled, each stored envelope is published with event metadata attributes for Dataflow consumers; non-strict failures are logged without breaking user flows. |
 | Dataflow processor | Implemented in `workers/analytics-dataflow/` as a Python Apache Beam streaming pipeline with Flex Template metadata, packaging script, eventId windowed dedupe, validation, layer derivation, and quarantine behavior. |
+| Flex Template publishing | Implemented through `.github/workflows/publish-analytics-dataflow-flex-template.yml`; staging publishes to a stable `gs://.../template.json` path and outputs the matching `resonate-iac` launch inputs. |
 | Warehouse loading/backfill | Implemented through `ANALYTICS_WAREHOUSE_TARGET=local_json` for idempotent JSONL files and `ANALYTICS_WAREHOUSE_TARGET=bigquery_insert_all` for BigQuery streaming inserts across raw, clean, fact, view, and quarantine layers. This remains the operational bridge while the Dataflow path is validated. |
 | Current artist reports | Implemented for `GET /analytics/artist/:id` and `GET /analytics/artist/:id/v1`; reports read generated analytics facts and fact dimensions while preserving response compatibility. With `ANALYTICS_REPORT_SOURCE=bigquery`, the same endpoints read BigQuery `analytics_facts` and `analytics_views`, enforce artist/admin authorization, return explicit time-window/freshness/no-data metadata, and use bounded cached queries. |
 | Core producer helpers | Implemented in `backend/src/modules/analytics/analytics_instrumentation.service.ts` for playback, library, commerce, rights, agent, and generation events. |
@@ -148,6 +153,9 @@ Current verification:
 - Dataflow transform validation, quarantine, dedupe, and unsupported-version
   behavior are covered by
   `workers/analytics-dataflow/test_analytics_transform.py`.
+- The Flex Template publish workflow is validated by GitHub Actions syntax
+  checks and the worker transform tests; a successful workflow run publishes the
+  operator handoff values needed by `resonate-iac`.
 - BigQuery-backed artist report query shaping and no-data metadata are covered
   by `backend/src/tests/analytics_bigquery_report.spec.ts`.
 - Artist analytics API authorization is covered by
