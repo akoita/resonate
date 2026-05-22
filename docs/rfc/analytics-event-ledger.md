@@ -33,11 +33,15 @@ keeping personal data forever.
   `backend/src/modules/analytics/analytics_event.ts`.
 - Backend analytics ingestion now persists raw envelopes to the Postgres
   `AnalyticsEvent` ledger through
-  `backend/src/modules/analytics/analytics_event_store.ts`; production
-  warehouse loading is not implemented yet.
+  `backend/src/modules/analytics/analytics_event_store.ts`.
+- Backend analytics ingestion can also publish validated envelopes to the
+  Terraform-managed analytics Pub/Sub topic when explicitly enabled.
 - The first warehouse export contract exists in
   `backend/src/modules/analytics/analytics_warehouse.ts` and emits raw, clean,
   fact, view, and quarantine layers.
+- Warehouse loading/backfill exists through JSONL and BigQuery insert-all
+  targets. A first Apache Beam/Dataflow processor artifact exists in
+  `workers/analytics-dataflow/` for the event-native Pub/Sub to BigQuery path.
 - Core analytics producer helpers exist in
   `backend/src/modules/analytics/analytics_instrumentation.service.ts` for
   playback, library, commerce, rights, agent, and generation events.
@@ -223,14 +227,17 @@ Deletion should not mean corrupting financial history. Instead:
      [#871](https://github.com/akoita/resonate/issues/871)
    - Raw event envelope persistence is implemented in Postgres with idempotent
      `eventId` upserts.
-   - Pub/Sub or queue-backed warehouse export remains follow-up.
+   - Pub/Sub event publishing is implemented as an opt-in side effect after
+     ledger persistence.
 3. **Warehouse export**
    - Tracking issue:
      [#869](https://github.com/akoita/resonate/issues/869)
    - Export contracts for `events_raw`, `events_clean`, `analytics_facts`,
      `analytics_views`, and `analytics_quarantine` are implemented in
      `backend/src/modules/analytics/analytics_warehouse.ts`.
-   - Production warehouse loading remains follow-up.
+   - Production warehouse loading exists through JSONL and BigQuery insert-all
+     bridge targets; the event-native Dataflow path now has its first Flex
+     Template artifact in `workers/analytics-dataflow/`.
 4. **Core event instrumentation**
    - Tracking issue:
      [#870](https://github.com/akoita/resonate/issues/870)
