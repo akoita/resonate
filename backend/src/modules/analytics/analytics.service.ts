@@ -1,7 +1,14 @@
-import { Injectable, Optional } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
 import {
+  ANALYTICS_REPORT_SOURCE,
+  AnalyticsReportMetadata,
+  ArtistAnalyticsReportSource,
+  timeWindowMetadata,
+} from "./analytics_bigquery_report";
+import {
   AnalyticsFactRow,
+  AnalyticsViewRow,
   AnalyticsWarehouseExport,
   AnalyticsWarehouseExportService,
   buildAnalyticsWarehouseExport,
@@ -27,6 +34,12 @@ interface SourceStats {
   plays: number;
 }
 
+interface PlaysOverTimeStats {
+  date: string;
+  plays: number;
+  payoutUsd: number;
+}
+
 interface AssetPayoutStats {
   paymentToken: string;
   assetId: string | null;
@@ -43,19 +56,29 @@ type MutableAssetPayoutStats = Omit<AssetPayoutStats, "settlementAmountUnits" | 
   canonicalAmountUsd: number;
 };
 
+interface ArtistAnalyticsData {
+  facts: AnalyticsFactRow[];
+  views: AnalyticsViewRow[];
+  metadata: AnalyticsReportMetadata;
+}
+
 @Injectable()
 export class AnalyticsService {
   constructor(
     private readonly ingestService: AnalyticsIngestService,
     @Optional() private readonly warehouseExportService?: AnalyticsWarehouseExportService,
+    @Optional()
+    @Inject(ANALYTICS_REPORT_SOURCE)
+    private readonly reportSource?: ArtistAnalyticsReportSource,
   ) {}
 
   async getArtistStats(artistId: string, days: number) {
-    const facts = await this.listArtistFacts(artistId, days);
+    const data = await this.listArtistData(artistId, days);
+    const facts = data.facts;
 
     const summary = {
       artistId,
-      days,
+      days: data.metadata.timeWindow.days,
       totalPlays: 0,
       totalPayoutUsd: 0,
     };
@@ -86,15 +109,23 @@ export class AnalyticsService {
     });
 
     tracks.push(...trackMap.values());
-    return { summary: { ...summary, payoutsByAsset: this.aggregateAssetPayouts(tracks.flatMap((track) => track.payoutsByAsset)) }, tracks };
+    return {
+      summary: {
+        ...summary,
+        payoutsByAsset: this.aggregateAssetPayouts(tracks.flatMap((track) => track.payoutsByAsset)),
+      },
+      tracks,
+      meta: data.metadata,
+    };
   }
 
   async getArtistDashboard(artistId: string, days: number) {
-    const facts = await this.listArtistFacts(artistId, days);
+    const data = await this.listArtistData(artistId, days);
+    const facts = data.facts;
 
     const summary = {
       artistId,
-      days,
+      days: data.metadata.timeWindow.days,
       totalPlays: 0,
       totalPayoutUsd: 0,
     };
@@ -141,33 +172,76 @@ export class AnalyticsService {
 
     const exportPayload = {
       artistId,
-      days,
+      days: data.metadata.timeWindow.days,
       totalPlays: summary.totalPlays,
       totalPayoutUsd: summary.totalPayoutUsd,
       payoutsByAsset: this.aggregateAssetPayouts(
         [...trackMap.values()].flatMap((track) => track.payoutsByAsset),
       ),
-      generatedAt: new Date().toISOString(),
+      generatedAt: data.metadata.generatedAt,
+      source: data.metadata.source,
+      freshness: data.metadata.freshness,
     };
+    const tracks = [...trackMap.values()];
 
     return {
       summary: {
         ...summary,
         payoutsByAsset: exportPayload.payoutsByAsset,
       },
-      tracks: [...trackMap.values()],
+      tracks,
+      topTracks: this.topTracks(tracks),
       sessions: [...sessionMap.values()],
       sources: [...sourceMap.values()],
+      playsOverTime: this.playsOverTime(data.views, facts),
+      trackPerformance: tracks,
+      listenerGrowth: {
+        status: "unavailable",
+        reason: "listener and follower growth events are not available in the current analytics event model",
+      },
       export: exportPayload,
+      meta: data.metadata,
     };
   }
 
-  private async listArtistFacts(artistId: string, days: number) {
-    const since = Date.now() - days * 24 * 60 * 60 * 1000;
+  private async listArtistData(artistId: string, days: number): Promise<ArtistAnalyticsData> {
+    const normalizedDays = this.normalizedDays(days);
+    const to = new Date();
+    const from = new Date(to.getTime() - normalizedDays * 24 * 60 * 60 * 1000);
+    const reportResult = await this.reportSource?.listArtistFacts({ artistId, from, to });
+    if (reportResult) {
+      return reportResult;
+    }
+
     const exportPayload = await this.exportLayers();
-    return exportPayload.analyticsFacts.filter(
-      (fact) => fact.artistId === artistId && new Date(fact.occurredAt).getTime() >= since,
+    const facts = exportPayload.analyticsFacts.filter(
+      (fact) =>
+        fact.artistId === artistId &&
+        new Date(fact.occurredAt).getTime() >= from.getTime() &&
+        new Date(fact.occurredAt).getTime() < to.getTime(),
     );
+    const views = exportPayload.analyticsViews.filter(
+      (view) =>
+        view.artistId === artistId &&
+        new Date(`${view.date}T00:00:00.000Z`).getTime() >= startOfUtcDate(from).getTime() &&
+        new Date(`${view.date}T00:00:00.000Z`).getTime() < startOfUtcDate(to).getTime(),
+    );
+    const freshness = this.freshnessFromFacts(facts, to);
+    return {
+      facts,
+      views,
+      metadata: {
+        source: "warehouse_export",
+        generatedAt: exportPayload.generatedAt,
+        timeWindow: timeWindowMetadata(from, to),
+        freshness,
+        isEmpty: facts.length === 0 && views.length === 0,
+        cache: {
+          hit: false,
+          ttlSeconds: 0,
+        },
+      },
+    };
   }
 
   private async exportLayers(): Promise<AnalyticsWarehouseExport> {
@@ -183,6 +257,55 @@ export class AnalyticsService {
 
   private isPayoutEvent(eventName?: string) {
     return eventName === "payment.settled" || eventName === "commerce.settled";
+  }
+
+  private topTracks(tracks: TrackStats[]) {
+    return [...tracks].sort((left, right) => right.plays - left.plays || right.payoutUsd - left.payoutUsd).slice(0, 10);
+  }
+
+  private playsOverTime(views: AnalyticsViewRow[], facts: AnalyticsFactRow[]): PlaysOverTimeStats[] {
+    if (views.length > 0) {
+      const byDate = new Map<string, PlaysOverTimeStats>();
+      for (const view of views) {
+        const row = byDate.get(view.date) ?? { date: view.date, plays: 0, payoutUsd: 0 };
+        row.plays += view.playCount;
+        row.payoutUsd += view.payoutUsd;
+        byDate.set(view.date, row);
+      }
+      return [...byDate.values()].sort((left, right) => left.date.localeCompare(right.date));
+    }
+
+    const byDate = new Map<string, PlaysOverTimeStats>();
+    for (const fact of facts) {
+      const eventName = this.stringDimension(fact.dimensions, "eventName");
+      const row = byDate.get(fact.occurredDate) ?? { date: fact.occurredDate, plays: 0, payoutUsd: 0 };
+      if (this.isPlayEvent(eventName)) {
+        row.plays += fact.count;
+      }
+      if (this.isPayoutEvent(eventName)) {
+        row.payoutUsd += this.canonicalUsdAmount(fact);
+      }
+      byDate.set(fact.occurredDate, row);
+    }
+    return [...byDate.values()].sort((left, right) => left.date.localeCompare(right.date));
+  }
+
+  private normalizedDays(days: number) {
+    return Number.isInteger(days) && days > 0 ? Math.min(days, 366) : 30;
+  }
+
+  private freshnessFromFacts(facts: AnalyticsFactRow[], now: Date) {
+    const asOf = facts.reduce<string | null>((latest, fact) => {
+      if (!fact.occurredAt) {
+        return latest;
+      }
+      return latest === null || Date.parse(fact.occurredAt) > Date.parse(latest) ? fact.occurredAt : latest;
+    }, null);
+
+    return {
+      asOf,
+      lagSeconds: asOf === null ? null : Math.max(0, Math.floor((now.getTime() - Date.parse(asOf)) / 1000)),
+    };
   }
 
   private canonicalUsdAmount(fact: AnalyticsFactRow) {
@@ -259,4 +382,8 @@ export class AnalyticsService {
     const value = dimensions[key];
     return typeof value === "number" && Number.isFinite(value) ? value : undefined;
   }
+}
+
+function startOfUtcDate(value: Date) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
 }

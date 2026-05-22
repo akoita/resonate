@@ -34,6 +34,16 @@ When adding a new environment variable:
 | `ANALYTICS_WAREHOUSE_TARGET` | Backend | Warehouse loader target provider. Defaults to `local_json`, which writes idempotent JSONL layer files outside process memory. Set `bigquery_insert_all` to stream rows to BigQuery through Google ADC. |
 | `ANALYTICS_WAREHOUSE_LOCAL_DIR` | Backend | Output directory for the `local_json` analytics warehouse target. Defaults to `.analytics/warehouse` in the backend process working directory. |
 | `ANALYTICS_WAREHOUSE_SUPPORTED_EVENT_VERSIONS` | Backend | Comma-separated analytics event versions that may be promoted into clean/fact/view layers. Defaults to `1`; unsupported versions are loaded raw and quarantined. |
+| `ANALYTICS_REPORT_SOURCE` | Backend | Artist analytics read source. Defaults to local `warehouse_export`; set `bigquery` to read dashboard facts/views from BigQuery through Google ADC. |
+| `ANALYTICS_BIGQUERY_PROJECT_ID` | Backend | Optional BigQuery reporting project override. Falls back to `ANALYTICS_WAREHOUSE_PROJECT_ID`, `GCP_PROJECT_ID`, then warehouse config. |
+| `ANALYTICS_BIGQUERY_DATASET` | Backend | Optional BigQuery reporting dataset override. Falls back to `ANALYTICS_WAREHOUSE_DATASET_PREFIX`. |
+| `ANALYTICS_BIGQUERY_FACTS_TABLE` | Backend | Optional facts table id for artist reporting. Defaults to `analytics_facts`. |
+| `ANALYTICS_BIGQUERY_VIEWS_TABLE` | Backend | Optional views table id for artist reporting. Defaults to `analytics_views`. |
+| `ANALYTICS_BIGQUERY_CACHE_TTL_SECONDS` | Backend | Optional in-process cache TTL for identical artist/time-window BigQuery report reads. Defaults to `60`. |
+| `ANALYTICS_BIGQUERY_MAXIMUM_BYTES_BILLED` | Backend | Optional BigQuery query cost guard for artist report reads. Defaults to `500000000` bytes. |
+| `ANALYTICS_BIGQUERY_QUERY_TIMEOUT_MS` | Backend | Optional timeout for each BigQuery reporting query. Defaults to `10000`. |
+| `ANALYTICS_BIGQUERY_ROW_LIMIT` | Backend | Optional row limit per facts/views query to bound response size. Defaults to `10000`. |
+| `ANALYTICS_BIGQUERY_API_BASE_URL` | Backend | Optional BigQuery API base URL override for tests or private endpoints. Defaults to the public BigQuery API. |
 | `ANALYTICS_EVENT_PUBLISHING_ENABLED` | Backend | Enables publishing validated analytics event envelopes to Pub/Sub after ledger persistence. Defaults to disabled. |
 | `ANALYTICS_EVENT_PUBLISHING_STRICT` | Backend | When true, Pub/Sub publish failures fail analytics ingestion. Defaults to false so user flows keep working while failures are logged. |
 | `ANALYTICS_EVENT_PUBSUB_PROJECT_ID` | Backend | Optional Pub/Sub project override for analytics event publishing. Falls back to `GCP_PROJECT_ID`, `GOOGLE_CLOUD_PROJECT`, or `GCLOUD_PROJECT`. |

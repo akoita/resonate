@@ -72,6 +72,10 @@ Pub/Sub subscription and writes the same raw, clean, fact, view, and quarantine
 BigQuery layers as a Flex Template.
 The current artist analytics endpoints build their report responses from the
 generated fact/view layers, using fact dimensions for legacy response fields.
+When `ANALYTICS_REPORT_SOURCE=bigquery`, those endpoints read BigQuery
+`analytics_facts` and `analytics_views` directly with artist/time-window
+filters, freshness metadata, a maximum-bytes-billed guard, and short TTL
+caching.
 Deletion, redaction, consent withdrawal, and retention cleanup lineage is
 recorded in `AnalyticsGovernanceLog`.
 
