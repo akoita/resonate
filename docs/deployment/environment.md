@@ -34,6 +34,10 @@ When adding a new environment variable:
 | `ANALYTICS_WAREHOUSE_TARGET` | Backend | Warehouse loader target provider. Defaults to `local_json`, which writes idempotent JSONL layer files outside process memory. Set `bigquery_insert_all` to stream rows to BigQuery through Google ADC. |
 | `ANALYTICS_WAREHOUSE_LOCAL_DIR` | Backend | Output directory for the `local_json` analytics warehouse target. Defaults to `.analytics/warehouse` in the backend process working directory. |
 | `ANALYTICS_WAREHOUSE_SUPPORTED_EVENT_VERSIONS` | Backend | Comma-separated analytics event versions that may be promoted into clean/fact/view layers. Defaults to `1`; unsupported versions are loaded raw and quarantined. |
+| `ANALYTICS_EVENT_PUBLISHING_ENABLED` | Backend | Enables publishing validated analytics event envelopes to Pub/Sub after ledger persistence. Defaults to disabled. |
+| `ANALYTICS_EVENT_PUBLISHING_STRICT` | Backend | When true, Pub/Sub publish failures fail analytics ingestion. Defaults to false so user flows keep working while failures are logged. |
+| `ANALYTICS_EVENT_PUBSUB_PROJECT_ID` | Backend | Optional Pub/Sub project override for analytics event publishing. Falls back to `GCP_PROJECT_ID`, `GOOGLE_CLOUD_PROJECT`, or `GCLOUD_PROJECT`. |
+| `ANALYTICS_EVENT_PUBSUB_TOPIC` | Backend | Pub/Sub topic name for analytics event envelopes, typically provisioned by `resonate-iac` as `resonate-<env>-analytics-events`. |
 | `ANALYTICS_RETENTION_PERSONAL_DAYS` | Backend | Optional personal raw analytics event retention window. Defaults to `395` days. |
 | `ANALYTICS_RETENTION_SENSITIVE_DAYS` | Backend | Optional sensitive raw analytics event retention window. Defaults to `90` days. |
 | `ANALYTICS_RETENTION_PSEUDONYMOUS_DAYS` | Backend | Optional pseudonymous raw analytics event retention window. Defaults to `730` days. |

@@ -33,7 +33,10 @@ quarantines unsupported event versions before they reach clean/fact/view layers.
 Deployed environments can set `ANALYTICS_WAREHOUSE_TARGET=bigquery_insert_all`
 to stream those layers into the configured BigQuery dataset through Google ADC.
 Current artist analytics endpoints consume the generated fact/view layers
-instead of aggregating directly from raw in-memory events.
+instead of aggregating directly from raw in-memory events. The near-real-time
+target path can also publish validated envelopes to Pub/Sub after ledger
+persistence by setting `ANALYTICS_EVENT_PUBLISHING_ENABLED=true` and
+`ANALYTICS_EVENT_PUBSUB_TOPIC` to the Terraform-managed analytics topic.
 
 ## Who It Is For
 
@@ -89,6 +92,7 @@ aggregates, not from retaining raw personal data forever.
 | `analytics_facts` | Implemented export layer for long-lived pseudonymous product, commerce, rights, and agent facts. |
 | `analytics_views` | Implemented export layer for report/API/export/UI-ready aggregates. |
 | `analytics_quarantine` | Implemented export layer for invalid or unsupported records that must not be silently dropped. |
+| Pub/Sub event publishing | Implemented as a disabled-by-default backend publisher. When enabled, each stored envelope is published with event metadata attributes for Dataflow consumers; non-strict failures are logged without breaking user flows. |
 | Warehouse loading/backfill | Implemented through `ANALYTICS_WAREHOUSE_TARGET=local_json` for idempotent JSONL files and `ANALYTICS_WAREHOUSE_TARGET=bigquery_insert_all` for BigQuery streaming inserts across raw, clean, fact, view, and quarantine layers. Dataflow-style managed transforms remain future infrastructure scope. |
 | Current artist reports | Implemented for `GET /analytics/artist/:id` and `GET /analytics/artist/:id/v1`; reports read generated analytics facts and fact dimensions while preserving response compatibility. |
 | Core producer helpers | Implemented in `backend/src/modules/analytics/analytics_instrumentation.service.ts` for playback, library, commerce, rights, agent, and generation events. |
@@ -130,6 +134,9 @@ Current verification:
   `backend/src/tests/analytics_warehouse.spec.ts`.
 - Warehouse loader idempotency, schema quarantine, and event-version parsing are
   covered by `backend/src/tests/analytics_warehouse_loader.spec.ts`.
+- Pub/Sub event publishing config, attributes, disabled behavior, and
+  non-strict/strict failure handling are covered by
+  `backend/src/tests/analytics_event_publisher.spec.ts`.
 - Durable backfill scoping is covered by
   `backend/src/tests/analytics_warehouse_loader.integration.spec.ts`.
 - Core producer helper behavior is covered by
