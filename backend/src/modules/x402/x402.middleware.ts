@@ -159,6 +159,7 @@ export class X402Middleware implements NestMiddleware {
       'Access-Control-Expose-Headers',
       'PAYMENT-REQUIRED, X-Payment-Response',
     );
+    res.setHeader('Cache-Control', 'no-store');
     res.setHeader('PAYMENT-REQUIRED', encodedPaymentRequired);
     res.status(402).json(paymentRequired);
   }
