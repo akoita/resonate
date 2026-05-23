@@ -136,6 +136,56 @@ describe("analytics warehouse export", () => {
     ]);
   });
 
+  it("promotes existing domain event families without quarantine", () => {
+    const domainEvents = [
+      ["evt_stems", "stems.processed"],
+      ["evt_contract", "contract.stem_sold"],
+      ["evt_wallet", "wallet.funded"],
+      ["evt_curator", "curator.staked"],
+      ["evt_recommendation", "recommendation.generated"],
+      ["evt_remix", "remix.created"],
+      ["evt_marketplace", "marketplace.listing_sold"],
+      ["evt_notification", "notification.sent"],
+      ["evt_release_rights", "release_rights.request_updated"],
+      ["evt_realtime", "realtime.audio"],
+      ["evt_x402", "x402.payment_settled"],
+      ["evt_session", "session.started"],
+    ] as const;
+
+    const result = buildAnalyticsWarehouseExport(
+      domainEvents.map(([eventId, eventName]) =>
+        event({
+          eventId,
+          eventName,
+          payload: {
+            artistId: "artist-1",
+            trackId: "track-1",
+            releaseId: "release-1",
+            amountUsd: eventName.includes("payment") || eventName.includes("sold") ? 1.25 : undefined,
+          },
+        }),
+      ),
+      { generatedAt },
+    );
+
+    expect(result.analyticsQuarantine).toHaveLength(0);
+    expect(result.eventsClean.map((row) => row.eventFamily)).toEqual([
+      "stems",
+      "contract",
+      "wallet",
+      "curator",
+      "recommendation",
+      "remix",
+      "marketplace",
+      "notification",
+      "release_rights",
+      "realtime",
+      "x402",
+      "session",
+    ]);
+    expect(result.analyticsFacts).toHaveLength(domainEvents.length);
+  });
+
   it("derives warehouse target names from environment configuration", () => {
     const config = analyticsWarehouseConfigFromEnv({
       ANALYTICS_WAREHOUSE_PROJECT_ID: "analytics-project",

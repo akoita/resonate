@@ -44,6 +44,44 @@ class AnalyticsTransformTest(unittest.TestCase):
         self.assertEqual(layers.events_clean, [])
         self.assertEqual(layers.analytics_quarantine[0]["reason"], "unsupported event family: future")
 
+    def test_domain_event_families_promote_without_quarantine(self):
+        events = [
+            ("evt_stems", "stems.processed"),
+            ("evt_contract", "contract.stem_sold"),
+            ("evt_wallet", "wallet.funded"),
+            ("evt_curator", "curator.staked"),
+            ("evt_recommendation", "recommendation.generated"),
+            ("evt_remix", "remix.created"),
+            ("evt_marketplace", "marketplace.listing_sold"),
+            ("evt_notification", "notification.sent"),
+            ("evt_release_rights", "release_rights.request_updated"),
+            ("evt_realtime", "realtime.audio"),
+            ("evt_x402", "x402.payment_settled"),
+            ("evt_session", "session.started"),
+        ]
+
+        layers = process_batch(event(event_id, event_name) for event_id, event_name in events)
+
+        self.assertEqual(layers.analytics_quarantine, [])
+        self.assertEqual(
+            [row["eventFamily"] for row in layers.events_clean],
+            [
+                "stems",
+                "contract",
+                "wallet",
+                "curator",
+                "recommendation",
+                "remix",
+                "marketplace",
+                "notification",
+                "release_rights",
+                "realtime",
+                "x402",
+                "session",
+            ],
+        )
+        self.assertEqual(len(layers.analytics_facts), len(events))
+
     def test_batch_dedupes_by_event_id(self):
         layers = process_batch(
             [

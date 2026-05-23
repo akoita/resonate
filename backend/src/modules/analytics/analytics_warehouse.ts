@@ -6,18 +6,31 @@ import {
 } from "./analytics_event";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
 
-const SUPPORTED_EVENT_FAMILIES = new Set([
+export const SUPPORTED_EVENT_FAMILIES = new Set([
   "identity",
   "catalog",
   "ingestion",
+  "stems",
+  "ipnft",
+  "session",
   "playback",
   "library",
   "commerce",
   "license",
   "payment",
+  "contract",
+  "wallet",
   "rights",
+  "release_rights",
   "agent",
+  "recommendation",
+  "curator",
+  "remix",
+  "marketplace",
   "generation",
+  "notification",
+  "realtime",
+  "x402",
   "experiment",
   "system",
 ]);
