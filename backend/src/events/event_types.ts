@@ -161,6 +161,9 @@ export interface LicenseGrantedEvent extends BaseEvent {
   priceUsd: number;
   sessionId: string;
   trackId: string;
+  artistId?: string;
+  releaseId?: string;
+  title?: string;
 }
 
 export interface SessionEndedEvent extends BaseEvent {
@@ -255,6 +258,10 @@ export interface PaymentInitiatedEvent extends BaseEvent {
   paymentId: string;
   amountUsd: number;
   sessionId: string;
+  trackId?: string;
+  artistId?: string;
+  releaseId?: string;
+  title?: string;
   chainId: number;
   paymentToken?: string;
   paymentAssetId?: string;
@@ -269,9 +276,13 @@ export interface PaymentSettledEvent extends BaseEvent {
   paymentId: string;
   txHash: string;
   status: "settled" | "failed";
+  sessionId?: string;
   chainId?: number;
   amountUsd?: number;
   trackId?: string;
+  artistId?: string;
+  releaseId?: string;
+  title?: string;
   paymentToken?: string;
   paymentAssetId?: string;
   paymentAssetSymbol?: string;

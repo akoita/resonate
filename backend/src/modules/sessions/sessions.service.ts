@@ -180,6 +180,15 @@ export class SessionsService {
       },
     });
 
+    const licensedTrack = await prisma.track.findUnique({
+      where: { id: input.trackId },
+      select: {
+        title: true,
+        releaseId: true,
+        release: { select: { artistId: true } },
+      },
+    });
+
     this.eventBus.publish({
       eventName: "license.granted",
       eventVersion: 1,
@@ -189,6 +198,9 @@ export class SessionsService {
       priceUsd: input.priceUsd,
       sessionId: input.sessionId,
       trackId: input.trackId,
+      artistId: licensedTrack?.release.artistId,
+      releaseId: licensedTrack?.releaseId,
+      title: licensedTrack?.title,
     });
     return {
       allowed: true,
