@@ -167,7 +167,7 @@ SELECT
     ORDER BY recommendation_score DESC, confidence DESC, last_signal_at DESC
   ) AS rank,
   FORMAT(
-    'baseline taste score from %d signal(s): purchases=%d saves=%d plays=%d',
+    'baseline taste score from %%d signal(s): purchases=%%d saves=%%d plays=%%d',
     signal_count,
     purchase_count,
     save_count,
