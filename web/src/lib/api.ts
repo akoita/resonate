@@ -550,6 +550,29 @@ export async function getArtistAnalyticsDashboard(
   );
 }
 
+export type PlaybackCompletedAnalyticsInput = {
+  trackId: string;
+  artistId: string;
+  sessionId?: string;
+  source?: string;
+  completionRatio: number;
+  durationMs?: number;
+};
+
+export async function recordPlaybackCompleted(
+  token: string,
+  input: PlaybackCompletedAnalyticsInput,
+) {
+  return apiRequest<{ status: string; eventId: string; ingested: number }>(
+    "/analytics/playback/completed",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
 export type TrustTier = {
   artistId: string;
   tier: string;
