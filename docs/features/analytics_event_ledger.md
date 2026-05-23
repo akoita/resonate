@@ -29,7 +29,11 @@ Upload/catalog processing events are bridged from the shared backend `EventBus`
 by `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`,
 so release upload, stem processing, track-status, failure, and release-ready
 signals enter the ledger and optional Pub/Sub/Dataflow path during normal
-product flows.
+product flows. The same bridge now also maps high-value commerce, license,
+payment, contract, wallet, agent-runtime, generation, recommendation,
+curation, remix, marketplace, release-rights, and notification events into
+compact pseudonymous analytics envelopes, excluding bulky user-supplied text
+such as generation prompts and notification bodies.
 Retention cleanup, deletion propagation, consent withdrawal, and governance
 lineage are available in
 `backend/src/modules/analytics/analytics_governance.service.ts`, and the admin
@@ -127,6 +131,7 @@ aggregates, not from retaining raw personal data forever.
 | Core producer helpers | Implemented in `backend/src/modules/analytics/analytics_instrumentation.service.ts` for playback, library, commerce, rights, agent, and generation events. |
 | Playback web instrumentation | Implemented through `POST /analytics/playback/completed`, `web/src/lib/playbackAnalytics.ts`, and `web/src/lib/playerContext.tsx`; authenticated web-player catalog plays emit one `playback.completed` envelope per track load once the qualifying threshold is reached. |
 | Upload/catalog domain bridge | Implemented in `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`; subscribes to the shared `EventBus` for upload and catalog lifecycle events and ingests compact pseudonymous analytics envelopes without blocking release processing. |
+| High-value domain bridge | Implemented in `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`; subscribes to shared `EventBus` events for license/payment, contract sales/listings/royalties/disputes, wallet funding/spend, agent selection/decisions/purchases, generation lifecycle, recommendation generation, curation, remix, marketplace listing notifications, release-rights requests, and notification creation. The bridge preserves IDs, amounts, statuses, and source refs while omitting prompts, notification bodies, and other bulky raw content. |
 | Domain family support | Backend warehouse export and Dataflow both accept the current Resonate domain families: identity, wallet, catalog, stems, ingestion, ipnft, session, playback, library, commerce, payment, contract, x402, license, rights, release_rights, agent, recommendation, curator, remix, marketplace, generation, notification, realtime, experiment, and system. |
 | Retention/deletion jobs | Implemented in `backend/src/modules/analytics/analytics_governance.service.ts`: retention cleanup, deletion propagation, consent withdrawal, redaction, and lineage audit. |
 
@@ -149,11 +154,36 @@ Implemented upload/catalog bridge event names:
 - `catalog.track_status`
 - `catalog.release_ready`
 
-The warehouse/Dataflow processors now accept the domain families listed in
-[Event Taxonomy & Domain Model](../architecture/event_taxonomy_domain_model.md).
-Additional issue-specific bridge work still needs to wire more producer
-families into `AnalyticsIngestService`, but those events no longer need family
-renaming just to avoid quarantine.
+Implemented high-value domain bridge event names:
+
+- `license.granted`
+- `payment.initiated`
+- `payment.settled`
+- `contract.stem_listed`
+- `contract.stem_sold`
+- `contract.royalty_paid`
+- selected `contract.dispute_*` and content-protection dispute events
+- `agent.purchase_completed`
+- `agent.purchase_failed`
+- `agent.track_selected`
+- `agent.decision_made`
+- `generation.started`
+- `generation.completed`
+- `generation.failed`
+- `recommendation.generated`
+- `wallet.funded`
+- `wallet.spent`
+- `curator.staked`
+- `curator.reported`
+- `remix.created`
+- `release_rights.request_updated`
+- `marketplace.listing_notify`
+- `notification.created`
+
+The warehouse/Dataflow processors accept the domain families listed in
+[Event Taxonomy & Domain Model](../architecture/event_taxonomy_domain_model.md),
+so these bridged events can flow without family renaming just to avoid
+quarantine.
 
 ## Verification
 
