@@ -3,6 +3,7 @@ import request from "supertest";
 import { AnalyticsAuthorizationService } from "../modules/analytics/analytics_authorization.service";
 import { AnalyticsController } from "../modules/analytics/analytics.controller";
 import { AnalyticsIngestService } from "../modules/analytics/analytics_ingest.service";
+import { AnalyticsInstrumentationService } from "../modules/analytics/analytics_instrumentation.service";
 import { AnalyticsService } from "../modules/analytics/analytics.service";
 import { AnalyticsWarehouseExportService } from "../modules/analytics/analytics_warehouse";
 import { authToken, createControllerTestApp } from "./e2e-helpers";
@@ -25,6 +26,10 @@ const warehouseExportService = {
   exportLayers: jest.fn(),
 };
 
+const instrumentationService = {
+  recordPlaybackCompleted: jest.fn(),
+};
+
 describe("AnalyticsController (HTTP)", () => {
   let app: INestApplication;
 
@@ -34,6 +39,7 @@ describe("AnalyticsController (HTTP)", () => {
       { provide: AnalyticsAuthorizationService, useValue: authorizationService },
       { provide: AnalyticsIngestService, useValue: ingestService },
       { provide: AnalyticsWarehouseExportService, useValue: warehouseExportService },
+      { provide: AnalyticsInstrumentationService, useValue: instrumentationService },
     ]);
   });
 
@@ -50,6 +56,11 @@ describe("AnalyticsController (HTTP)", () => {
       meta: { isEmpty: true },
     });
     authorizationService.assertCanReadArtistMetrics.mockResolvedValue(undefined);
+    instrumentationService.recordPlaybackCompleted.mockResolvedValue({
+      status: "ok",
+      eventId: "evt_playback_completed",
+      ingested: 1,
+    });
   });
 
   it("GET /analytics/artist/:id/v1 requires JWT auth", async () => {
@@ -93,5 +104,43 @@ describe("AnalyticsController (HTTP)", () => {
       role: "admin",
     });
     expect(analyticsService.getArtistStats).toHaveBeenCalledWith("artist-1", 7);
+  });
+
+  it("records playback completion through the instrumentation service", async () => {
+    await request(app.getHttpServer())
+      .post("/analytics/playback/completed")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({
+        trackId: "track-1",
+        artistId: "artist-1",
+        sessionId: "playback-session-1",
+        source: "web_player",
+        completionRatio: 0.82,
+        durationMs: 31000,
+      })
+      .expect(201);
+
+    expect(instrumentationService.recordPlaybackCompleted).toHaveBeenCalledWith({
+      trackId: "track-1",
+      artistId: "artist-1",
+      sessionId: "playback-session-1",
+      source: "web_player",
+      completionRatio: 0.82,
+      durationMs: 31000,
+    });
+  });
+
+  it("rejects malformed playback completion payloads", async () => {
+    await request(app.getHttpServer())
+      .post("/analytics/playback/completed")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({
+        trackId: "track-1",
+        artistId: "artist-1",
+        completionRatio: 2,
+      })
+      .expect(400);
+
+    expect(instrumentationService.recordPlaybackCompleted).not.toHaveBeenCalled();
   });
 });

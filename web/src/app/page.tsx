@@ -1053,6 +1053,7 @@ function mapReleaseToLocalTracks(release: Release): LocalTrack[] {
     duration: getTrackDuration(track),
     createdAt: track.createdAt ? new Date(track.createdAt).toISOString() : release.createdAt,
     catalogTrackId: track.id,
+    artistId: release.artist?.id || release.artistId,
     remoteUrl: getReleaseTrackStreamUrl(release.id, track.id),
     remoteArtworkUrl: release.artworkUrl || undefined,
     source: "remote",

@@ -77,7 +77,13 @@ export type RepeatMode = "none" | "one" | "all";
 import { useAuth } from "../components/auth/AuthProvider";
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
+import { recordPlaybackCompleted } from "./api";
 import { LocalTrack, getTrackUrl, getArtworkUrl, savePlayerState, loadPlayerState } from "./localLibrary";
+import {
+    buildPlaybackCompletedPayload,
+    getPlaybackAnalyticsSessionId,
+    shouldReportPlaybackCompleted,
+} from "./playbackAnalytics";
 
 interface PlayerContextType {
     currentTrack: LocalTrack | null;
@@ -400,6 +406,7 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
 StemAudio.displayName = "StemAudio";
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
+    const { token } = useAuth();
     const [queue, setQueue] = useState<LocalTrack[]>([]);
     const [currentIndex, setCurrentIndex] = useState(-1);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -431,6 +438,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const currentTrackIdRef = useRef<string | null>(null);
     const currentTrackUrlRef = useRef<string | null>(null);
     const pendingSeekTimeRef = useRef<number | null>(null);
+    const authTokenRef = useRef<string | null>(token);
+    const playbackCompletedTrackRef = useRef<string | null>(null);
 
     // Stable function refs for event listeners
     const nextTrackRef = useRef<() => void>(() => { });
@@ -443,6 +452,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const mixerVolumesRef = useRef(mixerVolumes);
 
     const currentTrack = currentIndex >= 0 ? queue[currentIndex] : null;
+
+    useEffect(() => {
+        authTokenRef.current = token;
+    }, [token]);
 
     // Mute main track when mixer mode is active and we have stems to play
     useEffect(() => {
@@ -593,6 +606,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             const hasStems = track.stems?.some(s => s.type.toUpperCase() !== 'ORIGINAL');
             audioRef.current.volume = (mixerModeRef.current && hasStems && mixerAudioActiveRef.current) ? 0 : volume;
             setArtworkUrl(art || null);
+            if (currentTrackIdRef.current !== track.id) {
+                playbackCompletedTrackRef.current = null;
+            }
             currentTrackIdRef.current = track.id;
             void safePlay();
             return;
@@ -609,6 +625,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         const wasPlaying = !audioRef.current.paused;
 
         devLog("playTrack: setting new src", url.substring(0, 80), "saving time:", savedTime);
+        playbackCompletedTrackRef.current = null;
         audioRef.current.src = url;
         audioRef.current.load();
         currentTrackUrlRef.current = url;
@@ -723,6 +740,38 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             setCurrentTime(audio.currentTime);
             setDuration(audio.duration || 0);
             setProgress((audio.currentTime / (audio.duration || 1)) * 100);
+
+            const activeTrack = queueRef.current[currentIndexRef.current] ?? null;
+            const alreadyReported =
+                !!activeTrack &&
+                playbackCompletedTrackRef.current === (activeTrack.catalogTrackId || activeTrack.id);
+            if (
+                shouldReportPlaybackCompleted({
+                    track: activeTrack,
+                    currentTimeSeconds: audio.currentTime,
+                    durationSeconds: audio.duration,
+                    alreadyReported,
+                })
+            ) {
+                const token = authTokenRef.current;
+                if (!token || !activeTrack) {
+                    return;
+                }
+                const payload = buildPlaybackCompletedPayload({
+                    track: activeTrack,
+                    currentTimeSeconds: audio.currentTime,
+                    durationSeconds: audio.duration,
+                    sessionId: getPlaybackAnalyticsSessionId(),
+                });
+                if (!payload) {
+                    return;
+                }
+
+                playbackCompletedTrackRef.current = payload.trackId;
+                recordPlaybackCompleted(token, payload).catch((error) => {
+                    console.warn("Failed to record playback analytics:", error);
+                });
+            }
         };
 
         const handleLoadedMetadata = () => {

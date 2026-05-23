@@ -1,10 +1,13 @@
-import { Body, Controller, Get, Param, Post, Query, Request, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, Request, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { AnalyticsAuthorizationService } from "./analytics_authorization.service";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
 import { AnalyticsService } from "./analytics.service";
 import { AnalyticsEventInput } from "./analytics_event";
 import { AnalyticsWarehouseExportService } from "./analytics_warehouse";
+import { AnalyticsInstrumentationService, PlaybackCompletedAnalyticsInput } from "./analytics_instrumentation.service";
+
+type PlaybackCompletedRequest = Partial<PlaybackCompletedAnalyticsInput>;
 
 @UseGuards(AuthGuard("jwt"))
 @Controller("analytics")
@@ -13,7 +16,8 @@ export class AnalyticsController {
     private readonly analyticsService: AnalyticsService,
     private readonly analyticsAuthorizationService: AnalyticsAuthorizationService,
     private readonly analyticsIngestService: AnalyticsIngestService,
-    private readonly warehouseExportService: AnalyticsWarehouseExportService
+    private readonly warehouseExportService: AnalyticsWarehouseExportService,
+    private readonly analyticsInstrumentationService: AnalyticsInstrumentationService,
   ) {}
 
   @Get("artist/:id")
@@ -41,6 +45,13 @@ export class AnalyticsController {
     return this.analyticsIngestService.ingest(body);
   }
 
+  @Post("playback/completed")
+  async recordPlaybackCompleted(@Body() body: PlaybackCompletedRequest) {
+    return this.analyticsInstrumentationService.recordPlaybackCompleted(
+      normalizePlaybackCompletedRequest(body),
+    );
+  }
+
   @Get("rollup/daily")
   async rollup() {
     return this.analyticsIngestService.dailyRollup();
@@ -50,4 +61,35 @@ export class AnalyticsController {
   async exportLayers() {
     return this.warehouseExportService.exportLayers();
   }
+}
+
+function normalizePlaybackCompletedRequest(body: PlaybackCompletedRequest): PlaybackCompletedAnalyticsInput {
+  const trackId = typeof body.trackId === "string" ? body.trackId.trim() : "";
+  const artistId = typeof body.artistId === "string" ? body.artistId.trim() : "";
+  const sessionId = typeof body.sessionId === "string" ? body.sessionId.trim() : undefined;
+  const source = typeof body.source === "string" ? body.source.trim() : undefined;
+  const completionRatio = Number(body.completionRatio);
+  const durationMs = body.durationMs === undefined ? undefined : Number(body.durationMs);
+
+  if (!trackId) {
+    throw new BadRequestException("trackId is required");
+  }
+  if (!artistId) {
+    throw new BadRequestException("artistId is required");
+  }
+  if (!Number.isFinite(completionRatio) || completionRatio < 0 || completionRatio > 1) {
+    throw new BadRequestException("completionRatio must be a number between 0 and 1");
+  }
+  if (durationMs !== undefined && (!Number.isFinite(durationMs) || durationMs < 0)) {
+    throw new BadRequestException("durationMs must be a non-negative number");
+  }
+
+  return {
+    trackId,
+    artistId,
+    sessionId: sessionId || undefined,
+    source: source || "web_player",
+    completionRatio,
+    durationMs,
+  };
 }

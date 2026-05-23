@@ -140,6 +140,44 @@ describe('API Client', () => {
     });
   });
 
+  describe('recordPlaybackCompleted', () => {
+    it('posts playback completion to the narrow analytics endpoint', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        text: async () =>
+          JSON.stringify({
+            status: 'ok',
+            eventId: 'evt_playback_1',
+            ingested: 1,
+          }),
+      });
+
+      const result = await api.recordPlaybackCompleted('listener-token', {
+        trackId: 'track-1',
+        artistId: 'artist-1',
+        sessionId: 'session-1',
+        source: 'web_player',
+        completionRatio: 0.8,
+        durationMs: 30000,
+      });
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/analytics/playback/completed');
+      expect(opts.method).toBe('POST');
+      expect(opts.headers.get('Authorization')).toBe('Bearer listener-token');
+      expect(JSON.parse(opts.body)).toEqual({
+        trackId: 'track-1',
+        artistId: 'artist-1',
+        sessionId: 'session-1',
+        source: 'web_player',
+        completionRatio: 0.8,
+        durationMs: 30000,
+      });
+      expect(result.eventId).toBe('evt_playback_1');
+    });
+  });
+
   describe('getAgentNextPick', () => {
     it('posts to the session runtime next-pick endpoint', async () => {
       mockFetch.mockResolvedValueOnce({

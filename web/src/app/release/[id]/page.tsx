@@ -920,6 +920,9 @@ export default function ReleaseDetails() {
         createdAt: t.createdAt,
         remoteUrl: streamUrl,
         remoteArtworkUrl: release.artworkUrl || undefined,
+        catalogTrackId: t.id,
+        artistId: release.artist?.id || release.artistId,
+        source: "remote",
         stems: withPreviewUrlsForMixerStems(t.stems),
       };
     }));
@@ -1006,8 +1009,10 @@ export default function ReleaseDetails() {
       duration: getTrackDuration(t),
       createdAt: t.createdAt ? new Date(t.createdAt).toISOString() : new Date().toISOString(),
       catalogTrackId: t.id,
+      artistId: release?.artist?.id || release?.artistId,
       remoteUrl: remoteUrlOverride || streamUrl,
       remoteArtworkUrl: release?.artworkUrl || undefined,
+      source: "remote",
       stems: withPreviewUrlsForMixerStems(t.stems),
     };
   }, [release]);
