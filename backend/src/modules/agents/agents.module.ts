@@ -18,9 +18,11 @@ import { GenerationModule } from "../generation/generation.module";
 import { CatalogModule } from "../catalog/catalog.module";
 import { X402Module } from "../x402/x402.module";
 import { PaymentsModule } from "../payments/payments.module";
+import { SharedModule } from "../shared/shared.module";
 
 @Module({
   imports: [
+    SharedModule,
     forwardRef(() => IdentityModule),
     GenerationModule,
     CatalogModule,

@@ -1,12 +1,12 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
-import { EventBus } from "../shared/event_bus";
+import { SharedModule } from "../shared/shared.module";
 import { CurationController } from "./curation.controller";
 import { CurationService } from "./curation.service";
 
 @Module({
-  imports: [AuditModule],
+  imports: [SharedModule, AuditModule],
   controllers: [CurationController],
-  providers: [EventBus, CurationService],
+  providers: [CurationService],
 })
 export class CurationModule {}
