@@ -110,11 +110,32 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     payloadFields: ["userCohortId", "trackIds", "strategy", "candidateCount"],
   },
   {
+    eventName: "stems.uploaded",
+    eventVersion: 1,
+    producer: "ingestion-service",
+    privacyTier: "pseudonymous",
+    payloadFields: ["releaseId", "artistId", "sourceType", "trackIds", "trackCount", "stemCount"],
+  },
+  {
     eventName: "stems.processed",
     eventVersion: 1,
     producer: "ingestion-service",
     privacyTier: "pseudonymous",
     payloadFields: ["releaseId", "trackId", "stemIds", "modelVersion", "durationMs"],
+  },
+  {
+    eventName: "catalog.track_status",
+    eventVersion: 1,
+    producer: "catalog-service",
+    privacyTier: "pseudonymous",
+    payloadFields: ["releaseId", "trackId", "status", "error"],
+  },
+  {
+    eventName: "catalog.release_ready",
+    eventVersion: 1,
+    producer: "catalog-service",
+    privacyTier: "pseudonymous",
+    payloadFields: ["releaseId", "artistId", "status", "trackIds", "trackCount", "stemCount"],
   },
 ] as const;
 

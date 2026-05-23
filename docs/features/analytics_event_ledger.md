@@ -22,6 +22,11 @@ injection. The first warehouse export contract is available through
 fact, view, and quarantine layers from stored events. Core producer helpers for
 playback, library, commerce, rights, agent, and generation events are available
 in `backend/src/modules/analytics/analytics_instrumentation.service.ts`.
+Upload/catalog processing events are bridged from the shared backend `EventBus`
+by `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`,
+so release upload, stem processing, track-status, failure, and release-ready
+signals enter the ledger and optional Pub/Sub/Dataflow path during normal
+product flows.
 Retention cleanup, deletion propagation, consent withdrawal, and governance
 lineage are available in
 `backend/src/modules/analytics/analytics_governance.service.ts`, and the admin
@@ -117,6 +122,7 @@ aggregates, not from retaining raw personal data forever.
 | Warehouse loading/backfill | Implemented through `ANALYTICS_WAREHOUSE_TARGET=local_json` for idempotent JSONL files and `ANALYTICS_WAREHOUSE_TARGET=bigquery_insert_all` for BigQuery streaming inserts across raw, clean, fact, view, and quarantine layers. This remains the operational bridge while the Dataflow path is validated. |
 | Current artist reports | Implemented for `GET /analytics/artist/:id` and `GET /analytics/artist/:id/v1`; reports read generated analytics facts and fact dimensions while preserving response compatibility. With `ANALYTICS_REPORT_SOURCE=bigquery`, the same endpoints read BigQuery `analytics_facts` and `analytics_views`, enforce artist/admin authorization, return explicit time-window/freshness/no-data metadata, compute content protection metrics from `rights.route_decided`, and use bounded cached queries. |
 | Core producer helpers | Implemented in `backend/src/modules/analytics/analytics_instrumentation.service.ts` for playback, library, commerce, rights, agent, and generation events. |
+| Upload/catalog domain bridge | Implemented in `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`; subscribes to the shared `EventBus` for upload and catalog lifecycle events and ingests compact pseudonymous analytics envelopes without blocking release processing. |
 | Domain family support | Backend warehouse export and Dataflow both accept the current Resonate domain families: identity, wallet, catalog, stems, ingestion, ipnft, session, playback, library, commerce, payment, contract, x402, license, rights, release_rights, agent, recommendation, curator, remix, marketplace, generation, notification, realtime, experiment, and system. |
 | Retention/deletion jobs | Implemented in `backend/src/modules/analytics/analytics_governance.service.ts`: retention cleanup, deletion propagation, consent withdrawal, redaction, and lineage audit. |
 
@@ -131,11 +137,19 @@ Implemented producer helper event names:
 - `agent.recommendation_selected`
 - `generation.created`
 
+Implemented upload/catalog bridge event names:
+
+- `stems.uploaded`
+- `stems.processed`
+- `stems.failed`
+- `catalog.track_status`
+- `catalog.release_ready`
+
 The warehouse/Dataflow processors now accept the domain families listed in
 [Event Taxonomy & Domain Model](../architecture/event_taxonomy_domain_model.md).
-Issue-specific bridge work still needs to wire more producers into
-`AnalyticsIngestService`, but those events no longer need family renaming just
-to avoid quarantine.
+Additional issue-specific bridge work still needs to wire more producer
+families into `AnalyticsIngestService`, but those events no longer need family
+renaming just to avoid quarantine.
 
 ## Verification
 
@@ -168,6 +182,8 @@ Current verification:
 - Core producer helper behavior is covered by
   `backend/src/tests/analytics_instrumentation.spec.ts` and
   `backend/src/tests/analytics_instrumentation.integration.spec.ts`.
+- Upload/catalog domain bridge behavior is covered by
+  `backend/src/tests/analytics_domain_event_bridge.spec.ts`.
 - Retention/deletion/consent governance behavior is covered by
   `backend/src/tests/analytics_governance.spec.ts` and
   `backend/src/tests/analytics_governance.integration.spec.ts`.

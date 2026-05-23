@@ -14,14 +14,18 @@ import {
   analyticsWarehouseTargetFromEnv,
 } from "./analytics_warehouse_loader";
 import { ANALYTICS_EVENT_PUBLISHER, analyticsEventPublisherFromEnv } from "./analytics_event_publisher";
+import { AnalyticsDomainEventBridgeService } from "./analytics_domain_event_bridge.service";
+import { SharedModule } from "../shared/shared.module";
 
 @Module({
+  imports: [SharedModule],
   controllers: [AnalyticsController],
   providers: [
     AnalyticsService,
     AnalyticsAuthorizationService,
     AnalyticsIngestService,
     AnalyticsInstrumentationService,
+    AnalyticsDomainEventBridgeService,
     AnalyticsGovernanceService,
     AnalyticsWarehouseExportService,
     AnalyticsWarehouseLoaderService,
@@ -47,6 +51,7 @@ import { ANALYTICS_EVENT_PUBLISHER, analyticsEventPublisherFromEnv } from "./ana
     AnalyticsIngestService,
     AnalyticsAuthorizationService,
     AnalyticsInstrumentationService,
+    AnalyticsDomainEventBridgeService,
     AnalyticsGovernanceService,
     AnalyticsWarehouseExportService,
     AnalyticsWarehouseLoaderService,
