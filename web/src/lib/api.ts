@@ -5,6 +5,7 @@ import type {
   RightsReviewState,
   RightsVerificationState,
 } from "./verificationSemantics";
+import { invalidateStoredAuthSession } from "./authSession";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
@@ -201,6 +202,9 @@ async function apiRequest<T>(
     const isSilent = options.silentErrorCodes?.includes(response.status);
     if (!isSilent) {
       console.error(`[API] Error ${response.status} ${path}`, errorDetail);
+    }
+    if (response.status === 401 && token) {
+      invalidateStoredAuthSession();
     }
 
     throw new Error(formatApiErrorMessage(response.status, response.statusText, errorDetail));

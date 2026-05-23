@@ -30,6 +30,8 @@ const api = await import('./api');
 describe('API Client', () => {
   beforeEach(() => {
     mockFetch.mockReset();
+    vi.unstubAllGlobals();
+    vi.stubGlobal('fetch', mockFetch);
   });
 
   describe('API_BASE', () => {
@@ -376,6 +378,57 @@ describe('API Client', () => {
 
       const result = await api.fetchNonce('0x1');
       expect(result).toBeNull();
+    });
+
+    it('invalidates stored auth when a token-backed request receives 401', async () => {
+      const removedKeys: string[] = [];
+      const dispatchEvent = vi.fn();
+      vi.stubGlobal('window', {
+        dispatchEvent,
+      });
+      vi.stubGlobal('localStorage', {
+        getItem: vi.fn(() => null),
+        removeItem: vi.fn((key: string) => removedKeys.push(key)),
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        text: async () => JSON.stringify({ message: 'Unauthorized', statusCode: 401 }),
+      });
+
+      await expect(api.fetchWallet('user-1', 'stale-token')).rejects.toThrow('API 401: Unauthorized');
+
+      expect(removedKeys).toEqual([
+        'resonate.token',
+        'resonate.address',
+        'resonate.smartAccountAddress',
+        'resonate.privy.userId',
+      ]);
+      expect(dispatchEvent).toHaveBeenCalledTimes(1);
+      expect(dispatchEvent.mock.calls[0][0].type).toBe('resonate:auth-invalidated');
+    });
+
+    it('keeps Playwright/local mock auth sessions when a mock token receives 401', async () => {
+      const dispatchEvent = vi.fn();
+      vi.stubGlobal('window', {
+        dispatchEvent,
+      });
+      vi.stubGlobal('localStorage', {
+        getItem: vi.fn((key: string) => key === 'resonate.mock_auth' ? 'true' : null),
+        removeItem: vi.fn(),
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        text: async () => JSON.stringify({ message: 'Unauthorized', statusCode: 401 }),
+      });
+
+      await expect(api.fetchWallet('test-user', 'mock-token')).rejects.toThrow('API 401: Unauthorized');
+
+      expect(localStorage.removeItem).not.toHaveBeenCalled();
+      expect(dispatchEvent).not.toHaveBeenCalled();
     });
   });
 
