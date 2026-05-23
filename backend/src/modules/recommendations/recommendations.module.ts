@@ -1,10 +1,11 @@
 import { Module } from "@nestjs/common";
-import { EventBus } from "../shared/event_bus";
+import { SharedModule } from "../shared/shared.module";
 import { RecommendationsController } from "./recommendations.controller";
 import { RecommendationsService } from "./recommendations.service";
 
 @Module({
+  imports: [SharedModule],
   controllers: [RecommendationsController],
-  providers: [EventBus, RecommendationsService],
+  providers: [RecommendationsService],
 })
 export class RecommendationsModule {}

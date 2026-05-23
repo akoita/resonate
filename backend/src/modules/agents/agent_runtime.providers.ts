@@ -1,4 +1,3 @@
-import { EventBus } from "../shared/event_bus";
 import { EmbeddingService } from "../embeddings/embedding.service";
 import { EmbeddingStore } from "../embeddings/embedding.store";
 import { AgentEvaluationService } from "./agent_evaluation.service";
@@ -28,7 +27,6 @@ import { LangGraphAdapter } from "./runtime/langgraph_adapter";
 import { VertexAiAdapter } from "./runtime/vertex_ai_adapter";
 
 export const AGENT_RUNTIME_CORE_PROVIDERS = [
-  EventBus,
   EmbeddingService,
   EmbeddingStore,
   ToolRegistry,

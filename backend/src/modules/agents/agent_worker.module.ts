@@ -3,6 +3,7 @@ import { BullModule } from "@nestjs/bullmq";
 import { ConfigModule } from "@nestjs/config";
 import { CatalogModule } from "../catalog/catalog.module";
 import { GenerationModule } from "../generation/generation.module";
+import { SharedModule } from "../shared/shared.module";
 import { AGENT_RUNTIME_CORE_PROVIDERS } from "./agent_runtime.providers";
 import { AgentRuntimeWorkerController } from "./agent_runtime_worker.controller";
 
@@ -15,6 +16,7 @@ import { AgentRuntimeWorkerController } from "./agent_runtime_worker.controller"
         port: parseInt(process.env.REDIS_PORT || "6379"),
       },
     }),
+    SharedModule,
     CatalogModule,
     GenerationModule,
   ],

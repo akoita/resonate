@@ -86,6 +86,9 @@ aggregates, not from retaining raw personal data forever.
   [Analytics Dashboard v0](analytics_dashboard_v0.md).
 - Backend producers should use the shared event contract:
   `backend/src/modules/analytics/analytics_event.ts`.
+- Cross-cutting analytics subscribers should listen on the process-level
+  `EventBus` from `SharedModule`; feature modules should not provide local
+  `EventBus` instances for production flows.
 - Current prototype API surfaces:
   - `POST /analytics/ingest`
   - `GET /analytics/artist/:id`
