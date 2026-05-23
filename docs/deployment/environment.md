@@ -44,6 +44,14 @@ When adding a new environment variable:
 | `ANALYTICS_BIGQUERY_QUERY_TIMEOUT_MS` | Backend | Optional timeout for each BigQuery reporting query. Defaults to `10000`. |
 | `ANALYTICS_BIGQUERY_ROW_LIMIT` | Backend | Optional row limit per facts/views query to bound response size. Defaults to `10000`. |
 | `ANALYTICS_BIGQUERY_API_BASE_URL` | Backend | Optional BigQuery API base URL override for tests or private endpoints. Defaults to the public BigQuery API. |
+| `AGENT_TASTE_SIGNAL_SOURCE` | Backend | Optional agent taste signal provider. Defaults to disabled; set `bigquery` to blend precomputed BigQuery user-track scores into AI DJ recommendation ranking. |
+| `AGENT_TASTE_BIGQUERY_PROJECT_ID` | Backend | Optional BigQuery project override for agent taste scores. Falls back to analytics BigQuery/warehouse project config. |
+| `AGENT_TASTE_BIGQUERY_DATASET` | Backend | Optional BigQuery dataset override for agent taste scores. Falls back to analytics BigQuery/warehouse dataset config. |
+| `AGENT_TASTE_BIGQUERY_SCORES_TABLE` | Backend | Optional BigQuery table id containing `user_id`, `track_id`, and normalized `recommendation_score` rows. Defaults to `user_track_recommendation_scores`. |
+| `AGENT_TASTE_BIGQUERY_MAXIMUM_BYTES_BILLED` | Backend | Optional BigQuery query cost guard for agent taste score reads. Defaults to `100000000` bytes. |
+| `AGENT_TASTE_BIGQUERY_QUERY_TIMEOUT_MS` | Backend | Optional timeout for agent taste score queries. Defaults to `5000`. |
+| `AGENT_TASTE_BIGQUERY_ROW_LIMIT` | Backend | Optional maximum taste score rows returned per selector call. Defaults to `100`. |
+| `AGENT_TASTE_BIGQUERY_API_BASE_URL` | Backend | Optional BigQuery API base URL override for tests or private endpoints. Defaults to the analytics BigQuery API base URL, then the public BigQuery API. |
 | `ANALYTICS_EVENT_PUBLISHING_ENABLED` | Backend | Enables publishing validated analytics event envelopes to Pub/Sub after ledger persistence. Defaults to disabled. |
 | `ANALYTICS_EVENT_PUBLISHING_STRICT` | Backend | When true, Pub/Sub publish failures fail analytics ingestion. Defaults to false so user flows keep working while failures are logged. |
 | `ANALYTICS_EVENT_PUBSUB_PROJECT_ID` | Backend | Optional Pub/Sub project override for analytics event publishing. Falls back to `GCP_PROJECT_ID`, `GOOGLE_CLOUD_PROJECT`, or `GCLOUD_PROJECT`. |

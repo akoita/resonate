@@ -2,8 +2,10 @@ import { Injectable, Optional } from "@nestjs/common";
 import { ToolRegistry } from "./tools/tool_registry";
 import { expandAgentTasteQueries } from "./agent_taste_expansion";
 import { AgentAudioFeatureService, AgentAudioFeatures } from "./agent_audio_feature.service";
+import { AgentBigQueryTasteSignalService, AgentTasteScore } from "./agent_bigquery_taste_signal.service";
 
 export interface AgentSelectorInput {
+  userId?: string;
   queries?: string[];
   recentTrackIds: string[];
   allowExplicit?: boolean;
@@ -40,6 +42,8 @@ export class AgentSelectorService {
     private readonly tools: ToolRegistry,
     @Optional()
     private readonly audioFeatures?: AgentAudioFeatureService,
+    @Optional()
+    private readonly bigQueryTasteSignals?: AgentBigQueryTasteSignalService,
   ) { }
 
   async select(input: AgentSelectorInput) {
@@ -104,12 +108,20 @@ export class AgentSelectorService {
       }
     }
 
+    const bigQueryTasteScores = input.userId
+      ? await this.bigQueryTasteSignals?.scoreTracks({
+        userId: input.userId,
+        trackIds: allCandidates.map((track) => track.id),
+      }) ?? new Map<string, AgentTasteScore>()
+      : new Map<string, AgentTasteScore>();
+
     const scored = await Promise.all(
       allCandidates.map((track) => this.scoreCandidate(track, {
         originalQueries,
         expandedQueries: queries,
         learnedGenreWeights: input.learnedGenreWeights ?? {},
         similarityScore: similarityScores.get(track.id) ?? 0,
+        bigQueryTasteScore: bigQueryTasteScores.get(track.id),
         recent: input.recentTrackIds.includes(track.id),
         energy: input.energy,
       })),
@@ -158,6 +170,7 @@ export class AgentSelectorService {
       expandedQueries: string[];
       learnedGenreWeights: Record<string, number>;
       similarityScore: number;
+      bigQueryTasteScore?: AgentTasteScore;
       recent: boolean;
       energy?: "low" | "medium" | "high";
     },
@@ -210,6 +223,18 @@ export class AgentSelectorService {
       explanation.push("Semantic similarity");
     }
 
+    if (context.bigQueryTasteScore) {
+      const weight = Math.round(context.bigQueryTasteScore.score * 20);
+      if (weight > 0) {
+        signals.push({
+          label: "bigquery_taste_score",
+          weight,
+          reason: context.bigQueryTasteScore.explanation ?? "precomputed warehouse taste fit",
+        });
+        explanation.push("Learned listening pattern fit");
+      }
+    }
+
     const featureResult = await this.audioFeatures?.getOrCreate(track.id);
     const audioFeatures = featureResult?.status === "ok" ? featureResult.features : undefined;
     if (audioFeatures) {
@@ -241,6 +266,13 @@ export class AgentSelectorService {
         signals,
         explanation: explanation.length ? explanation : ["Catalog candidate"],
         ...(audioFeatures ? { audioFeatures } : {}),
+        ...(context.bigQueryTasteScore
+          ? {
+            trace: {
+              bigQueryTasteScore: context.bigQueryTasteScore,
+            },
+          }
+          : {}),
       },
     };
   }

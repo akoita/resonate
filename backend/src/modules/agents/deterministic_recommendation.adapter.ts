@@ -28,6 +28,7 @@ export class DeterministicRecommendationAdapter implements AgentRecommendationAd
   async recommend(input: AgentRecommendationInput): Promise<AgentRecommendationResult> {
     const queries = buildAgentRecommendationQueries(input.preferences);
     const selection = await this.selector.select({
+      userId: input.userId,
       queries,
       recentTrackIds: input.recentTrackIds,
       allowExplicit: input.preferences.allowExplicit,

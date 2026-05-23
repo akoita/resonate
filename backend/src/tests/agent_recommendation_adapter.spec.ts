@@ -101,6 +101,7 @@ describe("agent recommendation adapters", () => {
     });
 
     expect(selector.select).toHaveBeenCalledWith({
+      userId: "user-1",
       queries: ["Hip Hop", "Focus"],
       recentTrackIds: ["track-2"],
       allowExplicit: true,
