@@ -61,6 +61,59 @@ describe("agent learning loop", () => {
     );
   });
 
+  it("blends precomputed BigQuery taste scores into selector ranking", async () => {
+    const tool = {
+      run: jest.fn().mockResolvedValue({
+        items: [
+          { id: "ambient", title: "Ambient Track", hasListing: false, release: { genre: "Ambient" } },
+          { id: "techno", title: "Techno Track", hasListing: false, release: { genre: "Techno" } },
+        ],
+      }),
+    };
+    const bigQueryTasteSignals = {
+      scoreTracks: jest.fn().mockResolvedValue(new Map([
+        ["techno", {
+          trackId: "techno",
+          score: 0.9,
+          confidence: 0.8,
+          explanation: "strong collaborative taste fit",
+          modelVersion: "bqml-mf-v1",
+        }],
+      ])),
+    };
+    const selector = new AgentSelectorService({
+      get: jest.fn().mockReturnValue(tool),
+    } as any, undefined, bigQueryTasteSignals as any);
+
+    const result = await selector.select({
+      userId: "user-1",
+      queries: ["music"],
+      recentTrackIds: [],
+      limit: 2,
+    });
+
+    expect(bigQueryTasteSignals.scoreTracks).toHaveBeenCalledWith({
+      userId: "user-1",
+      trackIds: ["ambient", "techno"],
+    });
+    expect(result.selected.map((track: any) => track.id)).toEqual(["techno", "ambient"]);
+    expect(result.selected[0]?.agentRecommendation?.signals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "bigquery_taste_score",
+          weight: 18,
+          reason: "strong collaborative taste fit",
+        }),
+      ]),
+    );
+    expect(result.selected[0]?.agentRecommendation?.trace).toEqual({
+      bigQueryTasteScore: expect.objectContaining({
+        trackId: "techno",
+        modelVersion: "bqml-mf-v1",
+      }),
+    });
+  });
+
   it("expands common taste vocabulary without falling back to unrelated catalog items", async () => {
     const tool = {
       run: jest.fn().mockImplementation(async (input: { query: string }) => ({

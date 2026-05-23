@@ -107,6 +107,22 @@ analytics_dataflow_worker_bucket_names=["<staging/temp bucket>"]
 - Pub/Sub redeliveries are deduped by `eventId` within a fixed streaming
   window before BigQuery writes.
 
+## Derived SQL
+
+Post-Dataflow BigQuery materializations live in `sql/`. The first derived
+feature set is Agent Taste Intelligence:
+
+- `sql/agent_taste_intelligence_baseline.sql` creates
+  `track_intelligence_features`, `user_track_signal_training`, and
+  `user_track_recommendation_scores` from `events_clean`.
+- `sql/agent_taste_intelligence_bqml.sql` is an optional BigQuery ML
+  matrix-factorization template that writes
+  `user_track_recommendation_scores_bqml` for offline comparison before
+  promotion.
+
+The backend consumes only the serving table contract, so these jobs can be
+scheduled, rerun, or replaced independently of the streaming Dataflow worker.
+
 ## Test
 
 ```bash
