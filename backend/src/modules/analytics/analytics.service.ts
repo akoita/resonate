@@ -40,6 +40,22 @@ interface PlaysOverTimeStats {
   payoutUsd: number;
 }
 
+interface ProtectionRouteStats {
+  route: string;
+  decisions: number;
+  releases: number;
+  latestDecisionAt: string | null;
+}
+
+interface ProtectionMetrics {
+  totalDecisions: number;
+  releasesWithDecisions: number;
+  marketplaceReadyReleases: number;
+  restrictedReleases: number;
+  blockedReleases: number;
+  routes: ProtectionRouteStats[];
+}
+
 interface AssetPayoutStats {
   paymentToken: string;
   assetId: string | null;
@@ -195,6 +211,7 @@ export class AnalyticsService {
       sources: [...sourceMap.values()],
       playsOverTime: this.playsOverTime(data.views, facts),
       trackPerformance: tracks,
+      protection: this.protectionMetrics(facts),
       listenerGrowth: {
         status: "unavailable",
         reason: "listener and follower growth events are not available in the current analytics event model",
@@ -288,6 +305,54 @@ export class AnalyticsService {
       byDate.set(fact.occurredDate, row);
     }
     return [...byDate.values()].sort((left, right) => left.date.localeCompare(right.date));
+  }
+
+  private protectionMetrics(facts: AnalyticsFactRow[]): ProtectionMetrics {
+    const routeMap = new Map<string, { decisions: number; releases: Set<string>; latestDecisionAt: string | null }>();
+    const latestByRelease = new Map<string, { route: string; occurredAt: string }>();
+
+    for (const fact of facts) {
+      if (this.stringDimension(fact.dimensions, "eventName") !== "rights.route_decided") {
+        continue;
+      }
+
+      const route = this.stringDimension(fact.dimensions, "route") ?? "unknown";
+      const releaseId = fact.releaseId ?? this.stringDimension(fact.dimensions, "releaseId") ?? "unknown";
+      const occurredAt = fact.occurredAt;
+      const routeStats =
+        routeMap.get(route) ?? { decisions: 0, releases: new Set<string>(), latestDecisionAt: null };
+      routeStats.decisions += fact.count;
+      routeStats.releases.add(releaseId);
+      routeStats.latestDecisionAt =
+        routeStats.latestDecisionAt === null || Date.parse(occurredAt) > Date.parse(routeStats.latestDecisionAt)
+          ? occurredAt
+          : routeStats.latestDecisionAt;
+      routeMap.set(route, routeStats);
+
+      const current = latestByRelease.get(releaseId);
+      if (!current || Date.parse(occurredAt) >= Date.parse(current.occurredAt)) {
+        latestByRelease.set(releaseId, { route, occurredAt });
+      }
+    }
+
+    const latestRoutes = [...latestByRelease.values()].map((decision) => decision.route);
+    return {
+      totalDecisions: [...routeMap.values()].reduce((total, route) => total + route.decisions, 0),
+      releasesWithDecisions: latestByRelease.size,
+      marketplaceReadyReleases: latestRoutes.filter((route) => route === "STANDARD_ESCROW" || route === "TRUSTED_FAST_PATH").length,
+      restrictedReleases: latestRoutes.filter((route) =>
+        route === "LIMITED_MONITORING" || route === "QUARANTINED_REVIEW" || route === "BLOCKED",
+      ).length,
+      blockedReleases: latestRoutes.filter((route) => route === "BLOCKED").length,
+      routes: [...routeMap.entries()]
+        .map(([route, stats]) => ({
+          route,
+          decisions: stats.decisions,
+          releases: stats.releases.size,
+          latestDecisionAt: stats.latestDecisionAt,
+        }))
+        .sort((left, right) => right.decisions - left.decisions || left.route.localeCompare(right.route)),
+    };
   }
 
   private normalizedDays(days: number) {

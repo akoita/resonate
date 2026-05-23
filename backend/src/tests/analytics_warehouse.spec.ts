@@ -27,11 +27,22 @@ describe("analytics warehouse export", () => {
             amountUsd: 2.5,
           },
         }),
+        event({
+          eventId: "evt_rights",
+          eventName: "rights.route_decided",
+          payload: {
+            artistId: "artist-1",
+            releaseId: "release-1",
+            route: "STANDARD_ESCROW",
+            evidenceTypes: ["rights_metadata"],
+            decisionReason: "verified uploader",
+          },
+        }),
       ],
       { generatedAt },
     );
 
-    expect(result.eventsRaw).toHaveLength(2);
+    expect(result.eventsRaw).toHaveLength(3);
     expect(result.eventsClean).toEqual([
       expect.objectContaining({
         eventId: "evt_play",
@@ -46,10 +57,24 @@ describe("analytics warehouse export", () => {
         eventFamily: "payment",
         canonicalAmountUsd: 2.5,
       }),
+      expect.objectContaining({
+        eventId: "evt_rights",
+        eventFamily: "rights",
+        releaseId: "release-1",
+      }),
     ]);
     expect(result.analyticsFacts).toEqual([
       expect.objectContaining({ factId: "fact_evt_play", factType: "license_event" }),
       expect.objectContaining({ factId: "fact_evt_payment", factType: "payment_event", canonicalAmountUsd: 2.5 }),
+      expect.objectContaining({
+        factId: "fact_evt_rights",
+        factType: "rights_event",
+        dimensions: expect.objectContaining({
+          route: "STANDARD_ESCROW",
+          evidenceTypes: ["rights_metadata"],
+          decisionReason: "verified uploader",
+        }),
+      }),
     ]);
     expect(result.analyticsViews).toEqual([
       expect.objectContaining({
@@ -67,6 +92,15 @@ describe("analytics warehouse export", () => {
         eventCount: 1,
         playCount: 0,
         payoutUsd: 2.5,
+      }),
+      expect.objectContaining({
+        date: "2026-05-20",
+        eventName: "rights.route_decided",
+        artistId: "artist-1",
+        trackId: "unknown",
+        eventCount: 1,
+        playCount: 0,
+        payoutUsd: 0,
       }),
     ]);
     expect(result.analyticsQuarantine).toHaveLength(0);

@@ -87,6 +87,27 @@ class AnalyticsTransformTest(unittest.TestCase):
         self.assertEqual(layers.analytics_facts[0]["canonicalAmountUsd"], 0)
         self.assertEqual(layers.analytics_views[0]["payoutUsd"], 0.0)
 
+    def test_rights_route_dimensions_are_preserved(self):
+        layers = process_payload(
+            event(
+                "evt_rights",
+                "rights.route_decided",
+                payload={
+                    "artistId": "artist-1",
+                    "releaseId": "release-1",
+                    "route": "STANDARD_ESCROW",
+                    "evidenceTypes": ["rights_metadata"],
+                    "decisionReason": "verified uploader",
+                },
+            )
+        )
+
+        self.assertEqual(layers.analytics_facts[0]["factType"], "rights_event")
+        self.assertEqual(layers.analytics_facts[0]["releaseId"], "release-1")
+        self.assertEqual(layers.analytics_facts[0]["dimensions"]["route"], "STANDARD_ESCROW")
+        self.assertEqual(layers.analytics_facts[0]["dimensions"]["evidenceTypes"], ["rights_metadata"])
+        self.assertEqual(layers.analytics_facts[0]["dimensions"]["decisionReason"], "verified uploader")
+
     def test_idempotency_key_prefers_event_id(self):
         payload = json.dumps(event("evt_key", "playback.completed"))
 

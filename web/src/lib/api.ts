@@ -439,6 +439,22 @@ export type ArtistAnalyticsTimePoint = {
   payoutUsd: number;
 };
 
+export type ArtistAnalyticsProtectionRoute = {
+  route: string;
+  decisions: number;
+  releases: number;
+  latestDecisionAt: string | null;
+};
+
+export type ArtistAnalyticsProtection = {
+  totalDecisions: number;
+  releasesWithDecisions: number;
+  marketplaceReadyReleases: number;
+  restrictedReleases: number;
+  blockedReleases: number;
+  routes: ArtistAnalyticsProtectionRoute[];
+};
+
 export type ArtistAnalyticsMeta = {
   source: "warehouse_export" | "bigquery";
   generatedAt: string;
@@ -487,6 +503,7 @@ export type ArtistAnalyticsDashboard = {
     source: string;
     plays: number;
   }>;
+  protection: ArtistAnalyticsProtection;
   playsOverTime: ArtistAnalyticsTimePoint[];
   trackPerformance: ArtistAnalyticsTrack[];
   listenerGrowth?: {
