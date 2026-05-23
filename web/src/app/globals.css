@@ -2730,6 +2730,38 @@ a {
   border-bottom: 0;
 }
 
+.analytics-protection-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.analytics-protection-metric {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  padding: 12px 0;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.analytics-protection-metric span,
+.analytics-protection-metric small {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.analytics-protection-metric strong {
+  color: var(--color-text);
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.analytics-protection-routes {
+  margin-top: 4px;
+}
+
 .analytics-table-wrap {
   overflow-x: auto;
 }
@@ -11093,6 +11125,7 @@ tr[draggable="true"]:hover {
 
   .analytics-kpi-grid,
   .analytics-layout,
+  .analytics-protection-grid,
   .analytics-skeleton-grid {
     grid-template-columns: 1fr;
   }

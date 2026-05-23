@@ -46,6 +46,14 @@ describe("ArtistAnalyticsDashboard", () => {
           tracks: [],
           topTracks: [],
           sources: [],
+          protection: {
+            totalDecisions: 0,
+            releasesWithDecisions: 0,
+            marketplaceReadyReleases: 0,
+            restrictedReleases: 0,
+            blockedReleases: 0,
+            routes: [],
+          },
           playsOverTime: [],
           trackPerformance: [],
           meta: {
@@ -82,7 +90,9 @@ describe("ArtistAnalyticsDashboard", () => {
     expect(html).toContain("$87.65");
     expect(html).toContain("Glass City");
     expect(html).toContain("Track performance");
-    expect(html).toContain("Content Protection metrics are reported separately");
+    expect(html).toContain("Content protection");
+    expect(html).toContain("Marketplace ready");
+    expect(html).toContain("Standard Escrow");
   });
 
   it("renders the no-artist onboarding state", () => {
@@ -126,6 +136,27 @@ const dashboard: ArtistAnalyticsDashboardData = {
   ],
   sessions: [],
   sources: [{ source: "web", plays: 12345 }],
+  protection: {
+    totalDecisions: 3,
+    releasesWithDecisions: 2,
+    marketplaceReadyReleases: 1,
+    restrictedReleases: 1,
+    blockedReleases: 0,
+    routes: [
+      {
+        route: "STANDARD_ESCROW",
+        decisions: 2,
+        releases: 1,
+        latestDecisionAt: "2026-05-22T10:00:00.000Z",
+      },
+      {
+        route: "LIMITED_MONITORING",
+        decisions: 1,
+        releases: 1,
+        latestDecisionAt: "2026-05-21T10:00:00.000Z",
+      },
+    ],
+  },
   playsOverTime: [
     { date: "2026-05-20", plays: 4000, payoutUsd: 20 },
     { date: "2026-05-21", plays: 8345, payoutUsd: 67.65 },

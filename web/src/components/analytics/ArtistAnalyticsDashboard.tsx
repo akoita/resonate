@@ -82,7 +82,11 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
         <Kpi label="Total plays" value={formatNumber(data.summary.totalPlays)} detail={`${data.meta.timeWindow.days} day window`} />
         <Kpi label="Total payout" value={payoutLabel} detail={primaryPayoutAsset(data.summary.payoutsByAsset)} />
         <Kpi label="Top track" value={topTrack?.title ?? "No track yet"} detail={topTrack ? `${formatNumber(topTrack.plays)} plays` : "Waiting for play events"} />
-        <Kpi label="Followers" value="Unavailable" detail={data.listenerGrowth?.reason ?? "No follower event model yet"} muted />
+        <Kpi
+          label="Protected releases"
+          value={formatNumber(data.protection.releasesWithDecisions)}
+          detail={`${formatNumber(data.protection.marketplaceReadyReleases)} marketplace ready`}
+        />
       </section>
 
       <section className="analytics-layout">
@@ -122,7 +126,7 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
         <TrackPerformanceTable tracks={data.trackPerformance} />
       </section>
 
-      <SeparatedContentProtection />
+      <ContentProtectionMetrics protection={data.protection} />
     </>
   );
 }
@@ -262,10 +266,68 @@ function TrackPerformanceTable({ tracks }: { tracks: ArtistAnalyticsDashboardDat
   );
 }
 
+function ContentProtectionMetrics({ protection }: { protection: ArtistAnalyticsDashboardData["protection"] }) {
+  return (
+    <section className="analytics-panel">
+      <div className="analytics-panel-heading">
+        <h2>Content protection</h2>
+        <span>{formatNumber(protection.totalDecisions)} route decisions</span>
+      </div>
+      <div className="analytics-protection-grid" aria-label="Content protection metrics">
+        <ProtectionMetric
+          label="Marketplace ready"
+          value={formatNumber(protection.marketplaceReadyReleases)}
+          detail="standard escrow or trusted fast path"
+        />
+        <ProtectionMetric
+          label="Restricted"
+          value={formatNumber(protection.restrictedReleases)}
+          detail="limited, quarantined, or blocked"
+        />
+        <ProtectionMetric
+          label="Blocked"
+          value={formatNumber(protection.blockedReleases)}
+          detail="current blocked route"
+        />
+      </div>
+      <RouteBreakdown routes={protection.routes} />
+    </section>
+  );
+}
+
+function ProtectionMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="analytics-protection-metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{detail}</small>
+    </div>
+  );
+}
+
+function RouteBreakdown({ routes }: { routes: ArtistAnalyticsDashboardData["protection"]["routes"] }) {
+  if (routes.length === 0) {
+    return <p className="analytics-muted">No rights route decisions for this window.</p>;
+  }
+
+  return (
+    <div className="analytics-source-list analytics-protection-routes">
+      {routes.map((route) => (
+        <div key={route.route} className="analytics-source-row">
+          <span>{formatRoute(route.route)}</span>
+          <strong>
+            {formatNumber(route.releases)} releases - {formatNumber(route.decisions)} decisions
+          </strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SeparatedContentProtection() {
   return (
     <div className="analytics-content-protection-note">
-      Content Protection metrics are reported separately until those figures are backed by analytics events.
+      Content Protection metrics will appear once rights route events exist for this artist.
     </div>
   );
 }
@@ -293,6 +355,14 @@ function totalSourcePlays(sources: ArtistAnalyticsDashboardData["sources"]) {
 
 function cacheLabel(hit: boolean) {
   return hit ? "Cache: reused" : "Cache: refreshed";
+}
+
+function formatRoute(route: string) {
+  return route
+    .toLowerCase()
+    .split("_")
+    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+    .join(" ");
 }
 
 function formatFreshness(asOf: string | null, lagSeconds: number | null) {

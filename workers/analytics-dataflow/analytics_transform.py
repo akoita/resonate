@@ -297,6 +297,9 @@ def to_fact_row(clean: dict[str, Any]) -> dict[str, Any]:
                     "amountUnits": string_payload(payload, "amountUnits"),
                     "currency": string_payload(payload, "currency"),
                     "amountUsd": number_payload(payload, "amountUsd"),
+                    "route": string_payload(payload, "route"),
+                    "evidenceTypes": list_payload(payload, "evidenceTypes"),
+                    "decisionReason": string_payload(payload, "decisionReason"),
                 }
             ),
         }
@@ -423,6 +426,11 @@ def string_payload(payload: dict[str, Any], key: str) -> str | None:
 def number_payload(payload: dict[str, Any], key: str) -> float | int | None:
     value = payload.get(key)
     return value if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) else None
+
+
+def list_payload(payload: dict[str, Any], key: str) -> list[Any] | None:
+    value = payload.get(key)
+    return value if isinstance(value, list) else None
 
 
 def first_present(*values: Any) -> Any:

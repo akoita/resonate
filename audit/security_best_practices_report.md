@@ -1406,3 +1406,63 @@ git diff --check
 rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|ghp_|gho_|sk-[A-Za-z0-9]' .github/workflows/publish-analytics-dataflow-flex-template.yml workers/analytics-dataflow/README.md docs/deployment/environment.md docs/features/README.md docs/features/analytics_event_ledger.md .agents/plans/issue-911.md
 rg -n 'eval\(|curl .*\||bash -c|rm -rf|docker login|gcloud auth print-access-token|set-output' .github/workflows/publish-analytics-dataflow-flex-template.yml workers/analytics-dataflow/README.md docs/deployment/environment.md docs/features/analytics_event_ledger.md
 ```
+
+## Addendum: #923 Real Artist Analytics Dashboard Metrics
+
+Reviewed the artist analytics dashboard metrics implementation for #923,
+including backend report aggregation, warehouse/Dataflow fact dimensions,
+frontend rendering, API types, and feature docs. No Critical or High findings
+were identified in the changed code.
+
+### Scope
+
+- `backend/src/modules/analytics/analytics.service.ts`
+- `backend/src/modules/analytics/analytics_warehouse.ts`
+- `backend/src/tests/analytics.spec.ts`
+- `backend/src/tests/analytics_warehouse.spec.ts`
+- `web/src/lib/api.ts`
+- `web/src/lib/api.test.ts`
+- `web/src/components/analytics/ArtistAnalyticsDashboard.tsx`
+- `web/src/components/analytics/ArtistAnalyticsDashboard.test.tsx`
+- `web/src/app/globals.css`
+- `workers/analytics-dataflow/analytics_transform.py`
+- `workers/analytics-dataflow/test_analytics_transform.py`
+- `docs/features/README.md`
+- `docs/features/analytics_dashboard_v0.md`
+- `docs/features/analytics_event_ledger.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- The analytics dashboard endpoint remains protected by the existing JWT guard
+  and artist/admin authorization checks.
+- The new protection metrics are derived from existing
+  `rights.route_decided` facts and do not add a new public write surface,
+  dynamic SQL, filesystem access, or external network client.
+- BigQuery report reads continue to use bounded, parameterized queries through
+  the existing analytics report source.
+- Frontend changes render structured API fields and do not use
+  `dangerouslySetInnerHTML`, direct `innerHTML`, or cookie APIs.
+- Secret scans found no literal credentials in this PR's diff. Broad scans
+  still report pre-existing environment-variable names and local-development
+  auth fallbacks outside the changed analytics path.
+
+### Commands Run
+
+```bash
+rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/ | grep -v 'Guard\|Auth'
+rg 'JSON\.parse|eval\(' backend/src/
+rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/ | grep -v 'Pipe\|Dto\|Validation'
+rg 'dangerouslySetInnerHTML|innerHTML' web/src/
+rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
+rg 'document\.cookie|setCookie|httpOnly.*false' web/src/
+git diff -- backend/src/modules/analytics/analytics.service.ts backend/src/modules/analytics/analytics_warehouse.ts web/src/lib/api.ts web/src/components/analytics/ArtistAnalyticsDashboard.tsx workers/analytics-dataflow/analytics_transform.py | rg -n 'password|secret|api_key|private_key|dangerouslySetInnerHTML|innerHTML|\$queryRaw|executeRaw|rawQuery|eval\('
+```

@@ -305,6 +305,9 @@ function toFactRow(clean: EventsCleanRow): AnalyticsFactRow {
       amountUnits: stringPayload(clean.payload, "amountUnits"),
       currency: stringPayload(clean.payload, "currency"),
       amountUsd: numberPayload(clean.payload, "amountUsd"),
+      route: stringPayload(clean.payload, "route"),
+      evidenceTypes: arrayPayload(clean.payload, "evidenceTypes"),
+      decisionReason: stringPayload(clean.payload, "decisionReason"),
     },
   };
 }
@@ -345,6 +348,11 @@ function stringPayload(payload: Record<string, unknown>, key: string) {
 function numberPayload(payload: Record<string, unknown>, key: string) {
   const value = payload[key];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function arrayPayload(payload: Record<string, unknown>, key: string) {
+  const value = payload[key];
+  return Array.isArray(value) ? value : undefined;
 }
 
 function objectField(record: unknown, key: string) {

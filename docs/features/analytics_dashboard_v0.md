@@ -24,8 +24,10 @@ The `/artist/analytics` frontend now fetches the authenticated artist profile,
 calls `GET /analytics/artist/:id/v1`, and renders API-backed totals, freshness
 metadata, plays-over-time rows, source breakdowns, and track-performance rows.
 It has explicit loading, no-artist, empty-data, and error states. Content
-Protection staking remains visually separate because those numbers are not yet
-backed by analytics events.
+protection metrics now come from `rights.route_decided` analytics facts, so the
+dashboard can show rights-route decision counts, releases with decisions,
+marketplace-ready releases, restricted releases, blocked releases, and a route
+breakdown without static placeholder values.
 
 The artist analytics endpoints now read from normalized analytics layers. Local
 development and tests use the existing `AnalyticsWarehouseExportService`
@@ -44,9 +46,11 @@ empty dashboard is explicit no-data rather than placeholder numbers.
 The service consumes `analytics_facts` for play and payout report totals,
 `analytics_views` for plays-over-time rows when available, and fact dimensions
 for compatibility fields such as track title, session, source, and payout asset
-metadata. BigQuery reads are bounded by artist id and explicit time windows,
-use named query parameters, have a configurable maximum-bytes-billed guard, and
-are cached briefly in-process to avoid repeated identical dashboard queries.
+metadata. It also consumes `rights.route_decided` fact dimensions (`route`,
+`evidenceTypes`, and `decisionReason`) for the content protection section.
+BigQuery reads are bounded by artist id and explicit time windows, use named
+query parameters, have a configurable maximum-bytes-billed guard, and are
+cached briefly in-process to avoid repeated identical dashboard queries.
 
 ## Implemented Surface
 
@@ -56,6 +60,7 @@ are cached briefly in-process to avoid repeated identical dashboard queries.
 - Status strip for data source, freshness, selected window, and cache state.
 - Plays-over-time chart from `playsOverTime`.
 - Track performance table from `trackPerformance`.
+- Content protection metrics from `protection`.
 - Empty and error states that do not display fake values as real metrics.
 
 ## MVP Acceptance Criteria
@@ -64,6 +69,8 @@ are cached briefly in-process to avoid repeated identical dashboard queries.
 - Per-track breakdown is visible when the API has rows.
 - Data freshness is communicated from API metadata.
 - New artists with no rows see an explicit empty state.
+- Content protection metrics are populated from rights-route analytics facts
+  when those events exist.
 
 ## Dependencies
 

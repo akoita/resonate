@@ -86,6 +86,21 @@ describe('API Client', () => {
             topTracks: [],
             sessions: [],
             sources: [],
+            protection: {
+              totalDecisions: 1,
+              releasesWithDecisions: 1,
+              marketplaceReadyReleases: 1,
+              restrictedReleases: 0,
+              blockedReleases: 0,
+              routes: [
+                {
+                  route: 'STANDARD_ESCROW',
+                  decisions: 1,
+                  releases: 1,
+                  latestDecisionAt: '2026-05-22T10:00:00.000Z',
+                },
+              ],
+            },
             playsOverTime: [],
             trackPerformance: [],
             export: {
@@ -120,6 +135,7 @@ describe('API Client', () => {
       expect(opts.headers.get('Authorization')).toBe('Bearer artist-token');
       expect(opts.cache).toBe('no-store');
       expect(result.summary.totalPlays).toBe(4);
+      expect(result.protection.marketplaceReadyReleases).toBe(1);
       expect(result.meta.source).toBe('bigquery');
     });
   });
