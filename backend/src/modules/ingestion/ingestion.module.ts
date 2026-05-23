@@ -1,5 +1,4 @@
 import { Module } from "@nestjs/common";
-import { EventBus } from "../shared/event_bus";
 import { IngestionController } from "./ingestion.controller";
 import { IngestionService } from "./ingestion.service";
 import { BullModule } from "@nestjs/bullmq";
