@@ -141,6 +141,8 @@ describe("analytics event envelope", () => {
       "rights.route_decided",
       "agent.recommendation_selected",
       "generation.created",
+      "recommendation.generated",
+      "stems.processed",
     ]);
   });
 });

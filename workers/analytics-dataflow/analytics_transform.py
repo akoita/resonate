@@ -12,21 +12,34 @@ SUPPORTED_EVENT_FAMILIES = {
     "identity",
     "catalog",
     "ingestion",
+    "stems",
+    "ipnft",
+    "session",
     "playback",
     "library",
     "commerce",
     "license",
     "payment",
+    "contract",
+    "wallet",
     "rights",
+    "release_rights",
     "agent",
+    "recommendation",
+    "curator",
+    "remix",
+    "marketplace",
     "generation",
+    "notification",
+    "realtime",
+    "x402",
     "experiment",
     "system",
 }
 
 ANALYTICS_ENVIRONMENTS = {"local", "dev", "staging", "prod"}
 ANALYTICS_PRIVACY_TIERS = {"anonymous", "pseudonymous", "personal", "sensitive"}
-EVENT_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9]*(\.[a-z][a-z0-9_]*)+$")
+EVENT_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 
 
 @dataclass

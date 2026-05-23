@@ -34,6 +34,42 @@ All analytics events are emitted with a stable envelope that includes
 [Long-Term Analytics Event Ledger](../rfc/analytics-event-ledger.md) for the
 canonical envelope, retention tiers, and warehouse layers.
 
+The warehouse accepts the product/domain family as the analytics family when the
+family has a clear owner. Bridges should preserve the original domain
+`eventName` and carry any alternate or source-specific name in `payload` or
+`sourceRefs`; this keeps replay/debugging simple and avoids silently changing
+event meaning.
+
+### Canonical Domain-To-Analytics Family Mapping
+
+| Domain event family | Analytics family | Notes |
+| --- | --- | --- |
+| `identity.*` | `identity.*` | Signup, auth, role, account, and profile identity events. |
+| `wallet.*` | `wallet.*` | Budget, funding, spend, session-key, and account-abstraction wallet events. |
+| `catalog.*` | `catalog.*` | Release/track metadata, publish state, and catalog visibility. |
+| `stems.*` | `stems.*` | Upload, processing, progress, failure, and separation completion. |
+| `ipnft.*` | `ipnft.*` | Tokenization/provenance events tied to catalog assets. |
+| `session.*` | `session.*` | Listening or agent commerce session lifecycle. |
+| `playback.*` | `playback.*` | Player starts, completions, skips, and listen-quality signals. |
+| `library.*` | `library.*` | Saves, follows, playlists, and listener library actions. |
+| `commerce.*` | `commerce.*` | Quotes, purchase intent, settlement, refunds, and product commerce. |
+| `payment.*` | `payment.*` | Payment initiation, split, settlement, and accounting rails. |
+| `contract.*` | `contract.*` | Contract/indexer events such as stem sales and royalty payment observations. |
+| `x402.*` | `x402.*` | x402 challenge, verification, replay, and settlement events. |
+| `license.*` | `license.*` | License grants and license lifecycle events. |
+| `rights.*` | `rights.*` | Rights routing, evidence, dispute, and moderation decisions. |
+| `release_rights.*` | `release_rights.*` | Release-scoped rights request/update workflow events. |
+| `agent.*` | `agent.*` | Agent runtime decisions, selections, evaluations, and purchases. |
+| `recommendation.*` | `recommendation.*` | Recommendation generation and preference updates outside the agent runtime. |
+| `curator.*` | `curator.*` | Curator stake, report, review, and reputation events. |
+| `remix.*` | `remix.*` | Remix creation, eligibility, minting, and lineage events. |
+| `marketplace.*` | `marketplace.*` | Listing lifecycle and storefront marketplace events. |
+| `generation.*` | `generation.*` | AI generation, prompt, publish, and failure events. |
+| `notification.*` | `notification.*` | Notification creation, preference, delivery, and status events. |
+| `realtime.*` | `realtime.*` | Realtime music/session transport status and user-control events. |
+| `experiment.*` | `experiment.*` | Assignment, exposure, and conversion tracking. |
+| `system.*` | `system.*` | Jobs, imports/exports, health, and pipeline lifecycle events. |
+
 ### Ingestion & Catalog
 
 - `stems.uploaded`
@@ -48,6 +84,9 @@ canonical envelope, retention tiers, and warehouse layers.
 - `catalog.updated`
   - owner: Catalog Service
   - payload: track_id, status, version
+- `catalog.release_ready`
+  - owner: Catalog Service
+  - payload: release_id, artist_id, track_ids, source
 
 ### Session & Licensing
 
@@ -69,6 +108,15 @@ canonical envelope, retention tiers, and warehouse layers.
 - `payment.settled`
   - owner: Payments Service
   - payload: payment_id, tx_hash, status
+- `contract.stem_sold`
+  - owner: Contracts/Indexer Service
+  - payload: stem_id, track_id, token_id, buyer, amount, tx_hash
+- `wallet.funded`
+  - owner: Wallet Service
+  - payload: wallet_id, user_id, chain_id, asset_id, amount
+- `x402.payment_settled`
+  - owner: x402 Service
+  - payload: stem_id, payment_id, facilitator, amount, asset
 - `analytics.ingested`
   - owner: Analytics Pipeline
   - payload: event_name, event_id, processed_at
@@ -96,15 +144,42 @@ canonical envelope, retention tiers, and warehouse layers.
 - `rights.route_decided`
   - owner: Rights Service
   - payload: release_id, artist_id, route, evidence_types, decision_reason
+- `release_rights.request_updated`
+  - owner: Rights Service
+  - payload: release_id, request_id, status, reviewer_id
 - `agent.recommendation_selected`
   - owner: Agent Runtime
   - payload: agent_id, session_id, track_id, strategy, candidate_count
+- `agent.decision_made`
+  - owner: Agent Runtime
+  - payload: agent_id, session_id, track_id, decision, reason
+- `recommendation.generated`
+  - owner: Recommendations Service
+  - payload: user_cohort_id, track_ids, strategy, candidate_count
+- `curator.staked`
+  - owner: Curation Service
+  - payload: curator_id, amount_usd
+- `remix.created`
+  - owner: Remix Service
+  - payload: remix_id, creator_id, source_track_id, stem_ids
 - `generation.created`
   - owner: Generation Service
   - payload: generation_id, user_id, track_id, artist_id, model, prompt_policy
+- `generation.completed`
+  - owner: Generation Service
+  - payload: generation_id, user_id, track_id, model, duration_ms
 - `experiment.exposed`
   - owner: Experiment Service
   - payload: experiment_key, variant_key, subject_cohort_id, surface
+- `marketplace.listing_sold`
+  - owner: Marketplace/Contracts Service
+  - payload: listing_id, token_id, buyer, seller, amount
+- `notification.sent`
+  - owner: Notification Service
+  - payload: notification_id, recipient_id, notification_type, channel
+- `realtime.audio`
+  - owner: Realtime Generation Service
+  - payload: session_id, client_id, chunk_index, model
 
 ## Versioning Strategy
 

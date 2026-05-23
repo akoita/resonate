@@ -117,6 +117,7 @@ aggregates, not from retaining raw personal data forever.
 | Warehouse loading/backfill | Implemented through `ANALYTICS_WAREHOUSE_TARGET=local_json` for idempotent JSONL files and `ANALYTICS_WAREHOUSE_TARGET=bigquery_insert_all` for BigQuery streaming inserts across raw, clean, fact, view, and quarantine layers. This remains the operational bridge while the Dataflow path is validated. |
 | Current artist reports | Implemented for `GET /analytics/artist/:id` and `GET /analytics/artist/:id/v1`; reports read generated analytics facts and fact dimensions while preserving response compatibility. With `ANALYTICS_REPORT_SOURCE=bigquery`, the same endpoints read BigQuery `analytics_facts` and `analytics_views`, enforce artist/admin authorization, return explicit time-window/freshness/no-data metadata, compute content protection metrics from `rights.route_decided`, and use bounded cached queries. |
 | Core producer helpers | Implemented in `backend/src/modules/analytics/analytics_instrumentation.service.ts` for playback, library, commerce, rights, agent, and generation events. |
+| Domain family support | Backend warehouse export and Dataflow both accept the current Resonate domain families: identity, wallet, catalog, stems, ingestion, ipnft, session, playback, library, commerce, payment, contract, x402, license, rights, release_rights, agent, recommendation, curator, remix, marketplace, generation, notification, realtime, experiment, and system. |
 | Retention/deletion jobs | Implemented in `backend/src/modules/analytics/analytics_governance.service.ts`: retention cleanup, deletion propagation, consent withdrawal, redaction, and lineage audit. |
 
 ## Event Families
@@ -130,17 +131,11 @@ Implemented producer helper event names:
 - `agent.recommendation_selected`
 - `generation.created`
 
-The planned ledger should also cover:
-
-- identity and wallet events
-- catalog and ingestion events
-- additional playback and library events
-- additional commerce, settlement, and payout events
-- additional rights, curation, and dispute events
-- additional agent decision and recommendation events
-- additional generation events
-- experiment exposure and conversion events
-- pipeline/system health events
+The warehouse/Dataflow processors now accept the domain families listed in
+[Event Taxonomy & Domain Model](../architecture/event_taxonomy_domain_model.md).
+Issue-specific bridge work still needs to wire more producers into
+`AnalyticsIngestService`, but those events no longer need family renaming just
+to avoid quarantine.
 
 ## Verification
 

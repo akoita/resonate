@@ -162,18 +162,36 @@ raw context and reason metadata to support replay after schema fixes.
 Initial event families should cover:
 
 - `identity.*`: signup, auth, wallet connection, role changes.
+- `wallet.*`: budget, funding, spend, and account-abstraction wallet state.
 - `catalog.*`: release creation, metadata changes, publish/unpublish.
-- `ingestion.*`: upload, processing, model version, storage outcomes.
+- `stems.*`: upload, processing, model version, storage outcomes.
+- `ingestion.*`: ingestion orchestration and bridge/import outcomes.
+- `ipnft.*`: tokenization and provenance events for catalog assets.
+- `session.*`: listener and agent commerce session lifecycle.
 - `playback.*`: start, progress milestones, completion, skip, save.
+- `library.*`: saves, follows, playlists, and listener library actions.
 - `commerce.*`: listing, quote, purchase intent, settlement, refund.
+- `payment.*`: payment initiation, split, settlement, and accounting rails.
+- `contract.*`: contract/indexer observations such as stem sales and royalties.
+- `x402.*`: challenge, verification, replay, and settlement events.
+- `license.*`: license grants and license lifecycle events.
 - `rights.*`: evidence submission, route decision, dispute, resolution.
+- `release_rights.*`: release-scoped rights request workflow events.
 - `agent.*`: recommendation, quote evaluation, purchase decision, feedback.
+- `recommendation.*`: recommendation generation and preferences outside the agent runtime.
+- `curator.*`: curation stake, reports, review, and reputation events.
+- `remix.*`: remix creation, eligibility, minting, and lineage events.
+- `marketplace.*`: listing lifecycle and storefront marketplace events.
 - `generation.*`: prompt, generation, publish, rate-limit state.
+- `notification.*`: notification creation, preference, delivery, and status.
+- `realtime.*`: realtime music/session transport status and user-control events.
 - `experiment.*`: assignment, exposure, conversion.
 - `system.*`: job completion, import/export, pipeline health.
 
 Product teams can add feature-specific events, but each event must map to a
-family owner and schema.
+family owner and schema. Existing Resonate domain event names should generally
+be preserved as analytics `eventName` values once their family is listed here;
+bridges can keep alternate source names in `payload` or `sourceRefs`.
 
 ## Retention Model
 
