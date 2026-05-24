@@ -1,3 +1,6 @@
+import { readFileSync } from "fs";
+import { resolve } from "path";
+import { ANALYTICS_EVENT_SCHEMA_EXAMPLES } from "../modules/analytics/analytics_event";
 import {
   analyticsWarehouseConfigFromEnv,
   buildAnalyticsWarehouseExport,
@@ -5,6 +8,7 @@ import {
 
 describe("analytics warehouse export", () => {
   const generatedAt = new Date("2026-05-20T12:00:00.000Z");
+  const expectedEventCases = loadExpectedEventCases();
 
   it("builds raw, clean, fact, and report view layers for known events", () => {
     const result = buildAnalyticsWarehouseExport(
@@ -186,6 +190,37 @@ describe("analytics warehouse export", () => {
     expect(result.analyticsFacts).toHaveLength(domainEvents.length);
   });
 
+  it("promotes every expected analytics event through raw, clean, fact, and view layers", () => {
+    const events = expectedEventCases.map((eventCase, index) =>
+      event({
+        eventId: `evt_expected_${index}_${eventCase.eventName.replaceAll(".", "_")}`,
+        eventName: eventCase.eventName,
+        payload: eventCase.payload,
+        privacyTier: eventCase.privacyTier,
+        consentBasis: eventCase.consentBasis,
+      }),
+    );
+
+    const result = buildAnalyticsWarehouseExport(events, { generatedAt });
+    const eventNames = expectedEventCases.map((eventCase) => eventCase.eventName);
+
+    expect(result.analyticsQuarantine).toEqual([]);
+    expect(result.eventsRaw.map((row) => row.eventName)).toEqual(eventNames);
+    expect(result.eventsClean.map((row) => row.eventName)).toEqual(eventNames);
+    expect(result.analyticsFacts.map((row) => row.dimensions.eventName)).toEqual(eventNames);
+    expect(result.analyticsViews.map((row) => row.eventName)).toEqual(eventNames);
+    expect(result.eventsRaw).toHaveLength(eventNames.length);
+    expect(result.eventsClean).toHaveLength(eventNames.length);
+    expect(result.analyticsFacts).toHaveLength(eventNames.length);
+    expect(result.analyticsViews).toHaveLength(eventNames.length);
+  });
+
+  it("keeps schema examples covered by the expected event processing matrix", () => {
+    const eventNames = new Set(expectedEventCases.map((eventCase) => eventCase.eventName));
+
+    expect(ANALYTICS_EVENT_SCHEMA_EXAMPLES.map((schema) => schema.eventName).filter((eventName) => !eventNames.has(eventName))).toEqual([]);
+  });
+
   it("derives warehouse target names from environment configuration", () => {
     const config = analyticsWarehouseConfigFromEnv({
       ANALYTICS_WAREHOUSE_PROJECT_ID: "analytics-project",
@@ -210,6 +245,8 @@ function event(input: {
   eventId: string;
   eventName: string;
   payload: Record<string, unknown>;
+  privacyTier?: string;
+  consentBasis?: string;
 }) {
   return {
     eventId: input.eventId,
@@ -219,7 +256,21 @@ function event(input: {
     receivedAt: "2026-05-20T09:00:01.000Z",
     producer: "analytics-test",
     environment: "local",
-    privacyTier: "pseudonymous",
+    privacyTier: input.privacyTier ?? "pseudonymous",
+    consentBasis: input.consentBasis,
     payload: input.payload,
   };
+}
+
+type ExpectedEventCase = {
+  eventName: string;
+  privacyTier?: string;
+  consentBasis?: string;
+  payload: Record<string, unknown>;
+};
+
+function loadExpectedEventCases(): ExpectedEventCase[] {
+  return JSON.parse(
+    readFileSync(resolve(__dirname, "../../../test-fixtures/analytics_expected_events.json"), "utf8"),
+  ) as ExpectedEventCase[];
 }
