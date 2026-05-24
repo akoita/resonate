@@ -130,6 +130,29 @@ describe("AnalyticsController (HTTP)", () => {
     });
   });
 
+  it("accepts playback completion without artist id for backend catalog enrichment", async () => {
+    await request(app.getHttpServer())
+      .post("/analytics/playback/completed")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({
+        trackId: "track-1",
+        sessionId: "playback-session-1",
+        source: "web_player",
+        completionRatio: 0.82,
+        durationMs: 31000,
+      })
+      .expect(201);
+
+    expect(instrumentationService.recordPlaybackCompleted).toHaveBeenCalledWith({
+      trackId: "track-1",
+      artistId: undefined,
+      sessionId: "playback-session-1",
+      source: "web_player",
+      completionRatio: 0.82,
+      durationMs: 31000,
+    });
+  });
+
   it("rejects malformed playback completion payloads", async () => {
     await request(app.getHttpServer())
       .post("/analytics/playback/completed")

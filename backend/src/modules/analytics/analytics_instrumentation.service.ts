@@ -1,10 +1,11 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { AnalyticsEventInput } from "./analytics_event";
+import { AnalyticsCatalogMetadataService } from "./analytics_catalog_metadata.service";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
 
 export interface PlaybackCompletedAnalyticsInput {
   trackId: string;
-  artistId: string;
+  artistId?: string;
   sessionId?: string;
   source?: string;
   completionRatio: number;
@@ -56,9 +57,14 @@ export interface GenerationCreatedAnalyticsInput {
 
 @Injectable()
 export class AnalyticsInstrumentationService {
-  constructor(private readonly ingestService: AnalyticsIngestService) {}
+  constructor(
+    private readonly ingestService: AnalyticsIngestService,
+    private readonly catalogMetadataService?: AnalyticsCatalogMetadataService,
+  ) {}
 
   async recordPlaybackCompleted(input: PlaybackCompletedAnalyticsInput) {
+    const artistId = await this.resolvePlaybackArtistId(input);
+
     return this.emit({
       eventName: "playback.completed",
       producer: "playback-service",
@@ -68,13 +74,28 @@ export class AnalyticsInstrumentationService {
       sessionId: input.sessionId,
       payload: {
         trackId: input.trackId,
-        artistId: input.artistId,
+        artistId,
         completionRatio: input.completionRatio,
         durationMs: input.durationMs,
         source: input.source,
       },
       sourceRefs: input.sessionId ? { sessionId: input.sessionId, trackId: input.trackId } : undefined,
     });
+  }
+
+  private async resolvePlaybackArtistId(input: PlaybackCompletedAnalyticsInput) {
+    const artistId = input.artistId?.trim();
+    if (artistId) {
+      return artistId;
+    }
+
+    const metadata = await this.catalogMetadataService?.findTracks([input.trackId]);
+    const catalogArtistId = metadata?.get(input.trackId)?.artistId?.trim();
+    if (catalogArtistId) {
+      return catalogArtistId;
+    }
+
+    throw new BadRequestException("artistId is required or trackId must reference a catalog track");
   }
 
   async recordLibrarySaved(input: LibrarySavedAnalyticsInput) {

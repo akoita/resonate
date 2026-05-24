@@ -1094,6 +1094,8 @@ export default function LibraryPage() {
                                                                             e.stopPropagation();
                                                                             const asTrack: LocalTrack = {
                                                                                 id: gen.trackId,
+                                                                                catalogTrackId: gen.trackId,
+                                                                                artistId: gen.artistId,
                                                                                 title: gen.prompt.slice(0, 60),
                                                                                 artist: "AI (Lyria)",
                                                                                 album: "AI Creations",
@@ -1163,6 +1165,8 @@ export default function LibraryPage() {
                                                                 onClick={() => {
                                                                     const asTrack: LocalTrack = {
                                                                         id: selectedGeneration.trackId,
+                                                                        catalogTrackId: selectedGeneration.trackId,
+                                                                        artistId: selectedGeneration.artistId,
                                                                         title: selectedGeneration.prompt.slice(0, 60),
                                                                         artist: "AI (Lyria)",
                                                                         album: "AI Creations",
