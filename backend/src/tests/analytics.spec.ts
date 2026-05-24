@@ -2,6 +2,7 @@ import { AnalyticsIngestService } from "../modules/analytics/analytics_ingest.se
 import { AnalyticsService } from "../modules/analytics/analytics.service";
 import { ArtistAnalyticsReportSource } from "../modules/analytics/analytics_bigquery_report";
 import { AnalyticsWarehouseExportService } from "../modules/analytics/analytics_warehouse";
+import { AnalyticsCatalogMetadataService } from "../modules/analytics/analytics_catalog_metadata.service";
 
 describe("analytics", () => {
   it("aggregates plays and payouts by artist", async () => {
@@ -178,6 +179,62 @@ describe("analytics", () => {
       }),
     );
     expect(result.sources[0]).toEqual(expect.objectContaining({ source: "web", plays: 1 }));
+  });
+
+  it("enriches dashboard track names from catalog metadata when facts omit titles", async () => {
+    const ingest = new AnalyticsIngestService();
+    const warehouse = new AnalyticsWarehouseExportService(ingest);
+    const catalogMetadata: Pick<AnalyticsCatalogMetadataService, "findTracks"> = {
+      findTracks: jest.fn().mockResolvedValue(
+        new Map([
+          [
+            "track-metadata",
+            {
+              trackId: "track-metadata",
+              title: "Zongi Sanga",
+              releaseId: "release-metadata",
+              releaseTitle: "Extra Musica",
+              artistId: "artist-metadata",
+              artistName: "Grey",
+            },
+          ],
+        ]),
+      ),
+    };
+    const analytics = new AnalyticsService(
+      ingest,
+      warehouse,
+      undefined,
+      catalogMetadata as AnalyticsCatalogMetadataService,
+    );
+
+    await ingest.ingest({
+      eventName: "playback.completed",
+      occurredAt: "2026-05-20T09:00:00.000Z",
+      payload: {
+        artistId: "artist-metadata",
+        trackId: "track-metadata",
+        sessionId: "session-metadata",
+        source: "web_player",
+      },
+    });
+
+    const result = await analytics.getArtistDashboard("artist-metadata", 30);
+
+    expect(catalogMetadata.findTracks).toHaveBeenCalledWith(["track-metadata"]);
+    expect(result.topTracks[0]).toEqual(
+      expect.objectContaining({
+        trackId: "track-metadata",
+        title: "Zongi Sanga",
+        plays: 1,
+      }),
+    );
+    expect(result.trackPerformance[0]).toEqual(
+      expect.objectContaining({
+        trackId: "track-metadata",
+        title: "Zongi Sanga",
+      }),
+    );
   });
 
   it("returns explicit no-data metadata instead of placeholder dashboard values", async () => {

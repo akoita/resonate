@@ -15,6 +15,7 @@ import {
 } from "./analytics_warehouse_loader";
 import { ANALYTICS_EVENT_PUBLISHER, analyticsEventPublisherFromEnv } from "./analytics_event_publisher";
 import { AnalyticsDomainEventBridgeService } from "./analytics_domain_event_bridge.service";
+import { AnalyticsCatalogMetadataService } from "./analytics_catalog_metadata.service";
 import { SharedModule } from "../shared/shared.module";
 
 @Module({
@@ -26,6 +27,7 @@ import { SharedModule } from "../shared/shared.module";
     AnalyticsIngestService,
     AnalyticsInstrumentationService,
     AnalyticsDomainEventBridgeService,
+    AnalyticsCatalogMetadataService,
     AnalyticsGovernanceService,
     AnalyticsWarehouseExportService,
     AnalyticsWarehouseLoaderService,
@@ -52,6 +54,7 @@ import { SharedModule } from "../shared/shared.module";
     AnalyticsAuthorizationService,
     AnalyticsInstrumentationService,
     AnalyticsDomainEventBridgeService,
+    AnalyticsCatalogMetadataService,
     AnalyticsGovernanceService,
     AnalyticsWarehouseExportService,
     AnalyticsWarehouseLoaderService,
