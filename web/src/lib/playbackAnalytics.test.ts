@@ -88,7 +88,7 @@ describe("playback analytics helpers", () => {
     ).toBe(true);
   });
 
-  it("does not qualify local-only or artistless tracks", () => {
+  it("does not qualify local-only tracks", () => {
     expect(
       shouldReportPlaybackCompleted({
         track: { ...track, source: "local", catalogTrackId: null },
@@ -97,6 +97,9 @@ describe("playback analytics helpers", () => {
         alreadyReported: false,
       }),
     ).toBe(false);
+  });
+
+  it("qualifies artistless remote tracks so the backend can resolve catalog ownership", () => {
     expect(
       shouldReportPlaybackCompleted({
         track: { ...track, artistId: null },
@@ -104,7 +107,7 @@ describe("playback analytics helpers", () => {
         durationSeconds: 120,
         alreadyReported: false,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("builds the analytics payload with stable session id and bounded ratio", () => {
@@ -125,6 +128,23 @@ describe("playback analytics helpers", () => {
       sessionId: "session-uuid",
       source: "web_player",
       completionRatio: 1,
+      durationMs: 120000,
+    });
+  });
+
+  it("builds payloads without artist id when only catalog track identity is available", () => {
+    expect(
+      buildPlaybackCompletedPayload({
+        track: { ...track, artistId: null },
+        currentTimeSeconds: 30,
+        durationSeconds: 120,
+        sessionId: "session-1",
+      }),
+    ).toEqual({
+      trackId: "catalog-track-1",
+      sessionId: "session-1",
+      source: "web_player",
+      completionRatio: 0.25,
       durationMs: 120000,
     });
   });

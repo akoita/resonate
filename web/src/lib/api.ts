@@ -556,7 +556,7 @@ export async function getArtistAnalyticsDashboard(
 
 export type PlaybackCompletedAnalyticsInput = {
   trackId: string;
-  artistId: string;
+  artistId?: string;
   sessionId?: string;
   source?: string;
   completionRatio: number;
@@ -2160,6 +2160,7 @@ export async function getGenerationStatus(token: string, jobId: string) {
 export type GenerationListItem = {
   releaseId: string;
   trackId: string;
+  artistId: string;
   title: string;
   prompt: string;
   negativePrompt: string | null;

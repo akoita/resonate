@@ -75,6 +75,54 @@ rg 'password|secret|api_key|private_key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY' back
 rg 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/agents/payment_router.service.ts backend/src/modules/agents/agent_config.controller.ts backend/src/modules/agents/agents.module.ts backend/src/tests/payment_router.spec.ts backend/src/tests/payment_router_x402.integration.spec.ts
 ```
 
+## Addendum: #937 Playback Analytics Emissions
+
+Reviewed the playback analytics changes for #937. No Critical or High findings
+were identified in the changed backend or frontend code.
+
+### Scope
+
+- `backend/src/modules/analytics/analytics.controller.ts`
+- `backend/src/modules/analytics/analytics_instrumentation.service.ts`
+- `backend/src/modules/generation/generation.service.ts`
+- `backend/src/tests/analytics.controller.http.spec.ts`
+- `backend/src/tests/analytics_instrumentation.spec.ts`
+- `web/src/app/library/page.tsx`
+- `web/src/lib/api.ts`
+- `web/src/lib/playbackAnalytics.ts`
+- `web/src/lib/playbackAnalytics.test.ts`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- The playback completion endpoint remains JWT-protected and still validates
+  required track identity, completion ratio bounds, and duration shape.
+- When a client omits `artistId`, the backend resolves it through existing
+  catalog metadata instead of trusting a broad client-supplied fallback.
+- The frontend still suppresses local-only track analytics; the change only
+  expands remote/catalog playback reporting.
+- No new secrets, environment variables, dynamic SQL, unsafe deserialization,
+  or public unauthenticated routes were introduced.
+
+### Commands Run
+
+```bash
+cd web && npx vitest run src/lib/playbackAnalytics.test.ts src/lib/api.test.ts
+cd backend && npx jest --runInBand --config jest.config.js --testPathPattern='analytics.controller.http|analytics_instrumentation.spec'
+cd web && npm run lint
+cd backend && npm run lint
+rg 'password|secret|api_key|private_key' backend/src/modules/analytics backend/src/modules/generation --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/analytics backend/src/modules/generation
+rg 'JSON\.parse|eval\(' backend/src/modules/analytics backend/src/modules/generation
+rg 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/lib web/src/app/library
+```
+
 ## Addendum: #812 Public Payment-Router API Surface
 
 Reviewed the #812 OpenAPI guidance change. The update documents that external
