@@ -13,6 +13,7 @@ import {
   AnalyticsWarehouseExportService,
   buildAnalyticsWarehouseExport,
 } from "./analytics_warehouse";
+import { AnalyticsCatalogMetadataService, AnalyticsTrackMetadata } from "./analytics_catalog_metadata.service";
 
 interface TrackStats {
   trackId: string;
@@ -78,6 +79,10 @@ interface ArtistAnalyticsData {
   metadata: AnalyticsReportMetadata;
 }
 
+type EnrichedAnalyticsFactRow = AnalyticsFactRow & {
+  catalogTrack?: AnalyticsTrackMetadata;
+};
+
 @Injectable()
 export class AnalyticsService {
   constructor(
@@ -86,11 +91,12 @@ export class AnalyticsService {
     @Optional()
     @Inject(ANALYTICS_REPORT_SOURCE)
     private readonly reportSource?: ArtistAnalyticsReportSource,
+    @Optional() private readonly catalogMetadataService?: AnalyticsCatalogMetadataService,
   ) {}
 
   async getArtistStats(artistId: string, days: number) {
     const data = await this.listArtistData(artistId, days);
-    const facts = data.facts;
+    const facts = await this.enrichFactsWithCatalogMetadata(data.facts);
 
     const summary = {
       artistId,
@@ -105,7 +111,7 @@ export class AnalyticsService {
       const dimensions = fact.dimensions;
       const eventName = this.stringDimension(dimensions, "eventName");
       const trackId = fact.trackId ?? "unknown";
-      const title = this.stringDimension(dimensions, "title") ?? "Unknown Track";
+      const title = this.trackTitle(fact);
       const stats =
         trackMap.get(trackId) ?? { trackId, title, plays: 0, payoutUsd: 0, payoutsByAsset: [] };
       if (stats.title === "Unknown Track" && title !== "Unknown Track") {
@@ -137,7 +143,7 @@ export class AnalyticsService {
 
   async getArtistDashboard(artistId: string, days: number) {
     const data = await this.listArtistData(artistId, days);
-    const facts = data.facts;
+    const facts = await this.enrichFactsWithCatalogMetadata(data.facts);
 
     const summary = {
       artistId,
@@ -153,7 +159,7 @@ export class AnalyticsService {
       const dimensions = fact.dimensions;
       const eventName = this.stringDimension(dimensions, "eventName");
       const trackId = fact.trackId ?? "unknown";
-      const title = this.stringDimension(dimensions, "title") ?? "Unknown Track";
+      const title = this.trackTitle(fact);
       const sessionId = this.stringDimension(dimensions, "sessionId") ?? "unknown";
       const source = this.stringDimension(dimensions, "source") ?? "unknown";
 
@@ -268,6 +274,42 @@ export class AnalyticsService {
     return buildAnalyticsWarehouseExport(await this.ingestService.listEvents());
   }
 
+  private async enrichFactsWithCatalogMetadata(facts: AnalyticsFactRow[]): Promise<EnrichedAnalyticsFactRow[]> {
+    if (!this.catalogMetadataService) {
+      return facts;
+    }
+
+    const trackIds = facts
+      .map((fact) => fact.trackId)
+      .filter((trackId): trackId is string => typeof trackId === "string" && trackId.length > 0);
+    const tracksById = await this.catalogMetadataService.findTracks(trackIds);
+    if (tracksById.size === 0) {
+      return facts;
+    }
+
+    return facts.map((fact) => {
+      const catalogTrack = fact.trackId ? tracksById.get(fact.trackId) : undefined;
+      if (!catalogTrack) {
+        return fact;
+      }
+
+      return {
+        ...fact,
+        releaseId: fact.releaseId ?? catalogTrack.releaseId,
+        artistId: fact.artistId ?? catalogTrack.artistId,
+        dimensions: {
+          ...fact.dimensions,
+          title: this.stringDimension(fact.dimensions, "title") ?? catalogTrack.title,
+          releaseId: this.stringDimension(fact.dimensions, "releaseId") ?? catalogTrack.releaseId,
+          releaseTitle: this.stringDimension(fact.dimensions, "releaseTitle") ?? catalogTrack.releaseTitle,
+          artistId: this.stringDimension(fact.dimensions, "artistId") ?? catalogTrack.artistId,
+          artistName: this.stringDimension(fact.dimensions, "artistName") ?? catalogTrack.artistName ?? undefined,
+        },
+        catalogTrack,
+      };
+    });
+  }
+
   private isPlayEvent(eventName?: string) {
     return eventName === "license.granted" || eventName === "playback.completed";
   }
@@ -278,6 +320,10 @@ export class AnalyticsService {
 
   private topTracks(tracks: TrackStats[]) {
     return [...tracks].sort((left, right) => right.plays - left.plays || right.payoutUsd - left.payoutUsd).slice(0, 10);
+  }
+
+  private trackTitle(fact: EnrichedAnalyticsFactRow) {
+    return this.stringDimension(fact.dimensions, "title") ?? fact.catalogTrack?.title ?? "Unknown Track";
   }
 
   private playsOverTime(views: AnalyticsViewRow[], facts: AnalyticsFactRow[]): PlaysOverTimeStats[] {

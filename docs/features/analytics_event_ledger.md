@@ -49,7 +49,9 @@ instead of aggregating directly from raw in-memory events, and deployed
 backends can set `ANALYTICS_REPORT_SOURCE=bigquery` to read artist dashboard
 metrics from BigQuery with bounded artist/time-window queries, freshness
 metadata, short TTL caching, and rights-route dimensions for content protection
-metrics. The near-real-time target path can also
+metrics. Artist dashboard responses also enrich track facts from catalog
+metadata when events contain `trackId` but omit display titles. The
+near-real-time target path can also
 publish validated envelopes to Pub/Sub after ledger
 persistence by setting `ANALYTICS_EVENT_PUBLISHING_ENABLED=true` and
 `ANALYTICS_EVENT_PUBSUB_TOPIC` to the Terraform-managed analytics topic. The
@@ -128,6 +130,7 @@ aggregates, not from retaining raw personal data forever.
 | Agent taste materialization | Implemented as post-Dataflow BigQuery SQL in `workers/analytics-dataflow/sql/agent_taste_intelligence_baseline.sql`, with an optional BigQuery ML matrix-factorization template in `agent_taste_intelligence_bqml.sql`. |
 | Warehouse loading/backfill | Implemented through `ANALYTICS_WAREHOUSE_TARGET=local_json` for idempotent JSONL files and `ANALYTICS_WAREHOUSE_TARGET=bigquery_insert_all` for BigQuery streaming inserts across raw, clean, fact, view, and quarantine layers. This remains the operational bridge while the Dataflow path is validated. |
 | Current artist reports | Implemented for `GET /analytics/artist/:id` and `GET /analytics/artist/:id/v1`; reports read generated analytics facts and fact dimensions while preserving response compatibility. With `ANALYTICS_REPORT_SOURCE=bigquery`, the same endpoints read BigQuery `analytics_facts` and `analytics_views`, enforce artist/admin authorization, return explicit time-window/freshness/no-data metadata, compute content protection metrics from `rights.route_decided`, and use bounded cached queries. |
+| Catalog metadata enrichment | Implemented in `backend/src/modules/analytics/analytics_catalog_metadata.service.ts`; artist analytics responses resolve track/release/artist display metadata from catalog rows when analytics facts have IDs but sparse dimensions. |
 | Core producer helpers | Implemented in `backend/src/modules/analytics/analytics_instrumentation.service.ts` for playback, library, commerce, rights, agent, and generation events. |
 | Playback web instrumentation | Implemented through `POST /analytics/playback/completed`, `web/src/lib/playbackAnalytics.ts`, and `web/src/lib/playerContext.tsx`; authenticated web-player catalog plays emit one `playback.completed` envelope per track load once the qualifying threshold is reached. |
 | Upload/catalog domain bridge | Implemented in `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`; subscribes to the shared `EventBus` for upload and catalog lifecycle events and ingests compact pseudonymous analytics envelopes without blocking release processing. |
@@ -209,6 +212,9 @@ Current verification:
   operator handoff values needed by `resonate-iac`.
 - BigQuery-backed artist report query shaping and no-data metadata are covered
   by `backend/src/tests/analytics_bigquery_report.spec.ts`.
+- Catalog metadata enrichment for sparse artist report facts is covered by
+  `backend/src/tests/analytics.spec.ts` and
+  `backend/src/tests/analytics_catalog_metadata.integration.spec.ts`.
 - Artist analytics API authorization is covered by
   `backend/src/tests/analytics.controller.http.spec.ts`.
 - Durable backfill scoping is covered by

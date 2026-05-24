@@ -46,11 +46,14 @@ empty dashboard is explicit no-data rather than placeholder numbers.
 The service consumes `analytics_facts` for play and payout report totals,
 `analytics_views` for plays-over-time rows when available, and fact dimensions
 for compatibility fields such as track title, session, source, and payout asset
-metadata. It also consumes `rights.route_decided` fact dimensions (`route`,
-`evidenceTypes`, and `decisionReason`) for the content protection section.
-BigQuery reads are bounded by artist id and explicit time windows, use named
-query parameters, have a configurable maximum-bytes-billed guard, and are
-cached briefly in-process to avoid repeated identical dashboard queries.
+metadata. When an analytics fact has a `trackId` but no title metadata, the
+backend enriches the dashboard response from catalog `Track`/`Release`/`Artist`
+rows before returning track performance and top-track data. It also consumes
+`rights.route_decided` fact dimensions (`route`, `evidenceTypes`, and
+`decisionReason`) for the content protection section. BigQuery reads are bounded
+by artist id and explicit time windows, use named query parameters, have a
+configurable maximum-bytes-billed guard, and are cached briefly in-process to
+avoid repeated identical dashboard queries.
 
 ## Implemented Surface
 
@@ -60,6 +63,8 @@ cached briefly in-process to avoid repeated identical dashboard queries.
 - Status strip for data source, freshness, selected window, and cache state.
 - Plays-over-time chart from `playsOverTime`.
 - Track performance table from `trackPerformance`.
+- Catalog-backed track title fallback when analytics facts only contain
+  `trackId`.
 - Content protection metrics from `protection`.
 - Empty and error states that do not display fake values as real metrics.
 
@@ -86,3 +91,6 @@ cached briefly in-process to avoid repeated identical dashboard queries.
   `web/src/lib/api.test.ts`.
 - Dashboard loading, error, empty, no-artist, and populated rendering coverage:
   `web/src/components/analytics/ArtistAnalyticsDashboard.test.tsx`.
+- Backend aggregation and catalog metadata enrichment coverage:
+  `backend/src/tests/analytics.spec.ts` and
+  `backend/src/tests/analytics_catalog_metadata.integration.spec.ts`.
