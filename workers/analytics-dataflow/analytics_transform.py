@@ -100,7 +100,7 @@ def process_payload(
                 "eventName": object_string(raw, "eventName"),
                 "reason": str(error),
                 "receivedAt": quarantine_received_at,
-                "raw": raw,
+                "raw": json_field(raw),
             }
         )
         return layers
@@ -120,7 +120,7 @@ def process_payload(
                 "eventName": event["eventName"],
                 "reason": f"unsupported event version: {event['eventVersion']}",
                 "receivedAt": quarantine_received_at,
-                "raw": event,
+                "raw": json_field(event),
             }
         )
         return layers
@@ -133,13 +133,13 @@ def process_payload(
                 "eventName": event["eventName"],
                 "reason": f"unsupported event family: {event_family}",
                 "receivedAt": quarantine_received_at,
-                "raw": event,
+                "raw": json_field(event),
             }
         )
         return layers
 
     clean = to_clean_row(event)
-    layers.events_clean.append(clean)
+    layers.events_clean.append(serialize_json_fields(clean, "payload"))
     layers.analytics_facts.append(to_fact_row(clean))
     layers.analytics_views.append(to_view_row(clean))
     return layers
@@ -237,9 +237,9 @@ def to_raw_row(event: dict[str, Any]) -> dict[str, Any]:
             "producer": event["producer"],
             "environment": event["environment"],
             "privacyTier": event["privacyTier"],
-            "payload": event["payload"],
-            "sourceRefs": event.get("sourceRefs"),
-            "envelope": event,
+            "payload": json_field(event["payload"]),
+            "sourceRefs": json_field(event.get("sourceRefs")),
+            "envelope": json_field(event),
         }
     )
 
@@ -292,28 +292,30 @@ def to_fact_row(clean: dict[str, Any]) -> dict[str, Any]:
             "subjectId": clean.get("subjectId"),
             "canonicalAmountUsd": clean.get("canonicalAmountUsd"),
             "count": 1,
-            "dimensions": compact(
-                {
-                    "eventName": clean["eventName"],
-                    "producer": clean["producer"],
-                    "privacyTier": clean["privacyTier"],
-                    "source": clean.get("source"),
-                    "sessionId": clean.get("sessionId"),
-                    "title": string_payload(payload, "title"),
-                    "paymentToken": string_payload(payload, "paymentToken"),
-                    "paymentAssetId": string_payload(payload, "paymentAssetId"),
-                    "paymentAssetSymbol": string_payload(payload, "paymentAssetSymbol"),
-                    "paymentAssetDecimals": number_payload(payload, "paymentAssetDecimals"),
-                    "settlementAmount": string_payload(payload, "settlementAmount"),
-                    "settlementAmountUnits": string_payload(payload, "settlementAmountUnits"),
-                    "amount": string_payload(payload, "amount"),
-                    "amountUnits": string_payload(payload, "amountUnits"),
-                    "currency": string_payload(payload, "currency"),
-                    "amountUsd": number_payload(payload, "amountUsd"),
-                    "route": string_payload(payload, "route"),
-                    "evidenceTypes": list_payload(payload, "evidenceTypes"),
-                    "decisionReason": string_payload(payload, "decisionReason"),
-                }
+            "dimensions": json_field(
+                compact(
+                    {
+                        "eventName": clean["eventName"],
+                        "producer": clean["producer"],
+                        "privacyTier": clean["privacyTier"],
+                        "source": clean.get("source"),
+                        "sessionId": clean.get("sessionId"),
+                        "title": string_payload(payload, "title"),
+                        "paymentToken": string_payload(payload, "paymentToken"),
+                        "paymentAssetId": string_payload(payload, "paymentAssetId"),
+                        "paymentAssetSymbol": string_payload(payload, "paymentAssetSymbol"),
+                        "paymentAssetDecimals": number_payload(payload, "paymentAssetDecimals"),
+                        "settlementAmount": string_payload(payload, "settlementAmount"),
+                        "settlementAmountUnits": string_payload(payload, "settlementAmountUnits"),
+                        "amount": string_payload(payload, "amount"),
+                        "amountUnits": string_payload(payload, "amountUnits"),
+                        "currency": string_payload(payload, "currency"),
+                        "amountUsd": number_payload(payload, "amountUsd"),
+                        "route": string_payload(payload, "route"),
+                        "evidenceTypes": list_payload(payload, "evidenceTypes"),
+                        "decisionReason": string_payload(payload, "decisionReason"),
+                    }
+                )
             ),
         }
     )
@@ -429,6 +431,19 @@ def decode_payload_for_quarantine(payload: bytes | str | dict[str, Any]) -> Any:
 
 def compact(row: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in row.items() if value is not None}
+
+
+def serialize_json_fields(row: dict[str, Any], *field_names: str) -> dict[str, Any]:
+    serialized = dict(row)
+    for field_name in field_names:
+        serialized[field_name] = json_field(serialized.get(field_name))
+    return compact(serialized)
+
+
+def json_field(value: Any) -> str | None:
+    if value is None:
+        return None
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 def string_payload(payload: dict[str, Any], key: str) -> str | None:

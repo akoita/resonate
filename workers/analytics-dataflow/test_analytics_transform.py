@@ -21,6 +21,9 @@ class AnalyticsTransformTest(unittest.TestCase):
         self.assertEqual(layers.events_clean[0]["eventFamily"], "playback")
         self.assertEqual(layers.analytics_facts[0]["factId"], "fact_evt_play")
         self.assertEqual(layers.analytics_views[0]["playCount"], 1)
+        self.assertEqual(json.loads(layers.events_raw[0]["payload"])["artistId"], "artist-1")
+        self.assertEqual(json.loads(layers.events_clean[0]["payload"])["trackId"], "track-1")
+        self.assertEqual(json.loads(layers.analytics_facts[0]["dimensions"])["eventName"], "playback.completed")
 
     def test_invalid_payload_is_quarantined(self):
         layers = process_payload("{not json")
@@ -142,9 +145,11 @@ class AnalyticsTransformTest(unittest.TestCase):
 
         self.assertEqual(layers.analytics_facts[0]["factType"], "rights_event")
         self.assertEqual(layers.analytics_facts[0]["releaseId"], "release-1")
-        self.assertEqual(layers.analytics_facts[0]["dimensions"]["route"], "STANDARD_ESCROW")
-        self.assertEqual(layers.analytics_facts[0]["dimensions"]["evidenceTypes"], ["rights_metadata"])
-        self.assertEqual(layers.analytics_facts[0]["dimensions"]["decisionReason"], "verified uploader")
+        dimensions = json.loads(layers.analytics_facts[0]["dimensions"])
+
+        self.assertEqual(dimensions["route"], "STANDARD_ESCROW")
+        self.assertEqual(dimensions["evidenceTypes"], ["rights_metadata"])
+        self.assertEqual(dimensions["decisionReason"], "verified uploader")
 
     def test_idempotency_key_prefers_event_id(self):
         payload = json.dumps(event("evt_key", "playback.completed"))
