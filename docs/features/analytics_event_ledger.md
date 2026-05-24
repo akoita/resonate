@@ -197,15 +197,17 @@ Current verification:
 - Privacy-sensitive events should declare retention and deletion behavior.
 - Event envelope validation is covered by
   `backend/src/tests/analytics_event.spec.ts`.
-- Warehouse export transforms and quarantine behavior are covered by
-  `backend/src/tests/analytics_warehouse.spec.ts`.
+- Warehouse export transforms, quarantine behavior, and the shared expected
+  event processing matrix are covered by
+  `backend/src/tests/analytics_warehouse.spec.ts` using
+  `test-fixtures/analytics_expected_events.json`.
 - Warehouse loader idempotency, schema quarantine, and event-version parsing are
   covered by `backend/src/tests/analytics_warehouse_loader.spec.ts`.
 - Pub/Sub event publishing config, attributes, disabled behavior, and
   non-strict/strict failure handling are covered by
   `backend/src/tests/analytics_event_publisher.spec.ts`.
-- Dataflow transform validation, quarantine, dedupe, and unsupported-version
-  behavior are covered by
+- Dataflow transform validation, quarantine, dedupe, unsupported-version
+  behavior, and the same shared expected event processing matrix are covered by
   `workers/analytics-dataflow/test_analytics_transform.py`.
 - The Flex Template publish workflow is validated by GitHub Actions syntax
   checks and the worker transform tests; a successful workflow run publishes the

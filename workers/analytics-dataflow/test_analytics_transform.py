@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import unittest
 
 from analytics_transform import (
@@ -85,6 +86,31 @@ class AnalyticsTransformTest(unittest.TestCase):
         )
         self.assertEqual(len(layers.analytics_facts), len(events))
 
+    def test_expected_analytics_events_promote_to_all_layers(self):
+        expected_events = load_expected_events()
+
+        layers = process_batch(
+            event(
+                f"evt_expected_{index}_{event_case['eventName'].replace('.', '_')}",
+                event_case["eventName"],
+                payload=event_case["payload"],
+                privacyTier=event_case.get("privacyTier", "pseudonymous"),
+                consentBasis=event_case.get("consentBasis"),
+            )
+            for index, event_case in enumerate(expected_events)
+        )
+        event_names = [event_case["eventName"] for event_case in expected_events]
+
+        self.assertEqual(layers.analytics_quarantine, [])
+        self.assertEqual([row["eventName"] for row in layers.events_raw], event_names)
+        self.assertEqual([row["eventName"] for row in layers.events_clean], event_names)
+        self.assertEqual([json.loads(row["dimensions"])["eventName"] for row in layers.analytics_facts], event_names)
+        self.assertEqual([row["eventName"] for row in layers.analytics_views], event_names)
+        self.assertEqual(len(layers.events_raw), len(event_names))
+        self.assertEqual(len(layers.events_clean), len(event_names))
+        self.assertEqual(len(layers.analytics_facts), len(event_names))
+        self.assertEqual(len(layers.analytics_views), len(event_names))
+
     def test_batch_dedupes_by_event_id(self):
         layers = process_batch(
             [
@@ -162,8 +188,8 @@ class AnalyticsTransformTest(unittest.TestCase):
         self.assertEqual(parse_supported_versions("bad"), [1])
 
 
-def event(event_id, event_name, eventVersion=1, payload=None):
-    return {
+def event(event_id, event_name, eventVersion=1, payload=None, privacyTier="pseudonymous", consentBasis=None):
+    envelope = {
         "eventId": event_id,
         "eventName": event_name,
         "eventVersion": eventVersion,
@@ -171,9 +197,17 @@ def event(event_id, event_name, eventVersion=1, payload=None):
         "receivedAt": "2026-05-22T10:00:01.000Z",
         "producer": "analytics-test",
         "environment": "local",
-        "privacyTier": "pseudonymous",
+        "privacyTier": privacyTier,
         "payload": payload or {"artistId": "artist-1", "trackId": "track-1"},
     }
+    if consentBasis:
+        envelope["consentBasis"] = consentBasis
+    return envelope
+
+
+def load_expected_events():
+    fixture_path = Path(__file__).resolve().parents[2] / "test-fixtures" / "analytics_expected_events.json"
+    return json.loads(fixture_path.read_text())
 
 
 if __name__ == "__main__":
