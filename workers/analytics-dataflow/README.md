@@ -18,6 +18,12 @@ Flex Template. Pure transformation logic lives in `analytics_transform.py` so
 validation, quarantine, and row derivation can be tested without a Dataflow
 runner.
 
+The Flex Template image includes `setup.py` and sets
+`FLEX_TEMPLATE_PYTHON_SETUP_FILE` so Beam stages the local
+`analytics_transform` module to Dataflow worker harnesses. Keep new local
+Python modules in `setup.py`; copying them into the image is not enough for
+worker-side unpickling.
+
 ## Flex Template Parameters
 
 The processor accepts the default parameters emitted by `resonate-iac` issue
