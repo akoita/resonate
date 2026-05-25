@@ -18,6 +18,7 @@ import { useToast } from "../ui/Toast";
 import { PromptModal } from "../ui/PromptModal";
 import { useWebSockets } from "../../hooks/useWebSockets";
 import { libraryArtistHref } from "../../lib/artistRoutes";
+import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
 
 interface PlaylistDetailProps {
     playlistId: string;
@@ -88,7 +89,18 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     const handlePlayTrack = useCallback((track: LocalTrack) => {
         const index = tracks.findIndex((t) => t.id === track.id);
         void playQueue(tracks, index >= 0 ? index : 0);
-    }, [playQueue, tracks]);
+        recordProductAnalyticsFromBrowser("playlist.played", {
+            source: "playlist_detail_track",
+            subjectType: "playlist",
+            subjectId: playlistId,
+            payload: {
+                playlistId,
+                trackId: track.catalogTrackId || track.id,
+                startIndex: index >= 0 ? index : 0,
+                trackCount: tracks.length,
+            },
+        });
+    }, [playQueue, playlistId, tracks]);
 
     const handleRemoveTrack = async (trackId: string) => {
         if (!confirm("Remove this track from the playlist?")) return;
@@ -112,6 +124,16 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     const handlePlayAll = () => {
         if (tracks.length > 0) {
             void playQueue(tracks, 0);
+            recordProductAnalyticsFromBrowser("playlist.played", {
+                source: "playlist_detail",
+                subjectType: "playlist",
+                subjectId: playlistId,
+                payload: {
+                    playlistId,
+                    startIndex: 0,
+                    trackCount: tracks.length,
+                },
+            });
         }
     };
 

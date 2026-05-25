@@ -1,23 +1,23 @@
-"use client";
-
-import { use } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CampaignHero } from "../../../components/shows/CampaignHero";
+import { CampaignOperatorPanel } from "../../../components/shows/CampaignOperatorPanel";
+import { PledgeIntentPanel } from "../../../components/shows/PledgeIntentPanel";
 import {
   daysUntil,
   formatMoney,
-  getCampaignSync,
+  getCampaign,
   progressRatio,
+  type CampaignTier,
 } from "../../../lib/shows";
 
 interface Props {
   params: Promise<{ campaignId: string }>;
 }
 
-export default function CampaignDetailPage({ params }: Props) {
-  const { campaignId } = use(params);
-  const campaign = getCampaignSync(campaignId);
+export default async function CampaignDetailPage({ params }: Props) {
+  const { campaignId } = await params;
+  const campaign = await getCampaign(campaignId);
   if (!campaign) {
     notFound();
   }
@@ -36,6 +36,9 @@ export default function CampaignDetailPage({ params }: Props) {
     day: "numeric",
     month: "short",
   });
+  const tiers = campaign.tiers.length > 0
+    ? campaign.tiers
+    : defaultTiers(campaign.currency);
 
   return (
     <main className="shows-surface shows-page">
@@ -47,6 +50,7 @@ export default function CampaignDetailPage({ params }: Props) {
         </nav>
 
         <CampaignHero campaign={campaign} />
+        <CampaignOperatorPanel campaign={campaign} />
 
         <section className="show-detail__snapshot" aria-label="Campaign snapshot">
           <article className="show-detail__signal-card show-detail__signal-card--primary">
@@ -93,30 +97,7 @@ export default function CampaignDetailPage({ params }: Props) {
             </div>
           </article>
 
-          <article className="show-detail__pledge-panel" aria-label="Pledge tiers preview">
-            <div className="show-detail__pledge-header">
-              <span className="shows-home-section__kicker">Signal tiers</span>
-              <span className="show-detail__soon-pill">Preview</span>
-            </div>
-            <div className="show-detail__tiers">
-              <div className="show-detail__tier">
-                <strong>{campaign.currency === "EUR" ? "€" : "$"}25</strong>
-                <span>Fan signal</span>
-              </div>
-              <div className="show-detail__tier show-detail__tier--featured">
-                <strong>{campaign.currency === "EUR" ? "€" : "$"}75</strong>
-                <span>Ticket intent</span>
-              </div>
-              <div className="show-detail__tier">
-                <strong>{campaign.currency === "EUR" ? "€" : "$"}250</strong>
-                <span>Patron circle</span>
-              </div>
-            </div>
-            <p>
-              Tiers are shown so fans understand the future pledge flow. The
-              live transaction path still ships with the cohort demo.
-            </p>
-          </article>
+          <PledgeIntentPanel campaign={campaign} fallbackTiers={tiers} />
         </section>
 
         <section>
@@ -159,13 +140,13 @@ export default function CampaignDetailPage({ params }: Props) {
         <section className="show-detail__notice" aria-live="polite">
           <div>
             <h3 className="show-detail__notice-title">
-              Pledging launches with the cohort demo
+              Pledging follows the live escrow
             </h3>
             <p className="show-detail__notice-body">
-              The pledge flow (wallet connect → tier → sign → receipt) ships
-              with the upcoming cohort demo day. Until then, this is an
-              honest preview: the contract is deployed, the rules are public,
-              and the campaign math is visible.
+              Escrow-backed campaigns let fans select a tier, sign the ERC-20
+              approval plus pledge through their smart account, and attach the
+              mined transaction to a Resonate receipt. Demo-only campaigns stay
+              receipt-preview until their escrow deployment is linked.
             </p>
           </div>
           <a
@@ -180,4 +161,33 @@ export default function CampaignDetailPage({ params }: Props) {
       </div>
     </main>
   );
+}
+
+function defaultTiers(currency: "EUR" | "USD"): CampaignTier[] {
+  return [
+    {
+      id: "fan-signal",
+      title: "Fan signal",
+      amountCents: 2_500,
+      currency,
+      paymentAssetSymbol: "USDC",
+      description: "Refundable support signal and campaign receipt.",
+    },
+    {
+      id: "ticket-intent",
+      title: "Ticket intent",
+      amountCents: 7_500,
+      currency,
+      paymentAssetSymbol: "USDC",
+      description: "Priority allocation if the show is booked.",
+    },
+    {
+      id: "patron-circle",
+      title: "Patron circle",
+      amountCents: 25_000,
+      currency,
+      paymentAssetSymbol: "USDC",
+      description: "Premium campaign receipt and patron allocation.",
+    },
+  ];
 }
