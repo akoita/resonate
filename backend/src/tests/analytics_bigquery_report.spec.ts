@@ -93,6 +93,7 @@ describe("analytics BigQuery report source", () => {
     expect(client.requests[0].query).toContain("artistId = @artistId");
     expect(client.requests[0].query).toContain("occurredAt >= TIMESTAMP(@from)");
     expect(client.requests[0].parameters.artistId).toBe("artist-1");
+    expect(client.requests[1].parameters.toExclusiveDate).toBe("2026-05-22");
     expect(client.requests[0].maximumBytesBilled).toBe("123456");
     expect(result.facts[0]).toEqual(
       expect.objectContaining({
@@ -118,6 +119,36 @@ describe("analytics BigQuery report source", () => {
     );
     expect(cached.metadata.cache.hit).toBe(true);
     expect(client.requests).toHaveLength(2);
+  });
+
+  it("includes the current day when querying daily view rows for a partial-day window", async () => {
+    const client = new FakeBigQueryClient([
+      { rows: [], totalBytesProcessed: "0", cacheHit: false },
+      { rows: [], totalBytesProcessed: "0", cacheHit: false },
+    ]);
+    const source = new BigQueryArtistAnalyticsReportSource(
+      analyticsBigQueryReportConfigFromEnv({
+        ANALYTICS_REPORT_SOURCE: "bigquery",
+        ANALYTICS_BIGQUERY_PROJECT_ID: "analytics-project",
+        ANALYTICS_BIGQUERY_DATASET: "analytics_dev",
+      }),
+      client,
+      () => new Date("2026-05-25T14:00:00.000Z"),
+    );
+
+    await source.listArtistFacts({
+      artistId: "artist-1",
+      from: new Date("2026-04-25T14:00:00.000Z"),
+      to: new Date("2026-05-25T14:00:00.000Z"),
+    });
+
+    expect(client.requests[1].parameters).toEqual(
+      expect.objectContaining({
+        fromDate: "2026-04-25",
+        toExclusiveDate: "2026-05-26",
+      }),
+    );
+    expect(client.requests[1].query).toContain("date < DATE(@toExclusiveDate)");
   });
 
   it("marks empty BigQuery windows as real no-data responses", async () => {

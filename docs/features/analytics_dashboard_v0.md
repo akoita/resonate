@@ -44,9 +44,12 @@ metrics; admins can read any artist. Responses include `meta.timeWindow`,
 empty dashboard is explicit no-data rather than placeholder numbers.
 
 The service consumes `analytics_facts` for play and payout report totals,
-`analytics_views` for plays-over-time rows when available, and fact dimensions
-for compatibility fields such as track title, session, source, and payout asset
-metadata. When an analytics fact has a `trackId` but no title metadata, the
+plays-over-time rows, and fact dimensions for compatibility fields such as
+track title, session, source, and payout asset metadata. Daily `analytics_views`
+remain available for warehouse consumers, but the artist dashboard derives its
+time-series chart from the same facts as the KPI and track-performance totals so
+partial current-day windows cannot drift from the rest of the report. When an
+analytics fact has a `trackId` but no title metadata, the
 backend enriches the dashboard response from catalog `Track`/`Release`/`Artist`
 rows before returning track performance and top-track data. It also consumes
 `rights.route_decided` fact dimensions (`route`, `evidenceTypes`, and
