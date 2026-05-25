@@ -1,0 +1,150 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.28;
+
+import {Test} from "forge-std/Test.sol";
+import {ShowCampaignEscrow} from "../../src/core/ShowCampaignEscrow.sol";
+import {IShowCampaignEscrow} from "../../src/interfaces/IShowCampaignEscrow.sol";
+import {MockUSDC} from "../../src/payments/MockUSDC.sol";
+import {SymTest} from "halmos-cheatcodes/SymTest.sol";
+
+/**
+ * @title ShowCampaignEscrow Formal Verification Tests
+ * @notice Halmos-style symbolic checks for the core escrow safety properties.
+ * @dev Run with: halmos --contract ShowCampaignEscrowFormalTest
+ */
+contract ShowCampaignEscrowFormalTest is Test, SymTest, IShowCampaignEscrow {
+    ShowCampaignEscrow public escrow;
+    MockUSDC public usdc;
+
+    address public owner = address(0x1000);
+    address public artist = address(0x2000);
+    address public confirmer = address(0x3000);
+    address public alice = address(0x4000);
+    address public bob = address(0x5000);
+
+    bytes32 public constant ARTIST_ID_HASH = keccak256("artist:sennarin");
+    bytes32 public constant AUTHORITY_HASH = keccak256("authority:sennarin:wallet");
+    uint256 public constant DISPUTE_WINDOW = 7 days;
+
+    function setUp() public {
+        usdc = new MockUSDC();
+        escrow = new ShowCampaignEscrow(owner);
+
+        vm.prank(owner);
+        escrow.setConfirmer(confirmer, true);
+
+        _mintAndApprove(alice, 1_000_000e6);
+        _mintAndApprove(bob, 1_000_000e6);
+    }
+
+    function check_depositReleaseBpsBounded(uint256 depositReleaseBps) public {
+        uint256 deadline = block.timestamp + 14 days;
+        uint256 bookingDeadline = block.timestamp + 30 days;
+
+        vm.prank(owner);
+        if (depositReleaseBps > escrow.MAX_DEPOSIT_RELEASE_BPS()) {
+            vm.expectRevert(IShowCampaignEscrow.DepositReleaseTooHigh.selector);
+        }
+
+        uint256 campaignId = escrow.createCampaign(
+            ARTIST_ID_HASH,
+            AUTHORITY_HASH,
+            artist,
+            address(usdc),
+            1_000e6,
+            2,
+            deadline,
+            bookingDeadline,
+            depositReleaseBps,
+            DISPUTE_WINDOW
+        );
+
+        if (depositReleaseBps <= escrow.MAX_DEPOSIT_RELEASE_BPS()) {
+            assert(escrow.campaignStatus(campaignId) == CampaignStatus.Draft);
+        }
+    }
+
+    function check_fundingDoesNotReleaseBeforeBooking(uint256 aliceAmount, uint256 bobAmount) public {
+        vm.assume(aliceAmount > 0 && aliceAmount <= 500_000e6);
+        vm.assume(bobAmount > 0 && bobAmount <= 500_000e6);
+
+        uint256 campaignId = _createAndActivate(aliceAmount + bobAmount, 2, 0);
+
+        vm.prank(alice);
+        escrow.pledge(campaignId, aliceAmount);
+        vm.prank(bob);
+        escrow.pledge(campaignId, bobAmount);
+
+        (uint256 totalPledged, uint256 totalRefunded, uint256 totalReleased) = escrow.campaignAccounting(campaignId);
+
+        assert(escrow.campaignStatus(campaignId) == CampaignStatus.Funded);
+        assert(totalPledged == aliceAmount + bobAmount);
+        assert(totalRefunded == 0);
+        assert(totalReleased == 0);
+        assert(usdc.balanceOf(artist) == 0);
+    }
+
+    function check_finalReleaseConservesPledged(uint256 aliceAmount, uint256 bobAmount, uint256 depositReleaseBps)
+        public
+    {
+        vm.assume(aliceAmount > 0 && aliceAmount <= 500_000e6);
+        vm.assume(bobAmount > 0 && bobAmount <= 500_000e6);
+        vm.assume(depositReleaseBps <= escrow.MAX_DEPOSIT_RELEASE_BPS());
+
+        uint256 totalPledged = aliceAmount + bobAmount;
+        uint256 campaignId = _createAndActivate(totalPledged, 2, depositReleaseBps);
+
+        vm.prank(alice);
+        escrow.pledge(campaignId, aliceAmount);
+        vm.prank(bob);
+        escrow.pledge(campaignId, bobAmount);
+
+        vm.prank(confirmer);
+        escrow.confirmBooking(campaignId);
+
+        if (depositReleaseBps > 0) {
+            vm.prank(confirmer);
+            escrow.releaseDeposit(campaignId);
+        }
+
+        vm.prank(confirmer);
+        escrow.confirmFulfillment(campaignId);
+
+        vm.warp(block.timestamp + DISPUTE_WINDOW + 1);
+        escrow.releaseFunds(campaignId);
+
+        (, uint256 totalRefunded, uint256 totalReleased) = escrow.campaignAccounting(campaignId);
+
+        assert(totalRefunded == 0);
+        assert(totalReleased == totalPledged);
+        assert(usdc.balanceOf(artist) == totalPledged);
+        assert(escrow.campaignStatus(campaignId) == CampaignStatus.Released);
+    }
+
+    function _createAndActivate(uint256 goal, uint256 minimumBackers, uint256 depositReleaseBps)
+        internal
+        returns (uint256 campaignId)
+    {
+        vm.startPrank(owner);
+        campaignId = escrow.createCampaign(
+            ARTIST_ID_HASH,
+            AUTHORITY_HASH,
+            artist,
+            address(usdc),
+            goal,
+            minimumBackers,
+            block.timestamp + 14 days,
+            block.timestamp + 30 days,
+            depositReleaseBps,
+            DISPUTE_WINDOW
+        );
+        escrow.activateCampaign(campaignId);
+        vm.stopPrank();
+    }
+
+    function _mintAndApprove(address backer, uint256 amount) internal {
+        usdc.mint(backer, amount);
+        vm.prank(backer);
+        usdc.approve(address(escrow), amount);
+    }
+}

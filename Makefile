@@ -92,6 +92,13 @@ deploy-sepolia:
 deploy-base-sepolia:
 	BASE_SEPOLIA_RPC_URL="$(BASE_SEPOLIA_RPC_URL)" ./contracts/scripts/deploy-base-sepolia.sh
 
+deploy-show-campaign-escrow:
+	@if [ -z "$${PRIVATE_KEY:-}" ]; then \
+		echo "PRIVATE_KEY is required"; \
+		exit 1; \
+	fi
+	cd contracts && forge script script/DeployShowCampaignEscrow.s.sol --rpc-url $${RPC_URL:-$(BASE_SEPOLIA_RPC_URL)} --broadcast --evm-version cancun --via-ir --slow
+
 verify-base-sepolia:
 	BASE_SEPOLIA_RPC_URL="$(BASE_SEPOLIA_RPC_URL)" BROADCAST_FILE="$(BROADCAST_FILE)" ./contracts/scripts/verify-base-sepolia.sh
 

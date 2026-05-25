@@ -10,6 +10,8 @@ The Resonate Protocol core contracts implement:
 - **0xSplits integration** for revenue distribution
 - **Content protection** with staking, slashing, and blacklisting (Phase 2)
 - **Revenue escrow** with freeze/release/redirect for dispute resolution (Phase 2)
+- **Show campaign escrow** with thresholds, refunds, artist-authority binding,
+  booking confirmation, fulfillment confirmation, and staged release
 
 ## Architecture
 
@@ -205,6 +207,52 @@ escrow.release(tokenId);
 escrow.redirect(tokenId, rightfulOwner);
 ```
 
+### ShowCampaignEscrow.sol
+
+Purpose-built escrow for Resonate Shows. Unlike `RevenueEscrow`, which holds
+post-sale creator earnings per token, show campaigns need campaign-level
+thresholds, unique backer counts, public refund paths, and release gates tied to
+booking and fulfillment evidence.
+
+Core behavior:
+
+- owner creates a campaign with an artist authority hash, beneficiary,
+  stablecoin payment token, goal, minimum backers, deadline, booking deadline,
+  optional deposit release bps, and dispute window;
+- owner activates draft campaigns after backend artist-authority review;
+- fans pledge ERC-20 funds while the campaign is active;
+- reaching the goal and minimum backer threshold marks the campaign `Funded`
+  but does not release funds;
+- anyone can open refunds when an active campaign misses its deadline or a
+  funded campaign misses its booking deadline;
+- owner or authorized confirmers can confirm booking and fulfillment;
+- optional deposit release is capped at 30% and only available after booking
+  confirmation when disclosed in campaign terms;
+- final release is permissionless after fulfillment and the dispute window.
+
+```solidity
+uint256 campaignId = showEscrow.createCampaign(
+    artistIdHash,
+    authorityHash,
+    artistBeneficiary,
+    usdc,
+    100_000e6,
+    500,
+    block.timestamp + 14 days,
+    block.timestamp + 30 days,
+    0,
+    7 days
+);
+
+showEscrow.activateCampaign(campaignId);
+showEscrow.pledge(campaignId, 75e6);
+
+// Later, after the threshold is met:
+showEscrow.confirmBooking(campaignId);
+showEscrow.confirmFulfillment(campaignId);
+showEscrow.releaseFunds(campaignId);
+```
+
 ## Deployment
 
 See also: [contracts/README.md](../../contracts/README.md) for detailed env vars and cast commands.
@@ -283,7 +331,45 @@ forge coverage --report summary
 
 # Fuzz tests (more runs)
 forge test --match-path "test/fuzz/*" --fuzz-runs 1024
+
+# Invariant tests (more runs)
+forge test --match-path "test/invariant/*" --invariant-runs 256
+
+# Symbolic/formal tests written in Foundry style for Halmos
+halmos --contract StemNFTFormalTest
+halmos --contract ShowCampaignEscrowFormalTest
+
+# Certora Prover specs
+certoraRun certora/conf/show_campaign_escrow.conf
+
+# Mutation testing for high-value contracts/specs
+# Configure Gambit per target before running it in CI.
+gambit --help
 ```
+
+For material contract changes, Resonate expects a risk-scaled test ladder:
+
+- unit tests for all expected transitions and access-control failures;
+- Foundry fuzz/property tests for numeric bounds, authorization branching,
+  accounting, transfers, mint/list/buy flows, and non-trivial inputs;
+- Foundry invariant tests for escrow, marketplace, token-supply, role, and
+  multi-step lifecycle behavior;
+- symbolic/formal tests with maintained tools such as Halmos, Kontrol, or
+  Certora for critical custody, accounting, authorization, or upgrade
+  properties, or an explicit documented deferral.
+- mutation testing with Certora Gambit for high-value contracts/specs when we
+  need evidence that tests or formal rules catch intentionally injected faults.
+
+Shared contract surfaces such as events, errors, enums, and structs should live
+in interfaces under `contracts/src/interfaces/` so tests and production code do
+not duplicate declarations. Custom errors should include identifying parameters
+when they materially improve debugging, for example campaign id, caller,
+expected/current status, or requested/max basis points.
+
+Certora Prover specs use the `contracts/certora/conf/` and
+`contracts/certora/specs/` layout. Use that layer for high-value custody,
+accounting, authorization, upgrade, and state-machine properties; use Gambit to
+evaluate whether those specs or the Solidity tests kill meaningful mutants.
 
 ## Gas Estimates
 

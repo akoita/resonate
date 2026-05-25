@@ -1834,7 +1834,7 @@ export function useBatchMintAndList() {
 }
 
 // Helper to send batch transactions via Kernel client (unified path)
-async function sendBatchContractTransactions(
+export async function sendBatchContractTransactions(
   publicClient: PublicClient,
   chainId: number,
   calls: { to: Address; data: Hex | ((addr: Address) => Hex); value?: bigint }[],
