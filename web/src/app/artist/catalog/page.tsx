@@ -210,6 +210,49 @@ function CatalogMetric({ label, value, detail }: { label: string; value: number 
   );
 }
 
+function ArtworkThumbnail({ src, title, fallbackChar }: { src?: string | null; title: string; fallbackChar: string }) {
+  const [error, setError] = useState(false);
+
+  if (src && !error) {
+    return (
+      <img
+        src={src}
+        alt={title}
+        onError={() => setError(true)}
+        style={{
+          width: "36px",
+          height: "36px",
+          borderRadius: "6px",
+          objectFit: "cover",
+          border: "1px solid rgba(255, 255, 255, 0.08)",
+          boxShadow: "0 4px 10px rgba(0, 0, 0, 0.3)",
+          background: "rgba(255, 255, 255, 0.02)",
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: "36px",
+        height: "36px",
+        borderRadius: "6px",
+        background: "linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%)",
+        border: "1px solid rgba(255, 255, 255, 0.08)",
+        boxShadow: "0 4px 10px rgba(0, 0, 0, 0.2)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: "14px",
+        color: "rgba(255, 255, 255, 0.4)",
+      }}
+    >
+      {fallbackChar}
+    </div>
+  );
+}
+
 function ReleaseInventory({ releases }: { releases: Release[] }) {
   if (releases.length === 0) {
     return <p className="analytics-muted" style={{ textAlign: "center", padding: "40px 0", opacity: 0.5 }}>No releases match this search query.</p>;
@@ -232,9 +275,12 @@ function ReleaseInventory({ releases }: { releases: Release[] }) {
         {releases.map((release) => (
           <tr key={release.id}>
             <td style={{ fontWeight: 600 }}>
-              <Link href={`/release/${release.id}`} className="artist-catalog-title-link" style={{ color: "var(--r-on-surface)" }}>
-                {release.title}
-              </Link>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <ArtworkThumbnail src={release.artworkUrl} title={release.title} fallbackChar="💿" />
+                <Link href={`/release/${release.id}`} className="artist-catalog-title-link" style={{ color: "var(--r-on-surface)" }}>
+                  {release.title}
+                </Link>
+              </div>
             </td>
             <td>{release.primaryArtist || release.artist?.displayName || "Unknown"}</td>
             <td><StatusPill status={release.status} /></td>
@@ -270,9 +316,12 @@ function TrackInventory({ rows }: { rows: TrackRow[] }) {
         {rows.map(({ track, release }) => (
           <tr key={`${release.id}:${track.id}`}>
             <td style={{ fontWeight: 600 }}>
-              <Link href={`/release/${release.id}`} className="artist-catalog-title-link" style={{ color: "var(--r-on-surface)" }}>
-                {track.title}
-              </Link>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <ArtworkThumbnail src={release.artworkUrl} title={track.title} fallbackChar="🎵" />
+                <Link href={`/release/${release.id}`} className="artist-catalog-title-link" style={{ color: "var(--r-on-surface)" }}>
+                  {track.title}
+                </Link>
+              </div>
             </td>
             <td>{release.title}</td>
             <td>{track.artist || release.primaryArtist || release.artist?.displayName || "Unknown"}</td>
