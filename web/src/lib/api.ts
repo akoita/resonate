@@ -557,6 +557,7 @@ export async function getArtistAnalyticsDashboard(
 export type PlaybackCompletedAnalyticsInput = {
   trackId: string;
   artistId?: string;
+  releaseId?: string;
   sessionId?: string;
   source?: string;
   completionRatio: number;

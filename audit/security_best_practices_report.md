@@ -1514,3 +1514,58 @@ rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
 rg 'document\.cookie|setCookie|httpOnly.*false' web/src/
 git diff -- backend/src/modules/analytics/analytics.service.ts backend/src/modules/analytics/analytics_warehouse.ts web/src/lib/api.ts web/src/components/analytics/ArtistAnalyticsDashboard.tsx workers/analytics-dataflow/analytics_transform.py | rg -n 'password|secret|api_key|private_key|dangerouslySetInnerHTML|innerHTML|\$queryRaw|executeRaw|rawQuery|eval\('
 ```
+
+## Addendum: Artist Catalog Inventory and Playback Release IDs
+
+Reviewed the artist catalog inventory UI and playback analytics release-id
+enrichment. No Critical or High findings were identified in the changed code.
+
+### Scope
+
+- `backend/src/modules/analytics/analytics.controller.ts`
+- `backend/src/modules/analytics/analytics_instrumentation.service.ts`
+- `backend/src/tests/analytics.controller.http.spec.ts`
+- `backend/src/tests/analytics_instrumentation.spec.ts`
+- `web/src/app/artist/catalog/page.tsx`
+- `web/src/app/artist/catalog/layout.tsx`
+- `web/src/app/page.tsx`
+- `web/src/app/release/[id]/page.tsx`
+- `web/src/components/layout/Sidebar.tsx`
+- `web/src/lib/api.ts`
+- `web/src/lib/localLibrary.ts`
+- `web/src/lib/playbackAnalytics.ts`
+- `docs/features/README.md`
+- `docs/features/analytics_event_ledger.md`
+- `docs/features/catalog_indexing_mvp.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- `POST /analytics/playback/completed` remains protected by the
+  controller-level JWT guard.
+- `releaseId` is optional client input and is resolved from catalog metadata
+  when missing, so normal catalog playback does not depend on browser-provided
+  ownership data.
+- The new `/artist/catalog` page uses existing authenticated artist and catalog
+  APIs; it does not add a backend route or broaden read permissions.
+- Frontend rendering uses React text nodes and existing typed API fields; no
+  `dangerouslySetInnerHTML`, direct `innerHTML`, or cookie APIs were introduced.
+
+### Commands Run
+
+```bash
+rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/analytics backend/src/modules/catalog | grep -v 'Guard\|Auth'
+rg 'JSON\.parse|eval\(' backend/src/modules/analytics backend/src/modules/catalog
+rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/analytics backend/src/modules/catalog | grep -v 'Pipe\|Dto\|Validation'
+rg 'dangerouslySetInnerHTML|innerHTML' web/src/
+rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
+rg 'document\.cookie|setCookie|httpOnly.*false' web/src/
+```

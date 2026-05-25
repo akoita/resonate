@@ -113,6 +113,7 @@ describe("AnalyticsController (HTTP)", () => {
       .send({
         trackId: "track-1",
         artistId: "artist-1",
+        releaseId: "release-1",
         sessionId: "playback-session-1",
         source: "web_player",
         completionRatio: 0.82,
@@ -123,6 +124,7 @@ describe("AnalyticsController (HTTP)", () => {
     expect(instrumentationService.recordPlaybackCompleted).toHaveBeenCalledWith({
       trackId: "track-1",
       artistId: "artist-1",
+      releaseId: "release-1",
       sessionId: "playback-session-1",
       source: "web_player",
       completionRatio: 0.82,
@@ -146,6 +148,7 @@ describe("AnalyticsController (HTTP)", () => {
     expect(instrumentationService.recordPlaybackCompleted).toHaveBeenCalledWith({
       trackId: "track-1",
       artistId: undefined,
+      releaseId: undefined,
       sessionId: "playback-session-1",
       source: "web_player",
       completionRatio: 0.82,

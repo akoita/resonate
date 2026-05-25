@@ -7,6 +7,7 @@ const SESSION_STORAGE_KEY = "resonate.playback.sessionId";
 export type PlaybackCompletedPayload = {
   trackId: string;
   artistId?: string;
+  releaseId?: string;
   sessionId: string;
   source: string;
   completionRatio: number;
@@ -74,6 +75,7 @@ export function buildPlaybackCompletedPayload(input: {
 }): PlaybackCompletedPayload | null {
   const trackId = getPlaybackAnalyticsTrackId(input.track);
   const artistId = input.track.artistId?.trim() || undefined;
+  const releaseId = input.track.releaseId?.trim() || undefined;
   if (!trackId) {
     return null;
   }
@@ -92,6 +94,7 @@ export function buildPlaybackCompletedPayload(input: {
   return {
     trackId,
     ...(artistId ? { artistId } : {}),
+    ...(releaseId ? { releaseId } : {}),
     sessionId: input.sessionId,
     source: input.track.source === "remote" ? "web_player" : "web_player_local",
     completionRatio,

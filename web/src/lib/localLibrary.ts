@@ -76,6 +76,7 @@ export interface LocalTrack {
     createdAt: string;
     catalogTrackId?: string | null;
     artistId?: string | null;
+    releaseId?: string | null;
     remoteUrl?: string; // For streaming catalog
     remoteArtworkUrl?: string; // For streaming catalog
     stems?: Array<{
