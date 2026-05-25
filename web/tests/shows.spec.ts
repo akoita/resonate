@@ -50,5 +50,5 @@ test("/shows/sennarin-paris detail stub renders hero + how-it-works + cohort not
   const hero = page.locator(".campaign-hero:visible", { hasText: "Sennarin in Paris" }).first();
   await expect(hero).toBeVisible();
   await expect(page.getByRole("heading", { name: /Three steps/i })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /Pledging launches/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Pledging follows the live escrow/i })).toBeVisible();
 });
