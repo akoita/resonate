@@ -11,11 +11,18 @@ owner: "@akoita"
 `partial`
 
 The fan-funded Shows wedge is visible in the web app through the home campaign
-hero, `/shows`, and `/shows/sennarin-paris`. The current implementation uses
-client-side seeded campaign data and links to an existing Sepolia
-`RevenueEscrow` contract as an honest stand-in. The production campaign backend,
-campaign creation flow, pledge transaction flow, and purpose-built campaign
-contract are follow-up work.
+hero, `/shows`, and `/shows/sennarin-paris`. The current implementation still
+uses client-side seeded campaign data and links to an existing Sepolia
+`RevenueEscrow` contract as an honest stand-in. The backend truth layer has
+started with Prisma models for campaigns, pledge tiers, pledge receipts, and
+lifecycle events; public APIs, campaign creation, pledge transactions, and a
+purpose-built campaign contract remain follow-up work.
+
+The next step is documented in
+[Resonate Shows Production Plan](resonate_shows_production_plan.md): replace the
+placeholder wedge with a working fan-funded live campaign loop backed by
+backend campaign state, pledge receipts, and a campaign-specific escrow
+contract.
 
 ## Who It Is For
 
@@ -65,6 +72,18 @@ Treat the follower count as time-sensitive and refresh it before investor, press
 or launch material. The durable insight is the demand-risk problem, not the exact
 count.
 
+On May 21, 2026, Spotify announced Reserved, a Premium fan ticket-access feature
+that uses signals such as listening history, sharing, and location to reserve
+limited concert tickets for eligible fans. That announcement validates the
+broader live-fandom opportunity, but it targets access after a show already
+exists. Shows should differentiate upstream: fans help create the booking signal
+before the artist, venue, or promoter takes production risk.
+
+Positioning:
+
+> Spotify rewards super-fans with access to existing tours. Resonate lets fans
+> create the demand signal that gets the show booked.
+
 ## How It Works
 
 1. A campaign defines an artist, city, venue target, deadline, funding goal, and
@@ -85,7 +104,25 @@ count.
 | `/shows/sennarin-paris` | implemented | Detail page with funding progress, signal tiers, and how-it-works copy. |
 | Escrow contract link | partial | Links to deployed Sepolia `RevenueEscrow` as a placeholder until campaign-specific escrow ships. |
 | Pledge flow | planned | Current UI communicates tiers; wallet transaction path is not live. |
-| Campaign backend | planned | `web/src/lib/shows.ts` preserves API-shaped functions for future `/api/campaigns` integration. |
+| Campaign backend | partial | Prisma models exist for `ShowCampaign`, `ShowCampaignTier`, `ShowPledge`, and `ShowCampaignEvent`; public API routes are not live yet. |
+
+## Production Beta Requirements
+
+The placeholder copy should be removed once these production surfaces are live:
+
+- campaign data loads from backend APIs rather than seeded client data;
+- fans can select a tier, submit an on-chain pledge, and receive a receipt;
+- campaign progress is backed by persisted pledge records reconciled to on-chain
+  events;
+- failed or cancelled campaigns expose refunds;
+- cleared and booking-confirmed campaigns expose release/fulfillment state;
+- artists or approved operators can create and manage campaigns.
+
+The core fan incentive should be ticket credit or priority allocation, not a
+donation. The fan-facing promise is:
+
+> Pledge now. If the campaign clears, your pledge becomes ticket credit or
+> priority access. If it misses, you are refunded.
 
 ## Verification
 
@@ -94,6 +131,9 @@ count.
 - `web/src/lib/shows.ts` defines the current seeded campaign model and the
   planned async shape for a future backend API.
 - `web/src/styles/shows.css` scopes the Shows presentation layer.
+- `backend/src/tests/shows_campaign_models.integration.spec.ts` verifies the
+  campaign, tier, pledge, and lifecycle-event data model against Testcontainer
+  Postgres.
 
 ## Product Notes
 
@@ -110,3 +150,7 @@ same escrow-backed campaign primitive can later validate:
 The strategic wedge is international niche demand: passionate, distributed fan
 bases that are visible in social feeds but hard for artists to convert into
 production-safe booking decisions.
+
+For the production implementation plan, including API shape, contract scope,
+delivery slices, issue breakdown, and verification, see
+[Resonate Shows Production Plan](resonate_shows_production_plan.md).

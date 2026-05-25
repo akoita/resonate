@@ -6,18 +6,31 @@ import {
 } from "./analytics_event";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
 
-const SUPPORTED_EVENT_FAMILIES = new Set([
+export const SUPPORTED_EVENT_FAMILIES = new Set([
   "identity",
   "catalog",
   "ingestion",
+  "stems",
+  "ipnft",
+  "session",
   "playback",
   "library",
   "commerce",
   "license",
   "payment",
+  "contract",
+  "wallet",
   "rights",
+  "release_rights",
   "agent",
+  "recommendation",
+  "curator",
+  "remix",
+  "marketplace",
   "generation",
+  "notification",
+  "realtime",
+  "x402",
   "experiment",
   "system",
 ]);
@@ -305,6 +318,9 @@ function toFactRow(clean: EventsCleanRow): AnalyticsFactRow {
       amountUnits: stringPayload(clean.payload, "amountUnits"),
       currency: stringPayload(clean.payload, "currency"),
       amountUsd: numberPayload(clean.payload, "amountUsd"),
+      route: stringPayload(clean.payload, "route"),
+      evidenceTypes: arrayPayload(clean.payload, "evidenceTypes"),
+      decisionReason: stringPayload(clean.payload, "decisionReason"),
     },
   };
 }
@@ -345,6 +361,11 @@ function stringPayload(payload: Record<string, unknown>, key: string) {
 function numberPayload(payload: Record<string, unknown>, key: string) {
   const value = payload[key];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function arrayPayload(payload: Record<string, unknown>, key: string) {
+  const value = payload[key];
+  return Array.isArray(value) ? value : undefined;
 }
 
 function objectField(record: unknown, key: string) {

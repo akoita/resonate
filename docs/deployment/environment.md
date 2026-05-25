@@ -34,6 +34,28 @@ When adding a new environment variable:
 | `ANALYTICS_WAREHOUSE_TARGET` | Backend | Warehouse loader target provider. Defaults to `local_json`, which writes idempotent JSONL layer files outside process memory. Set `bigquery_insert_all` to stream rows to BigQuery through Google ADC. |
 | `ANALYTICS_WAREHOUSE_LOCAL_DIR` | Backend | Output directory for the `local_json` analytics warehouse target. Defaults to `.analytics/warehouse` in the backend process working directory. |
 | `ANALYTICS_WAREHOUSE_SUPPORTED_EVENT_VERSIONS` | Backend | Comma-separated analytics event versions that may be promoted into clean/fact/view layers. Defaults to `1`; unsupported versions are loaded raw and quarantined. |
+| `ANALYTICS_REPORT_SOURCE` | Backend | Artist analytics read source. Defaults to local `warehouse_export`; set `bigquery` to read dashboard facts/views from BigQuery through Google ADC. |
+| `ANALYTICS_BIGQUERY_PROJECT_ID` | Backend | Optional BigQuery reporting project override. Falls back to `ANALYTICS_WAREHOUSE_PROJECT_ID`, `GCP_PROJECT_ID`, then warehouse config. |
+| `ANALYTICS_BIGQUERY_DATASET` | Backend | Optional BigQuery reporting dataset override. Falls back to `ANALYTICS_WAREHOUSE_DATASET_PREFIX`. |
+| `ANALYTICS_BIGQUERY_FACTS_TABLE` | Backend | Optional facts table id for artist reporting. Defaults to `analytics_facts`. |
+| `ANALYTICS_BIGQUERY_VIEWS_TABLE` | Backend | Optional views table id for artist reporting. Defaults to `analytics_views`. |
+| `ANALYTICS_BIGQUERY_CACHE_TTL_SECONDS` | Backend | Optional in-process cache TTL for identical artist/time-window BigQuery report reads. Defaults to `60`. |
+| `ANALYTICS_BIGQUERY_MAXIMUM_BYTES_BILLED` | Backend | Optional BigQuery query cost guard for artist report reads. Defaults to `500000000` bytes. |
+| `ANALYTICS_BIGQUERY_QUERY_TIMEOUT_MS` | Backend | Optional timeout for each BigQuery reporting query. Defaults to `10000`. |
+| `ANALYTICS_BIGQUERY_ROW_LIMIT` | Backend | Optional row limit per facts/views query to bound response size. Defaults to `10000`. |
+| `ANALYTICS_BIGQUERY_API_BASE_URL` | Backend | Optional BigQuery API base URL override for tests or private endpoints. Defaults to the public BigQuery API. |
+| `AGENT_TASTE_SIGNAL_SOURCE` | Backend | Optional agent taste signal provider. Defaults to disabled; set `bigquery` to blend precomputed BigQuery user-track scores into AI DJ recommendation ranking. |
+| `AGENT_TASTE_BIGQUERY_PROJECT_ID` | Backend | Optional BigQuery project override for agent taste scores. Falls back to analytics BigQuery/warehouse project config. |
+| `AGENT_TASTE_BIGQUERY_DATASET` | Backend | Optional BigQuery dataset override for agent taste scores. Falls back to analytics BigQuery/warehouse dataset config. |
+| `AGENT_TASTE_BIGQUERY_SCORES_TABLE` | Backend | Optional BigQuery table id containing `user_id`, `track_id`, and normalized `recommendation_score` rows. Defaults to `user_track_recommendation_scores`. |
+| `AGENT_TASTE_BIGQUERY_MAXIMUM_BYTES_BILLED` | Backend | Optional BigQuery query cost guard for agent taste score reads. Defaults to `100000000` bytes. |
+| `AGENT_TASTE_BIGQUERY_QUERY_TIMEOUT_MS` | Backend | Optional timeout for agent taste score queries. Defaults to `5000`. |
+| `AGENT_TASTE_BIGQUERY_ROW_LIMIT` | Backend | Optional maximum taste score rows returned per selector call. Defaults to `100`. |
+| `AGENT_TASTE_BIGQUERY_API_BASE_URL` | Backend | Optional BigQuery API base URL override for tests or private endpoints. Defaults to the analytics BigQuery API base URL, then the public BigQuery API. |
+| `ANALYTICS_EVENT_PUBLISHING_ENABLED` | Backend | Enables publishing validated analytics event envelopes to Pub/Sub after ledger persistence. Defaults to disabled. |
+| `ANALYTICS_EVENT_PUBLISHING_STRICT` | Backend | When true, Pub/Sub publish failures fail analytics ingestion. Defaults to false so user flows keep working while failures are logged. |
+| `ANALYTICS_EVENT_PUBSUB_PROJECT_ID` | Backend | Optional Pub/Sub project override for analytics event publishing. Falls back to `GCP_PROJECT_ID`, `GOOGLE_CLOUD_PROJECT`, or `GCLOUD_PROJECT`. |
+| `ANALYTICS_EVENT_PUBSUB_TOPIC` | Backend | Pub/Sub topic name for analytics event envelopes, typically provisioned by `resonate-iac` as `resonate-<env>-analytics-events`. |
 | `ANALYTICS_RETENTION_PERSONAL_DAYS` | Backend | Optional personal raw analytics event retention window. Defaults to `395` days. |
 | `ANALYTICS_RETENTION_SENSITIVE_DAYS` | Backend | Optional sensitive raw analytics event retention window. Defaults to `90` days. |
 | `ANALYTICS_RETENTION_PSEUDONYMOUS_DAYS` | Backend | Optional pseudonymous raw analytics event retention window. Defaults to `730` days. |
@@ -42,6 +64,10 @@ When adding a new environment variable:
 | `DEMUCS_CLOUD_RUN_JOB_NAME` | Backend | Cloud Run Job name to execute after publishing each `stem-separate` message |
 | `GCP_BILLING_QUOTA_PROJECT` | CI | Optional quota/billing project for Cloud Build submission; deploy CI defaults it to `GCP_PROJECT_ID` |
 | `GCP_CLOUD_BUILD_SOURCE_STAGING_DIR` | CI | Optional Cloud Storage prefix for `gcloud builds submit` source archives; deploy CI defaults it from `GCP_PROJECT_ID` |
+| `ANALYTICS_DATAFLOW_ARTIFACT_REGISTRY_REPOSITORY` | CI | Optional Artifact Registry repository for the analytics Dataflow Flex Template image. Defaults to `resonate-<environment>` |
+| `ANALYTICS_DATAFLOW_TEMPLATE_BUCKET` | CI | Optional GCS bucket for analytics Dataflow template, staging, and temp artifacts. Defaults to `<GCP_PROJECT_ID>-analytics-dataflow` |
+| `ANALYTICS_DATAFLOW_TEMPLATE_PREFIX` | CI | Optional GCS prefix for analytics Dataflow `template.json`. Defaults to `templates/<environment>/analytics-dataflow` |
+| `ANALYTICS_DATAFLOW_TEMPLATE_GCS_PATH` | CI | Optional full `gs://.../template.json` override for the analytics Dataflow Flex Template publish workflow |
 | `AA_BUNDLER` | Backend / frontend server runtime | Server-side bundler URL used by account-abstraction flows and the `/api/bundler` proxy |
 | `PIMLICO_API_KEY` | Frontend server runtime | Optional server-side Pimlico key used by `/api/bundler` without exposing it to the browser |
 | `FRONTEND_URL` | Backend | Public frontend origin used for generated metadata links, self-hosted WebAuthn fallback, and CORS allowlisting |

@@ -102,13 +102,48 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     privacyTier: "personal",
     payloadFields: ["generationId", "userId", "trackId", "model", "promptPolicy"],
   },
+  {
+    eventName: "recommendation.generated",
+    eventVersion: 1,
+    producer: "recommendations-service",
+    privacyTier: "pseudonymous",
+    payloadFields: ["userCohortId", "trackIds", "strategy", "candidateCount"],
+  },
+  {
+    eventName: "stems.uploaded",
+    eventVersion: 1,
+    producer: "ingestion-service",
+    privacyTier: "pseudonymous",
+    payloadFields: ["releaseId", "artistId", "sourceType", "trackIds", "trackCount", "stemCount"],
+  },
+  {
+    eventName: "stems.processed",
+    eventVersion: 1,
+    producer: "ingestion-service",
+    privacyTier: "pseudonymous",
+    payloadFields: ["releaseId", "trackId", "stemIds", "modelVersion", "durationMs"],
+  },
+  {
+    eventName: "catalog.track_status",
+    eventVersion: 1,
+    producer: "catalog-service",
+    privacyTier: "pseudonymous",
+    payloadFields: ["releaseId", "trackId", "status", "error"],
+  },
+  {
+    eventName: "catalog.release_ready",
+    eventVersion: 1,
+    producer: "catalog-service",
+    privacyTier: "pseudonymous",
+    payloadFields: ["releaseId", "artistId", "status", "trackIds", "trackCount", "stemCount"],
+  },
 ] as const;
 
 const analyticsEventNameSchema = z
   .string()
   .min(3)
   .max(120)
-  .regex(/^[a-z][a-z0-9]*(\.[a-z][a-z0-9_]*)+$/, "must use dotted lowercase names such as playback.completed");
+  .regex(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/, "must use dotted lowercase names such as playback.completed");
 
 const analyticsIdentifierSchema = z.string().min(1).max(200);
 

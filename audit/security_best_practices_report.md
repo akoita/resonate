@@ -75,6 +75,54 @@ rg 'password|secret|api_key|private_key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY' back
 rg 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/agents/payment_router.service.ts backend/src/modules/agents/agent_config.controller.ts backend/src/modules/agents/agents.module.ts backend/src/tests/payment_router.spec.ts backend/src/tests/payment_router_x402.integration.spec.ts
 ```
 
+## Addendum: #937 Playback Analytics Emissions
+
+Reviewed the playback analytics changes for #937. No Critical or High findings
+were identified in the changed backend or frontend code.
+
+### Scope
+
+- `backend/src/modules/analytics/analytics.controller.ts`
+- `backend/src/modules/analytics/analytics_instrumentation.service.ts`
+- `backend/src/modules/generation/generation.service.ts`
+- `backend/src/tests/analytics.controller.http.spec.ts`
+- `backend/src/tests/analytics_instrumentation.spec.ts`
+- `web/src/app/library/page.tsx`
+- `web/src/lib/api.ts`
+- `web/src/lib/playbackAnalytics.ts`
+- `web/src/lib/playbackAnalytics.test.ts`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- The playback completion endpoint remains JWT-protected and still validates
+  required track identity, completion ratio bounds, and duration shape.
+- When a client omits `artistId`, the backend resolves it through existing
+  catalog metadata instead of trusting a broad client-supplied fallback.
+- The frontend still suppresses local-only track analytics; the change only
+  expands remote/catalog playback reporting.
+- No new secrets, environment variables, dynamic SQL, unsafe deserialization,
+  or public unauthenticated routes were introduced.
+
+### Commands Run
+
+```bash
+cd web && npx vitest run src/lib/playbackAnalytics.test.ts src/lib/api.test.ts
+cd backend && npx jest --runInBand --config jest.config.js --testPathPattern='analytics.controller.http|analytics_instrumentation.spec'
+cd web && npm run lint
+cd backend && npm run lint
+rg 'password|secret|api_key|private_key' backend/src/modules/analytics backend/src/modules/generation --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/analytics backend/src/modules/generation
+rg 'JSON\.parse|eval\(' backend/src/modules/analytics backend/src/modules/generation
+rg 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/lib web/src/app/library
+```
+
 ## Addendum: #812 Public Payment-Router API Surface
 
 Reviewed the #812 OpenAPI guidance change. The update documents that external
@@ -1250,4 +1298,274 @@ cd backend && npm run lint
 cd backend && npm run test -- --runInBand
 cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js src/tests/analytics_warehouse_loader.integration.spec.ts
 git diff --check
+```
+
+## Addendum: #886 Analytics Pub/Sub Event Publisher
+
+Reviewed the backend analytics Pub/Sub publisher slice for #886, including
+disabled-by-default publishing configuration, Pub/Sub message attributes,
+non-strict and strict publish-failure behavior, structured logging, and related
+tests/docs. No Critical or High findings were identified in the changed code.
+
+### Scope
+
+- `backend/src/modules/analytics/analytics_event_publisher.ts`
+- `backend/src/modules/analytics/analytics_ingest.service.ts`
+- `backend/src/modules/analytics/analytics.module.ts`
+- `backend/src/tests/analytics_event_publisher.spec.ts`
+- `docs/deployment/environment.md`
+- `docs/features/README.md`
+- `docs/features/analytics_event_ledger.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- Pub/Sub publishing is disabled by default and must be explicitly enabled by
+  environment configuration.
+- The publisher uses Google Cloud Pub/Sub Application Default Credentials
+  through the existing runtime environment; no service account key, token, or
+  credential value is stored in source.
+- Non-strict publish failures are logged with structured metadata and do not
+  replace or interrupt analytics ledger persistence.
+- Strict mode is opt-in for environments that intentionally want analytics
+  ingestion to fail when Pub/Sub publishing fails.
+- No raw SQL, shell execution, dynamic code execution, new unauthenticated
+  controller path, or user-controlled filesystem path was introduced.
+
+### Commands Run
+
+```bash
+rg -n '(secret|password|private[_-]?key|api[_-]?key|token|authorization|Bearer|BEGIN |0x[a-fA-F0-9]{64})' backend/src/modules/analytics backend/src/tests/analytics_event_publisher.spec.ts docs/deployment/environment.md docs/features/analytics_event_ledger.md docs/features/README.md
+cd backend && npx jest --runInBand src/tests/analytics_event_publisher.spec.ts src/tests/analytics_event.spec.ts
+cd backend && npm run lint
+cd backend && npm run test
+git diff --check
+```
+
+## Addendum: #898 Shows Campaign And Pledge Models
+
+Reviewed the Shows backend truth-layer slice for #898, including Prisma schema
+models, the SQL migration, shared status-validation constants, Testcontainer
+integration coverage, and feature docs. No Critical or High findings were
+identified in the changed code.
+
+### Scope
+
+- `backend/prisma/schema.prisma`
+- `backend/prisma/migrations/20260522143000_show_campaign_models/migration.sql`
+- `backend/src/modules/shows/show-status.ts`
+- `backend/src/tests/shows_campaign_models.integration.spec.ts`
+- `docs/features/README.md`
+- `docs/features/resonate_shows.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- This slice adds durable data structures only; it does not introduce a new
+  controller, unauthenticated route, queue consumer, filesystem path, external
+  network client, or raw SQL execution path in application code.
+- Campaign, pledge, confirmation, and event lifecycle values are constrained
+  by Prisma enums and mirrored in backend validation constants for the upcoming
+  public API slice.
+- Payment asset and chain fields are stored as per-record metadata; the models
+  do not hardcode a production token address, chain, project ID, URL, or secret.
+- The secret-pattern scan reports the pre-existing `agentPrivateKey` schema
+  field comment outside this change's Shows model block. No literal credential
+  or private key material was introduced by #898.
+
+### Commands Run
+
+```bash
+cd backend && npx prisma validate
+cd backend && npx prisma generate
+cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='shows_campaign_models.integration'
+cd backend && npm run lint
+cd backend && npm run test
+DATABASE_URL='postgresql://test:test@localhost:<throwaway-port>/resonate_test' npx prisma migrate deploy
+git diff --check
+rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|ghp_|gho_|sk-[A-Za-z0-9]' backend/prisma/schema.prisma backend/prisma/migrations/20260522143000_show_campaign_models/migration.sql backend/src/modules/shows/show-status.ts backend/src/tests/shows_campaign_models.integration.spec.ts docs/features/README.md docs/features/resonate_shows.md
+rg -n 'rawQuery|executeRaw|\$queryRaw|eval\(|JSON\.parse' backend/prisma/schema.prisma backend/prisma/migrations/20260522143000_show_campaign_models/migration.sql backend/src/modules/shows/show-status.ts backend/src/tests/shows_campaign_models.integration.spec.ts
+rg -n '@Controller|@Get|@Post|@Put|@Delete|@Patch|@Body|@Query|@Param|@UseGuards|@Roles' backend/src/modules/shows/show-status.ts backend/src/tests/shows_campaign_models.integration.spec.ts
+```
+
+## Addendum: #911 Analytics Dataflow Flex Template Publishing
+
+Reviewed the analytics Dataflow Flex Template publication workflow for #911,
+including GitHub Actions GCP authentication, Cloud Build image publication,
+GCS template publication, operator handoff output, and docs. No Critical or
+High findings were identified in the changed code.
+
+### Scope
+
+- `.github/workflows/publish-analytics-dataflow-flex-template.yml`
+- `.agents/plans/issue-911.md`
+- `workers/analytics-dataflow/README.md`
+- `docs/deployment/environment.md`
+- `docs/features/README.md`
+- `docs/features/analytics_event_ledger.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- The workflow authenticates through GitHub OIDC / Workload Identity Federation
+  and references secret names only; it does not store service account keys,
+  tokens, passwords, private keys, project IDs, bucket names, or production URLs
+  in source.
+- Artifact Registry and GCS locations are derived from GitHub environment
+  variables or workflow inputs. Defaults use `GCP_PROJECT_ID`,
+  `GCP_REGION`, and the selected environment instead of hardcoded deployed
+  values.
+- The workflow does not execute untrusted user input as shell code. Inputs are
+  treated as strings for image tags, repository names, and GCS paths, with a
+  `gs://` guard for the template path.
+- The workflow writes `resonate-iac` launch inputs to the GitHub Actions summary
+  so operators can copy values without exposing secrets.
+
+### Commands Run
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+import yaml
+yaml.safe_load(Path('.github/workflows/publish-analytics-dataflow-flex-template.yml').read_text())
+PY
+bash -n workers/analytics-dataflow/build-flex-template.sh
+cd workers/analytics-dataflow && python3 -m unittest test_analytics_transform.py
+cd workers/analytics-dataflow && python3 -m py_compile analytics_transform.py main.py
+git diff --check
+rg -n --ignore-case 'password|secret|api[_-]?key|private[_-]?key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY|ghp_|gho_|sk-[A-Za-z0-9]' .github/workflows/publish-analytics-dataflow-flex-template.yml workers/analytics-dataflow/README.md docs/deployment/environment.md docs/features/README.md docs/features/analytics_event_ledger.md .agents/plans/issue-911.md
+rg -n 'eval\(|curl .*\||bash -c|rm -rf|docker login|gcloud auth print-access-token|set-output' .github/workflows/publish-analytics-dataflow-flex-template.yml workers/analytics-dataflow/README.md docs/deployment/environment.md docs/features/analytics_event_ledger.md
+```
+
+## Addendum: #923 Real Artist Analytics Dashboard Metrics
+
+Reviewed the artist analytics dashboard metrics implementation for #923,
+including backend report aggregation, warehouse/Dataflow fact dimensions,
+frontend rendering, API types, and feature docs. No Critical or High findings
+were identified in the changed code.
+
+### Scope
+
+- `backend/src/modules/analytics/analytics.service.ts`
+- `backend/src/modules/analytics/analytics_warehouse.ts`
+- `backend/src/tests/analytics.spec.ts`
+- `backend/src/tests/analytics_warehouse.spec.ts`
+- `web/src/lib/api.ts`
+- `web/src/lib/api.test.ts`
+- `web/src/components/analytics/ArtistAnalyticsDashboard.tsx`
+- `web/src/components/analytics/ArtistAnalyticsDashboard.test.tsx`
+- `web/src/app/globals.css`
+- `workers/analytics-dataflow/analytics_transform.py`
+- `workers/analytics-dataflow/test_analytics_transform.py`
+- `docs/features/README.md`
+- `docs/features/analytics_dashboard_v0.md`
+- `docs/features/analytics_event_ledger.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- The analytics dashboard endpoint remains protected by the existing JWT guard
+  and artist/admin authorization checks.
+- The new protection metrics are derived from existing
+  `rights.route_decided` facts and do not add a new public write surface,
+  dynamic SQL, filesystem access, or external network client.
+- BigQuery report reads continue to use bounded, parameterized queries through
+  the existing analytics report source.
+- Frontend changes render structured API fields and do not use
+  `dangerouslySetInnerHTML`, direct `innerHTML`, or cookie APIs.
+- Secret scans found no literal credentials in this PR's diff. Broad scans
+  still report pre-existing environment-variable names and local-development
+  auth fallbacks outside the changed analytics path.
+
+### Commands Run
+
+```bash
+rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/ | grep -v 'Guard\|Auth'
+rg 'JSON\.parse|eval\(' backend/src/
+rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/ | grep -v 'Pipe\|Dto\|Validation'
+rg 'dangerouslySetInnerHTML|innerHTML' web/src/
+rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
+rg 'document\.cookie|setCookie|httpOnly.*false' web/src/
+git diff -- backend/src/modules/analytics/analytics.service.ts backend/src/modules/analytics/analytics_warehouse.ts web/src/lib/api.ts web/src/components/analytics/ArtistAnalyticsDashboard.tsx workers/analytics-dataflow/analytics_transform.py | rg -n 'password|secret|api_key|private_key|dangerouslySetInnerHTML|innerHTML|\$queryRaw|executeRaw|rawQuery|eval\('
+```
+
+## Addendum: Artist Catalog Inventory and Playback Release IDs
+
+Reviewed the artist catalog inventory UI and playback analytics release-id
+enrichment. No Critical or High findings were identified in the changed code.
+
+### Scope
+
+- `backend/src/modules/analytics/analytics.controller.ts`
+- `backend/src/modules/analytics/analytics_instrumentation.service.ts`
+- `backend/src/tests/analytics.controller.http.spec.ts`
+- `backend/src/tests/analytics_instrumentation.spec.ts`
+- `web/src/app/artist/catalog/page.tsx`
+- `web/src/app/artist/catalog/layout.tsx`
+- `web/src/app/page.tsx`
+- `web/src/app/release/[id]/page.tsx`
+- `web/src/components/layout/Sidebar.tsx`
+- `web/src/lib/api.ts`
+- `web/src/lib/localLibrary.ts`
+- `web/src/lib/playbackAnalytics.ts`
+- `docs/features/README.md`
+- `docs/features/analytics_event_ledger.md`
+- `docs/features/catalog_indexing_mvp.md`
+
+### Findings
+
+- Critical: none in the changed code.
+- High: none in the changed code.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- `POST /analytics/playback/completed` remains protected by the
+  controller-level JWT guard.
+- `releaseId` is optional client input and is resolved from catalog metadata
+  when missing, so normal catalog playback does not depend on browser-provided
+  ownership data.
+- The new `/artist/catalog` page uses existing authenticated artist and catalog
+  APIs; it does not add a backend route or broaden read permissions.
+- Frontend rendering uses React text nodes and existing typed API fields; no
+  `dangerouslySetInnerHTML`, direct `innerHTML`, or cookie APIs were introduced.
+
+### Commands Run
+
+```bash
+rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/analytics backend/src/modules/catalog | grep -v 'Guard\|Auth'
+rg 'JSON\.parse|eval\(' backend/src/modules/analytics backend/src/modules/catalog
+rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/analytics backend/src/modules/catalog | grep -v 'Pipe\|Dto\|Validation'
+rg 'dangerouslySetInnerHTML|innerHTML' web/src/
+rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
+rg 'document\.cookie|setCookie|httpOnly.*false' web/src/
 ```

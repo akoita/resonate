@@ -65,10 +65,17 @@ durable target is `ANALYTICS_WAREHOUSE_TARGET=local_json`, which writes
 idempotent JSONL files outside process memory and can be scoped by date or event
 family. Deployed environments can set
 `ANALYTICS_WAREHOUSE_TARGET=bigquery_insert_all` to stream the same generated
-layers into the configured BigQuery dataset through Google ADC. Managed
-Dataflow-style transforms remain infrastructure follow-up work.
+layers into the configured BigQuery dataset through Google ADC. The target
+near-real-time path now has an Apache Beam/Dataflow processor artifact under
+`workers/analytics-dataflow/`; it consumes the Terraform-managed analytics
+Pub/Sub subscription and writes the same raw, clean, fact, view, and quarantine
+BigQuery layers as a Flex Template.
 The current artist analytics endpoints build their report responses from the
 generated fact/view layers, using fact dimensions for legacy response fields.
+When `ANALYTICS_REPORT_SOURCE=bigquery`, those endpoints read BigQuery
+`analytics_facts` and `analytics_views` directly with artist/time-window
+filters, freshness metadata, a maximum-bytes-billed guard, and short TTL
+caching.
 Deletion, redaction, consent withdrawal, and retention cleanup lineage is
 recorded in `AnalyticsGovernanceLog`.
 

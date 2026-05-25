@@ -94,7 +94,7 @@ test.describe("Catalog & Home Page", () => {
         await page.goto("/");
         await expect(page.getByRole("heading", { name: "Managed Catalog" })).toBeVisible();
         await expect(page.getByRole("heading", { name: "Your Releases" })).toBeVisible();
-        await expect(page.getByRole("link", { name: "Upload release" })).toHaveAttribute("href", "/artist/upload");
-        await expect(page.getByRole("link", { name: "Open analytics" })).toHaveAttribute("href", "/artist/analytics");
+        await expect(page.getByRole("link", { name: "Open managed catalog" })).toHaveAttribute("href", "/artist/catalog");
+        await expect(page.getByRole("link", { name: "Open full release inventory" })).toHaveAttribute("href", "/artist/catalog");
     });
 });

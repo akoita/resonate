@@ -1,11 +1,12 @@
 import { Module } from "@nestjs/common";
-import { EventBus } from "../shared/event_bus";
+import { SharedModule } from "../shared/shared.module";
 import { PaymentsController } from "./payments.controller";
 import { PaymentsService } from "./payments.service";
 
 @Module({
+  imports: [SharedModule],
   controllers: [PaymentsController],
-  providers: [EventBus, PaymentsService],
+  providers: [PaymentsService],
   exports: [PaymentsService],
 })
 export class PaymentsModule {}

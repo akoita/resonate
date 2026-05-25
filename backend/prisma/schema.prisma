@@ -23,6 +23,8 @@ model User {
   wallet                      Wallet?
   passkeyIdentities           PasskeyIdentity[]
   sessionKeys                 SessionKey[]
+  showCampaignEvents          ShowCampaignEvent[]       @relation("ShowCampaignEventActor")
+  showPledges                 ShowPledge[]
   stemQualityRatings          StemQualityRating[]
   reputationFeedbackSubmitted AgentReputationFeedback[] @relation("AgentReputationFeedbackSubmitter")
 }
@@ -87,6 +89,7 @@ model Artist {
   releases                  Release[]
   creatorTrust              CreatorTrust?
   rightsUpgradeRequests     ReleaseRightsUpgradeRequest[]
+  showCampaigns             ShowCampaign[]
   trustedSourceLinks        TrustedSourceArtistLink[]
   trustedSourceLinkRequests TrustedSourceLinkRequest[]
 }
@@ -725,6 +728,193 @@ model AnalyticsGovernanceLog {
   @@index([eventId])
   @@index([actorId])
   @@index([subjectType, subjectId])
+}
+
+// ============ Resonate Shows ============
+
+enum ShowCampaignStatus {
+  draft
+  active
+  funded
+  booking_confirmed
+  released
+  cancelled
+  refunded
+}
+
+enum ShowPledgeStatus {
+  intent_created
+  submitted
+  confirmed
+  refund_available
+  refunded
+  released
+  failed
+}
+
+enum ShowPledgeConfirmationStatus {
+  not_submitted
+  pending
+  confirmed
+  failed
+}
+
+enum ShowCampaignEventType {
+  campaign_created
+  campaign_updated
+  campaign_activated
+  campaign_funded
+  booking_confirmed
+  campaign_released
+  campaign_cancelled
+  campaign_refunded
+  pledge_intent_created
+  pledge_submitted
+  pledge_confirmed
+  pledge_refund_available
+  pledge_refunded
+  pledge_released
+  pledge_failed
+  operator_note
+}
+
+model ShowCampaign {
+  id                   String              @id @default(uuid())
+  slug                 String              @unique
+  artistId             String?
+  artistDisplayName    String
+  artistImageUrl       String?
+  title                String
+  description          String?             @db.Text
+  city                 String
+  country              String
+  venueTarget          String?
+  targetDate           DateTime?
+  deadline             DateTime
+  goalAmountUnits      String
+  minimumBackers       Int?
+  currency             String              @default("USD")
+  paymentAssetId       String?
+  paymentAssetSymbol   String              @default("USDC")
+  paymentAssetDecimals Int                 @default(6)
+  paymentTokenAddress  String?
+  chainId              Int
+  contractAddress      String?
+  contractCampaignId   String?
+  status               ShowCampaignStatus  @default(draft)
+  raisedAmountUnits    String              @default("0")
+  confirmedPledgeCount Int                 @default(0)
+  uniqueBackerCount    Int                 @default(0)
+  bookingTerms         Json?
+  fulfillmentNotes     String?             @db.Text
+  metadata             Json?
+  activatedAt          DateTime?
+  fundedAt             DateTime?
+  bookingConfirmedAt   DateTime?
+  releasedAt           DateTime?
+  cancelledAt          DateTime?
+  refundedAt           DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  artist               Artist?             @relation(fields: [artistId], references: [id])
+  tiers                ShowCampaignTier[]
+  pledges              ShowPledge[]
+  events               ShowCampaignEvent[]
+
+  @@index([artistId])
+  @@index([status, deadline])
+  @@index([city, country])
+  @@index([chainId, contractAddress])
+  @@index([contractCampaignId])
+}
+
+model ShowCampaignTier {
+  id                   String       @id @default(uuid())
+  campaignId           String
+  title                String
+  description          String?      @db.Text
+  amountUnits          String
+  currency             String       @default("USD")
+  paymentAssetId       String?
+  paymentAssetSymbol   String       @default("USDC")
+  paymentAssetDecimals Int          @default(6)
+  maxBackers           Int?
+  sortOrder            Int          @default(0)
+  benefits             Json?
+  isActive             Boolean      @default(true)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  campaign             ShowCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  pledges              ShowPledge[]
+
+  @@index([campaignId, sortOrder])
+  @@index([isActive])
+}
+
+model ShowPledge {
+  id                   String                       @id @default(uuid())
+  campaignId           String
+  tierId               String?
+  userId               String?
+  walletAddress        String
+  amountUnits          String
+  currency             String                       @default("USD")
+  paymentAssetId       String?
+  paymentAssetSymbol   String                       @default("USDC")
+  paymentAssetDecimals Int                          @default(6)
+  paymentTokenAddress  String?
+  chainId              Int
+  transactionHash      String?
+  blockNumber          BigInt?
+  confirmationStatus   ShowPledgeConfirmationStatus @default(not_submitted)
+  status               ShowPledgeStatus             @default(intent_created)
+  receiptId            String?                      @unique
+  receipt              Json?
+  failureReason        String?                      @db.Text
+  submittedAt          DateTime?
+  confirmedAt          DateTime?
+  refundAvailableAt    DateTime?
+  refundedAt           DateTime?
+  releasedAt           DateTime?
+  failedAt             DateTime?
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+  campaign             ShowCampaign                 @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  tier                 ShowCampaignTier?            @relation(fields: [tierId], references: [id], onDelete: SetNull)
+  user                 User?                        @relation(fields: [userId], references: [id])
+  events               ShowCampaignEvent[]
+
+  @@unique([transactionHash, chainId])
+  @@index([campaignId, status])
+  @@index([tierId])
+  @@index([userId, createdAt])
+  @@index([walletAddress, chainId])
+  @@index([confirmationStatus])
+}
+
+model ShowCampaignEvent {
+  id                 String                @id @default(uuid())
+  campaignId         String
+  pledgeId           String?
+  eventType          ShowCampaignEventType
+  actorUserId        String?
+  actorWalletAddress String?
+  previousStatus     String?
+  nextStatus         String?
+  transactionHash    String?
+  blockNumber        BigInt?
+  metadata           Json?
+  occurredAt         DateTime              @default(now())
+  createdAt          DateTime              @default(now())
+  campaign           ShowCampaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  pledge             ShowPledge?           @relation(fields: [pledgeId], references: [id], onDelete: SetNull)
+  actor              User?                 @relation("ShowCampaignEventActor", fields: [actorUserId], references: [id])
+
+  @@index([campaignId, occurredAt])
+  @@index([pledgeId])
+  @@index([eventType, occurredAt])
+  @@index([actorUserId])
+  @@index([transactionHash])
 }
 
 // ============ Content Protection ============

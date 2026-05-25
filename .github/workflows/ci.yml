@@ -23,6 +23,7 @@ jobs:
     outputs:
       backend: ${{ steps.detect.outputs.backend }}
       demucs: ${{ steps.detect.outputs.demucs }}
+      analytics_dataflow: ${{ steps.detect.outputs.analytics_dataflow }}
       backend_identity: ${{ steps.detect.outputs.backend_identity }}
       backend_ingestion: ${{ steps.detect.outputs.backend_ingestion }}
       backend_catalog: ${{ steps.detect.outputs.backend_catalog }}
@@ -50,6 +51,7 @@ jobs:
 
           backend=false
           demucs=false
+          analytics_dataflow=false
           backend_identity=false
           backend_ingestion=false
           backend_catalog=false
@@ -139,6 +141,9 @@ jobs:
                   workers/demucs/*)
                     demucs=true
                     ;;
+                  workers/analytics-dataflow/*)
+                    analytics_dataflow=true
+                    ;;
                   web/*)
                     web=true
                     ;;
@@ -168,7 +173,7 @@ jobs:
           docs_only=false
           # Infra-only and docs-only changes can skip module-specific jobs, but
           # anything that doesn't classify cleanly falls back to a full run.
-          if [[ "${run_all}" == "false" && "${backend}" == "false" && "${demucs}" == "false" && "${desktop}" == "false" && "${web}" == "false" && "${contracts}" == "false" && "${shared}" == "false" ]]; then
+          if [[ "${run_all}" == "false" && "${backend}" == "false" && "${demucs}" == "false" && "${analytics_dataflow}" == "false" && "${desktop}" == "false" && "${web}" == "false" && "${contracts}" == "false" && "${shared}" == "false" ]]; then
             if [[ "${docs}" == "true" || "${infra}" == "true" ]]; then
               docs_only=true
             else
@@ -179,6 +184,7 @@ jobs:
 
           echo "backend=${backend}" >> "${GITHUB_OUTPUT}"
           echo "demucs=${demucs}" >> "${GITHUB_OUTPUT}"
+          echo "analytics_dataflow=${analytics_dataflow}" >> "${GITHUB_OUTPUT}"
           echo "backend_identity=${backend_identity}" >> "${GITHUB_OUTPUT}"
           echo "backend_ingestion=${backend_ingestion}" >> "${GITHUB_OUTPUT}"
           echo "backend_catalog=${backend_catalog}" >> "${GITHUB_OUTPUT}"
@@ -198,6 +204,7 @@ jobs:
             echo ""
             echo "- backend: ${backend}"
             echo "- demucs: ${demucs}"
+            echo "- analytics_dataflow: ${analytics_dataflow}"
             echo "- backend_identity: ${backend_identity}"
             echo "- backend_ingestion: ${backend_ingestion}"
             echo "- backend_catalog: ${backend_catalog}"
@@ -494,6 +501,25 @@ jobs:
       - name: Run Demucs worker unit tests
         run: python -m unittest test_main.py
         working-directory: workers/demucs
+
+  analytics-dataflow-tests:
+    name: Analytics Dataflow Tests
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.analytics_dataflow == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Run analytics transform tests
+        run: python -m unittest test_analytics_transform.py
+        working-directory: workers/analytics-dataflow
 
   desktop-package:
     name: Desktop Package Smoke

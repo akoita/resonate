@@ -1,0 +1,78 @@
+{
+  "name": "Resonate Analytics Event Processor",
+  "description": "Streams Resonate analytics event envelopes from Pub/Sub into BigQuery raw, clean, fact, view, and quarantine warehouse layers.",
+  "parameters": [
+    {
+      "name": "inputSubscription",
+      "label": "Input Pub/Sub subscription",
+      "helpText": "Terraform-managed analytics Dataflow subscription resource ID.",
+      "isOptional": false
+    },
+    {
+      "name": "deadLetterTopic",
+      "label": "Dead-letter topic",
+      "helpText": "Terraform-managed analytics dead-letter topic resource ID. Pub/Sub handles final dead-letter forwarding from the subscription policy.",
+      "isOptional": true
+    },
+    {
+      "name": "outputProjectId",
+      "label": "Output project ID",
+      "helpText": "GCP project containing the analytics BigQuery warehouse dataset.",
+      "isOptional": false
+    },
+    {
+      "name": "outputDataset",
+      "label": "Output dataset",
+      "helpText": "BigQuery analytics warehouse dataset ID.",
+      "isOptional": false
+    },
+    {
+      "name": "rawTable",
+      "label": "Raw events table",
+      "helpText": "BigQuery table ID for events_raw.",
+      "isOptional": false
+    },
+    {
+      "name": "cleanTable",
+      "label": "Clean events table",
+      "helpText": "BigQuery table ID for events_clean.",
+      "isOptional": false
+    },
+    {
+      "name": "factsTable",
+      "label": "Facts table",
+      "helpText": "BigQuery table ID for analytics_facts.",
+      "isOptional": false
+    },
+    {
+      "name": "viewsTable",
+      "label": "Views table",
+      "helpText": "BigQuery table ID for analytics_views.",
+      "isOptional": false
+    },
+    {
+      "name": "quarantineTable",
+      "label": "Quarantine table",
+      "helpText": "BigQuery table ID for analytics_quarantine.",
+      "isOptional": false
+    },
+    {
+      "name": "environment",
+      "label": "Environment",
+      "helpText": "Source environment name, such as dev, staging, or prod.",
+      "isOptional": true
+    },
+    {
+      "name": "supportedEventVersions",
+      "label": "Supported event versions",
+      "helpText": "Comma-separated list of event versions promoted to clean/fact/view layers. Defaults to 1.",
+      "isOptional": true
+    },
+    {
+      "name": "dedupeWindowSeconds",
+      "label": "Dedupe window seconds",
+      "helpText": "Event-id dedupe TTL used to drop Pub/Sub redeliveries after the first immediate BigQuery write. Defaults to 900.",
+      "isOptional": true
+    }
+  ]
+}

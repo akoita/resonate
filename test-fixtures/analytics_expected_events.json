@@ -1,0 +1,446 @@
+[
+  {
+    "eventName": "playback.completed",
+    "payload": {
+      "artistId": "artist-1",
+      "trackId": "track-1",
+      "sessionId": "session-1",
+      "completionRatio": 1,
+      "durationMs": 120000,
+      "source": "web_player"
+    }
+  },
+  {
+    "eventName": "library.saved",
+    "payload": {
+      "userCohortId": "cohort-1",
+      "trackId": "track-1",
+      "releaseId": "release-1",
+      "source": "library"
+    }
+  },
+  {
+    "eventName": "commerce.settled",
+    "payload": {
+      "paymentId": "payment-1",
+      "artistId": "artist-1",
+      "trackId": "track-1",
+      "sessionId": "session-1",
+      "canonicalAmountUsd": 2.5,
+      "settlementAsset": "base-sepolia:usdc",
+      "txHash": "tx-1"
+    }
+  },
+  {
+    "eventName": "rights.route_decided",
+    "payload": {
+      "releaseId": "release-1",
+      "artistId": "artist-1",
+      "route": "STANDARD_ESCROW",
+      "evidenceTypes": ["rights_metadata"],
+      "decisionReason": "verified uploader"
+    }
+  },
+  {
+    "eventName": "agent.recommendation_selected",
+    "payload": {
+      "agentId": "agent-1",
+      "sessionId": "session-1",
+      "trackId": "track-1",
+      "strategy": "model-assisted",
+      "candidateCount": 8
+    }
+  },
+  {
+    "eventName": "generation.created",
+    "privacyTier": "personal",
+    "consentBasis": "platform_analytics:v1",
+    "payload": {
+      "generationId": "generation-1",
+      "userId": "user-1",
+      "trackId": "track-1",
+      "artistId": "artist-1",
+      "model": "lyria",
+      "promptPolicy": "accepted"
+    }
+  },
+  {
+    "eventName": "stems.uploaded",
+    "payload": {
+      "releaseId": "release-1",
+      "artistId": "artist-1",
+      "sourceType": "direct_upload",
+      "trackIds": ["track-1"],
+      "trackCount": 1,
+      "stemCount": 1
+    }
+  },
+  {
+    "eventName": "stems.processed",
+    "payload": {
+      "releaseId": "release-1",
+      "artistId": "artist-1",
+      "trackId": "track-1",
+      "trackIds": ["track-1"],
+      "stemIds": ["stem-1", "stem-2"],
+      "modelVersion": "demucs-v4",
+      "durationMs": 30000
+    }
+  },
+  {
+    "eventName": "stems.failed",
+    "payload": {
+      "releaseId": "release-1",
+      "artistId": "artist-1",
+      "trackId": "track-1",
+      "status": "failed",
+      "error": "separation failed"
+    }
+  },
+  {
+    "eventName": "catalog.track_status",
+    "payload": {
+      "releaseId": "release-1",
+      "artistId": "artist-1",
+      "trackId": "track-1",
+      "status": "complete"
+    }
+  },
+  {
+    "eventName": "catalog.release_ready",
+    "payload": {
+      "releaseId": "release-1",
+      "artistId": "artist-1",
+      "status": "ready",
+      "trackIds": ["track-1"],
+      "trackCount": 1,
+      "stemCount": 2
+    }
+  },
+  {
+    "eventName": "license.granted",
+    "payload": {
+      "licenseId": "license-1",
+      "type": "personal",
+      "priceUsd": 1.25,
+      "trackId": "track-1",
+      "artistId": "artist-1",
+      "releaseId": "release-1",
+      "sessionId": "session-1",
+      "title": "Track One"
+    }
+  },
+  {
+    "eventName": "payment.initiated",
+    "payload": {
+      "paymentId": "payment-initiated-1",
+      "amountUsd": 1.25,
+      "trackId": "track-1",
+      "artistId": "artist-1",
+      "releaseId": "release-1",
+      "sessionId": "session-1",
+      "chainId": "84532",
+      "paymentToken": "0x0000000000000000000000000000000000000000"
+    }
+  },
+  {
+    "eventName": "payment.settled",
+    "payload": {
+      "paymentId": "payment-settled-1",
+      "txHash": "tx-payment-1",
+      "status": "settled",
+      "amountUsd": 1.25,
+      "trackId": "track-1",
+      "artistId": "artist-1",
+      "releaseId": "release-1",
+      "sessionId": "session-1",
+      "paymentToken": "0x0000000000000000000000000000000000000000"
+    }
+  },
+  {
+    "eventName": "contract.stem_listed",
+    "payload": {
+      "listingId": "listing-1",
+      "sellerAddress": "0xseller",
+      "tokenId": "101",
+      "amount": "1",
+      "pricePerUnit": "1000000",
+      "paymentToken": "0xtoken",
+      "chainId": "84532",
+      "contractAddress": "0xcontract",
+      "transactionHash": "tx-listing-1",
+      "blockNumber": "100"
+    }
+  },
+  {
+    "eventName": "contract.stem_sold",
+    "payload": {
+      "listingId": "listing-1",
+      "buyerAddress": "0xbuyer",
+      "amount": "1",
+      "totalPaid": "1000000",
+      "chainId": "84532",
+      "contractAddress": "0xcontract",
+      "transactionHash": "tx-sold-1",
+      "blockNumber": "101"
+    }
+  },
+  {
+    "eventName": "contract.royalty_paid",
+    "payload": {
+      "tokenId": "101",
+      "recipientAddress": "0xartist",
+      "amount": "250000",
+      "chainId": "84532",
+      "contractAddress": "0xcontract",
+      "transactionHash": "tx-royalty-1",
+      "blockNumber": "102"
+    }
+  },
+  {
+    "eventName": "agent.purchase_completed",
+    "payload": {
+      "sessionId": "session-1",
+      "userId": "user-1",
+      "listingId": "listing-1",
+      "tokenId": "101",
+      "amount": "1",
+      "priceUsd": 1.25,
+      "txHash": "tx-agent-1",
+      "mode": "onchain"
+    }
+  },
+  {
+    "eventName": "agent.purchase_failed",
+    "payload": {
+      "sessionId": "session-1",
+      "userId": "user-1",
+      "listingId": "listing-1",
+      "tokenId": "101",
+      "amount": "1",
+      "priceUsd": 1.25,
+      "error": "policy denied"
+    }
+  },
+  {
+    "eventName": "agent.track_selected",
+    "payload": {
+      "sessionId": "session-1",
+      "trackId": "track-1",
+      "artistId": "artist-1",
+      "releaseId": "release-1",
+      "strategy": "runtime",
+      "source": "ai_dj"
+    }
+  },
+  {
+    "eventName": "agent.decision_made",
+    "payload": {
+      "sessionId": "session-1",
+      "trackId": "track-1",
+      "artistId": "artist-1",
+      "releaseId": "release-1",
+      "licenseType": "personal",
+      "priceUsd": 1.25,
+      "reason": "matches preferences"
+    }
+  },
+  {
+    "eventName": "generation.started",
+    "payload": {
+      "jobId": "job-1",
+      "userId": "user-1",
+      "artistId": "artist-1",
+      "durationSeconds": 30,
+      "seed": 123
+    }
+  },
+  {
+    "eventName": "generation.completed",
+    "payload": {
+      "jobId": "job-1",
+      "userId": "user-1",
+      "artistId": "artist-1",
+      "trackId": "track-1",
+      "releaseId": "release-1",
+      "durationSeconds": 30,
+      "provider": "lyria",
+      "model": "lyria-002"
+    }
+  },
+  {
+    "eventName": "generation.failed",
+    "payload": {
+      "jobId": "job-1",
+      "userId": "user-1",
+      "artistId": "artist-1",
+      "error": "generation failed"
+    }
+  },
+  {
+    "eventName": "recommendation.generated",
+    "payload": {
+      "userId": "user-1",
+      "userCohortId": "cohort-1",
+      "trackIds": ["track-1", "track-2"],
+      "strategy": "preference_mapping",
+      "candidateCount": 2
+    }
+  },
+  {
+    "eventName": "wallet.funded",
+    "payload": {
+      "userId": "user-1",
+      "amountUsd": 10,
+      "balanceUsd": 10
+    }
+  },
+  {
+    "eventName": "wallet.spent",
+    "payload": {
+      "userId": "user-1",
+      "amountUsd": 1.25,
+      "spentUsd": 1.25,
+      "balanceUsd": 8.75
+    }
+  },
+  {
+    "eventName": "curator.staked",
+    "payload": {
+      "curatorId": "curator-1",
+      "amountUsd": 25
+    }
+  },
+  {
+    "eventName": "curator.reported",
+    "payload": {
+      "reportId": "report-1",
+      "curatorId": "curator-1",
+      "trackId": "track-1",
+      "reason": "suspected_rights_issue"
+    }
+  },
+  {
+    "eventName": "remix.created",
+    "payload": {
+      "remixId": "remix-1",
+      "creatorId": "creator-1",
+      "sourceTrackId": "track-1",
+      "stemIds": ["stem-1", "stem-2"],
+      "stemCount": 2,
+      "txHash": "tx-remix-1"
+    }
+  },
+  {
+    "eventName": "release_rights.request_updated",
+    "payload": {
+      "requestId": "rights-request-1",
+      "releaseId": "release-1",
+      "status": "approved"
+    }
+  },
+  {
+    "eventName": "marketplace.listing_notify",
+    "payload": {
+      "listingId": "listing-1",
+      "tokenId": "101",
+      "sellerAddress": "0xseller",
+      "amount": "1",
+      "pricePerUnit": "1000000",
+      "paymentToken": "0xtoken",
+      "licenseType": "personal",
+      "stemId": "stem-1",
+      "transactionHash": "tx-marketplace-1"
+    }
+  },
+  {
+    "eventName": "notification.created",
+    "payload": {
+      "notificationId": "notification-1",
+      "walletAddress": "0xwallet",
+      "type": "dispute_filed",
+      "disputeId": "dispute-1",
+      "releaseId": "release-1"
+    }
+  },
+  {
+    "eventName": "contract.dispute_filed",
+    "payload": {
+      "disputeId": "dispute-1",
+      "tokenId": "101",
+      "reporterAddress": "0xreporter",
+      "creatorAddress": "0xcreator",
+      "counterStake": "1000000",
+      "paymentToken": "0xtoken",
+      "chainId": "84532",
+      "contractAddress": "0xcontract",
+      "transactionHash": "tx-dispute-filed-1",
+      "blockNumber": "103"
+    }
+  },
+  {
+    "eventName": "contract.dispute_resolved",
+    "payload": {
+      "disputeId": "dispute-1",
+      "tokenId": "101",
+      "outcome": "creator_wins",
+      "resolverAddress": "0xresolver",
+      "chainId": "84532",
+      "contractAddress": "0xcontract",
+      "transactionHash": "tx-dispute-resolved-1",
+      "blockNumber": "104"
+    }
+  },
+  {
+    "eventName": "contract.dispute_appealed",
+    "payload": {
+      "disputeId": "dispute-1",
+      "appealerAddress": "0xappealer",
+      "appealNumber": "1",
+      "chainId": "84532",
+      "contractAddress": "0xcontract",
+      "transactionHash": "tx-dispute-appealed-1",
+      "blockNumber": "105"
+    }
+  },
+  {
+    "eventName": "contract.content_reported",
+    "payload": {
+      "disputeId": "dispute-1",
+      "tokenId": "101",
+      "reporterAddress": "0xreporter",
+      "counterStake": "1000000",
+      "paymentToken": "0xtoken",
+      "chainId": "84532",
+      "contractAddress": "0xcontract",
+      "transactionHash": "tx-content-reported-1",
+      "blockNumber": "106"
+    }
+  },
+  {
+    "eventName": "contract.bounty_claimed",
+    "payload": {
+      "disputeId": "dispute-1",
+      "reporterAddress": "0xreporter",
+      "amount": "250000",
+      "paymentToken": "0xtoken",
+      "chainId": "84532",
+      "contractAddress": "0xcontract",
+      "transactionHash": "tx-bounty-claimed-1",
+      "blockNumber": "107"
+    }
+  },
+  {
+    "eventName": "contract.appeal_stake_deposited",
+    "payload": {
+      "disputeId": "dispute-1",
+      "appealerAddress": "0xappealer",
+      "appealStake": "500000",
+      "paymentToken": "0xtoken",
+      "chainId": "84532",
+      "contractAddress": "0xcontract",
+      "transactionHash": "tx-appeal-stake-1",
+      "blockNumber": "108"
+    }
+  }
+]

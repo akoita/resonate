@@ -55,7 +55,7 @@ flowchart TB
   Controllers["Controllers<br>REST, OpenAPI, MCP, x402"] --> Services["Application services"]
   Services --> Policies["Policy and quote services"]
   Services --> ReadModels["Read-model queries<br>Prisma"]
-  Services --> EventBus["In-process event bus<br>+ Socket.IO gateway"]
+  Services --> EventBus["Shared process EventBus<br>+ Socket.IO gateway"]
   Services --> Ports["External ports"]
 
   Policies --> Pricing["Pricing / licensing"]
@@ -77,6 +77,11 @@ domain ownership is kept explicit through NestJS modules, focused services,
 typed event payloads, and persistence models. This keeps local development and
 integration testing practical while still making the main product boundaries
 visible.
+
+Cross-cutting subscribers attach to the shared `EventBus` exported by
+`SharedModule`. Feature modules should import that shared provider instead of
+declaring their own `EventBus`, so realtime fan-out, contract/indexer handlers,
+and analytics bridge subscribers observe the same process-level event stream.
 
 ## Frontend Component Model
 

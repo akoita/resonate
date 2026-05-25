@@ -141,6 +141,11 @@ describe("analytics event envelope", () => {
       "rights.route_decided",
       "agent.recommendation_selected",
       "generation.created",
+      "recommendation.generated",
+      "stems.uploaded",
+      "stems.processed",
+      "catalog.track_status",
+      "catalog.release_ready",
     ]);
   });
 });

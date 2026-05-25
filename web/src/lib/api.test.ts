@@ -30,6 +30,8 @@ const api = await import('./api');
 describe('API Client', () => {
   beforeEach(() => {
     mockFetch.mockReset();
+    vi.unstubAllGlobals();
+    vi.stubGlobal('fetch', mockFetch);
   });
 
   describe('API_BASE', () => {
@@ -65,6 +67,118 @@ describe('API Client', () => {
       ).toBe(
         'http://test-api:3000/catalog/me/releases/release-123/tracks/track-456/stream',
       );
+    });
+  });
+
+  describe('getArtistAnalyticsDashboard', () => {
+    it('fetches the artist dashboard from the authenticated analytics endpoint', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            summary: {
+              artistId: 'artist-1',
+              days: 30,
+              totalPlays: 4,
+              totalPayoutUsd: 1.25,
+              payoutsByAsset: [],
+            },
+            tracks: [],
+            topTracks: [],
+            sessions: [],
+            sources: [],
+            protection: {
+              totalDecisions: 1,
+              releasesWithDecisions: 1,
+              marketplaceReadyReleases: 1,
+              restrictedReleases: 0,
+              blockedReleases: 0,
+              routes: [
+                {
+                  route: 'STANDARD_ESCROW',
+                  decisions: 1,
+                  releases: 1,
+                  latestDecisionAt: '2026-05-22T10:00:00.000Z',
+                },
+              ],
+            },
+            playsOverTime: [],
+            trackPerformance: [],
+            export: {
+              artistId: 'artist-1',
+              days: 30,
+              totalPlays: 4,
+              totalPayoutUsd: 1.25,
+              payoutsByAsset: [],
+              generatedAt: '2026-05-22T12:00:00.000Z',
+              source: 'bigquery',
+              freshness: { asOf: null, lagSeconds: null },
+            },
+            meta: {
+              source: 'bigquery',
+              generatedAt: '2026-05-22T12:00:00.000Z',
+              timeWindow: {
+                from: '2026-04-22T12:00:00.000Z',
+                to: '2026-05-22T12:00:00.000Z',
+                days: 30,
+              },
+              freshness: { asOf: null, lagSeconds: null },
+              isEmpty: false,
+              cache: { hit: false, ttlSeconds: 60 },
+            },
+          }),
+      });
+
+      const result = await api.getArtistAnalyticsDashboard('artist-token', 'artist-1', 30);
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/analytics/artist/artist-1/v1?days=30');
+      expect(opts.headers.get('Authorization')).toBe('Bearer artist-token');
+      expect(opts.cache).toBe('no-store');
+      expect(result.summary.totalPlays).toBe(4);
+      expect(result.protection.marketplaceReadyReleases).toBe(1);
+      expect(result.meta.source).toBe('bigquery');
+    });
+  });
+
+  describe('recordPlaybackCompleted', () => {
+    it('posts playback completion to the narrow analytics endpoint', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        text: async () =>
+          JSON.stringify({
+            status: 'ok',
+            eventId: 'evt_playback_1',
+            ingested: 1,
+          }),
+      });
+
+      const result = await api.recordPlaybackCompleted('listener-token', {
+        trackId: 'track-1',
+        artistId: 'artist-1',
+        releaseId: 'release-1',
+        sessionId: 'session-1',
+        source: 'web_player',
+        completionRatio: 0.8,
+        durationMs: 30000,
+      });
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/analytics/playback/completed');
+      expect(opts.method).toBe('POST');
+      expect(opts.headers.get('Authorization')).toBe('Bearer listener-token');
+      expect(JSON.parse(opts.body)).toEqual({
+        trackId: 'track-1',
+        artistId: 'artist-1',
+        releaseId: 'release-1',
+        sessionId: 'session-1',
+        source: 'web_player',
+        completionRatio: 0.8,
+        durationMs: 30000,
+      });
+      expect(result.eventId).toBe('evt_playback_1');
     });
   });
 
@@ -266,6 +380,57 @@ describe('API Client', () => {
 
       const result = await api.fetchNonce('0x1');
       expect(result).toBeNull();
+    });
+
+    it('invalidates stored auth when a token-backed request receives 401', async () => {
+      const removedKeys: string[] = [];
+      const dispatchEvent = vi.fn();
+      vi.stubGlobal('window', {
+        dispatchEvent,
+      });
+      vi.stubGlobal('localStorage', {
+        getItem: vi.fn(() => null),
+        removeItem: vi.fn((key: string) => removedKeys.push(key)),
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        text: async () => JSON.stringify({ message: 'Unauthorized', statusCode: 401 }),
+      });
+
+      await expect(api.fetchWallet('user-1', 'stale-token')).rejects.toThrow('API 401: Unauthorized');
+
+      expect(removedKeys).toEqual([
+        'resonate.token',
+        'resonate.address',
+        'resonate.smartAccountAddress',
+        'resonate.privy.userId',
+      ]);
+      expect(dispatchEvent).toHaveBeenCalledTimes(1);
+      expect(dispatchEvent.mock.calls[0][0].type).toBe('resonate:auth-invalidated');
+    });
+
+    it('keeps Playwright/local mock auth sessions when a mock token receives 401', async () => {
+      const dispatchEvent = vi.fn();
+      vi.stubGlobal('window', {
+        dispatchEvent,
+      });
+      vi.stubGlobal('localStorage', {
+        getItem: vi.fn((key: string) => key === 'resonate.mock_auth' ? 'true' : null),
+        removeItem: vi.fn(),
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        text: async () => JSON.stringify({ message: 'Unauthorized', statusCode: 401 }),
+      });
+
+      await expect(api.fetchWallet('test-user', 'mock-token')).rejects.toThrow('API 401: Unauthorized');
+
+      expect(localStorage.removeItem).not.toHaveBeenCalled();
+      expect(dispatchEvent).not.toHaveBeenCalled();
     });
   });
 

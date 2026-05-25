@@ -1,13 +1,13 @@
 import { Module } from "@nestjs/common";
 import { IdentityModule } from "../identity/identity.module";
 import { AgentsModule } from "../agents/agents.module";
-import { EventBus } from "../shared/event_bus";
+import { SharedModule } from "../shared/shared.module";
 import { SessionsController } from "./sessions.controller";
 import { SessionsService } from "./sessions.service";
 
 @Module({
-  imports: [IdentityModule, AgentsModule],
+  imports: [SharedModule, IdentityModule, AgentsModule],
   controllers: [SessionsController],
-  providers: [EventBus, SessionsService],
+  providers: [SessionsService],
 })
 export class SessionsModule {}

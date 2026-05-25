@@ -1,8 +1,8 @@
-import { EventBus } from "../shared/event_bus";
 import { EmbeddingService } from "../embeddings/embedding.service";
 import { EmbeddingStore } from "../embeddings/embedding.store";
 import { AgentEvaluationService } from "./agent_evaluation.service";
 import { AgentAudioFeatureService } from "./agent_audio_feature.service";
+import { AgentBigQueryTasteSignalService } from "./agent_bigquery_taste_signal.service";
 import { AgentGoldenEvalService } from "./agent_golden_eval.service";
 import { AgentLearningService } from "./agent_learning.service";
 import { AgentMixerService } from "./agent_mixer.service";
@@ -27,11 +27,11 @@ import { LangGraphAdapter } from "./runtime/langgraph_adapter";
 import { VertexAiAdapter } from "./runtime/vertex_ai_adapter";
 
 export const AGENT_RUNTIME_CORE_PROVIDERS = [
-  EventBus,
   EmbeddingService,
   EmbeddingStore,
   ToolRegistry,
   AgentAudioFeatureService,
+  AgentBigQueryTasteSignalService,
   AgentPolicyService,
   PolicyGuardService,
   PaymentRouterService,

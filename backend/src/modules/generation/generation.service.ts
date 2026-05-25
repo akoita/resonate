@@ -480,6 +480,7 @@ export class GenerationService {
         return {
           releaseId: release.id,
           trackId: track.id,
+          artistId: artist.id,
           title: track.title,
           prompt: meta.prompt || track.title,
           negativePrompt: meta.negativePrompt || null,

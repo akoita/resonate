@@ -26,6 +26,10 @@ Expose a minimal catalog service to store, index, and query tracks and stems.
 - Release rows in the home catalog expose direct listener actions:
   - add all release tracks to a playlist using the existing playlist modal
   - save all release tracks to the listener library as remote catalog tracks
+- Authenticated artists can open `/artist/catalog` for a complete managed
+  inventory with release and track tabs, search, status, rights-route, and
+  resource counts. The home page keeps only compact previews and links to this
+  full inventory when the artist owns more catalog objects than fit there.
 - Full release details, track-level actions, mixer previews, and owner tools
   remain available from `/release/:id`.
 

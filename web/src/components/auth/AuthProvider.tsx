@@ -9,6 +9,13 @@ import { getKernelAccountConfig } from "../../lib/accountAbstraction";
 import { getNetworkLabel } from "../../lib/explorer";
 import { markFundingAnnouncementSeen } from "../../lib/fundingAnnouncement";
 import { getPasskeyRpId, getPasskeyServerUrl } from "../../lib/passkeyConfig";
+import {
+  ADDRESS_KEY,
+  AUTH_INVALIDATED_EVENT,
+  clearStoredAuthSession,
+  SA_ADDRESS_KEY,
+  TOKEN_KEY,
+} from "../../lib/authSession";
 import type { WebAuthnMode } from "@zerodev/passkey-validator";
 import { useToast } from "../ui/Toast";
 
@@ -43,10 +50,6 @@ type AuthState = {
 
 const AuthContext = createContext<AuthState | null>(null);
 
-const TOKEN_KEY = "resonate.token";
-const ADDRESS_KEY = "resonate.address";
-const SA_ADDRESS_KEY = "resonate.smartAccountAddress";
-const PRIVY_USER_KEY = "resonate.privy.userId";
 const KNOWN_ADDRESSES_KEY = "resonate.knownAddresses";
 const ETH_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 
@@ -154,6 +157,31 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [activeAccount, setActiveAccount] = useState<unknown>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [storedWebAuthnKey, setStoredWebAuthnKey] = useState<any>(null);
+
+  const clearAuthState = useCallback((nextStatus: AuthState["status"] = "idle") => {
+    setToken(null);
+    setAddress(null);
+    setSmartAccountAddress(null);
+    setRole(null);
+    setUserId(null);
+    setWallet(null);
+    setStatus(nextStatus);
+    setActiveAccount(null);
+    setStoredWebAuthnKey(null);
+  }, []);
+
+  useEffect(() => {
+    const handleInvalidated = () => {
+      clearEmbeddedAccount();
+      clearAuthState("error");
+      setError("Your session expired. Please reconnect.");
+    };
+
+    window.addEventListener(AUTH_INVALIDATED_EVENT, handleInvalidated);
+    return () => {
+      window.removeEventListener(AUTH_INVALIDATED_EVENT, handleInvalidated);
+    };
+  }, [clearAuthState]);
 
   const refreshWallet = useCallback(async () => {
     if (!token || !address) return;
@@ -377,20 +405,11 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   }, [login]);
 
   const disconnect = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(ADDRESS_KEY);
-    localStorage.removeItem(SA_ADDRESS_KEY);
-    localStorage.removeItem(PRIVY_USER_KEY);
+    clearStoredAuthSession();
     clearEmbeddedAccount();
-    setToken(null);
-    setAddress(null);
-    setSmartAccountAddress(null);
-    setRole(null);
-    setUserId(null);
-    setWallet(null);
-    setStatus("idle");
-    setActiveAccount(null);
-  }, []);
+    clearAuthState();
+    setError(undefined);
+  }, [clearAuthState]);
 
   const value = useMemo<AuthState>(
     () => ({

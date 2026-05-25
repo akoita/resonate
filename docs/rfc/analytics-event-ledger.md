@@ -33,11 +33,15 @@ keeping personal data forever.
   `backend/src/modules/analytics/analytics_event.ts`.
 - Backend analytics ingestion now persists raw envelopes to the Postgres
   `AnalyticsEvent` ledger through
-  `backend/src/modules/analytics/analytics_event_store.ts`; production
-  warehouse loading is not implemented yet.
+  `backend/src/modules/analytics/analytics_event_store.ts`.
+- Backend analytics ingestion can also publish validated envelopes to the
+  Terraform-managed analytics Pub/Sub topic when explicitly enabled.
 - The first warehouse export contract exists in
   `backend/src/modules/analytics/analytics_warehouse.ts` and emits raw, clean,
   fact, view, and quarantine layers.
+- Warehouse loading/backfill exists through JSONL and BigQuery insert-all
+  targets. A first Apache Beam/Dataflow processor artifact exists in
+  `workers/analytics-dataflow/` for the event-native Pub/Sub to BigQuery path.
 - Core analytics producer helpers exist in
   `backend/src/modules/analytics/analytics_instrumentation.service.ts` for
   playback, library, commerce, rights, agent, and generation events.
@@ -158,18 +162,36 @@ raw context and reason metadata to support replay after schema fixes.
 Initial event families should cover:
 
 - `identity.*`: signup, auth, wallet connection, role changes.
+- `wallet.*`: budget, funding, spend, and account-abstraction wallet state.
 - `catalog.*`: release creation, metadata changes, publish/unpublish.
-- `ingestion.*`: upload, processing, model version, storage outcomes.
+- `stems.*`: upload, processing, model version, storage outcomes.
+- `ingestion.*`: ingestion orchestration and bridge/import outcomes.
+- `ipnft.*`: tokenization and provenance events for catalog assets.
+- `session.*`: listener and agent commerce session lifecycle.
 - `playback.*`: start, progress milestones, completion, skip, save.
+- `library.*`: saves, follows, playlists, and listener library actions.
 - `commerce.*`: listing, quote, purchase intent, settlement, refund.
+- `payment.*`: payment initiation, split, settlement, and accounting rails.
+- `contract.*`: contract/indexer observations such as stem sales and royalties.
+- `x402.*`: challenge, verification, replay, and settlement events.
+- `license.*`: license grants and license lifecycle events.
 - `rights.*`: evidence submission, route decision, dispute, resolution.
+- `release_rights.*`: release-scoped rights request workflow events.
 - `agent.*`: recommendation, quote evaluation, purchase decision, feedback.
+- `recommendation.*`: recommendation generation and preferences outside the agent runtime.
+- `curator.*`: curation stake, reports, review, and reputation events.
+- `remix.*`: remix creation, eligibility, minting, and lineage events.
+- `marketplace.*`: listing lifecycle and storefront marketplace events.
 - `generation.*`: prompt, generation, publish, rate-limit state.
+- `notification.*`: notification creation, preference, delivery, and status.
+- `realtime.*`: realtime music/session transport status and user-control events.
 - `experiment.*`: assignment, exposure, conversion.
 - `system.*`: job completion, import/export, pipeline health.
 
 Product teams can add feature-specific events, but each event must map to a
-family owner and schema.
+family owner and schema. Existing Resonate domain event names should generally
+be preserved as analytics `eventName` values once their family is listed here;
+bridges can keep alternate source names in `payload` or `sourceRefs`.
 
 ## Retention Model
 
@@ -223,14 +245,17 @@ Deletion should not mean corrupting financial history. Instead:
      [#871](https://github.com/akoita/resonate/issues/871)
    - Raw event envelope persistence is implemented in Postgres with idempotent
      `eventId` upserts.
-   - Pub/Sub or queue-backed warehouse export remains follow-up.
+   - Pub/Sub event publishing is implemented as an opt-in side effect after
+     ledger persistence.
 3. **Warehouse export**
    - Tracking issue:
      [#869](https://github.com/akoita/resonate/issues/869)
    - Export contracts for `events_raw`, `events_clean`, `analytics_facts`,
      `analytics_views`, and `analytics_quarantine` are implemented in
      `backend/src/modules/analytics/analytics_warehouse.ts`.
-   - Production warehouse loading remains follow-up.
+   - Production warehouse loading exists through JSONL and BigQuery insert-all
+     bridge targets; the event-native Dataflow path now has its first Flex
+     Template artifact in `workers/analytics-dataflow/`.
 4. **Core event instrumentation**
    - Tracking issue:
      [#870](https://github.com/akoita/resonate/issues/870)
@@ -250,8 +275,11 @@ Deletion should not mean corrupting financial history. Instead:
 6. **Reporting and dashboard migration**
    - Tracking issue:
      [#872](https://github.com/akoita/resonate/issues/872)
-   - Move artist analytics, Punchline Drops funnels, and public dispute
-     analytics/reporting onto facts/views instead of in-memory events.
+   - Artist analytics can now read BigQuery `analytics_facts` and
+     `analytics_views` by setting `ANALYTICS_REPORT_SOURCE=bigquery`; responses
+     include time-window, freshness, source, cache, and no-data metadata.
+   - Punchline Drops funnels and public dispute analytics/reporting remain
+     follow-up candidates for facts/views-backed reports.
 
 ## Open Questions
 
