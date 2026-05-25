@@ -99,7 +99,7 @@ deploy-show-campaign-escrow:
 		exit 1; \
 	fi
 	@rpc_url="$${RPC_URL:-$(BASE_SEPOLIA_RPC_URL)}"; \
-	cd contracts && forge script script/DeployShowCampaignEscrow.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow; \
+	(cd contracts && forge script script/DeployShowCampaignEscrow.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
 	RPC_URL="$$rpc_url" ./contracts/scripts/write-show-campaign-escrow-handoff.sh
 
 verify-base-sepolia:
