@@ -154,6 +154,10 @@ describe("analytics warehouse export", () => {
       ["evt_realtime", "realtime.audio"],
       ["evt_x402", "x402.payment_settled"],
       ["evt_session", "session.started"],
+      ["evt_onboarding", "onboarding.step_completed"],
+      ["evt_playlist", "playlist.track_added"],
+      ["evt_search", "search.submitted"],
+      ["evt_artist", "artist.upload_step_completed"],
     ] as const;
 
     const result = buildAnalyticsWarehouseExport(
@@ -186,6 +190,10 @@ describe("analytics warehouse export", () => {
       "realtime",
       "x402",
       "session",
+      "onboarding",
+      "playlist",
+      "search",
+      "artist",
     ]);
     expect(result.analyticsFacts).toHaveLength(domainEvents.length);
   });

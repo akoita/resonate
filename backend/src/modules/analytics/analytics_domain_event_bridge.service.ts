@@ -32,6 +32,25 @@ type DomainBridgeConfig = {
 
 const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
   {
+    eventName: "session.started",
+    producer: "sessions-service",
+    subjectType: "session",
+    subjectIdKeys: ["sessionId"],
+    actorIdKeys: ["userId"],
+    sessionIdKeys: ["sessionId"],
+    payloadKeys: ["sessionId", "userId", "budgetCapUsd", "preferences"],
+    sourceRefKeys: ["sessionId", "userId"],
+  },
+  {
+    eventName: "session.ended",
+    producer: "sessions-service",
+    subjectType: "session",
+    subjectIdKeys: ["sessionId"],
+    sessionIdKeys: ["sessionId"],
+    payloadKeys: ["sessionId", "spentTotalUsd", "reason"],
+    sourceRefKeys: ["sessionId", "reason"],
+  },
+  {
     eventName: "license.granted",
     producer: "sessions-service",
     subjectType: "license",
@@ -130,6 +149,31 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     sourceRefKeys: ["listingId", "chainId", "contractAddress", "transactionHash", "blockNumber"],
   },
   {
+    eventName: "contract.stem_minted",
+    producer: "contracts-indexer",
+    subjectType: "token",
+    subjectIdKeys: ["tokenId"],
+    actorIdKeys: ["creatorAddress"],
+    payloadKeys: [
+      "tokenId",
+      "creatorAddress",
+      "parentIds",
+      "chainId",
+      "contractAddress",
+      "transactionHash",
+      "blockNumber",
+    ],
+    sourceRefKeys: ["tokenId", "chainId", "contractAddress", "transactionHash", "blockNumber"],
+  },
+  {
+    eventName: "contract.listing_cancelled",
+    producer: "contracts-indexer",
+    subjectType: "listing",
+    subjectIdKeys: ["listingId"],
+    payloadKeys: ["listingId", "chainId", "contractAddress", "transactionHash", "blockNumber"],
+    sourceRefKeys: ["listingId", "chainId", "contractAddress", "transactionHash", "blockNumber"],
+  },
+  {
     eventName: "contract.royalty_paid",
     producer: "contracts-indexer",
     subjectType: "token",
@@ -145,6 +189,115 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
       "blockNumber",
     ],
     sourceRefKeys: ["tokenId", "chainId", "contractAddress", "transactionHash", "blockNumber"],
+  },
+  {
+    eventName: "contract.content_attested",
+    producer: "contracts-indexer",
+    subjectType: "token",
+    subjectIdKeys: ["tokenId"],
+    actorIdKeys: ["attesterAddress"],
+    payloadKeys: [
+      "tokenId",
+      "attesterAddress",
+      "contentHash",
+      "fingerprintHash",
+      "chainId",
+      "contractAddress",
+      "transactionHash",
+      "blockNumber",
+    ],
+    sourceRefKeys: ["tokenId", "chainId", "contractAddress", "transactionHash", "blockNumber"],
+  },
+  {
+    eventName: "contract.stake_deposited",
+    producer: "contracts-indexer",
+    subjectType: "token",
+    subjectIdKeys: ["tokenId"],
+    actorIdKeys: ["stakerAddress"],
+    payloadKeys: [
+      "tokenId",
+      "stakerAddress",
+      "amount",
+      "paymentToken",
+      "chainId",
+      "contractAddress",
+      "transactionHash",
+      "blockNumber",
+    ],
+    sourceRefKeys: ["tokenId", "chainId", "contractAddress", "transactionHash", "blockNumber"],
+  },
+  {
+    eventName: "contract.stake_slashed",
+    producer: "contracts-indexer",
+    subjectType: "token",
+    subjectIdKeys: ["tokenId"],
+    actorIdKeys: ["reporterAddress"],
+    payloadKeys: [
+      "tokenId",
+      "reporterAddress",
+      "paymentToken",
+      "reporterAmount",
+      "treasuryAmount",
+      "burnedAmount",
+      "chainId",
+      "contractAddress",
+      "transactionHash",
+      "blockNumber",
+    ],
+    sourceRefKeys: ["tokenId", "chainId", "contractAddress", "transactionHash", "blockNumber"],
+  },
+  {
+    eventName: "contract.escrow_released",
+    producer: "contracts-indexer",
+    subjectType: "token",
+    subjectIdKeys: ["tokenId"],
+    actorIdKeys: ["beneficiaryAddress"],
+    payloadKeys: [
+      "tokenId",
+      "beneficiaryAddress",
+      "amount",
+      "paymentToken",
+      "chainId",
+      "contractAddress",
+      "transactionHash",
+      "blockNumber",
+    ],
+    sourceRefKeys: ["tokenId", "chainId", "contractAddress", "transactionHash", "blockNumber"],
+  },
+  {
+    eventName: "contract.escrow_frozen",
+    producer: "contracts-indexer",
+    subjectType: "token",
+    subjectIdKeys: ["tokenId"],
+    payloadKeys: ["tokenId", "paymentToken", "chainId", "contractAddress", "transactionHash", "blockNumber"],
+    sourceRefKeys: ["tokenId", "chainId", "contractAddress", "transactionHash", "blockNumber"],
+  },
+  {
+    eventName: "contract.escrow_redirected",
+    producer: "contracts-indexer",
+    subjectType: "token",
+    subjectIdKeys: ["tokenId"],
+    actorIdKeys: ["newRecipient"],
+    payloadKeys: [
+      "tokenId",
+      "newRecipient",
+      "amount",
+      "paymentToken",
+      "chainId",
+      "contractAddress",
+      "transactionHash",
+      "blockNumber",
+    ],
+    sourceRefKeys: ["tokenId", "chainId", "contractAddress", "transactionHash", "blockNumber"],
+  },
+  {
+    eventName: "contract.address_blacklisted",
+    producer: "contracts-indexer",
+    subjectType: "address",
+    subjectIdKeys: ["account"],
+    actorIdKeys: ["account"],
+    payloadKeys: ["account", "chainId", "contractAddress", "transactionHash", "blockNumber"],
+    sourceRefKeys: ["account", "chainId", "contractAddress", "transactionHash", "blockNumber"],
   },
   {
     eventName: "agent.purchase_completed",
@@ -176,6 +329,48 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     sourceRefKeys: ["sessionId", "trackId", "artistId", "releaseId"],
   },
   {
+    eventName: "agent.evaluated",
+    producer: "agent-runtime",
+    subjectType: "track",
+    subjectIdKeys: ["trackId"],
+    sessionIdKeys: ["sessionId"],
+    payloadKeys: ["sessionId", "trackId", "licenseType", "priceUsd", "reason"],
+    sourceRefKeys: ["sessionId", "trackId", "licenseType"],
+  },
+  {
+    eventName: "agent.selection",
+    producer: "agent-runtime",
+    subjectType: "track",
+    subjectIdKeys: ["trackId"],
+    sessionIdKeys: ["sessionId"],
+    payloadKeys: ["sessionId", "trackId", "candidates", "count", "strategy"],
+    sourceRefKeys: ["sessionId", "trackId", "strategy"],
+  },
+  {
+    eventName: "agent.mix_planned",
+    producer: "agent-runtime",
+    subjectType: "track",
+    subjectIdKeys: ["trackId"],
+    sessionIdKeys: ["sessionId"],
+    payloadKeys: ["sessionId", "trackId", "trackTitle", "transition"],
+    sourceRefKeys: ["sessionId", "trackId", "transition"],
+  },
+  {
+    eventName: "agent.negotiated",
+    producer: "agent-runtime",
+    subjectType: "track",
+    subjectIdKeys: ["trackId"],
+    sessionIdKeys: ["sessionId"],
+    payloadKeys: ["sessionId", "trackId", "trackTitle", "licenseType", "priceUsd", "reason"],
+    sourceRefKeys: ["sessionId", "trackId", "licenseType"],
+  },
+  {
+    eventName: "agent.evaluation_completed",
+    producer: "agent-runtime",
+    payloadKeys: ["total", "approved", "rejected", "approvalRate", "avgPriceUsd", "repeatRate"],
+    sourceRefKeys: ["total", "approved", "rejected"],
+  },
+  {
     eventName: "agent.decision_made",
     producer: "agent-runtime",
     subjectType: "track",
@@ -183,6 +378,42 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     sessionIdKeys: ["sessionId"],
     payloadKeys: ["sessionId", "trackId", "artistId", "releaseId", "licenseType", "priceUsd", "reason"],
     sourceRefKeys: ["sessionId", "trackId", "artistId", "releaseId"],
+  },
+  {
+    eventName: "agent.generation_triggered",
+    producer: "agent-runtime",
+    subjectType: "generation_job",
+    subjectIdKeys: ["jobId"],
+    sessionIdKeys: ["sessionId"],
+    payloadKeys: ["sessionId", "jobId", "costUsd", "reason"],
+    sourceRefKeys: ["sessionId", "jobId"],
+  },
+  {
+    eventName: "agent.wallet_enabled",
+    producer: "agent-wallet-service",
+    subjectType: "user_wallet",
+    subjectIdKeys: ["userId"],
+    actorIdKeys: ["userId"],
+    payloadKeys: ["userId", "walletAddress", "agentAddress"],
+    sourceRefKeys: ["userId", "walletAddress", "agentAddress"],
+  },
+  {
+    eventName: "agent.wallet_disabled",
+    producer: "agent-wallet-service",
+    subjectType: "user_wallet",
+    subjectIdKeys: ["userId"],
+    actorIdKeys: ["userId"],
+    payloadKeys: ["userId"],
+    sourceRefKeys: ["userId"],
+  },
+  {
+    eventName: "agent.budget_alert",
+    producer: "agent-wallet-service",
+    subjectType: "user_wallet",
+    subjectIdKeys: ["userId"],
+    actorIdKeys: ["userId"],
+    payloadKeys: ["userId", "level", "percentUsed", "spentUsd", "monthlyCapUsd", "remainingUsd"],
+    sourceRefKeys: ["userId", "level"],
   },
   {
     eventName: "generation.started",
@@ -212,10 +443,25 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     sourceRefKeys: ["jobId", "userId", "artistId"],
   },
   {
+    eventName: "generation.progress",
+    producer: "generation-service",
+    subjectType: "generation_job",
+    subjectIdKeys: ["jobId"],
+    payloadKeys: ["jobId", "phase"],
+    sourceRefKeys: ["jobId", "phase"],
+  },
+  {
     eventName: "recommendation.generated",
     producer: "recommendations-service",
     actorIdKeys: ["userId"],
     payloadKeys: ["userId", "trackIds", "strategy"],
+    sourceRefKeys: ["userId"],
+  },
+  {
+    eventName: "recommendation.preferences_updated",
+    producer: "recommendations-service",
+    actorIdKeys: ["userId"],
+    payloadKeys: ["userId", "preferences"],
     sourceRefKeys: ["userId"],
   },
   {
@@ -234,6 +480,15 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     subjectIdKeys: ["userId"],
     actorIdKeys: ["userId"],
     payloadKeys: ["userId", "amountUsd", "spentUsd", "balanceUsd"],
+    sourceRefKeys: ["userId"],
+  },
+  {
+    eventName: "wallet.budget_set",
+    producer: "wallet-service",
+    subjectType: "user_wallet",
+    subjectIdKeys: ["userId"],
+    actorIdKeys: ["userId"],
+    payloadKeys: ["userId", "monthlyCapUsd"],
     sourceRefKeys: ["userId"],
   },
   {
@@ -700,10 +955,32 @@ function analyticsValue(value: unknown, key?: string): unknown {
       .filter((entry): entry is string | number | boolean => entry !== undefined);
     return values.length ? values : undefined;
   }
+  if (key === "preferences" && typeof value === "object") {
+    return compactAnalyticsObject(value as Record<string, unknown>);
+  }
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
     return value;
   }
   return undefined;
+}
+
+function compactAnalyticsObject(value: Record<string, unknown>) {
+  const output: Record<string, string | number | boolean | Array<string | number | boolean>> = {};
+  for (const [key, entry] of Object.entries(value).slice(0, 40)) {
+    if (!/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/.test(key)) {
+      continue;
+    }
+    const analyticsEntry = analyticsValue(entry);
+    if (
+      typeof analyticsEntry === "string" ||
+      typeof analyticsEntry === "number" ||
+      typeof analyticsEntry === "boolean" ||
+      Array.isArray(analyticsEntry)
+    ) {
+      output[key] = analyticsEntry;
+    }
+  }
+  return Object.keys(output).length ? output : undefined;
 }
 
 function analyticsScalar(value: unknown) {

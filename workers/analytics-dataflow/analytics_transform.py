@@ -14,8 +14,12 @@ SUPPORTED_EVENT_FAMILIES = {
     "ingestion",
     "stems",
     "ipnft",
+    "onboarding",
     "session",
     "playback",
+    "playlist",
+    "search",
+    "artist",
     "library",
     "commerce",
     "license",
@@ -298,8 +302,26 @@ def to_fact_row(clean: dict[str, Any]) -> dict[str, Any]:
                         "eventName": clean["eventName"],
                         "producer": clean["producer"],
                         "privacyTier": clean["privacyTier"],
+                        "actorId": clean.get("actorId"),
                         "source": clean.get("source"),
                         "sessionId": clean.get("sessionId"),
+                        "releaseId": clean.get("releaseId"),
+                        "playlistId": string_payload(payload, "playlistId"),
+                        "step": string_payload(payload, "step"),
+                        "phase": string_payload(payload, "phase"),
+                        "status": string_payload(payload, "status"),
+                        "licenseType": string_payload(payload, "licenseType"),
+                        "strategy": string_payload(payload, "strategy"),
+                        "playbackInstanceId": string_payload(payload, "playbackInstanceId"),
+                        "action": string_payload(payload, "action"),
+                        "positionMs": number_payload(payload, "positionMs"),
+                        "durationMs": number_payload(payload, "durationMs"),
+                        "heartbeatIntervalMs": number_payload(payload, "heartbeatIntervalMs"),
+                        "completionRatio": number_payload(payload, "completionRatio"),
+                        "queueIndex": number_payload(payload, "queueIndex"),
+                        "queueLength": number_payload(payload, "queueLength"),
+                        "repeatMode": string_payload(payload, "repeatMode"),
+                        "shuffle": bool_payload(payload, "shuffle"),
                         "title": string_payload(payload, "title"),
                         "paymentToken": string_payload(payload, "paymentToken"),
                         "paymentAssetId": string_payload(payload, "paymentAssetId"),
@@ -454,6 +476,11 @@ def string_payload(payload: dict[str, Any], key: str) -> str | None:
 def number_payload(payload: dict[str, Any], key: str) -> float | int | None:
     value = payload.get(key)
     return value if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) else None
+
+
+def bool_payload(payload: dict[str, Any], key: str) -> bool | None:
+    value = payload.get(key)
+    return value if isinstance(value, bool) else None
 
 
 def list_payload(payload: dict[str, Any], key: str) -> list[Any] | None:

@@ -3,14 +3,44 @@ import { AnalyticsEventInput } from "./analytics_event";
 import { AnalyticsCatalogMetadataService } from "./analytics_catalog_metadata.service";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
 
-export interface PlaybackCompletedAnalyticsInput {
+export type PlaybackLifecycleAction = "started" | "heartbeat";
+
+interface PlaybackCatalogAnalyticsInput {
   trackId: string;
   artistId?: string;
   releaseId?: string;
   sessionId?: string;
   source?: string;
+  actorId?: string;
+}
+
+export interface PlaybackCompletedAnalyticsInput extends PlaybackCatalogAnalyticsInput {
   completionRatio: number;
   durationMs?: number;
+}
+
+export interface PlaybackLifecycleAnalyticsInput extends PlaybackCatalogAnalyticsInput {
+  action: PlaybackLifecycleAction;
+  playbackInstanceId?: string;
+  positionMs?: number;
+  durationMs?: number;
+  heartbeatIntervalMs?: number;
+  queueIndex?: number;
+  queueLength?: number;
+  repeatMode?: "none" | "one" | "all";
+  shuffle?: boolean;
+}
+
+export interface ProductAnalyticsInput {
+  eventName: string;
+  actorId?: string;
+  sessionId?: string;
+  traceId?: string;
+  subjectType?: string;
+  subjectId?: string;
+  source?: string;
+  payload?: Record<string, unknown>;
+  sourceRefs?: Record<string, string>;
 }
 
 export interface LibrarySavedAnalyticsInput {
@@ -72,6 +102,7 @@ export class AnalyticsInstrumentationService {
       privacyTier: "pseudonymous",
       subjectType: "track",
       subjectId: input.trackId,
+      actorId: input.actorId,
       sessionId: input.sessionId,
       payload: {
         trackId: input.trackId,
@@ -82,6 +113,7 @@ export class AnalyticsInstrumentationService {
         source: input.source,
       },
       sourceRefs: {
+        ...(input.actorId ? { actorId: input.actorId } : {}),
         ...(input.sessionId ? { sessionId: input.sessionId } : {}),
         trackId: input.trackId,
         ...(catalog.releaseId ? { releaseId: catalog.releaseId } : {}),
@@ -89,7 +121,68 @@ export class AnalyticsInstrumentationService {
     });
   }
 
-  private async resolvePlaybackCatalog(input: PlaybackCompletedAnalyticsInput) {
+  async recordPlaybackLifecycle(input: PlaybackLifecycleAnalyticsInput) {
+    const catalog = await this.resolvePlaybackCatalog(input);
+
+    return this.emit({
+      eventName: `playback.${input.action}`,
+      producer: "playback-service",
+      privacyTier: "pseudonymous",
+      subjectType: "track",
+      subjectId: input.trackId,
+      actorId: input.actorId,
+      sessionId: input.sessionId,
+      payload: {
+        action: input.action,
+        trackId: input.trackId,
+        artistId: catalog.artistId,
+        releaseId: catalog.releaseId,
+        playbackInstanceId: input.playbackInstanceId,
+        positionMs: input.positionMs,
+        durationMs: input.durationMs,
+        heartbeatIntervalMs: input.heartbeatIntervalMs,
+        source: input.source,
+        queueIndex: input.queueIndex,
+        queueLength: input.queueLength,
+        repeatMode: input.repeatMode,
+        shuffle: input.shuffle,
+      },
+      sourceRefs: {
+        ...(input.actorId ? { actorId: input.actorId } : {}),
+        ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+        ...(input.playbackInstanceId ? { playbackInstanceId: input.playbackInstanceId } : {}),
+        action: input.action,
+        trackId: input.trackId,
+        ...(catalog.releaseId ? { releaseId: catalog.releaseId } : {}),
+        ...(input.positionMs !== undefined ? { positionMs: String(input.positionMs) } : {}),
+      },
+    });
+  }
+
+  async recordProductEvent(input: ProductAnalyticsInput) {
+    return this.emit({
+      eventName: input.eventName,
+      producer: "web-app",
+      privacyTier: "pseudonymous",
+      subjectType: input.subjectType,
+      subjectId: input.subjectId,
+      actorId: input.actorId,
+      sessionId: input.sessionId,
+      traceId: input.traceId,
+      payload: {
+        ...(input.payload ?? {}),
+        source: input.source ?? "web_app",
+      },
+      sourceRefs: {
+        ...(input.actorId ? { actorId: input.actorId } : {}),
+        ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+        ...(input.subjectId ? { subjectId: input.subjectId } : {}),
+        ...(input.sourceRefs ?? {}),
+      },
+    });
+  }
+
+  private async resolvePlaybackCatalog(input: PlaybackCatalogAnalyticsInput) {
     const inputArtistId = input.artistId?.trim();
     const inputReleaseId = input.releaseId?.trim();
     const shouldResolveCatalog = !inputArtistId || !inputReleaseId;

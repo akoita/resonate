@@ -24,7 +24,15 @@ playback, library, commerce, rights, agent, and generation events are available
 in `backend/src/modules/analytics/analytics_instrumentation.service.ts`; the
 web player records qualifying `playback.completed` events through the narrow
 `POST /analytics/playback/completed` endpoint after a catalog track reaches 30
-seconds listened or 80 percent completion for shorter tracks.
+seconds listened or 80 percent completion for shorter tracks. It also records
+authenticated pseudonymous user playback lifecycle events through
+`POST /analytics/playback/event`, currently `playback.started` and periodic
+`playback.heartbeat`, so long-session, replay, retention, and future listener
+summary reports can be reconstructed without relying on today's artist
+dashboard shape. For broader frontend funnel memory, authenticated clients can
+send allowlisted product events through `POST /analytics/product/event` for
+onboarding, playlist, search, marketplace, artist-upload, wallet, and settings
+moments that do not always have a backend domain event.
 Upload/catalog processing events are bridged from the shared backend `EventBus`
 by `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`,
 so release upload, stem processing, track-status, failure, and release-ready
@@ -105,6 +113,9 @@ aggregates, not from retaining raw personal data forever.
   `EventBus` instances for production flows.
 - Current prototype API surfaces:
   - `POST /analytics/ingest`
+  - `POST /analytics/product/event`
+  - `POST /analytics/playback/completed`
+  - `POST /analytics/playback/event`
   - `GET /analytics/artist/:id`
   - `GET /analytics/artist/:id/v1`
   - `GET /analytics/rollup/daily`
@@ -132,10 +143,11 @@ aggregates, not from retaining raw personal data forever.
 | Current artist reports | Implemented for `GET /analytics/artist/:id` and `GET /analytics/artist/:id/v1`; reports read generated analytics facts and fact dimensions while preserving response compatibility. With `ANALYTICS_REPORT_SOURCE=bigquery`, the same endpoints read BigQuery `analytics_facts` and `analytics_views`, enforce artist/admin authorization, return explicit time-window/freshness/no-data metadata, compute content protection metrics from `rights.route_decided`, and use bounded cached queries. |
 | Catalog metadata enrichment | Implemented in `backend/src/modules/analytics/analytics_catalog_metadata.service.ts`; artist analytics responses resolve track/release/artist display metadata from catalog rows when analytics facts have IDs but sparse dimensions. |
 | Core producer helpers | Implemented in `backend/src/modules/analytics/analytics_instrumentation.service.ts` for playback, library, commerce, rights, agent, and generation events. |
-| Playback web instrumentation | Implemented through `POST /analytics/playback/completed`, `web/src/lib/playbackAnalytics.ts`, and `web/src/lib/playerContext.tsx`; authenticated web-player catalog plays emit one `playback.completed` envelope per track load once the qualifying threshold is reached. Playback events carry `trackId`, `artistId`, and `releaseId` when available, with backend catalog enrichment filling artist and release ownership from `trackId` for warehouse facts. |
+| Playback web instrumentation | Implemented through `POST /analytics/playback/completed`, `POST /analytics/playback/event`, `web/src/lib/playbackAnalytics.ts`, and `web/src/lib/playerContext.tsx`; authenticated web-player catalog plays emit one `playback.completed` envelope per track load once the qualifying threshold is reached, plus `playback.started` and 30-second `playback.heartbeat` lifecycle envelopes per playback instance. Playback events carry `trackId`, `artistId`, `releaseId`, `sessionId`, playback instance, queue context, source, duration/position fields, and a backend-derived pseudonymous user actor when available, with backend catalog enrichment filling artist and release ownership from `trackId` for warehouse facts. |
+| Product funnel instrumentation | Implemented through `POST /analytics/product/event` and `web/src/lib/api.ts`; authenticated first-party UI code can emit allowlisted pseudonymous events for onboarding, playlist, search, marketplace, artist upload, wallet, and settings flows. The backend attaches the pseudonymous actor, sanitizes payload fields, rejects unsupported event names, and keeps payloads to scalar/array analytics facts rather than free-form user text. |
 | Upload/catalog domain bridge | Implemented in `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`; subscribes to the shared `EventBus` for upload and catalog lifecycle events and ingests compact pseudonymous analytics envelopes without blocking release processing. |
-| High-value domain bridge | Implemented in `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`; subscribes to shared `EventBus` events for license/payment, contract sales/listings/royalties/disputes, wallet funding/spend, agent selection/decisions/purchases, generation lifecycle, recommendation generation, curation, remix, marketplace listing notifications, release-rights requests, and notification creation. The bridge preserves IDs, amounts, statuses, and source refs while omitting prompts, notification bodies, and other bulky raw content. |
-| Domain family support | Backend warehouse export and Dataflow both accept the current Resonate domain families: identity, wallet, catalog, stems, ingestion, ipnft, session, playback, library, commerce, payment, contract, x402, license, rights, release_rights, agent, recommendation, curator, remix, marketplace, generation, notification, realtime, experiment, and system. |
+| High-value domain bridge | Implemented in `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`; subscribes to shared `EventBus` events for session lifecycle, license/payment, contract mint/listing/sale/royalty/content-protection/dispute/escrow events, wallet funding/spend/budget changes, agent selection/evaluation/negotiation/purchases/wallet/budget alerts, generation lifecycle, recommendation generation/preferences, curation, remix, marketplace listing notifications, release-rights requests, and notification creation. The bridge preserves IDs, amounts, statuses, and source refs while omitting prompts, notification bodies, realtime audio chunks, and other bulky raw content. |
+| Domain family support | Backend warehouse export and Dataflow both accept the current Resonate domain families: identity, wallet, catalog, stems, ingestion, ipnft, onboarding, session, playback, playlist, search, artist, library, commerce, payment, contract, x402, license, rights, release_rights, agent, recommendation, curator, remix, marketplace, generation, notification, realtime, experiment, and system. |
 | Retention/deletion jobs | Implemented in `backend/src/modules/analytics/analytics_governance.service.ts`: retention cleanup, deletion propagation, consent withdrawal, redaction, and lineage audit. |
 
 ## Event Families
@@ -143,6 +155,11 @@ aggregates, not from retaining raw personal data forever.
 Implemented producer helper event names:
 
 - `playback.completed`
+- `playback.started`
+- `playback.heartbeat`
+- `onboarding.step_completed`
+- `playlist.track_added`
+- `artist.upload_step_completed`
 - `library.saved`
 - `commerce.settled`
 - `rights.route_decided`

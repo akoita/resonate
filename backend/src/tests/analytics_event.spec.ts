@@ -137,6 +137,11 @@ describe("analytics event envelope", () => {
   it("exposes sample schemas for the initial event families", () => {
     expect(ANALYTICS_EVENT_SCHEMA_EXAMPLES.map((schema) => schema.eventName)).toEqual([
       "playback.completed",
+      "playback.started",
+      "playback.heartbeat",
+      "onboarding.step_completed",
+      "playlist.track_added",
+      "artist.upload_step_completed",
       "commerce.settled",
       "rights.route_decided",
       "agent.recommendation_selected",
