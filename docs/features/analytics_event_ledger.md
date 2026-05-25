@@ -108,6 +108,8 @@ aggregates, not from retaining raw personal data forever.
   [Analytics Event Taxonomy v1](../architecture/analytics_event_taxonomy_v1.md).
 - Use the domain model companion:
   [Event Taxonomy & Domain Model](../architecture/event_taxonomy_domain_model.md).
+- Use the consent and retention policy:
+  [Analytics Consent And Retention Policy](analytics_consent_retention_policy.md).
 - For the current artist dashboard/reporting surface, see:
   [Analytics Dashboard v0](analytics_dashboard_v0.md).
 - Backend producers should use the shared event contract:
@@ -225,6 +227,9 @@ Current verification:
 - New durable features should identify the event family they emit into.
 - Feature docs should list important analytics events.
 - Privacy-sensitive events should declare retention and deletion behavior.
+- User-linked facts and new report marts should follow
+  [Analytics Consent And Retention Policy](analytics_consent_retention_policy.md)
+  for consent basis, export/delete propagation, and yearly summary boundaries.
 - Event envelope validation is covered by
   `backend/src/tests/analytics_event.spec.ts`.
 - Warehouse export transforms, quarantine behavior, and the shared expected
