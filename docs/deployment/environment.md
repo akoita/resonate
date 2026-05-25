@@ -96,6 +96,8 @@ When adding a new environment variable:
 | `SHOW_CAMPAIGN_ESCROW_OWNER` | Contracts | Optional owner/multisig for deploying `ShowCampaignEscrow`; defaults to the deployer |
 | `SHOW_CAMPAIGN_ESCROW_ADDRESS` | Backend / frontend | Deployed Shows escrow address used by pledge execution and event reconciliation once Shows moves beyond backend receipts |
 | `NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS` | Frontend | Public default Shows escrow address promoted from `contracts/deployments/show-campaign-escrow.<network>.remote.env`; individual campaigns still come from backend `contractAddress` / `contractCampaignId` records |
+| `SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS` | Backend | Optional default ERC-20 payment token for artist-created show campaigns; normal artists cannot choose arbitrary payment token addresses |
+| `SHOWS_ALLOWED_PAYMENT_TOKEN_ADDRESSES` | Backend | Optional comma-separated allowlist of ERC-20 payment tokens accepted by Shows campaign drafts and pledge intents |
 | `TRUST_STAKE_WEI_NEW` | Backend | Optional override for the new-creator content-protection stake requirement |
 | `TRUST_STAKE_WEI_ESTABLISHED` | Backend | Optional override for the established-tier content-protection stake requirement |
 | `TRUST_STAKE_WEI_TRUSTED` | Backend | Optional override for the trusted-tier content-protection stake requirement |

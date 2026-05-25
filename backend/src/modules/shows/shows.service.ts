@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import type {
+  Artist,
   ShowArtistAuthorityStatus,
   ShowCampaignBeneficiaryType,
   ShowCampaignLevel,
@@ -308,6 +309,27 @@ function defaultPaymentAssetSymbol() {
   return process.env.SHOWS_DEFAULT_PAYMENT_ASSET_SYMBOL?.trim() || "USDC";
 }
 
+function configuredDefaultPaymentTokenAddress() {
+  return validateOptionalAddress(
+    optionalText(process.env.SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS)
+      ?? optionalText(process.env.PAYMENT_USDC_ADDRESS),
+    "SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS",
+  ) ?? null;
+}
+
+function configuredAllowedPaymentTokenAddresses() {
+  const values = [
+    ...(process.env.SHOWS_ALLOWED_PAYMENT_TOKEN_ADDRESSES ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+    optionalText(process.env.SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS),
+    optionalText(process.env.PAYMENT_USDC_ADDRESS),
+  ].filter(Boolean) as string[];
+
+  return new Set(values.map((value) => validateOptionalAddress(value, "SHOWS_ALLOWED_PAYMENT_TOKEN_ADDRESSES")!));
+}
+
 @Injectable()
 export class ShowsService {
   async listCampaigns(query: { includeSignals?: boolean; status?: string } = {}) {
@@ -372,11 +394,14 @@ export class ShowsService {
   }
 
   async createDraftCampaign(actor: Actor, input: CreateCampaignInput) {
-    await this.ensureArtistOrPrivileged(actor, input.artistId ?? null);
-    const normalized = this.normalizeCampaignBase(input, {
-      defaultGoalAmountUnits: input.goalAmountUnits ?? undefined,
-      defaultChainId: input.chainId ?? defaultChainId(),
-    });
+    const artistIdentity = await this.resolveCampaignArtistIdentity(actor, input.artistId ?? null);
+    const normalized = this.normalizeCampaignBase(
+      this.withPlatformArtistIdentity(input, artistIdentity),
+      {
+        defaultGoalAmountUnits: input.goalAmountUnits ?? undefined,
+        defaultChainId: input.chainId ?? defaultChainId(),
+      },
+    );
     const campaignLevel = input.campaignLevel
       ? assertShowCampaignLevel(input.campaignLevel)
       : "active_escrow_campaign";
@@ -392,9 +417,7 @@ export class ShowsService {
     const authorityStatus = input.artistAuthorityStatus
       ? assertShowArtistAuthorityStatus(input.artistAuthorityStatus)
       : "none";
-    const beneficiaryType = input.beneficiaryType
-      ? assertShowCampaignBeneficiaryType(input.beneficiaryType)
-      : undefined;
+    const beneficiary = this.normalizeCampaignBeneficiary(actor, artistIdentity, input);
     const releasePolicy = input.releasePolicy
       ? assertShowCampaignReleasePolicy(input.releasePolicy)
       : "refund_only_until_booking";
@@ -411,8 +434,8 @@ export class ShowsService {
         artistAuthorityStatus: authorityStatus,
         authorityCredentialId: optionalText(input.authorityCredentialId),
         authorityEvidenceBundleId: optionalText(input.authorityEvidenceBundleId),
-        beneficiaryAddress: validateOptionalAddress(optionalText(input.beneficiaryAddress), "beneficiaryAddress"),
-        beneficiaryType,
+        beneficiaryAddress: beneficiary.address,
+        beneficiaryType: beneficiary.type,
         bookingDeadline: parseOptionalDate(input.bookingDeadline, "bookingDeadline"),
         releasePolicy,
         depositReleaseBps,
@@ -444,18 +467,23 @@ export class ShowsService {
       throw new BadRequestException("Use the signal flow for fan-proposed campaigns");
     }
 
-    const normalized = this.normalizeCampaignBase(input, {
-      defaultGoalAmountUnits: input.goalAmountUnits ?? undefined,
-      defaultChainId: input.chainId ?? campaign.chainId,
-    });
+    const artistIdentity = await this.resolveCampaignArtistIdentity(actor, input.artistId ?? campaign.artistId);
+    const normalized = this.normalizeCampaignBase(
+      this.withPlatformArtistIdentity(input, artistIdentity),
+      {
+        defaultGoalAmountUnits: input.goalAmountUnits ?? undefined,
+        defaultChainId: input.chainId ?? campaign.chainId,
+      },
+    );
     const depositReleaseBps = input.depositReleaseBps ?? campaign.depositReleaseBps;
     if (!Number.isSafeInteger(depositReleaseBps) || depositReleaseBps < 0 || depositReleaseBps > 3000) {
       throw new BadRequestException("depositReleaseBps must be between 0 and 3000");
     }
 
-    const beneficiaryType = input.beneficiaryType
-      ? assertShowCampaignBeneficiaryType(input.beneficiaryType)
-      : campaign.beneficiaryType ?? undefined;
+    const beneficiary = this.normalizeCampaignBeneficiary(actor, artistIdentity, input, {
+      address: campaign.beneficiaryAddress,
+      type: campaign.beneficiaryType,
+    });
     const releasePolicy = input.releasePolicy
       ? assertShowCampaignReleasePolicy(input.releasePolicy)
       : campaign.releasePolicy;
@@ -468,8 +496,8 @@ export class ShowsService {
         data: {
           ...normalized,
           title: input.title?.trim() || `${normalized.artistDisplayName} in ${normalized.city}`,
-          beneficiaryAddress: validateOptionalAddress(optionalText(input.beneficiaryAddress), "beneficiaryAddress"),
-          beneficiaryType,
+          beneficiaryAddress: beneficiary.address,
+          beneficiaryType: beneficiary.type,
           authorityEvidenceBundleId: optionalText(input.authorityEvidenceBundleId),
           bookingDeadline: parseOptionalDate(input.bookingDeadline, "bookingDeadline"),
           releasePolicy,
@@ -509,10 +537,11 @@ export class ShowsService {
       throw new BadRequestException("Use the authority review endpoints for terminal authority states");
     }
 
-    const beneficiaryType = input.beneficiaryType
-      ? assertShowCampaignBeneficiaryType(input.beneficiaryType)
-      : campaign.beneficiaryType ?? undefined;
-    const beneficiaryAddress = validateOptionalAddress(optionalText(input.beneficiaryAddress), "beneficiaryAddress");
+    const artistIdentity = await this.campaignArtistIdentity(campaign.artistId);
+    const beneficiary = this.normalizeCampaignBeneficiary(actor, artistIdentity, input, {
+      address: campaign.beneficiaryAddress,
+      type: campaign.beneficiaryType,
+    });
     const authorityEvidenceBundleId = optionalText(input.authorityEvidenceBundleId)
       ?? campaign.authorityEvidenceBundleId;
     const evidence = optionalJsonObject(input.evidence, "evidence");
@@ -521,8 +550,8 @@ export class ShowsService {
       where: { id: campaign.id },
       data: {
         artistAuthorityStatus: requested,
-        beneficiaryAddress: beneficiaryAddress ?? campaign.beneficiaryAddress,
-        beneficiaryType,
+        beneficiaryAddress: beneficiary.address,
+        beneficiaryType: beneficiary.type,
         authorityEvidenceBundleId,
         metadata: mergeMetadata(campaign.metadata, {
           ...(evidence !== undefined ? { authorityRequestEvidence: evidence } : {}),
@@ -775,9 +804,8 @@ export class ShowsService {
     }
 
     const chainId = optionalPositiveSafeInteger(input.chainId, "chainId") ?? campaign.chainId;
-    const paymentTokenAddress = validateOptionalAddress(
+    const paymentTokenAddress = this.normalizePaymentTokenAddress(
       optionalText(input.paymentTokenAddress) ?? campaign.paymentTokenAddress,
-      "paymentTokenAddress",
     );
     const paymentAssetDecimals = optionalPositiveInteger(input.paymentAssetDecimals, "paymentAssetDecimals")
       ?? tier?.paymentAssetDecimals
@@ -1286,7 +1314,7 @@ export class ShowsService {
       paymentAssetId: optionalText(input.paymentAssetId),
       paymentAssetSymbol: optionalText(input.paymentAssetSymbol) ?? defaultPaymentAssetSymbol(),
       paymentAssetDecimals: input.paymentAssetDecimals ?? DEFAULT_PAYMENT_ASSET_DECIMALS,
-      paymentTokenAddress: optionalText(input.paymentTokenAddress),
+      paymentTokenAddress: this.normalizePaymentTokenAddress(input.paymentTokenAddress),
       chainId: input.chainId ?? defaults.defaultChainId,
       bookingTerms: optionalJsonObject(input.bookingTerms, "bookingTerms"),
       fulfillmentNotes: optionalText(input.fulfillmentNotes),
@@ -1336,14 +1364,88 @@ export class ShowsService {
     return `${base}-${Date.now()}`;
   }
 
-  private async ensureArtistOrPrivileged(actor: Actor, artistId?: string | null) {
-    if (isPrivilegedActor(actor)) return;
-    const artist = artistId
-      ? await prisma.artist.findUnique({ where: { id: artistId } })
-      : await prisma.artist.findUnique({ where: { userId: actor.userId } });
-    if (!artist || artist.userId !== actor.userId) {
+  private async resolveCampaignArtistIdentity(actor: Actor, artistId?: string | null) {
+    if (artistId) {
+      const artist = await prisma.artist.findUnique({ where: { id: artistId } });
+      if (!artist) {
+        throw new BadRequestException("artistId must reference an existing artist profile");
+      }
+      if (!isPrivilegedActor(actor) && artist.userId !== actor.userId) {
+        throw new ForbiddenException("Campaign artist identity must match the authenticated artist profile");
+      }
+      return artist;
+    }
+
+    if (isPrivilegedActor(actor)) return null;
+    const artist = await prisma.artist.findUnique({ where: { userId: actor.userId } });
+    if (!artist) {
       throw new ForbiddenException("Artist profile or operator role is required");
     }
+    return artist;
+  }
+
+  private async campaignArtistIdentity(artistId: string | null) {
+    if (!artistId) return null;
+    return prisma.artist.findUnique({ where: { id: artistId } });
+  }
+
+  private withPlatformArtistIdentity<T extends CampaignBaseInput>(input: T, artist: Artist | null): T {
+    if (!artist) return input;
+    return {
+      ...input,
+      artistId: artist.id,
+      artistDisplayName: artist.displayName,
+    };
+  }
+
+  private normalizeCampaignBeneficiary(
+    actor: Actor,
+    artist: Artist | null,
+    input: {
+      beneficiaryAddress?: string | null;
+      beneficiaryType?: ShowCampaignBeneficiaryType | null;
+    },
+    fallback: {
+      address?: string | null;
+      type?: ShowCampaignBeneficiaryType | null;
+    } = {},
+  ) {
+    const requestedAddress = validateOptionalAddress(optionalText(input.beneficiaryAddress), "beneficiaryAddress");
+    const requestedType = input.beneficiaryType
+      ? assertShowCampaignBeneficiaryType(input.beneficiaryType)
+      : undefined;
+
+    if (artist && !isPrivilegedActor(actor)) {
+      const payoutAddress = validateOptionalAddress(artist.payoutAddress, "artist.payoutAddress")!;
+      if (requestedAddress && requestedAddress !== payoutAddress) {
+        throw new BadRequestException(
+          "beneficiaryAddress must match the authenticated artist payout address; update the artist profile or ask an operator to review an override",
+        );
+      }
+      return {
+        address: payoutAddress,
+        type: "wallet" as ShowCampaignBeneficiaryType,
+      };
+    }
+
+    return {
+      address: requestedAddress ?? fallback.address ?? null,
+      type: requestedType ?? fallback.type ?? (requestedAddress ? "wallet" as ShowCampaignBeneficiaryType : null),
+    };
+  }
+
+  private normalizePaymentTokenAddress(value: unknown) {
+    const paymentTokenAddress = validateOptionalAddress(optionalText(value), "paymentTokenAddress");
+    if (!paymentTokenAddress) {
+      return configuredDefaultPaymentTokenAddress();
+    }
+
+    const allowed = configuredAllowedPaymentTokenAddresses();
+    if (allowed.size > 0 && !allowed.has(paymentTokenAddress)) {
+      throw new BadRequestException("paymentTokenAddress must be one of the configured Shows payment tokens");
+    }
+
+    return paymentTokenAddress;
   }
 
   private async getCampaignForMutation(actor: Actor, campaignId: string) {
