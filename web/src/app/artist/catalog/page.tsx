@@ -19,6 +19,8 @@ type TrackRow = {
   release: Release;
 };
 
+const DAY_OPTIONS = [7, 30, 90] as const;
+
 export default function ArtistCatalogPage() {
   const { token } = useAuth();
   const [state, setState] = useState<LoadState>({ status: "loading" });
@@ -61,19 +63,34 @@ export default function ArtistCatalogPage() {
 
   return (
     <AuthGate title="Connect your wallet to view artist catalog.">
-      <main className="artist-catalog-page">
-        <header className="artist-catalog-header">
-          <div>
-            <p className="artist-analytics-eyebrow">Artist Catalog</p>
-            <h1>{state.status === "ready" ? state.artist.displayName : "Managed Catalog"}</h1>
-          </div>
-          <div className="artist-catalog-actions">
-            <Link href="/artist/upload" className="analytics-primary-action">
-              Upload
-            </Link>
-            <Link href="/artist/analytics" className="analytics-primary-action">
-              Analytics
-            </Link>
+      <main className="analytics-container" style={{ padding: "4px 0" }}>
+        <header className="analytics-header-section">
+          <div className="analytics-title-row">
+            <div>
+              <p className="artist-analytics-eyebrow" style={{ fontSize: "12px", opacity: 0.5, margin: "0 0 4px" }}>
+                Artist Catalog
+              </p>
+              <h1 style={{ margin: 0 }}>
+                {state.status === "ready" ? state.artist.displayName : "Managed Catalog"}
+              </h1>
+            </div>
+            <div className="artist-catalog-actions" style={{ display: "flex", gap: "12px" }}>
+              <Link href="/artist/upload" className="wallet-connect-btn" style={{ padding: "8px 20px" }}>
+                Upload
+              </Link>
+              <Link
+                href="/artist/analytics"
+                className="wallet-connect-btn"
+                style={{
+                  padding: "8px 20px",
+                  background: "rgba(255, 255, 255, 0.03)",
+                  border: "1px solid rgba(255, 255, 255, 0.06)",
+                  color: "var(--r-on-surface)",
+                }}
+              >
+                Analytics
+              </Link>
+            </div>
           </div>
         </header>
 
@@ -122,170 +139,198 @@ function ReadyCatalog({
         <CatalogMetric label="Latest" value={formatRelativeDate(latestReleaseTime(releases))} detail="catalog update" />
       </section>
 
-      <section className="artist-catalog-controls" aria-label="Catalog controls">
-        <div className="artist-catalog-search">
-          <span className="ms-icon" aria-hidden>search</span>
+      <section className="artist-catalog-controls" aria-label="Catalog controls" style={{ display: "flex", gap: "16px", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", margin: "12px 0 4px" }}>
+        <div className="artist-catalog-search" style={{ border: "1px solid rgba(255,255,255,0.06)", borderRadius: "20px", display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px", background: "rgba(255,255,255,0.02)", width: "380px" }}>
+          <span className="ms-icon" style={{ opacity: 0.4 }} aria-hidden>search</span>
           <input
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="Search releases, tracks, artists, status"
+            placeholder="Search releases, tracks, status..."
+            style={{ background: "transparent", border: "none", outline: "none", color: "var(--r-on-surface)", fontSize: "14px", width: "100%" }}
           />
         </div>
-        <div className="analytics-window-switch" aria-label="Catalog view">
-          <button type="button" className={tab === "releases" ? "active" : ""} onClick={() => onTabChange("releases")}>
+        <div className="date-selector-pill-row" aria-label="Catalog view">
+          <button
+            type="button"
+            className={`date-selector-pill ${tab === "releases" ? "active" : ""}`}
+            onClick={() => onTabChange("releases")}
+          >
             Releases
           </button>
-          <button type="button" className={tab === "tracks" ? "active" : ""} onClick={() => onTabChange("tracks")}>
+          <button
+            type="button"
+            className={`date-selector-pill ${tab === "tracks" ? "active" : ""}`}
+            onClick={() => onTabChange("tracks")}
+          >
             Tracks
           </button>
         </div>
       </section>
 
       {tab === "releases" ? (
-        <section className="analytics-panel">
-          <div className="analytics-panel-heading">
-            <h2>Releases</h2>
-            <span>{filteredReleases.length} shown</span>
+        <div className="premium-table-wrapper">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <h2 style={{ margin: 0, fontSize: "18px" }}>Releases</h2>
+            <div className="chart-card-header-badge">{filteredReleases.length} shown</div>
           </div>
           <ReleaseInventory releases={filteredReleases} />
-        </section>
+        </div>
       ) : (
-        <section className="analytics-panel">
-          <div className="analytics-panel-heading">
-            <h2>Tracks</h2>
-            <span>{filteredTracks.length} shown</span>
+        <div className="premium-table-wrapper">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <h2 style={{ margin: 0, fontSize: "18px" }}>Tracks</h2>
+            <div className="chart-card-header-badge">{filteredTracks.length} shown</div>
           </div>
           <TrackInventory rows={filteredTracks} />
-        </section>
+        </div>
       )}
     </>
   );
 }
 
 function CatalogMetric({ label, value, detail }: { label: string; value: number | string; detail: string }) {
+  let icon = "💿";
+  if (label.toLowerCase().includes("track")) icon = "🎵";
+  else if (label.toLowerCase().includes("rights")) icon = "🛡️";
+  else if (label.toLowerCase().includes("latest")) icon = "⏱️";
+
   return (
-    <article className="analytics-kpi-card">
-      <div className="analytics-kpi-label">{label}</div>
-      <div className="analytics-kpi-value">{typeof value === "number" ? formatNumber(value) : value}</div>
-      <div className="analytics-kpi-detail">{detail}</div>
-    </article>
+    <div className="premium-kpi-card human-context">
+      <div className="kpi-header">
+        <span className="kpi-label">{label}</span>
+        <div className="kpi-icon-glow">{icon}</div>
+      </div>
+      <div className="kpi-value-mono" style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+        {typeof value === "number" ? formatNumber(value) : value}
+      </div>
+      <div className="kpi-subtitle-trend">
+        <span>{detail}</span>
+      </div>
+    </div>
   );
 }
 
 function ReleaseInventory({ releases }: { releases: Release[] }) {
   if (releases.length === 0) {
-    return <p className="analytics-muted">No releases match this view.</p>;
+    return <p className="analytics-muted" style={{ textAlign: "center", padding: "40px 0", opacity: 0.5 }}>No releases match this search query.</p>;
   }
 
   return (
-    <div className="analytics-table-wrap">
-      <table className="analytics-table">
-        <thead>
-          <tr>
-            <th>Release</th>
-            <th>Credit</th>
-            <th>Status</th>
-            <th>Tracks</th>
-            <th>Resources</th>
-            <th>Rights</th>
-            <th>Updated</th>
+    <table className="premium-table">
+      <thead>
+        <tr>
+          <th>Release</th>
+          <th>Credit</th>
+          <th>Status</th>
+          <th style={{ textAlign: "right" }}>Tracks</th>
+          <th style={{ textAlign: "right" }}>Resources</th>
+          <th>Rights</th>
+          <th>Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        {releases.map((release) => (
+          <tr key={release.id}>
+            <td style={{ fontWeight: 600 }}>
+              <Link href={`/release/${release.id}`} className="artist-catalog-title-link" style={{ color: "var(--r-on-surface)" }}>
+                {release.title}
+              </Link>
+            </td>
+            <td>{release.primaryArtist || release.artist?.displayName || "Unknown"}</td>
+            <td><StatusPill status={release.status} /></td>
+            <td className="premium-table-cell-mono" style={{ textAlign: "right" }}>{formatNumber(release.tracks?.length ?? 0)}</td>
+            <td className="premium-table-cell-mono" style={{ textAlign: "right" }}>{formatNumber(releaseResourceCount(release))}</td>
+            <td><RightsBadge route={release.rightsRoute} /></td>
+            <td className="premium-table-cell-mono">{formatRelativeDate(releaseTime(release))}</td>
           </tr>
-        </thead>
-        <tbody>
-          {releases.map((release) => (
-            <tr key={release.id} className="analytics-row-tight">
-              <td>
-                <Link href={`/release/${release.id}`} className="artist-catalog-title-link">
-                  {release.title}
-                </Link>
-              </td>
-              <td>{release.primaryArtist || release.artist?.displayName || "Unknown"}</td>
-              <td><StatusPill status={release.status} /></td>
-              <td>{formatNumber(release.tracks?.length ?? 0)}</td>
-              <td>{formatNumber(releaseResourceCount(release))}</td>
-              <td>{formatRightsRoute(release.rightsRoute)}</td>
-              <td>{formatRelativeDate(releaseTime(release))}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
 function TrackInventory({ rows }: { rows: TrackRow[] }) {
   if (rows.length === 0) {
-    return <p className="analytics-muted">No tracks match this view.</p>;
+    return <p className="analytics-muted" style={{ textAlign: "center", padding: "40px 0", opacity: 0.5 }}>No tracks match this search query.</p>;
   }
 
   return (
-    <div className="analytics-table-wrap">
-      <table className="analytics-table">
-        <thead>
-          <tr>
-            <th>Track</th>
-            <th>Release</th>
-            <th>Credit</th>
-            <th>Status</th>
-            <th>Resources</th>
-            <th>Rights</th>
+    <table className="premium-table">
+      <thead>
+        <tr>
+          <th>Track</th>
+          <th>Release</th>
+          <th>Credit</th>
+          <th>Status</th>
+          <th style={{ textAlign: "right" }}>Resources</th>
+          <th>Rights</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(({ track, release }) => (
+          <tr key={`${release.id}:${track.id}`}>
+            <td style={{ fontWeight: 600 }}>
+              <Link href={`/release/${release.id}`} className="artist-catalog-title-link" style={{ color: "var(--r-on-surface)" }}>
+                {track.title}
+              </Link>
+            </td>
+            <td>{release.title}</td>
+            <td>{track.artist || release.primaryArtist || release.artist?.displayName || "Unknown"}</td>
+            <td><StatusPill status={track.processingStatus || release.status} /></td>
+            <td className="premium-table-cell-mono" style={{ textAlign: "right" }}>{formatNumber(track.stems?.length ?? 0)}</td>
+            <td><RightsBadge route={track.rightsRoute || release.rightsRoute} /></td>
           </tr>
-        </thead>
-        <tbody>
-          {rows.map(({ track, release }) => (
-            <tr key={`${release.id}:${track.id}`} className="analytics-row-tight">
-              <td>
-                <Link href={`/release/${release.id}`} className="artist-catalog-title-link">
-                  {track.title}
-                </Link>
-              </td>
-              <td>{release.title}</td>
-              <td>{track.artist || release.primaryArtist || release.artist?.displayName || "Unknown"}</td>
-              <td><StatusPill status={track.processingStatus || release.status} /></td>
-              <td>{formatNumber(track.stems?.length ?? 0)}</td>
-              <td>{formatRightsRoute(track.rightsRoute || release.rightsRoute)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
 function StatusPill({ status }: { status?: string | null }) {
-  return <span className={`artist-catalog-status ${statusClass(status)}`}>{formatStatus(status)}</span>;
+  const norm = status?.toLowerCase();
+  let badgeClass = "pending";
+  if (norm === "ready" || norm === "published" || norm === "complete") {
+    badgeClass = "active";
+  } else if (norm === "failed" || norm === "blocked") {
+    badgeClass = "slashed";
+  }
+  return <span className={`status-capsule-badge ${badgeClass}`} style={{ fontSize: "10px", padding: "2px 8px" }}>{formatStatus(status)}</span>;
+}
+
+function RightsBadge({ route }: { route?: string | null }) {
+  return <span className="status-capsule-badge inactive" style={{ fontSize: "10px", padding: "2px 8px" }}>{formatRightsRoute(route)}</span>;
 }
 
 function LoadingCatalog() {
   return (
-    <section className="analytics-panel analytics-state-panel" aria-live="polite">
-      <div className="analytics-skeleton analytics-skeleton-title" />
-      <div className="analytics-skeleton-grid">
-        <div className="analytics-skeleton" />
-        <div className="analytics-skeleton" />
-        <div className="analytics-skeleton" />
-      </div>
-    </section>
+    <div className="analytics-skeleton" style={{ padding: "80px", textAlign: "center", opacity: 0.5 }}>
+      <span className="aid-spinner" style={{ marginBottom: "16px" }} />
+      <div>Loading managed catalog inventory…</div>
+    </div>
   );
 }
 
 function ErrorCatalog({ message }: { message: string }) {
   return (
-    <section className="analytics-panel analytics-state-panel" role="alert">
-      <p className="analytics-state-kicker">Catalog unavailable</p>
-      <h2>Could not load managed catalog</h2>
-      <p>{message}</p>
+    <section className="premium-table-wrapper" style={{ textAlign: "center", padding: "40px" }} role="alert">
+      <p style={{ color: "var(--r-error)", fontSize: "12px", fontWeight: 600, textTransform: "uppercase" }}>
+        Catalog Unavailable
+      </p>
+      <h2 style={{ fontSize: "20px", marginTop: "8px" }}>Could not load managed catalog</h2>
+      <p style={{ opacity: 0.6, fontSize: "13px", margin: "8px 0" }}>{message}</p>
     </section>
   );
 }
 
 function NoArtistCatalog() {
   return (
-    <section className="analytics-panel analytics-state-panel">
-      <p className="analytics-state-kicker">No artist profile</p>
-      <h2>Create an artist profile to manage releases</h2>
-      <Link className="analytics-primary-action" href="/artist/onboarding">
-        Open artist onboarding
+    <section className="premium-table-wrapper" style={{ textAlign: "center", padding: "40px" }}>
+      <p style={{ color: "var(--r-primary-soft)", fontSize: "12px", fontWeight: 600, textTransform: "uppercase" }}>
+        No Artist Profile
+      </p>
+      <h2 style={{ fontSize: "20px", marginTop: "8px" }}>Create an artist profile to manage releases</h2>
+      <Link className="wallet-connect-btn" href="/artist/onboarding" style={{ display: "inline-block", marginTop: "16px", padding: "8px 24px" }}>
+        Open Artist Onboarding
       </Link>
     </section>
   );
@@ -349,13 +394,17 @@ function releaseTime(release: Release) {
 }
 
 function formatRightsRoute(route?: string | null) {
-  if (!route) return "Not routed";
+  if (!route) return "Not Routed";
   return route.toLowerCase().split("_").map(capitalize).join(" ");
 }
 
+// Fixed formatStatus helper to map ready/published/complete consistently
 function formatStatus(status?: string | null) {
   if (!status) return "Unknown";
-  return status.toLowerCase().split(/[_\s-]+/).map(capitalize).join(" ");
+  const norm = status.toLowerCase();
+  if (norm === "ready" || norm === "published" || norm === "complete") return "Active ✓";
+  if (norm === "failed" || norm === "blocked") return "Slashed ✕";
+  return status.split(/[_\s-]+/).map(capitalize).join(" ");
 }
 
 function statusClass(status?: string | null) {
