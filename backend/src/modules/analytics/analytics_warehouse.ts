@@ -18,6 +18,7 @@ export const SUPPORTED_EVENT_FAMILIES = new Set([
   "playlist",
   "search",
   "artist",
+  "shows",
   "library",
   "commerce",
   "license",
@@ -85,6 +86,11 @@ export interface EventsCleanRow {
   releaseId?: string;
   canonicalAmountUsd?: number;
   source?: string;
+  geoCountryCode?: string;
+  geoRegionCode?: string;
+  geoCitySlug?: string;
+  geoSource?: string;
+  geoPrecision?: string;
   payload: Record<string, unknown>;
 }
 
@@ -287,6 +293,11 @@ function toCleanRow(event: AnalyticsEventEnvelope): EventsCleanRow {
     releaseId: stringPayload(event.payload, "releaseId"),
     canonicalAmountUsd: numberPayload(event.payload, "canonicalAmountUsd") ?? numberPayload(event.payload, "amountUsd"),
     source: stringPayload(event.payload, "source"),
+    geoCountryCode: event.geo?.countryCode,
+    geoRegionCode: event.geo?.regionCode,
+    geoCitySlug: event.geo?.citySlug,
+    geoSource: event.geo?.source,
+    geoPrecision: event.geo?.precision,
     payload: event.payload,
   };
 }
@@ -313,6 +324,11 @@ function toFactRow(clean: EventsCleanRow): AnalyticsFactRow {
       source: clean.source,
       sessionId: clean.sessionId,
       releaseId: clean.releaseId,
+      geoCountryCode: clean.geoCountryCode,
+      geoRegionCode: clean.geoRegionCode,
+      geoCitySlug: clean.geoCitySlug,
+      geoSource: clean.geoSource,
+      geoPrecision: clean.geoPrecision,
       playlistId: stringPayload(clean.payload, "playlistId"),
       step: stringPayload(clean.payload, "step"),
       phase: stringPayload(clean.payload, "phase"),

@@ -64,11 +64,37 @@ event meaning.
 | `curator.*` | `curator.*` | Curator stake, report, review, and reputation events. |
 | `remix.*` | `remix.*` | Remix creation, eligibility, minting, and lineage events. |
 | `marketplace.*` | `marketplace.*` | Listing lifecycle and storefront marketplace events. |
+| `shows.*` | `shows.*` | Show demand signals, campaign lifecycle, pledge intent, pledge confirmation, and city demand events. |
 | `generation.*` | `generation.*` | AI generation, prompt, publish, and failure events. |
 | `notification.*` | `notification.*` | Notification creation, preference, delivery, and status events. |
 | `realtime.*` | `realtime.*` | Realtime music/session transport status and user-control events. |
 | `experiment.*` | `experiment.*` | Assignment, exposure, and conversion tracking. |
 | `system.*` | `system.*` | Jobs, imports/exports, health, and pipeline lifecycle events. |
+
+### Coarse Geo Demand Dimension
+
+Analytics events may include an optional top-level `geo` dimension for coarse
+demand reporting:
+
+```json
+{
+  "countryCode": "FR",
+  "regionCode": "IDF",
+  "citySlug": "paris",
+  "source": "user_declared",
+  "precision": "city"
+}
+```
+
+The dimension is intentionally not raw location tracking. Producers must not
+send raw IP addresses, GPS coordinates, latitude/longitude, or street-level
+values in analytics events. IP-derived geography, when enabled, must be
+resolved server-side to country or region and the IP must be discarded before
+analytics ingestion. City-level values paired with an authenticated actor or
+session are privacy-sensitive and must be governed by retention and deletion
+rules. Warehouse facts store only the coarse values in
+`analytics_facts.dimensions` as `geoCountryCode`, `geoRegionCode`,
+`geoCitySlug`, `geoSource`, and `geoPrecision`.
 
 ### Ingestion & Catalog
 
@@ -132,6 +158,21 @@ event meaning.
 - `library.saved`
   - owner: Library Service
   - payload: user_cohort_id, track_id, release_id, source
+
+### Shows Demand
+
+- `shows.signal_created`
+  - owner: Shows Service
+  - payload: campaignId, artistId, campaignLevel, campaignCountryCode, campaignCitySlug
+- `shows.campaign_created`
+  - owner: Shows Service
+  - payload: campaignId, artistId, campaignLevel, artistAuthorityStatus, campaignCountryCode, campaignCitySlug
+- `shows.pledge_intent_created`
+  - owner: Shows Service
+  - payload: campaignId, pledgeId, artistId, amountUnits, paymentAssetSymbol, tierId
+- `shows.pledge_confirmed`
+  - owner: Shows Service
+  - payload: campaignId, pledgeId, artistId, amountUnits, paymentAssetSymbol, confirmationStatus
 
 ### Commerce & Settlement
 

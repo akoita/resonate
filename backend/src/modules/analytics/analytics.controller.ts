@@ -3,7 +3,7 @@ import { AuthGuard } from "@nestjs/passport";
 import { AnalyticsAuthorizationService } from "./analytics_authorization.service";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
 import { AnalyticsService } from "./analytics.service";
-import { AnalyticsEventInput } from "./analytics_event";
+import { AnalyticsEventInput, normalizeAnalyticsGeoDimension } from "./analytics_event";
 import { AnalyticsWarehouseExportService } from "./analytics_warehouse";
 import {
   AnalyticsInstrumentationService,
@@ -48,6 +48,12 @@ const PRODUCT_EVENT_NAMES = new Set([
   "wallet.faucet_requested",
   "wallet.budget_set",
   "settings.updated",
+  "shows.signal_created",
+  "shows.campaign_created",
+  "shows.pledge_intent_created",
+  "shows.pledge_submitted",
+  "shows.pledge_confirmed",
+  "shows.pledge_failed",
 ]);
 
 @UseGuards(AuthGuard("jwt"))
@@ -161,6 +167,7 @@ function normalizePlaybackCompletedRequest(body: PlaybackCompletedRequest): Play
     releaseId: releaseId || undefined,
     sessionId: sessionId || undefined,
     source: source || "web_player",
+    geo: normalizeAnalyticsGeoDimension(body.geo),
     completionRatio,
     durationMs,
   };
@@ -203,6 +210,7 @@ function normalizePlaybackLifecycleRequest(body: PlaybackLifecycleRequest): Play
     sessionId: sessionId || undefined,
     playbackInstanceId: playbackInstanceId || undefined,
     source: source || "web_player",
+    geo: normalizeAnalyticsGeoDimension(body.geo),
     positionMs,
     durationMs,
     heartbeatIntervalMs,
@@ -258,6 +266,7 @@ function normalizeProductEventRequest(body: ProductEventRequest): ProductAnalyti
     subjectType: subjectType || undefined,
     subjectId: subjectId || undefined,
     source: source || "web_app",
+    geo: normalizeAnalyticsGeoDimension(body.geo),
     payload: sanitizeProductPayload(body.payload),
     sourceRefs: clientEventId ? { clientEventId } : undefined,
   };
@@ -273,12 +282,19 @@ function sanitizeProductPayload(payload: unknown) {
     if (!/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/.test(key)) {
       continue;
     }
+    if (isBlockedAnalyticsPayloadKey(key)) {
+      continue;
+    }
     const sanitizedValue = sanitizeProductPayloadValue(value);
     if (sanitizedValue !== undefined) {
       sanitized[key] = sanitizedValue;
     }
   }
   return sanitized;
+}
+
+function isBlockedAnalyticsPayloadKey(key: string) {
+  return /(^|_)(ip|rawIp|latitude|longitude|lat|lng|gps|geo)(_|$)/i.test(key);
 }
 
 function sanitizeProductPayloadValue(value: unknown): string | number | boolean | Array<string | number | boolean> | undefined {

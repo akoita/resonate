@@ -167,4 +167,48 @@ describe("AnalyticsInstrumentationService", () => {
       }),
     ]);
   });
+
+  it("emits coarse geo dimensions on product events outside the free-form payload", async () => {
+    const ingest = new AnalyticsIngestService();
+    const instrumentation = new AnalyticsInstrumentationService(ingest);
+
+    await instrumentation.recordProductEvent({
+      eventName: "shows.pledge_intent_created",
+      producer: "shows-service",
+      actorId: "user_hash",
+      subjectType: "show_campaign",
+      subjectId: "campaign-1",
+      source: "shows-api",
+      geo: {
+        countryCode: "FR",
+        regionCode: "IDF",
+        citySlug: "paris",
+        source: "user_declared",
+        precision: "city",
+      },
+      payload: {
+        campaignId: "campaign-1",
+        amountUnits: "25000000",
+      },
+    });
+
+    expect(await ingest.listEvents()).toEqual([
+      expect.objectContaining({
+        eventName: "shows.pledge_intent_created",
+        producer: "shows-service",
+        geo: {
+          countryCode: "FR",
+          regionCode: "IDF",
+          citySlug: "paris",
+          source: "user_declared",
+          precision: "city",
+        },
+        payload: expect.objectContaining({
+          campaignId: "campaign-1",
+          amountUnits: "25000000",
+          source: "shows-api",
+        }),
+      }),
+    ]);
+  });
 });

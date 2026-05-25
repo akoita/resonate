@@ -10,6 +10,12 @@ import type {
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import {
+  AnalyticsGeoDimension,
+  normalizeAnalyticsGeoDimension,
+} from "../analytics/analytics_event";
+import { pseudonymousAnalyticsActorId } from "../analytics/analytics_identity";
+import { AnalyticsInstrumentationService } from "../analytics/analytics_instrumentation.service";
+import {
   assertShowArtistAuthorityStatus,
   assertShowCampaignBeneficiaryType,
   assertShowCampaignLevel,
@@ -119,6 +125,7 @@ type PledgeIntentInput = {
   paymentAssetDecimals?: number | null;
   paymentTokenAddress?: string | null;
   chainId?: number | null;
+  geo?: AnalyticsGeoDimension | null;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -310,6 +317,8 @@ function defaultPaymentAssetSymbol() {
 
 @Injectable()
 export class ShowsService {
+  constructor(private readonly analyticsInstrumentationService?: AnalyticsInstrumentationService) {}
+
   async listCampaigns(query: { includeSignals?: boolean; status?: string } = {}) {
     const includeSignals = query.includeSignals === true;
     return prisma.showCampaign.findMany({
@@ -346,7 +355,7 @@ export class ShowsService {
     });
     const slug = await this.uniqueSlug(normalized.artistDisplayName, normalized.city, normalized.country);
 
-    return prisma.showCampaign.create({
+    const campaign = await prisma.showCampaign.create({
       data: {
         ...normalized,
         slug,
@@ -369,6 +378,10 @@ export class ShowsService {
       },
       include: { events: true, tiers: true },
     });
+    await this.recordShowAnalytics("shows.signal_created", actor, campaign, {
+      campaignLevel: "signal",
+    });
+    return campaign;
   }
 
   async createDraftCampaign(actor: Actor, input: CreateCampaignInput) {
@@ -401,7 +414,7 @@ export class ShowsService {
     const slug = await this.uniqueSlug(normalized.artistDisplayName, normalized.city, normalized.country);
     const tiers = this.normalizeCampaignTiers(input.tiers ?? [], normalized);
 
-    return prisma.showCampaign.create({
+    const campaign = await prisma.showCampaign.create({
       data: {
         ...normalized,
         slug,
@@ -433,6 +446,11 @@ export class ShowsService {
       },
       include: { events: true, tiers: true },
     });
+    await this.recordShowAnalytics("shows.campaign_created", actor, campaign, {
+      campaignLevel,
+      artistAuthorityStatus: authorityStatus,
+    });
+    return campaign;
   }
 
   async updateDraftCampaign(actor: Actor, campaignId: string, input: CreateCampaignInput) {
@@ -850,6 +868,14 @@ export class ShowsService {
         events: { orderBy: { createdAt: "desc" }, take: 5 },
       },
     });
+    await this.recordShowAnalytics("shows.pledge_intent_created", actor, campaign, {
+      pledgeId: pledge.id,
+      tierId: tier?.id,
+      amountUnits,
+      paymentAssetSymbol,
+      chainId,
+      geo: normalizeAnalyticsGeoDimension(input.geo) ?? campaignTargetGeo(campaign),
+    });
 
     return {
       pledge: this.serializePledge(pledge),
@@ -948,6 +974,15 @@ export class ShowsService {
         tier: true,
         events: { orderBy: { createdAt: "desc" }, take: 5 },
       },
+    });
+    await this.recordShowAnalytics(`shows.${eventType}`, actor, updated.campaign, {
+      pledgeId: updated.id,
+      tierId: updated.tierId,
+      amountUnits: updated.amountUnits,
+      paymentAssetSymbol: updated.paymentAssetSymbol,
+      chainId: updated.chainId,
+      confirmationStatus,
+      geo: campaignTargetGeo(updated.campaign),
     });
 
     return { pledge: this.serializePledge(updated) };
@@ -1366,4 +1401,86 @@ export class ShowsService {
     }
     return campaign;
   }
+
+  private async recordShowAnalytics(
+    eventName: string,
+    actor: Actor,
+    campaign: {
+      id: string;
+      slug: string;
+      artistId: string | null;
+      artistDisplayName: string;
+      city: string;
+      country: string;
+      campaignLevel: string;
+    },
+    details: {
+      pledgeId?: string | null;
+      tierId?: string | null;
+      amountUnits?: string | null;
+      paymentAssetSymbol?: string | null;
+      chainId?: number | null;
+      campaignLevel?: string | null;
+      artistAuthorityStatus?: string | null;
+      confirmationStatus?: string | null;
+      geo?: AnalyticsGeoDimension;
+    } = {},
+  ) {
+    if (!this.analyticsInstrumentationService) {
+      return;
+    }
+
+    try {
+      await this.analyticsInstrumentationService.recordProductEvent({
+        eventName,
+        producer: "shows-service",
+        actorId: pseudonymousAnalyticsActorId(actor.userId),
+        subjectType: "show_campaign",
+        subjectId: campaign.id,
+        source: "shows-api",
+        geo: details.geo ?? campaignTargetGeo(campaign),
+        payload: {
+          campaignId: campaign.id,
+          campaignSlug: campaign.slug,
+          campaignLevel: details.campaignLevel ?? campaign.campaignLevel,
+          artistId: campaign.artistId ?? undefined,
+          pledgeId: details.pledgeId ?? undefined,
+          tierId: details.tierId ?? undefined,
+          amountUnits: details.amountUnits ?? undefined,
+          paymentAssetSymbol: details.paymentAssetSymbol ?? undefined,
+          chainId: details.chainId ?? undefined,
+          artistAuthorityStatus: details.artistAuthorityStatus ?? undefined,
+          confirmationStatus: details.confirmationStatus ?? undefined,
+          campaignCountryCode: countryCode(campaign.country),
+          campaignCitySlug: slugifyParts([campaign.city]),
+        },
+        sourceRefs: {
+          campaignId: campaign.id,
+          ...(details.pledgeId ? { pledgeId: details.pledgeId } : {}),
+        },
+      });
+    } catch (error) {
+      console.warn(
+        `[Shows] Failed to record analytics event ${eventName}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+}
+
+function campaignTargetGeo(campaign: { city: string; country: string }): AnalyticsGeoDimension | undefined {
+  const code = countryCode(campaign.country);
+  if (!code) {
+    return undefined;
+  }
+  return {
+    countryCode: code,
+    citySlug: slugifyParts([campaign.city]),
+    source: "campaign_target",
+    precision: "city",
+  };
+}
+
+function countryCode(country: string) {
+  const normalized = country.trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(normalized) ? normalized : undefined;
 }

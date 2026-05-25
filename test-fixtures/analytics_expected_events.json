@@ -70,6 +70,17 @@
     }
   },
   {
+    "eventName": "shows.pledge_intent_created",
+    "payload": {
+      "campaignId": "campaign-1",
+      "campaignSlug": "artist-paris-fr",
+      "campaignLevel": "active_escrow_campaign",
+      "amountUnits": "25000000",
+      "paymentAssetSymbol": "USDC",
+      "source": "shows-api"
+    }
+  },
+  {
     "eventName": "library.saved",
     "payload": {
       "userCohortId": "cohort-1",

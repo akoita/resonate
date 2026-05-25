@@ -42,6 +42,9 @@ payment, contract, wallet, agent-runtime, generation, recommendation,
 curation, remix, marketplace, release-rights, and notification events into
 compact pseudonymous analytics envelopes, excluding bulky user-supplied text
 such as generation prompts and notification bodies.
+The shared envelope also supports a governed coarse `geo` dimension for demand
+geography, including Shows campaign-target and user-declared city/region
+signals without raw IP, GPS, latitude, or longitude values.
 Retention cleanup, deletion propagation, consent withdrawal, and governance
 lineage are available in
 `backend/src/modules/analytics/analytics_governance.service.ts`, and the admin
@@ -104,6 +107,8 @@ aggregates, not from retaining raw personal data forever.
   [Long-Term Analytics Event Ledger](../rfc/analytics-event-ledger.md).
 - Use the event taxonomy:
   [Event Taxonomy & Domain Model](../architecture/event_taxonomy_domain_model.md).
+- Use the geo demand policy:
+  [Geo Analytics Demand Dimension](geo_analytics_demand_dimension.md).
 - For the current artist dashboard/reporting surface, see:
   [Analytics Dashboard v0](analytics_dashboard_v0.md).
 - Backend producers should use the shared event contract:
@@ -145,9 +150,10 @@ aggregates, not from retaining raw personal data forever.
 | Core producer helpers | Implemented in `backend/src/modules/analytics/analytics_instrumentation.service.ts` for playback, library, commerce, rights, agent, and generation events. |
 | Playback web instrumentation | Implemented through `POST /analytics/playback/completed`, `POST /analytics/playback/event`, `web/src/lib/playbackAnalytics.ts`, and `web/src/lib/playerContext.tsx`; authenticated web-player catalog plays emit one `playback.completed` envelope per track load once the qualifying threshold is reached, plus `playback.started` and 30-second `playback.heartbeat` lifecycle envelopes per playback instance. Playback events carry `trackId`, `artistId`, `releaseId`, `sessionId`, playback instance, queue context, source, duration/position fields, and a backend-derived pseudonymous user actor when available, with backend catalog enrichment filling artist and release ownership from `trackId` for warehouse facts. |
 | Product funnel instrumentation | Implemented through `POST /analytics/product/event` and `web/src/lib/api.ts`; authenticated first-party UI code can emit allowlisted pseudonymous events for onboarding, playlist, search, marketplace, artist upload, wallet, and settings flows. The backend attaches the pseudonymous actor, sanitizes payload fields, rejects unsupported event names, and keeps payloads to scalar/array analytics facts rather than free-form user text. |
+| Geo demand dimension | Implemented as optional envelope `geo` with country/region/city precision, source metadata, backend validation, product/playback ingestion support, Shows campaign/pledge analytics, warehouse clean fields, and analytics fact dimensions. |
 | Upload/catalog domain bridge | Implemented in `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`; subscribes to the shared `EventBus` for upload and catalog lifecycle events and ingests compact pseudonymous analytics envelopes without blocking release processing. |
 | High-value domain bridge | Implemented in `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`; subscribes to shared `EventBus` events for session lifecycle, license/payment, contract mint/listing/sale/royalty/content-protection/dispute/escrow events, wallet funding/spend/budget changes, agent selection/evaluation/negotiation/purchases/wallet/budget alerts, generation lifecycle, recommendation generation/preferences, curation, remix, marketplace listing notifications, release-rights requests, and notification creation. The bridge preserves IDs, amounts, statuses, and source refs while omitting prompts, notification bodies, realtime audio chunks, and other bulky raw content. |
-| Domain family support | Backend warehouse export and Dataflow both accept the current Resonate domain families: identity, wallet, catalog, stems, ingestion, ipnft, onboarding, session, playback, playlist, search, artist, library, commerce, payment, contract, x402, license, rights, release_rights, agent, recommendation, curator, remix, marketplace, generation, notification, realtime, experiment, and system. |
+| Domain family support | Backend warehouse export and Dataflow both accept the current Resonate domain families: identity, wallet, catalog, stems, ingestion, ipnft, onboarding, session, playback, playlist, search, artist, shows, library, commerce, payment, contract, x402, license, rights, release_rights, agent, recommendation, curator, remix, marketplace, generation, notification, realtime, experiment, and system. |
 | Retention/deletion jobs | Implemented in `backend/src/modules/analytics/analytics_governance.service.ts`: retention cleanup, deletion propagation, consent withdrawal, redaction, and lineage audit. |
 
 ## Event Families
@@ -212,6 +218,8 @@ Current verification:
 - New durable features should identify the event family they emit into.
 - Feature docs should list important analytics events.
 - Privacy-sensitive events should declare retention and deletion behavior.
+- Geo-bearing events should use the optional envelope `geo` dimension and follow
+  [Geo Analytics Demand Dimension](geo_analytics_demand_dimension.md).
 - Event envelope validation is covered by
   `backend/src/tests/analytics_event.spec.ts`.
 - Warehouse export transforms, quarantine behavior, and the shared expected
