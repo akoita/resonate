@@ -1569,3 +1569,44 @@ rg 'dangerouslySetInnerHTML|innerHTML' web/src/
 rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
 rg 'document\.cookie|setCookie|httpOnly.*false' web/src/
 ```
+
+## Analytics Plays-Over-Time Consistency Hotfix - 2026-05-25
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/analytics/analytics.service.ts`
+- `backend/src/modules/analytics/analytics_bigquery_report.ts`
+- `backend/src/tests/analytics.spec.ts`
+- `backend/src/tests/analytics_bigquery_report.spec.ts`
+- `docs/features/analytics_dashboard_v0.md`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none.
+- Low: none introduced.
+
+### Notes
+
+- The dashboard now derives plays-over-time from the same bounded artist facts as
+  total plays and track performance, avoiding mixed-source report drift.
+- The BigQuery daily-view query still uses named parameters and validates table
+  identifiers through the existing report-source helpers; no dynamic user input
+  is interpolated into identifiers beyond the existing environment-configured
+  project, dataset, and table names.
+- The current-day daily-view bound now uses the next UTC date when the report end
+  is within a day, preventing partial-day windows from excluding today's rows.
+
+### Commands Run
+
+```bash
+cd backend && npm run test -- --runInBand analytics.spec.ts analytics_bigquery_report.spec.ts
+cd backend && npm run lint
+rg 'password|secret|api_key|private_key' backend/src/modules/analytics backend/src/tests/analytics.spec.ts backend/src/tests/analytics_bigquery_report.spec.ts --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/analytics
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/analytics | grep -v 'Guard\|Auth'
+rg 'JSON\.parse|eval\(' backend/src/modules/analytics
+```

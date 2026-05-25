@@ -134,7 +134,7 @@ export class BigQueryArtistAnalyticsReportSource implements ArtistAnalyticsRepor
         parameters: {
           artistId: request.artistId,
           fromDate: request.from.toISOString().slice(0, 10),
-          toDate: request.to.toISOString().slice(0, 10),
+          toExclusiveDate: dailyViewExclusiveEndDate(request.to),
           limit: this.config.rowLimit,
         },
         maximumBytesBilled: this.config.maximumBytesBilled,
@@ -321,7 +321,7 @@ FROM \`${bigQueryIdentifier(config.projectId)}.${bigQueryIdentifier(config.datas
   )}\`
 WHERE artistId = @artistId
   AND date >= DATE(@fromDate)
-  AND date < DATE(@toDate)
+  AND date < DATE(@toExclusiveDate)
 ORDER BY date ASC
 LIMIT @limit
 `.trim();
@@ -444,4 +444,10 @@ function sumDecimalStrings(first?: string, second?: string) {
     return undefined;
   }
   return (BigInt(first ?? "0") + BigInt(second ?? "0")).toString();
+}
+
+function dailyViewExclusiveEndDate(value: Date) {
+  const start = new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+  const exclusive = value.getTime() === start.getTime() ? start : new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  return exclusive.toISOString().slice(0, 10);
 }

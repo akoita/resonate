@@ -288,6 +288,22 @@ describe("analytics", () => {
               },
             },
             {
+              factId: "fact_play_2",
+              factType: "playback_event",
+              eventId: "evt_play_2",
+              occurredAt: "2026-05-20T10:00:30.000Z",
+              occurredDate: "2026-05-20",
+              artistId: "artist-bq",
+              trackId: "track-bq",
+              count: 1,
+              dimensions: {
+                eventName: "playback.completed",
+                title: "Warehouse Signal",
+                sessionId: "session-bq-2",
+                source: "web",
+              },
+            },
+            {
               factId: "fact_rights",
               factType: "rights_event",
               eventId: "evt_rights",
@@ -373,17 +389,17 @@ describe("analytics", () => {
 
     const result = await analytics.getArtistDashboard("artist-bq", 30);
 
-    expect(result.summary.totalPlays).toBe(1);
+    expect(result.summary.totalPlays).toBe(2);
     expect(result.summary.totalPayoutUsd).toBe(4.5);
     expect(result.topTracks[0]).toEqual(
       expect.objectContaining({
         trackId: "track-bq",
         title: "Warehouse Signal",
-        plays: 1,
+        plays: 2,
         payoutUsd: 4.5,
       }),
     );
-    expect(result.playsOverTime).toEqual([{ date: "2026-05-20", plays: 1, payoutUsd: 4.5 }]);
+    expect(result.playsOverTime).toEqual([{ date: "2026-05-20", plays: 2, payoutUsd: 4.5 }]);
     expect(result.trackPerformance[0].payoutsByAsset[0]).toEqual(
       expect.objectContaining({
         symbol: "USDC",

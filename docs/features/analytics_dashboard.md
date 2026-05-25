@@ -37,6 +37,12 @@ The frontend page [page.tsx](../../web/src/app/artist/analytics/page.tsx) automa
 - `GET /analytics/artist/:id/v1?days=N` — returns the plays/payout fact aggregates grouped by tracks, sessions, and sources.
 - `GET /api/metadata/stakes/analytics/:address` — fetches EVM smart contract staking counts, active/refunded stakes, and historical deposits.
 
+The backend derives the KPI totals, track-performance rows, source breakdown,
+and plays-over-time chart from the same bounded `analytics_facts` slice. Daily
+`analytics_views` remain available for warehouse consumers, but the artist
+dashboard does not prefer them over facts so partial current-day windows cannot
+drift from the rest of the report.
+
 ---
 
 ## Technical Reference

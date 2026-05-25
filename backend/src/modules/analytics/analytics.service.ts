@@ -215,7 +215,7 @@ export class AnalyticsService {
       topTracks: this.topTracks(tracks),
       sessions: [...sessionMap.values()],
       sources: [...sourceMap.values()],
-      playsOverTime: this.playsOverTime(data.views, facts),
+      playsOverTime: this.playsOverTime(facts),
       trackPerformance: tracks,
       protection: this.protectionMetrics(facts),
       listenerGrowth: {
@@ -247,7 +247,7 @@ export class AnalyticsService {
       (view) =>
         view.artistId === artistId &&
         new Date(`${view.date}T00:00:00.000Z`).getTime() >= startOfUtcDate(from).getTime() &&
-        new Date(`${view.date}T00:00:00.000Z`).getTime() < startOfUtcDate(to).getTime(),
+        new Date(`${view.date}T00:00:00.000Z`).getTime() < dailyViewExclusiveEndDate(to).getTime(),
     );
     const freshness = this.freshnessFromFacts(facts, to);
     return {
@@ -326,18 +326,7 @@ export class AnalyticsService {
     return this.stringDimension(fact.dimensions, "title") ?? fact.catalogTrack?.title ?? "Unknown Track";
   }
 
-  private playsOverTime(views: AnalyticsViewRow[], facts: AnalyticsFactRow[]): PlaysOverTimeStats[] {
-    if (views.length > 0) {
-      const byDate = new Map<string, PlaysOverTimeStats>();
-      for (const view of views) {
-        const row = byDate.get(view.date) ?? { date: view.date, plays: 0, payoutUsd: 0 };
-        row.plays += view.playCount;
-        row.payoutUsd += view.payoutUsd;
-        byDate.set(view.date, row);
-      }
-      return [...byDate.values()].sort((left, right) => left.date.localeCompare(right.date));
-    }
-
+  private playsOverTime(facts: AnalyticsFactRow[]): PlaysOverTimeStats[] {
     const byDate = new Map<string, PlaysOverTimeStats>();
     for (const fact of facts) {
       const eventName = this.stringDimension(fact.dimensions, "eventName");
@@ -497,4 +486,9 @@ export class AnalyticsService {
 
 function startOfUtcDate(value: Date) {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+}
+
+function dailyViewExclusiveEndDate(value: Date) {
+  const start = startOfUtcDate(value);
+  return value.getTime() === start.getTime() ? start : new Date(start.getTime() + 24 * 60 * 60 * 1000);
 }
