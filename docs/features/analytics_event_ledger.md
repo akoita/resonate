@@ -73,9 +73,11 @@ raw, clean, fact, view, and quarantine rows to BigQuery. The
 worker image, pushes it to environment-scoped Artifact Registry, publishes the
 Flex Template spec JSON to GCS, and prints the `resonate-iac` launch inputs for
 `analytics_dataflow_launch_enabled=true`. Post-Dataflow SQL materializations
-live under `workers/analytics-dataflow/sql/`; the first derived feature set
-creates agent taste-intelligence tables for warehouse-backed recommendation
-scoring.
+live under `workers/analytics-dataflow/sql/`; they now include broad report
+marts for listener sessions, replay bursts, cohort catalog rankings, artist
+catalog metrics, discovery/playlist funnels, marketplace conversion, artist
+upload funnels, product event adoption, and clean-to-fact coverage, plus agent
+taste-intelligence tables for warehouse-backed recommendation scoring.
 
 ## Who It Is For
 
@@ -144,6 +146,7 @@ aggregates, not from retaining raw personal data forever.
 | Pub/Sub event publishing | Implemented as a disabled-by-default backend publisher. When enabled, each stored envelope is published with event metadata attributes for Dataflow consumers; non-strict failures are logged without breaking user flows. |
 | Dataflow processor | Implemented in `workers/analytics-dataflow/` as a Python Apache Beam streaming pipeline with Flex Template metadata, packaging script, immediate keyed-state eventId dedupe, validation, layer derivation, and quarantine behavior. |
 | Flex Template publishing | Implemented through `.github/workflows/publish-analytics-dataflow-flex-template.yml`; staging publishes to a stable `gs://.../template.json` path and outputs the matching `resonate-iac` launch inputs. |
+| Future report marts | Implemented as post-Dataflow BigQuery SQL in `workers/analytics-dataflow/sql/future_report_marts.sql`; materializes listener/user, artist, marketplace, and product report tables for future Wrapped-style summaries and operational analysis. |
 | Agent taste materialization | Implemented as post-Dataflow BigQuery SQL in `workers/analytics-dataflow/sql/agent_taste_intelligence_baseline.sql`, with an optional BigQuery ML matrix-factorization template in `agent_taste_intelligence_bqml.sql`. |
 | Warehouse loading/backfill | Implemented through `ANALYTICS_WAREHOUSE_TARGET=local_json` for idempotent JSONL files and `ANALYTICS_WAREHOUSE_TARGET=bigquery_insert_all` for BigQuery streaming inserts across raw, clean, fact, view, and quarantine layers. This remains the backend-operated bridge for backfills and non-Dataflow environments. |
 | Current artist reports | Implemented for `GET /analytics/artist/:id` and `GET /analytics/artist/:id/v1`; reports read generated analytics facts and fact dimensions while preserving response compatibility. With `ANALYTICS_REPORT_SOURCE=bigquery`, the same endpoints read BigQuery `analytics_facts` and `analytics_views`, enforce artist/admin authorization, return explicit time-window/freshness/no-data metadata, compute content protection metrics from `rights.route_decided`, and use bounded cached queries. |
@@ -247,6 +250,10 @@ Current verification:
 - The Flex Template publish workflow is validated by GitHub Actions syntax
   checks and the worker transform tests; a successful workflow run publishes the
   operator handoff values needed by `resonate-iac`.
+- Future report marts live in
+  `workers/analytics-dataflow/sql/future_report_marts.sql`; use the documented
+  BigQuery `bq query --dry_run` command against the target dataset before
+  scheduling it.
 - BigQuery-backed artist report query shaping and no-data metadata are covered
   by `backend/src/tests/analytics_bigquery_report.spec.ts`.
 - Catalog metadata enrichment for sparse artist report facts is covered by
