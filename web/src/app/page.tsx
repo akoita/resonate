@@ -791,7 +791,7 @@ export default function Home() {
               <header className="ng-ops-panel__header">
                 <div>
                   <span className="ng-kicker ng-kicker--primary">Release queue</span>
-                  <h3 className="ng-section-title">Latest Releases</h3>
+                  <h3 className="ng-section-title">Your Releases</h3>
                 </div>
                 <Link href="/artist/catalog" className="ng-icon-link" aria-label="Open full release inventory">
                   <span className="ms-icon" aria-hidden>table_rows</span>
