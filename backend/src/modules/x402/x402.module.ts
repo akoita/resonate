@@ -7,6 +7,7 @@ import { X402PaymentService } from './x402.payment.service';
 import { X402PublicController } from './x402.public.controller';
 import { EncryptionModule } from '../encryption/encryption.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { SharedModule } from '../shared/shared.module';
 
 /**
  * X402Module — x402 HTTP payment support for stem downloads.
@@ -20,7 +21,7 @@ import { PaymentsModule } from '../payments/payments.module';
  * Feature-flagged via X402_ENABLED env var.
  */
 @Module({
-  imports: [ConfigModule, EncryptionModule, PaymentsModule],
+  imports: [ConfigModule, EncryptionModule, PaymentsModule, SharedModule],
   controllers: [X402Controller, X402PublicController],
   providers: [X402Config, X402PaymentService, X402Middleware],
   exports: [X402Config, X402PaymentService],

@@ -16,6 +16,7 @@ import {
   SA_ADDRESS_KEY,
   TOKEN_KEY,
 } from "../../lib/authSession";
+import { recordProductAnalytics } from "../../lib/productAnalytics";
 import type { WebAuthnMode } from "@zerodev/passkey-validator";
 import { useToast } from "../ui/Toast";
 
@@ -342,8 +343,29 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       // Accumulate the SA address (the on-chain identity) for marketplace filtering
       addKnownAddress(saAddress);
 
+      void recordProductAnalytics(result.accessToken, "wallet.connected", {
+        source: "auth",
+        subjectType: "wallet",
+        payload: {
+          authMode: mode === "register" ? "register" : "login",
+          chainId,
+          hasSignupFaucet: Boolean(result.signupFaucet),
+          walletProvider: "zerodev_passkey",
+        },
+      });
+
       if (result.signupFaucet?.status === "sent") {
         const { amountEth, chainId: fundedChainId } = result.signupFaucet;
+        void recordProductAnalytics(result.accessToken, "wallet.faucet_requested", {
+          source: "auth",
+          subjectType: "wallet",
+          payload: {
+            surface: "signup_faucet",
+            status: "sent",
+            chainId: fundedChainId,
+            amountEth,
+          },
+        });
         markFundingAnnouncementSeen(saAddress, fundedChainId);
         addToast({
           type: "success",

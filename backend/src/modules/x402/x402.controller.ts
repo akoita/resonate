@@ -23,6 +23,7 @@ import { getX402ChainId, resolveX402AssetInfo, type X402AssetInfo } from './x402
 import { buildStorefrontStemDetail } from '../storefront/storefront.presenter';
 import { PaymentsService } from '../payments/payments.service';
 import { StorageProvider } from '../storage/storage_provider';
+import { EventBus } from '../shared/event_bus';
 
 type SmartAccountPaymentBody = {
   txHash?: string;
@@ -124,6 +125,8 @@ export class X402Controller {
     @Optional()
     @Inject(StorageProvider)
     private readonly storageProvider?: StorageProvider,
+    @Optional()
+    private readonly eventBus?: EventBus,
   ) {}
 
   /**
@@ -207,6 +210,16 @@ export class X402Controller {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`x402 smart-account verification failed for stem ${stemId}: ${message}`);
+      this.eventBus?.publish({
+        eventName: 'x402.purchase_failed',
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        stemId,
+        paymentRail: 'smart_account',
+        transactionHash: body.txHash,
+        status: 'verification_failed',
+        reason: message,
+      });
       res.status(HttpStatus.PAYMENT_REQUIRED).json({
         error: 'Smart-account payment verification failed',
         message,
@@ -235,7 +248,7 @@ export class X402Controller {
         include: {
           track: {
             include: {
-              release: { select: { id: true, title: true, primaryArtist: true } },
+              release: { select: { id: true, artistId: true, title: true, primaryArtist: true } },
             },
           },
           nftMint: { select: { tokenId: true } },
@@ -395,6 +408,23 @@ export class X402Controller {
           receiptId: receipt.receiptId,
           settlement: receipt.settlement,
         });
+        this.eventBus?.publish({
+          eventName: 'x402.purchase_failed',
+          eventVersion: 1,
+          occurredAt: new Date().toISOString(),
+          stemId: stem.id,
+          trackId: stem.track?.id,
+          releaseId: stem.track?.release?.id,
+          artistId: stem.track?.release?.artistId,
+          listingId: activeListing?.listingId?.toString(),
+          receiptId: receipt.receiptId,
+          paymentRail: this.resolvePaymentRail(input.eventTransactionHash),
+          transactionHash: TX_HASH_PATTERN.test(input.eventTransactionHash)
+            ? input.eventTransactionHash
+            : undefined,
+          status: receipt.settlement.status,
+          reason: receipt.settlement.reason ?? 'x402 contract settlement did not grant download access.',
+        });
         return;
       }
 
@@ -534,6 +564,32 @@ export class X402Controller {
         }),
       ]);
 
+      this.eventBus?.publish({
+        eventName: 'x402.purchase',
+        eventVersion: 1,
+        occurredAt: input.purchasedAt.toISOString(),
+        stemId: stem.id,
+        trackId: stem.track?.id,
+        releaseId: stem.track?.release?.id,
+        artistId: stem.track?.release?.artistId,
+        listingId: activeListing?.listingId?.toString(),
+        tokenId: stem.nftMint?.tokenId?.toString() ?? undefined,
+        receiptId: receipt.receiptId,
+        paymentRail: this.resolvePaymentRail(input.eventTransactionHash),
+        transactionHash: input.eventTransactionHash,
+        amountUsd: Number(receipt.payment.amountUsd),
+        canonicalAmountUsd: Number(receipt.payment.canonicalAmountUsd),
+        paymentToken: receipt.payment.asset.tokenAddress,
+        paymentAssetId: receipt.payment.asset.assetId,
+        paymentAssetSymbol: receipt.payment.asset.symbol,
+        paymentAssetDecimals: receipt.payment.asset.decimals,
+        settlementAmount: receipt.payment.settlementAmount,
+        settlementAmountUnits: receipt.payment.settlementAmountUnits,
+        settlementStatus: receipt.settlement.status,
+        entitlement: receipt.settlement.entitlement,
+        payer: input.payer,
+      });
+
       this.logger.log(`x402 purchase recorded for stem ${stemId}`);
 
       // 4. Serve the audio
@@ -547,10 +603,26 @@ export class X402Controller {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`x402 download failed for stem ${input.stemId}: ${message}`);
+      this.eventBus?.publish({
+        eventName: 'x402.purchase_failed',
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        stemId: input.stemId,
+        paymentRail: this.resolvePaymentRail(input.eventTransactionHash),
+        transactionHash: TX_HASH_PATTERN.test(input.eventTransactionHash)
+          ? input.eventTransactionHash
+          : undefined,
+        status: 'download_failed',
+        reason: message,
+      });
       input.res
         .status(HttpStatus.INTERNAL_SERVER_ERROR)
         .json({ error: 'Download failed', message });
     }
+  }
+
+  private resolvePaymentRail(transactionHash: string): 'facilitator' | 'smart_account' {
+    return TX_HASH_PATTERN.test(transactionHash) ? 'smart_account' : 'facilitator';
   }
 
   private async verifySmartAccountPayment(

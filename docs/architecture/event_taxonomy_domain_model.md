@@ -28,6 +28,11 @@ owner: "@akoita"
 
 ## Event Taxonomy
 
+The canonical implementation taxonomy is now
+[Analytics Event Taxonomy v1](analytics_event_taxonomy_v1.md). This page is a
+Phase 0 domain-model companion and should not be treated as the full
+production event contract.
+
 All analytics events are emitted with a stable envelope that includes
 `event_id`, `event_name`, `event_version`, `occurred_at`, `received_at`,
 `producer`, `privacy_tier`, and schema metadata. See

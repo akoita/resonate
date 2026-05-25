@@ -9,15 +9,26 @@
 
 import { prisma } from '../db/prisma';
 import { PlaylistService } from '../modules/playlist/playlist.service';
+import { EventBus } from '../modules/shared/event_bus';
+import type { ResonateEvent } from '../events/event_types';
 
 const TEST_PREFIX = `pl_${Date.now()}_`;
 const userId = `${TEST_PREFIX}user`;
 
 let service: PlaylistService;
+let eventBus: EventBus;
+let events: ResonateEvent[];
 
 describe('PlaylistService (integration)', () => {
   beforeAll(async () => {
-    service = new PlaylistService();
+    eventBus = new EventBus();
+    events = [];
+    eventBus.subscribe('playlist.created', (event) => events.push(event));
+    eventBus.subscribe('playlist.updated', (event) => events.push(event));
+    eventBus.subscribe('playlist.deleted', (event) => events.push(event));
+    eventBus.subscribe('playlist.track_added', (event) => events.push(event));
+    eventBus.subscribe('playlist.track_removed', (event) => events.push(event));
+    service = new PlaylistService(eventBus);
     await prisma.user.create({
       data: { id: userId, email: `${userId}@test.resonate` },
     });
@@ -27,6 +38,11 @@ describe('PlaylistService (integration)', () => {
     await prisma.playlist.deleteMany({ where: { userId } }).catch(() => {});
     await prisma.folder.deleteMany({ where: { userId } }).catch(() => {});
     await prisma.user.delete({ where: { id: userId } }).catch(() => {});
+    eventBus.destroy();
+  });
+
+  beforeEach(() => {
+    events.length = 0;
   });
 
   // ===== Folders =====
@@ -106,20 +122,46 @@ describe('PlaylistService (integration)', () => {
 
   it('updates playlist name and trackIds', async () => {
     const playlist = await service.createPlaylist(userId, { name: 'V1' });
+    events.length = 0;
     const updated = await service.updatePlaylist(userId, playlist.id, {
       name: 'V2',
       trackIds: ['new-track'],
     });
     expect(updated.name).toBe('V2');
     expect(updated.trackIds).toEqual(['new-track']);
+    expect(events).toEqual([
+      expect.objectContaining({
+        eventName: 'playlist.updated',
+        userId,
+        playlistId: playlist.id,
+        changedFields: ['name', 'tracks'],
+        trackCount: 1,
+      }),
+      expect.objectContaining({
+        eventName: 'playlist.track_added',
+        userId,
+        playlistId: playlist.id,
+        trackIds: ['new-track'],
+        addedCount: 1,
+        trackCount: 1,
+      }),
+    ]);
   });
 
   it('deletes a playlist', async () => {
     const playlist = await service.createPlaylist(userId, { name: 'Delete Me' });
+    events.length = 0;
     await service.deletePlaylist(userId, playlist.id);
 
     const gone = await prisma.playlist.findUnique({ where: { id: playlist.id } });
     expect(gone).toBeNull();
+    expect(events).toEqual([
+      expect.objectContaining({
+        eventName: 'playlist.deleted',
+        userId,
+        playlistId: playlist.id,
+      }),
+    ]);
   });
 
   it('rejects playlist access for wrong user', async () => {

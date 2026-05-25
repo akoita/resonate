@@ -112,7 +112,7 @@ Positioning:
 | `/shows/create` | partial | Authenticated artists, admins, and operators can create draft escrow campaigns with campaign terms, beneficiary/evidence references, and pledge tiers. Operator review and activation still happen after creation. |
 | `/shows/:slug/edit` | partial | Draft campaigns can be edited before activation, including campaign terms, authority evidence reference, beneficiary wallet, payment token, and pledge tiers. |
 | `/shows/sennarin-paris` | partial | Detail page reads the backend Shows API by slug with seeded fallback, and shows funding progress, signal tiers, and how-it-works copy. |
-| Escrow contract | partial | `ShowCampaignEscrow.sol` now exists with threshold, refund, booking, fulfillment, and release-gating unit coverage. The deployed UI still links to Sepolia `RevenueEscrow` until deployment/address wiring ships. |
+| Escrow contract | partial | `ShowCampaignEscrow.sol` now exists with threshold, refund, booking, fulfillment, and release-gating unit/fuzz/invariant/formal coverage. Deployment now emits JSON, `.remote.env`, and ABI handoffs; production activation still needs the promoted escrow address plus per-campaign `contractCampaignId` wiring. |
 | Pledge flow | partial | Backend pledge intent, transaction confirmation, refund confirmation, and authenticated receipt reads are implemented. The detail page lets connected fans select a tier, create a receipt-ready pledge intent, execute the ERC-20 approval plus escrow pledge through the smart account, attach the mined transaction to the backend receipt, see their latest campaign pledge, and claim refunds when the campaign/pledge is refund-available and linked contract call data exists. |
 | Campaign backend | partial | Prisma models exist for campaign, tier, pledge, trust, authority, release, and lifecycle-event state. Public read routes, signal creation, draft escrow campaign creation, authority request/approval/rejection/revocation/expiry, activation, pledge intent, pledge confirmation, "my pledges", cancellation, booking confirmation, and fulfillment confirmation APIs are implemented. |
 | Operator controls | partial | Admin/operator users can manage campaign lifecycle from the campaign detail page: approve artist authority, bind beneficiary data, activate with escrow contract IDs, cancel to refunds, confirm booking, and confirm fulfillment. Artist-owned campaign management remains a follow-up UI. |
@@ -166,6 +166,9 @@ donation. The fan-facing promise is:
   pledging, funded-without-release behavior, missed-deadline refunds, missed
   booking refunds, booking/fulfillment confirmation, optional deposit release,
   final release, and pause behavior.
+- `contracts/scripts/write-show-campaign-escrow-handoff.sh` converts the
+  Foundry deployment broadcast into reviewed app/deploy handoff files for the
+  Shows escrow address and ABI.
 
 ## Product Notes
 

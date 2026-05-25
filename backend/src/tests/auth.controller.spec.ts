@@ -41,12 +41,14 @@ const mockPublicClient = {
 const mockSignupFaucet = {
   maybeFundOnSignup: jest.fn().mockResolvedValue({ status: 'skipped', reason: 'disabled' }),
 };
+const mockEventBus = { publish: jest.fn() };
 
 function makeController() {
   return new AuthController(
     mockAuthService as any,
     mockNonceService as any,
     mockPublicClient as any,
+    mockEventBus as any,
     mockSignupFaucet as any,
   );
 }

@@ -13,6 +13,7 @@ import {
     updateFolderAPI,
     deleteFolderAPI,
 } from "./api";
+import { recordProductAnalyticsFromBrowser } from "./productAnalytics";
 
 // Configure localforage instances
 const playlistStore = localforage.createInstance({
@@ -73,6 +74,7 @@ export async function createPlaylist(
                 updatedAt: apiPlaylist.updatedAt,
             };
             await playlistStore.setItem(playlist.id, playlist);
+            reportPlaylistEvent("playlist.created", playlist);
             return playlist;
         } catch (err) {
             console.error("Failed to create playlist on backend", err);
@@ -92,6 +94,7 @@ export async function createPlaylist(
     };
 
     await playlistStore.setItem(id, playlist);
+    reportPlaylistEvent("playlist.created", playlist);
     return playlist;
 }
 
@@ -122,6 +125,7 @@ export async function renamePlaylist(
                 updatedAt: apiPlaylist.updatedAt,
             };
             await playlistStore.setItem(id, playlist);
+            reportPlaylistEvent("playlist.updated", playlist, { field: "name" });
             return playlist;
         } catch (err) {
             console.error("Failed to rename playlist on backend", err);
@@ -134,6 +138,7 @@ export async function renamePlaylist(
     playlist.name = newName;
     playlist.updatedAt = new Date().toISOString();
     await playlistStore.setItem(id, playlist);
+    reportPlaylistEvent("playlist.updated", playlist, { field: "name" });
     return playlist;
 }
 
@@ -172,6 +177,7 @@ export async function movePlaylistToFolder(
                 updatedAt: apiPlaylist.updatedAt,
             };
             await playlistStore.setItem(playlistId, playlist);
+            reportPlaylistEvent("playlist.updated", playlist, { field: "folder" });
             return playlist;
         } catch (err) {
             console.error("Failed to move playlist on backend", err);
@@ -184,6 +190,7 @@ export async function movePlaylistToFolder(
     playlist.folderId = folderId;
     playlist.updatedAt = new Date().toISOString();
     await playlistStore.setItem(playlistId, playlist);
+    reportPlaylistEvent("playlist.updated", playlist, { field: "folder" });
     return playlist;
 }
 
@@ -434,6 +441,11 @@ export async function addTrackToPlaylist(
         }
 
         await playlistStore.setItem(playlistId, playlist);
+        reportPlaylistEvent("playlist.track_added", playlist, {
+            trackId,
+            addedCount: 1,
+            position: typeof index === "number" ? index : playlist.trackIds.length - 1,
+        });
     }
     return playlist;
 }
@@ -477,6 +489,10 @@ export async function addTracksToPlaylist(
         }
 
         await playlistStore.setItem(playlistId, playlist);
+        reportPlaylistEvent("playlist.track_added", playlist, {
+            addedCount: newTrackIds.length,
+            position: typeof index === "number" ? index : playlist.trackIds.length - newTrackIds.length,
+        });
     }
 
     return playlist;
@@ -506,6 +522,10 @@ export async function removeTrackFromPlaylist(
     }
 
     await playlistStore.setItem(playlistId, playlist);
+    reportPlaylistEvent("playlist.track_removed", playlist, {
+        trackId,
+        trackCount: playlist.trackIds.length,
+    });
     return playlist;
 }
 
@@ -533,6 +553,10 @@ export async function reorderTracks(
     }
 
     await playlistStore.setItem(playlistId, playlist);
+    reportPlaylistEvent("playlist.updated", playlist, {
+        field: "order",
+        trackCount: playlist.trackIds.length,
+    });
     return playlist;
 }
 
@@ -559,4 +583,27 @@ export async function addTracksByCriteria(
     if (tracksToAdd.length === 0) return playlist;
 
     return addTracksToPlaylist(playlistId, tracksToAdd.map(t => t.id));
+}
+
+function reportPlaylistEvent(
+    eventName:
+        | "playlist.created"
+        | "playlist.updated"
+        | "playlist.track_added"
+        | "playlist.track_removed",
+    playlist: Playlist,
+    extra: Record<string, string | number | boolean | undefined> = {},
+) {
+    recordProductAnalyticsFromBrowser(eventName, {
+        source: "playlist_store",
+        subjectType: "playlist",
+        subjectId: playlist.id,
+        payload: {
+            playlistId: playlist.id,
+            trackCount: playlist.trackIds.length,
+            hasFolder: Boolean(playlist.folderId),
+            localOnly: playlist.id.startsWith("playlist_"),
+            ...extra,
+        },
+    });
 }

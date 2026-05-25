@@ -4,6 +4,7 @@ import { recoverMessageAddress, type PublicClient } from "viem";
 import { AuthService } from "./auth.service";
 import { AuthNonceService } from "./auth_nonce.service";
 import { SignupFaucetService, type AuthMode } from "./signup_faucet.service";
+import { EventBus } from "../shared/event_bus";
 
 @Controller("auth")
 export class AuthController {
@@ -11,6 +12,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly nonceService: AuthNonceService,
     @Inject("PUBLIC_CLIENT") private readonly publicClient: PublicClient,
+    private readonly eventBus: EventBus,
     @Optional() private readonly signupFaucetService?: SignupFaucetService,
   ) { }
 
@@ -228,11 +230,31 @@ export class AuthController {
         });
         if (faucetResult.status === "sent") {
           signupFaucet = faucetResult;
+          this.eventBus.publish({
+            eventName: "wallet.faucet_requested",
+            eventVersion: 1,
+            occurredAt: new Date().toISOString(),
+            userId: canonicalUserId,
+            chainId: faucetResult.chainId,
+            amountEth: faucetResult.amountEth,
+            status: "sent",
+          });
         }
       } catch (error) {
         console.error("[Auth] Signup faucet failed after token issuance:", error);
       }
     }
+    this.eventBus.publish({
+      eventName: "identity.authenticated",
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      userId: canonicalUserId,
+      role: input.role ?? "listener",
+      authMode: input.authMode,
+      requestedChainId: input.requestedChainId,
+      verifiedChainId: input.verifiedChainId,
+      signupFaucetSent: Boolean(signupFaucet),
+    });
     return {
       ...result,
       ...(canonicalUserId.toLowerCase() !== input.userId.toLowerCase()
