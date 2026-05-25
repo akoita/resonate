@@ -21,6 +21,7 @@ import { useToast } from "../ui/Toast";
 import { PromptModal } from "../ui/PromptModal";
 import { usePlayer } from "../../lib/playerContext";
 import { getTrack } from "../../lib/localLibrary";
+import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
 
 interface PlaylistTabProps {
     tracks: LocalTrack[];
@@ -159,6 +160,16 @@ export function PlaylistTab({
 
         if (validTracks.length > 0) {
             await playQueue(validTracks, 0);
+            recordProductAnalyticsFromBrowser("playlist.played", {
+                source: "library_playlist_tab",
+                subjectType: "playlist",
+                subjectId: playlist.id,
+                payload: {
+                    playlistId: playlist.id,
+                    trackCount: playlist.trackIds.length,
+                    playableTrackCount: validTracks.length,
+                },
+            });
             addToast({ type: "success", title: "Playing Playlist", message: `Started playing "${playlist.name}"` });
         }
     };

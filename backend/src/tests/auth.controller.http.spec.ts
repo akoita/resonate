@@ -12,6 +12,7 @@ import { INestApplication } from '@nestjs/common';
 import { AuthController } from '../modules/auth/auth.controller';
 import { AuthService } from '../modules/auth/auth.service';
 import { AuthNonceService } from '../modules/auth/auth_nonce.service';
+import { EventBus } from '../modules/shared/event_bus';
 import { createControllerTestApp } from './e2e-helpers';
 
 const mockAuthService = {
@@ -39,6 +40,7 @@ describe('AuthController (e2e)', () => {
       { provide: AuthService, useValue: mockAuthService },
       { provide: AuthNonceService, useValue: mockNonceService },
       { provide: 'PUBLIC_CLIENT', useValue: mockPublicClient },
+      { provide: EventBus, useValue: { publish: jest.fn() } },
     ]);
   });
 
