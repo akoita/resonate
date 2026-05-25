@@ -28,6 +28,8 @@ const warehouseExportService = {
 
 const instrumentationService = {
   recordPlaybackCompleted: jest.fn(),
+  recordPlaybackLifecycle: jest.fn(),
+  recordProductEvent: jest.fn(),
 };
 
 describe("AnalyticsController (HTTP)", () => {
@@ -59,6 +61,16 @@ describe("AnalyticsController (HTTP)", () => {
     instrumentationService.recordPlaybackCompleted.mockResolvedValue({
       status: "ok",
       eventId: "evt_playback_completed",
+      ingested: 1,
+    });
+    instrumentationService.recordPlaybackLifecycle.mockResolvedValue({
+      status: "ok",
+      eventId: "evt_playback_lifecycle",
+      ingested: 1,
+    });
+    instrumentationService.recordProductEvent.mockResolvedValue({
+      status: "ok",
+      eventId: "evt_product_event",
       ingested: 1,
     });
   });
@@ -129,6 +141,7 @@ describe("AnalyticsController (HTTP)", () => {
       source: "web_player",
       completionRatio: 0.82,
       durationMs: 31000,
+      actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
     });
   });
 
@@ -153,6 +166,48 @@ describe("AnalyticsController (HTTP)", () => {
       source: "web_player",
       completionRatio: 0.82,
       durationMs: 31000,
+      actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
+    });
+  });
+
+  it("records playback lifecycle events with the pseudonymous user actor", async () => {
+    await request(app.getHttpServer())
+      .post("/analytics/playback/event")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({
+        action: "heartbeat",
+        trackId: "track-1",
+        artistId: "artist-1",
+        releaseId: "release-1",
+        sessionId: "playback-session-1",
+        playbackInstanceId: "playback-instance-1",
+        source: "web_player",
+        positionMs: 30000,
+        durationMs: 120000,
+        heartbeatIntervalMs: 30000,
+        queueIndex: 2,
+        queueLength: 8,
+        repeatMode: "all",
+        shuffle: true,
+      })
+      .expect(201);
+
+    expect(instrumentationService.recordPlaybackLifecycle).toHaveBeenCalledWith({
+      action: "heartbeat",
+      trackId: "track-1",
+      artistId: "artist-1",
+      releaseId: "release-1",
+      sessionId: "playback-session-1",
+      playbackInstanceId: "playback-instance-1",
+      source: "web_player",
+      positionMs: 30000,
+      durationMs: 120000,
+      heartbeatIntervalMs: 30000,
+      queueIndex: 2,
+      queueLength: 8,
+      repeatMode: "all",
+      shuffle: true,
+      actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
     });
   });
 
@@ -168,5 +223,56 @@ describe("AnalyticsController (HTTP)", () => {
       .expect(400);
 
     expect(instrumentationService.recordPlaybackCompleted).not.toHaveBeenCalled();
+  });
+
+  it("records allowed product analytics events with sanitized payload and pseudonymous actor", async () => {
+    await request(app.getHttpServer())
+      .post("/analytics/product/event")
+      .set("Authorization", `Bearer ${authToken("artist-1", "artist")}`)
+      .send({
+        eventName: "artist.upload_step_completed",
+        sessionId: "onboarding-session-1",
+        subjectType: "release",
+        subjectId: "release-1",
+        clientEventId: "client-event-1",
+        payload: {
+          step: "stems",
+          fileCount: 8,
+          completed: true,
+          nested: { should: "drop" },
+          reallyLong: "x".repeat(300),
+        },
+      })
+      .expect(201);
+
+    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith({
+      eventName: "artist.upload_step_completed",
+      sessionId: "onboarding-session-1",
+      traceId: undefined,
+      subjectType: "release",
+      subjectId: "release-1",
+      source: "web_app",
+      payload: {
+        step: "stems",
+        fileCount: 8,
+        completed: true,
+        reallyLong: "x".repeat(240),
+      },
+      sourceRefs: { clientEventId: "client-event-1" },
+      actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
+    });
+  });
+
+  it("rejects unsupported product analytics event names", async () => {
+    await request(app.getHttpServer())
+      .post("/analytics/product/event")
+      .set("Authorization", `Bearer ${authToken("artist-1", "artist")}`)
+      .send({
+        eventName: "freeform.everything",
+        payload: { step: "anything" },
+      })
+      .expect(400);
+
+    expect(instrumentationService.recordProductEvent).not.toHaveBeenCalled();
   });
 });

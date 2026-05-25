@@ -578,6 +578,62 @@ export async function recordPlaybackCompleted(
   );
 }
 
+export type PlaybackLifecycleAnalyticsInput = {
+  action: "started" | "heartbeat";
+  trackId: string;
+  artistId?: string;
+  releaseId?: string;
+  sessionId?: string;
+  playbackInstanceId?: string;
+  source?: string;
+  positionMs?: number;
+  durationMs?: number;
+  heartbeatIntervalMs?: number;
+  queueIndex?: number;
+  queueLength?: number;
+  repeatMode?: "none" | "one" | "all";
+  shuffle?: boolean;
+};
+
+export async function recordPlaybackEvent(
+  token: string,
+  input: PlaybackLifecycleAnalyticsInput,
+) {
+  return apiRequest<{ status: string; eventId: string; ingested: number }>(
+    "/analytics/playback/event",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export type ProductAnalyticsInput = {
+  eventName: string;
+  sessionId?: string;
+  traceId?: string;
+  subjectType?: string;
+  subjectId?: string;
+  source?: string;
+  clientEventId?: string;
+  payload?: Record<string, unknown>;
+};
+
+export async function recordProductAnalyticsEvent(
+  token: string,
+  input: ProductAnalyticsInput,
+) {
+  return apiRequest<{ status: string; eventId: string; ingested: number }>(
+    "/analytics/product/event",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
 export type TrustTier = {
   artistId: string;
   tier: string;

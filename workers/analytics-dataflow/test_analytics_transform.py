@@ -12,7 +12,17 @@ from analytics_transform import (
 
 class AnalyticsTransformTest(unittest.TestCase):
     def test_valid_event_promotes_to_all_layers(self):
-        layers = process_payload(json.dumps(event("evt_play", "playback.completed")))
+        playback_event = event("evt_play", "playback.completed")
+        playback_event["actorId"] = "listener_hash"
+        playback_event["sessionId"] = "session-1"
+        playback_event["payload"] = {
+            "artistId": "artist-1",
+            "releaseId": "release-1",
+            "trackId": "track-1",
+            "completionRatio": 0.9,
+            "playbackInstanceId": "instance-1",
+        }
+        layers = process_payload(json.dumps(playback_event))
 
         self.assertEqual(len(layers.events_raw), 1)
         self.assertEqual(len(layers.events_clean), 1)
@@ -24,7 +34,13 @@ class AnalyticsTransformTest(unittest.TestCase):
         self.assertEqual(layers.analytics_views[0]["playCount"], 1)
         self.assertEqual(json.loads(layers.events_raw[0]["payload"])["artistId"], "artist-1")
         self.assertEqual(json.loads(layers.events_clean[0]["payload"])["trackId"], "track-1")
-        self.assertEqual(json.loads(layers.analytics_facts[0]["dimensions"])["eventName"], "playback.completed")
+        dimensions = json.loads(layers.analytics_facts[0]["dimensions"])
+        self.assertEqual(dimensions["eventName"], "playback.completed")
+        self.assertEqual(dimensions["actorId"], "listener_hash")
+        self.assertEqual(dimensions["sessionId"], "session-1")
+        self.assertEqual(dimensions["releaseId"], "release-1")
+        self.assertEqual(dimensions["completionRatio"], 0.9)
+        self.assertEqual(dimensions["playbackInstanceId"], "instance-1")
 
     def test_invalid_payload_is_quarantined(self):
         layers = process_payload("{not json")
@@ -62,6 +78,10 @@ class AnalyticsTransformTest(unittest.TestCase):
             ("evt_realtime", "realtime.audio"),
             ("evt_x402", "x402.payment_settled"),
             ("evt_session", "session.started"),
+            ("evt_onboarding", "onboarding.step_completed"),
+            ("evt_playlist", "playlist.track_added"),
+            ("evt_search", "search.submitted"),
+            ("evt_artist", "artist.upload_step_completed"),
         ]
 
         layers = process_batch(event(event_id, event_name) for event_id, event_name in events)
@@ -82,6 +102,10 @@ class AnalyticsTransformTest(unittest.TestCase):
                 "realtime",
                 "x402",
                 "session",
+                "onboarding",
+                "playlist",
+                "search",
+                "artist",
             ],
         )
         self.assertEqual(len(layers.analytics_facts), len(events))

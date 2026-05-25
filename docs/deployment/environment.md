@@ -44,6 +44,7 @@ When adding a new environment variable:
 | `ANALYTICS_BIGQUERY_QUERY_TIMEOUT_MS` | Backend | Optional timeout for each BigQuery reporting query. Defaults to `10000`. |
 | `ANALYTICS_BIGQUERY_ROW_LIMIT` | Backend | Optional row limit per facts/views query to bound response size. Defaults to `10000`. |
 | `ANALYTICS_BIGQUERY_API_BASE_URL` | Backend | Optional BigQuery API base URL override for tests or private endpoints. Defaults to the public BigQuery API. |
+| `ANALYTICS_ACTOR_ID_SALT` | Backend | Optional salt for deriving pseudonymous analytics actor IDs from authenticated user IDs before emitting product and playback analytics events. Falls back to `JWT_SECRET`, then a local-dev salt. Set per environment and rotate only with a planned analytics identity migration. |
 | `AGENT_TASTE_SIGNAL_SOURCE` | Backend | Optional agent taste signal provider. Defaults to disabled; set `bigquery` to blend precomputed BigQuery user-track scores into AI DJ recommendation ranking. |
 | `AGENT_TASTE_BIGQUERY_PROJECT_ID` | Backend | Optional BigQuery project override for agent taste scores. Falls back to analytics BigQuery/warehouse project config. |
 | `AGENT_TASTE_BIGQUERY_DATASET` | Backend | Optional BigQuery dataset override for agent taste scores. Falls back to analytics BigQuery/warehouse dataset config. |

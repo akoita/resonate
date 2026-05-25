@@ -77,11 +77,15 @@ export type RepeatMode = "none" | "one" | "all";
 import { useAuth } from "../components/auth/AuthProvider";
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
-import { recordPlaybackCompleted } from "./api";
+import { recordPlaybackCompleted, recordPlaybackEvent } from "./api";
 import { LocalTrack, getTrackUrl, getArtworkUrl, savePlayerState, loadPlayerState } from "./localLibrary";
 import {
     buildPlaybackCompletedPayload,
+    buildPlaybackLifecyclePayload,
+    createPlaybackAnalyticsInstanceId,
     getPlaybackAnalyticsSessionId,
+    PLAYBACK_HEARTBEAT_SECONDS,
+    type PlaybackLifecycleAction,
     shouldReportPlaybackCompleted,
 } from "./playbackAnalytics";
 
@@ -440,6 +444,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const pendingSeekTimeRef = useRef<number | null>(null);
     const authTokenRef = useRef<string | null>(token);
     const playbackCompletedTrackRef = useRef<string | null>(null);
+    const playbackInstanceIdRef = useRef<string | null>(null);
+    const playbackHeartbeatBucketsRef = useRef<Set<number>>(new Set());
 
     // Stable function refs for event listeners
     const nextTrackRef = useRef<() => void>(() => { });
@@ -456,6 +462,41 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         authTokenRef.current = token;
     }, [token]);
+
+    const recordPlaybackLifecycleEvent = useCallback((
+        action: PlaybackLifecycleAction,
+        trackOverride?: LocalTrack | null,
+        currentTimeOverride?: number,
+    ) => {
+        const token = authTokenRef.current;
+        const playbackInstanceId = playbackInstanceIdRef.current;
+        const activeTrack = trackOverride ?? queueRef.current[currentIndexRef.current] ?? null;
+        if (!token || !playbackInstanceId || !activeTrack) {
+            return;
+        }
+
+        const audio = audioRef.current;
+        const payload = buildPlaybackLifecyclePayload({
+            action,
+            track: activeTrack,
+            sessionId: getPlaybackAnalyticsSessionId(),
+            playbackInstanceId,
+            currentTimeSeconds: currentTimeOverride ?? audio?.currentTime ?? 0,
+            durationSeconds: audio?.duration,
+            heartbeatIntervalSeconds: action === "heartbeat" ? PLAYBACK_HEARTBEAT_SECONDS : undefined,
+            queueIndex: currentIndexRef.current >= 0 ? currentIndexRef.current : undefined,
+            queueLength: queueRef.current.length || undefined,
+            repeatMode: repeatModeRef.current,
+            shuffle: shuffleRef.current,
+        });
+        if (!payload) {
+            return;
+        }
+
+        recordPlaybackEvent(token, payload).catch((error) => {
+            console.warn("Failed to record playback lifecycle analytics:", error);
+        });
+    }, []);
 
     // Mute main track when mixer mode is active and we have stems to play
     useEffect(() => {
@@ -608,6 +649,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             setArtworkUrl(art || null);
             if (currentTrackIdRef.current !== track.id) {
                 playbackCompletedTrackRef.current = null;
+                playbackInstanceIdRef.current = createPlaybackAnalyticsInstanceId();
+                playbackHeartbeatBucketsRef.current = new Set();
+                recordPlaybackLifecycleEvent("started", track);
             }
             currentTrackIdRef.current = track.id;
             void safePlay();
@@ -626,6 +670,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
         devLog("playTrack: setting new src", url.substring(0, 80), "saving time:", savedTime);
         playbackCompletedTrackRef.current = null;
+        playbackInstanceIdRef.current = createPlaybackAnalyticsInstanceId();
+        playbackHeartbeatBucketsRef.current = new Set();
         audioRef.current.src = url;
         audioRef.current.load();
         currentTrackUrlRef.current = url;
@@ -655,9 +701,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         devLog('[playTrack] Setting volume:', audioRef.current.volume, 'mixerModeRef:', mixerModeRef.current, 'hasStems:', hasStems);
         setArtworkUrl(art || null);
         currentTrackIdRef.current = track.id;
+        recordPlaybackLifecycleEvent("started", track);
     // NOTE: mixerMode intentionally excluded - we use mixerModeRef.current to avoid
     // cascading recreation of playQueue → nextTrack → togglePlay on mixer toggle
-    }, [volume, safePause, safePlay]);
+    }, [recordPlaybackLifecycleEvent, volume, safePause, safePlay]);
 
     const playQueue = useCallback(async (list: LocalTrack[], startIndex: number) => {
         const trackToPlay = list[startIndex];
@@ -671,6 +718,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         // Update queue state
         setQueue(list);
         setCurrentIndex(startIndex);
+        queueRef.current = list;
+        currentIndexRef.current = startIndex;
 
         devLog("playQueue: playing track", trackToPlay.id, "at index", startIndex);
         await playTrack(trackToPlay);
@@ -742,6 +791,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             setProgress((audio.currentTime / (audio.duration || 1)) * 100);
 
             const activeTrack = queueRef.current[currentIndexRef.current] ?? null;
+            const heartbeatBucket = Math.floor(audio.currentTime / PLAYBACK_HEARTBEAT_SECONDS);
+            if (
+                activeTrack &&
+                heartbeatBucket > 0 &&
+                !playbackHeartbeatBucketsRef.current.has(heartbeatBucket)
+            ) {
+                playbackHeartbeatBucketsRef.current.add(heartbeatBucket);
+                recordPlaybackLifecycleEvent("heartbeat", activeTrack);
+            }
+
             const alreadyReported =
                 !!activeTrack &&
                 playbackCompletedTrackRef.current === (activeTrack.catalogTrackId || activeTrack.id);
@@ -829,8 +888,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             const rMode = repeatModeRef.current;
 
             if (rMode === "one") {
+                const activeTrack = q[idx] ?? null;
+                playbackCompletedTrackRef.current = null;
+                playbackInstanceIdRef.current = createPlaybackAnalyticsInstanceId();
+                playbackHeartbeatBucketsRef.current = new Set();
                 if (audioRef.current) {
                     audioRef.current.currentTime = 0;
+                    recordPlaybackLifecycleEvent("started", activeTrack, 0);
                     void safePlay();
                 }
                 return;
@@ -887,6 +951,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             audio.src = "";
             currentTrackIdRef.current = null;
             currentTrackUrlRef.current = null;
+            playbackInstanceIdRef.current = null;
+            playbackHeartbeatBucketsRef.current = new Set();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

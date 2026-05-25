@@ -123,6 +123,58 @@ rg 'JSON\.parse|eval\(' backend/src/modules/analytics backend/src/modules/genera
 rg 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/lib web/src/app/library
 ```
 
+## Addendum: Product Analytics Memory Foundation
+
+Reviewed the pseudonymous product analytics memory changes. No Critical or
+High findings were identified in the changed backend, frontend, Dataflow, or
+documentation code.
+
+### Scope
+
+- `backend/src/modules/analytics/analytics.controller.ts`
+- `backend/src/modules/analytics/analytics_identity.ts`
+- `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`
+- `backend/src/modules/analytics/analytics_instrumentation.service.ts`
+- `backend/src/modules/analytics/analytics_warehouse.ts`
+- `backend/src/modules/analytics/analytics_event.ts`
+- `workers/analytics-dataflow/analytics_transform.py`
+- `web/src/lib/api.ts`
+- `web/src/lib/playerContext.tsx`
+- `web/src/lib/playbackAnalytics.ts`
+- related analytics tests and feature/deployment docs
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- Playback analytics endpoints remain JWT-protected.
+- User identity is derived server-side as a salted pseudonymous actor ID;
+  clients do not submit actor IDs.
+- New product and playback lifecycle payloads are bounded to allowlisted event
+  names and scalar analytics fields. They do not include secrets, prompts,
+  cookies, browser fingerprints, realtime audio chunks, or notification bodies.
+- `ANALYTICS_ACTOR_ID_SALT` is documented for environment-specific
+  pseudonymous identity derivation.
+
+### Commands Run
+
+```bash
+cd backend && npm run test -- --runInBand --testPathPattern='analytics.controller.http|analytics_instrumentation.spec|analytics_event.spec|analytics_warehouse.spec|analytics_domain_event_bridge.spec'
+cd web && npx vitest run src/lib/playbackAnalytics.test.ts src/lib/api.test.ts
+cd workers/analytics-dataflow && python3 -m unittest test_analytics_transform.py
+cd backend && npm run lint
+cd web && npm run lint
+rg 'password|secret|api_key|private_key|BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY' backend/src/modules/analytics web/src/lib/playbackAnalytics.ts web/src/lib/playerContext.tsx web/src/lib/api.ts workers/analytics-dataflow/analytics_transform.py --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/analytics web/src/lib/playbackAnalytics.ts web/src/lib/playerContext.tsx web/src/lib/api.ts workers/analytics-dataflow/analytics_transform.py --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/lib/playbackAnalytics.ts web/src/lib/playerContext.tsx web/src/lib/api.ts
+git diff --check
+```
+
 ## Addendum: #812 Public Payment-Router API Surface
 
 Reviewed the #812 OpenAPI guidance change. The update documents that external

@@ -12,8 +12,12 @@ export const SUPPORTED_EVENT_FAMILIES = new Set([
   "ingestion",
   "stems",
   "ipnft",
+  "onboarding",
   "session",
   "playback",
+  "playlist",
+  "search",
+  "artist",
   "library",
   "commerce",
   "license",
@@ -305,8 +309,26 @@ function toFactRow(clean: EventsCleanRow): AnalyticsFactRow {
       eventName: clean.eventName,
       producer: clean.producer,
       privacyTier: clean.privacyTier,
+      actorId: clean.actorId,
       source: clean.source,
       sessionId: clean.sessionId,
+      releaseId: clean.releaseId,
+      playlistId: stringPayload(clean.payload, "playlistId"),
+      step: stringPayload(clean.payload, "step"),
+      phase: stringPayload(clean.payload, "phase"),
+      status: stringPayload(clean.payload, "status"),
+      licenseType: stringPayload(clean.payload, "licenseType"),
+      strategy: stringPayload(clean.payload, "strategy"),
+      playbackInstanceId: stringPayload(clean.payload, "playbackInstanceId"),
+      action: stringPayload(clean.payload, "action"),
+      positionMs: numberPayload(clean.payload, "positionMs"),
+      durationMs: numberPayload(clean.payload, "durationMs"),
+      heartbeatIntervalMs: numberPayload(clean.payload, "heartbeatIntervalMs"),
+      completionRatio: numberPayload(clean.payload, "completionRatio"),
+      queueIndex: numberPayload(clean.payload, "queueIndex"),
+      queueLength: numberPayload(clean.payload, "queueLength"),
+      repeatMode: stringPayload(clean.payload, "repeatMode"),
+      shuffle: booleanPayload(clean.payload, "shuffle"),
       title: stringPayload(clean.payload, "title"),
       paymentToken: stringPayload(clean.payload, "paymentToken"),
       paymentAssetId: stringPayload(clean.payload, "paymentAssetId"),
@@ -361,6 +383,11 @@ function stringPayload(payload: Record<string, unknown>, key: string) {
 function numberPayload(payload: Record<string, unknown>, key: string) {
   const value = payload[key];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function booleanPayload(payload: Record<string, unknown>, key: string) {
+  const value = payload[key];
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function arrayPayload(payload: Record<string, unknown>, key: string) {

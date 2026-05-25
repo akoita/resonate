@@ -182,6 +182,104 @@ describe('API Client', () => {
     });
   });
 
+  describe('recordPlaybackEvent', () => {
+    it('posts playback lifecycle events to the analytics endpoint', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        text: async () =>
+          JSON.stringify({
+            status: 'ok',
+            eventId: 'evt_playback_lifecycle_1',
+            ingested: 1,
+          }),
+      });
+
+      const result = await api.recordPlaybackEvent('listener-token', {
+        action: 'heartbeat',
+        trackId: 'track-1',
+        artistId: 'artist-1',
+        releaseId: 'release-1',
+        sessionId: 'session-1',
+        playbackInstanceId: 'instance-1',
+        source: 'web_player',
+        positionMs: 30000,
+        durationMs: 120000,
+        heartbeatIntervalMs: 30000,
+        queueIndex: 1,
+        queueLength: 4,
+        repeatMode: 'all',
+        shuffle: true,
+      });
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/analytics/playback/event');
+      expect(opts.method).toBe('POST');
+      expect(opts.headers.get('Authorization')).toBe('Bearer listener-token');
+      expect(JSON.parse(opts.body)).toEqual({
+        action: 'heartbeat',
+        trackId: 'track-1',
+        artistId: 'artist-1',
+        releaseId: 'release-1',
+        sessionId: 'session-1',
+        playbackInstanceId: 'instance-1',
+        source: 'web_player',
+        positionMs: 30000,
+        durationMs: 120000,
+        heartbeatIntervalMs: 30000,
+        queueIndex: 1,
+        queueLength: 4,
+        repeatMode: 'all',
+        shuffle: true,
+      });
+      expect(result.eventId).toBe('evt_playback_lifecycle_1');
+    });
+  });
+
+  describe('recordProductAnalyticsEvent', () => {
+    it('posts app-wide product events to the analytics endpoint', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        text: async () =>
+          JSON.stringify({
+            status: 'ok',
+            eventId: 'evt_product_1',
+            ingested: 1,
+          }),
+      });
+
+      const result = await api.recordProductAnalyticsEvent('artist-token', {
+        eventName: 'artist.upload_step_completed',
+        sessionId: 'session-1',
+        subjectType: 'release',
+        subjectId: 'release-1',
+        clientEventId: 'client-event-1',
+        payload: {
+          step: 'stems',
+          fileCount: 8,
+        },
+      });
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/analytics/product/event');
+      expect(opts.method).toBe('POST');
+      expect(opts.headers.get('Authorization')).toBe('Bearer artist-token');
+      expect(JSON.parse(opts.body)).toEqual({
+        eventName: 'artist.upload_step_completed',
+        sessionId: 'session-1',
+        subjectType: 'release',
+        subjectId: 'release-1',
+        clientEventId: 'client-event-1',
+        payload: {
+          step: 'stems',
+          fileCount: 8,
+        },
+      });
+      expect(result.eventId).toBe('evt_product_1');
+    });
+  });
+
   describe('getAgentNextPick', () => {
     it('posts to the session runtime next-pick endpoint', async () => {
       mockFetch.mockResolvedValueOnce({

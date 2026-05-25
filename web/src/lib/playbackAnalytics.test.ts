@@ -1,7 +1,10 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import {
   buildPlaybackCompletedPayload,
+  buildPlaybackLifecyclePayload,
+  createPlaybackAnalyticsInstanceId,
   getPlaybackAnalyticsSessionId,
+  PLAYBACK_HEARTBEAT_SECONDS,
   shouldReportPlaybackCompleted,
 } from "./playbackAnalytics";
 import type { LocalTrack } from "./localLibrary";
@@ -149,6 +152,41 @@ describe("playback analytics helpers", () => {
       source: "web_player",
       completionRatio: 0.25,
       durationMs: 120000,
+    });
+  });
+
+  it("builds playback lifecycle payloads for future listener analytics", () => {
+    expect(createPlaybackAnalyticsInstanceId()).toBe("session-uuid");
+
+    expect(
+      buildPlaybackLifecyclePayload({
+        action: "heartbeat",
+        track,
+        sessionId: "session-1",
+        playbackInstanceId: "instance-1",
+        currentTimeSeconds: 30.2,
+        durationSeconds: 120,
+        heartbeatIntervalSeconds: PLAYBACK_HEARTBEAT_SECONDS,
+        queueIndex: 1,
+        queueLength: 4,
+        repeatMode: "all",
+        shuffle: true,
+      }),
+    ).toEqual({
+      action: "heartbeat",
+      trackId: "catalog-track-1",
+      artistId: "artist-1",
+      releaseId: "release-1",
+      sessionId: "session-1",
+      playbackInstanceId: "instance-1",
+      source: "web_player",
+      positionMs: 30200,
+      durationMs: 120000,
+      heartbeatIntervalMs: 30000,
+      queueIndex: 1,
+      queueLength: 4,
+      repeatMode: "all",
+      shuffle: true,
     });
   });
 });

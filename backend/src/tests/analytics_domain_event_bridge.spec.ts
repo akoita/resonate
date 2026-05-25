@@ -150,6 +150,15 @@ describe("AnalyticsDomainEventBridgeService", () => {
     const occurredAt = "2026-05-23T11:00:00.000Z";
     const events = [
       {
+        eventName: "session.started",
+        eventVersion: 1,
+        occurredAt,
+        sessionId: "session_919",
+        userId: "user_919",
+        budgetCapUsd: 12,
+        preferences: { mood: "focus", explicit: false, nested: { drop: true } },
+      },
+      {
         eventName: "license.granted",
         eventVersion: 1,
         occurredAt,
@@ -188,6 +197,19 @@ describe("AnalyticsDomainEventBridgeService", () => {
         contractAddress: "0xmarket",
         transactionHash: "0xtx919",
         blockNumber: "12",
+      },
+      {
+        eventName: "contract.stake_deposited",
+        eventVersion: 1,
+        occurredAt,
+        tokenId: "101",
+        stakerAddress: "0xstaker",
+        amount: "1000000000000000000",
+        paymentToken: "0xtoken",
+        chainId: 31337,
+        contractAddress: "0xtrust",
+        transactionHash: "0xstake919",
+        blockNumber: "13",
       },
       {
         eventName: "agent.purchase_completed",
@@ -249,6 +271,13 @@ describe("AnalyticsDomainEventBridgeService", () => {
         balanceUsd: 17.5,
       },
       {
+        eventName: "wallet.budget_set",
+        eventVersion: 1,
+        occurredAt,
+        userId: "user_919",
+        monthlyCapUsd: 25,
+      },
+      {
         eventName: "curator.reported",
         eventVersion: 1,
         occurredAt,
@@ -291,6 +320,17 @@ describe("AnalyticsDomainEventBridgeService", () => {
     expect(analyticsEvents.map((event) => event.eventName)).toEqual(events.map((event) => event.eventName));
     expect(analyticsEvents).toContainEqual(
       expect.objectContaining({
+        eventName: "session.started",
+        actorId: "user_919",
+        sessionId: "session_919",
+        payload: expect.objectContaining({
+          budgetCapUsd: 12,
+          preferences: { mood: "focus", explicit: false },
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
         eventName: "payment.settled",
         producer: "payments-service",
         subjectType: "payment",
@@ -317,6 +357,27 @@ describe("AnalyticsDomainEventBridgeService", () => {
           listingId: "919",
           amount: "2",
           totalPaid: "2500000000000000000",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "contract.stake_deposited",
+        subjectType: "token",
+        subjectId: "101",
+        actorId: "0xstaker",
+        payload: expect.objectContaining({
+          amount: "1000000000000000000",
+          paymentToken: "0xtoken",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "wallet.budget_set",
+        actorId: "user_919",
+        payload: expect.objectContaining({
+          monthlyCapUsd: 25,
         }),
       }),
     );

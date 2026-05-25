@@ -3,11 +3,70 @@
     "eventName": "playback.completed",
     "payload": {
       "artistId": "artist-1",
+      "releaseId": "release-1",
       "trackId": "track-1",
       "sessionId": "session-1",
       "completionRatio": 1,
       "durationMs": 120000,
       "source": "web_player"
+    }
+  },
+  {
+    "eventName": "playback.started",
+    "payload": {
+      "artistId": "artist-1",
+      "releaseId": "release-1",
+      "trackId": "track-1",
+      "sessionId": "session-1",
+      "playbackInstanceId": "playback-instance-1",
+      "source": "web_player",
+      "queueIndex": 0,
+      "queueLength": 3,
+      "repeatMode": "none",
+      "shuffle": false
+    }
+  },
+  {
+    "eventName": "playback.heartbeat",
+    "payload": {
+      "artistId": "artist-1",
+      "releaseId": "release-1",
+      "trackId": "track-1",
+      "sessionId": "session-1",
+      "playbackInstanceId": "playback-instance-1",
+      "source": "web_player",
+      "positionMs": 30000,
+      "durationMs": 120000,
+      "heartbeatIntervalMs": 30000,
+      "queueIndex": 0,
+      "queueLength": 3,
+      "repeatMode": "none",
+      "shuffle": false
+    }
+  },
+  {
+    "eventName": "onboarding.step_completed",
+    "payload": {
+      "step": "connect_wallet",
+      "source": "web_app"
+    }
+  },
+  {
+    "eventName": "playlist.track_added",
+    "payload": {
+      "playlistId": "playlist-1",
+      "trackId": "track-1",
+      "position": 3,
+      "source": "web_app"
+    }
+  },
+  {
+    "eventName": "artist.upload_step_completed",
+    "payload": {
+      "releaseId": "release-1",
+      "step": "stems",
+      "fileCount": 8,
+      "source": "web_app"
     }
   },
   {
