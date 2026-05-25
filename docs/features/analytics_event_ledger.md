@@ -102,7 +102,9 @@ aggregates, not from retaining raw personal data forever.
 
 - Read the RFC:
   [Long-Term Analytics Event Ledger](../rfc/analytics-event-ledger.md).
-- Use the event taxonomy:
+- Use the canonical event taxonomy:
+  [Analytics Event Taxonomy v1](../architecture/analytics_event_taxonomy_v1.md).
+- Use the domain model companion:
   [Event Taxonomy & Domain Model](../architecture/event_taxonomy_domain_model.md).
 - For the current artist dashboard/reporting surface, see:
   [Analytics Dashboard v0](analytics_dashboard_v0.md).

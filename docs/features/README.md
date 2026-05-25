@@ -65,7 +65,7 @@ that answers:
 | Account abstraction | [Account Abstraction](../account-abstraction/account-abstraction.md) |
 | Rights and content protection | [Content Protection Architecture](../rfc/content-protection-architecture.md) |
 | Remix Studio and AI derivatives | [Remix Studio RFC](../rfc/remix-studio.md), [AI Derivative Rights Policy](../rfc/ai-derivative-rights-policy.md) |
-| Analytics event ledger | [Long-Term Analytics Event Ledger RFC](../rfc/analytics-event-ledger.md) |
+| Analytics event ledger | [Analytics Event Taxonomy v1](../architecture/analytics_event_taxonomy_v1.md), [Long-Term Analytics Event Ledger RFC](../rfc/analytics-event-ledger.md) |
 | Deployment environment | [Environment Variables](../deployment/environment.md) |
 
 ## Maintenance Rule
