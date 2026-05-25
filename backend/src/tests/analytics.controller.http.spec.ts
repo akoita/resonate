@@ -34,8 +34,10 @@ const instrumentationService = {
 
 describe("AnalyticsController (HTTP)", () => {
   let app: INestApplication;
+  let warnSpy: jest.SpyInstance;
 
   beforeAll(async () => {
+    warnSpy = jest.spyOn(console, "warn").mockImplementation(() => undefined);
     app = await createControllerTestApp(AnalyticsController, [
       { provide: AnalyticsService, useValue: analyticsService },
       { provide: AnalyticsAuthorizationService, useValue: authorizationService },
@@ -47,6 +49,7 @@ describe("AnalyticsController (HTTP)", () => {
 
   afterAll(async () => {
     await app.close();
+    warnSpy.mockRestore();
   });
 
   beforeEach(() => {
@@ -274,5 +277,6 @@ describe("AnalyticsController (HTTP)", () => {
       .expect(400);
 
     expect(instrumentationService.recordProductEvent).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("analytics_product_event_rejected"));
   });
 });

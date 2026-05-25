@@ -78,6 +78,9 @@ marts for listener sessions, replay bursts, cohort catalog rankings, artist
 catalog metrics, discovery/playlist funnels, marketplace conversion, artist
 upload funnels, product event adoption, and clean-to-fact coverage, plus agent
 taste-intelligence tables for warehouse-backed recommendation scoring.
+Pipeline loss visibility is exposed through admin health checks and structured
+logs so quarantine, freshness, and missing identifier problems are visible
+before they damage future reports.
 
 ## Who It Is For
 
@@ -114,6 +117,8 @@ aggregates, not from retaining raw personal data forever.
   [Analytics Consent And Retention Policy](analytics_consent_retention_policy.md).
 - For the current artist dashboard/reporting surface, see:
   [Analytics Dashboard v0](analytics_dashboard_v0.md).
+- For pipeline health and loss detection, see:
+  [Analytics Pipeline Observability](analytics_pipeline_observability.md).
 - Backend producers should use the shared event contract:
   `backend/src/modules/analytics/analytics_event.ts`.
 - Cross-cutting analytics subscribers should listen on the process-level
@@ -148,6 +153,7 @@ aggregates, not from retaining raw personal data forever.
 | Flex Template publishing | Implemented through `.github/workflows/publish-analytics-dataflow-flex-template.yml`; staging publishes to a stable `gs://.../template.json` path and outputs the matching `resonate-iac` launch inputs. |
 | Future report marts | Implemented as post-Dataflow BigQuery SQL in `workers/analytics-dataflow/sql/future_report_marts.sql`; materializes listener/user, artist, marketplace, and product report tables for future Wrapped-style summaries and operational analysis. |
 | Agent taste materialization | Implemented as post-Dataflow BigQuery SQL in `workers/analytics-dataflow/sql/agent_taste_intelligence_baseline.sql`, with an optional BigQuery ML matrix-factorization template in `agent_taste_intelligence_bqml.sql`. |
+| Pipeline observability | Implemented through structured product-ingestion rejection logs, Pub/Sub publish success/failure logs, warehouse load metrics, and `GET /admin/analytics/pipeline/health` for quarantine, freshness, missing identifier, and clean-to-fact coverage signals. |
 | Warehouse loading/backfill | Implemented through `ANALYTICS_WAREHOUSE_TARGET=local_json` for idempotent JSONL files and `ANALYTICS_WAREHOUSE_TARGET=bigquery_insert_all` for BigQuery streaming inserts across raw, clean, fact, view, and quarantine layers. This remains the backend-operated bridge for backfills and non-Dataflow environments. |
 | Current artist reports | Implemented for `GET /analytics/artist/:id` and `GET /analytics/artist/:id/v1`; reports read generated analytics facts and fact dimensions while preserving response compatibility. With `ANALYTICS_REPORT_SOURCE=bigquery`, the same endpoints read BigQuery `analytics_facts` and `analytics_views`, enforce artist/admin authorization, return explicit time-window/freshness/no-data metadata, compute content protection metrics from `rights.route_decided`, and use bounded cached queries. |
 | Catalog metadata enrichment | Implemented in `backend/src/modules/analytics/analytics_catalog_metadata.service.ts`; artist analytics responses resolve track/release/artist display metadata from catalog rows when analytics facts have IDs but sparse dimensions. |
@@ -244,6 +250,8 @@ Current verification:
 - Pub/Sub event publishing config, attributes, disabled behavior, and
   non-strict/strict failure handling are covered by
   `backend/src/tests/analytics_event_publisher.spec.ts`.
+- Analytics pipeline health scoring is covered by
+  `backend/src/tests/analytics_observability.spec.ts`.
 - Dataflow transform validation, quarantine, dedupe, unsupported-version
   behavior, and the same shared expected event processing matrix are covered by
   `workers/analytics-dataflow/test_analytics_transform.py`.
