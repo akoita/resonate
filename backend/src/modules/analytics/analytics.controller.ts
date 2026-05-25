@@ -13,6 +13,7 @@ import {
   ProductAnalyticsInput,
 } from "./analytics_instrumentation.service";
 import { pseudonymousAnalyticsActorId } from "./analytics_identity";
+import { writeStructuredLog } from "../shared/structured_logging";
 
 type PlaybackCompletedRequest = Partial<PlaybackCompletedAnalyticsInput>;
 type PlaybackLifecycleRequest = Partial<PlaybackLifecycleAnalyticsInput>;
@@ -245,9 +246,11 @@ function normalizeProductEventRequest(body: ProductEventRequest): ProductAnalyti
   const clientEventId = typeof body.clientEventId === "string" ? body.clientEventId.trim() : undefined;
 
   if (!PRODUCT_EVENT_NAMES.has(eventName)) {
+    logProductAnalyticsRejection("unsupported_event_name", eventName);
     throw new BadRequestException("eventName is not an allowed product analytics event");
   }
   if ((subjectType && !subjectId) || (!subjectType && subjectId)) {
+    logProductAnalyticsRejection("invalid_subject_pair", eventName);
     throw new BadRequestException("subjectType and subjectId must be provided together");
   }
 
@@ -261,6 +264,20 @@ function normalizeProductEventRequest(body: ProductEventRequest): ProductAnalyti
     payload: sanitizeProductPayload(body.payload),
     sourceRefs: clientEventId ? { clientEventId } : undefined,
   };
+}
+
+function logProductAnalyticsRejection(reason: string, eventName: string) {
+  writeStructuredLog(
+    {
+      level: "warn",
+      event: "analytics_product_event_rejected",
+      message: "Rejected product analytics event payload",
+      reason,
+      eventName: eventName || "missing",
+      endpoint: "POST /analytics/product/event",
+    },
+    console.warn,
+  );
 }
 
 function sanitizeProductPayload(payload: unknown) {

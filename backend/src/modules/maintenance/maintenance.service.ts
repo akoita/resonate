@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import { AnalyticsGovernanceService } from "../analytics/analytics_governance.service";
+import { AnalyticsPipelineObservabilityService } from "../analytics/analytics_observability.service";
 import { AnalyticsWarehouseLoadRequest, AnalyticsWarehouseLoaderService } from "../analytics/analytics_warehouse_loader";
 
 const prisma = new PrismaClient();
@@ -12,6 +13,7 @@ export class MaintenanceService {
   constructor(
     private readonly analyticsGovernanceService: AnalyticsGovernanceService,
     private readonly analyticsWarehouseLoaderService: AnalyticsWarehouseLoaderService,
+    private readonly analyticsPipelineObservabilityService: AnalyticsPipelineObservabilityService,
   ) {}
 
   async runRetentionCleanup() {
@@ -39,6 +41,10 @@ export class MaintenanceService {
 
   async backfillAnalyticsWarehouse(request: AnalyticsWarehouseLoadRequest) {
     return this.analyticsWarehouseLoaderService.backfill(request);
+  }
+
+  async getAnalyticsPipelineHealth() {
+    return this.analyticsPipelineObservabilityService.getPipelineHealth();
   }
 
   async wipeReleases() {
