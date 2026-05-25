@@ -111,6 +111,41 @@ payout address, and any service-specific secrets there. The handoff keeps
 challenges, recorded purchase events, and frontend wallet state all refer to
 the same chain.
 
+### ShowCampaignEscrow deployment handoff
+
+`make deploy-show-campaign-escrow` deploys the standalone Shows escrow and then
+runs
+[`contracts/scripts/write-show-campaign-escrow-handoff.sh`](../../contracts/scripts/write-show-campaign-escrow-handoff.sh).
+That parser turns the Foundry broadcast into:
+
+- `contracts/deployments/show-campaign-escrow.<network>.json`
+- `contracts/deployments/show-campaign-escrow.<network>.remote.env`
+- `contracts/deployments/show-campaign-escrow.abi.json`
+
+The `.remote.env` file contains only non-secret app configuration:
+
+```bash
+NEXT_PUBLIC_CHAIN_ID=<chain-id>
+SHOW_CAMPAIGN_ESCROW_ADDRESS=<deployed-escrow>
+NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS=<deployed-escrow>
+```
+
+Promote those values through the reviewed `resonate-iac`/GCP environment path
+instead of copying console output into Cloud Run or GitHub variables by hand.
+The backend still links individual campaigns with `contractAddress` and
+`contractCampaignId`; the global escrow address is the deployment/runtime
+default used by operators and future reconciliation jobs.
+
+Frontend publish CI can validate a promoted escrow address by setting
+`FRONTEND_SHOW_CAMPAIGN_DEPLOYMENT_ENV_FILE` to the reviewed handoff file before
+running `.github/scripts/export-frontend-build-args.sh`. When that file is
+provided, `NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS` must match it exactly.
+
+Deployment handoffs are now the expected standard for every address-bearing
+contract deployment. Existing paths that only upload raw Foundry broadcasts
+should be upgraded to emit a reviewed JSON record, a non-secret remote env
+handoff, and ABI metadata before downstream automation depends on them.
+
 ### GitHub Actions contract deployment
 
 Manual smart-contract deployment is available in
@@ -140,7 +175,7 @@ Deployment operations:
 | `deploy-content-protection` | Phase-2 add-on for an existing `StemNFT` + `TransferValidator` deployment | Deploys a new `ContentProtection` proxy and `RevenueEscrow` without replacing `StemNFT` or marketplace | Requires `STEM_NFT_ADDRESS` and `TRANSFER_VALIDATOR_ADDRESS`; script grants the new `ContentProtection` registrar access to `StemNFT`, optionally grants the existing marketplace when `MARKETPLACE_ADDRESS` is set, updates existing `StemNFT`/`TransferValidator` references, and links `RevenueEscrow -> ContentProtection` |
 | `upgrade-content-protection` | UUPS implementation upgrade | Keeps the same `ContentProtection` proxy address; deploys a new implementation and calls the configured reinitializer | Requires `CONTENT_PROTECTION_PROXY`; downstream contract references do not change because the proxy address is stable |
 | `set-content-protection-stake` | Policy/config update | No redeploy; updates stake amount for an ERC-20 asset | Requires `CONTENT_PROTECTION_ADDRESS` plus `STAKE_ASSET_ADDRESS` or `PAYMENT_USDC_ADDRESS`; no contract reference changes |
-| `deploy-show-campaign-escrow` | Resonate Shows campaign escrow | Deploys standalone `ShowCampaignEscrow` with owner from `SHOW_CAMPAIGN_ESCROW_OWNER` or deployer | No existing protocol contract references need updating today; backend/frontend env must receive the deployed escrow address before live pledge execution |
+| `deploy-show-campaign-escrow` | Resonate Shows campaign escrow | Deploys standalone `ShowCampaignEscrow` with owner from `SHOW_CAMPAIGN_ESCROW_OWNER` or deployer, then writes JSON, `.remote.env`, and ABI handoffs | No existing protocol contract references need updating today; promote `SHOW_CAMPAIGN_ESCROW_ADDRESS` / `NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS` through `resonate-iac` before live pledge execution |
 | `verify-base-sepolia` | BaseScan/Etherscan verification retry | No deploy | Reads the selected broadcast file |
 | `verify-base-sepolia-sourcify` | Sourcify verification retry | No deploy | Reads the selected broadcast file |
 
@@ -316,6 +351,8 @@ Required deployable GitHub environment variables in `resonate`:
 - `NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS`
 - `NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS`
 - `NEXT_PUBLIC_CURATION_REWARDS_ADDRESS`
+- `NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS` when the deployed frontend should
+  expose the default Shows escrow address
 
 The receiver-side contract and deploy execution live in `resonate-iac`.
 

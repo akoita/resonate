@@ -60,6 +60,7 @@ docker-build-cloud:
 		--build-arg NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS=$(NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS) \
 		--build-arg NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS=$(NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS) \
 		--build-arg NEXT_PUBLIC_CURATION_REWARDS_ADDRESS=$(NEXT_PUBLIC_CURATION_REWARDS_ADDRESS) \
+		--build-arg NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS=$(NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS) \
 		--build-arg NEXT_PUBLIC_AA_BUNDLER=$(NEXT_PUBLIC_AA_BUNDLER) \
 		./web
 
@@ -97,7 +98,9 @@ deploy-show-campaign-escrow:
 		echo "PRIVATE_KEY is required"; \
 		exit 1; \
 	fi
-	cd contracts && forge script script/DeployShowCampaignEscrow.s.sol --rpc-url $${RPC_URL:-$(BASE_SEPOLIA_RPC_URL)} --broadcast --evm-version cancun --via-ir --slow
+	@rpc_url="$${RPC_URL:-$(BASE_SEPOLIA_RPC_URL)}"; \
+	cd contracts && forge script script/DeployShowCampaignEscrow.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow; \
+	RPC_URL="$$rpc_url" ./contracts/scripts/write-show-campaign-escrow-handoff.sh
 
 verify-base-sepolia:
 	BASE_SEPOLIA_RPC_URL="$(BASE_SEPOLIA_RPC_URL)" BROADCAST_FILE="$(BROADCAST_FILE)" ./contracts/scripts/verify-base-sepolia.sh

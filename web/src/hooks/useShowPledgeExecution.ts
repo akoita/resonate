@@ -14,19 +14,7 @@ import {
 } from "../lib/shows";
 import { ZERO_PAYMENT_TOKEN } from "../lib/payments";
 import { sendBatchContractTransactions } from "./useContracts";
-
-const SHOW_CAMPAIGN_ESCROW_ABI = [
-  {
-    type: "function",
-    name: "pledge",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "campaignId", type: "uint256" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [],
-  },
-] as const;
+import { ShowCampaignEscrowABI } from "../contracts_abi";
 
 const ERC20_PLEDGE_ABI = [
   {
@@ -54,26 +42,6 @@ const ERC20_PLEDGE_ABI = [
     name: "balanceOf",
     stateMutability: "view",
     inputs: [{ name: "account", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-] as const;
-
-const SHOW_CAMPAIGN_REFUND_ABI = [
-  {
-    type: "function",
-    name: "claimRefund",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "campaignId", type: "uint256" }],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "refundable",
-    stateMutability: "view",
-    inputs: [
-      { name: "campaignId", type: "uint256" },
-      { name: "backer", type: "address" },
-    ],
     outputs: [{ name: "", type: "uint256" }],
   },
 ] as const;
@@ -160,7 +128,7 @@ async function buildPledgeCalls(input: {
   calls.push({
     to: escrowAddress,
     data: encodeFunctionData({
-      abi: SHOW_CAMPAIGN_ESCROW_ABI,
+      abi: ShowCampaignEscrowABI,
       functionName: "pledge",
       args: [BigInt(contractCall.args[0]), amount],
     }),
@@ -298,7 +266,7 @@ export function useShowRefundExecution() {
       try {
         const refundable = await publicClient.readContract({
           address: contractAddress,
-          abi: SHOW_CAMPAIGN_REFUND_ABI,
+          abi: ShowCampaignEscrowABI,
           functionName: "refundable",
           args: [BigInt(contractCampaignId), payer],
         }) as bigint;
@@ -315,7 +283,7 @@ export function useShowRefundExecution() {
             {
               to: contractAddress,
               data: encodeFunctionData({
-                abi: SHOW_CAMPAIGN_REFUND_ABI,
+                abi: ShowCampaignEscrowABI,
                 functionName: "claimRefund",
                 args: [BigInt(contractCampaignId)],
               }),
