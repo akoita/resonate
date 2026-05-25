@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Script, console} from "forge-std/Script.sol";
+import {console} from "forge-std/Script.sol";
 import {ContentProtection} from "../src/core/ContentProtection.sol";
+import {DeploymentKey} from "./DeploymentKey.s.sol";
 
 /**
  * @title SetContentProtectionStablecoinStake
@@ -16,10 +17,9 @@ import {ContentProtection} from "../src/core/ContentProtection.sol";
  *   STAKE_ASSET_AMOUNT or STAKE_USDC_AMOUNT - base units; defaults to 5000000 (5 USDC)
  *   STAKE_ASSET_SYMBOL - log label; defaults to USDC
  */
-contract SetContentProtectionStablecoinStake is Script {
+contract SetContentProtectionStablecoinStake is DeploymentKey {
     function run() external {
-        uint256 deployerKey =
-            vm.envOr("PRIVATE_KEY", uint256(0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80));
+        uint256 deployerKey = _deploymentPrivateKey();
         address deployer = vm.addr(deployerKey);
 
         address contentProtectionAddress = vm.envAddress("CONTENT_PROTECTION_ADDRESS");

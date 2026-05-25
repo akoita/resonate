@@ -77,6 +77,8 @@ When adding a new environment variable:
 | `WEBAUTHN_ORIGIN` | Backend | Optional relying-party origin for self-hosted passkey verification. Usually the frontend HTTPS origin |
 | `SEPOLIA_RPC_URL` | Contracts / backend | Required for Sepolia deploys and forked workflows |
 | `BASE_SEPOLIA_RPC_URL` | Contracts / backend | Required for Base Sepolia protocol deploys and single-chain x402 staging |
+| `CONTRACT_DEPLOYER_PRIVATE_KEY` | Contracts secret | Preferred GitHub Actions deployer key for `.github/workflows/contracts-deploy.yml`. Use protected GitHub environments; do not store in source. Existing local scripts still read `PRIVATE_KEY` |
+| `ALLOW_DEFAULT_ANVIL_PRIVATE_KEY` | Contracts | Explicit override that lets Forge scripts use the default Anvil key on a non-local RPC. Leave unset in shared remote environments. |
 | `ETHERSCAN_API_KEY` | Contracts secret | Optional Etherscan API v2 key used for Base Sepolia contract verification. Store in secret manager/GitHub environment secrets when used in CI |
 | `BASESCAN_API_KEY` | Contracts secret | Backward-compatible alias for `ETHERSCAN_API_KEY` in Base Sepolia verification scripts |
 | `BASESCAN_API_URL` | Contracts | Optional verification API override. Defaults to `https://api.etherscan.io/v2/api`, which requires a key/plan with Base Sepolia API access |
@@ -85,6 +87,10 @@ When adding a new environment variable:
 | `VERIFY_RETRIES` / `VERIFY_DELAY_SECONDS` | Contracts | Optional BaseScan retry tuning for `make verify-base-sepolia`; defaults to `8` retries and `15` seconds |
 | `SOURCIFY_API_URL` | Contracts | Optional Sourcify server override for `make verify-base-sepolia-sourcify`; defaults to `https://sourcify.dev/server` |
 | `SOURCIFY_RETRIES` / `SOURCIFY_DELAY_SECONDS` | Contracts | Optional Sourcify retry tuning for `make verify-base-sepolia-sourcify`; defaults to `12` retries and `5` seconds |
+| `STEM_NFT_ADDRESS` / `MARKETPLACE_ADDRESS` / `TRANSFER_VALIDATOR_ADDRESS` | Contracts | Required/optional references for the partial `deploy-content-protection` GitHub workflow operation; set `MARKETPLACE_ADDRESS` when the existing marketplace must receive registrar permission |
+| `CONTENT_PROTECTION_PROXY` | Contracts | Required for the `upgrade-content-protection` GitHub workflow operation |
+| `CONTENT_PROTECTION_ADDRESS` | Contracts / backend | Existing ContentProtection proxy address; required for stake-policy update workflows and backend contract-aware flows |
+| `STAKE_ASSET_ADDRESS` / `STAKE_ASSET_AMOUNT` / `STAKE_ASSET_SYMBOL` | Contracts | Optional stake-policy update workflow inputs; `STAKE_ASSET_ADDRESS` can fall back to `PAYMENT_USDC_ADDRESS` |
 | `TRUST_STAKE_WEI_NEW` | Backend | Optional override for the new-creator content-protection stake requirement |
 | `TRUST_STAKE_WEI_ESTABLISHED` | Backend | Optional override for the established-tier content-protection stake requirement |
 | `TRUST_STAKE_WEI_TRUSTED` | Backend | Optional override for the trusted-tier content-protection stake requirement |

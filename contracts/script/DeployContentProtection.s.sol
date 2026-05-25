@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Script, console} from "forge-std/Script.sol";
+import {console} from "forge-std/Script.sol";
 import {ContentProtection} from "../src/core/ContentProtection.sol";
 import {RevenueEscrow} from "../src/core/RevenueEscrow.sol";
 import {StemNFT} from "../src/core/StemNFT.sol";
 import {TransferValidator} from "../src/modules/TransferValidator.sol";
-import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {DeploymentKey} from "./DeploymentKey.s.sol";
 
 /**
  * @title DeployContentProtection
@@ -17,6 +17,8 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
  * Prerequisites:
  *   - StemNFT and TransferValidator must already be deployed
  *   - Set STEM_NFT_ADDRESS and TRANSFER_VALIDATOR_ADDRESS env vars
+ *   - Set MARKETPLACE_ADDRESS when an existing marketplace should be granted
+ *     registrar permission in the new ContentProtection contract
  *
  * On a local fork, the script impersonates the contract admin to link
  * the new ContentProtection contract. Set EXISTING_ADMIN env var to the
@@ -30,15 +32,15 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
  *   forge script script/DeployContentProtection.s.sol \
  *     --rpc-url $RPC_URL --broadcast --verify
  */
-contract DeployContentProtection is Script {
+contract DeployContentProtection is DeploymentKey {
     function run() external {
-        uint256 deployerKey =
-            vm.envOr("PRIVATE_KEY", uint256(0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80));
+        uint256 deployerKey = _deploymentPrivateKey();
         address deployer = vm.addr(deployerKey);
 
         // Existing contract addresses (REQUIRED)
         address stemNFTAddr = vm.envAddress("STEM_NFT_ADDRESS");
         address validatorAddr = vm.envAddress("TRANSFER_VALIDATOR_ADDRESS");
+        address marketplaceAddr = vm.envOr("MARKETPLACE_ADDRESS", address(0));
 
         // Optional: existing admin address for fork impersonation
         address existingAdmin = vm.envOr("EXISTING_ADMIN", deployer);
@@ -52,6 +54,7 @@ contract DeployContentProtection is Script {
         console.log("Deployer:", deployer);
         console.log("Existing StemNFT:", stemNFTAddr);
         console.log("Existing TransferValidator:", validatorAddr);
+        console.log("Existing Marketplace:", marketplaceAddr);
         if (existingAdmin != deployer) {
             console.log("Existing Admin (will impersonate):", existingAdmin);
         }
@@ -65,6 +68,12 @@ contract DeployContentProtection is Script {
         ERC1967Proxy cpProxy = new ERC1967Proxy(address(cpImpl), cpInit);
         ContentProtection contentProtection = ContentProtection(address(cpProxy));
         console.log("ContentProtection (proxy):", address(contentProtection));
+        contentProtection.setRegistrar(stemNFTAddr, true);
+        console.log("  -> StemNFT granted ContentProtection registrar role");
+        if (marketplaceAddr != address(0)) {
+            contentProtection.setRegistrar(marketplaceAddr, true);
+            console.log("  -> Marketplace granted ContentProtection registrar role");
+        }
 
         // 2. Deploy RevenueEscrow
         RevenueEscrow escrow = new RevenueEscrow(deployer, escrowPeriod);
