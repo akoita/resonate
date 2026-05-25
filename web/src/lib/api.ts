@@ -5,6 +5,7 @@ import type {
   RightsReviewState,
   RightsVerificationState,
 } from "./verificationSemantics";
+import { invalidateStoredAuthSession } from "./authSession";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
@@ -201,6 +202,9 @@ async function apiRequest<T>(
     const isSilent = options.silentErrorCodes?.includes(response.status);
     if (!isSilent) {
       console.error(`[API] Error ${response.status} ${path}`, errorDetail);
+    }
+    if (response.status === 401 && token) {
+      invalidateStoredAuthSession();
     }
 
     throw new Error(formatApiErrorMessage(response.status, response.statusText, errorDetail));
@@ -414,6 +418,115 @@ export type ArtistProfile = {
   payoutAddress: string;
 };
 
+export type ArtistAnalyticsPayout = {
+  paymentToken: string;
+  assetId: string | null;
+  symbol: string;
+  decimals: number;
+  settlementAmount: string;
+  settlementAmountUnits: string;
+  canonicalAmountUsd: number;
+  count: number;
+};
+
+export type ArtistAnalyticsTrack = {
+  trackId: string;
+  title: string;
+  plays: number;
+  payoutUsd: number;
+  payoutsByAsset: ArtistAnalyticsPayout[];
+};
+
+export type ArtistAnalyticsTimePoint = {
+  date: string;
+  plays: number;
+  payoutUsd: number;
+};
+
+export type ArtistAnalyticsProtectionRoute = {
+  route: string;
+  decisions: number;
+  releases: number;
+  latestDecisionAt: string | null;
+};
+
+export type ArtistAnalyticsProtection = {
+  totalDecisions: number;
+  releasesWithDecisions: number;
+  marketplaceReadyReleases: number;
+  restrictedReleases: number;
+  blockedReleases: number;
+  routes: ArtistAnalyticsProtectionRoute[];
+};
+
+export type ArtistAnalyticsMeta = {
+  source: "warehouse_export" | "bigquery";
+  generatedAt: string;
+  timeWindow: {
+    from: string;
+    to: string;
+    days: number;
+  };
+  freshness: {
+    asOf: string | null;
+    lagSeconds: number | null;
+  };
+  isEmpty: boolean;
+  cache: {
+    hit: boolean;
+    ttlSeconds: number;
+  };
+  query?: {
+    projectId: string;
+    datasetId: string;
+    factsTable: string;
+    viewsTable: string;
+    maximumBytesBilled: string;
+    totalBytesProcessed?: string;
+    cacheHit?: boolean;
+  };
+};
+
+export type ArtistAnalyticsDashboard = {
+  summary: {
+    artistId: string;
+    days: number;
+    totalPlays: number;
+    totalPayoutUsd: number;
+    payoutsByAsset: ArtistAnalyticsPayout[];
+  };
+  tracks: ArtistAnalyticsTrack[];
+  topTracks: ArtistAnalyticsTrack[];
+  sessions: Array<{
+    sessionId: string;
+    plays: number;
+    payoutUsd: number;
+    payoutsByAsset: ArtistAnalyticsPayout[];
+  }>;
+  sources: Array<{
+    source: string;
+    plays: number;
+  }>;
+  protection: ArtistAnalyticsProtection;
+  playsOverTime: ArtistAnalyticsTimePoint[];
+  trackPerformance: ArtistAnalyticsTrack[];
+  listenerGrowth?: {
+    status: "unavailable";
+    reason: string;
+  };
+  export: {
+    artistId: string;
+    days: number;
+    totalPlays: number;
+    totalPayoutUsd: number;
+    payoutsByAsset: ArtistAnalyticsPayout[];
+    generatedAt: string;
+    source: "warehouse_export" | "bigquery";
+    freshness: ArtistAnalyticsMeta["freshness"];
+  };
+  meta: ArtistAnalyticsMeta;
+};
+
 export async function getArtistMe(token: string) {
   const isMockAuth = (typeof window !== "undefined" && localStorage.getItem("resonate.mock_auth") === "true") || process.env.NEXT_PUBLIC_MOCK_AUTH === "true";
 
@@ -428,44 +541,41 @@ export async function getArtistMe(token: string) {
   return apiRequest<ArtistProfile | null>("/artists/me", { silentErrorCodes: [401] }, token);
 }
 
-export type ArtistDashboardData = {
-  summary: {
-    artistId: string;
-    days: number;
-    totalPlays: number;
-    totalPayoutUsd: number;
-    payoutsByAsset: Array<{
-      paymentToken: string;
-      assetId: string | null;
-      symbol: string;
-      decimals: number;
-      settlementAmount: string;
-      canonicalAmountUsd: number;
-      count: number;
-    }>;
-  };
-  tracks: Array<{
-    trackId: string;
-    title: string;
-    plays: number;
-    payoutUsd: number;
-  }>;
-  sessions: Array<{
-    sessionId: string;
-    plays: number;
-    payoutUsd: number;
-  }>;
-  sources: Array<{
-    source: string;
-    plays: number;
-  }>;
-  export: {
-    generatedAt: string;
-  };
+export async function getArtistAnalyticsDashboard(
+  token: string,
+  artistId: string,
+  days = 30,
+) {
+  const search = new URLSearchParams({ days: String(days) });
+  return apiRequest<ArtistAnalyticsDashboard>(
+    `/analytics/artist/${encodeURIComponent(artistId)}/v1?${search.toString()}`,
+    { cache: "no-store" },
+    token,
+  );
+}
+
+export type PlaybackCompletedAnalyticsInput = {
+  trackId: string;
+  artistId?: string;
+  releaseId?: string;
+  sessionId?: string;
+  source?: string;
+  completionRatio: number;
+  durationMs?: number;
 };
 
-export async function getArtistDashboardData(artistId: string, days: number, token: string) {
-  return apiRequest<ArtistDashboardData>(`/analytics/artist/${artistId}/v1?days=${days}`, {}, token);
+export async function recordPlaybackCompleted(
+  token: string,
+  input: PlaybackCompletedAnalyticsInput,
+) {
+  return apiRequest<{ status: string; eventId: string; ingested: number }>(
+    "/analytics/playback/completed",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
 }
 
 export type TrustTier = {
@@ -2051,6 +2161,7 @@ export async function getGenerationStatus(token: string, jobId: string) {
 export type GenerationListItem = {
   releaseId: string;
   trackId: string;
+  artistId: string;
   title: string;
   prompt: string;
   negativePrompt: string | null;
