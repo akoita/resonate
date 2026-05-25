@@ -21,6 +21,7 @@ When adding a new environment variable:
 | `NEXT_PUBLIC_CHAIN_ID` | Frontend | `31337` for local Anvil, `11155111` for Sepolia fork mode, `84532` for Base Sepolia staging |
 | `NEXT_PUBLIC_RPC_URL` | Frontend | Optional RPC override. Use for local/fork AA flows; deployed builds otherwise fall back to the chain default RPC. |
 | `NEXT_PUBLIC_EXPLORER_URL` | Frontend | Optional block explorer base URL used for address and transaction links. Leave unset for local Anvil. |
+| `NEXT_PUBLIC_SHOWS_EXPLORER_BASE_URL` | Frontend | Optional block explorer address base URL used by Shows campaign contract links. Defaults to Sepolia Etherscan for local seeded demos. |
 | `NEXT_PUBLIC_AA_BUNDLER` | Frontend | Optional public bundler override; when unset the browser falls back to `/api/bundler` unless a public Pimlico key is provided |
 | `NEXT_PUBLIC_AA_PAYMASTER_ENABLED` | Frontend | Optional flag (`true` / `1` / `yes`) to attach a ZeroDev paymaster client to browser UserOps. Leave unset when wallet gas sponsorship is not configured so transactions self-pay from the smart account ETH balance |
 | `NEXT_PUBLIC_PIMLICO_API_KEY` | Frontend | Optional public Pimlico key. Leave unset when using server-side bundler config via `/api/bundler` |
@@ -92,6 +93,8 @@ When adding a new environment variable:
 | `CONTENT_PROTECTION_PROXY` | Contracts | Required for the `upgrade-content-protection` GitHub workflow operation |
 | `CONTENT_PROTECTION_ADDRESS` | Contracts / backend | Existing ContentProtection proxy address; required for stake-policy update workflows and backend contract-aware flows |
 | `STAKE_ASSET_ADDRESS` / `STAKE_ASSET_AMOUNT` / `STAKE_ASSET_SYMBOL` | Contracts | Optional stake-policy update workflow inputs; `STAKE_ASSET_ADDRESS` can fall back to `PAYMENT_USDC_ADDRESS` |
+| `SHOW_CAMPAIGN_ESCROW_OWNER` | Contracts | Optional owner/multisig for deploying `ShowCampaignEscrow`; defaults to the deployer |
+| `SHOW_CAMPAIGN_ESCROW_ADDRESS` | Backend / frontend | Deployed Shows escrow address used by pledge execution and event reconciliation once Shows moves beyond backend receipts |
 | `TRUST_STAKE_WEI_NEW` | Backend | Optional override for the new-creator content-protection stake requirement |
 | `TRUST_STAKE_WEI_ESTABLISHED` | Backend | Optional override for the established-tier content-protection stake requirement |
 | `TRUST_STAKE_WEI_TRUSTED` | Backend | Optional override for the trusted-tier content-protection stake requirement |
@@ -115,6 +118,8 @@ When adding a new environment variable:
 | `PAYMENT_QUOTE_TTL_SECONDS` | Backend | Optional lifetime for backend payment quotes returned by `/payments/quote`. Defaults to `60` |
 | `PAYMENT_QUOTE_MAX_STALENESS_SECONDS` | Backend | Optional maximum age for timestamped backend oracle price entries. Defaults to `3600` |
 | `PAYMENT_FUNDING_OPTIONS_JSON` | Backend | JSON array of environment-aware funding actions exposed by the payment UX |
+| `SHOWS_DEFAULT_CHAIN_ID` | Backend | Optional chain ID default for newly created Shows signals/campaign drafts. Falls back to `PAYMENT_CHAIN_ID`, `AA_CHAIN_ID`, `CHAIN_ID`, then Base Sepolia local/staging default. |
+| `SHOWS_DEFAULT_PAYMENT_ASSET_SYMBOL` | Backend | Optional display symbol default for newly created Shows signals/campaign drafts. Defaults to `USDC`. |
 | `PAYMENT_BASE_SEPOLIA_ETH_FAUCET_URL` | Backend | Optional Base Sepolia test ETH faucet URL. When set and no full funding JSON is provided, `/payments/funding-options` exposes a testnet ETH faucet action |
 | `PAYMENT_BASE_SEPOLIA_ETH_FAUCET_PROVIDER` | Backend | Optional display name for the configured Base Sepolia ETH faucet |
 | `PAYMENT_BASE_SEPOLIA_USDC_FAUCET_URL` | Backend | Optional Base Sepolia Circle USDC faucet URL. When set and no full funding JSON is provided, `/payments/funding-options` exposes a testnet USDC faucet action |

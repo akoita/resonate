@@ -35,6 +35,7 @@ import { NotificationModule } from "./notifications/notification.module";
 import { StorefrontModule } from "./storefront/storefront.module";
 import { OpenApiModule } from "./openapi/openapi.module";
 import { McpModule } from "./mcp/mcp.module";
+import { ShowsModule } from "./shows/shows.module";
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { McpModule } from "./mcp/mcp.module";
     StorefrontModule,
     OpenApiModule,
     McpModule,
+    ShowsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

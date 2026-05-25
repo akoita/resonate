@@ -1,6 +1,6 @@
 # Resonate Protocol — Smart Contracts
 
-Solidity contracts powering the Resonate music platform: NFT stems, marketplace, content protection, and revenue escrow.
+Solidity contracts powering the Resonate music platform: NFT stems, marketplace, content protection, revenue escrow, and fan-funded show campaign escrow.
 
 > **Full documentation:** [`docs/smart-contracts/`](../docs/smart-contracts/) — architecture, code examples, integration patterns, gas estimates, security considerations.
 
@@ -12,6 +12,7 @@ Solidity contracts powering the Resonate music platform: NFT stems, marketplace,
 | **StemMarketplaceV2** | `src/core/StemMarketplaceV2.sol`    | List / buy / resale with protocol fees.                     |
 | **ContentProtection** | `src/core/ContentProtection.sol`    | UUPS proxy. Attest, stake, slash (60/30/10), blacklist.     |
 | **RevenueEscrow**     | `src/core/RevenueEscrow.sol`        | Per-token escrow. Deposit, freeze, release, redirect.       |
+| **ShowCampaignEscrow** | `src/core/ShowCampaignEscrow.sol`  | Fan-funded show escrow. Thresholds, refunds, booking/fulfillment-gated release. |
 | **TransferValidator** | `src/modules/TransferValidator.sol` | Transfer hook: whitelist + blacklist enforcement.           |
 
 ## Deployment
@@ -80,6 +81,7 @@ forge script script/DeployProtocol.s.sol \
 | ------------------------------- | -------------------------------------------------------------------- |
 | `DeployProtocol.s.sol`          | Full protocol from scratch (NFT + Marketplace + Protection + Escrow) |
 | `DeployContentProtection.s.sol` | Phase 2 only — add ContentProtection + Escrow to existing deployment |
+| `DeployShowCampaignEscrow.s.sol` | Shows only — deploy standalone campaign funding escrow |
 | `DeployLocalAA.s.sol`           | ERC-4337 Account Abstraction infra (EntryPoint, Kernel, Factory)     |
 
 ### Add to Existing Deployment (Phase 2 only)
@@ -101,6 +103,24 @@ This will:
 2. Deploy RevenueEscrow
 3. Grant ContentProtection registrar access to StemNFT and, when provided, marketplace
 4. Link both to your existing StemNFT and TransferValidator
+
+### Deploy Shows Campaign Escrow Only
+
+`ShowCampaignEscrow` is intentionally independent from the marketplace/content
+protection deployment graph. Deploy it separately when iterating on fan-funded
+show campaigns:
+
+```bash
+export PRIVATE_KEY=0x...
+export RPC_URL=https://sepolia.base.org
+export SHOW_CAMPAIGN_ESCROW_OWNER=0x... # optional owner/ops multisig
+
+make deploy-show-campaign-escrow
+```
+
+After deployment, wire the deployed address into backend/frontend configuration
+with `SHOW_CAMPAIGN_ESCROW_ADDRESS` once live pledge execution or event
+reconciliation is enabled.
 
 ### Environment Variables
 
@@ -142,10 +162,44 @@ non-USDC ERC-20 stake asset.
 ## Testing
 
 ```bash
-forge test                                      # All tests
-forge test --match-path test/ContentProtection.t.sol -vvv  # Specific file
-forge test --gas-report                         # With gas report
+# All tests
+forge test
+
+# Unit tests for a specific contract
+forge test --match-path test/unit/ShowCampaignEscrow.t.sol -vvv
+
+# Fuzz/property tests
+forge test --match-path 'test/fuzz/*' --fuzz-runs 1024
+
+# Invariant tests
+forge test --match-path 'test/invariant/*' --invariant-runs 256
+
+# Formal/symbolic tests currently written in Foundry style for Halmos
+halmos --contract StemNFTFormalTest
+halmos --contract ShowCampaignEscrowFormalTest
+
+# Certora Prover specs
+certoraRun certora/conf/show_campaign_escrow.conf
+
+# Mutation testing for high-value contract suites/specs
+# Configure Gambit per target contract/spec before running it in CI.
+gambit --help
+
+# Gas report
+forge test --gas-report
 ```
+
+Contract changes should follow the project test ladder in
+[`AGENTS.md`](../AGENTS.md): unit tests for every behavior change, fuzz tests for
+non-trivial input spaces, invariants for multi-step state/accounting behavior,
+and symbolic/formal coverage for critical custody, accounting, authorization,
+or upgrade properties unless explicitly deferred. Use mutation testing, such as
+Certora Gambit, for high-value escrow, marketplace, and payment contracts to
+check whether tests/specs catch intentionally injected logic faults.
+
+Certora Prover work lives under `certora/conf/` and `certora/specs/`. Add those
+files only when the spec is meaningful enough to run; otherwise document the
+deferred property in the PR or feature plan.
 
 ## Admin Operations (cast)
 

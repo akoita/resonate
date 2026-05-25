@@ -140,6 +140,7 @@ Deployment operations:
 | `deploy-content-protection` | Phase-2 add-on for an existing `StemNFT` + `TransferValidator` deployment | Deploys a new `ContentProtection` proxy and `RevenueEscrow` without replacing `StemNFT` or marketplace | Requires `STEM_NFT_ADDRESS` and `TRANSFER_VALIDATOR_ADDRESS`; script grants the new `ContentProtection` registrar access to `StemNFT`, optionally grants the existing marketplace when `MARKETPLACE_ADDRESS` is set, updates existing `StemNFT`/`TransferValidator` references, and links `RevenueEscrow -> ContentProtection` |
 | `upgrade-content-protection` | UUPS implementation upgrade | Keeps the same `ContentProtection` proxy address; deploys a new implementation and calls the configured reinitializer | Requires `CONTENT_PROTECTION_PROXY`; downstream contract references do not change because the proxy address is stable |
 | `set-content-protection-stake` | Policy/config update | No redeploy; updates stake amount for an ERC-20 asset | Requires `CONTENT_PROTECTION_ADDRESS` plus `STAKE_ASSET_ADDRESS` or `PAYMENT_USDC_ADDRESS`; no contract reference changes |
+| `deploy-show-campaign-escrow` | Resonate Shows campaign escrow | Deploys standalone `ShowCampaignEscrow` with owner from `SHOW_CAMPAIGN_ESCROW_OWNER` or deployer | No existing protocol contract references need updating today; backend/frontend env must receive the deployed escrow address before live pledge execution |
 | `verify-base-sepolia` | BaseScan/Etherscan verification retry | No deploy | Reads the selected broadcast file |
 | `verify-base-sepolia-sourcify` | Sourcify verification retry | No deploy | Reads the selected broadcast file |
 
@@ -182,6 +183,7 @@ Optional GitHub environment variables:
 | `STEM_NFT_ADDRESS`, `MARKETPLACE_ADDRESS`, `TRANSFER_VALIDATOR_ADDRESS`, `EXISTING_ADMIN` | Required/optional inputs for `deploy-content-protection`. `MARKETPLACE_ADDRESS` should be set when an existing marketplace must register protected content. `EXISTING_ADMIN` is only for local/fork impersonation-style workflows; real testnet runs must be signed by the admin. |
 | `CONTENT_PROTECTION_PROXY` | Required for `upgrade-content-protection`. |
 | `CONTENT_PROTECTION_ADDRESS`, `STAKE_ASSET_ADDRESS`, `STAKE_ASSET_AMOUNT`, `STAKE_ASSET_SYMBOL` | Inputs for `set-content-protection-stake`. |
+| `SHOW_CAMPAIGN_ESCROW_OWNER` | Optional owner/ops multisig for `deploy-show-campaign-escrow`; defaults to the deployer. |
 
 Security guidance:
 

@@ -1,10 +1,9 @@
-"use client";
-
 import { CampaignCard } from "../../components/shows/CampaignCard";
-import { listCampaignsSync } from "../../lib/shows";
+import { listCampaigns } from "../../lib/shows";
+import Link from "next/link";
 
-export default function ShowsExplorerPage() {
-  const campaigns = listCampaignsSync();
+export default async function ShowsExplorerPage() {
+  const campaigns = await listCampaigns();
   const totalBackers = campaigns.reduce((s, c) => s + c.backerCount, 0);
 
   return (
@@ -46,9 +45,12 @@ export default function ShowsExplorerPage() {
 
       {/* ── Campaign grid ── */}
       <section aria-label="All campaigns">
-        <h2 className="shows-page__toolbar-heading" style={{ marginBottom: 20 }}>
-          All campaigns
-        </h2>
+        <div className="shows-page__toolbar" style={{ marginBottom: 20 }}>
+          <h2 className="shows-page__toolbar-heading">All campaigns</h2>
+          <Link href="/shows/create" className="shows-page__create-link">
+            Create campaign
+          </Link>
+        </div>
         <div className="campaign-grid">
           {campaigns.map((c) => (
             <CampaignCard key={c.id} campaign={c} />
