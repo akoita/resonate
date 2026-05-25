@@ -42,7 +42,7 @@ The processor accepts the default parameters emitted by `resonate-iac` issue
 | `quarantineTable` | `analytics_quarantine` table ID. |
 | `environment` | Optional environment label for logs. |
 | `supportedEventVersions` | Comma-separated versions promoted beyond raw. Defaults to `1`. |
-| `dedupeWindowSeconds` | Fixed window for eventId dedupe. Defaults to `900`. |
+| `dedupeWindowSeconds` | Event-id dedupe TTL in keyed state. Defaults to `900`. |
 
 ## Build
 
@@ -110,8 +110,8 @@ analytics_dataflow_worker_bucket_names=["<staging/temp bucket>"]
 - Unsupported versions and families are retained in `events_raw` and written to
   `analytics_quarantine` with a reason.
 - Malformed messages are written to `analytics_quarantine`.
-- Pub/Sub redeliveries are deduped by `eventId` within a fixed streaming
-  window before BigQuery writes.
+- Pub/Sub redeliveries are deduped by `eventId` in keyed state for the
+  configured TTL while the first event is written immediately.
 
 ## Derived SQL
 

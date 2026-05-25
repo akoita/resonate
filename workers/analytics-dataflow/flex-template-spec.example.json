@@ -73,7 +73,7 @@
       {
         "name": "dedupeWindowSeconds",
         "label": "Dedupe window seconds",
-        "helpText": "Fixed window size used to dedupe Pub/Sub redeliveries by eventId before BigQuery writes. Defaults to 900.",
+        "helpText": "Event-id dedupe TTL used to drop Pub/Sub redeliveries after the first immediate BigQuery write. Defaults to 900.",
         "isOptional": true
       }
     ]
