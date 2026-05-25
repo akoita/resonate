@@ -66,6 +66,7 @@ export class AnalyticsController {
 function normalizePlaybackCompletedRequest(body: PlaybackCompletedRequest): PlaybackCompletedAnalyticsInput {
   const trackId = typeof body.trackId === "string" ? body.trackId.trim() : "";
   const artistId = typeof body.artistId === "string" ? body.artistId.trim() : undefined;
+  const releaseId = typeof body.releaseId === "string" ? body.releaseId.trim() : undefined;
   const sessionId = typeof body.sessionId === "string" ? body.sessionId.trim() : undefined;
   const source = typeof body.source === "string" ? body.source.trim() : undefined;
   const completionRatio = Number(body.completionRatio);
@@ -84,6 +85,7 @@ function normalizePlaybackCompletedRequest(body: PlaybackCompletedRequest): Play
   return {
     trackId,
     artistId: artistId || undefined,
+    releaseId: releaseId || undefined,
     sessionId: sessionId || undefined,
     source: source || "web_player",
     completionRatio,

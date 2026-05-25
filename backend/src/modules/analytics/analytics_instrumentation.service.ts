@@ -6,6 +6,7 @@ import { AnalyticsIngestService } from "./analytics_ingest.service";
 export interface PlaybackCompletedAnalyticsInput {
   trackId: string;
   artistId?: string;
+  releaseId?: string;
   sessionId?: string;
   source?: string;
   completionRatio: number;
@@ -63,7 +64,7 @@ export class AnalyticsInstrumentationService {
   ) {}
 
   async recordPlaybackCompleted(input: PlaybackCompletedAnalyticsInput) {
-    const artistId = await this.resolvePlaybackArtistId(input);
+    const catalog = await this.resolvePlaybackCatalog(input);
 
     return this.emit({
       eventName: "playback.completed",
@@ -74,28 +75,37 @@ export class AnalyticsInstrumentationService {
       sessionId: input.sessionId,
       payload: {
         trackId: input.trackId,
-        artistId,
+        artistId: catalog.artistId,
+        releaseId: catalog.releaseId,
         completionRatio: input.completionRatio,
         durationMs: input.durationMs,
         source: input.source,
       },
-      sourceRefs: input.sessionId ? { sessionId: input.sessionId, trackId: input.trackId } : undefined,
+      sourceRefs: {
+        ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+        trackId: input.trackId,
+        ...(catalog.releaseId ? { releaseId: catalog.releaseId } : {}),
+      },
     });
   }
 
-  private async resolvePlaybackArtistId(input: PlaybackCompletedAnalyticsInput) {
-    const artistId = input.artistId?.trim();
-    if (artistId) {
-      return artistId;
+  private async resolvePlaybackCatalog(input: PlaybackCompletedAnalyticsInput) {
+    const inputArtistId = input.artistId?.trim();
+    const inputReleaseId = input.releaseId?.trim();
+    const shouldResolveCatalog = !inputArtistId || !inputReleaseId;
+    const metadata = shouldResolveCatalog
+      ? await this.catalogMetadataService?.findTracks([input.trackId])
+      : undefined;
+    const catalogTrack = metadata?.get(input.trackId);
+    const artistId = inputArtistId || catalogTrack?.artistId?.trim();
+    if (!artistId) {
+      throw new BadRequestException("artistId is required or trackId must reference a catalog track");
     }
 
-    const metadata = await this.catalogMetadataService?.findTracks([input.trackId]);
-    const catalogArtistId = metadata?.get(input.trackId)?.artistId?.trim();
-    if (catalogArtistId) {
-      return catalogArtistId;
-    }
-
-    throw new BadRequestException("artistId is required or trackId must reference a catalog track");
+    return {
+      artistId,
+      releaseId: catalogTrack?.releaseId?.trim() || inputReleaseId || undefined,
+    };
   }
 
   async recordLibrarySaved(input: LibrarySavedAnalyticsInput) {

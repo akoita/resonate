@@ -2826,6 +2826,107 @@ a {
   font-size: 12px;
 }
 
+.artist-catalog-page {
+  display: grid;
+  gap: 20px;
+}
+
+.artist-catalog-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.artist-catalog-header h1 {
+  margin: 0;
+}
+
+.artist-catalog-actions,
+.artist-catalog-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.artist-catalog-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.artist-catalog-controls {
+  justify-content: space-between;
+}
+
+.artist-catalog-search {
+  min-width: min(420px, 100%);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.artist-catalog-search .ms-icon {
+  color: var(--color-muted);
+  font-size: 20px;
+}
+
+.artist-catalog-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  color: var(--color-text);
+  background: transparent;
+  font: inherit;
+}
+
+.artist-catalog-search input::placeholder {
+  color: var(--color-muted);
+}
+
+.artist-catalog-title-link {
+  color: var(--color-text);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.artist-catalog-title-link:hover {
+  color: var(--color-accent);
+}
+
+.artist-catalog-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.artist-catalog-status.ready {
+  color: #071b13;
+  background: #72f0b3;
+}
+
+.artist-catalog-status.pending {
+  color: #241404;
+  background: #f4bd7a;
+}
+
+.artist-catalog-status.blocked {
+  color: #2a0709;
+  background: #ff8f98;
+}
+
 @keyframes analytics-loading {
   from {
     background-position: 100% 0;
@@ -11106,12 +11207,16 @@ tr[draggable="true"]:hover {
  * - Table padding tightens.
  * ------------------------------------------------------------------ */
 @media (max-width: 767px) {
-  .artist-analytics-header {
+  .artist-analytics-header,
+  .artist-catalog-header {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .analytics-window-switch {
+  .analytics-window-switch,
+  .artist-catalog-actions,
+  .artist-catalog-controls,
+  .artist-catalog-search {
     width: 100%;
   }
 
@@ -11124,6 +11229,7 @@ tr[draggable="true"]:hover {
   }
 
   .analytics-kpi-grid,
+  .artist-catalog-summary,
   .analytics-layout,
   .analytics-protection-grid,
   .analytics-skeleton-grid {

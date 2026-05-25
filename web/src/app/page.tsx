@@ -739,8 +739,8 @@ export default function Home() {
                   <span className="ng-kicker ng-kicker--tertiary">Managed artists</span>
                   <h3 className="ng-section-title">Managed Catalog</h3>
                 </div>
-                <Link href="/artist/upload" className="ng-icon-link" aria-label="Upload release">
-                  <span className="ms-icon" aria-hidden>upload</span>
+                <Link href="/artist/catalog" className="ng-icon-link" aria-label="Open managed catalog">
+                  <span className="ms-icon" aria-hidden>table_rows</span>
                 </Link>
               </header>
               <div className="ng-uploader-list">
@@ -793,8 +793,8 @@ export default function Home() {
                   <span className="ng-kicker ng-kicker--primary">Release queue</span>
                   <h3 className="ng-section-title">Your Releases</h3>
                 </div>
-                <Link href="/artist/analytics" className="ng-icon-link" aria-label="Open analytics">
-                  <span className="ms-icon" aria-hidden>monitoring</span>
+                <Link href="/artist/catalog" className="ng-icon-link" aria-label="Open full release inventory">
+                  <span className="ms-icon" aria-hidden>table_rows</span>
                 </Link>
               </header>
 
@@ -1054,6 +1054,7 @@ function mapReleaseToLocalTracks(release: Release): LocalTrack[] {
     createdAt: track.createdAt ? new Date(track.createdAt).toISOString() : release.createdAt,
     catalogTrackId: track.id,
     artistId: release.artist?.id || release.artistId,
+    releaseId: release.id,
     remoteUrl: getReleaseTrackStreamUrl(release.id, track.id),
     remoteArtworkUrl: release.artworkUrl || undefined,
     source: "remote",

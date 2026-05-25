@@ -65,6 +65,11 @@ describe("AnalyticsInstrumentationService", () => {
         payload: expect.objectContaining({
           trackId: "track-1",
           artistId: "artist-1",
+          releaseId: "release-1",
+        }),
+        sourceRefs: expect.objectContaining({
+          trackId: "track-1",
+          releaseId: "release-1",
         }),
       }),
     ]);

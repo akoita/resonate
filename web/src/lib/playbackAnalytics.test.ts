@@ -10,6 +10,7 @@ const track: LocalTrack = {
   id: "track-1",
   catalogTrackId: "catalog-track-1",
   artistId: "artist-1",
+  releaseId: "release-1",
   title: "Track",
   artist: "Artist",
   albumArtist: null,
@@ -125,6 +126,7 @@ describe("playback analytics helpers", () => {
     ).toEqual({
       trackId: "catalog-track-1",
       artistId: "artist-1",
+      releaseId: "release-1",
       sessionId: "session-uuid",
       source: "web_player",
       completionRatio: 1,
@@ -142,6 +144,7 @@ describe("playback analytics helpers", () => {
       }),
     ).toEqual({
       trackId: "catalog-track-1",
+      releaseId: "release-1",
       sessionId: "session-1",
       source: "web_player",
       completionRatio: 0.25,

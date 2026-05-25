@@ -1010,6 +1010,7 @@ export default function ReleaseDetails() {
       createdAt: t.createdAt ? new Date(t.createdAt).toISOString() : new Date().toISOString(),
       catalogTrackId: t.id,
       artistId: release?.artist?.id || release?.artistId,
+      releaseId: release?.id,
       remoteUrl: remoteUrlOverride || streamUrl,
       remoteArtworkUrl: release?.artworkUrl || undefined,
       source: "remote",

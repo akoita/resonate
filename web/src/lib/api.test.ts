@@ -158,6 +158,7 @@ describe('API Client', () => {
       const result = await api.recordPlaybackCompleted('listener-token', {
         trackId: 'track-1',
         artistId: 'artist-1',
+        releaseId: 'release-1',
         sessionId: 'session-1',
         source: 'web_player',
         completionRatio: 0.8,
@@ -171,6 +172,7 @@ describe('API Client', () => {
       expect(JSON.parse(opts.body)).toEqual({
         trackId: 'track-1',
         artistId: 'artist-1',
+        releaseId: 'release-1',
         sessionId: 'session-1',
         source: 'web_player',
         completionRatio: 0.8,
