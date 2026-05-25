@@ -5,6 +5,7 @@ import { base, baseSepolia, foundry, sepolia } from "viem/chains";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
 import { AuditModule } from "../audit/audit.module";
+import { SharedModule } from "../shared/shared.module";
 import { AuthController } from "./auth.controller";
 import { AuthNonceService } from "./auth_nonce.service";
 import { AuthService } from "./auth.service";
@@ -85,6 +86,7 @@ function getChainFromConfig(config: ConfigService): { chain: Chain; transport: R
   imports: [
     PassportModule.register({ defaultStrategy: "jwt" }),
     AuditModule,
+    SharedModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

@@ -110,6 +110,58 @@ export interface RecommendationGeneratedEvent extends BaseEvent {
   strategy: string;
 }
 
+export interface IdentityAuthenticatedEvent extends BaseEvent {
+  eventName: "identity.authenticated";
+  userId: string;
+  role: string;
+  authMode?: string;
+  requestedChainId?: number;
+  verifiedChainId: number;
+  signupFaucetSent: boolean;
+}
+
+export interface PlaylistCreatedEvent extends BaseEvent {
+  eventName: "playlist.created";
+  userId: string;
+  playlistId: string;
+  folderId?: string | null;
+  trackCount: number;
+}
+
+export interface PlaylistUpdatedEvent extends BaseEvent {
+  eventName: "playlist.updated";
+  userId: string;
+  playlistId: string;
+  folderId?: string | null;
+  changedFields: string[];
+  trackCount: number;
+}
+
+export interface PlaylistDeletedEvent extends BaseEvent {
+  eventName: "playlist.deleted";
+  userId: string;
+  playlistId: string;
+  trackCount: number;
+}
+
+export interface PlaylistTrackAddedEvent extends BaseEvent {
+  eventName: "playlist.track_added";
+  userId: string;
+  playlistId: string;
+  trackIds: string[];
+  addedCount: number;
+  trackCount: number;
+}
+
+export interface PlaylistTrackRemovedEvent extends BaseEvent {
+  eventName: "playlist.track_removed";
+  userId: string;
+  playlistId: string;
+  trackIds: string[];
+  removedCount: number;
+  trackCount: number;
+}
+
 export interface CuratorStakedEvent extends BaseEvent {
   eventName: "curator.staked";
   curatorId: string;
@@ -302,6 +354,14 @@ export interface WalletBudgetSetEvent extends BaseEvent {
   eventName: "wallet.budget_set";
   userId: string;
   monthlyCapUsd: number;
+}
+
+export interface WalletFaucetRequestedEvent extends BaseEvent {
+  eventName: "wallet.faucet_requested";
+  userId: string;
+  chainId: number;
+  amountEth: string;
+  status: "sent" | "skipped" | "failed";
 }
 
 export interface WalletSpentEvent extends BaseEvent {
@@ -603,6 +663,44 @@ export interface AgentPurchaseFailedEvent extends BaseEvent {
   error: string;
 }
 
+export interface X402PurchaseEvent extends BaseEvent {
+  eventName: "x402.purchase";
+  stemId: string;
+  trackId?: string;
+  releaseId?: string;
+  artistId?: string;
+  listingId?: string;
+  tokenId?: string;
+  receiptId: string;
+  paymentRail: "facilitator" | "smart_account";
+  transactionHash: string;
+  amountUsd: number;
+  canonicalAmountUsd: number;
+  paymentToken?: string;
+  paymentAssetId?: string;
+  paymentAssetSymbol?: string;
+  paymentAssetDecimals?: number;
+  settlementAmount?: string;
+  settlementAmountUnits?: string;
+  settlementStatus?: string;
+  entitlement?: string;
+  payer?: string;
+}
+
+export interface X402PurchaseFailedEvent extends BaseEvent {
+  eventName: "x402.purchase_failed";
+  stemId: string;
+  trackId?: string;
+  releaseId?: string;
+  artistId?: string;
+  listingId?: string;
+  receiptId?: string;
+  paymentRail?: "facilitator" | "smart_account";
+  transactionHash?: string;
+  status: string;
+  reason: string;
+}
+
 // ============ Generation Events ============
 
 export interface GenerationStartedEvent extends BaseEvent {
@@ -670,6 +768,12 @@ export type ResonateEvent =
   | RemixCreatedEvent
   | RecommendationPreferencesUpdatedEvent
   | RecommendationGeneratedEvent
+  | IdentityAuthenticatedEvent
+  | PlaylistCreatedEvent
+  | PlaylistUpdatedEvent
+  | PlaylistDeletedEvent
+  | PlaylistTrackAddedEvent
+  | PlaylistTrackRemovedEvent
   | CuratorStakedEvent
   | CuratorReportedEvent
   | CatalogUpdatedEvent
@@ -689,6 +793,7 @@ export type ResonateEvent =
   | PaymentSettledEvent
   | WalletFundedEvent
   | WalletBudgetSetEvent
+  | WalletFaucetRequestedEvent
   | WalletSpentEvent
   | StemsProgressEvent
   | StemsFailedEvent
@@ -715,6 +820,8 @@ export type ResonateEvent =
   | AgentBudgetAlertEvent
   | AgentPurchaseCompletedEvent
   | AgentPurchaseFailedEvent
+  | X402PurchaseEvent
+  | X402PurchaseFailedEvent
   | AgentGenerationTriggeredEvent
   | GenerationStartedEvent
   | GenerationProgressEvent
