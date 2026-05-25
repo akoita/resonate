@@ -25,6 +25,7 @@ import { useToast } from "../ui/Toast";
 import { PromptModal } from "../ui/PromptModal";
 import { ContextMenu } from "../ui/ContextMenu";
 import { usePlayer } from "../../lib/playerContext";
+import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
 
 interface GlobalPlaylistPanelProps {
     isOpen: boolean;
@@ -255,6 +256,7 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
         const tracks = playlistTracks.get(p.id);
         if (tracks && tracks.length > 0) {
             await playQueue(tracks, 0);
+            reportPlaylistPlayed(p.id, p.trackIds.length, tracks.length, "global_playlist_panel");
             addToast({ type: "success", title: "Playing Playlist", message: `Started playing "${p.name}"` });
         } else {
             // Load if not in cache
@@ -263,11 +265,30 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                 const tracksToPlay = await Promise.all(playlist.trackIds.map(id => getTrack(id)));
                 const valid = tracksToPlay.filter((t): t is LocalTrack => t !== null);
                 await playQueue(valid, 0);
+                reportPlaylistPlayed(playlist.id, playlist.trackIds.length, valid.length, "global_playlist_panel");
                 addToast({ type: "success", title: "Playing Playlist", message: `Started playing "${p.name}"` });
             } else {
                 addToast({ type: "warning", title: "Empty Playlist", message: "This playlist has no tracks." });
             }
         }
+    };
+
+    const reportPlaylistPlayed = (
+        playlistId: string,
+        trackCount: number,
+        playableTrackCount: number,
+        source: string,
+    ) => {
+        recordProductAnalyticsFromBrowser("playlist.played", {
+            source,
+            subjectType: "playlist",
+            subjectId: playlistId,
+            payload: {
+                playlistId,
+                trackCount,
+                playableTrackCount,
+            },
+        });
     };
 
     const handlePlayTrack = async (playlistId: string, trackId: string) => {
