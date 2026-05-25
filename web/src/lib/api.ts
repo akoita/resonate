@@ -428,6 +428,46 @@ export async function getArtistMe(token: string) {
   return apiRequest<ArtistProfile | null>("/artists/me", { silentErrorCodes: [401] }, token);
 }
 
+export type ArtistDashboardData = {
+  summary: {
+    artistId: string;
+    days: number;
+    totalPlays: number;
+    totalPayoutUsd: number;
+    payoutsByAsset: Array<{
+      paymentToken: string;
+      assetId: string | null;
+      symbol: string;
+      decimals: number;
+      settlementAmount: string;
+      canonicalAmountUsd: number;
+      count: number;
+    }>;
+  };
+  tracks: Array<{
+    trackId: string;
+    title: string;
+    plays: number;
+    payoutUsd: number;
+  }>;
+  sessions: Array<{
+    sessionId: string;
+    plays: number;
+    payoutUsd: number;
+  }>;
+  sources: Array<{
+    source: string;
+    plays: number;
+  }>;
+  export: {
+    generatedAt: string;
+  };
+};
+
+export async function getArtistDashboardData(artistId: string, days: number, token: string) {
+  return apiRequest<ArtistDashboardData>(`/analytics/artist/${artistId}/v1?days=${days}`, {}, token);
+}
+
 export type TrustTier = {
   artistId: string;
   tier: string;

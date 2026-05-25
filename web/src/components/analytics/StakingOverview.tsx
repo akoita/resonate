@@ -101,60 +101,36 @@ export default function StakingOverview() {
       {/* KPI cards */}
       {data && data.counts.total > 0 && (
         <>
-          <div style={{
-            ...kpiGridStyle,
-            // 4 across on desktop, 2 across on tablet, 2 across on phone
-            // (2-up keeps KPI pairs visually balanced rather than a tall
-            // 4-stack on phone).
-            gridTemplateColumns: isPhone || isTablet ? "repeat(2, minmax(0, 1fr))" : "repeat(4, 1fr)",
-          }}>
+          <div className="kpi-row" style={{ marginBottom: "24px" }}>
             {kpis.map(kpi => (
-              <div key={kpi.label} style={kpiCardStyle}>
-                <div style={{ fontSize: "20px", marginBottom: "8px" }}>{kpi.icon}</div>
-                <div style={{ fontSize: "11px", opacity: 0.5, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                  {kpi.label}
+              <div key={kpi.label} className={`premium-kpi-card ${kpi.label === "Slashed" ? "agent-context" : "human-context"}`}>
+                <div className="kpi-header">
+                  <span className="kpi-label">{kpi.label}</span>
+                  <div className="kpi-icon-glow">{kpi.icon}</div>
                 </div>
-                <div style={{
-                  fontSize: "22px",
-                  fontWeight: 700,
-                  marginTop: "4px",
-                  color: kpi.alert ? "#ef4444" : "#fff",
-                }}>
-                  {kpi.value}
-                </div>
-                <div style={{
-                  fontSize: "11px",
-                  opacity: 0.6,
-                  marginTop: "4px",
-                  color: kpi.alert ? "rgba(239, 68, 68, 0.7)" : undefined,
-                }}>
-                  {kpi.sub}
+                <div className="kpi-value-mono">{kpi.value}</div>
+                <div className="kpi-subtitle-trend">
+                  <span className={kpi.alert ? "kpi-trend-up" : "kpi-trend-neutral"}>{kpi.sub}</span>
                 </div>
               </div>
             ))}
           </div>
 
           {/* Stakes table */}
-          <div style={tableContainerStyle}>
-            <h3 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 600 }}>Stake History</h3>
-            <table style={tableStyle}>
+          <div className="premium-table-wrapper">
+            <h2>Stake History</h2>
+            <table className="premium-table">
               <thead>
                 <tr>
-                  <th style={thStyle}>Release</th>
-                  <th style={thStyle}>Amount</th>
-                  <th style={thStyle}>Deposited</th>
-                  <th style={thStyle}>Status</th>
+                  <th>Release</th>
+                  <th>Amount</th>
+                  <th>Deposited</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {data.stakes.map((s, i) => {
                   const status = s.slashedAt ? "slashed" : s.refundedAt ? "refunded" : s.active ? "active" : "inactive";
-                  const statusColors: Record<string, string> = {
-                    active: "#10b981",
-                    slashed: "#ef4444",
-                    refunded: "#3b82f6",
-                    inactive: "#6b7280",
-                  };
                   const statusLabels: Record<string, string> = {
                     active: "Active ✓",
                     slashed: "Slashed ✕",
@@ -162,20 +138,18 @@ export default function StakingOverview() {
                     inactive: "Inactive",
                   };
                   return (
-                    <tr key={i} style={{ transition: "background 0.15s" }}>
-                      <td style={tdStyle}>
-                        <span style={{ fontWeight: 500, fontSize: "13px" }}>
+                    <tr key={i}>
+                      <td>
+                        <span style={{ fontWeight: 600 }}>
                           {s.releaseTitle || "Unknown Release"}
                         </span>
                       </td>
-                      <td style={tdStyle}>{formatEth(s.amount)}</td>
-                      <td style={tdStyle}>
-                        <span style={{ fontSize: "12px", opacity: 0.7 }}>
-                          {formatOptionalDate(s.depositedAt)}
-                        </span>
+                      <td className="premium-table-cell-mono">{formatEth(s.amount)}</td>
+                      <td className="premium-table-cell-mono" style={{ opacity: 0.7 }}>
+                        {formatOptionalDate(s.depositedAt)}
                       </td>
-                      <td style={tdStyle}>
-                        <span style={{ fontWeight: 600, fontSize: "12px", color: statusColors[status] }}>
+                      <td>
+                        <span className={`status-capsule-badge ${status}`}>
                           {statusLabels[status]}
                         </span>
                       </td>
