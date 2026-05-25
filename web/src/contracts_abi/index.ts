@@ -716,6 +716,37 @@ export const CurationRewardsABI = [
   },
 ] as const;
 
+// ============ ShowCampaignEscrow ============
+export const ShowCampaignEscrowABI = [
+  {
+    type: "function",
+    name: "pledge",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "campaignId", type: "uint256" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "claimRefund",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "campaignId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "refundable",
+    stateMutability: "view",
+    inputs: [
+      { name: "campaignId", type: "uint256" },
+      { name: "backer", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
+
 // ============ Contract Addresses (per network) ============
 export interface ContractAddresses {
   stemNFT: `0x${string}`;
@@ -724,6 +755,7 @@ export interface ContractAddresses {
   contentProtection: `0x${string}`;
   disputeResolution: `0x${string}`;
   curationRewards: `0x${string}`;
+  showCampaignEscrow: `0x${string}`;
 }
 
 // Deployed addresses by chain ID
@@ -736,6 +768,7 @@ export const ADDRESSES: Record<number, ContractAddresses> = {
     contentProtection: (process.env.NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     disputeResolution: (process.env.NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     curationRewards: (process.env.NEXT_PUBLIC_CURATION_REWARDS_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
+    showCampaignEscrow: (process.env.NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
   },
   // Sepolia
   11155111: {
@@ -745,6 +778,7 @@ export const ADDRESSES: Record<number, ContractAddresses> = {
     contentProtection: (process.env.NEXT_PUBLIC_SEPOLIA_CONTENT_PROTECTION_ADDRESS || process.env.NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     disputeResolution: (process.env.NEXT_PUBLIC_SEPOLIA_DISPUTE_RESOLUTION_ADDRESS || process.env.NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     curationRewards: (process.env.NEXT_PUBLIC_SEPOLIA_CURATION_REWARDS_ADDRESS || process.env.NEXT_PUBLIC_CURATION_REWARDS_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
+    showCampaignEscrow: (process.env.NEXT_PUBLIC_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS || process.env.NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
   },
   // Base Sepolia
   84532: {
@@ -754,6 +788,7 @@ export const ADDRESSES: Record<number, ContractAddresses> = {
     contentProtection: (process.env.NEXT_PUBLIC_BASE_SEPOLIA_CONTENT_PROTECTION_ADDRESS || process.env.NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     disputeResolution: (process.env.NEXT_PUBLIC_BASE_SEPOLIA_DISPUTE_RESOLUTION_ADDRESS || process.env.NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     curationRewards: (process.env.NEXT_PUBLIC_BASE_SEPOLIA_CURATION_REWARDS_ADDRESS || process.env.NEXT_PUBLIC_CURATION_REWARDS_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
+    showCampaignEscrow: (process.env.NEXT_PUBLIC_BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS || process.env.NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
   },
   // Arbitrum Sepolia
   421614: {
@@ -763,6 +798,7 @@ export const ADDRESSES: Record<number, ContractAddresses> = {
     contentProtection: (process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_CONTENT_PROTECTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     disputeResolution: (process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_DISPUTE_RESOLUTION_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
     curationRewards: (process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_CURATION_REWARDS_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
+    showCampaignEscrow: (process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`,
   },
 };
 

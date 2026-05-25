@@ -344,6 +344,15 @@ jobs:
             if [[ -f contracts/deployments/base-sepolia.remote.env ]]; then
               echo "- Base Sepolia environment handoff: \`contracts/deployments/base-sepolia.remote.env\`"
             fi
+            if [[ -f "contracts/deployments/show-campaign-escrow.${{ inputs.target_network }}.json" ]]; then
+              echo "- ShowCampaignEscrow deployment record: \`contracts/deployments/show-campaign-escrow.${{ inputs.target_network }}.json\`"
+            fi
+            if [[ -f "contracts/deployments/show-campaign-escrow.${{ inputs.target_network }}.remote.env" ]]; then
+              echo "- ShowCampaignEscrow environment handoff: \`contracts/deployments/show-campaign-escrow.${{ inputs.target_network }}.remote.env\`"
+            fi
+            if [[ -f contracts/deployments/show-campaign-escrow.abi.json ]]; then
+              echo "- ShowCampaignEscrow ABI handoff: \`contracts/deployments/show-campaign-escrow.abi.json\`"
+            fi
             if [[ -f contracts/deployments/sepolia.json ]]; then
               echo "- Sepolia deployment record: \`contracts/deployments/sepolia.json\`"
             fi

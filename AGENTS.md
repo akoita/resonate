@@ -255,6 +255,25 @@ admin-update script.
 - If a script needs a different signer model, document it in
   `docs/smart-contracts/deployment.md` before wiring it into CI.
 
+### Deployment Output Handoffs
+
+Every deploy script that creates or changes an address-bearing contract must
+produce machine-readable handoff files under `contracts/deployments/` before it
+is considered CI/deploy ready:
+
+- a JSON deployment record with network, chain ID, deployer, owner/admin when
+  relevant, contract addresses, transaction hash, broadcast path, artifact path,
+  ABI path, and ABI hash;
+- a `.remote.env` handoff containing only non-secret app/runtime variables that
+  `resonate-iac`, GitHub environments, GCP Secret Manager, or Cloud Run config
+  need to consume;
+- an ABI handoff, or a documented generated ABI module, for any app-side code
+  that submits calls, decodes events, or validates contract data.
+
+Never make app deployment depend on copied console output. If an existing
+contract deploy path only uploads raw Foundry broadcasts, improve it to follow
+this pattern before adding more downstream automation.
+
 ### Required Test Ladder
 
 Use the strongest practical layer for the risk of the change. Do not rely on

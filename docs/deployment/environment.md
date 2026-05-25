@@ -95,6 +95,7 @@ When adding a new environment variable:
 | `STAKE_ASSET_ADDRESS` / `STAKE_ASSET_AMOUNT` / `STAKE_ASSET_SYMBOL` | Contracts | Optional stake-policy update workflow inputs; `STAKE_ASSET_ADDRESS` can fall back to `PAYMENT_USDC_ADDRESS` |
 | `SHOW_CAMPAIGN_ESCROW_OWNER` | Contracts | Optional owner/multisig for deploying `ShowCampaignEscrow`; defaults to the deployer |
 | `SHOW_CAMPAIGN_ESCROW_ADDRESS` | Backend / frontend | Deployed Shows escrow address used by pledge execution and event reconciliation once Shows moves beyond backend receipts |
+| `NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS` | Frontend | Public default Shows escrow address promoted from `contracts/deployments/show-campaign-escrow.<network>.remote.env`; individual campaigns still come from backend `contractAddress` / `contractCampaignId` records |
 | `TRUST_STAKE_WEI_NEW` | Backend | Optional override for the new-creator content-protection stake requirement |
 | `TRUST_STAKE_WEI_ESTABLISHED` | Backend | Optional override for the established-tier content-protection stake requirement |
 | `TRUST_STAKE_WEI_TRUSTED` | Backend | Optional override for the trusted-tier content-protection stake requirement |
