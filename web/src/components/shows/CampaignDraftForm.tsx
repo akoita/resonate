@@ -118,6 +118,12 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
       .then((profile) => {
         if (!active) return;
         setArtist(profile);
+        if (profile && !isPrivileged) {
+          setArtistDisplayName(profile.displayName || "");
+          setBeneficiaryAddress(profile.payoutAddress || "");
+          setPaymentTokenAddress("");
+          return;
+        }
         setArtistDisplayName((current) => current || profile?.displayName || "");
         setBeneficiaryAddress((current) => current || profile?.payoutAddress || "");
       })
@@ -131,7 +137,7 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
     return () => {
       active = false;
     };
-  }, [status, token]);
+  }, [isPrivileged, status, token]);
 
   function updateTier(index: number, patch: Partial<TierForm>) {
     setTiers((current) => current.map((tier, tierIndex) => (
@@ -170,7 +176,7 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
 
       const draft = {
         artistId: artist?.id ?? null,
-        artistDisplayName: artistDisplayName.trim(),
+        artistDisplayName: (isPrivileged ? artistDisplayName : artist?.displayName ?? artistDisplayName).trim(),
         title: draftTitle,
         description: description.trim() || null,
         city: city.trim(),
@@ -184,9 +190,11 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
         currency: campaign?.currency ?? "USD",
         paymentAssetSymbol: PAYMENT_SYMBOL,
         paymentAssetDecimals: PAYMENT_DECIMALS,
-        paymentTokenAddress: paymentTokenAddress.trim() || null,
-        beneficiaryAddress: beneficiaryAddress.trim() || null,
-        beneficiaryType: beneficiaryAddress.trim() ? "wallet" as const : null,
+        paymentTokenAddress: isPrivileged ? paymentTokenAddress.trim() || null : null,
+        beneficiaryAddress: (isPrivileged ? beneficiaryAddress : artist?.payoutAddress ?? beneficiaryAddress).trim() || null,
+        beneficiaryType: (isPrivileged ? beneficiaryAddress : artist?.payoutAddress ?? beneficiaryAddress).trim()
+          ? "wallet" as const
+          : null,
         authorityEvidenceBundleId: authorityEvidenceBundleId.trim() || null,
         tiers: normalizedTiers,
       };
@@ -227,8 +235,12 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
       <div className="shows-create__panel">
         <h2>Campaign</h2>
         <label>
-          Artist name
-          <input value={artistDisplayName} onChange={(event) => setArtistDisplayName(event.target.value)} />
+          Artist name {!isPrivileged ? "(from your artist profile)" : ""}
+          <input
+            value={artistDisplayName}
+            onChange={(event) => setArtistDisplayName(event.target.value)}
+            readOnly={!isPrivileged}
+          />
         </label>
         <label>
           Campaign title
@@ -279,8 +291,13 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
           <input type="datetime-local" value={targetDate} onChange={(event) => setTargetDate(event.target.value)} />
         </label>
         <label>
-          Payment token address
-          <input value={paymentTokenAddress} onChange={(event) => setPaymentTokenAddress(event.target.value)} placeholder="0x..." />
+          Payment token address {!isPrivileged ? "(configured by platform)" : ""}
+          <input
+            value={paymentTokenAddress}
+            onChange={(event) => setPaymentTokenAddress(event.target.value)}
+            placeholder={isPrivileged ? "0x..." : "Platform default"}
+            readOnly={!isPrivileged}
+          />
         </label>
         <small>Chain {chainId}. Asset defaults to {PAYMENT_SYMBOL} with {PAYMENT_DECIMALS} decimals.</small>
       </div>
@@ -288,8 +305,13 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
       <div className="shows-create__panel">
         <h2>Authority</h2>
         <label>
-          Beneficiary wallet
-          <input value={beneficiaryAddress} onChange={(event) => setBeneficiaryAddress(event.target.value)} placeholder="0x..." />
+          Beneficiary wallet {!isPrivileged ? "(from your payout profile)" : ""}
+          <input
+            value={beneficiaryAddress}
+            onChange={(event) => setBeneficiaryAddress(event.target.value)}
+            placeholder="0x..."
+            readOnly={!isPrivileged}
+          />
         </label>
         <label>
           Authority evidence bundle

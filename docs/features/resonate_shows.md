@@ -109,7 +109,7 @@ Positioning:
 | --- | --- | --- |
 | Home campaign hero | implemented | Featured campaign card links into the Shows route. |
 | `/shows` | partial | Campaign explorer reads the backend Shows API and falls back to three seeded examples for local/offline demos. |
-| `/shows/create` | partial | Authenticated artists, admins, and operators can create draft escrow campaigns with campaign terms, beneficiary/evidence references, and pledge tiers. Operator review and activation still happen after creation. |
+| `/shows/create` | partial | Authenticated artists, admins, and operators can create draft escrow campaigns with campaign terms, evidence references, and pledge tiers. For normal artists, artist identity and beneficiary wallet are derived from the platform artist profile; operators can prepare off-platform drafts that remain review-gated before activation. |
 | `/shows/:slug/edit` | partial | Draft campaigns can be edited before activation, including campaign terms, authority evidence reference, beneficiary wallet, payment token, and pledge tiers. |
 | `/shows/sennarin-paris` | partial | Detail page reads the backend Shows API by slug with seeded fallback, and shows funding progress, signal tiers, and how-it-works copy. |
 | Escrow contract | partial | `ShowCampaignEscrow.sol` now exists with threshold, refund, booking, fulfillment, and release-gating unit/fuzz/invariant/formal coverage. Deployment now emits JSON, `.remote.env`, and ABI handoffs; production activation still needs the promoted escrow address plus per-campaign `contractCampaignId` wiring. |
@@ -125,9 +125,10 @@ The placeholder copy should be removed once these production surfaces are live:
 - fan-proposed demand signals can be created through the backend API without
   implying artist approval;
 - draft escrow campaigns and pledge tiers can be created and edited from the
-  web app before activation, authority evidence can be reviewed, rejected,
-  revoked, expired, or approved, and only artist-authorized campaigns can
-  activate;
+  web app before activation, artist-owned drafts derive identity and payout
+  fields from the platform artist profile, authority evidence can be reviewed,
+  rejected, revoked, expired, or approved, and only artist-authorized campaigns
+  can activate;
 - fans can select a tier, create a pledge intent, submit an on-chain ERC-20
   approval plus escrow pledge through the smart account, confirm the mined
   transaction, and receive a durable backend receipt;

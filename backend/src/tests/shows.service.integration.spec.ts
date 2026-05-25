@@ -7,6 +7,8 @@ const userId = `${TEST_PREFIX}artist_user`;
 const listenerId = `${TEST_PREFIX}listener_user`;
 const artistId = `${TEST_PREFIX}artist`;
 const artistWallet = "0x" + "7".repeat(40);
+const otherArtistUserId = `${TEST_PREFIX}other_artist_user`;
+const otherArtistId = `${TEST_PREFIX}other_artist`;
 const operatorUserId = `${TEST_PREFIX}operator`;
 
 const futureIso = (days: number) => {
@@ -94,6 +96,7 @@ describe("ShowsService integration", () => {
         { id: userId, email: `${TEST_PREFIX}artist@test.resonate` },
         { id: listenerId, email: `${TEST_PREFIX}listener@test.resonate` },
         { id: operatorUserId, email: `${TEST_PREFIX}operator@test.resonate` },
+        { id: otherArtistUserId, email: `${TEST_PREFIX}other_artist@test.resonate` },
       ],
     });
     await prisma.artist.create({
@@ -102,6 +105,14 @@ describe("ShowsService integration", () => {
         userId,
         displayName: `${TEST_PREFIX}Artist`,
         payoutAddress: artistWallet,
+      },
+    });
+    await prisma.artist.create({
+      data: {
+        id: otherArtistId,
+        userId: otherArtistUserId,
+        displayName: `${TEST_PREFIX}Other Artist`,
+        payoutAddress: "0x" + "4".repeat(40),
       },
     });
   });
@@ -125,9 +136,9 @@ describe("ShowsService integration", () => {
     await prisma.showCampaign.deleteMany({
       where: { artistDisplayName: { startsWith: TEST_PREFIX } },
     }).catch(() => {});
-    await prisma.artist.deleteMany({ where: { id: artistId } }).catch(() => {});
+    await prisma.artist.deleteMany({ where: { id: { in: [artistId, otherArtistId] } } }).catch(() => {});
     await prisma.user.deleteMany({
-      where: { id: { in: [userId, listenerId, operatorUserId] } },
+      where: { id: { in: [userId, listenerId, operatorUserId, otherArtistUserId] } },
     }).catch(() => {});
     await prisma.$disconnect();
   });
@@ -167,7 +178,7 @@ describe("ShowsService integration", () => {
       { userId, role: "artist" },
       {
         artistId,
-        artistDisplayName: `${TEST_PREFIX}Artist`,
+        artistDisplayName: "Famous Impersonation Target",
         city: "Montreal",
         country: "CA",
         venueTarget: "MTELUS",
@@ -199,6 +210,10 @@ describe("ShowsService integration", () => {
     expect(campaign.status).toBe("draft");
     expect(campaign.campaignLevel).toBe("active_escrow_campaign");
     expect(campaign.artistAuthorityStatus).toBe("none");
+    expect(campaign.artistId).toBe(artistId);
+    expect(campaign.artistDisplayName).toBe(`${TEST_PREFIX}Artist`);
+    expect(campaign.beneficiaryAddress).toBe(artistWallet.toLowerCase());
+    expect(campaign.beneficiaryType).toBe("wallet");
     expect(campaign.tiers).toHaveLength(2);
     expect(campaign.tiers[0].title).toBe("Fan Signal");
 
@@ -233,6 +248,49 @@ describe("ShowsService integration", () => {
     expect(updated.tiers).toHaveLength(1);
     expect(updated.tiers[0].amountUnits).toBe("850000");
     expect(updated.events[0].eventType).toBe("campaign_updated");
+
+    await expect(service.createDraftCampaign(
+      { userId, role: "artist" },
+      {
+        artistId: otherArtistId,
+        artistDisplayName: `${TEST_PREFIX}Other Artist`,
+        city: "Toronto",
+        country: "CA",
+        deadline: futureIso(30),
+        goalAmountUnits: "2500000",
+      },
+    )).rejects.toThrow("Campaign artist identity must match");
+
+    await expect(service.createDraftCampaign(
+      { userId, role: "artist" },
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Ottawa",
+        country: "CA",
+        deadline: futureIso(30),
+        goalAmountUnits: "2500000",
+        beneficiaryAddress: "0x" + "1".repeat(40),
+        beneficiaryType: "wallet",
+      },
+    )).rejects.toThrow("beneficiaryAddress must match");
+
+    const operatorDraft = await service.createDraftCampaign(
+      { userId: operatorUserId, role: "operator" },
+      {
+        artistDisplayName: `${TEST_PREFIX}Off Platform Artist`,
+        city: "Berlin",
+        country: "DE",
+        deadline: futureIso(30),
+        goalAmountUnits: "2500000",
+        beneficiaryAddress: "0x" + "2".repeat(40),
+        beneficiaryType: "wallet",
+      },
+    );
+
+    expect(operatorDraft.artistId).toBeNull();
+    expect(operatorDraft.artistDisplayName).toBe(`${TEST_PREFIX}Off Platform Artist`);
+    expect(operatorDraft.beneficiaryAddress).toBe("0x" + "2".repeat(40));
   });
 
   it("requires approved artist authority before activation", async () => {
