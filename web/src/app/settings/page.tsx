@@ -20,9 +20,12 @@ import {
 } from "../../lib/librarySettings";
 import { scanAndIndex, ScanProgress } from "../../lib/libraryScanner";
 import { clearLibrary } from "../../lib/localLibrary";
+import { useAuth } from "../../components/auth/AuthProvider";
+import { recordProductAnalytics } from "../../lib/productAnalytics";
 
 export default function SettingsPage() {
     const { addToast } = useToast();
+    const { token } = useAuth();
     const [settings, setSettings] = useState<LibrarySettings | null>(null);
     const [sourceNames, setSourceNames] = useState<string[]>([]);
     const [scanning, setScanning] = useState(false);
@@ -61,6 +64,15 @@ export default function SettingsPage() {
                 return;
             }
             await loadState();
+            void recordProductAnalytics(token, "settings.updated", {
+                source: "settings",
+                subjectType: "library_settings",
+                payload: {
+                    surface: "library",
+                    setting: "library_source_added",
+                    sourceCount: sourceNames.length + 1,
+                },
+            });
             addToast({
                 type: "success",
                 title: "Folder Added",
@@ -80,6 +92,15 @@ export default function SettingsPage() {
     const handleRemoveFolder = async (index: number) => {
         await removeLibrarySourceHandle(index);
         await loadState();
+        void recordProductAnalytics(token, "settings.updated", {
+            source: "settings",
+            subjectType: "library_settings",
+            payload: {
+                surface: "library",
+                setting: "library_source_removed",
+                sourceCount: Math.max(0, sourceNames.length - 1),
+            },
+        });
         addToast({
             type: "info",
             title: "Source Removed",
@@ -91,6 +112,15 @@ export default function SettingsPage() {
         await clearLibrarySourceHandles();
         await clearLibrary();
         await loadState();
+        void recordProductAnalytics(token, "settings.updated", {
+            source: "settings",
+            subjectType: "library_settings",
+            payload: {
+                surface: "library",
+                setting: "library_sources_cleared",
+                sourceCount: 0,
+            },
+        });
         addToast({
             type: "info",
             title: "Cleared",
@@ -190,6 +220,15 @@ export default function SettingsPage() {
         if (!settings) return;
         const updated = await updateSettings({ autoScanOnLoad: !settings.autoScanOnLoad });
         setSettings(updated);
+        void recordProductAnalytics(token, "settings.updated", {
+            source: "settings",
+            subjectType: "library_settings",
+            payload: {
+                surface: "library",
+                setting: "autoScanOnLoad",
+                enabled: updated.autoScanOnLoad,
+            },
+        });
     };
 
     const hasSources = sourceNames.length > 0;

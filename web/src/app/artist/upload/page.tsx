@@ -37,6 +37,7 @@ import {
   formatPaymentAmountWithSymbol,
   paymentAssetSupportsSurface,
 } from "../../../lib/payments";
+import { recordProductAnalytics } from "../../../lib/productAnalytics";
 import { ContentProtectionABI, getAddresses } from "../../../contracts_abi";
 import type { Address } from "viem";
 
@@ -397,6 +398,32 @@ export default function ArtistUploadPage() {
         throw new Error("Not authenticated");
       }
 
+      void recordProductAnalytics(token, "artist.upload_step_completed", {
+        source: "artist_upload",
+        subjectType: "artist",
+        subjectId: artistProfile?.id,
+        payload: {
+          step: "metadata",
+          releaseType: formData.releaseType || "single",
+          trackCount: stems.length,
+          moodCount: formData.moods.length,
+          hasArtwork: Boolean(formData.artworkBlob || stems[0]?.artworkBlob),
+          hasRightsEvidence: hasUploadRightsEvidenceDraft,
+          stakeRequired,
+        },
+      });
+      void recordProductAnalytics(token, "artist.upload_step_completed", {
+        source: "artist_upload",
+        subjectType: "artist",
+        subjectId: artistProfile?.id,
+        payload: {
+          step: "stems",
+          trackCount: stems.length,
+          readyTrackCount: stems.filter((stem) => stem.status === "Ready").length,
+          totalBytes: stems.reduce((sum, stem) => sum + (stem.file?.size ?? 0), 0),
+        },
+      });
+
       // Step 1: Always attest on-chain; add stake only when the current trust tier requires it.
       {
         addToast({
@@ -520,6 +547,20 @@ export default function ArtistUploadPage() {
       }
 
       const result = await uploadStems(token, uploadPayload);
+
+      if (result?.releaseId) {
+        void recordProductAnalytics(token, "artist.upload_step_completed", {
+          source: "artist_upload",
+          subjectType: "release",
+          subjectId: result.releaseId,
+          payload: {
+            step: "publish",
+            trackCount: stems.length,
+            hasRightsEvidence: hasUploadRightsEvidenceDraft,
+            stakeRequired,
+          },
+        });
+      }
 
       if (hasUploadRightsEvidenceDraft && result?.releaseId) {
         try {
@@ -685,6 +726,16 @@ export default function ArtistUploadPage() {
     if (files.length === 0) return;
 
     setIsUploading(true);
+    void recordProductAnalytics(token, "artist.upload_started", {
+      source: "artist_upload",
+      subjectType: "artist",
+      subjectId: artistProfile?.id,
+      payload: {
+        fileCount: files.length,
+        totalBytes: files.reduce((sum, file) => sum + file.size, 0),
+        acceptedTypes: [...new Set(files.map((file) => file.type || "unknown"))].slice(0, 8),
+      },
+    });
 
     // Process each file
     for (const file of files) {
@@ -813,7 +864,7 @@ export default function ArtistUploadPage() {
         }
       }, 200);
     }
-  }, [addToast, artistProfile?.displayName, formData.primaryArtist, selectedStemId, stems.length]);
+  }, [addToast, artistProfile?.displayName, artistProfile?.id, formData.primaryArtist, selectedStemId, stems.length, token]);
 
   const handleRemoveStem = useCallback((id: string) => {
     setStems(prev => prev.filter(s => s.id !== id));

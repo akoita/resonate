@@ -28,6 +28,7 @@ on:
           - preflight
           - deploy-protocol
           - deploy-content-protection
+          - deploy-show-campaign-escrow
           - upgrade-content-protection
           - set-content-protection-stake
           - verify-base-sepolia
@@ -106,6 +107,7 @@ jobs:
           INPUT_STAKE_ASSET_ADDRESS: ${{ vars.STAKE_ASSET_ADDRESS }}
           INPUT_STAKE_ASSET_AMOUNT: ${{ vars.STAKE_ASSET_AMOUNT }}
           INPUT_STAKE_ASSET_SYMBOL: ${{ vars.STAKE_ASSET_SYMBOL }}
+          INPUT_SHOW_CAMPAIGN_ESCROW_OWNER: ${{ vars.SHOW_CAMPAIGN_ESCROW_OWNER }}
         run: |
           set -euo pipefail
 
@@ -141,6 +143,7 @@ jobs:
             STAKE_ASSET_ADDRESS
             STAKE_ASSET_AMOUNT
             STAKE_ASSET_SYMBOL
+            SHOW_CAMPAIGN_ESCROW_OWNER
           )
 
           for name in "${optional_names[@]}"; do
@@ -291,6 +294,10 @@ jobs:
             --via-ir \
             --slow
 
+      - name: Deploy show campaign escrow
+        if: inputs.operation == 'deploy-show-campaign-escrow'
+        run: make deploy-show-campaign-escrow
+
       - name: Upgrade content protection proxy
         if: inputs.operation == 'upgrade-content-protection'
         run: |
@@ -336,6 +343,15 @@ jobs:
             fi
             if [[ -f contracts/deployments/base-sepolia.remote.env ]]; then
               echo "- Base Sepolia environment handoff: \`contracts/deployments/base-sepolia.remote.env\`"
+            fi
+            if [[ -f "contracts/deployments/show-campaign-escrow.${{ inputs.target_network }}.json" ]]; then
+              echo "- ShowCampaignEscrow deployment record: \`contracts/deployments/show-campaign-escrow.${{ inputs.target_network }}.json\`"
+            fi
+            if [[ -f "contracts/deployments/show-campaign-escrow.${{ inputs.target_network }}.remote.env" ]]; then
+              echo "- ShowCampaignEscrow environment handoff: \`contracts/deployments/show-campaign-escrow.${{ inputs.target_network }}.remote.env\`"
+            fi
+            if [[ -f contracts/deployments/show-campaign-escrow.abi.json ]]; then
+              echo "- ShowCampaignEscrow ABI handoff: \`contracts/deployments/show-campaign-escrow.abi.json\`"
             fi
             if [[ -f contracts/deployments/sepolia.json ]]; then
               echo "- Sepolia deployment record: \`contracts/deployments/sepolia.json\`"

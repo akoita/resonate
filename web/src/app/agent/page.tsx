@@ -19,6 +19,7 @@ import AgentHistoryCard from "../../components/agent/AgentHistoryCard";
 import AgentSessionPresets from "../../components/agent/AgentSessionPresets";
 import AgentNextPickCard from "../../components/agent/AgentNextPickCard";
 import { useToast } from "../../components/ui/Toast";
+import { recordProductAnalytics } from "../../lib/productAnalytics";
 
 export default function AgentPage() {
     const { token } = useAuth();
@@ -44,6 +45,24 @@ export default function AgentPage() {
         enableWallet: boolean;
     }) => {
         await createConfig(data);
+        void recordProductAnalytics(token, "onboarding.completed", {
+            source: "agent_setup",
+            subjectType: "agent_config",
+            payload: {
+                flow: "agent",
+                vibeCount: data.vibes.length,
+                walletEnabled: data.enableWallet,
+                monthlyCapUsd: data.monthlyCapUsd,
+            },
+        });
+        void recordProductAnalytics(token, "wallet.budget_set", {
+            source: "agent_setup",
+            subjectType: "agent_config",
+            payload: {
+                surface: "agent",
+                monthlyCapUsd: data.monthlyCapUsd,
+            },
+        });
         if (data.enableWallet) {
             try {
                 await wallet.enable();
@@ -139,6 +158,16 @@ export default function AgentPage() {
     const handleBudgetConfirm = (newBudget: number) => {
         setShowBudgetModal(false);
         updateConfig({ monthlyCapUsd: newBudget });
+        void recordProductAnalytics(token, "wallet.budget_set", {
+            source: "agent_budget_modal",
+            subjectType: "agent_config",
+            subjectId: config?.id,
+            payload: {
+                surface: "agent",
+                monthlyCapUsd: newBudget,
+                previousMonthlyCapUsd: config?.monthlyCapUsd,
+            },
+        });
         addToast({
             type: "success",
             title: "Budget Updated",

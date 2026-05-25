@@ -20,6 +20,7 @@ required_vars=(
 # when NEXT_PUBLIC_ENV is unset.
 optional_vars=(
   NEXT_PUBLIC_ENV
+  NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS
 )
 
 validate_contract_handoff() {
@@ -57,6 +58,36 @@ validate_contract_handoff() {
   done
 }
 
+validate_show_campaign_handoff() {
+  local handoff_file="${FRONTEND_SHOW_CAMPAIGN_DEPLOYMENT_ENV_FILE:-}"
+  if [[ -z "${handoff_file}" ]]; then
+    return
+  fi
+
+  if [[ ! -f "${handoff_file}" ]]; then
+    echo "ShowCampaignEscrow handoff file not found: ${handoff_file}" >&2
+    exit 1
+  fi
+
+  local key="NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS"
+  local expected actual
+  expected="$(grep -E "^${key}=" "${handoff_file}" | tail -n 1 | cut -d= -f2-)"
+  actual="${!key:-}"
+
+  if [[ -z "${expected}" ]]; then
+    echo "Missing ${key} in ShowCampaignEscrow handoff file: ${handoff_file}" >&2
+    exit 1
+  fi
+  if [[ -z "${actual}" ]]; then
+    echo "Missing optional frontend build variable required by ${handoff_file}: ${key}" >&2
+    exit 1
+  fi
+  if [[ "${actual,,}" != "${expected,,}" ]]; then
+    echo "Frontend contract variable ${key}=${actual} does not match ${handoff_file} (${expected})." >&2
+    exit 1
+  fi
+}
+
 for key in "${required_vars[@]}"; do
   if [[ -z "${!key:-}" ]]; then
     echo "Missing required frontend build variable: ${key}" >&2
@@ -65,6 +96,7 @@ for key in "${required_vars[@]}"; do
 done
 
 validate_contract_handoff
+validate_show_campaign_handoff
 
 for key in "${required_vars[@]}"; do
   printf '%s=%s\n' "${key}" "${!key}"

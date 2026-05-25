@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../components/auth/AuthProvider";
@@ -27,6 +27,7 @@ import { useToast } from "../components/ui/Toast";
 import { AddToPlaylistModal } from "../components/library/AddToPlaylistModal";
 import { listCampaignsSync, getFeaturedCampaignSync, daysUntil, type Campaign } from "../lib/shows";
 import AgentSessionPresets from "../components/agent/AgentSessionPresets";
+import { recordProductAnalytics } from "../lib/productAnalytics";
 
 /*
  * Home page — Next-Gen Music Platform (Stitch design applied, 2026-04).
@@ -114,6 +115,7 @@ export default function Home() {
   const [startingVibe, setStartingVibe] = useState<FilterId | null>(null);
   const [tracksToAddToPlaylist, setTracksToAddToPlaylist] = useState<LocalTrack[] | null>(null);
   const [savingReleaseId, setSavingReleaseId] = useState<string | null>(null);
+  const lastCatalogSearchAnalyticsKeyRef = useRef<string | null>(null);
   const { status, token, userId } = useAuth();
   const { addToast } = useToast();
   const { playQueue } = usePlayer();
@@ -223,6 +225,53 @@ export default function Home() {
     .slice()
     .sort((a, b) => getReleaseTime(b) - getReleaseTime(a))
     .slice(0, 4);
+
+  useEffect(() => {
+    const query = catalogSearch.trim();
+    if (query.length < 2) return;
+    const timer = window.setTimeout(() => {
+      const analyticsKey = JSON.stringify({
+        query,
+        catalogView,
+        activeFilter,
+      });
+      if (lastCatalogSearchAnalyticsKeyRef.current === analyticsKey) return;
+      lastCatalogSearchAnalyticsKeyRef.current = analyticsKey;
+      void recordProductAnalytics(token, "search.submitted", {
+        source: "home_catalog",
+        subjectType: "catalog",
+        payload: {
+          surface: "home_catalog",
+          queryLength: query.length,
+          catalogView,
+          activeFilter,
+          releaseResultCount: browseReleases.length,
+          artistResultCount: browseArtists.length,
+          stemResultCount: browseStems.length,
+        },
+      });
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [activeFilter, browseArtists.length, browseReleases.length, browseStems.length, catalogSearch, catalogView, token]);
+
+  const recordCatalogSearchResultClick = (
+    resultType: "release" | "artist" | "stem",
+    subjectId: string,
+    resultRank: number,
+  ) => {
+    if (!catalogSearch.trim()) return;
+    void recordProductAnalytics(token, "search.result_clicked", {
+      source: "home_catalog",
+      subjectType: resultType,
+      subjectId,
+      payload: {
+        surface: "home_catalog",
+        resultType,
+        resultRank,
+        catalogView,
+      },
+    });
+  };
 
   // Derive top artists from the catalog (de-dup by primary artist name).
   const topArtists = useMemo(() => {
@@ -603,7 +652,7 @@ export default function Home() {
             {catalogView === "releases" && (
               <div className="ng-resource-grid ng-resource-grid--releases">
                 {browseReleases.length > 0 ? (
-                  browseReleases.map((release) => (
+                  browseReleases.map((release, index) => (
                     <article
                       key={release.id}
                       className="ng-resource-card"
@@ -611,6 +660,7 @@ export default function Home() {
                       <Link
                         href={`/release/${release.id}`}
                         className="ng-resource-card__link"
+                        onClick={() => recordCatalogSearchResultClick("release", release.id, index + 1)}
                       >
                         <ReleaseThumb release={release} />
                         <div className="ng-resource-card__body">
@@ -660,7 +710,7 @@ export default function Home() {
             {catalogView === "artists" && (
               <div className="ng-artist-browser">
                 {browseArtists.length > 0 ? (
-                  browseArtists.map((artist) => {
+                  browseArtists.map((artist, index) => {
                     const rowContent = (
                       <>
                         <span className="ng-artist-row__avatar" aria-hidden>
@@ -686,6 +736,7 @@ export default function Home() {
                         key={artist.key}
                         href={artist.artistId ? artistProfileHref(artist.artistId) : catalogArtistHref(artist.name)}
                         className="ng-artist-row"
+                        onClick={() => recordCatalogSearchResultClick("artist", artist.artistId ?? artist.key, index + 1)}
                       >
                         {rowContent}
                       </Link>
@@ -703,11 +754,12 @@ export default function Home() {
             {catalogView === "stems" && (
               <div className="ng-stem-browser">
                 {browseStems.length > 0 ? (
-                  browseStems.map((stem) => (
+                  browseStems.map((stem, index) => (
                     <Link
                       key={stem.id}
                       href={`/release/${stem.releaseId}?mixer=true`}
                       className="ng-stem-row"
+                      onClick={() => recordCatalogSearchResultClick("stem", stem.id, index + 1)}
                     >
                       <span className="ng-stem-row__icon" aria-hidden>
                         <span className="ms-icon">graphic_eq</span>
