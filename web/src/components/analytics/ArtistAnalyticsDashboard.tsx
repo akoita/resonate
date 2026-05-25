@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import type { ArtistAnalyticsDashboard as ArtistAnalyticsDashboardData } from "../../lib/api";
 
@@ -20,23 +21,27 @@ export default function ArtistAnalyticsDashboard(props: Props) {
   const title = props.artistName ? `${props.artistName} Analytics` : "Artist Analytics";
 
   return (
-    <main className="artist-analytics-page">
-      <header className="artist-analytics-header">
-        <div>
-          <p className="artist-analytics-eyebrow">Artist Analytics</p>
-          <h1>{title}</h1>
-        </div>
-        <div className="analytics-window-switch" aria-label="Analytics time window">
-          {DAY_OPTIONS.map((days) => (
-            <button
-              key={days}
-              type="button"
-              className={props.days === days ? "active" : ""}
-              onClick={() => props.onDaysChange(days)}
-            >
-              {days}d
-            </button>
-          ))}
+    <main className="analytics-container">
+      <header className="analytics-header-section">
+        <div className="analytics-title-row">
+          <div>
+            <p className="artist-analytics-eyebrow" style={{ fontSize: "12px", opacity: 0.5, margin: "0 0 4px" }}>
+              Artist Analytics
+            </p>
+            <h1 style={{ margin: 0 }}>{title}</h1>
+          </div>
+          <div className="date-selector-pill-row" aria-label="Analytics time window">
+            {DAY_OPTIONS.map((days) => (
+              <button
+                key={days}
+                type="button"
+                className={`date-selector-pill ${props.days === days ? "active" : ""}`}
+                onClick={() => props.onDaysChange(days)}
+              >
+                {days}d
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 
@@ -50,7 +55,7 @@ export default function ArtistAnalyticsDashboard(props: Props) {
 
 function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
   const topTrack = data.topTracks[0] ?? data.trackPerformance[0] ?? null;
-  const sourceLabel = data.meta.source === "bigquery" ? "BigQuery" : "Local ledger";
+  const sourceLabel = data.meta.source === "bigquery" ? "BigQueryFactTable" : "LocalEventLedger";
   const freshnessLabel = formatFreshness(data.meta.freshness.asOf, data.meta.freshness.lagSeconds);
   const payoutLabel = formatUsd(data.summary.totalPayoutUsd);
 
@@ -78,7 +83,7 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
         cacheLabel={cacheLabel(data.meta.cache.hit)}
       />
 
-      <section className="analytics-kpi-grid" aria-label="Artist analytics summary">
+      <section className="kpi-row" aria-label="Artist analytics summary">
         <Kpi label="Total plays" value={formatNumber(data.summary.totalPlays)} detail={`${data.meta.timeWindow.days} day window`} />
         <Kpi label="Total payout" value={payoutLabel} detail={primaryPayoutAsset(data.summary.payoutsByAsset)} />
         <Kpi label="Top track" value={topTrack?.title ?? "No track yet"} detail={topTrack ? `${formatNumber(topTrack.plays)} plays` : "Waiting for play events"} />
@@ -89,42 +94,54 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
         />
       </section>
 
-      <section className="analytics-layout">
-        <div className="analytics-panel analytics-panel-large">
-          <div className="analytics-panel-heading">
+      <div className="analytics-dashboard-grid">
+        <div className="chart-card-wrapper">
+          <div className="chart-card-header">
             <h2>Plays over time</h2>
-            <span>{data.playsOverTime.length} data points</span>
+            <div className="chart-card-header-badge">
+              {data.playsOverTime.length} data points
+            </div>
           </div>
           <PlaysChart points={data.playsOverTime} />
         </div>
 
-        <div className="analytics-panel">
-          <div className="analytics-panel-heading">
+        <div className="sources-card">
+          <div className="chart-card-header">
             <h2>Sources</h2>
-            <span>{formatNumber(totalSourcePlays(data.sources))} plays</span>
+            <div className="chart-card-header-badge">
+              {formatNumber(totalSourcePlays(data.sources))} plays
+            </div>
           </div>
-          <div className="analytics-source-list">
+          <div className="sources-list">
             {data.sources.length === 0 ? (
-              <p className="analytics-muted">No source dimensions yet.</p>
+              <p style={{ opacity: 0.4, padding: "20px 0", textAlign: "center", fontSize: "13px" }}>
+                No playback source dimensions yet.
+              </p>
             ) : (
-              data.sources.map((source) => (
-                <div key={source.source} className="analytics-source-row">
-                  <span>{source.source}</span>
-                  <strong>{formatNumber(source.plays)}</strong>
-                </div>
-              ))
+              data.sources.map((source) => {
+                const maxPlays = Math.max(...data.sources.map((src) => src.plays), 1);
+                const percentage = (source.plays / maxPlays) * 100;
+                return (
+                  <div key={source.source} className="sources-item">
+                    <div className="sources-item-row">
+                      <span className="sources-item-name">{source.source}</span>
+                      <span className="sources-item-value">{formatNumber(source.plays)} plays</span>
+                    </div>
+                    <div className="sources-progress-bar-bg">
+                      <div className="sources-progress-bar-fill" style={{ width: `${percentage}%` }} />
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
-      </section>
+      </div>
 
-      <section className="analytics-panel">
-        <div className="analytics-panel-heading">
-          <h2>Track performance</h2>
-          <span>{data.trackPerformance.length} tracks</span>
-        </div>
+      <div className="premium-table-wrapper">
+        <h2>Track Performance</h2>
         <TrackPerformanceTable tracks={data.trackPerformance} />
-      </section>
+      </div>
 
       <ContentProtectionMetrics protection={data.protection} />
     </>
@@ -133,25 +150,23 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
 
 function LoadingDashboard() {
   return (
-    <section className="analytics-panel analytics-state-panel" aria-live="polite">
-      <div className="analytics-skeleton analytics-skeleton-title" />
-      <div className="analytics-skeleton-grid">
-        <div className="analytics-skeleton" />
-        <div className="analytics-skeleton" />
-        <div className="analytics-skeleton" />
-      </div>
-    </section>
+    <div className="analytics-skeleton" style={{ padding: "80px", textAlign: "center", opacity: 0.5 }}>
+      <span className="aid-spinner" style={{ marginBottom: "16px" }} />
+      <div>Loading catalog and playback statistics…</div>
+    </div>
   );
 }
 
 function ErrorDashboard({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <section className="analytics-panel analytics-state-panel" role="alert">
-      <p className="analytics-state-kicker">Analytics unavailable</p>
-      <h2>Could not load artist metrics</h2>
-      <p>{message}</p>
-      <button type="button" className="analytics-primary-action" onClick={onRetry}>
-        Retry
+    <section className="premium-table-wrapper" style={{ textAlign: "center", padding: "40px" }} role="alert">
+      <p style={{ color: "var(--r-error)", fontSize: "12px", fontWeight: 600, textTransform: "uppercase" }}>
+        Analytics Unavailable
+      </p>
+      <h2 style={{ fontSize: "20px", marginTop: "8px" }}>Could not load artist metrics</h2>
+      <p style={{ opacity: 0.6, fontSize: "13px", margin: "8px 0 20px" }}>{message}</p>
+      <button type="button" className="wallet-connect-btn" onClick={onRetry}>
+        Retry Synchronization
       </button>
     </section>
   );
@@ -159,12 +174,16 @@ function ErrorDashboard({ message, onRetry }: { message: string; onRetry: () => 
 
 function NoArtistDashboard() {
   return (
-    <section className="analytics-panel analytics-state-panel">
-      <p className="analytics-state-kicker">No artist profile</p>
-      <h2>Create an artist profile to see analytics</h2>
-      <p>Metrics are scoped to the artist account that owns the catalog.</p>
-      <Link className="analytics-primary-action" href="/artist/onboarding">
-        Open artist onboarding
+    <section className="premium-table-wrapper" style={{ textAlign: "center", padding: "40px" }}>
+      <p style={{ color: "var(--r-primary-soft)", fontSize: "12px", fontWeight: 600, textTransform: "uppercase" }}>
+        No Artist Profile
+      </p>
+      <h2 style={{ fontSize: "20px", marginTop: "8px" }}>Create an artist profile to see analytics</h2>
+      <p style={{ opacity: 0.6, fontSize: "13px", margin: "8px 0 20px" }}>
+        Metrics are scoped to the artist account that owns the catalog.
+      </p>
+      <Link className="wallet-connect-btn" href="/artist/onboarding" style={{ display: "inline-block", textDecoration: "none" }}>
+        Open Artist Onboarding
       </Link>
     </section>
   );
@@ -172,21 +191,41 @@ function NoArtistDashboard() {
 
 function EmptyDashboard({ days }: { days: number }) {
   return (
-    <section className="analytics-panel analytics-state-panel">
-      <p className="analytics-state-kicker">No analytics events</p>
-      <h2>No plays or payouts in the last {days} days</h2>
-      <p>Once listeners play tracks or settlements complete, this page will fill from the analytics API.</p>
+    <section className="premium-table-wrapper" style={{ textAlign: "center", padding: "40px" }}>
+      <p style={{ color: "var(--r-on-surface-muted)", fontSize: "12px", fontWeight: 600, textTransform: "uppercase" }}>
+        No Playback Events
+      </p>
+      <h2 style={{ fontSize: "20px", marginTop: "8px" }}>No plays or payouts in the last {days} days</h2>
+      <p style={{ opacity: 0.6, fontSize: "13px", marginTop: "8px" }}>
+        Once listeners play tracks or stablecoin settlements complete, this page will fill dynamically.
+      </p>
     </section>
   );
 }
 
-function Kpi({ label, value, detail, muted = false }: { label: string; value: string; detail: string; muted?: boolean }) {
+function Kpi({ label, value, detail }: { label: string; value: string; detail: string }) {
+  const isAgent = label.toLowerCase().includes("top track");
+  const icon = label.toLowerCase().includes("plays")
+    ? "▶"
+    : label.toLowerCase().includes("payout")
+    ? "$"
+    : label.toLowerCase().includes("track")
+    ? "★"
+    : "🛡️";
+
   return (
-    <article className={`analytics-kpi-card${muted ? " muted" : ""}`}>
-      <div className="analytics-kpi-label">{label}</div>
-      <div className="analytics-kpi-value">{value}</div>
-      <div className="analytics-kpi-detail">{detail}</div>
-    </article>
+    <div className={`premium-kpi-card ${isAgent ? "agent-context" : "human-context"}`}>
+      <div className="kpi-header">
+        <span className="kpi-label">{label}</span>
+        <div className="kpi-icon-glow">{icon}</div>
+      </div>
+      <div className="kpi-value-mono" style={{ fontSize: label.toLowerCase().includes("track") ? "18px" : undefined, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+        {value}
+      </div>
+      <div className="kpi-subtitle-trend">
+        <span>{detail}</span>
+      </div>
+    </div>
   );
 }
 
@@ -202,35 +241,185 @@ function StatusStrip({
   cacheLabel: string;
 }) {
   return (
-    <section className="analytics-status-strip" aria-label="Analytics data status">
-      <span>Source: {sourceLabel}</span>
-      <span>Freshness: {freshnessLabel}</span>
-      <span>Window: {windowLabel}</span>
-      <span>{cacheLabel}</span>
-    </section>
+    <div className="glass-metadata-bar">
+      <div className="metadata-item">
+        <span>Source:</span>
+        <strong>{sourceLabel}</strong>
+      </div>
+      <div className="metadata-item">
+        <span className="metadata-dot pulsing" />
+        <span>Freshness:</span>
+        <strong>{freshnessLabel}</strong>
+      </div>
+      <div className="metadata-item">
+        <span>Window:</span>
+        <strong>{windowLabel}</strong>
+      </div>
+      <div className="metadata-item">
+        <span>Cache:</span>
+        <strong>{cacheLabel}</strong>
+      </div>
+    </div>
   );
 }
 
 function PlaysChart({ points }: { points: ArtistAnalyticsDashboardData["playsOverTime"] }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+
+  const chartPoints = useMemo(() => {
+    if (points.length === 0) return [];
+    if (points.length === 1) {
+      return [
+        { date: "Start", plays: 0, payoutUsd: 0 },
+        { date: points[0].date, plays: points[0].plays, payoutUsd: points[0].payoutUsd },
+        { date: "End", plays: 0, payoutUsd: 0 },
+      ];
+    }
+    return points;
+  }, [points]);
+
+  const svgPath = useMemo(() => {
+    if (chartPoints.length < 2) return { linePath: "", areaPath: "" };
+
+    const width = 600;
+    const height = 140;
+    const padding = 30;
+    const chartWidth = width - padding * 2;
+    const chartHeight = height - padding * 2;
+
+    const maxVal = Math.max(...chartPoints.map((p) => p.plays), 10);
+
+    const coords = chartPoints.map((p, idx) => {
+      const x = padding + (idx / (chartPoints.length - 1)) * chartWidth;
+      const y = padding + chartHeight - (p.plays / maxVal) * chartHeight;
+      return { x, y };
+    });
+
+    let linePath = `M ${coords[0].x} ${coords[0].y}`;
+    for (let i = 0; i < coords.length - 1; i++) {
+      const curr = coords[i];
+      const next = coords[i + 1];
+      const cpX1 = curr.x + (next.x - curr.x) / 3;
+      const cpY1 = curr.y;
+      const cpX2 = curr.x + (2 * (next.x - curr.x)) / 3;
+      const cpY2 = next.y;
+      linePath += ` C ${cpX1} ${cpY1}, ${cpX2} ${cpY2}, ${next.x} ${next.y}`;
+    }
+
+    const areaPath = `${linePath} L ${coords[coords.length - 1].x} ${height - padding} L ${coords[0].x} ${height - padding} Z`;
+
+    return { linePath, areaPath, coords };
+  }, [chartPoints]);
+
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>, coords: Array<{ x: number; y: number }>) => {
+    if (coords.length === 0) return;
+    const svg = e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+
+    let closestIdx = 0;
+    let minDiff = Infinity;
+    coords.forEach((coord, idx) => {
+      const diff = Math.abs(coord.x - (x * (600 / rect.width)));
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestIdx = idx;
+      }
+    });
+
+    setHoveredIndex(closestIdx);
+
+    const tooltipX = (coords[closestIdx].x / 600) * rect.width;
+    const tooltipY = (coords[closestIdx].y / 140) * rect.height - 10;
+    setTooltipPos({ x: tooltipX, y: tooltipY });
+  };
+
+  const handleMouseLeave = () => {
+    setHoveredIndex(null);
+    setTooltipPos(null);
+  };
+
   if (points.length === 0) {
     return <div className="analytics-chart-empty">No time-series rows yet</div>;
   }
 
-  const maxValue = Math.max(...points.map((point) => point.plays), 1);
+  const formattedDate = (d: string) => {
+    if (d === "Start" || d === "End") return "";
+    try {
+      return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(d));
+    } catch {
+      return d;
+    }
+  };
+
   return (
-    <div className="analytics-real-chart" aria-label="Plays over time chart">
-      {points.map((point) => {
-        const height = Math.max(8, Math.round((point.plays / maxValue) * 100));
-        return (
-          <div key={point.date} className="analytics-bar-column">
-            <div className="analytics-bar-value">{formatNumber(point.plays)}</div>
-            <div className="analytics-bar-track">
-              <div className="analytics-bar-fill" style={{ height: `${height}%` }} />
-            </div>
-            <div className="analytics-bar-label">{shortDate(point.date)}</div>
-          </div>
-        );
-      })}
+    <div className="svg-chart-container" onMouseLeave={handleMouseLeave}>
+      <svg
+        className="svg-chart"
+        viewBox="0 0 600 140"
+        preserveAspectRatio="none"
+        onMouseMove={(e) => svgPath.coords && handleMouseMove(e, svgPath.coords)}
+      >
+        <defs>
+          <linearGradient id="chartAreaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--r-primary)" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="var(--r-primary)" stopOpacity="0.00" />
+          </linearGradient>
+          <linearGradient id="chartLineGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="var(--r-primary)" />
+            <stop offset="100%" stopColor="var(--r-secondary)" />
+          </linearGradient>
+        </defs>
+
+        <line className="svg-chart-gridline" x1="30" y1="30" x2="570" y2="30" />
+        <line className="svg-chart-gridline" x1="30" y1="70" x2="570" y2="70" />
+        <line className="svg-chart-gridline" x1="30" y1="110" x2="570" y2="110" />
+
+        <path className="svg-chart-path-area" d={svgPath.areaPath} />
+        <path className="svg-chart-path-line" d={svgPath.linePath} />
+
+        {hoveredIndex !== null && svgPath.coords && (
+          <line
+            className="svg-chart-hover-line"
+            x1={svgPath.coords[hoveredIndex].x}
+            y1="30"
+            x2={svgPath.coords[hoveredIndex].x}
+            y2="110"
+          />
+        )}
+
+        {svgPath.coords && svgPath.coords.map((c, idx) => {
+          const label = chartPoints[idx].date;
+          if (label === "Start" || label === "End") return null;
+          return (
+            <circle
+              key={idx}
+              className="svg-chart-dot"
+              cx={c.x}
+              cy={c.y}
+              r={hoveredIndex === idx ? 6 : 4}
+            />
+          );
+        })}
+      </svg>
+
+      {hoveredIndex !== null && tooltipPos && chartPoints[hoveredIndex].date !== "Start" && chartPoints[hoveredIndex].date !== "End" && (
+        <div
+          className="chart-interactive-tooltip"
+          style={{
+            left: `${tooltipPos.x}px`,
+            top: `${tooltipPos.y}px`,
+          }}
+        >
+          <span className="tooltip-date">
+            {formattedDate(chartPoints[hoveredIndex].date)}
+          </span>
+          <span className="tooltip-value">
+            {formatNumber(chartPoints[hoveredIndex].plays)} plays
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -241,83 +430,78 @@ function TrackPerformanceTable({ tracks }: { tracks: ArtistAnalyticsDashboardDat
   }
 
   return (
-    <div className="analytics-table-wrap">
-      <table className="analytics-table">
-        <thead>
-          <tr>
-            <th>Track</th>
-            <th>Plays</th>
-            <th>Payout</th>
-            <th>Assets</th>
+    <table className="premium-table">
+      <thead>
+        <tr>
+          <th>Track</th>
+          <th>Plays</th>
+          <th>Payout</th>
+          <th>Assets</th>
+        </tr>
+      </thead>
+      <tbody>
+        {tracks.map((track) => (
+          <tr key={track.trackId}>
+            <td style={{ fontWeight: 600 }}>{track.title}</td>
+            <td className="premium-table-cell-mono">{formatNumber(track.plays)}</td>
+            <td className="premium-table-cell-mono">{formatUsd(track.payoutUsd)}</td>
+            <td>
+              <span className="status-capsule-badge inactive" style={{ fontSize: "10px", padding: "2px 8px" }}>
+                {track.payoutsByAsset.map((asset) => asset.symbol).join(", ") || "None"}
+              </span>
+            </td>
           </tr>
-        </thead>
-        <tbody>
-          {tracks.map((track) => (
-            <tr key={track.trackId} className="analytics-row-tight">
-              <td>{track.title}</td>
-              <td>{formatNumber(track.plays)}</td>
-              <td>{formatUsd(track.payoutUsd)}</td>
-              <td>{track.payoutsByAsset.map((asset) => asset.symbol).join(", ") || "None"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
 function ContentProtectionMetrics({ protection }: { protection: ArtistAnalyticsDashboardData["protection"] }) {
   return (
-    <section className="analytics-panel">
-      <div className="analytics-panel-heading">
-        <h2>Content protection</h2>
-        <span>{formatNumber(protection.totalDecisions)} route decisions</span>
-      </div>
-      <div className="analytics-protection-grid" aria-label="Content protection metrics">
-        <ProtectionMetric
-          label="Marketplace ready"
-          value={formatNumber(protection.marketplaceReadyReleases)}
-          detail="standard escrow or trusted fast path"
-        />
-        <ProtectionMetric
-          label="Restricted"
-          value={formatNumber(protection.restrictedReleases)}
-          detail="limited, quarantined, or blocked"
-        />
-        <ProtectionMetric
-          label="Blocked"
-          value={formatNumber(protection.blockedReleases)}
-          detail="current blocked route"
-        />
+    <div className="premium-table-wrapper" style={{ padding: "20px 24px" }}>
+      <h2>Content protection escrow status</h2>
+      <div className="rights-decisions-grid">
+        <div className="rights-decision-column">
+          <span className="rights-decision-column-label">Marketplace Ready</span>
+          <span className="rights-decision-column-value">{formatNumber(protection.marketplaceReadyReleases)}</span>
+          <span className="rights-decision-column-sub">standard escrow or trusted fast path</span>
+        </div>
+        <div className="rights-decision-column" style={{ borderLeft: "1px solid rgba(255,255,255,0.03)", paddingLeft: "20px" }}>
+          <span className="rights-decision-column-label">Restricted</span>
+          <span className="rights-decision-column-value" style={{ color: "var(--r-error)" }}>
+            {formatNumber(protection.restrictedReleases)}
+          </span>
+          <span className="rights-decision-column-sub">limited, quarantined, or blocked</span>
+        </div>
+        <div className="rights-decision-column" style={{ borderLeft: "1px solid rgba(255,255,255,0.03)", paddingLeft: "20px" }}>
+          <span className="rights-decision-column-label">Blocked</span>
+          <span className="rights-decision-column-value" style={{ color: "var(--r-error)" }}>
+            {formatNumber(protection.blockedReleases)}
+          </span>
+          <span className="rights-decision-column-sub">current blocked route decision</span>
+        </div>
       </div>
       <RouteBreakdown routes={protection.routes} />
-    </section>
-  );
-}
-
-function ProtectionMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
-  return (
-    <div className="analytics-protection-metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{detail}</small>
     </div>
   );
 }
 
 function RouteBreakdown({ routes }: { routes: ArtistAnalyticsDashboardData["protection"]["routes"] }) {
   if (routes.length === 0) {
-    return <p className="analytics-muted">No rights route decisions for this window.</p>;
+    return <p className="analytics-muted" style={{ opacity: 0.5, fontSize: "12px", textAlign: "center", padding: "8px 0", borderTop: "1px solid rgba(255,255,255,0.03)" }}>
+      No rights route decisions for this window.
+    </p>;
   }
 
   return (
-    <div className="analytics-source-list analytics-protection-routes">
+    <div className="sources-list" style={{ borderTop: "1px solid rgba(255,255,255,0.03)", paddingTop: "12px", marginTop: "12px" }}>
       {routes.map((route) => (
-        <div key={route.route} className="analytics-source-row">
-          <span>{formatRoute(route.route)}</span>
-          <strong>
-            {formatNumber(route.releases)} releases - {formatNumber(route.decisions)} decisions
-          </strong>
+        <div key={route.route} className="sources-item-row" style={{ fontSize: "12px", padding: "4px 0" }}>
+          <span style={{ fontWeight: 500 }}>{formatRoute(route.route)}</span>
+          <span style={{ opacity: 0.8, fontFamily: "var(--font-mono)" }}>
+            {formatNumber(route.releases)} releases · {formatNumber(route.decisions)} decisions
+          </span>
         </div>
       ))}
     </div>
@@ -326,7 +510,7 @@ function RouteBreakdown({ routes }: { routes: ArtistAnalyticsDashboardData["prot
 
 function SeparatedContentProtection() {
   return (
-    <div className="analytics-content-protection-note">
+    <div className="premium-table-wrapper" style={{ textAlign: "center", padding: "20px", opacity: 0.5, fontSize: "12px" }}>
       Content Protection metrics will appear once rights route events exist for this artist.
     </div>
   );
@@ -349,6 +533,7 @@ function primaryPayoutAsset(payouts: ArtistAnalyticsDashboardData["summary"]["pa
   return primary ? `${primary.settlementAmount} ${primary.symbol}` : "No settlement rows";
 }
 
+// Helper: safe formatting for NaN cases
 function totalSourcePlays(sources: ArtistAnalyticsDashboardData["sources"]) {
   return sources.reduce((total, source) => total + source.plays, 0);
 }

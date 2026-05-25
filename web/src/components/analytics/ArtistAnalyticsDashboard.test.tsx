@@ -84,14 +84,15 @@ describe("ArtistAnalyticsDashboard", () => {
     );
 
     expect(html).toContain("Aya Lune Analytics");
-    expect(html).toContain("Source: BigQuery");
+    expect(html).toContain("Source:");
+    expect(html).toContain("BigQueryFactTable");
     expect(html).toContain("2 hr delayed");
     expect(html).toContain("12,345");
     expect(html).toContain("$87.65");
     expect(html).toContain("Glass City");
-    expect(html).toContain("Track performance");
+    expect(html).toContain("Track Performance");
     expect(html).toContain("Content protection");
-    expect(html).toContain("Marketplace ready");
+    expect(html).toContain("Marketplace Ready");
     expect(html).toContain("Standard Escrow");
   });
 
