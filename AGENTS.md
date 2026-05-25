@@ -234,6 +234,24 @@ npx jest --runInBand --config jest.integration.config.js --testPathPattern='cata
 
 ---
 
+## 🔐 Smart Contract Deployment Key Safety
+
+Forge scripts that broadcast transactions must never silently use the default
+Anvil private key on a remote/non-local RPC. Use the shared deployment-key
+helper in `contracts/script/DeploymentKey.s.sol` for every deploy, upgrade, or
+admin-update script.
+
+- Remote environments (`dev`, `staging`, `test`, `prod`, or any shared RPC)
+  must provide an explicit `PRIVATE_KEY` / `CONTRACT_DEPLOYER_PRIVATE_KEY`.
+- The default Anvil key is acceptable only for local chains or when a local/fork
+  command explicitly sets `ALLOW_DEFAULT_ANVIL_PRIVATE_KEY=true`.
+- Do not set `ALLOW_DEFAULT_ANVIL_PRIVATE_KEY` in GitHub deployment
+  environments.
+- If a script needs a different signer model, document it in
+  `docs/smart-contracts/deployment.md` before wiring it into CI.
+
+---
+
 ## Code Quality
 
 - Run `npm run lint` in both `backend/` and `web/` before committing

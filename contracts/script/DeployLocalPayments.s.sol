@@ -1,25 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Script, console} from "forge-std/Script.sol";
+import {console} from "forge-std/Script.sol";
 import {PaymentAssetRegistry} from "../src/payments/PaymentAssetRegistry.sol";
 import {ChainlinkPriceOracleAdapter} from "../src/payments/ChainlinkPriceOracleAdapter.sol";
 import {MockPriceOracle} from "../src/payments/MockPriceOracle.sol";
 import {MockUSDC} from "../src/payments/MockUSDC.sol";
 import {WrappedNativeMock} from "../src/payments/WrappedNativeMock.sol";
+import {DeploymentKey} from "./DeploymentKey.s.sol";
 
 /**
  * @title DeployLocalPayments
  * @notice Deploys local-only payment dev contracts for Anvil.
  */
-contract DeployLocalPayments is Script {
+contract DeployLocalPayments is DeploymentKey {
     bytes32 private constant LOCAL_ETH = keccak256("local:eth");
     bytes32 private constant LOCAL_USDC = keccak256("local:usdc");
     bytes32 private constant LOCAL_WETH = keccak256("local:weth");
 
     function run() external {
-        uint256 deployerKey =
-            vm.envOr("PRIVATE_KEY", uint256(0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80));
+        uint256 deployerKey = _deploymentPrivateKey();
         address deployer = vm.addr(deployerKey);
         bool enableWeth = vm.envOr("PAYMENT_DEV_ENABLE_WETH", false);
 

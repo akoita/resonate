@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Script, console} from "forge-std/Script.sol";
+import {console} from "forge-std/Script.sol";
 import {ContentProtection} from "../src/core/ContentProtection.sol";
+import {DeploymentKey} from "./DeploymentKey.s.sol";
 
 /**
  * @title UpgradeContentProtection
@@ -14,10 +15,9 @@ import {ContentProtection} from "../src/core/ContentProtection.sol";
  *   CONTENT_PROTECTION_PROXY=0x... forge script script/UpgradeContentProtection.s.sol \
  *     --rpc-url $RPC_URL --broadcast
  */
-contract UpgradeContentProtection is Script {
+contract UpgradeContentProtection is DeploymentKey {
     function run() external {
-        uint256 deployerKey =
-            vm.envOr("PRIVATE_KEY", uint256(0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80));
+        uint256 deployerKey = _deploymentPrivateKey();
         address proxyAddress = vm.envAddress("CONTENT_PROTECTION_PROXY");
 
         vm.startBroadcast(deployerKey);

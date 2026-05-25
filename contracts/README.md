@@ -88,6 +88,7 @@ If you already have StemNFT + TransferValidator deployed, use this to add only t
 
 ```bash
 export STEM_NFT_ADDRESS=0x...              # Your existing StemNFT
+export MARKETPLACE_ADDRESS=0x...           # Optional existing marketplace registrar
 export TRANSFER_VALIDATOR_ADDRESS=0x...    # Your existing TransferValidator
 
 forge script script/DeployContentProtection.s.sol \
@@ -98,13 +99,15 @@ This will:
 
 1. Deploy ContentProtection (UUPS proxy)
 2. Deploy RevenueEscrow
-3. Link both to your existing StemNFT and TransferValidator
+3. Grant ContentProtection registrar access to StemNFT and, when provided, marketplace
+4. Link both to your existing StemNFT and TransferValidator
 
 ### Environment Variables
 
 | Variable           | Default                             | Description                           |
 | ------------------ | ----------------------------------- | ------------------------------------- |
-| `PRIVATE_KEY`      | Anvil key #0                        | Deployer private key                  |
+| `PRIVATE_KEY`      | Anvil key #0 on local chains only   | Deployer private key. Required on non-local chains unless `ALLOW_DEFAULT_ANVIL_PRIVATE_KEY=true` is explicitly set. |
+| `ALLOW_DEFAULT_ANVIL_PRIVATE_KEY` | `false` outside local chains | Explicit override to use the default Anvil key on non-local RPCs. Leave unset for shared remote deployments. |
 | `BASE_URI`         | `https://api.resonate.fm/metadata/` | NFT metadata base URI                 |
 | `FEE_RECIPIENT`    | Deployer address                    | Protocol fee + treasury recipient     |
 | `PROTOCOL_FEE_BPS` | `250` (2.5%)                        | Marketplace fee in basis points       |

@@ -164,7 +164,7 @@ local-aa-down:
 
 # Deploy AA contracts to local Anvil
 local-aa-deploy:
-	cd contracts && forge script script/DeployLocalAA.s.sol --rpc-url http://localhost:8545 --broadcast
+	cd contracts && ALLOW_DEFAULT_ANVIL_PRIVATE_KEY=$${ALLOW_DEFAULT_ANVIL_PRIVATE_KEY:-true} forge script script/DeployLocalAA.s.sol --rpc-url http://localhost:8545 --broadcast
 	@echo ""
 	@echo "Updating configuration files..."
 	./contracts/scripts/update-aa-config.sh
@@ -175,7 +175,7 @@ local-aa-deploy:
 # On local-only (chain 31337), all contracts are deployed fresh via forge.
 deploy-contracts:
 	@echo "Deploying Resonate Protocol contracts..."
-	cd contracts && forge script script/DeployProtocol.s.sol --rpc-url http://localhost:8545 --broadcast
+	cd contracts && ALLOW_DEFAULT_ANVIL_PRIVATE_KEY=$${ALLOW_DEFAULT_ANVIL_PRIVATE_KEY:-true} forge script script/DeployProtocol.s.sol --rpc-url http://localhost:8545 --broadcast
 	@echo ""
 	@echo "Updating configuration files..."
 	./contracts/scripts/update-protocol-config.sh
@@ -191,7 +191,7 @@ contracts-deploy-local: local-aa-up
 
 deploy-local-payments:
 	@echo "Deploying local payment dev contracts..."
-	cd contracts && forge script script/DeployLocalPayments.s.sol --rpc-url http://localhost:8545 --broadcast
+	cd contracts && ALLOW_DEFAULT_ANVIL_PRIVATE_KEY=$${ALLOW_DEFAULT_ANVIL_PRIVATE_KEY:-true} forge script script/DeployLocalPayments.s.sol --rpc-url http://localhost:8545 --broadcast
 	@echo ""
 	@echo "Updating local payment configuration..."
 	./contracts/scripts/update-local-payment-config.sh

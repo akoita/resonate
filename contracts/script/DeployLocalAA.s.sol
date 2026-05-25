@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Script, console} from "forge-std/Script.sol";
+import {console} from "forge-std/Script.sol";
 import {EntryPoint} from "@account-abstraction/core/EntryPoint.sol";
 import {IEntryPoint} from "I4337/interfaces/IEntryPoint.sol";
 import {Kernel} from "kernel/Kernel.sol";
 import {KernelFactory} from "../src/aa/KernelFactory.sol";
 import {ECDSAValidator} from "kernel/validator/ECDSAValidator.sol";
 import {UniversalSigValidator} from "../src/aa/UniversalSigValidator.sol";
+import {DeploymentKey} from "./DeploymentKey.s.sol";
 
 /**
  * @title DeployLocalAA
@@ -16,15 +17,9 @@ import {UniversalSigValidator} from "../src/aa/UniversalSigValidator.sol";
  * Run with:
  *   forge script script/DeployLocalAA.s.sol --rpc-url http://localhost:8545 --broadcast
  */
-contract DeployLocalAA is Script {
+contract DeployLocalAA is DeploymentKey {
     function run() external {
-        // Use first Anvil account (has 10000 ETH)
-        uint256 deployerKey = vm.envOr(
-            "PRIVATE_KEY",
-            uint256(
-                0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-            )
-        );
+        uint256 deployerKey = _deploymentPrivateKey();
 
         vm.startBroadcast(deployerKey);
 
