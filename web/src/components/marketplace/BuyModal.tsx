@@ -7,6 +7,7 @@ import { useX402PublicConfig } from "../../hooks/useX402PublicConfig";
 import { useAuth } from "../auth/AuthProvider";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { API_BASE } from "../../lib/api";
+import { recordProductAnalytics } from "../../lib/productAnalytics";
 import {
   defaultBuyPaymentMethod,
   formatStableAssetAmount,
@@ -87,7 +88,7 @@ export function BuyModal({
   const [x402Error, setX402Error] = useState<string | null>(null);
   const [x402Result, setX402Result] = useState<X402PaymentResult | null>(null);
   const [x402Payer, setX402Payer] = useState<string | null>(null);
-  const { status: authStatus, webAuthnKey, login } = useAuth();
+  const { status: authStatus, webAuthnKey, login, token } = useAuth();
   const { chainId } = useZeroDev();
   const { assets: paymentAssets } = usePaymentAssets(chainId);
   const selectedListingId = useMemo(() => {
@@ -231,6 +232,20 @@ export function BuyModal({
 
   const handleBuy = async () => {
     if (!selectedListingId) return;
+    void recordProductAnalytics(token, "marketplace.purchase_intent", {
+      source: "buy_modal",
+      subjectType: "marketplace_listing",
+      subjectId: selectedListingId.toString(),
+      payload: {
+        listingId: selectedListingId.toString(),
+        stemId,
+        licenseType: selectedLicense,
+        amount: amount.toString(),
+        paymentMethod: "onchain",
+        chainId,
+        paymentToken: listing?.paymentToken,
+      },
+    });
     try {
       const hash = await buy(selectedListingId, amount);
       onSuccess?.(hash);
@@ -242,6 +257,21 @@ export function BuyModal({
   const handleX402Pay = async () => {
     if (!stemId || !x402Config?.enabled || selectedLicense !== "personal") return;
     if (!x402Quote?.payTo || !x402Asset?.address) return;
+    void recordProductAnalytics(token, "marketplace.purchase_intent", {
+      source: "buy_modal",
+      subjectType: "marketplace_listing",
+      subjectId: selectedListingId?.toString(),
+      payload: {
+        listingId: selectedListingId?.toString(),
+        stemId,
+        licenseType: selectedLicense,
+        amount: amount.toString(),
+        paymentMethod: "x402",
+        chainId: x402Config.chainId,
+        paymentAssetSymbol: x402Asset.symbol,
+        amountUsd: x402Quote.amountUsd ?? undefined,
+      },
+    });
     setX402Error(null);
     setX402Result(null);
     setX402Payer(null);
