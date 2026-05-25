@@ -22,6 +22,13 @@ class AnalyticsTransformTest(unittest.TestCase):
             "completionRatio": 0.9,
             "playbackInstanceId": "instance-1",
         }
+        playback_event["geo"] = {
+            "countryCode": "FR",
+            "regionCode": "IDF",
+            "citySlug": "paris",
+            "source": "user_declared",
+            "precision": "city",
+        }
         layers = process_payload(json.dumps(playback_event))
 
         self.assertEqual(len(layers.events_raw), 1)
@@ -30,6 +37,8 @@ class AnalyticsTransformTest(unittest.TestCase):
         self.assertEqual(len(layers.analytics_views), 1)
         self.assertEqual(layers.analytics_quarantine, [])
         self.assertEqual(layers.events_clean[0]["eventFamily"], "playback")
+        self.assertEqual(layers.events_clean[0]["geoCountryCode"], "FR")
+        self.assertEqual(layers.events_clean[0]["geoCitySlug"], "paris")
         self.assertEqual(layers.analytics_facts[0]["factId"], "fact_evt_play")
         self.assertEqual(layers.analytics_views[0]["playCount"], 1)
         self.assertEqual(json.loads(layers.events_raw[0]["payload"])["artistId"], "artist-1")
@@ -41,6 +50,27 @@ class AnalyticsTransformTest(unittest.TestCase):
         self.assertEqual(dimensions["releaseId"], "release-1")
         self.assertEqual(dimensions["completionRatio"], 0.9)
         self.assertEqual(dimensions["playbackInstanceId"], "instance-1")
+        self.assertEqual(dimensions["geoCountryCode"], "FR")
+        self.assertEqual(dimensions["geoRegionCode"], "IDF")
+        self.assertEqual(dimensions["geoCitySlug"], "paris")
+        self.assertEqual(dimensions["geoSource"], "user_declared")
+        self.assertEqual(dimensions["geoPrecision"], "city")
+
+    def test_invalid_geo_dimension_is_quarantined(self):
+        payload = event("evt_bad_geo", "shows.pledge_intent_created")
+        payload["geo"] = {
+            "countryCode": "FR",
+            "source": "campaign_target",
+            "precision": "city",
+            "rawIp": "203.0.113.1",
+        }
+
+        layers = process_payload(payload)
+
+        self.assertEqual(layers.events_clean, [])
+        self.assertEqual(len(layers.analytics_quarantine), 1)
+        self.assertIn("geo.citySlug", layers.analytics_quarantine[0]["reason"])
+        self.assertIn("geo: unsupported fields", layers.analytics_quarantine[0]["reason"])
 
     def test_invalid_payload_is_quarantined(self):
         layers = process_payload("{not json")
@@ -82,6 +112,7 @@ class AnalyticsTransformTest(unittest.TestCase):
             ("evt_playlist", "playlist.track_added"),
             ("evt_search", "search.submitted"),
             ("evt_artist", "artist.upload_step_completed"),
+            ("evt_shows", "shows.pledge_intent_created"),
         ]
 
         layers = process_batch(event(event_id, event_name) for event_id, event_name in events)
@@ -106,6 +137,7 @@ class AnalyticsTransformTest(unittest.TestCase):
                 "playlist",
                 "search",
                 "artist",
+                "shows",
             ],
         )
         self.assertEqual(len(layers.analytics_facts), len(events))

@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { AnalyticsEventInput } from "./analytics_event";
+import { AnalyticsEventInput, AnalyticsGeoDimension } from "./analytics_event";
 import { AnalyticsCatalogMetadataService } from "./analytics_catalog_metadata.service";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
 
@@ -12,6 +12,7 @@ interface PlaybackCatalogAnalyticsInput {
   sessionId?: string;
   source?: string;
   actorId?: string;
+  geo?: AnalyticsGeoDimension;
 }
 
 export interface PlaybackCompletedAnalyticsInput extends PlaybackCatalogAnalyticsInput {
@@ -33,6 +34,7 @@ export interface PlaybackLifecycleAnalyticsInput extends PlaybackCatalogAnalytic
 
 export interface ProductAnalyticsInput {
   eventName: string;
+  producer?: string;
   actorId?: string;
   sessionId?: string;
   traceId?: string;
@@ -41,6 +43,7 @@ export interface ProductAnalyticsInput {
   source?: string;
   payload?: Record<string, unknown>;
   sourceRefs?: Record<string, string>;
+  geo?: AnalyticsGeoDimension;
 }
 
 export interface LibrarySavedAnalyticsInput {
@@ -104,6 +107,7 @@ export class AnalyticsInstrumentationService {
       subjectId: input.trackId,
       actorId: input.actorId,
       sessionId: input.sessionId,
+      geo: input.geo,
       payload: {
         trackId: input.trackId,
         artistId: catalog.artistId,
@@ -132,6 +136,7 @@ export class AnalyticsInstrumentationService {
       subjectId: input.trackId,
       actorId: input.actorId,
       sessionId: input.sessionId,
+      geo: input.geo,
       payload: {
         action: input.action,
         trackId: input.trackId,
@@ -162,13 +167,14 @@ export class AnalyticsInstrumentationService {
   async recordProductEvent(input: ProductAnalyticsInput) {
     return this.emit({
       eventName: input.eventName,
-      producer: "web-app",
+      producer: input.producer ?? "web-app",
       privacyTier: "pseudonymous",
       subjectType: input.subjectType,
       subjectId: input.subjectId,
       actorId: input.actorId,
       sessionId: input.sessionId,
       traceId: input.traceId,
+      geo: input.geo,
       payload: {
         ...(input.payload ?? {}),
         source: input.source ?? "web_app",

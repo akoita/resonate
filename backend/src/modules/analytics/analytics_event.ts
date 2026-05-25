@@ -3,9 +3,21 @@ import { z } from "zod";
 
 export const ANALYTICS_ENVIRONMENTS = ["local", "dev", "staging", "prod"] as const;
 export const ANALYTICS_PRIVACY_TIERS = ["anonymous", "pseudonymous", "personal", "sensitive"] as const;
+export const ANALYTICS_GEO_SOURCES = ["user_declared", "ip_coarse", "campaign_target"] as const;
+export const ANALYTICS_GEO_PRECISIONS = ["country", "region", "city"] as const;
 
 export type AnalyticsEnvironment = (typeof ANALYTICS_ENVIRONMENTS)[number];
 export type AnalyticsPrivacyTier = (typeof ANALYTICS_PRIVACY_TIERS)[number];
+export type AnalyticsGeoSource = (typeof ANALYTICS_GEO_SOURCES)[number];
+export type AnalyticsGeoPrecision = (typeof ANALYTICS_GEO_PRECISIONS)[number];
+
+export interface AnalyticsGeoDimension {
+  countryCode: string;
+  regionCode?: string;
+  citySlug?: string;
+  source: AnalyticsGeoSource;
+  precision: AnalyticsGeoPrecision;
+}
 
 export interface AnalyticsEventEnvelope {
   eventId: string;
@@ -23,6 +35,7 @@ export interface AnalyticsEventEnvelope {
   traceId?: string;
   schemaUri?: string;
   consentBasis?: string;
+  geo?: AnalyticsGeoDimension;
   payload: Record<string, unknown>;
   sourceRefs?: Record<string, string>;
 }
@@ -54,6 +67,7 @@ export type AnalyticsEventInput = Partial<AnalyticsEventEnvelope> & {
   schema_uri?: string;
   consentBasis?: string;
   consent_basis?: string;
+  geo?: AnalyticsGeoDimension;
   sourceRefs?: Record<string, string>;
   source_refs?: Record<string, string>;
   payload?: Record<string, unknown>;
@@ -108,6 +122,13 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     producer: "web-app",
     privacyTier: "pseudonymous",
     payloadFields: ["step", "releaseId", "fileCount", "source"],
+  },
+  {
+    eventName: "shows.pledge_intent_created",
+    eventVersion: 1,
+    producer: "shows-service",
+    privacyTier: "pseudonymous",
+    payloadFields: ["campaignId", "campaignSlug", "artistId", "amountUnits", "paymentAssetSymbol", "source"],
   },
   {
     eventName: "commerce.settled",
@@ -181,6 +202,15 @@ const analyticsEventNameSchema = z
   .regex(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/, "must use dotted lowercase names such as playback.completed");
 
 const analyticsIdentifierSchema = z.string().min(1).max(200);
+const analyticsGeoDimensionSchema = z
+  .object({
+    countryCode: z.string().regex(/^[A-Z]{2}$/, "countryCode must be ISO-3166 alpha-2"),
+    regionCode: z.string().min(1).max(16).regex(/^[A-Z0-9-]+$/).optional(),
+    citySlug: z.string().min(1).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(),
+    source: z.enum(ANALYTICS_GEO_SOURCES),
+    precision: z.enum(ANALYTICS_GEO_PRECISIONS),
+  })
+  .strict();
 
 export const analyticsEventEnvelopeSchema = z
   .object({
@@ -199,6 +229,7 @@ export const analyticsEventEnvelopeSchema = z
     traceId: analyticsIdentifierSchema.optional(),
     schemaUri: analyticsIdentifierSchema.optional(),
     consentBasis: analyticsIdentifierSchema.optional(),
+    geo: analyticsGeoDimensionSchema.optional(),
     payload: z.record(z.string(), z.unknown()),
     sourceRefs: z.record(z.string(), z.string()).optional(),
   })
@@ -216,6 +247,22 @@ export const analyticsEventEnvelopeSchema = z
         code: "custom",
         path: ["consentBasis"],
         message: "personal and sensitive analytics events require consentBasis",
+      });
+    }
+
+    if (event.geo?.precision === "region" && !event.geo.regionCode) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["geo", "regionCode"],
+        message: "region precision requires regionCode",
+      });
+    }
+
+    if (event.geo?.precision === "city" && !event.geo.citySlug) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["geo", "citySlug"],
+        message: "city precision requires citySlug",
       });
     }
   });
@@ -279,6 +326,7 @@ export function normalizeAnalyticsEventInput(
     traceId: input.traceId ?? input.trace_id,
     schemaUri,
     consentBasis: input.consentBasis ?? input.consent_basis,
+    geo: normalizeAnalyticsGeoDimension(input.geo),
     payload: input.payload,
     sourceRefs,
   };
@@ -319,6 +367,31 @@ export function buildAnalyticsEventId(input: {
   return `evt_${hash}`;
 }
 
+export function normalizeAnalyticsGeoDimension(input: unknown): AnalyticsGeoDimension | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return undefined;
+  }
+
+  const record = input as Record<string, unknown>;
+  const countryCode = normalizedCountryCode(record.countryCode);
+  const regionCode = normalizedRegionCode(record.regionCode);
+  const citySlug = normalizedCitySlug(record.citySlug);
+  const source = normalizedGeoSource(record.source);
+  const precision = normalizedGeoPrecision(record.precision);
+
+  if (!countryCode || !source || !precision) {
+    return undefined;
+  }
+
+  return {
+    countryCode,
+    regionCode,
+    citySlug,
+    source,
+    precision,
+  };
+}
+
 export function defaultAnalyticsEnvironment(): AnalyticsEnvironment {
   if (process.env.NODE_ENV === "production") {
     return "prod";
@@ -327,6 +400,49 @@ export function defaultAnalyticsEnvironment(): AnalyticsEnvironment {
     return "local";
   }
   return "dev";
+}
+
+function normalizedCountryCode(value: unknown) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(normalized) ? normalized : undefined;
+}
+
+function normalizedRegionCode(value: unknown) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toUpperCase();
+  return /^[A-Z0-9-]{1,16}$/.test(normalized) ? normalized : undefined;
+}
+
+function normalizedCitySlug(value: unknown) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return normalized || undefined;
+}
+
+function normalizedGeoSource(value: unknown): AnalyticsGeoSource | undefined {
+  return typeof value === "string" && (ANALYTICS_GEO_SOURCES as readonly string[]).includes(value)
+    ? (value as AnalyticsGeoSource)
+    : undefined;
+}
+
+function normalizedGeoPrecision(value: unknown): AnalyticsGeoPrecision | undefined {
+  return typeof value === "string" && (ANALYTICS_GEO_PRECISIONS as readonly string[]).includes(value)
+    ? (value as AnalyticsGeoPrecision)
+    : undefined;
 }
 
 function stableStringify(value: unknown): string {

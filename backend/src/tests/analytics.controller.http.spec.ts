@@ -238,11 +238,20 @@ describe("AnalyticsController (HTTP)", () => {
         subjectType: "release",
         subjectId: "release-1",
         clientEventId: "client-event-1",
+        geo: {
+          countryCode: "fr",
+          regionCode: "idf",
+          citySlug: "Paris",
+          source: "user_declared",
+          precision: "city",
+          rawIp: "203.0.113.1",
+        },
         payload: {
           step: "stems",
           fileCount: 8,
           completed: true,
           nested: { should: "drop" },
+          rawIp: "203.0.113.1",
           reallyLong: "x".repeat(300),
         },
       })
@@ -255,6 +264,13 @@ describe("AnalyticsController (HTTP)", () => {
       subjectType: "release",
       subjectId: "release-1",
       source: "web_app",
+      geo: {
+        countryCode: "FR",
+        regionCode: "IDF",
+        citySlug: "paris",
+        source: "user_declared",
+        precision: "city",
+      },
       payload: {
         step: "stems",
         fileCount: 8,
