@@ -66,6 +66,7 @@ When adding a new environment variable:
 | `DEMUCS_CLOUD_RUN_JOB_NAME` | Backend | Cloud Run Job name to execute after publishing each `stem-separate` message |
 | `GCP_BILLING_QUOTA_PROJECT` | CI | Optional quota/billing project for Cloud Build submission; deploy CI defaults it to `GCP_PROJECT_ID` |
 | `GCP_CLOUD_BUILD_SOURCE_STAGING_DIR` | CI | Optional Cloud Storage prefix for `gcloud builds submit` source archives; deploy CI defaults it from `GCP_PROJECT_ID` |
+| `GCP_CLOUD_BUILD_POLLING_INTERVAL_SECONDS` | CI | Optional Cloud Build polling interval for image publishing. Defaults to `10` seconds to avoid Cloud Build get-request quota spikes when multiple images publish in parallel |
 | `ANALYTICS_DATAFLOW_ARTIFACT_REGISTRY_REPOSITORY` | CI | Optional Artifact Registry repository for the analytics Dataflow Flex Template image. Defaults to `resonate-<environment>` |
 | `ANALYTICS_DATAFLOW_TEMPLATE_BUCKET` | CI | Optional GCS bucket for analytics Dataflow template, staging, and temp artifacts. Defaults to `<GCP_PROJECT_ID>-analytics-dataflow` |
 | `ANALYTICS_DATAFLOW_TEMPLATE_PREFIX` | CI | Optional GCS prefix for analytics Dataflow `template.json`. Defaults to `templates/<environment>/analytics-dataflow` |

@@ -15,6 +15,7 @@ Usage: submit-cloud-build.sh \
   [--project <gcp-project-id>] \
   [--billing-project <gcp-project-id>] \
   [--gcs-source-staging-dir <gs://bucket/prefix>] \
+  [--polling-interval <seconds>] \
   [--timeout <duration>]
 EOF
   exit 1
@@ -30,6 +31,7 @@ service_account=""
 project_id="${GCP_PROJECT_ID:-}"
 billing_project="${GCP_BILLING_QUOTA_PROJECT:-}"
 gcs_source_staging_dir="${GCP_CLOUD_BUILD_SOURCE_STAGING_DIR:-}"
+polling_interval="${GCP_CLOUD_BUILD_POLLING_INTERVAL_SECONDS:-10}"
 timeout="1800s"
 
 while [[ $# -gt 0 ]]; do
@@ -72,6 +74,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --gcs-source-staging-dir)
       gcs_source_staging_dir="${2:-}"
+      shift 2
+      ;;
+    --polling-interval)
+      polling_interval="${2:-}"
       shift 2
       ;;
     --timeout)
@@ -197,6 +203,7 @@ if [[ "${remote_source}" == "true" ]]; then
     --billing-project "${billing_project}"
     --config "${config_file}"
     --gcs-source-staging-dir "${gcs_source_staging_dir}"
+    --polling-interval "${polling_interval}"
     --timeout "${timeout}"
   )
 else
@@ -208,6 +215,7 @@ else
     --billing-project "${billing_project}"
     --config "${config_file}"
     --gcs-source-staging-dir "${gcs_source_staging_dir}"
+    --polling-interval "${polling_interval}"
     --timeout "${timeout}"
   )
 fi
