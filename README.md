@@ -433,6 +433,8 @@ repo-local `docker build`, `docker run`, stale-image recovery, and "stuck on Sep
 | Symptom                                    | Cause                                                          | Fix                                                                          |
 | ------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Container shows "Created" (not "Up")       | Port conflict — another container or process is using the port | Run `docker ps` to find the conflicting container, then `docker stop <name>` |
+| `make backend-dev` fails with `extension "vector" is not available` | Local Postgres was started from an old non-pgvector image | Run `make dev-down && make dev-up` so Docker recreates Postgres with the pgvector image |
+| Prisma reports migration `20260425223000_add_track_embeddings_pgvector` failed after fixing pgvector | The earlier failed local run is recorded in `_prisma_migrations` | Run `cd backend && npx prisma migrate resolve --rolled-back 20260425223000_add_track_embeddings_pgvector`, then rerun `make backend-dev` |
 | Redis won't start (port 6379)              | Stale Redis from another project                               | Stop the conflicting container, then rerun `make dev-up` |
 | Track stuck at "🔵 Pending" forever        | `PUBSUB_EMULATOR_HOST` missing from `backend/.env`             | Run `make pubsub-init` then restart backend; `make backend-dev` auto-adds it |
 | Worker logs: "Subscription does not exist" | PubSub emulator has no topics (emulator restarted)             | Run `make pubsub-init`, then restart the worker with `make worker-gpu` |
