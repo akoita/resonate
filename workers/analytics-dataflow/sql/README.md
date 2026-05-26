@@ -40,6 +40,21 @@ Run order:
    scores.
 3. Optional, after enough feedback exists: `agent_taste_intelligence_bqml.sql`
 
+The baseline materialization is parameterized and can be run from the worker
+directory:
+
+```bash
+cd workers/analytics-dataflow
+AGENT_TASTE_MATERIALIZATION_PROJECT_ID="$GCP_PROJECT_ID" \
+AGENT_TASTE_BIGQUERY_DATASET="$ANALYTICS_BIGQUERY_DATASET" \
+./run-agent-taste-materialization.sh --verify
+```
+
+Use `--dry-run` to validate table references and SQL shape without writing
+tables. The runner resolves project, dataset, clean table, training table, score
+table, and version from the documented agent taste, analytics BigQuery,
+warehouse, and GCP environment variables.
+
 The baseline script creates:
 
 | Table | Purpose |
@@ -47,6 +62,14 @@ The baseline script creates:
 | `track_intelligence_features` | Track-level interaction features from `events_clean`. |
 | `user_track_signal_training` | Event-level implicit-feedback rows with signed weights. |
 | `user_track_recommendation_scores` | Serving table consumed by `AgentBigQueryTasteSignalService`. |
+
+The signed baseline signals include playback completion, inferred short-play
+skips, repeat/replay behavior, library saves, playlist adds, commerce/payment
+purchases, x402 purchases, agent purchase completions, agent track selections,
+and session intent context where it is available.
+
+`agent_taste_intelligence_verification.sql` reports score freshness, user/track
+coverage, confidence coverage, signal-type mix, and session-intent coverage.
 
 The BQML script creates a matrix-factorization model and writes
 `user_track_recommendation_scores_bqml`. Promote it to
