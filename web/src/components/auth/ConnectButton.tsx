@@ -10,11 +10,14 @@ export default function ConnectButton() {
   const [copied, setCopied] = useState(false);
   const hasMounted = useSyncExternalStore(subscribe, () => true, () => false);
 
-  const copyAddress = () => {
-    if (address) {
-      navigator.clipboard.writeText(address);
+  const copyAddress = async () => {
+    if (!address) return;
+    try {
+      await navigator.clipboard.writeText(address);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    } catch {
+      console.warn("[Auth] Clipboard permission denied while copying wallet address.");
     }
   };
 

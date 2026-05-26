@@ -2,6 +2,7 @@
 title: "Agent Taste Intelligence"
 status: partial
 owner: "@akoita"
+issues: [977, 978, 979, 980, 981, 982, 983]
 ---
 
 # Agent Taste Intelligence
@@ -20,6 +21,22 @@ audio-feature signals.
 This is the serving hook for a broader warehouse learning loop. Training jobs,
 BigQuery ML model creation, vector indexes, and scheduled materialization are
 planned follow-up work.
+
+Issue [#977](https://github.com/akoita/resonate/issues/977) tracks the next
+product evolution: using the running analytics pipeline to power AI DJ taste
+intelligence, Session Intent presets, recommendation explanations, and quality
+measurement.
+
+## Roadmap
+
+| Phase | Tracking | Outcome |
+| --- | --- | --- |
+| Analytics score materialization | [#981](https://github.com/akoita/resonate/issues/981) | Playback, save, skip, purchase, mood, and agent events produce bounded user-track scores. |
+| Offline ML evaluation | [#978](https://github.com/akoita/resonate/issues/978) | BigQuery ML scores are compared against deterministic ranking before promotion. |
+| Analytics-derived explanations | [#983](https://github.com/akoita/resonate/issues/983) | Recommendation reasons can include safe taste, intent, novelty, and commerce signals. |
+| Intent feedback loop | [#980](https://github.com/akoita/resonate/issues/980) | Mood, vibe, and Session Intent outcomes feed back into `AgentSignal`. |
+| Session Intent UI | [#979](https://github.com/akoita/resonate/issues/979) | The current preset gallery becomes a compact, instrumented agent-control surface. |
+| Quality dashboard | [#982](https://github.com/akoita/resonate/issues/982) | Operators can monitor recommendation quality, preset usefulness, and model freshness. |
 
 ## Who It Is For
 

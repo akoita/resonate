@@ -14,6 +14,10 @@ export interface AgentPreferences {
   allowExplicit?: boolean;
   licenseType?: "personal" | "remix" | "commercial";
   learnedGenreWeights?: Record<string, number>;
+  sessionIntent?: string;
+  sessionIntentName?: string;
+  queueStyle?: string;
+  source?: string;
 }
 
 @Injectable()

@@ -13,6 +13,10 @@ export interface AgentRuntimeInput {
     learnedGenreWeights?: Record<string, number>;
     allowExplicit?: boolean;
     licenseType?: "personal" | "remix" | "commercial";
+    sessionIntent?: string;
+    sessionIntentName?: string;
+    queueStyle?: string;
+    source?: string;
   };
 }
 

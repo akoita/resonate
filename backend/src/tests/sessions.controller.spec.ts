@@ -22,6 +22,72 @@ function makeController() {
 beforeEach(() => jest.clearAllMocks());
 
 describe('SessionsController', () => {
+  it('forwards session intent preferences when starting a session', () => {
+    const ctrl = makeController();
+
+    ctrl.start({
+      userId: 'user-1',
+      budgetCapUsd: 15,
+      preferences: {
+        mood: 'Hype',
+        energy: 'high',
+        genres: ['Bass', 'Club', 'Trap'],
+        licenseType: 'remix',
+        sessionIntent: 'Hype',
+        sessionIntentName: 'Pulse Raid',
+        queueStyle: 'Fast cuts',
+        source: 'agent_session_intent',
+      },
+    });
+
+    expect(mockSessionsService.startSession).toHaveBeenCalledWith({
+      userId: 'user-1',
+      budgetCapUsd: 15,
+      preferences: {
+        mood: 'Hype',
+        energy: 'high',
+        genres: ['Bass', 'Club', 'Trap'],
+        licenseType: 'remix',
+        sessionIntent: 'Hype',
+        sessionIntentName: 'Pulse Raid',
+        queueStyle: 'Fast cuts',
+        source: 'agent_session_intent',
+      },
+    });
+  });
+
+  it('forwards session intent preferences for next AI pick requests', () => {
+    const ctrl = makeController();
+
+    ctrl.agentNext({
+      sessionId: 'session-1',
+      preferences: {
+        mood: 'Focus',
+        energy: 'medium',
+        genres: ['Ambient', 'Lo-fi'],
+        licenseType: 'personal',
+        sessionIntent: 'Focus',
+        sessionIntentName: 'Neural Flow',
+        queueStyle: 'Stable pacing',
+        source: 'agent_session_intent',
+      },
+    });
+
+    expect(mockSessionsService.agentNext).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      preferences: {
+        mood: 'Focus',
+        energy: 'medium',
+        genres: ['Ambient', 'Lo-fi'],
+        licenseType: 'personal',
+        sessionIntent: 'Focus',
+        sessionIntentName: 'Neural Flow',
+        queueStyle: 'Stable pacing',
+        source: 'agent_session_intent',
+      },
+    });
+  });
+
   describe('playlist — limit parsing', () => {
     it('defaults to 10 when limit is undefined', () => {
       const ctrl = makeController();
