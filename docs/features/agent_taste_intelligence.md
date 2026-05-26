@@ -12,15 +12,16 @@ issues: [977, 978, 979, 980, 981, 982, 983]
 `partial`
 
 The AI DJ and commerce-agent selector can now consume optional BigQuery-backed
-user-track taste scores as an additive ranking signal. The existing
-deterministic selector remains the default behavior: when BigQuery taste signals
-are disabled, unavailable, or missing for a candidate track, recommendations
-fall back to catalog, learned genre, listing, embedding, and metadata-derived
-audio-feature signals.
+user-track taste scores as an additive ranking signal, and the analytics
+Dataflow output has a repeatable baseline materialization path for those scores.
+The existing deterministic selector remains the default behavior: when BigQuery
+taste signals are disabled, unavailable, or missing for a candidate track,
+recommendations fall back to catalog, learned genre, listing, embedding, and
+metadata-derived audio-feature signals.
 
-This is the serving hook for a broader warehouse learning loop. Training jobs,
-BigQuery ML model creation, vector indexes, and scheduled materialization are
-planned follow-up work.
+This is the serving hook for a broader warehouse learning loop. BigQuery ML
+promotion, vector indexes, and scheduled infrastructure are planned follow-up
+work.
 
 Issue [#977](https://github.com/akoita/resonate/issues/977) tracks the next
 product evolution: using the running analytics pipeline to power AI DJ taste
@@ -31,7 +32,7 @@ measurement.
 
 | Phase | Tracking | Outcome |
 | --- | --- | --- |
-| Analytics score materialization | [#981](https://github.com/akoita/resonate/issues/981) | Playback, save, skip, purchase, mood, and agent events produce bounded user-track scores. |
+| Analytics score materialization | [#981](https://github.com/akoita/resonate/issues/981) | Playback, save, skip, replay, purchase, session intent, and agent events produce bounded user-track scores. |
 | Offline ML evaluation | [#978](https://github.com/akoita/resonate/issues/978) | BigQuery ML scores are compared against deterministic ranking before promotion. |
 | Analytics-derived explanations | [#983](https://github.com/akoita/resonate/issues/983) | Recommendation reasons can include safe taste, intent, novelty, and commerce signals. |
 | Intent feedback loop | [#980](https://github.com/akoita/resonate/issues/980) | Mood, vibe, and Session Intent outcomes feed back into `AgentSignal`. |
@@ -60,8 +61,9 @@ another explainable signal.
 
 1. The analytics event ledger exports playback, library, commerce, rights,
    agent, and generation facts into BigQuery.
-2. A data job materializes `user_track_recommendation_scores`. The initial SQL
-   lives in `workers/analytics-dataflow/sql/agent_taste_intelligence_baseline.sql`.
+2. A parameterized data job materializes `user_track_recommendation_scores`. The
+   initial SQL lives in
+   `workers/analytics-dataflow/sql/agent_taste_intelligence_baseline.sql`.
 3. The backend sets `AGENT_TASTE_SIGNAL_SOURCE=bigquery`.
 4. During candidate ranking, `AgentSelectorService` asks
    `AgentBigQueryTasteSignalService` for scores for the bounded candidate set.
@@ -117,21 +119,38 @@ FROM `${PROJECT_ID}.${DATASET}.agent_candidate_scores`;
 
 ## Warehouse Materialization
 
-The baseline warehouse script creates all three MVP tables from `events_clean`:
+The baseline warehouse script creates all three MVP tables from `events_clean`
+without editing SQL literals:
 
 ```bash
-bq query --use_legacy_sql=false \
-  < workers/analytics-dataflow/sql/agent_taste_intelligence_baseline.sql
+cd workers/analytics-dataflow
+AGENT_TASTE_MATERIALIZATION_PROJECT_ID="$GCP_PROJECT_ID" \
+AGENT_TASTE_BIGQUERY_DATASET="$ANALYTICS_BIGQUERY_DATASET" \
+./run-agent-taste-materialization.sh --verify
 ```
 
-Edit `target_project` and `target_dataset` at the top of the script before
-running it in a deployed environment.
+Use `--dry-run` to validate the query before writing tables. The runner passes
+BigQuery query parameters for project, dataset, clean table, training table,
+score table, and materialization version.
+
+The baseline signed feedback includes:
+
+- positive signals from completed plays, saves, playlist adds, purchases, agent
+  purchases, agent selections, and repeat/replay behavior
+- negative signals from inferred short-play skips
+- session-intent context from AI DJ intent/session events when available
 
 After enough feedback volume exists, the optional BigQuery ML template can train
 a matrix-factorization model and write comparison scores:
 
 ```bash
 bq query --use_legacy_sql=false \
+  --parameter=target_project:STRING:"$GCP_PROJECT_ID" \
+  --parameter=target_dataset:STRING:"$ANALYTICS_BIGQUERY_DATASET" \
+  --parameter=training_table:STRING:user_track_signal_training \
+  --parameter=model_name:STRING:agent_taste_matrix_factorization \
+  --parameter=scores_table:STRING:user_track_recommendation_scores_bqml \
+  --parameter=model_version:STRING:bqml-matrix-factorization/v1 \
   < workers/analytics-dataflow/sql/agent_taste_intelligence_bqml.sql
 ```
 
@@ -162,7 +181,11 @@ Useful next warehouse jobs:
 | `AGENT_TASTE_SIGNAL_SOURCE` | Set to `bigquery` to enable warehouse-backed taste scores. Defaults to disabled. |
 | `AGENT_TASTE_BIGQUERY_PROJECT_ID` | Optional BigQuery project override for agent taste scores. |
 | `AGENT_TASTE_BIGQUERY_DATASET` | Optional BigQuery dataset override. Falls back to analytics warehouse/reporting dataset config. |
+| `AGENT_TASTE_BIGQUERY_CLEAN_TABLE` | Clean analytics events table used by the materialization runner. Defaults to `events_clean`. |
+| `AGENT_TASTE_BIGQUERY_TRAINING_TABLE` | Training signal table used by verification. Defaults to `user_track_signal_training`. |
 | `AGENT_TASTE_BIGQUERY_SCORES_TABLE` | Optional scores table id. Defaults to `user_track_recommendation_scores`. |
+| `AGENT_TASTE_MATERIALIZATION_PROJECT_ID` | Optional project override used only by the warehouse materialization runner. |
+| `AGENT_TASTE_MATERIALIZATION_VERSION` | Optional version label written to materialized score rows. |
 | `AGENT_TASTE_BIGQUERY_MAXIMUM_BYTES_BILLED` | Query cost guard. Defaults lower than dashboard reporting because serving queries are bounded. |
 | `AGENT_TASTE_BIGQUERY_QUERY_TIMEOUT_MS` | Query timeout. Defaults to `5000`. |
 | `AGENT_TASTE_BIGQUERY_ROW_LIMIT` | Maximum score rows returned per selector call. Defaults to `100`. |
@@ -175,5 +198,11 @@ Useful next warehouse jobs:
   `backend/src/tests/agent_bigquery_taste_signal.spec.ts`.
 - Selector tests cover `bigquery_taste_score` blending without replacing
   deterministic ranking in `backend/src/tests/agent_learning.spec.ts`.
+- SQL contract tests cover parameterized materialization, required serving
+  columns, expected signal families, and runner help output in
+  `workers/analytics-dataflow/test_agent_taste_sql.py`.
+- Warehouse verification queries live in
+  `workers/analytics-dataflow/sql/agent_taste_intelligence_verification.sql` and
+  report freshness, coverage, signal mix, and intent-context coverage.
 - Feature work that changes the serving table contract must update this page,
   `docs/features/README.md`, and `docs/deployment/environment.md`.

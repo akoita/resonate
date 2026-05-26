@@ -49,7 +49,11 @@ When adding a new environment variable:
 | `AGENT_TASTE_SIGNAL_SOURCE` | Backend | Optional agent taste signal provider. Defaults to disabled; set `bigquery` to blend precomputed BigQuery user-track scores into AI DJ recommendation ranking. |
 | `AGENT_TASTE_BIGQUERY_PROJECT_ID` | Backend | Optional BigQuery project override for agent taste scores. Falls back to analytics BigQuery/warehouse project config. |
 | `AGENT_TASTE_BIGQUERY_DATASET` | Backend | Optional BigQuery dataset override for agent taste scores. Falls back to analytics BigQuery/warehouse dataset config. |
+| `AGENT_TASTE_BIGQUERY_CLEAN_TABLE` | Data/ML tooling | Optional clean analytics events table used by `workers/analytics-dataflow/run-agent-taste-materialization.sh`. Defaults to `events_clean`. |
+| `AGENT_TASTE_BIGQUERY_TRAINING_TABLE` | Data/ML tooling | Optional training signal table used by Agent Taste verification queries. Defaults to `user_track_signal_training`. |
 | `AGENT_TASTE_BIGQUERY_SCORES_TABLE` | Backend | Optional BigQuery table id containing `user_id`, `track_id`, and normalized `recommendation_score` rows. Defaults to `user_track_recommendation_scores`. |
+| `AGENT_TASTE_MATERIALIZATION_PROJECT_ID` | Data/ML tooling | Optional BigQuery project override for the Agent Taste materialization runner. Falls back to agent taste, analytics BigQuery, warehouse, and GCP project config. |
+| `AGENT_TASTE_MATERIALIZATION_VERSION` | Data/ML tooling | Optional version label written to materialized Agent Taste score rows. Defaults to the current baseline version in the runner. |
 | `AGENT_TASTE_BIGQUERY_MAXIMUM_BYTES_BILLED` | Backend | Optional BigQuery query cost guard for agent taste score reads. Defaults to `100000000` bytes. |
 | `AGENT_TASTE_BIGQUERY_QUERY_TIMEOUT_MS` | Backend | Optional timeout for agent taste score queries. Defaults to `5000`. |
 | `AGENT_TASTE_BIGQUERY_ROW_LIMIT` | Backend | Optional maximum taste score rows returned per selector call. Defaults to `100`. |
