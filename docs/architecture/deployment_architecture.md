@@ -15,7 +15,8 @@ module diagram. It follows a C4-style container/deployment view:
 - External actors: human users, AI agents, and operators
 - Cloud edge/runtime: DNS, Google-managed TLS, external HTTPS load balancer,
   Cloud Armor, serverless NEGs, Cloud Run frontend/backend/Demucs, Pub/Sub,
-  Cloud SQL, Redis, GCS, Secret Manager, IAM, Artifact Registry, and Monitoring
+  Dataflow, BigQuery, Cloud SQL, Redis, GCS, Secret Manager, IAM, Artifact
+  Registry, and Monitoring
 - Delivery control plane: `resonate` CI creates immutable images and
   `resonate-iac` applies Terraform-managed Cloud Run releases
 - Blockchain layer: ERC-4337 bundler, EntryPoint, Kernel smart accounts,
@@ -45,6 +46,15 @@ flowchart LR
   Worker --> GCS
   Worker --> Results["Pub/Sub stem-results"]
   Results --> Backend
+
+  Backend --> AnalyticsTopic["Pub/Sub analytics events"]
+  AnalyticsTopic --> AnalyticsSub["Dataflow subscription<br>retry + DLQ"]
+  AnalyticsSub --> Dataflow["Analytics Dataflow<br>Flex Template"]
+  Dataflow --> BigQuery[("BigQuery analytics warehouse<br>raw, clean, facts, views, quarantine")]
+  BigQuery --> ArtistReports["Artist analytics API<br>BigQuery report source"]
+  BigQuery --> AgentTaste["Agent taste scores<br>recommendation signal"]
+  ArtistReports --> Frontend
+  AgentTaste --> Backend
 
   Backend --> X402["x402 facilitator"]
   X402 --> USDC["USDC payout wallet"]
@@ -102,6 +112,15 @@ and writes processed stems to durable storage.
 Cloud SQL Postgres, Memorystore Redis, GCS stems bucket, and optional IPFS
 storage mode. Cloud SQL and Redis are reached through private networking.
 
+### Analytics
+
+Versioned product and protocol event envelopes are persisted by the backend and
+can be published to the Terraform-managed analytics Pub/Sub topic. The Apache
+Beam/Dataflow Flex Template validates, dedupes, normalizes, quarantines, and
+writes events into BigQuery `events_raw`, `events_clean`, `analytics_facts`,
+`analytics_views`, and `analytics_quarantine` layers. Those warehouse layers
+feed the artist analytics API and the optional agent taste scoring signal.
+
 ### Smart Accounts
 
 ZeroDev/Kernel v3, ERC-4337 bundler, EntryPoint v0.7, session keys, and
@@ -133,19 +152,25 @@ state.
 Cloud Monitoring uptime checks, error-rate alerts, Pub/Sub backlog, and DB CPU.
 Managed by the `observability` Terraform module; Demucs job mode is monitored
 through queue/backlog and job execution logs rather than a resident health
-endpoint.
+endpoint. Analytics alerts cover Pub/Sub publish errors, subscription backlog,
+dead-letter forwarding, Dataflow failures, and Dataflow system lag when the
+pipeline is enabled.
 
 ## Source References
 
 - Application overview and local topology: [README.md](../../README.md)
 - Application component model: [application_architecture.md](./application_architecture.md)
 - Service boundaries: [architecture_service_boundaries.md](./architecture_service_boundaries.md)
+- Analytics event taxonomy: [analytics_event_taxonomy_v1.md](./analytics_event_taxonomy_v1.md)
+- Analytics Dataflow worker: [workers/analytics-dataflow/README.md](../../workers/analytics-dataflow/README.md)
 - x402 payment layer: [x402_payments.md](./x402_payments.md)
 - MCP server: [mcp_server.md](./mcp_server.md)
 - Account abstraction: [account-abstraction.md](../account-abstraction/account-abstraction.md)
 - Smart contracts: [core_contracts.md](../smart-contracts/core_contracts.md)
 - Contract and cloud deployment split: [deployment.md](../smart-contracts/deployment.md)
 - IaC runtime modules: `resonate-iac/modules/{networking,data,security,compute,edge,cicd,observability}`
+- IaC analytics event pipeline: `resonate-iac/docs/analytics-event-pipeline-architecture.md`
+- IaC analytics rollout runbook: `resonate-iac/docs/analytics-bigquery-rollout.md`
 - IaC delivery model: `resonate-iac/docs/deployment-operating-model.md`
 - IaC edge model: `resonate-iac/docs/cloud-edge-architecture.md`
 - Cross-repo deploy contract: `resonate-iac/docs/cross-repo-deploy-contract.md`

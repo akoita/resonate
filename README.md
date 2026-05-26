@@ -149,7 +149,9 @@ If you use an x402-capable client such as AgentCash, it can automate the proof e
 - **Stems unlock active listening** — pricing, receipts, remix lineage, and royalties can compose on top of stem-native assets
 - **Campaigns make demand legible** — Shows convert scattered fan enthusiasm into city-level, escrow-backed intent before artists take booking risk
 - **The app and the API are peers** — the human studio and the x402 storefront API both ride the same on-chain catalog; neither is a subset of the other
-- **Why the agent surface matters** — as AI systems become catalog consumers, a commerce path that's just `curl` + USDC + a signed receipt (no dashboard, no account, no OAuth) lands on the right side of how agents actually buy---
+- **Why the agent surface matters** — as AI systems become catalog consumers, a commerce path that's just `curl` + USDC + a signed receipt (no dashboard, no account, no OAuth) lands on the right side of how agents actually buy
+
+---
 
 ## 🎨 Brand & Design System (Pomelli Specs)
 
@@ -176,8 +178,8 @@ Resonate uses a cohesive visual vocabulary designed by **Pomelli** to balance fu
 Resonate has two complementary architecture views:
 
 - **Application architecture** — how the product is decomposed into human app,
-  agent storefront, marketplace, x402, smart-account, ingestion, rights, and
-  realtime components.
+  agent storefront, marketplace, x402, smart-account, ingestion, rights,
+  realtime, and analytics components.
 - **Deployment architecture** — how those components run across Cloud Run,
   private data services, protocol contracts, and the Terraform-managed GCP edge.
 
@@ -189,11 +191,16 @@ flowchart LR
   API --> Commerce["Marketplace + x402<br>stablecoin settlement"]
   API --> Runtime["AI DJ + agent runtime"]
   API --> Ingestion["Upload + stem processing"]
+  API --> Analytics["Analytics event ledger<br>taxonomy + governance"]
   Commerce --> Chain["Smart accounts +<br>Resonate contracts"]
   Ingestion --> Worker["Demucs worker"]
+  Analytics --> Stream["Pub/Sub + Dataflow<br>validation + dedupe"]
+  Stream --> Warehouse["BigQuery warehouse<br>raw, clean, facts, views"]
+  Warehouse --> Reports["Artist analytics +<br>agent taste intelligence"]
   Catalog --> Data["Postgres, Redis,<br>GCS, Pub/Sub"]
   Runtime --> Data
   Worker --> Data
+  Reports --> Runtime
 ```
 
 See the [application architecture doc](docs/architecture/application_architecture.md)
@@ -210,15 +217,20 @@ web app. The core runtime combines:
 - **Agent-native commerce** — public storefront, OpenAPI, MCP tools, x402 quote
   and paid download flow, and structured receipts.
 - **GCP runtime** — Cloud Run frontend/backend/Demucs services, Pub/Sub stem
-  jobs/results/DLQ, Cloud SQL, Redis, GCS, Secret Manager, Artifact Registry,
-  VPC private connectivity, Cloud Monitoring, and a global HTTPS edge with
-  managed TLS, Cloud Armor, and serverless NEGs in front of Cloud Run.
+  jobs/results/DLQ, analytics event Pub/Sub/Dataflow, BigQuery warehouse
+  tables, Cloud SQL, Redis, GCS, Secret Manager, Artifact Registry, VPC private
+  connectivity, Cloud Monitoring, and a global HTTPS edge with managed TLS,
+  Cloud Armor, and serverless NEGs in front of Cloud Run.
 - **On-chain protocol** — ERC-4337 Kernel smart accounts, session keys, bundler,
   EntryPoint, `StemNFT`, `StemMarketplaceV2`, content protection, curation
   disputes, revenue escrow, and payment asset contracts.
 - **Separate cloud delivery plane** — application CI publishes immutable images;
   [`resonate-iac`](https://github.com/akoita/resonate-iac) applies
   Terraform-managed environment releases, edge routing, IAM, and validation.
+- **Analytics intelligence plane** — versioned product/protocol events flow from
+  the backend into Pub/Sub, an Apache Beam/Dataflow processor, BigQuery
+  raw/clean/fact/view/quarantine layers, artist dashboards, and agent taste
+  scoring.
 
 See the [deployment architecture doc](docs/architecture/deployment_architecture.md)
 for the editable Mermaid model, source references, and component inventory.
