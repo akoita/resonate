@@ -1,0 +1,18 @@
+js {
+  const cfg = require("includes/agent_taste_config");
+}
+
+config {
+  type: "assertion",
+  tags: ["agent_taste", "serving_contract"],
+  dependencies: [cfg.scoresTableName(dataform.projectConfig)]
+}
+
+SELECT
+  *
+FROM ${ref(cfg.scoresTableName(dataform.projectConfig))}
+WHERE recommendation_score < 0
+   OR recommendation_score > 1
+   OR confidence < 0
+   OR confidence > 1
+   OR rank < 1

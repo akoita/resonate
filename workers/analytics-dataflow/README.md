@@ -127,6 +127,10 @@ feature set is Agent Taste Intelligence:
   `--dry-run` and `--verify` modes.
 - `sql/agent_taste_intelligence_verification.sql` reports score freshness,
   user/track coverage, signal-type mix, and session-intent coverage.
+- `dataform/` contains the Dataform-ready template for managed Agent Taste
+  materialization, verification, and assertions. The intended production
+  orchestration is Cloud Scheduler -> Workflows -> Dataform, with Terraform
+  resources managed in `resonate-iac`.
 - `sql/agent_taste_intelligence_bqml.sql` is an optional BigQuery ML
   matrix-factorization template that writes
   `user_track_recommendation_scores_bqml` for offline comparison before
@@ -139,6 +143,6 @@ scheduled, rerun, or replaced independently of the streaming Dataflow worker.
 
 ```bash
 cd workers/analytics-dataflow
-python -m unittest test_analytics_transform.py
-python -m unittest test_agent_taste_sql.py
+python3 -m unittest test_analytics_transform.py
+python3 -m unittest test_agent_taste_sql.py
 ```

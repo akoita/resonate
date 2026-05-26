@@ -79,3 +79,8 @@ approve the output.
 The backend serving query is intentionally bounded by one `userId` and the
 candidate `trackIds` already found by catalog search. These SQL jobs can be
 scheduled independently without changing the recommendation API contract.
+
+For managed scheduling, use the Dataform template under
+`workers/analytics-dataflow/dataform/`. Keep this SQL directory as the manual
+operator/backfill path and as the source of truth for local dry-runs until the
+Dataform workflow is deployed through `resonate-iac`.

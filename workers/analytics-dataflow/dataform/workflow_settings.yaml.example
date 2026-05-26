@@ -1,0 +1,17 @@
+# Copy this file to workflow_settings.yaml in the managed Dataform repository.
+# Replace every YOUR_* placeholder through Dataform release configuration or
+# environment-specific repository setup. Do not commit project or dataset IDs.
+
+defaultProject: YOUR_DATAFORM_EXECUTION_PROJECT
+defaultDataset: YOUR_DATAFORM_OUTPUT_DATASET
+defaultLocation: YOUR_BIGQUERY_LOCATION
+defaultAssertionDataset: YOUR_DATAFORM_ASSERTION_DATASET
+
+vars:
+  analytics_project: YOUR_ANALYTICS_PROJECT
+  analytics_dataset: YOUR_ANALYTICS_DATASET
+  clean_table: events_clean
+  training_table: user_track_signal_training
+  scores_table: user_track_recommendation_scores
+  model_version: baseline-weighted-signals/v2
+  freshness_hours: "2"
