@@ -163,13 +163,40 @@ export class AgentConfigController {
 
     @Post("session")
     @UseGuards(AuthGuard("jwt"))
-    async startSession(@Req() req: any) {
+    async startSession(
+        @Req() req: any,
+        @Body() body?: {
+            preferences?: {
+                mood?: string;
+                energy?: "low" | "medium" | "high";
+                genres?: string[];
+                allowExplicit?: boolean;
+                licenseType?: "personal" | "remix" | "commercial";
+                sessionIntent?: string;
+                sessionIntentName?: string;
+                queueStyle?: string;
+                source?: string;
+            };
+        }
+    ) {
         const config = await prisma.agentConfig.findUnique({
             where: { userId: req.user.userId },
         });
         if (!config) {
             return { status: "not_configured" };
         }
+        const sessionPreferences = {
+            genres: body?.preferences?.genres ?? config.vibes,
+            stemTypes: config.stemTypes,
+            mood: body?.preferences?.mood,
+            energy: body?.preferences?.energy,
+            allowExplicit: body?.preferences?.allowExplicit,
+            licenseType: body?.preferences?.licenseType ?? "personal",
+            sessionIntent: body?.preferences?.sessionIntent,
+            sessionIntentName: body?.preferences?.sessionIntentName,
+            queueStyle: body?.preferences?.queueStyle,
+            source: body?.preferences?.source,
+        };
 
         // Create a persistent Session record
         const session = await prisma.session.create({
@@ -210,7 +237,7 @@ export class AgentConfigController {
                 sessionId: session.id,
                 userId: req.user.userId,
                 budgetCapUsd: config.monthlyCapUsd,
-                preferences: { genres: config.vibes },
+                preferences: sessionPreferences,
             });
 
             // Kick off orchestration — route through LLM when AGENT_RUNTIME is set
@@ -226,10 +253,17 @@ export class AgentConfigController {
                 budgetRemainingUsd: config.monthlyCapUsd,
                 generationBudgetUsd,
                 preferences: {
-                    genres: config.vibes,
+                    genres: sessionPreferences.genres,
                     stemTypes: config.stemTypes,
                     learnedGenreWeights: {} as Record<string, number>,
-                    licenseType: "personal" as const,
+                    mood: sessionPreferences.mood,
+                    energy: sessionPreferences.energy,
+                    allowExplicit: sessionPreferences.allowExplicit,
+                    licenseType: sessionPreferences.licenseType,
+                    sessionIntent: sessionPreferences.sessionIntent,
+                    sessionIntentName: sessionPreferences.sessionIntentName,
+                    queueStyle: sessionPreferences.queueStyle,
+                    source: sessionPreferences.source,
                 },
             };
 
@@ -262,6 +296,9 @@ export class AgentConfigController {
                                     action: "accept",
                                     metadata: {
                                         source: "agent_session",
+                                        sessionIntent: sessionPreferences.sessionIntent,
+                                        sessionIntentName: sessionPreferences.sessionIntentName,
+                                        queueStyle: sessionPreferences.queueStyle,
                                         recommendation: track.negotiation.recommendation ?? null,
                                         reason: track.negotiation.reason,
                                     },
@@ -320,6 +357,9 @@ export class AgentConfigController {
                                     action: "accept",
                                     metadata: {
                                         source: "agent_session",
+                                        sessionIntent: sessionPreferences.sessionIntent,
+                                        sessionIntentName: sessionPreferences.sessionIntentName,
+                                        queueStyle: sessionPreferences.queueStyle,
                                         runtime: "llm",
                                         reason: result.reason ?? "llm",
                                         reasoning: result.reasoning,

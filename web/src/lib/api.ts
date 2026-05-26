@@ -1833,10 +1833,13 @@ export async function recordAgentSignal(
   );
 }
 
-export async function startAgentSession(token: string): Promise<{ status: string; sessionId?: string }> {
+export async function startAgentSession(
+  token: string,
+  input?: { preferences?: AgentNextPreferences },
+): Promise<{ status: string; sessionId?: string }> {
   return apiRequest<{ status: string; sessionId?: string }>(
     "/agents/config/session",
-    { method: "POST" },
+    { method: "POST", body: JSON.stringify(input ?? {}) },
     token
   );
 }
@@ -1907,6 +1910,10 @@ export type AgentNextPreferences = {
   genres?: string[];
   allowExplicit?: boolean;
   licenseType?: "personal" | "remix" | "commercial";
+  sessionIntent?: string;
+  sessionIntentName?: string;
+  queueStyle?: string;
+  source?: string;
 };
 
 export type AgentNextPickResponse = {

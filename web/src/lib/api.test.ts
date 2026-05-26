@@ -281,6 +281,45 @@ describe('API Client', () => {
   });
 
   describe('getAgentNextPick', () => {
+    it('posts session intent preferences when starting an agent session', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ status: 'started', sessionId: 'session-1' }),
+      });
+
+      const result = await api.startAgentSession('listener-token', {
+        preferences: {
+          mood: 'Hype',
+          energy: 'high',
+          genres: ['Bass', 'Club', 'Trap'],
+          licenseType: 'remix',
+          sessionIntent: 'Hype',
+          sessionIntentName: 'Pulse Raid',
+          queueStyle: 'Fast cuts',
+          source: 'agent_session_intent',
+        },
+      });
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/agents/config/session');
+      expect(opts.method).toBe('POST');
+      expect(opts.headers.get('Authorization')).toBe('Bearer listener-token');
+      expect(JSON.parse(opts.body)).toEqual({
+        preferences: {
+          mood: 'Hype',
+          energy: 'high',
+          genres: ['Bass', 'Club', 'Trap'],
+          licenseType: 'remix',
+          sessionIntent: 'Hype',
+          sessionIntentName: 'Pulse Raid',
+          queueStyle: 'Fast cuts',
+          source: 'agent_session_intent',
+        },
+      });
+      expect(result.sessionId).toBe('session-1');
+    });
+
     it('posts to the session runtime next-pick endpoint', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -303,6 +342,10 @@ describe('API Client', () => {
           preferences: {
             genres: ['electronic'],
             licenseType: 'remix',
+            sessionIntent: 'Hype',
+            sessionIntentName: 'Pulse Raid',
+            queueStyle: 'Fast cuts',
+            source: 'agent_session_intent',
           },
         },
       );
@@ -316,6 +359,10 @@ describe('API Client', () => {
         preferences: {
           genres: ['electronic'],
           licenseType: 'remix',
+          sessionIntent: 'Hype',
+          sessionIntentName: 'Pulse Raid',
+          queueStyle: 'Fast cuts',
+          source: 'agent_session_intent',
         },
       });
       expect(result.status).toBe('ok');

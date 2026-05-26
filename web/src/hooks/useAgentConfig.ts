@@ -11,6 +11,7 @@ import {
     startAgentSession,
     stopAgentSession,
     type AgentConfig,
+    type AgentNextPreferences,
 } from "../lib/api";
 
 export function useAgentConfig() {
@@ -58,9 +59,9 @@ export function useAgentConfig() {
         [token]
     );
 
-    const startSession = useCallback(async () => {
+    const startSession = useCallback(async (input?: { preferences?: AgentNextPreferences }) => {
         if (!config || !token) return;
-        const result = await startAgentSession(token);
+        const result = await startAgentSession(token, input);
         if (result.status === "started") {
             setConfig((prev) => prev ? { ...prev, isActive: true } : prev);
         }

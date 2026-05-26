@@ -1662,3 +1662,54 @@ rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/analytics
 rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/analytics | grep -v 'Guard\|Auth'
 rg 'JSON\.parse|eval\(' backend/src/modules/analytics
 ```
+
+## Addendum: #977 AI DJ Session Intent Taste Intelligence
+
+Security review completed for the AI DJ Session Intent and taste-intelligence slice in #977. No Critical or High findings were identified in the changed files; the changes preserve existing authenticated backend boundaries and do not introduce new secrets, raw SQL, cookies, or HTML injection surfaces.
+
+### Scope
+
+- `backend/src/modules/agents/agent_config.controller.ts`
+- `backend/src/modules/agents/runtime/agent_runtime.adapter.ts`
+- `backend/src/modules/sessions/sessions.controller.ts`
+- `backend/src/modules/sessions/sessions.service.ts`
+- `backend/src/tests/agent_config.controller.spec.ts`
+- `backend/src/tests/sessions.controller.spec.ts`
+- `web/src/app/agent/page.tsx`
+- `web/src/components/agent/AgentSessionPresets.tsx`
+- `web/src/components/auth/AuthProvider.tsx`
+- `web/src/components/auth/ConnectButton.tsx`
+- `web/src/components/layout/Topbar.tsx`
+- `web/src/hooks/useAgentConfig.ts`
+- `web/src/lib/api.ts`
+- `web/src/lib/productAnalytics.ts`
+- `docs/features/README.md`
+- `docs/features/agent_taste_intelligence.md`
+- `docs/issue-977-implementation-plan.md`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none in the changed code.
+- Low: none in the changed code.
+
+### Notes
+
+- The changed AI DJ session endpoints remain protected by `AuthGuard("jwt")`.
+- Session intent values are descriptive preference metadata, not authorization decisions or secrets.
+- The implementation does not add raw SQL, dynamic SQL, cookie handling, `dangerouslySetInnerHTML`, or new client-exposed secret variables.
+- Passkey `NotAllowedError` handling now improves UX for real WebAuthn flows without introducing mock authentication.
+- Broad repository scans still report pre-existing items outside this change set, including intentionally public `NEXT_PUBLIC_*` client configuration and existing tagged Prisma raw queries. No new Critical or High issue was introduced by this branch.
+
+### Commands Run
+
+```bash
+rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/ | grep -v 'Guard\|Auth'
+rg 'JSON\.parse|eval\(' backend/src/
+rg 'dangerouslySetInnerHTML|innerHTML' web/src/
+rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
+rg 'document\.cookie|setCookie|httpOnly.*false' web/src/
+```

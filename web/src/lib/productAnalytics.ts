@@ -27,6 +27,10 @@ export const PRODUCT_ANALYTICS_EVENT_NAMES = [
   "wallet.connected",
   "wallet.faucet_requested",
   "wallet.budget_set",
+  "agent.intent_viewed",
+  "agent.intent_selected",
+  "agent.session_started",
+  "agent.next_pick_requested",
   "settings.updated",
 ] as const;
 

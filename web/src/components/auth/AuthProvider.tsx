@@ -115,6 +115,41 @@ function isExistingPasskeyRegistrationError(error: unknown): boolean {
   );
 }
 
+function getErrorName(error: unknown) {
+  return error instanceof Error ? error.name : "";
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export function isRetryablePasskeyRegistrationError(error: unknown): boolean {
+  const name = getErrorName(error);
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    isExistingPasskeyRegistrationError(error) ||
+    name === "NotAllowedError" ||
+    message.includes("notallowederror") ||
+    message.includes("timed out or was not allowed") ||
+    message.includes("the operation either timed out or was not allowed")
+  );
+}
+
+export function formatPasskeyAuthError(error: unknown): string {
+  const name = getErrorName(error);
+  const message = getErrorMessage(error);
+  const normalized = `${name} ${message}`.toLowerCase();
+
+  if (
+    normalized.includes("notallowederror") ||
+    normalized.includes("timed out or was not allowed")
+  ) {
+    return "Passkey access was blocked or timed out. If you already created a Resonate passkey, use Log In; otherwise try Sign Up again and approve the browser or system passkey prompt.";
+  }
+
+  return message;
+}
+
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const { addToast } = useToast();
   // Memoized wrapper for use in dependency arrays
@@ -255,8 +290,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     try {
       result = await buildAccount(mode);
     } catch (error) {
-      if (mode === passkey.WebAuthnMode.Register && isExistingPasskeyRegistrationError(error)) {
-        console.warn("[Auth] Passkey is already registered; retrying in login mode.");
+      if (mode === passkey.WebAuthnMode.Register && isRetryablePasskeyRegistrationError(error)) {
+        console.warn("[Auth] Registration could not create a new passkey; retrying with the existing passkey.");
         result = await buildAccount(passkey.WebAuthnMode.Login);
       } else {
         throw error;
@@ -381,8 +416,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       return { account, webAuthnKey };
 
     } catch (err) {
-      console.error(err);
-      setError((err as Error).message);
+      const message = formatPasskeyAuthError(err);
+      console.warn("[Auth] Authentication failed:", message);
+      setError(message);
       setStatus("error");
       return { account: null, webAuthnKey: null };
     }
