@@ -35,7 +35,7 @@ measurement.
 | Analytics score materialization | [#981](https://github.com/akoita/resonate/issues/981) | Playback, save, skip, replay, purchase, session intent, and agent events produce bounded user-track scores. |
 | Materialization orchestration | [#989](https://github.com/akoita/resonate/issues/989) | Dataform templates and GCP scheduling guidance define how Agent Taste jobs move from manual runs to managed execution. |
 | Offline ML evaluation | [#978](https://github.com/akoita/resonate/issues/978) | BigQuery ML scores are compared against deterministic ranking before promotion. |
-| Analytics-derived explanations | [#983](https://github.com/akoita/resonate/issues/983) | Recommendation reasons can include safe taste, intent, novelty, and commerce signals. |
+| Analytics-derived explanations | [#983](https://github.com/akoita/resonate/issues/983) | Recommendation reasons include safe taste, intent, novelty, and commerce signals. |
 | Intent feedback loop | [#980](https://github.com/akoita/resonate/issues/980) | Mood, vibe, and Session Intent outcomes feed back into `AgentSignal`. |
 | Session Intent UI | [#979](https://github.com/akoita/resonate/issues/979) | The current preset gallery becomes a compact, instrumented agent-control surface. |
 | Quality dashboard | [#982](https://github.com/akoita/resonate/issues/982) | Operators can monitor recommendation quality, preset usefulness, and model freshness. |
@@ -101,6 +101,23 @@ Optional columns:
 | `explanation` | `STRING` | Short human-readable reason attached to the recommendation signal. |
 | `model_version` | `STRING` | Training or materialization version. |
 | `updated_at` | `TIMESTAMP` or `STRING` | Freshness marker. |
+
+## Recommendation Explanations
+
+Warehouse explanations are treated as untrusted hints. The backend sanitizes
+them before use and translates them into listener-safe reason categories:
+
+| Type | Listener-facing meaning |
+| --- | --- |
+| Taste fit | The track matches learned listening patterns. |
+| Session intent fit | The track fits the current mood, vibe, or Session Intent. |
+| Novelty/replay fit | The track is fresh enough for the current session based on replay/skip signals. |
+| Commerce/listing fit | Saves, playlist adds, purchases, or purchasable stems increase confidence. |
+
+Explanations must not expose raw event history, user ids, session ids, wallet
+addresses, emails, URLs, exact private counts, or model internals. If warehouse
+copy is missing or rejected, recommendations keep their deterministic fallback
+copy such as `Learned listening pattern fit` or `Catalog candidate`.
 
 Example materialized shape:
 

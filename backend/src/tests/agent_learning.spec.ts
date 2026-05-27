@@ -106,12 +106,97 @@ describe("agent learning loop", () => {
         }),
       ]),
     );
+    expect(result.selected[0]?.agentRecommendation?.explanation).toContain("Learned listening pattern fit");
     expect(result.selected[0]?.agentRecommendation?.trace).toEqual({
       bigQueryTasteScore: expect.objectContaining({
         trackId: "techno",
         modelVersion: "bqml-mf-v1",
       }),
     });
+  });
+
+  it("maps analytics explanations into safe listener-facing reason categories", async () => {
+    const tool = {
+      run: jest.fn().mockResolvedValue({
+        items: [
+          { id: "focus", title: "Focus Track", hasListing: false, release: { genre: "Ambient" } },
+        ],
+      }),
+    };
+    const bigQueryTasteSignals = {
+      scoreTracks: jest.fn().mockResolvedValue(new Map([
+        ["focus", {
+          trackId: "focus",
+          score: 0.8,
+          confidence: 0.7,
+          explanation: "playlist saves, fewer skips, and Focus session intent",
+        }],
+      ])),
+    };
+    const selector = new AgentSelectorService({
+      get: jest.fn().mockReturnValue(tool),
+    } as any, undefined, bigQueryTasteSignals as any);
+
+    const result = await selector.select({
+      userId: "user-1",
+      queries: ["music"],
+      recentTrackIds: [],
+      limit: 1,
+    });
+
+    expect(result.selected[0]?.agentRecommendation?.signals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "bigquery_taste_score",
+          reason: "playlist saves, fewer skips, and Focus session intent",
+        }),
+      ]),
+    );
+    expect(result.selected[0]?.agentRecommendation?.explanation).toEqual(
+      expect.arrayContaining([
+        "Fits this session intent",
+        "Strong save or purchase signal",
+        "Fresh pick based on replay and skip patterns",
+      ]),
+    );
+  });
+
+  it("falls back to generic analytics explanation when warehouse copy is missing", async () => {
+    const tool = {
+      run: jest.fn().mockResolvedValue({
+        items: [
+          { id: "quiet", title: "Quiet Track", hasListing: false, release: { genre: "Ambient" } },
+        ],
+      }),
+    };
+    const bigQueryTasteSignals = {
+      scoreTracks: jest.fn().mockResolvedValue(new Map([
+        ["quiet", {
+          trackId: "quiet",
+          score: 0.7,
+        }],
+      ])),
+    };
+    const selector = new AgentSelectorService({
+      get: jest.fn().mockReturnValue(tool),
+    } as any, undefined, bigQueryTasteSignals as any);
+
+    const result = await selector.select({
+      userId: "user-1",
+      queries: ["music"],
+      recentTrackIds: [],
+      limit: 1,
+    });
+
+    expect(result.selected[0]?.agentRecommendation?.signals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "bigquery_taste_score",
+          reason: "precomputed warehouse taste fit",
+        }),
+      ]),
+    );
+    expect(result.selected[0]?.agentRecommendation?.explanation).toContain("Learned listening pattern fit");
   });
 
   it("expands common taste vocabulary without falling back to unrelated catalog items", async () => {

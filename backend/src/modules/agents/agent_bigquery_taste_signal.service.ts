@@ -27,6 +27,8 @@ export interface AgentTasteScore {
   updatedAt?: string;
 }
 
+const MAX_TASTE_EXPLANATION_LENGTH = 180;
+
 export interface AgentBigQueryTasteQueryRequest {
   projectId: string;
   apiBaseUrl: string;
@@ -191,15 +193,37 @@ function toAgentTasteScore(row: Record<string, unknown>): AgentTasteScore | null
 
   const confidence = numberValue(row.confidence);
   const rank = numberValue(row.rank);
+  const explanation = safeTasteExplanation(row.explanation);
   return {
     trackId,
     score: clamp(score),
     ...(confidence !== undefined ? { confidence: clamp(confidence) } : {}),
     ...(rank !== undefined ? { rank } : {}),
-    ...(stringValue(row.explanation) ? { explanation: stringValue(row.explanation) } : {}),
+    ...(explanation ? { explanation } : {}),
     ...(stringValue(row.modelVersion) ? { modelVersion: stringValue(row.modelVersion) } : {}),
     ...(stringValue(row.updatedAt) ? { updatedAt: stringValue(row.updatedAt) } : {}),
   };
+}
+
+export function safeTasteExplanation(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+
+  const cleaned = value
+    .replace(/<[^>]*>/g, " ")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned) return undefined;
+  if (/https?:\/\//i.test(cleaned)) return undefined;
+  if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(cleaned)) return undefined;
+  if (/\b(?:0x[a-fA-F0-9]{16,}|user[_:-]?[A-Za-z0-9_-]{6,}|session[_:-]?[A-Za-z0-9_-]{6,})\b/.test(cleaned)) {
+    return undefined;
+  }
+
+  return cleaned.length > MAX_TASTE_EXPLANATION_LENGTH
+    ? `${cleaned.slice(0, MAX_TASTE_EXPLANATION_LENGTH - 3).trimEnd()}...`
+    : cleaned;
 }
 
 function queryParameter(name: string, value: BigQueryParameterValue) {
