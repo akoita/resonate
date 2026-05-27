@@ -1821,7 +1821,7 @@ export async function recordAgentSignal(
   token: string,
   input: {
     trackId: string;
-    action: "accept" | "skip" | "replay" | "add_to_playlist" | "purchase";
+    action: "accept" | "skip" | "complete" | "save" | "replay" | "add_to_playlist" | "purchase";
     sessionId?: string;
     metadata?: Record<string, unknown>;
   }

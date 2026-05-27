@@ -8,15 +8,16 @@ describe("analytics", () => {
   it("aggregates plays and payouts by artist", async () => {
     const ingest = new AnalyticsIngestService();
     const analytics = new AnalyticsService(ingest);
+    const occurredAt = new Date(Date.now() - 60_000).toISOString();
 
     await ingest.ingest({
       eventName: "license.granted",
-      occurredAt: "2026-05-20T08:00:00.000Z",
+      occurredAt,
       payload: { artistId: "artist-1", trackId: "track-1", title: "Neon Drift" },
     });
     await ingest.ingest({
       eventName: "payment.settled",
-      occurredAt: "2026-05-20T08:01:00.000Z",
+      occurredAt,
       payload: {
         artistId: "artist-1",
         trackId: "track-1",

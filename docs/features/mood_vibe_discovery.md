@@ -69,7 +69,7 @@ Known follow-up work:
 | Upload metadata | `StemsUploadedEvent.metadata.moods` |
 | Catalog create | `POST /catalog` accepts `moods?: string[]` |
 | Recommendations | `GET /recommendations/:userId?mood=Focus&energy=low&genres=Ambient,Electronic` |
-| Home session signal | `recordAgentSignal` metadata includes `source`, `vibe`, `filterKind`, and `autoQueuedTracks` |
+| Home session signal | `recordAgentSignal` metadata uses `agent-signal-metadata/v1` and includes `source`, `vibe`, `filterKind`, `autoQueuedTracks`, and outcome context |
 
 ## Verification
 
