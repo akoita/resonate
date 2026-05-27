@@ -9,6 +9,7 @@ DATAFORM_DIR = ROOT / "dataform"
 DATAFORM_DEFINITIONS = DATAFORM_DIR / "definitions" / "agent_taste"
 BASELINE_SQL = SQL_DIR / "agent_taste_intelligence_baseline.sql"
 BQML_SQL = SQL_DIR / "agent_taste_intelligence_bqml.sql"
+BQML_EVAL_SQL = SQL_DIR / "agent_taste_intelligence_bqml_eval.sql"
 VERIFY_SQL = SQL_DIR / "agent_taste_intelligence_verification.sql"
 RUNNER = ROOT / "run-agent-taste-materialization.sh"
 
@@ -35,6 +36,26 @@ class AgentTasteSqlTest(unittest.TestCase):
         self.assertIn("DECLARE target_dataset STRING DEFAULT @target_dataset", sql)
         self.assertIn("DECLARE training_table STRING DEFAULT @training_table", sql)
         self.assertIn("DECLARE scores_table STRING DEFAULT @scores_table", sql)
+
+    def test_bqml_eval_writes_comparison_table_before_promotion(self):
+        sql = BQML_EVAL_SQL.read_text()
+
+        self.assertNotIn("resonate-project", sql)
+        self.assertNotIn("analytics_dev", sql)
+        self.assertIn("DECLARE target_project STRING DEFAULT @target_project", sql)
+        self.assertIn("DECLARE target_dataset STRING DEFAULT @target_dataset", sql)
+        self.assertIn("DECLARE training_table STRING DEFAULT @training_table", sql)
+        self.assertIn("DECLARE baseline_scores_table STRING DEFAULT @baseline_scores_table", sql)
+        self.assertIn("DECLARE bqml_scores_table STRING DEFAULT @bqml_scores_table", sql)
+        self.assertIn("DECLARE eval_report_table STRING DEFAULT @eval_report_table", sql)
+        self.assertIn("CREATE OR REPLACE TABLE `%s.%s.%s`", sql)
+        self.assertIn("'warehouse_baseline' AS variant", sql)
+        self.assertIn("'bqml' AS variant", sql)
+        self.assertIn("acceptance_proxy", sql)
+        self.assertIn("skip_avoidance", sql)
+        self.assertIn("overall_score", sql)
+        self.assertIn("meets_promotion_threshold", sql)
+        self.assertIn("USING", sql)
 
     def test_baseline_materializes_required_serving_contract(self):
         sql = BASELINE_SQL.read_text()

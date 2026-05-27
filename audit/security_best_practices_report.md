@@ -2,12 +2,11 @@
 
 ## Executive Summary
 
-This review covers the AI DJ recommendation quality dashboard changes in #982,
-including the aggregate analytics endpoint, BigQuery/local report sourcing,
-operator-only access gate, and frontend reporting surface. No Critical, High,
-Medium, or Low findings were identified; the report keeps analytics at aggregate
-event and segment level and does not expose raw listener histories, actor ids,
-wallet addresses, or per-user drilldowns.
+This review covers the Agent Taste offline BigQuery ML evaluation changes in
+#978, including backend replay comparison artifacts, BigQuery comparison SQL,
+and documentation for promotion gates. No Critical, High, Medium, or Low
+findings were identified; the changes are offline/operator tooling only and do
+not expose new runtime endpoints, secrets, or per-user product UI surfaces.
 
 ## Critical Findings
 
@@ -27,46 +26,42 @@ None.
 
 ## Informational Notes
 
-### SBPR-001: AI DJ Quality Dashboard Is Role-Gated
+### SBPR-001: Offline Eval Artifacts Stay Local And Reproducible
 
-**File:** `backend/src/modules/analytics/analytics_authorization.service.ts`
+**File:** `backend/src/modules/agents/agent_recommendation_eval.service.ts`
 
-`GET /analytics/agent/quality` requires JWT authentication and then restricts
-access to `admin` and `operator` roles. Listener and artist accounts receive a
-403 before report data is generated.
+The new model-comparison path ranks deterministic, warehouse-baseline, and BQML
+fixtures in-process and writes JSON/Markdown artifacts under `eval-results/`.
+It does not require production credentials and does not add any network calls.
 
-### SBPR-002: Report Output Stays Aggregate-Only
+### SBPR-002: BigQuery Comparison SQL Uses Query Parameters
 
-**File:** `backend/src/modules/analytics/analytics.service.ts`
+**File:** `workers/analytics-dataflow/sql/agent_taste_intelligence_bqml_eval.sql`
 
-The dashboard computes bounded-window KPIs and segment breakdowns from
-`analytics_facts`. It returns acceptance, first-pick skip proxies, saves,
-playlist adds, purchases, duration, strategy, taste-source, intent, and version
-aggregates without actor ids, wallet addresses, raw listener event histories, or
-per-user rows.
+The comparison template declares project, dataset, source table, destination
+table, version, top-k, and promotion thresholds as BigQuery parameters. It keeps
+BQML output in a staging comparison table and does not promote it into the
+serving table automatically.
 
-### SBPR-003: BigQuery Query Uses Parameterized Time Bounds And Identifier Guards
+### SBPR-003: Promotion Decision Is Explicit
 
-**File:** `backend/src/modules/analytics/analytics_bigquery_report.ts`
+**File:** `docs/features/agent_taste_intelligence.md`
 
-The BigQuery-backed report path uses named query parameters for time bounds and
-limit values. Table identifiers are still validated by `bigQueryIdentifier`
-before interpolation, preserving the existing reporting guard against arbitrary
-identifier injection.
+The feature documentation now requires review of both backend replay artifacts
+and the warehouse comparison table before promoting or blending the BQML
+challenger into `user_track_recommendation_scores`.
 
-### SBPR-004: Product Event Allowlist Includes Session Stop Telemetry
+### SBPR-004: No Infrastructure Or Secret Surface Added
 
-**File:** `backend/src/modules/analytics/analytics.controller.ts`
+**File:** `docs/issue-978-implementation-plan.md`
 
-The product analytics allowlist now includes `agent.session_stopped` so the UI
-can emit coarse session duration for aggregate quality reporting. Unsupported
-product event names continue to be rejected, and product payload sanitization
-continues to drop blocked geo/IP-like keys and nested free-form payloads.
+The implementation plan records that no `resonate-iac` changes are required for
+this issue. The new SQL is a manual operator/backfill comparison path and does
+not introduce new deployed environment variables or scheduled resources.
 
 ## Review Commands
 
 ```bash
-rg '(SECRET|PRIVATE_KEY|API_KEY|TOKEN|PASSWORD|BEGIN [A-Z ]*PRIVATE KEY|AIza|sk-|xoxb-|ghp_|github_pat_)' backend/src/modules/analytics web/src/app/analytics web/src/components/analytics/AgentQualityDashboard.tsx web/src/lib/api.ts web/src/lib/productAnalytics.ts docs/issue-982-implementation-plan.md docs/features/analytics_dashboard.md docs/features/agent_taste_intelligence.md
-rg '\$queryRaw|\$executeRaw|queryRaw|executeRaw|eval\(|new Function|dangerouslySetInnerHTML|innerHTML|document\.cookie|localStorage\.setItem' backend/src/modules/analytics web/src/app/analytics web/src/components/analytics/AgentQualityDashboard.tsx web/src/lib/api.ts web/src/lib/productAnalytics.ts
-rg 'JSON\.parse|JSON_VALUE|TO_JSON_STRING|BigQuery|ForbiddenException|assertCanReadAgentQuality' backend/src/modules/analytics web/src/app/analytics web/src/components/analytics/AgentQualityDashboard.tsx
+rg '(SECRET|PRIVATE_KEY|API_KEY|TOKEN|PASSWORD|BEGIN [A-Z ]*PRIVATE KEY|AIza|sk-|xoxb-|ghp_|github_pat_)' backend/src/modules/agents/agent_recommendation_eval.service.ts backend/src/tests/agent_recommendation_eval.spec.ts workers/analytics-dataflow/sql/agent_taste_intelligence_bqml_eval.sql docs/issue-978-implementation-plan.md docs/features/agent_taste_intelligence.md workers/analytics-dataflow/sql/README.md docs/features/README.md
+rg '\$queryRaw|\$executeRaw|queryRaw|executeRaw|eval\(|new Function|dangerouslySetInnerHTML|innerHTML|document\.cookie|localStorage\.setItem' backend/src/modules/agents/agent_recommendation_eval.service.ts backend/src/tests/agent_recommendation_eval.spec.ts workers/analytics-dataflow/sql/agent_taste_intelligence_bqml_eval.sql docs/issue-978-implementation-plan.md docs/features/agent_taste_intelligence.md workers/analytics-dataflow/sql/README.md docs/features/README.md
 ```

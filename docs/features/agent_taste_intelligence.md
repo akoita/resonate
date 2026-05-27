@@ -21,9 +21,11 @@ metadata-derived audio-feature signals.
 
 This is the serving hook for a broader warehouse learning loop. A Dataform-ready
 orchestration template now exists for scheduled materialization planning.
-Session Intent feedback now lands in `AgentSignal` metadata, and operators can
-monitor aggregate recommendation quality in the AI DJ quality dashboard. BigQuery
-ML promotion and vector indexes are planned follow-up work.
+Session Intent feedback now lands in `AgentSignal` metadata, operators can
+monitor aggregate recommendation quality in the AI DJ quality dashboard, and
+offline fixtures can compare BigQuery ML scores against deterministic and
+warehouse-baseline ranking before promotion. Vector indexes remain planned
+follow-up work.
 
 Issue [#977](https://github.com/akoita/resonate/issues/977) tracks the next
 product evolution: using the running analytics pipeline to power AI DJ taste
@@ -36,7 +38,7 @@ measurement.
 | --- | --- | --- |
 | Analytics score materialization | [#981](https://github.com/akoita/resonate/issues/981) | Playback, save, skip, replay, purchase, session intent, and agent events produce bounded user-track scores. |
 | Materialization orchestration | [#989](https://github.com/akoita/resonate/issues/989) | Dataform templates and GCP scheduling guidance define how Agent Taste jobs move from manual runs to managed execution. |
-| Offline ML evaluation | [#978](https://github.com/akoita/resonate/issues/978) | BigQuery ML scores are compared against deterministic ranking before promotion. |
+| Offline ML evaluation | [#978](https://github.com/akoita/resonate/issues/978) | BigQuery ML scores are compared against deterministic and warehouse-baseline ranking before promotion. |
 | Analytics-derived explanations | [#983](https://github.com/akoita/resonate/issues/983) | Recommendation reasons include safe taste, intent, novelty, and commerce signals. |
 | Intent feedback loop | [#980](https://github.com/akoita/resonate/issues/980) | Mood, vibe, Session Intent, completion, save, playlist, purchase, and session-duration outcomes feed back into `AgentSignal`. |
 | Session Intent UI | [#979](https://github.com/akoita/resonate/issues/979) | The current preset gallery becomes a compact, instrumented agent-control surface. |
@@ -210,6 +212,53 @@ The ML template writes `user_track_recommendation_scores_bqml` first. Promote
 that table to `user_track_recommendation_scores` only after offline evals show
 it beats the baseline.
 
+## Offline ML Evaluation
+
+`npm run eval:recommendations` produces deterministic replay results and a
+model-comparison artifact:
+
+```text
+eval-results/agent-recommendation-model-comparison.json
+eval-results/agent-recommendation-model-comparison.md
+```
+
+The comparison ranks the same replay candidates with three variants:
+
+| Variant | Purpose |
+| --- | --- |
+| `deterministic` | Current selector behavior and fallback quality reference. |
+| `warehouse_baseline` | Weighted implicit-feedback baseline table. |
+| `bqml` | BigQuery ML challenger table, usually `user_track_recommendation_scores_bqml`. |
+
+The artifact tracks precision, acceptance proxy, skip avoidance, listing
+coverage, novelty, diversity, explanation coverage, and overall score. BQML is
+recommended for promotion only when it beats the warehouse baseline on the
+configured deltas and does not regress coverage thresholds. Otherwise the report
+returns `blend_or_shadow_test` or `hold_baseline`.
+
+Warehouse-side comparison uses the same no-promotion posture:
+
+```bash
+bq query --use_legacy_sql=false \
+  --parameter=target_project:STRING:"$GCP_PROJECT_ID" \
+  --parameter=target_dataset:STRING:"$ANALYTICS_BIGQUERY_DATASET" \
+  --parameter=training_table:STRING:user_track_signal_training \
+  --parameter=baseline_scores_table:STRING:user_track_recommendation_scores \
+  --parameter=bqml_scores_table:STRING:user_track_recommendation_scores_bqml \
+  --parameter=eval_report_table:STRING:agent_taste_bqml_eval_report \
+  --parameter=model_version:STRING:bqml-matrix-factorization/v1 \
+  --parameter=evaluation_top_k:INT64:10 \
+  --parameter=min_acceptance_proxy_delta:FLOAT64:0.02 \
+  --parameter=min_skip_avoidance_delta:FLOAT64:0 \
+  --parameter=min_overall_score_delta:FLOAT64:0.01 \
+  < workers/analytics-dataflow/sql/agent_taste_intelligence_bqml_eval.sql
+```
+
+The comparison table reports baseline value, BQML value, delta, winner, and
+threshold status per metric. It is intentionally separate from
+`user_track_recommendation_scores`; operators must explicitly promote or blend
+after reviewing the artifact.
+
 ## BigQuery AI/ML Follow-Up
 
 Useful next warehouse jobs:
@@ -217,9 +266,9 @@ Useful next warehouse jobs:
 - Generate text and metadata embeddings for tracks with BigQuery
   `AI.GENERATE_EMBEDDING`, then use BigQuery vector search for semantic
   similarity candidate expansion.
-- Train a BigQuery ML matrix factorization recommender from implicit feedback
-  such as play completion, replay, saves, skips, and purchases, then materialize
-  `ML.RECOMMEND` output into `user_track_recommendation_scores`.
+- Use the offline comparison artifacts to tune or blend the BigQuery ML matrix
+  factorization recommender before promoting `ML.RECOMMEND` output into
+  `user_track_recommendation_scores`.
 - Use structured Gemini extraction through BigQuery AI for normalized mood,
   instrumentation, remix suitability, and lyrical/theme tags where source data
   exists.
@@ -250,8 +299,11 @@ Useful next warehouse jobs:
   `backend/src/tests/agent_bigquery_taste_signal.spec.ts`.
 - Selector tests cover `bigquery_taste_score` blending without replacing
   deterministic ranking in `backend/src/tests/agent_learning.spec.ts`.
+- Offline recommendation eval tests cover deterministic replay artifacts and
+  BigQuery ML versus warehouse-baseline promotion decisions in
+  `backend/src/tests/agent_recommendation_eval.spec.ts`.
 - SQL contract tests cover parameterized materialization, required serving
-  columns, expected signal families, and runner help output in
+  columns, expected signal families, BQML comparison output, and runner help output in
   `workers/analytics-dataflow/test_agent_taste_sql.py`.
 - Warehouse verification queries live in
   `workers/analytics-dataflow/sql/agent_taste_intelligence_verification.sql` and
