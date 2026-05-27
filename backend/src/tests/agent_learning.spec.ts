@@ -1,6 +1,7 @@
 import {
   computeAgentTasteProfileFromSignals,
   AGENT_SIGNAL_WEIGHTS,
+  buildAgentSignalMetadata,
 } from "../modules/agents/agent_learning.service";
 import { AgentSelectorService } from "../modules/agents/agent_selector.service";
 
@@ -8,19 +9,57 @@ describe("agent learning loop", () => {
   it("weights purchase and playlist signals above lightweight accepts", () => {
     const profile = computeAgentTasteProfileFromSignals([
       { trackId: "track-1", action: "accept", genre: "Lo-fi" },
+      { trackId: "track-1b", action: "complete", genre: "Lo-fi" },
       { trackId: "track-2", action: "add_to_playlist", genre: "Lo-fi" },
+      { trackId: "track-2b", action: "save", genre: "Lo-fi" },
       { trackId: "track-3", action: "purchase", genre: "Deep House" },
       { trackId: "track-4", action: "skip", genre: "Noise" },
     ]);
 
     expect(AGENT_SIGNAL_WEIGHTS.purchase).toBe(5);
-    expect(profile.signals).toBe(4);
-    expect(profile.positiveSignals).toBe(3);
+    expect(AGENT_SIGNAL_WEIGHTS.complete).toBe(1.5);
+    expect(AGENT_SIGNAL_WEIGHTS.save).toBe(3);
+    expect(profile.signals).toBe(6);
+    expect(profile.positiveSignals).toBe(5);
     expect(profile.negativeSignals).toBe(1);
-    expect(profile.favoredGenres[0]).toBe("Deep House");
-    expect(profile.genreWeights["Lo-fi"]).toBe(4);
+    expect(profile.favoredGenres[0]).toBe("Lo-fi");
+    expect(profile.genreWeights["Lo-fi"]).toBe(8.5);
     expect(profile.genreWeights.Noise).toBe(-1);
     expect(profile.score).toBeGreaterThan(30);
+  });
+
+  it("builds bounded privacy-safe signal metadata for intent outcomes", () => {
+    const metadata = buildAgentSignalMetadata({
+      source: "agent_session",
+      sessionIntent: "focus",
+      sessionIntentName: "Neural Flow",
+      mood: "Focus",
+      energy: "low",
+      genres: ["Ambient", "Lo-fi", "https://drop.example/private"],
+      startSource: "agent_session_intent",
+      reasoning: "0x1234567890abcdef should never leak",
+      outcome: {
+        type: "playback_completed",
+        completionRatio: 0.92,
+        durationMs: 180000,
+      },
+    });
+
+    expect(metadata).toEqual({
+      schemaVersion: "agent-signal-metadata/v1",
+      source: "agent_session",
+      sessionIntent: "focus",
+      sessionIntentName: "Neural Flow",
+      mood: "Focus",
+      energy: "low",
+      genres: ["Ambient", "Lo-fi"],
+      startSource: "agent_session_intent",
+      outcome: {
+        type: "playback_completed",
+        completionRatio: 0.92,
+        durationMs: 180000,
+      },
+    });
   });
 
   it("falls back to user-selected vibes until enough signals exist", () => {

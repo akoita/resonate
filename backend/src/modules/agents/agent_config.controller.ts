@@ -1,13 +1,17 @@
 import { BadRequestException, Body, Controller, Get, Logger, Patch, Post, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
-import type { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentRuntimeService } from "./agent_runtime.service";
 import { PaymentRouterService } from "./payment_router.service";
 import { AgentNegotiatorService } from "./agent_negotiator.service";
 import { AgentIdentityService } from "./agent_identity.service";
-import { AgentLearningService, isAgentSignalAction, type AgentSignalAction } from "./agent_learning.service";
+import {
+    AgentLearningService,
+    buildAgentSignalMetadata,
+    isAgentSignalAction,
+    type AgentSignalAction,
+} from "./agent_learning.service";
 import { AgentStemQualityService } from "./agent_stem_quality.service";
 import { EventBus } from "../shared/event_bus";
 import type { NegotiationResult } from "./agent_negotiator.service";
@@ -139,7 +143,7 @@ export class AgentConfigController {
         if (!body.trackId || !isAgentSignalAction(body.action)) {
             throw new BadRequestException({
                 reason: "trackId and valid action are required",
-                acceptedActions: ["accept", "skip", "replay", "add_to_playlist", "purchase"],
+                acceptedActions: ["accept", "skip", "complete", "save", "replay", "add_to_playlist", "purchase"],
             });
         }
 
@@ -148,7 +152,15 @@ export class AgentConfigController {
             sessionId: body.sessionId,
             trackId: body.trackId,
             action: body.action as AgentSignalAction,
-            metadata: body.metadata as Prisma.InputJsonObject | undefined,
+            metadata: buildAgentSignalMetadata({
+                ...(body.metadata ?? {}),
+                outcome: {
+                    ...(typeof body.metadata?.outcome === "object" && body.metadata.outcome && !Array.isArray(body.metadata.outcome)
+                        ? body.metadata.outcome
+                        : {}),
+                    type: body.action,
+                },
+            }),
         });
         const config = await prisma.agentConfig.findUnique({
             where: { userId: req.user.userId },
@@ -294,14 +306,20 @@ export class AgentConfigController {
                                     sessionId: session.id,
                                     trackId: track.trackId,
                                     action: "accept",
-                                    metadata: {
+                                    metadata: buildAgentSignalMetadata({
                                         source: "agent_session",
                                         sessionIntent: sessionPreferences.sessionIntent,
                                         sessionIntentName: sessionPreferences.sessionIntentName,
+                                        mood: sessionPreferences.mood,
+                                        energy: sessionPreferences.energy,
+                                        genres: sessionPreferences.genres,
+                                        licenseType: sessionPreferences.licenseType,
                                         queueStyle: sessionPreferences.queueStyle,
+                                        startSource: sessionPreferences.source,
                                         recommendation: track.negotiation.recommendation ?? null,
                                         reason: track.negotiation.reason,
-                                    },
+                                        outcome: { type: "first_pick_accept", firstPick: true },
+                                    }),
                                 });
                                 this.logger.log(`[Agent] Processing track ${track.trackId} in mode ${config.sessionMode}`);
                                 if (config.sessionMode === "buy") {
@@ -355,15 +373,21 @@ export class AgentConfigController {
                                     sessionId: session.id,
                                     trackId: pick.trackId,
                                     action: "accept",
-                                    metadata: {
+                                    metadata: buildAgentSignalMetadata({
                                         source: "agent_session",
                                         sessionIntent: sessionPreferences.sessionIntent,
                                         sessionIntentName: sessionPreferences.sessionIntentName,
+                                        mood: sessionPreferences.mood,
+                                        energy: sessionPreferences.energy,
+                                        genres: sessionPreferences.genres,
+                                        licenseType: pick.licenseType,
                                         queueStyle: sessionPreferences.queueStyle,
+                                        startSource: sessionPreferences.source,
                                         runtime: "llm",
                                         reason: result.reason ?? "llm",
                                         reasoning: result.reasoning,
-                                    },
+                                        outcome: { type: "first_pick_accept", firstPick: true },
+                                    }),
                                 });
                                 if (config.sessionMode === "buy") {
                                     // Fetch actual listings to ensure we can buy
@@ -445,6 +469,15 @@ export class AgentConfigController {
             await prisma.session.update({
                 where: { id: openSession.id },
                 data: { endedAt: new Date() },
+            });
+            await this.learningService.annotateSessionOutcome({
+                userId: req.user.userId,
+                sessionId: openSession.id,
+                outcome: {
+                    type: "ended",
+                    sessionDurationMs: Date.now() - openSession.startedAt.getTime(),
+                    status: "stopped",
+                },
             });
         }
 
@@ -598,14 +631,14 @@ export class AgentConfigController {
                             sessionId,
                             trackId,
                             action: "purchase",
-                            metadata: {
+                            metadata: buildAgentSignalMetadata({
                                 source: "agent_purchase",
-                                listingId: String(listing.listingId),
-                                stemType: listing.stemType,
-                                qualityScore: listing.qualityScore ?? null,
-                                qualityRatingId: listing.qualityRatingId ?? null,
-                                priceUsd: negotiation.priceUsd,
-                            },
+                                licenseType: negotiation.licenseType,
+                                outcome: {
+                                    type: "purchase",
+                                    priceUsd: negotiation.priceUsd,
+                                },
+                            }),
                         });
                         purchaseSignalRecorded = true;
                     }

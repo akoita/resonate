@@ -136,7 +136,7 @@ describe("AnalyticsController (HTTP)", () => {
       })
       .expect(201);
 
-    expect(instrumentationService.recordPlaybackCompleted).toHaveBeenCalledWith({
+    expect(instrumentationService.recordPlaybackCompleted).toHaveBeenCalledWith(expect.objectContaining({
       trackId: "track-1",
       artistId: "artist-1",
       releaseId: "release-1",
@@ -145,7 +145,8 @@ describe("AnalyticsController (HTTP)", () => {
       completionRatio: 0.82,
       durationMs: 31000,
       actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
-    });
+      actorUserId: "listener-1",
+    }));
   });
 
   it("accepts playback completion without artist id for backend catalog enrichment", async () => {
@@ -161,7 +162,7 @@ describe("AnalyticsController (HTTP)", () => {
       })
       .expect(201);
 
-    expect(instrumentationService.recordPlaybackCompleted).toHaveBeenCalledWith({
+    expect(instrumentationService.recordPlaybackCompleted).toHaveBeenCalledWith(expect.objectContaining({
       trackId: "track-1",
       artistId: undefined,
       releaseId: undefined,
@@ -170,7 +171,8 @@ describe("AnalyticsController (HTTP)", () => {
       completionRatio: 0.82,
       durationMs: 31000,
       actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
-    });
+      actorUserId: "listener-1",
+    }));
   });
 
   it("records playback lifecycle events with the pseudonymous user actor", async () => {
@@ -195,7 +197,7 @@ describe("AnalyticsController (HTTP)", () => {
       })
       .expect(201);
 
-    expect(instrumentationService.recordPlaybackLifecycle).toHaveBeenCalledWith({
+    expect(instrumentationService.recordPlaybackLifecycle).toHaveBeenCalledWith(expect.objectContaining({
       action: "heartbeat",
       trackId: "track-1",
       artistId: "artist-1",
@@ -211,7 +213,8 @@ describe("AnalyticsController (HTTP)", () => {
       repeatMode: "all",
       shuffle: true,
       actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
-    });
+      actorUserId: "listener-1",
+    }));
   });
 
   it("rejects malformed playback completion payloads", async () => {
@@ -257,7 +260,7 @@ describe("AnalyticsController (HTTP)", () => {
       })
       .expect(201);
 
-    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith({
+    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(expect.objectContaining({
       eventName: "artist.upload_step_completed",
       sessionId: "onboarding-session-1",
       traceId: undefined,
@@ -279,7 +282,46 @@ describe("AnalyticsController (HTTP)", () => {
       },
       sourceRefs: { clientEventId: "client-event-1" },
       actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
-    });
+      actorUserId: "artist-1",
+    }));
+  });
+
+  it("accepts Session Intent product analytics events emitted by the AI DJ UI", async () => {
+    await request(app.getHttpServer())
+      .post("/analytics/product/event")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({
+        eventName: "agent.intent_selected",
+        sessionId: "product-session-1",
+        subjectType: "agent_session",
+        subjectId: "agent-session-1",
+        clientEventId: "client-event-2",
+        payload: {
+          intent: "focus",
+          intentName: "Neural Flow",
+          mood: "Focus",
+          energy: "low",
+          queueStyle: "stable",
+          commercePosture: "curate",
+        },
+      })
+      .expect(201);
+
+    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventName: "agent.intent_selected",
+        sessionId: "product-session-1",
+        subjectType: "agent_session",
+        subjectId: "agent-session-1",
+        payload: expect.objectContaining({
+          intent: "focus",
+          intentName: "Neural Flow",
+          mood: "Focus",
+          energy: "low",
+        }),
+        actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
+      }),
+    );
   });
 
   it("rejects unsupported product analytics event names", async () => {

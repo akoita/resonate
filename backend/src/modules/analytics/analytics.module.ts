@@ -18,9 +18,10 @@ import { AnalyticsDomainEventBridgeService } from "./analytics_domain_event_brid
 import { AnalyticsCatalogMetadataService } from "./analytics_catalog_metadata.service";
 import { AnalyticsPipelineObservabilityService } from "./analytics_observability.service";
 import { SharedModule } from "../shared/shared.module";
+import { AgentsModule } from "../agents/agents.module";
 
 @Module({
-  imports: [SharedModule],
+  imports: [SharedModule, AgentsModule],
   controllers: [AnalyticsController],
   providers: [
     AnalyticsService,

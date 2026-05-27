@@ -21,7 +21,8 @@ metadata-derived audio-feature signals.
 
 This is the serving hook for a broader warehouse learning loop. A Dataform-ready
 orchestration template now exists for scheduled materialization planning.
-BigQuery ML promotion and vector indexes are planned follow-up work.
+Session Intent feedback now lands in `AgentSignal` metadata, while BigQuery ML
+promotion and vector indexes are planned follow-up work.
 
 Issue [#977](https://github.com/akoita/resonate/issues/977) tracks the next
 product evolution: using the running analytics pipeline to power AI DJ taste
@@ -36,7 +37,7 @@ measurement.
 | Materialization orchestration | [#989](https://github.com/akoita/resonate/issues/989) | Dataform templates and GCP scheduling guidance define how Agent Taste jobs move from manual runs to managed execution. |
 | Offline ML evaluation | [#978](https://github.com/akoita/resonate/issues/978) | BigQuery ML scores are compared against deterministic ranking before promotion. |
 | Analytics-derived explanations | [#983](https://github.com/akoita/resonate/issues/983) | Recommendation reasons include safe taste, intent, novelty, and commerce signals. |
-| Intent feedback loop | [#980](https://github.com/akoita/resonate/issues/980) | Mood, vibe, and Session Intent outcomes feed back into `AgentSignal`. |
+| Intent feedback loop | [#980](https://github.com/akoita/resonate/issues/980) | Mood, vibe, Session Intent, completion, save, playlist, purchase, and session-duration outcomes feed back into `AgentSignal`. |
 | Session Intent UI | [#979](https://github.com/akoita/resonate/issues/979) | The current preset gallery becomes a compact, instrumented agent-control surface. |
 | Quality dashboard | [#982](https://github.com/akoita/resonate/issues/982) | Operators can monitor recommendation quality, preset usefulness, and model freshness. |
 
@@ -157,6 +158,12 @@ Cloud Scheduler triggering Workflows, which invokes the Dataform workflow tagged
 `agent_taste` and checks assertions for serving-contract validity and freshness.
 The detailed handoff is documented in
 `docs/architecture/agent_taste_orchestration.md`.
+
+The realtime `AgentSignal` loop now records privacy-safe
+`agent-signal-metadata/v1` context for Session Intent picks and mirrors
+available playback completions plus library saves into `complete` and `save`
+signals. Stop events annotate existing session signals with coarse
+`sessionDurationMs`.
 
 The baseline signed feedback includes:
 

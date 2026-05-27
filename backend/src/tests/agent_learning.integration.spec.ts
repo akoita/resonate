@@ -1,5 +1,5 @@
 import { prisma } from "../db/prisma";
-import { AgentLearningService } from "../modules/agents/agent_learning.service";
+import { AgentLearningService, buildAgentSignalMetadata } from "../modules/agents/agent_learning.service";
 
 const TEST_PREFIX = `aglearn_${Date.now()}_`;
 
@@ -43,11 +43,19 @@ describe("AgentLearningService (integration)", () => {
         monthlyCapUsd: 10,
       },
     });
+    await prisma.session.create({
+      data: {
+        id: `${TEST_PREFIX}session`,
+        userId: `${TEST_PREFIX}user`,
+        budgetCapUsd: 10,
+      },
+    });
   });
 
   afterAll(async () => {
     await prisma.agentSignal.deleteMany({ where: { userId: `${TEST_PREFIX}user` } });
     await prisma.agentConfig.deleteMany({ where: { userId: `${TEST_PREFIX}user` } });
+    await prisma.session.deleteMany({ where: { userId: `${TEST_PREFIX}user` } });
     await prisma.track.deleteMany({ where: { id: `${TEST_PREFIX}track` } });
     await prisma.release.deleteMany({ where: { id: `${TEST_PREFIX}release` } });
     await prisma.artist.deleteMany({ where: { id: `${TEST_PREFIX}artist` } });
@@ -57,9 +65,22 @@ describe("AgentLearningService (integration)", () => {
   it("persists signals and updates AgentConfig taste profile", async () => {
     const profile = await service.recordSignal({
       userId: `${TEST_PREFIX}user`,
+      sessionId: `${TEST_PREFIX}session`,
       trackId: `${TEST_PREFIX}track`,
-      action: "purchase",
-      metadata: { source: "integration_test" },
+      action: "complete",
+      metadata: buildAgentSignalMetadata({
+        source: "agent_session",
+        sessionIntent: "focus",
+        sessionIntentName: "Neural Flow",
+        mood: "Focus",
+        energy: "low",
+        genres: ["Ambient", "Deep House"],
+        outcome: {
+          type: "playback_completed",
+          completionRatio: 0.9,
+          durationMs: 120000,
+        },
+      }),
     });
 
     expect(profile.favoredGenres).toEqual(["Deep House"]);
@@ -69,7 +90,16 @@ describe("AgentLearningService (integration)", () => {
       where: { userId: `${TEST_PREFIX}user` },
     });
     expect(signals).toHaveLength(1);
-    expect(signals[0].weight).toBe(5);
+    expect(signals[0].weight).toBe(1.5);
+    expect(signals[0].metadata).toMatchObject({
+      schemaVersion: "agent-signal-metadata/v1",
+      sessionIntent: "focus",
+      mood: "Focus",
+      outcome: {
+        type: "playback_completed",
+        completionRatio: 0.9,
+      },
+    });
 
     const config = await prisma.agentConfig.findUnique({
       where: { userId: `${TEST_PREFIX}user` },
@@ -78,6 +108,35 @@ describe("AgentLearningService (integration)", () => {
     expect(config?.learnedTasteProfile).toMatchObject({
       schemaVersion: "agent-taste-profile/v1",
       favoredGenres: ["Deep House"],
+    });
+  });
+
+  it("annotates existing session signals with session outcome context", async () => {
+    await service.annotateSessionOutcome({
+      userId: `${TEST_PREFIX}user`,
+      sessionId: `${TEST_PREFIX}session`,
+      outcome: {
+        type: "ended",
+        sessionDurationMs: 300000,
+        status: "stopped",
+      },
+    });
+
+    const signal = await prisma.agentSignal.findFirstOrThrow({
+      where: {
+        userId: `${TEST_PREFIX}user`,
+        sessionId: `${TEST_PREFIX}session`,
+      },
+    });
+    expect(signal.metadata).toMatchObject({
+      schemaVersion: "agent-signal-metadata/v1",
+      sessionIntent: "focus",
+      outcome: {
+        type: "ended",
+        completionRatio: 0.9,
+        sessionDurationMs: 300000,
+        status: "stopped",
+      },
     });
   });
 });

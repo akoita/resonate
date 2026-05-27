@@ -5,6 +5,7 @@ import { EventBus } from "../shared/event_bus";
 import { AgentPurchaseService } from "../agents/agent_purchase.service";
 import { AgentRuntimeCommerceResult } from "../agents/agent_runtime.types";
 import { AgentRuntimeService } from "../agents/agent_runtime.service";
+import { AgentLearningService, buildAgentSignalMetadata } from "../agents/agent_learning.service";
 
 export interface AgentPreferences {
   mood?: string;
@@ -31,7 +32,8 @@ export class SessionsService {
     private readonly walletService: WalletService,
     private readonly eventBus: EventBus,
     private readonly agentRuntimeService: AgentRuntimeService,
-    private readonly agentPurchaseService: AgentPurchaseService
+    private readonly agentPurchaseService: AgentPurchaseService,
+    private readonly agentLearningService?: AgentLearningService
   ) {}
 
   async startSession(input: {
@@ -233,7 +235,7 @@ export class SessionsService {
       preferences,
     });
 
-    return this.toAgentNextResponse(input.sessionId, result);
+    return this.toAgentNextResponse(input.sessionId, session.userId, result);
   }
 
   async getPlaylist(limit = 10) {
@@ -266,6 +268,7 @@ export class SessionsService {
 
   private async toAgentNextResponse(
     sessionId: string,
+    userId: string,
     result: AgentRuntimeCommerceResult,
   ) {
     const selected = result.primaryTrack;
@@ -292,6 +295,32 @@ export class SessionsService {
     }
 
     this.rememberRecentTrack(sessionId, track.id);
+    if (this.agentLearningService) {
+      await this.agentLearningService.recordSignal({
+        userId,
+        sessionId,
+        trackId: track.id,
+        action: "accept",
+        metadata: buildAgentSignalMetadata({
+          source: "agent_next_pick",
+          sessionIntent: this.agentPreferences.get(sessionId)?.sessionIntent,
+          sessionIntentName: this.agentPreferences.get(sessionId)?.sessionIntentName,
+          mood: this.agentPreferences.get(sessionId)?.mood,
+          energy: this.agentPreferences.get(sessionId)?.energy,
+          genres: this.agentPreferences.get(sessionId)?.genres,
+          licenseType: selected.licenseType,
+          queueStyle: this.agentPreferences.get(sessionId)?.queueStyle,
+          startSource: this.agentPreferences.get(sessionId)?.source,
+          runtime: result.status,
+          recommendation: {
+            score: selected.score,
+            explanation: selected.explanation,
+          },
+          reason: selected.reason ?? result.reason,
+          outcome: { type: "next_pick_accept" },
+        }),
+      });
+    }
     this.eventBus.publish({
       eventName: "agent.track_selected",
       eventVersion: 1,

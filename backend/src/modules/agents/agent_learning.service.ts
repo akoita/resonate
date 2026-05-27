@@ -5,12 +5,17 @@ import { prisma } from "../../db/prisma";
 export const AGENT_SIGNAL_WEIGHTS = {
   accept: 1,
   skip: -1,
+  complete: 1.5,
+  save: 3,
   replay: 2,
   add_to_playlist: 3,
   purchase: 5,
 } as const;
 
 export type AgentSignalAction = keyof typeof AGENT_SIGNAL_WEIGHTS;
+export type AgentSignalMetadata = Prisma.InputJsonObject;
+
+export const AGENT_SIGNAL_METADATA_SCHEMA_VERSION = "agent-signal-metadata/v1";
 
 export type AgentTasteProfile = {
   schemaVersion: "agent-taste-profile/v1";
@@ -39,6 +44,53 @@ export type AgentTasteSignalInput = {
 
 export function isAgentSignalAction(action: string): action is AgentSignalAction {
   return Object.prototype.hasOwnProperty.call(AGENT_SIGNAL_WEIGHTS, action);
+}
+
+export function buildAgentSignalMetadata(input: {
+  source?: unknown;
+  sessionIntent?: unknown;
+  sessionIntentName?: unknown;
+  mood?: unknown;
+  vibe?: unknown;
+  energy?: unknown;
+  genres?: unknown;
+  licenseType?: unknown;
+  queueStyle?: unknown;
+  startSource?: unknown;
+  filterKind?: unknown;
+  autoQueuedTracks?: unknown;
+  runtime?: unknown;
+  recommendation?: unknown;
+  reason?: unknown;
+  reasoning?: unknown;
+  outcome?: Record<string, unknown>;
+}): AgentSignalMetadata {
+  const metadata: Record<string, unknown> = {
+    schemaVersion: AGENT_SIGNAL_METADATA_SCHEMA_VERSION,
+  };
+  copyString(metadata, "source", input.source, 80);
+  copyString(metadata, "sessionIntent", input.sessionIntent, 64);
+  copyString(metadata, "sessionIntentName", input.sessionIntentName, 80);
+  copyString(metadata, "mood", input.mood, 64);
+  copyString(metadata, "vibe", input.vibe, 64);
+  copyString(metadata, "energy", input.energy, 16);
+  copyStringArray(metadata, "genres", input.genres, 8, 64);
+  copyString(metadata, "licenseType", input.licenseType, 24);
+  copyString(metadata, "queueStyle", input.queueStyle, 48);
+  copyString(metadata, "startSource", input.startSource, 80);
+  copyString(metadata, "filterKind", input.filterKind, 32);
+  copyNumber(metadata, "autoQueuedTracks", input.autoQueuedTracks);
+  copyString(metadata, "runtime", input.runtime, 32);
+  copySafeRecommendation(metadata, input.recommendation);
+  copyString(metadata, "reason", input.reason, 160);
+  copyString(metadata, "reasoning", input.reasoning, 240);
+
+  const outcome = sanitizeSignalOutcome(input.outcome);
+  if (outcome) {
+    metadata.outcome = outcome;
+  }
+
+  return metadata as AgentSignalMetadata;
 }
 
 export function computeAgentTasteProfileFromSignals(
@@ -113,6 +165,92 @@ export function computeAgentTasteProfileFromSignals(
   };
 }
 
+function sanitizeSignalOutcome(outcome?: Record<string, unknown>) {
+  if (!outcome) {
+    return undefined;
+  }
+
+  const sanitized: Record<string, string | number | boolean> = {};
+  copyString(sanitized, "type", outcome.type, 40);
+  copyString(sanitized, "source", outcome.source, 80);
+  copyBoolean(sanitized, "firstPick", outcome.firstPick);
+  copyNumber(sanitized, "completionRatio", outcome.completionRatio);
+  copyNumber(sanitized, "durationMs", outcome.durationMs);
+  copyNumber(sanitized, "sessionDurationMs", outcome.sessionDurationMs);
+  copyNumber(sanitized, "priceUsd", outcome.priceUsd);
+  copyString(sanitized, "status", outcome.status, 40);
+  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
+}
+
+function copySafeRecommendation(target: Record<string, unknown>, value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return;
+  }
+  const recommendation = value as Record<string, unknown>;
+  const safe: Record<string, unknown> = {};
+  copyNumber(safe, "score", recommendation.score);
+  copyStringArray(safe, "explanation", recommendation.explanation, 5, 120);
+  if (safe.score !== undefined || safe.explanation !== undefined) {
+    target.recommendation = safe;
+  }
+}
+
+function copyString(target: Record<string, unknown>, key: string, value: unknown, maxLength: number) {
+  const sanitized = sanitizeSignalString(value, maxLength);
+  if (sanitized) {
+    target[key] = sanitized;
+  }
+}
+
+function copyStringArray(
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown,
+  maxItems: number,
+  maxLength: number,
+) {
+  if (!Array.isArray(value)) {
+    return;
+  }
+  const items = value
+    .map((entry) => sanitizeSignalString(entry, maxLength))
+    .filter((entry): entry is string => Boolean(entry))
+    .slice(0, maxItems);
+  if (items.length > 0) {
+    target[key] = items;
+  }
+}
+
+function copyNumber(target: Record<string, unknown>, key: string, value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    target[key] = value;
+  }
+}
+
+function copyBoolean(target: Record<string, unknown>, key: string, value: unknown) {
+  if (typeof value === "boolean") {
+    target[key] = value;
+  }
+}
+
+function sanitizeSignalString(value: unknown, maxLength: number) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const cleaned = value
+    .replace(/<[^>]*>/g, " ")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned || /https?:\/\//i.test(cleaned) || /[^\s@]+@[^\s@]+\.[^\s@]+/.test(cleaned)) {
+    return undefined;
+  }
+  if (/\b(?:0x[a-fA-F0-9]{16,}|user[_:-]?[A-Za-z0-9_-]{6,}|session[_:-]?[A-Za-z0-9_-]{6,})\b/.test(cleaned)) {
+    return undefined;
+  }
+  return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength - 3).trimEnd()}...` : cleaned;
+}
+
 @Injectable()
 export class AgentLearningService {
   async recordSignal(input: {
@@ -144,6 +282,46 @@ export class AgentLearningService {
     }
 
     return profile;
+  }
+
+  async annotateSessionOutcome(input: {
+    userId: string;
+    sessionId: string;
+    outcome: Record<string, unknown>;
+  }) {
+    const signals = await prisma.agentSignal.findMany({
+      where: {
+        userId: input.userId,
+        sessionId: input.sessionId,
+      },
+      select: {
+        id: true,
+        metadata: true,
+      },
+    });
+    const outcome = sanitizeSignalOutcome(input.outcome);
+    if (!outcome || signals.length === 0) {
+      return { updated: 0 };
+    }
+
+    await prisma.$transaction(
+      signals.map((signal) => {
+        const metadata = {
+          ...jsonObject(signal.metadata),
+          schemaVersion: AGENT_SIGNAL_METADATA_SCHEMA_VERSION,
+          outcome: {
+            ...jsonObject(jsonObject(signal.metadata).outcome),
+            ...outcome,
+          },
+        };
+        return prisma.agentSignal.update({
+          where: { id: signal.id },
+          data: { metadata: metadata as Prisma.InputJsonObject },
+        });
+      }),
+    );
+
+    return { updated: signals.length };
   }
 
   async computeTasteProfile(
@@ -193,4 +371,10 @@ export class AgentLearningService {
       ...vibes,
     ].filter(Boolean)));
   }
+}
+
+function jsonObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
