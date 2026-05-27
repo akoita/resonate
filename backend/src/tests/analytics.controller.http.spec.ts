@@ -11,10 +11,12 @@ import { authToken, createControllerTestApp } from "./e2e-helpers";
 const analyticsService = {
   getArtistStats: jest.fn(),
   getArtistDashboard: jest.fn(),
+  getAgentQualityDashboard: jest.fn(),
 };
 
 const authorizationService = {
   assertCanReadArtistMetrics: jest.fn(),
+  assertCanReadAgentQualityDashboard: jest.fn(),
 };
 
 const ingestService = {
@@ -60,7 +62,13 @@ describe("AnalyticsController (HTTP)", () => {
       tracks: [],
       meta: { isEmpty: true },
     });
+    analyticsService.getAgentQualityDashboard.mockResolvedValue({
+      summary: { sessionsStarted: 0, acceptanceRate: 0 },
+      intentBreakdown: [],
+      meta: { isEmpty: true },
+    });
     authorizationService.assertCanReadArtistMetrics.mockResolvedValue(undefined);
+    authorizationService.assertCanReadAgentQualityDashboard.mockReturnValue(undefined);
     instrumentationService.recordPlaybackCompleted.mockResolvedValue({
       status: "ok",
       eventId: "evt_playback_completed",
@@ -119,6 +127,36 @@ describe("AnalyticsController (HTTP)", () => {
       role: "admin",
     });
     expect(analyticsService.getArtistStats).toHaveBeenCalledWith("artist-1", 7);
+  });
+
+  it("GET /analytics/agent/quality requires JWT auth", async () => {
+    await request(app.getHttpServer()).get("/analytics/agent/quality").expect(401);
+  });
+
+  it("authorizes aggregate AI DJ quality metrics for operators", async () => {
+    await request(app.getHttpServer())
+      .get("/analytics/agent/quality?days=90")
+      .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+      .expect(200);
+
+    expect(authorizationService.assertCanReadAgentQualityDashboard).toHaveBeenCalledWith({
+      userId: "operator-1",
+      role: "operator",
+    });
+    expect(analyticsService.getAgentQualityDashboard).toHaveBeenCalledWith(90);
+  });
+
+  it("rejects AI DJ quality metrics when the role gate fails", async () => {
+    authorizationService.assertCanReadAgentQualityDashboard.mockImplementation(() => {
+      throw new ForbiddenException("AI DJ quality analytics are restricted to operators");
+    });
+
+    await request(app.getHttpServer())
+      .get("/analytics/agent/quality")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .expect(403);
+
+    expect(analyticsService.getAgentQualityDashboard).not.toHaveBeenCalled();
   });
 
   it("records playback completion through the instrumentation service", async () => {

@@ -30,6 +30,7 @@ export const PRODUCT_ANALYTICS_EVENT_NAMES = [
   "agent.intent_viewed",
   "agent.intent_selected",
   "agent.session_started",
+  "agent.session_stopped",
   "agent.next_pick_requested",
   "settings.updated",
 ] as const;

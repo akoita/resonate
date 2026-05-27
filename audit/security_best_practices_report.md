@@ -2,11 +2,12 @@
 
 ## Executive Summary
 
-This review covers the AgentSignal outcome feedback changes in #980, including
-analytics-to-learning mirroring, Session Intent metadata, and the new signal
-actions. No Critical, High, Medium, or Low findings were identified; the change
-keeps public analytics actor ids pseudonymous and routes raw authenticated user
-ids only through backend-internal learning calls.
+This review covers the AI DJ recommendation quality dashboard changes in #982,
+including the aggregate analytics endpoint, BigQuery/local report sourcing,
+operator-only access gate, and frontend reporting surface. No Critical, High,
+Medium, or Low findings were identified; the report keeps analytics at aggregate
+event and segment level and does not expose raw listener histories, actor ids,
+wallet addresses, or per-user drilldowns.
 
 ## Critical Findings
 
@@ -26,40 +27,46 @@ None.
 
 ## Informational Notes
 
-### SBPR-001: AgentSignal Metadata Is Bounded And Sanitized
+### SBPR-001: AI DJ Quality Dashboard Is Role-Gated
 
-**File:** `backend/src/modules/agents/agent_learning.service.ts`
+**File:** `backend/src/modules/analytics/analytics_authorization.service.ts`
 
-`buildAgentSignalMetadata` keeps intent, mood/vibe, recommendation, and outcome
-context in an allowlisted schema. It drops URLs, email-like values, wallet/user
-identifier-looking strings, control characters, oversized strings, and nested
-free-form payloads.
+`GET /analytics/agent/quality` requires JWT authentication and then restricts
+access to `admin` and `operator` roles. Listener and artist accounts receive a
+403 before report data is generated.
 
-### SBPR-002: Analytics Actor Privacy Boundary Is Preserved
+### SBPR-002: Report Output Stays Aggregate-Only
+
+**File:** `backend/src/modules/analytics/analytics.service.ts`
+
+The dashboard computes bounded-window KPIs and segment breakdowns from
+`analytics_facts`. It returns acceptance, first-pick skip proxies, saves,
+playlist adds, purchases, duration, strategy, taste-source, intent, and version
+aggregates without actor ids, wallet addresses, raw listener event histories, or
+per-user rows.
+
+### SBPR-003: BigQuery Query Uses Parameterized Time Bounds And Identifier Guards
+
+**File:** `backend/src/modules/analytics/analytics_bigquery_report.ts`
+
+The BigQuery-backed report path uses named query parameters for time bounds and
+limit values. Table identifiers are still validated by `bigQueryIdentifier`
+before interpolation, preserving the existing reporting guard against arbitrary
+identifier injection.
+
+### SBPR-004: Product Event Allowlist Includes Session Stop Telemetry
 
 **File:** `backend/src/modules/analytics/analytics.controller.ts`
 
-Analytics events still use `pseudonymousAnalyticsActorId` in the event envelope.
-The raw authenticated `userId` is passed only as backend-internal
-`actorUserId` so `AnalyticsInstrumentationService` can mirror eligible
-track-level outcomes into `AgentSignal`; it is not emitted into analytics
-payloads or source refs.
-
-### SBPR-003: Product Event Allowlist Now Matches AI DJ UI Emissions
-
-**File:** `backend/src/modules/analytics/analytics.controller.ts`
-
-The product analytics allowlist now includes the Session Intent events emitted
-by the AI DJ UI (`agent.intent_viewed`, `agent.intent_selected`,
-`agent.session_started`, and `agent.next_pick_requested`). Unsupported product
-event names continue to be rejected.
+The product analytics allowlist now includes `agent.session_stopped` so the UI
+can emit coarse session duration for aggregate quality reporting. Unsupported
+product event names continue to be rejected, and product payload sanitization
+continues to drop blocked geo/IP-like keys and nested free-form payloads.
 
 ## Review Commands
 
 ```bash
-rg 'password|secret|api_key|private_key' backend/src/modules/agents backend/src/modules/analytics backend/src/modules/sessions --iglob '!*.test.*' --iglob '!*.spec.*'
-rg 'rawQuery|executeRaw|\$queryRaw|\$executeRaw' backend/src/modules/agents backend/src/modules/analytics backend/src/modules/sessions
-rg 'JSON\.parse|eval\(' backend/src/modules/agents backend/src/modules/analytics backend/src/modules/sessions
-rg 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/lib/api.ts web/src/lib/productAnalytics.ts
-rg '@(Controller|Get|Post|Put|Delete|Patch)|@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/agents backend/src/modules/analytics backend/src/modules/sessions
+rg '(SECRET|PRIVATE_KEY|API_KEY|TOKEN|PASSWORD|BEGIN [A-Z ]*PRIVATE KEY|AIza|sk-|xoxb-|ghp_|github_pat_)' backend/src/modules/analytics web/src/app/analytics web/src/components/analytics/AgentQualityDashboard.tsx web/src/lib/api.ts web/src/lib/productAnalytics.ts docs/issue-982-implementation-plan.md docs/features/analytics_dashboard.md docs/features/agent_taste_intelligence.md
+rg '\$queryRaw|\$executeRaw|queryRaw|executeRaw|eval\(|new Function|dangerouslySetInnerHTML|innerHTML|document\.cookie|localStorage\.setItem' backend/src/modules/analytics web/src/app/analytics web/src/components/analytics/AgentQualityDashboard.tsx web/src/lib/api.ts web/src/lib/productAnalytics.ts
+rg 'JSON\.parse|JSON_VALUE|TO_JSON_STRING|BigQuery|ForbiddenException|assertCanReadAgentQuality' backend/src/modules/analytics web/src/app/analytics web/src/components/analytics/AgentQualityDashboard.tsx
 ```

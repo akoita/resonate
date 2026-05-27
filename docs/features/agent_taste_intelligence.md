@@ -21,8 +21,9 @@ metadata-derived audio-feature signals.
 
 This is the serving hook for a broader warehouse learning loop. A Dataform-ready
 orchestration template now exists for scheduled materialization planning.
-Session Intent feedback now lands in `AgentSignal` metadata, while BigQuery ML
-promotion and vector indexes are planned follow-up work.
+Session Intent feedback now lands in `AgentSignal` metadata, and operators can
+monitor aggregate recommendation quality in the AI DJ quality dashboard. BigQuery
+ML promotion and vector indexes are planned follow-up work.
 
 Issue [#977](https://github.com/akoita/resonate/issues/977) tracks the next
 product evolution: using the running analytics pipeline to power AI DJ taste
@@ -164,6 +165,25 @@ The realtime `AgentSignal` loop now records privacy-safe
 available playback completions plus library saves into `complete` and `save`
 signals. Stop events annotate existing session signals with coarse
 `sessionDurationMs`.
+
+## Quality Dashboard
+
+Operators and admins can open `/analytics/agent-quality` or call
+`GET /analytics/agent/quality?days=N` to inspect aggregate AI DJ quality
+metrics. The report is computed from bounded `analytics_facts` windows and
+works with both BigQuery report mode and local warehouse-export fallback.
+
+The report tracks:
+
+- acceptance rate and accepted next picks
+- first-pick skip proxy from low-completion first-pick playback outcomes
+- session starts, stops, and coarse average duration
+- playback completions, saves, playlist adds, purchases, and purchase USD
+- breakdowns by Session Intent, recommendation strategy, taste signal source,
+  and model/materialization version
+
+The dashboard is aggregate-only. It does not expose raw listener histories,
+actor ids, wallet addresses, or per-user drilldowns.
 
 The baseline signed feedback includes:
 
