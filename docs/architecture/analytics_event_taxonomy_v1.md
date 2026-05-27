@@ -218,6 +218,7 @@ when they follow the privacy and versioning rules above.
 | `agent.intent_viewed` | `web-app` | `agent_session` when known | auth user | `source` | `presetCount`, `intents`, `clientEventId` |
 | `agent.intent_selected` | `web-app` | `agent_session` when known | auth user | `intent`, `intentName`, `source` | `mood`, `energy`, `licenseType`, `queueStyle`, `commercePosture`, `clientEventId` |
 | `agent.session_started` | `web-app` | `agent_session` | auth user | `source` | `intent`, `intentName`, `mood`, `energy`, `licenseType`, `queueStyle`, `commercePosture`, `clientEventId` |
+| `agent.session_stopped` | `web-app` | `agent_session` | auth user | `source` | `intent`, `intentName`, `sessionDurationMs`, `clientEventId` |
 | `agent.next_pick_requested` | `web-app` | `agent_session` | auth user | `status`, `source` | `intent`, `intentName`, `trackId`, `runtimeStatus`, `score`, `clientEventId` |
 | `agent.evaluated` | `agent-runtime` | `track` | agent/user when known | `sessionId`, `trackId`, `licenseType`, `priceUsd`, `reason` | none |
 | `agent.decision_made` | `agent-runtime` | `track` | agent/user when known | `sessionId`, `reason` | `trackId`, `artistId`, `releaseId`, `licenseType`, `priceUsd` |

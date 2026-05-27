@@ -8,6 +8,14 @@ export interface AnalyticsRequestUser {
 
 @Injectable()
 export class AnalyticsAuthorizationService {
+  assertCanReadAgentQualityDashboard(user: AnalyticsRequestUser | undefined) {
+    if (user?.role === "admin" || user?.role === "operator") {
+      return;
+    }
+
+    throw new ForbiddenException("AI DJ quality analytics are restricted to operators");
+  }
+
   async assertCanReadArtistMetrics(artistId: string, user: AnalyticsRequestUser | undefined) {
     if (user?.role === "admin") {
       return;

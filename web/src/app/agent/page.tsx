@@ -107,9 +107,24 @@ export default function AgentPage() {
 
     const handleToggle = async (preset: SessionPreset | null = null) => {
         if (config?.isActive) {
+            const stoppedSessionId = openSessionId;
+            const stoppedSession = stoppedSessionId ? sessions.find((session) => session.id === stoppedSessionId) : null;
             await stopSession();
             setActiveSessionId(null);
             setNextPick(null);
+            void recordProductAnalytics(token, "agent.session_stopped", {
+                source: "agent_command_bar",
+                subjectType: "agent_session",
+                subjectId: stoppedSessionId ?? undefined,
+                payload: {
+                    surface: "agent",
+                    intent: selectedPreset?.intent,
+                    intentName: selectedPreset?.name,
+                    sessionDurationMs: stoppedSession
+                        ? Math.max(0, Date.now() - new Date(stoppedSession.startedAt).getTime())
+                        : undefined,
+                },
+            });
             addToast({
                 type: "info",
                 title: "Session Stopped",

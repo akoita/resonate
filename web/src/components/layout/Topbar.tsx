@@ -21,6 +21,7 @@ const ROUTE_TITLES: Array<[string, string]> = [
   ["/marketplace", "Marketplace"],
   ["/playlists", "Playlists"],
   ["/artist/analytics", "Analytics"],
+  ["/analytics/agent-quality", "AI DJ Quality"],
   ["/artist/catalog", "Catalog"],
   ["/artist/upload", "Upload"],
   ["/wallet", "Wallet"],

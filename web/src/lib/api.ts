@@ -527,6 +527,64 @@ export type ArtistAnalyticsDashboard = {
   meta: ArtistAnalyticsMeta;
 };
 
+export type AgentQualityBreakdown = {
+  key: string;
+  label: string;
+  sessionsStarted: number;
+  nextPickRequests: number;
+  acceptedPicks: number;
+  acceptanceRate: number;
+  completionRate: number;
+  saveRate: number;
+  purchaseRate: number;
+  averageSessionDurationMs: number | null;
+};
+
+export type AgentQualityTimePoint = {
+  date: string;
+  sessionsStarted: number;
+  nextPickRequests: number;
+  acceptedPicks: number;
+  completions: number;
+  saves: number;
+  purchases: number;
+};
+
+export type AgentQualityDashboard = {
+  summary: {
+    days: number;
+    sessionsStarted: number;
+    sessionsStopped: number;
+    intentSelections: number;
+    nextPickRequests: number;
+    acceptedPicks: number;
+    playbackCompletions: number;
+    firstPickSkips: number;
+    firstPickOutcomes: number;
+    saves: number;
+    playlistAdds: number;
+    purchases: number;
+    purchaseUsd: number;
+    averageSessionDurationMs: number | null;
+    acceptanceRate: number;
+    firstPickSkipRate: number;
+    completionRate: number;
+    saveRate: number;
+    playlistAddRate: number;
+    purchaseRate: number;
+  };
+  intentBreakdown: AgentQualityBreakdown[];
+  strategyBreakdown: AgentQualityBreakdown[];
+  tasteSourceBreakdown: AgentQualityBreakdown[];
+  versionBreakdown: AgentQualityBreakdown[];
+  qualityOverTime: AgentQualityTimePoint[];
+  privacy: {
+    aggregation: string;
+    excludes: string[];
+  };
+  meta: ArtistAnalyticsMeta;
+};
+
 export async function getArtistMe(token: string) {
   const isMockAuth = (typeof window !== "undefined" && localStorage.getItem("resonate.mock_auth") === "true") || process.env.NEXT_PUBLIC_MOCK_AUTH === "true";
 
@@ -549,6 +607,18 @@ export async function getArtistAnalyticsDashboard(
   const search = new URLSearchParams({ days: String(days) });
   return apiRequest<ArtistAnalyticsDashboard>(
     `/analytics/artist/${encodeURIComponent(artistId)}/v1?${search.toString()}`,
+    { cache: "no-store" },
+    token,
+  );
+}
+
+export async function getAgentQualityDashboard(
+  token: string,
+  days = 30,
+) {
+  const search = new URLSearchParams({ days: String(days) });
+  return apiRequest<AgentQualityDashboard>(
+    `/analytics/agent/quality?${search.toString()}`,
     { cache: "no-store" },
     token,
   );

@@ -51,6 +51,7 @@ const PRODUCT_EVENT_NAMES = new Set([
   "agent.intent_viewed",
   "agent.intent_selected",
   "agent.session_started",
+  "agent.session_stopped",
   "agent.next_pick_requested",
   "settings.updated",
   "shows.signal_created",
@@ -80,6 +81,15 @@ export class AnalyticsController {
   ) {
     await this.analyticsAuthorizationService.assertCanReadArtistMetrics(artistId, req.user);
     return this.analyticsService.getArtistStats(artistId, Number(days ?? 7));
+  }
+
+  @Get("agent/quality")
+  async getAgentQualityDashboard(
+    @Query("days") days: string | undefined,
+    @Request() req: any
+  ) {
+    this.analyticsAuthorizationService.assertCanReadAgentQualityDashboard(req.user);
+    return this.analyticsService.getAgentQualityDashboard(Number(days ?? 30));
   }
 
   @Get("artist/:id/v1")

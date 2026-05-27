@@ -115,6 +115,7 @@ describe("product analytics helpers", () => {
         "agent.intent_viewed",
         "agent.intent_selected",
         "agent.session_started",
+        "agent.session_stopped",
         "agent.next_pick_requested",
       ]),
     );
