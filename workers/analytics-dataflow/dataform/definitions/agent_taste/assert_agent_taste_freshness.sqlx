@@ -1,0 +1,24 @@
+js {
+  const cfg = require("includes/agent_taste_config");
+}
+
+config {
+  type: "assertion",
+  tags: ["agent_taste", "freshness"],
+  dependencies: [cfg.scoresTableName(dataform.projectConfig)]
+}
+
+SELECT
+  'empty_score_table' AS reason,
+  NULL AS newest_score_at
+WHERE NOT EXISTS (
+  SELECT 1 FROM ${ref(cfg.scoresTableName(dataform.projectConfig))}
+)
+
+UNION ALL
+
+SELECT
+  'stale_score_table' AS reason,
+  MAX(updated_at) AS newest_score_at
+FROM ${ref(cfg.scoresTableName(dataform.projectConfig))}
+HAVING TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX(updated_at), HOUR) > ${cfg.freshnessHours(dataform.projectConfig)}
