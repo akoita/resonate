@@ -50,136 +50,32 @@
 
 ## 🌟 Overview
 
-Resonate is an AI-native music platform, not another streaming app. It uses AI,
-agent interfaces, and blockchain rails as product primitives for new experiences
-in and around music: creation, listening, remixing, licensing, agent commerce,
-fan coordination, live demand, programmable rights, and machine-to-machine
-catalog access.
+Resonate is an AI-native music platform that uses AI, agent interfaces, and blockchain rails as product primitives — not afterthoughts. Artists upload releases, split songs into stems, and sell licensed assets in stablecoin. Listeners get a full music app with an AI DJ, marketplace, and wallet-native purchases. AI agents discover, quote, and buy stems over HTTP with x402 — no account, no OAuth, just `curl` + USDC + a signed receipt.
 
-Stems and escrow-backed fan campaigns are early proof points, not the platform's
-ceiling. The same foundation also supports agentic commerce, MCP tools,
-x402-native checkout, machine-readable receipts, autonomous discovery and
-purchase flows, programmable royalties, and future music experiences that do not
-fit the shape of a traditional streaming product. The goal is a new generation
-of music app where these capabilities feel native to the listening experience,
-not bolted on after the track ends.
+The human studio, storefront API, x402 payment flow, and MCP interface are peers over the same on-chain catalog. Three audiences, one catalog:
 
-Artists can generate or upload music, split songs into stems, sell licensed
-assets in stablecoin, expose the same catalog to both people and agents, and use
-fan-funded escrow campaigns to measure live demand. The human app, storefront
-API, x402 payment flow, and MCP interface are peers over the same catalog, so
-listeners, creators, and agents can each participate through the surface that
-makes sense for them.
+- **Artists** — upload releases, mint stems as NFTs, price per-license type (personal / remix / commercial), earn royalties via on-chain payment splitter.
+- **Listeners** — full music app: player, library, playlists, marketplace, AI DJ, curator-resolved disputes. Wallet-native purchases — you own what you buy.
+- **Agents** — storefront endpoints, licensing-aware quotes, x402 HTTP payments, machine-readable purchase receipts. No account required.
 
-Three first-class audiences, one catalog:
+---
 
-- **Artists** — upload releases, mint stems as NFTs, price them per-license type (personal / remix / commercial), and earn royalties via an on-chain payment splitter.
-- **Listeners** — use a full music app: player, library, playlists, marketplace, an AI DJ that curates against the catalog, and curator-resolved dispute flows. Purchases are wallet-native; you own what you buy.
-- **Agents** — hit storefront endpoints, inspect licensing-aware quotes, pay over HTTP with x402, and receive machine-readable purchase proof. No account, no OAuth, no dashboard.
+## ⚡ Key Capabilities
 
-### Resonate Shows: fan demand with economic weight
+- **Programmable stems** — AI-separated 6-stem assets (vocals, drums, bass, guitar, piano, other) as the core monetizable unit · [Upload flow](docs/features/artist_upload_flow_mvp.md)
+- **x402 commerce** — machine-to-machine stem purchases over HTTP with USDC settlement and structured receipts · [x402 payments](docs/architecture/x402_payments.md)
+- **MCP tools** — `catalog.search`, `stem.quote`, `stem.download` over Streamable HTTP at `/mcp` · [MCP server](docs/architecture/mcp_server.md)
+- **Resonate Shows** — escrow-backed fan campaigns that turn city-level demand into booking signals · [Shows](docs/features/resonate_shows.md)
+- **AI DJ** — taste-constrained agent runtime with commerce-aware recommendations · [Agent commerce](docs/features/agent-commerce-runtime.md)
+- **Smart accounts** — ERC-4337 Kernel accounts with session keys for gasless UX · [Account abstraction](docs/account-abstraction/account-abstraction.md)
+- **Marketplace** — on-chain stem trading with licensing tiers and stablecoin settlement · [Contracts](docs/smart-contracts/core_contracts.md)
+- **Community curation** — dispute flows and curator-resolved content quality signals · [Curation](docs/features/community_curation_disputes.md)
 
-Resonate Shows is one expression of the broader platform thesis: listeners can
-rally around an artist, city, deadline, and funding threshold, then turn soft
-demand into an escrow-backed campaign signal. The product promise is simple:
-
-> **Fans bring the show. Artists get a booking signal backed by money, not likes.**
-
-This matters because international touring is often blocked by demand risk, not
-only by artist popularity. Overseas fans may exist, but artists and teams still
-need credible booking signals before committing travel, venue, and production
-budget. Resonate Shows turns that pain into a product surface: city campaigns,
-pledge tiers, thresholds, smart-contract escrow, automatic refund logic, and a
-public trail artists can use before committing production budget.
-
-The current UI exposes the wedge through the home campaign hero, `/shows`, and
-`/shows/sennarin-paris`; the full campaign backend and purpose-built campaign
-contract remain follow-up work.
-
-### Copy-paste demo: discover -> quote -> pay -> receipt
-
-Set a base URL, a stem ID, and an `X_PAYMENT` proof from the x402-capable client you use to settle the challenge. Raw `curl` is shown here so the underlying protocol stays visible.
-
-```bash
-export RESONATE_API_BASE="${RESONATE_API_BASE:-http://localhost:3000}"
-export STEM_ID="<stem-id>"
-export X_PAYMENT="<payment proof from your x402-capable client>"
-
-curl "$RESONATE_API_BASE/openapi.json"
-curl "$RESONATE_API_BASE/api/storefront/stems?limit=3"
-curl "$RESONATE_API_BASE/api/storefront/stems/$STEM_ID"
-```
-
-```bash
-curl "$RESONATE_API_BASE/api/stems/$STEM_ID/x402/info"
-curl -i "$RESONATE_API_BASE/api/stems/$STEM_ID/x402"
-```
-
-```bash
-curl -sS -D /tmp/resonate-headers.txt \
-  -H "X-PAYMENT: $X_PAYMENT" \
-  "$RESONATE_API_BASE/api/stems/$STEM_ID/x402" \
-  -o /tmp/resonate-stem.mp3
-
-node -e 'const fs = require("fs"); const raw = fs.readFileSync("/tmp/resonate-headers.txt", "utf8"); const line = raw.split("\\n").find((entry) => entry.toLowerCase().startsWith("x-resonate-receipt:")); if (!line) { throw new Error("Missing X-Resonate-Receipt header"); } const encoded = line.split(":").slice(1).join(":").trim(); const receipt = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")); console.log(JSON.stringify(receipt, null, 2));'
-```
-
-Expected flow:
-
-- `openapi.json` and `/api/storefront/stems` expose the discovery surface
-- `/api/stems/:stemId/x402/info` returns storefront-grade quote metadata
-- the first paid `curl` returns the `402 Payment Required` challenge
-- the retried paid `curl` downloads the stem and returns a structured receipt in `X-Resonate-Receipt`
-- the final `node` command decodes that receipt into JSON
-
-If you use an x402-capable client such as AgentCash, it can automate the proof exchange for you. The raw `curl` path above is here so reviewers can inspect the underlying commerce surface directly.
-
-### What the agent API surface gives you
-
-- **Public discovery surfaces** — machine-readable catalog, quote, and pricing endpoints
-- **MCP tools** — `catalog.search`, `stem.quote`, and `stem.download` over Streamable HTTP at `/mcp`
-- **No-account checkout** — x402 payment flow over HTTP using USDC
-- **Structured receipts** — purchase proof attached to successful paid downloads
-- **Licensing-aware pricing** — personal, remix, and commercial pricing exposed for automation
-- **Composable audio IP** — stems remain the core monetizable asset
-
-### Product framing
-
-- **AI, agents, and blockchain are product primitives** — stems, programmable licenses, stablecoin payments, MCP tools, agent receipts, and escrow campaigns are first examples, not the full ceiling
-- **Stems unlock active listening** — pricing, receipts, remix lineage, and royalties can compose on top of stem-native assets
-- **Campaigns make demand legible** — Shows convert scattered fan enthusiasm into city-level, escrow-backed intent before artists take booking risk
-- **The app and the API are peers** — the human studio and the x402 storefront API both ride the same on-chain catalog; neither is a subset of the other
-- **Why the agent surface matters** — as AI systems become catalog consumers, a commerce path that's just `curl` + USDC + a signed receipt (no dashboard, no account, no OAuth) lands on the right side of how agents actually buy---
-
-## 🎨 Brand & Design System (Pomelli Specs)
-
-Resonate uses a cohesive visual vocabulary designed by **Pomelli** to balance future-forward sonic technology with immersive utility.
-
-| Identity Token | Value | Hex / Spec | Mapping |
-| :--- | :--- | :--- | :--- |
-| **Canvas** | Jet Black | `#08080F` | Page backgrounds, deep surfaces |
-| **Primary** | Hyacinth Blue | `#7C5CFF` | Accent, high-contrast actions, key brand cues |
-| **Secondary** | Lavender Blue | `#C4B5FD` | High-legibility text, secondary interactive states |
-| **Typography** | Space Grotesk | Display / Title font | Headings, Kickers, Actions |
-| **Typography** | Be Vietnam Pro | Body / Sans font | Content, metadata, labels |
-
-### Design Aesthetics & Voice
-
-- **Vibe**: Cyber-lounge chic, web3-native professional, electric minimalist, immersive dark-mode.
-- **Brand Voice**: Tech-forward, Direct, Empowering, Transparent.
-- **Core Signal**: *"Fans bring the show. Artists get a booking signal backed by money, not likes."*
+See the [feature catalog](docs/features/README.md) for the full index of implemented, partial, planned, and retired capabilities.
 
 ---
 
 ## 🏗️ Architecture
-
-Resonate has two complementary architecture views:
-
-- **Application architecture** — how the product is decomposed into human app,
-  agent storefront, marketplace, x402, smart-account, ingestion, rights, and
-  realtime components.
-- **Deployment architecture** — how those components run across Cloud Run,
-  private data services, protocol contracts, and the Terraform-managed GCP edge.
 
 ```mermaid
 flowchart LR
@@ -196,71 +92,29 @@ flowchart LR
   Worker --> Data
 ```
 
-See the [application architecture doc](docs/architecture/application_architecture.md)
-for component diagrams, key runtime flows, bounded contexts, and the main
-design patterns used across the codebase.
+Resonate deploys as a full-stack music and agent-commerce system: Cloud Run services, Pub/Sub pipelines, Cloud SQL, Redis, GCS, ERC-4337 smart accounts, and a Terraform-managed GCP edge. Application CI publishes immutable images; [`resonate-iac`](https://github.com/akoita/resonate-iac) applies infrastructure releases.
 
-![Resonate deployment architecture](docs/architecture/resonate-deployment-architecture.svg)
-
-Resonate is deployed as a full-stack music and agent-commerce system, not just a
-web app. The core runtime combines:
-
-- **Human studio** — Next.js app for artists, listeners, marketplace, wallet UX,
-  uploads, playback, disputes, and curation.
-- **Agent-native commerce** — public storefront, OpenAPI, MCP tools, x402 quote
-  and paid download flow, and structured receipts.
-- **GCP runtime** — Cloud Run frontend/backend/Demucs services, Pub/Sub stem
-  jobs/results/DLQ, Cloud SQL, Redis, GCS, Secret Manager, Artifact Registry,
-  VPC private connectivity, Cloud Monitoring, and a global HTTPS edge with
-  managed TLS, Cloud Armor, and serverless NEGs in front of Cloud Run.
-- **On-chain protocol** — ERC-4337 Kernel smart accounts, session keys, bundler,
-  EntryPoint, `StemNFT`, `StemMarketplaceV2`, content protection, curation
-  disputes, revenue escrow, and payment asset contracts.
-- **Separate cloud delivery plane** — application CI publishes immutable images;
-  [`resonate-iac`](https://github.com/akoita/resonate-iac) applies
-  Terraform-managed environment releases, edge routing, IAM, and validation.
-
-See the [deployment architecture doc](docs/architecture/deployment_architecture.md)
-for the editable Mermaid model, source references, and component inventory.
-
-For a discoverable index of product and platform capabilities, see the
-[feature catalog](docs/features/README.md). It is the first stop for what is
-implemented, partial, planned, or retired, and links to usage/testing notes for
-each durable feature.
-
-Node dependency installs are hardened with npm 11 and a seven-day minimum
-release age. See the
-[npm supply-chain hardening guide](docs/operations/npm_supply_chain_hardening.md)
-before adding or upgrading packages.
+→ [Application architecture](docs/architecture/application_architecture.md) · [Deployment architecture](docs/architecture/deployment_architecture.md)
 
 ---
 
 ## 🚀 Quick Start
 
+> For the full development setup guide with detailed explanations, see [Getting Started](docs/getting-started.md).
+
 ### Prerequisites
 
-| Tool                                    | Install                                                       |
-| --------------------------------------- | ------------------------------------------------------------- |
-| **Node.js** 22.12+                      | [nodejs.org](https://nodejs.org/) or `nvm install 22`         |
-| **Docker**                              | [docker.com/get-started](https://www.docker.com/get-started/) |
-| **Make**                                | Pre-installed on macOS/Linux; Windows: use WSL                |
-| **Foundry** _(for contract deployment)_ | [getfoundry.sh](https://getfoundry.sh/)                       |
+| Tool | Install |
+| --- | --- |
+| **Node.js** 22.12+ | [nodejs.org](https://nodejs.org/) or `nvm install 22` |
+| **Docker** | [docker.com/get-started](https://www.docker.com/get-started/) |
+| **Make** | Pre-installed on macOS/Linux; Windows: use WSL |
+| **Foundry** _(contracts)_ | [getfoundry.sh](https://getfoundry.sh/) |
 
-### Run Locally
-
-Cloud/deployment infrastructure lives in [`akoita/resonate-iac`](https://github.com/akoita/resonate-iac). Local developer runtime lives in this repo: `make dev-up` starts Postgres, Redis, and the Pub/Sub emulator, while `make local-aa-fork` or `make local-aa-up` start the local Anvil + Alto stack.
-
-> The default local workflow is expected to support release uploads with stem separation.
-> That means the standard local setup includes the Demucs worker, not just backend/web/infra.
-> The root README covers the important commands; the deeper worker-specific reference lives in
-> [`workers/demucs/README.md`](workers/demucs/README.md).
-
-Two AA modes are available — see [AA Integration](docs/account-abstraction/account-abstraction.md) for architecture and [Local AA Development](docs/account-abstraction/local-aa-development.md) for setup.
-
-#### Forked Sepolia (recommended default — session keys, full AA)
+### Forked Sepolia (recommended)
 
 ```bash
-# 0. Install dependencies (once per clone)
+# Install dependencies
 npm install -g npm@11.14.1
 cd contracts && ./scripts/install-deps.sh
 cd ../backend && npm ci
@@ -268,195 +122,67 @@ cd ../web && npm ci --legacy-peer-deps
 cd ../desktop && npm ci
 cd ..
 
-# 1. Set env vars
+# Start infrastructure + worker + chain fork + contracts
 export SEPOLIA_RPC_URL=https://sepolia.drpc.org
-
-# 2. Start local runtime dependencies in this repo
 make dev-up
-
-# 3. Start the local Demucs worker so uploads work end-to-end
 make worker-gpu
-
-# 4. Start the Sepolia fork + bundler in this repo, then deploy protocol contracts
 make local-aa-fork
 make deploy-contracts
 
-# 5. Start services (separate terminals)
-make backend-dev     # NestJS API on port 3000; expects Postgres/Redis/PubSub from make dev-up
-make web-dev-fork    # Next.js on port 3001 (chainId 11155111, local RPC)
-npm run desktop:dev  # Optional native desktop shell wrapping the web app
+# Start services (separate terminals)
+make backend-dev     # NestJS API — port 3000
+make web-dev-fork    # Next.js — port 3001 (chain 11155111, local RPC)
 ```
 
-> **Note:** `make local-aa-fork` starts a Sepolia fork on `localhost:8545`, starts the local Alto bundler on `localhost:4337`, and refreshes AA env vars for fork mode. Then `make deploy-contracts` deploys a fresh copy of the Resonate protocol contracts to that local fork and updates `backend/.env` and `web/.env.local` with those fork-local addresses. `make web-dev-fork` is the correct frontend command for this mode because it targets chain `11155111` while still using your local RPC at `localhost:8545`.
-
-> **Recommendation:** Prefer this forked workflow for day-to-day development unless you specifically need isolated `31337` local-only behavior. It is the closest path to the intended production AA setup.
-
-#### Local-Only (fallback / offline development)
+### Local-Only (offline fallback)
 
 ```bash
-# 1. Start local runtime dependencies, then deploy contracts here
 make dev-up
 make worker-gpu
-make contracts-deploy-local  # Deploys AA + StemNFT + Marketplace + TransferValidator
+make contracts-deploy-local
 
-# 2. Start services (separate terminals)
-make backend-dev     # NestJS API on port 3000; expects Postgres/Redis/PubSub from make dev-up
-make web-dev-local   # Next.js on port 3001 (chainId 31337)
+make backend-dev     # port 3000
+make web-dev-local   # port 3001 (chain 31337)
 ```
 
 ### Stop & Clean
 
 ```bash
-make db-reset        # Reset database (requires Docker running)
-make dev-down        # Stop local Postgres, Redis, Pub/Sub emulator, and Demucs worker
-make local-aa-down   # Stop the local Anvil + Alto runtime
+make db-reset        # Reset database
+make dev-down        # Stop Postgres, Redis, Pub/Sub, Demucs worker
+make local-aa-down   # Stop Anvil + Alto
 ```
-
-### 📤 Upload Processing Flow
-
-When an artist uploads a release, the following pipeline executes:
-
-```
-Upload → Validation → Pub/Sub → Stem Separation → Encryption → Storage → Ready
-```
-
-| Stage        | Status | Description                            |
-| ------------ | ------ | -------------------------------------- |
-| `pending`    | 🔵     | Track queued for processing            |
-| `separating` | 🟡     | Demucs AI splitting audio into 6 stems |
-| `uploading`  | 🟡     | Uploading stems to IPFS/storage        |
-| `complete`   | 🟢     | Ready for playback and minting         |
-| `failed`     | 🔴     | Processing error (check worker logs)   |
-
-**Stems generated:** vocals, drums, bass, guitar, piano, other
-
-The release page displays track status in real-time, with stems appearing as they complete processing.
-
-### 🎛️ AI Stem Separation (Demucs)
-
-The Demucs worker uses Facebook's [htdemucs_6s](https://github.com/facebookresearch/demucs) model to separate audio into 6 stems: **vocals, drums, bass, guitar, piano, other**.
-
-The Demucs worker is part of the default local app workflow. GPU is the default (10-15x faster):
-
-```bash
-make worker-gpu
-make worker-health
-```
-
-Useful worker commands:
-
-- `make worker-gpu` auto-builds the GPU image if it does not exist yet (requires NVIDIA GPU + Container Toolkit)
-- `make worker-up` CPU-only fallback if no GPU is available
-- `make worker-logs` to stream logs
-- `make worker-rebuild` to force a no-cache rebuild when the image is stale
-- `make pubsub-init` only if the Pub/Sub emulator lost its topics/subscriptions after a reset
-
-See [`workers/demucs/README.md`](workers/demucs/README.md) for the deeper Demucs-specific guide:
-image internals, direct `docker build` / `docker run`, HTTP smoke tests, and extended troubleshooting.
-
-**Performance comparison:**
-| Hardware | 3-min song | Notes |
-|----------|------------|-------|
-| CPU (8 cores) | ~10 min | Fallback if no GPU available |
-| NVIDIA GPU (RTX 3080) | ~45 sec | 10-15x faster |
-
-**Model caching:** The ~52MB htdemucs_6s model is pre-downloaded during Docker build.
-
-```bash
-# Check worker health
-make worker-health
-```
-
-### ⚡ GPU Prerequisites
-
-If you run the local worker in GPU mode, stem separation drops from minutes to well under a minute on a supported card.
-
-To enable GPU acceleration:
-
-1. **NVIDIA GPU** with CUDA support
-2. **[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)**
-
-<details>
-<summary>📋 NVIDIA Container Toolkit Installation (Ubuntu/Debian/WSL2)</summary>
-
-```bash
-# Add NVIDIA package repository
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
-  sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-
-curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-
-# Install and configure
-sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
-sudo nvidia-ctk runtime configure --runtime=docker
-sudo systemctl restart docker
-
-# Verify installation
-docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
-```
-
-</details>
-
-**Verify GPU in worker:**
-
-```bash
-# Run against the local worker container
-docker exec resonate-demucs-local nvidia-smi
-```
-
-**Troubleshooting:**
-
-- Worker stays in "Created" state → Run `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`
-- `nvidia-smi` fails → Reinstall NVIDIA Container Toolkit
-- WSL2 users → Use NVIDIA driver for WSL, not native Linux driver
-- Build hangs on apt-get → Run `make worker-rebuild` or use the deeper rebuild steps in [`workers/demucs/README.md`](workers/demucs/README.md)
-
-See [`workers/demucs/README.md`](workers/demucs/README.md) for the full local worker guide, including
-repo-local `docker build`, `docker run`, stale-image recovery, and "stuck on Separating..." troubleshooting.
-
-### 🔧 Troubleshooting
-
-| Symptom                                    | Cause                                                          | Fix                                                                          |
-| ------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Container shows "Created" (not "Up")       | Port conflict — another container or process is using the port | Run `docker ps` to find the conflicting container, then `docker stop <name>` |
-| Redis won't start (port 6379)              | Stale Redis from another project                               | Stop the conflicting container, then rerun `make dev-up` |
-| Track stuck at "🔵 Pending" forever        | `PUBSUB_EMULATOR_HOST` missing from `backend/.env`             | Run `make pubsub-init` then restart backend; `make backend-dev` auto-adds it |
-| Worker logs: "Subscription does not exist" | PubSub emulator has no topics (emulator restarted)             | Run `make pubsub-init`, then restart the worker with `make worker-gpu` |
-| Track stuck at "🟡 Separating..."          | Demucs worker not running, stale image, or import errors       | Check `make worker-health`, then `make worker-logs`, then `make worker-rebuild` if needed |
-| No progress % during separation            | Worker can't POST progress back to backend                     | Leave `BACKEND_URL` unset for local fallback or set it to a Docker-reachable backend URL |
-| `SEPOLIA_RPC_URL` warning in Docker logs   | Env var not exported in the shell running the AA stack         | Export `SEPOLIA_RPC_URL=https://sepolia.drpc.org` before `make local-aa-fork` |
 
 ---
 
 ## 📖 Documentation
 
-| Document                                                                   | Description                                    |
-| -------------------------------------------------------------------------- | ---------------------------------------------- |
-| [Project Specification](docs/rfc/RESONATE_SPECS.md)                        | Vision, architecture, and roadmap              |
-| [Deployment Architecture](docs/architecture/deployment_architecture.md)     | GCP, smart account, blockchain, x402, and delivery topology |
-| [Deployment Guide](docs/smart-contracts/deployment.md)                     | Repo split, contract deploys, and contract-adjacent local setup |
-| [Environment Variables](docs/deployment/environment.md)                    | App runtime, observability, x402, and provider configuration |
-| [Local AA Development](docs/account-abstraction/local-aa-development.md)   | Account abstraction setup guide                |
-| [Demucs Worker](workers/demucs/README.md)                                  | GPU stem separation setup and troubleshooting  |
-| [Core Contracts](docs/smart-contracts/core_contracts.md)                   | Stem NFT and marketplace contracts             |
-| [Marketplace Integration](docs/smart-contracts/marketplace_integration.md) | Frontend/backend integration                   |
-| [x402 Payments](docs/architecture/x402_payments.md)                        | Machine-to-machine stem purchases via x402     |
-| [MCP Server](docs/architecture/mcp_server.md)                              | Tool discovery and client setup for agents     |
-| [Contributing](CONTRIBUTING.md)                                            | Contribution guidelines                        |
+| Document | Description |
+| --- | --- |
+| [Getting Started](docs/getting-started.md) | Full development setup guide |
+| [Feature Catalog](docs/features/README.md) | Index of all platform capabilities |
+| [Project Specification](docs/rfc/RESONATE_SPECS.md) | Vision, architecture, and roadmap |
+| [Deployment Architecture](docs/architecture/deployment_architecture.md) | GCP, smart accounts, blockchain, x402 topology |
+| [Environment Variables](docs/deployment/environment.md) | App runtime and provider configuration |
+| [Local AA Development](docs/account-abstraction/local-aa-development.md) | Account abstraction setup |
+| [Demucs Worker](workers/demucs/README.md) | GPU stem separation setup |
+| [x402 Payments](docs/architecture/x402_payments.md) | Machine-to-machine stem purchases |
+| [MCP Server](docs/architecture/mcp_server.md) | Agent tool discovery and setup |
+| [Core Contracts](docs/smart-contracts/core_contracts.md) | Stem NFT and marketplace contracts |
+| [Troubleshooting](docs/troubleshooting.md) | Common issues and fixes |
+| [Contributing](CONTRIBUTING.md) | Contribution guidelines |
 
 ---
 
 ## 🛠️ Tech Stack
 
-| Layer          | Technology                                      |
-| -------------- | ----------------------------------------------- |
-| Frontend       | Next.js 15, TanStack Query, Viem/Wagmi          |
-| Backend        | NestJS, Prisma, BullMQ, GCP Pub/Sub, PostgreSQL |
-| Blockchain     | Solidity, Foundry, ERC-4337, ZeroDev            |
-| AI             | Demucs (htdemucs_6s), Vertex AI                 |
-| Infrastructure | Docker, Redis, GCP Pub/Sub, GitHub Actions      |
+| Layer | Technology |
+| --- | --- |
+| Frontend | Next.js 15, TanStack Query, Viem/Wagmi |
+| Backend | NestJS, Prisma, BullMQ, GCP Pub/Sub, PostgreSQL |
+| Blockchain | Solidity, Foundry, ERC-4337, ZeroDev |
+| AI | Demucs (htdemucs_6s), Vertex AI |
+| Infrastructure | Docker, Redis, GCP Pub/Sub, GitHub Actions |
 
 ---
 

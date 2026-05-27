@@ -180,6 +180,52 @@ external client that needs one. When that client exists, the new API should be
 designed as a narrow command surface that still returns the existing normalized
 router result envelope and enforces `PolicyGuardService` before rail execution.
 
+## Quick Demo: discover → quote → pay → receipt
+
+A copy-paste curl walkthrough showing the full x402 purchase flow. Set a base
+URL, a stem ID, and an `X_PAYMENT` proof from the x402-capable client you use
+to settle the challenge.
+
+```bash
+export RESONATE_API_BASE="${RESONATE_API_BASE:-http://localhost:3000}"
+export STEM_ID="<stem-id>"
+export X_PAYMENT="<payment proof from your x402-capable client>"
+
+# 1. Discover the catalog
+curl "$RESONATE_API_BASE/openapi.json"
+curl "$RESONATE_API_BASE/api/storefront/stems?limit=3"
+curl "$RESONATE_API_BASE/api/storefront/stems/$STEM_ID"
+```
+
+```bash
+# 2. Get quote and trigger payment challenge
+curl "$RESONATE_API_BASE/api/stems/$STEM_ID/x402/info"
+curl -i "$RESONATE_API_BASE/api/stems/$STEM_ID/x402"
+```
+
+```bash
+# 3. Pay and receive receipt
+curl -sS -D /tmp/resonate-headers.txt \
+  -H "X-PAYMENT: $X_PAYMENT" \
+  "$RESONATE_API_BASE/api/stems/$STEM_ID/x402" \
+  -o /tmp/resonate-stem.mp3
+
+# Decode the structured receipt
+node -e 'const fs = require("fs"); const raw = fs.readFileSync("/tmp/resonate-headers.txt", "utf8"); const line = raw.split("\\n").find((entry) => entry.toLowerCase().startsWith("x-resonate-receipt:")); if (!line) { throw new Error("Missing X-Resonate-Receipt header"); } const encoded = line.split(":").slice(1).join(":").trim(); const receipt = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")); console.log(JSON.stringify(receipt, null, 2));'
+```
+
+Expected flow:
+
+1. `openapi.json` and `/api/storefront/stems` expose the discovery surface
+2. `/api/stems/:stemId/x402/info` returns storefront-grade quote metadata
+3. The first paid `curl` returns the `402 Payment Required` challenge
+4. The retried paid `curl` downloads the stem and returns a structured receipt in `X-Resonate-Receipt`
+5. The final `node` command decodes that receipt into JSON
+
+If you use an x402-capable client such as AgentCash, it can automate the proof
+exchange for you. The raw `curl` path above is here so reviewers can inspect
+the underlying commerce surface directly.
+
 ## Developer Payment-Router Flow
 
 Use `PaymentRouterService.purchase(input)` when trusted backend code needs one
