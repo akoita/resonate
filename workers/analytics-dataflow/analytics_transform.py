@@ -14,8 +14,13 @@ SUPPORTED_EVENT_FAMILIES = {
     "ingestion",
     "stems",
     "ipnft",
+    "onboarding",
     "session",
     "playback",
+    "playlist",
+    "search",
+    "artist",
+    "shows",
     "library",
     "commerce",
     "license",
@@ -39,6 +44,8 @@ SUPPORTED_EVENT_FAMILIES = {
 
 ANALYTICS_ENVIRONMENTS = {"local", "dev", "staging", "prod"}
 ANALYTICS_PRIVACY_TIERS = {"anonymous", "pseudonymous", "personal", "sensitive"}
+ANALYTICS_GEO_SOURCES = {"user_declared", "ip_coarse", "campaign_target"}
+ANALYTICS_GEO_PRECISIONS = {"country", "region", "city"}
 EVENT_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 
 
@@ -212,6 +219,10 @@ def validate_event(event: dict[str, Any]) -> None:
     if ("subjectType" in event) != ("subjectId" in event):
         issues.append("subjectType and subjectId must be provided together")
 
+    geo = event.get("geo")
+    if geo is not None:
+        issues.extend(validate_geo_dimension(geo))
+
     if not isinstance(event.get("payload"), dict):
         issues.append("payload: must be an object")
 
@@ -271,6 +282,11 @@ def to_clean_row(event: dict[str, Any]) -> dict[str, Any]:
                 number_payload(payload, "amountUsd"),
             ),
             "source": string_payload(payload, "source"),
+            "geoCountryCode": string_payload(event.get("geo") or {}, "countryCode"),
+            "geoRegionCode": string_payload(event.get("geo") or {}, "regionCode"),
+            "geoCitySlug": string_payload(event.get("geo") or {}, "citySlug"),
+            "geoSource": string_payload(event.get("geo") or {}, "source"),
+            "geoPrecision": string_payload(event.get("geo") or {}, "precision"),
             "payload": payload,
         }
     )
@@ -298,8 +314,31 @@ def to_fact_row(clean: dict[str, Any]) -> dict[str, Any]:
                         "eventName": clean["eventName"],
                         "producer": clean["producer"],
                         "privacyTier": clean["privacyTier"],
+                        "actorId": clean.get("actorId"),
                         "source": clean.get("source"),
                         "sessionId": clean.get("sessionId"),
+                        "releaseId": clean.get("releaseId"),
+                        "geoCountryCode": clean.get("geoCountryCode"),
+                        "geoRegionCode": clean.get("geoRegionCode"),
+                        "geoCitySlug": clean.get("geoCitySlug"),
+                        "geoSource": clean.get("geoSource"),
+                        "geoPrecision": clean.get("geoPrecision"),
+                        "playlistId": string_payload(payload, "playlistId"),
+                        "step": string_payload(payload, "step"),
+                        "phase": string_payload(payload, "phase"),
+                        "status": string_payload(payload, "status"),
+                        "licenseType": string_payload(payload, "licenseType"),
+                        "strategy": string_payload(payload, "strategy"),
+                        "playbackInstanceId": string_payload(payload, "playbackInstanceId"),
+                        "action": string_payload(payload, "action"),
+                        "positionMs": number_payload(payload, "positionMs"),
+                        "durationMs": number_payload(payload, "durationMs"),
+                        "heartbeatIntervalMs": number_payload(payload, "heartbeatIntervalMs"),
+                        "completionRatio": number_payload(payload, "completionRatio"),
+                        "queueIndex": number_payload(payload, "queueIndex"),
+                        "queueLength": number_payload(payload, "queueLength"),
+                        "repeatMode": string_payload(payload, "repeatMode"),
+                        "shuffle": bool_payload(payload, "shuffle"),
                         "title": string_payload(payload, "title"),
                         "paymentToken": string_payload(payload, "paymentToken"),
                         "paymentAssetId": string_payload(payload, "paymentAssetId"),
@@ -429,6 +468,41 @@ def decode_payload_for_quarantine(payload: bytes | str | dict[str, Any]) -> Any:
     return normalize_event_keys(parsed) if isinstance(parsed, dict) else parsed
 
 
+def validate_geo_dimension(geo: Any) -> list[str]:
+    if not isinstance(geo, dict):
+        return ["geo: must be an object"]
+
+    issues: list[str] = []
+    country_code = geo.get("countryCode")
+    region_code = geo.get("regionCode")
+    city_slug = geo.get("citySlug")
+    source = geo.get("source")
+    precision = geo.get("precision")
+
+    if not isinstance(country_code, str) or not re.fullmatch(r"[A-Z]{2}", country_code):
+        issues.append("geo.countryCode: must be ISO-3166 alpha-2")
+    if region_code is not None and (not isinstance(region_code, str) or not re.fullmatch(r"[A-Z0-9-]{1,16}", region_code)):
+        issues.append("geo.regionCode: invalid region code")
+    if city_slug is not None and (
+        not isinstance(city_slug, str) or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", city_slug)
+    ):
+        issues.append("geo.citySlug: invalid city slug")
+    if source not in ANALYTICS_GEO_SOURCES:
+        issues.append("geo.source: unsupported value")
+    if precision not in ANALYTICS_GEO_PRECISIONS:
+        issues.append("geo.precision: unsupported value")
+    if precision == "region" and not region_code:
+        issues.append("geo.regionCode: region precision requires regionCode")
+    if precision == "city" and not city_slug:
+        issues.append("geo.citySlug: city precision requires citySlug")
+
+    allowed_keys = {"countryCode", "regionCode", "citySlug", "source", "precision"}
+    if any(key not in allowed_keys for key in geo):
+        issues.append("geo: unsupported fields")
+
+    return issues
+
+
 def compact(row: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in row.items() if value is not None}
 
@@ -454,6 +528,11 @@ def string_payload(payload: dict[str, Any], key: str) -> str | None:
 def number_payload(payload: dict[str, Any], key: str) -> float | int | None:
     value = payload.get(key)
     return value if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) else None
+
+
+def bool_payload(payload: dict[str, Any], key: str) -> bool | None:
+    value = payload.get(key)
+    return value if isinstance(value, bool) else None
 
 
 def list_payload(payload: dict[str, Any], key: str) -> list[Any] | None:

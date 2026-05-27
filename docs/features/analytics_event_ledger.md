@@ -24,16 +24,29 @@ playback, library, commerce, rights, agent, and generation events are available
 in `backend/src/modules/analytics/analytics_instrumentation.service.ts`; the
 web player records qualifying `playback.completed` events through the narrow
 `POST /analytics/playback/completed` endpoint after a catalog track reaches 30
-seconds listened or 80 percent completion for shorter tracks.
+seconds listened or 80 percent completion for shorter tracks. It also records
+authenticated pseudonymous user playback lifecycle events through
+`POST /analytics/playback/event`, currently `playback.started` and periodic
+`playback.heartbeat`, so long-session, replay, retention, and future listener
+summary reports can be reconstructed without relying on today's artist
+dashboard shape. For broader frontend funnel memory, authenticated clients use
+`web/src/lib/productAnalytics.ts` to send allowlisted product events through
+`POST /analytics/product/event` for onboarding, playlist, search, marketplace,
+artist-upload, wallet, budget, and settings moments that do not always have a
+backend domain event.
 Upload/catalog processing events are bridged from the shared backend `EventBus`
 by `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`,
 so release upload, stem processing, track-status, failure, and release-ready
 signals enter the ledger and optional Pub/Sub/Dataflow path during normal
-product flows. The same bridge now also maps high-value commerce, license,
-payment, contract, wallet, agent-runtime, generation, recommendation,
-curation, remix, marketplace, release-rights, and notification events into
-compact pseudonymous analytics envelopes, excluding bulky user-supplied text
-such as generation prompts and notification bodies.
+product flows. The same bridge now also maps high-value identity/auth,
+playlist persistence, commerce, license, payment, contract, x402 purchase,
+wallet, agent-runtime, generation, recommendation, curation, remix,
+marketplace, release-rights, and notification events into compact
+pseudonymous analytics envelopes, excluding bulky user-supplied text such as
+playlist names, payment proofs, generation prompts, and notification bodies.
+The shared envelope also supports a governed coarse `geo` dimension for demand
+geography, including Shows campaign-target and user-declared city/region
+signals without raw IP, GPS, latitude, or longitude values.
 Retention cleanup, deletion propagation, consent withdrawal, and governance
 lineage are available in
 `backend/src/modules/analytics/analytics_governance.service.ts`, and the admin
@@ -63,9 +76,14 @@ raw, clean, fact, view, and quarantine rows to BigQuery. The
 worker image, pushes it to environment-scoped Artifact Registry, publishes the
 Flex Template spec JSON to GCS, and prints the `resonate-iac` launch inputs for
 `analytics_dataflow_launch_enabled=true`. Post-Dataflow SQL materializations
-live under `workers/analytics-dataflow/sql/`; the first derived feature set
-creates agent taste-intelligence tables for warehouse-backed recommendation
-scoring.
+live under `workers/analytics-dataflow/sql/`; they now include broad report
+marts for listener sessions, replay bursts, cohort catalog rankings, artist
+catalog metrics, discovery/playlist funnels, marketplace conversion, artist
+upload funnels, product event adoption, and clean-to-fact coverage, plus agent
+taste-intelligence tables for warehouse-backed recommendation scoring.
+Pipeline loss visibility is exposed through admin health checks and structured
+logs so quarantine, freshness, and missing identifier problems are visible
+before they damage future reports.
 
 ## Who It Is For
 
@@ -94,10 +112,18 @@ aggregates, not from retaining raw personal data forever.
 
 - Read the RFC:
   [Long-Term Analytics Event Ledger](../rfc/analytics-event-ledger.md).
-- Use the event taxonomy:
+- Use the canonical event taxonomy:
+  [Analytics Event Taxonomy v1](../architecture/analytics_event_taxonomy_v1.md).
+- Use the domain model companion:
   [Event Taxonomy & Domain Model](../architecture/event_taxonomy_domain_model.md).
+- Use the geo demand policy:
+  [Geo Analytics Demand Dimension](geo_analytics_demand_dimension.md).
+- Use the consent and retention policy:
+  [Analytics Consent And Retention Policy](analytics_consent_retention_policy.md).
 - For the current artist dashboard/reporting surface, see:
   [Analytics Dashboard v0](analytics_dashboard_v0.md).
+- For pipeline health and loss detection, see:
+  [Analytics Pipeline Observability](analytics_pipeline_observability.md).
 - Backend producers should use the shared event contract:
   `backend/src/modules/analytics/analytics_event.ts`.
 - Cross-cutting analytics subscribers should listen on the process-level
@@ -105,6 +131,9 @@ aggregates, not from retaining raw personal data forever.
   `EventBus` instances for production flows.
 - Current prototype API surfaces:
   - `POST /analytics/ingest`
+  - `POST /analytics/product/event`
+  - `POST /analytics/playback/completed`
+  - `POST /analytics/playback/event`
   - `GET /analytics/artist/:id`
   - `GET /analytics/artist/:id/v1`
   - `GET /analytics/rollup/daily`
@@ -127,15 +156,19 @@ aggregates, not from retaining raw personal data forever.
 | Pub/Sub event publishing | Implemented as a disabled-by-default backend publisher. When enabled, each stored envelope is published with event metadata attributes for Dataflow consumers; non-strict failures are logged without breaking user flows. |
 | Dataflow processor | Implemented in `workers/analytics-dataflow/` as a Python Apache Beam streaming pipeline with Flex Template metadata, packaging script, immediate keyed-state eventId dedupe, validation, layer derivation, and quarantine behavior. |
 | Flex Template publishing | Implemented through `.github/workflows/publish-analytics-dataflow-flex-template.yml`; staging publishes to a stable `gs://.../template.json` path and outputs the matching `resonate-iac` launch inputs. |
+| Future report marts | Implemented as post-Dataflow BigQuery SQL in `workers/analytics-dataflow/sql/future_report_marts.sql`; materializes listener/user, artist, marketplace, and product report tables for future Wrapped-style summaries and operational analysis. |
 | Agent taste materialization | Implemented as post-Dataflow BigQuery SQL in `workers/analytics-dataflow/sql/agent_taste_intelligence_baseline.sql`, with an optional BigQuery ML matrix-factorization template in `agent_taste_intelligence_bqml.sql`. |
+| Pipeline observability | Implemented through structured product-ingestion rejection logs, Pub/Sub publish success/failure logs, warehouse load metrics, and `GET /admin/analytics/pipeline/health` for quarantine, freshness, missing identifier, and clean-to-fact coverage signals. |
 | Warehouse loading/backfill | Implemented through `ANALYTICS_WAREHOUSE_TARGET=local_json` for idempotent JSONL files and `ANALYTICS_WAREHOUSE_TARGET=bigquery_insert_all` for BigQuery streaming inserts across raw, clean, fact, view, and quarantine layers. This remains the backend-operated bridge for backfills and non-Dataflow environments. |
 | Current artist reports | Implemented for `GET /analytics/artist/:id` and `GET /analytics/artist/:id/v1`; reports read generated analytics facts and fact dimensions while preserving response compatibility. With `ANALYTICS_REPORT_SOURCE=bigquery`, the same endpoints read BigQuery `analytics_facts` and `analytics_views`, enforce artist/admin authorization, return explicit time-window/freshness/no-data metadata, compute content protection metrics from `rights.route_decided`, and use bounded cached queries. |
 | Catalog metadata enrichment | Implemented in `backend/src/modules/analytics/analytics_catalog_metadata.service.ts`; artist analytics responses resolve track/release/artist display metadata from catalog rows when analytics facts have IDs but sparse dimensions. |
 | Core producer helpers | Implemented in `backend/src/modules/analytics/analytics_instrumentation.service.ts` for playback, library, commerce, rights, agent, and generation events. |
-| Playback web instrumentation | Implemented through `POST /analytics/playback/completed`, `web/src/lib/playbackAnalytics.ts`, and `web/src/lib/playerContext.tsx`; authenticated web-player catalog plays emit one `playback.completed` envelope per track load once the qualifying threshold is reached. Playback events carry `trackId`, `artistId`, and `releaseId` when available, with backend catalog enrichment filling artist and release ownership from `trackId` for warehouse facts. |
+| Playback web instrumentation | Implemented through `POST /analytics/playback/completed`, `POST /analytics/playback/event`, `web/src/lib/playbackAnalytics.ts`, and `web/src/lib/playerContext.tsx`; authenticated web-player catalog plays emit one `playback.completed` envelope per track load once the qualifying threshold is reached, plus `playback.started` and 30-second `playback.heartbeat` lifecycle envelopes per playback instance. Playback events carry `trackId`, `artistId`, `releaseId`, `sessionId`, playback instance, queue context, source, duration/position fields, and a backend-derived pseudonymous user actor when available, with backend catalog enrichment filling artist and release ownership from `trackId` for warehouse facts. |
+| Geo demand dimension | Implemented as optional envelope `geo` with country/region/city precision, source metadata, backend validation, product/playback ingestion support, Shows campaign/pledge analytics, warehouse clean fields, and analytics fact dimensions. |
+| Product funnel instrumentation | Implemented through `POST /analytics/product/event`, `web/src/lib/api.ts`, and `web/src/lib/productAnalytics.ts`; authenticated first-party UI code emits allowlisted pseudonymous events for artist onboarding, wallet connection/faucet moments, agent budget changes, artist upload steps, playlist creation/update/add/remove/play, home and marketplace search submission/result clicks, marketplace checkout/purchase intent, and library settings updates. The backend attaches the pseudonymous actor, sanitizes payload fields, rejects unsupported event names, and keeps payloads to scalar/array analytics facts rather than free-form user text. |
 | Upload/catalog domain bridge | Implemented in `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`; subscribes to the shared `EventBus` for upload and catalog lifecycle events and ingests compact pseudonymous analytics envelopes without blocking release processing. |
-| High-value domain bridge | Implemented in `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`; subscribes to shared `EventBus` events for license/payment, contract sales/listings/royalties/disputes, wallet funding/spend, agent selection/decisions/purchases, generation lifecycle, recommendation generation, curation, remix, marketplace listing notifications, release-rights requests, and notification creation. The bridge preserves IDs, amounts, statuses, and source refs while omitting prompts, notification bodies, and other bulky raw content. |
-| Domain family support | Backend warehouse export and Dataflow both accept the current Resonate domain families: identity, wallet, catalog, stems, ingestion, ipnft, session, playback, library, commerce, payment, contract, x402, license, rights, release_rights, agent, recommendation, curator, remix, marketplace, generation, notification, realtime, experiment, and system. |
+| High-value domain bridge | Implemented in `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`; subscribes to shared `EventBus` events for identity/auth milestones, backend playlist persistence, session lifecycle, license/payment, x402 purchase/failure, contract mint/listing/sale/royalty/content-protection/dispute/escrow events, wallet funding/faucet/spend/budget changes, agent selection/evaluation/negotiation/purchases/wallet/budget alerts, generation lifecycle, recommendation generation/preferences, curation, remix, marketplace listing notifications, release-rights requests, and notification creation. The bridge preserves IDs, amounts, statuses, and source refs while omitting playlist names, payment proofs, prompts, notification bodies, realtime audio chunks, and other bulky raw content. |
+| Domain family support | Backend warehouse export and Dataflow both accept the current Resonate domain families: identity, wallet, catalog, stems, ingestion, ipnft, onboarding, session, playback, playlist, search, artist, shows, library, commerce, payment, contract, x402, license, rights, release_rights, agent, recommendation, curator, remix, marketplace, generation, notification, realtime, experiment, and system. |
 | Retention/deletion jobs | Implemented in `backend/src/modules/analytics/analytics_governance.service.ts`: retention cleanup, deletion propagation, consent withdrawal, redaction, and lineage audit. |
 
 ## Event Families
@@ -143,6 +176,11 @@ aggregates, not from retaining raw personal data forever.
 Implemented producer helper event names:
 
 - `playback.completed`
+- `playback.started`
+- `playback.heartbeat`
+- `onboarding.step_completed`
+- `playlist.track_added`
+- `artist.upload_step_completed`
 - `library.saved`
 - `commerce.settled`
 - `rights.route_decided`
@@ -159,9 +197,17 @@ Implemented upload/catalog bridge event names:
 
 Implemented high-value domain bridge event names:
 
+- `identity.authenticated`
+- `playlist.created`
+- `playlist.updated`
+- `playlist.deleted`
+- `playlist.track_added`
+- `playlist.track_removed`
 - `license.granted`
 - `payment.initiated`
 - `payment.settled`
+- `x402.purchase`
+- `x402.purchase_failed`
 - `contract.stem_listed`
 - `contract.stem_sold`
 - `contract.royalty_paid`
@@ -175,6 +221,7 @@ Implemented high-value domain bridge event names:
 - `generation.failed`
 - `recommendation.generated`
 - `wallet.funded`
+- `wallet.faucet_requested`
 - `wallet.spent`
 - `curator.staked`
 - `curator.reported`
@@ -195,6 +242,11 @@ Current verification:
 - New durable features should identify the event family they emit into.
 - Feature docs should list important analytics events.
 - Privacy-sensitive events should declare retention and deletion behavior.
+- Geo-bearing events should use the optional envelope `geo` dimension and follow
+  [Geo Analytics Demand Dimension](geo_analytics_demand_dimension.md).
+- User-linked facts and new report marts should follow
+  [Analytics Consent And Retention Policy](analytics_consent_retention_policy.md)
+  for consent basis, export/delete propagation, and yearly summary boundaries.
 - Event envelope validation is covered by
   `backend/src/tests/analytics_event.spec.ts`.
 - Warehouse export transforms, quarantine behavior, and the shared expected
@@ -206,12 +258,18 @@ Current verification:
 - Pub/Sub event publishing config, attributes, disabled behavior, and
   non-strict/strict failure handling are covered by
   `backend/src/tests/analytics_event_publisher.spec.ts`.
+- Analytics pipeline health scoring is covered by
+  `backend/src/tests/analytics_observability.spec.ts`.
 - Dataflow transform validation, quarantine, dedupe, unsupported-version
   behavior, and the same shared expected event processing matrix are covered by
   `workers/analytics-dataflow/test_analytics_transform.py`.
 - The Flex Template publish workflow is validated by GitHub Actions syntax
   checks and the worker transform tests; a successful workflow run publishes the
   operator handoff values needed by `resonate-iac`.
+- Future report marts live in
+  `workers/analytics-dataflow/sql/future_report_marts.sql`; use the documented
+  BigQuery `bq query --dry_run` command against the target dataset before
+  scheduling it.
 - BigQuery-backed artist report query shaping and no-data metadata are covered
   by `backend/src/tests/analytics_bigquery_report.spec.ts`.
 - Catalog metadata enrichment for sparse artist report facts is covered by

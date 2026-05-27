@@ -1,24 +1,43 @@
 /**
  * Resonate Shows — fan-funded artist-booking campaigns.
  *
- * This module defines the client-side shape of a campaign plus three
- * seeded mocks used by the home page and the `/shows` routes. The async
- * stubs (`listCampaigns`, `getCampaign`) are the API seam the Week-1
- * backend module (`backend/src/modules/shows/`) will replace by hitting
- * `/api/campaigns` and `/api/campaigns/:id`. Keep the signatures stable
- * so the UI doesn't change when the real backend lands.
+ * This module defines the UI campaign shape used by the home page and the
+ * `/shows` routes. Async reads hit the backend Shows API first and fall back
+ * to seeded campaign data for local demos and offline UI tests.
  */
+
+import { API_BASE } from "./api";
 
 export type CampaignStatus = "active" | "funded" | "refunded" | "booked";
 
+export interface CampaignTier {
+  id: string;
+  title: string;
+  description?: string;
+  amountCents: number;
+  currency: "EUR" | "USD";
+  paymentAssetSymbol: string;
+}
+
 export interface Campaign {
   id: string;
+  backendId: string;
+  rawStatus: string;
+  campaignLevel: string;
+  artistAuthorityStatus: string;
+  authorityCredentialId?: string | null;
+  authorityEvidenceBundleId?: string | null;
+  beneficiaryAddress?: string | null;
+  beneficiaryType?: string | null;
   artistName: string;
   artistSlug: string;
+  title: string;
   city: string;
+  country: string;
   venue?: string;
   targetDate: string;     // ISO — when the show would happen
   deadline: string;       // ISO — funding deadline (drives countdown)
+  bookingDeadline?: string | null;
   goalCents: number;
   raisedCents: number;
   currency: "EUR" | "USD";
@@ -32,13 +51,144 @@ export interface Campaign {
   // already-deployed RevenueEscrow.sol as an honest stand-in so the
   // "Trust the code" link leads to a real contract, not a fake address.
   contractAddress: string;
+  escrowContractAddress?: string | null;
+  contractCampaignId?: string | null;
+  paymentTokenAddress?: string | null;
   etherscanUrl: string;
   // Short pitch shown on the hero + detail page.
   tagline: string;
+  tiers: CampaignTier[];
 }
 
+export type PledgeContractCall = {
+  chainId: number;
+  contractAddress: string;
+  functionName: "pledge";
+  args: [string, string];
+  value: string;
+  paymentTokenAddress: string | null;
+};
+
+export type ShowPledgeIntent = {
+  pledge: {
+    id: string;
+    campaignId: string;
+    tierId?: string | null;
+    walletAddress: string;
+    amountUnits: string;
+    currency: string;
+    paymentAssetSymbol?: string | null;
+    paymentAssetDecimals: number;
+    chainId: number;
+    status: string;
+    confirmationStatus: string;
+    receiptId?: string | null;
+    receipt?: Record<string, unknown> | null;
+  };
+  contractCall: PledgeContractCall | null;
+};
+
+export type ShowPledgeConfirmation = {
+  pledge: ShowPledgeIntent["pledge"] & {
+    transactionHash?: string | null;
+    blockNumber?: string | null;
+    campaign?: {
+      id: string;
+      slug?: string | null;
+      title?: string | null;
+      status?: string | null;
+      contractAddress?: string | null;
+      contractCampaignId?: string | null;
+    };
+    tier?: { id: string; title?: string | null } | null;
+    createdAt?: string;
+    confirmedAt?: string | null;
+    failedAt?: string | null;
+  };
+};
+
+export type ShowPledgeReceipt = ShowPledgeConfirmation["pledge"];
+
+export type ShowCampaignDraftTierInput = {
+  title: string;
+  description?: string | null;
+  amountUnits: string;
+  currency?: "EUR" | "USD";
+  paymentAssetSymbol?: string;
+  paymentAssetDecimals?: number;
+  sortOrder?: number;
+};
+
+export type ShowCampaignDraftInput = {
+  artistId?: string | null;
+  artistDisplayName: string;
+  title?: string | null;
+  description?: string | null;
+  city: string;
+  country: string;
+  venueTarget?: string | null;
+  targetDate?: string | null;
+  deadline: string;
+  bookingDeadline?: string | null;
+  goalAmountUnits: string;
+  minimumBackers?: number | null;
+  currency: "EUR" | "USD";
+  paymentAssetSymbol: string;
+  paymentAssetDecimals: number;
+  paymentTokenAddress?: string | null;
+  beneficiaryAddress?: string | null;
+  beneficiaryType?: "wallet" | "split_contract" | "multisig" | null;
+  authorityEvidenceBundleId?: string | null;
+  tiers: ShowCampaignDraftTierInput[];
+};
+
 const SEPOLIA_REVENUE_ESCROW = "0x411e121a97b6901b2e81f67a795e8063c1b8d472";
-const SEPOLIA_ETHERSCAN = `https://sepolia.etherscan.io/address/${SEPOLIA_REVENUE_ESCROW}`;
+const SHOWS_EXPLORER_BASE_URL =
+  process.env.NEXT_PUBLIC_SHOWS_EXPLORER_BASE_URL ?? "https://sepolia.etherscan.io/address";
+const SEPOLIA_ETHERSCAN = `${SHOWS_EXPLORER_BASE_URL}/${SEPOLIA_REVENUE_ESCROW}`;
+
+type BackendShowCampaign = {
+  id: string;
+  slug: string;
+  artistDisplayName: string;
+  title: string;
+  city: string;
+  country: string;
+  venueTarget?: string | null;
+  targetDate?: string | null;
+  deadline: string;
+  goalAmountUnits: string;
+  raisedAmountUnits: string;
+  currency: string;
+  paymentAssetSymbol?: string | null;
+  paymentAssetDecimals?: number | null;
+  paymentTokenAddress?: string | null;
+  minimumBackers?: number | null;
+  confirmedPledgeCount?: number | null;
+  uniqueBackerCount?: number | null;
+  status: string;
+  campaignLevel?: string | null;
+  artistAuthorityStatus?: string | null;
+  authorityCredentialId?: string | null;
+  authorityEvidenceBundleId?: string | null;
+  beneficiaryAddress?: string | null;
+  beneficiaryType?: string | null;
+  bookingDeadline?: string | null;
+  contractAddress?: string | null;
+  contractCampaignId?: string | null;
+  description?: string | null;
+  tiers?: BackendShowCampaignTier[];
+};
+
+type BackendShowCampaignTier = {
+  id: string;
+  title: string;
+  description?: string | null;
+  amountUnits: string;
+  currency: string;
+  paymentAssetSymbol?: string | null;
+  paymentAssetDecimals?: number | null;
+};
 
 const addDays = (days: number): string => {
   const d = new Date();
@@ -49,12 +199,23 @@ const addDays = (days: number): string => {
 const CAMPAIGNS: Campaign[] = [
   {
     id: "sennarin-paris",
+    backendId: "sennarin-paris",
+    rawStatus: "active",
+    campaignLevel: "active_escrow_campaign",
+    artistAuthorityStatus: "artist_authorized",
+    authorityCredentialId: null,
+    authorityEvidenceBundleId: null,
+    beneficiaryAddress: null,
+    beneficiaryType: null,
     artistName: "Sennarin",
     artistSlug: "sennarin",
+    title: "Sennarin in Paris",
     city: "Paris",
+    country: "FR",
     venue: "Le Trianon",
     targetDate: addDays(180),
     deadline: addDays(14),
+    bookingDeadline: addDays(45),
     goalCents: 10_000_000,
     raisedCents: 6_720_000,
     currency: "EUR",
@@ -65,16 +226,56 @@ const CAMPAIGNS: Campaign[] = [
     status: "active",
     featured: true,
     contractAddress: SEPOLIA_REVENUE_ESCROW,
+    escrowContractAddress: null,
+    contractCampaignId: null,
+    paymentTokenAddress: null,
     etherscanUrl: SEPOLIA_ETHERSCAN,
     tagline: "Bring Sennarin to Paris for her first European headline show.",
+    tiers: [
+      {
+        id: "sennarin-fan-signal",
+        title: "Fan signal",
+        amountCents: 2_500,
+        currency: "EUR",
+        paymentAssetSymbol: "USDC",
+        description: "Refundable support signal and campaign receipt.",
+      },
+      {
+        id: "sennarin-ticket-intent",
+        title: "Ticket intent",
+        amountCents: 7_500,
+        currency: "EUR",
+        paymentAssetSymbol: "USDC",
+        description: "Priority allocation if the show is booked.",
+      },
+      {
+        id: "sennarin-patron-circle",
+        title: "Patron circle",
+        amountCents: 25_000,
+        currency: "EUR",
+        paymentAssetSymbol: "USDC",
+        description: "Premium campaign receipt and patron allocation.",
+      },
+    ],
   },
   {
     id: "luka-tokyo",
+    backendId: "luka-tokyo",
+    rawStatus: "active",
+    campaignLevel: "active_escrow_campaign",
+    artistAuthorityStatus: "artist_authorized",
+    authorityCredentialId: null,
+    authorityEvidenceBundleId: null,
+    beneficiaryAddress: null,
+    beneficiaryType: null,
     artistName: "LUKA",
     artistSlug: "luka",
+    title: "LUKA in Tokyo",
     city: "Tokyo",
+    country: "JP",
     targetDate: addDays(210),
     deadline: addDays(28),
+    bookingDeadline: addDays(58),
     goalCents: 8_000_000,
     raisedCents: 2_480_000,
     currency: "EUR",
@@ -85,16 +286,31 @@ const CAMPAIGNS: Campaign[] = [
     status: "active",
     featured: false,
     contractAddress: SEPOLIA_REVENUE_ESCROW,
+    escrowContractAddress: null,
+    contractCampaignId: null,
+    paymentTokenAddress: null,
     etherscanUrl: SEPOLIA_ETHERSCAN,
     tagline: "The Tokyo fanbase has been asking for a hometown show since 2023.",
+    tiers: [],
   },
   {
     id: "meridian-lagos",
+    backendId: "meridian-lagos",
+    rawStatus: "active",
+    campaignLevel: "active_escrow_campaign",
+    artistAuthorityStatus: "artist_authorized",
+    authorityCredentialId: null,
+    authorityEvidenceBundleId: null,
+    beneficiaryAddress: null,
+    beneficiaryType: null,
     artistName: "Meridian",
     artistSlug: "meridian",
+    title: "Meridian in Lagos",
     city: "Lagos",
+    country: "NG",
     targetDate: addDays(240),
     deadline: addDays(45),
+    bookingDeadline: addDays(75),
     goalCents: 6_000_000,
     raisedCents: 480_000,
     currency: "EUR",
@@ -105,17 +321,257 @@ const CAMPAIGNS: Campaign[] = [
     status: "active",
     featured: false,
     contractAddress: SEPOLIA_REVENUE_ESCROW,
+    escrowContractAddress: null,
+    contractCampaignId: null,
+    paymentTokenAddress: null,
     etherscanUrl: SEPOLIA_ETHERSCAN,
     tagline: "Afrobeats in its capital — the campaign just opened.",
+    tiers: [],
   },
 ];
 
 export async function listCampaigns(): Promise<Campaign[]> {
-  return CAMPAIGNS;
+  const campaigns = await fetchShowsApi<BackendShowCampaign[]>("/shows/campaigns");
+  if (!campaigns?.length) {
+    return CAMPAIGNS;
+  }
+  return campaigns.map(mapBackendCampaign);
 }
 
 export async function getCampaign(id: string): Promise<Campaign | null> {
+  const campaign = await fetchShowsApi<BackendShowCampaign>(`/shows/campaigns/${encodeURIComponent(id)}`);
+  if (campaign) {
+    return mapBackendCampaign(campaign);
+  }
   return CAMPAIGNS.find((c) => c.id === id) ?? null;
+}
+
+export async function createPledgeIntent(input: {
+  campaign: Campaign;
+  tierId: string;
+  walletAddress: string;
+  token: string;
+}): Promise<ShowPledgeIntent> {
+  const response = await fetch(
+    `${API_BASE}/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/pledges/intent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${input.token}`,
+      },
+      body: JSON.stringify({
+        tierId: input.tierId,
+        walletAddress: input.walletAddress,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || `Pledge intent failed with status ${response.status}`);
+  }
+
+  return await response.json() as ShowPledgeIntent;
+}
+
+export async function confirmPledge(input: {
+  pledgeId: string;
+  token: string;
+  transactionHash: string;
+  confirmationStatus: "pending" | "confirmed" | "failed";
+  blockNumber?: string;
+  failureReason?: string;
+  receipt?: Record<string, unknown>;
+}): Promise<ShowPledgeConfirmation> {
+  const response = await fetch(
+    `${API_BASE}/shows/pledges/${encodeURIComponent(input.pledgeId)}/confirm`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${input.token}`,
+      },
+      body: JSON.stringify({
+        transactionHash: input.transactionHash,
+        confirmationStatus: input.confirmationStatus,
+        blockNumber: input.blockNumber,
+        failureReason: input.failureReason,
+        receipt: input.receipt,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || `Pledge confirmation failed with status ${response.status}`);
+  }
+
+  return await response.json() as ShowPledgeConfirmation;
+}
+
+export async function confirmPledgeRefund(input: {
+  pledgeId: string;
+  token: string;
+  transactionHash: string;
+  blockNumber?: string;
+  receipt?: Record<string, unknown>;
+}): Promise<ShowPledgeConfirmation> {
+  const response = await fetch(
+    `${API_BASE}/shows/pledges/${encodeURIComponent(input.pledgeId)}/refund/confirm`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${input.token}`,
+      },
+      body: JSON.stringify({
+        transactionHash: input.transactionHash,
+        blockNumber: input.blockNumber,
+        receipt: input.receipt,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || `Pledge refund confirmation failed with status ${response.status}`);
+  }
+
+  return await response.json() as ShowPledgeConfirmation;
+}
+
+export async function listMyShowPledges(input: {
+  token: string;
+  walletAddress?: string | null;
+  chainId?: number;
+}): Promise<ShowPledgeReceipt[]> {
+  const params = new URLSearchParams();
+  if (input.walletAddress) params.set("walletAddress", input.walletAddress);
+  if (input.chainId) params.set("chainId", String(input.chainId));
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+
+  const response = await fetch(`${API_BASE}/shows/me/pledges${suffix}`, {
+    headers: {
+      Authorization: `Bearer ${input.token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || `Pledge receipt lookup failed with status ${response.status}`);
+  }
+
+  return await response.json() as ShowPledgeReceipt[];
+}
+
+export async function createShowCampaignDraft(input: {
+  token: string;
+  draft: ShowCampaignDraftInput;
+}): Promise<Campaign> {
+  return await mutateShowCampaign("/shows/campaigns", {
+    method: "POST",
+    token: input.token,
+    body: input.draft,
+  });
+}
+
+export async function updateShowCampaignDraft(input: {
+  campaign: Campaign;
+  token: string;
+  draft: ShowCampaignDraftInput;
+}): Promise<Campaign> {
+  return await mutateShowCampaign(`/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}`, {
+    method: "PATCH",
+    token: input.token,
+    body: input.draft,
+  });
+}
+
+export async function approveShowCampaignAuthority(input: {
+  campaign: Campaign;
+  token: string;
+  authorityStatus: "artist_authorized" | "trusted_source_authorized";
+  beneficiaryAddress: string;
+  beneficiaryType: "wallet" | "split_contract" | "multisig";
+  authorityCredentialId?: string | null;
+  authorityEvidenceBundleId?: string | null;
+}): Promise<Campaign> {
+  return await mutateShowCampaign(`/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/authority`, {
+    method: "PATCH",
+    token: input.token,
+    body: {
+      authorityStatus: input.authorityStatus,
+      beneficiaryAddress: input.beneficiaryAddress,
+      beneficiaryType: input.beneficiaryType,
+      authorityCredentialId: input.authorityCredentialId,
+      authorityEvidenceBundleId: input.authorityEvidenceBundleId,
+    },
+  });
+}
+
+export async function activateShowCampaign(input: {
+  campaign: Campaign;
+  token: string;
+  contractAddress?: string | null;
+  contractCampaignId?: string | null;
+}): Promise<Campaign> {
+  return await mutateShowCampaign(`/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/activate`, {
+    method: "POST",
+    token: input.token,
+    body: {
+      contractAddress: input.contractAddress,
+      contractCampaignId: input.contractCampaignId,
+    },
+  });
+}
+
+export async function cancelShowCampaign(input: {
+  campaign: Campaign;
+  token: string;
+  reason?: string | null;
+  evidenceBundleId?: string | null;
+}): Promise<Campaign> {
+  return await mutateShowCampaign(`/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/cancel`, {
+    method: "POST",
+    token: input.token,
+    body: {
+      reason: input.reason,
+      evidenceBundleId: input.evidenceBundleId,
+    },
+  });
+}
+
+export async function confirmShowCampaignBooking(input: {
+  campaign: Campaign;
+  token: string;
+  evidenceBundleId?: string | null;
+  reason?: string | null;
+}): Promise<Campaign> {
+  return await mutateShowCampaign(`/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/confirm-booking`, {
+    method: "POST",
+    token: input.token,
+    body: {
+      evidenceBundleId: input.evidenceBundleId,
+      reason: input.reason,
+    },
+  });
+}
+
+export async function confirmShowCampaignFulfillment(input: {
+  campaign: Campaign;
+  token: string;
+  evidenceBundleId?: string | null;
+  reason?: string | null;
+}): Promise<Campaign> {
+  return await mutateShowCampaign(`/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/confirm-fulfillment`, {
+    method: "POST",
+    token: input.token,
+    body: {
+      evidenceBundleId: input.evidenceBundleId,
+      reason: input.reason,
+    },
+  });
 }
 
 // Re-exported as a sync getter for synchronous render paths (e.g. initial
@@ -131,6 +587,128 @@ export function getCampaignSync(id: string): Campaign | null {
 
 export function getFeaturedCampaignSync(): Campaign {
   return CAMPAIGNS.find((c) => c.featured) ?? CAMPAIGNS[0];
+}
+
+async function fetchShowsApi<T>(path: string): Promise<T | null> {
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) {
+      return null;
+    }
+    return await response.json() as T;
+  } catch {
+    return null;
+  }
+}
+
+async function mutateShowCampaign(path: string, input: {
+  method: "POST" | "PATCH";
+  token: string;
+  body: Record<string, unknown>;
+}): Promise<Campaign> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: input.method,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${input.token}`,
+    },
+    body: JSON.stringify(input.body),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || `Campaign update failed with status ${response.status}`);
+  }
+
+  return mapBackendCampaign(await response.json() as BackendShowCampaign);
+}
+
+function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign {
+  const decimals = campaign.paymentAssetDecimals ?? 2;
+  const contractAddress = campaign.contractAddress ?? SEPOLIA_REVENUE_ESCROW;
+  return {
+    id: campaign.slug,
+    backendId: campaign.id,
+    rawStatus: campaign.status,
+    campaignLevel: campaign.campaignLevel ?? "signal",
+    artistAuthorityStatus: campaign.artistAuthorityStatus ?? "none",
+    authorityCredentialId: campaign.authorityCredentialId ?? null,
+    authorityEvidenceBundleId: campaign.authorityEvidenceBundleId ?? null,
+    beneficiaryAddress: campaign.beneficiaryAddress ?? null,
+    beneficiaryType: campaign.beneficiaryType ?? null,
+    artistName: campaign.artistDisplayName,
+    artistSlug: slugify(campaign.artistDisplayName),
+    title: campaign.title,
+    city: campaign.city,
+    country: campaign.country,
+    venue: campaign.venueTarget ?? undefined,
+    targetDate: campaign.targetDate ?? addDaysFrom(campaign.deadline, 120),
+    deadline: campaign.deadline,
+    bookingDeadline: campaign.bookingDeadline ?? null,
+    goalCents: unitsToCents(campaign.goalAmountUnits, decimals),
+    raisedCents: unitsToCents(campaign.raisedAmountUnits, decimals),
+    currency: campaign.currency === "EUR" ? "EUR" : "USD",
+    backerCount: campaign.uniqueBackerCount ?? campaign.confirmedPledgeCount ?? 0,
+    thresholdBackers: campaign.minimumBackers ?? 0,
+    heroImage: "",
+    cardImage: "",
+    status: mapBackendStatus(campaign.status),
+    featured: index === 0,
+    contractAddress,
+    escrowContractAddress: campaign.contractAddress ?? null,
+    contractCampaignId: campaign.contractCampaignId ?? null,
+    paymentTokenAddress: campaign.paymentTokenAddress ?? null,
+    etherscanUrl: `${SHOWS_EXPLORER_BASE_URL}/${contractAddress}`,
+    tagline: campaign.description || campaign.title,
+    tiers: (campaign.tiers ?? []).map((tier) => ({
+      id: tier.id,
+      title: tier.title,
+      description: tier.description ?? undefined,
+      amountCents: unitsToCents(tier.amountUnits, tier.paymentAssetDecimals ?? decimals),
+      currency: tier.currency === "EUR" ? "EUR" : "USD",
+      paymentAssetSymbol: tier.paymentAssetSymbol ?? campaign.paymentAssetSymbol ?? "USDC",
+    })),
+  };
+}
+
+function unitsToCents(amountUnits: string, decimals: number): number {
+  try {
+    const units = BigInt(amountUnits);
+    if (decimals >= 2) {
+      const divisor = 10n ** BigInt(decimals - 2);
+      return Number(units / divisor);
+    }
+    return Number(units * (10n ** BigInt(2 - decimals)));
+  } catch {
+    return 0;
+  }
+}
+
+function addDaysFrom(iso: string, days: number): string {
+  const date = new Date(iso);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString();
+}
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function mapBackendStatus(status: string): CampaignStatus {
+  if (status === "funded") return "funded";
+  if (["cancelled", "refund_available", "refunded"].includes(status)) return "refunded";
+  if (["booking_confirmed", "deposit_released", "fulfilled", "released"].includes(status)) {
+    return "booked";
+  }
+  return "active";
 }
 
 /**

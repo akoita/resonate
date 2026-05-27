@@ -102,6 +102,58 @@ describe("analytics event envelope", () => {
     ).not.toThrow();
   });
 
+  it("normalizes coarse geo dimensions without accepting location tracking fields", () => {
+    const event = normalizeAnalyticsEventInput(
+      {
+        eventName: "shows.pledge_intent_created",
+        payload: { campaignId: "campaign-1" },
+        geo: {
+          countryCode: "fr",
+          regionCode: "idf",
+          citySlug: "Paris",
+          source: "campaign_target",
+          precision: "city",
+          rawIp: "203.0.113.1",
+        } as any,
+      },
+      {
+        now,
+        defaultProducer: "shows-service",
+        defaultEnvironment: "local",
+      },
+    );
+
+    expect(event.geo).toEqual({
+      countryCode: "FR",
+      regionCode: "IDF",
+      citySlug: "paris",
+      source: "campaign_target",
+      precision: "city",
+    });
+    expect(event.geo).not.toHaveProperty("rawIp");
+  });
+
+  it("rejects malformed geo dimensions on canonical envelopes", () => {
+    expect(() =>
+      parseAnalyticsEventEnvelope({
+        eventId: "evt_bad_geo",
+        eventName: "shows.pledge_intent_created",
+        eventVersion: 1,
+        occurredAt: now.toISOString(),
+        receivedAt: now.toISOString(),
+        producer: "shows-service",
+        environment: "local",
+        privacyTier: "pseudonymous",
+        geo: {
+          countryCode: "FR",
+          source: "campaign_target",
+          precision: "city",
+        },
+        payload: {},
+      }),
+    ).toThrow(/citySlug/);
+  });
+
   it("rejects malformed event names and incomplete subject references", () => {
     expect(() =>
       parseAnalyticsEventEnvelope({
@@ -137,6 +189,12 @@ describe("analytics event envelope", () => {
   it("exposes sample schemas for the initial event families", () => {
     expect(ANALYTICS_EVENT_SCHEMA_EXAMPLES.map((schema) => schema.eventName)).toEqual([
       "playback.completed",
+      "playback.started",
+      "playback.heartbeat",
+      "onboarding.step_completed",
+      "playlist.track_added",
+      "artist.upload_step_completed",
+      "shows.pledge_intent_created",
       "commerce.settled",
       "rights.route_decided",
       "agent.recommendation_selected",

@@ -9,6 +9,7 @@ import { Input } from "../../../components/ui/Input";
 import { useToast } from "../../../components/ui/Toast";
 import AuthGate from "../../../components/auth/AuthGate";
 import HumanVerificationCard from "../../../components/disputes/HumanVerificationCard";
+import { recordProductAnalytics } from "../../../lib/productAnalytics";
 
 export default function ArtistOnboardingPage() {
   const { token, address } = useAuth();
@@ -51,6 +52,27 @@ export default function ArtistOnboardingPage() {
     }
   }, [address, formData.payoutAddress]);
 
+  useEffect(() => {
+    if (!token || isLoading) return;
+    void recordProductAnalytics(token, "onboarding.started", {
+      source: "artist_onboarding",
+      subjectType: "artist_profile",
+      payload: {
+        flow: "artist",
+      },
+    });
+    void recordProductAnalytics(token, "onboarding.step_viewed", {
+      source: "artist_onboarding",
+      subjectType: "artist_profile",
+      payload: {
+        flow: "artist",
+        step: "profile",
+        stepIndex: 1,
+        stepCount: 2,
+      },
+    });
+  }, [isLoading, token]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token) return;
@@ -66,9 +88,31 @@ export default function ArtistOnboardingPage() {
 
     setIsSubmitting(true);
     try {
-      await createArtist(token, {
+      void recordProductAnalytics(token, "onboarding.step_completed", {
+        source: "artist_onboarding",
+        subjectType: "artist_profile",
+        payload: {
+          flow: "artist",
+          step: "profile",
+          stepIndex: 1,
+          stepCount: 2,
+          payoutFromWallet: formData.payoutAddress === address,
+        },
+      });
+
+      const artist = await createArtist(token, {
         displayName: formData.displayName,
         payoutAddress: formData.payoutAddress || address || "",
+      });
+      void recordProductAnalytics(token, "onboarding.completed", {
+        source: "artist_onboarding",
+        subjectType: "artist_profile",
+        subjectId: artist.id,
+        payload: {
+          flow: "artist",
+          stepCount: 2,
+          payoutFromWallet: formData.payoutAddress === address,
+        },
       });
       addToast({
         type: "success",

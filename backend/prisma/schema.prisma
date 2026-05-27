@@ -737,9 +737,41 @@ enum ShowCampaignStatus {
   active
   funded
   booking_confirmed
+  deposit_released
+  fulfilled
   released
   cancelled
+  refund_available
   refunded
+}
+
+enum ShowCampaignLevel {
+  signal
+  provisional_campaign
+  active_escrow_campaign
+}
+
+enum ShowArtistAuthorityStatus {
+  none
+  human_verified
+  artist_acknowledged
+  artist_authorized
+  trusted_source_authorized
+  rejected
+  revoked
+  expired
+}
+
+enum ShowCampaignBeneficiaryType {
+  wallet
+  split_contract
+  multisig
+}
+
+enum ShowCampaignReleasePolicy {
+  refund_only_until_booking
+  staged_release
+  manual_ops_release
 }
 
 enum ShowPledgeStatus {
@@ -760,11 +792,22 @@ enum ShowPledgeConfirmationStatus {
 }
 
 enum ShowCampaignEventType {
+  campaign_signal_created
   campaign_created
   campaign_updated
   campaign_activated
+  artist_authority_requested
+  artist_authority_approved
+  artist_authority_rejected
+  artist_authority_revoked
+  artist_authority_expired
+  campaign_escalated_to_escrow
   campaign_funded
   booking_confirmed
+  booking_evidence_submitted
+  deposit_released
+  fulfillment_confirmed
+  refund_available
   campaign_released
   campaign_cancelled
   campaign_refunded
@@ -779,50 +822,70 @@ enum ShowCampaignEventType {
 }
 
 model ShowCampaign {
-  id                   String              @id @default(uuid())
-  slug                 String              @unique
-  artistId             String?
-  artistDisplayName    String
-  artistImageUrl       String?
-  title                String
-  description          String?             @db.Text
-  city                 String
-  country              String
-  venueTarget          String?
-  targetDate           DateTime?
-  deadline             DateTime
-  goalAmountUnits      String
-  minimumBackers       Int?
-  currency             String              @default("USD")
-  paymentAssetId       String?
-  paymentAssetSymbol   String              @default("USDC")
-  paymentAssetDecimals Int                 @default(6)
-  paymentTokenAddress  String?
-  chainId              Int
-  contractAddress      String?
-  contractCampaignId   String?
-  status               ShowCampaignStatus  @default(draft)
-  raisedAmountUnits    String              @default("0")
-  confirmedPledgeCount Int                 @default(0)
-  uniqueBackerCount    Int                 @default(0)
-  bookingTerms         Json?
-  fulfillmentNotes     String?             @db.Text
-  metadata             Json?
-  activatedAt          DateTime?
-  fundedAt             DateTime?
-  bookingConfirmedAt   DateTime?
-  releasedAt           DateTime?
-  cancelledAt          DateTime?
-  refundedAt           DateTime?
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
-  artist               Artist?             @relation(fields: [artistId], references: [id])
-  tiers                ShowCampaignTier[]
-  pledges              ShowPledge[]
-  events               ShowCampaignEvent[]
+  id                          String                       @id @default(uuid())
+  slug                        String                       @unique
+  artistId                    String?
+  artistDisplayName           String
+  artistImageUrl              String?
+  title                       String
+  description                 String?                      @db.Text
+  city                        String
+  country                     String
+  venueTarget                 String?
+  targetDate                  DateTime?
+  deadline                    DateTime
+  goalAmountUnits             String
+  minimumBackers              Int?
+  currency                    String                       @default("USD")
+  paymentAssetId              String?
+  paymentAssetSymbol          String                       @default("USDC")
+  paymentAssetDecimals        Int                          @default(6)
+  paymentTokenAddress         String?
+  chainId                     Int
+  contractAddress             String?
+  contractCampaignId          String?
+  status                      ShowCampaignStatus           @default(draft)
+  campaignLevel               ShowCampaignLevel            @default(signal)
+  artistAuthorityStatus       ShowArtistAuthorityStatus    @default(none)
+  authorityCredentialId       String?
+  authorityEvidenceBundleId   String?
+  beneficiaryAddress          String?
+  beneficiaryType             ShowCampaignBeneficiaryType?
+  bookingDeadline             DateTime?
+  releasePolicy               ShowCampaignReleasePolicy    @default(refund_only_until_booking)
+  depositReleaseBps           Int                          @default(0)
+  disputeWindowSeconds        Int                          @default(604800)
+  artistAcceptedAt            DateTime?
+  bookingEvidenceBundleId     String?
+  fulfillmentEvidenceBundleId String?
+  raisedAmountUnits           String                       @default("0")
+  confirmedPledgeCount        Int                          @default(0)
+  uniqueBackerCount           Int                          @default(0)
+  bookingTerms                Json?
+  fulfillmentNotes            String?                      @db.Text
+  metadata                    Json?
+  activatedAt                 DateTime?
+  fundedAt                    DateTime?
+  bookingConfirmedAt          DateTime?
+  depositReleasedAt           DateTime?
+  fulfilledAt                 DateTime?
+  releasedAt                  DateTime?
+  cancelledAt                 DateTime?
+  refundAvailableAt           DateTime?
+  refundedAt                  DateTime?
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
+  artist                      Artist?                      @relation(fields: [artistId], references: [id])
+  tiers                       ShowCampaignTier[]
+  pledges                     ShowPledge[]
+  events                      ShowCampaignEvent[]
 
   @@index([artistId])
   @@index([status, deadline])
+  @@index([campaignLevel, status])
+  @@index([artistAuthorityStatus])
+  @@index([beneficiaryAddress])
+  @@index([bookingDeadline])
   @@index([city, country])
   @@index([chainId, contractAddress])
   @@index([contractCampaignId])

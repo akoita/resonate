@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import AuthGate from "../../components/auth/AuthGate";
 import { useAuth } from "../../components/auth/AuthProvider";
@@ -8,7 +8,7 @@ import { useAgentConfig } from "../../hooks/useAgentConfig";
 import { useAgentEvents } from "../../hooks/useAgentEvents";
 import { useAgentHistory } from "../../hooks/useAgentHistory";
 import { useAgentWallet } from "../../hooks/useAgentWallet";
-import { getAgentNextPick, type AgentNextPickResponse } from "../../lib/api";
+import { getAgentNextPick, type AgentNextPickResponse, type AgentNextPreferences } from "../../lib/api";
 import AgentSetupWizard from "../../components/agent/AgentSetupWizard";
 import AgentStatusCard from "../../components/agent/AgentStatusCard";
 import AgentActivityFeed from "../../components/agent/AgentActivityFeed";
@@ -16,9 +16,10 @@ import AgentBudgetCard from "../../components/agent/AgentBudgetCard";
 import AgentBudgetModal from "../../components/agent/AgentBudgetModal";
 import AgentTasteCard from "../../components/agent/AgentTasteCard";
 import AgentHistoryCard from "../../components/agent/AgentHistoryCard";
-import AgentSessionPresets from "../../components/agent/AgentSessionPresets";
+import AgentSessionPresets, { SESSION_PRESETS, type SessionPreset } from "../../components/agent/AgentSessionPresets";
 import AgentNextPickCard from "../../components/agent/AgentNextPickCard";
 import { useToast } from "../../components/ui/Toast";
+import { recordProductAnalytics } from "../../lib/productAnalytics";
 
 export default function AgentPage() {
     const { token } = useAuth();
@@ -32,10 +33,29 @@ export default function AgentPage() {
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [nextPick, setNextPick] = useState<AgentNextPickResponse | null>(null);
     const [isPickingNext, setIsPickingNext] = useState(false);
+    const [selectedPreset, setSelectedPreset] = useState<SessionPreset | null>(SESSION_PRESETS[0] ?? null);
+    const [isStartingPreset, setIsStartingPreset] = useState(false);
 
     const openSessionId = useMemo(() => {
         return activeSessionId ?? sessions.find((session) => !session.endedAt)?.id ?? null;
     }, [activeSessionId, sessions]);
+
+    useEffect(() => {
+        void recordProductAnalytics(token, "agent.intent_viewed", {
+            source: "agent_session_intent_panel",
+            subjectType: "agent_config",
+            subjectId: config?.id,
+            payload: {
+                surface: "agent",
+                presetCount: SESSION_PRESETS.length,
+                intents: SESSION_PRESETS.map((preset) => preset.intent),
+            },
+        });
+    }, [config?.id, token]);
+
+    const selectedIntentPreferences = useMemo(() => {
+        return selectedPreset ? toIntentPreferences(selectedPreset) : null;
+    }, [selectedPreset]);
 
     const handleWizardComplete = async (data: {
         name: string;
@@ -44,6 +64,24 @@ export default function AgentPage() {
         enableWallet: boolean;
     }) => {
         await createConfig(data);
+        void recordProductAnalytics(token, "onboarding.completed", {
+            source: "agent_setup",
+            subjectType: "agent_config",
+            payload: {
+                flow: "agent",
+                vibeCount: data.vibes.length,
+                walletEnabled: data.enableWallet,
+                monthlyCapUsd: data.monthlyCapUsd,
+            },
+        });
+        void recordProductAnalytics(token, "wallet.budget_set", {
+            source: "agent_setup",
+            subjectType: "agent_config",
+            payload: {
+                surface: "agent",
+                monthlyCapUsd: data.monthlyCapUsd,
+            },
+        });
         if (data.enableWallet) {
             try {
                 await wallet.enable();
@@ -67,11 +105,26 @@ export default function AgentPage() {
         });
     };
 
-    const handleToggle = async () => {
+    const handleToggle = async (preset: SessionPreset | null = null) => {
         if (config?.isActive) {
+            const stoppedSessionId = openSessionId;
+            const stoppedSession = stoppedSessionId ? sessions.find((session) => session.id === stoppedSessionId) : null;
             await stopSession();
             setActiveSessionId(null);
             setNextPick(null);
+            void recordProductAnalytics(token, "agent.session_stopped", {
+                source: "agent_command_bar",
+                subjectType: "agent_session",
+                subjectId: stoppedSessionId ?? undefined,
+                payload: {
+                    surface: "agent",
+                    intent: selectedPreset?.intent,
+                    intentName: selectedPreset?.name,
+                    sessionDurationMs: stoppedSession
+                        ? Math.max(0, Date.now() - new Date(stoppedSession.startedAt).getTime())
+                        : undefined,
+                },
+            });
             addToast({
                 type: "info",
                 title: "Session Stopped",
@@ -80,20 +133,73 @@ export default function AgentPage() {
             // Refetch history to show the completed session
             setTimeout(() => refetchHistory(), 500);
         } else {
-            const result = await startSession();
-            if (result?.sessionId) {
-                setActiveSessionId(result.sessionId);
+            const preferences = preset ? toIntentPreferences(preset) : undefined;
+            try {
+                if (preset) {
+                    setIsStartingPreset(true);
+                    await updateConfig({
+                        vibes: preset.searchVibes,
+                        sessionMode: preset.commercePosture,
+                    });
+                }
+                const result = await startSession(preferences ? { preferences } : undefined);
+                if (result?.sessionId) {
+                    setActiveSessionId(result.sessionId);
+                }
+                void recordProductAnalytics(token, "agent.session_started", {
+                    source: preset ? "agent_session_intent_panel" : "agent_command_bar",
+                    subjectType: "agent_session",
+                    subjectId: result?.sessionId,
+                    payload: {
+                        surface: "agent",
+                        intent: preset?.intent,
+                        intentName: preset?.name,
+                        energy: preset?.preferences.energy,
+                        mood: preset?.preferences.mood,
+                        licenseType: preset?.preferences.licenseType,
+                        queueStyle: preset?.queueStyle,
+                        commercePosture: preset?.commercePosture,
+                    },
+                });
+                addToast({
+                    type: "info",
+                    title: "Session Started",
+                    message: preset
+                        ? `${preset.name} is now guiding the queue.`
+                        : "Your DJ is now scanning for tracks!",
+                });
+                // Refetch history after orchestration completes (LLM may take up to ~30s for multi-genre search)
+                setTimeout(() => refetchHistory(), 15000);
+                // Safety-net refetch for slower LLM responses
+                setTimeout(() => refetchHistory(), 35000);
+            } finally {
+                setIsStartingPreset(false);
             }
-            addToast({
-                type: "info",
-                title: "Session Started",
-                message: "Your DJ is now scanning for tracks!",
-            });
-            // Refetch history after orchestration completes (LLM may take up to ~30s for multi-genre search)
-            setTimeout(() => refetchHistory(), 15000);
-            // Safety-net refetch for slower LLM responses
-            setTimeout(() => refetchHistory(), 35000);
         }
+    };
+
+    const handleSelectPreset = (preset: SessionPreset) => {
+        setSelectedPreset(preset);
+        void recordProductAnalytics(token, "agent.intent_selected", {
+            source: "agent_session_intent_panel",
+            subjectType: "agent_config",
+            subjectId: config?.id,
+            payload: {
+                surface: "agent",
+                intent: preset.intent,
+                intentName: preset.name,
+                energy: preset.preferences.energy,
+                mood: preset.preferences.mood,
+                licenseType: preset.preferences.licenseType,
+                queueStyle: preset.queueStyle,
+                commercePosture: preset.commercePosture,
+            },
+        });
+    };
+
+    const handleStartPreset = async (preset: SessionPreset) => {
+        handleSelectPreset(preset);
+        await handleToggle(preset);
     };
 
     const handleNextPick = async () => {
@@ -103,8 +209,23 @@ export default function AgentPage() {
             const result = await getAgentNextPick(token, {
                 sessionId: openSessionId,
                 preferences: {
-                    genres: config.vibes,
-                    licenseType: "personal",
+                    ...(selectedIntentPreferences ?? {}),
+                    genres: selectedIntentPreferences?.genres ?? config.vibes,
+                    licenseType: selectedIntentPreferences?.licenseType ?? "personal",
+                },
+            });
+            void recordProductAnalytics(token, "agent.next_pick_requested", {
+                source: "agent_next_pick_card",
+                subjectType: "agent_session",
+                subjectId: openSessionId,
+                payload: {
+                    surface: "agent",
+                    intent: selectedPreset?.intent,
+                    intentName: selectedPreset?.name,
+                    status: result.status,
+                    trackId: result.track?.id,
+                    runtimeStatus: result.runtimeStatus,
+                    score: result.score,
                 },
             });
             setNextPick(result);
@@ -139,6 +260,16 @@ export default function AgentPage() {
     const handleBudgetConfirm = (newBudget: number) => {
         setShowBudgetModal(false);
         updateConfig({ monthlyCapUsd: newBudget });
+        void recordProductAnalytics(token, "wallet.budget_set", {
+            source: "agent_budget_modal",
+            subjectType: "agent_config",
+            subjectId: config?.id,
+            payload: {
+                surface: "agent",
+                monthlyCapUsd: newBudget,
+                previousMonthlyCapUsd: config?.monthlyCapUsd,
+            },
+        });
         addToast({
             type: "success",
             title: "Budget Updated",
@@ -193,7 +324,7 @@ export default function AgentPage() {
                                 </div>
                                 <button
                                     className={`aid-toggle-btn ${config.isActive ? "stop" : "start"}`}
-                                    onClick={handleToggle}
+                                    onClick={() => handleToggle()}
                                 >
                                     {config.isActive ? "Stop Session" : "Start Session"}
                                 </button>
@@ -201,13 +332,19 @@ export default function AgentPage() {
                         </div>
 
                         {/* Preset strip */}
-                        <AgentSessionPresets />
+                        <AgentSessionPresets
+                            selectedIntent={selectedPreset?.intent}
+                            isStarting={isStartingPreset}
+                            showOpenLink={false}
+                            onSelect={handleSelectPreset}
+                            onStart={handleStartPreset}
+                        />
 
                         {/* Middle row: Status | Activity | Next Pick */}
                         <div className="aid-middle-row">
                             <AgentStatusCard
                                 config={config}
-                                onToggle={handleToggle}
+                                onToggle={() => handleToggle()}
                                 onModeChange={async (mode) => {
                                     await updateConfig({ sessionMode: mode });
                                     addToast({
@@ -324,4 +461,15 @@ export default function AgentPage() {
             />
         </AuthGate>
     );
+}
+
+function toIntentPreferences(preset: SessionPreset): AgentNextPreferences {
+    return {
+        ...preset.preferences,
+        genres: preset.searchVibes,
+        sessionIntent: preset.intent,
+        sessionIntentName: preset.name,
+        queueStyle: preset.queueStyle,
+        source: "agent_session_intent",
+    };
 }

@@ -150,6 +150,56 @@ describe("AnalyticsDomainEventBridgeService", () => {
     const occurredAt = "2026-05-23T11:00:00.000Z";
     const events = [
       {
+        eventName: "identity.authenticated",
+        eventVersion: 1,
+        occurredAt,
+        userId: "user_919",
+        role: "listener",
+        authMode: "register",
+        requestedChainId: 84532,
+        verifiedChainId: 84532,
+        signupFaucetSent: true,
+      },
+      {
+        eventName: "playlist.created",
+        eventVersion: 1,
+        occurredAt,
+        userId: "user_919",
+        playlistId: "playlist_919",
+        folderId: "folder_919",
+        trackCount: 0,
+        name: "do not persist playlist name",
+      },
+      {
+        eventName: "playlist.track_added",
+        eventVersion: 1,
+        occurredAt,
+        userId: "user_919",
+        playlistId: "playlist_919",
+        trackIds: ["track_919"],
+        addedCount: 1,
+        trackCount: 1,
+      },
+      {
+        eventName: "playlist.updated",
+        eventVersion: 1,
+        occurredAt,
+        userId: "user_919",
+        playlistId: "playlist_919",
+        changedFields: ["tracks"],
+        trackCount: 1,
+        name: "do not persist renamed playlist",
+      },
+      {
+        eventName: "session.started",
+        eventVersion: 1,
+        occurredAt,
+        sessionId: "session_919",
+        userId: "user_919",
+        budgetCapUsd: 12,
+        preferences: { mood: "focus", explicit: false, nested: { drop: true } },
+      },
+      {
         eventName: "license.granted",
         eventVersion: 1,
         occurredAt,
@@ -188,6 +238,19 @@ describe("AnalyticsDomainEventBridgeService", () => {
         contractAddress: "0xmarket",
         transactionHash: "0xtx919",
         blockNumber: "12",
+      },
+      {
+        eventName: "contract.stake_deposited",
+        eventVersion: 1,
+        occurredAt,
+        tokenId: "101",
+        stakerAddress: "0xstaker",
+        amount: "1000000000000000000",
+        paymentToken: "0xtoken",
+        chainId: 31337,
+        contractAddress: "0xtrust",
+        transactionHash: "0xstake919",
+        blockNumber: "13",
       },
       {
         eventName: "agent.purchase_completed",
@@ -249,6 +312,60 @@ describe("AnalyticsDomainEventBridgeService", () => {
         balanceUsd: 17.5,
       },
       {
+        eventName: "wallet.budget_set",
+        eventVersion: 1,
+        occurredAt,
+        userId: "user_919",
+        monthlyCapUsd: 25,
+      },
+      {
+        eventName: "wallet.faucet_requested",
+        eventVersion: 1,
+        occurredAt,
+        userId: "user_919",
+        chainId: 84532,
+        amountEth: "0.01",
+        status: "sent",
+      },
+      {
+        eventName: "x402.purchase",
+        eventVersion: 1,
+        occurredAt,
+        stemId: "stem_919",
+        trackId: "track_919",
+        releaseId: "rel_919",
+        artistId: "artist_919",
+        listingId: "919",
+        tokenId: "101",
+        receiptId: "x402r_919",
+        paymentRail: "smart_account",
+        transactionHash: "0xx402tx919",
+        amountUsd: 0.05,
+        canonicalAmountUsd: 0.05,
+        paymentToken: "0xusdc",
+        paymentAssetId: "x402:usdc",
+        paymentAssetSymbol: "USDC",
+        paymentAssetDecimals: 6,
+        settlementAmount: "50000",
+        settlementAmountUnits: "USDC base units",
+        settlementStatus: "contract_backed",
+        entitlement: "marketplace_purchase",
+        paymentProof: "do not persist payment proof",
+      },
+      {
+        eventName: "x402.purchase_failed",
+        eventVersion: 1,
+        occurredAt,
+        stemId: "stem_920",
+        listingId: "920",
+        receiptId: "x402r_920",
+        paymentRail: "smart_account",
+        transactionHash: "0xx402tx920",
+        status: "contract_failed",
+        reason: "marketplace settlement reverted",
+        paymentProof: "do not persist failed payment proof",
+      },
+      {
         eventName: "curator.reported",
         eventVersion: 1,
         occurredAt,
@@ -291,6 +408,44 @@ describe("AnalyticsDomainEventBridgeService", () => {
     expect(analyticsEvents.map((event) => event.eventName)).toEqual(events.map((event) => event.eventName));
     expect(analyticsEvents).toContainEqual(
       expect.objectContaining({
+        eventName: "session.started",
+        actorId: "user_919",
+        sessionId: "session_919",
+        payload: expect.objectContaining({
+          budgetCapUsd: 12,
+          preferences: { mood: "focus", explicit: false },
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "identity.authenticated",
+        producer: "auth-service",
+        subjectType: "user",
+        subjectId: "user_919",
+        actorId: "user_919",
+        payload: expect.objectContaining({
+          role: "listener",
+          authMode: "register",
+          signupFaucetSent: true,
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "playlist.track_added",
+        producer: "playlist-service",
+        subjectType: "playlist",
+        subjectId: "playlist_919",
+        actorId: "user_919",
+        payload: expect.objectContaining({
+          trackIds: ["track_919"],
+          trackCount: 1,
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
         eventName: "payment.settled",
         producer: "payments-service",
         subjectType: "payment",
@@ -322,6 +477,54 @@ describe("AnalyticsDomainEventBridgeService", () => {
     );
     expect(analyticsEvents).toContainEqual(
       expect.objectContaining({
+        eventName: "contract.stake_deposited",
+        subjectType: "token",
+        subjectId: "101",
+        actorId: "0xstaker",
+        payload: expect.objectContaining({
+          amount: "1000000000000000000",
+          paymentToken: "0xtoken",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "wallet.budget_set",
+        actorId: "user_919",
+        payload: expect.objectContaining({
+          monthlyCapUsd: 25,
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "wallet.faucet_requested",
+        producer: "auth-service",
+        actorId: "user_919",
+        payload: expect.objectContaining({
+          chainId: 84532,
+          amountEth: "0.01",
+          status: "sent",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "x402.purchase",
+        producer: "x402-controller",
+        subjectType: "stem",
+        subjectId: "stem_919",
+        payload: expect.objectContaining({
+          receiptId: "x402r_919",
+          paymentRail: "smart_account",
+          canonicalAmountUsd: 0.05,
+          paymentAssetSymbol: "USDC",
+          settlementStatus: "contract_backed",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
         eventName: "recommendation.generated",
         payload: expect.objectContaining({
           trackIds: ["track_919", "track_alt_919"],
@@ -344,6 +547,10 @@ describe("AnalyticsDomainEventBridgeService", () => {
     expect(serializedEvents).not.toContain("do not persist title");
     expect(serializedEvents).not.toContain("do not persist body");
     expect(serializedEvents).not.toContain("user supplied remix title");
+    expect(serializedEvents).not.toContain("do not persist playlist name");
+    expect(serializedEvents).not.toContain("do not persist renamed playlist");
+    expect(serializedEvents).not.toContain("do not persist payment proof");
+    expect(serializedEvents).not.toContain("do not persist failed payment proof");
   });
 
   it("does not throw domain publishing when analytics ingest fails", async () => {

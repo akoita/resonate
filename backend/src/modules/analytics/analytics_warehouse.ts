@@ -12,8 +12,13 @@ export const SUPPORTED_EVENT_FAMILIES = new Set([
   "ingestion",
   "stems",
   "ipnft",
+  "onboarding",
   "session",
   "playback",
+  "playlist",
+  "search",
+  "artist",
+  "shows",
   "library",
   "commerce",
   "license",
@@ -81,6 +86,11 @@ export interface EventsCleanRow {
   releaseId?: string;
   canonicalAmountUsd?: number;
   source?: string;
+  geoCountryCode?: string;
+  geoRegionCode?: string;
+  geoCitySlug?: string;
+  geoSource?: string;
+  geoPrecision?: string;
   payload: Record<string, unknown>;
 }
 
@@ -283,6 +293,11 @@ function toCleanRow(event: AnalyticsEventEnvelope): EventsCleanRow {
     releaseId: stringPayload(event.payload, "releaseId"),
     canonicalAmountUsd: numberPayload(event.payload, "canonicalAmountUsd") ?? numberPayload(event.payload, "amountUsd"),
     source: stringPayload(event.payload, "source"),
+    geoCountryCode: event.geo?.countryCode,
+    geoRegionCode: event.geo?.regionCode,
+    geoCitySlug: event.geo?.citySlug,
+    geoSource: event.geo?.source,
+    geoPrecision: event.geo?.precision,
     payload: event.payload,
   };
 }
@@ -305,8 +320,46 @@ function toFactRow(clean: EventsCleanRow): AnalyticsFactRow {
       eventName: clean.eventName,
       producer: clean.producer,
       privacyTier: clean.privacyTier,
+      actorId: clean.actorId,
       source: clean.source,
       sessionId: clean.sessionId,
+      releaseId: clean.releaseId,
+      geoCountryCode: clean.geoCountryCode,
+      geoRegionCode: clean.geoRegionCode,
+      geoCitySlug: clean.geoCitySlug,
+      geoSource: clean.geoSource,
+      geoPrecision: clean.geoPrecision,
+      playlistId: stringPayload(clean.payload, "playlistId"),
+      step: stringPayload(clean.payload, "step"),
+      phase: stringPayload(clean.payload, "phase"),
+      status: stringPayload(clean.payload, "status"),
+      licenseType: stringPayload(clean.payload, "licenseType"),
+      strategy: stringPayload(clean.payload, "strategy"),
+      runtimeStatus: stringPayload(clean.payload, "runtimeStatus"),
+      tasteSignalSource: stringPayload(clean.payload, "tasteSignalSource"),
+      modelVersion: stringPayload(clean.payload, "modelVersion"),
+      materializationVersion: stringPayload(clean.payload, "materializationVersion"),
+      intent: stringPayload(clean.payload, "intent"),
+      intentName: stringPayload(clean.payload, "intentName"),
+      mood: stringPayload(clean.payload, "mood"),
+      vibe: stringPayload(clean.payload, "vibe"),
+      energy: stringPayload(clean.payload, "energy"),
+      queueStyle: stringPayload(clean.payload, "queueStyle"),
+      commercePosture: stringPayload(clean.payload, "commercePosture"),
+      trackId: stringPayload(clean.payload, "trackId"),
+      firstPick: booleanPayload(clean.payload, "firstPick"),
+      sessionDurationMs: numberPayload(clean.payload, "sessionDurationMs"),
+      score: numberPayload(clean.payload, "score"),
+      playbackInstanceId: stringPayload(clean.payload, "playbackInstanceId"),
+      action: stringPayload(clean.payload, "action"),
+      positionMs: numberPayload(clean.payload, "positionMs"),
+      durationMs: numberPayload(clean.payload, "durationMs"),
+      heartbeatIntervalMs: numberPayload(clean.payload, "heartbeatIntervalMs"),
+      completionRatio: numberPayload(clean.payload, "completionRatio"),
+      queueIndex: numberPayload(clean.payload, "queueIndex"),
+      queueLength: numberPayload(clean.payload, "queueLength"),
+      repeatMode: stringPayload(clean.payload, "repeatMode"),
+      shuffle: booleanPayload(clean.payload, "shuffle"),
       title: stringPayload(clean.payload, "title"),
       paymentToken: stringPayload(clean.payload, "paymentToken"),
       paymentAssetId: stringPayload(clean.payload, "paymentAssetId"),
@@ -361,6 +414,11 @@ function stringPayload(payload: Record<string, unknown>, key: string) {
 function numberPayload(payload: Record<string, unknown>, key: string) {
   const value = payload[key];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function booleanPayload(payload: Record<string, unknown>, key: string) {
+  const value = payload[key];
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function arrayPayload(payload: Record<string, unknown>, key: string) {

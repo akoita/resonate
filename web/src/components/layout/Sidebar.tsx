@@ -136,6 +136,17 @@ const SECONDARY_ITEMS = [
     )
   },
   {
+    name: "AI Quality",
+    href: "/analytics/agent-quality",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 19V5" />
+        <path d="M4 19h16" />
+        <path d="m7 15 3-3 3 2 5-6" />
+      </svg>
+    )
+  },
+  {
     name: "Wallet",
     href: "/wallet",
     icon: (

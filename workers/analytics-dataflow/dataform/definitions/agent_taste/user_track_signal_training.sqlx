@@ -1,0 +1,117 @@
+js {
+  const cfg = require("includes/agent_taste_config");
+}
+
+config {
+  type: "table",
+  name: cfg.trainingTableName(dataform.projectConfig),
+  tags: ["agent_taste", "baseline"]
+}
+
+WITH clean AS (
+  SELECT
+    COALESCE(
+      CAST(actorId AS STRING),
+      JSON_VALUE(payload, '$.userCohortId'),
+      JSON_VALUE(payload, '$.userId'),
+      JSON_VALUE(payload, '$.agentId')
+    ) AS user_id,
+    COALESCE(
+      CAST(trackId AS STRING),
+      JSON_VALUE(payload, '$.trackId')
+    ) AS track_id,
+    COALESCE(
+      CAST(sessionId AS STRING),
+      JSON_VALUE(payload, '$.sessionId'),
+      JSON_VALUE(payload, '$.agentSessionId')
+    ) AS session_id,
+    eventName AS event_name,
+    occurredAt AS occurred_at,
+    SAFE_CAST(canonicalAmountUsd AS FLOAT64) AS canonical_amount_usd,
+    SAFE_CAST(JSON_VALUE(payload, '$.completionRatio') AS FLOAT64) AS completion_ratio,
+    COALESCE(
+      JSON_VALUE(payload, '$.sessionIntent'),
+      JSON_VALUE(payload, '$.intent'),
+      JSON_VALUE(payload, '$.preferences.sessionIntent')
+    ) AS session_intent,
+    COALESCE(
+      JSON_VALUE(payload, '$.sessionIntentName'),
+      JSON_VALUE(payload, '$.intentName'),
+      JSON_VALUE(payload, '$.preferences.sessionIntentName')
+    ) AS session_intent_name,
+    COALESCE(
+      JSON_VALUE(payload, '$.queueStyle'),
+      JSON_VALUE(payload, '$.preferences.queueStyle')
+    ) AS queue_style,
+    payload
+  FROM ${cfg.cleanTableRef(dataform.projectConfig)}
+),
+session_context AS (
+  SELECT
+    session_id,
+    user_id,
+    ARRAY_AGG(session_intent IGNORE NULLS ORDER BY occurred_at DESC LIMIT 1)[SAFE_OFFSET(0)] AS session_intent,
+    ARRAY_AGG(session_intent_name IGNORE NULLS ORDER BY occurred_at DESC LIMIT 1)[SAFE_OFFSET(0)] AS session_intent_name,
+    ARRAY_AGG(queue_style IGNORE NULLS ORDER BY occurred_at DESC LIMIT 1)[SAFE_OFFSET(0)] AS queue_style
+  FROM clean
+  WHERE session_id IS NOT NULL
+    AND user_id IS NOT NULL
+    AND event_name IN ('session.started', 'agent.session_started', 'agent.intent_selected')
+  GROUP BY session_id, user_id
+),
+weighted AS (
+  SELECT
+    clean.user_id,
+    clean.track_id,
+    clean.session_id,
+    clean.event_name,
+    clean.occurred_at,
+    CASE
+      WHEN clean.event_name IN ('commerce.settled', 'payment.settled', 'x402.purchase', 'agent.purchase_completed') THEN 5.0
+      WHEN clean.event_name IN ('library.saved', 'playlist.track_added') THEN 3.0
+      WHEN clean.event_name = 'playback.completed' AND clean.completion_ratio >= 0.80 THEN 2.0
+      WHEN clean.event_name = 'playback.completed' AND clean.completion_ratio >= 0.40 THEN 1.0
+      WHEN clean.event_name = 'playback.completed' AND clean.completion_ratio < 0.20 THEN -1.5
+      WHEN clean.event_name IN ('agent.recommendation_selected', 'agent.track_selected', 'agent.selection') THEN 1.0
+      WHEN clean.event_name = 'agent.decision_made' THEN 0.75
+      ELSE 0.0
+    END AS signal_weight,
+    CASE
+      WHEN clean.event_name IN ('commerce.settled', 'payment.settled', 'x402.purchase', 'agent.purchase_completed') THEN 'purchase'
+      WHEN clean.event_name IN ('library.saved', 'playlist.track_added') THEN 'save'
+      WHEN clean.event_name = 'playback.completed' AND clean.completion_ratio >= 0.80 THEN 'strong_play'
+      WHEN clean.event_name = 'playback.completed' AND clean.completion_ratio >= 0.40 THEN 'partial_play'
+      WHEN clean.event_name = 'playback.completed' AND clean.completion_ratio < 0.20 THEN 'skip'
+      WHEN clean.event_name IN ('agent.recommendation_selected', 'agent.track_selected', 'agent.selection', 'agent.decision_made') THEN 'agent_selected'
+      ELSE 'neutral'
+    END AS signal_type,
+    clean.completion_ratio,
+    clean.canonical_amount_usd,
+    COALESCE(clean.session_intent, session_context.session_intent) AS session_intent,
+    COALESCE(clean.session_intent_name, session_context.session_intent_name) AS session_intent_name,
+    COALESCE(clean.queue_style, session_context.queue_style) AS queue_style,
+    clean.payload
+  FROM clean
+  LEFT JOIN session_context
+    ON session_context.session_id = clean.session_id
+   AND session_context.user_id = clean.user_id
+  WHERE clean.user_id IS NOT NULL
+    AND clean.track_id IS NOT NULL
+)
+SELECT
+  user_id,
+  track_id,
+  session_id,
+  event_name,
+  signal_type,
+  signal_weight,
+  completion_ratio,
+  canonical_amount_usd,
+  session_intent,
+  session_intent_name,
+  queue_style,
+  occurred_at,
+  payload,
+  CURRENT_TIMESTAMP() AS materialized_at
+FROM weighted
+WHERE signal_weight != 0.0

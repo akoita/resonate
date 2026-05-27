@@ -3,6 +3,7 @@ import {
   AgentBigQueryTasteSignalConfig,
   AgentBigQueryTasteSignalService,
   agentBigQueryTasteSignalConfigFromEnv,
+  safeTasteExplanation,
 } from "../modules/agents/agent_bigquery_taste_signal.service";
 
 describe("AgentBigQueryTasteSignalService", () => {
@@ -96,6 +97,38 @@ describe("AgentBigQueryTasteSignalService", () => {
       updatedAt: "2026-05-23T00:00:00.000Z",
     });
     expect(result.get("track-2")?.score).toBe(1);
+  });
+
+  it("sanitizes unsafe warehouse explanations", async () => {
+    expect(safeTasteExplanation("  repeated   playlist saves\nand Focus intent ")).toBe("repeated playlist saves and Focus intent");
+    expect(safeTasteExplanation("<script>alert(1)</script> saved similar tracks")).toBe("alert(1) saved similar tracks");
+    expect(safeTasteExplanation("contact listener@example.com")).toBeUndefined();
+    expect(safeTasteExplanation("raw user:user_abcdef123456 event")).toBeUndefined();
+    expect(safeTasteExplanation("https://private.example/history")).toBeUndefined();
+    expect(safeTasteExplanation("x".repeat(240))).toHaveLength(180);
+  });
+
+  it("drops malformed explanations while preserving score fallback", async () => {
+    const client = fakeClient([{
+      rows: [
+        {
+          trackId: "track-1",
+          score: "0.82",
+          explanation: "user:user_abcdef123456 replayed this exact track",
+        },
+      ],
+    }]);
+    const service = new AgentBigQueryTasteSignalService(enabledConfig, client);
+
+    const result = await service.scoreTracks({
+      userId: "user-1",
+      trackIds: ["track-1"],
+    });
+
+    expect(result.get("track-1")).toEqual({
+      trackId: "track-1",
+      score: 0.82,
+    });
   });
 
   it("falls back to empty scores when BigQuery fails", async () => {

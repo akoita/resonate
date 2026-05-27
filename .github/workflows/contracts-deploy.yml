@@ -1,0 +1,371 @@
+name: Smart Contract Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub environment holding deployment secrets.
+        required: true
+        default: staging
+        type: choice
+        options:
+          - dev
+          - staging
+      target_network:
+        description: Chain to target.
+        required: true
+        default: base-sepolia
+        type: choice
+        options:
+          - base-sepolia
+          - sepolia
+      operation:
+        description: What to run.
+        required: true
+        default: preflight
+        type: choice
+        options:
+          - preflight
+          - deploy-protocol
+          - deploy-content-protection
+          - deploy-show-campaign-escrow
+          - upgrade-content-protection
+          - set-content-protection-stake
+          - verify-base-sepolia
+          - verify-base-sepolia-sourcify
+      verify_contracts:
+        description: BaseScan verification mode for Base Sepolia deploys.
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - "true"
+          - "false"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  FOUNDRY_PROFILE: ci
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.environment }}-${{ inputs.target_network }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: ${{ inputs.operation }} ${{ inputs.target_network }}
+    runs-on: ubuntu-latest
+    environment: contracts-${{ inputs.environment }}
+    permissions:
+      contents: read
+    env:
+      PRIVATE_KEY: ${{ secrets.CONTRACT_DEPLOYER_PRIVATE_KEY || secrets.PRIVATE_KEY }}
+      SEPOLIA_RPC_URL: ${{ secrets.SEPOLIA_RPC_URL || vars.SEPOLIA_RPC_URL }}
+      BASE_SEPOLIA_RPC_URL: ${{ secrets.BASE_SEPOLIA_RPC_URL || vars.BASE_SEPOLIA_RPC_URL }}
+      ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+      BASESCAN_API_KEY: ${{ secrets.BASESCAN_API_KEY }}
+      VERIFY_CONTRACTS: ${{ inputs.verify_contracts }}
+    steps:
+      - name: Validate selected operation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.target_network }}" == "sepolia" && "${{ inputs.operation }}" == verify-base-sepolia* ]]; then
+            echo "::error::Base Sepolia verification operations require target_network=base-sepolia."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Export optional deployment variables
+        shell: bash
+        env:
+          INPUT_BASESCAN_API_URL: ${{ vars.BASESCAN_API_URL }}
+          INPUT_BROADCAST_FILE: ${{ vars.BROADCAST_FILE }}
+          INPUT_VERIFY_RETRIES: ${{ vars.VERIFY_RETRIES }}
+          INPUT_VERIFY_DELAY_SECONDS: ${{ vars.VERIFY_DELAY_SECONDS }}
+          INPUT_SOURCIFY_API_URL: ${{ vars.SOURCIFY_API_URL }}
+          INPUT_SOURCIFY_RETRIES: ${{ vars.SOURCIFY_RETRIES }}
+          INPUT_SOURCIFY_DELAY_SECONDS: ${{ vars.SOURCIFY_DELAY_SECONDS }}
+          INPUT_X402_FACILITATOR_URL: ${{ vars.X402_FACILITATOR_URL }}
+          INPUT_PAYMENT_USDC_ADDRESS: ${{ vars.PAYMENT_USDC_ADDRESS }}
+          INPUT_PAYMENT_WETH_ADDRESS: ${{ vars.PAYMENT_WETH_ADDRESS }}
+          INPUT_PAYMENT_ENABLE_WETH: ${{ vars.PAYMENT_ENABLE_WETH }}
+          INPUT_PAYMENT_REGISTRY_ADMIN: ${{ vars.PAYMENT_REGISTRY_ADMIN }}
+          INPUT_PAYMENT_ETH_USD_FEED: ${{ vars.PAYMENT_ETH_USD_FEED }}
+          INPUT_PAYMENT_USDC_USD_FEED: ${{ vars.PAYMENT_USDC_USD_FEED }}
+          INPUT_PAYMENT_ORACLE_MAX_STALENESS: ${{ vars.PAYMENT_ORACLE_MAX_STALENESS }}
+          INPUT_STEM_NFT_ADDRESS: ${{ vars.STEM_NFT_ADDRESS }}
+          INPUT_MARKETPLACE_ADDRESS: ${{ vars.MARKETPLACE_ADDRESS }}
+          INPUT_TRANSFER_VALIDATOR_ADDRESS: ${{ vars.TRANSFER_VALIDATOR_ADDRESS }}
+          INPUT_EXISTING_ADMIN: ${{ vars.EXISTING_ADMIN }}
+          INPUT_CONTENT_PROTECTION_PROXY: ${{ vars.CONTENT_PROTECTION_PROXY }}
+          INPUT_CONTENT_PROTECTION_ADDRESS: ${{ vars.CONTENT_PROTECTION_ADDRESS }}
+          INPUT_STAKE_ASSET_ADDRESS: ${{ vars.STAKE_ASSET_ADDRESS }}
+          INPUT_STAKE_ASSET_AMOUNT: ${{ vars.STAKE_ASSET_AMOUNT }}
+          INPUT_STAKE_ASSET_SYMBOL: ${{ vars.STAKE_ASSET_SYMBOL }}
+          INPUT_SHOW_CAMPAIGN_ESCROW_OWNER: ${{ vars.SHOW_CAMPAIGN_ESCROW_OWNER }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${BASE_SEPOLIA_RPC_URL:-}" ]]; then
+            echo "BASE_SEPOLIA_RPC_URL=https://sepolia.base.org" >> "${GITHUB_ENV}"
+          fi
+          if [[ -z "${SEPOLIA_RPC_URL:-}" ]]; then
+            echo "SEPOLIA_RPC_URL=https://sepolia.drpc.org" >> "${GITHUB_ENV}"
+          fi
+
+          optional_names=(
+            BASESCAN_API_URL
+            BROADCAST_FILE
+            VERIFY_RETRIES
+            VERIFY_DELAY_SECONDS
+            SOURCIFY_API_URL
+            SOURCIFY_RETRIES
+            SOURCIFY_DELAY_SECONDS
+            X402_FACILITATOR_URL
+            PAYMENT_USDC_ADDRESS
+            PAYMENT_WETH_ADDRESS
+            PAYMENT_ENABLE_WETH
+            PAYMENT_REGISTRY_ADMIN
+            PAYMENT_ETH_USD_FEED
+            PAYMENT_USDC_USD_FEED
+            PAYMENT_ORACLE_MAX_STALENESS
+            STEM_NFT_ADDRESS
+            MARKETPLACE_ADDRESS
+            TRANSFER_VALIDATOR_ADDRESS
+            EXISTING_ADMIN
+            CONTENT_PROTECTION_PROXY
+            CONTENT_PROTECTION_ADDRESS
+            STAKE_ASSET_ADDRESS
+            STAKE_ASSET_AMOUNT
+            STAKE_ASSET_SYMBOL
+            SHOW_CAMPAIGN_ESCROW_OWNER
+          )
+
+          for name in "${optional_names[@]}"; do
+            input_name="INPUT_${name}"
+            value="${!input_name:-}"
+            if [[ -n "${value}" ]]; then
+              printf '%s=%s\n' "${name}" "${value}" >> "${GITHUB_ENV}"
+            fi
+          done
+
+          case "${{ inputs.target_network }}" in
+            base-sepolia)
+              echo "RPC_URL=${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org}" >> "${GITHUB_ENV}"
+              ;;
+            sepolia)
+              echo "RPC_URL=${SEPOLIA_RPC_URL:-https://sepolia.drpc.org}" >> "${GITHUB_ENV}"
+              ;;
+          esac
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.4.3
+
+      - name: Install contract dependencies
+        run: ./scripts/install-deps.sh
+        working-directory: contracts
+
+      - name: Build contracts
+        run: forge build
+        working-directory: contracts
+
+      - name: Run deployment safety tests
+        run: forge test -vvv --no-match-path "test/formal/*"
+        working-directory: contracts
+
+      - name: Preflight deployer and network
+        if: inputs.operation != 'verify-base-sepolia' && inputs.operation != 'verify-base-sepolia-sourcify'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${PRIVATE_KEY:-}" ]]; then
+            echo "::error::Set CONTRACT_DEPLOYER_PRIVATE_KEY in the contracts-${{ inputs.environment }} GitHub environment."
+            exit 1
+          fi
+
+          lt_uint() {
+            local left="${1#0}"
+            local right="${2#0}"
+            left="${left:-0}"
+            right="${right:-0}"
+            if [[ ${#left} -ne ${#right} ]]; then
+              [[ ${#left} -lt ${#right} ]]
+              return
+            fi
+            [[ "${left}" < "${right}" ]]
+          }
+
+          case "${{ inputs.operation }}" in
+            deploy-content-protection)
+              if [[ -z "${STEM_NFT_ADDRESS:-}" || -z "${TRANSFER_VALIDATOR_ADDRESS:-}" ]]; then
+                echo "::error::deploy-content-protection requires STEM_NFT_ADDRESS and TRANSFER_VALIDATOR_ADDRESS."
+                exit 1
+              fi
+              ;;
+            upgrade-content-protection)
+              if [[ -z "${CONTENT_PROTECTION_PROXY:-}" ]]; then
+                echo "::error::upgrade-content-protection requires CONTENT_PROTECTION_PROXY."
+                exit 1
+              fi
+              ;;
+            set-content-protection-stake)
+              if [[ -z "${CONTENT_PROTECTION_ADDRESS:-}" ]]; then
+                echo "::error::set-content-protection-stake requires CONTENT_PROTECTION_ADDRESS."
+                exit 1
+              fi
+              if [[ -z "${STAKE_ASSET_ADDRESS:-}" && -z "${PAYMENT_USDC_ADDRESS:-}" ]]; then
+                echo "::error::set-content-protection-stake requires STAKE_ASSET_ADDRESS or PAYMENT_USDC_ADDRESS."
+                exit 1
+              fi
+              ;;
+          esac
+
+          case "${{ inputs.target_network }}" in
+            base-sepolia)
+              rpc_url="${BASE_SEPOLIA_RPC_URL:-}"
+              expected_chain_id="84532"
+              minimum_wei="10000000000000000"
+              ;;
+            sepolia)
+              rpc_url="${SEPOLIA_RPC_URL:-}"
+              expected_chain_id="11155111"
+              minimum_wei="10000000000000000"
+              ;;
+            *)
+              echo "::error::Unsupported network."
+              exit 1
+              ;;
+          esac
+
+          if [[ -z "${rpc_url}" ]]; then
+            echo "::error::Missing RPC URL for ${{ inputs.target_network }}."
+            exit 1
+          fi
+
+          chain_id="$(cast chain-id --rpc-url "${rpc_url}")"
+          if [[ "${chain_id}" != "${expected_chain_id}" ]]; then
+            echo "::error::RPC resolved chain ${chain_id}; expected ${expected_chain_id}."
+            exit 1
+          fi
+
+          deployer="$(cast wallet address "${PRIVATE_KEY}")"
+          balance_wei="$(cast balance "${deployer}" --rpc-url "${rpc_url}")"
+          balance_eth="$(cast from-wei "${balance_wei}")"
+          if lt_uint "${balance_wei}" "${minimum_wei}"; then
+            echo "::error::Deployer ${deployer} has ${balance_eth} ETH on ${{ inputs.target_network }}; need at least 0.01 ETH."
+            exit 1
+          fi
+
+          {
+            echo "### Contract deployment preflight"
+            echo ""
+            echo "- environment: \`contracts-${{ inputs.environment }}\`"
+            echo "- target network: \`${{ inputs.target_network }}\`"
+            echo "- chain id: \`${chain_id}\`"
+            echo "- deployer: \`${deployer}\`"
+            echo "- balance: \`${balance_eth} ETH\`"
+            echo "- operation: \`${{ inputs.operation }}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Deploy full protocol graph to Base Sepolia
+        if: inputs.operation == 'deploy-protocol' && inputs.target_network == 'base-sepolia'
+        run: make deploy-base-sepolia
+
+      - name: Deploy full protocol graph to Sepolia
+        if: inputs.operation == 'deploy-protocol' && inputs.target_network == 'sepolia'
+        run: make deploy-sepolia
+
+      - name: Deploy content protection add-on
+        if: inputs.operation == 'deploy-content-protection'
+        run: |
+          set -euo pipefail
+          cd contracts
+          forge script script/DeployContentProtection.s.sol \
+            --rpc-url "${RPC_URL}" \
+            --broadcast \
+            --evm-version cancun \
+            --via-ir \
+            --slow
+
+      - name: Deploy show campaign escrow
+        if: inputs.operation == 'deploy-show-campaign-escrow'
+        run: make deploy-show-campaign-escrow
+
+      - name: Upgrade content protection proxy
+        if: inputs.operation == 'upgrade-content-protection'
+        run: |
+          set -euo pipefail
+          cd contracts
+          forge script script/UpgradeContentProtection.s.sol \
+            --rpc-url "${RPC_URL}" \
+            --broadcast \
+            --evm-version cancun \
+            --via-ir \
+            --slow
+
+      - name: Update content protection stake policy
+        if: inputs.operation == 'set-content-protection-stake'
+        run: |
+          set -euo pipefail
+          cd contracts
+          forge script script/SetContentProtectionStablecoinStake.s.sol \
+            --rpc-url "${RPC_URL}" \
+            --broadcast \
+            --evm-version cancun \
+            --via-ir \
+            --slow
+
+      - name: Verify Base Sepolia contracts on BaseScan
+        if: inputs.operation == 'verify-base-sepolia'
+        run: make verify-base-sepolia
+
+      - name: Verify Base Sepolia contracts on Sourcify
+        if: inputs.operation == 'verify-base-sepolia-sourcify'
+        run: make verify-base-sepolia-sourcify
+
+      - name: Summarize deployment outputs
+        if: inputs.operation != 'preflight'
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### Contract deployment outputs"
+            echo ""
+            if [[ -f contracts/deployments/base-sepolia.json ]]; then
+              echo "- Base Sepolia deployment record: \`contracts/deployments/base-sepolia.json\`"
+            fi
+            if [[ -f contracts/deployments/base-sepolia.remote.env ]]; then
+              echo "- Base Sepolia environment handoff: \`contracts/deployments/base-sepolia.remote.env\`"
+            fi
+            if [[ -f "contracts/deployments/show-campaign-escrow.${{ inputs.target_network }}.json" ]]; then
+              echo "- ShowCampaignEscrow deployment record: \`contracts/deployments/show-campaign-escrow.${{ inputs.target_network }}.json\`"
+            fi
+            if [[ -f "contracts/deployments/show-campaign-escrow.${{ inputs.target_network }}.remote.env" ]]; then
+              echo "- ShowCampaignEscrow environment handoff: \`contracts/deployments/show-campaign-escrow.${{ inputs.target_network }}.remote.env\`"
+            fi
+            if [[ -f contracts/deployments/show-campaign-escrow.abi.json ]]; then
+              echo "- ShowCampaignEscrow ABI handoff: \`contracts/deployments/show-campaign-escrow.abi.json\`"
+            fi
+            if [[ -f contracts/deployments/sepolia.json ]]; then
+              echo "- Sepolia deployment record: \`contracts/deployments/sepolia.json\`"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload deployment records
+        if: inputs.operation != 'preflight'
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-deployment-${{ inputs.target_network }}-${{ github.run_id }}
+          path: |
+            contracts/deployments/*.json
+            contracts/deployments/*.env
+            contracts/broadcast/**/*.json
+          if-no-files-found: warn
+          retention-days: 30

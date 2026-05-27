@@ -21,6 +21,7 @@ When adding a new environment variable:
 | `NEXT_PUBLIC_CHAIN_ID` | Frontend | `31337` for local Anvil, `11155111` for Sepolia fork mode, `84532` for Base Sepolia staging |
 | `NEXT_PUBLIC_RPC_URL` | Frontend | Optional RPC override. Use for local/fork AA flows; deployed builds otherwise fall back to the chain default RPC. |
 | `NEXT_PUBLIC_EXPLORER_URL` | Frontend | Optional block explorer base URL used for address and transaction links. Leave unset for local Anvil. |
+| `NEXT_PUBLIC_SHOWS_EXPLORER_BASE_URL` | Frontend | Optional block explorer address base URL used by Shows campaign contract links. Defaults to Sepolia Etherscan for local seeded demos. |
 | `NEXT_PUBLIC_AA_BUNDLER` | Frontend | Optional public bundler override; when unset the browser falls back to `/api/bundler` unless a public Pimlico key is provided |
 | `NEXT_PUBLIC_AA_PAYMASTER_ENABLED` | Frontend | Optional flag (`true` / `1` / `yes`) to attach a ZeroDev paymaster client to browser UserOps. Leave unset when wallet gas sponsorship is not configured so transactions self-pay from the smart account ETH balance |
 | `NEXT_PUBLIC_PIMLICO_API_KEY` | Frontend | Optional public Pimlico key. Leave unset when using server-side bundler config via `/api/bundler` |
@@ -44,10 +45,15 @@ When adding a new environment variable:
 | `ANALYTICS_BIGQUERY_QUERY_TIMEOUT_MS` | Backend | Optional timeout for each BigQuery reporting query. Defaults to `10000`. |
 | `ANALYTICS_BIGQUERY_ROW_LIMIT` | Backend | Optional row limit per facts/views query to bound response size. Defaults to `10000`. |
 | `ANALYTICS_BIGQUERY_API_BASE_URL` | Backend | Optional BigQuery API base URL override for tests or private endpoints. Defaults to the public BigQuery API. |
+| `ANALYTICS_ACTOR_ID_SALT` | Backend | Optional salt for deriving pseudonymous analytics actor IDs from authenticated user IDs before emitting product and playback analytics events. Falls back to `JWT_SECRET`, then a local-dev salt. Set per environment and rotate only with a planned analytics identity migration. |
 | `AGENT_TASTE_SIGNAL_SOURCE` | Backend | Optional agent taste signal provider. Defaults to disabled; set `bigquery` to blend precomputed BigQuery user-track scores into AI DJ recommendation ranking. |
 | `AGENT_TASTE_BIGQUERY_PROJECT_ID` | Backend | Optional BigQuery project override for agent taste scores. Falls back to analytics BigQuery/warehouse project config. |
 | `AGENT_TASTE_BIGQUERY_DATASET` | Backend | Optional BigQuery dataset override for agent taste scores. Falls back to analytics BigQuery/warehouse dataset config. |
+| `AGENT_TASTE_BIGQUERY_CLEAN_TABLE` | Data/ML tooling | Optional clean analytics events table used by `workers/analytics-dataflow/run-agent-taste-materialization.sh`. Defaults to `events_clean`. |
+| `AGENT_TASTE_BIGQUERY_TRAINING_TABLE` | Data/ML tooling | Optional training signal table used by Agent Taste verification queries. Defaults to `user_track_signal_training`. |
 | `AGENT_TASTE_BIGQUERY_SCORES_TABLE` | Backend | Optional BigQuery table id containing `user_id`, `track_id`, and normalized `recommendation_score` rows. Defaults to `user_track_recommendation_scores`. |
+| `AGENT_TASTE_MATERIALIZATION_PROJECT_ID` | Data/ML tooling | Optional BigQuery project override for the Agent Taste materialization runner. Falls back to agent taste, analytics BigQuery, warehouse, and GCP project config. |
+| `AGENT_TASTE_MATERIALIZATION_VERSION` | Data/ML tooling | Optional version label written to materialized Agent Taste score rows. Defaults to the current baseline version in the runner. |
 | `AGENT_TASTE_BIGQUERY_MAXIMUM_BYTES_BILLED` | Backend | Optional BigQuery query cost guard for agent taste score reads. Defaults to `100000000` bytes. |
 | `AGENT_TASTE_BIGQUERY_QUERY_TIMEOUT_MS` | Backend | Optional timeout for agent taste score queries. Defaults to `5000`. |
 | `AGENT_TASTE_BIGQUERY_ROW_LIMIT` | Backend | Optional maximum taste score rows returned per selector call. Defaults to `100`. |
@@ -64,6 +70,7 @@ When adding a new environment variable:
 | `DEMUCS_CLOUD_RUN_JOB_NAME` | Backend | Cloud Run Job name to execute after publishing each `stem-separate` message |
 | `GCP_BILLING_QUOTA_PROJECT` | CI | Optional quota/billing project for Cloud Build submission; deploy CI defaults it to `GCP_PROJECT_ID` |
 | `GCP_CLOUD_BUILD_SOURCE_STAGING_DIR` | CI | Optional Cloud Storage prefix for `gcloud builds submit` source archives; deploy CI defaults it from `GCP_PROJECT_ID` |
+| `GCP_CLOUD_BUILD_POLLING_INTERVAL_SECONDS` | CI | Optional Cloud Build polling interval for image publishing. Defaults to `10` seconds to avoid Cloud Build get-request quota spikes when multiple images publish in parallel |
 | `ANALYTICS_DATAFLOW_ARTIFACT_REGISTRY_REPOSITORY` | CI | Optional Artifact Registry repository for the analytics Dataflow Flex Template image. Defaults to `resonate-<environment>` |
 | `ANALYTICS_DATAFLOW_TEMPLATE_BUCKET` | CI | Optional GCS bucket for analytics Dataflow template, staging, and temp artifacts. Defaults to `<GCP_PROJECT_ID>-analytics-dataflow` |
 | `ANALYTICS_DATAFLOW_TEMPLATE_PREFIX` | CI | Optional GCS prefix for analytics Dataflow `template.json`. Defaults to `templates/<environment>/analytics-dataflow` |
@@ -77,6 +84,8 @@ When adding a new environment variable:
 | `WEBAUTHN_ORIGIN` | Backend | Optional relying-party origin for self-hosted passkey verification. Usually the frontend HTTPS origin |
 | `SEPOLIA_RPC_URL` | Contracts / backend | Required for Sepolia deploys and forked workflows |
 | `BASE_SEPOLIA_RPC_URL` | Contracts / backend | Required for Base Sepolia protocol deploys and single-chain x402 staging |
+| `CONTRACT_DEPLOYER_PRIVATE_KEY` | Contracts secret | Preferred GitHub Actions deployer key for `.github/workflows/contracts-deploy.yml`. Use protected GitHub environments; do not store in source. Existing local scripts still read `PRIVATE_KEY` |
+| `ALLOW_DEFAULT_ANVIL_PRIVATE_KEY` | Contracts | Explicit override that lets Forge scripts use the default Anvil key on a non-local RPC. Leave unset in shared remote environments. |
 | `ETHERSCAN_API_KEY` | Contracts secret | Optional Etherscan API v2 key used for Base Sepolia contract verification. Store in secret manager/GitHub environment secrets when used in CI |
 | `BASESCAN_API_KEY` | Contracts secret | Backward-compatible alias for `ETHERSCAN_API_KEY` in Base Sepolia verification scripts |
 | `BASESCAN_API_URL` | Contracts | Optional verification API override. Defaults to `https://api.etherscan.io/v2/api`, which requires a key/plan with Base Sepolia API access |
@@ -85,6 +94,15 @@ When adding a new environment variable:
 | `VERIFY_RETRIES` / `VERIFY_DELAY_SECONDS` | Contracts | Optional BaseScan retry tuning for `make verify-base-sepolia`; defaults to `8` retries and `15` seconds |
 | `SOURCIFY_API_URL` | Contracts | Optional Sourcify server override for `make verify-base-sepolia-sourcify`; defaults to `https://sourcify.dev/server` |
 | `SOURCIFY_RETRIES` / `SOURCIFY_DELAY_SECONDS` | Contracts | Optional Sourcify retry tuning for `make verify-base-sepolia-sourcify`; defaults to `12` retries and `5` seconds |
+| `STEM_NFT_ADDRESS` / `MARKETPLACE_ADDRESS` / `TRANSFER_VALIDATOR_ADDRESS` | Contracts | Required/optional references for the partial `deploy-content-protection` GitHub workflow operation; set `MARKETPLACE_ADDRESS` when the existing marketplace must receive registrar permission |
+| `CONTENT_PROTECTION_PROXY` | Contracts | Required for the `upgrade-content-protection` GitHub workflow operation |
+| `CONTENT_PROTECTION_ADDRESS` | Contracts / backend | Existing ContentProtection proxy address; required for stake-policy update workflows and backend contract-aware flows |
+| `STAKE_ASSET_ADDRESS` / `STAKE_ASSET_AMOUNT` / `STAKE_ASSET_SYMBOL` | Contracts | Optional stake-policy update workflow inputs; `STAKE_ASSET_ADDRESS` can fall back to `PAYMENT_USDC_ADDRESS` |
+| `SHOW_CAMPAIGN_ESCROW_OWNER` | Contracts | Optional owner/multisig for deploying `ShowCampaignEscrow`; defaults to the deployer |
+| `SHOW_CAMPAIGN_ESCROW_ADDRESS` | Backend / frontend | Deployed Shows escrow address used by pledge execution and event reconciliation once Shows moves beyond backend receipts |
+| `NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS` | Frontend | Public default Shows escrow address promoted from `contracts/deployments/show-campaign-escrow.<network>.remote.env`; individual campaigns still come from backend `contractAddress` / `contractCampaignId` records |
+| `SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS` | Backend | Optional default ERC-20 payment token for artist-created show campaigns; normal artists cannot choose arbitrary payment token addresses |
+| `SHOWS_ALLOWED_PAYMENT_TOKEN_ADDRESSES` | Backend | Optional comma-separated allowlist of ERC-20 payment tokens accepted by Shows campaign drafts and pledge intents |
 | `TRUST_STAKE_WEI_NEW` | Backend | Optional override for the new-creator content-protection stake requirement |
 | `TRUST_STAKE_WEI_ESTABLISHED` | Backend | Optional override for the established-tier content-protection stake requirement |
 | `TRUST_STAKE_WEI_TRUSTED` | Backend | Optional override for the trusted-tier content-protection stake requirement |
@@ -108,6 +126,8 @@ When adding a new environment variable:
 | `PAYMENT_QUOTE_TTL_SECONDS` | Backend | Optional lifetime for backend payment quotes returned by `/payments/quote`. Defaults to `60` |
 | `PAYMENT_QUOTE_MAX_STALENESS_SECONDS` | Backend | Optional maximum age for timestamped backend oracle price entries. Defaults to `3600` |
 | `PAYMENT_FUNDING_OPTIONS_JSON` | Backend | JSON array of environment-aware funding actions exposed by the payment UX |
+| `SHOWS_DEFAULT_CHAIN_ID` | Backend | Optional chain ID default for newly created Shows signals/campaign drafts. Falls back to `PAYMENT_CHAIN_ID`, `AA_CHAIN_ID`, `CHAIN_ID`, then Base Sepolia local/staging default. |
+| `SHOWS_DEFAULT_PAYMENT_ASSET_SYMBOL` | Backend | Optional display symbol default for newly created Shows signals/campaign drafts. Defaults to `USDC`. |
 | `PAYMENT_BASE_SEPOLIA_ETH_FAUCET_URL` | Backend | Optional Base Sepolia test ETH faucet URL. When set and no full funding JSON is provided, `/payments/funding-options` exposes a testnet ETH faucet action |
 | `PAYMENT_BASE_SEPOLIA_ETH_FAUCET_PROVIDER` | Backend | Optional display name for the configured Base Sepolia ETH faucet |
 | `PAYMENT_BASE_SEPOLIA_USDC_FAUCET_URL` | Backend | Optional Base Sepolia Circle USDC faucet URL. When set and no full funding JSON is provided, `/payments/funding-options` exposes a testnet USDC faucet action |

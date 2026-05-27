@@ -19,6 +19,10 @@ export class SessionsController {
         genres?: string[];
         allowExplicit?: boolean;
         licenseType?: "personal" | "remix" | "commercial";
+        sessionIntent?: string;
+        sessionIntentName?: string;
+        queueStyle?: string;
+        source?: string;
       };
     }
   ) {
@@ -49,6 +53,10 @@ export class SessionsController {
         genres?: string[];
         allowExplicit?: boolean;
         licenseType?: "personal" | "remix" | "commercial";
+        sessionIntent?: string;
+        sessionIntentName?: string;
+        queueStyle?: string;
+        source?: string;
       };
     }
   ) {

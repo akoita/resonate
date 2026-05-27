@@ -2,6 +2,7 @@ import { Inject, Injectable, Optional } from "@nestjs/common";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
 import {
   ANALYTICS_REPORT_SOURCE,
+  AgentQualityFactResult,
   AnalyticsReportMetadata,
   ArtistAnalyticsReportSource,
   timeWindowMetadata,
@@ -82,6 +83,60 @@ interface ArtistAnalyticsData {
 type EnrichedAnalyticsFactRow = AnalyticsFactRow & {
   catalogTrack?: AnalyticsTrackMetadata;
 };
+
+interface AgentQualityBreakdown {
+  key: string;
+  label: string;
+  sessionsStarted: number;
+  nextPickRequests: number;
+  acceptedPicks: number;
+  acceptanceRate: number;
+  completionRate: number;
+  saveRate: number;
+  purchaseRate: number;
+  averageSessionDurationMs: number | null;
+}
+
+interface AgentQualityTimePoint {
+  date: string;
+  sessionsStarted: number;
+  nextPickRequests: number;
+  acceptedPicks: number;
+  completions: number;
+  saves: number;
+  purchases: number;
+}
+
+interface AgentQualityData {
+  facts: AnalyticsFactRow[];
+  metadata: AnalyticsReportMetadata;
+}
+
+type AgentQualityMetric =
+  | "session_started"
+  | "session_stopped"
+  | "intent_selected"
+  | "next_pick_requested"
+  | "accepted_pick"
+  | "playback_completed"
+  | "first_pick_skip"
+  | "save"
+  | "playlist_add"
+  | "purchase"
+  | "other";
+
+interface AgentQualityAccumulator {
+  key: string;
+  label: string;
+  sessionsStarted: number;
+  nextPickRequests: number;
+  acceptedPicks: number;
+  playbackCompletions: number;
+  saves: number;
+  playlistAdds: number;
+  purchases: number;
+  sessionDurationsMs: number[];
+}
 
 @Injectable()
 export class AnalyticsService {
@@ -215,7 +270,7 @@ export class AnalyticsService {
       topTracks: this.topTracks(tracks),
       sessions: [...sessionMap.values()],
       sources: [...sourceMap.values()],
-      playsOverTime: this.playsOverTime(data.views, facts),
+      playsOverTime: this.playsOverTime(facts),
       trackPerformance: tracks,
       protection: this.protectionMetrics(facts),
       listenerGrowth: {
@@ -225,6 +280,376 @@ export class AnalyticsService {
       export: exportPayload,
       meta: data.metadata,
     };
+  }
+
+  async getAgentQualityDashboard(days: number) {
+    const data = await this.listAgentQualityData(days);
+    const facts = this.agentQualityFacts(data.facts);
+    const summary = {
+      days: data.metadata.timeWindow.days,
+      sessionsStarted: 0,
+      sessionsStopped: 0,
+      intentSelections: 0,
+      nextPickRequests: 0,
+      acceptedPicks: 0,
+      playbackCompletions: 0,
+      firstPickSkips: 0,
+      firstPickOutcomes: 0,
+      saves: 0,
+      playlistAdds: 0,
+      purchases: 0,
+      purchaseUsd: 0,
+      averageSessionDurationMs: null as number | null,
+      acceptanceRate: 0,
+      firstPickSkipRate: 0,
+      completionRate: 0,
+      saveRate: 0,
+      playlistAddRate: 0,
+      purchaseRate: 0,
+    };
+    const durations: number[] = [];
+    const byIntent = new Map<string, AgentQualityAccumulator>();
+    const byStrategy = new Map<string, AgentQualityAccumulator>();
+    const byTasteSource = new Map<string, AgentQualityAccumulator>();
+    const byVersion = new Map<string, AgentQualityAccumulator>();
+    const byDate = new Map<string, AgentQualityTimePoint>();
+
+    for (const fact of facts) {
+      const eventName = this.stringDimension(fact.dimensions, "eventName");
+      const count = fact.count || 1;
+      const dateRow = byDate.get(fact.occurredDate) ?? {
+        date: fact.occurredDate,
+        sessionsStarted: 0,
+        nextPickRequests: 0,
+        acceptedPicks: 0,
+        completions: 0,
+        saves: 0,
+        purchases: 0,
+      };
+      const metric = this.agentQualityMetric(fact);
+      this.applyAgentQualityMetric(summary, dateRow, metric, count, fact);
+
+      const durationMs = this.numberDimension(fact.dimensions, "sessionDurationMs");
+      if (eventName === "agent.session_stopped" && durationMs !== undefined) {
+        durations.push(durationMs);
+      }
+
+      this.applyAccumulatorMetric(
+        this.accumulatorFor(byIntent, this.intentKey(fact), this.intentLabel(fact)),
+        metric,
+        count,
+        fact,
+      );
+      this.applyAccumulatorMetric(
+        this.accumulatorFor(byStrategy, this.strategyKey(fact), this.strategyLabel(fact)),
+        metric,
+        count,
+        fact,
+      );
+      this.applyAccumulatorMetric(
+        this.accumulatorFor(byTasteSource, this.tasteSourceKey(fact), this.tasteSourceLabel(fact)),
+        metric,
+        count,
+        fact,
+      );
+      this.applyAccumulatorMetric(
+        this.accumulatorFor(byVersion, this.versionKey(fact), this.versionLabel(fact)),
+        metric,
+        count,
+        fact,
+      );
+
+      byDate.set(fact.occurredDate, dateRow);
+    }
+
+    summary.averageSessionDurationMs = averageOrNull(durations);
+    summary.acceptanceRate = ratio(summary.acceptedPicks, summary.nextPickRequests);
+    summary.firstPickSkipRate = ratio(summary.firstPickSkips, summary.firstPickOutcomes);
+    summary.completionRate = ratio(summary.playbackCompletions, summary.acceptedPicks);
+    summary.saveRate = ratio(summary.saves, summary.acceptedPicks);
+    summary.playlistAddRate = ratio(summary.playlistAdds, summary.acceptedPicks);
+    summary.purchaseRate = ratio(summary.purchases, summary.acceptedPicks);
+
+    return {
+      summary,
+      intentBreakdown: this.finalizeBreakdowns(byIntent),
+      strategyBreakdown: this.finalizeBreakdowns(byStrategy),
+      tasteSourceBreakdown: this.finalizeBreakdowns(byTasteSource),
+      versionBreakdown: this.finalizeBreakdowns(byVersion),
+      qualityOverTime: [...byDate.values()].sort((left, right) => left.date.localeCompare(right.date)),
+      privacy: {
+        aggregation: "event-level aggregate metrics only",
+        excludes: ["raw listener history", "actor ids", "wallet addresses", "per-user drilldowns"],
+      },
+      meta: data.metadata,
+    };
+  }
+
+  private async listAgentQualityData(days: number): Promise<AgentQualityData> {
+    const normalizedDays = this.normalizedDays(days);
+    const to = new Date();
+    const from = new Date(to.getTime() - normalizedDays * 24 * 60 * 60 * 1000);
+    const reportResult: AgentQualityFactResult | null =
+      (await this.reportSource?.listAgentQualityFacts?.({ from, to })) ?? null;
+    if (reportResult) {
+      return reportResult;
+    }
+
+    const exportPayload = await this.exportLayers();
+    const facts = exportPayload.analyticsFacts.filter((fact) => {
+      const occurredAt = new Date(fact.occurredAt).getTime();
+      return occurredAt >= from.getTime() && occurredAt < to.getTime();
+    });
+    const qualityFacts = this.agentQualityFacts(facts);
+    const freshness = this.freshnessFromFacts(qualityFacts, to);
+    return {
+      facts: qualityFacts,
+      metadata: {
+        source: "warehouse_export",
+        generatedAt: exportPayload.generatedAt,
+        timeWindow: timeWindowMetadata(from, to),
+        freshness,
+        isEmpty: qualityFacts.length === 0,
+        cache: {
+          hit: false,
+          ttlSeconds: 0,
+        },
+      },
+    };
+  }
+
+  private agentQualityFacts(facts: AnalyticsFactRow[]) {
+    const agentSessionIds = new Set<string>();
+    for (const fact of facts) {
+      const eventName = this.stringDimension(fact.dimensions, "eventName");
+      const sessionId = this.stringDimension(fact.dimensions, "sessionId");
+      if (sessionId && eventName?.startsWith("agent.")) {
+        agentSessionIds.add(sessionId);
+      }
+    }
+
+    return facts.filter((fact) => {
+      const eventName = this.stringDimension(fact.dimensions, "eventName");
+      const source = this.stringDimension(fact.dimensions, "source") ?? "";
+      const sessionId = this.stringDimension(fact.dimensions, "sessionId");
+      return Boolean(
+        eventName?.startsWith("agent.") ||
+          source.startsWith("agent") ||
+          (sessionId && agentSessionIds.has(sessionId)),
+      );
+    });
+  }
+
+  private agentQualityMetric(fact: AnalyticsFactRow): AgentQualityMetric {
+    const eventName = this.stringDimension(fact.dimensions, "eventName");
+    if (eventName === "agent.session_started") return "session_started";
+    if (eventName === "agent.session_stopped") return "session_stopped";
+    if (eventName === "agent.intent_selected") return "intent_selected";
+    if (eventName === "agent.next_pick_requested") {
+      return this.isAcceptedPickFact(fact) ? "accepted_pick" : "next_pick_requested";
+    }
+    if (eventName === "agent.recommendation_selected") return "accepted_pick";
+    if (eventName === "playback.completed") {
+      return this.isFirstPickSkipFact(fact) ? "first_pick_skip" : "playback_completed";
+    }
+    if (eventName === "library.saved") return "save";
+    if (eventName === "playlist.track_added") return "playlist_add";
+    if (
+      eventName === "commerce.settled" ||
+      eventName === "payment.settled" ||
+      eventName === "marketplace.purchase_intent"
+    ) {
+      return "purchase";
+    }
+    return "other";
+  }
+
+  private applyAgentQualityMetric(
+    summary: {
+      sessionsStarted: number;
+      sessionsStopped: number;
+      intentSelections: number;
+      nextPickRequests: number;
+      acceptedPicks: number;
+      playbackCompletions: number;
+      firstPickSkips: number;
+      firstPickOutcomes: number;
+      saves: number;
+      playlistAdds: number;
+      purchases: number;
+      purchaseUsd: number;
+    },
+    dateRow: AgentQualityTimePoint,
+    metric: AgentQualityMetric,
+    count: number,
+    fact: AnalyticsFactRow,
+  ) {
+    if (metric === "session_started") {
+      summary.sessionsStarted += count;
+      dateRow.sessionsStarted += count;
+    }
+    if (metric === "session_stopped") {
+      summary.sessionsStopped += count;
+    }
+    if (metric === "intent_selected") {
+      summary.intentSelections += count;
+    }
+    if (metric === "next_pick_requested" || metric === "accepted_pick") {
+      summary.nextPickRequests += count;
+      dateRow.nextPickRequests += count;
+    }
+    if (metric === "accepted_pick") {
+      summary.acceptedPicks += count;
+      dateRow.acceptedPicks += count;
+    }
+    if (metric === "playback_completed" || metric === "first_pick_skip") {
+      summary.playbackCompletions += count;
+      dateRow.completions += count;
+    }
+    if (metric === "first_pick_skip") {
+      summary.firstPickSkips += count;
+      summary.firstPickOutcomes += count;
+    } else if (this.isFirstPickOutcomeFact(fact)) {
+      summary.firstPickOutcomes += count;
+    }
+    if (metric === "save") {
+      summary.saves += count;
+      dateRow.saves += count;
+    }
+    if (metric === "playlist_add") {
+      summary.playlistAdds += count;
+    }
+    if (metric === "purchase") {
+      summary.purchases += count;
+      summary.purchaseUsd += this.canonicalUsdAmount(fact);
+      dateRow.purchases += count;
+    }
+  }
+
+  private applyAccumulatorMetric(
+    acc: AgentQualityAccumulator,
+    metric: AgentQualityMetric,
+    count: number,
+    fact: AnalyticsFactRow,
+  ) {
+    if (metric === "session_started") acc.sessionsStarted += count;
+    if (metric === "next_pick_requested" || metric === "accepted_pick") acc.nextPickRequests += count;
+    if (metric === "accepted_pick") acc.acceptedPicks += count;
+    if (metric === "playback_completed" || metric === "first_pick_skip") acc.playbackCompletions += count;
+    if (metric === "save") acc.saves += count;
+    if (metric === "playlist_add") acc.playlistAdds += count;
+    if (metric === "purchase") acc.purchases += count;
+    const durationMs = this.numberDimension(fact.dimensions, "sessionDurationMs");
+    if (metric === "session_stopped" && durationMs !== undefined) {
+      acc.sessionDurationsMs.push(durationMs);
+    }
+  }
+
+  private finalizeBreakdowns(map: Map<string, AgentQualityAccumulator>): AgentQualityBreakdown[] {
+    return [...map.values()]
+      .map((acc) => ({
+        key: acc.key,
+        label: acc.label,
+        sessionsStarted: acc.sessionsStarted,
+        nextPickRequests: acc.nextPickRequests,
+        acceptedPicks: acc.acceptedPicks,
+        acceptanceRate: ratio(acc.acceptedPicks, acc.nextPickRequests),
+        completionRate: ratio(acc.playbackCompletions, acc.acceptedPicks),
+        saveRate: ratio(acc.saves, acc.acceptedPicks),
+        purchaseRate: ratio(acc.purchases, acc.acceptedPicks),
+        averageSessionDurationMs: averageOrNull(acc.sessionDurationsMs),
+      }))
+      .filter(
+        (row) =>
+          row.sessionsStarted > 0 ||
+          row.nextPickRequests > 0 ||
+          row.acceptedPicks > 0 ||
+          row.completionRate > 0 ||
+          row.saveRate > 0 ||
+          row.purchaseRate > 0 ||
+          row.averageSessionDurationMs !== null,
+      )
+      .sort(
+        (left, right) =>
+          right.nextPickRequests - left.nextPickRequests ||
+          right.sessionsStarted - left.sessionsStarted ||
+          left.label.localeCompare(right.label),
+      )
+      .slice(0, 20);
+  }
+
+  private accumulatorFor(map: Map<string, AgentQualityAccumulator>, key: string, label: string) {
+    const existing = map.get(key);
+    if (existing) {
+      return existing;
+    }
+    const acc: AgentQualityAccumulator = {
+      key,
+      label,
+      sessionsStarted: 0,
+      nextPickRequests: 0,
+      acceptedPicks: 0,
+      playbackCompletions: 0,
+      saves: 0,
+      playlistAdds: 0,
+      purchases: 0,
+      sessionDurationsMs: [],
+    };
+    map.set(key, acc);
+    return acc;
+  }
+
+  private isAcceptedPickFact(fact: AnalyticsFactRow) {
+    const status = this.stringDimension(fact.dimensions, "status");
+    const trackId = this.stringDimension(fact.dimensions, "trackId") ?? fact.trackId;
+    return status === "ok" && Boolean(trackId);
+  }
+
+  private isFirstPickSkipFact(fact: AnalyticsFactRow) {
+    const completionRatio = this.numberDimension(fact.dimensions, "completionRatio");
+    return this.isFirstPickOutcomeFact(fact) && completionRatio !== undefined && completionRatio < 0.3;
+  }
+
+  private isFirstPickOutcomeFact(fact: AnalyticsFactRow) {
+    const firstPick = fact.dimensions.firstPick;
+    const queueIndex = this.numberDimension(fact.dimensions, "queueIndex");
+    return firstPick === true || queueIndex === 0;
+  }
+
+  private intentKey(fact: AnalyticsFactRow) {
+    return this.stringDimension(fact.dimensions, "intent") ?? "unattributed";
+  }
+
+  private intentLabel(fact: AnalyticsFactRow) {
+    return this.stringDimension(fact.dimensions, "intentName") ?? titleLabel(this.intentKey(fact));
+  }
+
+  private strategyKey(fact: AnalyticsFactRow) {
+    return this.stringDimension(fact.dimensions, "strategy") ?? this.stringDimension(fact.dimensions, "runtimeStatus") ?? "unattributed";
+  }
+
+  private strategyLabel(fact: AnalyticsFactRow) {
+    return titleLabel(this.strategyKey(fact));
+  }
+
+  private tasteSourceKey(fact: AnalyticsFactRow) {
+    return this.stringDimension(fact.dimensions, "tasteSignalSource") ?? "deterministic";
+  }
+
+  private tasteSourceLabel(fact: AnalyticsFactRow) {
+    return titleLabel(this.tasteSourceKey(fact));
+  }
+
+  private versionKey(fact: AnalyticsFactRow) {
+    return (
+      this.stringDimension(fact.dimensions, "modelVersion") ??
+      this.stringDimension(fact.dimensions, "materializationVersion") ??
+      "unversioned"
+    );
+  }
+
+  private versionLabel(fact: AnalyticsFactRow) {
+    return this.versionKey(fact);
   }
 
   private async listArtistData(artistId: string, days: number): Promise<ArtistAnalyticsData> {
@@ -247,7 +672,7 @@ export class AnalyticsService {
       (view) =>
         view.artistId === artistId &&
         new Date(`${view.date}T00:00:00.000Z`).getTime() >= startOfUtcDate(from).getTime() &&
-        new Date(`${view.date}T00:00:00.000Z`).getTime() < startOfUtcDate(to).getTime(),
+        new Date(`${view.date}T00:00:00.000Z`).getTime() < dailyViewExclusiveEndDate(to).getTime(),
     );
     const freshness = this.freshnessFromFacts(facts, to);
     return {
@@ -326,18 +751,7 @@ export class AnalyticsService {
     return this.stringDimension(fact.dimensions, "title") ?? fact.catalogTrack?.title ?? "Unknown Track";
   }
 
-  private playsOverTime(views: AnalyticsViewRow[], facts: AnalyticsFactRow[]): PlaysOverTimeStats[] {
-    if (views.length > 0) {
-      const byDate = new Map<string, PlaysOverTimeStats>();
-      for (const view of views) {
-        const row = byDate.get(view.date) ?? { date: view.date, plays: 0, payoutUsd: 0 };
-        row.plays += view.playCount;
-        row.payoutUsd += view.payoutUsd;
-        byDate.set(view.date, row);
-      }
-      return [...byDate.values()].sort((left, right) => left.date.localeCompare(right.date));
-    }
-
+  private playsOverTime(facts: AnalyticsFactRow[]): PlaysOverTimeStats[] {
     const byDate = new Map<string, PlaysOverTimeStats>();
     for (const fact of facts) {
       const eventName = this.stringDimension(fact.dimensions, "eventName");
@@ -497,4 +911,37 @@ export class AnalyticsService {
 
 function startOfUtcDate(value: Date) {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+}
+
+function dailyViewExclusiveEndDate(value: Date) {
+  const start = startOfUtcDate(value);
+  return value.getTime() === start.getTime() ? start : new Date(start.getTime() + 24 * 60 * 60 * 1000);
+}
+
+function ratio(numerator: number, denominator: number) {
+  if (denominator <= 0) {
+    return 0;
+  }
+  return Number((numerator / denominator).toFixed(4));
+}
+
+function averageOrNull(values: number[]) {
+  if (values.length === 0) {
+    return null;
+  }
+  return Math.round(values.reduce((total, value) => total + value, 0) / values.length);
+}
+
+function titleLabel(value: string) {
+  if (value === "unattributed") {
+    return "Unattributed";
+  }
+  if (value === "unversioned") {
+    return "Unversioned";
+  }
+  return value
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
 }

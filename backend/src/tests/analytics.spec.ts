@@ -8,15 +8,16 @@ describe("analytics", () => {
   it("aggregates plays and payouts by artist", async () => {
     const ingest = new AnalyticsIngestService();
     const analytics = new AnalyticsService(ingest);
+    const occurredAt = new Date(Date.now() - 60_000).toISOString();
 
     await ingest.ingest({
       eventName: "license.granted",
-      occurredAt: "2026-05-20T08:00:00.000Z",
+      occurredAt,
       payload: { artistId: "artist-1", trackId: "track-1", title: "Neon Drift" },
     });
     await ingest.ingest({
       eventName: "payment.settled",
-      occurredAt: "2026-05-20T08:01:00.000Z",
+      occurredAt,
       payload: {
         artistId: "artist-1",
         trackId: "track-1",
@@ -265,6 +266,152 @@ describe("analytics", () => {
     });
   });
 
+  it("builds aggregate AI DJ recommendation quality metrics without user drilldowns", async () => {
+    const ingest = new AnalyticsIngestService();
+    const analytics = new AnalyticsService(ingest);
+    const base = Date.now() - 60_000;
+    const at = (offsetMs: number) => new Date(base + offsetMs).toISOString();
+
+    await ingest.ingest({
+      eventName: "agent.intent_selected",
+      occurredAt: at(0),
+      subjectType: "agent_config",
+      subjectId: "agent-config-1",
+      payload: {
+        source: "agent_session_intent_panel",
+        intent: "focus",
+        intentName: "Neural Flow",
+        mood: "focused",
+        tasteSignalSource: "bigquery",
+        materializationVersion: "baseline/v1",
+      },
+    });
+    await ingest.ingest({
+      eventName: "agent.session_started",
+      occurredAt: at(1_000),
+      sessionId: "agent-session-1",
+      subjectType: "agent_session",
+      subjectId: "agent-session-1",
+      payload: {
+        source: "agent_session_intent_panel",
+        intent: "focus",
+        intentName: "Neural Flow",
+        strategy: "model-assisted",
+        tasteSignalSource: "bigquery",
+        materializationVersion: "baseline/v1",
+      },
+    });
+    await ingest.ingest({
+      eventName: "agent.next_pick_requested",
+      occurredAt: at(2_000),
+      sessionId: "agent-session-1",
+      subjectType: "agent_session",
+      subjectId: "agent-session-1",
+      payload: {
+        source: "agent_next_pick_card",
+        status: "ok",
+        trackId: "track-agent-1",
+        intent: "focus",
+        intentName: "Neural Flow",
+        strategy: "model-assisted",
+        tasteSignalSource: "bigquery",
+        materializationVersion: "baseline/v1",
+      },
+    });
+    await ingest.ingest({
+      eventName: "playback.completed",
+      occurredAt: at(3_000),
+      sessionId: "agent-session-1",
+      subjectType: "track",
+      subjectId: "track-agent-1",
+      payload: {
+        source: "agent_queue",
+        artistId: "artist-agent",
+        trackId: "track-agent-1",
+        completionRatio: 0.92,
+        firstPick: true,
+      },
+    });
+    await ingest.ingest({
+      eventName: "library.saved",
+      occurredAt: at(4_000),
+      sessionId: "agent-session-1",
+      subjectType: "track",
+      subjectId: "track-agent-1",
+      payload: {
+        source: "agent_queue",
+        trackId: "track-agent-1",
+      },
+    });
+    await ingest.ingest({
+      eventName: "commerce.settled",
+      occurredAt: at(5_000),
+      sessionId: "agent-session-1",
+      subjectType: "track",
+      subjectId: "track-agent-1",
+      payload: {
+        source: "agent_purchase",
+        trackId: "track-agent-1",
+        canonicalAmountUsd: 2.5,
+      },
+    });
+    await ingest.ingest({
+      eventName: "agent.session_stopped",
+      occurredAt: at(6_000),
+      sessionId: "agent-session-1",
+      subjectType: "agent_session",
+      subjectId: "agent-session-1",
+      payload: {
+        source: "agent_command_bar",
+        intent: "focus",
+        intentName: "Neural Flow",
+        sessionDurationMs: 180000,
+      },
+    });
+    await ingest.ingest({
+      eventName: "playback.completed",
+      occurredAt: at(7_000),
+      subjectType: "track",
+      subjectId: "track-unrelated",
+      payload: {
+        source: "web_player",
+        artistId: "artist-unrelated",
+        trackId: "track-unrelated",
+        completionRatio: 1,
+      },
+    });
+
+    const result = await analytics.getAgentQualityDashboard(7);
+
+    expect(result.summary.sessionsStarted).toBe(1);
+    expect(result.summary.nextPickRequests).toBe(1);
+    expect(result.summary.acceptedPicks).toBe(1);
+    expect(result.summary.acceptanceRate).toBe(1);
+    expect(result.summary.playbackCompletions).toBe(1);
+    expect(result.summary.saves).toBe(1);
+    expect(result.summary.purchases).toBe(1);
+    expect(result.summary.purchaseUsd).toBe(2.5);
+    expect(result.summary.averageSessionDurationMs).toBe(180000);
+    expect(result.intentBreakdown[0]).toEqual(
+      expect.objectContaining({
+        key: "focus",
+        label: "Neural Flow",
+        acceptanceRate: 1,
+      }),
+    );
+    expect(result.tasteSourceBreakdown[0]).toEqual(
+      expect.objectContaining({
+        key: "bigquery",
+      }),
+    );
+    expect(result.versionBreakdown[0]).toEqual(
+      expect.objectContaining({
+        key: "baseline/v1",
+      }),
+    );
+    expect(result.privacy.excludes).toContain("actor ids");
+  });
+
   it("aggregates dashboard metrics from a BigQuery-backed report source", async () => {
     const ingest = new AnalyticsIngestService();
     const reportSource: ArtistAnalyticsReportSource = {
@@ -284,6 +431,22 @@ describe("analytics", () => {
                 eventName: "playback.completed",
                 title: "Warehouse Signal",
                 sessionId: "session-bq",
+                source: "web",
+              },
+            },
+            {
+              factId: "fact_play_2",
+              factType: "playback_event",
+              eventId: "evt_play_2",
+              occurredAt: "2026-05-20T10:00:30.000Z",
+              occurredDate: "2026-05-20",
+              artistId: "artist-bq",
+              trackId: "track-bq",
+              count: 1,
+              dimensions: {
+                eventName: "playback.completed",
+                title: "Warehouse Signal",
+                sessionId: "session-bq-2",
                 source: "web",
               },
             },
@@ -373,17 +536,17 @@ describe("analytics", () => {
 
     const result = await analytics.getArtistDashboard("artist-bq", 30);
 
-    expect(result.summary.totalPlays).toBe(1);
+    expect(result.summary.totalPlays).toBe(2);
     expect(result.summary.totalPayoutUsd).toBe(4.5);
     expect(result.topTracks[0]).toEqual(
       expect.objectContaining({
         trackId: "track-bq",
         title: "Warehouse Signal",
-        plays: 1,
+        plays: 2,
         payoutUsd: 4.5,
       }),
     );
-    expect(result.playsOverTime).toEqual([{ date: "2026-05-20", plays: 1, payoutUsd: 4.5 }]);
+    expect(result.playsOverTime).toEqual([{ date: "2026-05-20", plays: 2, payoutUsd: 4.5 }]);
     expect(result.trackPerformance[0].payoutsByAsset[0]).toEqual(
       expect.objectContaining({
         symbol: "USDC",

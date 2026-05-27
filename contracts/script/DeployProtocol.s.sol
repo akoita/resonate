@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Script, console} from "forge-std/Script.sol";
+import {console} from "forge-std/Script.sol";
 import {StemNFT} from "../src/core/StemNFT.sol";
 import {StemMarketplaceV2} from "../src/core/StemMarketplaceV2.sol";
 import {ContentProtection} from "../src/core/ContentProtection.sol";
@@ -12,6 +12,7 @@ import {TransferValidator} from "../src/modules/TransferValidator.sol";
 import {PaymentAssetRegistry} from "../src/payments/PaymentAssetRegistry.sol";
 import {ChainlinkPriceOracleAdapter} from "../src/payments/ChainlinkPriceOracleAdapter.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {DeploymentKey} from "./DeploymentKey.s.sol";
 
 /**
  * @title DeployProtocol
@@ -30,14 +31,13 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
  * Run:
  *   forge script script/DeployProtocol.s.sol --rpc-url $RPC_URL --broadcast --verify
  */
-contract DeployProtocol is Script {
+contract DeployProtocol is DeploymentKey {
     bytes32 private constant BASE_SEPOLIA_ETH = keccak256("base-sepolia:eth");
     bytes32 private constant BASE_SEPOLIA_USDC = keccak256("base-sepolia:usdc");
     bytes32 private constant BASE_SEPOLIA_WETH = keccak256("base-sepolia:weth");
 
     function run() external {
-        uint256 deployerKey =
-            vm.envOr("PRIVATE_KEY", uint256(0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80));
+        uint256 deployerKey = _deploymentPrivateKey();
         address deployer = vm.addr(deployerKey);
 
         // Config

@@ -527,6 +527,64 @@ export type ArtistAnalyticsDashboard = {
   meta: ArtistAnalyticsMeta;
 };
 
+export type AgentQualityBreakdown = {
+  key: string;
+  label: string;
+  sessionsStarted: number;
+  nextPickRequests: number;
+  acceptedPicks: number;
+  acceptanceRate: number;
+  completionRate: number;
+  saveRate: number;
+  purchaseRate: number;
+  averageSessionDurationMs: number | null;
+};
+
+export type AgentQualityTimePoint = {
+  date: string;
+  sessionsStarted: number;
+  nextPickRequests: number;
+  acceptedPicks: number;
+  completions: number;
+  saves: number;
+  purchases: number;
+};
+
+export type AgentQualityDashboard = {
+  summary: {
+    days: number;
+    sessionsStarted: number;
+    sessionsStopped: number;
+    intentSelections: number;
+    nextPickRequests: number;
+    acceptedPicks: number;
+    playbackCompletions: number;
+    firstPickSkips: number;
+    firstPickOutcomes: number;
+    saves: number;
+    playlistAdds: number;
+    purchases: number;
+    purchaseUsd: number;
+    averageSessionDurationMs: number | null;
+    acceptanceRate: number;
+    firstPickSkipRate: number;
+    completionRate: number;
+    saveRate: number;
+    playlistAddRate: number;
+    purchaseRate: number;
+  };
+  intentBreakdown: AgentQualityBreakdown[];
+  strategyBreakdown: AgentQualityBreakdown[];
+  tasteSourceBreakdown: AgentQualityBreakdown[];
+  versionBreakdown: AgentQualityBreakdown[];
+  qualityOverTime: AgentQualityTimePoint[];
+  privacy: {
+    aggregation: string;
+    excludes: string[];
+  };
+  meta: ArtistAnalyticsMeta;
+};
+
 export async function getArtistMe(token: string) {
   const isMockAuth = (typeof window !== "undefined" && localStorage.getItem("resonate.mock_auth") === "true") || process.env.NEXT_PUBLIC_MOCK_AUTH === "true";
 
@@ -554,6 +612,18 @@ export async function getArtistAnalyticsDashboard(
   );
 }
 
+export async function getAgentQualityDashboard(
+  token: string,
+  days = 30,
+) {
+  const search = new URLSearchParams({ days: String(days) });
+  return apiRequest<AgentQualityDashboard>(
+    `/analytics/agent/quality?${search.toString()}`,
+    { cache: "no-store" },
+    token,
+  );
+}
+
 export type PlaybackCompletedAnalyticsInput = {
   trackId: string;
   artistId?: string;
@@ -570,6 +640,62 @@ export async function recordPlaybackCompleted(
 ) {
   return apiRequest<{ status: string; eventId: string; ingested: number }>(
     "/analytics/playback/completed",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export type PlaybackLifecycleAnalyticsInput = {
+  action: "started" | "heartbeat";
+  trackId: string;
+  artistId?: string;
+  releaseId?: string;
+  sessionId?: string;
+  playbackInstanceId?: string;
+  source?: string;
+  positionMs?: number;
+  durationMs?: number;
+  heartbeatIntervalMs?: number;
+  queueIndex?: number;
+  queueLength?: number;
+  repeatMode?: "none" | "one" | "all";
+  shuffle?: boolean;
+};
+
+export async function recordPlaybackEvent(
+  token: string,
+  input: PlaybackLifecycleAnalyticsInput,
+) {
+  return apiRequest<{ status: string; eventId: string; ingested: number }>(
+    "/analytics/playback/event",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export type ProductAnalyticsInput = {
+  eventName: string;
+  sessionId?: string;
+  traceId?: string;
+  subjectType?: string;
+  subjectId?: string;
+  source?: string;
+  clientEventId?: string;
+  payload?: Record<string, unknown>;
+};
+
+export async function recordProductAnalyticsEvent(
+  token: string,
+  input: ProductAnalyticsInput,
+) {
+  return apiRequest<{ status: string; eventId: string; ingested: number }>(
+    "/analytics/product/event",
     {
       method: "POST",
       body: JSON.stringify(input),
@@ -1765,7 +1891,7 @@ export async function recordAgentSignal(
   token: string,
   input: {
     trackId: string;
-    action: "accept" | "skip" | "replay" | "add_to_playlist" | "purchase";
+    action: "accept" | "skip" | "complete" | "save" | "replay" | "add_to_playlist" | "purchase";
     sessionId?: string;
     metadata?: Record<string, unknown>;
   }
@@ -1777,10 +1903,13 @@ export async function recordAgentSignal(
   );
 }
 
-export async function startAgentSession(token: string): Promise<{ status: string; sessionId?: string }> {
+export async function startAgentSession(
+  token: string,
+  input?: { preferences?: AgentNextPreferences },
+): Promise<{ status: string; sessionId?: string }> {
   return apiRequest<{ status: string; sessionId?: string }>(
     "/agents/config/session",
-    { method: "POST" },
+    { method: "POST", body: JSON.stringify(input ?? {}) },
     token
   );
 }
@@ -1851,6 +1980,10 @@ export type AgentNextPreferences = {
   genres?: string[];
   allowExplicit?: boolean;
   licenseType?: "personal" | "remix" | "commercial";
+  sessionIntent?: string;
+  sessionIntentName?: string;
+  queueStyle?: string;
+  source?: string;
 };
 
 export type AgentNextPickResponse = {

@@ -46,6 +46,12 @@ Useful app-local targets that still live here:
 
 ## Contract Deployment
 
+All Forge deployment scripts fail closed on non-local chains when `PRIVATE_KEY`
+is unset. The first Anvil private key is allowed only on local chain IDs
+`31337` and `1337`. To use that default key against any other RPC, an operator
+must set `ALLOW_DEFAULT_ANVIL_PRIVATE_KEY=true` explicitly; do this only for
+throwaway forks or disposable test environments.
+
 ### Deploy protocol contracts to Sepolia
 
 ```bash
@@ -104,6 +110,137 @@ payout address, and any service-specific secrets there. The handoff keeps
 `NEXT_PUBLIC_CHAIN_ID=84532` and `X402_NETWORK=eip155:84532` together so x402
 challenges, recorded purchase events, and frontend wallet state all refer to
 the same chain.
+
+### ShowCampaignEscrow deployment handoff
+
+`make deploy-show-campaign-escrow` deploys the standalone Shows escrow and then
+runs
+[`contracts/scripts/write-show-campaign-escrow-handoff.sh`](../../contracts/scripts/write-show-campaign-escrow-handoff.sh).
+That parser turns the Foundry broadcast into:
+
+- `contracts/deployments/show-campaign-escrow.<network>.json`
+- `contracts/deployments/show-campaign-escrow.<network>.remote.env`
+- `contracts/deployments/show-campaign-escrow.abi.json`
+
+The `.remote.env` file contains only non-secret app configuration:
+
+```bash
+NEXT_PUBLIC_CHAIN_ID=<chain-id>
+SHOW_CAMPAIGN_ESCROW_ADDRESS=<deployed-escrow>
+NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS=<deployed-escrow>
+```
+
+Promote those values through the reviewed `resonate-iac`/GCP environment path
+instead of copying console output into Cloud Run or GitHub variables by hand.
+The backend still links individual campaigns with `contractAddress` and
+`contractCampaignId`; the global escrow address is the deployment/runtime
+default used by operators and future reconciliation jobs.
+
+Frontend publish CI can validate a promoted escrow address by setting
+`FRONTEND_SHOW_CAMPAIGN_DEPLOYMENT_ENV_FILE` to the reviewed handoff file before
+running `.github/scripts/export-frontend-build-args.sh`. When that file is
+provided, `NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS` must match it exactly.
+
+Deployment handoffs are now the expected standard for every address-bearing
+contract deployment. Existing paths that only upload raw Foundry broadcasts
+should be upgraded to emit a reviewed JSON record, a non-secret remote env
+handoff, and ABI metadata before downstream automation depends on them.
+
+### GitHub Actions contract deployment
+
+Manual smart-contract deployment is available in
+`.github/workflows/contracts-deploy.yml` as **Smart Contract Deployment**.
+It intentionally runs only through `workflow_dispatch`; no push, pull request,
+or repository-dispatch event can deploy contracts.
+
+Recommended operator flow:
+
+1. Open **Actions -> Smart Contract Deployment**.
+2. Select `environment=staging` or `environment=dev`.
+3. Select `target_network=base-sepolia` for the normal staging path.
+4. Run `operation=preflight` first. This builds/tests contracts, checks the RPC
+   chain ID, derives the deployer address from the private key, and verifies the
+   deployer has at least `0.01 ETH`.
+5. Run the narrowest operation that matches the lifecycle you are changing,
+   only after preflight passes and the selected GitHub environment approval is
+   granted.
+6. For Base Sepolia verification retries, run `verify-base-sepolia` or
+   `verify-base-sepolia-sourcify`.
+
+Deployment operations:
+
+| Operation | Lifecycle | Redeploy/update behavior | Reference updates required |
+| --- | --- | --- | --- |
+| `deploy-protocol` | Full marketplace/music-rights protocol graph | Deploys `TransferValidator`, `ContentProtection` proxy, `DisputeResolution`, `CurationRewards`, `RevenueEscrow`, `StemNFT`, `PaymentAssetRegistry`, and `StemMarketplaceV2` together | Script links `StemNFT -> TransferValidator`, `StemNFT -> ContentProtection`, `TransferValidator -> ContentProtection`, `RevenueEscrow -> ContentProtection`, and grants `ContentProtection` registrar access to `StemNFT` and marketplace |
+| `deploy-content-protection` | Phase-2 add-on for an existing `StemNFT` + `TransferValidator` deployment | Deploys a new `ContentProtection` proxy and `RevenueEscrow` without replacing `StemNFT` or marketplace | Requires `STEM_NFT_ADDRESS` and `TRANSFER_VALIDATOR_ADDRESS`; script grants the new `ContentProtection` registrar access to `StemNFT`, optionally grants the existing marketplace when `MARKETPLACE_ADDRESS` is set, updates existing `StemNFT`/`TransferValidator` references, and links `RevenueEscrow -> ContentProtection` |
+| `upgrade-content-protection` | UUPS implementation upgrade | Keeps the same `ContentProtection` proxy address; deploys a new implementation and calls the configured reinitializer | Requires `CONTENT_PROTECTION_PROXY`; downstream contract references do not change because the proxy address is stable |
+| `set-content-protection-stake` | Policy/config update | No redeploy; updates stake amount for an ERC-20 asset | Requires `CONTENT_PROTECTION_ADDRESS` plus `STAKE_ASSET_ADDRESS` or `PAYMENT_USDC_ADDRESS`; no contract reference changes |
+| `deploy-show-campaign-escrow` | Resonate Shows campaign escrow | Deploys standalone `ShowCampaignEscrow` with owner from `SHOW_CAMPAIGN_ESCROW_OWNER` or deployer, then writes JSON, `.remote.env`, and ABI handoffs | No existing protocol contract references need updating today; promote `SHOW_CAMPAIGN_ESCROW_ADDRESS` / `NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS` through `resonate-iac` before live pledge execution |
+| `verify-base-sepolia` | BaseScan/Etherscan verification retry | No deploy | Reads the selected broadcast file |
+| `verify-base-sepolia-sourcify` | Sourcify verification retry | No deploy | Reads the selected broadcast file |
+
+Use a full graph deployment when constructor immutables or tightly coupled
+addresses change. Use the narrower operation when the existing address graph can
+remain valid or the script explicitly rewires the affected references. Do not
+redeploy an address-bearing dependency without also running or documenting the
+required downstream setter calls.
+
+Expected GitHub environments:
+
+| Environment | Purpose |
+| --- | --- |
+| `contracts-dev` | Testnet/dev contract deployment experiments |
+| `contracts-staging` | Base Sepolia staging deployment |
+
+Required GitHub environment secrets:
+
+| Secret | Required for | Notes |
+| --- | --- | --- |
+| `CONTRACT_DEPLOYER_PRIVATE_KEY` | `preflight`, deploy/update operations | Preferred deployer key name. The workflow also accepts legacy `PRIVATE_KEY`, but new environments should use `CONTRACT_DEPLOYER_PRIVATE_KEY`. |
+| `BASE_SEPOLIA_RPC_URL` | Base Sepolia `preflight`, `deploy-protocol`, BaseScan verify | May be a secret when the RPC provider URL is paid, rate-limited, or account-scoped. |
+| `SEPOLIA_RPC_URL` | Sepolia `preflight`, `deploy-protocol` | May be a secret for provider/account privacy. |
+| `ETHERSCAN_API_KEY` | Optional BaseScan/Etherscan verification | Etherscan API v2 key with Base Sepolia support. |
+| `BASESCAN_API_KEY` | Optional BaseScan verification | Backward-compatible alias used by existing scripts. Prefer `ETHERSCAN_API_KEY`. |
+
+Optional GitHub environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `VERIFY_CONTRACTS` | Usually set from the workflow input. `auto` verifies when an explorer API key is present. |
+| `BROADCAST_FILE` | Override the broadcast JSON used by verification retry jobs. |
+| `BASESCAN_API_URL` | Override the BaseScan/Etherscan verification API URL. |
+| `VERIFY_RETRIES`, `VERIFY_DELAY_SECONDS` | Tune BaseScan verification retry behavior. |
+| `SOURCIFY_API_URL`, `SOURCIFY_RETRIES`, `SOURCIFY_DELAY_SECONDS` | Tune Sourcify verification retry behavior. |
+| `X402_FACILITATOR_URL` | Written into the Base Sepolia remote environment handoff. |
+| `PAYMENT_USDC_ADDRESS`, `PAYMENT_WETH_ADDRESS`, `PAYMENT_ENABLE_WETH` | Optional payment registry deployment inputs. |
+| `PAYMENT_REGISTRY_ADMIN` | Optional payment registry admin override. |
+| `PAYMENT_ETH_USD_FEED`, `PAYMENT_USDC_USD_FEED`, `PAYMENT_ORACLE_MAX_STALENESS` | Optional oracle deployment inputs. |
+| `STEM_NFT_ADDRESS`, `MARKETPLACE_ADDRESS`, `TRANSFER_VALIDATOR_ADDRESS`, `EXISTING_ADMIN` | Required/optional inputs for `deploy-content-protection`. `MARKETPLACE_ADDRESS` should be set when an existing marketplace must register protected content. `EXISTING_ADMIN` is only for local/fork impersonation-style workflows; real testnet runs must be signed by the admin. |
+| `CONTENT_PROTECTION_PROXY` | Required for `upgrade-content-protection`. |
+| `CONTENT_PROTECTION_ADDRESS`, `STAKE_ASSET_ADDRESS`, `STAKE_ASSET_AMOUNT`, `STAKE_ASSET_SYMBOL` | Inputs for `set-content-protection-stake`. |
+| `SHOW_CAMPAIGN_ESCROW_OWNER` | Optional owner/ops multisig for `deploy-show-campaign-escrow`; defaults to the deployer. |
+
+Security guidance:
+
+- Keep this workflow manual-only and environment-protected.
+- Require at least one reviewer on `contracts-staging`.
+- Restrict `contracts-staging` to trusted branches such as `main` and merge
+  queue branches.
+- Do not allow unreviewed workflow edits to reach branches that can deploy.
+- Do not print private keys or write them to files; the workflow passes them
+  only through environment variables consumed by Foundry scripts.
+- Do not set `ALLOW_DEFAULT_ANVIL_PRIVATE_KEY` in GitHub environments. It is
+  reserved for local/fork commands that explicitly target `localhost`.
+- Treat deployment artifacts as public operational metadata. They should not
+  contain secrets.
+
+The workflow can live in this repository with acceptable risk because the
+secret boundary is the protected GitHub environment, not the YAML file itself.
+Moving contract deployment to private `resonate-iac` is stronger operational
+separation and is preferable if deployment authority should be held by a
+smaller group than code authors, or if production/mainnet keys are introduced.
+For the current testnet/staging flow, keeping the workflow beside the contract
+code is simpler and avoids drift, provided the protections above are enabled.
 
 ### Refresh local contract config
 
@@ -214,6 +351,8 @@ Required deployable GitHub environment variables in `resonate`:
 - `NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS`
 - `NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS`
 - `NEXT_PUBLIC_CURATION_REWARDS_ADDRESS`
+- `NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS` when the deployed frontend should
+  expose the default Shows escrow address
 
 The receiver-side contract and deploy execution live in `resonate-iac`.
 

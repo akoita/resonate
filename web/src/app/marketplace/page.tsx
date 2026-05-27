@@ -9,6 +9,7 @@ import { useToast } from "../../components/ui/Toast";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { useZeroDev } from "../../components/auth/ZeroDevProviderClient";
 import { API_BASE, getReleaseArtworkUrl } from "../../lib/api";
+import { recordProductAnalytics } from "../../lib/productAnalytics";
 import {
     findPaymentAssetForToken,
     formatPaymentAmount,
@@ -147,6 +148,7 @@ export default function MarketplacePage() {
     const [buyModalListing, setBuyModalListing] = useState<{ listingId: string; stemId: string; licenseType: LicenseType } | null>(null);
     const [hasStaleData, setHasStaleData] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const lastSearchAnalyticsKeyRef = useRef<string | null>(null);
 
     // Auto-hide the sticky filter bar on scroll-down (phone only).
     // On narrow viewports the bar occupies ~40-50% of the visible
@@ -178,7 +180,7 @@ export default function MarketplacePage() {
 
     const { pending: buyPending } = useBuyStem();
     const { addToast } = useToast();
-    const { address: walletAddress, smartAccountAddress } = useAuth();
+    const { address: walletAddress, smartAccountAddress, token } = useAuth();
     const { chainId } = useZeroDev();
     const { assets: paymentAssets } = usePaymentAssets(chainId);
 
@@ -253,6 +255,32 @@ export default function MarketplacePage() {
         fetchListings(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [debouncedSearch, sortBy, hideOwnListings, signerAddress]);
+
+    useEffect(() => {
+        const normalized = debouncedSearch.trim();
+        if (!normalized) return;
+        const analyticsKey = JSON.stringify({
+            q: normalized,
+            stemType,
+            selectedGenre,
+            selectedArtist,
+            sortBy,
+        });
+        if (lastSearchAnalyticsKeyRef.current === analyticsKey) return;
+        lastSearchAnalyticsKeyRef.current = analyticsKey;
+        void recordProductAnalytics(token, "search.submitted", {
+            source: "marketplace",
+            subjectType: "marketplace_listing",
+            payload: {
+                surface: "marketplace",
+                queryLength: normalized.length,
+                hasStemTypeFilter: stemType !== "all",
+                hasGenreFilter: selectedGenre !== "all",
+                hasArtistFilter: selectedArtist !== "all",
+                sortBy,
+            },
+        });
+    }, [debouncedSearch, selectedArtist, selectedGenre, sortBy, stemType, token]);
 
     // ---- Fetch batch pricing for license badges ----
     const batchStemIdsKey = useMemo(() => {
@@ -412,6 +440,52 @@ export default function MarketplacePage() {
         setSelectedArtist("all");
         setSearch("");
         setHideOwnListings(true);
+    };
+
+    const openBuyModal = (listing: ListingData) => {
+        void recordProductAnalytics(token, "marketplace.listing_viewed", {
+            source: "marketplace_grid",
+            subjectType: "marketplace_listing",
+            subjectId: listing.listingId,
+            payload: {
+                listingId: listing.listingId,
+                stemId: listing.stem?.id,
+                releaseId: listing.stem?.releaseId,
+                licenseType: listing.licenseType ?? "personal",
+                surface: "marketplace",
+                fromSearch: Boolean(debouncedSearch.trim()),
+            },
+        });
+        void recordProductAnalytics(token, "marketplace.checkout_started", {
+            source: "marketplace_grid",
+            subjectType: "marketplace_listing",
+            subjectId: listing.listingId,
+            payload: {
+                listingId: listing.listingId,
+                stemId: listing.stem?.id,
+                licenseType: listing.licenseType ?? "personal",
+                surface: "marketplace",
+            },
+        });
+        if (debouncedSearch.trim()) {
+            void recordProductAnalytics(token, "search.result_clicked", {
+                source: "marketplace",
+                subjectType: listing.stem?.id ? "stem" : "marketplace_listing",
+                subjectId: listing.stem?.id || listing.listingId,
+                payload: {
+                    surface: "marketplace",
+                    resultType: "marketplace_listing",
+                    listingId: listing.listingId,
+                    stemId: listing.stem?.id,
+                    resultRank: filteredListings.findIndex((item) => item.listingId === listing.listingId) + 1,
+                },
+            });
+        }
+        setBuyModalListing({
+            listingId: listing.listingId,
+            stemId: listing.stem?.id || "",
+            licenseType: listing.licenseType ?? "personal",
+        });
     };
 
     // ---- Render ----
@@ -693,11 +767,7 @@ export default function MarketplacePage() {
                                         ) : (
                                             <button
                                                 className="stem-card__buy"
-                                                onClick={() => setBuyModalListing({
-                                                    listingId: listing.listingId,
-                                                    stemId: listing.stem?.id || "",
-                                                    licenseType: listing.licenseType ?? "personal",
-                                                })}
+                                                onClick={() => openBuyModal(listing)}
                                                 disabled={buyPending}
                                             >
                                                 Buy

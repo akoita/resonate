@@ -1,0 +1,53 @@
+js {
+  const cfg = require("includes/agent_taste_config");
+}
+
+config {
+  type: "table",
+  name: "track_intelligence_features",
+  tags: ["agent_taste", "baseline"]
+}
+
+WITH track_events AS (
+  SELECT
+    COALESCE(
+      CAST(trackId AS STRING),
+      JSON_VALUE(payload, '$.trackId')
+    ) AS track_id,
+    eventName AS event_name,
+    occurredAt AS occurred_at,
+    SAFE_CAST(canonicalAmountUsd AS FLOAT64) AS canonical_amount_usd,
+    SAFE_CAST(JSON_VALUE(payload, '$.completionRatio') AS FLOAT64) AS completion_ratio,
+    SAFE_CAST(JSON_VALUE(payload, '$.durationSeconds') AS FLOAT64) AS duration_seconds,
+    SAFE_CAST(JSON_VALUE(payload, '$.listenSeconds') AS FLOAT64) AS listen_seconds,
+    SAFE_CAST(JSON_VALUE(payload, '$.heartbeatSeconds') AS FLOAT64) AS heartbeat_seconds,
+    SAFE_CAST(JSON_VALUE(payload, '$.positionSeconds') AS FLOAT64) AS position_seconds,
+    source
+  FROM ${cfg.cleanTableRef(dataform.projectConfig)}
+  WHERE COALESCE(CAST(trackId AS STRING), JSON_VALUE(payload, '$.trackId')) IS NOT NULL
+)
+SELECT
+  track_id,
+  COUNT(*) AS interaction_events,
+  COUNTIF(event_name = 'playback.started') AS playback_start_events,
+  COUNTIF(event_name = 'playback.heartbeat') AS heartbeat_events,
+  COUNTIF(event_name = 'playback.completed') AS play_events,
+  COUNTIF(event_name = 'playback.completed' AND completion_ratio < 0.20) AS inferred_skip_events,
+  COUNTIF(event_name IN ('library.saved', 'playlist.track_added')) AS save_events,
+  COUNTIF(event_name IN ('commerce.settled', 'payment.settled', 'x402.purchase', 'agent.purchase_completed')) AS purchase_events,
+  COUNTIF(event_name IN ('agent.recommendation_selected', 'agent.track_selected', 'agent.selection', 'agent.decision_made')) AS agent_selected_events,
+  AVG(IF(event_name = 'playback.completed', completion_ratio, NULL)) AS avg_completion_ratio,
+  SUM(
+    IF(
+      event_name IN ('playback.completed', 'playback.heartbeat'),
+      IFNULL(listen_seconds, IFNULL(duration_seconds, IFNULL(heartbeat_seconds, position_seconds))),
+      0
+    )
+  ) AS observed_listen_seconds,
+  SUM(IFNULL(canonical_amount_usd, 0)) AS gross_revenue_usd,
+  COUNT(DISTINCT source) AS source_count,
+  MIN(occurred_at) AS first_seen_at,
+  MAX(occurred_at) AS last_seen_at,
+  CURRENT_TIMESTAMP() AS materialized_at
+FROM track_events
+GROUP BY track_id

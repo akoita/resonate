@@ -1,15 +1,17 @@
 ---
-title: "Artist Analytics Dashboard"
+title: "Analytics Dashboards"
 status: implemented
 owner: "@akoita"
-issue: 25
+issues: [25, 982]
 ---
 
-# Artist Analytics Dashboard
+# Analytics Dashboards
 
 ## Goal
 
-Provide a premium, high-fidelity visual dashboard for Resonate artists to track audio play metrics, stablecoin settlement earnings, top-performing tracks, play sources, and Content Protection staking/escrow history.
+Provide high-fidelity visual dashboards for Resonate artists and operators to
+track catalog performance, settlement earnings, content-protection history, and
+AI DJ recommendation quality.
 
 The dashboard follows the **Obsidian Frequency (v2)** design system guidelines, reserving **Electric Violet** for AI-agent autonomous context and leveraging **Hyacinth Blue** for standard human-initiated metrics.
 
@@ -18,6 +20,7 @@ The dashboard follows the **Obsidian Frequency (v2)** design system guidelines, 
 ## Audience & Value
 
 - **For Artists**: Provides clear visual tracking of plays over time, real-time USDC payout rollups, content protection route decision counts (Marketplace Ready vs Restricted/Blocked), and detailed EVM staking escrow histories (Coup De Goule, Ah W Nass, etc.).
+- **For Operators/Product Owners**: Provides aggregate AI DJ recommendation quality metrics so analytics-powered taste changes can be monitored before model promotion.
 - **For Developers**: Demonstrates how to map versioned analytics facts from the BigQuery/Postgres ledger directly to standard React UI layers using performant, responsive SVG charting without heavy external chart libraries.
 
 ---
@@ -31,11 +34,28 @@ The dashboard follows the **Obsidian Frequency (v2)** design system guidelines, 
 4. Hover over the **Plays over time** spline chart to reveal active tooltips showing daily metrics.
 5. Review the **Sources breakdown progress bars** and the **Track Performance table**.
 6. Monitor active escrow allocations under the **Content Protection Staking & escrow overview**.
+7. Operators can open `/analytics/agent-quality` to review aggregate AI DJ
+   acceptance, first-pick skip, session duration, save, playlist-add, purchase,
+   strategy, taste-source, and model/materialization-version metrics.
 
 ### As a Developer
 The frontend page [page.tsx](../../web/src/app/artist/analytics/page.tsx) automatically reads the authenticated wallet address and JWT token, queries [api.ts](../../web/src/lib/api.ts), and executes:
 - `GET /analytics/artist/:id/v1?days=N` — returns the plays/payout fact aggregates grouped by tracks, sessions, and sources.
+- `GET /analytics/agent/quality?days=N` — returns aggregate AI DJ quality
+  metrics for `admin` and `operator` roles only.
 - `GET /api/metadata/stakes/analytics/:address` — fetches EVM smart contract staking counts, active/refunded stakes, and historical deposits.
+
+The backend derives the KPI totals, track-performance rows, source breakdown,
+and plays-over-time chart from the same bounded `analytics_facts` slice. Daily
+`analytics_views` remain available for warehouse consumers, but the artist
+dashboard does not prefer them over facts so partial current-day windows cannot
+drift from the rest of the report.
+
+The AI DJ quality dashboard derives aggregate metrics from bounded
+`analytics_facts` windows. It includes only event-level rollups and segment
+breakdowns by Session Intent, recommendation strategy, taste-signal source, and
+model/materialization version. It explicitly excludes raw listener histories,
+actor ids, wallet addresses, and per-user drilldowns.
 
 ---
 
@@ -43,7 +63,11 @@ The frontend page [page.tsx](../../web/src/app/artist/analytics/page.tsx) automa
 
 ### UI Routes & Entry Points
 - Page Component: `/artist/analytics` -> `web/src/app/artist/analytics/page.tsx`
+- AI DJ Quality Page: `/analytics/agent-quality` ->
+  `web/src/app/analytics/agent-quality/page.tsx`
 - Layout Wrapper: `web/src/app/artist/analytics/layout.tsx`
+- AI DJ Quality Component:
+  `web/src/components/analytics/AgentQualityDashboard.tsx`
 - Staking Widget: `web/src/components/analytics/StakingOverview.tsx`
 
 ### Styling Tokens Applied
@@ -56,3 +80,7 @@ The frontend page [page.tsx](../../web/src/app/artist/analytics/page.tsx) automa
 ### Unit Tests
 - Verification Suite: `web/tests/` (Vitest)
 - Command: `npm --prefix web run test:unit`
+- Focused frontend check:
+  `cd web && npx vitest run src/components/analytics/AgentQualityDashboard.test.tsx`
+- Focused backend check:
+  `cd backend && npx jest --runInBand src/tests/analytics.spec.ts src/tests/analytics.controller.http.spec.ts`

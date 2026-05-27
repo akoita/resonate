@@ -42,11 +42,28 @@ describe("analytics warehouse export", () => {
             decisionReason: "verified uploader",
           },
         }),
+        event({
+          eventId: "evt_show",
+          eventName: "shows.pledge_intent_created",
+          geo: {
+            countryCode: "FR",
+            regionCode: "IDF",
+            citySlug: "paris",
+            source: "campaign_target",
+            precision: "city",
+          },
+          payload: {
+            campaignId: "campaign-1",
+            campaignSlug: "artist-paris-fr",
+            amountUnits: "25000000",
+            source: "shows-api",
+          },
+        }),
       ],
       { generatedAt },
     );
 
-    expect(result.eventsRaw).toHaveLength(3);
+    expect(result.eventsRaw).toHaveLength(4);
     expect(result.eventsClean).toEqual([
       expect.objectContaining({
         eventId: "evt_play",
@@ -66,6 +83,15 @@ describe("analytics warehouse export", () => {
         eventFamily: "rights",
         releaseId: "release-1",
       }),
+      expect.objectContaining({
+        eventId: "evt_show",
+        eventFamily: "shows",
+        geoCountryCode: "FR",
+        geoRegionCode: "IDF",
+        geoCitySlug: "paris",
+        geoSource: "campaign_target",
+        geoPrecision: "city",
+      }),
     ]);
     expect(result.analyticsFacts).toEqual([
       expect.objectContaining({ factId: "fact_evt_play", factType: "license_event" }),
@@ -77,6 +103,17 @@ describe("analytics warehouse export", () => {
           route: "STANDARD_ESCROW",
           evidenceTypes: ["rights_metadata"],
           decisionReason: "verified uploader",
+        }),
+      }),
+      expect.objectContaining({
+        factId: "fact_evt_show",
+        factType: "shows_event",
+        dimensions: expect.objectContaining({
+          geoCountryCode: "FR",
+          geoRegionCode: "IDF",
+          geoCitySlug: "paris",
+          geoSource: "campaign_target",
+          geoPrecision: "city",
         }),
       }),
     ]);
@@ -105,6 +142,13 @@ describe("analytics warehouse export", () => {
         eventCount: 1,
         playCount: 0,
         payoutUsd: 0,
+      }),
+      expect.objectContaining({
+        date: "2026-05-20",
+        eventName: "shows.pledge_intent_created",
+        artistId: "unknown",
+        trackId: "unknown",
+        eventCount: 1,
       }),
     ]);
     expect(result.analyticsQuarantine).toHaveLength(0);
@@ -154,6 +198,11 @@ describe("analytics warehouse export", () => {
       ["evt_realtime", "realtime.audio"],
       ["evt_x402", "x402.payment_settled"],
       ["evt_session", "session.started"],
+      ["evt_onboarding", "onboarding.step_completed"],
+      ["evt_playlist", "playlist.track_added"],
+      ["evt_search", "search.submitted"],
+      ["evt_artist", "artist.upload_step_completed"],
+      ["evt_shows", "shows.pledge_intent_created"],
     ] as const;
 
     const result = buildAnalyticsWarehouseExport(
@@ -186,6 +235,11 @@ describe("analytics warehouse export", () => {
       "realtime",
       "x402",
       "session",
+      "onboarding",
+      "playlist",
+      "search",
+      "artist",
+      "shows",
     ]);
     expect(result.analyticsFacts).toHaveLength(domainEvents.length);
   });
@@ -245,6 +299,13 @@ function event(input: {
   eventId: string;
   eventName: string;
   payload: Record<string, unknown>;
+  geo?: {
+    countryCode: string;
+    regionCode?: string;
+    citySlug?: string;
+    source: "user_declared" | "ip_coarse" | "campaign_target";
+    precision: "country" | "region" | "city";
+  };
   privacyTier?: string;
   consentBasis?: string;
 }) {
@@ -258,6 +319,7 @@ function event(input: {
     environment: "local",
     privacyTier: input.privacyTier ?? "pseudonymous",
     consentBasis: input.consentBasis,
+    geo: input.geo,
     payload: input.payload,
   };
 }

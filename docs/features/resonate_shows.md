@@ -11,18 +11,21 @@ owner: "@akoita"
 `partial`
 
 The fan-funded Shows wedge is visible in the web app through the home campaign
-hero, `/shows`, and `/shows/sennarin-paris`. The current implementation still
-uses client-side seeded campaign data and links to an existing Sepolia
-`RevenueEscrow` contract as an honest stand-in. The backend truth layer has
-started with Prisma models for campaigns, pledge tiers, pledge receipts, and
-lifecycle events; public APIs, campaign creation, pledge transactions, and a
-purpose-built campaign contract remain follow-up work.
+hero, `/shows`, and `/shows/sennarin-paris`. The web app reads the backend
+Shows API first and keeps seeded campaign data only as a local/offline fallback.
+The deployed UI still links to an existing Sepolia `RevenueEscrow` contract as
+an honest stand-in until the campaign-specific escrow deployment is wired. The
+backend truth layer now includes Prisma models, public reads, demand signals,
+draft escrow campaign creation, artist-authority review, activation, pledge
+intent/confirmation receipts, and operator lifecycle transitions for
+cancellation, booking confirmation, and fulfillment confirmation.
 
 The next step is documented in
 [Resonate Shows Production Plan](resonate_shows_production_plan.md): replace the
 placeholder wedge with a working fan-funded live campaign loop backed by
 backend campaign state, pledge receipts, and a campaign-specific escrow
-contract.
+contract. The campaign trust model and fund-release policy are defined in
+[Show Campaign Trust And Escrow Policy](../rfc/show-campaign-trust-escrow.md).
 
 ## Who It Is For
 
@@ -44,10 +47,11 @@ signal:
 > **Fans bring the show. Artists get a booking signal backed by money, not likes.**
 
 Fans coordinate around an artist, city, deadline, and threshold. Funds are
-intended to sit in smart-contract escrow until the campaign clears or fails. If
-the campaign clears, the artist has a public, money-backed demand signal for
-booking and production planning. If it misses, the refund-first design protects
-fans from vague donation risk.
+intended to sit in smart-contract escrow until the campaign clears or fails.
+Funding success is not payout success: a funded campaign proves demand, then
+release depends on artist authority, booking confirmation, fulfillment evidence,
+and the campaign's published release policy. If it misses, the refund-first
+design protects fans from vague donation risk.
 
 ## External Market Evidence
 
@@ -88,11 +92,15 @@ Positioning:
 
 1. A campaign defines an artist, city, venue target, deadline, funding goal, and
    minimum fan threshold.
-2. Fans join through pledge tiers that represent intent.
-3. Campaign progress is public: amount raised, percentage funded, backer count,
+2. Public demand signals can be fan-proposed, but full escrow activation
+   requires a certified artist-authorized beneficiary.
+3. Fans join active escrow campaigns through pledge tiers that represent intent.
+4. Campaign progress is public: amount raised, percentage funded, backer count,
    days left, and threshold.
-4. When the threshold clears, the artist receives a credible booking signal.
-5. When the threshold misses, the intended production flow refunds pledges
+5. When the threshold clears, the artist receives a credible booking signal.
+6. When booking and fulfillment rules are satisfied, funds can be released under
+   the campaign's published policy.
+7. When the threshold misses, the intended production flow refunds pledges
    automatically.
 
 ## Current UI Surfaces
@@ -100,23 +108,40 @@ Positioning:
 | Surface | Status | Notes |
 | --- | --- | --- |
 | Home campaign hero | implemented | Featured campaign card links into the Shows route. |
-| `/shows` | implemented | Campaign explorer with three seeded examples. |
-| `/shows/sennarin-paris` | implemented | Detail page with funding progress, signal tiers, and how-it-works copy. |
-| Escrow contract link | partial | Links to deployed Sepolia `RevenueEscrow` as a placeholder until campaign-specific escrow ships. |
-| Pledge flow | planned | Current UI communicates tiers; wallet transaction path is not live. |
-| Campaign backend | partial | Prisma models exist for `ShowCampaign`, `ShowCampaignTier`, `ShowPledge`, and `ShowCampaignEvent`; public API routes are not live yet. |
+| `/shows` | partial | Campaign explorer reads the backend Shows API and falls back to three seeded examples for local/offline demos. |
+| `/shows/create` | partial | Authenticated artists, admins, and operators can create draft escrow campaigns with campaign terms, evidence references, and pledge tiers. For normal artists, artist identity and beneficiary wallet are derived from the platform artist profile; operators can prepare off-platform drafts that remain review-gated before activation. |
+| `/shows/:slug/edit` | partial | Draft campaigns can be edited before activation, including campaign terms, authority evidence reference, beneficiary wallet, payment token, and pledge tiers. |
+| `/shows/sennarin-paris` | partial | Detail page reads the backend Shows API by slug with seeded fallback, and shows funding progress, signal tiers, and how-it-works copy. |
+| Escrow contract | partial | `ShowCampaignEscrow.sol` now exists with threshold, refund, booking, fulfillment, and release-gating unit/fuzz/invariant/formal coverage. Deployment now emits JSON, `.remote.env`, and ABI handoffs; production activation still needs the promoted escrow address plus per-campaign `contractCampaignId` wiring. |
+| Pledge flow | partial | Backend pledge intent, transaction confirmation, refund confirmation, and authenticated receipt reads are implemented. The detail page lets connected fans select a tier, create a receipt-ready pledge intent, execute the ERC-20 approval plus escrow pledge through the smart account, attach the mined transaction to the backend receipt, see their latest campaign pledge, and claim refunds when the campaign/pledge is refund-available and linked contract call data exists. |
+| Campaign backend | partial | Prisma models exist for campaign, tier, pledge, trust, authority, release, and lifecycle-event state. Public read routes, signal creation, draft escrow campaign creation, authority request/approval/rejection/revocation/expiry, activation, pledge intent, pledge confirmation, "my pledges", cancellation, booking confirmation, and fulfillment confirmation APIs are implemented. |
+| Operator controls | partial | Admin/operator users can manage campaign lifecycle from the campaign detail page: approve artist authority, bind beneficiary data, activate with escrow contract IDs, cancel to refunds, confirm booking, and confirm fulfillment. Artist-owned campaign management remains a follow-up UI. |
 
 ## Production Beta Requirements
 
 The placeholder copy should be removed once these production surfaces are live:
 
 - campaign data loads from backend APIs rather than seeded client data;
-- fans can select a tier, submit an on-chain pledge, and receive a receipt;
+- fan-proposed demand signals can be created through the backend API without
+  implying artist approval;
+- draft escrow campaigns and pledge tiers can be created and edited from the
+  web app before activation, artist-owned drafts derive identity and payout
+  fields from the platform artist profile, authority evidence can be reviewed,
+  rejected, revoked, expired, or approved, and only artist-authorized campaigns
+  can activate;
+- fans can select a tier, create a pledge intent, submit an on-chain ERC-20
+  approval plus escrow pledge through the smart account, confirm the mined
+  transaction, and receive a durable backend receipt;
 - campaign progress is backed by persisted pledge records reconciled to on-chain
-  events;
-- failed or cancelled campaigns expose refunds;
-- cleared and booking-confirmed campaigns expose release/fulfillment state;
-- artists or approved operators can create and manage campaigns.
+  events rather than client-submitted progress data;
+- failed or cancelled campaigns expose refunds and record refund receipts after
+  the connected wallet claims from escrow;
+- funded campaigns do not release automatically;
+- cleared and booking-confirmed campaigns expose booking, fulfillment, dispute,
+  and release state;
+- admins/operators can advance the campaign lifecycle from the detail page;
+- artists, admins, and operators can create draft campaigns; full artist-owned
+  editing remains a follow-up.
 
 The core fan incentive should be ticket credit or priority allocation, not a
 donation. The fan-facing promise is:
@@ -134,6 +159,17 @@ donation. The fan-facing promise is:
 - `backend/src/tests/shows_campaign_models.integration.spec.ts` verifies the
   campaign, tier, pledge, and lifecycle-event data model against Testcontainer
   Postgres.
+- `backend/src/tests/shows.service.integration.spec.ts` verifies the public
+  signal, draft campaign, artist-authority, activation, pledge receipt,
+  cancellation, booking confirmation, fulfillment confirmation, and listing API
+  service behavior against Testcontainer Postgres.
+- `contracts/test/unit/ShowCampaignEscrow.t.sol` verifies campaign creation,
+  pledging, funded-without-release behavior, missed-deadline refunds, missed
+  booking refunds, booking/fulfillment confirmation, optional deposit release,
+  final release, and pause behavior.
+- `contracts/scripts/write-show-campaign-escrow-handoff.sh` converts the
+  Foundry deployment broadcast into reviewed app/deploy handoff files for the
+  Shows escrow address and ABI.
 
 ## Product Notes
 

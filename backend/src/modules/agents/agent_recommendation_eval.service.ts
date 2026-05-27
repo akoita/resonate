@@ -2,8 +2,13 @@ import { mkdirSync, writeFileSync } from "fs";
 import { dirname, resolve } from "path";
 
 export const AGENT_RECOMMENDATION_EVAL_SCHEMA_VERSION = "agent-recommendation-eval/v1";
+export const AGENT_RECOMMENDATION_MODEL_COMPARISON_SCHEMA_VERSION = "agent-recommendation-model-comparison/v1";
 export const DEFAULT_AGENT_RECOMMENDATION_EVAL_ARTIFACT_PATH = "eval-results/agent-recommendation-results.json";
 export const DEFAULT_AGENT_RECOMMENDATION_EVAL_SUMMARY_PATH = "eval-results/agent-recommendation-summary.md";
+export const DEFAULT_AGENT_RECOMMENDATION_MODEL_COMPARISON_ARTIFACT_PATH =
+  "eval-results/agent-recommendation-model-comparison.json";
+export const DEFAULT_AGENT_RECOMMENDATION_MODEL_COMPARISON_SUMMARY_PATH =
+  "eval-results/agent-recommendation-model-comparison.md";
 
 export type AgentRecommendationEvalDimension =
   | "tasteMatch"
@@ -80,6 +85,72 @@ export interface AgentRecommendationEvalResult {
   dimensions: Record<string, { passed: boolean; failures: string[] }>;
 }
 
+export type AgentRecommendationEvalModelVariant = "deterministic" | "warehouse_baseline" | "bqml";
+
+export interface AgentRecommendationEvalComparisonCandidate extends AgentRecommendationEvalCandidate {
+  accepted?: boolean;
+  skipped?: boolean;
+  artistId?: string;
+  genre?: string;
+  variantScores: Partial<Record<AgentRecommendationEvalModelVariant, number>>;
+}
+
+export interface AgentRecommendationEvalPromotionCriteria {
+  minAcceptanceProxyDelta: number;
+  minSkipAvoidanceDelta: number;
+  minListingCoverage: number;
+  minExplanationCoverage: number;
+  minNoveltyCoverage: number;
+  minDiversityCoverage: number;
+  minOverallScoreDelta: number;
+}
+
+export interface AgentRecommendationEvalComparisonCase {
+  id: string;
+  description: string;
+  candidates: AgentRecommendationEvalComparisonCandidate[];
+  k?: number;
+  promotionCriteria?: Partial<AgentRecommendationEvalPromotionCriteria>;
+}
+
+export interface AgentRecommendationEvalComparisonMetrics {
+  precision: number | null;
+  acceptanceProxy: number | null;
+  skipAvoidance: number | null;
+  listingCoverage: number | null;
+  noveltyCoverage: number | null;
+  diversityCoverage: number | null;
+  explanationCoverage: number | null;
+  averageScore: number | null;
+  overallScore: number | null;
+}
+
+export interface AgentRecommendationEvalComparisonVariantResult {
+  variant: AgentRecommendationEvalModelVariant;
+  selectedTrackIds: string[];
+  selectedCandidates: Array<AgentRecommendationEvalComparisonCandidate & {
+    modelScore: number;
+    topSignals: AgentRecommendationEvalSignal[];
+  }>;
+  metrics: AgentRecommendationEvalComparisonMetrics;
+}
+
+const MODEL_COMPARISON_VARIANTS: AgentRecommendationEvalModelVariant[] = [
+  "deterministic",
+  "warehouse_baseline",
+  "bqml",
+];
+
+const DEFAULT_MODEL_PROMOTION_CRITERIA: AgentRecommendationEvalPromotionCriteria = {
+  minAcceptanceProxyDelta: 0.02,
+  minSkipAvoidanceDelta: 0,
+  minListingCoverage: 0.9,
+  minExplanationCoverage: 0.8,
+  minNoveltyCoverage: 0.8,
+  minDiversityCoverage: 0.5,
+  minOverallScoreDelta: 0.01,
+};
+
 export class AgentRecommendationEvalService {
   run(cases: AgentRecommendationEvalCase[]) {
     const results = cases.map((testCase) => this.evaluateCase(testCase));
@@ -119,6 +190,49 @@ export class AgentRecommendationEvalService {
     mkdirSync(dirname(summaryPath), { recursive: true });
     writeFileSync(artifactPath, `${JSON.stringify(report, null, 2)}\n`);
     writeFileSync(summaryPath, this.toSummary(report));
+    return { report, artifactPath, summaryPath };
+  }
+
+  runModelComparison(cases: AgentRecommendationEvalComparisonCase[]) {
+    const caseResults = cases.map((testCase) => this.evaluateComparisonCase(testCase));
+    const variants = Object.fromEntries(MODEL_COMPARISON_VARIANTS.map((variant) => [
+      variant,
+      this.aggregateComparisonMetrics(caseResults.map((result) => result.variants[variant].metrics)),
+    ])) as Record<AgentRecommendationEvalModelVariant, AgentRecommendationEvalComparisonMetrics>;
+    const promotion = this.evaluateModelPromotion(variants, cases);
+
+    return {
+      schemaVersion: AGENT_RECOMMENDATION_MODEL_COMPARISON_SCHEMA_VERSION,
+      generatedAt: new Date().toISOString(),
+      metrics: {
+        cases: cases.length,
+        variants,
+      },
+      promotion,
+      caseResults,
+    };
+  }
+
+  runModelComparisonAndWriteArtifact(
+    cases: AgentRecommendationEvalComparisonCase[],
+    options: {
+      artifactPath?: string;
+      summaryPath?: string;
+    } = {},
+  ) {
+    const report = this.runModelComparison(cases);
+    const artifactPath = resolve(
+      process.cwd(),
+      options.artifactPath ?? DEFAULT_AGENT_RECOMMENDATION_MODEL_COMPARISON_ARTIFACT_PATH,
+    );
+    const summaryPath = resolve(
+      process.cwd(),
+      options.summaryPath ?? DEFAULT_AGENT_RECOMMENDATION_MODEL_COMPARISON_SUMMARY_PATH,
+    );
+    mkdirSync(dirname(artifactPath), { recursive: true });
+    mkdirSync(dirname(summaryPath), { recursive: true });
+    writeFileSync(artifactPath, `${JSON.stringify(report, null, 2)}\n`);
+    writeFileSync(summaryPath, this.toModelComparisonSummary(report));
     return { report, artifactPath, summaryPath };
   }
 
@@ -267,6 +381,205 @@ export class AgentRecommendationEvalService {
     ]));
   }
 
+  private evaluateComparisonCase(testCase: AgentRecommendationEvalComparisonCase) {
+    const k = testCase.k ?? 3;
+    const variants = Object.fromEntries(MODEL_COMPARISON_VARIANTS.map((variant) => {
+      const selectedCandidates = this.rankComparisonCandidates(testCase.candidates, variant, k);
+      return [variant, {
+        variant,
+        selectedTrackIds: selectedCandidates.map((candidate) => candidate.trackId),
+        selectedCandidates,
+        metrics: this.comparisonMetrics(selectedCandidates),
+      }];
+    })) as Record<AgentRecommendationEvalModelVariant, AgentRecommendationEvalComparisonVariantResult>;
+
+    return {
+      id: testCase.id,
+      description: testCase.description,
+      k,
+      variants,
+    };
+  }
+
+  private rankComparisonCandidates(
+    candidates: AgentRecommendationEvalComparisonCandidate[],
+    variant: AgentRecommendationEvalModelVariant,
+    k: number,
+  ): AgentRecommendationEvalComparisonVariantResult["selectedCandidates"] {
+    return candidates
+      .map((candidate) => ({ candidate, modelScore: candidate.variantScores[variant] }))
+      .filter((entry): entry is { candidate: AgentRecommendationEvalComparisonCandidate; modelScore: number } =>
+        typeof entry.modelScore === "number"
+      )
+      .sort((a, b) =>
+        b.modelScore - a.modelScore ||
+        (b.candidate.score ?? 0) - (a.candidate.score ?? 0) ||
+        a.candidate.trackId.localeCompare(b.candidate.trackId)
+      )
+      .slice(0, k)
+      .map(({ candidate, modelScore }) => ({
+        ...candidate,
+        modelScore,
+        topSignals: [...(candidate.signals ?? [])]
+          .sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight))
+          .slice(0, 3),
+      }));
+  }
+
+  private comparisonMetrics(
+    selectedCandidates: AgentRecommendationEvalComparisonVariantResult["selectedCandidates"],
+  ): AgentRecommendationEvalComparisonMetrics {
+    const selectedCount = selectedCandidates.length;
+    const relevantSelected = selectedCandidates.filter(
+      (candidate) => candidate.relevance === "exact" || candidate.relevance === "semantic",
+    ).length;
+    const selectedWithKnownRelevance = selectedCandidates.filter((candidate) => candidate.relevance).length;
+    const selectedWithKnownListing = selectedCandidates.filter((candidate) => candidate.hasListing !== undefined).length;
+    const selectedWithKnownRecent = selectedCandidates.filter((candidate) => candidate.recent !== undefined).length;
+    const selectedWithKnownSkip = selectedCandidates.filter((candidate) => candidate.skipped !== undefined).length;
+    const selectedWithEvidence = selectedCandidates.filter(
+      (candidate) => (candidate.explanation?.length ?? 0) > 0 || (candidate.signals?.length ?? 0) > 0,
+    ).length;
+    const acceptedOrRelevant = selectedCandidates.filter((candidate) =>
+      candidate.accepted ||
+      ((candidate.relevance === "exact" || candidate.relevance === "semantic") && !candidate.skipped)
+    ).length;
+    const averageScore = selectedCount
+      ? selectedCandidates.reduce((sum, candidate) => sum + candidate.modelScore, 0) / selectedCount
+      : null;
+    const precision = selectedWithKnownRelevance ? relevantSelected / selectedWithKnownRelevance : selectedCount ? null : 1;
+    const acceptanceProxy = selectedCount ? acceptedOrRelevant / selectedCount : null;
+    const skipAvoidance = selectedWithKnownSkip
+      ? selectedCandidates.filter((candidate) => !candidate.skipped).length / selectedWithKnownSkip
+      : selectedCount ? null : 1;
+    const listingCoverage = selectedWithKnownListing
+      ? selectedCandidates.filter((candidate) => candidate.hasListing).length / selectedWithKnownListing
+      : selectedCount ? null : 1;
+    const noveltyCoverage = selectedWithKnownRecent
+      ? selectedCandidates.filter((candidate) => !candidate.recent).length / selectedWithKnownRecent
+      : selectedCount ? null : 1;
+    const diversityCoverage = this.diversityCoverage(selectedCandidates);
+    const explanationCoverage = selectedCount ? selectedWithEvidence / selectedCount : 1;
+    const overallScore = this.overallComparisonScore({
+      precision,
+      acceptanceProxy,
+      skipAvoidance,
+      listingCoverage,
+      noveltyCoverage,
+      diversityCoverage,
+      explanationCoverage,
+      averageScore,
+      overallScore: null,
+    });
+
+    return {
+      precision,
+      acceptanceProxy,
+      skipAvoidance,
+      listingCoverage,
+      noveltyCoverage,
+      diversityCoverage,
+      explanationCoverage,
+      averageScore,
+      overallScore,
+    };
+  }
+
+  private diversityCoverage(
+    selectedCandidates: AgentRecommendationEvalComparisonVariantResult["selectedCandidates"],
+  ) {
+    if (selectedCandidates.length <= 1) return selectedCandidates.length ? 1 : null;
+    const genreCount = new Set(selectedCandidates.map((candidate) => candidate.genre).filter(Boolean)).size;
+    const artistCount = new Set(selectedCandidates.map((candidate) => candidate.artistId).filter(Boolean)).size;
+    const ratios = [genreCount, artistCount]
+      .filter((count) => count > 0)
+      .map((count) => count / selectedCandidates.length);
+    return ratios.length ? ratios.reduce((sum, ratio) => sum + ratio, 0) / ratios.length : null;
+  }
+
+  private overallComparisonScore(metrics: AgentRecommendationEvalComparisonMetrics) {
+    const weightedMetrics: Array<[keyof AgentRecommendationEvalComparisonMetrics, number]> = [
+      ["precision", 0.25],
+      ["acceptanceProxy", 0.2],
+      ["skipAvoidance", 0.2],
+      ["listingCoverage", 0.15],
+      ["explanationCoverage", 0.1],
+      ["noveltyCoverage", 0.05],
+      ["diversityCoverage", 0.05],
+    ];
+    const present = weightedMetrics
+      .map(([key, weight]) => [metrics[key], weight] as const)
+      .filter((entry): entry is readonly [number, number] => typeof entry[0] === "number");
+    const weightTotal = present.reduce((sum, [, weight]) => sum + weight, 0);
+    return weightTotal ? present.reduce((sum, [value, weight]) => sum + value * weight, 0) / weightTotal : null;
+  }
+
+  private aggregateComparisonMetrics(metrics: AgentRecommendationEvalComparisonMetrics[]) {
+    const aggregate = (key: keyof AgentRecommendationEvalComparisonMetrics) => {
+      const values = metrics.map((entry) => entry[key]).filter((value): value is number => typeof value === "number");
+      return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+    };
+
+    return {
+      precision: aggregate("precision"),
+      acceptanceProxy: aggregate("acceptanceProxy"),
+      skipAvoidance: aggregate("skipAvoidance"),
+      listingCoverage: aggregate("listingCoverage"),
+      noveltyCoverage: aggregate("noveltyCoverage"),
+      diversityCoverage: aggregate("diversityCoverage"),
+      explanationCoverage: aggregate("explanationCoverage"),
+      averageScore: aggregate("averageScore"),
+      overallScore: aggregate("overallScore"),
+    };
+  }
+
+  private evaluateModelPromotion(
+    variants: Record<AgentRecommendationEvalModelVariant, AgentRecommendationEvalComparisonMetrics>,
+    cases: AgentRecommendationEvalComparisonCase[],
+  ) {
+    const criteria = cases.reduce<AgentRecommendationEvalPromotionCriteria>(
+      (current, testCase) => ({ ...current, ...(testCase.promotionCriteria ?? {}) }),
+      DEFAULT_MODEL_PROMOTION_CRITERIA,
+    );
+    const baseline = variants.warehouse_baseline;
+    const bqml = variants.bqml;
+    const delta = {
+      acceptanceProxy: this.metricDelta(bqml.acceptanceProxy, baseline.acceptanceProxy),
+      skipAvoidance: this.metricDelta(bqml.skipAvoidance, baseline.skipAvoidance),
+      listingCoverage: this.metricDelta(bqml.listingCoverage, baseline.listingCoverage),
+      noveltyCoverage: this.metricDelta(bqml.noveltyCoverage, baseline.noveltyCoverage),
+      diversityCoverage: this.metricDelta(bqml.diversityCoverage, baseline.diversityCoverage),
+      explanationCoverage: this.metricDelta(bqml.explanationCoverage, baseline.explanationCoverage),
+      overallScore: this.metricDelta(bqml.overallScore, baseline.overallScore),
+    };
+    const bqmlBeatsBaseline =
+      (delta.acceptanceProxy ?? -1) >= criteria.minAcceptanceProxyDelta &&
+      (delta.skipAvoidance ?? -1) >= criteria.minSkipAvoidanceDelta &&
+      (bqml.listingCoverage ?? 0) >= criteria.minListingCoverage &&
+      (bqml.explanationCoverage ?? 0) >= criteria.minExplanationCoverage &&
+      (bqml.noveltyCoverage ?? 0) >= criteria.minNoveltyCoverage &&
+      (bqml.diversityCoverage ?? 0) >= criteria.minDiversityCoverage &&
+      (delta.overallScore ?? -1) >= criteria.minOverallScoreDelta;
+    const recommendation = bqmlBeatsBaseline
+      ? "promote_bqml_staging_table"
+      : (bqml.overallScore ?? 0) >= (baseline.overallScore ?? 0)
+        ? "blend_or_shadow_test"
+        : "hold_baseline";
+
+    return {
+      baselineVariant: "warehouse_baseline" as const,
+      challengerVariant: "bqml" as const,
+      criteria,
+      delta,
+      bqmlBeatsBaseline,
+      recommendation,
+    };
+  }
+
+  private metricDelta(left: number | null, right: number | null) {
+    return typeof left === "number" && typeof right === "number" ? left - right : null;
+  }
+
   private toSummary(report: ReturnType<AgentRecommendationEvalService["run"]>) {
     const pct = (value: number) => `${Math.round(value * 100)}%`;
     return [
@@ -290,6 +603,48 @@ export class AgentRecommendationEvalService {
           `  - Rejected: ${result.rejectedCandidates.length ? result.rejectedCandidates.map((candidate) => `${candidate.trackId}:${candidate.reason}`).join(", ") : "none"}`,
         ].join("\n")
       ),
+      "",
+    ].join("\n");
+  }
+
+  private toModelComparisonSummary(report: ReturnType<AgentRecommendationEvalService["runModelComparison"]>) {
+    const fmt = (value: number | null) => value === null ? "n/a" : `${Math.round(value * 1000) / 1000}`;
+    return [
+      "# Agent Recommendation Model Comparison",
+      "",
+      `- Schema: ${report.schemaVersion}`,
+      `- Generated: ${report.generatedAt}`,
+      `- Cases: ${report.metrics.cases}`,
+      `- Recommendation: ${report.promotion.recommendation}`,
+      `- BQML beats baseline: ${report.promotion.bqmlBeatsBaseline ? "yes" : "no"}`,
+      `- Overall delta: ${fmt(report.promotion.delta.overallScore)}`,
+      `- Acceptance proxy delta: ${fmt(report.promotion.delta.acceptanceProxy)}`,
+      `- Skip avoidance delta: ${fmt(report.promotion.delta.skipAvoidance)}`,
+      "",
+      "## Variant Metrics",
+      ...MODEL_COMPARISON_VARIANTS.map((variant) => {
+        const metrics = report.metrics.variants[variant];
+        return [
+          `- ${variant}`,
+          `  - Precision: ${fmt(metrics.precision)}`,
+          `  - Acceptance proxy: ${fmt(metrics.acceptanceProxy)}`,
+          `  - Skip avoidance: ${fmt(metrics.skipAvoidance)}`,
+          `  - Listing coverage: ${fmt(metrics.listingCoverage)}`,
+          `  - Novelty coverage: ${fmt(metrics.noveltyCoverage)}`,
+          `  - Diversity coverage: ${fmt(metrics.diversityCoverage)}`,
+          `  - Explanation coverage: ${fmt(metrics.explanationCoverage)}`,
+          `  - Overall score: ${fmt(metrics.overallScore)}`,
+        ].join("\n");
+      }),
+      "",
+      "## Cases",
+      ...report.caseResults.map((result) => [
+        `- ${result.id}: ${result.description}`,
+        ...MODEL_COMPARISON_VARIANTS.map((variant) => {
+          const variantResult = result.variants[variant];
+          return `  - ${variant}: ${variantResult.selectedTrackIds.join(", ") || "none"}`;
+        }),
+      ].join("\n")),
       "",
     ].join("\n");
   }

@@ -20,6 +20,13 @@ dev-up:
 	docker compose -f $(LOCAL_INFRA_COMPOSE_FILE) up -d
 	@echo "Waiting for Postgres on localhost:5432..."
 	@until nc -z localhost 5432 >/dev/null 2>&1; do sleep 1; done
+	@echo "Checking Postgres pgvector extension availability..."
+	@available="$$(docker compose -f $(LOCAL_INFRA_COMPOSE_FILE) exec -T postgres psql -U resonate -d resonate -tAc "SELECT 1 FROM pg_available_extensions WHERE name = 'vector';" 2>/dev/null | tr -d '[:space:]')"; \
+	if [ "$$available" != "1" ]; then \
+		echo "❌ Postgres is running, but the pgvector extension is not available."; \
+		echo "Run 'make dev-down && make dev-up' so Docker recreates Postgres with the pgvector image."; \
+		exit 1; \
+	fi
 	@echo "Waiting for PubSub emulator on localhost:8085..."
 	@until nc -z localhost 8085 >/dev/null 2>&1; do sleep 1; done
 	@$(MAKE) pubsub-init
@@ -29,6 +36,13 @@ dev-up-build:
 	docker compose -f $(LOCAL_INFRA_COMPOSE_FILE) up -d --build
 	@echo "Waiting for Postgres on localhost:5432..."
 	@until nc -z localhost 5432 >/dev/null 2>&1; do sleep 1; done
+	@echo "Checking Postgres pgvector extension availability..."
+	@available="$$(docker compose -f $(LOCAL_INFRA_COMPOSE_FILE) exec -T postgres psql -U resonate -d resonate -tAc "SELECT 1 FROM pg_available_extensions WHERE name = 'vector';" 2>/dev/null | tr -d '[:space:]')"; \
+	if [ "$$available" != "1" ]; then \
+		echo "❌ Postgres is running, but the pgvector extension is not available."; \
+		echo "Run 'make dev-down && make dev-up' so Docker recreates Postgres with the pgvector image."; \
+		exit 1; \
+	fi
 	@echo "Waiting for PubSub emulator on localhost:8085..."
 	@until nc -z localhost 8085 >/dev/null 2>&1; do sleep 1; done
 	@$(MAKE) pubsub-init
@@ -60,6 +74,7 @@ docker-build-cloud:
 		--build-arg NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS=$(NEXT_PUBLIC_CONTENT_PROTECTION_ADDRESS) \
 		--build-arg NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS=$(NEXT_PUBLIC_DISPUTE_RESOLUTION_ADDRESS) \
 		--build-arg NEXT_PUBLIC_CURATION_REWARDS_ADDRESS=$(NEXT_PUBLIC_CURATION_REWARDS_ADDRESS) \
+		--build-arg NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS=$(NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS) \
 		--build-arg NEXT_PUBLIC_AA_BUNDLER=$(NEXT_PUBLIC_AA_BUNDLER) \
 		./web
 
@@ -91,6 +106,15 @@ deploy-sepolia:
 
 deploy-base-sepolia:
 	BASE_SEPOLIA_RPC_URL="$(BASE_SEPOLIA_RPC_URL)" ./contracts/scripts/deploy-base-sepolia.sh
+
+deploy-show-campaign-escrow:
+	@if [ -z "$${PRIVATE_KEY:-}" ]; then \
+		echo "PRIVATE_KEY is required"; \
+		exit 1; \
+	fi
+	@rpc_url="$${RPC_URL:-$(BASE_SEPOLIA_RPC_URL)}"; \
+	(cd contracts && forge script script/DeployShowCampaignEscrow.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
+	RPC_URL="$$rpc_url" ./contracts/scripts/write-show-campaign-escrow-handoff.sh
 
 verify-base-sepolia:
 	BASE_SEPOLIA_RPC_URL="$(BASE_SEPOLIA_RPC_URL)" BROADCAST_FILE="$(BROADCAST_FILE)" ./contracts/scripts/verify-base-sepolia.sh
@@ -164,7 +188,7 @@ local-aa-down:
 
 # Deploy AA contracts to local Anvil
 local-aa-deploy:
-	cd contracts && forge script script/DeployLocalAA.s.sol --rpc-url http://localhost:8545 --broadcast
+	cd contracts && ALLOW_DEFAULT_ANVIL_PRIVATE_KEY=$${ALLOW_DEFAULT_ANVIL_PRIVATE_KEY:-true} forge script script/DeployLocalAA.s.sol --rpc-url http://localhost:8545 --broadcast
 	@echo ""
 	@echo "Updating configuration files..."
 	./contracts/scripts/update-aa-config.sh
@@ -175,7 +199,7 @@ local-aa-deploy:
 # On local-only (chain 31337), all contracts are deployed fresh via forge.
 deploy-contracts:
 	@echo "Deploying Resonate Protocol contracts..."
-	cd contracts && forge script script/DeployProtocol.s.sol --rpc-url http://localhost:8545 --broadcast
+	cd contracts && ALLOW_DEFAULT_ANVIL_PRIVATE_KEY=$${ALLOW_DEFAULT_ANVIL_PRIVATE_KEY:-true} forge script script/DeployProtocol.s.sol --rpc-url http://localhost:8545 --broadcast
 	@echo ""
 	@echo "Updating configuration files..."
 	./contracts/scripts/update-protocol-config.sh
@@ -191,7 +215,7 @@ contracts-deploy-local: local-aa-up
 
 deploy-local-payments:
 	@echo "Deploying local payment dev contracts..."
-	cd contracts && forge script script/DeployLocalPayments.s.sol --rpc-url http://localhost:8545 --broadcast
+	cd contracts && ALLOW_DEFAULT_ANVIL_PRIVATE_KEY=$${ALLOW_DEFAULT_ANVIL_PRIVATE_KEY:-true} forge script script/DeployLocalPayments.s.sol --rpc-url http://localhost:8545 --broadcast
 	@echo ""
 	@echo "Updating local payment configuration..."
 	./contracts/scripts/update-local-payment-config.sh

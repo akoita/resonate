@@ -1,0 +1,17 @@
+js {
+  const cfg = require("includes/agent_taste_config");
+}
+
+config {
+  type: "assertion",
+  tags: ["agent_taste", "serving_contract"],
+  dependencies: [cfg.scoresTableName(dataform.projectConfig)]
+}
+
+SELECT
+  *
+FROM ${ref(cfg.scoresTableName(dataform.projectConfig))}
+WHERE user_id IS NULL
+   OR track_id IS NULL
+   OR recommendation_score IS NULL
+   OR updated_at IS NULL

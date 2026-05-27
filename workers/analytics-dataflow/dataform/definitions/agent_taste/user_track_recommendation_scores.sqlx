@@ -1,0 +1,98 @@
+js {
+  const cfg = require("includes/agent_taste_config");
+}
+
+config {
+  type: "table",
+  name: cfg.scoresTableName(dataform.projectConfig),
+  tags: ["agent_taste", "baseline", "serving"],
+  dependencies: ["track_intelligence_features", cfg.trainingTableName(dataform.projectConfig)]
+}
+
+WITH user_track AS (
+  SELECT
+    user_id,
+    track_id,
+    SUM(signal_weight) AS total_signal_weight,
+    SUM(IF(signal_weight > 0, signal_weight, 0)) AS positive_signal_weight,
+    ABS(SUM(IF(signal_weight < 0, signal_weight, 0))) AS negative_signal_weight,
+    COUNT(*) AS signal_count,
+    COUNTIF(signal_type = 'purchase') AS purchase_count,
+    COUNTIF(signal_type = 'save') AS save_count,
+    COUNTIF(signal_type IN ('strong_play', 'partial_play')) AS play_count,
+    COUNTIF(signal_type = 'skip') AS skip_count,
+    GREATEST(COUNTIF(signal_type IN ('strong_play', 'partial_play')) - 1, 0) AS replay_count,
+    COUNTIF(signal_type = 'agent_selected') AS agent_selected_count,
+    COUNTIF(session_intent IS NOT NULL OR session_intent_name IS NOT NULL OR queue_style IS NOT NULL) AS intent_context_count,
+    ARRAY_AGG(DISTINCT session_intent IGNORE NULLS LIMIT 5) AS session_intents,
+    ARRAY_AGG(DISTINCT session_intent_name IGNORE NULLS LIMIT 5) AS session_intent_names,
+    ARRAY_AGG(DISTINCT queue_style IGNORE NULLS LIMIT 5) AS queue_styles,
+    MAX(occurred_at) AS last_signal_at
+  FROM ${ref(cfg.trainingTableName(dataform.projectConfig))}
+  GROUP BY user_id, track_id
+),
+scored AS (
+  SELECT
+    user_track.user_id,
+    user_track.track_id,
+    user_track.total_signal_weight,
+    user_track.positive_signal_weight,
+    user_track.negative_signal_weight,
+    user_track.signal_count,
+    user_track.purchase_count,
+    user_track.save_count,
+    user_track.play_count,
+    user_track.skip_count,
+    user_track.replay_count,
+    user_track.agent_selected_count,
+    user_track.intent_context_count,
+    user_track.session_intents,
+    user_track.session_intent_names,
+    user_track.queue_styles,
+    user_track.last_signal_at,
+    features.interaction_events,
+    features.avg_completion_ratio,
+    features.gross_revenue_usd,
+    (
+      user_track.total_signal_weight
+      + LEAST(IFNULL(features.interaction_events, 0), 50) * 0.02
+      + IFNULL(features.avg_completion_ratio, 0) * 0.5
+      + LEAST(user_track.replay_count, 5) * 0.25
+      + LEAST(user_track.agent_selected_count, 5) * 0.15
+      + LEAST(user_track.intent_context_count, 3) * 0.05
+    ) AS raw_score
+  FROM user_track
+  LEFT JOIN ${ref("track_intelligence_features")} AS features
+    ON features.track_id = user_track.track_id
+),
+normalized AS (
+  SELECT
+    *,
+    1 / (1 + EXP(-raw_score / 6.0)) AS recommendation_score,
+    LEAST(1.0, LOG(1 + signal_count + intent_context_count) / 3.0) AS confidence
+  FROM scored
+)
+SELECT
+  user_id,
+  track_id,
+  recommendation_score,
+  confidence,
+  ROW_NUMBER() OVER (
+    PARTITION BY user_id
+    ORDER BY recommendation_score DESC, confidence DESC, last_signal_at DESC
+  ) AS rank,
+  FORMAT(
+    'baseline taste score from %d signal(s): purchases=%d saves=%d plays=%d skips=%d replays=%d agent_picks=%d intents=%d',
+    signal_count,
+    purchase_count,
+    save_count,
+    play_count,
+    skip_count,
+    replay_count,
+    agent_selected_count,
+    intent_context_count
+  ) AS explanation,
+  '${cfg.modelVersion(dataform.projectConfig)}' AS model_version,
+  CURRENT_TIMESTAMP() AS updated_at
+FROM normalized
+WHERE recommendation_score > 0
