@@ -21,6 +21,13 @@ export interface AgentSelectionSignal {
   reason: string;
 }
 
+const ANALYTICS_EXPLANATION_BY_TYPE = {
+  taste_fit: "Learned listening pattern fit",
+  intent_fit: "Fits this session intent",
+  novelty_fit: "Fresh pick based on replay and skip patterns",
+  commerce_fit: "Strong save or purchase signal",
+} as const;
+
 export interface AgentCandidateTrack {
   id: string;
   title?: string | null;
@@ -226,12 +233,13 @@ export class AgentSelectorService {
     if (context.bigQueryTasteScore) {
       const weight = Math.round(context.bigQueryTasteScore.score * 20);
       if (weight > 0) {
+        const analyticsExplanation = analyticsTasteExplanation(context.bigQueryTasteScore.explanation);
         signals.push({
           label: "bigquery_taste_score",
           weight,
-          reason: context.bigQueryTasteScore.explanation ?? "precomputed warehouse taste fit",
+          reason: analyticsExplanation.signalReason,
         });
-        explanation.push("Learned listening pattern fit");
+        explanation.push(...analyticsExplanation.listenerReasons);
       }
     }
 
@@ -276,4 +284,34 @@ export class AgentSelectorService {
       },
     };
   }
+}
+
+function analyticsTasteExplanation(explanation?: string): {
+  signalReason: string;
+  listenerReasons: string[];
+} {
+  const normalized = explanation?.toLowerCase() ?? "";
+  const types: Array<keyof typeof ANALYTICS_EXPLANATION_BY_TYPE> = [];
+
+  if (/\b(intent|mood|vibe|focus|chill|hype|zen|session)\b/.test(normalized)) {
+    types.push("intent_fit");
+  }
+
+  if (/\b(save|playlist|purchase|bought|commerce|listing|x402)\b/.test(normalized)) {
+    types.push("commerce_fit");
+  }
+
+  if (/\b(skips?|replays?|repeats?|fresh|novel|new|recent)\b/.test(normalized)) {
+    types.push("novelty_fit");
+  }
+
+  if (types.length === 0 || /\b(taste|listen|listening|pattern|signal|score|similar)\b/.test(normalized)) {
+    types.unshift("taste_fit");
+  }
+
+  const listenerReasons = Array.from(new Set(types)).slice(0, 3).map((type) => ANALYTICS_EXPLANATION_BY_TYPE[type]);
+  return {
+    signalReason: explanation ?? "precomputed warehouse taste fit",
+    listenerReasons,
+  };
 }
