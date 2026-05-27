@@ -39,6 +39,7 @@ Run order:
 2. `agent_taste_intelligence_baseline.sql` for recommendation-serving taste
    scores.
 3. Optional, after enough feedback exists: `agent_taste_intelligence_bqml.sql`
+4. Before any ML promotion: `agent_taste_intelligence_bqml_eval.sql`
 
 The baseline materialization is parameterized and can be run from the worker
 directory:
@@ -72,9 +73,11 @@ and session intent context where it is available.
 coverage, confidence coverage, signal-type mix, and session-intent coverage.
 
 The BQML script creates a matrix-factorization model and writes
-`user_track_recommendation_scores_bqml`. Promote it to
-`user_track_recommendation_scores` only after offline recommendation evals
-approve the output.
+`user_track_recommendation_scores_bqml`. The BQML eval script then compares
+that challenger table with `user_track_recommendation_scores` and writes a
+staging comparison table such as `agent_taste_bqml_eval_report`. Promote or
+blend into `user_track_recommendation_scores` only after the backend replay
+artifact and warehouse comparison table show the ML output beats the baseline.
 
 The backend serving query is intentionally bounded by one `userId` and the
 candidate `trackIds` already found by catalog search. These SQL jobs can be
