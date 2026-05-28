@@ -113,4 +113,8 @@ npm install
 RESONATE_MCP_URL=http://localhost:3000/mcp npm run smoke
 ```
 
-It connects to `/mcp`, lists tools, and calls `catalog.search`.
+It connects to `/mcp`, lists tools, and calls `catalog.search`. When
+`RESONATE_MCP_STEM_ID` is set, it also calls `stem.quote` and demonstrates the
+missing-proof `PAYMENT_REQUIRED` recovery path. `RESONATE_MCP_PAYMENT_PROOF`
+enables an explicit paid `stem.download` attempt and prints a receipt summary
+without dumping proof-bearing fields or audio blobs.
