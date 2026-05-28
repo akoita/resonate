@@ -3,7 +3,10 @@ import { INestApplication } from "@nestjs/common";
 import { McpController } from "../modules/mcp/mcp.controller";
 import { McpService } from "../modules/mcp/mcp.service";
 import { CatalogService } from "../modules/catalog/catalog.service";
-import { McpStemService } from "../modules/mcp/mcp-stem.service";
+import {
+  McpStemService,
+  McpToolError,
+} from "../modules/mcp/mcp-stem.service";
 import { createControllerTestApp } from "./e2e-helpers";
 
 const mockCatalogService = {
@@ -314,6 +317,73 @@ describe("McpController (HTTP)", () => {
     expect(download.body.result.structuredContent).toEqual(
       expect.objectContaining({
         code: "PAYMENT_REQUIRED",
+      }),
+    );
+  });
+
+  it("maps MCP tool failures to stable error responses", async () => {
+    mockStemService.quote.mockRejectedValueOnce(
+      new McpToolError("RESOURCE_NOT_FOUND", "Stem missing", {
+        stemId: "missing_stem",
+      }),
+    );
+
+    const init = await request(app.getHttpServer())
+      .post("/mcp")
+      .set("Accept", "application/json, text/event-stream")
+      .send({
+        jsonrpc: "2.0",
+        id: 30,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-11-25",
+          capabilities: {},
+          clientInfo: {
+            name: "jest",
+            version: "0.0.1",
+          },
+        },
+      })
+      .expect(200);
+
+    const sessionId = init.headers["mcp-session-id"];
+    await request(app.getHttpServer())
+      .post("/mcp")
+      .set("mcp-session-id", sessionId)
+      .set("Accept", "application/json, text/event-stream")
+      .send({
+        jsonrpc: "2.0",
+        method: "notifications/initialized",
+      })
+      .expect(202);
+
+    const call = await request(app.getHttpServer())
+      .post("/mcp")
+      .set("mcp-session-id", sessionId)
+      .set("Accept", "application/json, text/event-stream")
+      .send({
+        jsonrpc: "2.0",
+        id: 31,
+        method: "tools/call",
+        params: {
+          name: "stem.quote",
+          arguments: {
+            stemId: "missing_stem",
+            licenseType: "personal",
+          },
+        },
+      })
+      .expect(200);
+
+    expect(call.body.result).toEqual(
+      expect.objectContaining({
+        isError: true,
+        structuredContent: expect.objectContaining({
+          code: "RESOURCE_NOT_FOUND",
+          message: "Stem missing",
+          recovery: expect.stringContaining("Re-run discovery"),
+          context: { stemId: "missing_stem" },
+        }),
       }),
     );
   });

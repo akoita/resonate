@@ -13,13 +13,14 @@ import { resolveX402AssetInfo, X402_RETRY_HEADERS } from "../x402/x402.public";
 import {
   MCP_CAPABILITY_SCHEMA_VERSION,
   MCP_ERROR_DETAILS,
+  MCP_ERROR_RECOVERY,
   MCP_LICENSE_TIERS,
   MCP_PROTOCOL_VERSION,
   MCP_SERVER_INFO,
   MCP_TOOL_DETAILS,
   MCP_TOOL_NAMES,
 } from "./mcp.constants";
-import { McpStemService } from "./mcp-stem.service";
+import { McpStemService, McpToolError } from "./mcp-stem.service";
 
 const licenseTypeSchema = z.enum(["personal", "remix", "commercial"]);
 
@@ -299,6 +300,13 @@ export class McpService implements OnModuleDestroy {
               ],
             };
           } catch (error) {
+            if (error instanceof McpToolError) {
+              return this.toolError(
+                error.code,
+                error.message,
+                error.context,
+              );
+            }
             return this.toolError(
               "QUOTE_FAILED",
               error instanceof Error ? error.message : String(error),
@@ -347,6 +355,13 @@ export class McpService implements OnModuleDestroy {
               isError: !result.ok,
             };
           } catch (error) {
+            if (error instanceof McpToolError) {
+              return this.toolError(
+                error.code,
+                error.message,
+                error.context,
+              );
+            }
             return this.toolError(
               "DOWNLOAD_FAILED",
               error instanceof Error ? error.message : String(error),
@@ -359,8 +374,17 @@ export class McpService implements OnModuleDestroy {
     return server;
   }
 
-  private toolError(code: string, message: string) {
-    const structuredContent = { code, message };
+  private toolError(
+    code: keyof typeof MCP_ERROR_RECOVERY,
+    message: string,
+    context?: Record<string, unknown>,
+  ) {
+    const structuredContent = {
+      code,
+      message,
+      recovery: MCP_ERROR_RECOVERY[code],
+      ...(context ? { context } : {}),
+    };
     return {
       structuredContent,
       content: [

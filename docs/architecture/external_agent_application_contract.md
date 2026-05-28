@@ -64,6 +64,11 @@ Agent clients should expect discovery metadata to include:
 
 ## Stable Error Codes
 
+MCP tool errors return structured content shaped as
+`{ code, message, recovery, context? }`. Payment failures may also include
+`reason` and a fresh `challenge` so clients can decide whether to retry,
+recreate a proof, or stop and explain the failure to the human user.
+
 | Code | Recovery |
 | --- | --- |
 | `PAYMENT_REQUIRED` | Call `stem.quote`, satisfy the returned x402 challenge, then retry with `paymentProof`. |

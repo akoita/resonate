@@ -111,3 +111,10 @@ export const MCP_ERROR_DETAILS = [
       "Retry with backoff and include request or receipt identifiers in operator reports.",
   },
 ] as const;
+
+export type McpErrorCode = (typeof MCP_ERROR_DETAILS)[number]["code"];
+
+export const MCP_ERROR_RECOVERY: Record<McpErrorCode, string> =
+  Object.fromEntries(
+    MCP_ERROR_DETAILS.map((detail) => [detail.code, detail.recovery]),
+  ) as Record<McpErrorCode, string>;

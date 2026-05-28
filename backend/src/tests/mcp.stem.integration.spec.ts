@@ -23,6 +23,14 @@ describe("McpStemService (integration)", () => {
     verifyAndSettle: jest.Mock;
   };
   const stemId = `${TEST_PREFIX}stem`;
+  const noFileStemId = `${TEST_PREFIX}stem_no_file`;
+
+  const createService = (config = mockConfig()) =>
+    new McpStemService(
+      config,
+      paymentService as unknown as X402PaymentService,
+      { decrypt: jest.fn() } as any,
+    );
 
   beforeAll(async () => {
     paymentService = {
@@ -54,11 +62,7 @@ describe("McpStemService (integration)", () => {
       }),
       verifyAndSettle: jest.fn(),
     };
-    service = new McpStemService(
-      mockConfig(),
-      paymentService as unknown as X402PaymentService,
-      { decrypt: jest.fn() } as any,
-    );
+    service = createService();
 
     await prisma.user.create({
       data: {
@@ -100,6 +104,16 @@ describe("McpStemService (integration)", () => {
         mimeType: "audio/mpeg",
       },
     });
+    await prisma.stem.create({
+      data: {
+        id: noFileStemId,
+        trackId: `${TEST_PREFIX}track`,
+        type: "drums",
+        title: "Unavailable Drums",
+        uri: "",
+        mimeType: "audio/mpeg",
+      },
+    });
     await prisma.stemPricing.create({
       data: {
         id: `${TEST_PREFIX}pricing`,
@@ -116,7 +130,9 @@ describe("McpStemService (integration)", () => {
       where: { transactionHash: { startsWith: `x402:mcp:${stemId}` } },
     });
     await prisma.stemPricing.deleteMany({ where: { stemId } });
-    await prisma.stem.deleteMany({ where: { id: stemId } });
+    await prisma.stem.deleteMany({
+      where: { id: { in: [stemId, noFileStemId] } },
+    });
     await prisma.track.deleteMany({
       where: { release: { artistId: `${TEST_PREFIX}artist` } },
     });
@@ -127,7 +143,7 @@ describe("McpStemService (integration)", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    paymentService.verifyAndSettle.mockResolvedValue(true);
+    paymentService.verifyAndSettle.mockResolvedValue({ ok: true });
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       arrayBuffer: async () => Uint8Array.from([1, 2, 3, 4]).buffer,
@@ -163,6 +179,7 @@ describe("McpStemService (integration)", () => {
     expect(result.structuredContent).toEqual(
       expect.objectContaining({
         code: "PAYMENT_REQUIRED",
+        recovery: expect.stringContaining("stem.quote"),
         challenge: expect.objectContaining({
           stemId,
           licenseType: "commercial",
@@ -173,8 +190,11 @@ describe("McpStemService (integration)", () => {
     expect(paymentService.verifyAndSettle).not.toHaveBeenCalled();
   });
 
-  it("returns the same payment challenge when proof verification fails", async () => {
-    paymentService.verifyAndSettle.mockResolvedValue(false);
+  it("returns payment-proof recovery when proof verification fails", async () => {
+    paymentService.verifyAndSettle.mockResolvedValue({
+      ok: false,
+      reason: "payment_proof_decode_failed: malformed header",
+    });
 
     const result = await service.download(stemId, "remix", "invalid-proof");
 
@@ -188,8 +208,10 @@ describe("McpStemService (integration)", () => {
     );
     expect(result.structuredContent).toEqual(
       expect.objectContaining({
-        code: "PAYMENT_REQUIRED",
+        code: "PAYMENT_PROOF_INVALID",
         message: "The paymentProof could not be verified by the x402 facilitator.",
+        recovery: expect.stringContaining("Recreate the x402 proof"),
+        reason: "payment_proof_decode_failed: malformed header",
         challenge: expect.objectContaining({
           stemId,
           licenseType: "remix",
@@ -198,6 +220,67 @@ describe("McpStemService (integration)", () => {
       }),
     );
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("returns facilitator recovery when facilitator verification fails", async () => {
+    paymentService.verifyAndSettle.mockResolvedValue({
+      ok: false,
+      reason: "facilitator_unreachable: timeout",
+    });
+
+    const result = await service.download(stemId, "remix", "proof-header");
+
+    expect(result.ok).toBe(false);
+    expect(result.structuredContent).toEqual(
+      expect.objectContaining({
+        code: "FACILITATOR_FAILED",
+        recovery: expect.stringContaining("Retry later"),
+        reason: "facilitator_unreachable: timeout",
+        challenge: expect.objectContaining({ stemId }),
+      }),
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("returns settlement recovery when facilitator settlement fails", async () => {
+    paymentService.verifyAndSettle.mockResolvedValue({
+      ok: false,
+      reason: "settle_failed: nonce too low",
+    });
+
+    const result = await service.download(stemId, "remix", "proof-header");
+
+    expect(result.ok).toBe(false);
+    expect(result.structuredContent).toEqual(
+      expect.objectContaining({
+        code: "SETTLEMENT_FAILED",
+        recovery: expect.stringContaining("Do not serve the stem"),
+        reason: "settle_failed: nonce too low",
+        challenge: expect.objectContaining({ stemId }),
+      }),
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("throws stable resource and config errors for quote failures", async () => {
+    await expect(service.quote(`${TEST_PREFIX}missing`, "personal")).rejects.toMatchObject({
+      code: "RESOURCE_NOT_FOUND",
+      context: { stemId: `${TEST_PREFIX}missing` },
+    });
+
+    await expect(service.quote(noFileStemId, "personal")).rejects.toMatchObject({
+      code: "RESOURCE_UNAVAILABLE",
+      context: { stemId: noFileStemId },
+    });
+
+    const disabledService = createService({
+      ...mockConfig(),
+      enabled: false,
+      payoutAddress: "",
+    } as X402Config);
+    await expect(disabledService.quote(stemId, "personal")).rejects.toMatchObject({
+      code: "X402_DISABLED",
+    });
   });
 
   it("verifies proof, embeds the purchased stem resource, and records provenance", async () => {
