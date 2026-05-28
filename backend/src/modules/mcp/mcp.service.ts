@@ -7,9 +7,16 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { CatalogService } from "../catalog/catalog.service";
 import { AgentObservabilityService } from "../agents/agent_observability.service";
+import { PaymentsService } from "../payments/payments.service";
+import { X402Config } from "../x402/x402.config";
+import { resolveX402AssetInfo, X402_RETRY_HEADERS } from "../x402/x402.public";
 import {
+  MCP_CAPABILITY_SCHEMA_VERSION,
+  MCP_ERROR_DETAILS,
+  MCP_LICENSE_TIERS,
   MCP_PROTOCOL_VERSION,
   MCP_SERVER_INFO,
+  MCP_TOOL_DETAILS,
   MCP_TOOL_NAMES,
 } from "./mcp.constants";
 import { McpStemService } from "./mcp-stem.service";
@@ -34,6 +41,10 @@ export class McpService implements OnModuleDestroy {
     private readonly catalogService: CatalogService,
     private readonly stemService: McpStemService,
     @Optional()
+    private readonly x402Config?: X402Config,
+    @Optional()
+    private readonly paymentsService?: PaymentsService,
+    @Optional()
     private readonly observability?: AgentObservabilityService,
   ) {}
 
@@ -46,10 +57,44 @@ export class McpService implements OnModuleDestroy {
   }
 
   getCapabilities() {
+    const payment = this.buildPaymentCapabilities();
     return {
+      schemaVersion: MCP_CAPABILITY_SCHEMA_VERSION,
       protocolVersion: MCP_PROTOCOL_VERSION,
       serverInfo: MCP_SERVER_INFO,
       tools: [...MCP_TOOL_NAMES],
+      toolDetails: [...MCP_TOOL_DETAILS],
+      licenseTiers: [...MCP_LICENSE_TIERS],
+      payment,
+      endpoints: {
+        mcp: "/mcp",
+        wellKnown: "/.well-known/mcp.json",
+        openapi: "/openapi.json",
+        storefront: "/api/storefront/stems",
+        x402Info: "/api/stems/{stemId}/x402/info",
+        x402Download: "/api/stems/{stemId}/x402",
+      },
+      docs: {
+        mcp: "docs/architecture/mcp_server.md",
+        x402: "docs/architecture/x402_payments.md",
+        externalAgentUx:
+          "docs/strategy/external_agent_application_ux_implementation_plan.md",
+        registry: "docs/architecture/x402_registry_registration.md",
+      },
+      errors: [...MCP_ERROR_DETAILS],
+      agentUx: {
+        recommendedFlow: [
+          "catalog.search",
+          "GET /api/storefront/stems or GET /api/storefront/stems/{stemId}",
+          "stem.quote or GET /api/stems/{stemId}/x402/info",
+          "satisfy x402 challenge",
+          "stem.download or GET /api/stems/{stemId}/x402 with proof",
+          "store receipt and retry idempotently on transient failures",
+        ],
+        publicRouter: false,
+        note:
+          "PaymentRouterService is a trusted backend boundary; external agents use storefront, MCP, x402, and OpenAPI surfaces.",
+      },
     };
   }
 
@@ -403,6 +448,32 @@ export class McpService implements OnModuleDestroy {
         message,
       },
       id,
+    };
+  }
+
+  private buildPaymentCapabilities() {
+    if (!this.x402Config) {
+      return {
+        protocol: "x402",
+        enabled: false,
+        retryHeaders: [...X402_RETRY_HEADERS],
+      };
+    }
+
+    const asset = resolveX402AssetInfo(
+      this.x402Config.network,
+      this.paymentsService?.getPaymentAssets(this.x402Config.chainId).assets,
+    );
+
+    return {
+      protocol: "x402",
+      enabled: this.x402Config.enabled,
+      network: this.x402Config.network,
+      chainId: this.x402Config.chainId,
+      facilitatorUrl: this.x402Config.facilitatorUrl,
+      retryHeaders: [...X402_RETRY_HEADERS],
+      contractSettlementEnabled: this.x402Config.contractSettlementEnabled,
+      asset,
     };
   }
 }

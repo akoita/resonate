@@ -17,6 +17,7 @@ docs, roadmap issues, and implementation milestones into a product direction.
 | [Next-Generation Music Platform Analysis](next_generation_music_platform_analysis.md) | Synthesizes the product gap between the current Resonate platform and the stronger music-native product direction across listening, artist economics, creation, rights, Shows, and community. |
 | [Next-Generation Music Platform Execution Plan](next_generation_music_platform_execution_plan.md) | Converts the analysis into phased execution: player action layer, durable taste memory, community identity, artist rooms, campaign rooms, remix bridge, artist action cockpit, cohorts, and Discord bridge. |
 | [External Agent Application UX](agent_ui_ux_relevance.md) | Defines how outside LLM and agentic applications experience Resonate through MCP, x402, OpenAPI, storefront contracts, quotes, errors, receipts, examples, and registry readiness. |
+| [External Agent Application UX Implementation Plan](external_agent_application_ux_implementation_plan.md) | Breaks issue #1006 into contract audit, capability metadata, tool output, stable error, example-client, and registry-readiness slices. |
 | [Agent-Mediated Playback](agent_mediated_playback.md) | Decides how owner-authorized external agents should request queue/playback actions through scoped playback intents, active-client confirmation, analytics markers, and abuse controls. |
 
 ## Related Planning Anchors
@@ -27,6 +28,7 @@ docs, roadmap issues, and implementation milestones into a product direction.
 - [Business Model](../rfc/business-model.md)
 - [Agent Commerce Runtime](../features/agent-commerce-runtime.md)
 - [Agent Platform Refactor RFC](../rfc/agent-platform-refactor.md)
+- [External Agent Application Contract](../architecture/external_agent_application_contract.md)
 - [Listener Community Network](../features/listener_community_network.md)
 - [Listener Community Network Execution Plan](../features/listener_community_network_execution_plan.md)
 - [Listener Community Network RFC](../rfc/listener-community-network.md)

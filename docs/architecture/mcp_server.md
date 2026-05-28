@@ -16,6 +16,16 @@ JWT, and uses x402 inside the tool protocol for paid downloads.
 spec requirement. The authoritative live capability source is still the MCP
 `initialize` response and subsequent `tools/list` call.
 
+`GET /mcp` and `/.well-known/mcp.json` also expose Resonate-specific
+capability metadata for external agents:
+
+- capability schema version;
+- tool details and versions;
+- supported license tiers;
+- x402 payment asset, network, facilitator, and retry headers;
+- stable error codes with recovery hints;
+- links to OpenAPI, x402, registry, and external-agent contract docs.
+
 ## Tools
 
 | Tool | Payment | Purpose |
@@ -27,6 +37,9 @@ spec requirement. The authoritative live capability source is still the MCP
 `stem.download` does not use HTTP-level 402 at `/mcp`. Missing or invalid
 proofs return an MCP tool error with `code: "PAYMENT_REQUIRED"` and the same
 challenge shape as `stem.quote`.
+
+Stable error codes and receipt expectations for external agents are documented
+in [External Agent Application Contract](external_agent_application_contract.md).
 
 ## 30-second local check
 

@@ -70,6 +70,7 @@ that answers:
 | --- | --- |
 | Agent runtime extraction | [Agent Platform Refactor RFC](../rfc/agent-platform-refactor.md) |
 | Runtime worker deployment | [Agent Runtime Worker](../architecture/agent-runtime-worker.md) |
+| External agent application contract | [External Agent Application Contract](../architecture/external_agent_application_contract.md), [External Agent Application UX](../strategy/agent_ui_ux_relevance.md), [#1006 implementation plan](../strategy/external_agent_application_ux_implementation_plan.md) |
 | x402 payments | [x402 Payments](../architecture/x402_payments.md) |
 | MCP server | [MCP Server](../architecture/mcp_server.md) |
 | Account abstraction | [Account Abstraction](../account-abstraction/account-abstraction.md) |

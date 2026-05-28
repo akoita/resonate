@@ -89,14 +89,49 @@ describe("McpController (HTTP)", () => {
   it("GET /mcp returns a curl-friendly capability object", async () => {
     const res = await request(app.getHttpServer()).get("/mcp").expect(200);
 
-    expect(res.body).toEqual({
+    expect(res.body).toEqual(expect.objectContaining({
+      schemaVersion: "resonate-mcp-capabilities/v1",
       protocolVersion: expect.any(String),
       serverInfo: {
         name: "resonate-mcp",
         version: "0.1.0",
       },
       tools: ["catalog.search", "stem.quote", "stem.download"],
-    });
+      toolDetails: expect.arrayContaining([
+        expect.objectContaining({
+          name: "catalog.search",
+          version: "1.0.0",
+          payment: "free",
+        }),
+        expect.objectContaining({
+          name: "stem.quote",
+          payment: "free",
+        }),
+        expect.objectContaining({
+          name: "stem.download",
+          payment: "x402",
+        }),
+      ]),
+      licenseTiers: ["personal", "remix", "commercial"],
+      payment: expect.objectContaining({
+        protocol: "x402",
+        enabled: false,
+        retryHeaders: ["PAYMENT-SIGNATURE", "X-PAYMENT"],
+      }),
+      endpoints: expect.objectContaining({
+        storefront: "/api/storefront/stems",
+        x402Info: "/api/stems/{stemId}/x402/info",
+      }),
+      errors: expect.arrayContaining([
+        expect.objectContaining({
+          code: "PAYMENT_REQUIRED",
+          recovery: expect.stringContaining("stem.quote"),
+        }),
+      ]),
+      agentUx: expect.objectContaining({
+        publicRouter: false,
+      }),
+    }));
   });
 
   it("serves catalog.search through Streamable HTTP MCP", async () => {
