@@ -12,6 +12,7 @@ function createMockConfig(overrides: Partial<X402Config> = {}): X402Config {
     facilitatorUrl: 'https://facilitator.payai.network',
     network: 'eip155:8453',
     chainId: 8453,
+    contractSettlementEnabled: false,
     ...overrides,
   } as X402Config;
 }
@@ -129,6 +130,7 @@ describe('OpenApiService', () => {
     const doc = service.buildMcpWellKnownDocument('http://localhost:3000') as any;
 
     expect(doc.schemaVersion).toBe(1);
+    expect(doc.capabilitySchemaVersion).toBe('resonate-mcp-capabilities/v1');
     expect(doc.protocol).toBe('mcp');
     expect(doc.serverInfo).toEqual({
       name: 'resonate-mcp',
@@ -148,8 +150,58 @@ describe('OpenApiService', () => {
       'stem.quote',
       'stem.download',
     ]);
+    expect(doc.toolDetails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'catalog.search',
+          version: '1.0.0',
+          payment: 'free',
+        }),
+        expect.objectContaining({
+          name: 'stem.download',
+          payment: 'x402',
+        }),
+      ]),
+    );
+    expect(doc.licenseTiers).toEqual(['personal', 'remix', 'commercial']);
+    expect(doc.payment).toEqual(
+      expect.objectContaining({
+        protocol: 'x402',
+        enabled: true,
+        network: 'eip155:8453',
+        chainId: 8453,
+        facilitatorUrl: 'https://facilitator.payai.network',
+        retryHeaders: ['PAYMENT-SIGNATURE', 'X-PAYMENT'],
+        contractSettlementEnabled: false,
+        asset: expect.objectContaining({
+          assetId: 'base:usdc',
+          symbol: 'USDC',
+          decimals: 6,
+        }),
+      }),
+    );
+    expect(doc.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'PAYMENT_REQUIRED',
+          recovery: expect.stringContaining('stem.quote'),
+        }),
+      ]),
+    );
+    expect(doc.agentUx).toEqual(
+      expect.objectContaining({
+        publicRouter: false,
+        recommendedFlow: expect.arrayContaining([
+          'catalog.search',
+          'satisfy x402 challenge',
+        ]),
+      }),
+    );
     expect(doc.discovery.authoritativeSource).toContain('initialize response');
     expect(doc.authentication.note).toContain('x402 payment proof');
+    expect(doc.documentation.externalAgentUx).toContain(
+      'external_agent_application_ux_implementation_plan.md',
+    );
   });
 });
 
@@ -199,6 +251,13 @@ describe('OpenApiController', () => {
           openapi: 'http://public.example.test/openapi.json',
         }),
         tools: ['catalog.search', 'stem.quote', 'stem.download'],
+        capabilitySchemaVersion: 'resonate-mcp-capabilities/v1',
+        licenseTiers: ['personal', 'remix', 'commercial'],
+        payment: expect.objectContaining({
+          protocol: 'x402',
+          network: 'eip155:8453',
+          retryHeaders: ['PAYMENT-SIGNATURE', 'X-PAYMENT'],
+        }),
       }),
     );
   });
