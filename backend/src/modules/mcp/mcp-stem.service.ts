@@ -13,6 +13,7 @@ import {
 } from "../x402/x402.receipt";
 import { formatUsdcAmount, QuoteLicenseKey } from "../x402/x402.quote";
 import { getX402ChainId } from "../x402/x402.public";
+import { MCP_ERROR_RECOVERY, type McpErrorCode } from "./mcp.constants";
 
 export type McpStemQuote = {
   stemId: string;
@@ -43,6 +44,22 @@ export type McpStemDownloadResult =
     };
 
 type StemRecord = Awaited<ReturnType<McpStemService["findStem"]>>;
+export type McpToolFailureContext = Record<string, unknown> & {
+  stemId?: string;
+  licenseType?: QuoteLicenseKey;
+  cause?: string;
+};
+
+export class McpToolError extends Error {
+  constructor(
+    readonly code: McpErrorCode,
+    message: string,
+    readonly context: McpToolFailureContext = {},
+  ) {
+    super(message);
+    this.name = "McpToolError";
+  }
+}
 
 @Injectable()
 export class McpStemService {
@@ -74,11 +91,8 @@ export class McpStemService {
       paymentProof,
       quote.paymentChallenge.paymentRequirements,
     );
-    if (!verified) {
-      return this.paymentRequired(
-        quote,
-        "The paymentProof could not be verified by the x402 facilitator.",
-      );
+    if (!verified.ok) {
+      return this.paymentFailure(quote, verified.reason);
     }
 
     const audioBuffer = await this.readStemAudio(stem);
@@ -225,6 +239,31 @@ export class McpStemService {
     const structuredContent = {
       code: "PAYMENT_REQUIRED",
       message,
+      recovery: MCP_ERROR_RECOVERY.PAYMENT_REQUIRED,
+      challenge: quote,
+    };
+    return {
+      ok: false as const,
+      structuredContent,
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(structuredContent, null, 2),
+        },
+      ],
+    };
+  }
+
+  private paymentFailure(quote: McpStemQuote, reason: string) {
+    const code = this.mapPaymentFailureCode(reason);
+    const structuredContent = {
+      code,
+      message:
+        code === "PAYMENT_PROOF_INVALID"
+          ? "The paymentProof could not be verified by the x402 facilitator."
+          : "The x402 facilitator could not complete verification or settlement.",
+      recovery: MCP_ERROR_RECOVERY[code],
+      reason,
       challenge: quote,
     };
     return {
@@ -242,18 +281,43 @@ export class McpStemService {
   private async requireDownloadableStem(stemId: string) {
     const stem = await this.findStem(stemId);
     if (!stem) {
-      throw new Error(`Stem ${stemId} not found`);
+      throw new McpToolError("RESOURCE_NOT_FOUND", `Stem ${stemId} not found`, {
+        stemId,
+      });
     }
     if (!stem.uri) {
-      throw new Error(`Stem ${stemId} has no downloadable file`);
+      throw new McpToolError(
+        "RESOURCE_UNAVAILABLE",
+        `Stem ${stemId} has no downloadable file`,
+        { stemId },
+      );
     }
     return stem;
   }
 
   private assertX402Enabled() {
     if (!this.x402Config.enabled || !this.x402Config.payoutAddress) {
-      throw new Error("x402 payments are not enabled on this server");
+      throw new McpToolError(
+        "X402_DISABLED",
+        "x402 payments are not enabled on this server",
+      );
     }
+  }
+
+  private mapPaymentFailureCode(reason: string): McpErrorCode {
+    if (reason.startsWith("payment_proof_decode_failed")) {
+      return "PAYMENT_PROOF_INVALID";
+    }
+    if (reason.startsWith("settle_failed")) {
+      return "SETTLEMENT_FAILED";
+    }
+    if (reason.startsWith("facilitator_http_")) {
+      return "FACILITATOR_FAILED";
+    }
+    if (reason.startsWith("facilitator_unreachable")) {
+      return "FACILITATOR_FAILED";
+    }
+    return "PAYMENT_PROOF_INVALID";
   }
 
   private findStem(stemId: string) {

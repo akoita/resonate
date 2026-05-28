@@ -34,9 +34,11 @@ capability metadata for external agents:
 | `stem.quote(stemId, licenseType)` | Free | Return a USDC quote and x402 challenge |
 | `stem.download(stemId, licenseType, paymentProof)` | x402 | Validate proof and return the purchased stem resource |
 
-`stem.download` does not use HTTP-level 402 at `/mcp`. Missing or invalid
-proofs return an MCP tool error with `code: "PAYMENT_REQUIRED"` and the same
-challenge shape as `stem.quote`.
+`stem.download` does not use HTTP-level 402 at `/mcp`. Missing proofs return an
+MCP tool error with `code: "PAYMENT_REQUIRED"` and the same challenge shape as
+`stem.quote`. Invalid proofs, facilitator failures, settlement failures, missing
+stems, and unavailable resources return stable MCP tool error codes with
+machine-readable recovery hints.
 
 Stable error codes and receipt expectations for external agents are documented
 in [External Agent Application Contract](external_agent_application_contract.md).
