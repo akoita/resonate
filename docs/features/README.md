@@ -30,6 +30,12 @@ that answers:
 | `planned` | Designed or prioritized, but not yet available. |
 | `retired` | Removed, replaced, or intentionally paused. |
 
+## Strategy Entry Points
+
+| Area | Start Here |
+| --- | --- |
+| Next-generation platform direction | [Strategy](../strategy/README.md), [platform analysis](../strategy/next_generation_music_platform_analysis.md), [execution plan](../strategy/next_generation_music_platform_execution_plan.md) |
+
 ## Implemented And Partial Features
 
 | Feature | Status | Audience | Where To Use/Test | Notes |
