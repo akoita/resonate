@@ -11,62 +11,8 @@ import { AddToPlaylistModal } from "../../components/library/AddToPlaylistModal"
 import { ContextMenu, ContextMenuItem } from "../../components/ui/ContextMenu";
 import { useToast } from "../../components/ui/Toast";
 import { MixerConsole } from "../../components/player/MixerConsole";
+import { PlayerActionPanel } from "../../components/player/PlayerActionPanel";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
-
-function PlayerActionPanel({
-  actionState,
-  loading,
-  onAction,
-}: {
-  actionState: PlayerTrackActionsResponse | null;
-  loading: boolean;
-  onAction: (action: PlayerTrackAction) => void;
-}) {
-  if (loading) {
-    return (
-      <section className="player-action-panel" aria-label="Track actions">
-        <div className="studio-label">Now Playing Actions</div>
-        <div className="player-action-grid">
-          {["Save", "Playlist", "Stems", "License"].map((label) => (
-            <button key={label} className="player-action-button is-loading" type="button" disabled>
-              <span>{label}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-    );
-  }
-
-  if (!actionState) {
-    return null;
-  }
-
-  return (
-    <section className="player-action-panel" aria-label="Track actions">
-      <div className="studio-label">Now Playing Actions</div>
-      {actionState.recommendation?.summary && (
-        <p className="player-action-reason">{actionState.recommendation.summary}</p>
-      )}
-      <div className="player-action-grid">
-        {actionState.actions.map((action) => (
-          <button
-            key={action.key}
-            className={`player-action-button player-action-button--${action.status}`}
-            type="button"
-            onClick={() => onAction(action)}
-            disabled={action.status !== "available"}
-            title={action.reason}
-          >
-            <span>{action.label}</span>
-            {action.status !== "available" && action.reason && (
-              <small>{action.reason}</small>
-            )}
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
 
 function PlayerContent() {
   const searchParams = useSearchParams();
@@ -99,6 +45,7 @@ function PlayerContent() {
   const [showAddToPlaylist, setShowAddToPlaylist] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, track: LocalTrack } | null>(null);
   const [trackActions, setTrackActions] = useState<PlayerTrackActionsResponse | null>(null);
+  const [savedActionTrackIds, setSavedActionTrackIds] = useState<Set<string>>(() => new Set());
   const actionImpressionKeyRef = useRef<string | null>(null);
 
   // Local state for seeking
@@ -192,6 +139,15 @@ function PlayerContent() {
   const handlePlayerAction = async (action: PlayerTrackAction) => {
     if (!currentTrack || !actionTrackId) return;
 
+    if (action.status !== "available") {
+      addToast({
+        type: "warning",
+        title: action.label,
+        message: action.reason || "This action is not available for the current track.",
+      });
+      return;
+    }
+
     recordProductAnalyticsFromBrowser("player.action_selected", {
       subjectType: "track",
       subjectId: actionTrackId,
@@ -202,17 +158,9 @@ function PlayerContent() {
       },
     });
 
-    if (action.status !== "available") {
-      addToast({
-        type: "warning",
-        title: action.label,
-        message: action.reason || "This action is not available for the current track.",
-      });
-      return;
-    }
-
     if (action.key === "save") {
       await saveTrackMetadata({ ...currentTrack, source: currentTrack.source ?? "remote" });
+      setSavedActionTrackIds((current) => new Set(current).add(actionTrackId));
       addToast({ type: "success", title: "Saved", message: `"${currentTrack.title}" was added to your library.` });
       return;
     }
@@ -396,14 +344,6 @@ function PlayerContent() {
         <p className="hero-artist">
           {displayTrack.artist} {displayTrack.album ? ` • ${displayTrack.album}` : ""}
         </p>
-
-        {currentTrack && (
-          <PlayerActionPanel
-            actionState={visibleTrackActions}
-            loading={actionPanelLoading}
-            onAction={handlePlayerAction}
-          />
-        )}
       </section>
 
       {/* Mixer Panel - shows when active */}
@@ -486,6 +426,15 @@ function PlayerContent() {
             />
           </div>
         </div>
+
+        {currentTrack && (
+          <PlayerActionPanel
+            actionState={visibleTrackActions}
+            loading={actionPanelLoading}
+            saved={Boolean(actionTrackId && savedActionTrackIds.has(actionTrackId))}
+            onAction={handlePlayerAction}
+          />
+        )}
 
         <div className="queue-section" style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "40vh" }}>
           <div className="studio-label" style={{ marginBottom: "var(--space-2)" }}>Queue Manifest</div>

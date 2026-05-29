@@ -1269,58 +1269,63 @@ a {
 }
 
 .player-action-panel {
-  width: min(620px, 100%);
-  margin-top: var(--space-5);
-  padding: var(--space-4);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  background: rgba(10, 10, 15, 0.58);
-  backdrop-filter: blur(24px) saturate(160%);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+  width: 100%;
+  margin: var(--space-3) 0;
+  padding: var(--space-3) 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .player-action-reason {
-  margin: var(--space-2) 0 var(--space-3);
-  color: rgba(255, 255, 255, 0.76);
-  font-size: 13px;
-  line-height: 1.45;
+  margin: var(--space-2) 0 0;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
-.player-action-grid {
+.player-action-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.player-action-primary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
 }
 
 .player-action-button {
-  min-height: 58px;
-  border-radius: 12px;
+  min-height: 66px;
+  border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.07);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.05));
   color: #fff;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
-  gap: 3px;
-  padding: 10px 12px;
+  gap: 5px;
+  padding: 12px 14px;
   text-align: left;
-  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
 }
 
 .player-action-button span {
   width: 100%;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   line-height: 1.2;
 }
 
 .player-action-button small {
   width: 100%;
-  color: rgba(255, 255, 255, 0.52);
-  font-size: 11px;
-  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12px;
+  line-height: 1.25;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -1329,15 +1334,65 @@ a {
 
 .player-action-button--available:hover {
   transform: translateY(-1px);
-  border-color: rgba(255, 255, 255, 0.26);
-  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(124, 92, 255, 0.48);
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.28), rgba(255, 255, 255, 0.08));
+  box-shadow: 0 12px 30px rgba(124, 92, 255, 0.14);
 }
 
-.player-action-button--disabled,
-.player-action-button--planned,
+.player-action-button.is-saved {
+  cursor: default;
+  border-color: rgba(57, 255, 176, 0.42);
+  background: rgba(57, 255, 176, 0.12);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.player-action-button.is-saved small {
+  color: rgba(213, 255, 237, 0.72);
+}
+
 .player-action-button.is-loading {
   cursor: not-allowed;
   opacity: 0.58;
+}
+
+.player-action-unavailable {
+  margin-top: var(--space-3);
+}
+
+.player-action-unavailable-title {
+  color: rgba(177, 151, 255, 0.86);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin-bottom: var(--space-2);
+  text-transform: uppercase;
+}
+
+.player-action-unavailable-list {
+  display: grid;
+  gap: 6px;
+}
+
+.player-action-unavailable-item {
+  display: grid;
+  grid-template-columns: minmax(96px, 0.42fr) minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.player-action-unavailable-item span {
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.player-action-unavailable-item small {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .player-floating-console {
@@ -10953,12 +11008,16 @@ tr[draggable="true"]:hover {
 
   .player-action-panel {
     width: 100%;
-    margin-top: var(--space-4);
-    padding: var(--space-3);
+    margin: var(--space-3) 0;
   }
 
-  .player-action-grid {
+  .player-action-primary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .player-action-unavailable-item {
+    grid-template-columns: 1fr;
+    gap: 3px;
   }
 
   /* Compact player bar: shrink insets and allow wrapping so controls

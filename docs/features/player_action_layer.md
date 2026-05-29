@@ -12,10 +12,10 @@ issue: "https://github.com/akoita/resonate/issues/1005"
 `in-progress`
 
 The first implementation slice adds a player-facing action availability contract
-and a Now Playing action surface. It connects playback to existing save,
-playlist, stem inspection, marketplace/license, and remix paths while keeping
-future community, Shows, and collect/drop actions safely disabled or planned
-until those surfaces expose linkable public state.
+and a Now Playing action surface in the player console. It connects playback to
+existing save, playlist, stem inspection, marketplace/license, and remix paths
+while keeping future community, Shows, and collect/drop actions safely disabled
+or planned until those surfaces expose linkable public state.
 
 ## Who It Is For
 
@@ -36,9 +36,16 @@ available right now?
 - UI: `/player?trackId=<track-id>`
 - API: `GET /catalog/tracks/:trackId/actions`
 - Web helper: `getPlayerTrackActions`
+- Player component: `PlayerActionPanel`
 - Analytics:
   - `player.action_impression`
   - `player.action_selected`
+
+The player UI keeps album art, title, artist, and stem mixer access in the hero.
+Immediately usable actions render in the right console near progress, volume,
+and queue context. Disabled or future actions render as a compact
+`Unavailable / Coming soon` list with safe reasons, so unavailable capabilities
+are visible without behaving like conversion buttons.
 
 ## Action Contract
 
@@ -90,14 +97,16 @@ Frontend:
 
 ```bash
 cd web
-npm run test:unit -- api.test.ts productAnalytics.test.ts
+npm run test:unit -- api.test.ts productAnalytics.test.ts PlayerActionPanel.test.tsx
 ```
 
 Manual:
 
 1. Open `/player?trackId=<published-track-id>`.
-2. Confirm Now Playing actions render without shifting playback controls.
-3. Confirm save and add-to-playlist use existing library and playlist flows.
+2. Confirm Now Playing actions render in the right console without shifting
+   playback controls.
+3. Confirm save changes to `Saved` after success and add-to-playlist uses the
+   existing playlist flow.
 4. Confirm marketplace/license appears only when an active public listing exists.
 5. Confirm disabled/planned actions show safe reasons.
 
