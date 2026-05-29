@@ -18,6 +18,8 @@ const typeIcon = (type: string) => {
     case "release_rights_approved_standard_escrow": return "\u2705";
     case "release_rights_approved_trusted_fast_path": return "\u26a1";
     case "release_rights_denied": return "\u26d4";
+    case "listing_expiring_soon": return "\u23f1";
+    case "listing_expired": return "\u23f3";
     default: return "\ud83d\udd14";
   }
 };
@@ -43,6 +45,14 @@ export default function NotificationBell() {
   const router = useRouter();
 
   const getNotificationHref = (notification: DisputeNotification) => {
+    if (notification.type === "listing_expiring_soon" || notification.type === "listing_expired") {
+      const query = new URLSearchParams();
+      if (notification.stemListingId) query.set("listing", notification.stemListingId);
+      if (notification.type === "listing_expired") query.set("status", "expired");
+      const queryString = query.toString();
+      return queryString ? `/marketplace/manage?${queryString}` : "/marketplace/manage";
+    }
+
     if (notification.type.startsWith("release_rights_")) {
       if (notification.type === "release_rights_submitted" && role === "admin") {
         return "/disputes/admin";
@@ -68,6 +78,10 @@ export default function NotificationBell() {
   };
 
   const getNotificationActionHint = (notification: DisputeNotification) => {
+    if (notification.type === "listing_expiring_soon" || notification.type === "listing_expired") {
+      return "Open listing manager \u2192";
+    }
+
     if (notification.type.startsWith("release_rights_")) {
       return notification.type === "release_rights_submitted" && role === "admin"
         ? "Open admin review →"

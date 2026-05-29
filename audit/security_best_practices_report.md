@@ -2,11 +2,11 @@
 
 ## Executive Summary
 
-This review covers the Agent Taste offline BigQuery ML evaluation changes in
-#978, including backend replay comparison artifacts, BigQuery comparison SQL,
-and documentation for promotion gates. No Critical, High, Medium, or Low
-findings were identified; the changes are offline/operator tooling only and do
-not expose new runtime endpoints, secrets, or per-user product UI surfaces.
+The #1015 marketplace listing lifecycle changes were reviewed for backend
+authorization, data exposure, secret handling, raw SQL, XSS vectors, and client
+secret exposure. No Critical or High findings remain in the branch after the
+owner listing endpoint was tightened to require seller-linked or admin JWT
+access.
 
 ## Critical Findings
 
@@ -22,46 +22,64 @@ None.
 
 ## Low Findings
 
-None.
+### SBPR-001: Owner Inventory Endpoint Must Stay Authenticated
 
-## Informational Notes
+**File:** `backend/src/modules/contracts/metadata.controller.ts`
 
-### SBPR-001: Offline Eval Artifacts Stay Local And Reproducible
+**Status:** Fixed in this branch.
 
-**File:** `backend/src/modules/agents/agent_recommendation_eval.service.ts`
+**Impact:** Owner listing inventory includes expired and cancelled listings that
+public purchase surfaces intentionally hide. If exposed by wallet address
+alone, this could reveal non-public seller inventory lifecycle details.
 
-The new model-comparison path ranks deterministic, warehouse-baseline, and BQML
-fixtures in-process and writes JSON/Markdown artifacts under `eval-results/`.
-It does not require production credentials and does not add any network calls.
+**Resolution:** `GET /api/metadata/listings/owner/:seller` now uses
+`AuthGuard("jwt")` and allows only the seller address, a linked EOA/smart-account
+wallet relation, or an admin. The frontend management page sends the bearer
+token when loading owner inventory.
 
-### SBPR-002: BigQuery Comparison SQL Uses Query Parameters
+### SBPR-002: Malformed Signatures Should Fail Before Contract Verification
 
-**File:** `workers/analytics-dataflow/sql/agent_taste_intelligence_bqml_eval.sql`
+**File:** `backend/src/modules/encryption/providers/aes_encryption_provider.ts`
 
-The comparison template declares project, dataset, source table, destination
-table, version, top-k, and promotion thresholds as BigQuery parameters. It keeps
-BQML output in a staging comparison table and does not promote it into the
-serving table automatically.
+**Status:** Fixed in this branch.
 
-### SBPR-003: Promotion Decision Is Explicit
+**Impact:** Malformed non-hex wallet signatures could fall through from local
+EOA verification into EIP-1271 verification. Without an explicit `RPC_URL`, that
+path could wait on a default public transport and make invalid-signature checks
+slow or flaky.
 
-**File:** `docs/features/agent_taste_intelligence.md`
+**Resolution:** The AES provider now rejects non-hex signatures immediately and
+skips EIP-1271 verification unless `RPC_URL` is configured.
 
-The feature documentation now requires review of both backend replay artifacts
-and the warehouse comparison table before promoting or blending the BQML
-challenger into `user_track_recommendation_scores`.
+## Informational Findings
 
-### SBPR-004: No Infrastructure Or Secret Surface Added
+### SBPR-003: Existing Local Anvil Key Is Present In Dev Funding Helper
 
-**File:** `docs/issue-978-implementation-plan.md`
+**File:** `web/src/lib/localFunding.ts`
 
-The implementation plan records that no `resonate-iac` changes are required for
-this issue. The new SQL is a manual operator/backfill comparison path and does
-not introduce new deployed environment variables or scheduled resources.
+**Impact:** The standard Anvil private key appears in source for local
+development funding. This was pre-existing and not touched by #1015.
 
-## Review Commands
+**Assessment:** Acceptable only for local development. Do not reuse this pattern
+for shared testnet, staging, or production keys.
 
-```bash
-rg '(SECRET|PRIVATE_KEY|API_KEY|TOKEN|PASSWORD|BEGIN [A-Z ]*PRIVATE KEY|AIza|sk-|xoxb-|ghp_|github_pat_)' backend/src/modules/agents/agent_recommendation_eval.service.ts backend/src/tests/agent_recommendation_eval.spec.ts workers/analytics-dataflow/sql/agent_taste_intelligence_bqml_eval.sql docs/issue-978-implementation-plan.md docs/features/agent_taste_intelligence.md workers/analytics-dataflow/sql/README.md docs/features/README.md
-rg '\$queryRaw|\$executeRaw|queryRaw|executeRaw|eval\(|new Function|dangerouslySetInnerHTML|innerHTML|document\.cookie|localStorage\.setItem' backend/src/modules/agents/agent_recommendation_eval.service.ts backend/src/tests/agent_recommendation_eval.spec.ts workers/analytics-dataflow/sql/agent_taste_intelligence_bqml_eval.sql docs/issue-978-implementation-plan.md docs/features/agent_taste_intelligence.md workers/analytics-dataflow/sql/README.md docs/features/README.md
-```
+### SBPR-004: Public Client API-Key Environment Variables Are Present
+
+**File:** `web/src/lib/bundlerConfig.ts`
+
+**Impact:** `NEXT_PUBLIC_PIMLICO_API_KEY` is intentionally browser-exposed by
+name. This was pre-existing and not touched by #1015.
+
+**Assessment:** Treat it as a publishable client identifier, not a secret. Use
+server-side proxying for any credential that must remain confidential.
+
+## Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\\$queryRaw' backend/src/`
+- `rg 'dangerouslySetInnerHTML|innerHTML' web/src/`
+- `rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/`
+- `rg 'JSON\\.parse|eval\\(' backend/src/modules/contracts/metadata.controller.ts backend/src/modules/contracts/contracts.service.ts backend/src/modules/notifications/notification.service.ts`
+- `rg 'document\\.cookie|setCookie|httpOnly.*false' web/src/`
+- targeted review of #1015 backend, notification, and owner-management UI
+  changes.

@@ -316,6 +316,7 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
                     message: event.message,
                     disputeId: event.disputeId,
                     releaseId: event.releaseId,
+                    stemListingId: event.stemListingId,
                     timestamp: event.occurredAt,
                 });
             }

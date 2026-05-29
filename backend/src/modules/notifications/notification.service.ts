@@ -17,6 +17,7 @@ interface NotificationPayload {
   message: string;
   disputeId?: string;
   releaseId?: string;
+  stemListingId?: string;
 }
 
 @Injectable()
@@ -140,6 +141,8 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
           dispute_resolved: prefs.disputeResolved,
           dispute_appealed: prefs.disputeAppealed,
           evidence_submitted: prefs.evidenceSubmitted,
+          listing_expiring_soon: prefs.listingExpiringSoon,
+          listing_expired: prefs.listingExpired,
         };
         if (prefMap[payload.type] === false) {
           this.logger.log(`Skipping notification (disabled by preference): ${payload.type} for ${payload.walletAddress}`);
@@ -155,6 +158,7 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
           message: payload.message,
           disputeId: payload.disputeId,
           releaseId: payload.releaseId,
+          stemListingId: payload.stemListingId,
         },
       });
 
@@ -170,6 +174,7 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
         message: payload.message,
         disputeId: payload.disputeId,
         releaseId: payload.releaseId,
+        stemListingId: payload.stemListingId,
       });
 
       this.logger.log(`Created notification ${notification.id} (${payload.type}) for ${payload.walletAddress}`);
@@ -178,6 +183,19 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(`Failed to create notification: ${error}`);
       return null;
     }
+  }
+
+  async createListingLifecycleNotification(payload: NotificationPayload & { stemListingId: string }) {
+    const existing = await prisma.notification.findFirst({
+      where: {
+        walletAddress: payload.walletAddress,
+        type: payload.type,
+        stemListingId: payload.stemListingId,
+      },
+    });
+    if (existing) return existing;
+
+    return this.createNotification(payload);
   }
 
   async getNotifications(walletAddress: string, limit = 20, offset = 0) {
@@ -219,7 +237,14 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
 
   async updatePreferences(
     walletAddress: string,
-    prefs: { disputeFiled?: boolean; disputeResolved?: boolean; disputeAppealed?: boolean; evidenceSubmitted?: boolean },
+    prefs: {
+      disputeFiled?: boolean;
+      disputeResolved?: boolean;
+      disputeAppealed?: boolean;
+      evidenceSubmitted?: boolean;
+      listingExpiringSoon?: boolean;
+      listingExpired?: boolean;
+    },
   ) {
     return prisma.notificationPreference.upsert({
       where: { walletAddress },

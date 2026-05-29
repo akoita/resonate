@@ -7,6 +7,7 @@ Frontend and backend integration for the Stem NFT marketplace.
 | Route             | Description                                      |
 | ----------------- | ------------------------------------------------ |
 | `/marketplace`    | Browse and purchase stem NFT listings through x402 or direct on-chain rails |
+| `/marketplace/manage` | Seller listing inventory, lifecycle status, expiry notifications, and relist actions |
 | `/stem/[tokenId]` | View stem metadata, royalties, and remix lineage |
 
 ## Backend Services
@@ -30,7 +31,27 @@ Polls blockchain for contract events and stores in database:
 | ------------------------------------- | --------------------------- |
 | `GET /api/metadata/:chainId/:tokenId` | ERC-1155 token metadata     |
 | `GET /api/metadata/listings`          | Active marketplace listings, including `paymentToken` for stablecoin/ERC-20 display |
+| `GET /api/metadata/listings/owner/:seller` | Authenticated seller-visible listings across active, expiring, expired, sold, and cancelled lifecycle states |
 | `GET /api/metadata/earnings/:address` | Artist royalty earnings     |
+
+### Listing Lifecycle
+
+`StemMarketplaceV2` remains the on-chain source for listing creation, purchase,
+cancellation, and expiry enforcement. The app now treats expiry as an explicit
+creator-facing lifecycle:
+
+- public marketplace, storefront, x402, MCP, and agent-commerce surfaces only
+  expose listings that are active, have remaining amount, and have
+  `expiresAt > now`;
+- owner inventory derives `active`, `expiring_soon`, `expired`, `sold`,
+  `cancelled`, and `stale` states for seller management;
+- backend reconciliation marks expired active rows as `status = "expired"`;
+- seller notifications use `listing_expiring_soon` and `listing_expired` and
+  are guarded by notification preferences and idempotency by listing row.
+
+Relisting never mutates the expired listing row. The owner UI pre-fills safe
+metadata from the previous listing and submits a fresh `StemMarketplaceV2.list`
+transaction for the same token.
 
 ## Environment Variables
 
