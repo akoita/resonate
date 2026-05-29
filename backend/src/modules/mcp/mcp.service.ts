@@ -23,6 +23,20 @@ import {
 import { McpStemService, McpToolError } from "./mcp-stem.service";
 
 const licenseTypeSchema = z.enum(["personal", "remix", "commercial"]);
+const availableActionSchema = z.object({
+  action: z.string(),
+  description: z.string(),
+  tool: z.string().optional(),
+  method: z.string().optional(),
+  href: z.string().optional(),
+  requiresPayment: z.boolean().optional(),
+});
+const docsLinksSchema = z.object({
+  mcp: z.string(),
+  x402: z.string().optional(),
+  externalAgentContract: z.string(),
+  storefront: z.string().optional(),
+});
 
 type McpSession = {
   server: McpServer;
@@ -204,17 +218,22 @@ export class McpService implements OnModuleDestroy {
             .describe("Maximum number of releases to return. Defaults to 10."),
         },
         outputSchema: {
+          summary: z.string(),
+          availableActions: z.array(availableActionSchema),
+          docs: docsLinksSchema,
           items: z.array(
             z.object({
               id: z.string(),
               title: z.string(),
               artist: z.string(),
               genre: z.string().nullable(),
+              moods: z.array(z.string()),
               releaseDate: z.string().nullable(),
               artworkUrl: z.string().nullable(),
               trackCount: z.number().int(),
               licensable: z.boolean(),
               deeplink: z.string(),
+              availableActions: z.array(availableActionSchema),
             }),
           ),
         },
@@ -231,13 +250,14 @@ export class McpService implements OnModuleDestroy {
             query,
             limit ?? 10,
           );
+          const enhancedResult = this.enhanceCatalogSearchResult(result);
 
           return {
-            structuredContent: result,
+            structuredContent: enhancedResult,
             content: [
               {
                 type: "text",
-                text: JSON.stringify(result, null, 2),
+                text: JSON.stringify(enhancedResult, null, 2),
               },
             ],
           };
@@ -258,10 +278,30 @@ export class McpService implements OnModuleDestroy {
             .describe("License tier to quote. Defaults to personal."),
         },
         outputSchema: {
+          summary: z.string(),
           stemId: z.string(),
           licenseType: licenseTypeSchema,
           priceUsdc: z.string(),
           expiresAt: z.string(),
+          availableActions: z.array(availableActionSchema),
+          rights: z.object({
+            licenseType: licenseTypeSchema,
+            stemId: z.string(),
+            artist: z.string().nullable(),
+            trackTitle: z.string().nullable(),
+            releaseTitle: z.string().nullable(),
+            usage: z.string(),
+            attribution: z.string(),
+            constraints: z.array(z.string()),
+          }),
+          policy: z.object({
+            paymentRequired: z.boolean(),
+            proofRequiredForDownload: z.boolean(),
+            quoteExpiresAt: z.string(),
+            retry: z.string(),
+            publicRouter: z.boolean(),
+          }),
+          docs: docsLinksSchema,
           paymentChallenge: z.object({
             scheme: z.literal("x402"),
             facilitatorUrl: z.string(),
@@ -334,6 +374,35 @@ export class McpService implements OnModuleDestroy {
               "x402 PAYMENT-SIGNATURE or legacy X-PAYMENT proof returned by the payment client.",
             ),
         },
+        outputSchema: {
+          summary: z.string(),
+          stemId: z.string(),
+          licenseType: licenseTypeSchema,
+          receiptId: z.string(),
+          availableActions: z.array(availableActionSchema),
+          receiptVerification: z.object({
+            receiptId: z.string(),
+            encodedReceiptPresent: z.boolean(),
+            paymentProofSha256: z.string().nullable(),
+            settlementStatus: z.string(),
+            licenseKey: licenseTypeSchema,
+            paymentAsset: z.record(z.string(), z.unknown()),
+            resource: z.object({
+              uri: z.string(),
+              mimeType: z.string(),
+              bytes: z.number().int(),
+            }),
+            checklist: z.array(z.string()),
+          }),
+          docs: docsLinksSchema,
+          receipt: z.record(z.string(), z.unknown()),
+          resource: z.object({
+            uri: z.string(),
+            name: z.string(),
+            mimeType: z.string(),
+            bytes: z.number().int(),
+          }),
+        },
         annotations: {
           readOnlyHint: false,
           destructiveHint: false,
@@ -372,6 +441,69 @@ export class McpService implements OnModuleDestroy {
     );
 
     return server;
+  }
+
+  private enhanceCatalogSearchResult(result: {
+    items: Array<{
+      id: string;
+      title: string;
+      artist: string;
+      licensable: boolean;
+      deeplink: string;
+      [key: string]: unknown;
+    }>;
+  }) {
+    return {
+      summary: `Found ${result.items.length} public release${result.items.length === 1 ? "" : "s"} matching the catalog query.`,
+      availableActions: [
+        {
+          action: "open_release",
+          description:
+            "Open a release deeplink to inspect the listener-facing page.",
+        },
+        {
+          action: "inspect_storefront_stems",
+          description:
+            "Use the storefront stem APIs to find purchasable stem IDs, license tiers, quote URLs, and purchase URLs.",
+          method: "GET",
+          href: "/api/storefront/stems",
+        },
+      ],
+      docs: {
+        mcp: "docs/architecture/mcp_server.md",
+        externalAgentContract:
+          "docs/architecture/external_agent_application_contract.md",
+        storefront: "docs/architecture/x402_payments.md",
+      },
+      items: result.items.map((item) => ({
+        ...item,
+        availableActions: [
+          {
+            action: "open_release",
+            description:
+              "Open this release in the Resonate web app for human review.",
+            href: item.deeplink,
+          },
+          ...(item.licensable
+            ? [
+                {
+                  action: "inspect_storefront_stems",
+                  description:
+                    "Query storefront stems to choose a concrete stem before calling stem.quote.",
+                  method: "GET",
+                  href: `/api/storefront/stems?q=${encodeURIComponent(item.title)}`,
+                },
+              ]
+            : [
+                {
+                  action: "continue_catalog_search",
+                  description:
+                    "This release is not currently marked licensable; search or inspect other releases before payment planning.",
+                },
+              ]),
+        ],
+      })),
+    };
   }
 
   private toolError(

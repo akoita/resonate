@@ -62,6 +62,24 @@ Agent clients should expect discovery metadata to include:
 - stable error codes with recovery hints;
 - a note that there is no generic public payment-router endpoint.
 
+## MCP Tool Response Context
+
+MCP tool responses are designed for both machine planning and human
+explanation:
+
+- `catalog.search` returns a top-level `summary`, release cards, per-release
+  `availableActions`, and a storefront action hint. Agents should use storefront
+  APIs to choose concrete stem IDs before payment planning.
+- `stem.quote` returns a top-level `summary`, `availableActions`, `rights`,
+  `policy`, `docs`, quote expiration, price, stem context, and the x402 payment
+  challenge.
+- successful `stem.download` returns `summary`, `availableActions`,
+  `receiptVerification`, `docs`, a full receipt with encoded form, and resource
+  metadata alongside the embedded audio resource.
+
+These fields are additive guidance. The durable proof of purchase remains the
+receipt returned by a successful paid path.
+
 ## Stable Error Codes
 
 MCP tool errors return structured content shaped as
