@@ -25,6 +25,7 @@ const mockCatalogService = {
   listPublished: jest.fn().mockResolvedValue([]),
   getRelease: jest.fn().mockResolvedValue({ id: 'rel-1' }),
   getTrack: jest.fn().mockResolvedValue({ id: 'trk-1' }),
+  getPlayerTrackActions: jest.fn().mockResolvedValue({ track: { id: 'trk-1' }, actions: [] }),
   updateRelease: jest.fn().mockResolvedValue({ id: 'rel-1' }),
   deleteRelease: jest.fn().mockResolvedValue({ deleted: true }),
   updateReleaseArtwork: jest.fn().mockResolvedValue({ id: 'rel-1' }),
@@ -184,6 +185,18 @@ describe('CatalogController', () => {
       await ctrl.getMyRelease('rel-1', { user: { userId: 'user-123' } });
 
       expect(mockCatalogService.getReleaseForUser).toHaveBeenCalledWith('rel-1', 'user-123');
+    });
+  });
+
+  describe('getTrackActions', () => {
+    it('passes recommendation reason query params to the service', async () => {
+      const ctrl = makeController();
+
+      await ctrl.getTrackActions('trk-1', ['genre:jazz', 'agent_pick'], 'mood:focus');
+
+      expect(mockCatalogService.getPlayerTrackActions).toHaveBeenCalledWith('trk-1', {
+        recommendationReasons: ['genre:jazz', 'agent_pick', 'mood:focus'],
+      });
     });
   });
 

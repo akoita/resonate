@@ -32,9 +32,43 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
 
 ## 4. Run tests
 
-- Run the project test suite: `npm test` (or equivalent)
-- If any tests fail, fix the code or tests and re-run
-- Do NOT proceed until all tests pass
+Use risk-based local validation. Do **not** run every repository test suite by
+default; the full backend suite can take close to an hour and belongs in CI or
+in explicitly high-risk local verification.
+
+Minimum local gate:
+
+- Run the focused tests for files and behavior changed in the branch.
+- Run the relevant lint/type/build checks for touched packages.
+- Run `git diff --check`.
+
+Backend defaults:
+
+- For controller-only changes, run the matching `*.controller.spec.ts` and/or
+  `*.controller.http.spec.ts`.
+- For Prisma/database-dependent service behavior, run the matching
+  `*.integration.spec.ts` with Testcontainers.
+- For shared services, auth, payments, encryption, analytics, public API
+  contracts, or event semantics, run the focused tests for each touched shared
+  area.
+- Run full `cd backend && npm run test` only when the branch broadly changes
+  shared runtime behavior, test infrastructure, module bootstrapping, auth
+  foundations, or when the developer explicitly asks for a full local suite.
+
+Frontend defaults:
+
+- Run focused Vitest files for changed helpers/components.
+- Run `cd web && npm run lint`.
+- Run `cd web && npm run build` when routes, client/server boundaries, API
+  helper types, or shared frontend build inputs changed.
+- Run full `cd web && npm run test:unit` when shared frontend helpers,
+  analytics/event contracts, auth/session handling, or broad UI state behavior
+  changed, or when the developer explicitly asks.
+
+If any focused or required validation fails, fix the code or tests and re-run
+the failed gate. Do not proceed until the selected local gates pass. Document
+the exact selected gates and any intentionally deferred full-suite coverage in
+the PR body.
 
 ## 5. Run security scans (if applicable)
 

@@ -758,4 +758,166 @@ describe('CatalogService (integration)', () => {
     await prisma.track.delete({ where: { id: restrictedTrackId } });
     await prisma.release.delete({ where: { id: restrictedReleaseId } });
   });
+
+  it('returns safe player actions from public track and active listing state', async () => {
+    const releaseId = `${TEST_PREFIX}player_actions_release`;
+    const trackId = `${TEST_PREFIX}player_actions_track`;
+    const activeStemId = `${TEST_PREFIX}player_actions_stem_active`;
+    const expiredStemId = `${TEST_PREFIX}player_actions_stem_expired`;
+    const sellerAddress = `0x${'B'.repeat(40)}`;
+    const now = new Date();
+
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Player Action Release',
+        status: 'published',
+        type: 'single',
+        primaryArtist: 'TC Test Artist',
+        genre: 'Jazz',
+        moods: ['focused'],
+        tracks: {
+          create: {
+            id: trackId,
+            title: 'Actionable Track',
+            processingStatus: 'complete',
+            stems: {
+              create: [
+                {
+                  id: activeStemId,
+                  type: 'vocals',
+                  uri: 'gs://bucket/action-vocals.mp3',
+                  storageProvider: 'gcs',
+                  nftMint: {
+                    create: {
+                      tokenId: BigInt(701001),
+                      chainId: 11155111,
+                      contractAddress: `0x${'C'.repeat(40)}`,
+                      creatorAddress: `0x${'A'.repeat(40)}`,
+                      royaltyBps: 500,
+                      remixable: true,
+                      metadataUri: 'ipfs://player-actions-active',
+                      transactionHash: `${TEST_PREFIX}mint_active`,
+                      blockNumber: BigInt(1),
+                      mintedAt: now,
+                    },
+                  },
+                },
+                {
+                  id: expiredStemId,
+                  type: 'drums',
+                  uri: 'gs://bucket/action-drums.mp3',
+                  storageProvider: 'gcs',
+                },
+              ],
+            },
+          },
+        },
+      },
+    });
+
+    await prisma.stemListing.createMany({
+      data: [
+        {
+          listingId: BigInt(801001),
+          stemId: activeStemId,
+          tokenId: BigInt(701001),
+          chainId: 11155111,
+          contractAddress: `0x${'C'.repeat(40)}`,
+          sellerAddress,
+          pricePerUnit: '1000000',
+          amount: BigInt(1),
+          paymentToken: `0x${'D'.repeat(40)}`,
+          expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+          transactionHash: `${TEST_PREFIX}listing_active`,
+          blockNumber: BigInt(2),
+          licenseType: 'remix',
+          status: 'active',
+          listedAt: now,
+        },
+        {
+          listingId: BigInt(801002),
+          stemId: expiredStemId,
+          tokenId: BigInt(701002),
+          chainId: 11155111,
+          contractAddress: `0x${'C'.repeat(40)}`,
+          sellerAddress,
+          pricePerUnit: '2000000',
+          amount: BigInt(1),
+          paymentToken: `0x${'D'.repeat(40)}`,
+          expiresAt: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+          transactionHash: `${TEST_PREFIX}listing_expired`,
+          blockNumber: BigInt(3),
+          licenseType: 'commercial',
+          status: 'active',
+          listedAt: now,
+        },
+      ],
+    });
+
+    const result = await catalog.getPlayerTrackActions(trackId, {
+      recommendationReasons: ['genre:jazz', 'raw private text should be ignored'],
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.recommendation?.reasons).toEqual(['Matches your jazz preference']);
+
+    const buyAction = result!.actions.find((action) => action.key === 'buy_license');
+    expect(buyAction).toMatchObject({
+      status: 'available',
+      metadata: expect.objectContaining({
+        listingCount: 1,
+        firstListingId: '801001',
+        licenseTypes: ['remix'],
+      }),
+    });
+
+    const remixAction = result!.actions.find((action) => action.key === 'remix');
+    expect(remixAction?.status).toBe('available');
+
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain(sellerAddress);
+    expect(serialized).not.toContain('listing_expired');
+    expect(serialized).not.toContain('raw private text');
+  });
+
+  it('keeps marketplace player actions disabled when listings are not publicly purchasable', async () => {
+    const releaseId = `${TEST_PREFIX}player_actions_no_listing_release`;
+    const trackId = `${TEST_PREFIX}player_actions_no_listing_track`;
+
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'No Public Listing Release',
+        status: 'published',
+        type: 'single',
+        primaryArtist: 'TC Test Artist',
+        tracks: {
+          create: {
+            id: trackId,
+            title: 'No Listing Track',
+            processingStatus: 'complete',
+            stems: {
+              create: {
+                id: `${TEST_PREFIX}player_actions_no_listing_stem`,
+                type: 'master',
+                uri: 'gs://bucket/no-listing.mp3',
+                storageProvider: 'gcs',
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const result = await catalog.getPlayerTrackActions(trackId);
+
+    expect(result).not.toBeNull();
+    expect(result!.actions.find((action) => action.key === 'buy_license')).toMatchObject({
+      status: 'disabled',
+      reason: 'No active stem license is available.',
+    });
+  });
 });

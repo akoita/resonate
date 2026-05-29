@@ -21,6 +21,8 @@ export const PRODUCT_ANALYTICS_EVENT_NAMES = [
   "marketplace.listing_viewed",
   "marketplace.checkout_started",
   "marketplace.purchase_intent",
+  "player.action_impression",
+  "player.action_selected",
   "artist.upload_started",
   "artist.upload_step_completed",
   "artist.catalog_viewed",
