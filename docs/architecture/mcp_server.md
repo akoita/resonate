@@ -34,6 +34,17 @@ capability metadata for external agents:
 | `stem.quote(stemId, licenseType)` | Free | Return a USDC quote and x402 challenge |
 | `stem.download(stemId, licenseType, paymentProof)` | x402 | Validate proof and return the purchased stem resource |
 
+Tool responses include planner-friendly fields for external agents:
+
+- `catalog.search` returns `summary`, release `availableActions`, and a
+  storefront hint for finding concrete purchasable stem IDs before payment
+  planning.
+- `stem.quote` returns `summary`, `availableActions`, `rights`, `policy`,
+  `docs`, `priceUsdc`, `expiresAt`, and the x402 `paymentChallenge`.
+- successful `stem.download` returns `summary`, `availableActions`,
+  `receiptVerification`, `docs`, the full receipt, and the embedded MCP
+  resource metadata.
+
 `stem.download` does not use HTTP-level 402 at `/mcp`. Missing proofs return an
 MCP tool error with `code: "PAYMENT_REQUIRED"` and the same challenge shape as
 `stem.quote`. Invalid proofs, facilitator failures, settlement failures, missing

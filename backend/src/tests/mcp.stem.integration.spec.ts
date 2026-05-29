@@ -158,6 +158,34 @@ describe("McpStemService (integration)", () => {
         stemId,
         licenseType: "remix",
         priceUsdc: "9",
+        summary: expect.stringContaining("Quote 9 USDC"),
+        availableActions: expect.arrayContaining([
+          expect.objectContaining({
+            action: "download_after_payment",
+            tool: "stem.download",
+            requiresPayment: true,
+          }),
+        ]),
+        rights: expect.objectContaining({
+          licenseType: "remix",
+          stemId,
+          artist: "MCP Stem Artist",
+          trackTitle: "Paid Stem Track",
+          releaseTitle: "Paid Stems",
+          constraints: expect.arrayContaining([
+            expect.stringContaining("not a license grant"),
+          ]),
+        }),
+        policy: expect.objectContaining({
+          paymentRequired: true,
+          proofRequiredForDownload: true,
+          publicRouter: false,
+        }),
+        docs: expect.objectContaining({
+          mcp: "docs/architecture/mcp_server.md",
+          externalAgentContract:
+            "docs/architecture/external_agent_application_contract.md",
+        }),
         paymentChallenge: expect.objectContaining({
           scheme: "x402",
           facilitatorUrl: "https://facilitator.example.com",
@@ -307,6 +335,24 @@ describe("McpStemService (integration)", () => {
           }),
         }),
       ]),
+    );
+    expect(result.structuredContent).toEqual(
+      expect.objectContaining({
+        summary: expect.stringContaining("Purchased commercial license"),
+        availableActions: expect.arrayContaining([
+          expect.objectContaining({ action: "store_receipt" }),
+          expect.objectContaining({ action: "save_resource" }),
+        ]),
+        receiptVerification: expect.objectContaining({
+          receiptId: expect.any(String),
+          encodedReceiptPresent: true,
+          licenseKey: "commercial",
+          settlementStatus: "download_only",
+          checklist: expect.arrayContaining([
+            expect.stringContaining("Store the encoded receipt"),
+          ]),
+        }),
+      }),
     );
 
     const event = await prisma.contractEvent.findFirstOrThrow({

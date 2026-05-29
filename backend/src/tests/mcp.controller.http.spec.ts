@@ -43,6 +43,7 @@ describe("McpController (HTTP)", () => {
           title: "The Horizon Is Home",
           artist: "Resonate Artist",
           genre: "electronic",
+          moods: ["late night"],
           releaseDate: "2026-04-22T00:00:00.000Z",
           artworkUrl: "http://localhost:3000/catalog/releases/rel_1/artwork",
           trackCount: 4,
@@ -52,10 +53,42 @@ describe("McpController (HTTP)", () => {
       ],
     });
     mockStemService.quote.mockResolvedValue({
+      summary: "Quote 5 USDC for remix license on Hook Vocals.",
       stemId: "stem_1",
       licenseType: "remix",
       priceUsdc: "5",
       expiresAt: "2026-04-24T00:05:00.000Z",
+      availableActions: [
+        {
+          action: "download_after_payment",
+          tool: "stem.download",
+          requiresPayment: true,
+          description: "Call stem.download after payment.",
+        },
+      ],
+      rights: {
+        licenseType: "remix",
+        stemId: "stem_1",
+        artist: "Koita",
+        trackTitle: "Midnight Run",
+        releaseTitle: "Neon Heat",
+        usage: "Remix-oriented use.",
+        attribution: "Retain receipt context.",
+        constraints: ["Payment verification is required."],
+      },
+      policy: {
+        paymentRequired: true,
+        proofRequiredForDownload: true,
+        quoteExpiresAt: "2026-04-24T00:05:00.000Z",
+        retry: "Request a fresh quote after expiration.",
+        publicRouter: false,
+      },
+      docs: {
+        mcp: "docs/architecture/mcp_server.md",
+        x402: "docs/architecture/x402_payments.md",
+        externalAgentContract:
+          "docs/architecture/external_agent_application_contract.md",
+      },
       paymentChallenge: {
         scheme: "x402",
         facilitatorUrl: "https://x402.org/facilitator",
@@ -228,6 +261,17 @@ describe("McpController (HTTP)", () => {
         id: "rel_1",
         licensable: true,
         deeplink: "http://localhost:3001/release/rel_1",
+        availableActions: expect.arrayContaining([
+          expect.objectContaining({ action: "inspect_storefront_stems" }),
+        ]),
+      }),
+    );
+    expect(call.body.result.structuredContent).toEqual(
+      expect.objectContaining({
+        summary: expect.stringContaining("Found 1 public release"),
+        availableActions: expect.arrayContaining([
+          expect.objectContaining({ action: "inspect_storefront_stems" }),
+        ]),
       }),
     );
   });
@@ -286,6 +330,18 @@ describe("McpController (HTTP)", () => {
         stemId: "stem_1",
         licenseType: "remix",
         priceUsdc: "5",
+        summary: expect.stringContaining("Quote 5 USDC"),
+        availableActions: expect.arrayContaining([
+          expect.objectContaining({ action: "download_after_payment" }),
+        ]),
+        rights: expect.objectContaining({
+          licenseType: "remix",
+          stemId: "stem_1",
+        }),
+        policy: expect.objectContaining({
+          paymentRequired: true,
+          proofRequiredForDownload: true,
+        }),
         paymentChallenge: expect.objectContaining({ scheme: "x402" }),
       }),
     );
