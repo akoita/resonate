@@ -1,6 +1,5 @@
 import { NotificationService } from "./notification.service";
 import { EventBus } from "../shared/event_bus";
-import { Subject } from "rxjs";
 
 // ─── mocks ──────────────────────────────────────────────
 
@@ -13,6 +12,7 @@ const mockEventBus = {
 jest.mock("@prisma/client", () => {
   const mockNotification = {
     create: jest.fn(),
+    findFirst: jest.fn(),
     findMany: jest.fn(),
     count: jest.fn(),
     update: jest.fn(),
@@ -102,6 +102,8 @@ describe("NotificationService", () => {
         disputeResolved: true,
         disputeAppealed: true,
         evidenceSubmitted: true,
+        listingExpiringSoon: true,
+        listingExpired: true,
       });
 
       const service = createService();
@@ -191,6 +193,8 @@ describe("NotificationService", () => {
         disputeResolved: true,
         disputeAppealed: true,
         evidenceSubmitted: true,
+        listingExpiringSoon: true,
+        listingExpired: true,
       });
 
       const service = createService();
@@ -222,6 +226,68 @@ describe("NotificationService", () => {
         update: { disputeFiled: false },
       });
       expect(result.disputeFiled).toBe(false);
+    });
+  });
+
+  describe("marketplace lifecycle notifications", () => {
+    it("creates listing lifecycle notifications only once per listing and type", async () => {
+      __mockNotification.findFirst.mockResolvedValueOnce(null);
+      __mockPreference.findUnique.mockResolvedValue(null);
+      __mockNotification.create.mockResolvedValue({
+        id: "notif-listing",
+        walletAddress: "0xseller",
+        type: "listing_expired",
+        stemListingId: "listing-row-1",
+      });
+
+      const service = createService();
+      const result = await service.createListingLifecycleNotification({
+        walletAddress: "0xseller",
+        type: "listing_expired",
+        title: "Listing expired",
+        message: "Listing expired.",
+        stemListingId: "listing-row-1",
+      });
+
+      expect(result).toBeTruthy();
+      expect(__mockNotification.findFirst).toHaveBeenCalledWith({
+        where: {
+          walletAddress: "0xseller",
+          type: "listing_expired",
+          stemListingId: "listing-row-1",
+        },
+      });
+      expect(__mockNotification.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          type: "listing_expired",
+          stemListingId: "listing-row-1",
+        }),
+      });
+    });
+
+    it("respects marketplace lifecycle notification preferences", async () => {
+      __mockNotification.findFirst.mockResolvedValue(null);
+      __mockPreference.findUnique.mockResolvedValue({
+        walletAddress: "0xseller",
+        disputeFiled: true,
+        disputeResolved: true,
+        disputeAppealed: true,
+        evidenceSubmitted: true,
+        listingExpiringSoon: false,
+        listingExpired: true,
+      });
+
+      const service = createService();
+      const result = await service.createListingLifecycleNotification({
+        walletAddress: "0xseller",
+        type: "listing_expiring_soon",
+        title: "Listing ending soon",
+        message: "Listing ending soon.",
+        stemListingId: "listing-row-1",
+      });
+
+      expect(result).toBeNull();
+      expect(__mockNotification.create).not.toHaveBeenCalled();
     });
   });
 

@@ -609,6 +609,7 @@ export interface NotificationCreatedEvent extends BaseEvent {
   message: string;
   disputeId?: string;
   releaseId?: string;
+  stemListingId?: string;
 }
 
 export interface ReleaseRightsRequestUpdatedEvent extends BaseEvent {

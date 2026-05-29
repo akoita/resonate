@@ -236,6 +236,260 @@
   animation: fade-in-up 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) 0.3s both;
 }
 
+.marketplace-manager {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--space-6);
+}
+
+.marketplace-manager-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.marketplace-manager-alert {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+  padding: 12px 14px;
+  font-size: 13px;
+}
+
+.marketplace-manager-alert--success {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.25);
+  color: #86efac;
+}
+
+.marketplace-manager-alert--error {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+}
+
+.marketplace-manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.marketplace-manager-row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.marketplace-manager-row--highlighted {
+  border-color: rgba(var(--color-accent-rgb), 0.45);
+  box-shadow: 0 0 0 3px rgba(var(--color-accent-rgb), 0.08);
+}
+
+.marketplace-manager-row__art {
+  width: 76px;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-muted);
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.marketplace-manager-row__art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.marketplace-manager-row__main {
+  min-width: 0;
+}
+
+.marketplace-manager-row__title {
+  color: var(--color-text);
+  font-size: 15px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marketplace-manager-row__meta,
+.marketplace-manager-row__facts {
+  color: var(--color-muted);
+  font-size: 12px;
+  margin-top: 5px;
+}
+
+.marketplace-manager-row__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.marketplace-manager-row__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.listing-status-pill {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 800;
+  min-width: 96px;
+  padding: 6px 10px;
+  text-align: center;
+  text-transform: capitalize;
+}
+
+.listing-status-pill--active {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.2);
+  color: #86efac;
+}
+
+.listing-status-pill--expiring_soon {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.22);
+  color: #fcd34d;
+}
+
+.listing-status-pill--expired,
+.listing-status-pill--cancelled,
+.listing-status-pill--sold,
+.listing-status-pill--stale {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.2);
+  color: #cbd5e1;
+}
+
+.marketplace-action-btn {
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: white;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 9px 14px;
+}
+
+.marketplace-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.marketplace-manager-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.marketplace-manager-modal__panel {
+  width: min(100%, 460px);
+  background: #101018;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  position: relative;
+}
+
+.marketplace-manager-modal__close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  border: none;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.marketplace-manager-modal__panel h2 {
+  color: var(--color-text);
+  font-size: 20px;
+  margin: 0 28px 18px 0;
+}
+
+.marketplace-manager-modal__panel label {
+  color: var(--color-muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 14px;
+}
+
+.marketplace-manager-modal__panel input,
+.marketplace-manager-modal__panel select {
+  width: 100%;
+  margin-top: 7px;
+  padding: 11px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text);
+}
+
+.marketplace-manager-modal__summary {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 700;
+  margin: 4px 0 16px;
+}
+
+.marketplace-manager-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.marketplace-empty {
+  color: var(--color-muted);
+  padding: 36px 0;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .marketplace-manager {
+    padding: var(--space-4);
+  }
+
+  .marketplace-manager-toolbar,
+  .marketplace-manager-row,
+  .marketplace-manager-row__actions {
+    align-items: stretch;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .marketplace-manager-row__art {
+    width: 100%;
+    max-height: 180px;
+  }
+}
+
 /* Stem card */
 .stem-card {
   background: rgba(255, 255, 255, 0.03);

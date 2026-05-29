@@ -193,6 +193,11 @@ export class AesEncryptionProvider extends EncryptionProvider {
     }
 
     private async verifyAuthSignature(authSig: NonNullable<DecryptionContext['authSig']>): Promise<boolean> {
+        if (!/^0x[0-9a-fA-F]+$/.test(authSig.sig)) {
+            this.logger.debug('[AES] Signature is not valid hex; skipping wallet signature verification');
+            return false;
+        }
+
         try {
             const isValidSig = await verifyMessage({
                 address: getAddress(authSig.address),
@@ -211,11 +216,15 @@ export class AesEncryptionProvider extends EncryptionProvider {
             const { createPublicClient, http } = await import('viem');
             const viemChains = await import('viem/chains');
             const rpcUrl = this.configService.get<string>('RPC_URL');
+            if (!rpcUrl) {
+                this.logger.debug('[AES] RPC_URL is not configured; skipping EIP-1271 signature verification');
+                return false;
+            }
             const chainName = this.configService.get<string>('CHAIN_NAME') || 'sepolia';
             const chain = (viemChains as any)[chainName] || viemChains.sepolia;
             const publicClient = createPublicClient({
                 chain,
-                transport: rpcUrl ? http(rpcUrl) : http(),
+                transport: http(rpcUrl),
             });
 
             return publicClient.verifyMessage({

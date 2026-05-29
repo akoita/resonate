@@ -29,6 +29,12 @@ import {
   isReleaseRightsUpgradeTransitionAllowed,
 } from "../trust/verification-semantics";
 import { TrustService } from "../trust/trust.service";
+import { NotificationService } from "../notifications/notification.service";
+import {
+  deriveListingLifecycleStatus,
+  LISTING_EXPIRING_SOON_WINDOW_MS,
+  type ListingLifecycleStatus,
+} from "./listing-lifecycle";
 import type {
   NormalizedRightsEvidenceBundle,
   RightsEvidenceBundleInput,
@@ -176,6 +182,7 @@ export class ContractsService implements OnModuleInit {
   constructor(
     private readonly eventBus: EventBus,
     private readonly trustService: TrustService,
+    private readonly notificationService?: NotificationService,
   ) {}
 
   private readonly releaseRightsUpgradeOpenStatuses = [
@@ -391,6 +398,10 @@ export class ContractsService implements OnModuleInit {
     // Reconcile stale listings on startup (non-blocking)
     this.reconcileListings().catch(err =>
       this.logger.error(`Listing reconciliation failed: ${err}`)
+    );
+
+    this.reconcileListingLifecycle().catch(err =>
+      this.logger.error(`Listing lifecycle reconciliation failed: ${err}`)
     );
 
     // Fix orphan listings (no stemId) on startup (non-blocking)
@@ -1265,6 +1276,220 @@ export class ContractsService implements OnModuleInit {
 
     // Apply pagination manually after deduplication + sorting
     return sorted.slice(offset, offset + limit);
+  }
+
+  async reconcileListingLifecycle(now = new Date()) {
+    const expiringSoonAt = new Date(now.getTime() + LISTING_EXPIRING_SOON_WINDOW_MS);
+    const [expiredListings, expiringSoonListings] = await Promise.all([
+      prisma.stemListing.findMany({
+        where: {
+          status: "active",
+          amount: { gt: 0 },
+          expiresAt: { lte: now },
+        },
+        select: {
+          id: true,
+          listingId: true,
+          sellerAddress: true,
+          expiresAt: true,
+          stem: {
+            select: {
+              title: true,
+              type: true,
+              track: {
+                select: {
+                  title: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      prisma.stemListing.findMany({
+        where: {
+          status: "active",
+          amount: { gt: 0 },
+          expiresAt: {
+            gt: now,
+            lte: expiringSoonAt,
+          },
+        },
+        select: {
+          id: true,
+          listingId: true,
+          sellerAddress: true,
+          expiresAt: true,
+          stem: {
+            select: {
+              title: true,
+              type: true,
+              track: {
+                select: {
+                  title: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    if (expiredListings.length > 0) {
+      await prisma.stemListing.updateMany({
+        where: { id: { in: expiredListings.map((listing) => listing.id) } },
+        data: { status: "expired" },
+      });
+    }
+
+    if (this.notificationService) {
+      await Promise.all([
+        ...expiredListings.map((listing) =>
+          this.notificationService!.createListingLifecycleNotification({
+            walletAddress: listing.sellerAddress.toLowerCase(),
+            type: "listing_expired",
+            title: "Listing expired",
+            message: `${this.getListingNotificationLabel(listing)} expired on ${listing.expiresAt.toLocaleDateString()}. You can relist it from your listing manager.`,
+            stemListingId: listing.id,
+          }),
+        ),
+        ...expiringSoonListings.map((listing) =>
+          this.notificationService!.createListingLifecycleNotification({
+            walletAddress: listing.sellerAddress.toLowerCase(),
+            type: "listing_expiring_soon",
+            title: "Listing ending soon",
+            message: `${this.getListingNotificationLabel(listing)} expires on ${listing.expiresAt.toLocaleDateString()}.`,
+            stemListingId: listing.id,
+          }),
+        ),
+      ]);
+    }
+
+    return {
+      expired: expiredListings.length,
+      expiringSoon: expiringSoonListings.length,
+    };
+  }
+
+  private getListingNotificationLabel(listing: {
+    listingId: bigint;
+    stem?: {
+      title: string | null;
+      type: string;
+      track?: { title: string } | null;
+    } | null;
+  }) {
+    const stemTitle = listing.stem?.title?.trim();
+    const trackTitle = listing.stem?.track?.title?.trim();
+    if (stemTitle) return stemTitle;
+    if (trackTitle && listing.stem?.type) return `${trackTitle} ${listing.stem.type} stem`;
+    return `Listing #${listing.listingId.toString()}`;
+  }
+
+  async getOwnerListings(options: {
+    sellerAddress: string;
+    chainId?: number;
+    lifecycle?: ListingLifecycleStatus | "all";
+    search?: string;
+    sortBy?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    const {
+      sellerAddress,
+      chainId,
+      lifecycle = "all",
+      search,
+      sortBy,
+      limit = 50,
+      offset = 0,
+    } = options;
+    const now = new Date();
+
+    await this.reconcileListingLifecycle(now);
+
+    const searchConditions: Prisma.StemListingWhereInput[] = [];
+    if (search) {
+      searchConditions.push(
+        { stem: { title: { contains: search, mode: "insensitive" } } },
+        { stem: { track: { title: { contains: search, mode: "insensitive" } } } },
+        { stem: { track: { release: { primaryArtist: { contains: search, mode: "insensitive" } } } } },
+      );
+    }
+
+    const listings = await prisma.stemListing.findMany({
+      where: {
+        sellerAddress: sellerAddress.toLowerCase(),
+        ...(chainId ? { chainId } : {}),
+        ...(searchConditions.length > 0 ? { OR: searchConditions } : {}),
+      },
+      select: {
+        id: true,
+        listingId: true,
+        tokenId: true,
+        chainId: true,
+        contractAddress: true,
+        sellerAddress: true,
+        pricePerUnit: true,
+        amount: true,
+        paymentToken: true,
+        licenseType: true,
+        status: true,
+        expiresAt: true,
+        listedAt: true,
+        soldAt: true,
+        cancelledAt: true,
+        transactionHash: true,
+        blockNumber: true,
+        stem: {
+          select: {
+            id: true,
+            type: true,
+            title: true,
+            uri: true,
+            artworkUrl: true,
+            durationSeconds: true,
+            track: {
+              include: {
+                release: true,
+              },
+            },
+          },
+        },
+        purchases: true,
+      },
+      orderBy: { listedAt: "desc" },
+    });
+
+    const hydratedListings = await this.hydrateListingsFromIntents(listings);
+    const withLifecycle = hydratedListings.map((listing) => ({
+      ...listing,
+      lifecycleStatus: deriveListingLifecycleStatus(listing, now),
+    }));
+    const filtered = lifecycle === "all"
+      ? withLifecycle
+      : withLifecycle.filter((listing) => listing.lifecycleStatus === lifecycle);
+    const sorted = this.sortOwnerListings(filtered, sortBy);
+
+    return sorted.slice(offset, offset + limit);
+  }
+
+  private sortOwnerListings<T extends { lifecycleStatus: ListingLifecycleStatus; expiresAt: Date; listedAt: Date; pricePerUnit: string }>(
+    listings: T[],
+    sortBy?: string,
+  ): T[] {
+    switch (sortBy) {
+      case "expiry_asc":
+        return [...listings].sort((a, b) => a.expiresAt.getTime() - b.expiresAt.getTime());
+      case "price_asc":
+      case "price_desc":
+      case "ending_soon":
+        return this.sortListings(listings, sortBy);
+      case "status":
+        return [...listings].sort((a, b) => a.lifecycleStatus.localeCompare(b.lifecycleStatus));
+      case "newest":
+      default:
+        return listings;
+    }
   }
 
   private async hydrateListingsFromIntents<T extends {

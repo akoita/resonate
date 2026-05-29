@@ -1436,17 +1436,21 @@ model Notification {
   message       String
   disputeId     String?
   releaseId     String?
+  stemListingId String?
   read          Boolean  @default(false)
   createdAt     DateTime @default(now())
 
   @@index([walletAddress, read])
   @@index([walletAddress, createdAt])
+  @@index([walletAddress, type, stemListingId])
 }
 
 model NotificationPreference {
-  walletAddress     String  @id
-  disputeFiled      Boolean @default(true)
-  disputeResolved   Boolean @default(true)
-  disputeAppealed   Boolean @default(true)
-  evidenceSubmitted Boolean @default(true)
+  walletAddress      String  @id
+  disputeFiled       Boolean @default(true)
+  disputeResolved    Boolean @default(true)
+  disputeAppealed    Boolean @default(true)
+  evidenceSubmitted  Boolean @default(true)
+  listingExpiringSoon Boolean @default(true)
+  listingExpired     Boolean @default(true)
 }
