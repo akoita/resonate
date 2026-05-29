@@ -2,11 +2,10 @@
 
 ## Executive Summary
 
-The #1015 marketplace listing lifecycle changes were reviewed for backend
-authorization, data exposure, secret handling, raw SQL, XSS vectors, and client
-secret exposure. No Critical or High findings remain in the branch after the
-owner listing endpoint was tightened to require seller-linked or admin JWT
-access.
+The #1005 player action layer changes were reviewed for public data exposure,
+backend authorization boundaries, raw SQL usage, hardcoded secrets, client
+secret exposure, XSS vectors, unsafe parsing, and token/cookie handling. No
+Critical or High findings were identified for this branch.
 
 ## Critical Findings
 
@@ -22,56 +21,58 @@ None.
 
 ## Low Findings
 
-### SBPR-001: Owner Inventory Endpoint Must Stay Authenticated
+### SBPR-001: Public Player Actions Must Stay Redacted
 
-**File:** `backend/src/modules/contracts/metadata.controller.ts`
+**File:** `backend/src/modules/catalog/catalog.service.ts`
 
-**Status:** Fixed in this branch.
+**Status:** Reviewed in this branch.
 
-**Impact:** Owner listing inventory includes expired and cancelled listings that
-public purchase surfaces intentionally hide. If exposed by wallet address
-alone, this could reveal non-public seller inventory lifecycle details.
+**Impact:** `GET /catalog/tracks/:trackId/actions` is a public endpoint used by
+the player. If future changes include seller addresses, owner-only listing
+lifecycle rows, wallet ownership, raw taste history, or private community
+eligibility, the endpoint could expose information that belongs only in
+authenticated owner or consented listener surfaces.
 
-**Resolution:** `GET /api/metadata/listings/owner/:seller` now uses
-`AuthGuard("jwt")` and allows only the seller address, a linked EOA/smart-account
-wallet relation, or an admin. The frontend management page sends the bearer
-token when loading owner inventory.
-
-### SBPR-002: Malformed Signatures Should Fail Before Contract Verification
-
-**File:** `backend/src/modules/encryption/providers/aes_encryption_provider.ts`
-
-**Status:** Fixed in this branch.
-
-**Impact:** Malformed non-hex wallet signatures could fall through from local
-EOA verification into EIP-1271 verification. Without an explicit `RPC_URL`, that
-path could wait on a default public transport and make invalid-signature checks
-slow or flaky.
-
-**Resolution:** The AES provider now rejects non-hex signatures immediately and
-skips EIP-1271 verification unless `RPC_URL` is configured.
+**Resolution:** The first implementation only returns compact public action
+state. Marketplace/license availability is derived from active, unexpired,
+positive-amount public listings and returns listing count, license tiers, first
+listing ID, and chain ID only. Integration tests assert expired listing rows,
+seller addresses, and unsanitized recommendation text are absent from the
+response.
 
 ## Informational Findings
 
-### SBPR-003: Existing Local Anvil Key Is Present In Dev Funding Helper
+### SBPR-002: Existing Dev JWT Secret Fallbacks Are Local-Only
 
-**File:** `web/src/lib/localFunding.ts`
+**File:** `backend/src/modules/auth/auth.module.ts`,
+`backend/src/modules/auth/jwt.strategy.ts`
 
-**Impact:** The standard Anvil private key appears in source for local
-development funding. This was pre-existing and not touched by #1015.
+**Impact:** `dev-secret` fallback values exist for local development. These
+were pre-existing and not touched by #1005.
 
-**Assessment:** Acceptable only for local development. Do not reuse this pattern
-for shared testnet, staging, or production keys.
+**Assessment:** Acceptable only for local development. Shared environments must
+provide `JWT_SECRET` through managed environment configuration or secret
+management.
 
-### SBPR-004: Public Client API-Key Environment Variables Are Present
+### SBPR-003: Public Client API-Key Environment Variables Are Present
 
 **File:** `web/src/lib/bundlerConfig.ts`
 
 **Impact:** `NEXT_PUBLIC_PIMLICO_API_KEY` is intentionally browser-exposed by
-name. This was pre-existing and not touched by #1015.
+name. This was pre-existing and not touched by #1005.
 
 **Assessment:** Treat it as a publishable client identifier, not a secret. Use
 server-side proxying for any credential that must remain confidential.
+
+### SBPR-004: Existing Artist Profile Placeholder Address Is Non-Secret
+
+**File:** `web/src/lib/api.ts`
+
+**Impact:** A fallback artist profile contains a placeholder payout address for
+local/mock behavior. This was pre-existing and not introduced by #1005.
+
+**Assessment:** This is not a private key or credential. Avoid using placeholder
+addresses as production defaults for settlement behavior.
 
 ## Scans Run
 
@@ -79,7 +80,9 @@ server-side proxying for any credential that must remain confidential.
 - `rg 'rawQuery|executeRaw|\\$queryRaw' backend/src/`
 - `rg 'dangerouslySetInnerHTML|innerHTML' web/src/`
 - `rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/`
-- `rg 'JSON\\.parse|eval\\(' backend/src/modules/contracts/metadata.controller.ts backend/src/modules/contracts/contracts.service.ts backend/src/modules/notifications/notification.service.ts`
+- `rg 'JSON\\.parse|eval\\(' backend/src/modules/catalog/catalog.controller.ts backend/src/modules/catalog/catalog.service.ts web/src/app/player/page.tsx web/src/lib/api.ts web/src/lib/productAnalytics.ts`
 - `rg 'document\\.cookie|setCookie|httpOnly.*false' web/src/`
-- targeted review of #1015 backend, notification, and owner-management UI
-  changes.
+- `rg '@Controller|@Get|@Post|@Put|@Delete|@Patch|@Body\\(\\)|@Query\\(\\)|@Param\\(' backend/src/modules/catalog/catalog.controller.ts`
+- `rg 'sellerAddress|ownerAddress|payoutAddress|paymentToken|private|secret|token' backend/src/modules/catalog/catalog.service.ts web/src/app/player/page.tsx web/src/lib/api.ts`
+- Targeted review of #1005 backend action shaping, frontend player action
+  handling, analytics payloads, and docs.

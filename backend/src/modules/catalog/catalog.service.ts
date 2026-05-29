@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, OnModuleInit, NotFoundException } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { LicenseType, Prisma } from "@prisma/client";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
 import { EncryptionService } from "../encryption/encryption.service";
@@ -39,6 +39,34 @@ function normalizeMoodTags(value?: string[] | null) {
   return Array.from(new Set(normalized)).slice(0, 8);
 }
 
+function sanitizeRecommendationReasons(value?: string[] | null) {
+  return (value || [])
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .flatMap((entry) => entry.split(","))
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [kind, rawValue] = entry.split(":");
+      const safeValue = rawValue?.trim().slice(0, 40);
+      if (kind === "genre" && safeValue) {
+        return `Matches your ${safeValue} preference`;
+      }
+      if (kind === "mood" && safeValue) {
+        return `Fits your ${safeValue} mood`;
+      }
+      if (entry === "fresh_release") {
+        return "Recent catalog addition";
+      }
+      if (entry === "agent_pick") {
+        return "Recommended by your session";
+      }
+      return null;
+    })
+    .filter((entry): entry is string => Boolean(entry))
+    .slice(0, 3);
+}
+
 export type McpCatalogSearchItem = {
   id: string;
   title: string;
@@ -50,6 +78,56 @@ export type McpCatalogSearchItem = {
   trackCount: number;
   licensable: boolean;
   deeplink: string;
+};
+
+export type PlayerActionKey =
+  | "save"
+  | "add_to_playlist"
+  | "inspect_stems"
+  | "buy_license"
+  | "remix"
+  | "artist_room"
+  | "shows_campaign"
+  | "collect_drop";
+
+export type PlayerActionStatus = "available" | "disabled" | "planned";
+
+export type PlayerTrackAction = {
+  key: PlayerActionKey;
+  label: string;
+  status: PlayerActionStatus;
+  href?: string;
+  reason?: string;
+  metadata?: Record<string, string | number | boolean | string[] | null>;
+};
+
+export type PlayerTrackActionsResponse = {
+  track: {
+    id: string;
+    title: string;
+    releaseId: string;
+    releaseTitle: string;
+    artistId: string;
+    artistName: string | null;
+    genre: string | null;
+    moods: string[];
+  };
+  recommendation?: {
+    summary: string;
+    reasons: string[];
+  };
+  actions: PlayerTrackAction[];
+};
+
+const PLAYER_ACTION_LABELS: Record<PlayerActionKey, string> = {
+  save: "Save",
+  add_to_playlist: "Add to playlist",
+  inspect_stems: "Inspect stems",
+  buy_license: "Buy or license",
+  remix: "Remix",
+  artist_room: "Artist room",
+  shows_campaign: "Support a show",
+  collect_drop: "Collect",
 };
 
 @Injectable()
@@ -810,6 +888,197 @@ export class CatalogService implements OnModuleInit {
     }
 
     return track;
+  }
+
+  async getPlayerTrackActions(
+    trackId: string,
+    options?: { recommendationReasons?: string[] },
+  ): Promise<PlayerTrackActionsResponse | null> {
+    const track = await prisma.track.findUnique({
+      where: { id: trackId },
+      select: {
+        id: true,
+        title: true,
+        explicit: true,
+        processingStatus: true,
+        contentStatus: true,
+        rightsRoute: true,
+        stems: {
+          select: {
+            id: true,
+            type: true,
+            nftMint: {
+              select: {
+                tokenId: true,
+                chainId: true,
+                remixable: true,
+              },
+            },
+          },
+        },
+        release: {
+          select: {
+            id: true,
+            title: true,
+            artistId: true,
+            primaryArtist: true,
+            genre: true,
+            moods: true,
+            status: true,
+            rightsRoute: true,
+            artist: { select: { displayName: true } },
+          },
+        },
+      },
+    });
+
+    if (!track) {
+      return null;
+    }
+
+    const effectiveRoute = this.getMostRestrictiveRoute(
+      track.rightsRoute,
+      track.release.rightsRoute,
+    );
+    if (!this.isPubliclyVisible(effectiveRoute)) {
+      return null;
+    }
+
+    const now = new Date();
+    const activeListings = await prisma.stemListing.findMany({
+      where: {
+        stem: { trackId: track.id },
+        status: "active",
+        amount: { gt: 0 },
+        expiresAt: { gt: now },
+        licenseType: { in: [LicenseType.personal, LicenseType.remix, LicenseType.commercial] },
+      },
+      select: {
+        listingId: true,
+        chainId: true,
+        tokenId: true,
+        stemId: true,
+        licenseType: true,
+      },
+      orderBy: { listedAt: "desc" },
+    });
+
+    const publicStemCount = track.stems.length;
+    const mintedStems = track.stems.filter((stem) => stem.nftMint);
+    const firstInspectableStem = mintedStems[0];
+    const licenseTypes = Array.from(new Set(activeListings.map((listing) => listing.licenseType)));
+    const hasRemixListing = activeListings.some((listing) => listing.licenseType === LicenseType.remix);
+    const hasRemixableMint = track.stems.some((stem) => stem.nftMint?.remixable);
+    const safeRecommendationReasons = sanitizeRecommendationReasons(options?.recommendationReasons);
+
+    return {
+      track: {
+        id: track.id,
+        title: track.title,
+        releaseId: track.release.id,
+        releaseTitle: track.release.title,
+        artistId: track.release.artistId,
+        artistName: track.release.primaryArtist || track.release.artist?.displayName || null,
+        genre: track.release.genre,
+        moods: track.release.moods,
+      },
+      ...(safeRecommendationReasons.length
+        ? {
+            recommendation: {
+              summary: safeRecommendationReasons.join(" · "),
+              reasons: safeRecommendationReasons,
+            },
+          }
+        : {}),
+      actions: [
+        {
+          key: "save",
+          label: PLAYER_ACTION_LABELS.save,
+          status: "available",
+          metadata: { trackId: track.id, releaseId: track.release.id },
+        },
+        {
+          key: "add_to_playlist",
+          label: PLAYER_ACTION_LABELS.add_to_playlist,
+          status: "available",
+          metadata: { trackId: track.id, releaseId: track.release.id },
+        },
+        publicStemCount > 0
+          ? {
+              key: "inspect_stems",
+              label: PLAYER_ACTION_LABELS.inspect_stems,
+              status: "available",
+              href: firstInspectableStem?.nftMint
+                ? `/stem/${firstInspectableStem.nftMint.tokenId.toString()}`
+                : `/release/${track.release.id}`,
+              metadata: {
+                stemCount: publicStemCount,
+                mintedStemCount: mintedStems.length,
+                stemTypes: Array.from(new Set(track.stems.map((stem) => stem.type))).slice(0, 12),
+              },
+            }
+          : {
+              key: "inspect_stems",
+              label: PLAYER_ACTION_LABELS.inspect_stems,
+              status: "disabled",
+              reason: "No public stems are available for this track.",
+            },
+        activeListings.length > 0
+          ? {
+              key: "buy_license",
+              label: PLAYER_ACTION_LABELS.buy_license,
+              status: "available",
+              href: "/marketplace",
+              metadata: {
+                listingCount: activeListings.length,
+                licenseTypes,
+                firstListingId: activeListings[0].listingId.toString(),
+                chainId: activeListings[0].chainId,
+              },
+            }
+          : {
+              key: "buy_license",
+              label: PLAYER_ACTION_LABELS.buy_license,
+              status: "disabled",
+              reason: "No active stem license is available.",
+            },
+        hasRemixListing || hasRemixableMint
+          ? {
+              key: "remix",
+              label: PLAYER_ACTION_LABELS.remix,
+              status: "available",
+              href: hasRemixListing ? "/marketplace" : `/release/${track.release.id}`,
+              metadata: {
+                source: hasRemixListing ? "marketplace_listing" : "stem_nft_metadata",
+                hasRemixListing,
+              },
+            }
+          : {
+              key: "remix",
+              label: PLAYER_ACTION_LABELS.remix,
+              status: "disabled",
+              reason: "Remix rights are not available for this track.",
+            },
+        {
+          key: "artist_room",
+          label: PLAYER_ACTION_LABELS.artist_room,
+          status: "planned",
+          reason: "Artist rooms are not open for this track yet.",
+        },
+        {
+          key: "shows_campaign",
+          label: PLAYER_ACTION_LABELS.shows_campaign,
+          status: "planned",
+          reason: "No linked Shows campaign is available yet.",
+        },
+        {
+          key: "collect_drop",
+          label: PLAYER_ACTION_LABELS.collect_drop,
+          status: "planned",
+          reason: "No active drop is available for this track.",
+        },
+      ],
+    };
   }
 
   async getRelease(releaseId: string, options?: { includeRestricted?: boolean }) {

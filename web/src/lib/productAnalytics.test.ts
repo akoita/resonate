@@ -117,6 +117,8 @@ describe("product analytics helpers", () => {
         "agent.session_started",
         "agent.session_stopped",
         "agent.next_pick_requested",
+        "player.action_impression",
+        "player.action_selected",
       ]),
     );
   });

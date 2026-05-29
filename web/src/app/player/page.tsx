@@ -1,20 +1,76 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { Button } from "../../components/ui/Button";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import SocialShare from "../../components/social/SocialShare";
 import { usePlayer } from "../../lib/playerContext";
 import { formatDuration } from "../../lib/metadataExtractor";
-import { getTrack, getRelease } from "../../lib/api";
-import { LocalTrack } from "../../lib/localLibrary";
+import { getTrack, getRelease, getPlayerTrackActions, type PlayerTrackAction, type PlayerTrackActionsResponse } from "../../lib/api";
+import { LocalTrack, saveTrackMetadata } from "../../lib/localLibrary";
 import { AddToPlaylistModal } from "../../components/library/AddToPlaylistModal";
 import { ContextMenu, ContextMenuItem } from "../../components/ui/ContextMenu";
 import { useToast } from "../../components/ui/Toast";
 import { MixerConsole } from "../../components/player/MixerConsole";
+import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
+
+function PlayerActionPanel({
+  actionState,
+  loading,
+  onAction,
+}: {
+  actionState: PlayerTrackActionsResponse | null;
+  loading: boolean;
+  onAction: (action: PlayerTrackAction) => void;
+}) {
+  if (loading) {
+    return (
+      <section className="player-action-panel" aria-label="Track actions">
+        <div className="studio-label">Now Playing Actions</div>
+        <div className="player-action-grid">
+          {["Save", "Playlist", "Stems", "License"].map((label) => (
+            <button key={label} className="player-action-button is-loading" type="button" disabled>
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  if (!actionState) {
+    return null;
+  }
+
+  return (
+    <section className="player-action-panel" aria-label="Track actions">
+      <div className="studio-label">Now Playing Actions</div>
+      {actionState.recommendation?.summary && (
+        <p className="player-action-reason">{actionState.recommendation.summary}</p>
+      )}
+      <div className="player-action-grid">
+        {actionState.actions.map((action) => (
+          <button
+            key={action.key}
+            className={`player-action-button player-action-button--${action.status}`}
+            type="button"
+            onClick={() => onAction(action)}
+            disabled={action.status !== "available"}
+            title={action.reason}
+          >
+            <span>{action.label}</span>
+            {action.status !== "available" && action.reason && (
+              <small>{action.reason}</small>
+            )}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function PlayerContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const trackId = searchParams.get("trackId");
 
   const {
@@ -42,6 +98,8 @@ function PlayerContent() {
   const { addToast } = useToast();
   const [showAddToPlaylist, setShowAddToPlaylist] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, track: LocalTrack } | null>(null);
+  const [trackActions, setTrackActions] = useState<PlayerTrackActionsResponse | null>(null);
+  const actionImpressionKeyRef = useRef<string | null>(null);
 
   // Local state for seeking
   const [isDragging, setIsDragging] = useState(false);
@@ -77,6 +135,103 @@ function PlayerContent() {
 
   const handleVolume = (e: React.ChangeEvent<HTMLInputElement>) => {
     setVolume(parseFloat(e.target.value) / 100);
+  };
+
+  const recommendationReasonParam = searchParams.toString();
+  const recommendationReasons = useMemo(() => {
+    const params = new URLSearchParams(recommendationReasonParam);
+    const explicitReasons = params.getAll("reason");
+    const csvReasons = params.get("reasons")?.split(",") ?? [];
+    return [...explicitReasons, ...csvReasons].map((reason) => reason.trim()).filter(Boolean);
+  }, [recommendationReasonParam]);
+
+  const actionTrackId = currentTrack?.catalogTrackId || null;
+
+  useEffect(() => {
+    let active = true;
+
+    if (!actionTrackId) {
+      return;
+    }
+
+    getPlayerTrackActions(actionTrackId, { reasons: recommendationReasons })
+      .then((response) => {
+        if (active) setTrackActions(response);
+      })
+      .catch((error) => {
+        console.warn("Failed to load player actions:", error);
+        if (active) setTrackActions(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [actionTrackId, recommendationReasons]);
+
+  const visibleTrackActions =
+    actionTrackId && trackActions?.track.id === actionTrackId ? trackActions : null;
+  const actionPanelLoading = Boolean(actionTrackId) && !visibleTrackActions;
+
+  useEffect(() => {
+    if (!actionTrackId || !visibleTrackActions) return;
+    const impressionKey = `${actionTrackId}:${visibleTrackActions.actions.map((action) => `${action.key}:${action.status}`).join("|")}`;
+    if (actionImpressionKeyRef.current === impressionKey) return;
+
+    actionImpressionKeyRef.current = impressionKey;
+    recordProductAnalyticsFromBrowser("player.action_impression", {
+      subjectType: "track",
+      subjectId: actionTrackId,
+      payload: {
+        actionKeys: visibleTrackActions.actions.map((action) => action.key),
+        actionStatuses: visibleTrackActions.actions.map((action) => action.status),
+        source: "player",
+      },
+    });
+  }, [actionTrackId, visibleTrackActions]);
+
+  const handlePlayerAction = async (action: PlayerTrackAction) => {
+    if (!currentTrack || !actionTrackId) return;
+
+    recordProductAnalyticsFromBrowser("player.action_selected", {
+      subjectType: "track",
+      subjectId: actionTrackId,
+      payload: {
+        actionKey: action.key,
+        actionStatus: action.status,
+        source: "player",
+      },
+    });
+
+    if (action.status !== "available") {
+      addToast({
+        type: "warning",
+        title: action.label,
+        message: action.reason || "This action is not available for the current track.",
+      });
+      return;
+    }
+
+    if (action.key === "save") {
+      await saveTrackMetadata({ ...currentTrack, source: currentTrack.source ?? "remote" });
+      addToast({ type: "success", title: "Saved", message: `"${currentTrack.title}" was added to your library.` });
+      return;
+    }
+
+    if (action.key === "add_to_playlist") {
+      setShowAddToPlaylist(true);
+      return;
+    }
+
+    if (action.href) {
+      router.push(action.href);
+      return;
+    }
+
+    addToast({
+      type: "warning",
+      title: action.label,
+      message: "This action is not linked yet.",
+    });
   };
 
   const handleContextMenu = (e: React.MouseEvent, track: LocalTrack) => {
@@ -243,11 +398,11 @@ function PlayerContent() {
         </p>
 
         {currentTrack && (
-          <div style={{ marginTop: "20px" }}>
-            <Button variant="ghost" onClick={() => setShowAddToPlaylist(true)}>
-              <span style={{ marginRight: "8px" }}>➕</span> Add to Playlist
-            </Button>
-          </div>
+          <PlayerActionPanel
+            actionState={visibleTrackActions}
+            loading={actionPanelLoading}
+            onAction={handlePlayerAction}
+          />
         )}
       </section>
 

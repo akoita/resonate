@@ -1475,6 +1475,59 @@ export async function getTrack(trackId: string, token?: string | null) {
   return track;
 }
 
+export type PlayerTrackActionKey =
+  | "save"
+  | "add_to_playlist"
+  | "inspect_stems"
+  | "buy_license"
+  | "remix"
+  | "artist_room"
+  | "shows_campaign"
+  | "collect_drop";
+
+export type PlayerTrackActionStatus = "available" | "disabled" | "planned";
+
+export type PlayerTrackAction = {
+  key: PlayerTrackActionKey;
+  label: string;
+  status: PlayerTrackActionStatus;
+  href?: string;
+  reason?: string;
+  metadata?: Record<string, string | number | boolean | string[] | null>;
+};
+
+export type PlayerTrackActionsResponse = {
+  track: {
+    id: string;
+    title: string;
+    releaseId: string;
+    releaseTitle: string;
+    artistId: string;
+    artistName: string | null;
+    genre: string | null;
+    moods: string[];
+  };
+  recommendation?: {
+    summary: string;
+    reasons: string[];
+  };
+  actions: PlayerTrackAction[];
+};
+
+export async function getPlayerTrackActions(
+  trackId: string,
+  input: { reasons?: string[] } = {},
+) {
+  const params = new URLSearchParams();
+  for (const reason of input.reasons ?? []) {
+    if (reason.trim()) params.append("reason", reason.trim());
+  }
+  const query = params.toString();
+  return apiRequest<PlayerTrackActionsResponse>(
+    `/catalog/tracks/${encodeURIComponent(trackId)}/actions${query ? `?${query}` : ""}`,
+  );
+}
+
 export async function listArtistReleases(artistId: string, token?: string | null) {
   const releases = await apiRequest<Release[]>(`/catalog/artist/${artistId}`, {}, token);
   return releases.map(r => ({

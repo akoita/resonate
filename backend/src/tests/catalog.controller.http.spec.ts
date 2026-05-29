@@ -25,6 +25,7 @@ const mockCatalogService = {
   listPublished: jest.fn().mockResolvedValue([]),
   getRelease: jest.fn(),
   getTrack: jest.fn(),
+  getPlayerTrackActions: jest.fn(),
   updateRelease: jest.fn().mockResolvedValue({ id: 'rel-1' }),
   deleteRelease: jest.fn().mockResolvedValue({ deleted: true }),
   updateReleaseArtwork: jest.fn().mockResolvedValue({ id: 'rel-1' }),
@@ -51,6 +52,7 @@ describe('CatalogController (e2e)', () => {
     mockCatalogService.listPublished.mockResolvedValue([]);
     mockCatalogService.getRelease.mockResolvedValue({ id: 'rel-1', title: 'Test' });
     mockCatalogService.getTrack.mockResolvedValue({ id: 'trk-1', title: 'Track' });
+    mockCatalogService.getPlayerTrackActions.mockResolvedValue({ track: { id: 'trk-1' }, actions: [] });
   });
 
   // ----- Public routes -----
@@ -65,6 +67,17 @@ describe('CatalogController (e2e)', () => {
     await request(app.getHttpServer())
       .get('/catalog/releases/rel-1')
       .expect(200);
+  });
+
+  it('GET /catalog/tracks/:id/actions → 200 (no auth required)', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/catalog/tracks/trk-1/actions?reason=genre%3Ajazz')
+      .expect(200);
+
+    expect(res.body.actions).toEqual([]);
+    expect(mockCatalogService.getPlayerTrackActions).toHaveBeenCalledWith('trk-1', {
+      recommendationReasons: ['genre:jazz'],
+    });
   });
 
   it('GET /catalog/artist/:artistId → 200 (no auth required)', async () => {

@@ -246,6 +246,38 @@ describe('API Client', () => {
     });
   });
 
+  describe('getPlayerTrackActions', () => {
+    it('fetches player action availability with recommendation reasons', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            track: {
+              id: 'track-1',
+              title: 'Track',
+              releaseId: 'release-1',
+              releaseTitle: 'Release',
+              artistId: 'artist-1',
+              artistName: 'Artist',
+              genre: 'Jazz',
+              moods: [],
+            },
+            actions: [],
+          }),
+      });
+
+      await api.getPlayerTrackActions('track-1', {
+        reasons: ['genre:jazz', 'agent_pick'],
+      });
+
+      const [url] = mockFetch.mock.calls[0];
+      expect(url).toBe(
+        'http://test-api:3000/catalog/tracks/track-1/actions?reason=genre%3Ajazz&reason=agent_pick',
+      );
+    });
+  });
+
   describe('recordPlaybackEvent', () => {
     it('posts playback lifecycle events to the analytics endpoint', async () => {
       mockFetch.mockResolvedValueOnce({
