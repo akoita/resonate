@@ -42,7 +42,7 @@
 
 <br/>
 
-> **🚧 Work in Progress** – This is an experimental project under active development. Not production-ready.
+> **🚧 Work in Progress.** This is an experimental project under active development. Not production-ready.
 
 </div>
 
@@ -132,8 +132,8 @@ make local-aa-fork
 make deploy-contracts
 
 # Start services (separate terminals)
-make backend-dev     # NestJS API – port 3000
-make web-dev-fork    # Next.js – port 3001 (chain 11155111, local RPC)
+make backend-dev     # NestJS API on port 3000
+make web-dev-fork    # Next.js on port 3001 (chain 11155111, local RPC)
 ```
 
 ### Local-Only (offline fallback)
