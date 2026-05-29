@@ -42,7 +42,7 @@
 
 <br/>
 
-> **🚧 Work in Progress** — This is an experimental project under active development. Not production-ready.
+> **🚧 Work in Progress** – This is an experimental project under active development. Not production-ready.
 
 </div>
 
@@ -50,26 +50,26 @@
 
 ## 🌟 Overview
 
-Resonate is an AI-native music platform that uses AI, agent interfaces, and blockchain rails as product primitives — not afterthoughts. Artists upload releases, split songs into stems, and sell licensed assets in stablecoin. Listeners get a full music app with an AI DJ, marketplace, and wallet-native purchases. AI agents discover, quote, and buy stems over HTTP with x402 — no account, no OAuth, just `curl` + USDC + a signed receipt.
+Resonate is an AI-native music platform that uses AI, agent interfaces, and blockchain rails as product primitives, not afterthoughts. Artists upload releases, split songs into stems, and sell licensed assets in stablecoin. Listeners get a full music app with an AI DJ, marketplace, and wallet-native purchases. AI agents discover, quote, and buy stems over HTTP with x402. No account, no OAuth, just `curl` + USDC + a signed receipt.
 
 The human studio, storefront API, x402 payment flow, and MCP interface are peers over the same on-chain catalog. Three audiences, one catalog:
 
-- **Artists** — upload releases, mint stems as NFTs, price per-license type (personal / remix / commercial), earn royalties via on-chain payment splitter.
-- **Listeners** — full music app: player, library, playlists, marketplace, AI DJ, curator-resolved disputes. Wallet-native purchases — you own what you buy.
-- **Agents** — storefront endpoints, licensing-aware quotes, x402 HTTP payments, machine-readable purchase receipts. No account required.
+- **Artists**: upload releases, mint stems as NFTs, price per-license type (personal / remix / commercial), earn royalties via on-chain payment splitter.
+- **Listeners**: full music app: player, library, playlists, marketplace, AI DJ, curator-resolved disputes. Wallet-native purchases. You own what you buy.
+- **Agents**: storefront endpoints, licensing-aware quotes, x402 HTTP payments, machine-readable purchase receipts. No account required.
 
 ---
 
 ## ⚡ Key Capabilities
 
-- **Programmable stems** — AI-separated 6-stem assets (vocals, drums, bass, guitar, piano, other) as the core monetizable unit · [Upload flow](docs/features/artist_upload_flow_mvp.md)
-- **x402 commerce** — machine-to-machine stem purchases over HTTP with USDC settlement and structured receipts · [x402 payments](docs/architecture/x402_payments.md)
-- **MCP tools** — `catalog.search`, `stem.quote`, `stem.download` over Streamable HTTP at `/mcp` · [MCP server](docs/architecture/mcp_server.md)
-- **Resonate Shows** — escrow-backed fan campaigns that turn city-level demand into booking signals · [Shows](docs/features/resonate_shows.md)
-- **AI DJ** — taste-constrained agent runtime with commerce-aware recommendations · [Agent commerce](docs/features/agent-commerce-runtime.md)
-- **Smart accounts** — ERC-4337 Kernel accounts with session keys for gasless UX · [Account abstraction](docs/account-abstraction/account-abstraction.md)
-- **Marketplace** — on-chain stem trading with licensing tiers and stablecoin settlement · [Contracts](docs/smart-contracts/core_contracts.md)
-- **Community curation** — dispute flows and curator-resolved content quality signals · [Curation](docs/features/community_curation_disputes.md)
+- **Programmable stems**: AI-separated 6-stem assets (vocals, drums, bass, guitar, piano, other) as the core monetizable unit · [Upload flow](docs/features/artist_upload_flow_mvp.md)
+- **x402 commerce**: machine-to-machine stem purchases over HTTP with USDC settlement and structured receipts · [x402 payments](docs/architecture/x402_payments.md)
+- **MCP tools**: `catalog.search`, `stem.quote`, `stem.download` over Streamable HTTP at `/mcp` · [MCP server](docs/architecture/mcp_server.md)
+- **Resonate Shows**: escrow-backed fan campaigns that turn city-level demand into booking signals · [Shows](docs/features/resonate_shows.md)
+- **AI DJ**: taste-constrained agent runtime with commerce-aware recommendations · [Agent commerce](docs/features/agent-commerce-runtime.md)
+- **Smart accounts**: ERC-4337 Kernel accounts with session keys for gasless UX · [Account abstraction](docs/account-abstraction/account-abstraction.md)
+- **Marketplace**: on-chain stem trading with licensing tiers and stablecoin settlement · [Contracts](docs/smart-contracts/core_contracts.md)
+- **Community curation**: dispute flows and curator-resolved content quality signals · [Curation](docs/features/community_curation_disputes.md)
 
 See the [feature catalog](docs/features/README.md) for the full index of implemented, partial, planned, and retired capabilities.
 
@@ -132,8 +132,8 @@ make local-aa-fork
 make deploy-contracts
 
 # Start services (separate terminals)
-make backend-dev     # NestJS API — port 3000
-make web-dev-fork    # Next.js — port 3001 (chain 11155111, local RPC)
+make backend-dev     # NestJS API – port 3000
+make web-dev-fork    # Next.js – port 3001 (chain 11155111, local RPC)
 ```
 
 ### Local-Only (offline fallback)
