@@ -2,6 +2,7 @@
 
 Issue: [#520](https://github.com/akoita/resonate/issues/520)
 Current follow-up: [#783](https://github.com/akoita/resonate/issues/783)
+External agent UX tracker: [#1006](https://github.com/akoita/resonate/issues/1006)
 
 ## Current Status
 
@@ -10,7 +11,7 @@ validation is intentionally deferred because staging web/API deployment details
 are not published from this public repository. Public validation should wait
 until a hardened validation or launch origin is explicitly approved.
 
-Rechecked at: `2026-05-16T12:00:00+02:00`
+Rechecked at: `2026-05-29T00:00:00+02:00`
 
 | Check | App-repo evidence | Public-origin status |
 | --- | --- | --- |
@@ -50,6 +51,52 @@ Validation may resume only when all of the following are true:
 Until those gates are met, the expected result for registry validation is
 `Deferred`, not `Failed`.
 
+## #1006 Acceptance Mapping
+
+Issue [#1006](https://github.com/akoita/resonate/issues/1006) treats registry
+validation as part of the external agent application journey, but not as a
+reason to publish private staging details. The registry-related acceptance
+criteria map to this document as follows:
+
+| #1006 requirement | Registry validation expectation |
+| --- | --- |
+| Discovery metadata lists capabilities, versions, docs, payment assets, and supported networks. | `/.well-known/x402`, `/.well-known/mcp.json`, `/mcp`, and `/openapi.json` must be reachable from the approved public origin before scanners run. |
+| Paid and irreversible flows have a free quote or dry-run path before spend. | `GET /api/stems/:stemId/x402/info` and MCP `stem.quote` must return a current quote for the same seeded stem used by scanner checks. |
+| Agent-facing errors use stable codes plus recovery guidance. | MCP `stem.download` missing-proof and invalid-proof probes should return stable error codes and recovery hints; HTTP x402 probes should return protocol-correct 402 challenges or documented failure bodies. |
+| Paid stem download is documented and tested as retry-safe/idempotent. | Operators must capture challenge, verification, settlement, and receipt evidence for the same stem without serving a resource after failed verification or failed settlement. |
+| Receipt shape is documented for machine storage and human explanation. | Successful paid validation must record receipt ID, encoded receipt presence, license key, payment asset, settlement status, and resource metadata. |
+| Example clients cover discovery, quote, payment-required, receipt parsing, and retry behavior. | The MCP example client can be pointed at the approved public origin for discovery, quote, missing-proof recovery, and opt-in paid receipt parsing. |
+| Public registry validation remains deferred until a hardened validation origin/window is approved and observable. | This document remains the source of truth for `Deferred`, `Ready`, `Running`, `Passed`, or `Failed` registry status. |
+
+## Public Validation Readiness Checklist
+
+Use this checklist before changing registry status from `Deferred` to `Ready`.
+All items should be true for the same public origin and validation window.
+
+| Area | Ready requirement | Evidence to capture |
+| --- | --- | --- |
+| Approval | Project owner has approved the public origin, start time, end time, and scanner set. | Issue or release comment with the window, scanner names, and operator owner. |
+| Origin | The origin is intentionally public and may receive scanner, bot, and adversarial probing traffic. | Public origin hostname or redacted origin ID stored outside source when needed. |
+| Deployment | Backend x402 is enabled with a funded payout address, supported network, facilitator URL, and stable app revision. | Non-secret runtime config summary and deploy revision ID from private IaC/deploy logs. |
+| Discovery | `/openapi.json`, `/.well-known/x402`, `/.well-known/mcp.json`, and `/mcp` return current metadata. | Timestamped curl artifacts or scanner discovery receipts. |
+| Seed content | At least one clean, public, purchasable stem has canonical USDC pricing and no rights-review blocker. | Stem ID, quote URL, purchase URL, license tiers, price, and rights status. |
+| Free quote | x402 info and MCP quote paths return the same network, asset, amount, pay-to address, and resource target for the seeded stem. | Saved quote payloads with secrets and private origins redacted. |
+| Payment challenge | Unpaid HTTP download emits a protocol-correct 402 challenge and MCP missing-proof emits `PAYMENT_REQUIRED` with recovery guidance. | HTTP response headers/body and MCP structured error payload. |
+| Settlement safety | Invalid proofs and settlement failures do not serve audio resources and do produce actionable logs/errors. | Negative-path request IDs, error codes, and facilitator/settlement reasons. |
+| Observability | Operators can see discovery, quote, challenge, verification, settlement, receipt, rate-limit, and error events. | Dashboard links, log queries, or event counts for the validation window. |
+| Abuse controls | Rate limits, spend limits, alert ownership, and rollback/disable procedure are active. | Limit configuration summary and operator escalation path. |
+| Privacy | No private staging URLs, secrets, payment proofs, or raw audio blobs will be committed to public docs/issues. | Redaction review before posting scanner receipts. |
+
+Suggested status vocabulary:
+
+- `Deferred`: no approved public validation window exists.
+- `Ready`: every readiness checklist item is satisfied.
+- `Running`: scanners are actively probing the approved public origin.
+- `Passed`: scanners registered the expected paid resources and receipt
+  evidence was captured.
+- `Failed`: an approved public validation run exposed a real contract, x402,
+  metadata, settlement, receipt, observability, or abuse-control problem.
+
 ## Validation Window Runbook
 
 Use this checklist only after the public validation origin/window is approved.
@@ -88,6 +135,64 @@ grep -i '^payment-required:' /tmp/resonate-x402-challenge.txt
 Only after those checks pass should scanners be pointed at the public origin.
 Capture the scanner timestamps, resource counts, origin IDs, and any failure
 details in this document.
+
+## Scanner Receipt Capture Template
+
+For each approved scanner run, add a short receipt entry with this shape. Keep
+private origins, payment proofs, secrets, and raw resource payloads redacted.
+
+```json
+{
+  "status": "Passed | Failed",
+  "scanner": "x402scan | mppscan | Agentic.Market | AgentCash | other",
+  "startedAt": "2026-05-29T00:00:00Z",
+  "completedAt": "2026-05-29T00:05:00Z",
+  "operator": "@owner-or-team",
+  "publicOrigin": "<approved-public-origin-or-redacted-origin-id>",
+  "originId": "<scanner-origin-id-if-issued>",
+  "resourceCount": 1,
+  "seededStem": {
+    "stemId": "<public-stem-id>",
+    "licenseType": "personal | remix | commercial",
+    "price": "0.05",
+    "currency": "USDC",
+    "network": "eip155:84532"
+  },
+  "discovery": {
+    "openapi": "passed",
+    "x402WellKnown": "passed",
+    "mcpWellKnown": "passed",
+    "mcpTools": ["catalog.search", "stem.quote", "stem.download"]
+  },
+  "payment": {
+    "unpaidChallenge": "passed",
+    "quoteMatchesChallenge": true,
+    "invalidProofRecovery": "passed",
+    "successfulReceipt": "passed"
+  },
+  "receipt": {
+    "receiptId": "<receipt-id-or-redacted>",
+    "encodedReceiptPresent": true,
+    "settlementStatus": "settled | authorized | failed | deferred",
+    "resourceMimeType": "audio/mpeg",
+    "resourceBytes": 0
+  },
+  "failures": [],
+  "notes": "No private staging URL, raw proof, secret, or audio blob included."
+}
+```
+
+If a run fails, preserve the same fields and add concise failure objects:
+
+```json
+{
+  "step": "unpaidChallenge | quote | proofVerification | settlement | receipt | registryMutation",
+  "code": "RESOURCE_UNAVAILABLE | X402_DISABLED | FACILITATOR_FAILED | SETTLEMENT_FAILED | other",
+  "message": "Short operator-readable summary",
+  "requestId": "<request-id-if-safe-to-share>",
+  "recovery": "Next action before rerun"
+}
+```
 
 ## Validation Observability Expectations
 
