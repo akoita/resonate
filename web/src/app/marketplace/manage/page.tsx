@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatUnits, type Address } from "viem";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { useZeroDev } from "../../../components/auth/ZeroDevProviderClient";
@@ -21,6 +22,7 @@ import {
   parseListingPriceUnits,
   type MarketplaceListingAsset,
 } from "../../../lib/listingPricing";
+import { API_BASE, getReleaseArtworkUrl } from "../../../lib/api";
 import "../marketplace.css";
 
 type ListingLifecycleStatus =
@@ -55,6 +57,7 @@ type OwnerListing = {
     track?: string;
     artist?: string;
     artworkUrl?: string;
+    releaseId?: string;
   } | null;
 };
 
@@ -71,6 +74,24 @@ function statusLabel(status: OwnerListing["lifecycleStatus"]) {
   return status.replace("_", " ");
 }
 
+function resolveArtworkUrl(path?: string | null): string | undefined {
+  if (!path) return undefined;
+  if (path.startsWith("http")) return path;
+  if (path.startsWith("/default-stem-cover")) return path;
+  return `${API_BASE}${path}`;
+}
+
+function formatShortDate(value?: string | null) {
+  if (!value) return "No date";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "No date";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function shortAddress(address: string) {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
 function resolveListingAsset(
   assets: PaymentAsset[],
   chainId: number | undefined,
@@ -82,6 +103,32 @@ function resolveListingAsset(
 
 function priceInputFromListing(listing: OwnerListing, asset: MarketplaceListingAsset) {
   return formatUnits(BigInt(listing.price), listingAssetDecimals(asset));
+}
+
+function ListingManagerArtwork({
+  src,
+  title,
+  type,
+}: {
+  src?: string;
+  title: string;
+  type?: string | null;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  if (src && !failed) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={src} alt={title} onError={() => setFailed(true)} />
+    );
+  }
+
+  return (
+    <div className="marketplace-manager-row__art-fallback" aria-hidden="true">
+      <span>{type?.slice(0, 1).toUpperCase() ?? "S"}</span>
+      <small>{type || "Stem"}</small>
+    </div>
+  );
 }
 
 export default function MarketplaceListingManagerPage() {
@@ -109,6 +156,7 @@ export default function MarketplaceListingManagerPage() {
   const [duration, setDuration] = useState("7");
   const [paymentToken, setPaymentToken] = useState<string>(ZERO_PAYMENT_TOKEN);
   const [success, setSuccess] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   const marketplaceAssets = useMemo(
     () => paymentAssets.filter((asset) => {
@@ -122,6 +170,34 @@ export default function MarketplaceListingManagerPage() {
     () => resolveListingAsset(paymentAssets, chainId, paymentToken),
     [chainId, paymentAssets, paymentToken],
   );
+
+  const visibleListings = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return listings;
+
+    return listings.filter((listing) => {
+      const haystack = [
+        listing.listingId,
+        listing.tokenId,
+        listing.licenseType,
+        listing.lifecycleStatus,
+        listing.stem?.title,
+        listing.stem?.track,
+        listing.stem?.artist,
+        listing.stem?.type,
+      ].filter(Boolean).join(" ").toLowerCase();
+
+      return haystack.includes(normalized);
+    });
+  }, [listings, query]);
+
+  const managerStats = useMemo(() => {
+    const relistable = listings.filter((listing) => listing.relistable).length;
+    const expiring = listings.filter((listing) => listing.lifecycleStatus === "expiring_soon").length;
+    const active = listings.filter((listing) => listing.lifecycleStatus === "active").length;
+
+    return { active, expiring, relistable, total: listings.length };
+  }, [listings]);
 
   const fetchListings = useCallback(async () => {
     if (!sellerAddress) return;
@@ -197,40 +273,94 @@ export default function MarketplaceListingManagerPage() {
   if (!sellerAddress) {
     return (
       <main className="marketplace-page marketplace-manager">
-        <div className="marketplace-hero">
-          <h1 className="marketplace-title">Listing Manager</h1>
-          <p className="marketplace-subtitle">Connect a wallet to manage your marketplace listings.</p>
-        </div>
+        <section className="marketplace-hero marketplace-manager-hero">
+          <div className="marketplace-manager-hero__copy">
+            <span className="marketplace-manager-kicker">Seller workspace</span>
+            <h1 className="marketplace-title">Listing Manager</h1>
+            <p className="marketplace-subtitle">Connect a wallet to manage your marketplace listings.</p>
+          </div>
+          <div className="marketplace-manager-hero__actions">
+            <Link href="/marketplace" className="marketplace-secondary-link">
+              Browse marketplace
+            </Link>
+          </div>
+        </section>
       </main>
     );
   }
 
   return (
     <main className="marketplace-page marketplace-manager">
-      <div className="marketplace-hero">
-        <h1 className="marketplace-title">Listing Manager</h1>
-        <p className="marketplace-subtitle">
-          Track active, expiring, expired, sold, and cancelled stem listings from one owner view.
-        </p>
-      </div>
-
-      <div className="marketplace-manager-toolbar">
-        <div className="marketplace-toolbar__group" role="tablist" aria-label="Listing status">
-          {FILTERS.map((filter) => (
-            <button
-              key={filter.value}
-              type="button"
-              onClick={() => setStatus(filter.value)}
-              className={`stem-pill ${status === filter.value ? "stem-pill--active" : ""}`}
-            >
-              {filter.label}
-            </button>
-          ))}
+      <section className="marketplace-hero marketplace-manager-hero">
+        <div className="marketplace-manager-hero__copy">
+          <span className="marketplace-manager-kicker">Seller workspace</span>
+          <h1 className="marketplace-title">Listing Manager</h1>
+          <p className="marketplace-subtitle">
+            Track active, expiring, expired, sold, and cancelled stem listings from one owner view.
+          </p>
+          <div className="marketplace-manager-owner">
+            <span>Managing</span>
+            <strong>{shortAddress(sellerAddress)}</strong>
+            {chainId && <span>Chain {chainId}</span>}
+          </div>
         </div>
-        <button type="button" onClick={() => void fetchListings()} className="marketplace-clear-btn">
-          Refresh
-        </button>
-      </div>
+        <div className="marketplace-manager-hero__actions">
+          <Link href="/marketplace" className="marketplace-secondary-link">
+            Browse marketplace
+          </Link>
+          <Link href="/artist/upload" className="marketplace-action-btn marketplace-action-btn--link">
+            Upload & mint
+          </Link>
+        </div>
+      </section>
+
+      <section className="marketplace-manager-summary" aria-label="Listing summary">
+        <div>
+          <span>Total listings</span>
+          <strong>{managerStats.total}</strong>
+        </div>
+        <div>
+          <span>Active</span>
+          <strong>{managerStats.active}</strong>
+        </div>
+        <div>
+          <span>Expiring</span>
+          <strong>{managerStats.expiring}</strong>
+        </div>
+        <div>
+          <span>Ready to relist</span>
+          <strong>{managerStats.relistable}</strong>
+        </div>
+      </section>
+
+      <section className="marketplace-manager-controls" aria-label="Listing filters">
+        <div className="marketplace-manager-search">
+          <span aria-hidden="true">Search</span>
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Track, stem, token, status..."
+          />
+        </div>
+        <div className="marketplace-manager-toolbar">
+          <div className="marketplace-toolbar__group" role="tablist" aria-label="Listing status">
+            {FILTERS.map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                onClick={() => setStatus(filter.value)}
+                className={`stem-pill ${status === filter.value ? "stem-pill--active" : ""}`}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={() => void fetchListings()} className="marketplace-clear-btn">
+            Refresh
+          </button>
+        </div>
+      </section>
 
       {success && <div className="marketplace-manager-alert marketplace-manager-alert--success">{success}</div>}
       {loadError && <div className="marketplace-manager-alert marketplace-manager-alert--error">{loadError}</div>}
@@ -238,37 +368,62 @@ export default function MarketplaceListingManagerPage() {
       {loading ? (
         <div className="marketplace-empty">Loading listings...</div>
       ) : listings.length === 0 ? (
-        <div className="marketplace-empty">No listings in this state.</div>
+        <div className="marketplace-empty marketplace-manager-empty">
+          <div className="marketplace-empty__icon">♪</div>
+          <h3 className="marketplace-empty__title">No listings in this state</h3>
+          <p className="marketplace-empty__text">Switch filters, browse the public marketplace, or mint a new stem listing.</p>
+          <div className="marketplace-manager-empty__actions">
+            <Link href="/marketplace" className="marketplace-secondary-link">
+              Browse marketplace
+            </Link>
+            <Link href="/artist/upload" className="marketplace-action-btn marketplace-action-btn--link">
+              Upload & mint
+            </Link>
+          </div>
+        </div>
+      ) : visibleListings.length === 0 ? (
+        <div className="marketplace-empty marketplace-manager-empty">
+          <div className="marketplace-empty__icon">⌕</div>
+          <h3 className="marketplace-empty__title">No matching listings</h3>
+          <p className="marketplace-empty__text">Try another track, stem type, token ID, or status.</p>
+        </div>
       ) : (
         <div className="marketplace-manager-list">
-          {listings.map((listing) => {
+          {visibleListings.map((listing) => {
             const asset = resolveListingAsset(paymentAssets, chainId, listing.paymentToken);
             const symbol = listingAssetSymbol(asset);
             const isHighlighted = highlightedListingId === listing.id;
+            const artworkUrl = resolveArtworkUrl(listing.stem?.artworkUrl)
+              ?? (listing.stem?.releaseId ? getReleaseArtworkUrl(listing.stem.releaseId) : undefined);
             return (
               <article
                 key={listing.id}
                 className={`marketplace-manager-row ${isHighlighted ? "marketplace-manager-row--highlighted" : ""}`}
               >
                 <div className="marketplace-manager-row__art">
-                  {listing.stem?.artworkUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={listing.stem.artworkUrl} alt={listing.stem.title} />
-                  ) : (
-                    <span>{listing.stem?.type?.slice(0, 1).toUpperCase() ?? "S"}</span>
-                  )}
+                  <ListingManagerArtwork
+                    src={artworkUrl}
+                    title={listing.stem?.title ?? `Token #${listing.tokenId}`}
+                    type={listing.stem?.type}
+                  />
                 </div>
                 <div className="marketplace-manager-row__main">
+                  <div className="marketplace-manager-row__eyebrow">
+                    <span>{listing.stem?.type ?? "Stem"}</span>
+                    <span>{listing.licenseType}</span>
+                    <span>Token #{listing.tokenId}</span>
+                  </div>
                   <div className="marketplace-manager-row__title">
                     {listing.stem?.title ?? `Token #${listing.tokenId}`}
                   </div>
                   <div className="marketplace-manager-row__meta">
-                    {listing.stem?.track ?? "Unknown track"} · {listing.licenseType} · Token #{listing.tokenId}
+                    {listing.stem?.track ?? "Unknown track"}
+                    {listing.stem?.artist ? ` by ${listing.stem.artist}` : ""}
                   </div>
                   <div className="marketplace-manager-row__facts">
                     <span>{formatListingPrice({ priceUnits: BigInt(listing.price), asset })}</span>
                     <span>{listing.amount} available</span>
-                    <span>Expires {new Date(listing.expiresAt).toLocaleDateString()}</span>
+                    <span>Expires {formatShortDate(listing.expiresAt)}</span>
                     <span>{symbol}</span>
                   </div>
                 </div>
