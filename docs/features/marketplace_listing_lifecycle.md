@@ -21,7 +21,9 @@ buyer and machine-commerce surfaces strict about availability.
 
 - Public marketplace reads only return listings that are active, have remaining
   amount, and have `expiresAt` in the future.
-- Owner listing management is available at `/marketplace/manage`.
+- Owner listing management is available at `/marketplace/manage`, from the
+  marketplace hero, from the connected-wallet marketplace filter bar, and from
+  lifecycle notification deep links.
 - Owner inventory can show `active`, `expiring_soon`, `expired`, `sold`,
   `cancelled`, and `stale` lifecycle states.
 - Backend reconciliation marks active rows as `expired` after `expiresAt <= now`.
@@ -35,7 +37,8 @@ buyer and machine-commerce surfaces strict about availability.
 
 ### Creator
 
-1. Open `/marketplace/manage` with the listing seller wallet or smart account.
+1. Open `Manage listings` from `/marketplace` or visit `/marketplace/manage`
+   with the listing seller wallet or smart account.
 2. Filter by Active, Expiring, Expired, Sold, or Cancelled.
 3. Use Relist on eligible expired or cancelled rows.
 4. Confirm the new listing transaction; the indexer attaches the new listing row
@@ -67,9 +70,9 @@ buyer and machine-commerce surfaces strict about availability.
 
 | Surface | Current behavior |
 | --- | --- |
-| Public marketplace | Excludes expired and sold-out listings. |
+| Public marketplace | Excludes expired and sold-out listings and links sellers to the listing manager. |
 | Storefront/x402/MCP/agent commerce | Continue to treat expired listings as unavailable. |
-| Owner listing manager | Shows actionable expired inventory and relist controls. |
+| Owner listing manager | Shows artwork, seller inventory summaries, searchable lifecycle rows, actionable expired inventory, and relist controls. |
 | Notification bell | Routes listing lifecycle notifications to `/marketplace/manage`. |
 
 ## Tests

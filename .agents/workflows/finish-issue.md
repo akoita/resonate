@@ -33,14 +33,18 @@ When the user says "finish issue", "close issue", "wrap up", or wants to finaliz
 ## 4. Run tests
 
 Use risk-based local validation. Do **not** run every repository test suite by
-default; the full backend suite can take close to an hour and belongs in CI or
-in explicitly high-risk local verification.
+default; expensive local checks belong in CI/CD unless the branch is high risk
+or the developer explicitly asks for them. Local validation should prove the
+changed slice quickly, while CI/CD uses stronger runners for broad confidence.
 
 Minimum local gate:
 
 - Run the focused tests for files and behavior changed in the branch.
-- Run the relevant lint/type/build checks for touched packages.
+- Run the relevant lightweight lint/type checks for touched packages.
 - Run `git diff --check`.
+- Prefer a 5-15 minute local validation budget for ordinary feature slices and
+  UI polish. If a check is expected to exceed that budget, document it as
+  deferred to CI/CD instead of running it locally by default.
 
 Backend defaults:
 
@@ -51,6 +55,7 @@ Backend defaults:
 - For shared services, auth, payments, encryption, analytics, public API
   contracts, or event semantics, run the focused tests for each touched shared
   area.
+- Defer full Testcontainers/integration sweeps to CI/CD for normal PRs.
 - Run full `cd backend && npm run test` only when the branch broadly changes
   shared runtime behavior, test infrastructure, module bootstrapping, auth
   foundations, or when the developer explicitly asks for a full local suite.
@@ -58,9 +63,16 @@ Backend defaults:
 Frontend defaults:
 
 - Run focused Vitest files for changed helpers/components.
-- Run `cd web && npm run lint`.
-- Run `cd web && npm run build` when routes, client/server boundaries, API
-  helper types, or shared frontend build inputs changed.
+- For component/CSS-only UI polish, run changed-file lint where practical
+  (for example `cd web && npx eslint <changed-ts-or-tsx-files>`) plus focused
+  component/helper tests if they exist. Do not run a full production build by
+  default for CSS/layout-only polish.
+- Run `cd web && npm run lint` when the change spans multiple frontend areas,
+  touches shared code, or changed-file lint is not practical.
+- Run `cd web && npm run build` only when routes, client/server boundaries,
+  framework config, package/dependency files, environment handling, API helper
+  types, or shared frontend build inputs changed. Otherwise defer production
+  build validation to CI/CD.
 - Run full `cd web && npm run test:unit` when shared frontend helpers,
   analytics/event contracts, auth/session handling, or broad UI state behavior
   changed, or when the developer explicitly asks.
