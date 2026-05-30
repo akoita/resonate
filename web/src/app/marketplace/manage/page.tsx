@@ -150,13 +150,15 @@ export default function MarketplaceListingManagerPage() {
   const [listings, setListings] = useState<OwnerListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [relisting, setRelisting] = useState<OwnerListing | null>(null);
+  const [relistingListings, setRelistingListings] = useState<OwnerListing[]>([]);
+  const [selectedListingIds, setSelectedListingIds] = useState<Set<string>>(() => new Set());
   const [price, setPrice] = useState("");
   const [amount, setAmount] = useState("1");
   const [duration, setDuration] = useState("7");
   const [paymentToken, setPaymentToken] = useState<string>(ZERO_PAYMENT_TOKEN);
   const [success, setSuccess] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; title: string } | null>(null);
 
   const marketplaceAssets = useMemo(
     () => paymentAssets.filter((asset) => {
@@ -199,6 +201,19 @@ export default function MarketplaceListingManagerPage() {
     return { active, expiring, relistable, total: listings.length };
   }, [listings]);
 
+  const visibleRelistableListings = useMemo(
+    () => visibleListings.filter((listing) => listing.relistable),
+    [visibleListings],
+  );
+
+  const selectedRelistableListings = useMemo(
+    () => listings.filter((listing) => listing.relistable && selectedListingIds.has(listing.id)),
+    [listings, selectedListingIds],
+  );
+
+  const allVisibleRelistableSelected = visibleRelistableListings.length > 0
+    && visibleRelistableListings.every((listing) => selectedListingIds.has(listing.id));
+
   const fetchListings = useCallback(async () => {
     if (!sellerAddress) return;
     setLoading(true);
@@ -216,9 +231,15 @@ export default function MarketplaceListingManagerPage() {
       if (!res.ok) throw new Error(`Failed to load listings (${res.status})`);
       const data = await res.json();
       setListings(data.listings || []);
+      setSelectedListingIds((current) => {
+        const nextListings = (data.listings || []) as OwnerListing[];
+        const validIds = new Set(nextListings.filter((listing) => listing.relistable).map((listing) => listing.id));
+        return new Set([...current].filter((id) => validIds.has(id)));
+      });
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to load listings");
       setListings([]);
+      setSelectedListingIds(new Set());
     } finally {
       setLoading(false);
     }
@@ -228,46 +249,91 @@ export default function MarketplaceListingManagerPage() {
     void fetchListings();
   }, [fetchListings]);
 
-  const openRelist = (listing: OwnerListing) => {
-    const asset = resolveListingAsset(paymentAssets, chainId, listing.paymentToken);
-    setRelisting(listing);
-    setPrice(priceInputFromListing(listing, asset));
-    setAmount(listing.amount || "1");
-    setDuration(String(listing.durationDays || 7));
-    setPaymentToken(listing.paymentToken || ZERO_PAYMENT_TOKEN);
+  const openRelist = (nextListings: OwnerListing[]) => {
+    const [firstListing] = nextListings;
+    if (!firstListing) return;
+    const asset = resolveListingAsset(paymentAssets, chainId, firstListing.paymentToken);
+    setRelistingListings(nextListings);
+    setPrice(priceInputFromListing(firstListing, asset));
+    setAmount(firstListing.amount || "1");
+    setDuration(String(firstListing.durationDays || 7));
+    setPaymentToken(firstListing.paymentToken || ZERO_PAYMENT_TOKEN);
     setSuccess(null);
+    setBatchProgress(null);
   };
 
   const submitRelist = async () => {
-    if (!relisting) return;
+    if (relistingListings.length === 0) return;
     const priceUnits = parseListingPriceUnits({ price, asset: selectedAsset });
-    const txHash = await list({
-      tokenId: BigInt(relisting.tokenId),
-      amount: BigInt(amount),
-      pricePerUnit: priceUnits,
-      paymentToken: listingPaymentToken(selectedAsset) as Address,
-      durationSeconds: BigInt(parseInt(duration) * 24 * 60 * 60),
+    const durationSeconds = String(parseInt(duration) * 24 * 60 * 60);
+
+    try {
+      for (let index = 0; index < relistingListings.length; index += 1) {
+        const listing = relistingListings[index];
+        setBatchProgress({
+          current: index + 1,
+          total: relistingListings.length,
+          title: listing.stem?.title ?? `Token #${listing.tokenId}`,
+        });
+
+        const txHash = await list({
+          tokenId: BigInt(listing.tokenId),
+          amount: BigInt(amount),
+          pricePerUnit: priceUnits,
+          paymentToken: listingPaymentToken(selectedAsset) as Address,
+          durationSeconds: BigInt(durationSeconds),
+        });
+
+        await fetch("/api/contracts/notify-listing", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tokenId: listing.tokenId,
+            seller: sellerAddress,
+            price: priceUnits.toString(),
+            amount,
+            paymentToken: listingPaymentToken(selectedAsset),
+            licenseType: listing.licenseType,
+            durationSeconds,
+            transactionHash: txHash,
+            stemId: listing.stem?.id,
+          }),
+        }).catch(() => undefined);
+      }
+
+      setSuccess(
+        relistingListings.length === 1
+          ? "Listing transaction submitted. The indexer will attach the new listing shortly."
+          : `${relistingListings.length} listing transactions submitted. The indexer will attach the new listings shortly.`,
+      );
+      setRelistingListings([]);
+      setSelectedListingIds(new Set());
+      await fetchListings();
+    } finally {
+      setBatchProgress(null);
+    }
+  };
+
+  const toggleListingSelection = (listing: OwnerListing) => {
+    if (!listing.relistable) return;
+    setSelectedListingIds((current) => {
+      const next = new Set(current);
+      if (next.has(listing.id)) next.delete(listing.id);
+      else next.add(listing.id);
+      return next;
     });
+  };
 
-    await fetch("/api/contracts/notify-listing", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tokenId: relisting.tokenId,
-        seller: sellerAddress,
-        price: priceUnits.toString(),
-        amount,
-        paymentToken: listingPaymentToken(selectedAsset),
-        licenseType: relisting.licenseType,
-        durationSeconds: String(parseInt(duration) * 24 * 60 * 60),
-        transactionHash: txHash,
-        stemId: relisting.stem?.id,
-      }),
-    }).catch(() => undefined);
-
-    setSuccess("Listing transaction submitted. The indexer will attach the new listing shortly.");
-    setRelisting(null);
-    await fetchListings();
+  const toggleAllVisibleRelistable = () => {
+    setSelectedListingIds((current) => {
+      const next = new Set(current);
+      if (allVisibleRelistableSelected) {
+        visibleRelistableListings.forEach((listing) => next.delete(listing.id));
+      } else {
+        visibleRelistableListings.forEach((listing) => next.add(listing.id));
+      }
+      return next;
+    });
   };
 
   if (!sellerAddress) {
@@ -360,6 +426,38 @@ export default function MarketplaceListingManagerPage() {
             Refresh
           </button>
         </div>
+        {visibleRelistableListings.length > 0 && (
+          <div className="marketplace-manager-bulkbar" aria-label="Batch listing actions">
+            <label className="marketplace-manager-select-all">
+              <input
+                type="checkbox"
+                checked={allVisibleRelistableSelected}
+                onChange={toggleAllVisibleRelistable}
+              />
+              <span>Select relistable stems in this view</span>
+            </label>
+            <div className="marketplace-manager-bulkbar__actions">
+              <span>{selectedRelistableListings.length} selected</span>
+              {selectedRelistableListings.length > 0 && (
+                <button
+                  type="button"
+                  className="marketplace-clear-btn"
+                  onClick={() => setSelectedListingIds(new Set())}
+                >
+                  Clear
+                </button>
+              )}
+              <button
+                type="button"
+                className="marketplace-action-btn"
+                onClick={() => openRelist(selectedRelistableListings)}
+                disabled={selectedRelistableListings.length === 0}
+              >
+                Relist selected
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       {success && <div className="marketplace-manager-alert marketplace-manager-alert--success">{success}</div>}
@@ -398,8 +496,19 @@ export default function MarketplaceListingManagerPage() {
             return (
               <article
                 key={listing.id}
-                className={`marketplace-manager-row ${isHighlighted ? "marketplace-manager-row--highlighted" : ""}`}
+                className={`marketplace-manager-row ${isHighlighted ? "marketplace-manager-row--highlighted" : ""} ${
+                  selectedListingIds.has(listing.id) ? "marketplace-manager-row--selected" : ""
+                }`}
               >
+                <label className="marketplace-manager-row__select" title={listing.relistable ? "Select for batch relist" : "This listing is not relistable"}>
+                  <input
+                    type="checkbox"
+                    checked={selectedListingIds.has(listing.id)}
+                    disabled={!listing.relistable}
+                    onChange={() => toggleListingSelection(listing)}
+                    aria-label={`Select ${listing.stem?.title ?? `Token #${listing.tokenId}`} for batch relist`}
+                  />
+                </label>
                 <div className="marketplace-manager-row__art">
                   <ListingManagerArtwork
                     src={artworkUrl}
@@ -432,7 +541,7 @@ export default function MarketplaceListingManagerPage() {
                     {statusLabel(listing.lifecycleStatus)}
                   </span>
                   {listing.relistable && (
-                    <button type="button" className="marketplace-action-btn" onClick={() => openRelist(listing)}>
+                    <button type="button" className="marketplace-action-btn" onClick={() => openRelist([listing])}>
                       Relist
                     </button>
                   )}
@@ -443,25 +552,52 @@ export default function MarketplaceListingManagerPage() {
         </div>
       )}
 
-      {relisting && (
+      {relistingListings.length > 0 && (
         <div className="marketplace-manager-modal" role="dialog" aria-modal="true">
           <div className="marketplace-manager-modal__panel">
             <button
               type="button"
               className="marketplace-manager-modal__close"
-              onClick={() => setRelisting(null)}
+              onClick={() => setRelistingListings([])}
               aria-label="Close"
+              disabled={Boolean(batchProgress)}
             >
               ×
             </button>
-            <h2>Relist {relisting.stem?.title ?? `Token #${relisting.tokenId}`}</h2>
+            <h2>
+              {relistingListings.length === 1
+                ? `Relist ${relistingListings[0].stem?.title ?? `Token #${relistingListings[0].tokenId}`}`
+                : `Relist ${relistingListings.length} selected stems`}
+            </h2>
+            {relistingListings.length > 1 && (
+              <div className="marketplace-manager-modal__selection">
+                <p>Apply the same terms to every selected stem. Each listing still submits as its own transaction.</p>
+                <div>
+                  {relistingListings.slice(0, 6).map((listing) => (
+                    <span key={listing.id}>{listing.stem?.title ?? `Token #${listing.tokenId}`}</span>
+                  ))}
+                  {relistingListings.length > 6 && <span>+{relistingListings.length - 6} more</span>}
+                </div>
+              </div>
+            )}
             <label>
               Price
-              <input value={price} type="number" min="0" step="0.000001" onChange={(event) => setPrice(event.target.value)} />
+              <input
+                value={price}
+                type="number"
+                min="0"
+                step="0.000001"
+                onChange={(event) => setPrice(event.target.value)}
+                disabled={Boolean(batchProgress)}
+              />
             </label>
             <label>
               Payment asset
-              <select value={paymentToken} onChange={(event) => setPaymentToken(event.target.value)}>
+              <select
+                value={paymentToken}
+                onChange={(event) => setPaymentToken(event.target.value)}
+                disabled={Boolean(batchProgress)}
+              >
                 <option value={ZERO_PAYMENT_TOKEN}>Native ETH</option>
                 {marketplaceAssets.map((asset) => (
                   <option key={asset.assetId} value={asset.tokenAddress}>
@@ -472,11 +608,21 @@ export default function MarketplaceListingManagerPage() {
             </label>
             <label>
               Quantity
-              <input value={amount} type="number" min="1" onChange={(event) => setAmount(event.target.value)} />
+              <input
+                value={amount}
+                type="number"
+                min="1"
+                onChange={(event) => setAmount(event.target.value)}
+                disabled={Boolean(batchProgress)}
+              />
             </label>
             <label>
               Duration
-              <select value={duration} onChange={(event) => setDuration(event.target.value)}>
+              <select
+                value={duration}
+                onChange={(event) => setDuration(event.target.value)}
+                disabled={Boolean(batchProgress)}
+              >
                 <option value="1">1 day</option>
                 <option value="3">3 days</option>
                 <option value="7">7 days</option>
@@ -494,8 +640,18 @@ export default function MarketplaceListingManagerPage() {
                 : "Enter a price and quantity"}
             </div>
             {error && <div className="marketplace-manager-alert marketplace-manager-alert--error">{error.message}</div>}
+            {batchProgress && (
+              <div className="marketplace-manager-modal__progress">
+                Submitting {batchProgress.current} / {batchProgress.total}: {batchProgress.title}
+              </div>
+            )}
             <div className="marketplace-manager-modal__actions">
-              <button type="button" className="marketplace-clear-btn" onClick={() => setRelisting(null)}>
+              <button
+                type="button"
+                className="marketplace-clear-btn"
+                onClick={() => setRelistingListings([])}
+                disabled={pending || Boolean(batchProgress)}
+              >
                 Cancel
               </button>
               <button
@@ -504,7 +660,11 @@ export default function MarketplaceListingManagerPage() {
                 onClick={() => void submitRelist()}
                 disabled={pending || paymentAssetsLoading || !price || !amount}
               >
-                {pending ? "Submitting..." : "Create new listing"}
+                {pending || batchProgress
+                  ? "Submitting..."
+                  : relistingListings.length === 1
+                    ? "Create new listing"
+                    : `Relist ${relistingListings.length} stems`}
               </button>
             </div>
           </div>
