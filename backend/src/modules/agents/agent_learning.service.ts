@@ -61,6 +61,10 @@ export function buildAgentSignalMetadata(input: {
   filterKind?: unknown;
   autoQueuedTracks?: unknown;
   runtime?: unknown;
+  initiator?: unknown;
+  agentOriginated?: unknown;
+  agentSessionId?: unknown;
+  playbackCommandId?: unknown;
   recommendation?: unknown;
   reason?: unknown;
   reasoning?: unknown;
@@ -82,6 +86,10 @@ export function buildAgentSignalMetadata(input: {
   copyString(metadata, "filterKind", input.filterKind, 32);
   copyNumber(metadata, "autoQueuedTracks", input.autoQueuedTracks);
   copyString(metadata, "runtime", input.runtime, 32);
+  copyString(metadata, "initiator", input.initiator, 32);
+  copyBoolean(metadata, "agentOriginated", input.agentOriginated);
+  copyString(metadata, "agentSessionId", input.agentSessionId, 80);
+  copyString(metadata, "playbackCommandId", input.playbackCommandId, 80);
   copySafeRecommendation(metadata, input.recommendation);
   copyString(metadata, "reason", input.reason, 160);
   copyString(metadata, "reasoning", input.reasoning, 240);

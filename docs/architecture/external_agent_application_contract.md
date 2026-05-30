@@ -27,6 +27,14 @@ agentic applications that use Resonate without a bespoke integration.
 trusted backend boundary for app, session, and worker flows that already know
 the user, budget, policy, rail, and proof context.
 
+Owner-authorized playback is intentionally separate from these accountless
+public surfaces. The first authenticated playback-intent contract is documented
+in [Agent-Mediated Playback Intents](../features/agent_mediated_playback_intents.md)
+and uses `/sessions/playback/*` endpoints behind the existing owner JWT guard.
+It does not expose a generic public MCP `play_music` tool, does not grant
+payment or licensing authority, and does not report `playing` until an active
+Resonate client confirms audio execution.
+
 ## Recommended Agent Flow
 
 ```text
