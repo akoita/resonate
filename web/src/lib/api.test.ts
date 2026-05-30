@@ -527,6 +527,84 @@ describe('API Client', () => {
     });
   });
 
+  describe('taste memory controls', () => {
+    it('fetches the authenticated listener taste memory', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            schemaVersion: 'listener-taste-memory/v1',
+            settings: {
+              socialMatchingEnabled: false,
+              citySceneDiscoveryEnabled: false,
+              agentPlaybackTrainingEnabled: true,
+              recommendationExplanationPreference: 'balanced',
+              resetAt: null,
+            },
+            summary: {
+              favoredGenres: ['Ambient'],
+              favoredMoods: [],
+              favoredArtists: [],
+              recentIntents: [],
+              noveltyPattern: 'Balanced discovery',
+              commercePreference: 'Listening first',
+              explanationPreference: 'balanced',
+            },
+            controls: [],
+            privacy: {
+              socialMatching: 'disabled',
+              citySceneDiscovery: 'disabled',
+              agentPlaybackTraining: 'enabled',
+              notes: [],
+            },
+          }),
+      });
+
+      const result = await api.getTasteMemory('listener-token');
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/recommendations/taste-memory');
+      expect(opts.headers.get('Authorization')).toBe('Bearer listener-token');
+      expect(result.summary.favoredGenres).toEqual(['Ambient']);
+    });
+
+    it('updates taste memory settings and manages signal controls', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ socialMatchingEnabled: true }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ id: 'control-1', signalType: 'genre', value: 'Techno', action: 'hidden' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ status: 'restored' }),
+        });
+
+      await api.updateTasteMemorySettings('listener-token', { socialMatchingEnabled: true });
+      await api.upsertTasteSignalControl('listener-token', {
+        signalType: 'genre',
+        value: 'Techno',
+        action: 'hidden',
+      });
+      await api.removeTasteSignalControl('listener-token', 'control-1');
+
+      expect(mockFetch.mock.calls[0][0]).toBe('http://test-api:3000/recommendations/taste-memory/settings');
+      expect(mockFetch.mock.calls[0][1].method).toBe('PATCH');
+      expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({ socialMatchingEnabled: true });
+      expect(mockFetch.mock.calls[1][0]).toBe('http://test-api:3000/recommendations/taste-memory/signals');
+      expect(mockFetch.mock.calls[1][1].method).toBe('POST');
+      expect(mockFetch.mock.calls[2][0]).toBe('http://test-api:3000/recommendations/taste-memory/signals/control-1');
+      expect(mockFetch.mock.calls[2][1].method).toBe('DELETE');
+    });
+  });
+
   describe('isGenerationStatusComplete', () => {
     it('accepts backend and legacy completion status values', () => {
       expect(api.isGenerationStatusComplete('completed')).toBe(true);

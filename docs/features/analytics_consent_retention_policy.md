@@ -59,6 +59,7 @@ summaries as a mature product surface:
 | Analytics deletion | Deletes or redacts raw and fact rows linked to the user's actor ID or subject IDs, except financial/audit facts that must be preserved with personal fields minimized. |
 | Consent withdrawal | Applies deletion/redaction to events captured under a withdrawn `consentBasis`, then records lineage so future backfills do not recreate removed rows. |
 | Artist privacy boundary | Artists see aggregate catalog and fan behavior metrics, not raw listener event streams or listener actor IDs. |
+| Taste memory controls | Lets listeners reset recommendation taste memory, hide/downrank safe signals, and keep social taste matching disabled unless explicitly enabled. |
 
 Every personal or sensitive analytics event must include `consentBasis`.
 Pseudonymous behavior events should include it when tied to an authenticated
@@ -156,6 +157,8 @@ When adding analytics events or marts:
   `POST /admin/retention/cleanup`
 - Analytics platform feature page:
   [Analytics Event Ledger](analytics_event_ledger.md)
+- Taste memory controls:
+  [Listener Taste Memory Controls](listener_taste_memory_controls.md)
 - Long-term RFC:
   [Long-Term Analytics Event Ledger](../rfc/analytics-event-ledger.md)
 - Compliance retention summary:

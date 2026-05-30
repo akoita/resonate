@@ -1,5 +1,7 @@
 import { prisma } from "../db/prisma";
 import { AgentLearningService, buildAgentSignalMetadata } from "../modules/agents/agent_learning.service";
+import { TasteMemoryService } from "../modules/recommendations/taste_memory.service";
+import { EventBus } from "../modules/shared/event_bus";
 
 const TEST_PREFIX = `aglearn_${Date.now()}_`;
 
@@ -54,6 +56,8 @@ describe("AgentLearningService (integration)", () => {
 
   afterAll(async () => {
     await prisma.agentSignal.deleteMany({ where: { userId: `${TEST_PREFIX}user` } });
+    await prisma.listenerTasteSignalControl.deleteMany({ where: { userId: `${TEST_PREFIX}user` } });
+    await prisma.listenerTasteMemorySettings.deleteMany({ where: { userId: `${TEST_PREFIX}user` } });
     await prisma.agentConfig.deleteMany({ where: { userId: `${TEST_PREFIX}user` } });
     await prisma.session.deleteMany({ where: { userId: `${TEST_PREFIX}user` } });
     await prisma.track.deleteMany({ where: { id: `${TEST_PREFIX}track` } });
@@ -138,5 +142,27 @@ describe("AgentLearningService (integration)", () => {
         status: "stopped",
       },
     });
+  });
+
+  it("does not train taste memory from agent-originated playback when disabled", async () => {
+    const tasteMemory = new TasteMemoryService(new EventBus());
+    const governedService = new AgentLearningService(tasteMemory);
+    await tasteMemory.updateSettings(`${TEST_PREFIX}user`, {
+      agentPlaybackTrainingEnabled: false,
+    });
+    const before = await prisma.agentSignal.count({ where: { userId: `${TEST_PREFIX}user` } });
+
+    await governedService.recordSignal({
+      userId: `${TEST_PREFIX}user`,
+      sessionId: `${TEST_PREFIX}session`,
+      trackId: `${TEST_PREFIX}track`,
+      action: "replay",
+      metadata: buildAgentSignalMetadata({
+        source: "agent_session",
+        mood: "Focus",
+      }),
+    });
+
+    await expect(prisma.agentSignal.count({ where: { userId: `${TEST_PREFIX}user` } })).resolves.toBe(before);
   });
 });

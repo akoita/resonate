@@ -1603,6 +1603,89 @@ export async function getSongRecommendations(
   );
 }
 
+export type TasteMemorySettings = {
+  socialMatchingEnabled: boolean;
+  citySceneDiscoveryEnabled: boolean;
+  agentPlaybackTrainingEnabled: boolean;
+  recommendationExplanationPreference: "compact" | "balanced" | "detailed";
+  resetAt: string | null;
+};
+
+export type TasteSignalControl = {
+  id: string;
+  signalType: "genre" | "mood" | "artist" | "scene" | "intent" | "novelty" | "replay" | "commerce";
+  value: string;
+  action: "hidden" | "downranked";
+  source: string | null;
+  createdAt: string;
+};
+
+export type TasteMemoryResponse = {
+  schemaVersion: "listener-taste-memory/v1";
+  settings: TasteMemorySettings;
+  summary: {
+    favoredGenres: string[];
+    favoredMoods: string[];
+    favoredArtists: string[];
+    recentIntents: string[];
+    noveltyPattern: string;
+    commercePreference: string;
+    explanationPreference: string;
+  };
+  controls: TasteSignalControl[];
+  privacy: {
+    socialMatching: "enabled" | "disabled";
+    citySceneDiscovery: "enabled" | "disabled";
+    agentPlaybackTraining: "enabled" | "disabled";
+    notes: string[];
+  };
+};
+
+export async function getTasteMemory(token: string): Promise<TasteMemoryResponse> {
+  return apiRequest<TasteMemoryResponse>("/recommendations/taste-memory", {}, token);
+}
+
+export async function updateTasteMemorySettings(
+  token: string,
+  input: Partial<Omit<TasteMemorySettings, "resetAt">>,
+): Promise<TasteMemorySettings> {
+  return apiRequest<TasteMemorySettings>(
+    "/recommendations/taste-memory/settings",
+    { method: "PATCH", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+export async function resetTasteMemory(token: string): Promise<TasteMemorySettings> {
+  return apiRequest<TasteMemorySettings>(
+    "/recommendations/taste-memory/reset",
+    { method: "POST" },
+    token,
+  );
+}
+
+export async function upsertTasteSignalControl(
+  token: string,
+  input: Pick<TasteSignalControl, "signalType" | "value"> & { action?: TasteSignalControl["action"]; source?: string },
+): Promise<TasteSignalControl> {
+  return apiRequest<TasteSignalControl>(
+    "/recommendations/taste-memory/signals",
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+export async function removeTasteSignalControl(
+  token: string,
+  controlId: string,
+): Promise<{ status: string; control: TasteSignalControl }> {
+  return apiRequest<{ status: string; control: TasteSignalControl }>(
+    `/recommendations/taste-memory/signals/${encodeURIComponent(controlId)}`,
+    { method: "DELETE" },
+    token,
+  );
+}
+
 export async function uploadStems(
   token: string,
   formData: FormData

@@ -5268,6 +5268,13 @@ a {
   margin-bottom: var(--space-2);
 }
 
+.settings-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
 .settings-source {
   display: flex;
   flex-direction: column;
@@ -5365,6 +5372,178 @@ a {
   width: 18px;
   height: 18px;
   accent-color: var(--color-accent);
+}
+
+.taste-memory-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.taste-memory-stat,
+.taste-memory-danger,
+.taste-memory-editor,
+.taste-memory-toggle {
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.035);
+  border-radius: var(--radius-md);
+}
+
+.taste-memory-stat {
+  min-height: 78px;
+  padding: var(--space-3);
+}
+
+.taste-memory-stat span,
+.taste-memory-field span {
+  display: block;
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.taste-memory-stat strong {
+  display: block;
+  margin-top: var(--space-2);
+  color: var(--color-text);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.taste-memory-controls {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.taste-memory-toggle {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  cursor: pointer;
+}
+
+.taste-memory-toggle input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+  accent-color: var(--color-accent);
+}
+
+.taste-memory-toggle span {
+  display: grid;
+  gap: 4px;
+}
+
+.taste-memory-toggle strong {
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.taste-memory-toggle small,
+.taste-memory-danger p,
+.taste-memory-signal-list span,
+.taste-memory-empty {
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.taste-memory-row,
+.taste-memory-editor,
+.taste-memory-danger {
+  margin-top: var(--space-4);
+}
+
+.taste-memory-field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.taste-memory-field select,
+.taste-memory-editor select,
+.taste-memory-editor input {
+  min-height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-md);
+  background: rgba(10, 10, 16, 0.75);
+  color: var(--color-text);
+  padding: 0 var(--space-3);
+}
+
+.taste-memory-editor {
+  padding: var(--space-3);
+}
+
+.taste-memory-editor-inputs {
+  display: grid;
+  grid-template-columns: 110px 120px minmax(0, 1fr) auto;
+  gap: var(--space-2);
+}
+
+.taste-memory-signal-list {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.taste-memory-signal-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.taste-memory-signal-list strong,
+.taste-memory-danger strong {
+  display: block;
+  color: var(--color-text);
+  font-size: 14px;
+}
+
+.taste-memory-signal-list span {
+  display: block;
+  margin-top: 2px;
+  text-transform: capitalize;
+}
+
+.taste-memory-empty {
+  margin-top: var(--space-3);
+}
+
+.taste-memory-danger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-color: rgba(245, 158, 11, 0.18);
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.taste-memory-danger p {
+  margin: 4px 0 0;
+}
+
+@media (max-width: 720px) {
+  .settings-section-header,
+  .taste-memory-danger {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .taste-memory-grid,
+  .taste-memory-editor-inputs {
+    grid-template-columns: 1fr;
+  }
 }
 
 .settings-unsupported {

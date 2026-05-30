@@ -10,12 +10,14 @@ datasource db {
 }
 
 model User {
-  id                          String                    @id @default(uuid())
-  email                       String                    @unique
-  createdAt                   DateTime                  @default(now())
+  id                          String                       @id @default(uuid())
+  email                       String                       @unique
+  createdAt                   DateTime                     @default(now())
   artist                      Artist?
   agentConfig                 AgentConfig?
   agentSignals                AgentSignal[]
+  tasteMemorySettings         ListenerTasteMemorySettings?
+  tasteSignalControls         ListenerTasteSignalControl[]
   folders                     Folder[]
   libraryTracks               LibraryTrack[]
   playlists                   Playlist[]
@@ -23,10 +25,10 @@ model User {
   wallet                      Wallet?
   passkeyIdentities           PasskeyIdentity[]
   sessionKeys                 SessionKey[]
-  showCampaignEvents          ShowCampaignEvent[]       @relation("ShowCampaignEventActor")
+  showCampaignEvents          ShowCampaignEvent[]          @relation("ShowCampaignEventActor")
   showPledges                 ShowPledge[]
   stemQualityRatings          StemQualityRating[]
-  reputationFeedbackSubmitted AgentReputationFeedback[] @relation("AgentReputationFeedbackSubmitter")
+  reputationFeedbackSubmitted AgentReputationFeedback[]    @relation("AgentReputationFeedbackSubmitter")
 }
 
 model Wallet {
@@ -473,6 +475,37 @@ model AgentSignal {
   @@index([trackId])
   @@index([sessionId])
   @@index([action])
+}
+
+model ListenerTasteMemorySettings {
+  id                                  String    @id @default(uuid())
+  userId                              String    @unique
+  socialMatchingEnabled               Boolean   @default(false)
+  citySceneDiscoveryEnabled           Boolean   @default(false)
+  agentPlaybackTrainingEnabled        Boolean   @default(true)
+  recommendationExplanationPreference String    @default("balanced")
+  resetAt                             DateTime?
+  createdAt                           DateTime  @default(now())
+  updatedAt                           DateTime  @updatedAt
+  user                                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, resetAt])
+}
+
+model ListenerTasteSignalControl {
+  id         String   @id @default(uuid())
+  userId     String
+  signalType String
+  value      String
+  action     String   @default("hidden")
+  source     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, signalType, value])
+  @@index([userId, action])
+  @@index([signalType, value])
 }
 
 model AgentTransaction {
@@ -1446,11 +1479,11 @@ model Notification {
 }
 
 model NotificationPreference {
-  walletAddress      String  @id
-  disputeFiled       Boolean @default(true)
-  disputeResolved    Boolean @default(true)
-  disputeAppealed    Boolean @default(true)
-  evidenceSubmitted  Boolean @default(true)
+  walletAddress       String  @id
+  disputeFiled        Boolean @default(true)
+  disputeResolved     Boolean @default(true)
+  disputeAppealed     Boolean @default(true)
+  evidenceSubmitted   Boolean @default(true)
   listingExpiringSoon Boolean @default(true)
-  listingExpired     Boolean @default(true)
+  listingExpired      Boolean @default(true)
 }

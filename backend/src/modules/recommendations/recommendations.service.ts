@@ -1,6 +1,7 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
+import { scoreMultiplierForSignal, TasteMemoryPolicy, TasteMemoryService } from "./taste_memory.service";
 
 const PUBLIC_RELEASE_ROUTES = [
   "LIMITED_MONITORING",
@@ -18,14 +19,19 @@ export interface UserPreferences {
 @Injectable()
 export class RecommendationsService {
   private preferences = new Map<string, UserPreferences>();
+  private preferencesUpdatedAt = new Map<string, Date>();
   private recentTrackIds = new Map<string, string[]>();
 
-  constructor(private readonly eventBus: EventBus) { }
+  constructor(
+    private readonly eventBus: EventBus,
+    @Optional() private readonly tasteMemoryService?: TasteMemoryService,
+  ) { }
 
   setPreferences(userId: string, prefs: UserPreferences) {
     const existing = this.preferences.get(userId) ?? {};
     const merged = { ...existing, ...prefs };
     this.preferences.set(userId, merged);
+    this.preferencesUpdatedAt.set(userId, new Date());
     this.eventBus.publish({
       eventName: "recommendation.preferences_updated",
       eventVersion: 1,
@@ -41,7 +47,16 @@ export class RecommendationsService {
   }
 
   async getRecommendations(userId: string, limit = 10, preferenceOverrides?: UserPreferences) {
-    const prefs = { ...this.getPreferences(userId), ...(preferenceOverrides ?? {}) };
+    const policy = await this.tasteMemoryService?.getPolicy(userId);
+    const storedPreferences = shouldUseStoredPreferences(
+      this.getPreferences(userId),
+      this.preferencesUpdatedAt.get(userId),
+      policy,
+    );
+    const mergedPrefs = { ...storedPreferences, ...(preferenceOverrides ?? {}) };
+    const prefs = policy && this.tasteMemoryService
+      ? this.tasteMemoryService.filterPreferencesWithPolicy(mergedPrefs, policy)
+      : mergedPrefs;
     const allowExplicit = prefs.allowExplicit ?? false;
     const normalizedGenres = (prefs.genres ?? [])
       .map((genre) => genre.trim())
@@ -81,7 +96,11 @@ export class RecommendationsService {
           genre.toLowerCase().includes(candidate.toLowerCase()),
         );
         if (matchedGenre) {
-          score += 50;
+          const multiplier = scoreMultiplierForSignal(policy, "genre", matchedGenre);
+          score += 50 * multiplier;
+          if (multiplier < 1) {
+            reasons.push(`downranked:genre:${matchedGenre}`);
+          }
           reasons.push(`genre:${matchedGenre}`);
         }
       }
@@ -94,7 +113,11 @@ export class RecommendationsService {
           genre.toLowerCase().includes(moodNeedle) ||
           moods.some((mood) => mood.toLowerCase().includes(moodNeedle))
         ) {
-          score += 35;
+          const multiplier = scoreMultiplierForSignal(policy, "mood", normalizedMood);
+          score += 35 * multiplier;
+          if (multiplier < 1) {
+            reasons.push(`downranked:mood:${normalizedMood}`);
+          }
           reasons.push(`mood:${normalizedMood}`);
         }
       }
@@ -151,8 +174,22 @@ export class RecommendationsService {
         genre: track.release.genre,
         moods: track.release.moods,
         score: Math.max(0, score),
-        reasons: reasons.filter((reason) => reason !== "recently_played"),
+        reasons: reasons.filter((reason) => reason !== "recently_played" && !reason.startsWith("downranked:")),
       })),
     };
   }
+}
+
+function shouldUseStoredPreferences(
+  preferences: UserPreferences,
+  updatedAt: Date | undefined,
+  policy?: TasteMemoryPolicy,
+) {
+  if (!policy?.resetAt) {
+    return preferences;
+  }
+  if (updatedAt && updatedAt > policy.resetAt) {
+    return preferences;
+  }
+  return {};
 }

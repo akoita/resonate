@@ -110,6 +110,42 @@ export interface RecommendationGeneratedEvent extends BaseEvent {
   strategy: string;
 }
 
+export interface TasteMemorySettingsUpdatedEvent extends BaseEvent {
+  eventName: "taste_memory.settings_updated";
+  userId: string;
+  settings: Record<string, unknown>;
+}
+
+export interface TasteMemorySignalHiddenEvent extends BaseEvent {
+  eventName: "taste_memory.signal_hidden";
+  userId: string;
+  signalType: string;
+  value: string;
+  action: string;
+}
+
+export interface TasteMemorySignalDownrankedEvent extends BaseEvent {
+  eventName: "taste_memory.signal_downranked";
+  userId: string;
+  signalType: string;
+  value: string;
+  action: string;
+}
+
+export interface TasteMemorySignalRestoredEvent extends BaseEvent {
+  eventName: "taste_memory.signal_restored";
+  userId: string;
+  signalType: string;
+  value: string;
+  action: string;
+}
+
+export interface TasteMemoryResetEvent extends BaseEvent {
+  eventName: "taste_memory.reset";
+  userId: string;
+  resetAt: string | null;
+}
+
 export interface IdentityAuthenticatedEvent extends BaseEvent {
   eventName: "identity.authenticated";
   userId: string;
@@ -769,6 +805,11 @@ export type ResonateEvent =
   | RemixCreatedEvent
   | RecommendationPreferencesUpdatedEvent
   | RecommendationGeneratedEvent
+  | TasteMemorySettingsUpdatedEvent
+  | TasteMemorySignalHiddenEvent
+  | TasteMemorySignalDownrankedEvent
+  | TasteMemorySignalRestoredEvent
+  | TasteMemoryResetEvent
   | IdentityAuthenticatedEvent
   | PlaylistCreatedEvent
   | PlaylistUpdatedEvent

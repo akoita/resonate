@@ -35,6 +35,10 @@ export const PRODUCT_ANALYTICS_EVENT_NAMES = [
   "agent.session_stopped",
   "agent.next_pick_requested",
   "settings.updated",
+  "taste_memory.settings_updated",
+  "taste_memory.signal_hidden",
+  "taste_memory.signal_restored",
+  "taste_memory.reset",
 ] as const;
 
 export type ProductAnalyticsEventName = (typeof PRODUCT_ANALYTICS_EVENT_NAMES)[number];

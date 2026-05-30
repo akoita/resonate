@@ -154,6 +154,36 @@ describe("agent learning loop", () => {
     });
   });
 
+  it("does not use warehouse taste scores for governed matching when social taste matching is disabled", async () => {
+    const tool = {
+      run: jest.fn().mockResolvedValue({
+        items: [
+          { id: "ambient", title: "Ambient Track", hasListing: false, release: { genre: "Ambient" } },
+        ],
+      }),
+    };
+    const bigQueryTasteSignals = {
+      scoreTracks: jest.fn().mockResolvedValue(new Map()),
+    };
+    const tasteMemory = {
+      getPolicy: jest.fn().mockResolvedValue(undefined),
+      canUseTasteForSocialMatching: jest.fn().mockResolvedValue(false),
+    };
+    const selector = new AgentSelectorService({
+      get: jest.fn().mockReturnValue(tool),
+    } as any, undefined, bigQueryTasteSignals as any, tasteMemory as any);
+
+    await selector.select({
+      userId: "user-1",
+      queries: ["music"],
+      recentTrackIds: [],
+      limit: 1,
+    });
+
+    expect(tasteMemory.canUseTasteForSocialMatching).toHaveBeenCalledWith("user-1");
+    expect(bigQueryTasteSignals.scoreTracks).not.toHaveBeenCalled();
+  });
+
   it("maps analytics explanations into safe listener-facing reason categories", async () => {
     const tool = {
       run: jest.fn().mockResolvedValue({

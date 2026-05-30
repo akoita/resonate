@@ -20,6 +20,7 @@ import { CatalogModule } from "../catalog/catalog.module";
 import { X402Module } from "../x402/x402.module";
 import { PaymentsModule } from "../payments/payments.module";
 import { SharedModule } from "../shared/shared.module";
+import { RecommendationsModule } from "../recommendations/recommendations.module";
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { SharedModule } from "../shared/shared.module";
     CatalogModule,
     X402Module,
     PaymentsModule,
+    RecommendationsModule,
   ],
   controllers: [
     AgentsController,
