@@ -1,6 +1,7 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { scoreMultiplierForSignal, TasteMemoryService } from "../recommendations/taste_memory.service";
 
 export const AGENT_SIGNAL_WEIGHTS = {
   accept: 1,
@@ -253,6 +254,8 @@ function sanitizeSignalString(value: unknown, maxLength: number) {
 
 @Injectable()
 export class AgentLearningService {
+  constructor(@Optional() private readonly tasteMemoryService?: TasteMemoryService) {}
+
   async recordSignal(input: {
     userId: string;
     sessionId?: string | null;
@@ -260,6 +263,14 @@ export class AgentLearningService {
     action: AgentSignalAction;
     metadata?: Prisma.InputJsonObject;
   }) {
+    const shouldTrain = await this.tasteMemoryService?.shouldTrainAgentPlayback(input.userId, input.metadata);
+    if (shouldTrain === false) {
+      const config = await prisma.agentConfig.findUnique({
+        where: { userId: input.userId },
+      });
+      return this.computeTasteProfile(input.userId, config?.vibes ?? []);
+    }
+
     const weight = AGENT_SIGNAL_WEIGHTS[input.action];
     await prisma.agentSignal.create({
       data: {
@@ -329,8 +340,12 @@ export class AgentLearningService {
     fallbackGenres: string[] = [],
     options: { take?: number } = {},
   ): Promise<AgentTasteProfile> {
+    const policy = await this.tasteMemoryService?.getPolicy(userId);
     const signals = await prisma.agentSignal.findMany({
-      where: { userId },
+      where: {
+        userId,
+        ...(policy?.resetAt ? { createdAt: { gt: policy.resetAt } } : {}),
+      },
       orderBy: { createdAt: "desc" },
       take: options.take ?? 500,
       include: {
@@ -343,13 +358,20 @@ export class AgentLearningService {
     });
 
     return computeAgentTasteProfileFromSignals(
-      signals.map((signal) => ({
-        action: signal.action as AgentSignalAction,
-        trackId: signal.trackId,
-        weight: signal.weight,
-        createdAt: signal.createdAt,
-        genre: signal.track.release.genre,
-      })),
+      signals
+        .map((signal): AgentTasteSignalInput | null => {
+          const genre = signal.track.release.genre;
+          const multiplier = scoreMultiplierForSignal(policy, "genre", genre);
+          if (multiplier <= 0) return null;
+          return {
+            action: signal.action as AgentSignalAction,
+            trackId: signal.trackId,
+            weight: signal.weight * multiplier,
+            createdAt: signal.createdAt,
+            genre,
+          };
+        })
+        .filter((signal): signal is AgentTasteSignalInput => signal !== null),
       fallbackGenres,
     );
   }

@@ -21,9 +21,10 @@ metadata-derived audio-feature signals.
 
 This is the serving hook for a broader warehouse learning loop. A Dataform-ready
 orchestration template now exists for scheduled materialization planning.
-Session Intent feedback now lands in `AgentSignal` metadata, operators can
-monitor aggregate recommendation quality in the AI DJ quality dashboard, and
-offline fixtures can compare BigQuery ML scores against deterministic and
+Session Intent feedback now lands in `AgentSignal` metadata, listeners can
+govern the resulting taste memory from Settings, operators can monitor
+aggregate recommendation quality in the AI DJ quality dashboard, and offline
+fixtures can compare BigQuery ML scores against deterministic and
 warehouse-baseline ranking before promotion. Vector indexes remain planned
 follow-up work.
 
@@ -43,6 +44,7 @@ measurement.
 | Intent feedback loop | [#980](https://github.com/akoita/resonate/issues/980) | Mood, vibe, Session Intent, completion, save, playlist, purchase, and session-duration outcomes feed back into `AgentSignal`. |
 | Session Intent UI | [#979](https://github.com/akoita/resonate/issues/979) | The current preset gallery becomes a compact, instrumented agent-control surface. |
 | Quality dashboard | [#982](https://github.com/akoita/resonate/issues/982) | Operators can monitor recommendation quality, preset usefulness, and model freshness. |
+| Listener controls | [#1009](https://github.com/akoita/resonate/issues/1009) | Listeners can inspect, reset, hide, downrank, and consent-govern taste memory inputs. |
 
 ## Who It Is For
 
@@ -79,6 +81,12 @@ another explainable signal.
 The selector never performs an unbounded warehouse scan during recommendation.
 It queries only the current `userId` and the candidate `trackIds` already found
 by catalog search.
+
+Listener governance controls live in
+[Listener Taste Memory Controls](listener_taste_memory_controls.md). Hidden and
+downranked signals are applied before recommendation reasons are returned, reset
+markers exclude older `AgentSignal` rows from learned profiles, and future
+social/cohort use of private taste data is disabled unless the listener opts in.
 
 ## Serving Table Contract
 

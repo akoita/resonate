@@ -2,9 +2,9 @@
 
 ## Executive Summary
 
-The #1005 player action layer changes were reviewed for public data exposure,
-backend authorization boundaries, raw SQL usage, hardcoded secrets, client
-secret exposure, XSS vectors, unsafe parsing, and token/cookie handling. No
+The #1009 listener taste memory controls were reviewed for backend
+authorization, user-data exposure, raw SQL, hardcoded secrets, unsafe parsing,
+client XSS vectors, public client secrets, and analytics payload boundaries. No
 Critical or High findings were identified for this branch.
 
 ## Critical Findings
@@ -21,68 +21,87 @@ None.
 
 ## Low Findings
 
-### SBPR-001: Public Player Actions Must Stay Redacted
+### SBPR-001: Keep Taste Memory Bound To The Authenticated User
 
-**File:** `backend/src/modules/catalog/catalog.service.ts`
+**File:** `backend/src/modules/recommendations/recommendations.controller.ts`
 
 **Status:** Reviewed in this branch.
 
-**Impact:** `GET /catalog/tracks/:trackId/actions` is a public endpoint used by
-the player. If future changes include seller addresses, owner-only listing
-lifecycle rows, wallet ownership, raw taste history, or private community
-eligibility, the endpoint could expose information that belongs only in
-authenticated owner or consented listener surfaces.
+**Impact:** Taste memory settings and hidden/downranked signals are private
+listener controls. If future endpoints accepted arbitrary `userId` values for
+these controls, one authenticated user could inspect or mutate another user's
+taste governance state.
 
-**Resolution:** The first implementation only returns compact public action
-state. Marketplace/license availability is derived from active, unexpired,
-positive-amount public listings and returns listing count, license tiers, first
-listing ID, and chain ID only. Integration tests assert expired listing rows,
-seller addresses, and unsanitized recommendation text are absent from the
-response.
+**Resolution:** The new taste memory endpoints derive the user from
+`req.user.userId` and do not accept a user identifier in the request body or
+path. Controller tests assert the service receives only the authenticated
+listener ID.
+
+### SBPR-002: Sanitized Taste Summaries Must Stay Coarse
+
+**File:** `backend/src/modules/recommendations/taste_memory.service.ts`
+
+**Status:** Reviewed in this branch.
+
+**Impact:** Taste memory is derived from `AgentSignal` rows and can become
+sensitive if raw listening history, exact counts, wallet/ownership state,
+URLs, emails, or model traces are exposed.
+
+**Resolution:** The response returns ranked labels and coarse patterns only.
+Signal values pass through bounded string sanitization, and the UI/API expose
+privacy notes instead of raw events. Reset is a timestamp marker, preserving
+auditability while excluding old signals from serving inputs.
+
+### SBPR-003: Governed Analytics Payloads Should Stay Minimal
+
+**File:** `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`
+
+**Status:** Reviewed in this branch.
+
+**Impact:** Taste memory settings changes and signal controls are user
+governance events. Overly detailed analytics payloads could recreate private
+taste history or leak sensitive labels.
+
+**Resolution:** Domain bridge events use `taste_memory_controls:v1` consent
+basis and carry only setting summaries or safe signal type/value/action
+metadata. No raw listening history, wallet data, ownership data, or model
+internals are added.
 
 ## Informational Findings
 
-### SBPR-002: Existing Dev JWT Secret Fallbacks Are Local-Only
+### SBPR-004: Existing Dev JWT Secret Fallbacks Are Local-Only
 
 **File:** `backend/src/modules/auth/auth.module.ts`,
 `backend/src/modules/auth/jwt.strategy.ts`
 
 **Impact:** `dev-secret` fallback values exist for local development. These
-were pre-existing and not touched by #1005.
+were pre-existing and not touched by #1009.
 
 **Assessment:** Acceptable only for local development. Shared environments must
 provide `JWT_SECRET` through managed environment configuration or secret
 management.
 
-### SBPR-003: Public Client API-Key Environment Variables Are Present
+### SBPR-005: Existing Parameterized Raw SQL Remains Outside This Slice
 
-**File:** `web/src/lib/bundlerConfig.ts`
+**File:** `backend/src/main.ts`,
+`backend/src/modules/catalog/catalog.service.ts`,
+`backend/src/modules/contracts/contracts.service.ts`,
+`backend/src/modules/embeddings/embedding.store.ts`
 
-**Impact:** `NEXT_PUBLIC_PIMLICO_API_KEY` is intentionally browser-exposed by
-name. This was pre-existing and not touched by #1005.
+**Impact:** Existing raw SQL usages were detected outside the changed taste
+memory code. They appear to use Prisma tagged-template parameterization or
+static statements and were not modified by #1009.
 
-**Assessment:** Treat it as a publishable client identifier, not a secret. Use
-server-side proxying for any credential that must remain confidential.
-
-### SBPR-004: Existing Artist Profile Placeholder Address Is Non-Secret
-
-**File:** `web/src/lib/api.ts`
-
-**Impact:** A fallback artist profile contains a placeholder payout address for
-local/mock behavior. This was pre-existing and not introduced by #1005.
-
-**Assessment:** This is not a private key or credential. Avoid using placeholder
-addresses as production defaults for settlement behavior.
+**Assessment:** No new raw SQL was introduced in the changed backend files.
 
 ## Scans Run
 
-- `rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'`
-- `rg 'rawQuery|executeRaw|\\$queryRaw' backend/src/`
-- `rg 'dangerouslySetInnerHTML|innerHTML' web/src/`
-- `rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/`
-- `rg 'JSON\\.parse|eval\\(' backend/src/modules/catalog/catalog.controller.ts backend/src/modules/catalog/catalog.service.ts web/src/app/player/page.tsx web/src/lib/api.ts web/src/lib/productAnalytics.ts`
-- `rg 'document\\.cookie|setCookie|httpOnly.*false' web/src/`
-- `rg '@Controller|@Get|@Post|@Put|@Delete|@Patch|@Body\\(\\)|@Query\\(\\)|@Param\\(' backend/src/modules/catalog/catalog.controller.ts`
-- `rg 'sellerAddress|ownerAddress|payoutAddress|paymentToken|private|secret|token' backend/src/modules/catalog/catalog.service.ts web/src/app/player/page.tsx web/src/lib/api.ts`
-- Targeted review of #1005 backend action shaping, frontend player action
-  handling, analytics payloads, and docs.
+- `rg -n 'password|secret|api_key|private_key' backend/src backend/prisma --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg -n 'rawQuery|executeRaw|\\$queryRaw' backend/src backend/prisma`
+- `rg -n 'JSON\\.parse|eval\\(' backend/src/modules/recommendations backend/src/modules/agents backend/src/modules/analytics backend/src/events`
+- `rg -n 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\\.cookie|setCookie|httpOnly.*false' web/src/components/settings web/src/app/settings web/src/lib/api.ts web/src/lib/productAnalytics.ts`
+- `rg -n '@Controller|@Get|@Post|@Put|@Delete|@Patch|@Body\\(\\)|@Query\\(\\)|@Param\\(' backend/src/modules/recommendations/recommendations.controller.ts backend/src/modules/recommendations/taste_memory.service.ts`
+- `git diff -- backend/src/modules/recommendations/recommendations.controller.ts backend/src/modules/recommendations/taste_memory.service.ts backend/src/modules/recommendations/recommendations.service.ts backend/src/modules/agents/agent_learning.service.ts backend/src/modules/agents/agent_selector.service.ts | rg -n 'secret|password|api_key|private_key|\\$queryRaw|\\$executeRaw|JSON\\.parse|eval\\(|dangerouslySetInnerHTML|innerHTML|document\\.cookie'`
+- Targeted review of #1009 backend taste memory service, authenticated
+  controller routes, recommendation/agent policy wiring, Settings UI, API
+  helpers, analytics domain bridge events, Prisma migration, tests, and docs.

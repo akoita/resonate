@@ -5,6 +5,7 @@ import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import AuthGate from "../../components/auth/AuthGate";
 import NotificationPreferences from "../../components/notifications/NotificationPreferences";
+import TasteMemorySettingsPanel from "../../components/settings/TasteMemorySettingsPanel";
 import { useToast } from "../../components/ui/Toast";
 import {
     getLibrarySourceHandles,
@@ -370,6 +371,8 @@ export default function SettingsPage() {
                             <span>Automatically scan for new files when app loads</span>
                         </label>
                     </div>
+
+                    <TasteMemorySettingsPanel token={token} addToast={addToast} />
 
                     <div className="settings-section">
                         <h3 className="settings-section-title">Notifications</h3>

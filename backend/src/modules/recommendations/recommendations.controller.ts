@@ -1,15 +1,55 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { RecommendationsService, UserPreferences } from "./recommendations.service";
+import { TasteMemoryService } from "./taste_memory.service";
 
 @Controller("recommendations")
 export class RecommendationsController {
-  constructor(private readonly recommendationsService: RecommendationsService) {}
+  constructor(
+    private readonly recommendationsService: RecommendationsService,
+    private readonly tasteMemoryService: TasteMemoryService,
+  ) {}
 
   @UseGuards(AuthGuard("jwt"))
   @Post("preferences")
   setPreferences(@Body() body: { userId: string; preferences: UserPreferences }) {
     return this.recommendationsService.setPreferences(body.userId, body.preferences);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Get("taste-memory")
+  getTasteMemory(@Req() req: any) {
+    return this.tasteMemoryService.getTasteMemory(req.user.userId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Patch("taste-memory/settings")
+  updateTasteMemorySettings(
+    @Req() req: any,
+    @Body() body: Parameters<TasteMemoryService["updateSettings"]>[1],
+  ) {
+    return this.tasteMemoryService.updateSettings(req.user.userId, body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("taste-memory/reset")
+  resetTasteMemory(@Req() req: any) {
+    return this.tasteMemoryService.resetTasteMemory(req.user.userId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("taste-memory/signals")
+  upsertTasteSignalControl(
+    @Req() req: any,
+    @Body() body: Parameters<TasteMemoryService["upsertSignalControl"]>[1],
+  ) {
+    return this.tasteMemoryService.upsertSignalControl(req.user.userId, body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Delete("taste-memory/signals/:controlId")
+  removeTasteSignalControl(@Req() req: any, @Param("controlId") controlId: string) {
+    return this.tasteMemoryService.removeSignalControl(req.user.userId, controlId);
   }
 
   @UseGuards(AuthGuard("jwt"))
