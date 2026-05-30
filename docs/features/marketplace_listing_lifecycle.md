@@ -32,6 +32,9 @@ buyer and machine-commerce surfaces strict about availability.
 - Notification preferences include marketplace lifecycle controls.
 - Expired and cancelled listings can be relisted from the owner view by creating
   a new on-chain listing transaction.
+- The owner view supports selecting relistable stems and applying shared relist
+  terms across the selection. Each selected stem still submits through the
+  existing listing transaction path.
 
 ## How To Use
 
@@ -40,9 +43,10 @@ buyer and machine-commerce surfaces strict about availability.
 1. Open `Manage listings` from `/marketplace` or visit `/marketplace/manage`
    with the listing seller wallet or smart account.
 2. Filter by Active, Expiring, Expired, Sold, or Cancelled.
-3. Use Relist on eligible expired or cancelled rows.
-4. Confirm the new listing transaction; the indexer attaches the new listing row
-   after the chain event is observed.
+3. Select eligible expired or cancelled rows, or use Relist on a single row.
+4. Apply price, payment asset, quantity, and duration once for the selection.
+5. Confirm the listing transactions; the indexer attaches the new listing rows
+   after the chain events are observed.
 
 ### Developer
 
@@ -72,7 +76,7 @@ buyer and machine-commerce surfaces strict about availability.
 | --- | --- |
 | Public marketplace | Excludes expired and sold-out listings and links sellers to the listing manager. |
 | Storefront/x402/MCP/agent commerce | Continue to treat expired listings as unavailable. |
-| Owner listing manager | Shows artwork, seller inventory summaries, searchable lifecycle rows, actionable expired inventory, and relist controls. |
+| Owner listing manager | Shows artwork, seller inventory summaries, searchable lifecycle rows, selectable expired/cancelled inventory, single-row relist controls, and batch relist progress. |
 | Notification bell | Routes listing lifecycle notifications to `/marketplace/manage`. |
 
 ## Tests
