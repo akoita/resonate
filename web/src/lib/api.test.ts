@@ -332,6 +332,82 @@ describe('API Client', () => {
     });
   });
 
+  describe('playback intent API', () => {
+    it('resolves playback intents without starting playback', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        text: async () =>
+          JSON.stringify({
+            ownerUserId: 'user-1',
+            capabilityId: 'cap-1',
+            outcome: 'queued',
+            policy: {
+              capabilityId: 'cap-1',
+              scopes: ['playback.resolve'],
+              allowedSources: ['resonate_catalog'],
+              confirmationMode: 'queue_with_confirmation',
+              paymentOrLicensingAllowed: false,
+              requiresActiveDevice: true,
+            },
+            candidates: [],
+            nextAllowedCommands: [],
+            redaction: {
+              privateLibrary: 'redacted',
+              privateTaste: 'redacted',
+              wallet: 'redacted',
+              ownership: 'redacted',
+            },
+          }),
+      });
+
+      const result = await api.resolvePlaybackIntent('agent-token', {
+        query: 'late night',
+        constraints: { maxTracks: 4, explicit: false },
+        initiator: 'external_agent',
+      });
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/sessions/playback/resolve');
+      expect(opts.method).toBe('POST');
+      expect(opts.headers.get('Authorization')).toBe('Bearer agent-token');
+      expect(JSON.parse(opts.body)).toEqual({
+        query: 'late night',
+        constraints: { maxTracks: 4, explicit: false },
+        initiator: 'external_agent',
+      });
+      expect(result.redaction.privateTaste).toBe('redacted');
+    });
+
+    it('posts queue and play commands to owner-scoped playback endpoints', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 201,
+          text: async () => JSON.stringify({ commandId: 'cmd-1', outcome: 'queued' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 201,
+          text: async () => JSON.stringify({ commandId: 'cmd-2', outcome: 'confirmation_required' }),
+        });
+
+      await api.queuePlaybackIntent('agent-token', {
+        trackIds: ['track-1'],
+        deviceId: 'web-1',
+        agentOriginated: true,
+      });
+      await api.playPlaybackIntent('agent-token', {
+        trackIds: ['track-1'],
+        deviceId: 'web-1',
+        agentOriginated: true,
+      });
+
+      expect(mockFetch.mock.calls[0][0]).toBe('http://test-api:3000/sessions/playback/queue');
+      expect(mockFetch.mock.calls[1][0]).toBe('http://test-api:3000/sessions/playback/play');
+    });
+  });
+
   describe('recordProductAnalyticsEvent', () => {
     it('posts app-wide product events to the analytics endpoint', async () => {
       mockFetch.mockResolvedValueOnce({

@@ -105,6 +105,8 @@ describe("AnalyticsInstrumentationService", () => {
       metadata: {
         schemaVersion: "agent-signal-metadata/v1",
         source: "web_player",
+        initiator: "listener",
+        agentOriginated: false,
         outcome: {
           type: "playback_completed",
           completionRatio: 0.95,

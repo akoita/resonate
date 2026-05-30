@@ -1,6 +1,6 @@
 ---
 title: "Agent-Mediated Playback"
-status: draft
+status: in-progress
 owner: "@akoita"
 source_context:
   - docs/features/playback_session_mvp.md
@@ -184,3 +184,22 @@ Start smaller than "agents can play music":
 
 Agent-mediated playback should feel like the owner gave a trusted assistant a
 remote control, not like Resonate gave every external agent a loudspeaker.
+
+## Implementation Notes
+
+Issue [#1007](https://github.com/akoita/resonate/issues/1007) now has a first
+owner-scoped backend contract:
+
+- `GET /sessions/playback/capabilities`
+- `POST /sessions/playback/resolve`
+- `POST /sessions/playback/queue`
+- `POST /sessions/playback/play`
+- `POST /sessions/playback/control`
+- `POST /sessions/playback/commands/:commandId/confirm`
+- `GET /sessions/playback/status`
+
+This slice intentionally keeps the active-device bridge conservative. Resolve
+can return sanitized catalog candidates without starting sound, while queue,
+play, and control require an active first-party client. Sound-starting commands
+default to `confirmation_required`, and `playing` is accepted only after client
+confirmation.

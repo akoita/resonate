@@ -12,6 +12,10 @@ interface PlaybackCatalogAnalyticsInput {
   releaseId?: string;
   sessionId?: string;
   source?: string;
+  initiator?: "listener" | "external_agent" | "ai_dj";
+  agentOriginated?: boolean;
+  agentSessionId?: string;
+  playbackCommandId?: string;
   actorId?: string;
   actorUserId?: string;
   geo?: AnalyticsGeoDimension;
@@ -120,10 +124,16 @@ export class AnalyticsInstrumentationService {
         completionRatio: input.completionRatio,
         durationMs: input.durationMs,
         source: input.source,
+        initiator: input.initiator ?? "listener",
+        agentOriginated: input.agentOriginated ?? false,
+        agentSessionId: input.agentSessionId,
+        playbackCommandId: input.playbackCommandId,
       },
       sourceRefs: {
         ...(input.actorId ? { actorId: input.actorId } : {}),
         ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+        ...(input.agentSessionId ? { agentSessionId: input.agentSessionId } : {}),
+        ...(input.playbackCommandId ? { playbackCommandId: input.playbackCommandId } : {}),
         trackId: input.trackId,
         ...(catalog.releaseId ? { releaseId: catalog.releaseId } : {}),
       },
@@ -135,10 +145,15 @@ export class AnalyticsInstrumentationService {
       action: "complete",
       metadata: buildAgentSignalMetadata({
         source: input.source ?? "web_player",
+        initiator: input.initiator ?? "listener",
+        agentOriginated: input.agentOriginated ?? false,
+        agentSessionId: input.agentSessionId,
+        playbackCommandId: input.playbackCommandId,
         outcome: {
           type: "playback_completed",
           completionRatio: input.completionRatio,
           durationMs: input.durationMs,
+          agentOriginated: input.agentOriginated ?? false,
         },
       }),
     });
@@ -167,6 +182,10 @@ export class AnalyticsInstrumentationService {
         durationMs: input.durationMs,
         heartbeatIntervalMs: input.heartbeatIntervalMs,
         source: input.source,
+        initiator: input.initiator ?? "listener",
+        agentOriginated: input.agentOriginated ?? false,
+        agentSessionId: input.agentSessionId,
+        playbackCommandId: input.playbackCommandId,
         queueIndex: input.queueIndex,
         queueLength: input.queueLength,
         repeatMode: input.repeatMode,
@@ -175,6 +194,8 @@ export class AnalyticsInstrumentationService {
       sourceRefs: {
         ...(input.actorId ? { actorId: input.actorId } : {}),
         ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+        ...(input.agentSessionId ? { agentSessionId: input.agentSessionId } : {}),
+        ...(input.playbackCommandId ? { playbackCommandId: input.playbackCommandId } : {}),
         ...(input.playbackInstanceId ? { playbackInstanceId: input.playbackInstanceId } : {}),
         action: input.action,
         trackId: input.trackId,

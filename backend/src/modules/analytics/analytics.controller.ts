@@ -166,6 +166,10 @@ function normalizePlaybackCompletedRequest(body: PlaybackCompletedRequest): Play
   const releaseId = typeof body.releaseId === "string" ? body.releaseId.trim() : undefined;
   const sessionId = typeof body.sessionId === "string" ? body.sessionId.trim() : undefined;
   const source = typeof body.source === "string" ? body.source.trim() : undefined;
+  const initiator = normalizePlaybackInitiator(body.initiator);
+  const agentOriginated = typeof body.agentOriginated === "boolean" ? body.agentOriginated : undefined;
+  const agentSessionId = typeof body.agentSessionId === "string" ? body.agentSessionId.trim() : undefined;
+  const playbackCommandId = typeof body.playbackCommandId === "string" ? body.playbackCommandId.trim() : undefined;
   const completionRatio = Number(body.completionRatio);
   const durationMs = body.durationMs === undefined ? undefined : Number(body.durationMs);
 
@@ -185,6 +189,10 @@ function normalizePlaybackCompletedRequest(body: PlaybackCompletedRequest): Play
     releaseId: releaseId || undefined,
     sessionId: sessionId || undefined,
     source: source || "web_player",
+    initiator,
+    agentOriginated,
+    agentSessionId: agentSessionId || undefined,
+    playbackCommandId: playbackCommandId || undefined,
     geo: normalizeAnalyticsGeoDimension(body.geo),
     completionRatio,
     durationMs,
@@ -200,6 +208,10 @@ function normalizePlaybackLifecycleRequest(body: PlaybackLifecycleRequest): Play
   const playbackInstanceId =
     typeof body.playbackInstanceId === "string" ? body.playbackInstanceId.trim() : undefined;
   const source = typeof body.source === "string" ? body.source.trim() : undefined;
+  const initiator = normalizePlaybackInitiator(body.initiator);
+  const agentOriginated = typeof body.agentOriginated === "boolean" ? body.agentOriginated : undefined;
+  const agentSessionId = typeof body.agentSessionId === "string" ? body.agentSessionId.trim() : undefined;
+  const playbackCommandId = typeof body.playbackCommandId === "string" ? body.playbackCommandId.trim() : undefined;
   const positionMs = optionalNonNegativeNumber(body.positionMs, "positionMs");
   const durationMs = optionalNonNegativeNumber(body.durationMs, "durationMs");
   const heartbeatIntervalMs = optionalNonNegativeNumber(body.heartbeatIntervalMs, "heartbeatIntervalMs");
@@ -228,6 +240,10 @@ function normalizePlaybackLifecycleRequest(body: PlaybackLifecycleRequest): Play
     sessionId: sessionId || undefined,
     playbackInstanceId: playbackInstanceId || undefined,
     source: source || "web_player",
+    initiator,
+    agentOriginated,
+    agentSessionId: agentSessionId || undefined,
+    playbackCommandId: playbackCommandId || undefined,
     geo: normalizeAnalyticsGeoDimension(body.geo),
     positionMs,
     durationMs,
@@ -237,6 +253,13 @@ function normalizePlaybackLifecycleRequest(body: PlaybackLifecycleRequest): Play
     repeatMode: repeatMode as PlaybackLifecycleAnalyticsInput["repeatMode"],
     shuffle: body.shuffle,
   };
+}
+
+function normalizePlaybackInitiator(value: unknown) {
+  if (value === "listener" || value === "external_agent" || value === "ai_dj") {
+    return value;
+  }
+  return undefined;
 }
 
 function optionalNonNegativeNumber(value: unknown, fieldName: string) {

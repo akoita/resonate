@@ -101,6 +101,11 @@ Taste memory changes emit governed analytics/domain events:
 These events use the `taste_memory_controls:v1` consent basis in the domain
 event bridge and carry only safe setting or signal metadata.
 
+Agent-mediated playback analytics can now carry `initiator`,
+`agentOriginated`, `agentSessionId`, and `playbackCommandId` markers. Downstream
+taste learning should continue to respect `agentPlaybackTrainingEnabled` before
+using those agent-originated playback signals.
+
 ## Verification
 
 Focused coverage:

@@ -2,9 +2,9 @@
 
 ## Executive Summary
 
-The #1009 listener taste memory controls were reviewed for backend
-authorization, user-data exposure, raw SQL, hardcoded secrets, unsafe parsing,
-client XSS vectors, public client secrets, and analytics payload boundaries. No
+The #1007 agent-mediated playback intent slice was reviewed for authorization,
+privacy redaction, command-confirmation safety, payment/licensing separation,
+hardcoded secrets, raw SQL, unsafe parsing, and frontend exposure risks. No
 Critical or High findings were identified for this branch.
 
 ## Critical Findings
@@ -21,87 +21,83 @@ None.
 
 ## Low Findings
 
-### SBPR-001: Keep Taste Memory Bound To The Authenticated User
+### SBPR-001: Playback Intent Endpoints Must Stay Owner-Scoped
 
-**File:** `backend/src/modules/recommendations/recommendations.controller.ts`
-
-**Status:** Reviewed in this branch.
-
-**Impact:** Taste memory settings and hidden/downranked signals are private
-listener controls. If future endpoints accepted arbitrary `userId` values for
-these controls, one authenticated user could inspect or mutate another user's
-taste governance state.
-
-**Resolution:** The new taste memory endpoints derive the user from
-`req.user.userId` and do not accept a user identifier in the request body or
-path. Controller tests assert the service receives only the authenticated
-listener ID.
-
-### SBPR-002: Sanitized Taste Summaries Must Stay Coarse
-
-**File:** `backend/src/modules/recommendations/taste_memory.service.ts`
+**File:** `backend/src/modules/sessions/sessions.controller.ts`
 
 **Status:** Reviewed in this branch.
 
-**Impact:** Taste memory is derived from `AgentSignal` rows and can become
-sensitive if raw listening history, exact counts, wallet/ownership state,
-URLs, emails, or model traces are exposed.
+**Impact:** Agent playback commands are sensitive because they can affect an
+active listener device, analytics, taste memory, and artist demand signals. If
+future endpoints accept a request-body `userId`, one authenticated user or
+agent could target another owner's playback state.
 
-**Resolution:** The response returns ranked labels and coarse patterns only.
-Signal values pass through bounded string sanitization, and the UI/API expose
-privacy notes instead of raw events. Reset is a timestamp marker, preserving
-auditability while excluding old signals from serving inputs.
+**Resolution:** The new `/sessions/playback/*` endpoints use the existing JWT
+guard and derive the owner from the authenticated request. Controller tests
+cover that queue/resolve/confirm calls are scoped through the authenticated
+owner boundary.
 
-### SBPR-003: Governed Analytics Payloads Should Stay Minimal
+### SBPR-002: Do Not Claim Playback Started Before Client Confirmation
 
-**File:** `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`
+**File:** `backend/src/modules/sessions/playback_intents.service.ts`
 
 **Status:** Reviewed in this branch.
 
-**Impact:** Taste memory settings changes and signal controls are user
-governance events. Overly detailed analytics payloads could recreate private
-taste history or leak sensitive labels.
+**Impact:** Reporting `playing` from the backend before a browser/device
+confirms audio execution would create misleading analytics, possible payout
+distortion, and poor listener UX.
 
-**Resolution:** Domain bridge events use `taste_memory_controls:v1` consent
-basis and carry only setting summaries or safe signal type/value/action
-metadata. No raw listening history, wallet data, ownership data, or model
-internals are added.
+**Resolution:** Sound-starting play requests default to
+`confirmation_required`, and `playing` is only produced by the explicit command
+confirmation path. Tests cover confirmation-required and client-confirmed
+playing outcomes.
+
+### SBPR-003: Keep Playback Separate From Payment And Licensing
+
+**File:** `backend/src/modules/sessions/playback_intents.service.ts`
+
+**Status:** Reviewed in this branch.
+
+**Impact:** Agent playback authority must not silently grant spend, license,
+x402 download, marketplace buy, or stem decrypt authority.
+
+**Resolution:** Playback capabilities are modeled separately from payment and
+licensing scopes. Resolve returns sanitized catalog candidates and command
+policy, while queue/play/control command paths do not call purchase, license,
+download, or decrypt services.
 
 ## Informational Findings
 
-### SBPR-004: Existing Dev JWT Secret Fallbacks Are Local-Only
+### SBPR-004: Existing Secret/Key References Are Configuration Reads
 
-**File:** `backend/src/modules/auth/auth.module.ts`,
-`backend/src/modules/auth/jwt.strategy.ts`
+**Files:** `backend/src/modules/agents/agent_observability.service.ts`,
+`web/src/lib/bundlerConfig.ts`, `web/src/lib/passkeyConfig.ts`
 
-**Impact:** `dev-secret` fallback values exist for local development. These
-were pre-existing and not touched by #1009.
+**Impact:** Scans found existing references to environment-backed Langfuse,
+Pimlico, and passkey configuration.
 
-**Assessment:** Acceptable only for local development. Shared environments must
-provide `JWT_SECRET` through managed environment configuration or secret
-management.
+**Assessment:** These are pre-existing configuration reads, not new hardcoded
+secrets. This branch does not add secrets or new environment variables.
 
-### SBPR-005: Existing Parameterized Raw SQL Remains Outside This Slice
+### SBPR-005: Existing JSON Parsing Remains Outside The Changed Slice
 
-**File:** `backend/src/main.ts`,
-`backend/src/modules/catalog/catalog.service.ts`,
-`backend/src/modules/contracts/contracts.service.ts`,
-`backend/src/modules/embeddings/embedding.store.ts`
+**Files:** `backend/src/modules/analytics/analytics_warehouse_loader.ts`,
+`backend/src/modules/analytics/analytics_bigquery_report.ts`,
+`backend/src/modules/agents/model_assisted_recommendation.adapter.ts`
 
-**Impact:** Existing raw SQL usages were detected outside the changed taste
-memory code. They appear to use Prisma tagged-template parameterization or
-static statements and were not modified by #1009.
+**Impact:** Existing JSON parsing paths were detected outside the playback
+intent changes.
 
-**Assessment:** No new raw SQL was introduced in the changed backend files.
+**Assessment:** No new backend `JSON.parse`, `eval`, raw SQL, or query-string
+construction was introduced in the changed implementation.
 
 ## Scans Run
 
-- `rg -n 'password|secret|api_key|private_key' backend/src backend/prisma --iglob '!*.test.*' --iglob '!*.spec.*'`
-- `rg -n 'rawQuery|executeRaw|\\$queryRaw' backend/src backend/prisma`
-- `rg -n 'JSON\\.parse|eval\\(' backend/src/modules/recommendations backend/src/modules/agents backend/src/modules/analytics backend/src/events`
-- `rg -n 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\\.cookie|setCookie|httpOnly.*false' web/src/components/settings web/src/app/settings web/src/lib/api.ts web/src/lib/productAnalytics.ts`
-- `rg -n '@Controller|@Get|@Post|@Put|@Delete|@Patch|@Body\\(\\)|@Query\\(\\)|@Param\\(' backend/src/modules/recommendations/recommendations.controller.ts backend/src/modules/recommendations/taste_memory.service.ts`
-- `git diff -- backend/src/modules/recommendations/recommendations.controller.ts backend/src/modules/recommendations/taste_memory.service.ts backend/src/modules/recommendations/recommendations.service.ts backend/src/modules/agents/agent_learning.service.ts backend/src/modules/agents/agent_selector.service.ts | rg -n 'secret|password|api_key|private_key|\\$queryRaw|\\$executeRaw|JSON\\.parse|eval\\(|dangerouslySetInnerHTML|innerHTML|document\\.cookie'`
-- Targeted review of #1009 backend taste memory service, authenticated
-  controller routes, recommendation/agent policy wiring, Settings UI, API
-  helpers, analytics domain bridge events, Prisma migration, tests, and docs.
+- `rg -n 'password|secret|api_key|private_key' backend/src/modules/sessions backend/src/modules/analytics backend/src/modules/agents --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg -n 'rawQuery|executeRaw|\\$queryRaw|\\$executeRaw' backend/src/modules/sessions backend/src/modules/analytics backend/src/modules/agents`
+- `rg -n 'JSON\\.parse|eval\\(' backend/src/modules/sessions backend/src/modules/analytics backend/src/modules/agents`
+- `rg -n 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\\.cookie|httpOnly.*false' web/src/lib`
+- `rg -n '@(Get|Post|Put|Delete|Patch)\\(' backend/src/modules/sessions/sessions.controller.ts -C 2`
+- `git diff -- backend/src/modules/sessions backend/src/modules/analytics backend/src/modules/agents web/src/lib | rg -n 'secret|password|api_key|private_key|\\$queryRaw|\\$executeRaw|JSON\\.parse|eval\\(|dangerouslySetInnerHTML|innerHTML|document\\.cookie|NEXT_PUBLIC_.*(SECRET|KEY|PASSWORD)'`
+- Targeted review of #1007 playback-intent service, authenticated controller
+  routes, analytics marker propagation, frontend API helpers, tests, and docs.

@@ -630,6 +630,10 @@ export type PlaybackCompletedAnalyticsInput = {
   releaseId?: string;
   sessionId?: string;
   source?: string;
+  initiator?: "listener" | "external_agent" | "ai_dj";
+  agentOriginated?: boolean;
+  agentSessionId?: string;
+  playbackCommandId?: string;
   completionRatio: number;
   durationMs?: number;
 };
@@ -656,6 +660,10 @@ export type PlaybackLifecycleAnalyticsInput = {
   sessionId?: string;
   playbackInstanceId?: string;
   source?: string;
+  initiator?: "listener" | "external_agent" | "ai_dj";
+  agentOriginated?: boolean;
+  agentSessionId?: string;
+  playbackCommandId?: string;
   positionMs?: number;
   durationMs?: number;
   heartbeatIntervalMs?: number;
@@ -677,6 +685,226 @@ export async function recordPlaybackEvent(
     },
     token,
   );
+}
+
+export type PlaybackCapabilityScope =
+  | "playback.intent"
+  | "playback.resolve"
+  | "playback.queue"
+  | "playback.play"
+  | "playback.control"
+  | "playback.status";
+
+export type PlaybackIntentOutcome =
+  | "queued"
+  | "playing"
+  | "confirmation_required"
+  | "no_active_device"
+  | "blocked_by_policy"
+  | "unavailable";
+
+export type PlaybackConfirmationMode =
+  | "propose_only"
+  | "queue_with_confirmation"
+  | "remote_control_when_active";
+
+export type PlaybackCapability = {
+  id: string;
+  ownerUserId: string;
+  scopes: PlaybackCapabilityScope[];
+  allowedSources: string[];
+  confirmationMode: PlaybackConfirmationMode;
+  expiresAt?: string;
+  revokedAt?: string;
+  rateLimitPerMinute: number;
+  createdAt: string;
+};
+
+export type PlaybackDevice = {
+  deviceId: string;
+  ownerUserId: string;
+  label: string;
+  active: boolean;
+  supports: PlaybackCapabilityScope[];
+  currentTrackId?: string;
+  state: "idle" | "playing" | "paused";
+  lastSeenAt: string;
+};
+
+export type PlaybackIntentCandidate = {
+  trackId: string;
+  title: string;
+  artistId?: string;
+  artistName?: string | null;
+  releaseId?: string;
+  releaseTitle?: string | null;
+  explicit: boolean;
+  source: "catalog";
+  playable: true;
+  reasons: string[];
+};
+
+export type PlaybackIntentResolveResponse = {
+  ownerUserId: string;
+  capabilityId: string;
+  outcome: PlaybackIntentOutcome;
+  policy: {
+    capabilityId: string;
+    scopes: PlaybackCapabilityScope[];
+    allowedSources: string[];
+    confirmationMode: PlaybackConfirmationMode;
+    paymentOrLicensingAllowed: false;
+    requiresActiveDevice: true;
+    reason?: string;
+  };
+  candidates: PlaybackIntentCandidate[];
+  nextAllowedCommands: string[];
+  redaction: {
+    privateLibrary: "redacted";
+    privateTaste: "redacted";
+    wallet: "redacted";
+    ownership: "redacted";
+  };
+};
+
+export type PlaybackIntentCommand = {
+  commandId: string;
+  ownerUserId: string;
+  action: "queue" | "play" | "pause" | "resume" | "skip" | "seek" | "stop";
+  status: "pending" | "pending_confirmation" | "queued" | "playing" | "blocked" | "unavailable";
+  outcome: PlaybackIntentOutcome;
+  trackIds: string[];
+  deviceId?: string;
+  sessionId?: string;
+  capabilityId: string;
+  requiresConfirmation: boolean;
+  initiator: "listener" | "external_agent" | "ai_dj";
+  agentOriginated: boolean;
+  createdAt: string;
+  updatedAt: string;
+  confirmedAt?: string;
+  reason?: string;
+};
+
+export async function getPlaybackCapabilities(token: string) {
+  return apiRequest<{
+    ownerUserId: string;
+    capability: PlaybackCapability;
+    activeDevices: PlaybackDevice[];
+    available: boolean;
+    policy: {
+      accountlessPlayback: false;
+      paymentOrLicensingAllowed: false;
+      defaultConfirmationMode: PlaybackConfirmationMode;
+      analyticsMarkersRequired: true;
+    };
+  }>("/sessions/playback/capabilities", { cache: "no-store" }, token);
+}
+
+export async function registerPlaybackDevice(
+  token: string,
+  input: Partial<Pick<PlaybackDevice, "deviceId" | "label" | "active" | "supports" | "currentTrackId" | "state">>,
+) {
+  return apiRequest<PlaybackDevice>(
+    "/sessions/playback/device",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export async function resolvePlaybackIntent(
+  token: string,
+  input: {
+    query?: string;
+    constraints?: {
+      maxTracks?: number;
+      explicit?: boolean;
+      source?: "resonate_catalog" | "library" | "purchased" | "preview";
+      genres?: string[];
+      mood?: string;
+    };
+    capabilityId?: string;
+    initiator?: "listener" | "external_agent" | "ai_dj";
+    sessionId?: string;
+  },
+) {
+  return apiRequest<PlaybackIntentResolveResponse>(
+    "/sessions/playback/resolve",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export async function queuePlaybackIntent(
+  token: string,
+  input: {
+    trackIds: string[];
+    deviceId?: string;
+    sessionId?: string;
+    capabilityId?: string;
+    source?: "resonate_catalog" | "library" | "purchased" | "preview";
+    initiator?: "listener" | "external_agent" | "ai_dj";
+    agentOriginated?: boolean;
+  },
+) {
+  return apiRequest<PlaybackIntentCommand>(
+    "/sessions/playback/queue",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export async function playPlaybackIntent(
+  token: string,
+  input: Parameters<typeof queuePlaybackIntent>[1],
+) {
+  return apiRequest<PlaybackIntentCommand>(
+    "/sessions/playback/play",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export async function confirmPlaybackCommand(
+  token: string,
+  commandId: string,
+  input: {
+    deviceId?: string;
+    outcome: PlaybackIntentOutcome;
+    status?: PlaybackIntentCommand["status"];
+    currentTrackId?: string;
+    reason?: string;
+  },
+) {
+  return apiRequest<PlaybackIntentCommand>(
+    `/sessions/playback/commands/${encodeURIComponent(commandId)}/confirm`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export async function getPlaybackIntentStatus(token: string, commandId?: string) {
+  const search = commandId ? `?commandId=${encodeURIComponent(commandId)}` : "";
+  return apiRequest<PlaybackIntentCommand | {
+    ownerUserId: string;
+    activeDevices: PlaybackDevice[];
+    commands: PlaybackIntentCommand[];
+  }>(`/sessions/playback/status${search}`, { cache: "no-store" }, token);
 }
 
 export type ProductAnalyticsInput = {
