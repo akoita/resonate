@@ -1,12 +1,24 @@
 ---
-description: Finish working on a GitHub issue — verify, test, commit, push, PR, merge, and clean up branches
+description: Finish working on a GitHub issue — verify, test, commit, push, and open/update a PR
 ---
 
 # Finish Issue Workflow
 
-When the user says "finish issue", "close issue", "wrap up", or wants to finalize work on the current branch, follow these steps.
+When the user says "finish issue", "close issue", "wrap up", or wants to
+finalize work on the current branch, follow these steps.
+
+> **Important distinction:** finishing a branch means preparing/updating the PR.
+> It does not mean waiting through CI, merging, verifying main, cleaning
+> branches, and aligning local main unless the user explicitly says `merge`.
 
 > **No-issue mode**: This workflow can be invoked without a linked GitHub issue. When there is no issue, skip all issue-dependent operations (fetching issue details, referencing `#N` in commits/PR, `Closes #N` in PR body, issue-number-based branch naming). Everything else applies normally.
+
+> **Small-polish mode:** When the user is iterating on UI/UX polish, copy, CSS,
+> docs, or other low-risk follow-ups, keep all related tweaks on the same
+> feature branch and PR until the user explicitly says `finish` or `merge`. Do
+> not create, wait on, merge, clean up, and restart a new PR for every small
+> correction. The expected loop is: implement tweak → run lean local checks →
+> show result → continue on the same branch.
 
 ## 1. Verify the branch
 
@@ -139,37 +151,41 @@ Check the changed files (`git diff --name-only main`) and run the appropriate se
 - Push to remote: `git push -u origin <branch-name>`
 - Verify the push succeeded
 
-## 10. Verify CI passes on the branch
+## 10. Create or update the PR
 
-- Check the CI/CD status on the pushed branch via GitHub
-- If CI fails, fix the issues locally, commit, and push again
-- Do NOT proceed to PR until CI is green
-
-## 11. Create PR and merge
-
-- Create a Pull Request targeting `main` with:
+- If a PR for the branch already exists, update it by pushing the branch and
+  editing the PR body only when the summary or validation materially changed.
+- If no PR exists, create a Pull Request targeting `main` with:
   - Title: concise description (referencing the issue number if one exists)
   - Body: summary of changes (+ `Closes #N` only if an issue exists)
-- Wait for CI checks on the PR
-- If CI passes, merge the PR (prefer squash merge for clean history)
-- If CI fails, fix on the branch, push, and re-check
+- Leave the PR in draft unless the user asks for ready-for-review or merge.
+- Do not wait synchronously for all PR CI checks unless the user explicitly asks
+  to wait. Report current CI status and let CI/CD continue asynchronously.
+- If CI later fails, fix on the same branch and push another commit.
 
-## 12. Verify main branch CI
+## 11. Merge only on explicit request
 
-- After merge, check that CI passes on the updated `main` branch
-- If CI fails on main:
-  - Create a fix branch: `fix/<issue-number>-<issue-title-kebab>-hotfix` (or `fix/<short-description>-hotfix` if no issue)
-  - Fix the issue, push, create PR, merge
-  - Repeat until main CI is green
+Run this step only when the user says `merge`, `you can merge`, or equivalent.
 
-## 13. Clean up branches
+- Check the PR state and CI/CD status.
+- If required checks are still running, prefer enabling auto-merge or adding the
+  PR to the merge queue rather than polling for several minutes, unless the user
+  explicitly asks you to wait in the thread.
+- If required checks passed, mark the PR ready if needed and merge it (prefer
+  squash merge for clean history).
+- If CI failed, do not merge. Fix on the same branch, push, and re-check.
+- After merge, do not wait synchronously for duplicate main-branch CI unless
+  the user asks. Check once for obvious failure; if a failure appears, create a
+  hotfix branch and fix it.
+
+## 12. Clean up branches after merge
 
 - Delete the feature branch remotely: `git push origin --delete <branch-name>`
 - Delete the feature branch locally: `git branch -d <branch-name>`
 - Delete any fix branches (remote + local) the same way
 - **NEVER delete `main`**
 
-## 14. Align local main
+## 13. Align local main after merge
 
 // turbo
 
@@ -185,6 +201,8 @@ Check the changed files (`git diff --name-only main`) and run the appropriate se
 - **NEVER commit or push before user approval** — always ask first
 - **NEVER force-push to `main`**
 - **NEVER delete `main`** — only delete feature and fix branches
-- **ALWAYS verify CI** before and after merging
+- **ALWAYS verify required PR CI before merging**, but do not turn every PR into
+  a synchronous wait loop. Use async CI status reporting or auto-merge/merge
+  queue when checks are still running.
 - If in doubt about sensitive files, ask the user before committing
 - If the merge creates conflicts, resolve them on the feature branch before merging

@@ -6,6 +6,12 @@ description: Start working on a GitHub issue — create branch, track work, open
 
 When the user says "start issue #N", "work on #N", or references working on a specific GitHub issue, follow these steps:
 
+> **Polish bursts:** For a sequence of small UI/UX, copy, CSS, or workflow
+> refinements around the same feature, reuse the current feature branch and PR.
+> Do not create a new branch/PR for each small follow-up unless the user asks
+> for a clean split. Keep iterating on the same branch until the user says
+> `finish` or `merge`.
+
 ## 1. Read the issue
 
 - Fetch the issue details from GitHub using `issue_read` (owner: `akoita`, repo: `resonate`)
@@ -44,6 +50,9 @@ When the user says "start issue #N", "work on #N", or references working on a sp
   - Body: summary of changes + `Closes #N`
   - Link back to the issue
 - Request user review
+- Do not immediately merge or clean up branches from this workflow. Merging is
+  controlled by the finish workflow and requires an explicit user `merge`
+  request.
 
 ## Important rules
 
