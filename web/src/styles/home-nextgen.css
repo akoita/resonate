@@ -127,11 +127,17 @@
 
 .home-ng .ng-hero--campaign-image {
   background:
-    linear-gradient(90deg, rgba(8, 8, 15, 0.96) 0%, rgba(8, 8, 15, 0.62) 46%, rgba(8, 8, 15, 0.22) 100%),
-    radial-gradient(at 18% 18%, rgba(124, 92, 255, 0.36), transparent 52%),
+    linear-gradient(90deg, rgba(8, 8, 15, 0.98) 0%, rgba(8, 8, 15, 0.72) 48%, rgba(8, 8, 15, 0.18) 100%),
+    radial-gradient(at 18% 18%, rgba(124, 92, 255, 0.32), transparent 52%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, transparent 24%, rgba(8, 8, 15, 0.32) 100%),
     var(--ng-hero-image);
   background-position: center;
   background-size: cover;
+}
+
+.home-ng .ng-hero--campaign-image .ng-hero__card {
+  background: linear-gradient(160deg, rgba(8, 8, 15, 0.82) 0%, rgba(18, 15, 42, 0.58) 100%);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 /* Top-edge sheen — adds depth without weight. */
@@ -1496,7 +1502,7 @@
 
 .home-ng .ng-event-card__art--image {
   background:
-    linear-gradient(180deg, rgba(8, 6, 16, 0.02) 0%, rgba(8, 6, 16, 0.82) 100%),
+    linear-gradient(180deg, rgba(8, 6, 16, 0.02) 0%, rgba(8, 6, 16, 0.24) 46%, rgba(8, 6, 16, 0.88) 100%),
     var(--ng-event-image);
   background-position: center;
   background-size: cover;
@@ -1509,6 +1515,13 @@
   background:
     radial-gradient(circle at 30% 30%, rgba(255, 183, 130, 0.3), transparent 55%),
     radial-gradient(circle at 80% 80%, rgba(138, 63, 252, 0.25), transparent 60%);
+}
+
+.home-ng .ng-event-card__art--image::before {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, transparent 22%),
+    radial-gradient(circle at 24% 18%, rgba(255, 183, 130, 0.24), transparent 44%),
+    linear-gradient(0deg, rgba(8, 6, 16, 0.72) 0%, transparent 58%);
 }
 
 .home-ng .ng-event-card__badge {

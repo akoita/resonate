@@ -25,7 +25,15 @@ import { usePlayer } from "../lib/playerContext";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
 import { useToast } from "../components/ui/Toast";
 import { AddToPlaylistModal } from "../components/library/AddToPlaylistModal";
-import { listCampaignsSync, getFeaturedCampaignSync, daysUntil, type Campaign } from "../lib/shows";
+import {
+  campaignDisplayInitial,
+  campaignDisplayTitle,
+  listCampaigns,
+  listCampaignsSync,
+  getFeaturedCampaignSync,
+  daysUntil,
+  type Campaign,
+} from "../lib/shows";
 import AgentSessionPresets from "../components/agent/AgentSessionPresets";
 import { recordProductAnalytics } from "../lib/productAnalytics";
 
@@ -115,6 +123,7 @@ export default function Home() {
   const [startingVibe, setStartingVibe] = useState<FilterId | null>(null);
   const [tracksToAddToPlaylist, setTracksToAddToPlaylist] = useState<LocalTrack[] | null>(null);
   const [savingReleaseId, setSavingReleaseId] = useState<string | null>(null);
+  const [campaigns, setCampaigns] = useState<Campaign[]>(() => listCampaignsSync());
   const lastCatalogSearchAnalyticsKeyRef = useRef<string | null>(null);
   const { status, token, userId } = useAuth();
   const { addToast } = useToast();
@@ -140,6 +149,18 @@ export default function Home() {
       .then(setReleases)
       .catch(() => setReleases([]));
   }, [status]);
+
+  useEffect(() => {
+    let cancelled = false;
+    listCampaigns()
+      .then((items) => {
+        if (!cancelled && items.length > 0) setCampaigns(items);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (status !== "authenticated" || !token) {
@@ -192,9 +213,12 @@ export default function Home() {
   // Row data derivation.
   const resumeRow = filteredReleases.slice(0, 4);
   const stemRow = filteredReleases.slice(0, 3);
-  const campaigns = listCampaignsSync();
-  const featuredCampaign = getFeaturedCampaignSync();
-  const eventRow: Campaign[] = campaigns.slice(0, 2);
+  const featuredCampaign = useMemo(
+    () => campaigns.find((campaign) => campaign.featured) ?? campaigns[0] ?? getFeaturedCampaignSync(),
+    [campaigns],
+  );
+  const eventRow: Campaign[] = useMemo(() => campaigns.slice(0, 2), [campaigns]);
+  const featuredCampaignImage = featuredCampaign.heroImage || featuredCampaign.cardImage;
   const catalogStems = useMemo<StemSummary[]>(
     () => flattenStems(displayReleases),
     [displayReleases],
@@ -452,8 +476,8 @@ export default function Home() {
         {/* 1. HERO ————————————————————————————————————————————————— */}
         <section className="ng-section ng-section--tight">
           <div
-            className={`ng-hero ${featuredCampaign.heroImage ? "ng-hero--campaign-image" : ""}`}
-            style={featuredCampaign.heroImage ? { "--ng-hero-image": `url(${featuredCampaign.heroImage})` } as CSSProperties : undefined}
+            className={`ng-hero ${featuredCampaignImage ? "ng-hero--campaign-image" : ""}`}
+            style={featuredCampaignImage ? { "--ng-hero-image": `url(${featuredCampaignImage})` } as CSSProperties : undefined}
           >
             <svg
               className="ng-hero__motif"
@@ -482,7 +506,7 @@ export default function Home() {
             <div className="ng-hero__card">
               <span className="ng-kicker ng-kicker--primary">Featured Campaign</span>
               <h2 className="ng-hero__title">
-                {featuredCampaign.artistName} in {featuredCampaign.city}
+                {campaignDisplayTitle(featuredCampaign)}
               </h2>
               <p className="ng-hero__body">
                 {featuredCampaign.tagline} Lock funds in a smart contract to
@@ -1619,20 +1643,26 @@ function pseudoRandomBars(seed: string, count: number): number[] {
 
 function EventCard({ campaign, variant }: { campaign: Campaign; variant: "live" | "upcoming" }) {
   const days = daysUntil(campaign.deadline);
+  const title = campaignDisplayTitle(campaign);
+  const initial = campaignDisplayInitial(campaign);
   const badge = variant === "live"
     ? `Ends in ${days}d`
     : new Date(campaign.targetDate).toLocaleDateString("en-GB", { month: "short", day: "numeric" });
+  const visualImage = campaign.cardImage || campaign.heroImage;
+  const hasImage = Boolean(visualImage);
 
   return (
     <Link href={`/shows/${campaign.id}`} className="ng-event-card">
       <div
-        className={`ng-event-card__art ${campaign.cardImage ? "ng-event-card__art--image" : ""}`}
-        style={campaign.cardImage ? { "--ng-event-image": `url(${campaign.cardImage})` } as CSSProperties : undefined}
+        className={`ng-event-card__art ${hasImage ? "ng-event-card__art--image" : ""}`}
+        style={hasImage ? { "--ng-event-image": `url(${visualImage})` } as CSSProperties : undefined}
         aria-hidden
       >
-        <span className="ng-monogram" style={{ fontSize: 72 }}>
-          {(campaign.artistName[0] ?? "?").toUpperCase()}
-        </span>
+        {!hasImage ? (
+          <span className="ng-monogram" style={{ fontSize: 72 }}>
+            {initial}
+          </span>
+        ) : null}
       </div>
       <span
         className={`ng-event-card__badge ${
@@ -1644,7 +1674,7 @@ function EventCard({ campaign, variant }: { campaign: Campaign; variant: "live" 
       <div className="ng-event-card__overlay">
         <div>
           <h4 className="ng-event-card__title">
-            {campaign.artistName} in {campaign.city}
+            {title}
           </h4>
           <p className="ng-event-card__sub">
             {campaign.venue ? `${campaign.venue}` : `${campaign.backerCount} backers`}

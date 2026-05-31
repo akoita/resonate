@@ -22,6 +22,8 @@ export function FeaturedCampaignHero({ campaign }: FeaturedCampaignHeroProps) {
   const urgent = days <= 7;
   const displayTitle = campaignDisplayTitle(campaign);
   const initial = campaignDisplayInitial(campaign);
+  const heroVisual = campaign.heroImage || campaign.cardImage;
+  const hasHeroImage = Boolean(heroVisual);
   // Derive a hue from the initial letter for per-artist colour variety
   const hue = (initial.charCodeAt(0) * 47) % 360;
 
@@ -29,10 +31,10 @@ export function FeaturedCampaignHero({ campaign }: FeaturedCampaignHeroProps) {
     <div className="fch-root">
       {/* ── Ambient blurred backdrop ── */}
       <div
-        className={`fch-backdrop ${campaign.heroImage ? "fch-backdrop--image" : ""}`}
+        className={`fch-backdrop ${hasHeroImage ? "fch-backdrop--image" : ""}`}
         style={{
           "--fch-hue": hue,
-          ...(campaign.heroImage ? { "--fch-image": `url(${campaign.heroImage})` } : {}),
+          ...(hasHeroImage ? { "--fch-image": `url(${heroVisual})` } : {}),
         } as CSSProperties}
       />
 
@@ -121,45 +123,51 @@ export function FeaturedCampaignHero({ campaign }: FeaturedCampaignHeroProps) {
       </div>
 
       {/* ── Right art column ── */}
-      <div className="fch-right" aria-hidden>
-        {/* Gradient sphere */}
-        <div className="fch-sphere" style={{ "--fch-hue": hue } as CSSProperties}>
-          {/* Vinyl disc */}
-          <div className="fch-disc">
-            <div className="fch-disc-grooves" />
-            <div className="fch-disc-label">
-              <span className="fch-disc-initial">{initial}</span>
+      <div className={`fch-right ${hasHeroImage ? "fch-right--image" : ""}`} aria-hidden>
+        {hasHeroImage ? (
+          <div className="fch-photo" />
+        ) : (
+          <>
+            {/* Gradient sphere */}
+            <div className="fch-sphere" style={{ "--fch-hue": hue } as CSSProperties}>
+              {/* Vinyl disc */}
+              <div className="fch-disc">
+                <div className="fch-disc-grooves" />
+                <div className="fch-disc-label">
+                  <span className="fch-disc-initial">{initial}</span>
+                </div>
+                <div className="fch-disc-shine" />
+              </div>
+              {/* Concentric rings */}
+              <svg className="fch-sphere-rings" viewBox="0 0 400 400">
+                <g fill="none" stroke="currentColor">
+                  <circle cx="200" cy="200" r="60"  strokeWidth="1" opacity="0.5"/>
+                  <circle cx="200" cy="200" r="100" strokeWidth="1" opacity="0.32"/>
+                  <circle cx="200" cy="200" r="145" strokeWidth="1" opacity="0.18"/>
+                  <circle cx="200" cy="200" r="190" strokeWidth="1" opacity="0.09"/>
+                </g>
+              </svg>
             </div>
-            <div className="fch-disc-shine" />
-          </div>
-          {/* Concentric rings */}
-          <svg className="fch-sphere-rings" viewBox="0 0 400 400">
-            <g fill="none" stroke="currentColor">
-              <circle cx="200" cy="200" r="60"  strokeWidth="1" opacity="0.5"/>
-              <circle cx="200" cy="200" r="100" strokeWidth="1" opacity="0.32"/>
-              <circle cx="200" cy="200" r="145" strokeWidth="1" opacity="0.18"/>
-              <circle cx="200" cy="200" r="190" strokeWidth="1" opacity="0.09"/>
-            </g>
-          </svg>
-        </div>
 
-        {/* Floating particles */}
-        {[0,1,2,3,4,5,6,7].map(i => (
-          <div key={i} className="fch-particle" style={{ "--i": i } as CSSProperties} />
-        ))}
+            {/* Floating particles */}
+            {[0,1,2,3,4,5,6,7].map(i => (
+              <div key={i} className="fch-particle" style={{ "--i": i } as CSSProperties} />
+            ))}
 
-        {/* Artist label */}
-        <div className="fch-art-label">
-          <span className="fch-art-name">{displayTitle}</span>
-          <span className="fch-art-city">{campaign.city?.toUpperCase()}</span>
-        </div>
+            {/* Artist label */}
+            <div className="fch-art-label">
+              <span className="fch-art-name">{displayTitle}</span>
+              <span className="fch-art-city">{campaign.city?.toUpperCase()}</span>
+            </div>
 
-        {/* Waveform bars */}
-        <div className="fch-wave">
-          {Array.from({ length: 28 }, (_, i) => (
-            <div key={i} className="fch-wave-bar" style={{ "--j": i } as CSSProperties} />
-          ))}
-        </div>
+            {/* Waveform bars */}
+            <div className="fch-wave">
+              {Array.from({ length: 28 }, (_, i) => (
+                <div key={i} className="fch-wave-bar" style={{ "--j": i } as CSSProperties} />
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       <style jsx>{`
@@ -420,6 +428,22 @@ export function FeaturedCampaignHero({ campaign }: FeaturedCampaignHeroProps) {
           align-items: center;
           justify-content: center;
           overflow: hidden;
+        }
+        .fch-right--image {
+          padding: 28px;
+        }
+        .fch-photo {
+          width: 100%;
+          height: 100%;
+          min-height: 360px;
+          border-radius: 24px;
+          background:
+            linear-gradient(180deg, rgba(10,8,16,0.04) 0%, rgba(10,8,16,0.2) 46%, rgba(10,8,16,0.86) 100%),
+            var(--fch-image);
+          background-position: center;
+          background-size: cover;
+          border: 1px solid rgba(255,255,255,0.12);
+          box-shadow: 0 28px 80px rgba(0,0,0,0.45);
         }
 
         /* Sphere */

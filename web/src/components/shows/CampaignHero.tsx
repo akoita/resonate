@@ -34,9 +34,13 @@ export function CampaignHero({ campaign }: Props) {
   const displayTitle = campaignDisplayTitle(campaign);
   const monogram = campaignDisplayInitial(campaign);
   const routeCode = campaignRouteCode(campaign);
+  const hasHeroImage = Boolean(campaign.heroImage);
 
   return (
-    <article className="campaign-hero">
+    <article
+      className={`campaign-hero ${hasHeroImage ? "campaign-hero--visual" : ""}`}
+      style={hasHeroImage ? { "--campaign-visual": `url(${campaign.heroImage})` } as CSSProperties : undefined}
+    >
       <div className="campaign-hero__body">
         <span className="campaign-hero__eyebrow">Featured Show</span>
         <h1 className="campaign-hero__title">
@@ -83,23 +87,31 @@ export function CampaignHero({ campaign }: Props) {
       </div>
 
       <div
-        className={`campaign-hero__art ${campaign.heroImage ? "campaign-hero__art--image" : ""}`}
-        style={campaign.heroImage ? { "--campaign-visual": `url(${campaign.heroImage})` } as CSSProperties : undefined}
+        className={`campaign-hero__art ${hasHeroImage ? "campaign-hero__art--image" : ""}`}
         aria-hidden
       >
         <span className="campaign-hero__art-ribbon">Fan-funded route</span>
-        <div className="campaign-hero__art-grid">
-          <span />
-          <span />
-          <span />
-          <span />
-        </div>
-        <span className="campaign-hero__art-monogram">{monogram}</span>
-        <span className="campaign-hero__art-city">{campaign.city}</span>
-        <div className="campaign-hero__art-footer">
-          <span>{routeCode}</span>
-          <span>{campaign.status}</span>
-        </div>
+        {hasHeroImage ? (
+          <div className="campaign-hero__visual-caption">
+            <span>{routeCode}</span>
+            <span>{campaign.city}</span>
+          </div>
+        ) : (
+          <>
+            <div className="campaign-hero__art-grid">
+              <span />
+              <span />
+              <span />
+              <span />
+            </div>
+            <span className="campaign-hero__art-monogram">{monogram}</span>
+            <span className="campaign-hero__art-city">{campaign.city}</span>
+            <div className="campaign-hero__art-footer">
+              <span>{routeCode}</span>
+              <span>{campaign.status}</span>
+            </div>
+          </>
+        )}
       </div>
     </article>
   );
