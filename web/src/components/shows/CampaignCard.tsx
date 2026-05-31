@@ -27,6 +27,8 @@ export function CampaignCard({ campaign }: Props) {
 
   const displayTitle = campaignDisplayTitle(campaign);
   const monogram = campaignDisplayInitial(campaign);
+  const visualImage = campaign.cardImage || campaign.heroImage;
+  const hasImage = Boolean(visualImage);
 
   return (
     <button
@@ -36,14 +38,16 @@ export function CampaignCard({ campaign }: Props) {
       aria-label={`Open campaign — ${displayTitle}`}
     >
       <div
-        className={`campaign-card__art ${campaign.cardImage ? "campaign-card__art--image" : ""}`}
+        className={`campaign-card__art ${hasImage ? "campaign-card__art--image" : ""}`}
         data-city={campaign.city}
-        style={campaign.cardImage ? { "--campaign-card-image": `url(${campaign.cardImage})` } as CSSProperties : undefined}
+        style={hasImage ? { "--campaign-card-image": `url(${visualImage})` } as CSSProperties : undefined}
       >
         <span className="campaign-card__city-chip">{campaign.city}</span>
-        <span className="campaign-card__monogram" aria-hidden>
-          {monogram}
-        </span>
+        {!hasImage ? (
+          <span className="campaign-card__monogram" aria-hidden>
+            {monogram}
+          </span>
+        ) : null}
       </div>
       <div className="campaign-card__body">
         <h3 className="campaign-card__title">
