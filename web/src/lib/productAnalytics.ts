@@ -39,6 +39,9 @@ export const PRODUCT_ANALYTICS_EVENT_NAMES = [
   "taste_memory.signal_hidden",
   "taste_memory.signal_restored",
   "taste_memory.reset",
+  "community.profile_updated",
+  "community.profile_visibility_updated",
+  "community.profile_showcase_updated",
 ] as const;
 
 export type ProductAnalyticsEventName = (typeof PRODUCT_ANALYTICS_EVENT_NAMES)[number];
