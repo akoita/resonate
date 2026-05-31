@@ -125,6 +125,15 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
+.home-ng .ng-hero--campaign-image {
+  background:
+    linear-gradient(90deg, rgba(8, 8, 15, 0.96) 0%, rgba(8, 8, 15, 0.62) 46%, rgba(8, 8, 15, 0.22) 100%),
+    radial-gradient(at 18% 18%, rgba(124, 92, 255, 0.36), transparent 52%),
+    var(--ng-hero-image);
+  background-position: center;
+  background-size: cover;
+}
+
 /* Top-edge sheen — adds depth without weight. */
 .home-ng .ng-hero::before {
   content: "";
@@ -1483,6 +1492,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.home-ng .ng-event-card__art--image {
+  background:
+    linear-gradient(180deg, rgba(8, 6, 16, 0.02) 0%, rgba(8, 6, 16, 0.82) 100%),
+    var(--ng-event-image);
+  background-position: center;
+  background-size: cover;
 }
 
 .home-ng .ng-event-card__art::before {

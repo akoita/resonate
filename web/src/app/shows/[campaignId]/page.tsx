@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CampaignHero } from "../../../components/shows/CampaignHero";
 import { CampaignOperatorPanel } from "../../../components/shows/CampaignOperatorPanel";
@@ -14,6 +15,34 @@ import {
 
 interface Props {
   params: Promise<{ campaignId: string }>;
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { campaignId } = await params;
+  const campaign = await getCampaign(campaignId);
+  if (!campaign) {
+    return { title: "Show campaign" };
+  }
+
+  const title = campaignDisplayTitle(campaign);
+  const description = campaign.tagline;
+  const image = campaign.cardImage || campaign.heroImage;
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      images: image ? [{ url: image, alt: title }] : undefined,
+    },
+    twitter: {
+      card: image ? "summary_large_image" : "summary",
+      title,
+      description,
+      images: image ? [image] : undefined,
+    },
+  };
 }
 
 export default async function CampaignDetailPage({ params }: Props) {

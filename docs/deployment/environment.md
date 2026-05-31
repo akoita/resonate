@@ -128,6 +128,7 @@ When adding a new environment variable:
 | `PAYMENT_FUNDING_OPTIONS_JSON` | Backend | JSON array of environment-aware funding actions exposed by the payment UX |
 | `SHOWS_DEFAULT_CHAIN_ID` | Backend | Optional chain ID default for newly created Shows signals/campaign drafts. Falls back to `PAYMENT_CHAIN_ID`, `AA_CHAIN_ID`, `CHAIN_ID`, then Base Sepolia local/staging default. |
 | `SHOWS_DEFAULT_PAYMENT_ASSET_SYMBOL` | Backend | Optional display symbol default for newly created Shows signals/campaign drafts. Defaults to `USDC`. |
+| `SHOWS_VISUAL_MAX_BYTES` | Backend | Optional maximum size in bytes for each uploaded Shows campaign hero/preview visual. Defaults to `8388608` (8 MiB). |
 | `PAYMENT_BASE_SEPOLIA_ETH_FAUCET_URL` | Backend | Optional Base Sepolia test ETH faucet URL. When set and no full funding JSON is provided, `/payments/funding-options` exposes a testnet ETH faucet action |
 | `PAYMENT_BASE_SEPOLIA_ETH_FAUCET_PROVIDER` | Backend | Optional display name for the configured Base Sepolia ETH faucet |
 | `PAYMENT_BASE_SEPOLIA_USDC_FAUCET_URL` | Backend | Optional Base Sepolia Circle USDC faucet URL. When set and no full funding JSON is provided, `/payments/funding-options` exposes a testnet USDC faucet action |

@@ -81,6 +81,17 @@
     }
   },
   {
+    "eventName": "shows.campaign_visuals_updated",
+    "payload": {
+      "campaignId": "campaign-1",
+      "campaignSlug": "artist-paris-fr",
+      "campaignLevel": "active_escrow_campaign",
+      "artistId": "artist-1",
+      "visualSlots": ["hero", "card"],
+      "source": "shows-api"
+    }
+  },
+  {
     "eventName": "library.saved",
     "payload": {
       "userCohortId": "cohort-1",

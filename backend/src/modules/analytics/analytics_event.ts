@@ -131,6 +131,13 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     payloadFields: ["campaignId", "campaignSlug", "artistId", "amountUnits", "paymentAssetSymbol", "source"],
   },
   {
+    eventName: "shows.campaign_visuals_updated",
+    eventVersion: 1,
+    producer: "shows-service",
+    privacyTier: "pseudonymous",
+    payloadFields: ["campaignId", "campaignSlug", "artistId", "visualSlots", "source"],
+  },
+  {
     eventName: "commerce.settled",
     eventVersion: 1,
     producer: "payments-service",

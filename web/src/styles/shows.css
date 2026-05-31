@@ -377,6 +377,14 @@
   gap: 12px;
 }
 
+.shows-create__panel-note {
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .shows-create__panel p,
 .shows-create__panel small {
   margin: 0;
@@ -451,6 +459,47 @@
 
 .shows-create__panel textarea {
   resize: vertical;
+}
+
+.shows-create__visual-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(240px, 0.8fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.shows-create__visual-upload {
+  gap: 10px;
+}
+
+.shows-create__visual-upload input[type="file"] {
+  padding: 9px;
+  cursor: pointer;
+}
+
+.shows-create__visual-preview {
+  min-height: 220px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--color-signal) 20%, rgba(255, 255, 255, 0.08));
+  background:
+    radial-gradient(circle at 28% 18%, color-mix(in srgb, var(--color-signal) 24%, transparent), transparent 54%),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.006));
+  background-position: center;
+  background-size: cover;
+  color: rgba(255, 255, 255, 0.54);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.shows-create__visual-preview--card {
+  min-height: 180px;
+  aspect-ratio: 16 / 10;
 }
 
 .shows-create__panel button,
@@ -614,6 +663,14 @@
     radial-gradient(circle at 65% 75%, rgba(251, 146, 60, 0.22), transparent 58%),
     radial-gradient(circle at 20% 25%, color-mix(in srgb, var(--color-signal) 18%, transparent), transparent 50%),
     linear-gradient(155deg, #090505 0%, #1F0E10 65%, #0E0708 100%);
+}
+
+.campaign-card__art--image {
+  background:
+    linear-gradient(180deg, transparent 18%, rgba(3, 7, 8, 0.78) 100%),
+    var(--campaign-card-image);
+  background-position: center;
+  background-size: cover;
 }
 
 /* Grid & Retro Sound Wave lines overlay */
@@ -1110,6 +1167,19 @@
     inset 0 0 0 1px rgba(255, 255, 255, 0.04),
     inset 0 0 100px color-mix(in srgb, var(--color-signal) 15%, transparent),
     inset -1px 0 0 rgba(255, 255, 255, 0.04);
+}
+
+.campaign-hero__art--image {
+  background:
+    linear-gradient(180deg, rgba(3, 7, 8, 0.05) 0%, rgba(3, 7, 8, 0.72) 100%),
+    radial-gradient(circle at 45% 30%, color-mix(in srgb, var(--color-signal) 18%, transparent), transparent 58%),
+    var(--campaign-visual);
+  background-position: center;
+  background-size: cover;
+}
+
+.campaign-hero__art--image .campaign-hero__art-grid {
+  opacity: 0;
 }
 
 /* EQ Column Visualizer */
@@ -2039,7 +2109,8 @@
   .show-detail__operator-status,
   .show-detail__operator-grid,
   .shows-create__form,
-  .shows-create__tiers {
+  .shows-create__tiers,
+  .shows-create__visual-grid {
     grid-template-columns: 1fr;
   }
 }

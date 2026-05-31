@@ -15,6 +15,7 @@ import {
   createShowCampaignDraft,
   buildCatalogArtistCandidates,
   updateShowCampaignDraft,
+  uploadShowCampaignVisuals,
   type Campaign,
   type CatalogArtistCandidate,
   type ShowCampaignDraftTierInput,
@@ -106,6 +107,10 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
   const [authorityEvidenceBundleId, setAuthorityEvidenceBundleId] = useState(campaign?.authorityEvidenceBundleId ?? "");
   const [paymentTokenAddress, setPaymentTokenAddress] = useState(campaign?.paymentTokenAddress ?? "");
   const [tiers, setTiers] = useState<TierForm[]>(() => initialTiers(campaign));
+  const [heroVisualFile, setHeroVisualFile] = useState<File | null>(null);
+  const [cardVisualFile, setCardVisualFile] = useState<File | null>(null);
+  const [heroPreviewUrl, setHeroPreviewUrl] = useState(campaign?.heroImage ?? "");
+  const [cardPreviewUrl, setCardPreviewUrl] = useState(campaign?.cardImage ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -219,6 +224,26 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
     if (selected) setArtistDisplayName(selected.name);
   }, [artistCandidates, selectedArtistId]);
 
+  useEffect(() => {
+    if (!heroVisualFile) {
+      setHeroPreviewUrl(campaign?.heroImage ?? "");
+      return;
+    }
+    const previewUrl = URL.createObjectURL(heroVisualFile);
+    setHeroPreviewUrl(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [campaign?.heroImage, heroVisualFile]);
+
+  useEffect(() => {
+    if (!cardVisualFile) {
+      setCardPreviewUrl(campaign?.cardImage ?? "");
+      return;
+    }
+    const previewUrl = URL.createObjectURL(cardVisualFile);
+    setCardPreviewUrl(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [campaign?.cardImage, cardVisualFile]);
+
   function updateTier(index: number, patch: Partial<TierForm>) {
     setTiers((current) => current.map((tier, tierIndex) => (
       tierIndex === index ? { ...tier, ...patch } : tier
@@ -279,9 +304,15 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
         tiers: normalizedTiers,
       };
 
-      const saved = campaign
+      let saved = campaign
         ? await updateShowCampaignDraft({ campaign, token, draft })
         : await createShowCampaignDraft({ token, draft });
+      if (heroVisualFile || cardVisualFile) {
+        const visuals = new FormData();
+        if (heroVisualFile) visuals.append("hero", heroVisualFile);
+        if (cardVisualFile) visuals.append("card", cardVisualFile);
+        saved = await uploadShowCampaignVisuals({ campaign: saved, token, visuals });
+      }
       router.push(`/shows/${saved.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save campaign.");
@@ -377,6 +408,43 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
           Venue target
           <input value={venueTarget} onChange={(event) => setVenueTarget(event.target.value)} />
         </label>
+      </div>
+
+      <div className="shows-create__panel shows-create__panel--wide">
+        <div className="shows-create__panel-header">
+          <h2>Campaign visuals</h2>
+          <span className="shows-create__panel-note">JPEG, PNG, or WebP</span>
+        </div>
+        <div className="shows-create__visual-grid">
+          <label className="shows-create__visual-upload">
+            <span>Hero visual</span>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(event) => setHeroVisualFile(event.target.files?.[0] ?? null)}
+            />
+            <span
+              className="shows-create__visual-preview shows-create__visual-preview--hero"
+              style={heroPreviewUrl ? { backgroundImage: `url(${heroPreviewUrl})` } : undefined}
+            >
+              {!heroPreviewUrl ? "16:9 stage atmosphere" : null}
+            </span>
+          </label>
+          <label className="shows-create__visual-upload">
+            <span>Preview visual</span>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(event) => setCardVisualFile(event.target.files?.[0] ?? null)}
+            />
+            <span
+              className="shows-create__visual-preview shows-create__visual-preview--card"
+              style={cardPreviewUrl ? { backgroundImage: `url(${cardPreviewUrl})` } : undefined}
+            >
+              {!cardPreviewUrl ? "Card crop preview" : null}
+            </span>
+          </label>
+        </div>
       </div>
 
       <div className="shows-create__panel">
