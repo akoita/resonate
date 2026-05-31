@@ -11,10 +11,10 @@ issue: 1007
 
 `in-progress`
 
-The first implementation slice defines the owner-scoped backend contract for
-agent-mediated playback. It does not expose accountless public playback tools
-and does not let backend calls claim that browser audio started before an active
-client confirms it.
+The current implementation defines the owner-scoped backend contract and wires
+the web player as the first active playback client. It does not expose
+accountless public playback tools and does not let backend calls claim that
+browser audio started before an active client confirms it.
 
 ## Who It Is For
 
@@ -48,6 +48,13 @@ external agent -> playback intent -> owner policy/session -> active Resonate cli
   - `POST /sessions/playback/capabilities/:capabilityId/revoke`
 - Active client registration boundary:
   - `POST /sessions/playback/device`
+- Web player active-client bridge:
+  - registers the browser player while the user is authenticated;
+  - polls `GET /sessions/playback/status` for pending commands;
+  - applies queue/control commands to the existing player queue;
+  - shows a listener confirmation dialog before sound-starting play commands;
+  - confirms `queued`, `playing`, `blocked_by_policy`, or `unavailable` back
+    through `POST /sessions/playback/commands/:commandId/confirm`.
 - Safe resolver that returns playable candidates without starting sound:
   - `POST /sessions/playback/resolve`
 - Explicit command outcomes for queue, play, control, confirmation, and status:
@@ -57,9 +64,9 @@ external agent -> playback intent -> owner policy/session -> active Resonate cli
   - `POST /sessions/playback/commands/:commandId/confirm`
   - `GET /sessions/playback/status`
 
-The first slice keeps command/device state in process memory. It is appropriate
-for proving contracts, tests, and first-party bridge behavior, not for durable
-multi-device production orchestration.
+The current slice keeps command/device state in process memory. It is
+appropriate for proving contracts, tests, and first-party bridge behavior, not
+for durable multi-device production orchestration.
 
 ## Policy Rules
 
@@ -98,14 +105,15 @@ cd backend && npx jest --runInBand src/tests/playback_intents.spec.ts src/tests/
 Frontend API helpers:
 
 ```bash
-cd web && npx vitest run --config ./vitest.config.ts src/lib/api.test.ts
+cd web && npx vitest run --config ./vitest.config.ts src/lib/api.test.ts src/components/player/PlaybackIntentBridge.test.tsx
 ```
 
 ## Follow-Up Work
 
-- Replace in-memory active-device and command state with the production
-  WebSocket or polling bridge.
-- Add the player-side confirmation UI and queue application flow.
+- Replace in-memory backend command/device state with durable session storage
+  or a production realtime transport when multi-instance deployment needs it.
+- Add an owner-facing playback permissions UI for capability creation,
+  revocation, expiry, and autonomy modes.
 - Add durable capability/session persistence if external owner-authorized
   integrations need long-lived grants.
 - Extend MCP/OAuth-style owner authorization only after the first-party active

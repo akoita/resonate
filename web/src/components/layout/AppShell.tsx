@@ -10,6 +10,7 @@ import { useUIStore } from "../../lib/uiStore";
 import { AddToPlaylistModal } from "../library/AddToPlaylistModal";
 import { ResaleModal } from "../marketplace/ResaleModal";
 import AgentOnboardingGate from "../agent/AgentOnboardingGate";
+import PlaybackIntentBridge from "../player/PlaybackIntentBridge";
 
 export default function AppShell({
   children,
@@ -49,6 +50,7 @@ export default function AppShell({
         />
       </div>
       <AgentOnboardingGate />
+      <PlaybackIntentBridge />
     </PlayerProvider>
 
   );
