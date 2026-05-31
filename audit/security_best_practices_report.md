@@ -404,3 +404,51 @@ rg -n 'password|secret|api_key|private_key' backend/src/modules/shows web/src/co
 rg -n 'rawQuery|executeRaw|\$queryRaw|JSON\.parse|eval\(' backend/src/modules/shows web/src/components/shows/CampaignDraftForm.tsx
 rg -n 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/components/shows/CampaignDraftForm.tsx
 ```
+
+## Shows Campaign Visual Uploads - 2026-05-31
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/prisma/schema.prisma`
+- `backend/prisma/migrations/20260531152000_show_campaign_visuals/migration.sql`
+- `backend/src/modules/shows/shows.controller.ts`
+- `backend/src/modules/shows/shows.service.ts`
+- `backend/src/modules/analytics/analytics.controller.ts`
+- `backend/src/modules/analytics/analytics_event.ts`
+- `backend/src/tests/shows.service.integration.spec.ts`
+- `web/src/components/shows/*`
+- `web/src/components/home/FeaturedCampaignHero.tsx`
+- `web/src/app/shows/[campaignId]/page.tsx`
+- `web/src/app/page.tsx`
+- `web/src/lib/shows.ts`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none introduced.
+- Low: none introduced.
+
+### Notes
+
+- Campaign visual uploads are restricted to authenticated artist, admin, and
+  operator roles and reuse the existing campaign mutation ownership checks.
+- Accepted upload MIME types are limited to JPEG, PNG, and WebP, with a
+  configurable size cap via `SHOWS_VISUAL_MAX_BYTES`.
+- Public visual reads stream from the configured storage provider and do not
+  expose private storage paths in analytics payloads.
+- `shows.campaign_visuals_updated` records changed slots only; raw image bytes,
+  storage URIs, and public URLs stay out of analytics and warehouse facts.
+- No raw SQL, hardcoded secrets, unsafe deserialization, direct HTML injection,
+  cookie handling, or public secret environment variables were introduced.
+
+### Commands Run
+
+```bash
+rg -n 'password|secret|api_key|private_key|BEGIN (RSA|OPENSSH|EC|DSA|PRIVATE) KEY' backend/src/modules/shows backend/src/modules/analytics web/src/components/shows web/src/components/home web/src/app/shows web/src/lib/shows.ts web/src/app/page.tsx --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw|JSON\.parse|eval\(' backend/src/modules/shows/shows.controller.ts backend/src/modules/shows/shows.service.ts backend/src/modules/analytics/analytics.controller.ts backend/src/modules/analytics/analytics_event.ts web/src/components/shows/CampaignDraftForm.tsx web/src/components/shows/CampaignHero.tsx web/src/components/shows/CampaignCard.tsx web/src/components/home/FeaturedCampaignHero.tsx 'web/src/app/shows/[campaignId]/page.tsx' web/src/lib/shows.ts web/src/app/page.tsx
+rg -n 'dangerouslySetInnerHTML|innerHTML|document\.cookie|setCookie|httpOnly.*false|eval\(' web/src/components/shows web/src/components/home web/src/app/shows web/src/lib/shows.ts web/src/app/page.tsx
+rg -n 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*PASSWORD|NEXT_PUBLIC_.*PRIVATE|NEXT_PUBLIC_.*TOKEN' web/src/components/shows web/src/components/home web/src/app/shows web/src/lib/shows.ts web/src/app/page.tsx
+```

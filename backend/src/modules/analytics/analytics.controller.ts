@@ -63,6 +63,7 @@ const PRODUCT_EVENT_NAMES = new Set([
   "community.profile_showcase_updated",
   "shows.signal_created",
   "shows.campaign_created",
+  "shows.campaign_visuals_updated",
   "shows.pledge_intent_created",
   "shows.pledge_submitted",
   "shows.pledge_confirmed",

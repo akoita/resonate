@@ -1,5 +1,21 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Request, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Request,
+  Res,
+  StreamableFile,
+  UploadedFiles,
+  UseGuards,
+  UseInterceptors,
+} from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { FileFieldsInterceptor } from "@nestjs/platform-express";
+import { Response } from "express";
 import { Roles } from "../auth/roles.decorator";
 import { ShowsService } from "./shows.service";
 
@@ -21,6 +37,28 @@ export class ShowsController {
   @Get("campaigns/:slug")
   getCampaign(@Param("slug") slug: string) {
     return this.showsService.getCampaign(slug);
+  }
+
+  @Get("campaigns/:id/visuals/:slot")
+  async getCampaignVisual(
+    @Param("id") id: string,
+    @Param("slot") slot: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    if (slot !== "hero" && slot !== "card") {
+      res.status(404).send("Campaign visual not found");
+      return;
+    }
+    const visual = await this.showsService.getCampaignVisual(id, slot);
+    if (!visual) {
+      res.status(404).send("Campaign visual not found");
+      return;
+    }
+    res.set({
+      "Content-Type": visual.mimeType,
+      "Cache-Control": "public, max-age=300",
+    });
+    return new StreamableFile(visual.data);
   }
 
   @UseGuards(AuthGuard("jwt"))
@@ -58,6 +96,24 @@ export class ShowsController {
     @Body() body: any,
   ) {
     return this.showsService.updateDraftCampaign(this.actorFromRequest(req), id, body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("artist", "admin", "operator")
+  @Patch("campaigns/:id/visuals")
+  @UseInterceptors(FileFieldsInterceptor([
+    { name: "hero", maxCount: 1 },
+    { name: "card", maxCount: 1 },
+  ]))
+  uploadCampaignVisuals(
+    @Param("id") id: string,
+    @Request() req: any,
+    @UploadedFiles() files: { hero?: Express.Multer.File[]; card?: Express.Multer.File[] },
+  ) {
+    return this.showsService.uploadCampaignVisuals(this.actorFromRequest(req), id, {
+      hero: files?.hero?.[0],
+      card: files?.card?.[0],
+    });
   }
 
   @UseGuards(AuthGuard("jwt"))

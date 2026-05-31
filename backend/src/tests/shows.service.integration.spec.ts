@@ -21,7 +21,21 @@ const futureIso = (days: number) => {
 };
 
 describe("ShowsService integration", () => {
-  const service = new ShowsService();
+  const visualUploads = new Map<string, { data: Buffer; mimeType: string }>();
+  const visualStorageProvider = {
+    async upload(data: Buffer, filename: string, mimeType: string) {
+      const uri = `memory://${filename}`;
+      visualUploads.set(uri, { data, mimeType });
+      return { uri, provider: "local" as const };
+    },
+    async download(uri: string) {
+      return visualUploads.get(uri)?.data ?? null;
+    },
+    async delete(uri: string) {
+      visualUploads.delete(uri);
+    },
+  };
+  const service = new ShowsService(undefined, visualStorageProvider as any);
   const listenerWallet = "0x" + "8".repeat(40);
   const txHash = "0x" + "9".repeat(64);
   const refundTxHash = "0x" + "a".repeat(64);
@@ -293,6 +307,28 @@ describe("ShowsService integration", () => {
     expect(updated.tiers).toHaveLength(1);
     expect(updated.tiers[0].amountUnits).toBe("850000");
     expect(updated.events[0].eventType).toBe("campaign_updated");
+
+    const visualized = await service.uploadCampaignVisuals(
+      { userId, role: "artist" },
+      updated.id,
+      {
+        hero: {
+          buffer: Buffer.from("hero-image"),
+          mimetype: "image/webp",
+          size: 10,
+        } as Express.Multer.File,
+        card: {
+          buffer: Buffer.from("card-image"),
+          mimetype: "image/png",
+          size: 10,
+        } as Express.Multer.File,
+      },
+    );
+    expect(visualized.heroImageUrl).toBe(`/shows/campaigns/${updated.id}/visuals/hero`);
+    expect(visualized.cardImageUrl).toBe(`/shows/campaigns/${updated.id}/visuals/card`);
+    const heroVisual = await service.getCampaignVisual(updated.id, "hero");
+    expect(heroVisual?.mimeType).toBe("image/webp");
+    expect(heroVisual?.data.toString()).toBe("hero-image");
 
     await expect(service.createDraftCampaign(
       { userId, role: "artist" },

@@ -253,6 +253,8 @@ type BackendShowCampaign = {
   slug: string;
   artistId?: string | null;
   artistDisplayName: string;
+  heroImageUrl?: string | null;
+  cardImageUrl?: string | null;
   title: string;
   city: string;
   country: string;
@@ -590,6 +592,18 @@ export async function updateShowCampaignDraft(input: {
   });
 }
 
+export async function uploadShowCampaignVisuals(input: {
+  campaign: Campaign;
+  token: string;
+  visuals: FormData;
+}): Promise<Campaign> {
+  return await mutateShowCampaign(`/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/visuals`, {
+    method: "PATCH",
+    token: input.token,
+    body: input.visuals,
+  });
+}
+
 export async function approveShowCampaignAuthority(input: {
   campaign: Campaign;
   token: string;
@@ -709,15 +723,22 @@ async function fetchShowsApi<T>(path: string): Promise<T | null> {
 async function mutateShowCampaign(path: string, input: {
   method: "POST" | "PATCH";
   token: string;
-  body: Record<string, unknown>;
+  body: Record<string, unknown> | FormData;
 }): Promise<Campaign> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${input.token}`,
+  };
+  let requestBody: BodyInit;
+  if (typeof FormData !== "undefined" && input.body instanceof FormData) {
+    requestBody = input.body;
+  } else {
+    headers["Content-Type"] = "application/json";
+    requestBody = JSON.stringify(input.body);
+  }
   const response = await fetch(`${API_BASE}${path}`, {
     method: input.method,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${input.token}`,
-    },
-    body: JSON.stringify(input.body),
+    headers,
+    body: requestBody,
   });
 
   if (!response.ok) {
@@ -756,8 +777,8 @@ function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign 
     currency: campaign.currency === "EUR" ? "EUR" : "USD",
     backerCount: campaign.uniqueBackerCount ?? campaign.confirmedPledgeCount ?? 0,
     thresholdBackers: campaign.minimumBackers ?? 0,
-    heroImage: "",
-    cardImage: "",
+    heroImage: mediaUrl(campaign.heroImageUrl),
+    cardImage: mediaUrl(campaign.cardImageUrl) || mediaUrl(campaign.heroImageUrl),
     status: mapBackendStatus(campaign.status),
     featured: index === 0,
     contractAddress,
@@ -775,6 +796,14 @@ function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign 
       paymentAssetSymbol: tier.paymentAssetSymbol ?? campaign.paymentAssetSymbol ?? "USDC",
     })),
   };
+}
+
+function mediaUrl(value?: string | null): string {
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value) || value.startsWith("data:") || value.startsWith("blob:")) {
+    return value;
+  }
+  return `${API_BASE}${value.startsWith("/") ? value : `/${value}`}`;
 }
 
 function unitsToCents(amountUnits: string, decimals: number): number {

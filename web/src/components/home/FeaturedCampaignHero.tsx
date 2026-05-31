@@ -29,8 +29,11 @@ export function FeaturedCampaignHero({ campaign }: FeaturedCampaignHeroProps) {
     <div className="fch-root">
       {/* ── Ambient blurred backdrop ── */}
       <div
-        className="fch-backdrop"
-        style={{ "--fch-hue": hue } as CSSProperties}
+        className={`fch-backdrop ${campaign.heroImage ? "fch-backdrop--image" : ""}`}
+        style={{
+          "--fch-hue": hue,
+          ...(campaign.heroImage ? { "--fch-image": `url(${campaign.heroImage})` } : {}),
+        } as CSSProperties}
       />
 
       {/* ── Left content column ── */}
@@ -185,6 +188,14 @@ export function FeaturedCampaignHero({ campaign }: FeaturedCampaignHeroProps) {
               #0a0810 100%),
             radial-gradient(ellipse 60% 80% at 20% 70%, rgba(255,183,80,0.08) 0%, transparent 60%);
           z-index: 0;
+        }
+        .fch-backdrop--image {
+          background:
+            linear-gradient(90deg, rgba(10,8,16,0.98) 0%, rgba(10,8,16,0.78) 46%, rgba(10,8,16,0.36) 100%),
+            radial-gradient(ellipse 60% 80% at 20% 70%, rgba(255,183,80,0.08) 0%, transparent 60%),
+            var(--fch-image);
+          background-position: center;
+          background-size: cover;
         }
 
         /* ── Left column ──────────────────────────────── */

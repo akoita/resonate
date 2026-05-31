@@ -172,6 +172,11 @@ rules. Warehouse facts store only the coarse values in
 - `shows.campaign_created`
   - owner: Shows Service
   - payload: campaignId, artistId, campaignLevel, artistAuthorityStatus, campaignCountryCode, campaignCitySlug
+- `shows.campaign_visuals_updated`
+  - owner: Shows Service
+  - payload: campaignId, artistId, visualSlots, campaignCountryCode, campaignCitySlug
+  - note: records which promotional visual slots changed; raw image URLs, storage
+    paths, and bytes stay out of the analytics event payload.
 - `shows.pledge_intent_created`
   - owner: Shows Service
   - payload: campaignId, pledgeId, artistId, amountUnits, paymentAssetSymbol, tierId

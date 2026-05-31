@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { useEffect, useState } from "react";
 import { CampaignProgress } from "./CampaignProgress";
 import {
@@ -81,7 +82,11 @@ export function CampaignHero({ campaign }: Props) {
         </p>
       </div>
 
-      <div className="campaign-hero__art" aria-hidden>
+      <div
+        className={`campaign-hero__art ${campaign.heroImage ? "campaign-hero__art--image" : ""}`}
+        style={campaign.heroImage ? { "--campaign-visual": `url(${campaign.heroImage})` } as CSSProperties : undefined}
+        aria-hidden
+      >
         <span className="campaign-hero__art-ribbon">Fan-funded route</span>
         <div className="campaign-hero__art-grid">
           <span />

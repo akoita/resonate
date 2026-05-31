@@ -451,7 +451,10 @@ export default function Home() {
       <main className="ng-main">
         {/* 1. HERO ————————————————————————————————————————————————— */}
         <section className="ng-section ng-section--tight">
-          <div className="ng-hero">
+          <div
+            className={`ng-hero ${featuredCampaign.heroImage ? "ng-hero--campaign-image" : ""}`}
+            style={featuredCampaign.heroImage ? { "--ng-hero-image": `url(${featuredCampaign.heroImage})` } as CSSProperties : undefined}
+          >
             <svg
               className="ng-hero__motif"
               viewBox="0 0 600 600"
@@ -1622,7 +1625,11 @@ function EventCard({ campaign, variant }: { campaign: Campaign; variant: "live" 
 
   return (
     <Link href={`/shows/${campaign.id}`} className="ng-event-card">
-      <div className="ng-event-card__art" aria-hidden>
+      <div
+        className={`ng-event-card__art ${campaign.cardImage ? "ng-event-card__art--image" : ""}`}
+        style={campaign.cardImage ? { "--ng-event-image": `url(${campaign.cardImage})` } as CSSProperties : undefined}
+        aria-hidden
+      >
         <span className="ng-monogram" style={{ fontSize: 72 }}>
           {(campaign.artistName[0] ?? "?").toUpperCase()}
         </span>

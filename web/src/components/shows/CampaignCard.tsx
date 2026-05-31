@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import type { CSSProperties } from "react";
 import { useEffect, useState } from "react";
 import { CampaignProgress } from "./CampaignProgress";
 import {
@@ -34,7 +35,11 @@ export function CampaignCard({ campaign }: Props) {
       onClick={() => router.push(`/shows/${campaign.id}`)}
       aria-label={`Open campaign — ${displayTitle}`}
     >
-      <div className="campaign-card__art" data-city={campaign.city}>
+      <div
+        className={`campaign-card__art ${campaign.cardImage ? "campaign-card__art--image" : ""}`}
+        data-city={campaign.city}
+        style={campaign.cardImage ? { "--campaign-card-image": `url(${campaign.cardImage})` } as CSSProperties : undefined}
+      >
         <span className="campaign-card__city-chip">{campaign.city}</span>
         <span className="campaign-card__monogram" aria-hidden>
           {monogram}
