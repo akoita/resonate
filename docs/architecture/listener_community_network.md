@@ -153,6 +153,9 @@ id
 roomType: artist_public | artist_holder | campaign | show_city | cohort | remix | announcement
 ownerType: artist | campaign | show | cohort | platform
 ownerId
+artistId
+title
+description
 accessPolicyJson
 status: active | paused | archived
 createdAt
@@ -179,6 +182,7 @@ id
 roomId
 authorUserId
 body
+messageType: message | announcement
 status: visible | deleted_by_author | deleted_by_moderator | hidden_pending_review
 createdAt
 updatedAt
@@ -378,21 +382,16 @@ POST   /community/benefits/:benefitId/redeem
 ### Rooms And Messages
 
 ```text
-GET    /community/rooms/:roomId
+GET    /community/artists/:artistId/rooms
+POST   /community/artists/:artistId/rooms/enable
 POST   /community/rooms/:roomId/join
 POST   /community/rooms/:roomId/leave
 GET    /community/rooms/:roomId/messages
 POST   /community/rooms/:roomId/messages
 POST   /community/messages/:messageId/report
 DELETE /community/messages/:messageId
-```
-
-### Artist Community
-
-```text
-GET    /artists/:artistId/community
-POST   /artists/:artistId/community/rooms
-PATCH  /artists/:artistId/community/rooms/:roomId
+POST   /community/rooms/:roomId/members/:userId/moderate
+PATCH  /community/rooms/:roomId/status
 ```
 
 ### Shows And Campaign Rooms

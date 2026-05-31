@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { CommunityEligibilityService } from "./community_eligibility.service";
+import { CommunityRoomsService } from "./community_rooms.service";
 import { CommunityService } from "./community.service";
 
 @Controller("community")
@@ -8,6 +9,7 @@ export class CommunityController {
   constructor(
     private readonly communityService: CommunityService,
     private readonly communityEligibilityService: CommunityEligibilityService,
+    private readonly communityRoomsService: CommunityRoomsService,
   ) {}
 
   @UseGuards(AuthGuard("jwt"))
@@ -43,5 +45,81 @@ export class CommunityController {
   @Post("benefits/:benefitRuleId/redeem")
   redeemBenefit(@Req() req: any, @Param("benefitRuleId") benefitRuleId: string) {
     return this.communityEligibilityService.redeemBenefit(req.user.userId, benefitRuleId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("artists/:artistId/rooms/enable")
+  enableArtistCommunity(@Req() req: any, @Param("artistId") artistId: string) {
+    return this.communityRoomsService.enableArtistCommunity(req.user.userId, artistId);
+  }
+
+  @Get("artists/:artistId/rooms")
+  listArtistRooms(@Param("artistId") artistId: string) {
+    return this.communityRoomsService.listArtistRooms(artistId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("rooms/:roomId/join")
+  joinRoom(@Req() req: any, @Param("roomId") roomId: string) {
+    return this.communityRoomsService.joinRoom(req.user.userId, roomId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("rooms/:roomId/leave")
+  leaveRoom(@Req() req: any, @Param("roomId") roomId: string) {
+    return this.communityRoomsService.leaveRoom(req.user.userId, roomId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Get("rooms/:roomId/messages")
+  listMessages(@Req() req: any, @Param("roomId") roomId: string) {
+    return this.communityRoomsService.listMessages(req.user.userId, roomId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("rooms/:roomId/messages")
+  createMessage(
+    @Req() req: any,
+    @Param("roomId") roomId: string,
+    @Body() body: Parameters<CommunityRoomsService["createMessage"]>[2],
+  ) {
+    return this.communityRoomsService.createMessage(req.user.userId, roomId, body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("messages/:messageId/report")
+  reportMessage(
+    @Req() req: any,
+    @Param("messageId") messageId: string,
+    @Body() body: Parameters<CommunityRoomsService["reportMessage"]>[2],
+  ) {
+    return this.communityRoomsService.reportMessage(req.user.userId, messageId, body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Delete("messages/:messageId")
+  deleteMessage(@Req() req: any, @Param("messageId") messageId: string) {
+    return this.communityRoomsService.deleteMessage(req.user.userId, messageId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("rooms/:roomId/members/:userId/moderate")
+  moderateMember(
+    @Req() req: any,
+    @Param("roomId") roomId: string,
+    @Param("userId") userId: string,
+    @Body() body: Parameters<CommunityRoomsService["moderateMember"]>[3],
+  ) {
+    return this.communityRoomsService.moderateMember(req.user.userId, roomId, userId, body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Patch("rooms/:roomId/status")
+  updateRoomStatus(
+    @Req() req: any,
+    @Param("roomId") roomId: string,
+    @Body() body: Parameters<CommunityRoomsService["updateRoomStatus"]>[2],
+  ) {
+    return this.communityRoomsService.updateRoomStatus(req.user.userId, roomId, body);
   }
 }

@@ -17,8 +17,11 @@ model User {
   agentConfig                 AgentConfig?
   agentSignals                AgentSignal[]
   communityBadges             CommunityBadge[]
+  communityMemberships        CommunityMembership[]
+  communityMessages           CommunityMessage[]
   communityProfile            CommunityProfile?
   communityRoles              CommunityRole[]
+  communityModerationReports  CommunityModerationReport[]
   communityVisibilitySettings CommunityVisibilitySettings?
   communityBenefitRedemptions CommunityBenefitRedemption[]
   tasteMemorySettings         ListenerTasteMemorySettings?
@@ -164,6 +167,85 @@ model CommunityBenefitRedemption {
   @@index([benefitRuleId, redemptionStatus])
 }
 
+model CommunityRoom {
+  id               String                       @id @default(uuid())
+  roomType         String
+  ownerType        String
+  ownerId          String
+  artistId         String?
+  title            String
+  description      String?                      @db.Text
+  accessPolicyJson Json?
+  status           String                       @default("active")
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
+  artist           Artist?                      @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  memberships      CommunityMembership[]
+  messages         CommunityMessage[]
+  reports          CommunityModerationReport[]
+
+  @@unique([roomType, ownerType, ownerId], name: "CommunityRoom_identity")
+  @@index([artistId, status])
+  @@index([ownerType, ownerId, status])
+  @@index([roomType, status])
+}
+
+model CommunityMembership {
+  id         String        @id @default(uuid())
+  roomId     String
+  userId     String
+  role       String        @default("member")
+  sourceType String        @default("manual")
+  status     String        @default("active")
+  joinedAt   DateTime      @default(now())
+  endedAt    DateTime?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  room       CommunityRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId], name: "CommunityMembership_identity")
+  @@index([userId, status])
+  @@index([roomId, status])
+}
+
+model CommunityMessage {
+  id          String                       @id @default(uuid())
+  roomId      String
+  authorId    String
+  body        String                       @db.Text
+  messageType String                       @default("message")
+  status      String                       @default("visible")
+  createdAt   DateTime                     @default(now())
+  updatedAt   DateTime                     @updatedAt
+  deletedAt   DateTime?
+  room        CommunityRoom                @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  author      User                         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  reports     CommunityModerationReport[]
+
+  @@index([roomId, status, createdAt])
+  @@index([authorId, createdAt])
+  @@index([messageType])
+}
+
+model CommunityModerationReport {
+  id             String            @id @default(uuid())
+  roomId         String
+  messageId      String?
+  reporterUserId String
+  reason         String
+  status         String            @default("open")
+  createdAt      DateTime          @default(now())
+  resolvedAt     DateTime?
+  room           CommunityRoom     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  message        CommunityMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  reporter       User              @relation(fields: [reporterUserId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, status])
+  @@index([messageId, status])
+  @@index([reporterUserId, createdAt])
+}
+
 model SignupFaucetAttempt {
   id            String   @id @default(uuid())
   userId        String
@@ -214,6 +296,7 @@ model Artist {
   rightsUpgradeRequests     ReleaseRightsUpgradeRequest[]
   showCampaigns             ShowCampaign[]
   communityBenefitRules     CommunityBenefitRule[]
+  communityRooms            CommunityRoom[]
   trustedSourceLinks        TrustedSourceArtistLink[]
   trustedSourceLinkRequests TrustedSourceLinkRequest[]
 

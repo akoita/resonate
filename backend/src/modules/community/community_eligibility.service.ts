@@ -28,6 +28,10 @@ type EvaluationResult = {
 export class CommunityEligibilityService {
   constructor(private readonly eventBus: EventBus) {}
 
+  async evaluateAccessPolicy(userId: string, rawPolicy: Prisma.JsonValue): Promise<EvaluationResult> {
+    return this.evaluatePolicy(userId, rawPolicy);
+  }
+
   async listMyBadges(userId: string) {
     const badges = await prisma.communityBadge.findMany({
       where: { userId, revokedAt: null },
