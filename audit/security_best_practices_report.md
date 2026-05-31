@@ -500,3 +500,52 @@ rg -n 'rawQuery|executeRaw|\$queryRaw|JSON\.parse|eval\(' backend/src/modules/sh
 rg -n 'dangerouslySetInnerHTML|innerHTML|document\.cookie|setCookie|httpOnly.*false|eval\(' web/src/components/shows web/src/components/home web/src/app/shows web/src/lib/shows.ts web/src/app/page.tsx
 rg -n 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*PASSWORD|NEXT_PUBLIC_.*PRIVATE|NEXT_PUBLIC_.*TOKEN' web/src/components/shows web/src/components/home web/src/app/shows web/src/lib/shows.ts web/src/app/page.tsx
 ```
+
+## Shows Campaign Visual Sets - 2026-06-01
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/prisma/schema.prisma`
+- `backend/prisma/migrations/20260601003000_show_campaign_visual_sets/migration.sql`
+- `backend/src/modules/shows/shows.controller.ts`
+- `backend/src/modules/shows/shows.service.ts`
+- `backend/src/tests/shows.service.integration.spec.ts`
+- `web/src/app/page.tsx`
+- `web/src/app/shows/[campaignId]/page.tsx`
+- `web/src/components/shows/CampaignCard.tsx`
+- `web/src/components/shows/CampaignDraftForm.tsx`
+- `web/src/components/shows/CampaignHero.tsx`
+- `web/src/lib/shows.ts`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none introduced.
+- Low: none introduced.
+
+### Notes
+
+- Multi-file gallery upload remains restricted to authenticated artist, admin,
+  and operator roles and still reuses campaign mutation ownership checks.
+- Gallery visual reads are public campaign presentation assets, but storage
+  URIs remain private and are not returned to clients or analytics payloads.
+- Accepted MIME types remain JPEG, PNG, and WebP with the existing
+  `SHOWS_VISUAL_MAX_BYTES` cap applied per uploaded file.
+- The new visual-set analytics payload records slot/category and gallery count
+  only; raw image bytes, storage URIs, captions, credits, and public URLs remain
+  excluded from analytics and warehouse facts.
+- No raw SQL, hardcoded secrets, unsafe deserialization, direct HTML injection,
+  cookie handling, or public secret environment variables were introduced.
+
+### Commands Run
+
+```bash
+rg 'password|secret|api_key|private_key' backend/src/modules/shows backend/src/tests/shows.service.integration.spec.ts --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/shows backend/src/tests/shows.service.integration.spec.ts
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch|@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/shows/shows.controller.ts
+rg 'JSON\.parse|eval\(' backend/src/modules/shows backend/src/tests/shows.service.integration.spec.ts
+rg 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/app/page.tsx 'web/src/app/shows/[campaignId]/page.tsx' web/src/components/shows web/src/lib/shows.ts
+```

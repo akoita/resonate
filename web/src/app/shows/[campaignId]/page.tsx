@@ -26,7 +26,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const title = campaignDisplayTitle(campaign);
   const description = campaign.tagline;
-  const image = campaign.cardImage || campaign.heroImage;
+  const image = campaign.cardImage || campaign.heroImage || campaign.visuals[0]?.url;
   return {
     title,
     description,
@@ -70,6 +70,9 @@ export default async function CampaignDetailPage({ params }: Props) {
   const tiers = campaign.tiers.length > 0
     ? campaign.tiers
     : defaultTiers(campaign.currency);
+  const galleryVisuals = campaign.visuals
+    .filter((visual) => visual.role === "gallery")
+    .slice(0, 6);
 
   return (
     <main className="shows-surface shows-page">
@@ -82,6 +85,21 @@ export default async function CampaignDetailPage({ params }: Props) {
 
         <CampaignHero campaign={campaign} />
         <CampaignOperatorPanel campaign={campaign} />
+
+        {galleryVisuals.length > 0 ? (
+          <section className="show-detail__visual-story" aria-label="Campaign visuals">
+            {galleryVisuals.map((visual, index) => (
+              <figure
+                key={visual.id}
+                className={`show-detail__visual-frame show-detail__visual-frame--${index + 1}`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- campaign visuals are dynamic backend media. */}
+                <img src={visual.url} alt="" loading="lazy" />
+                {visual.caption ? <figcaption>{visual.caption}</figcaption> : null}
+              </figure>
+            ))}
+          </section>
+        ) : null}
 
         <section className="show-detail__snapshot" aria-label="Campaign snapshot">
           <article className="show-detail__signal-card show-detail__signal-card--primary">

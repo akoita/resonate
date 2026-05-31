@@ -27,11 +27,12 @@ backend campaign state, pledge receipts, and a campaign-specific escrow
 contract. The campaign trust model and fund-release policy are defined in
 [Show Campaign Trust And Escrow Policy](../rfc/show-campaign-trust-escrow.md).
 
-Campaign creators can now attach promotional visuals to draft campaigns:
-a full-width hero image for the public campaign page and a preview/card image
-for compact campaign listings, home/event modules, and social link previews.
-When a compact preview is not supplied, the UI reuses the hero visual with a
-safe crop and falls back to the generated concert-card atmosphere.
+Campaign creators can now attach a promotional visual set to draft campaigns:
+a full-width hero image for the public campaign page, a preview/card image for
+compact campaign listings, and additional gallery visuals that form the
+campaign's visual story on the detail page. When a compact preview is not
+supplied, the UI reuses the hero or gallery visual with a safe crop and falls
+back to the generated concert-card atmosphere only as a last resort.
 
 ## Who It Is For
 
@@ -115,9 +116,9 @@ Positioning:
 | --- | --- | --- |
 | Home campaign hero | implemented | Featured campaign card links into the Shows route. |
 | `/shows` | partial | Campaign explorer reads the backend Shows API and falls back to three seeded examples for local/offline demos. Uploaded campaign preview visuals appear on campaign cards when available. |
-| `/shows/create` | partial | Authenticated artists, admins, and operators can create draft escrow campaigns with campaign terms, evidence references, pledge tiers, and promotional hero/preview visuals. Active escrow campaign drafts must select a declared catalog artist credit with at least one ready or published release, so the public subject matches the public catalog Artists view instead of the uploader profile. The public campaign title is the fan-facing identity used on cards, heroes, breadcrumbs, and new campaign slugs; for normal artists, platform artist identity and beneficiary wallet are still derived from the artist profile for authority and payout safety. Operators select from catalog artist credits and still need review-gated authority before activation. |
-| `/shows/:slug/edit` | partial | Draft campaigns can be edited before activation, including public campaign title/copy, promotional visuals, campaign terms, authority evidence reference, beneficiary wallet, payment token, and pledge tiers. |
-| `/shows/sennarin-paris` | partial | Detail page reads the backend Shows API by slug with seeded fallback, shows funding progress, signal tiers, and how-it-works copy, and uses the uploaded hero visual plus campaign image metadata for large social previews when available. |
+| `/shows/create` | partial | Authenticated artists, admins, and operators can create draft escrow campaigns with campaign terms, evidence references, pledge tiers, a hero visual, a compact preview visual, and gallery visuals. Active escrow campaign drafts must select a declared catalog artist credit with at least one ready or published release, so the public subject matches the public catalog Artists view instead of the uploader profile. The public campaign title is the fan-facing identity used on cards, heroes, breadcrumbs, and new campaign slugs; for normal artists, platform artist identity and beneficiary wallet are still derived from the artist profile for authority and payout safety. Operators select from catalog artist credits and still need review-gated authority before activation. |
+| `/shows/:slug/edit` | partial | Draft campaigns can be edited before activation, including public campaign title/copy, promotional visual set, campaign terms, authority evidence reference, beneficiary wallet, payment token, and pledge tiers. |
+| `/shows/sennarin-paris` | partial | Detail page reads the backend Shows API by slug with seeded fallback, shows funding progress, signal tiers, and how-it-works copy, and uses the uploaded hero visual, gallery mosaic, and campaign image metadata for large social previews when available. |
 | Escrow contract | partial | `ShowCampaignEscrow.sol` now exists with threshold, refund, booking, fulfillment, and release-gating unit/fuzz/invariant/formal coverage. Deployment now emits JSON, `.remote.env`, and ABI handoffs; production activation still needs the promoted escrow address plus per-campaign `contractCampaignId` wiring. |
 | Pledge flow | partial | Backend pledge intent, transaction confirmation, refund confirmation, and authenticated receipt reads are implemented. The detail page lets connected fans select a tier, create a receipt-ready pledge intent, execute the ERC-20 approval plus escrow pledge through the smart account, attach the mined transaction to the backend receipt, see their latest campaign pledge, and claim refunds when the campaign/pledge is refund-available and linked contract call data exists. |
 | Campaign backend | partial | Prisma models exist for campaign, tier, pledge, trust, authority, release, lifecycle-event, and promotional visual state. Public read routes, visual reads, signal creation, draft escrow campaign creation/update, draft visual upload, authority request/approval/rejection/revocation/expiry, activation, pledge intent, pledge confirmation, "my pledges", cancellation, booking confirmation, and fulfillment confirmation APIs are implemented. |
@@ -134,7 +135,8 @@ The placeholder copy should be removed once these production surfaces are live:
   web app before activation, active escrow campaign subjects must be declared
   catalog artist credits with ready/published catalog content, artist-owned
   drafts derive identity and payout fields from the platform artist profile,
-  promotional visuals can be uploaded for campaign pages and compact previews,
+  promotional visual sets can be uploaded for campaign pages, compact previews,
+  and campaign detail galleries,
   authority evidence can be reviewed, rejected, revoked, expired, or approved,
   and only artist-authorized campaigns can activate;
 - fans can select a tier, create a pledge intent, submit an on-chain ERC-20
@@ -169,7 +171,7 @@ donation. The fan-facing promise is:
   Postgres.
 - `backend/src/tests/shows.service.integration.spec.ts` verifies the public
   signal, draft campaign, artist-authority, activation, pledge receipt,
-  campaign visual upload/read path, cancellation, booking confirmation,
+  campaign visual set upload/read path, cancellation, booking confirmation,
   fulfillment confirmation, and listing API service behavior against
   Testcontainer Postgres.
 - `contracts/test/unit/ShowCampaignEscrow.t.sol` verifies campaign creation,
@@ -204,9 +206,10 @@ delivery slices, issue breakdown, and verification, see
 
 Visual uploads are campaign-presentation metadata, not demand signals. The
 Shows service records `shows.campaign_visuals_updated` with campaign identity,
-target geo, and `visualSlots` only. Raw image bytes, storage paths, and public
-image URLs are intentionally excluded from product analytics payloads and
-warehouse facts. Future campaign dimension exports may include boolean visual
-availability flags or sanitized public image URL fields if reporting needs
-them, but pledge/demand facts should continue to key on campaign, artist,
-geo, tier, amount, and lifecycle state rather than visual assets.
+target geo, `visualSlots`, and gallery count only. Raw image bytes, storage
+paths, captions, credits, and public image URLs are intentionally excluded from
+product analytics payloads and warehouse facts. Future campaign dimension
+exports may include boolean visual availability flags, sanitized public image
+URL fields, or visual-count fields if reporting needs them, but pledge/demand
+facts should continue to key on campaign, artist, geo, tier, amount, and
+lifecycle state rather than visual assets.

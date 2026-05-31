@@ -7,6 +7,7 @@ import { CampaignProgress } from "./CampaignProgress";
 import {
   campaignDisplayInitial,
   campaignDisplayTitle,
+  campaignVisualEndpoint,
   daysUntil,
   type Campaign,
 } from "../../lib/shows";
@@ -20,15 +21,23 @@ export function CampaignCard({ campaign }: Props) {
   // Start at 0 so SSR and first client render match (hydration-safe), then
   // recompute on mount against the real clock. Minute precision is enough.
   const [daysLeft, setDaysLeft] = useState(0);
+  const [fallbackVisualSlot, setFallbackVisualSlot] = useState<"card" | "hero" | "none">("card");
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR hydration guard
     setDaysLeft(daysUntil(campaign.deadline));
   }, [campaign.deadline]);
-
   const displayTitle = campaignDisplayTitle(campaign);
   const monogram = campaignDisplayInitial(campaign);
-  const visualImage = campaign.cardImage || campaign.heroImage;
+  const declaredVisualImage = campaign.cardImage || campaign.heroImage || campaign.visuals[0]?.url;
+  const fallbackVisualImage = !declaredVisualImage && fallbackVisualSlot !== "none"
+    ? campaignVisualEndpoint(campaign, fallbackVisualSlot)
+    : "";
+  const visualImage = declaredVisualImage || fallbackVisualImage;
   const hasImage = Boolean(visualImage);
+  const handleVisualError = () => {
+    if (declaredVisualImage) return;
+    setFallbackVisualSlot((slot) => (slot === "card" ? "hero" : "none"));
+  };
 
   return (
     <button
@@ -42,6 +51,16 @@ export function CampaignCard({ campaign }: Props) {
         data-city={campaign.city}
         style={hasImage ? { "--campaign-card-image": `url(${visualImage})` } as CSSProperties : undefined}
       >
+        {hasImage ? (
+          // eslint-disable-next-line @next/next/no-img-element -- campaign visuals are dynamic backend media, not optimized static assets.
+          <img
+            className="campaign-card__image"
+            src={visualImage}
+            alt=""
+            loading="lazy"
+            onError={handleVisualError}
+          />
+        ) : null}
         <span className="campaign-card__city-chip">{campaign.city}</span>
         {!hasImage ? (
           <span className="campaign-card__monogram" aria-hidden>

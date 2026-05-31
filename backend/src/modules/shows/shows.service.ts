@@ -121,6 +121,7 @@ type ActivateCampaignInput = {
 type CampaignVisualUploadInput = {
   hero?: Express.Multer.File | null;
   card?: Express.Multer.File | null;
+  gallery?: Express.Multer.File[] | null;
 };
 
 type PledgeIntentInput = {
@@ -373,6 +374,7 @@ export class ShowsService {
       },
       include: {
         tiers: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
+        visuals: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
       },
       orderBy: [{ createdAt: "desc" }],
       take: 100,
@@ -384,6 +386,7 @@ export class ShowsService {
       where: { slug },
       include: {
         tiers: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
+        visuals: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
         events: { orderBy: { occurredAt: "desc" }, take: 50 },
       },
     });
@@ -582,7 +585,8 @@ export class ShowsService {
     if (campaign.status !== "draft") {
       throw new BadRequestException("Campaign visuals can only be changed while the campaign is a draft");
     }
-    if (!input.hero && !input.card) {
+    const galleryFiles = input.gallery?.filter(Boolean) ?? [];
+    if (!input.hero && !input.card && galleryFiles.length === 0) {
       throw new BadRequestException("Provide at least one campaign visual");
     }
 
@@ -592,12 +596,39 @@ export class ShowsService {
       updates.heroImageStorageUri = stored.storageUri;
       updates.heroImageMimeType = stored.mimeType;
       updates.heroImageUrl = `/shows/campaigns/${campaign.id}/visuals/hero`;
+      await this.upsertCampaignVisualAsset(campaign.id, "hero", {
+        publicUrl: `/shows/campaigns/${campaign.id}/visuals/hero`,
+        storageUri: stored.storageUri,
+        mimeType: stored.mimeType,
+        sortOrder: 0,
+      });
     }
     if (input.card) {
       const stored = await this.storeCampaignVisual(campaign.id, "card", input.card);
       updates.cardImageStorageUri = stored.storageUri;
       updates.cardImageMimeType = stored.mimeType;
       updates.cardImageUrl = `/shows/campaigns/${campaign.id}/visuals/card`;
+      await this.upsertCampaignVisualAsset(campaign.id, "card", {
+        publicUrl: `/shows/campaigns/${campaign.id}/visuals/card`,
+        storageUri: stored.storageUri,
+        mimeType: stored.mimeType,
+        sortOrder: 1,
+      });
+    }
+    for (const [index, file] of galleryFiles.entries()) {
+      const visualId = randomUUID();
+      const stored = await this.storeCampaignVisual(campaign.id, `gallery-${index + 1}`, file);
+      await prisma.showCampaignVisual.create({
+        data: {
+          id: visualId,
+          campaignId: campaign.id,
+          role: "gallery",
+          publicUrl: `/shows/campaigns/${campaign.id}/visuals/${visualId}`,
+          storageUri: stored.storageUri,
+          mimeType: stored.mimeType,
+          sortOrder: 10 + index,
+        },
+      });
     }
 
     const updated = await prisma.showCampaign.update({
@@ -615,23 +646,31 @@ export class ShowsService {
               visualSlots: [
                 ...(input.hero ? ["hero"] : []),
                 ...(input.card ? ["card"] : []),
+                ...(galleryFiles.length > 0 ? ["gallery"] : []),
               ],
+              galleryVisualCount: galleryFiles.length,
             },
           },
         },
       },
-      include: { events: { orderBy: { createdAt: "desc" }, take: 5 }, tiers: true },
+      include: {
+        events: { orderBy: { createdAt: "desc" }, take: 5 },
+        tiers: true,
+        visuals: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+      },
     });
     await this.recordShowAnalytics("shows.campaign_visuals_updated", actor, updated, {
       visualSlots: [
         ...(input.hero ? ["hero"] : []),
         ...(input.card ? ["card"] : []),
+        ...(galleryFiles.length > 0 ? ["gallery"] : []),
       ],
+      galleryVisualCount: galleryFiles.length,
     });
     return updated;
   }
 
-  async getCampaignVisual(campaignIdOrSlug: string, slot: "hero" | "card") {
+  async getCampaignVisual(campaignIdOrSlug: string, visualRef: string) {
     if (!this.storageProvider) return null;
     const campaign = await prisma.showCampaign.findFirst({
       where: {
@@ -649,8 +688,24 @@ export class ShowsService {
     });
     if (!campaign) return null;
 
-    const storageUri = slot === "hero" ? campaign.heroImageStorageUri : campaign.cardImageStorageUri;
-    const mimeType = slot === "hero" ? campaign.heroImageMimeType : campaign.cardImageMimeType;
+    let storageUri = visualRef === "hero" ? campaign.heroImageStorageUri : visualRef === "card" ? campaign.cardImageStorageUri : null;
+    let mimeType = visualRef === "hero" ? campaign.heroImageMimeType : visualRef === "card" ? campaign.cardImageMimeType : null;
+    if (!storageUri || !mimeType) {
+      const visual = await prisma.showCampaignVisual.findFirst({
+        where: {
+          id: visualRef,
+          campaign: {
+            OR: [
+              { id: campaignIdOrSlug },
+              { slug: campaignIdOrSlug },
+            ],
+          },
+        },
+        select: { storageUri: true, mimeType: true },
+      });
+      storageUri = visual?.storageUri ?? null;
+      mimeType = visual?.mimeType ?? null;
+    }
     if (!storageUri || !mimeType) return null;
 
     const data = await this.storageProvider.download(storageUri);
@@ -1442,7 +1497,7 @@ export class ShowsService {
 
   private async storeCampaignVisual(
     campaignId: string,
-    slot: "hero" | "card",
+    slot: string,
     file: Express.Multer.File,
   ) {
     if (!this.storageProvider) {
@@ -1468,6 +1523,35 @@ export class ShowsService {
       storageUri: storage.uri,
       mimeType: file.mimetype,
     };
+  }
+
+  private async upsertCampaignVisualAsset(
+    campaignId: string,
+    role: "hero" | "card",
+    data: {
+      publicUrl: string;
+      storageUri: string;
+      mimeType: string;
+      sortOrder: number;
+    },
+  ) {
+    const existing = await prisma.showCampaignVisual.findFirst({
+      where: { campaignId, role },
+      select: { id: true },
+    });
+    if (existing) {
+      return prisma.showCampaignVisual.update({
+        where: { id: existing.id },
+        data,
+      });
+    }
+    return prisma.showCampaignVisual.create({
+      data: {
+        campaignId,
+        role,
+        ...data,
+      },
+    });
   }
 
   private normalizeCampaignBase(input: CampaignBaseInput, defaults: {
@@ -1796,6 +1880,7 @@ export class ShowsService {
       artistAuthorityStatus?: string | null;
       confirmationStatus?: string | null;
       visualSlots?: string[];
+      galleryVisualCount?: number;
       geo?: AnalyticsGeoDimension;
     } = {},
   ) {
@@ -1825,6 +1910,7 @@ export class ShowsService {
           artistAuthorityStatus: details.artistAuthorityStatus ?? undefined,
           confirmationStatus: details.confirmationStatus ?? undefined,
           visualSlots: details.visualSlots ?? undefined,
+          galleryVisualCount: details.galleryVisualCount ?? undefined,
           campaignCountryCode: countryCode(campaign.country),
           campaignCitySlug: slugifyParts([campaign.city]),
         },

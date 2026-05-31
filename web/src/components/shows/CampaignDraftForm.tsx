@@ -109,8 +109,12 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
   const [tiers, setTiers] = useState<TierForm[]>(() => initialTiers(campaign));
   const [heroVisualFile, setHeroVisualFile] = useState<File | null>(null);
   const [cardVisualFile, setCardVisualFile] = useState<File | null>(null);
+  const [galleryVisualFiles, setGalleryVisualFiles] = useState<File[]>([]);
   const [heroPreviewUrl, setHeroPreviewUrl] = useState(campaign?.heroImage ?? "");
   const [cardPreviewUrl, setCardPreviewUrl] = useState(campaign?.cardImage ?? "");
+  const [galleryPreviewUrls, setGalleryPreviewUrls] = useState<string[]>(
+    () => campaign?.visuals.filter((visual) => visual.role === "gallery").map((visual) => visual.url) ?? [],
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -244,6 +248,18 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
     return () => URL.revokeObjectURL(previewUrl);
   }, [campaign?.cardImage, cardVisualFile]);
 
+  useEffect(() => {
+    if (galleryVisualFiles.length === 0) {
+      setGalleryPreviewUrls(campaign?.visuals.filter((visual) => visual.role === "gallery").map((visual) => visual.url) ?? []);
+      return;
+    }
+    const previewUrls = galleryVisualFiles.map((file) => URL.createObjectURL(file));
+    setGalleryPreviewUrls(previewUrls);
+    return () => {
+      previewUrls.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
+    };
+  }, [campaign?.visuals, galleryVisualFiles]);
+
   function updateTier(index: number, patch: Partial<TierForm>) {
     setTiers((current) => current.map((tier, tierIndex) => (
       tierIndex === index ? { ...tier, ...patch } : tier
@@ -307,10 +323,11 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
       let saved = campaign
         ? await updateShowCampaignDraft({ campaign, token, draft })
         : await createShowCampaignDraft({ token, draft });
-      if (heroVisualFile || cardVisualFile) {
+      if (heroVisualFile || cardVisualFile || galleryVisualFiles.length > 0) {
         const visuals = new FormData();
         if (heroVisualFile) visuals.append("hero", heroVisualFile);
         if (cardVisualFile) visuals.append("card", cardVisualFile);
+        galleryVisualFiles.forEach((file) => visuals.append("gallery", file));
         saved = await uploadShowCampaignVisuals({ campaign: saved, token, visuals });
       }
       router.push(`/shows/${saved.id}`);
@@ -445,6 +462,26 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
             </span>
           </label>
         </div>
+        <label className="shows-create__visual-upload shows-create__visual-upload--gallery">
+          <span>Gallery visuals</span>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            onChange={(event) => setGalleryVisualFiles(Array.from(event.target.files ?? []).slice(0, 8))}
+          />
+          <span className="shows-create__visual-gallery">
+            {galleryPreviewUrls.length > 0 ? galleryPreviewUrls.slice(0, 8).map((previewUrl, index) => (
+              <span
+                key={`${previewUrl}-${index}`}
+                className="shows-create__visual-gallery-item"
+                style={{ backgroundImage: `url(${previewUrl})` }}
+              />
+            )) : (
+              <span className="shows-create__visual-gallery-empty">Visual story set</span>
+            )}
+          </span>
+        </label>
       </div>
 
       <div className="shows-create__panel">
