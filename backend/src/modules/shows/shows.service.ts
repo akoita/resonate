@@ -414,6 +414,9 @@ export class ShowsService {
 
   async createDraftCampaign(actor: Actor, input: CreateCampaignInput) {
     const artistIdentity = await this.resolveCampaignArtistIdentity(actor, input.artistId ?? null);
+    const beneficiaryArtistIdentity = isPrivilegedActor(actor)
+      ? artistIdentity
+      : await this.resolveActorArtistProfile(actor);
     const normalized = this.normalizeCampaignBase(
       this.withPlatformArtistIdentity(input, artistIdentity),
       {
@@ -437,7 +440,7 @@ export class ShowsService {
     const authorityStatus = input.artistAuthorityStatus
       ? assertShowArtistAuthorityStatus(input.artistAuthorityStatus)
       : "none";
-    const beneficiary = this.normalizeCampaignBeneficiary(actor, artistIdentity, input);
+    const beneficiary = this.normalizeCampaignBeneficiary(actor, beneficiaryArtistIdentity, input);
     const releasePolicy = input.releasePolicy
       ? assertShowCampaignReleasePolicy(input.releasePolicy)
       : "refund_only_until_booking";
@@ -494,6 +497,9 @@ export class ShowsService {
     }
 
     const artistIdentity = await this.resolveCampaignArtistIdentity(actor, input.artistId ?? campaign.artistId);
+    const beneficiaryArtistIdentity = isPrivilegedActor(actor)
+      ? artistIdentity
+      : await this.resolveActorArtistProfile(actor);
     const normalized = this.normalizeCampaignBase(
       this.withPlatformArtistIdentity(input, artistIdentity),
       {
@@ -507,7 +513,7 @@ export class ShowsService {
       throw new BadRequestException("depositReleaseBps must be between 0 and 3000");
     }
 
-    const beneficiary = this.normalizeCampaignBeneficiary(actor, artistIdentity, input, {
+    const beneficiary = this.normalizeCampaignBeneficiary(actor, beneficiaryArtistIdentity, input, {
       address: campaign.beneficiaryAddress,
       type: campaign.beneficiaryType,
     });
@@ -565,7 +571,9 @@ export class ShowsService {
       throw new BadRequestException("Use the authority review endpoints for terminal authority states");
     }
 
-    const artistIdentity = await this.campaignArtistIdentity(campaign.artistId);
+    const artistIdentity = isPrivilegedActor(actor)
+      ? await this.campaignArtistIdentity(campaign.artistId)
+      : await this.resolveActorArtistProfile(actor);
     const beneficiary = this.normalizeCampaignBeneficiary(actor, artistIdentity, input, {
       address: campaign.beneficiaryAddress,
       type: campaign.beneficiaryType,
@@ -1415,13 +1423,22 @@ export class ShowsService {
       if (!artist) {
         throw new BadRequestException("artistId must reference an existing artist profile");
       }
-      if (!isPrivilegedActor(actor) && artist.userId !== actor.userId) {
-        throw new ForbiddenException("Campaign artist identity must match the authenticated artist profile");
+      if (!isPrivilegedActor(actor)) {
+        await this.assertActorCanManageCampaignArtist(actor, artist);
       }
       return artist;
     }
 
     if (isPrivilegedActor(actor)) return null;
+    return this.resolveActorArtistProfile(actor);
+  }
+
+  private async campaignArtistIdentity(artistId: string | null) {
+    if (!artistId) return null;
+    return prisma.artist.findUnique({ where: { id: artistId } });
+  }
+
+  private async resolveActorArtistProfile(actor: Actor) {
     const artist = await prisma.artist.findUnique({ where: { userId: actor.userId } });
     if (!artist) {
       throw new ForbiddenException("Artist profile or operator role is required");
@@ -1429,9 +1446,31 @@ export class ShowsService {
     return artist;
   }
 
-  private async campaignArtistIdentity(artistId: string | null) {
-    if (!artistId) return null;
-    return prisma.artist.findUnique({ where: { id: artistId } });
+  private async assertActorCanManageCampaignArtist(actor: Actor, artist: Artist) {
+    if (artist.userId === actor.userId) return;
+
+    const managedCredit = await prisma.release.findFirst({
+      where: {
+        artist: { userId: actor.userId },
+        status: { in: SHOWS_CATALOG_CONTENT_STATUSES },
+        OR: [
+          {
+            artistCredits: {
+              some: {
+                artistId: artist.id,
+                role: { in: ["main", "primary"] },
+              },
+            },
+          },
+          { primaryArtist: { equals: artist.displayName, mode: "insensitive" } },
+        ],
+      },
+      select: { id: true },
+    });
+
+    if (!managedCredit) {
+      throw new ForbiddenException("Campaign artist identity must be in your managed catalog");
+    }
   }
 
   private async assertCampaignCatalogSubject(
@@ -1454,11 +1493,27 @@ export class ShowsService {
   private async assertArtistHasCatalogContent(artist: Pick<Artist, "id" | "displayName">) {
     const release = await prisma.release.findFirst({
       where: {
-        artistId: artist.id,
         status: { in: SHOWS_CATALOG_CONTENT_STATUSES },
         OR: [
-          { primaryArtist: null },
-          { primaryArtist: "" },
+          {
+            artistCredits: {
+              some: {
+                artistId: artist.id,
+                role: { in: ["main", "primary"] },
+              },
+            },
+          },
+          {
+            AND: [
+              { artistId: artist.id },
+              {
+                OR: [
+                  { primaryArtist: null },
+                  { primaryArtist: "" },
+                ],
+              },
+            ],
+          },
           { primaryArtist: { equals: artist.displayName, mode: "insensitive" } },
         ],
       },
@@ -1477,6 +1532,14 @@ export class ShowsService {
       where: {
         status: { in: SHOWS_CATALOG_CONTENT_STATUSES },
         OR: [
+          {
+            artistCredits: {
+              some: {
+                displayName: { equals: artistName, mode: "insensitive" },
+                role: { in: ["main", "primary"] },
+              },
+            },
+          },
           { primaryArtist: { equals: artistName, mode: "insensitive" } },
           {
             AND: [
@@ -1522,7 +1585,10 @@ export class ShowsService {
       : undefined;
 
     if (artist && !isPrivilegedActor(actor)) {
-      const payoutAddress = validateOptionalAddress(artist.payoutAddress, "artist.payoutAddress")!;
+      const payoutAddress = validateOptionalAddress(artist.payoutAddress, "artist.payoutAddress");
+      if (!payoutAddress) {
+        throw new BadRequestException("Authenticated artist profile must have a payout address");
+      }
       if (requestedAddress && requestedAddress !== payoutAddress) {
         throw new BadRequestException(
           "beneficiaryAddress must match the authenticated artist payout address; update the artist profile or ask an operator to review an override",
@@ -1561,9 +1627,10 @@ export class ShowsService {
       throw new ForbiddenException("Artist-owned campaign is required");
     }
     const artist = await prisma.artist.findUnique({ where: { id: campaign.artistId } });
-    if (!artist || artist.userId !== actor.userId) {
+    if (!artist) {
       throw new ForbiddenException("Only the campaign artist or an operator can update this campaign");
     }
+    await this.assertActorCanManageCampaignArtist(actor, artist);
     return campaign;
   }
 
