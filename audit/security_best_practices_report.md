@@ -1662,3 +1662,50 @@ rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/analytics
 rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/analytics | grep -v 'Guard\|Auth'
 rg 'JSON\.parse|eval\(' backend/src/modules/analytics
 ```
+
+## Shows Campaign Identity And Catalog Subject Gate - 2026-05-31
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/shows/shows.service.ts`
+- `backend/src/tests/shows.service.integration.spec.ts`
+- `web/src/components/shows/*`
+- `web/src/app/shows/*`
+- `web/src/components/home/FeaturedCampaignHero.tsx`
+- `web/src/lib/shows.ts`
+- `docs/features/README.md`
+- `docs/features/resonate_shows.md`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none introduced.
+- Low: none introduced.
+
+### Notes
+
+- Active escrow campaign drafts now require a selected platform artist with at
+  least one ready or published release, reducing impersonation and same-name
+  ambiguity before pledge collection.
+- Public campaign display title is now separated from the platform artist
+  profile used for authority and payout safety.
+- Shows mutation endpoints remain behind existing JWT and role guards; the new
+  catalog-content gate runs server-side before draft creation or update.
+- The changed frontend surfaces render campaign and artist data through React
+  nodes and CSS background images; no direct HTML injection, client secrets, or
+  cookie handling were introduced.
+
+### Commands Run
+
+```bash
+rg 'password|secret|api_key|private_key' backend/src/modules/shows backend/src/tests/shows.service.integration.spec.ts --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/shows backend/src/tests/shows.service.integration.spec.ts
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch|@Body\(\)|@Query\(\)|@Param\(' backend/src/modules/shows backend/src/modules/artist backend/src/modules/catalog
+rg 'JSON\.parse|eval\(' backend/src/modules/shows backend/src/tests/shows.service.integration.spec.ts
+rg 'dangerouslySetInnerHTML|innerHTML' web/src/components/shows web/src/app/shows web/src/components/home/FeaturedCampaignHero.tsx web/src/lib/shows.ts
+rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/components/shows web/src/app/shows web/src/components/home/FeaturedCampaignHero.tsx web/src/lib/shows.ts
+rg 'document\.cookie|setCookie|httpOnly.*false' web/src/components/shows web/src/app/shows web/src/components/home/FeaturedCampaignHero.tsx web/src/lib/shows.ts
+```

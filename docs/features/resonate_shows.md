@@ -109,8 +109,8 @@ Positioning:
 | --- | --- | --- |
 | Home campaign hero | implemented | Featured campaign card links into the Shows route. |
 | `/shows` | partial | Campaign explorer reads the backend Shows API and falls back to three seeded examples for local/offline demos. |
-| `/shows/create` | partial | Authenticated artists, admins, and operators can create draft escrow campaigns with campaign terms, evidence references, and pledge tiers. For normal artists, artist identity and beneficiary wallet are derived from the platform artist profile; operators can prepare off-platform drafts that remain review-gated before activation. |
-| `/shows/:slug/edit` | partial | Draft campaigns can be edited before activation, including campaign terms, authority evidence reference, beneficiary wallet, payment token, and pledge tiers. |
+| `/shows/create` | partial | Authenticated artists, admins, and operators can create draft escrow campaigns with campaign terms, evidence references, and pledge tiers. Active escrow campaign drafts must select an existing platform artist with at least one ready or published release, so the public subject can be inspected through catalog context instead of free-text naming. The public campaign title is the fan-facing identity used on cards, heroes, breadcrumbs, and new campaign slugs; for normal artists, platform artist identity and beneficiary wallet are still derived from the artist profile for authority and payout safety. Operators select from catalog artists and still need review-gated authority before activation. |
+| `/shows/:slug/edit` | partial | Draft campaigns can be edited before activation, including public campaign title/copy, campaign terms, authority evidence reference, beneficiary wallet, payment token, and pledge tiers. |
 | `/shows/sennarin-paris` | partial | Detail page reads the backend Shows API by slug with seeded fallback, and shows funding progress, signal tiers, and how-it-works copy. |
 | Escrow contract | partial | `ShowCampaignEscrow.sol` now exists with threshold, refund, booking, fulfillment, and release-gating unit/fuzz/invariant/formal coverage. Deployment now emits JSON, `.remote.env`, and ABI handoffs; production activation still needs the promoted escrow address plus per-campaign `contractCampaignId` wiring. |
 | Pledge flow | partial | Backend pledge intent, transaction confirmation, refund confirmation, and authenticated receipt reads are implemented. The detail page lets connected fans select a tier, create a receipt-ready pledge intent, execute the ERC-20 approval plus escrow pledge through the smart account, attach the mined transaction to the backend receipt, see their latest campaign pledge, and claim refunds when the campaign/pledge is refund-available and linked contract call data exists. |
@@ -125,10 +125,11 @@ The placeholder copy should be removed once these production surfaces are live:
 - fan-proposed demand signals can be created through the backend API without
   implying artist approval;
 - draft escrow campaigns and pledge tiers can be created and edited from the
-  web app before activation, artist-owned drafts derive identity and payout
-  fields from the platform artist profile, authority evidence can be reviewed,
-  rejected, revoked, expired, or approved, and only artist-authorized campaigns
-  can activate;
+  web app before activation, active escrow campaign subjects must be existing
+  platform artists with ready/published catalog content, artist-owned drafts
+  derive identity and payout fields from the platform artist profile, authority
+  evidence can be reviewed, rejected, revoked, expired, or approved, and only
+  artist-authorized campaigns can activate;
 - fans can select a tier, create a pledge intent, submit an on-chain ERC-20
   approval plus escrow pledge through the smart account, confirm the mined
   transaction, and receive a durable backend receipt;

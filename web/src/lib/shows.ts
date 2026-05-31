@@ -30,6 +30,7 @@ export interface Campaign {
   beneficiaryAddress?: string | null;
   beneficiaryType?: string | null;
   artistName: string;
+  artistId?: string | null;
   artistSlug: string;
   title: string;
   city: string;
@@ -58,6 +59,23 @@ export interface Campaign {
   // Short pitch shown on the hero + detail page.
   tagline: string;
   tiers: CampaignTier[];
+}
+
+export function campaignDisplayTitle(campaign: Pick<Campaign, "title" | "artistName" | "city">): string {
+  return campaign.title?.trim() || `${campaign.artistName} in ${campaign.city}`;
+}
+
+export function campaignDisplayInitial(campaign: Pick<Campaign, "title" | "artistName" | "city">): string {
+  return (campaignDisplayTitle(campaign)[0] ?? "?").toUpperCase();
+}
+
+export function campaignRouteCode(campaign: Pick<Campaign, "title" | "city">): string {
+  const titleCode = slugify(campaign.title || "")
+    .replace(new RegExp(`-?in-${slugify(campaign.city)}$`), "")
+    .slice(0, 3)
+    .toUpperCase();
+  const cityCode = campaign.city.slice(0, 3).toUpperCase();
+  return `${titleCode || "SHW"}-${cityCode}`;
 }
 
 export type PledgeContractCall = {
@@ -150,6 +168,7 @@ const SEPOLIA_ETHERSCAN = `${SHOWS_EXPLORER_BASE_URL}/${SEPOLIA_REVENUE_ESCROW}`
 type BackendShowCampaign = {
   id: string;
   slug: string;
+  artistId?: string | null;
   artistDisplayName: string;
   title: string;
   city: string;
@@ -640,6 +659,7 @@ function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign 
     beneficiaryAddress: campaign.beneficiaryAddress ?? null,
     beneficiaryType: campaign.beneficiaryType ?? null,
     artistName: campaign.artistDisplayName,
+    artistId: campaign.artistId ?? null,
     artistSlug: slugify(campaign.artistDisplayName),
     title: campaign.title,
     city: campaign.city,

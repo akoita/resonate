@@ -2,7 +2,14 @@
 
 import type { CSSProperties } from "react";
 import Link from "next/link";
-import { Campaign, daysUntil, formatMoneyCompact, progressRatio } from "../../lib/shows";
+import {
+  Campaign,
+  campaignDisplayInitial,
+  campaignDisplayTitle,
+  daysUntil,
+  formatMoneyCompact,
+  progressRatio,
+} from "../../lib/shows";
 
 interface FeaturedCampaignHeroProps { campaign: Campaign; }
 
@@ -13,7 +20,8 @@ export function FeaturedCampaignHero({ campaign }: FeaturedCampaignHeroProps) {
   const raised = formatMoneyCompact(campaign.raisedCents, campaign.currency);
   const goal = formatMoneyCompact(campaign.goalCents, campaign.currency);
   const urgent = days <= 7;
-  const initial = (campaign.artistName ?? "?")[0].toUpperCase();
+  const displayTitle = campaignDisplayTitle(campaign);
+  const initial = campaignDisplayInitial(campaign);
   // Derive a hue from the initial letter for per-artist colour variety
   const hue = (initial.charCodeAt(0) * 47) % 360;
 
@@ -35,7 +43,7 @@ export function FeaturedCampaignHero({ campaign }: FeaturedCampaignHeroProps) {
         </div>
 
         {/* Big name */}
-        <h2 className="fch-name">{campaign.artistName}</h2>
+        <h2 className="fch-name">{displayTitle}</h2>
 
         {/* Location line */}
         <p className="fch-where">
@@ -139,7 +147,7 @@ export function FeaturedCampaignHero({ campaign }: FeaturedCampaignHeroProps) {
 
         {/* Artist label */}
         <div className="fch-art-label">
-          <span className="fch-art-name">{campaign.artistName}</span>
+          <span className="fch-art-name">{displayTitle}</span>
           <span className="fch-art-city">{campaign.city?.toUpperCase()}</span>
         </div>
 

@@ -3,7 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CampaignProgress } from "./CampaignProgress";
-import { daysUntil, type Campaign } from "../../lib/shows";
+import {
+  campaignDisplayInitial,
+  campaignDisplayTitle,
+  daysUntil,
+  type Campaign,
+} from "../../lib/shows";
 
 interface Props {
   campaign: Campaign;
@@ -19,14 +24,15 @@ export function CampaignCard({ campaign }: Props) {
     setDaysLeft(daysUntil(campaign.deadline));
   }, [campaign.deadline]);
 
-  const monogram = (campaign.artistName[0] ?? "?").toUpperCase();
+  const displayTitle = campaignDisplayTitle(campaign);
+  const monogram = campaignDisplayInitial(campaign);
 
   return (
     <button
       type="button"
       className="campaign-card"
       onClick={() => router.push(`/shows/${campaign.id}`)}
-      aria-label={`Open campaign — ${campaign.artistName} in ${campaign.city}`}
+      aria-label={`Open campaign — ${displayTitle}`}
     >
       <div className="campaign-card__art" data-city={campaign.city}>
         <span className="campaign-card__city-chip">{campaign.city}</span>
@@ -36,7 +42,7 @@ export function CampaignCard({ campaign }: Props) {
       </div>
       <div className="campaign-card__body">
         <h3 className="campaign-card__title">
-          {campaign.artistName} in {campaign.city}
+          {displayTitle}
         </h3>
         {campaign.venue ? (
           <p className="campaign-card__meta">{campaign.venue}</p>

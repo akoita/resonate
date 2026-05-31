@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CampaignDraftForm } from "../../../../components/shows/CampaignDraftForm";
-import { getCampaign } from "../../../../lib/shows";
+import { campaignDisplayTitle, getCampaign } from "../../../../lib/shows";
 
 interface Props {
   params: Promise<{ campaignId: string }>;
@@ -13,6 +13,7 @@ export default async function EditShowCampaignPage({ params }: Props) {
   if (!campaign) {
     notFound();
   }
+  const displayTitle = campaignDisplayTitle(campaign);
 
   return (
     <main className="shows-surface shows-page">
@@ -20,7 +21,7 @@ export default async function EditShowCampaignPage({ params }: Props) {
         <nav className="show-detail__breadcrumb" aria-label="Breadcrumb">
           <Link href="/shows">Shows</Link>
           <span aria-hidden>/</span>
-          <Link href={`/shows/${campaign.id}`}>{campaign.artistName} in {campaign.city}</Link>
+          <Link href={`/shows/${campaign.id}`}>{displayTitle}</Link>
           <span aria-hidden>/</span>
           <span>Edit</span>
         </nav>
