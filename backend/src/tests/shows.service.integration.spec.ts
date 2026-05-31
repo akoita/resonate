@@ -6,6 +6,7 @@ const TEST_PREFIX = `shows_service_${Date.now()}_`;
 const userId = `${TEST_PREFIX}artist_user`;
 const listenerId = `${TEST_PREFIX}listener_user`;
 const artistId = `${TEST_PREFIX}artist`;
+const creditedArtistId = `${TEST_PREFIX}credited_artist`;
 const releaseId = `${TEST_PREFIX}release`;
 const creditedReleaseId = `${TEST_PREFIX}credited_release`;
 const artistWallet = "0x" + "7".repeat(40);
@@ -117,6 +118,16 @@ describe("ShowsService integration", () => {
         payoutAddress: "0x" + "4".repeat(40),
       },
     });
+    await prisma.artist.create({
+      data: {
+        id: creditedArtistId,
+        userId: null,
+        displayName: `${TEST_PREFIX}Declared Credit`,
+        payoutAddress: null,
+        profileType: "public_artist",
+        claimStatus: "unclaimed",
+      },
+    });
     await prisma.release.create({
       data: {
         id: releaseId,
@@ -133,6 +144,14 @@ describe("ShowsService integration", () => {
         title: `${TEST_PREFIX}Declared Credit Release`,
         status: "ready",
         primaryArtist: `${TEST_PREFIX}Declared Credit`,
+        artistCredits: {
+          create: {
+            artistId: creditedArtistId,
+            role: "main",
+            displayName: `${TEST_PREFIX}Declared Credit`,
+            sortOrder: 0,
+          },
+        },
       },
     });
   });
@@ -157,7 +176,7 @@ describe("ShowsService integration", () => {
       where: { artistDisplayName: { startsWith: TEST_PREFIX } },
     }).catch(() => {});
     await prisma.release.deleteMany({ where: { id: { in: [releaseId, creditedReleaseId] } } }).catch(() => {});
-    await prisma.artist.deleteMany({ where: { id: { in: [artistId, otherArtistId] } } }).catch(() => {});
+    await prisma.artist.deleteMany({ where: { id: { in: [artistId, otherArtistId, creditedArtistId] } } }).catch(() => {});
     await prisma.user.deleteMany({
       where: { id: { in: [userId, listenerId, operatorUserId, otherArtistUserId] } },
     }).catch(() => {});
@@ -285,7 +304,39 @@ describe("ShowsService integration", () => {
         deadline: futureIso(30),
         goalAmountUnits: "2500000",
       },
-    )).rejects.toThrow("Campaign artist identity must match");
+    )).rejects.toThrow("Campaign artist identity must be in your managed catalog");
+
+    const managedCreditDraft = await service.createDraftCampaign(
+      { userId, role: "artist" },
+      {
+        artistId: creditedArtistId,
+        artistDisplayName: "Ignored Manager Input",
+        title: `${TEST_PREFIX}Declared Credit in Lyon`,
+        city: "Lyon",
+        country: "FR",
+        deadline: futureIso(30),
+        goalAmountUnits: "2500000",
+        beneficiaryAddress: artistWallet,
+        beneficiaryType: "wallet",
+      },
+    );
+
+    expect(managedCreditDraft.artistId).toBe(creditedArtistId);
+    expect(managedCreditDraft.artistDisplayName).toBe(`${TEST_PREFIX}Declared Credit`);
+    expect(managedCreditDraft.beneficiaryAddress).toBe(artistWallet.toLowerCase());
+
+    const managedCreditAuthority = await service.requestAuthority(
+      { userId, role: "artist" },
+      managedCreditDraft.id,
+      {
+        beneficiaryAddress: artistWallet,
+        beneficiaryType: "wallet",
+        authorityEvidenceBundleId: `${TEST_PREFIX}managed-credit-authority`,
+      },
+    );
+
+    expect(managedCreditAuthority.artistAuthorityStatus).toBe("artist_acknowledged");
+    expect(managedCreditAuthority.beneficiaryAddress).toBe(artistWallet.toLowerCase());
 
     await expect(service.createDraftCampaign(
       { userId, role: "artist" },

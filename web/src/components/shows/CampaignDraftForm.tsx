@@ -7,7 +7,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import {
   getArtistMe,
-  listArtistReleases,
+  listMyReleases,
   listPublishedReleases,
   type ArtistProfile,
 } from "../../lib/api";
@@ -114,7 +114,8 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
   const selectedArtistCandidate = artistCandidates.find((candidate) => candidate.optionId === selectedArtistId);
   const canSubmit = status === "authenticated"
     && Boolean(token)
-    && (isPrivileged ? Boolean(selectedArtistCandidate) : artistLoaded && artistHasCatalogContent === true);
+    && Boolean(selectedArtistCandidate)
+    && (isPrivileged || (artistLoaded && artistHasCatalogContent === true));
   const needsArtistProfile = status === "authenticated" && artistLoaded && !artist && !isPrivileged;
   const needsArtistCatalogContent = status === "authenticated"
     && !isPrivileged
@@ -139,15 +140,8 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
         if (!active) return;
         setArtist(profile);
         if (profile && !isPrivileged) {
-          setArtistDisplayName(profile.displayName || "");
           setBeneficiaryAddress(profile.payoutAddress || "");
           setPaymentTokenAddress("");
-          const releases = await listArtistReleases(profile.id, token).catch(() => []);
-          if (active) {
-            setArtistHasCatalogContent(
-              releases.some((release) => PUBLIC_CATALOG_STATUSES.has(release.status)),
-            );
-          }
           return;
         }
         setArtistHasCatalogContent(null);
@@ -170,18 +164,26 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
   }, [isPrivileged, status, token]);
 
   useEffect(() => {
-    if (!isPrivileged || status !== "authenticated") {
+    if (status !== "authenticated" || !token) {
       setArtistCandidates([]);
       setArtistCandidatesLoaded(false);
       return;
     }
 
     let active = true;
-    listPublishedReleases(100)
+    const releasesPromise = isPrivileged
+      ? listPublishedReleases(100)
+      : listMyReleases(token);
+
+    releasesPromise
       .then((releases) => {
         if (!active) return;
-        const candidates = buildCatalogArtistCandidates(releases);
+        const visibleReleases = releases.filter((release) => PUBLIC_CATALOG_STATUSES.has(release.status));
+        const candidates = buildCatalogArtistCandidates(visibleReleases);
         setArtistCandidates(candidates);
+        if (!isPrivileged) {
+          setArtistHasCatalogContent(candidates.length > 0);
+        }
         setSelectedArtistId((current) => {
           if (current && candidates.some((candidate) => candidate.optionId === current)) return current;
           const byLegacyProfileId = current
@@ -197,7 +199,10 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
         });
       })
       .catch(() => {
-        if (active) setArtistCandidates([]);
+        if (active) {
+          setArtistCandidates([]);
+          if (!isPrivileged) setArtistHasCatalogContent(false);
+        }
       })
       .finally(() => {
         if (active) setArtistCandidatesLoaded(true);
@@ -206,13 +211,13 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
     return () => {
       active = false;
     };
-  }, [campaign?.artistName, isPrivileged, status]);
+  }, [campaign?.artistName, isPrivileged, status, token]);
 
   useEffect(() => {
-    if (!isPrivileged || !selectedArtistId) return;
+    if (!selectedArtistId) return;
     const selected = artistCandidates.find((candidate) => candidate.optionId === selectedArtistId);
     if (selected) setArtistDisplayName(selected.name);
-  }, [artistCandidates, isPrivileged, selectedArtistId]);
+  }, [artistCandidates, selectedArtistId]);
 
   function updateTier(index: number, patch: Partial<TierForm>) {
     setTiers((current) => current.map((tier, tierIndex) => (
@@ -250,8 +255,8 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
       }
 
       const draft = {
-        artistId: isPrivileged ? selectedArtistCandidate?.artistId ?? null : artist?.id ?? null,
-        artistDisplayName: (isPrivileged ? selectedArtistCandidate?.name ?? artistDisplayName : artist?.displayName ?? artistDisplayName).trim(),
+        artistId: selectedArtistCandidate?.artistId ?? null,
+        artistDisplayName: (selectedArtistCandidate?.name ?? artistDisplayName).trim(),
         title: draftTitle,
         description: description.trim() || null,
         city: city.trim(),
@@ -320,29 +325,21 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
       <div className="shows-create__panel">
         <h2>Campaign</h2>
         <label>
-          Artist {!isPrivileged ? "(from your artist profile)" : ""}
-          {isPrivileged ? (
-            <select
-              value={selectedArtistId}
-              onChange={(event) => setSelectedArtistId(event.target.value)}
-              disabled={!artistCandidatesLoaded}
-            >
-              <option value="">Select a catalog artist</option>
-              {artistCandidates.map((candidate) => (
-                <option key={candidate.optionId} value={candidate.optionId}>
-                  {candidate.name} · {candidate.releaseCount} release{candidate.releaseCount === 1 ? "" : "s"}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              value={artistDisplayName}
-              onChange={(event) => setArtistDisplayName(event.target.value)}
-              readOnly
-            />
-          )}
+          Artist {!isPrivileged ? "(from your managed catalog)" : ""}
+          <select
+            value={selectedArtistId}
+            onChange={(event) => setSelectedArtistId(event.target.value)}
+            disabled={!artistCandidatesLoaded}
+          >
+            <option value="">Select a catalog artist</option>
+            {artistCandidates.map((candidate) => (
+              <option key={candidate.optionId} value={candidate.optionId}>
+                {candidate.name} · {candidate.releaseCount} release{candidate.releaseCount === 1 ? "" : "s"}
+              </option>
+            ))}
+          </select>
         </label>
-        {isPrivileged && selectedArtistCandidate ? (
+        {selectedArtistCandidate ? (
           <div className="shows-create__artist-context">
             {selectedArtistCandidate.artworkUrl ? (
               <span

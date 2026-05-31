@@ -326,3 +326,38 @@ rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/community backend/src/te
 rg '@Controller|@Get|@Post|@Put|@Delete|@Patch|@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/community
 rg 'JSON\.parse|eval\(' backend/src/modules/community backend/src/tests/community*
 ```
+
+## Shows Managed Catalog Artist Selection Fix - 2026-05-31
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/shows/shows.service.ts`
+- `backend/src/tests/shows.service.integration.spec.ts`
+- `web/src/components/shows/CampaignDraftForm.tsx`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none introduced.
+- Low: none introduced.
+
+### Notes
+
+- Regular artist-manager users can now select campaign subjects from credited
+  artists in their managed catalog. The backend still rejects unrelated artist
+  identities and keeps the beneficiary wallet tied to the authenticated manager
+  payout profile.
+- Operators keep the global catalog selection path.
+- The fix does not introduce raw SQL, hardcoded secrets, unsafe parsing, direct
+  HTML injection, cookie handling, or new environment variables.
+
+### Commands Run
+
+```bash
+rg -n 'password|secret|api_key|private_key' backend/src/modules/shows web/src/components/shows/CampaignDraftForm.tsx --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw|JSON\.parse|eval\(' backend/src/modules/shows web/src/components/shows/CampaignDraftForm.tsx
+rg -n 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/components/shows/CampaignDraftForm.tsx
+```
