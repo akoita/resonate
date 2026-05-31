@@ -167,6 +167,7 @@ const TERMINAL_AUTHORITY_STATUSES: ShowArtistAuthorityStatus[] = [
   "revoked",
   "expired",
 ];
+const SHOWS_CATALOG_CONTENT_STATUSES = ["ready", "published"];
 
 function requireText(value: unknown, field: string): string {
   if (typeof value !== "string" || !value.trim()) {
@@ -292,6 +293,10 @@ function slugifyParts(parts: string[]) {
   return slug || `campaign-${Date.now()}`;
 }
 
+function campaignTitle(input: Pick<CampaignBaseInput, "title">, artistDisplayName: string, city: string) {
+  return optionalText(input.title) ?? `${artistDisplayName} in ${city}`;
+}
+
 function isPrivilegedActor(actor: Actor) {
   return ["admin", "operator"].includes(actor.role ?? "");
 }
@@ -375,13 +380,14 @@ export class ShowsService {
       defaultGoalAmountUnits: input.goalAmountUnits ?? "0",
       defaultChainId: input.chainId ?? defaultChainId(),
     });
-    const slug = await this.uniqueSlug(normalized.artistDisplayName, normalized.city, normalized.country);
+    const title = campaignTitle(input, normalized.artistDisplayName, normalized.city);
+    const slug = await this.uniqueSlug(title, normalized.country);
 
     const campaign = await prisma.showCampaign.create({
       data: {
         ...normalized,
         slug,
-        title: input.title?.trim() || `${normalized.artistDisplayName} in ${normalized.city}`,
+        title,
         status: "draft",
         campaignLevel: "signal",
         artistAuthorityStatus: "none",
@@ -421,6 +427,10 @@ export class ShowsService {
     if (campaignLevel === "signal") {
       throw new BadRequestException("Use /shows/signals for fan-proposed demand signals");
     }
+    if (!artistIdentity) {
+      throw new BadRequestException("active escrow campaigns must select an existing platform artist");
+    }
+    await this.assertArtistHasCatalogContent(artistIdentity.id);
 
     const depositReleaseBps = input.depositReleaseBps ?? 0;
     if (!Number.isSafeInteger(depositReleaseBps) || depositReleaseBps < 0 || depositReleaseBps > 3000) {
@@ -434,14 +444,15 @@ export class ShowsService {
     const releasePolicy = input.releasePolicy
       ? assertShowCampaignReleasePolicy(input.releasePolicy)
       : "refund_only_until_booking";
-    const slug = await this.uniqueSlug(normalized.artistDisplayName, normalized.city, normalized.country);
+    const title = campaignTitle(input, normalized.artistDisplayName, normalized.city);
+    const slug = await this.uniqueSlug(title, normalized.country);
     const tiers = this.normalizeCampaignTiers(input.tiers ?? [], normalized);
 
     const campaign = await prisma.showCampaign.create({
       data: {
         ...normalized,
         slug,
-        title: input.title?.trim() || `${normalized.artistDisplayName} in ${normalized.city}`,
+        title,
         status: "draft",
         campaignLevel,
         artistAuthorityStatus: authorityStatus,
@@ -486,6 +497,10 @@ export class ShowsService {
     }
 
     const artistIdentity = await this.resolveCampaignArtistIdentity(actor, input.artistId ?? campaign.artistId);
+    if (!artistIdentity) {
+      throw new BadRequestException("active escrow campaigns must select an existing platform artist");
+    }
+    await this.assertArtistHasCatalogContent(artistIdentity.id);
     const normalized = this.normalizeCampaignBase(
       this.withPlatformArtistIdentity(input, artistIdentity),
       {
@@ -506,6 +521,7 @@ export class ShowsService {
       ? assertShowCampaignReleasePolicy(input.releasePolicy)
       : campaign.releasePolicy;
     const tiers = this.normalizeCampaignTiers(input.tiers ?? [], normalized);
+    const title = campaignTitle(input, normalized.artistDisplayName, normalized.city);
 
     return prisma.$transaction(async (tx) => {
       await tx.showCampaignTier.deleteMany({ where: { campaignId: campaign.id } });
@@ -513,7 +529,7 @@ export class ShowsService {
         where: { id: campaign.id },
         data: {
           ...normalized,
-          title: input.title?.trim() || `${normalized.artistDisplayName} in ${normalized.city}`,
+          title,
           beneficiaryAddress: beneficiary.address,
           beneficiaryType: beneficiary.type,
           authorityEvidenceBundleId: optionalText(input.authorityEvidenceBundleId),
@@ -1389,8 +1405,8 @@ export class ShowsService {
     }));
   }
 
-  private async uniqueSlug(artistDisplayName: string, city: string, country: string) {
-    const base = slugifyParts([artistDisplayName, city, country]);
+  private async uniqueSlug(...parts: string[]) {
+    const base = slugifyParts(parts);
     for (let attempt = 0; attempt < 10; attempt += 1) {
       const slug = attempt === 0 ? base : `${base}-${attempt + 1}`;
       const existing = await prisma.showCampaign.findUnique({ where: { slug } });
@@ -1422,6 +1438,21 @@ export class ShowsService {
   private async campaignArtistIdentity(artistId: string | null) {
     if (!artistId) return null;
     return prisma.artist.findUnique({ where: { id: artistId } });
+  }
+
+  private async assertArtistHasCatalogContent(artistId: string) {
+    const release = await prisma.release.findFirst({
+      where: {
+        artistId,
+        status: { in: SHOWS_CATALOG_CONTENT_STATUSES },
+      },
+      select: { id: true },
+    });
+    if (!release) {
+      throw new BadRequestException(
+        "active escrow campaigns must reference a platform artist with at least one ready or published release",
+      );
+    }
   }
 
   private withPlatformArtistIdentity<T extends CampaignBaseInput>(input: T, artist: Artist | null): T {

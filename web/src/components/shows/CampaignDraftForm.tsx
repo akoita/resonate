@@ -5,7 +5,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
-import { getArtistMe, type ArtistProfile } from "../../lib/api";
+import {
+  getArtistMe,
+  listArtistReleases,
+  listPublishedReleases,
+  type ArtistProfile,
+  type Release,
+} from "../../lib/api";
 import {
   createShowCampaignDraft,
   updateShowCampaignDraft,
@@ -19,8 +25,17 @@ type TierForm = {
   amount: string;
 };
 
+type ArtistCandidate = {
+  id: string;
+  name: string;
+  releaseCount: number;
+  latestReleaseTitle: string;
+  artworkUrl?: string | null;
+};
+
 const PAYMENT_DECIMALS = 6;
 const PAYMENT_SYMBOL = "USDC";
+const PUBLIC_CATALOG_STATUSES = new Set(["ready", "published"]);
 
 function addDaysForInput(days: number) {
   const date = new Date();
@@ -73,12 +88,40 @@ function initialTiers(campaign?: Campaign): TierForm[] {
   ];
 }
 
+function buildArtistCandidates(releases: Release[]): ArtistCandidate[] {
+  const byArtist = new Map<string, ArtistCandidate>();
+
+  for (const release of releases) {
+    if (!release.artist?.id) continue;
+    const existing = byArtist.get(release.artist.id);
+    const name = release.artist.displayName || release.primaryArtist || "Unknown Artist";
+    if (existing) {
+      existing.releaseCount += 1;
+      if (!existing.artworkUrl && release.artworkUrl) existing.artworkUrl = release.artworkUrl;
+      continue;
+    }
+    byArtist.set(release.artist.id, {
+      id: release.artist.id,
+      name,
+      releaseCount: 1,
+      latestReleaseTitle: release.title,
+      artworkUrl: release.artworkUrl,
+    });
+  }
+
+  return Array.from(byArtist.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
   const router = useRouter();
   const { token, status, role, connect } = useAuth();
   const { chainId } = useZeroDev();
   const [artist, setArtist] = useState<ArtistProfile | null>(null);
   const [artistLoaded, setArtistLoaded] = useState(false);
+  const [artistHasCatalogContent, setArtistHasCatalogContent] = useState<boolean | null>(null);
+  const [artistCandidates, setArtistCandidates] = useState<ArtistCandidate[]>([]);
+  const [artistCandidatesLoaded, setArtistCandidatesLoaded] = useState(false);
+  const [selectedArtistId, setSelectedArtistId] = useState(campaign?.artistId ?? "");
   const [artistDisplayName, setArtistDisplayName] = useState(campaign?.artistName ?? "");
   const [title, setTitle] = useState(campaign?.title ?? "");
   const [description, setDescription] = useState(campaign?.tagline ?? "");
@@ -99,8 +142,16 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
 
   const isEdit = Boolean(campaign);
   const isPrivileged = role === "admin" || role === "operator";
-  const canSubmit = status === "authenticated" && Boolean(token) && (isPrivileged || artistLoaded);
+  const canSubmit = status === "authenticated"
+    && Boolean(token)
+    && (isPrivileged ? Boolean(selectedArtistId) : artistLoaded && artistHasCatalogContent === true);
   const needsArtistProfile = status === "authenticated" && artistLoaded && !artist && !isPrivileged;
+  const needsArtistCatalogContent = status === "authenticated"
+    && !isPrivileged
+    && artistLoaded
+    && Boolean(artist)
+    && artistHasCatalogContent === false;
+  const selectedArtistCandidate = artistCandidates.find((candidate) => candidate.id === selectedArtistId);
   const draftTitle = useMemo(
     () => title.trim() || (artistDisplayName && city ? `${artistDisplayName} in ${city}` : ""),
     [artistDisplayName, city, title],
@@ -115,20 +166,30 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
 
     let active = true;
     getArtistMe(token)
-      .then((profile) => {
+      .then(async (profile) => {
         if (!active) return;
         setArtist(profile);
         if (profile && !isPrivileged) {
           setArtistDisplayName(profile.displayName || "");
           setBeneficiaryAddress(profile.payoutAddress || "");
           setPaymentTokenAddress("");
+          const releases = await listArtistReleases(profile.id, token).catch(() => []);
+          if (active) {
+            setArtistHasCatalogContent(
+              releases.some((release) => PUBLIC_CATALOG_STATUSES.has(release.status)),
+            );
+          }
           return;
         }
+        setArtistHasCatalogContent(null);
         setArtistDisplayName((current) => current || profile?.displayName || "");
         setBeneficiaryAddress((current) => current || profile?.payoutAddress || "");
       })
       .catch(() => {
-        if (active) setArtist(null);
+        if (active) {
+          setArtist(null);
+          setArtistHasCatalogContent(null);
+        }
       })
       .finally(() => {
         if (active) setArtistLoaded(true);
@@ -138,6 +199,42 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
       active = false;
     };
   }, [isPrivileged, status, token]);
+
+  useEffect(() => {
+    if (!isPrivileged || status !== "authenticated") {
+      setArtistCandidates([]);
+      setArtistCandidatesLoaded(false);
+      return;
+    }
+
+    let active = true;
+    listPublishedReleases(100)
+      .then((releases) => {
+        if (!active) return;
+        const candidates = buildArtistCandidates(releases);
+        setArtistCandidates(candidates);
+        if (!selectedArtistId && candidates.length > 0) {
+          setSelectedArtistId(candidates[0].id);
+          setArtistDisplayName(candidates[0].name);
+        }
+      })
+      .catch(() => {
+        if (active) setArtistCandidates([]);
+      })
+      .finally(() => {
+        if (active) setArtistCandidatesLoaded(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isPrivileged, selectedArtistId, status]);
+
+  useEffect(() => {
+    if (!isPrivileged || !selectedArtistId) return;
+    const selected = artistCandidates.find((candidate) => candidate.id === selectedArtistId);
+    if (selected) setArtistDisplayName(selected.name);
+  }, [artistCandidates, isPrivileged, selectedArtistId]);
 
   function updateTier(index: number, patch: Partial<TierForm>) {
     setTiers((current) => current.map((tier, tierIndex) => (
@@ -175,7 +272,7 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
       }
 
       const draft = {
-        artistId: artist?.id ?? null,
+        artistId: isPrivileged ? selectedArtistId || null : artist?.id ?? null,
         artistDisplayName: (isPrivileged ? artistDisplayName : artist?.displayName ?? artistDisplayName).trim(),
         title: draftTitle,
         description: description.trim() || null,
@@ -230,18 +327,59 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
     );
   }
 
+  if (needsArtistCatalogContent) {
+    return (
+      <section className="shows-create__panel">
+        <h2>Catalog release required</h2>
+        <p>Escrow campaigns can only open for an artist profile with at least one ready or published release on Resonate.</p>
+        <Link href="/artist/upload">Upload a release</Link>
+      </section>
+    );
+  }
+
   return (
     <section className="shows-create__form" aria-label={isEdit ? "Edit show campaign" : "Create show campaign"}>
       <div className="shows-create__panel">
         <h2>Campaign</h2>
         <label>
-          Artist name {!isPrivileged ? "(from your artist profile)" : ""}
-          <input
-            value={artistDisplayName}
-            onChange={(event) => setArtistDisplayName(event.target.value)}
-            readOnly={!isPrivileged}
-          />
+          Artist {!isPrivileged ? "(from your artist profile)" : ""}
+          {isPrivileged ? (
+            <select
+              value={selectedArtistId}
+              onChange={(event) => setSelectedArtistId(event.target.value)}
+              disabled={!artistCandidatesLoaded}
+            >
+              <option value="">Select a catalog artist</option>
+              {artistCandidates.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name} · {candidate.releaseCount} release{candidate.releaseCount === 1 ? "" : "s"}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              value={artistDisplayName}
+              onChange={(event) => setArtistDisplayName(event.target.value)}
+              readOnly
+            />
+          )}
         </label>
+        {isPrivileged && selectedArtistCandidate ? (
+          <div className="shows-create__artist-context">
+            {selectedArtistCandidate.artworkUrl ? (
+              <span
+                aria-hidden
+                className="shows-create__artist-art"
+                style={{ backgroundImage: `url(${selectedArtistCandidate.artworkUrl})` }}
+              />
+            ) : (
+              <span aria-hidden>{artistDisplayName[0]?.toUpperCase() ?? "?"}</span>
+            )}
+            <p>
+              {selectedArtistCandidate.latestReleaseTitle}
+            </p>
+          </div>
+        ) : null}
         <label>
           Campaign title
           <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={draftTitle || "Artist in City"} />

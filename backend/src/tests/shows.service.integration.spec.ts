@@ -6,6 +6,7 @@ const TEST_PREFIX = `shows_service_${Date.now()}_`;
 const userId = `${TEST_PREFIX}artist_user`;
 const listenerId = `${TEST_PREFIX}listener_user`;
 const artistId = `${TEST_PREFIX}artist`;
+const releaseId = `${TEST_PREFIX}release`;
 const artistWallet = "0x" + "7".repeat(40);
 const otherArtistUserId = `${TEST_PREFIX}other_artist_user`;
 const otherArtistId = `${TEST_PREFIX}other_artist`;
@@ -115,6 +116,15 @@ describe("ShowsService integration", () => {
         payoutAddress: "0x" + "4".repeat(40),
       },
     });
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        artistId,
+        title: `${TEST_PREFIX}Ready Release`,
+        status: "ready",
+        primaryArtist: `${TEST_PREFIX}Artist`,
+      },
+    });
   });
 
   afterAll(async () => {
@@ -136,6 +146,7 @@ describe("ShowsService integration", () => {
     await prisma.showCampaign.deleteMany({
       where: { artistDisplayName: { startsWith: TEST_PREFIX } },
     }).catch(() => {});
+    await prisma.release.deleteMany({ where: { id: releaseId } }).catch(() => {});
     await prisma.artist.deleteMany({ where: { id: { in: [artistId, otherArtistId] } } }).catch(() => {});
     await prisma.user.deleteMany({
       where: { id: { in: [userId, listenerId, operatorUserId, otherArtistUserId] } },
@@ -179,6 +190,7 @@ describe("ShowsService integration", () => {
       {
         artistId,
         artistDisplayName: "Famous Impersonation Target",
+        title: "Sennarin in Montreal",
         city: "Montreal",
         country: "CA",
         venueTarget: "MTELUS",
@@ -212,6 +224,8 @@ describe("ShowsService integration", () => {
     expect(campaign.artistAuthorityStatus).toBe("none");
     expect(campaign.artistId).toBe(artistId);
     expect(campaign.artistDisplayName).toBe(`${TEST_PREFIX}Artist`);
+    expect(campaign.title).toBe("Sennarin in Montreal");
+    expect(campaign.slug).toBe("sennarin-in-montreal-ca");
     expect(campaign.beneficiaryAddress).toBe(artistWallet.toLowerCase());
     expect(campaign.beneficiaryType).toBe("wallet");
     expect(campaign.tiers).toHaveLength(2);
@@ -223,6 +237,7 @@ describe("ShowsService integration", () => {
       {
         artistId,
         artistDisplayName: `${TEST_PREFIX}Artist`,
+        title: "Sennarin at Club Soda",
         city: "Montreal",
         country: "CA",
         venueTarget: "Club Soda",
@@ -244,6 +259,7 @@ describe("ShowsService integration", () => {
     );
 
     expect(updated.venueTarget).toBe("Club Soda");
+    expect(updated.title).toBe("Sennarin at Club Soda");
     expect(updated.goalAmountUnits).toBe("3500000");
     expect(updated.tiers).toHaveLength(1);
     expect(updated.tiers[0].amountUnits).toBe("850000");
@@ -275,7 +291,21 @@ describe("ShowsService integration", () => {
       },
     )).rejects.toThrow("beneficiaryAddress must match");
 
-    const operatorDraft = await service.createDraftCampaign(
+    await expect(service.createDraftCampaign(
+      { userId: operatorUserId, role: "operator" },
+      {
+        artistId: otherArtistId,
+        artistDisplayName: `${TEST_PREFIX}Other Artist`,
+        city: "Berlin",
+        country: "DE",
+        deadline: futureIso(30),
+        goalAmountUnits: "2500000",
+        beneficiaryAddress: "0x" + "2".repeat(40),
+        beneficiaryType: "wallet",
+      },
+    )).rejects.toThrow("at least one ready or published release");
+
+    await expect(service.createDraftCampaign(
       { userId: operatorUserId, role: "operator" },
       {
         artistDisplayName: `${TEST_PREFIX}Off Platform Artist`,
@@ -286,10 +316,24 @@ describe("ShowsService integration", () => {
         beneficiaryAddress: "0x" + "2".repeat(40),
         beneficiaryType: "wallet",
       },
+    )).rejects.toThrow("active escrow campaigns must select an existing platform artist");
+
+    const operatorDraft = await service.createDraftCampaign(
+      { userId: operatorUserId, role: "operator" },
+      {
+        artistId,
+        artistDisplayName: "Ignored Operator Input",
+        city: "Berlin",
+        country: "DE",
+        deadline: futureIso(30),
+        goalAmountUnits: "2500000",
+        beneficiaryAddress: "0x" + "2".repeat(40),
+        beneficiaryType: "wallet",
+      },
     );
 
-    expect(operatorDraft.artistId).toBeNull();
-    expect(operatorDraft.artistDisplayName).toBe(`${TEST_PREFIX}Off Platform Artist`);
+    expect(operatorDraft.artistId).toBe(artistId);
+    expect(operatorDraft.artistDisplayName).toBe(`${TEST_PREFIX}Artist`);
     expect(operatorDraft.beneficiaryAddress).toBe("0x" + "2".repeat(40));
   });
 

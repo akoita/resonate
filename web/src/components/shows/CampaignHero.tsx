@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { CampaignProgress } from "./CampaignProgress";
-import { daysUntil, type Campaign } from "../../lib/shows";
+import {
+  campaignDisplayInitial,
+  campaignDisplayTitle,
+  campaignRouteCode,
+  daysUntil,
+  type Campaign,
+} from "../../lib/shows";
 
 interface Props {
   campaign: Campaign;
@@ -24,15 +30,16 @@ export function CampaignHero({ campaign }: Props) {
     year: "numeric",
   });
 
-  const monogram = (campaign.artistName[0] ?? "?").toUpperCase();
-  const routeCode = `${campaign.artistSlug.slice(0, 3).toUpperCase()}-${campaign.city.slice(0, 3).toUpperCase()}`;
+  const displayTitle = campaignDisplayTitle(campaign);
+  const monogram = campaignDisplayInitial(campaign);
+  const routeCode = campaignRouteCode(campaign);
 
   return (
     <article className="campaign-hero">
       <div className="campaign-hero__body">
         <span className="campaign-hero__eyebrow">Featured Show</span>
         <h1 className="campaign-hero__title">
-          {campaign.artistName} in {campaign.city}
+          {displayTitle}
         </h1>
         <div className="campaign-hero__meta">
           <span>
