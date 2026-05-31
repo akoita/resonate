@@ -1,8 +1,10 @@
 ---
 title: "Artist Community Tab Plan"
-status: in-progress
+status: partial
 owner: "@akoita"
 issue: "https://github.com/akoita/resonate/issues/999"
+follow_up:
+  - "https://github.com/akoita/resonate/issues/1037"
 ---
 
 # Artist Community Tab Plan
@@ -33,15 +35,15 @@ Deliverables:
 
 ## Slice 2: Listener And Artist UI
 
-Status: `in-progress`
+Status: `implemented`
 
 Deliverables:
 
-- Add an artist community tab to the artist-facing page. `in-progress`
-- Show public rooms and locked holder rooms with safe explanation copy. `in-progress`
-- Let eligible holders join from the UI. `in-progress`
-- Let artists post announcements. `in-progress`
-- Add basic message list, report, delete, and moderation controls. `in-progress`
+- Add an artist community tab to the artist-facing page.
+- Show public rooms and locked holder rooms with safe explanation copy.
+- Let eligible holders join from the UI.
+- Let artists post announcements.
+- Add basic message list, report, delete, and moderation controls.
 
 Implementation notes:
 
@@ -58,18 +60,30 @@ Implementation notes:
 
 ## Slice 3: Governance And Analytics
 
-Status: `planned`
+Status: `partial`
 
 Deliverables:
 
 - Add governed analytics events for room joins, messages, reports, bans,
-  deletes, and room status updates.
-- Add operator/admin moderation dashboards.
-- Add retention and consent-aware data handling notes.
+  deletes, and room status updates. `implemented`
+- Add operator/admin moderation dashboards. `planned` in
+  [#1037](https://github.com/akoita/resonate/issues/1037)
+- Add retention and consent-aware data handling notes. `planned` in
+  [#1037](https://github.com/akoita/resonate/issues/1037)
+
+Implementation notes:
+
+- #999 completed the artist/community room acceptance criteria and closed the
+  first product surface.
+- #999 also implemented compact `community.*` analytics bridge coverage for
+  room, message, benefit, and moderation events.
+- The broader governance surface is intentionally tracked separately in
+  [#1037](https://github.com/akoita/resonate/issues/1037) instead of being
+  hidden inside this closed issue.
 
 ## Verification
 
-Slice 1 should prove:
+Slices 1 and 2 should prove:
 
 - artists can enable public and holder rooms;
 - listeners can join public artist rooms;

@@ -34,6 +34,12 @@ finalize work on the current branch, follow these steps.
 
 - **If an issue exists:** Fetch the issue details from GitHub using `issue_read` (owner: `akoita`, repo: `resonate`), re-read the acceptance criteria and scope, and review every modified/added file against the issue requirements. If anything is missing, implement it before proceeding.
 - **If no issue:** Review the modified/added files to confirm the intended change is complete.
+- Reconcile linked roadmap, plan, RFC, and feature docs before proceeding.
+  If a linked plan contains slices, milestones, or deliverables beyond the issue
+  acceptance criteria, update their status explicitly (`implemented`, `partial`,
+  `deferred`, or `planned`) and create/link follow-up issues for any intentional
+  deferral. Mention those follow-ups in the PR body instead of implying the
+  broader plan is complete.
 - Review `docs/engineering/change_impact_checklist.md` for every durable change.
   Identify which sections apply, especially analytics/events, API contracts,
   privacy/permissions, moderation, lifecycle state, docs, deployment/env, and

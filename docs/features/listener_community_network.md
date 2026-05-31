@@ -208,7 +208,7 @@ recognized without turning community into a leaderboard.
 | Surface | Status | Notes |
 | --- | --- | --- |
 | Listener profile showcase | in-progress | `/settings` exposes profile identity and visibility controls; public profile reads redact hidden/private sections. Display of real badges, marketplace items, campaign support, attendance, playlists, remixes, and roles remains follow-up work. |
-| Artist community tab | in-progress | Backend room foundation is implemented. The active UI slice adds the `/artist/:id` Community tab with public and holder rooms, join/leave controls, messages, artist announcements, reports, deletion, and basic message-author moderation actions. |
+| Artist community tab | implemented | `/artist/:id` exposes the Community tab with public and holder rooms, safe holder lock copy, join/leave controls, messages, artist announcements, reports, deletion, and basic message-author moderation actions. Broader operator/admin governance remains tracked in [#1037](https://github.com/akoita/resonate/issues/1037). |
 | Taste cohort suggestions | planned | Explainable recommendations to join small groups based on shared taste, city, artist affinity, or collection behavior. |
 | City scene pages | planned | Local scene surfaces tied to declared coarse location and privacy-safe aggregate demand. |
 | Campaign rooms | planned | Temporary community surfaces for Shows and other campaigns with milestones, updates, supporter chat, and rewards. |
@@ -276,14 +276,16 @@ The active M2 holder-benefits slice is tracked in
 It adds private badge, role, benefit-rule, and redemption foundations before
 public artist-room or listener benefit UI is exposed.
 
-The active M3 artist-community slice is tracked in
+The M3 artist-community slice is tracked in
 [Artist Community Tab Plan](artist_community_tab_plan.md). The backend substrate
 for off-chain rooms, membership, messages, reports, and moderation is
 implemented. The artist page now exposes a Community tab that reads public rooms,
 uses authenticated room reads for membership-aware state, lets artists enable
 rooms and post announcements, lets listeners join/leave rooms, and exposes
 message report/delete plus basic member remove/ban controls from visible
-message authors.
+message authors. Operator/admin governance, moderation dashboards, and
+retention/consent notes are explicit follow-up work in
+[#1037](https://github.com/akoita/resonate/issues/1037).
 
 ## Blockchain Boundary
 

@@ -202,6 +202,9 @@ Ask:
 - Does the feature catalog tell a future developer where the code, routes,
   events, tests, and docs live?
 - Are TODOs explicit follow-up work rather than hidden gaps?
+- If the issue acceptance criteria are narrower than a linked plan slice, has
+  the remaining work been marked `partial`, `deferred`, or `planned` with a
+  linked follow-up issue?
 
 Update when relevant:
 
@@ -210,6 +213,7 @@ Update when relevant:
 - architecture docs
 - RFC only when design intent or tradeoffs changed
 - GitHub issue checklists or PR summary
+- linked plan docs and follow-up issues for any intentionally deferred scope
 
 ### Tests And Validation Scope
 
