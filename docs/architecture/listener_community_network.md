@@ -447,6 +447,9 @@ boundaries.
 - Allow off-chain room bans even when a user still owns an access asset.
 - Rate-limit message creation, joins, reports, and redemption attempts.
 - Keep destructive moderation actions in an audit trail.
+- Provide operator/admin moderation surfaces for report triage, room status, and
+  governance review before community rooms become broadly discoverable. This is
+  tracked in [#1037](https://github.com/akoita/resonate/issues/1037).
 - Use minimum cohort sizes to avoid revealing sensitive taste or location
   inferences.
 - Fail closed for new holder grants during indexer or contract read outages.
