@@ -3,6 +3,7 @@ import type { ShowCampaignCommunityRoom } from "../../lib/shows";
 import {
   campaignCommunityAction,
   canPostCampaignUpdate,
+  isCampaignCommunityAvailable,
   isCampaignSupporterRoomJoined,
 } from "./CampaignCommunityPanel";
 
@@ -56,5 +57,20 @@ describe("CampaignCommunityPanel helpers", () => {
     expect(canPostCampaignUpdate("artist")).toBe(true);
     expect(canPostCampaignUpdate("operator")).toBe(true);
     expect(canPostCampaignUpdate("listener")).toBe(false);
+  });
+
+  it("only exposes rooms for active campaign lifecycles", () => {
+    expect(isCampaignCommunityAvailable({
+      campaignLevel: "active_escrow_campaign",
+      rawStatus: "active",
+    })).toBe(true);
+    expect(isCampaignCommunityAvailable({
+      campaignLevel: "active_escrow_campaign",
+      rawStatus: "cancelled",
+    })).toBe(false);
+    expect(isCampaignCommunityAvailable({
+      campaignLevel: "signal",
+      rawStatus: "active",
+    })).toBe(false);
   });
 });

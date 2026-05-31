@@ -17,6 +17,7 @@ import { AuthGuard } from "@nestjs/passport";
 import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { Response } from "express";
 import { Roles } from "../auth/roles.decorator";
+import { RolesGuard } from "../auth/roles.guard";
 import { CommunityRoomsService } from "../community/community_rooms.service";
 import { ShowsService } from "./shows.service";
 
@@ -55,7 +56,7 @@ export class ShowsController {
     return this.communityRoomsService.joinShowCampaignCommunity(req.user.userId, id);
   }
 
-  @UseGuards(AuthGuard("jwt"))
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("artist", "admin", "operator")
   @Post("campaigns/:id/community/updates")
   createCampaignUpdate(

@@ -1,5 +1,6 @@
 import request from "supertest";
 import { INestApplication } from "@nestjs/common";
+import { RolesGuard } from "../modules/auth/roles.guard";
 import { CommunityRoomsService } from "../modules/community/community_rooms.service";
 import { ShowsController } from "../modules/shows/shows.controller";
 import { ShowsService } from "../modules/shows/shows.service";
@@ -49,6 +50,7 @@ describe("ShowsController (http)", () => {
     app = await createControllerTestApp(ShowsController, [
       { provide: ShowsService, useValue: mockShowsService },
       { provide: CommunityRoomsService, useValue: mockCommunityRoomsService },
+      RolesGuard,
     ]);
   });
 
@@ -97,5 +99,15 @@ describe("ShowsController (http)", () => {
       "campaign-1",
       { body: "Campaign update" },
     );
+  });
+
+  it("rejects listener role for campaign updates", async () => {
+    await request(app.getHttpServer())
+      .post("/shows/campaigns/campaign-1/community/updates")
+      .set("Authorization", `Bearer ${authToken("user-1", "listener")}`)
+      .send({ body: "Campaign update" })
+      .expect(403);
+
+    expect(mockCommunityRoomsService.createShowCampaignUpdate).not.toHaveBeenCalled();
   });
 });

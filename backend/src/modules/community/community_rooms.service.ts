@@ -7,6 +7,7 @@ import { CommunityEligibilityService } from "./community_eligibility.service";
 const ROOM_STATUSES = ["active", "paused", "archived"] as const;
 const MESSAGE_TYPES = ["message", "announcement", "campaign_update"] as const;
 const MODERATION_ACTIONS = ["remove", "ban"] as const;
+const SHOW_CAMPAIGN_ROOM_STATUSES = ["active", "funded", "booking_confirmed", "deposit_released"] as const;
 
 type RoomStatus = (typeof ROOM_STATUSES)[number];
 type MessageType = (typeof MESSAGE_TYPES)[number];
@@ -408,6 +409,9 @@ export class CommunityRoomsService {
     if (!campaign) throw new NotFoundException("Show campaign not found");
     if (campaign.campaignLevel !== "active_escrow_campaign") {
       throw new BadRequestException("Only active escrow campaigns can open supporter rooms");
+    }
+    if (!SHOW_CAMPAIGN_ROOM_STATUSES.includes(campaign.status as (typeof SHOW_CAMPAIGN_ROOM_STATUSES)[number])) {
+      throw new BadRequestException("Only active, funded, or booking-confirmed escrow campaigns can open supporter rooms");
     }
 
     const room = await prisma.communityRoom.upsert({

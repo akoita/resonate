@@ -1,4 +1,4 @@
-import { ForbiddenException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { prisma } from "../db/prisma";
 import { CommunityEligibilityService } from "../modules/community/community_eligibility.service";
 import { CommunityRoomsService } from "../modules/community/community_rooms.service";
@@ -14,6 +14,8 @@ const trackId = `${TEST_PREFIX}track`;
 const stemId = `${TEST_PREFIX}stem`;
 const campaignId = `${TEST_PREFIX}campaign`;
 const campaignSlug = `${TEST_PREFIX}campaign-slug`;
+const cancelledCampaignId = `${TEST_PREFIX}cancelled_campaign`;
+const cancelledCampaignSlug = `${TEST_PREFIX}cancelled-campaign-slug`;
 const holderWallet = "0x" + "1".repeat(40);
 const artistWallet = "0x" + "2".repeat(40);
 const listenerWallet = "0x" + "6".repeat(40);
@@ -103,6 +105,23 @@ describe("CommunityRoomsService integration", () => {
         artistAuthorityStatus: "artist_authorized",
       },
     });
+    await prisma.showCampaign.create({
+      data: {
+        id: cancelledCampaignId,
+        slug: cancelledCampaignSlug,
+        artistId,
+        artistDisplayName: "Community Room Artist",
+        title: "Cancelled Community Room Artist in Paris",
+        city: "Paris",
+        country: "FR",
+        deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        goalAmountUnits: "1000000",
+        chainId: 84532,
+        campaignLevel: "active_escrow_campaign",
+        status: "cancelled",
+        artistAuthorityStatus: "artist_authorized",
+      },
+    });
     await prisma.showPledge.create({
       data: {
         campaignId,
@@ -126,7 +145,7 @@ describe("CommunityRoomsService integration", () => {
     await prisma.communityMembership.deleteMany({ where: { room: { ownerId: artistId } } });
     await prisma.communityRoom.deleteMany({ where: { ownerId: artistId } });
     await prisma.showPledge.deleteMany({ where: { campaignId } });
-    await prisma.showCampaign.deleteMany({ where: { id: campaignId } });
+    await prisma.showCampaign.deleteMany({ where: { id: { in: [campaignId, cancelledCampaignId] } } });
     await prisma.stemPurchase.deleteMany({ where: { buyerAddress: { equals: holderWallet, mode: "insensitive" } } });
     await prisma.stemListing.deleteMany({ where: { stemId } });
     await prisma.stem.deleteMany({ where: { id: stemId } });
@@ -221,6 +240,10 @@ describe("CommunityRoomsService integration", () => {
       campaignId,
       roomType: "show_campaign_supporter",
     }));
+  });
+
+  it("does not open supporter rooms for inactive campaign lifecycles", async () => {
+    await expect(service.getShowCampaignCommunity(listenerUserId, cancelledCampaignSlug)).rejects.toThrow(BadRequestException);
   });
 
   it("lets campaign artists post campaign updates to supporter rooms", async () => {

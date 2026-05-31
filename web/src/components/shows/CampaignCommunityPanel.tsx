@@ -39,6 +39,11 @@ export function canPostCampaignUpdate(role: string | null) {
   return role === "artist" || role === "admin" || role === "operator";
 }
 
+export function isCampaignCommunityAvailable(campaign: Pick<Campaign, "campaignLevel" | "rawStatus">) {
+  return campaign.campaignLevel === "active_escrow_campaign"
+    && ["active", "funded", "booking_confirmed", "deposit_released"].includes(campaign.rawStatus);
+}
+
 export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
   const { token, status, role, connect } = useAuth();
   const [room, setRoom] = useState<ShowCampaignCommunityRoom | null>(null);
@@ -53,6 +58,7 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
   const joined = isCampaignSupporterRoomJoined(room);
   const action = campaignCommunityAction(room);
   const updateAllowed = canPostCampaignUpdate(role);
+  const campaignCommunityAvailable = isCampaignCommunityAvailable(campaign);
 
   const campaignUpdates = useMemo(
     () => messages.filter((message) => message.messageType === "campaign_update"),
@@ -64,7 +70,7 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
   );
 
   useEffect(() => {
-    if (!token) {
+    if (!token || !campaignCommunityAvailable) {
       setRoom(null);
       setMessages([]);
       return;
@@ -78,7 +84,7 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
         if (!active) return;
         const nextRoom = community.rooms[0] ?? null;
         setRoom(nextRoom);
-        if (nextRoom && isCampaignSupporterRoomJoined(nextRoom)) {
+        if (nextRoom && (isCampaignSupporterRoomJoined(nextRoom) || updateAllowed)) {
           const response = await listCommunityRoomMessages(token, nextRoom.id);
           if (active) setMessages(response.messages);
         } else {
@@ -96,7 +102,7 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
     return () => {
       active = false;
     };
-  }, [campaign, token]);
+  }, [campaign, campaignCommunityAvailable, token, updateAllowed]);
 
   async function refreshMessages(nextRoom = room) {
     if (!token || !nextRoom || !isCampaignSupporterRoomJoined(nextRoom)) return;
@@ -141,6 +147,10 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
     } finally {
       setPosting(false);
     }
+  }
+
+  if (!campaignCommunityAvailable) {
+    return null;
   }
 
   return (
