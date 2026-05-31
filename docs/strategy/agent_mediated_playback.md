@@ -203,3 +203,9 @@ can return sanitized catalog candidates without starting sound, while queue,
 play, and control require an active first-party client. Sound-starting commands
 default to `confirmation_required`, and `playing` is accepted only after client
 confirmation.
+
+The web player now includes the first active-client bridge. Authenticated
+browser clients register through `/sessions/playback/device`, poll
+`/sessions/playback/status`, apply queue/control commands to the existing
+player queue, show a confirmation dialog before play commands start sound, and
+report the client outcome through `/sessions/playback/commands/:commandId/confirm`.
