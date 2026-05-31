@@ -285,3 +285,44 @@ rg -n 'dangerouslySetInnerHTML|innerHTML' web/src/
 rg -n 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
 rg -n 'document\.cookie|setCookie|httpOnly.*false' web/src/
 ```
+
+## Community Holder Benefits - 2026-05-31
+
+### Scope Reviewed
+
+Changed backend surfaces:
+
+- `backend/prisma/schema.prisma`
+- `backend/prisma/migrations/20260531045500_community_holder_benefits/migration.sql`
+- `backend/src/modules/community/community.controller.ts`
+- `backend/src/modules/community/community.module.ts`
+- `backend/src/modules/community/community_eligibility.service.ts`
+- `backend/src/tests/community*.ts`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none introduced.
+- Low: none introduced.
+
+### Notes
+
+- Badge, role, benefit, and redemption reads are authenticated user-scoped
+  endpoints.
+- Public profile display remains separate from benefit eligibility; the
+  eligibility response exposes private proof summaries, not wallet addresses or
+  raw ownership details.
+- Ownership eligibility is derived from indexed backend `StemPurchase` and
+  wallet state rather than client-submitted ownership claims.
+- No raw SQL, hardcoded secrets, unsafe deserialization, direct HTML injection,
+  cookie handling, or new environment variables were introduced.
+
+### Commands Run
+
+```bash
+rg 'password|secret|api_key|private_key' backend/src/modules/community backend/src/tests/community* --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/community backend/src/tests/community*
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch|@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/community
+rg 'JSON\.parse|eval\(' backend/src/modules/community backend/src/tests/community*
+```

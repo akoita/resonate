@@ -212,7 +212,7 @@ recognized without turning community into a leaderboard.
 | Taste cohort suggestions | planned | Explainable recommendations to join small groups based on shared taste, city, artist affinity, or collection behavior. |
 | City scene pages | planned | Local scene surfaces tied to declared coarse location and privacy-safe aggregate demand. |
 | Campaign rooms | planned | Temporary community surfaces for Shows and other campaigns with milestones, updates, supporter chat, and rewards. |
-| Holder benefit engine | planned | Rule engine mapping owned items, badges, and support proofs to discounts, access, and privileges. |
+| Holder benefit engine | in-progress | Backend foundation for private badge, role, ownership, campaign-support, and redemption eligibility is being built in [#998](https://github.com/akoita/resonate/issues/998). |
 | Discord bridge | planned | Artist-controlled connection for announcements, role mirroring, community links, or migration paths. |
 | Moderation console | planned | Artist/team tools plus platform safety workflows, AI summaries, and abuse reports. |
 
@@ -270,6 +270,11 @@ Public profile reads currently expose only profiles with
 `profileVisibility = public`. Wallet address and future showcase sections are
 redacted unless the listener explicitly enables each section. Ownership-based
 eligibility for future benefits remains separate from public ownership display.
+
+The active M2 holder-benefits slice is tracked in
+[Community Badges, Roles, And Holder Benefits Plan](community_holder_benefits_plan.md).
+It adds private badge, role, benefit-rule, and redemption foundations before
+public artist-room or listener benefit UI is exposed.
 
 ## Blockchain Boundary
 
