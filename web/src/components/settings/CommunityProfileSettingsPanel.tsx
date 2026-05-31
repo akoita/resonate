@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   getMyCommunityProfile,
@@ -179,6 +180,9 @@ export default function CommunityProfileSettingsPanel({ token, addToast }: Props
   };
 
   const selectedVisibility = profileState?.profile.profileVisibility ?? "private";
+  const publicProfileHref = profileState
+    ? `/community/profile/${encodeURIComponent(profileState.profile.userId)}`
+    : null;
 
   return (
     <div className="settings-section">
@@ -226,6 +230,11 @@ export default function CommunityProfileSettingsPanel({ token, addToast }: Props
           <Button onClick={saveProfile} disabled={!displayName.trim() || savingKey === "profile" || !profileState}>
             Save profile
           </Button>
+          {selectedVisibility === "public" && publicProfileHref ? (
+            <Link href={publicProfileHref} className="community-profile-public-link">
+              View public profile
+            </Link>
+          ) : null}
         </div>
       </div>
 
