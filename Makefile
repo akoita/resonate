@@ -20,6 +20,13 @@ dev-up:
 	docker compose -f $(LOCAL_INFRA_COMPOSE_FILE) up -d
 	@echo "Waiting for Postgres on localhost:5432..."
 	@until nc -z localhost 5432 >/dev/null 2>&1; do sleep 1; done
+	@echo "Checking Postgres pgvector extension availability..."
+	@available="$$(docker compose -f $(LOCAL_INFRA_COMPOSE_FILE) exec -T postgres psql -U resonate -d resonate -tAc "SELECT 1 FROM pg_available_extensions WHERE name = 'vector';" 2>/dev/null | tr -d '[:space:]')"; \
+	if [ "$$available" != "1" ]; then \
+		echo "❌ Postgres is running, but the pgvector extension is not available."; \
+		echo "Run 'make dev-down && make dev-up' so Docker recreates Postgres with the pgvector image."; \
+		exit 1; \
+	fi
 	@echo "Waiting for PubSub emulator on localhost:8085..."
 	@until nc -z localhost 8085 >/dev/null 2>&1; do sleep 1; done
 	@$(MAKE) pubsub-init
@@ -29,6 +36,13 @@ dev-up-build:
 	docker compose -f $(LOCAL_INFRA_COMPOSE_FILE) up -d --build
 	@echo "Waiting for Postgres on localhost:5432..."
 	@until nc -z localhost 5432 >/dev/null 2>&1; do sleep 1; done
+	@echo "Checking Postgres pgvector extension availability..."
+	@available="$$(docker compose -f $(LOCAL_INFRA_COMPOSE_FILE) exec -T postgres psql -U resonate -d resonate -tAc "SELECT 1 FROM pg_available_extensions WHERE name = 'vector';" 2>/dev/null | tr -d '[:space:]')"; \
+	if [ "$$available" != "1" ]; then \
+		echo "❌ Postgres is running, but the pgvector extension is not available."; \
+		echo "Run 'make dev-down && make dev-up' so Docker recreates Postgres with the pgvector image."; \
+		exit 1; \
+	fi
 	@echo "Waiting for PubSub emulator on localhost:8085..."
 	@until nc -z localhost 8085 >/dev/null 2>&1; do sleep 1; done
 	@$(MAKE) pubsub-init

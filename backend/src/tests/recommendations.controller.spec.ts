@@ -12,13 +12,52 @@ const mockService = {
   getRecommendations: jest.fn().mockResolvedValue([]),
 };
 
+const mockTasteMemoryService = {
+  getTasteMemory: jest.fn(),
+  updateSettings: jest.fn(),
+  resetTasteMemory: jest.fn(),
+  upsertSignalControl: jest.fn(),
+  removeSignalControl: jest.fn(),
+};
+
 function makeController() {
-  return new RecommendationsController(mockService as any);
+  return new RecommendationsController(mockService as any, mockTasteMemoryService as any);
 }
 
 beforeEach(() => jest.clearAllMocks());
 
 describe('RecommendationsController', () => {
+  describe('taste memory controls', () => {
+    const req = { user: { userId: 'listener-1' } };
+
+    it('loads the authenticated listener taste memory', () => {
+      const ctrl = makeController();
+      ctrl.getTasteMemory(req);
+      expect(mockTasteMemoryService.getTasteMemory).toHaveBeenCalledWith('listener-1');
+    });
+
+    it('updates authenticated listener taste settings', () => {
+      const ctrl = makeController();
+      ctrl.updateTasteMemorySettings(req, { socialMatchingEnabled: true });
+      expect(mockTasteMemoryService.updateSettings).toHaveBeenCalledWith('listener-1', {
+        socialMatchingEnabled: true,
+      });
+    });
+
+    it('adds and removes signal controls for the authenticated listener', () => {
+      const ctrl = makeController();
+      ctrl.upsertTasteSignalControl(req, { signalType: 'genre', value: 'Techno', action: 'hidden' });
+      ctrl.removeTasteSignalControl(req, 'control-1');
+
+      expect(mockTasteMemoryService.upsertSignalControl).toHaveBeenCalledWith('listener-1', {
+        signalType: 'genre',
+        value: 'Techno',
+        action: 'hidden',
+      });
+      expect(mockTasteMemoryService.removeSignalControl).toHaveBeenCalledWith('listener-1', 'control-1');
+    });
+  });
+
   describe('getRecommendations — limit parsing', () => {
     it('defaults to 10 when limit is undefined', () => {
       const ctrl = makeController();

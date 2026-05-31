@@ -59,6 +59,10 @@ currently expose a generic public payment-router endpoint. See
 [Agent Commerce Runtime](../features/agent-commerce-runtime.md) for the runtime
 and policy boundary.
 
+The external-agent contract across MCP, storefront, OpenAPI, x402, errors, and
+receipts is documented in
+[External Agent Application Contract](external_agent_application_contract.md).
+
 ## Configuration
 
 | Env var                | Default                        | Description                                                                 |

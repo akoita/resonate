@@ -3,6 +3,7 @@ import {
   compactProductAnalyticsPayload,
   createProductAnalyticsClientEventId,
   getProductAnalyticsSessionId,
+  PRODUCT_ANALYTICS_EVENT_NAMES,
   recordProductAnalytics,
   recordProductAnalyticsFromBrowser,
 } from "./productAnalytics";
@@ -106,6 +107,20 @@ describe("product analytics helpers", () => {
       step: "metadata",
       count: 2,
     });
+  });
+
+  it("allows Session Intent analytics events", () => {
+    expect(PRODUCT_ANALYTICS_EVENT_NAMES).toEqual(
+      expect.arrayContaining([
+        "agent.intent_viewed",
+        "agent.intent_selected",
+        "agent.session_started",
+        "agent.session_stopped",
+        "agent.next_pick_requested",
+        "player.action_impression",
+        "player.action_selected",
+      ]),
+    );
   });
 
   it("falls back to generated ids outside browser crypto", () => {

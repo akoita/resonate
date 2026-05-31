@@ -8,6 +8,8 @@ interface Preferences {
   disputeResolved: boolean;
   disputeAppealed: boolean;
   evidenceSubmitted: boolean;
+  listingExpiringSoon: boolean;
+  listingExpired: boolean;
 }
 
 export default function NotificationPreferences() {
@@ -17,6 +19,8 @@ export default function NotificationPreferences() {
     disputeResolved: true,
     disputeAppealed: true,
     evidenceSubmitted: true,
+    listingExpiringSoon: true,
+    listingExpired: true,
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -61,6 +65,8 @@ export default function NotificationPreferences() {
     { key: "disputeResolved", label: "Dispute Resolved", icon: "⚖️", description: "When a dispute you're involved in is resolved" },
     { key: "disputeAppealed", label: "Dispute Appealed", icon: "🔄", description: "When a decision is appealed" },
     { key: "evidenceSubmitted", label: "New Evidence", icon: "📎", description: "When evidence is submitted to a dispute" },
+    { key: "listingExpiringSoon", label: "Listing Ending Soon", icon: "⏱", description: "When your marketplace listing is close to expiry" },
+    { key: "listingExpired", label: "Listing Expired", icon: "⏳", description: "When your marketplace listing expires" },
   ];
 
   return (

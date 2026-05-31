@@ -11,10 +11,12 @@ import { authToken, createControllerTestApp } from "./e2e-helpers";
 const analyticsService = {
   getArtistStats: jest.fn(),
   getArtistDashboard: jest.fn(),
+  getAgentQualityDashboard: jest.fn(),
 };
 
 const authorizationService = {
   assertCanReadArtistMetrics: jest.fn(),
+  assertCanReadAgentQualityDashboard: jest.fn(),
 };
 
 const ingestService = {
@@ -60,7 +62,13 @@ describe("AnalyticsController (HTTP)", () => {
       tracks: [],
       meta: { isEmpty: true },
     });
+    analyticsService.getAgentQualityDashboard.mockResolvedValue({
+      summary: { sessionsStarted: 0, acceptanceRate: 0 },
+      intentBreakdown: [],
+      meta: { isEmpty: true },
+    });
     authorizationService.assertCanReadArtistMetrics.mockResolvedValue(undefined);
+    authorizationService.assertCanReadAgentQualityDashboard.mockReturnValue(undefined);
     instrumentationService.recordPlaybackCompleted.mockResolvedValue({
       status: "ok",
       eventId: "evt_playback_completed",
@@ -121,6 +129,36 @@ describe("AnalyticsController (HTTP)", () => {
     expect(analyticsService.getArtistStats).toHaveBeenCalledWith("artist-1", 7);
   });
 
+  it("GET /analytics/agent/quality requires JWT auth", async () => {
+    await request(app.getHttpServer()).get("/analytics/agent/quality").expect(401);
+  });
+
+  it("authorizes aggregate AI DJ quality metrics for operators", async () => {
+    await request(app.getHttpServer())
+      .get("/analytics/agent/quality?days=90")
+      .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+      .expect(200);
+
+    expect(authorizationService.assertCanReadAgentQualityDashboard).toHaveBeenCalledWith({
+      userId: "operator-1",
+      role: "operator",
+    });
+    expect(analyticsService.getAgentQualityDashboard).toHaveBeenCalledWith(90);
+  });
+
+  it("rejects AI DJ quality metrics when the role gate fails", async () => {
+    authorizationService.assertCanReadAgentQualityDashboard.mockImplementation(() => {
+      throw new ForbiddenException("AI DJ quality analytics are restricted to operators");
+    });
+
+    await request(app.getHttpServer())
+      .get("/analytics/agent/quality")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .expect(403);
+
+    expect(analyticsService.getAgentQualityDashboard).not.toHaveBeenCalled();
+  });
+
   it("records playback completion through the instrumentation service", async () => {
     await request(app.getHttpServer())
       .post("/analytics/playback/completed")
@@ -136,7 +174,7 @@ describe("AnalyticsController (HTTP)", () => {
       })
       .expect(201);
 
-    expect(instrumentationService.recordPlaybackCompleted).toHaveBeenCalledWith({
+    expect(instrumentationService.recordPlaybackCompleted).toHaveBeenCalledWith(expect.objectContaining({
       trackId: "track-1",
       artistId: "artist-1",
       releaseId: "release-1",
@@ -145,7 +183,8 @@ describe("AnalyticsController (HTTP)", () => {
       completionRatio: 0.82,
       durationMs: 31000,
       actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
-    });
+      actorUserId: "listener-1",
+    }));
   });
 
   it("accepts playback completion without artist id for backend catalog enrichment", async () => {
@@ -161,7 +200,7 @@ describe("AnalyticsController (HTTP)", () => {
       })
       .expect(201);
 
-    expect(instrumentationService.recordPlaybackCompleted).toHaveBeenCalledWith({
+    expect(instrumentationService.recordPlaybackCompleted).toHaveBeenCalledWith(expect.objectContaining({
       trackId: "track-1",
       artistId: undefined,
       releaseId: undefined,
@@ -170,7 +209,8 @@ describe("AnalyticsController (HTTP)", () => {
       completionRatio: 0.82,
       durationMs: 31000,
       actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
-    });
+      actorUserId: "listener-1",
+    }));
   });
 
   it("records playback lifecycle events with the pseudonymous user actor", async () => {
@@ -195,7 +235,7 @@ describe("AnalyticsController (HTTP)", () => {
       })
       .expect(201);
 
-    expect(instrumentationService.recordPlaybackLifecycle).toHaveBeenCalledWith({
+    expect(instrumentationService.recordPlaybackLifecycle).toHaveBeenCalledWith(expect.objectContaining({
       action: "heartbeat",
       trackId: "track-1",
       artistId: "artist-1",
@@ -211,7 +251,8 @@ describe("AnalyticsController (HTTP)", () => {
       repeatMode: "all",
       shuffle: true,
       actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
-    });
+      actorUserId: "listener-1",
+    }));
   });
 
   it("rejects malformed playback completion payloads", async () => {
@@ -257,7 +298,7 @@ describe("AnalyticsController (HTTP)", () => {
       })
       .expect(201);
 
-    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith({
+    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(expect.objectContaining({
       eventName: "artist.upload_step_completed",
       sessionId: "onboarding-session-1",
       traceId: undefined,
@@ -279,7 +320,46 @@ describe("AnalyticsController (HTTP)", () => {
       },
       sourceRefs: { clientEventId: "client-event-1" },
       actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
-    });
+      actorUserId: "artist-1",
+    }));
+  });
+
+  it("accepts Session Intent product analytics events emitted by the AI DJ UI", async () => {
+    await request(app.getHttpServer())
+      .post("/analytics/product/event")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({
+        eventName: "agent.intent_selected",
+        sessionId: "product-session-1",
+        subjectType: "agent_session",
+        subjectId: "agent-session-1",
+        clientEventId: "client-event-2",
+        payload: {
+          intent: "focus",
+          intentName: "Neural Flow",
+          mood: "Focus",
+          energy: "low",
+          queueStyle: "stable",
+          commercePosture: "curate",
+        },
+      })
+      .expect(201);
+
+    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventName: "agent.intent_selected",
+        sessionId: "product-session-1",
+        subjectType: "agent_session",
+        subjectId: "agent-session-1",
+        payload: expect.objectContaining({
+          intent: "focus",
+          intentName: "Neural Flow",
+          mood: "Focus",
+          energy: "low",
+        }),
+        actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
+      }),
+    );
   });
 
   it("rejects unsupported product analytics event names", async () => {

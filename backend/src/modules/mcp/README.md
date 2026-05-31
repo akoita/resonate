@@ -26,16 +26,25 @@ Current surface:
   "artworkUrl": "http://localhost:3000/catalog/releases/rel_123/artwork",
   "trackCount": 4,
   "licensable": true,
-  "deeplink": "http://localhost:3001/release/rel_123"
+  "deeplink": "http://localhost:3001/release/rel_123",
+  "availableActions": [
+    {
+      "action": "inspect_storefront_stems",
+      "href": "/api/storefront/stems?q=The%20Horizon%20Is%20Home"
+    }
+  ]
 }
 ```
 
-`stem.quote` is free. It returns `{ priceUsdc, expiresAt, paymentChallenge }`,
-where `paymentChallenge` contains the facilitator URL and x402 payment
-requirements. `stem.download` validates a `paymentProof`; when proof is missing
-or invalid it returns an MCP tool error with `code: "PAYMENT_REQUIRED"` and the
-same quote challenge. With a valid proof, it returns an embedded MCP resource
-for the purchased stem.
+`stem.quote` is free. It returns `summary`, `availableActions`, `rights`,
+`policy`, `{ priceUsdc, expiresAt, paymentChallenge }`, and stem context, where
+`paymentChallenge` contains the facilitator URL and x402 payment requirements.
+`stem.download` validates a `paymentProof`; when proof is missing it returns an
+MCP tool error with `code: "PAYMENT_REQUIRED"` and the same quote challenge.
+Invalid proofs, facilitator failures, settlement failures, missing stems, and
+unavailable resources return stable MCP tool error codes with recovery hints.
+With a valid proof, it returns `receiptVerification`, a full receipt, resource
+metadata, and an embedded MCP resource for the purchased stem.
 
 Quick route check:
 

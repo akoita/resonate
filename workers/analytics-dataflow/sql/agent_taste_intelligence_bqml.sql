@@ -8,10 +8,12 @@
 -- Keep this disabled until there is enough implicit feedback volume and a
 -- reviewed training cadence/cost budget.
 
-DECLARE target_project STRING DEFAULT 'resonate-project';
-DECLARE target_dataset STRING DEFAULT 'analytics_dev';
-DECLARE training_table STRING DEFAULT 'user_track_signal_training';
-DECLARE model_name STRING DEFAULT 'agent_taste_matrix_factorization';
+DECLARE target_project STRING DEFAULT @target_project;
+DECLARE target_dataset STRING DEFAULT @target_dataset;
+DECLARE training_table STRING DEFAULT @training_table;
+DECLARE model_name STRING DEFAULT @model_name;
+DECLARE scores_table STRING DEFAULT @scores_table;
+DECLARE model_version STRING DEFAULT @model_version;
 
 EXECUTE IMMEDIATE FORMAT("""
 CREATE OR REPLACE MODEL `%s.%s.%s`
@@ -36,7 +38,7 @@ HAVING implicit_rating > 0
 """, target_project, target_dataset, model_name, target_project, target_dataset, training_table);
 
 EXECUTE IMMEDIATE FORMAT("""
-CREATE OR REPLACE TABLE `%s.%s.user_track_recommendation_scores_bqml` AS
+CREATE OR REPLACE TABLE `%s.%s.%s` AS
 WITH recommendations AS (
   SELECT
     CAST(user_id AS STRING) AS user_id,
@@ -64,12 +66,13 @@ SELECT
     PARTITION BY user_id
     ORDER BY recommendation_score DESC, predicted_rating DESC
   ) AS rank,
-  FORMAT('BigQuery ML matrix-factorization predicted rating %.4f', predicted_rating) AS explanation,
-  'bqml-matrix-factorization/v1' AS model_version,
+  FORMAT('BigQuery ML matrix-factorization predicted rating %%.4f', predicted_rating) AS explanation,
+  @model_version AS model_version,
   CURRENT_TIMESTAMP() AS updated_at
 FROM bounded
 WHERE recommendation_score > 0
-""", target_project, target_dataset, target_project, target_dataset, model_name);
+""", target_project, target_dataset, scores_table, target_project, target_dataset, model_name)
+USING model_version AS model_version;
 
 -- Promote after offline evals approve the ML output:
 --

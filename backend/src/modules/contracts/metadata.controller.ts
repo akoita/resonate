@@ -676,6 +676,75 @@ export class MetadataController {
   }
 
   /**
+   * Get owner-visible marketplace listing inventory.
+   * GET /api/metadata/listings/owner/:seller
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Get("listings/owner/:seller")
+  async getOwnerListings(
+    @Request() req: any,
+    @Param("seller") seller: string,
+    @Query("chainId") chainIdStr?: string,
+    @Query("lifecycle") lifecycle?: "all" | "active" | "expiring_soon" | "expired" | "sold" | "cancelled" | "stale",
+    @Query("search") search?: string,
+    @Query("sortBy") sortBy?: string,
+    @Query("limit") limitStr?: string,
+    @Query("offset") offsetStr?: string,
+  ) {
+    await this.assertCanAccessOwnerListings(req.user, seller);
+    const chainId = chainIdStr ? parseInt(chainIdStr) : undefined;
+    const limit = Math.min(parseInt(limitStr || "50"), 100);
+    const offset = parseInt(offsetStr || "0");
+
+    const listings = await this.contractsService.getOwnerListings({
+      sellerAddress: seller,
+      chainId,
+      lifecycle: lifecycle ?? "all",
+      search: search?.trim() || undefined,
+      sortBy,
+      limit,
+      offset,
+    });
+
+    return {
+      listings: listings.map((listing) => this.toListingResponse(listing, true)),
+      total: listings.length,
+      limit,
+      offset,
+    };
+  }
+
+  private async assertCanAccessOwnerListings(user: any, seller: string) {
+    const requestedSeller = seller.toLowerCase();
+    const userId = user?.userId?.toLowerCase();
+    if (!userId) {
+      throw new ForbiddenException("Authentication required");
+    }
+    if (user.role === "admin" || userId === requestedSeller) {
+      return;
+    }
+
+    const linkedWallet = await prisma.wallet.findFirst({
+      where: {
+        OR: [
+          {
+            address: { equals: requestedSeller, mode: "insensitive" },
+            ownerAddress: { equals: userId, mode: "insensitive" },
+          },
+          {
+            address: { equals: userId, mode: "insensitive" },
+            ownerAddress: { equals: requestedSeller, mode: "insensitive" },
+          },
+        ],
+      },
+      select: { id: true },
+    });
+    if (!linkedWallet) {
+      throw new ForbiddenException("Cannot access another seller's listing inventory");
+    }
+  }
+
+  /**
    * Get listing by ID
    * GET /api/metadata/listings/:chainId/:listingId
    */
@@ -730,6 +799,106 @@ export class MetadataController {
         licenseType: p.licenseType,
         purchasedAt: p.purchasedAt.toISOString(),
       })),
+    };
+  }
+
+  private toListingResponse(
+    listing: {
+      id?: string;
+      listingId: bigint;
+      tokenId: bigint;
+      chainId?: number;
+      contractAddress?: string;
+      sellerAddress: string;
+      pricePerUnit: string;
+      amount: bigint;
+      paymentToken: string;
+      licenseType: LicenseType;
+      status: string;
+      lifecycleStatus?: string;
+      expiresAt: Date;
+      listedAt?: Date;
+      soldAt?: Date | null;
+      cancelledAt?: Date | null;
+      stem?: {
+        id: string;
+        title: string | null;
+        type: string;
+        uri?: string | null;
+        artworkUrl?: string | null;
+        track?: {
+          id?: string;
+          title: string;
+          generationMetadata?: unknown;
+          release?: {
+            id: string;
+            title?: string;
+            primaryArtist?: string | null;
+            artistId?: string | null;
+            artworkUrl?: string | null;
+            artworkMimeType?: string | null;
+            type?: string | null;
+          } | null;
+        } | null;
+      } | null;
+    },
+    includeOwnerFields = false,
+  ) {
+    const stem = listing.stem;
+    const track = stem?.track;
+    const release = track?.release;
+    let artworkUrl = this.toRelativeUrl(stem?.artworkUrl || release?.artworkUrl);
+    if (!artworkUrl && release?.id && release?.artworkMimeType) {
+      artworkUrl = `/catalog/releases/${release.id}/artwork`;
+    }
+    if (!artworkUrl) {
+      artworkUrl = `/default-stem-cover.png`;
+    }
+
+    const durationDays = listing.listedAt
+      ? Math.max(1, Math.round((listing.expiresAt.getTime() - listing.listedAt.getTime()) / 86_400_000))
+      : undefined;
+    const lifecycleStatus = listing.lifecycleStatus ?? listing.status;
+    const relistable =
+      includeOwnerFields &&
+      ["expired", "cancelled"].includes(lifecycleStatus) &&
+      listing.amount > 0n;
+
+    return {
+      id: listing.id,
+      listingId: listing.listingId.toString(),
+      tokenId: listing.tokenId.toString(),
+      chainId: listing.chainId,
+      contractAddress: listing.contractAddress,
+      seller: listing.sellerAddress,
+      price: listing.pricePerUnit,
+      paymentToken: listing.paymentToken,
+      licenseType: listing.licenseType,
+      amount: listing.amount.toString(),
+      status: listing.status,
+      lifecycleStatus,
+      expiresAt: listing.expiresAt.toISOString(),
+      listedAt: listing.listedAt?.toISOString(),
+      soldAt: listing.soldAt?.toISOString(),
+      cancelledAt: listing.cancelledAt?.toISOString(),
+      durationDays,
+      relistable,
+      stem: stem
+        ? {
+          id: stem.id,
+          title: stem.title || `${stem.type.charAt(0).toUpperCase() + stem.type.slice(1)} Stem`,
+          type: stem.type,
+          track: track?.title || "Unknown Track",
+          artist: release?.primaryArtist || "Unknown Artist",
+          trackId: track?.id,
+          releaseId: release?.id,
+          artistId: release?.artistId,
+          artworkUrl,
+          uri: this.toRelativeUrl(stem.uri, stem.id),
+          isAiGenerated: release?.type === "ai_generated" || !!track?.generationMetadata,
+          generationProvider: (track?.generationMetadata as any)?.provider,
+        }
+        : null,
     };
   }
 
@@ -1471,7 +1640,14 @@ export class MetadataController {
   @Patch("notifications/:address/preferences")
   async updateNotificationPreferences(
     @Param("address") address: string,
-    @Body() body: { disputeFiled?: boolean; disputeResolved?: boolean; disputeAppealed?: boolean; evidenceSubmitted?: boolean },
+    @Body() body: {
+      disputeFiled?: boolean;
+      disputeResolved?: boolean;
+      disputeAppealed?: boolean;
+      evidenceSubmitted?: boolean;
+      listingExpiringSoon?: boolean;
+      listingExpired?: boolean;
+    },
   ) {
     return this.notificationService.updatePreferences(address.toLowerCase(), body);
   }

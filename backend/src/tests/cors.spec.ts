@@ -4,6 +4,7 @@ describe("getCorsAllowedOrigins", () => {
   it("includes local frontend defaults", () => {
     expect(getCorsAllowedOrigins({})).toEqual([
       "http://localhost:3001",
+      "http://localhost:3002",
       "http://localhost:3000",
     ]);
   });
@@ -17,6 +18,7 @@ describe("getCorsAllowedOrigins", () => {
       }),
     ).toEqual([
       "http://localhost:3001",
+      "http://localhost:3002",
       "http://localhost:3000",
       "https://app.example.com",
       "https://admin.example.com",
@@ -31,6 +33,7 @@ describe("getCorsAllowedOrigins", () => {
       }),
     ).toEqual([
       "http://localhost:3001",
+      "http://localhost:3002",
       "http://localhost:3000",
       "https://one.example.com",
       "https://two.example.com",

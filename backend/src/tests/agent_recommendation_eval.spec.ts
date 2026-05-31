@@ -1,13 +1,18 @@
 import { existsSync, rmSync, readFileSync } from "fs";
 import { resolve } from "path";
-import { AgentRecommendationEvalService } from "../modules/agents/agent_recommendation_eval.service";
+import {
+  AGENT_RECOMMENDATION_MODEL_COMPARISON_SCHEMA_VERSION,
+  AgentRecommendationEvalService,
+} from "../modules/agents/agent_recommendation_eval.service";
 
 describe("agent recommendation evals", () => {
   const artifactPath = resolve(process.cwd(), "eval-results/agent-recommendation-results.json");
   const summaryPath = resolve(process.cwd(), "eval-results/agent-recommendation-summary.md");
+  const comparisonArtifactPath = resolve(process.cwd(), "eval-results/agent-recommendation-model-comparison.json");
+  const comparisonSummaryPath = resolve(process.cwd(), "eval-results/agent-recommendation-model-comparison.md");
 
   beforeEach(() => {
-    for (const path of [artifactPath, summaryPath]) {
+    for (const path of [artifactPath, summaryPath, comparisonArtifactPath, comparisonSummaryPath]) {
       if (existsSync(path)) rmSync(path);
     }
   });
@@ -199,5 +204,168 @@ describe("agent recommendation evals", () => {
       "selected forbidden track ambient-track",
       "precision 0.5 below minimum 1",
     ]));
+  });
+
+  it("compares deterministic, warehouse baseline, and BigQuery ML candidates before promotion", () => {
+    const service = new AgentRecommendationEvalService();
+    const { report, artifactPath: writtenArtifact, summaryPath: writtenSummary } =
+      service.runModelComparisonAndWriteArtifact([
+        {
+          id: "bqml-avoids-skip-and-finds-listed-neighbor",
+          description: "BQML ranks an accepted semantic neighbor above a skipped catalog neighbor.",
+          k: 2,
+          candidates: [
+            {
+              trackId: "cipher",
+              title: "Late Night Cipher",
+              relevance: "exact",
+              accepted: true,
+              skipped: false,
+              hasListing: true,
+              recent: false,
+              genre: "hip-hop",
+              artistId: "artist-a",
+              explanation: ["Selected vibe match"],
+              signals: [{ label: "taste_match", weight: 40, reason: "matches Hip Hop taste" }],
+              variantScores: { deterministic: 0.95, warehouse_baseline: 0.8, bqml: 0.95 },
+            },
+            {
+              trackId: "pocket-flow",
+              title: "Pocket Flow",
+              relevance: "semantic",
+              accepted: true,
+              skipped: false,
+              hasListing: true,
+              recent: false,
+              genre: "rap",
+              artistId: "artist-b",
+              explanation: ["Semantic neighbor"],
+              signals: [{ label: "semantic_similarity", weight: 14, reason: "nearby lyrical pocket" }],
+              variantScores: { deterministic: 0.72, warehouse_baseline: 0.7, bqml: 0.92 },
+            },
+            {
+              trackId: "ambient-drift",
+              title: "Ambient Drift",
+              relevance: "unrelated",
+              accepted: false,
+              skipped: true,
+              hasListing: false,
+              recent: false,
+              genre: "ambient",
+              artistId: "artist-c",
+              variantScores: { deterministic: 0.86, warehouse_baseline: 0.76, bqml: 0.11 },
+            },
+          ],
+        },
+        {
+          id: "bqml-preserves-novelty",
+          description: "BQML keeps the fresh pick above a recently skipped replay.",
+          k: 2,
+          candidates: [
+            {
+              trackId: "fresh-techno",
+              relevance: "exact",
+              accepted: true,
+              skipped: false,
+              hasListing: true,
+              recent: false,
+              genre: "techno",
+              artistId: "artist-d",
+              explanation: ["Fresh match"],
+              variantScores: { deterministic: 0.9, warehouse_baseline: 0.82, bqml: 0.93 },
+            },
+            {
+              trackId: "warm-electro",
+              relevance: "semantic",
+              accepted: true,
+              skipped: false,
+              hasListing: true,
+              recent: false,
+              genre: "electro",
+              artistId: "artist-e",
+              explanation: ["Nearby energy curve"],
+              variantScores: { deterministic: 0.62, warehouse_baseline: 0.65, bqml: 0.9 },
+            },
+            {
+              trackId: "recent-techno",
+              relevance: "exact",
+              accepted: false,
+              skipped: true,
+              hasListing: true,
+              recent: true,
+              genre: "techno",
+              artistId: "artist-d",
+              variantScores: { deterministic: 0.88, warehouse_baseline: 0.8, bqml: 0.2 },
+            },
+          ],
+        },
+      ]);
+
+    expect(report.schemaVersion).toBe(AGENT_RECOMMENDATION_MODEL_COMPARISON_SCHEMA_VERSION);
+    expect(report.promotion.bqmlBeatsBaseline).toBe(true);
+    expect(report.promotion.recommendation).toBe("promote_bqml_staging_table");
+    expect(report.metrics.variants.bqml.precision).toBe(1);
+    expect(report.metrics.variants.bqml.skipAvoidance).toBe(1);
+    expect(report.metrics.variants.bqml.listingCoverage).toBe(1);
+    expect(report.metrics.variants.bqml.overallScore)
+      .toBeGreaterThan(report.metrics.variants.warehouse_baseline.overallScore ?? 0);
+    expect(writtenArtifact).toBe(comparisonArtifactPath);
+    expect(writtenSummary).toBe(comparisonSummaryPath);
+    expect(JSON.parse(readFileSync(comparisonArtifactPath, "utf8")).promotion.bqmlBeatsBaseline).toBe(true);
+    expect(readFileSync(comparisonSummaryPath, "utf8")).toContain("BQML beats baseline: yes");
+  });
+
+  it("holds baseline when BigQuery ML comparison metrics regress", () => {
+    const service = new AgentRecommendationEvalService();
+    const report = service.runModelComparison([
+      {
+        id: "bqml-regression",
+        description: "BQML over-ranks an unlisted skipped candidate.",
+        k: 2,
+        candidates: [
+          {
+            trackId: "listed-match",
+            relevance: "exact",
+            accepted: true,
+            skipped: false,
+            hasListing: true,
+            recent: false,
+            genre: "house",
+            artistId: "artist-a",
+            explanation: ["Strong match"],
+            variantScores: { deterministic: 0.9, warehouse_baseline: 0.95, bqml: 0.4 },
+          },
+          {
+            trackId: "nearby-match",
+            relevance: "semantic",
+            accepted: true,
+            skipped: false,
+            hasListing: true,
+            recent: false,
+            genre: "deep-house",
+            artistId: "artist-b",
+            explanation: ["Nearby match"],
+            variantScores: { deterministic: 0.86, warehouse_baseline: 0.9, bqml: 0.3 },
+          },
+          {
+            trackId: "skipped-unlisted",
+            relevance: "unrelated",
+            accepted: false,
+            skipped: true,
+            hasListing: false,
+            recent: true,
+            genre: "noise",
+            artistId: "artist-c",
+            variantScores: { deterministic: 0.2, warehouse_baseline: 0.1, bqml: 0.99 },
+          },
+        ],
+      },
+    ]);
+
+    expect(report.promotion.bqmlBeatsBaseline).toBe(false);
+    expect(report.promotion.recommendation).toBe("hold_baseline");
+    expect(report.promotion.delta.overallScore).toBeLessThan(0);
+    expect(report.metrics.variants.bqml.listingCoverage).toBe(0.5);
+    expect(report.caseResults[0].variants.bqml.selectedTrackIds).toEqual(["skipped-unlisted", "listed-match"]);
   });
 });

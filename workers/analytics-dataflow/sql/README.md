@@ -39,6 +39,22 @@ Run order:
 2. `agent_taste_intelligence_baseline.sql` for recommendation-serving taste
    scores.
 3. Optional, after enough feedback exists: `agent_taste_intelligence_bqml.sql`
+4. Before any ML promotion: `agent_taste_intelligence_bqml_eval.sql`
+
+The baseline materialization is parameterized and can be run from the worker
+directory:
+
+```bash
+cd workers/analytics-dataflow
+AGENT_TASTE_MATERIALIZATION_PROJECT_ID="$GCP_PROJECT_ID" \
+AGENT_TASTE_BIGQUERY_DATASET="$ANALYTICS_BIGQUERY_DATASET" \
+./run-agent-taste-materialization.sh --verify
+```
+
+Use `--dry-run` to validate table references and SQL shape without writing
+tables. The runner resolves project, dataset, clean table, training table, score
+table, and version from the documented agent taste, analytics BigQuery,
+warehouse, and GCP environment variables.
 
 The baseline script creates:
 
@@ -48,11 +64,26 @@ The baseline script creates:
 | `user_track_signal_training` | Event-level implicit-feedback rows with signed weights. |
 | `user_track_recommendation_scores` | Serving table consumed by `AgentBigQueryTasteSignalService`. |
 
+The signed baseline signals include playback completion, inferred short-play
+skips, repeat/replay behavior, library saves, playlist adds, commerce/payment
+purchases, x402 purchases, agent purchase completions, agent track selections,
+and session intent context where it is available.
+
+`agent_taste_intelligence_verification.sql` reports score freshness, user/track
+coverage, confidence coverage, signal-type mix, and session-intent coverage.
+
 The BQML script creates a matrix-factorization model and writes
-`user_track_recommendation_scores_bqml`. Promote it to
-`user_track_recommendation_scores` only after offline recommendation evals
-approve the output.
+`user_track_recommendation_scores_bqml`. The BQML eval script then compares
+that challenger table with `user_track_recommendation_scores` and writes a
+staging comparison table such as `agent_taste_bqml_eval_report`. Promote or
+blend into `user_track_recommendation_scores` only after the backend replay
+artifact and warehouse comparison table show the ML output beats the baseline.
 
 The backend serving query is intentionally bounded by one `userId` and the
 candidate `trackIds` already found by catalog search. These SQL jobs can be
 scheduled independently without changing the recommendation API contract.
+
+For managed scheduling, use the Dataform template under
+`workers/analytics-dataflow/dataform/`. Keep this SQL directory as the manual
+operator/backfill path and as the source of truth for local dry-runs until the
+Dataform workflow is deployed through `resonate-iac`.

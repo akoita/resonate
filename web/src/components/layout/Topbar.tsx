@@ -1,6 +1,7 @@
 "use client";
 
 import type React from "react";
+import { usePathname } from "next/navigation";
 import ConnectButton from "../auth/ConnectButton";
 import NotificationBell from "../notifications/NotificationBell";
 import { useUIStore } from "../../lib/uiStore";
@@ -10,7 +11,32 @@ export type TopbarProps = {
   actions?: React.ReactNode;
 };
 
+const ROUTE_TITLES: Array<[string, string]> = [
+  ["/agent", "AI DJ"],
+  ["/sonic-radar", "Sonic Radar"],
+  ["/player", "Player"],
+  ["/library", "Library"],
+  ["/create", "Create"],
+  ["/shows", "Shows"],
+  ["/marketplace", "Marketplace"],
+  ["/playlists", "Playlists"],
+  ["/artist/analytics", "Analytics"],
+  ["/analytics/agent-quality", "AI DJ Quality"],
+  ["/artist/catalog", "Catalog"],
+  ["/artist/upload", "Upload"],
+  ["/wallet", "Wallet"],
+  ["/disputes", "Disputes"],
+  ["/settings", "Settings"],
+  ["/about", "About"],
+];
+
+function getRouteTitle(pathname: string | null) {
+  if (!pathname || pathname === "/") return "Discover";
+  return ROUTE_TITLES.find(([route]) => pathname === route || pathname.startsWith(`${route}/`))?.[1] ?? "Discover";
+}
+
 export default function Topbar({ title, actions }: TopbarProps) {
+  const pathname = usePathname();
   const { togglePlaylistPanel, isPlaylistPanelOpen, toggleSidebar, isSidebarOpen } = useUIStore();
 
   return (
@@ -29,7 +55,7 @@ export default function Topbar({ title, actions }: TopbarProps) {
             <line x1="3" y1="18" x2="21" y2="18" />
           </svg>
         </button>
-        <div className="topbar-title">{title ?? "Discover"}</div>
+        <div className="topbar-title">{title ?? getRouteTitle(pathname)}</div>
       </div>
       <div className="topbar-actions">
         <button

@@ -493,13 +493,25 @@ export default function MarketplacePage() {
         <div>
             {/* Hero Header */}
             <div className="marketplace-hero">
-                <h1 className="marketplace-title" data-testid="marketplace-title">
-                    Stem Marketplace
-                    <span className="marketplace-count">{filteredListings.length}</span>
-                </h1>
-                <p className="marketplace-subtitle">
-                    Browse, preview, and collect unique audio stem NFTs from artists worldwide.
-                </p>
+                <div className="marketplace-hero__main">
+                    <div>
+                        <h1 className="marketplace-title" data-testid="marketplace-title">
+                            Stem Marketplace
+                            <span className="marketplace-count">{filteredListings.length}</span>
+                        </h1>
+                        <p className="marketplace-subtitle">
+                            Browse, preview, and collect unique audio stem NFTs from artists worldwide.
+                        </p>
+                    </div>
+                    <div className="marketplace-hero__actions">
+                        <Link href="/marketplace/manage" className="marketplace-secondary-link">
+                            Manage listings
+                        </Link>
+                        <Link href="/artist/upload" className="marketplace-action-btn marketplace-action-btn--link">
+                            Upload & mint
+                        </Link>
+                    </div>
+                </div>
             </div>
 
             {/* Sticky Search + Filter Controls */}
@@ -590,6 +602,9 @@ export default function MarketplacePage() {
                                 <span className="marketplace-toggle__slider" />
                                 <span className="marketplace-toggle__label">Hide my listings</span>
                             </label>
+                            <Link href="/marketplace/manage" className="marketplace-manage-link">
+                                Manage my listings
+                            </Link>
                         </>
                     )}
                 </div>

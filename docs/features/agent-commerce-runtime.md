@@ -36,7 +36,7 @@ Available now:
 - The Home page exposes a "Recommended for You" row backed by `GET /recommendations/:userId`, with a seeded "Start session" action that creates or updates the listener's AI DJ taste seed before opening `/agent`.
 - Runtime catalog search treats explicit genre/taste queries as hard candidate constraints. A query with no catalog matches returns no candidates instead of falling back to unrelated recent tracks.
 - LLM adapters can curate over the shared catalog/pricing/analytics tools when configured, but the current content-understanding layer is still metadata and embedding based. Full audio analysis remains follow-up work, while optional BigQuery-backed collaborative taste scoring is available through [Agent Taste Intelligence](agent_taste_intelligence.md).
-- The deterministic selector now produces a bounded scored shortlist with explanation signals for taste match, expanded taste match, learned preference, active listings, text similarity, recent-track exclusion, and versioned metadata-derived audio feature vectors.
+- The deterministic selector now produces a bounded scored shortlist with explanation signals for taste match, expanded taste match, learned preference, active listings, text similarity, recent-track exclusion, optional sanitized warehouse taste explanations, and versioned metadata-derived audio feature vectors.
 - Recommendation ranking now runs behind an adapter contract. `AGENT_RECOMMENDATION_STRATEGY` selects the strategy and defaults to `deterministic`; unsupported values fall back to the deterministic adapter rather than changing user-facing behavior.
 - `AGENT_RECOMMENDATION_STRATEGY=model-assisted` enables structured Gemini ranking over a bounded deterministic candidate pool when `GOOGLE_AI_API_KEY` is configured. The model returns ranked decisions, explanations, and rejection reasons; strict post-model guards reject unknown IDs, recent tracks, `none` relevance, and low-confidence selections. Missing credentials, malformed output, timeouts, and model errors fall back to deterministic ranking.
 - Metadata-derived `agentAudioFeatures` are persisted on `Track.generationMetadata` as a first durable feature-vector seed. Current schema version `agent-audio-features/v2` exposes confidence, source, extractor version, tempo/duration/energy bands, normalized genre, descriptors, tags, warnings, and a normalized numeric vector while leaving full DSP/model extraction as a future implementation behind the same service boundary.
@@ -179,6 +179,52 @@ would freeze an authenticated command API before Resonate has a concrete first
 external client that needs one. When that client exists, the new API should be
 designed as a narrow command surface that still returns the existing normalized
 router result envelope and enforces `PolicyGuardService` before rail execution.
+
+## Quick Demo: discover → quote → pay → receipt
+
+A copy-paste curl walkthrough showing the full x402 purchase flow. Set a base
+URL, a stem ID, and an `X_PAYMENT` proof from the x402-capable client you use
+to settle the challenge.
+
+```bash
+export RESONATE_API_BASE="${RESONATE_API_BASE:-http://localhost:3000}"
+export STEM_ID="<stem-id>"
+export X_PAYMENT="<payment proof from your x402-capable client>"
+
+# 1. Discover the catalog
+curl "$RESONATE_API_BASE/openapi.json"
+curl "$RESONATE_API_BASE/api/storefront/stems?limit=3"
+curl "$RESONATE_API_BASE/api/storefront/stems/$STEM_ID"
+```
+
+```bash
+# 2. Get quote and trigger payment challenge
+curl "$RESONATE_API_BASE/api/stems/$STEM_ID/x402/info"
+curl -i "$RESONATE_API_BASE/api/stems/$STEM_ID/x402"
+```
+
+```bash
+# 3. Pay and receive receipt
+curl -sS -D /tmp/resonate-headers.txt \
+  -H "X-PAYMENT: $X_PAYMENT" \
+  "$RESONATE_API_BASE/api/stems/$STEM_ID/x402" \
+  -o /tmp/resonate-stem.mp3
+
+# Decode the structured receipt
+node -e 'const fs = require("fs"); const raw = fs.readFileSync("/tmp/resonate-headers.txt", "utf8"); const line = raw.split("\\n").find((entry) => entry.toLowerCase().startsWith("x-resonate-receipt:")); if (!line) { throw new Error("Missing X-Resonate-Receipt header"); } const encoded = line.split(":").slice(1).join(":").trim(); const receipt = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")); console.log(JSON.stringify(receipt, null, 2));'
+```
+
+Expected flow:
+
+1. `openapi.json` and `/api/storefront/stems` expose the discovery surface
+2. `/api/stems/:stemId/x402/info` returns storefront-grade quote metadata
+3. The first paid `curl` returns the `402 Payment Required` challenge
+4. The retried paid `curl` downloads the stem and returns a structured receipt in `X-Resonate-Receipt`
+5. The final `node` command decodes that receipt into JSON
+
+If you use an x402-capable client such as AgentCash, it can automate the proof
+exchange for you. The raw `curl` path above is here so reviewers can inspect
+the underlying commerce surface directly.
 
 ## Developer Payment-Router Flow
 

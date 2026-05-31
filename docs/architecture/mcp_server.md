@@ -16,6 +16,16 @@ JWT, and uses x402 inside the tool protocol for paid downloads.
 spec requirement. The authoritative live capability source is still the MCP
 `initialize` response and subsequent `tools/list` call.
 
+`GET /mcp` and `/.well-known/mcp.json` also expose Resonate-specific
+capability metadata for external agents:
+
+- capability schema version;
+- tool details and versions;
+- supported license tiers;
+- x402 payment asset, network, facilitator, and retry headers;
+- stable error codes with recovery hints;
+- links to OpenAPI, x402, registry, and external-agent contract docs.
+
 ## Tools
 
 | Tool | Payment | Purpose |
@@ -24,9 +34,25 @@ spec requirement. The authoritative live capability source is still the MCP
 | `stem.quote(stemId, licenseType)` | Free | Return a USDC quote and x402 challenge |
 | `stem.download(stemId, licenseType, paymentProof)` | x402 | Validate proof and return the purchased stem resource |
 
-`stem.download` does not use HTTP-level 402 at `/mcp`. Missing or invalid
-proofs return an MCP tool error with `code: "PAYMENT_REQUIRED"` and the same
-challenge shape as `stem.quote`.
+Tool responses include planner-friendly fields for external agents:
+
+- `catalog.search` returns `summary`, release `availableActions`, and a
+  storefront hint for finding concrete purchasable stem IDs before payment
+  planning.
+- `stem.quote` returns `summary`, `availableActions`, `rights`, `policy`,
+  `docs`, `priceUsdc`, `expiresAt`, and the x402 `paymentChallenge`.
+- successful `stem.download` returns `summary`, `availableActions`,
+  `receiptVerification`, `docs`, the full receipt, and the embedded MCP
+  resource metadata.
+
+`stem.download` does not use HTTP-level 402 at `/mcp`. Missing proofs return an
+MCP tool error with `code: "PAYMENT_REQUIRED"` and the same challenge shape as
+`stem.quote`. Invalid proofs, facilitator failures, settlement failures, missing
+stems, and unavailable resources return stable MCP tool error codes with
+machine-readable recovery hints.
+
+Stable error codes and receipt expectations for external agents are documented
+in [External Agent Application Contract](external_agent_application_contract.md).
 
 ## 30-second local check
 
@@ -98,4 +124,8 @@ npm install
 RESONATE_MCP_URL=http://localhost:3000/mcp npm run smoke
 ```
 
-It connects to `/mcp`, lists tools, and calls `catalog.search`.
+It connects to `/mcp`, lists tools, and calls `catalog.search`. When
+`RESONATE_MCP_STEM_ID` is set, it also calls `stem.quote` and demonstrates the
+missing-proof `PAYMENT_REQUIRED` recovery path. `RESONATE_MCP_PAYMENT_PROOF`
+enables an explicit paid `stem.download` attempt and prints a receipt summary
+without dumping proof-bearing fields or audio blobs.

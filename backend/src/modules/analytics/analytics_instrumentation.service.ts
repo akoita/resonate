@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, Optional } from "@nestjs/common";
 import { AnalyticsEventInput, AnalyticsGeoDimension } from "./analytics_event";
 import { AnalyticsCatalogMetadataService } from "./analytics_catalog_metadata.service";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
+import { AgentLearningService, buildAgentSignalMetadata, type AgentSignalAction } from "../agents/agent_learning.service";
 
 export type PlaybackLifecycleAction = "started" | "heartbeat";
 
@@ -11,7 +12,12 @@ interface PlaybackCatalogAnalyticsInput {
   releaseId?: string;
   sessionId?: string;
   source?: string;
+  initiator?: "listener" | "external_agent" | "ai_dj";
+  agentOriginated?: boolean;
+  agentSessionId?: string;
+  playbackCommandId?: string;
   actorId?: string;
+  actorUserId?: string;
   geo?: AnalyticsGeoDimension;
 }
 
@@ -36,6 +42,7 @@ export interface ProductAnalyticsInput {
   eventName: string;
   producer?: string;
   actorId?: string;
+  actorUserId?: string;
   sessionId?: string;
   traceId?: string;
   subjectType?: string;
@@ -94,12 +101,14 @@ export class AnalyticsInstrumentationService {
   constructor(
     private readonly ingestService: AnalyticsIngestService,
     private readonly catalogMetadataService?: AnalyticsCatalogMetadataService,
+    @Optional()
+    private readonly agentLearningService?: AgentLearningService,
   ) {}
 
   async recordPlaybackCompleted(input: PlaybackCompletedAnalyticsInput) {
     const catalog = await this.resolvePlaybackCatalog(input);
 
-    return this.emit({
+    const result = await this.emit({
       eventName: "playback.completed",
       producer: "playback-service",
       privacyTier: "pseudonymous",
@@ -115,14 +124,40 @@ export class AnalyticsInstrumentationService {
         completionRatio: input.completionRatio,
         durationMs: input.durationMs,
         source: input.source,
+        initiator: input.initiator ?? "listener",
+        agentOriginated: input.agentOriginated ?? false,
+        agentSessionId: input.agentSessionId,
+        playbackCommandId: input.playbackCommandId,
       },
       sourceRefs: {
         ...(input.actorId ? { actorId: input.actorId } : {}),
         ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+        ...(input.agentSessionId ? { agentSessionId: input.agentSessionId } : {}),
+        ...(input.playbackCommandId ? { playbackCommandId: input.playbackCommandId } : {}),
         trackId: input.trackId,
         ...(catalog.releaseId ? { releaseId: catalog.releaseId } : {}),
       },
     });
+    await this.recordAgentOutcome({
+      userId: input.actorUserId,
+      sessionId: input.sessionId,
+      trackId: input.trackId,
+      action: "complete",
+      metadata: buildAgentSignalMetadata({
+        source: input.source ?? "web_player",
+        initiator: input.initiator ?? "listener",
+        agentOriginated: input.agentOriginated ?? false,
+        agentSessionId: input.agentSessionId,
+        playbackCommandId: input.playbackCommandId,
+        outcome: {
+          type: "playback_completed",
+          completionRatio: input.completionRatio,
+          durationMs: input.durationMs,
+          agentOriginated: input.agentOriginated ?? false,
+        },
+      }),
+    });
+    return result;
   }
 
   async recordPlaybackLifecycle(input: PlaybackLifecycleAnalyticsInput) {
@@ -147,6 +182,10 @@ export class AnalyticsInstrumentationService {
         durationMs: input.durationMs,
         heartbeatIntervalMs: input.heartbeatIntervalMs,
         source: input.source,
+        initiator: input.initiator ?? "listener",
+        agentOriginated: input.agentOriginated ?? false,
+        agentSessionId: input.agentSessionId,
+        playbackCommandId: input.playbackCommandId,
         queueIndex: input.queueIndex,
         queueLength: input.queueLength,
         repeatMode: input.repeatMode,
@@ -155,6 +194,8 @@ export class AnalyticsInstrumentationService {
       sourceRefs: {
         ...(input.actorId ? { actorId: input.actorId } : {}),
         ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+        ...(input.agentSessionId ? { agentSessionId: input.agentSessionId } : {}),
+        ...(input.playbackCommandId ? { playbackCommandId: input.playbackCommandId } : {}),
         ...(input.playbackInstanceId ? { playbackInstanceId: input.playbackInstanceId } : {}),
         action: input.action,
         trackId: input.trackId,
@@ -165,7 +206,7 @@ export class AnalyticsInstrumentationService {
   }
 
   async recordProductEvent(input: ProductAnalyticsInput) {
-    return this.emit({
+    const result = await this.emit({
       eventName: input.eventName,
       producer: input.producer ?? "web-app",
       privacyTier: "pseudonymous",
@@ -186,6 +227,64 @@ export class AnalyticsInstrumentationService {
         ...(input.sourceRefs ?? {}),
       },
     });
+    await this.recordProductAgentOutcome(input);
+    return result;
+  }
+
+  private async recordProductAgentOutcome(input: ProductAnalyticsInput) {
+    const payload = input.payload ?? {};
+    const trackId = productTrackId(input);
+    if (!trackId) {
+      return;
+    }
+
+    const actionByEvent: Partial<Record<string, AgentSignalAction>> = {
+      "library.saved": "save",
+      "playlist.track_added": "add_to_playlist",
+    };
+    const action = actionByEvent[input.eventName];
+    if (!action) {
+      return;
+    }
+
+    await this.recordAgentOutcome({
+      userId: input.actorUserId,
+      sessionId: input.sessionId,
+      trackId,
+      action,
+      metadata: buildAgentSignalMetadata({
+        source: input.source ?? payload.source ?? "web_app",
+        outcome: {
+          type: input.eventName,
+          source: input.source ?? payload.source,
+        },
+      }),
+    });
+  }
+
+  private async recordAgentOutcome(input: {
+    userId?: string;
+    sessionId?: string;
+    trackId: string;
+    action: AgentSignalAction;
+    metadata: ReturnType<typeof buildAgentSignalMetadata>;
+  }) {
+    if (!this.agentLearningService || !input.userId) {
+      return;
+    }
+    try {
+      await this.agentLearningService.recordSignal({
+        userId: input.userId,
+        sessionId: undefined,
+        trackId: input.trackId,
+        action: input.action,
+        metadata: input.metadata,
+      });
+    } catch (error) {
+      console.warn(
+        `[Analytics] AgentSignal outcome mirror skipped: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   private async resolvePlaybackCatalog(input: PlaybackCatalogAnalyticsInput) {
@@ -317,4 +416,14 @@ export class AnalyticsInstrumentationService {
       ...input,
     });
   }
+}
+
+function productTrackId(input: ProductAnalyticsInput) {
+  if (input.subjectType === "track" && input.subjectId) {
+    return input.subjectId;
+  }
+  const payloadTrackId = input.payload?.trackId;
+  return typeof payloadTrackId === "string" && payloadTrackId.trim()
+    ? payloadTrackId.trim()
+    : undefined;
 }

@@ -527,6 +527,64 @@ export type ArtistAnalyticsDashboard = {
   meta: ArtistAnalyticsMeta;
 };
 
+export type AgentQualityBreakdown = {
+  key: string;
+  label: string;
+  sessionsStarted: number;
+  nextPickRequests: number;
+  acceptedPicks: number;
+  acceptanceRate: number;
+  completionRate: number;
+  saveRate: number;
+  purchaseRate: number;
+  averageSessionDurationMs: number | null;
+};
+
+export type AgentQualityTimePoint = {
+  date: string;
+  sessionsStarted: number;
+  nextPickRequests: number;
+  acceptedPicks: number;
+  completions: number;
+  saves: number;
+  purchases: number;
+};
+
+export type AgentQualityDashboard = {
+  summary: {
+    days: number;
+    sessionsStarted: number;
+    sessionsStopped: number;
+    intentSelections: number;
+    nextPickRequests: number;
+    acceptedPicks: number;
+    playbackCompletions: number;
+    firstPickSkips: number;
+    firstPickOutcomes: number;
+    saves: number;
+    playlistAdds: number;
+    purchases: number;
+    purchaseUsd: number;
+    averageSessionDurationMs: number | null;
+    acceptanceRate: number;
+    firstPickSkipRate: number;
+    completionRate: number;
+    saveRate: number;
+    playlistAddRate: number;
+    purchaseRate: number;
+  };
+  intentBreakdown: AgentQualityBreakdown[];
+  strategyBreakdown: AgentQualityBreakdown[];
+  tasteSourceBreakdown: AgentQualityBreakdown[];
+  versionBreakdown: AgentQualityBreakdown[];
+  qualityOverTime: AgentQualityTimePoint[];
+  privacy: {
+    aggregation: string;
+    excludes: string[];
+  };
+  meta: ArtistAnalyticsMeta;
+};
+
 export async function getArtistMe(token: string) {
   const isMockAuth = (typeof window !== "undefined" && localStorage.getItem("resonate.mock_auth") === "true") || process.env.NEXT_PUBLIC_MOCK_AUTH === "true";
 
@@ -554,12 +612,28 @@ export async function getArtistAnalyticsDashboard(
   );
 }
 
+export async function getAgentQualityDashboard(
+  token: string,
+  days = 30,
+) {
+  const search = new URLSearchParams({ days: String(days) });
+  return apiRequest<AgentQualityDashboard>(
+    `/analytics/agent/quality?${search.toString()}`,
+    { cache: "no-store" },
+    token,
+  );
+}
+
 export type PlaybackCompletedAnalyticsInput = {
   trackId: string;
   artistId?: string;
   releaseId?: string;
   sessionId?: string;
   source?: string;
+  initiator?: "listener" | "external_agent" | "ai_dj";
+  agentOriginated?: boolean;
+  agentSessionId?: string;
+  playbackCommandId?: string;
   completionRatio: number;
   durationMs?: number;
 };
@@ -586,6 +660,10 @@ export type PlaybackLifecycleAnalyticsInput = {
   sessionId?: string;
   playbackInstanceId?: string;
   source?: string;
+  initiator?: "listener" | "external_agent" | "ai_dj";
+  agentOriginated?: boolean;
+  agentSessionId?: string;
+  playbackCommandId?: string;
   positionMs?: number;
   durationMs?: number;
   heartbeatIntervalMs?: number;
@@ -607,6 +685,226 @@ export async function recordPlaybackEvent(
     },
     token,
   );
+}
+
+export type PlaybackCapabilityScope =
+  | "playback.intent"
+  | "playback.resolve"
+  | "playback.queue"
+  | "playback.play"
+  | "playback.control"
+  | "playback.status";
+
+export type PlaybackIntentOutcome =
+  | "queued"
+  | "playing"
+  | "confirmation_required"
+  | "no_active_device"
+  | "blocked_by_policy"
+  | "unavailable";
+
+export type PlaybackConfirmationMode =
+  | "propose_only"
+  | "queue_with_confirmation"
+  | "remote_control_when_active";
+
+export type PlaybackCapability = {
+  id: string;
+  ownerUserId: string;
+  scopes: PlaybackCapabilityScope[];
+  allowedSources: string[];
+  confirmationMode: PlaybackConfirmationMode;
+  expiresAt?: string;
+  revokedAt?: string;
+  rateLimitPerMinute: number;
+  createdAt: string;
+};
+
+export type PlaybackDevice = {
+  deviceId: string;
+  ownerUserId: string;
+  label: string;
+  active: boolean;
+  supports: PlaybackCapabilityScope[];
+  currentTrackId?: string;
+  state: "idle" | "playing" | "paused";
+  lastSeenAt: string;
+};
+
+export type PlaybackIntentCandidate = {
+  trackId: string;
+  title: string;
+  artistId?: string;
+  artistName?: string | null;
+  releaseId?: string;
+  releaseTitle?: string | null;
+  explicit: boolean;
+  source: "catalog";
+  playable: true;
+  reasons: string[];
+};
+
+export type PlaybackIntentResolveResponse = {
+  ownerUserId: string;
+  capabilityId: string;
+  outcome: PlaybackIntentOutcome;
+  policy: {
+    capabilityId: string;
+    scopes: PlaybackCapabilityScope[];
+    allowedSources: string[];
+    confirmationMode: PlaybackConfirmationMode;
+    paymentOrLicensingAllowed: false;
+    requiresActiveDevice: true;
+    reason?: string;
+  };
+  candidates: PlaybackIntentCandidate[];
+  nextAllowedCommands: string[];
+  redaction: {
+    privateLibrary: "redacted";
+    privateTaste: "redacted";
+    wallet: "redacted";
+    ownership: "redacted";
+  };
+};
+
+export type PlaybackIntentCommand = {
+  commandId: string;
+  ownerUserId: string;
+  action: "queue" | "play" | "pause" | "resume" | "skip" | "seek" | "stop";
+  status: "pending" | "pending_confirmation" | "queued" | "playing" | "blocked" | "unavailable";
+  outcome: PlaybackIntentOutcome;
+  trackIds: string[];
+  deviceId?: string;
+  sessionId?: string;
+  capabilityId: string;
+  requiresConfirmation: boolean;
+  initiator: "listener" | "external_agent" | "ai_dj";
+  agentOriginated: boolean;
+  createdAt: string;
+  updatedAt: string;
+  confirmedAt?: string;
+  reason?: string;
+};
+
+export async function getPlaybackCapabilities(token: string) {
+  return apiRequest<{
+    ownerUserId: string;
+    capability: PlaybackCapability;
+    activeDevices: PlaybackDevice[];
+    available: boolean;
+    policy: {
+      accountlessPlayback: false;
+      paymentOrLicensingAllowed: false;
+      defaultConfirmationMode: PlaybackConfirmationMode;
+      analyticsMarkersRequired: true;
+    };
+  }>("/sessions/playback/capabilities", { cache: "no-store" }, token);
+}
+
+export async function registerPlaybackDevice(
+  token: string,
+  input: Partial<Pick<PlaybackDevice, "deviceId" | "label" | "active" | "supports" | "currentTrackId" | "state">>,
+) {
+  return apiRequest<PlaybackDevice>(
+    "/sessions/playback/device",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export async function resolvePlaybackIntent(
+  token: string,
+  input: {
+    query?: string;
+    constraints?: {
+      maxTracks?: number;
+      explicit?: boolean;
+      source?: "resonate_catalog" | "library" | "purchased" | "preview";
+      genres?: string[];
+      mood?: string;
+    };
+    capabilityId?: string;
+    initiator?: "listener" | "external_agent" | "ai_dj";
+    sessionId?: string;
+  },
+) {
+  return apiRequest<PlaybackIntentResolveResponse>(
+    "/sessions/playback/resolve",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export async function queuePlaybackIntent(
+  token: string,
+  input: {
+    trackIds: string[];
+    deviceId?: string;
+    sessionId?: string;
+    capabilityId?: string;
+    source?: "resonate_catalog" | "library" | "purchased" | "preview";
+    initiator?: "listener" | "external_agent" | "ai_dj";
+    agentOriginated?: boolean;
+  },
+) {
+  return apiRequest<PlaybackIntentCommand>(
+    "/sessions/playback/queue",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export async function playPlaybackIntent(
+  token: string,
+  input: Parameters<typeof queuePlaybackIntent>[1],
+) {
+  return apiRequest<PlaybackIntentCommand>(
+    "/sessions/playback/play",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export async function confirmPlaybackCommand(
+  token: string,
+  commandId: string,
+  input: {
+    deviceId?: string;
+    outcome: PlaybackIntentOutcome;
+    status?: PlaybackIntentCommand["status"];
+    currentTrackId?: string;
+    reason?: string;
+  },
+) {
+  return apiRequest<PlaybackIntentCommand>(
+    `/sessions/playback/commands/${encodeURIComponent(commandId)}/confirm`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export async function getPlaybackIntentStatus(token: string, commandId?: string) {
+  const search = commandId ? `?commandId=${encodeURIComponent(commandId)}` : "";
+  return apiRequest<PlaybackIntentCommand | {
+    ownerUserId: string;
+    activeDevices: PlaybackDevice[];
+    commands: PlaybackIntentCommand[];
+  }>(`/sessions/playback/status${search}`, { cache: "no-store" }, token);
 }
 
 export type ProductAnalyticsInput = {
@@ -1405,6 +1703,59 @@ export async function getTrack(trackId: string, token?: string | null) {
   return track;
 }
 
+export type PlayerTrackActionKey =
+  | "save"
+  | "add_to_playlist"
+  | "inspect_stems"
+  | "buy_license"
+  | "remix"
+  | "artist_room"
+  | "shows_campaign"
+  | "collect_drop";
+
+export type PlayerTrackActionStatus = "available" | "disabled" | "planned";
+
+export type PlayerTrackAction = {
+  key: PlayerTrackActionKey;
+  label: string;
+  status: PlayerTrackActionStatus;
+  href?: string;
+  reason?: string;
+  metadata?: Record<string, string | number | boolean | string[] | null>;
+};
+
+export type PlayerTrackActionsResponse = {
+  track: {
+    id: string;
+    title: string;
+    releaseId: string;
+    releaseTitle: string;
+    artistId: string;
+    artistName: string | null;
+    genre: string | null;
+    moods: string[];
+  };
+  recommendation?: {
+    summary: string;
+    reasons: string[];
+  };
+  actions: PlayerTrackAction[];
+};
+
+export async function getPlayerTrackActions(
+  trackId: string,
+  input: { reasons?: string[] } = {},
+) {
+  const params = new URLSearchParams();
+  for (const reason of input.reasons ?? []) {
+    if (reason.trim()) params.append("reason", reason.trim());
+  }
+  const query = params.toString();
+  return apiRequest<PlayerTrackActionsResponse>(
+    `/catalog/tracks/${encodeURIComponent(trackId)}/actions${query ? `?${query}` : ""}`,
+  );
+}
+
 export async function listArtistReleases(artistId: string, token?: string | null) {
   const releases = await apiRequest<Release[]>(`/catalog/artist/${artistId}`, {}, token);
   return releases.map(r => ({
@@ -1476,6 +1827,89 @@ export async function getSongRecommendations(
   return apiRequest<SongRecommendationsResponse>(
     `/recommendations/${encodeURIComponent(userId)}?${params}`,
     {},
+    token,
+  );
+}
+
+export type TasteMemorySettings = {
+  socialMatchingEnabled: boolean;
+  citySceneDiscoveryEnabled: boolean;
+  agentPlaybackTrainingEnabled: boolean;
+  recommendationExplanationPreference: "compact" | "balanced" | "detailed";
+  resetAt: string | null;
+};
+
+export type TasteSignalControl = {
+  id: string;
+  signalType: "genre" | "mood" | "artist" | "scene" | "intent" | "novelty" | "replay" | "commerce";
+  value: string;
+  action: "hidden" | "downranked";
+  source: string | null;
+  createdAt: string;
+};
+
+export type TasteMemoryResponse = {
+  schemaVersion: "listener-taste-memory/v1";
+  settings: TasteMemorySettings;
+  summary: {
+    favoredGenres: string[];
+    favoredMoods: string[];
+    favoredArtists: string[];
+    recentIntents: string[];
+    noveltyPattern: string;
+    commercePreference: string;
+    explanationPreference: string;
+  };
+  controls: TasteSignalControl[];
+  privacy: {
+    socialMatching: "enabled" | "disabled";
+    citySceneDiscovery: "enabled" | "disabled";
+    agentPlaybackTraining: "enabled" | "disabled";
+    notes: string[];
+  };
+};
+
+export async function getTasteMemory(token: string): Promise<TasteMemoryResponse> {
+  return apiRequest<TasteMemoryResponse>("/recommendations/taste-memory", {}, token);
+}
+
+export async function updateTasteMemorySettings(
+  token: string,
+  input: Partial<Omit<TasteMemorySettings, "resetAt">>,
+): Promise<TasteMemorySettings> {
+  return apiRequest<TasteMemorySettings>(
+    "/recommendations/taste-memory/settings",
+    { method: "PATCH", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+export async function resetTasteMemory(token: string): Promise<TasteMemorySettings> {
+  return apiRequest<TasteMemorySettings>(
+    "/recommendations/taste-memory/reset",
+    { method: "POST" },
+    token,
+  );
+}
+
+export async function upsertTasteSignalControl(
+  token: string,
+  input: Pick<TasteSignalControl, "signalType" | "value"> & { action?: TasteSignalControl["action"]; source?: string },
+): Promise<TasteSignalControl> {
+  return apiRequest<TasteSignalControl>(
+    "/recommendations/taste-memory/signals",
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+export async function removeTasteSignalControl(
+  token: string,
+  controlId: string,
+): Promise<{ status: string; control: TasteSignalControl }> {
+  return apiRequest<{ status: string; control: TasteSignalControl }>(
+    `/recommendations/taste-memory/signals/${encodeURIComponent(controlId)}`,
+    { method: "DELETE" },
     token,
   );
 }
@@ -1821,7 +2255,7 @@ export async function recordAgentSignal(
   token: string,
   input: {
     trackId: string;
-    action: "accept" | "skip" | "replay" | "add_to_playlist" | "purchase";
+    action: "accept" | "skip" | "complete" | "save" | "replay" | "add_to_playlist" | "purchase";
     sessionId?: string;
     metadata?: Record<string, unknown>;
   }
@@ -1833,10 +2267,13 @@ export async function recordAgentSignal(
   );
 }
 
-export async function startAgentSession(token: string): Promise<{ status: string; sessionId?: string }> {
+export async function startAgentSession(
+  token: string,
+  input?: { preferences?: AgentNextPreferences },
+): Promise<{ status: string; sessionId?: string }> {
   return apiRequest<{ status: string; sessionId?: string }>(
     "/agents/config/session",
-    { method: "POST" },
+    { method: "POST", body: JSON.stringify(input ?? {}) },
     token
   );
 }
@@ -1907,6 +2344,10 @@ export type AgentNextPreferences = {
   genres?: string[];
   allowExplicit?: boolean;
   licenseType?: "personal" | "remix" | "commercial";
+  sessionIntent?: string;
+  sessionIntentName?: string;
+  queueStyle?: string;
+  source?: string;
 };
 
 export type AgentNextPickResponse = {

@@ -26,6 +26,7 @@ type DomainBridgeConfig = {
   subjectIdKeys?: readonly string[];
   actorIdKeys?: readonly string[];
   sessionIdKeys?: readonly string[];
+  consentBasis?: string;
   payloadKeys: readonly string[];
   sourceRefKeys: readonly string[];
 };
@@ -94,6 +95,56 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     sessionIdKeys: ["sessionId"],
     payloadKeys: ["sessionId", "userId", "budgetCapUsd", "preferences"],
     sourceRefKeys: ["sessionId", "userId"],
+  },
+  {
+    eventName: "taste_memory.settings_updated",
+    producer: "taste-memory-service",
+    subjectType: "taste_memory",
+    subjectIdKeys: ["userId"],
+    actorIdKeys: ["userId"],
+    consentBasis: "taste_memory_controls:v1",
+    payloadKeys: ["settings"],
+    sourceRefKeys: ["userId"],
+  },
+  {
+    eventName: "taste_memory.signal_hidden",
+    producer: "taste-memory-service",
+    subjectType: "taste_signal",
+    subjectIdKeys: ["userId"],
+    actorIdKeys: ["userId"],
+    consentBasis: "taste_memory_controls:v1",
+    payloadKeys: ["signalType", "value", "action"],
+    sourceRefKeys: ["userId", "signalType", "action"],
+  },
+  {
+    eventName: "taste_memory.signal_downranked",
+    producer: "taste-memory-service",
+    subjectType: "taste_signal",
+    subjectIdKeys: ["userId"],
+    actorIdKeys: ["userId"],
+    consentBasis: "taste_memory_controls:v1",
+    payloadKeys: ["signalType", "value", "action"],
+    sourceRefKeys: ["userId", "signalType", "action"],
+  },
+  {
+    eventName: "taste_memory.signal_restored",
+    producer: "taste-memory-service",
+    subjectType: "taste_signal",
+    subjectIdKeys: ["userId"],
+    actorIdKeys: ["userId"],
+    consentBasis: "taste_memory_controls:v1",
+    payloadKeys: ["signalType", "value", "action"],
+    sourceRefKeys: ["userId", "signalType", "action"],
+  },
+  {
+    eventName: "taste_memory.reset",
+    producer: "taste-memory-service",
+    subjectType: "taste_memory",
+    subjectIdKeys: ["userId"],
+    actorIdKeys: ["userId"],
+    consentBasis: "taste_memory_controls:v1",
+    payloadKeys: ["resetAt"],
+    sourceRefKeys: ["userId"],
   },
   {
     eventName: "session.ended",
@@ -957,6 +1008,7 @@ export class AnalyticsDomainEventBridgeService implements OnModuleInit, OnModule
         occurredAt: validOccurredAt(event.occurredAt),
         producer: config.producer,
         privacyTier: "pseudonymous",
+        consentBasis: config.consentBasis,
         subjectType: subjectId && config.subjectType ? config.subjectType : undefined,
         subjectId,
         actorId,

@@ -115,41 +115,53 @@ function isExistingPasskeyRegistrationError(error: unknown): boolean {
   );
 }
 
+function getErrorName(error: unknown) {
+  return error instanceof Error ? error.name : "";
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export function isRetryablePasskeyRegistrationError(error: unknown): boolean {
+  const name = getErrorName(error);
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    isExistingPasskeyRegistrationError(error) ||
+    name === "NotAllowedError" ||
+    message.includes("notallowederror") ||
+    message.includes("timed out or was not allowed") ||
+    message.includes("the operation either timed out or was not allowed")
+  );
+}
+
+export function formatPasskeyAuthError(error: unknown): string {
+  const name = getErrorName(error);
+  const message = getErrorMessage(error);
+  const normalized = `${name} ${message}`.toLowerCase();
+
+  if (
+    normalized.includes("notallowederror") ||
+    normalized.includes("timed out or was not allowed")
+  ) {
+    return "Passkey access was blocked or timed out. If you already created a Resonate passkey, use Log In; otherwise try Sign Up again and approve the browser or system passkey prompt.";
+  }
+
+  return message;
+}
+
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const { addToast } = useToast();
   // Memoized wrapper for use in dependency arrays
   const resolveAuth = useCallback((jwt: string | null) => decodeAuthClaims(jwt), []);
 
-  // Lazy-read localStorage synchronously during the FIRST render so we never
-  // flash an "idle / disconnected" frame between UI updates or navigations.
-  const [status, setStatus] = useState<AuthState["status"]>(() => {
-    if (typeof window === "undefined") return "idle";
-    const t = localStorage.getItem(TOKEN_KEY);
-    const a = localStorage.getItem(ADDRESS_KEY);
-    return t && a ? "authenticated" : "idle";
-  });
-  const [address, setAddress] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem(ADDRESS_KEY);
-  });
-  const [token, setToken] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem(TOKEN_KEY);
-  });
-  const [role, setRole] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    const t = localStorage.getItem(TOKEN_KEY);
-    return t ? decodeAuthClaims(t).role : null;
-  });
-  const [userId, setUserId] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    const t = localStorage.getItem(TOKEN_KEY);
-    return t ? decodeAuthClaims(t).userId : null;
-  });
-  const [smartAccountAddress, setSmartAccountAddress] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem(SA_ADDRESS_KEY);
-  });
+  const [status, setStatus] = useState<AuthState["status"]>("idle");
+  const [address, setAddress] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [smartAccountAddress, setSmartAccountAddress] = useState<string | null>(null);
+  const [knownAddresses, setKnownAddresses] = useState<string[]>([]);
   const [wallet, setWallet] = useState<WalletRecord | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
   const { projectId, publicClient, chainId } = useZeroDev();
@@ -163,6 +175,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     setToken(null);
     setAddress(null);
     setSmartAccountAddress(null);
+    setKnownAddresses([]);
     setRole(null);
     setUserId(null);
     setWallet(null);
@@ -170,6 +183,27 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     setActiveAccount(null);
     setStoredWebAuthnKey(null);
   }, []);
+
+  useEffect(() => {
+    const storedToken = localStorage.getItem(TOKEN_KEY);
+    const storedAddress = localStorage.getItem(ADDRESS_KEY);
+    const storedSmartAccount = localStorage.getItem(SA_ADDRESS_KEY);
+
+    setKnownAddresses(getKnownAddresses());
+
+    if (!storedToken || !storedAddress) {
+      clearAuthState("idle");
+      return;
+    }
+
+    const { role: storedRole, userId: storedUserId } = resolveAuth(storedToken);
+    setToken(storedToken);
+    setAddress(storedAddress);
+    setSmartAccountAddress(storedSmartAccount);
+    setRole(storedRole);
+    setUserId(storedUserId);
+    setStatus("authenticated");
+  }, [clearAuthState, resolveAuth]);
 
   useEffect(() => {
     const handleInvalidated = () => {
@@ -255,8 +289,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     try {
       result = await buildAccount(mode);
     } catch (error) {
-      if (mode === passkey.WebAuthnMode.Register && isExistingPasskeyRegistrationError(error)) {
-        console.warn("[Auth] Passkey is already registered; retrying in login mode.");
+      if (mode === passkey.WebAuthnMode.Register && isRetryablePasskeyRegistrationError(error)) {
+        console.warn("[Auth] Registration could not create a new passkey; retrying with the existing passkey.");
         result = await buildAccount(passkey.WebAuthnMode.Login);
       } else {
         throw error;
@@ -342,6 +376,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
       // Accumulate the SA address (the on-chain identity) for marketplace filtering
       addKnownAddress(saAddress);
+      setKnownAddresses(getKnownAddresses());
 
       void recordProductAnalytics(result.accessToken, "wallet.connected", {
         source: "auth",
@@ -381,8 +416,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       return { account, webAuthnKey };
 
     } catch (err) {
-      console.error(err);
-      setError((err as Error).message);
+      const message = formatPasskeyAuthError(err);
+      console.warn("[Auth] Authentication failed:", message);
+      setError(message);
       setStatus("error");
       return { account: null, webAuthnKey: null };
     }
@@ -444,7 +480,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       error,
       kernelAccount: activeAccount,
       webAuthnKey: storedWebAuthnKey,
-      knownAddresses: getKnownAddresses(),
+      knownAddresses,
       smartAccountAddress,
       connect,
       login,
@@ -455,7 +491,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       refreshWallet,
       signMessage,
     }),
-    [status, address, token, role, userId, wallet, error, activeAccount, storedWebAuthnKey, smartAccountAddress, connect, login, signup, connectPrivy, connectEmbedded, disconnect, refreshWallet, signMessage]
+    [status, address, token, role, userId, wallet, error, activeAccount, storedWebAuthnKey, knownAddresses, smartAccountAddress, connect, login, signup, connectPrivy, connectEmbedded, disconnect, refreshWallet, signMessage]
   );
 
 

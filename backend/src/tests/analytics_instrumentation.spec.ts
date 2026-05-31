@@ -75,6 +75,47 @@ describe("AnalyticsInstrumentationService", () => {
     ]);
   });
 
+  it("mirrors playback completions into AgentSignal outcomes when an authenticated user is available", async () => {
+    const ingest = new AnalyticsIngestService();
+    const agentLearning = {
+      recordSignal: jest.fn().mockResolvedValue({}),
+    };
+    const instrumentation = new AnalyticsInstrumentationService(
+      ingest,
+      undefined,
+      agentLearning as any,
+    );
+
+    await instrumentation.recordPlaybackCompleted({
+      trackId: "track-1",
+      artistId: "artist-1",
+      actorId: "user_hash",
+      actorUserId: "user-1",
+      sessionId: "playback-session-1",
+      source: "web_player",
+      completionRatio: 0.95,
+      durationMs: 180000,
+    });
+
+    expect(agentLearning.recordSignal).toHaveBeenCalledWith({
+      userId: "user-1",
+      sessionId: undefined,
+      trackId: "track-1",
+      action: "complete",
+      metadata: {
+        schemaVersion: "agent-signal-metadata/v1",
+        source: "web_player",
+        initiator: "listener",
+        agentOriginated: false,
+        outcome: {
+          type: "playback_completed",
+          completionRatio: 0.95,
+          durationMs: 180000,
+        },
+      },
+    });
+  });
+
   it("emits playback lifecycle events with listener, instance, and queue dimensions", async () => {
     const ingest = new AnalyticsIngestService();
     const instrumentation = new AnalyticsInstrumentationService(ingest);
@@ -166,6 +207,45 @@ describe("AnalyticsInstrumentationService", () => {
         }),
       }),
     ]);
+  });
+
+  it("mirrors library saves into AgentSignal save outcomes", async () => {
+    const ingest = new AnalyticsIngestService();
+    const agentLearning = {
+      recordSignal: jest.fn().mockResolvedValue({}),
+    };
+    const instrumentation = new AnalyticsInstrumentationService(
+      ingest,
+      undefined,
+      agentLearning as any,
+    );
+
+    await instrumentation.recordProductEvent({
+      eventName: "library.saved",
+      actorId: "user_hash",
+      actorUserId: "user-1",
+      subjectType: "track",
+      subjectId: "track-1",
+      source: "library",
+      payload: {
+        trackId: "track-1",
+      },
+    });
+
+    expect(agentLearning.recordSignal).toHaveBeenCalledWith({
+      userId: "user-1",
+      sessionId: undefined,
+      trackId: "track-1",
+      action: "save",
+      metadata: {
+        schemaVersion: "agent-signal-metadata/v1",
+        source: "library",
+        outcome: {
+          type: "library.saved",
+          source: "library",
+        },
+      },
+    });
   });
 
   it("emits coarse geo dimensions on product events outside the free-form payload", async () => {

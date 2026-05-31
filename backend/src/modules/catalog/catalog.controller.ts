@@ -238,6 +238,21 @@ export class CatalogController {
     return this.catalogService.getRelease(releaseId);
   }
 
+  @Get("tracks/:trackId/actions")
+  getTrackActions(
+    @Param("trackId") trackId: string,
+    @Query("reason") reason?: string | string[],
+    @Query("reasons") reasons?: string,
+  ) {
+    const recommendationReasons = [
+      ...(Array.isArray(reason) ? reason : reason ? [reason] : []),
+      ...(reasons ? reasons.split(",") : []),
+    ];
+    return this.catalogService.getPlayerTrackActions(trackId, {
+      recommendationReasons,
+    });
+  }
+
   @Get("tracks/:trackId")
   getTrack(@Param("trackId") trackId: string) {
     return this.catalogService.getTrack(trackId);

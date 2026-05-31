@@ -9,6 +9,7 @@
 import { prisma } from '../db/prisma';
 import { RecommendationsService } from '../modules/recommendations/recommendations.service';
 import { EventBus } from '../modules/shared/event_bus';
+import { TasteMemoryService } from '../modules/recommendations/taste_memory.service';
 
 const TEST_PREFIX = `rec_${Date.now()}_`;
 
@@ -45,6 +46,8 @@ describe('RecommendationsService (integration)', () => {
   });
 
   afterAll(async () => {
+    await prisma.listenerTasteSignalControl.deleteMany({ where: { userId: `${TEST_PREFIX}user` } }).catch(() => {});
+    await prisma.listenerTasteMemorySettings.deleteMany({ where: { userId: `${TEST_PREFIX}user` } }).catch(() => {});
     await prisma.track.deleteMany({ where: { releaseId: `${TEST_PREFIX}release` } }).catch(() => {});
     await prisma.release.delete({ where: { id: `${TEST_PREFIX}release` } }).catch(() => {});
     await prisma.artist.delete({ where: { id: `${TEST_PREFIX}artist` } }).catch(() => {});
@@ -83,5 +86,36 @@ describe('RecommendationsService (integration)', () => {
     const service = new RecommendationsService(new EventBus());
     const result = await service.getRecommendations(`${TEST_PREFIX}user`, 10);
     expect(result.items.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('excludes hidden taste signals from recommendation reasons', async () => {
+    const eventBus = new EventBus();
+    const tasteMemory = new TasteMemoryService(eventBus);
+    const service = new RecommendationsService(eventBus, tasteMemory);
+    await tasteMemory.upsertSignalControl(`${TEST_PREFIX}user`, {
+      signalType: 'genre',
+      value: 'Hip Hop',
+      action: 'hidden',
+    });
+    service.setPreferences(`${TEST_PREFIX}user`, { genres: ['Hip Hop'], mood: 'Focus' });
+
+    const result = await service.getRecommendations(`${TEST_PREFIX}user`, 2);
+
+    expect(result.preferences.genres).toEqual([]);
+    expect(result.items[0].reasons).not.toContain('genre:Hip Hop');
+    expect(result.items[0].reasons).toContain('mood:Focus');
+  });
+
+  it('falls back after reset instead of using older stored preferences', async () => {
+    const eventBus = new EventBus();
+    const tasteMemory = new TasteMemoryService(eventBus);
+    const service = new RecommendationsService(eventBus, tasteMemory);
+    service.setPreferences(`${TEST_PREFIX}user`, { genres: ['Hip Hop'], mood: 'Focus' });
+
+    await tasteMemory.resetTasteMemory(`${TEST_PREFIX}user`);
+    const result = await service.getRecommendations(`${TEST_PREFIX}user`, 2);
+
+    expect(result.preferences.genres).toBeUndefined();
+    expect(result.preferences.mood).toBeUndefined();
   });
 });

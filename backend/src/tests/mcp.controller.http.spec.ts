@@ -3,7 +3,10 @@ import { INestApplication } from "@nestjs/common";
 import { McpController } from "../modules/mcp/mcp.controller";
 import { McpService } from "../modules/mcp/mcp.service";
 import { CatalogService } from "../modules/catalog/catalog.service";
-import { McpStemService } from "../modules/mcp/mcp-stem.service";
+import {
+  McpStemService,
+  McpToolError,
+} from "../modules/mcp/mcp-stem.service";
 import { createControllerTestApp } from "./e2e-helpers";
 
 const mockCatalogService = {
@@ -40,6 +43,7 @@ describe("McpController (HTTP)", () => {
           title: "The Horizon Is Home",
           artist: "Resonate Artist",
           genre: "electronic",
+          moods: ["late night"],
           releaseDate: "2026-04-22T00:00:00.000Z",
           artworkUrl: "http://localhost:3000/catalog/releases/rel_1/artwork",
           trackCount: 4,
@@ -49,10 +53,42 @@ describe("McpController (HTTP)", () => {
       ],
     });
     mockStemService.quote.mockResolvedValue({
+      summary: "Quote 5 USDC for remix license on Hook Vocals.",
       stemId: "stem_1",
       licenseType: "remix",
       priceUsdc: "5",
       expiresAt: "2026-04-24T00:05:00.000Z",
+      availableActions: [
+        {
+          action: "download_after_payment",
+          tool: "stem.download",
+          requiresPayment: true,
+          description: "Call stem.download after payment.",
+        },
+      ],
+      rights: {
+        licenseType: "remix",
+        stemId: "stem_1",
+        artist: "Koita",
+        trackTitle: "Midnight Run",
+        releaseTitle: "Neon Heat",
+        usage: "Remix-oriented use.",
+        attribution: "Retain receipt context.",
+        constraints: ["Payment verification is required."],
+      },
+      policy: {
+        paymentRequired: true,
+        proofRequiredForDownload: true,
+        quoteExpiresAt: "2026-04-24T00:05:00.000Z",
+        retry: "Request a fresh quote after expiration.",
+        publicRouter: false,
+      },
+      docs: {
+        mcp: "docs/architecture/mcp_server.md",
+        x402: "docs/architecture/x402_payments.md",
+        externalAgentContract:
+          "docs/architecture/external_agent_application_contract.md",
+      },
       paymentChallenge: {
         scheme: "x402",
         facilitatorUrl: "https://x402.org/facilitator",
@@ -89,14 +125,49 @@ describe("McpController (HTTP)", () => {
   it("GET /mcp returns a curl-friendly capability object", async () => {
     const res = await request(app.getHttpServer()).get("/mcp").expect(200);
 
-    expect(res.body).toEqual({
+    expect(res.body).toEqual(expect.objectContaining({
+      schemaVersion: "resonate-mcp-capabilities/v1",
       protocolVersion: expect.any(String),
       serverInfo: {
         name: "resonate-mcp",
         version: "0.1.0",
       },
       tools: ["catalog.search", "stem.quote", "stem.download"],
-    });
+      toolDetails: expect.arrayContaining([
+        expect.objectContaining({
+          name: "catalog.search",
+          version: "1.0.0",
+          payment: "free",
+        }),
+        expect.objectContaining({
+          name: "stem.quote",
+          payment: "free",
+        }),
+        expect.objectContaining({
+          name: "stem.download",
+          payment: "x402",
+        }),
+      ]),
+      licenseTiers: ["personal", "remix", "commercial"],
+      payment: expect.objectContaining({
+        protocol: "x402",
+        enabled: false,
+        retryHeaders: ["PAYMENT-SIGNATURE", "X-PAYMENT"],
+      }),
+      endpoints: expect.objectContaining({
+        storefront: "/api/storefront/stems",
+        x402Info: "/api/stems/{stemId}/x402/info",
+      }),
+      errors: expect.arrayContaining([
+        expect.objectContaining({
+          code: "PAYMENT_REQUIRED",
+          recovery: expect.stringContaining("stem.quote"),
+        }),
+      ]),
+      agentUx: expect.objectContaining({
+        publicRouter: false,
+      }),
+    }));
   });
 
   it("serves catalog.search through Streamable HTTP MCP", async () => {
@@ -190,6 +261,17 @@ describe("McpController (HTTP)", () => {
         id: "rel_1",
         licensable: true,
         deeplink: "http://localhost:3001/release/rel_1",
+        availableActions: expect.arrayContaining([
+          expect.objectContaining({ action: "inspect_storefront_stems" }),
+        ]),
+      }),
+    );
+    expect(call.body.result.structuredContent).toEqual(
+      expect.objectContaining({
+        summary: expect.stringContaining("Found 1 public release"),
+        availableActions: expect.arrayContaining([
+          expect.objectContaining({ action: "inspect_storefront_stems" }),
+        ]),
       }),
     );
   });
@@ -248,6 +330,18 @@ describe("McpController (HTTP)", () => {
         stemId: "stem_1",
         licenseType: "remix",
         priceUsdc: "5",
+        summary: expect.stringContaining("Quote 5 USDC"),
+        availableActions: expect.arrayContaining([
+          expect.objectContaining({ action: "download_after_payment" }),
+        ]),
+        rights: expect.objectContaining({
+          licenseType: "remix",
+          stemId: "stem_1",
+        }),
+        policy: expect.objectContaining({
+          paymentRequired: true,
+          proofRequiredForDownload: true,
+        }),
         paymentChallenge: expect.objectContaining({ scheme: "x402" }),
       }),
     );
@@ -279,6 +373,73 @@ describe("McpController (HTTP)", () => {
     expect(download.body.result.structuredContent).toEqual(
       expect.objectContaining({
         code: "PAYMENT_REQUIRED",
+      }),
+    );
+  });
+
+  it("maps MCP tool failures to stable error responses", async () => {
+    mockStemService.quote.mockRejectedValueOnce(
+      new McpToolError("RESOURCE_NOT_FOUND", "Stem missing", {
+        stemId: "missing_stem",
+      }),
+    );
+
+    const init = await request(app.getHttpServer())
+      .post("/mcp")
+      .set("Accept", "application/json, text/event-stream")
+      .send({
+        jsonrpc: "2.0",
+        id: 30,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-11-25",
+          capabilities: {},
+          clientInfo: {
+            name: "jest",
+            version: "0.0.1",
+          },
+        },
+      })
+      .expect(200);
+
+    const sessionId = init.headers["mcp-session-id"];
+    await request(app.getHttpServer())
+      .post("/mcp")
+      .set("mcp-session-id", sessionId)
+      .set("Accept", "application/json, text/event-stream")
+      .send({
+        jsonrpc: "2.0",
+        method: "notifications/initialized",
+      })
+      .expect(202);
+
+    const call = await request(app.getHttpServer())
+      .post("/mcp")
+      .set("mcp-session-id", sessionId)
+      .set("Accept", "application/json, text/event-stream")
+      .send({
+        jsonrpc: "2.0",
+        id: 31,
+        method: "tools/call",
+        params: {
+          name: "stem.quote",
+          arguments: {
+            stemId: "missing_stem",
+            licenseType: "personal",
+          },
+        },
+      })
+      .expect(200);
+
+    expect(call.body.result).toEqual(
+      expect.objectContaining({
+        isError: true,
+        structuredContent: expect.objectContaining({
+          code: "RESOURCE_NOT_FOUND",
+          message: "Stem missing",
+          recovery: expect.stringContaining("Re-run discovery"),
+          context: { stemId: "missing_stem" },
+        }),
       }),
     );
   });

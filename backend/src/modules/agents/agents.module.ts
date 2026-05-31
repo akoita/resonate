@@ -4,6 +4,7 @@ import { AgentReputationFeedbackService } from "./agent_reputation_feedback.serv
 import { AgentReputationFeedbackController } from "./agent_reputation_feedback.controller";
 import { AgentReputationSchedulerService } from "./agent_reputation_scheduler.service";
 import { AgentRuntimeService } from "./agent_runtime.service";
+import { AgentLearningService } from "./agent_learning.service";
 import { AGENT_RUNTIME_CORE_PROVIDERS } from "./agent_runtime.providers";
 import { AgentStemQualityService } from "./agent_stem_quality.service";
 import { AgentWalletService } from "./agent_wallet.service";
@@ -19,6 +20,7 @@ import { CatalogModule } from "../catalog/catalog.module";
 import { X402Module } from "../x402/x402.module";
 import { PaymentsModule } from "../payments/payments.module";
 import { SharedModule } from "../shared/shared.module";
+import { RecommendationsModule } from "../recommendations/recommendations.module";
 
 @Module({
   imports: [
@@ -28,6 +30,7 @@ import { SharedModule } from "../shared/shared.module";
     CatalogModule,
     X402Module,
     PaymentsModule,
+    RecommendationsModule,
   ],
   controllers: [
     AgentsController,
@@ -46,6 +49,7 @@ import { SharedModule } from "../shared/shared.module";
   ],
   exports: [
     AgentRuntimeService,
+    AgentLearningService,
     PolicyGuardService,
     PaymentRouterService,
     AgentWalletService,

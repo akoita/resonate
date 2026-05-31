@@ -11,9 +11,19 @@ export interface ArtistAnalyticsFactRequest {
   to: Date;
 }
 
+export interface AgentQualityFactRequest {
+  from: Date;
+  to: Date;
+}
+
 export interface ArtistAnalyticsFactResult {
   facts: AnalyticsFactRow[];
   views: AnalyticsViewRow[];
+  metadata: AnalyticsReportMetadata;
+}
+
+export interface AgentQualityFactResult {
+  facts: AnalyticsFactRow[];
   metadata: AnalyticsReportMetadata;
 }
 
@@ -47,6 +57,7 @@ export interface AnalyticsReportMetadata {
 
 export interface ArtistAnalyticsReportSource {
   listArtistFacts(request: ArtistAnalyticsFactRequest): Promise<ArtistAnalyticsFactResult | null>;
+  listAgentQualityFacts?(request: AgentQualityFactRequest): Promise<AgentQualityFactResult | null>;
 }
 
 export interface AnalyticsBigQueryReportConfig {
@@ -86,6 +97,10 @@ interface CacheEntry {
 
 export class DisabledArtistAnalyticsReportSource implements ArtistAnalyticsReportSource {
   async listArtistFacts(): Promise<null> {
+    return null;
+  }
+
+  async listAgentQualityFacts(): Promise<null> {
     return null;
   }
 }
@@ -177,6 +192,69 @@ export class BigQueryArtistAnalyticsReportSource implements ArtistAnalyticsRepor
       this.cache.set(cacheKey, {
         expiresAt: now.getTime() + this.config.cacheTtlSeconds * 1000,
         result,
+      });
+    }
+
+    return result;
+  }
+
+  async listAgentQualityFacts(request: AgentQualityFactRequest): Promise<AgentQualityFactResult> {
+    const cacheKey = `agent_quality:${request.from.toISOString()}:${request.to.toISOString()}`;
+    const cached = this.cache.get(cacheKey);
+    const now = this.now();
+    if (cached && cached.expiresAt > now.getTime()) {
+      return {
+        facts: cached.result.facts,
+        metadata: {
+          ...cached.result.metadata,
+          cache: { ...cached.result.metadata.cache, hit: true },
+        },
+      };
+    }
+
+    const factsResponse = await this.client.query({
+      projectId: this.config.projectId,
+      apiBaseUrl: this.config.apiBaseUrl,
+      query: agentQualityFactsQuery(this.config),
+      parameters: {
+        from: request.from.toISOString(),
+        to: request.to.toISOString(),
+        limit: this.config.rowLimit,
+      },
+      maximumBytesBilled: this.config.maximumBytesBilled,
+      timeoutMs: this.config.queryTimeoutMs,
+    });
+
+    const facts = factsResponse.rows.map(toAnalyticsFactRow);
+    const freshness = freshnessFromFacts(facts, now);
+    const result: AgentQualityFactResult = {
+      facts,
+      metadata: {
+        source: "bigquery",
+        generatedAt: now.toISOString(),
+        timeWindow: timeWindowMetadata(request.from, request.to),
+        freshness,
+        isEmpty: facts.length === 0,
+        cache: {
+          hit: false,
+          ttlSeconds: this.config.cacheTtlSeconds,
+        },
+        query: {
+          projectId: this.config.projectId,
+          datasetId: this.config.datasetId,
+          factsTable: this.config.factsTable,
+          viewsTable: this.config.viewsTable,
+          maximumBytesBilled: this.config.maximumBytesBilled,
+          totalBytesProcessed: factsResponse.totalBytesProcessed,
+          cacheHit: Boolean(factsResponse.cacheHit),
+        },
+      },
+    };
+
+    if (this.config.cacheTtlSeconds > 0) {
+      this.cache.set(cacheKey, {
+        expiresAt: now.getTime() + this.config.cacheTtlSeconds * 1000,
+        result: { facts, views: [], metadata: result.metadata },
       });
     }
 
@@ -323,6 +401,48 @@ WHERE artistId = @artistId
   AND date >= DATE(@fromDate)
   AND date < DATE(@toExclusiveDate)
 ORDER BY date ASC
+LIMIT @limit
+`.trim();
+}
+
+function agentQualityFactsQuery(config: AnalyticsBigQueryReportConfig) {
+  return `
+SELECT
+  factId,
+  factType,
+  eventId,
+  CAST(occurredAt AS STRING) AS occurredAt,
+  CAST(occurredDate AS STRING) AS occurredDate,
+  artistId,
+  trackId,
+  releaseId,
+  subjectType,
+  subjectId,
+  canonicalAmountUsd,
+  count,
+  TO_JSON_STRING(dimensions) AS dimensions
+FROM \`${bigQueryIdentifier(config.projectId)}.${bigQueryIdentifier(config.datasetId)}.${bigQueryIdentifier(
+    config.factsTable,
+  )}\`
+WHERE occurredAt >= TIMESTAMP(@from)
+  AND occurredAt < TIMESTAMP(@to)
+  AND (
+    JSON_VALUE(dimensions, '$.eventName') IN (
+      'agent.intent_selected',
+      'agent.session_started',
+      'agent.session_stopped',
+      'agent.next_pick_requested',
+      'agent.recommendation_selected',
+      'playback.completed',
+      'library.saved',
+      'playlist.track_added',
+      'commerce.settled',
+      'payment.settled',
+      'marketplace.purchase_intent'
+    )
+    OR STARTS_WITH(COALESCE(JSON_VALUE(dimensions, '$.source'), ''), 'agent')
+  )
+ORDER BY occurredAt ASC
 LIMIT @limit
 `.trim();
 }

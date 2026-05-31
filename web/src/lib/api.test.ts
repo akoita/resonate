@@ -142,6 +142,70 @@ describe('API Client', () => {
     });
   });
 
+  describe('getAgentQualityDashboard', () => {
+    it('fetches aggregate AI DJ quality metrics for operators', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            summary: {
+              days: 30,
+              sessionsStarted: 1,
+              sessionsStopped: 1,
+              intentSelections: 1,
+              nextPickRequests: 2,
+              acceptedPicks: 1,
+              playbackCompletions: 1,
+              firstPickSkips: 0,
+              firstPickOutcomes: 1,
+              saves: 1,
+              playlistAdds: 0,
+              purchases: 0,
+              purchaseUsd: 0,
+              averageSessionDurationMs: 120000,
+              acceptanceRate: 0.5,
+              firstPickSkipRate: 0,
+              completionRate: 1,
+              saveRate: 1,
+              playlistAddRate: 0,
+              purchaseRate: 0,
+            },
+            intentBreakdown: [],
+            strategyBreakdown: [],
+            tasteSourceBreakdown: [],
+            versionBreakdown: [],
+            qualityOverTime: [],
+            privacy: {
+              aggregation: 'event-level aggregate metrics only',
+              excludes: ['actor ids'],
+            },
+            meta: {
+              source: 'warehouse_export',
+              generatedAt: '2026-05-27T12:00:00.000Z',
+              timeWindow: {
+                from: '2026-04-27T12:00:00.000Z',
+                to: '2026-05-27T12:00:00.000Z',
+                days: 30,
+              },
+              freshness: { asOf: null, lagSeconds: null },
+              isEmpty: false,
+              cache: { hit: false, ttlSeconds: 0 },
+            },
+          }),
+      });
+
+      const result = await api.getAgentQualityDashboard('operator-token', 30);
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/analytics/agent/quality?days=30');
+      expect(opts.headers.get('Authorization')).toBe('Bearer operator-token');
+      expect(opts.cache).toBe('no-store');
+      expect(result.summary.acceptanceRate).toBe(0.5);
+      expect(result.privacy.excludes).toContain('actor ids');
+    });
+  });
+
   describe('recordPlaybackCompleted', () => {
     it('posts playback completion to the narrow analytics endpoint', async () => {
       mockFetch.mockResolvedValueOnce({
@@ -179,6 +243,38 @@ describe('API Client', () => {
         durationMs: 30000,
       });
       expect(result.eventId).toBe('evt_playback_1');
+    });
+  });
+
+  describe('getPlayerTrackActions', () => {
+    it('fetches player action availability with recommendation reasons', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            track: {
+              id: 'track-1',
+              title: 'Track',
+              releaseId: 'release-1',
+              releaseTitle: 'Release',
+              artistId: 'artist-1',
+              artistName: 'Artist',
+              genre: 'Jazz',
+              moods: [],
+            },
+            actions: [],
+          }),
+      });
+
+      await api.getPlayerTrackActions('track-1', {
+        reasons: ['genre:jazz', 'agent_pick'],
+      });
+
+      const [url] = mockFetch.mock.calls[0];
+      expect(url).toBe(
+        'http://test-api:3000/catalog/tracks/track-1/actions?reason=genre%3Ajazz&reason=agent_pick',
+      );
     });
   });
 
@@ -236,6 +332,82 @@ describe('API Client', () => {
     });
   });
 
+  describe('playback intent API', () => {
+    it('resolves playback intents without starting playback', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        text: async () =>
+          JSON.stringify({
+            ownerUserId: 'user-1',
+            capabilityId: 'cap-1',
+            outcome: 'queued',
+            policy: {
+              capabilityId: 'cap-1',
+              scopes: ['playback.resolve'],
+              allowedSources: ['resonate_catalog'],
+              confirmationMode: 'queue_with_confirmation',
+              paymentOrLicensingAllowed: false,
+              requiresActiveDevice: true,
+            },
+            candidates: [],
+            nextAllowedCommands: [],
+            redaction: {
+              privateLibrary: 'redacted',
+              privateTaste: 'redacted',
+              wallet: 'redacted',
+              ownership: 'redacted',
+            },
+          }),
+      });
+
+      const result = await api.resolvePlaybackIntent('agent-token', {
+        query: 'late night',
+        constraints: { maxTracks: 4, explicit: false },
+        initiator: 'external_agent',
+      });
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/sessions/playback/resolve');
+      expect(opts.method).toBe('POST');
+      expect(opts.headers.get('Authorization')).toBe('Bearer agent-token');
+      expect(JSON.parse(opts.body)).toEqual({
+        query: 'late night',
+        constraints: { maxTracks: 4, explicit: false },
+        initiator: 'external_agent',
+      });
+      expect(result.redaction.privateTaste).toBe('redacted');
+    });
+
+    it('posts queue and play commands to owner-scoped playback endpoints', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 201,
+          text: async () => JSON.stringify({ commandId: 'cmd-1', outcome: 'queued' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 201,
+          text: async () => JSON.stringify({ commandId: 'cmd-2', outcome: 'confirmation_required' }),
+        });
+
+      await api.queuePlaybackIntent('agent-token', {
+        trackIds: ['track-1'],
+        deviceId: 'web-1',
+        agentOriginated: true,
+      });
+      await api.playPlaybackIntent('agent-token', {
+        trackIds: ['track-1'],
+        deviceId: 'web-1',
+        agentOriginated: true,
+      });
+
+      expect(mockFetch.mock.calls[0][0]).toBe('http://test-api:3000/sessions/playback/queue');
+      expect(mockFetch.mock.calls[1][0]).toBe('http://test-api:3000/sessions/playback/play');
+    });
+  });
+
   describe('recordProductAnalyticsEvent', () => {
     it('posts app-wide product events to the analytics endpoint', async () => {
       mockFetch.mockResolvedValueOnce({
@@ -281,6 +453,45 @@ describe('API Client', () => {
   });
 
   describe('getAgentNextPick', () => {
+    it('posts session intent preferences when starting an agent session', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ status: 'started', sessionId: 'session-1' }),
+      });
+
+      const result = await api.startAgentSession('listener-token', {
+        preferences: {
+          mood: 'Hype',
+          energy: 'high',
+          genres: ['Bass', 'Club', 'Trap'],
+          licenseType: 'remix',
+          sessionIntent: 'Hype',
+          sessionIntentName: 'Pulse Raid',
+          queueStyle: 'Fast cuts',
+          source: 'agent_session_intent',
+        },
+      });
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/agents/config/session');
+      expect(opts.method).toBe('POST');
+      expect(opts.headers.get('Authorization')).toBe('Bearer listener-token');
+      expect(JSON.parse(opts.body)).toEqual({
+        preferences: {
+          mood: 'Hype',
+          energy: 'high',
+          genres: ['Bass', 'Club', 'Trap'],
+          licenseType: 'remix',
+          sessionIntent: 'Hype',
+          sessionIntentName: 'Pulse Raid',
+          queueStyle: 'Fast cuts',
+          source: 'agent_session_intent',
+        },
+      });
+      expect(result.sessionId).toBe('session-1');
+    });
+
     it('posts to the session runtime next-pick endpoint', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -303,6 +514,10 @@ describe('API Client', () => {
           preferences: {
             genres: ['electronic'],
             licenseType: 'remix',
+            sessionIntent: 'Hype',
+            sessionIntentName: 'Pulse Raid',
+            queueStyle: 'Fast cuts',
+            source: 'agent_session_intent',
           },
         },
       );
@@ -316,6 +531,10 @@ describe('API Client', () => {
         preferences: {
           genres: ['electronic'],
           licenseType: 'remix',
+          sessionIntent: 'Hype',
+          sessionIntentName: 'Pulse Raid',
+          queueStyle: 'Fast cuts',
+          source: 'agent_session_intent',
         },
       });
       expect(result.status).toBe('ok');
@@ -381,6 +600,84 @@ describe('API Client', () => {
       expect(parsed.searchParams.get('energy')).toBe('low');
       expect(parsed.searchParams.get('genres')).toBe('Ambient,Electronic');
       expect(parsed.searchParams.get('allowExplicit')).toBe('true');
+    });
+  });
+
+  describe('taste memory controls', () => {
+    it('fetches the authenticated listener taste memory', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            schemaVersion: 'listener-taste-memory/v1',
+            settings: {
+              socialMatchingEnabled: false,
+              citySceneDiscoveryEnabled: false,
+              agentPlaybackTrainingEnabled: true,
+              recommendationExplanationPreference: 'balanced',
+              resetAt: null,
+            },
+            summary: {
+              favoredGenres: ['Ambient'],
+              favoredMoods: [],
+              favoredArtists: [],
+              recentIntents: [],
+              noveltyPattern: 'Balanced discovery',
+              commercePreference: 'Listening first',
+              explanationPreference: 'balanced',
+            },
+            controls: [],
+            privacy: {
+              socialMatching: 'disabled',
+              citySceneDiscovery: 'disabled',
+              agentPlaybackTraining: 'enabled',
+              notes: [],
+            },
+          }),
+      });
+
+      const result = await api.getTasteMemory('listener-token');
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/recommendations/taste-memory');
+      expect(opts.headers.get('Authorization')).toBe('Bearer listener-token');
+      expect(result.summary.favoredGenres).toEqual(['Ambient']);
+    });
+
+    it('updates taste memory settings and manages signal controls', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ socialMatchingEnabled: true }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ id: 'control-1', signalType: 'genre', value: 'Techno', action: 'hidden' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ status: 'restored' }),
+        });
+
+      await api.updateTasteMemorySettings('listener-token', { socialMatchingEnabled: true });
+      await api.upsertTasteSignalControl('listener-token', {
+        signalType: 'genre',
+        value: 'Techno',
+        action: 'hidden',
+      });
+      await api.removeTasteSignalControl('listener-token', 'control-1');
+
+      expect(mockFetch.mock.calls[0][0]).toBe('http://test-api:3000/recommendations/taste-memory/settings');
+      expect(mockFetch.mock.calls[0][1].method).toBe('PATCH');
+      expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({ socialMatchingEnabled: true });
+      expect(mockFetch.mock.calls[1][0]).toBe('http://test-api:3000/recommendations/taste-memory/signals');
+      expect(mockFetch.mock.calls[1][1].method).toBe('POST');
+      expect(mockFetch.mock.calls[2][0]).toBe('http://test-api:3000/recommendations/taste-memory/signals/control-1');
+      expect(mockFetch.mock.calls[2][1].method).toBe('DELETE');
     });
   });
 

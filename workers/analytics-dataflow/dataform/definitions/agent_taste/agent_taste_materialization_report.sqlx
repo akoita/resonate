@@ -1,0 +1,37 @@
+js {
+  const cfg = require("includes/agent_taste_config");
+}
+
+config {
+  type: "view",
+  name: "agent_taste_materialization_report",
+  tags: ["agent_taste", "verification"],
+  dependencies: [cfg.scoresTableName(dataform.projectConfig), cfg.trainingTableName(dataform.projectConfig)]
+}
+
+SELECT
+  'score_freshness_coverage' AS check_name,
+  COUNT(*) AS row_count,
+  COUNT(DISTINCT user_id) AS user_count,
+  COUNT(DISTINCT track_id) AS track_count,
+  COUNTIF(confidence >= 0.5) AS high_confidence_rows,
+  MIN(recommendation_score) AS min_recommendation_score,
+  MAX(recommendation_score) AS max_recommendation_score,
+  MAX(updated_at) AS newest_score_at,
+  TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX(updated_at), HOUR) AS newest_age_hours
+FROM ${ref(cfg.scoresTableName(dataform.projectConfig))}
+
+UNION ALL
+
+SELECT
+  CONCAT('signal_type:', signal_type) AS check_name,
+  COUNT(*) AS row_count,
+  COUNT(DISTINCT user_id) AS user_count,
+  COUNT(DISTINCT track_id) AS track_count,
+  NULL AS high_confidence_rows,
+  NULL AS min_recommendation_score,
+  NULL AS max_recommendation_score,
+  MAX(occurred_at) AS newest_score_at,
+  TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX(occurred_at), HOUR) AS newest_age_hours
+FROM ${ref(cfg.trainingTableName(dataform.projectConfig))}
+GROUP BY signal_type

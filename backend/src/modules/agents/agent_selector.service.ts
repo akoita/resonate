@@ -3,6 +3,12 @@ import { ToolRegistry } from "./tools/tool_registry";
 import { expandAgentTasteQueries } from "./agent_taste_expansion";
 import { AgentAudioFeatureService, AgentAudioFeatures } from "./agent_audio_feature.service";
 import { AgentBigQueryTasteSignalService, AgentTasteScore } from "./agent_bigquery_taste_signal.service";
+import {
+  hasSignal,
+  scoreMultiplierForSignal,
+  TasteMemoryPolicy,
+  TasteMemoryService,
+} from "../recommendations/taste_memory.service";
 
 export interface AgentSelectorInput {
   userId?: string;
@@ -20,6 +26,13 @@ export interface AgentSelectionSignal {
   weight: number;
   reason: string;
 }
+
+const ANALYTICS_EXPLANATION_BY_TYPE = {
+  taste_fit: "Learned listening pattern fit",
+  intent_fit: "Fits this session intent",
+  novelty_fit: "Fresh pick based on replay and skip patterns",
+  commerce_fit: "Strong save or purchase signal",
+} as const;
 
 export interface AgentCandidateTrack {
   id: string;
@@ -44,10 +57,15 @@ export class AgentSelectorService {
     private readonly audioFeatures?: AgentAudioFeatureService,
     @Optional()
     private readonly bigQueryTasteSignals?: AgentBigQueryTasteSignalService,
+    @Optional()
+    private readonly tasteMemoryService?: TasteMemoryService,
   ) { }
 
   async select(input: AgentSelectorInput) {
-    const originalQueries = (input.queries ?? []).filter(Boolean);
+    const policy = input.userId ? await this.tasteMemoryService?.getPolicy(input.userId) : undefined;
+    const originalQueries = (input.queries ?? [])
+      .filter(Boolean)
+      .filter((query) => !isHiddenTasteQuery(policy, query));
     const queries = expandAgentTasteQueries(originalQueries);
     const limit = input.limit ?? 5;
 
@@ -108,7 +126,10 @@ export class AgentSelectorService {
       }
     }
 
-    const bigQueryTasteScores = input.userId
+    const canUseWarehouseTaste = input.userId
+      ? await this.tasteMemoryService?.canUseTasteForSocialMatching(input.userId) ?? true
+      : false;
+    const bigQueryTasteScores = input.userId && canUseWarehouseTaste
       ? await this.bigQueryTasteSignals?.scoreTracks({
         userId: input.userId,
         trackIds: allCandidates.map((track) => track.id),
@@ -124,6 +145,7 @@ export class AgentSelectorService {
         bigQueryTasteScore: bigQueryTasteScores.get(track.id),
         recent: input.recentTrackIds.includes(track.id),
         energy: input.energy,
+        tastePolicy: policy,
       })),
     );
 
@@ -173,6 +195,7 @@ export class AgentSelectorService {
       bigQueryTasteScore?: AgentTasteScore;
       recent: boolean;
       energy?: "low" | "medium" | "high";
+      tastePolicy?: TasteMemoryPolicy;
     },
   ): Promise<AgentCandidateTrack> {
     const signals: AgentSelectionSignal[] = [];
@@ -199,13 +222,14 @@ export class AgentSelectorService {
     }
 
     const learnedWeight = genre ? context.learnedGenreWeights[genre] ?? 0 : 0;
-    if (learnedWeight > 0) {
+    const learnedMultiplier = scoreMultiplierForSignal(context.tastePolicy, "genre", genre);
+    if (learnedWeight > 0 && learnedMultiplier > 0) {
       signals.push({
         label: "learned_preference",
-        weight: Math.min(18, learnedWeight * 2),
+        weight: Math.min(18, learnedWeight * 2 * learnedMultiplier),
         reason: `learned preference for ${genre}`,
       });
-      explanation.push("Boosted by learned taste");
+      explanation.push(learnedMultiplier < 1 ? "Lightly boosted by learned taste" : "Boosted by learned taste");
     } else if (learnedWeight < 0) {
       signals.push({
         label: "negative_preference",
@@ -226,12 +250,13 @@ export class AgentSelectorService {
     if (context.bigQueryTasteScore) {
       const weight = Math.round(context.bigQueryTasteScore.score * 20);
       if (weight > 0) {
+        const analyticsExplanation = analyticsTasteExplanation(context.bigQueryTasteScore.explanation);
         signals.push({
           label: "bigquery_taste_score",
           weight,
-          reason: context.bigQueryTasteScore.explanation ?? "precomputed warehouse taste fit",
+          reason: analyticsExplanation.signalReason,
         });
-        explanation.push("Learned listening pattern fit");
+        explanation.push(...analyticsExplanation.listenerReasons);
       }
     }
 
@@ -276,4 +301,41 @@ export class AgentSelectorService {
       },
     };
   }
+}
+
+function isHiddenTasteQuery(policy: TasteMemoryPolicy | undefined, query: string) {
+  return hasSignal(policy?.hidden ?? new Map(), "genre", query)
+    || hasSignal(policy?.hidden ?? new Map(), "mood", query)
+    || hasSignal(policy?.hidden ?? new Map(), "intent", query)
+    || hasSignal(policy?.hidden ?? new Map(), "scene", query);
+}
+
+function analyticsTasteExplanation(explanation?: string): {
+  signalReason: string;
+  listenerReasons: string[];
+} {
+  const normalized = explanation?.toLowerCase() ?? "";
+  const types: Array<keyof typeof ANALYTICS_EXPLANATION_BY_TYPE> = [];
+
+  if (/\b(intent|mood|vibe|focus|chill|hype|zen|session)\b/.test(normalized)) {
+    types.push("intent_fit");
+  }
+
+  if (/\b(save|playlist|purchase|bought|commerce|listing|x402)\b/.test(normalized)) {
+    types.push("commerce_fit");
+  }
+
+  if (/\b(skips?|replays?|repeats?|fresh|novel|new|recent)\b/.test(normalized)) {
+    types.push("novelty_fit");
+  }
+
+  if (types.length === 0 || /\b(taste|listen|listening|pattern|signal|score|similar)\b/.test(normalized)) {
+    types.unshift("taste_fit");
+  }
+
+  const listenerReasons = Array.from(new Set(types)).slice(0, 3).map((type) => ANALYTICS_EXPLANATION_BY_TYPE[type]);
+  return {
+    signalReason: explanation ?? "precomputed warehouse taste fit",
+    listenerReasons,
+  };
 }
