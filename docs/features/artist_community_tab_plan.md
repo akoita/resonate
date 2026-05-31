@@ -15,7 +15,7 @@ off-chain rooms, membership, messages, holder access, and moderation basics.
 
 ## Slice 1: Backend Room Foundation
 
-Status: `in-progress`
+Status: `implemented`
 
 Deliverables:
 
@@ -33,15 +33,28 @@ Deliverables:
 
 ## Slice 2: Listener And Artist UI
 
-Status: `planned`
+Status: `in-progress`
 
 Deliverables:
 
-- Add an artist community tab to the artist-facing page.
-- Show public rooms and locked holder rooms with safe explanation copy.
-- Let eligible holders join from the UI.
-- Let artists post announcements.
-- Add basic message list, report, delete, and moderation controls.
+- Add an artist community tab to the artist-facing page. `in-progress`
+- Show public rooms and locked holder rooms with safe explanation copy. `in-progress`
+- Let eligible holders join from the UI. `in-progress`
+- Let artists post announcements. `in-progress`
+- Add basic message list, report, delete, and moderation controls. `in-progress`
+
+Implementation notes:
+
+- `/artist/:id` exposes a Discography/Community tab switch.
+- Public visitors can see rooms and safe locked-state copy.
+- Authenticated reads use `GET /community/artists/:artistId/rooms/me` so the UI
+  can show current membership and private holder eligibility without leaking
+  wallet holdings.
+- The message surface is intentionally off-chain and removable.
+- Backend room, message, benefit redemption, and moderation actions emit compact
+  `community.*` analytics events through the domain event bridge. Message bodies,
+  report free text, and private wallet holdings are excluded from analytics
+  payloads.
 
 ## Slice 3: Governance And Analytics
 
@@ -66,4 +79,3 @@ Slice 1 should prove:
 - messages are removable and reportable;
 - member moderation can remove or ban members;
 - room status can be paused or archived.
-

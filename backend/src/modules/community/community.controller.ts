@@ -59,6 +59,12 @@ export class CommunityController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @Get("artists/:artistId/rooms/me")
+  listMyArtistRooms(@Req() req: any, @Param("artistId") artistId: string) {
+    return this.communityRoomsService.listArtistRooms(artistId, req.user.userId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
   @Post("rooms/:roomId/join")
   joinRoom(@Req() req: any, @Param("roomId") roomId: string) {
     return this.communityRoomsService.joinRoom(req.user.userId, roomId);

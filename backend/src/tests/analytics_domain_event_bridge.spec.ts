@@ -303,6 +303,87 @@ describe("AnalyticsDomainEventBridgeService", () => {
         strategy: "preference_mapping",
       },
       {
+        eventName: "community.benefit_redeemed",
+        eventVersion: 1,
+        occurredAt,
+        userId: "user_919",
+        benefitRuleId: "benefit_919",
+        benefitType: "discount",
+        internalNote: "do not persist benefit note",
+      },
+      {
+        eventName: "community.artist_tab_enabled",
+        eventVersion: 1,
+        occurredAt,
+        userId: "artist_user_919",
+        artistId: "artist_919",
+      },
+      {
+        eventName: "community.room_joined",
+        eventVersion: 1,
+        occurredAt,
+        userId: "user_919",
+        roomId: "room_919",
+        roomType: "artist_holder",
+        artistId: "artist_919",
+      },
+      {
+        eventName: "community.room_access_denied",
+        eventVersion: 1,
+        occurredAt,
+        userId: "user_locked_919",
+        roomId: "room_919",
+        roomType: "artist_holder",
+        artistId: "artist_919",
+        reason: "Holder access is locked for this listener",
+        walletHoldings: "do not persist holdings",
+      },
+      {
+        eventName: "community.message_created",
+        eventVersion: 1,
+        occurredAt,
+        userId: "user_919",
+        roomId: "room_919",
+        messageId: "message_919",
+        messageType: "message",
+        body: "do not persist message body",
+      },
+      {
+        eventName: "community.message_reported",
+        eventVersion: 1,
+        occurredAt,
+        userId: "user_920",
+        roomId: "room_919",
+        messageId: "message_919",
+        reportId: "report_919",
+        reason: "do not persist report reason",
+      },
+      {
+        eventName: "community.message_deleted",
+        eventVersion: 1,
+        occurredAt,
+        userId: "artist_user_919",
+        roomId: "room_919",
+        messageId: "message_919",
+      },
+      {
+        eventName: "community.member_moderated",
+        eventVersion: 1,
+        occurredAt,
+        userId: "artist_user_919",
+        roomId: "room_919",
+        targetUserId: "user_920",
+        action: "ban",
+      },
+      {
+        eventName: "community.room_status_updated",
+        eventVersion: 1,
+        occurredAt,
+        userId: "artist_user_919",
+        roomId: "room_919",
+        status: "paused",
+      },
+      {
         eventName: "wallet.spent",
         eventVersion: 1,
         occurredAt,
@@ -534,6 +615,54 @@ describe("AnalyticsDomainEventBridgeService", () => {
     );
     expect(analyticsEvents).toContainEqual(
       expect.objectContaining({
+        eventName: "community.room_joined",
+        producer: "community-service",
+        subjectType: "community_room",
+        subjectId: "room_919",
+        actorId: "user_919",
+        consentBasis: "artist_community_rooms:v1",
+        payload: expect.objectContaining({
+          roomId: "room_919",
+          roomType: "artist_holder",
+          artistId: "artist_919",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "community.room_access_denied",
+        subjectId: "room_919",
+        actorId: "user_locked_919",
+        payload: expect.objectContaining({
+          reason: "Holder access is locked for this listener",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "community.message_created",
+        subjectType: "community_message",
+        subjectId: "message_919",
+        payload: expect.objectContaining({
+          roomId: "room_919",
+          messageId: "message_919",
+          messageType: "message",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "community.benefit_redeemed",
+        subjectType: "community_benefit",
+        subjectId: "benefit_919",
+        payload: expect.objectContaining({
+          benefitRuleId: "benefit_919",
+          benefitType: "discount",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
         eventName: "remix.created",
         payload: expect.objectContaining({
           stemIds: ["stem_1", "stem_2"],
@@ -551,6 +680,10 @@ describe("AnalyticsDomainEventBridgeService", () => {
     expect(serializedEvents).not.toContain("do not persist renamed playlist");
     expect(serializedEvents).not.toContain("do not persist payment proof");
     expect(serializedEvents).not.toContain("do not persist failed payment proof");
+    expect(serializedEvents).not.toContain("do not persist benefit note");
+    expect(serializedEvents).not.toContain("do not persist holdings");
+    expect(serializedEvents).not.toContain("do not persist message body");
+    expect(serializedEvents).not.toContain("do not persist report reason");
   });
 
   it("does not throw domain publishing when analytics ingest fails", async () => {

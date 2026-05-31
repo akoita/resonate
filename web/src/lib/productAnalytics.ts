@@ -42,6 +42,9 @@ export const PRODUCT_ANALYTICS_EVENT_NAMES = [
   "community.profile_updated",
   "community.profile_visibility_updated",
   "community.profile_showcase_updated",
+  "community.artist_tab_viewed",
+  "community.room_selected",
+  "community.room_join_clicked",
 ] as const;
 
 export type ProductAnalyticsEventName = (typeof PRODUCT_ANALYTICS_EVENT_NAMES)[number];

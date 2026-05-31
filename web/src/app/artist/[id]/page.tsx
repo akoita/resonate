@@ -5,6 +5,10 @@ import { useParams, useRouter } from "next/navigation";
 import { getArtistPublic, listArtistReleases, Release, ArtistProfile } from "../../../lib/api";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
+import { Tabs } from "../../../components/ui/Tabs";
+import { ArtistCommunityTab } from "../../../components/community/ArtistCommunityTab";
+
+type ArtistTab = "discography" | "community";
 
 export default function ArtistPage() {
     const params = useParams();
@@ -16,6 +20,7 @@ export default function ArtistPage() {
 
     const [releases, setReleases] = useState<Release[]>([]);
     const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState<ArtistTab>("discography");
 
     useEffect(() => {
         if (!artistId) return;
@@ -80,7 +85,16 @@ export default function ArtistPage() {
                 </div>
             </div>
 
-            {(releases.length > 0 || loading) && (
+            <Tabs
+                items={[
+                    { id: "discography", label: "Discography" },
+                    { id: "community", label: "Community" },
+                ]}
+                activeId={activeTab}
+                onChange={(id) => setActiveTab(id as ArtistTab)}
+            />
+
+            {activeTab === "discography" && (releases.length > 0 || loading) && (
                 <>
                     <div className="section-header border-b border-white/10 pb-4 mb-6">
                         <div className="flex items-center gap-3">
@@ -117,10 +131,14 @@ export default function ArtistPage() {
                 </>
             )}
 
-            {!loading && releases.length === 0 && (
+            {activeTab === "discography" && !loading && releases.length === 0 && (
                 <div className="empty-state">
                     <p>No official releases found for this artist profile.</p>
                 </div>
+            )}
+
+            {activeTab === "community" && artistId && (
+                <ArtistCommunityTab artistId={artistId} artist={artist} />
             )}
         </div>
     );

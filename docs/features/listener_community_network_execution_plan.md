@@ -402,15 +402,17 @@ GET    /community/badges/me
 GET    /community/benefits/me
 POST   /community/benefits/:benefitId/redeem
 
-GET    /artists/:artistId/community
-POST   /artists/:artistId/community/rooms
-GET    /community/rooms/:roomId
+GET    /community/artists/:artistId/rooms
+GET    /community/artists/:artistId/rooms/me
+POST   /community/artists/:artistId/rooms/enable
 POST   /community/rooms/:roomId/join
 POST   /community/rooms/:roomId/leave
 GET    /community/rooms/:roomId/messages
 POST   /community/rooms/:roomId/messages
 POST   /community/messages/:messageId/report
 DELETE /community/messages/:messageId
+POST   /community/rooms/:roomId/members/:userId/moderate
+PATCH  /community/rooms/:roomId/status
 
 GET    /shows/campaigns/:campaignId/community
 POST   /shows/campaigns/:campaignId/community/join

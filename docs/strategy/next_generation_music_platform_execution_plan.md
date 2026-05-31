@@ -511,8 +511,15 @@ Priority events:
 - `community.role_granted`
 - `community.benefit_unlocked`
 - `community.benefit_redeemed`
+- `community.artist_tab_enabled`
 - `community.room_joined`
+- `community.room_left`
 - `community.room_access_denied`
+- `community.message_created`
+- `community.message_reported`
+- `community.message_deleted`
+- `community.member_moderated`
+- `community.room_status_updated`
 - `community.campaign_room_joined`
 - `community.show_city_interest_joined`
 - `community.cohort_suggested`

@@ -119,6 +119,9 @@ describe("product analytics helpers", () => {
         "agent.next_pick_requested",
         "player.action_impression",
         "player.action_selected",
+        "community.artist_tab_viewed",
+        "community.room_selected",
+        "community.room_join_clicked",
       ]),
     );
   });

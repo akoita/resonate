@@ -57,6 +57,7 @@ event meaning.
 | `session.*` | `session.*` | Listening or agent commerce session lifecycle. |
 | `playback.*` | `playback.*` | Player starts, completions, skips, and listen-quality signals. |
 | `library.*` | `library.*` | Saves, follows, playlists, and listener library actions. |
+| `community.*` | `community.*` | Profile visibility, holder benefits, artist rooms, access checks, message/report/moderation actions. |
 | `commerce.*` | `commerce.*` | Quotes, purchase intent, settlement, refunds, and product commerce. |
 | `payment.*` | `payment.*` | Payment initiation, split, settlement, and accounting rails. |
 | `contract.*` | `contract.*` | Contract/indexer events such as stem sales and royalty payment observations. |

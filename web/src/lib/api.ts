@@ -2019,6 +2019,150 @@ export async function getPublicCommunityProfile(userId: string): Promise<PublicC
   );
 }
 
+export type CommunityRoomType = "artist_public" | "artist_holder";
+export type CommunityRoomStatus = "active" | "paused" | "archived";
+export type CommunityMembershipStatus = "active" | "left" | "removed" | "banned";
+export type CommunityMessageType = "message" | "announcement";
+
+export type CommunityRoomAccess = {
+  joinable: boolean;
+  reason: "open" | "eligible" | "holder_required" | string;
+  reasons?: string[];
+};
+
+export type CommunityMembership = {
+  role: string;
+  status: CommunityMembershipStatus | string;
+  joinedAt: string;
+  endedAt: string | null;
+};
+
+export type CommunityArtistRoom = {
+  id: string;
+  roomType: CommunityRoomType | string;
+  ownerType: string;
+  ownerId: string;
+  artistId: string | null;
+  title: string;
+  description: string | null;
+  status: CommunityRoomStatus | string;
+  membership: CommunityMembership | null;
+  access: CommunityRoomAccess;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CommunityArtistRoomsResponse = {
+  schemaVersion: "community-artist-rooms/v1";
+  artist: {
+    id: string;
+    displayName: string;
+    imageUrl: string | null;
+  };
+  rooms: CommunityArtistRoom[];
+};
+
+export type CommunityMessage = {
+  id: string;
+  roomId: string;
+  authorId: string;
+  body: string | null;
+  messageType: CommunityMessageType | string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+};
+
+export type CommunityMessagesResponse = {
+  schemaVersion: "community-messages/v1";
+  room: CommunityArtistRoom;
+  messages: CommunityMessage[];
+};
+
+export async function listArtistCommunityRooms(
+  artistId: string,
+  token?: string | null,
+): Promise<CommunityArtistRoomsResponse> {
+  const path = token
+    ? `/community/artists/${encodeURIComponent(artistId)}/rooms/me`
+    : `/community/artists/${encodeURIComponent(artistId)}/rooms`;
+  return apiRequest<CommunityArtistRoomsResponse>(path, { cache: "no-store" }, token);
+}
+
+export async function enableArtistCommunity(token: string, artistId: string): Promise<CommunityArtistRoomsResponse> {
+  return apiRequest<CommunityArtistRoomsResponse>(
+    `/community/artists/${encodeURIComponent(artistId)}/rooms/enable`,
+    { method: "POST" },
+    token,
+  );
+}
+
+export async function joinCommunityRoom(token: string, roomId: string) {
+  return apiRequest<{ schemaVersion: "community-membership/v1"; room: CommunityArtistRoom; membership: CommunityMembership }>(
+    `/community/rooms/${encodeURIComponent(roomId)}/join`,
+    { method: "POST" },
+    token,
+  );
+}
+
+export async function leaveCommunityRoom(token: string, roomId: string) {
+  return apiRequest<{ schemaVersion: "community-membership/v1"; membership: CommunityMembership }>(
+    `/community/rooms/${encodeURIComponent(roomId)}/leave`,
+    { method: "POST" },
+    token,
+  );
+}
+
+export async function listCommunityRoomMessages(token: string, roomId: string): Promise<CommunityMessagesResponse> {
+  return apiRequest<CommunityMessagesResponse>(
+    `/community/rooms/${encodeURIComponent(roomId)}/messages`,
+    { cache: "no-store" },
+    token,
+  );
+}
+
+export async function createCommunityRoomMessage(
+  token: string,
+  roomId: string,
+  input: { body: string; messageType?: CommunityMessageType },
+) {
+  return apiRequest<{ schemaVersion: "community-message/v1"; message: CommunityMessage }>(
+    `/community/rooms/${encodeURIComponent(roomId)}/messages`,
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+export async function reportCommunityMessage(token: string, messageId: string, reason: string) {
+  return apiRequest<{ schemaVersion: "community-moderation-report/v1"; report: { id: string; status: string } }>(
+    `/community/messages/${encodeURIComponent(messageId)}/report`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+    token,
+  );
+}
+
+export async function deleteCommunityMessage(token: string, messageId: string) {
+  return apiRequest<{ schemaVersion: "community-message/v1"; message: CommunityMessage }>(
+    `/community/messages/${encodeURIComponent(messageId)}`,
+    { method: "DELETE" },
+    token,
+  );
+}
+
+export async function moderateCommunityRoomMember(
+  token: string,
+  roomId: string,
+  userId: string,
+  action: "remove" | "ban",
+) {
+  return apiRequest<{ schemaVersion: "community-membership/v1"; membership: CommunityMembership }>(
+    `/community/rooms/${encodeURIComponent(roomId)}/members/${encodeURIComponent(userId)}/moderate`,
+    { method: "POST", body: JSON.stringify({ action }) },
+    token,
+  );
+}
+
 export async function uploadStems(
   token: string,
   formData: FormData

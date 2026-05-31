@@ -362,6 +362,40 @@ describe("AnalyticsController (HTTP)", () => {
     );
   });
 
+  it("accepts artist community product analytics events", async () => {
+    await request(app.getHttpServer())
+      .post("/analytics/product/event")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({
+        eventName: "community.room_join_clicked",
+        sessionId: "product-session-community",
+        subjectType: "community_room",
+        subjectId: "room-1",
+        clientEventId: "client-event-community-1",
+        payload: {
+          artistId: "artist-1",
+          roomId: "room-1",
+          roomType: "artist_holder",
+        },
+      })
+      .expect(201);
+
+    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventName: "community.room_join_clicked",
+        sessionId: "product-session-community",
+        subjectType: "community_room",
+        subjectId: "room-1",
+        payload: expect.objectContaining({
+          artistId: "artist-1",
+          roomId: "room-1",
+          roomType: "artist_holder",
+        }),
+        actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
+      }),
+    );
+  });
+
   it("rejects unsupported product analytics event names", async () => {
     await request(app.getHttpServer())
       .post("/analytics/product/event")

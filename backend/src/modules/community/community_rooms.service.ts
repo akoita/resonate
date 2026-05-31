@@ -97,7 +97,19 @@ export class CommunityRoomsService {
   async joinRoom(userId: string, roomId: string) {
     await this.ensureUser(userId);
     const room = await this.getRoom(roomId);
-    await this.assertRoomJoinable(userId, room);
+    try {
+      await this.assertRoomJoinable(userId, room);
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        this.publish("community.room_access_denied", userId, {
+          roomId,
+          roomType: room.roomType,
+          artistId: room.artistId,
+          reason: accessDeniedReason(error),
+        });
+      }
+      throw error;
+    }
     const membership = await prisma.communityMembership.upsert({
       where: { CommunityMembership_identity: { roomId, userId } },
       update: {
@@ -431,4 +443,15 @@ function normalizeRoomStatus(input: unknown): RoomStatus {
     throw new BadRequestException("status must be active, paused, or archived");
   }
   return normalized as RoomStatus;
+}
+
+function accessDeniedReason(error: ForbiddenException) {
+  const response = error.getResponse();
+  if (typeof response === "string") return response;
+  if (response && typeof response === "object" && "message" in response) {
+    const message = (response as { message?: unknown }).message;
+    if (Array.isArray(message)) return message.join(", ");
+    if (typeof message === "string") return message;
+  }
+  return "Community room access denied";
 }

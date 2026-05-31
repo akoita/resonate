@@ -208,7 +208,7 @@ recognized without turning community into a leaderboard.
 | Surface | Status | Notes |
 | --- | --- | --- |
 | Listener profile showcase | in-progress | `/settings` exposes profile identity and visibility controls; public profile reads redact hidden/private sections. Display of real badges, marketplace items, campaign support, attendance, playlists, remixes, and roles remains follow-up work. |
-| Artist community tab | in-progress | Backend foundation for artist public rooms, holder rooms, membership, messages, reports, and moderation basics is being built in [#999](https://github.com/akoita/resonate/issues/999). |
+| Artist community tab | in-progress | Backend room foundation is implemented. The active UI slice adds the `/artist/:id` Community tab with public and holder rooms, join/leave controls, messages, artist announcements, reports, deletion, and basic message-author moderation actions. |
 | Taste cohort suggestions | planned | Explainable recommendations to join small groups based on shared taste, city, artist affinity, or collection behavior. |
 | City scene pages | planned | Local scene surfaces tied to declared coarse location and privacy-safe aggregate demand. |
 | Campaign rooms | planned | Temporary community surfaces for Shows and other campaigns with milestones, updates, supporter chat, and rewards. |
@@ -277,9 +277,13 @@ It adds private badge, role, benefit-rule, and redemption foundations before
 public artist-room or listener benefit UI is exposed.
 
 The active M3 artist-community slice is tracked in
-[Artist Community Tab Plan](artist_community_tab_plan.md). It adds the off-chain
-room, membership, message, report, and moderation substrate before the public UI
-tab is exposed.
+[Artist Community Tab Plan](artist_community_tab_plan.md). The backend substrate
+for off-chain rooms, membership, messages, reports, and moderation is
+implemented. The artist page now exposes a Community tab that reads public rooms,
+uses authenticated room reads for membership-aware state, lets artists enable
+rooms and post announcements, lets listeners join/leave rooms, and exposes
+message report/delete plus basic member remove/ban controls from visible
+message authors.
 
 ## Blockchain Boundary
 
@@ -404,8 +408,8 @@ When implemented, verification should include:
 - backend integration tests for profile visibility, role grants, holder benefit
   eligibility, campaign room membership, and privacy enforcement;
 - contract or indexer tests where marketplace ownership controls access;
-- frontend tests for profile showcase, artist community tab, campaign room, and
-  holder-only states;
+- frontend tests for profile showcase, artist community tab helpers, campaign
+  room, and holder-only states;
 - analytics tests for community event emission and consent boundaries;
 - abuse tests for blocked users, reported messages, moderation actions, and
   hidden ownership;

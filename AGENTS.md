@@ -60,6 +60,23 @@ contract-adjacent local workflows.
 
 ---
 
+## 🧭 Change Impact Checklist
+
+Before finishing durable product, API, backend, frontend, analytics, protocol,
+or deployment work, review `docs/engineering/change_impact_checklist.md`.
+
+This guide captures the senior-maintainer review that prevents narrow fixes
+from forgetting related product consequences: analytics/events, API contracts,
+privacy and permission boundaries, moderation, lifecycle state, notifications,
+feature docs, architecture docs, deploy configuration, and validation scope.
+
+If a change adds or modifies meaningful user behavior, backend domain events,
+social/community state, marketplace lifecycle state, agent-facing contracts, or
+artist/listener controls, the PR summary should explicitly mention the relevant
+checklist sections and any intentionally deferred follow-up.
+
+---
+
 ## 📚 Feature Catalog & Documentation Updates
 
 `docs/features/README.md` is the canonical human-readable catalog of Resonate
