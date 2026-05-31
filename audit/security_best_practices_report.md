@@ -191,3 +191,42 @@ rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/community backend/src/ev
 rg '@Controller|@Get|@Post|@Put|@Delete|@Patch|@Body\(\)|@Query\(\)|@Param\(' backend/src/modules/community backend/src/modules/analytics/analytics.controller.ts
 rg 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/components/settings/CommunityProfileSettingsPanel.tsx web/src/app/settings/page.tsx web/src/lib/api.ts web/src/lib/productAnalytics.ts
 ```
+
+## Shows Declared Catalog Artist Selector - 2026-05-31
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/shows/shows.service.ts`
+- `backend/src/tests/shows.service.integration.spec.ts`
+- `web/src/components/shows/CampaignDraftForm.tsx`
+- `web/src/lib/shows.ts`
+- `web/src/lib/shows.test.ts`
+- `docs/features/README.md`
+- `docs/features/resonate_shows.md`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none introduced.
+- Low: none introduced.
+
+### Notes
+
+- Campaign artist selection now uses declared catalog artist credits instead
+  of uploader profiles, reducing identity confusion when one platform profile
+  uploads releases for multiple credited artists.
+- Server-side validation still rejects free-text/off-catalog artist subjects,
+  requires ready or published catalog content, and keeps artist-owned payout
+  safety tied to the authenticated artist profile.
+- No raw SQL, hardcoded secrets, direct HTML injection, cookie handling, or new
+  environment variables were introduced.
+
+### Commands Run
+
+```bash
+rg -n "password|secret|api_key|private_key" backend/src/modules/shows backend/src/tests/shows.service.integration.spec.ts --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n "rawQuery|executeRaw|\$queryRaw|dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false" backend/src/modules/shows web/src/components/shows web/src/lib/shows.ts
+```
