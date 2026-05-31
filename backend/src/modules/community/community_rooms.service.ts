@@ -4,15 +4,14 @@ import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
 import { CommunityEligibilityService } from "./community_eligibility.service";
 
-const ARTIST_ROOM_TYPES = ["artist_public", "artist_holder"] as const;
 const ROOM_STATUSES = ["active", "paused", "archived"] as const;
-const MESSAGE_TYPES = ["message", "announcement"] as const;
+const MESSAGE_TYPES = ["message", "announcement", "campaign_update"] as const;
 const MODERATION_ACTIONS = ["remove", "ban"] as const;
 
-type ArtistRoomType = (typeof ARTIST_ROOM_TYPES)[number];
 type RoomStatus = (typeof ROOM_STATUSES)[number];
 type MessageType = (typeof MESSAGE_TYPES)[number];
 type ModerationAction = (typeof MODERATION_ACTIONS)[number];
+type Actor = { userId: string; role?: string | null };
 
 @Injectable()
 export class CommunityRoomsService {
@@ -94,6 +93,47 @@ export class CommunityRoomsService {
     };
   }
 
+  async getShowCampaignCommunity(userId: string, campaignIdOrSlug: string) {
+    await this.ensureUser(userId);
+    const { campaign, room } = await this.ensureShowCampaignSupporterRoom(campaignIdOrSlug);
+    const membership = await prisma.communityMembership.findUnique({
+      where: { CommunityMembership_identity: { roomId: room.id, userId } },
+    });
+    const access = await this.describeRoomAccess(userId, room);
+
+    return {
+      schemaVersion: "show-campaign-community/v1",
+      campaign: campaignDto(campaign),
+      rooms: [roomDto(room, membership, access)],
+    };
+  }
+
+  async joinShowCampaignCommunity(userId: string, campaignIdOrSlug: string) {
+    const { room } = await this.ensureShowCampaignSupporterRoom(campaignIdOrSlug);
+    return this.joinRoom(userId, room.id);
+  }
+
+  async createShowCampaignUpdate(actor: Actor, campaignIdOrSlug: string, input: { body?: unknown }) {
+    const { campaign, room } = await this.ensureShowCampaignSupporterRoom(campaignIdOrSlug);
+    await this.requireCampaignOperator(actor, campaign);
+    const body = normalizeBody(input.body);
+    const message = await prisma.communityMessage.create({
+      data: { roomId: room.id, authorId: actor.userId, body, messageType: "campaign_update" },
+    });
+    this.publish("community.message_created", actor.userId, {
+      roomId: room.id,
+      messageId: message.id,
+      messageType: "campaign_update",
+      campaignId: campaign.id,
+      campaignSlug: campaign.slug,
+    });
+    return {
+      schemaVersion: "community-message/v1",
+      message: messageDto(message),
+      campaign: campaignDto(campaign),
+    };
+  }
+
   async joinRoom(userId: string, roomId: string) {
     await this.ensureUser(userId);
     const room = await this.getRoom(roomId);
@@ -105,6 +145,7 @@ export class CommunityRoomsService {
           roomId,
           roomType: room.roomType,
           artistId: room.artistId,
+          ...campaignSourceRef(room),
           reason: accessDeniedReason(error),
         });
       }
@@ -115,18 +156,31 @@ export class CommunityRoomsService {
       update: {
         status: "active",
         endedAt: null,
-        role: room.roomType === "artist_holder" ? "holder" : "member",
-        sourceType: room.roomType === "artist_holder" ? "eligibility" : "manual",
+        role: roomMembershipRole(room),
+        sourceType: roomMembershipSource(room),
       },
       create: {
         roomId,
         userId,
-        role: room.roomType === "artist_holder" ? "holder" : "member",
-        sourceType: room.roomType === "artist_holder" ? "eligibility" : "manual",
+        role: roomMembershipRole(room),
+        sourceType: roomMembershipSource(room),
       },
     });
 
-    this.publish("community.room_joined", userId, { roomId, roomType: room.roomType, artistId: room.artistId });
+    this.publish("community.room_joined", userId, {
+      roomId,
+      roomType: room.roomType,
+      artistId: room.artistId,
+      ...campaignSourceRef(room),
+    });
+    if (room.ownerType === "show_campaign") {
+      this.publish("community.campaign_room_joined", userId, {
+        campaignId: room.ownerId,
+        roomId,
+        roomType: room.roomType,
+        artistId: room.artistId,
+      });
+    }
     return {
       schemaVersion: "community-membership/v1",
       room: roomDto(room, membership),
@@ -147,7 +201,12 @@ export class CommunityRoomsService {
       data: { status: "left", endedAt: new Date() },
     });
 
-    this.publish("community.room_left", userId, { roomId, roomType: membership.room.roomType, artistId: membership.room.artistId });
+    this.publish("community.room_left", userId, {
+      roomId,
+      roomType: membership.room.roomType,
+      artistId: membership.room.artistId,
+      ...campaignSourceRef(membership.room),
+    });
     return { schemaVersion: "community-membership/v1", membership: membershipDto(updated) };
   }
 
@@ -170,7 +229,7 @@ export class CommunityRoomsService {
     const room = await this.getRoom(roomId);
     const messageType = normalizeMessageType(input.messageType);
     const body = normalizeBody(input.body);
-    if (messageType === "announcement") {
+    if (messageType === "announcement" || messageType === "campaign_update") {
       await this.requireRoomOperator(userId, room);
     } else {
       await this.assertCanWriteRoom(userId, room);
@@ -179,7 +238,12 @@ export class CommunityRoomsService {
     const message = await prisma.communityMessage.create({
       data: { roomId, authorId: userId, body, messageType },
     });
-    this.publish("community.message_created", userId, { roomId, messageId: message.id, messageType });
+    this.publish("community.message_created", userId, {
+      roomId,
+      messageId: message.id,
+      messageType,
+      ...campaignSourceRef(room),
+    });
     return { schemaVersion: "community-message/v1", message: messageDto(message) };
   }
 
@@ -193,7 +257,12 @@ export class CommunityRoomsService {
     const report = await prisma.communityModerationReport.create({
       data: { roomId: message.roomId, messageId, reporterUserId: userId, reason },
     });
-    this.publish("community.message_reported", userId, { roomId: message.roomId, messageId, reportId: report.id });
+    this.publish("community.message_reported", userId, {
+      roomId: message.roomId,
+      messageId,
+      reportId: report.id,
+      ...campaignSourceRef(message.room),
+    });
     return { schemaVersion: "community-moderation-report/v1", report: reportDto(report) };
   }
 
@@ -207,7 +276,11 @@ export class CommunityRoomsService {
       where: { id: messageId },
       data: { status: message.authorId === userId ? "deleted_by_author" : "deleted_by_moderator", deletedAt: new Date() },
     });
-    this.publish("community.message_deleted", userId, { roomId: message.roomId, messageId });
+    this.publish("community.message_deleted", userId, {
+      roomId: message.roomId,
+      messageId,
+      ...campaignSourceRef(message.room),
+    });
     return { schemaVersion: "community-message/v1", message: messageDto(updated) };
   }
 
@@ -247,10 +320,10 @@ export class CommunityRoomsService {
     if (existing?.status === "banned") {
       throw new ForbiddenException("You cannot join this community room");
     }
-    if (room.roomType === "artist_holder") {
+    if (room.accessPolicyJson) {
       const result = await this.eligibility.evaluateAccessPolicy(userId, room.accessPolicyJson ?? { type: "manual" });
       if (!result.eligible) {
-        throw new ForbiddenException("Holder access is locked for this listener");
+        throw new ForbiddenException(roomAccessDeniedMessage(room));
       }
     }
   }
@@ -275,9 +348,19 @@ export class CommunityRoomsService {
   }
 
   private async isRoomOperator(userId: string, room: RoomRecord) {
-    if (!room.artistId) return false;
+    if (!room.artistId) return userId === "operator" || userId === "admin";
     const artist = await prisma.artist.findUnique({ where: { id: room.artistId } });
     return Boolean(artist && canOperateArtist(userId, artist));
+  }
+
+  private async requireCampaignOperator(actor: Actor, campaign: { artistId: string | null }) {
+    if (actor.role === "admin" || actor.role === "operator" || actor.userId === "admin" || actor.userId === "operator") {
+      return;
+    }
+    if (!campaign.artistId) {
+      throw new ForbiddenException("Campaign updates require the campaign artist or an operator");
+    }
+    await this.requireArtistOperator(actor.userId, campaign.artistId);
   }
 
   private async requireArtistOperator(userId: string, artistId: string) {
@@ -290,13 +373,12 @@ export class CommunityRoomsService {
   }
 
   private async describeRoomAccess(userId: string, room: RoomRecord) {
-    if (room.roomType !== "artist_holder") return publicRoomAccessDto(room);
-    if (!room.accessPolicyJson) return { joinable: true, reason: "open" };
+    if (!room.accessPolicyJson) return publicRoomAccessDto(room);
     const result = await this.eligibility.evaluateAccessPolicy(userId, room.accessPolicyJson);
     return {
       joinable: result.eligible,
-      reason: result.eligible ? "eligible" : "holder_required",
-      reasons: result.eligible ? result.reasons : ["holder_required"],
+      reason: result.eligible ? "eligible" : gatedRoomReason(room),
+      reasons: result.eligible ? result.reasons : [gatedRoomReason(room)],
     };
   }
 
@@ -314,6 +396,49 @@ export class CommunityRoomsService {
     });
   }
 
+  private async ensureShowCampaignSupporterRoom(campaignIdOrSlug: string) {
+    const campaign = await prisma.showCampaign.findFirst({
+      where: {
+        OR: [
+          { id: campaignIdOrSlug },
+          { slug: campaignIdOrSlug },
+        ],
+      },
+    });
+    if (!campaign) throw new NotFoundException("Show campaign not found");
+    if (campaign.campaignLevel !== "active_escrow_campaign") {
+      throw new BadRequestException("Only active escrow campaigns can open supporter rooms");
+    }
+
+    const room = await prisma.communityRoom.upsert({
+      where: {
+        CommunityRoom_identity: {
+          roomType: "show_campaign_supporter",
+          ownerType: "show_campaign",
+          ownerId: campaign.id,
+        },
+      },
+      update: {
+        artistId: campaign.artistId,
+        title: `${campaign.title} Supporter Room`,
+        description: "Private supporter room for confirmed campaign backers.",
+        accessPolicyJson: campaignSupportPolicy(campaign.id),
+      },
+      create: {
+        roomType: "show_campaign_supporter",
+        ownerType: "show_campaign",
+        ownerId: campaign.id,
+        artistId: campaign.artistId,
+        title: `${campaign.title} Supporter Room`,
+        description: "Private supporter room for confirmed campaign backers.",
+        accessPolicyJson: campaignSupportPolicy(campaign.id),
+        status: "active",
+      },
+    });
+
+    return { campaign, room };
+  }
+
   private publish(eventName: string, userId: string, payload: Record<string, unknown>) {
     this.eventBus.publish({
       eventName,
@@ -327,6 +452,10 @@ export class CommunityRoomsService {
 
 type RoomRecord = CommunityRoom;
 
+function campaignSupportPolicy(campaignId: string): Prisma.InputJsonObject {
+  return { type: "campaign_support", campaignId, minStatus: "confirmed" };
+}
+
 function canOperateArtist(userId: string, artist: { userId: string | null }) {
   return artist.userId === userId || userId === "operator" || userId === "admin";
 }
@@ -336,6 +465,30 @@ function artistDto(artist: { id: string; displayName: string; imageUrl?: string 
     id: artist.id,
     displayName: artist.displayName,
     imageUrl: artist.imageUrl ?? null,
+  };
+}
+
+function campaignDto(campaign: {
+  id: string;
+  slug: string;
+  title: string;
+  artistId: string | null;
+  artistDisplayName: string;
+  city: string;
+  country: string;
+  status: string;
+  campaignLevel: string;
+}) {
+  return {
+    id: campaign.id,
+    slug: campaign.slug,
+    title: campaign.title,
+    artistId: campaign.artistId,
+    artistDisplayName: campaign.artistDisplayName,
+    city: campaign.city,
+    country: campaign.country,
+    status: campaign.status,
+    campaignLevel: campaign.campaignLevel,
   };
 }
 
@@ -362,9 +515,45 @@ function roomDto(
 
 function publicRoomAccessDto(room: { roomType: string; status: string }) {
   return {
-    joinable: room.status === "active",
-    reason: room.roomType === "artist_holder" ? "holder_required" : "open",
+    joinable: room.status === "active" && !isGatedRoomType(room.roomType),
+    reason: isGatedRoomType(room.roomType) ? gatedRoomReason(room) : "open",
   };
+}
+
+function isGatedRoomType(roomType: string) {
+  return roomType === "artist_holder" || roomType === "show_campaign_supporter";
+}
+
+function gatedRoomReason(room: { roomType: string }) {
+  if (room.roomType === "show_campaign_supporter") return "campaign_support_required";
+  if (room.roomType === "artist_holder") return "holder_required";
+  return "open";
+}
+
+function roomAccessDeniedMessage(room: { roomType: string }) {
+  if (room.roomType === "show_campaign_supporter") {
+    return "Confirmed campaign support is required for this room";
+  }
+  if (room.roomType === "artist_holder") {
+    return "Holder access is locked for this listener";
+  }
+  return "Community room access denied";
+}
+
+function roomMembershipRole(room: { roomType: string }) {
+  if (room.roomType === "artist_holder") return "holder";
+  if (room.roomType === "show_campaign_supporter") return "supporter";
+  return "member";
+}
+
+function roomMembershipSource(room: { roomType: string }) {
+  if (room.roomType === "artist_holder") return "eligibility";
+  if (room.roomType === "show_campaign_supporter") return "campaign_support";
+  return "manual";
+}
+
+function campaignSourceRef(room: { ownerType: string; ownerId: string }) {
+  return room.ownerType === "show_campaign" ? { campaignId: room.ownerId } : {};
 }
 
 function membershipDto(membership: { role: string; status: string; joinedAt: Date; endedAt: Date | null }) {
@@ -408,7 +597,7 @@ function normalizeMessageType(input: unknown): MessageType {
   if (typeof input !== "string") throw new BadRequestException("messageType must be a string");
   const normalized = input.trim().toLowerCase();
   if (!MESSAGE_TYPES.includes(normalized as MessageType)) {
-    throw new BadRequestException("messageType must be message or announcement");
+    throw new BadRequestException("messageType must be message, announcement, or campaign_update");
   }
   return normalized as MessageType;
 }

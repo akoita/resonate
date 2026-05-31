@@ -17,11 +17,15 @@ import { AuthGuard } from "@nestjs/passport";
 import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { Response } from "express";
 import { Roles } from "../auth/roles.decorator";
+import { CommunityRoomsService } from "../community/community_rooms.service";
 import { ShowsService } from "./shows.service";
 
 @Controller("shows")
 export class ShowsController {
-  constructor(private readonly showsService: ShowsService) {}
+  constructor(
+    private readonly showsService: ShowsService,
+    private readonly communityRoomsService: CommunityRoomsService,
+  ) {}
 
   @Get("campaigns")
   listCampaigns(
@@ -37,6 +41,29 @@ export class ShowsController {
   @Get("campaigns/:slug")
   getCampaign(@Param("slug") slug: string) {
     return this.showsService.getCampaign(slug);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Get("campaigns/:id/community")
+  getCampaignCommunity(@Param("id") id: string, @Request() req: any) {
+    return this.communityRoomsService.getShowCampaignCommunity(req.user.userId, id);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("campaigns/:id/community/join")
+  joinCampaignCommunity(@Param("id") id: string, @Request() req: any) {
+    return this.communityRoomsService.joinShowCampaignCommunity(req.user.userId, id);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("artist", "admin", "operator")
+  @Post("campaigns/:id/community/updates")
+  createCampaignUpdate(
+    @Param("id") id: string,
+    @Request() req: any,
+    @Body() body: any,
+  ) {
+    return this.communityRoomsService.createShowCampaignUpdate(this.actorFromRequest(req), id, body);
   }
 
   @Get("campaigns/:id/visuals/:slot")

@@ -184,6 +184,16 @@ export interface CommunityRoomJoinedEvent extends BaseEvent {
   roomId: string;
   roomType: string;
   artistId?: string | null;
+  campaignId?: string | null;
+}
+
+export interface CommunityCampaignRoomJoinedEvent extends BaseEvent {
+  eventName: "community.campaign_room_joined";
+  userId: string;
+  campaignId: string;
+  roomId: string;
+  roomType: string;
+  artistId?: string | null;
 }
 
 export interface CommunityRoomLeftEvent extends BaseEvent {
@@ -192,6 +202,7 @@ export interface CommunityRoomLeftEvent extends BaseEvent {
   roomId: string;
   roomType: string;
   artistId?: string | null;
+  campaignId?: string | null;
 }
 
 export interface CommunityRoomAccessDeniedEvent extends BaseEvent {
@@ -200,6 +211,7 @@ export interface CommunityRoomAccessDeniedEvent extends BaseEvent {
   roomId: string;
   roomType: string;
   artistId?: string | null;
+  campaignId?: string | null;
   reason: string;
 }
 
@@ -209,6 +221,8 @@ export interface CommunityMessageCreatedEvent extends BaseEvent {
   roomId: string;
   messageId: string;
   messageType: string;
+  campaignId?: string | null;
+  campaignSlug?: string | null;
 }
 
 export interface CommunityMessageReportedEvent extends BaseEvent {
@@ -217,6 +231,7 @@ export interface CommunityMessageReportedEvent extends BaseEvent {
   roomId: string;
   messageId: string;
   reportId: string;
+  campaignId?: string | null;
 }
 
 export interface CommunityMessageDeletedEvent extends BaseEvent {
@@ -224,6 +239,7 @@ export interface CommunityMessageDeletedEvent extends BaseEvent {
   userId: string;
   roomId: string;
   messageId: string;
+  campaignId?: string | null;
 }
 
 export interface CommunityMemberModeratedEvent extends BaseEvent {
@@ -911,6 +927,7 @@ export type ResonateEvent =
   | CommunityBenefitRedeemedEvent
   | CommunityArtistTabEnabledEvent
   | CommunityRoomJoinedEvent
+  | CommunityCampaignRoomJoinedEvent
   | CommunityRoomLeftEvent
   | CommunityRoomAccessDeniedEvent
   | CommunityMessageCreatedEvent
