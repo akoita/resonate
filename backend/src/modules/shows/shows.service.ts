@@ -427,10 +427,7 @@ export class ShowsService {
     if (campaignLevel === "signal") {
       throw new BadRequestException("Use /shows/signals for fan-proposed demand signals");
     }
-    if (!artistIdentity) {
-      throw new BadRequestException("active escrow campaigns must select an existing platform artist");
-    }
-    await this.assertArtistHasCatalogContent(artistIdentity.id);
+    await this.assertCampaignCatalogSubject(actor, normalized, artistIdentity);
 
     const depositReleaseBps = input.depositReleaseBps ?? 0;
     if (!Number.isSafeInteger(depositReleaseBps) || depositReleaseBps < 0 || depositReleaseBps > 3000) {
@@ -497,10 +494,6 @@ export class ShowsService {
     }
 
     const artistIdentity = await this.resolveCampaignArtistIdentity(actor, input.artistId ?? campaign.artistId);
-    if (!artistIdentity) {
-      throw new BadRequestException("active escrow campaigns must select an existing platform artist");
-    }
-    await this.assertArtistHasCatalogContent(artistIdentity.id);
     const normalized = this.normalizeCampaignBase(
       this.withPlatformArtistIdentity(input, artistIdentity),
       {
@@ -508,6 +501,7 @@ export class ShowsService {
         defaultChainId: input.chainId ?? campaign.chainId,
       },
     );
+    await this.assertCampaignCatalogSubject(actor, normalized, artistIdentity);
     const depositReleaseBps = input.depositReleaseBps ?? campaign.depositReleaseBps;
     if (!Number.isSafeInteger(depositReleaseBps) || depositReleaseBps < 0 || depositReleaseBps > 3000) {
       throw new BadRequestException("depositReleaseBps must be between 0 and 3000");
@@ -1440,17 +1434,63 @@ export class ShowsService {
     return prisma.artist.findUnique({ where: { id: artistId } });
   }
 
-  private async assertArtistHasCatalogContent(artistId: string) {
+  private async assertCampaignCatalogSubject(
+    actor: Actor,
+    campaign: { artistDisplayName: string },
+    artist: Artist | null,
+  ) {
+    if (artist) {
+      await this.assertArtistHasCatalogContent(artist);
+      return;
+    }
+
+    if (!isPrivilegedActor(actor)) {
+      throw new BadRequestException("active escrow campaigns must select an existing platform artist");
+    }
+
+    await this.assertCatalogArtistCreditHasContent(campaign.artistDisplayName);
+  }
+
+  private async assertArtistHasCatalogContent(artist: Pick<Artist, "id" | "displayName">) {
     const release = await prisma.release.findFirst({
       where: {
-        artistId,
+        artistId: artist.id,
         status: { in: SHOWS_CATALOG_CONTENT_STATUSES },
+        OR: [
+          { primaryArtist: null },
+          { primaryArtist: "" },
+          { primaryArtist: { equals: artist.displayName, mode: "insensitive" } },
+        ],
       },
       select: { id: true },
     });
     if (!release) {
       throw new BadRequestException(
-        "active escrow campaigns must reference a platform artist with at least one ready or published release",
+        "active escrow campaigns must reference a platform artist with at least one ready or published release credited to that artist",
+      );
+    }
+  }
+
+  private async assertCatalogArtistCreditHasContent(artistDisplayName: string) {
+    const artistName = requireText(artistDisplayName, "artistDisplayName");
+    const release = await prisma.release.findFirst({
+      where: {
+        status: { in: SHOWS_CATALOG_CONTENT_STATUSES },
+        OR: [
+          { primaryArtist: { equals: artistName, mode: "insensitive" } },
+          {
+            AND: [
+              { OR: [{ primaryArtist: null }, { primaryArtist: "" }] },
+              { artist: { displayName: { equals: artistName, mode: "insensitive" } } },
+            ],
+          },
+        ],
+      },
+      select: { id: true },
+    });
+    if (!release) {
+      throw new BadRequestException(
+        "active escrow campaigns must select a catalog artist with at least one ready or published release",
       );
     }
   }

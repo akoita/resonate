@@ -6,7 +6,7 @@
  * to seeded campaign data for local demos and offline UI tests.
  */
 
-import { API_BASE } from "./api";
+import { API_BASE, type Release } from "./api";
 
 export type CampaignStatus = "active" | "funded" | "refunded" | "booked";
 
@@ -76,6 +76,65 @@ export function campaignRouteCode(campaign: Pick<Campaign, "title" | "city">): s
     .toUpperCase();
   const cityCode = campaign.city.slice(0, 3).toUpperCase();
   return `${titleCode || "SHW"}-${cityCode}`;
+}
+
+export type CatalogArtistCandidate = {
+  optionId: string;
+  artistId: string | null;
+  name: string;
+  releaseCount: number;
+  latestReleaseTitle: string;
+  artworkUrl?: string | null;
+};
+
+function normalizedArtistCredit(value?: string | null) {
+  return (value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function releaseArtistCreditName(release: Pick<Release, "primaryArtist" | "artist">) {
+  return release.primaryArtist?.trim() || release.artist?.displayName?.trim() || "Unknown Artist";
+}
+
+function releaseCreditProfileId(release: Pick<Release, "primaryArtist" | "artist">) {
+  const profileId = release.artist?.id || null;
+  if (!profileId) return null;
+
+  const primaryArtist = normalizedArtistCredit(release.primaryArtist);
+  const profileName = normalizedArtistCredit(release.artist?.displayName);
+  return !primaryArtist || primaryArtist === profileName ? profileId : null;
+}
+
+export function catalogArtistOptionId(candidate: Pick<CatalogArtistCandidate, "artistId" | "name">) {
+  if (candidate.artistId) return `profile:${candidate.artistId}`;
+  return `credit:${normalizedArtistCredit(candidate.name)}`;
+}
+
+export function buildCatalogArtistCandidates(releases: Release[]): CatalogArtistCandidate[] {
+  const byArtist = new Map<string, CatalogArtistCandidate>();
+
+  for (const release of releases) {
+    const name = releaseArtistCreditName(release);
+    const artistId = releaseCreditProfileId(release);
+    const optionId = catalogArtistOptionId({ artistId, name });
+    const existing = byArtist.get(optionId);
+
+    if (existing) {
+      existing.releaseCount += 1;
+      if (!existing.artworkUrl && release.artworkUrl) existing.artworkUrl = release.artworkUrl;
+      continue;
+    }
+
+    byArtist.set(optionId, {
+      optionId,
+      artistId,
+      name,
+      releaseCount: 1,
+      latestReleaseTitle: release.title,
+      artworkUrl: release.artworkUrl,
+    });
+  }
+
+  return Array.from(byArtist.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export type PledgeContractCall = {

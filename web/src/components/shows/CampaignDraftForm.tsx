@@ -10,12 +10,13 @@ import {
   listArtistReleases,
   listPublishedReleases,
   type ArtistProfile,
-  type Release,
 } from "../../lib/api";
 import {
   createShowCampaignDraft,
+  buildCatalogArtistCandidates,
   updateShowCampaignDraft,
   type Campaign,
+  type CatalogArtistCandidate,
   type ShowCampaignDraftTierInput,
 } from "../../lib/shows";
 
@@ -23,14 +24,6 @@ type TierForm = {
   title: string;
   description: string;
   amount: string;
-};
-
-type ArtistCandidate = {
-  id: string;
-  name: string;
-  releaseCount: number;
-  latestReleaseTitle: string;
-  artworkUrl?: string | null;
 };
 
 const PAYMENT_DECIMALS = 6;
@@ -88,30 +81,6 @@ function initialTiers(campaign?: Campaign): TierForm[] {
   ];
 }
 
-function buildArtistCandidates(releases: Release[]): ArtistCandidate[] {
-  const byArtist = new Map<string, ArtistCandidate>();
-
-  for (const release of releases) {
-    if (!release.artist?.id) continue;
-    const existing = byArtist.get(release.artist.id);
-    const name = release.artist.displayName || release.primaryArtist || "Unknown Artist";
-    if (existing) {
-      existing.releaseCount += 1;
-      if (!existing.artworkUrl && release.artworkUrl) existing.artworkUrl = release.artworkUrl;
-      continue;
-    }
-    byArtist.set(release.artist.id, {
-      id: release.artist.id,
-      name,
-      releaseCount: 1,
-      latestReleaseTitle: release.title,
-      artworkUrl: release.artworkUrl,
-    });
-  }
-
-  return Array.from(byArtist.values()).sort((a, b) => a.name.localeCompare(b.name));
-}
-
 export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
   const router = useRouter();
   const { token, status, role, connect } = useAuth();
@@ -119,9 +88,9 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
   const [artist, setArtist] = useState<ArtistProfile | null>(null);
   const [artistLoaded, setArtistLoaded] = useState(false);
   const [artistHasCatalogContent, setArtistHasCatalogContent] = useState<boolean | null>(null);
-  const [artistCandidates, setArtistCandidates] = useState<ArtistCandidate[]>([]);
+  const [artistCandidates, setArtistCandidates] = useState<CatalogArtistCandidate[]>([]);
   const [artistCandidatesLoaded, setArtistCandidatesLoaded] = useState(false);
-  const [selectedArtistId, setSelectedArtistId] = useState(campaign?.artistId ?? "");
+  const [selectedArtistId, setSelectedArtistId] = useState(campaign?.artistId ? `profile:${campaign.artistId}` : "");
   const [artistDisplayName, setArtistDisplayName] = useState(campaign?.artistName ?? "");
   const [title, setTitle] = useState(campaign?.title ?? "");
   const [description, setDescription] = useState(campaign?.tagline ?? "");
@@ -142,16 +111,16 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
 
   const isEdit = Boolean(campaign);
   const isPrivileged = role === "admin" || role === "operator";
+  const selectedArtistCandidate = artistCandidates.find((candidate) => candidate.optionId === selectedArtistId);
   const canSubmit = status === "authenticated"
     && Boolean(token)
-    && (isPrivileged ? Boolean(selectedArtistId) : artistLoaded && artistHasCatalogContent === true);
+    && (isPrivileged ? Boolean(selectedArtistCandidate) : artistLoaded && artistHasCatalogContent === true);
   const needsArtistProfile = status === "authenticated" && artistLoaded && !artist && !isPrivileged;
   const needsArtistCatalogContent = status === "authenticated"
     && !isPrivileged
     && artistLoaded
     && Boolean(artist)
     && artistHasCatalogContent === false;
-  const selectedArtistCandidate = artistCandidates.find((candidate) => candidate.id === selectedArtistId);
   const draftTitle = useMemo(
     () => title.trim() || (artistDisplayName && city ? `${artistDisplayName} in ${city}` : ""),
     [artistDisplayName, city, title],
@@ -211,12 +180,21 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
     listPublishedReleases(100)
       .then((releases) => {
         if (!active) return;
-        const candidates = buildArtistCandidates(releases);
+        const candidates = buildCatalogArtistCandidates(releases);
         setArtistCandidates(candidates);
-        if (!selectedArtistId && candidates.length > 0) {
-          setSelectedArtistId(candidates[0].id);
-          setArtistDisplayName(candidates[0].name);
-        }
+        setSelectedArtistId((current) => {
+          if (current && candidates.some((candidate) => candidate.optionId === current)) return current;
+          const byLegacyProfileId = current
+            ? candidates.find((candidate) => candidate.artistId === current)
+            : null;
+          if (byLegacyProfileId) return byLegacyProfileId.optionId;
+
+          const existingCampaignArtist = campaign?.artistName?.trim().toLowerCase();
+          const byCampaignName = existingCampaignArtist
+            ? candidates.find((candidate) => candidate.name.trim().toLowerCase() === existingCampaignArtist)
+            : null;
+          return byCampaignName?.optionId ?? candidates[0]?.optionId ?? "";
+        });
       })
       .catch(() => {
         if (active) setArtistCandidates([]);
@@ -228,11 +206,11 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
     return () => {
       active = false;
     };
-  }, [isPrivileged, selectedArtistId, status]);
+  }, [campaign?.artistName, isPrivileged, status]);
 
   useEffect(() => {
     if (!isPrivileged || !selectedArtistId) return;
-    const selected = artistCandidates.find((candidate) => candidate.id === selectedArtistId);
+    const selected = artistCandidates.find((candidate) => candidate.optionId === selectedArtistId);
     if (selected) setArtistDisplayName(selected.name);
   }, [artistCandidates, isPrivileged, selectedArtistId]);
 
@@ -272,8 +250,8 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
       }
 
       const draft = {
-        artistId: isPrivileged ? selectedArtistId || null : artist?.id ?? null,
-        artistDisplayName: (isPrivileged ? artistDisplayName : artist?.displayName ?? artistDisplayName).trim(),
+        artistId: isPrivileged ? selectedArtistCandidate?.artistId ?? null : artist?.id ?? null,
+        artistDisplayName: (isPrivileged ? selectedArtistCandidate?.name ?? artistDisplayName : artist?.displayName ?? artistDisplayName).trim(),
         title: draftTitle,
         description: description.trim() || null,
         city: city.trim(),
@@ -351,7 +329,7 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
             >
               <option value="">Select a catalog artist</option>
               {artistCandidates.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
+                <option key={candidate.optionId} value={candidate.optionId}>
                   {candidate.name} · {candidate.releaseCount} release{candidate.releaseCount === 1 ? "" : "s"}
                 </option>
               ))}

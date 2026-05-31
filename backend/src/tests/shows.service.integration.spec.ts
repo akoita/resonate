@@ -7,6 +7,7 @@ const userId = `${TEST_PREFIX}artist_user`;
 const listenerId = `${TEST_PREFIX}listener_user`;
 const artistId = `${TEST_PREFIX}artist`;
 const releaseId = `${TEST_PREFIX}release`;
+const creditedReleaseId = `${TEST_PREFIX}credited_release`;
 const artistWallet = "0x" + "7".repeat(40);
 const otherArtistUserId = `${TEST_PREFIX}other_artist_user`;
 const otherArtistId = `${TEST_PREFIX}other_artist`;
@@ -125,6 +126,15 @@ describe("ShowsService integration", () => {
         primaryArtist: `${TEST_PREFIX}Artist`,
       },
     });
+    await prisma.release.create({
+      data: {
+        id: creditedReleaseId,
+        artistId,
+        title: `${TEST_PREFIX}Declared Credit Release`,
+        status: "ready",
+        primaryArtist: `${TEST_PREFIX}Declared Credit`,
+      },
+    });
   });
 
   afterAll(async () => {
@@ -146,7 +156,7 @@ describe("ShowsService integration", () => {
     await prisma.showCampaign.deleteMany({
       where: { artistDisplayName: { startsWith: TEST_PREFIX } },
     }).catch(() => {});
-    await prisma.release.deleteMany({ where: { id: releaseId } }).catch(() => {});
+    await prisma.release.deleteMany({ where: { id: { in: [releaseId, creditedReleaseId] } } }).catch(() => {});
     await prisma.artist.deleteMany({ where: { id: { in: [artistId, otherArtistId] } } }).catch(() => {});
     await prisma.user.deleteMany({
       where: { id: { in: [userId, listenerId, operatorUserId, otherArtistUserId] } },
@@ -303,7 +313,7 @@ describe("ShowsService integration", () => {
         beneficiaryAddress: "0x" + "2".repeat(40),
         beneficiaryType: "wallet",
       },
-    )).rejects.toThrow("at least one ready or published release");
+    )).rejects.toThrow("at least one ready or published release credited to that artist");
 
     await expect(service.createDraftCampaign(
       { userId: operatorUserId, role: "operator" },
@@ -316,7 +326,7 @@ describe("ShowsService integration", () => {
         beneficiaryAddress: "0x" + "2".repeat(40),
         beneficiaryType: "wallet",
       },
-    )).rejects.toThrow("active escrow campaigns must select an existing platform artist");
+    )).rejects.toThrow("active escrow campaigns must select a catalog artist");
 
     const operatorDraft = await service.createDraftCampaign(
       { userId: operatorUserId, role: "operator" },
@@ -335,6 +345,25 @@ describe("ShowsService integration", () => {
     expect(operatorDraft.artistId).toBe(artistId);
     expect(operatorDraft.artistDisplayName).toBe(`${TEST_PREFIX}Artist`);
     expect(operatorDraft.beneficiaryAddress).toBe("0x" + "2".repeat(40));
+
+    const declaredCreditDraft = await service.createDraftCampaign(
+      { userId: operatorUserId, role: "operator" },
+      {
+        artistId: null,
+        artistDisplayName: `${TEST_PREFIX}Declared Credit`,
+        title: `${TEST_PREFIX}Declared Credit in Paris`,
+        city: "Paris",
+        country: "FR",
+        deadline: futureIso(30),
+        goalAmountUnits: "2500000",
+        beneficiaryAddress: "0x" + "3".repeat(40),
+        beneficiaryType: "wallet",
+      },
+    );
+
+    expect(declaredCreditDraft.artistId).toBeNull();
+    expect(declaredCreditDraft.artistDisplayName).toBe(`${TEST_PREFIX}Declared Credit`);
+    expect(declaredCreditDraft.title).toBe(`${TEST_PREFIX}Declared Credit in Paris`);
   });
 
   it("requires approved artist authority before activation", async () => {
