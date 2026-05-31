@@ -255,7 +255,8 @@ export class ContractsService implements OnModuleInit {
       throw new NotFoundException(`Release ${releaseId} not found`);
     }
 
-    if (release.artist.userId.toLowerCase() !== requesterAddress.toLowerCase()) {
+    const ownerUserId = release.artist.userId?.toLowerCase();
+    if (!ownerUserId || ownerUserId !== requesterAddress.toLowerCase()) {
       throw new ForbiddenException("You do not own this release");
     }
 
@@ -1895,7 +1896,7 @@ export class ContractsService implements OnModuleInit {
         [
           release.artist.userId?.toLowerCase(),
           release.artist.payoutAddress?.toLowerCase(),
-        ].filter(Boolean),
+        ].filter((address): address is string => Boolean(address)),
       ),
     );
     const creatorWalletAddress = release.artist.userId?.toLowerCase() || null;
@@ -2182,7 +2183,8 @@ export class ContractsService implements OnModuleInit {
     }
 
     const normalizedRequester = requesterAddress.toLowerCase();
-    if (role !== "admin" && release.artist.userId.toLowerCase() !== normalizedRequester) {
+    const ownerUserId = release.artist.userId?.toLowerCase();
+    if (role !== "admin" && (!ownerUserId || ownerUserId !== normalizedRequester)) {
       throw new ForbiddenException("You do not have access to this release review");
     }
 

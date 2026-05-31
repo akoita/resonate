@@ -56,6 +56,12 @@ describe("AnalyticsCatalogMetadataService integration", () => {
       releaseTitle: "Extra Musica",
       artistId: `${TEST_PREFIX}artist`,
       artistName: "Grey",
+      managerArtistId: `${TEST_PREFIX}artist`,
+      managerArtistName: "Grey",
+      creditedArtistId: null,
+      creditedArtistName: "Grey",
+      creditedArtistIds: [],
+      creditedArtistNames: [],
     });
     expect(metadata.has("missing")).toBe(false);
   });

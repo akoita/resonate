@@ -206,6 +206,12 @@ export class CatalogController {
       type?: string;
       primaryArtist?: string;
       featuredArtists?: string[];
+      artistCredits?: Array<{
+        artistId?: string | null;
+        displayName?: string | null;
+        role: string;
+        sortOrder?: number;
+      }>;
       genre?: string;
       moods?: string[];
       label?: string;

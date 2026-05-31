@@ -51,6 +51,12 @@ and plays-over-time chart from the same bounded `analytics_facts` slice. Daily
 dashboard does not prefer them over facts so partial current-day windows cannot
 drift from the rest of the report.
 
+Artist dashboard authorization and default rollups remain manager/owner scoped
+through the compatibility `artistId` dimension. Catalog metadata enrichment now
+also preserves credited public-artist dimensions for future claim/grant-aware
+artist analytics, but those credited dimensions are not yet the dashboard access
+boundary.
+
 The AI DJ quality dashboard derives aggregate metrics from bounded
 `analytics_facts` windows. It includes only event-level rollups and segment
 breakdowns by Session Intent, recommendation strategy, taste-signal source, and

@@ -15,14 +15,17 @@ Expose a minimal catalog service to store, index, and query tracks and stems.
 
 - The home page catalog browser (`/`) lists published releases, artists, and
   stems from `GET /catalog/published`.
-- Global artist discovery groups releases by credited artist name
-  (`primaryArtist`) rather than by the Resonate uploader profile. Rows only link
-  to `/artist/:id` when the credited artist matches that profile; otherwise
-  they link to `/catalog/artists/:name`, which lists releases credited to that
-  artist name.
-- Public artist pages show official profile discography only; uploader-owned
+- Global artist discovery groups releases by first-class `ReleaseArtistCredit`
+  rows. Main artist credits can include several equal-billing collaborators;
+  featured and production credits are preserved for richer metadata.
+- Public artist pages show credited public-artist discography. Uploader-owned
   releases credited to another artist remain in the authenticated managed
-  catalog but are not presented as official artist releases.
+  catalog but are not presented as the uploader profile's official artist
+  releases.
+- `primaryArtist` and `featuredArtists` remain compatibility snapshots for
+  older records and clients, but catalog APIs now return `artistCredits` so
+  UI and machine clients can distinguish manager ownership from public artist
+  identity.
 - Release rows in the home catalog expose direct listener actions:
   - add all release tracks to a playlist using the existing playlist modal
   - save all release tracks to the listener library as remote catalog tracks
@@ -37,6 +40,8 @@ Expose a minimal catalog service to store, index, and query tracks and stems.
 
 1. **Schema & CRUD**
    - Define track + stem metadata schemas.
+   - Maintain public release artist credits separately from manager/uploader
+     ownership.
    - Implement create/update/read endpoints.
 2. **Indexing hooks**
    - Consume ingestion events (`stems.processed`, `ipnft.minted`).

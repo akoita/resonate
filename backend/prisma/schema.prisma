@@ -115,16 +115,27 @@ model PasskeyIdentity {
 
 model Artist {
   id                        String                        @id @default(uuid())
-  userId                    String                        @unique
+  userId                    String?                       @unique
   displayName               String
-  payoutAddress             String
-  user                      User                          @relation(fields: [userId], references: [id])
+  payoutAddress             String?
+  profileType               String                        @default("manager")
+  claimStatus               String                        @default("claimed")
+  imageUrl                  String?
+  summary                   String?                       @db.Text
+  socialLinks               Json?
+  createdAt                 DateTime                      @default(now())
+  updatedAt                 DateTime                      @updatedAt
+  user                      User?                         @relation(fields: [userId], references: [id])
   releases                  Release[]
+  releaseCredits            ReleaseArtistCredit[]
   creatorTrust              CreatorTrust?
   rightsUpgradeRequests     ReleaseRightsUpgradeRequest[]
   showCampaigns             ShowCampaign[]
   trustedSourceLinks        TrustedSourceArtistLink[]
   trustedSourceLinkRequests TrustedSourceLinkRequest[]
+
+  @@index([displayName])
+  @@index([profileType, claimStatus])
 }
 
 model Release {
@@ -154,11 +165,30 @@ model Release {
   rightsSourceType      String?
   rightsEvaluatedAt     DateTime?
   artist                Artist                        @relation(fields: [artistId], references: [id])
+  artistCredits         ReleaseArtistCredit[]
   tracks                Track[]
   rightsUpgradeRequests ReleaseRightsUpgradeRequest[]
   rightsReassessments   RightsRouteReassessment[]
 
   @@index([rightsRoute])
+}
+
+model ReleaseArtistCredit {
+  id          String   @id @default(uuid())
+  releaseId   String
+  artistId    String
+  role        String
+  displayName String
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  release     Release  @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  artist      Artist   @relation(fields: [artistId], references: [id])
+
+  @@unique([releaseId, role, artistId, sortOrder])
+  @@index([artistId, role])
+  @@index([releaseId, role, sortOrder])
+  @@index([displayName, role])
 }
 
 model Track {

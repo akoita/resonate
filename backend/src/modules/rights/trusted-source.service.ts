@@ -287,7 +287,8 @@ export class TrustedSourceService {
 
     if (role !== "admin" && requesterAddress) {
       const normalized = requesterAddress.toLowerCase();
-      if (request.artist.userId.toLowerCase() !== normalized) {
+      const ownerUserId = request.artist.userId?.toLowerCase();
+      if (!ownerUserId || ownerUserId !== normalized) {
         throw new ForbiddenException("You can only view your own trusted-source link requests");
       }
     }

@@ -729,6 +729,12 @@ export class AnalyticsService {
           releaseTitle: this.stringDimension(fact.dimensions, "releaseTitle") ?? catalogTrack.releaseTitle,
           artistId: this.stringDimension(fact.dimensions, "artistId") ?? catalogTrack.artistId,
           artistName: this.stringDimension(fact.dimensions, "artistName") ?? catalogTrack.artistName ?? undefined,
+          managerArtistId: this.stringDimension(fact.dimensions, "managerArtistId") ?? catalogTrack.managerArtistId,
+          managerArtistName: this.stringDimension(fact.dimensions, "managerArtistName") ?? catalogTrack.managerArtistName ?? undefined,
+          creditedArtistId: this.stringDimension(fact.dimensions, "creditedArtistId") ?? catalogTrack.creditedArtistId ?? undefined,
+          creditedArtistName: this.stringDimension(fact.dimensions, "creditedArtistName") ?? catalogTrack.creditedArtistName ?? undefined,
+          creditedArtistIds: this.arrayDimension(fact.dimensions, "creditedArtistIds") ?? catalogTrack.creditedArtistIds,
+          creditedArtistNames: this.arrayDimension(fact.dimensions, "creditedArtistNames") ?? catalogTrack.creditedArtistNames,
         },
         catalogTrack,
       };
@@ -901,6 +907,13 @@ export class AnalyticsService {
   private stringDimension(dimensions: Record<string, unknown>, key: string) {
     const value = dimensions[key];
     return typeof value === "string" ? value : undefined;
+  }
+
+  private arrayDimension(dimensions: Record<string, unknown>, key: string) {
+    const value = dimensions[key];
+    return Array.isArray(value) && value.every((entry) => typeof entry === "string")
+      ? value
+      : undefined;
   }
 
   private numberDimension(dimensions: Record<string, unknown>, key: string) {

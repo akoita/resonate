@@ -355,7 +355,26 @@ export type Release = {
   artist?: {
     id: string;
     displayName: string;
-    userId: string;
+    userId?: string | null;
+    payoutAddress?: string | null;
+  };
+  artistCredits?: ReleaseArtistCredit[];
+};
+
+export type ReleaseArtistCredit = {
+  id: string;
+  releaseId: string;
+  artistId: string;
+  role: string;
+  displayName: string;
+  sortOrder: number;
+  artist?: {
+    id: string;
+    displayName: string;
+    profileType?: string | null;
+    claimStatus?: string | null;
+    imageUrl?: string | null;
+    summary?: string | null;
   };
 };
 
@@ -413,9 +432,14 @@ export type APIFolder = {
 
 export type ArtistProfile = {
   id: string;
-  userId: string;
+  userId?: string | null;
   displayName: string;
-  payoutAddress: string;
+  payoutAddress?: string | null;
+  profileType?: string | null;
+  claimStatus?: string | null;
+  imageUrl?: string | null;
+  summary?: string | null;
+  socialLinks?: Record<string, unknown> | null;
 };
 
 export type ArtistAnalyticsPayout = {
@@ -1613,6 +1637,12 @@ export async function createRelease(
     type?: string;
     primaryArtist?: string;
     featuredArtists?: string[];
+    artistCredits?: Array<{
+      artistId?: string | null;
+      displayName?: string | null;
+      role: string;
+      sortOrder?: number;
+    }>;
     genre?: string;
     moods?: string[];
     label?: string;

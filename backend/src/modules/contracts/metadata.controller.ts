@@ -355,7 +355,7 @@ export class MetadataController {
         [
           release.artist?.userId?.toLowerCase(),
           release.artist?.payoutAddress?.toLowerCase(),
-        ].filter(Boolean),
+        ].filter((address): address is string => Boolean(address)),
       ),
     );
 

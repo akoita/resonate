@@ -792,6 +792,10 @@ export class GenerationService {
         },
       });
 
+      if (!release.artist.userId) {
+        throw new BadRequestException('Generated release manager profile is not attached to a user');
+      }
+
       await this.recordAiGenerationRightsProvenance(tx, {
         releaseId: release.id,
         artistId: release.artist.id,

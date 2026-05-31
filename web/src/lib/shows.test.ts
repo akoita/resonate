@@ -83,4 +83,56 @@ describe("Shows campaign presentation", () => {
       releaseCount: 1,
     });
   });
+
+  it("prefers first-class release artist credits for campaign artist choices", () => {
+    const releases = [
+      {
+        id: "release-credits",
+        artistId: "manager-green",
+        title: "Dignified",
+        status: "ready",
+        type: "single",
+        primaryArtist: "legacy uploader fallback",
+        explicit: false,
+        createdAt: "2026-05-01T00:00:00.000Z",
+        artist: { id: "manager-green", displayName: "green", userId: "user-green" },
+        artistCredits: [
+          {
+            id: "credit-sennarin",
+            releaseId: "release-credits",
+            artistId: "public-sennarin",
+            role: "main",
+            displayName: "SennaRin",
+            sortOrder: 0,
+            artist: { id: "public-sennarin", displayName: "SennaRin" },
+          },
+          {
+            id: "credit-collab",
+            releaseId: "release-credits",
+            artistId: "public-collab",
+            role: "main",
+            displayName: "Collab Artist",
+            sortOrder: 1,
+          },
+          {
+            id: "credit-feature",
+            releaseId: "release-credits",
+            artistId: "public-feature",
+            role: "featured",
+            displayName: "Featured Guest",
+            sortOrder: 2,
+          },
+        ],
+      },
+    ] satisfies Release[];
+
+    const candidates = buildCatalogArtistCandidates(releases);
+
+    expect(candidates.map((candidate) => candidate.name)).toEqual(["Collab Artist", "SennaRin"]);
+    expect(candidates.find((candidate) => candidate.name === "SennaRin")).toMatchObject({
+      artistId: "public-sennarin",
+      optionId: "profile:public-sennarin",
+      releaseCount: 1,
+    });
+  });
 });

@@ -99,34 +99,62 @@ describe('CatalogService (integration)', () => {
   });
 
   it('separates public artist discography from managed uploader catalog', async () => {
-    const officialRelease = await prisma.release.create({
-      data: {
-        id: `${TEST_PREFIX}official-credit`,
-        artistId: `${TEST_PREFIX}artist`,
-        title: 'Official Credit Release',
-        status: 'ready',
-        type: 'single',
-        primaryArtist: 'TC Test Artist',
-      },
+    const officialRelease = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Official Credit Release',
+      type: 'single',
+      primaryArtist: 'TC Test Artist',
     });
-    const managedOnlyRelease = await prisma.release.create({
-      data: {
-        id: `${TEST_PREFIX}managed-credit`,
-        artistId: `${TEST_PREFIX}artist`,
-        title: 'Managed External Credit',
-        status: 'ready',
-        type: 'single',
-        primaryArtist: 'External Credited Artist',
-      },
+    const managedOnlyRelease = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Managed External Credit',
+      type: 'single',
+      primaryArtist: 'External Credited Artist',
+    });
+    await prisma.release.updateMany({
+      where: { id: { in: [officialRelease.id, managedOnlyRelease.id] } },
+      data: { status: 'ready' },
+    });
+    const externalProfile = await prisma.artist.findFirstOrThrow({
+      where: { displayName: 'External Credited Artist', profileType: 'public_artist' },
     });
 
     const publicArtistReleases = await catalog.listByArtist(`${TEST_PREFIX}artist`);
     expect(publicArtistReleases.some((release) => release.id === officialRelease.id)).toBe(true);
     expect(publicArtistReleases.some((release) => release.id === managedOnlyRelease.id)).toBe(false);
 
+    const externalArtistReleases = await catalog.listByArtist(externalProfile.id);
+    expect(externalArtistReleases.some((release) => release.id === managedOnlyRelease.id)).toBe(true);
+
     const ownerReleases = await catalog.listByUserId(`${TEST_PREFIX}user`);
     expect(ownerReleases.some((release) => release.id === officialRelease.id)).toBe(true);
     expect(ownerReleases.some((release) => release.id === managedOnlyRelease.id)).toBe(true);
+  });
+
+  it('supports several main artists plus featured credits on one release', async () => {
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Shared Billing Release',
+      type: 'single',
+      artistCredits: [
+        { role: 'main', displayName: 'Alpha Artist', sortOrder: 0 },
+        { role: 'main', displayName: 'Beta Artist', sortOrder: 1 },
+        { role: 'featured', displayName: 'Guest Artist', sortOrder: 2 },
+        { role: 'producer', displayName: 'Studio Producer', sortOrder: 3 },
+      ],
+    });
+
+    const release = await catalog.getRelease(created.id, { includeRestricted: true });
+    expect(release?.artistCredits.map((credit) => ({
+      role: credit.role,
+      displayName: credit.displayName,
+      sortOrder: credit.sortOrder,
+    }))).toEqual([
+      { role: 'main', displayName: 'Alpha Artist', sortOrder: 0 },
+      { role: 'main', displayName: 'Beta Artist', sortOrder: 1 },
+      { role: 'featured', displayName: 'Guest Artist', sortOrder: 2 },
+      { role: 'producer', displayName: 'Studio Producer', sortOrder: 3 },
+    ]);
   });
 
   it('consolidates an AI-generated release with its legacy Demucs duplicate', async () => {

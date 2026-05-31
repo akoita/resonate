@@ -206,7 +206,8 @@ export class RightsRouteReassessmentService {
 
     if (role !== "admin") {
       const normalized = requesterAddress?.toLowerCase();
-      if (!normalized || release.artist.userId.toLowerCase() !== normalized) {
+      const ownerUserId = release.artist.userId?.toLowerCase();
+      if (!normalized || !ownerUserId || ownerUserId !== normalized) {
         throw new ForbiddenException("You can only view route history for your own releases");
       }
     }

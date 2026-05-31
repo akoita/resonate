@@ -120,6 +120,12 @@ export class AnalyticsInstrumentationService {
       payload: {
         trackId: input.trackId,
         artistId: catalog.artistId,
+        managerArtistId: catalog.managerArtistId,
+        managerArtistName: catalog.managerArtistName,
+        creditedArtistId: catalog.creditedArtistId,
+        creditedArtistName: catalog.creditedArtistName,
+        creditedArtistIds: catalog.creditedArtistIds,
+        creditedArtistNames: catalog.creditedArtistNames,
         releaseId: catalog.releaseId,
         completionRatio: input.completionRatio,
         durationMs: input.durationMs,
@@ -176,6 +182,12 @@ export class AnalyticsInstrumentationService {
         action: input.action,
         trackId: input.trackId,
         artistId: catalog.artistId,
+        managerArtistId: catalog.managerArtistId,
+        managerArtistName: catalog.managerArtistName,
+        creditedArtistId: catalog.creditedArtistId,
+        creditedArtistName: catalog.creditedArtistName,
+        creditedArtistIds: catalog.creditedArtistIds,
+        creditedArtistNames: catalog.creditedArtistNames,
         releaseId: catalog.releaseId,
         playbackInstanceId: input.playbackInstanceId,
         positionMs: input.positionMs,
@@ -303,6 +315,12 @@ export class AnalyticsInstrumentationService {
     return {
       artistId,
       releaseId: catalogTrack?.releaseId?.trim() || inputReleaseId || undefined,
+      managerArtistId: catalogTrack?.managerArtistId?.trim() || artistId,
+      managerArtistName: catalogTrack?.managerArtistName ?? undefined,
+      creditedArtistId: catalogTrack?.creditedArtistId?.trim() || undefined,
+      creditedArtistName: catalogTrack?.creditedArtistName ?? undefined,
+      creditedArtistIds: catalogTrack?.creditedArtistIds ?? [],
+      creditedArtistNames: catalogTrack?.creditedArtistNames ?? [],
     };
   }
 

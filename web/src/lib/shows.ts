@@ -91,11 +91,22 @@ function normalizedArtistCredit(value?: string | null) {
   return (value || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function releaseArtistCreditName(release: Pick<Release, "primaryArtist" | "artist">) {
+function mainReleaseCredits(release: Pick<Release, "artistCredits">) {
+  return (release.artistCredits || [])
+    .filter((credit) => ["main", "primary"].includes(credit.role.toLowerCase()))
+    .sort((left, right) => left.sortOrder - right.sortOrder || left.displayName.localeCompare(right.displayName));
+}
+
+function releaseArtistCreditName(release: Pick<Release, "primaryArtist" | "artist" | "artistCredits">) {
+  const mainCredits = mainReleaseCredits(release).map((credit) => credit.displayName.trim()).filter(Boolean);
+  if (mainCredits.length > 0) return mainCredits.join(", ");
   return release.primaryArtist?.trim() || release.artist?.displayName?.trim() || "Unknown Artist";
 }
 
-function releaseCreditProfileId(release: Pick<Release, "primaryArtist" | "artist">) {
+function releaseCreditProfileId(release: Pick<Release, "primaryArtist" | "artist" | "artistCredits">) {
+  const mainCredit = mainReleaseCredits(release)[0];
+  if (mainCredit?.artistId) return mainCredit.artistId;
+
   const profileId = release.artist?.id || null;
   if (!profileId) return null;
 
@@ -113,25 +124,38 @@ export function buildCatalogArtistCandidates(releases: Release[]): CatalogArtist
   const byArtist = new Map<string, CatalogArtistCandidate>();
 
   for (const release of releases) {
-    const name = releaseArtistCreditName(release);
-    const artistId = releaseCreditProfileId(release);
-    const optionId = catalogArtistOptionId({ artistId, name });
-    const existing = byArtist.get(optionId);
+    const mainCredits = mainReleaseCredits(release);
+    const credits = mainCredits.length > 0
+      ? mainCredits.map((credit) => ({
+          name: credit.displayName.trim(),
+          artistId: credit.artistId || credit.artist?.id || null,
+        }))
+      : [{
+          name: releaseArtistCreditName(release),
+          artistId: releaseCreditProfileId(release),
+        }];
 
-    if (existing) {
-      existing.releaseCount += 1;
-      if (!existing.artworkUrl && release.artworkUrl) existing.artworkUrl = release.artworkUrl;
-      continue;
+    for (const credit of credits) {
+      const name = credit.name || "Unknown Artist";
+      const artistId = credit.artistId;
+      const optionId = catalogArtistOptionId({ artistId, name });
+      const existing = byArtist.get(optionId);
+
+      if (existing) {
+        existing.releaseCount += 1;
+        if (!existing.artworkUrl && release.artworkUrl) existing.artworkUrl = release.artworkUrl;
+        continue;
+      }
+
+      byArtist.set(optionId, {
+        optionId,
+        artistId,
+        name,
+        releaseCount: 1,
+        latestReleaseTitle: release.title,
+        artworkUrl: release.artworkUrl,
+      });
     }
-
-    byArtist.set(optionId, {
-      optionId,
-      artistId,
-      name,
-      releaseCount: 1,
-      latestReleaseTitle: release.title,
-      artworkUrl: release.artworkUrl,
-    });
   }
 
   return Array.from(byArtist.values()).sort((a, b) => a.name.localeCompare(b.name));

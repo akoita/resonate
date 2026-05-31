@@ -82,6 +82,9 @@ export interface EventsCleanRow {
   actorId?: string;
   sessionId?: string;
   artistId?: string;
+  managerArtistId?: string;
+  creditedArtistId?: string;
+  creditedArtistName?: string;
   trackId?: string;
   releaseId?: string;
   canonicalAmountUsd?: number;
@@ -101,6 +104,9 @@ export interface AnalyticsFactRow {
   occurredAt: string;
   occurredDate: string;
   artistId?: string;
+  managerArtistId?: string;
+  creditedArtistId?: string;
+  creditedArtistName?: string;
   trackId?: string;
   releaseId?: string;
   subjectType?: string;
@@ -289,6 +295,9 @@ function toCleanRow(event: AnalyticsEventEnvelope): EventsCleanRow {
     actorId: event.actorId,
     sessionId: event.sessionId ?? stringPayload(event.payload, "sessionId"),
     artistId: stringPayload(event.payload, "artistId"),
+    managerArtistId: stringPayload(event.payload, "managerArtistId"),
+    creditedArtistId: stringPayload(event.payload, "creditedArtistId"),
+    creditedArtistName: stringPayload(event.payload, "creditedArtistName"),
     trackId: stringPayload(event.payload, "trackId"),
     releaseId: stringPayload(event.payload, "releaseId"),
     canonicalAmountUsd: numberPayload(event.payload, "canonicalAmountUsd") ?? numberPayload(event.payload, "amountUsd"),
@@ -310,6 +319,9 @@ function toFactRow(clean: EventsCleanRow): AnalyticsFactRow {
     occurredAt: clean.occurredAt,
     occurredDate: clean.occurredDate,
     artistId: clean.artistId,
+    managerArtistId: clean.managerArtistId,
+    creditedArtistId: clean.creditedArtistId,
+    creditedArtistName: clean.creditedArtistName,
     trackId: clean.trackId,
     releaseId: clean.releaseId,
     subjectType: clean.subjectType,
@@ -321,6 +333,12 @@ function toFactRow(clean: EventsCleanRow): AnalyticsFactRow {
       producer: clean.producer,
       privacyTier: clean.privacyTier,
       actorId: clean.actorId,
+      artistId: clean.artistId,
+      managerArtistId: clean.managerArtistId,
+      creditedArtistId: clean.creditedArtistId,
+      creditedArtistName: clean.creditedArtistName,
+      creditedArtistIds: arrayPayload(clean.payload, "creditedArtistIds"),
+      creditedArtistNames: arrayPayload(clean.payload, "creditedArtistNames"),
       source: clean.source,
       sessionId: clean.sessionId,
       releaseId: clean.releaseId,

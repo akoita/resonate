@@ -8,6 +8,12 @@ export interface AnalyticsTrackMetadata {
   releaseTitle: string;
   artistId: string;
   artistName: string | null;
+  managerArtistId: string;
+  managerArtistName: string | null;
+  creditedArtistId: string | null;
+  creditedArtistName: string | null;
+  creditedArtistIds: string[];
+  creditedArtistNames: string[];
 }
 
 @Injectable()
@@ -30,23 +36,50 @@ export class AnalyticsCatalogMetadataService {
             artistId: true,
             primaryArtist: true,
             artist: { select: { displayName: true } },
+            artistCredits: {
+              orderBy: [{ sortOrder: "asc" }, { role: "asc" }],
+              select: {
+                artistId: true,
+                displayName: true,
+                role: true,
+              },
+            },
           },
         },
       },
     });
 
     return new Map(
-      tracks.map((track) => [
-        track.id,
-        {
-          trackId: track.id,
-          title: track.title,
-          releaseId: track.releaseId,
-          releaseTitle: track.release.title,
-          artistId: track.release.artistId,
-          artistName: track.release.artist.displayName || track.release.primaryArtist || null,
-        },
-      ]),
+      tracks.map((track) => {
+        const mainCredits = track.release.artistCredits.filter((credit) =>
+          ["main", "primary"].includes(credit.role.toLowerCase()),
+        );
+        const creditedArtistIds = mainCredits.map((credit) => credit.artistId);
+        const creditedArtistNames = mainCredits.map((credit) => credit.displayName).filter(Boolean);
+        const creditedArtistName = creditedArtistNames.join(", ")
+          || track.release.primaryArtist
+          || track.release.artist.displayName
+          || null;
+        const managerArtistName = track.release.artist.displayName || null;
+
+        return [
+          track.id,
+          {
+            trackId: track.id,
+            title: track.title,
+            releaseId: track.releaseId,
+            releaseTitle: track.release.title,
+            artistId: track.release.artistId,
+            artistName: creditedArtistName,
+            managerArtistId: track.release.artistId,
+            managerArtistName,
+            creditedArtistId: creditedArtistIds[0] ?? null,
+            creditedArtistName,
+            creditedArtistIds,
+            creditedArtistNames,
+          },
+        ];
+      }),
     );
   }
 }
