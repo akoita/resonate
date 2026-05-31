@@ -10,6 +10,7 @@ import { ArtistModule } from "./artist/artist.module";
 import { AuthModule } from "./auth/auth.module";
 import { RolesGuard } from "./auth/roles.guard";
 import { CatalogModule } from "./catalog/catalog.module";
+import { CommunityModule } from "./community/community.module";
 import { CurationModule } from "./curation/curation.module";
 import { HealthModule } from "./health/health.module";
 import { IdentityModule } from "./identity/identity.module";
@@ -58,6 +59,7 @@ import { ShowsModule } from "./shows/shows.module";
     CurationModule,
     IngestionModule,
     CatalogModule,
+    CommunityModule,
     SessionsModule,
     PaymentsModule,
     RecommendationsModule,

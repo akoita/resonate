@@ -146,6 +146,25 @@ export interface TasteMemoryResetEvent extends BaseEvent {
   resetAt: string | null;
 }
 
+export interface CommunityProfileVisibilityUpdatedEvent extends BaseEvent {
+  eventName: "community.profile_visibility_updated";
+  userId: string;
+  profileVisibility: string;
+}
+
+export interface CommunityProfileShowcaseUpdatedEvent extends BaseEvent {
+  eventName: "community.profile_showcase_updated";
+  userId: string;
+  changedFields: string[];
+}
+
+export interface CommunityOwnershipDisplayUpdatedEvent extends BaseEvent {
+  eventName: "community.ownership_display_updated";
+  userId: string;
+  showWalletAddress: boolean;
+  showOwnedItems: boolean;
+}
+
 export interface IdentityAuthenticatedEvent extends BaseEvent {
   eventName: "identity.authenticated";
   userId: string;
@@ -810,6 +829,9 @@ export type ResonateEvent =
   | TasteMemorySignalDownrankedEvent
   | TasteMemorySignalRestoredEvent
   | TasteMemoryResetEvent
+  | CommunityProfileVisibilityUpdatedEvent
+  | CommunityProfileShowcaseUpdatedEvent
+  | CommunityOwnershipDisplayUpdatedEvent
   | IdentityAuthenticatedEvent
   | PlaylistCreatedEvent
   | PlaylistUpdatedEvent

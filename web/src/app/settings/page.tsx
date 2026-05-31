@@ -5,6 +5,7 @@ import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import AuthGate from "../../components/auth/AuthGate";
 import NotificationPreferences from "../../components/notifications/NotificationPreferences";
+import CommunityProfileSettingsPanel from "../../components/settings/CommunityProfileSettingsPanel";
 import TasteMemorySettingsPanel from "../../components/settings/TasteMemorySettingsPanel";
 import { useToast } from "../../components/ui/Toast";
 import {
@@ -373,6 +374,8 @@ export default function SettingsPage() {
                     </div>
 
                     <TasteMemorySettingsPanel token={token} addToast={addToast} />
+
+                    <CommunityProfileSettingsPanel token={token} addToast={addToast} />
 
                     <div className="settings-section">
                         <h3 className="settings-section-title">Notifications</h3>

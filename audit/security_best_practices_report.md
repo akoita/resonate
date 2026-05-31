@@ -148,3 +148,46 @@ rg 'dangerouslySetInnerHTML|innerHTML' web/src/components/shows web/src/app/show
 rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/components/shows web/src/app/shows web/src/components/home/FeaturedCampaignHero.tsx web/src/lib/shows.ts
 rg 'document\.cookie|setCookie|httpOnly.*false' web/src/components/shows web/src/app/shows web/src/components/home/FeaturedCampaignHero.tsx web/src/lib/shows.ts
 ```
+
+## Community Profile Visibility Controls - 2026-05-31
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/community/*`
+- `backend/src/events/event_types.ts`
+- `backend/src/modules/analytics/analytics.controller.ts`
+- `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`
+- `backend/src/modules/app.module.ts`
+- `backend/prisma/schema.prisma`
+- `backend/prisma/migrations/20260531012000_community_profile_visibility/migration.sql`
+- `web/src/components/settings/CommunityProfileSettingsPanel.tsx`
+- `web/src/app/settings/page.tsx`
+- `web/src/lib/api.ts`
+- `web/src/lib/productAnalytics.ts`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none introduced.
+- Low: none introduced.
+
+### Notes
+
+- The public `GET /community/profile/:userId` route is intentional for public
+  profile showcase reads.
+- Public profile reads return only profiles whose visibility is `public`.
+- Wallet, ownership, taste, playlist, campaign, and show-attendance sections
+  are redacted unless each section is explicitly enabled by the listener.
+- Self-profile read and update routes remain protected by JWT auth.
+
+### Commands Run
+
+```bash
+rg 'password|secret|api_key|private_key' backend/src/modules/community backend/src/events/event_types.ts backend/src/modules/analytics/analytics.controller.ts backend/src/modules/analytics/analytics_domain_event_bridge.service.ts backend/src/modules/app.module.ts --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/community backend/src/events/event_types.ts backend/src/modules/analytics/analytics.controller.ts backend/src/modules/analytics/analytics_domain_event_bridge.service.ts backend/src/modules/app.module.ts
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch|@Body\(\)|@Query\(\)|@Param\(' backend/src/modules/community backend/src/modules/analytics/analytics.controller.ts
+rg 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/components/settings/CommunityProfileSettingsPanel.tsx web/src/app/settings/page.tsx web/src/lib/api.ts web/src/lib/productAnalytics.ts
+```

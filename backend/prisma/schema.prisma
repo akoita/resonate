@@ -16,6 +16,8 @@ model User {
   artist                      Artist?
   agentConfig                 AgentConfig?
   agentSignals                AgentSignal[]
+  communityProfile            CommunityProfile?
+  communityVisibilitySettings CommunityVisibilitySettings?
   tasteMemorySettings         ListenerTasteMemorySettings?
   tasteSignalControls         ListenerTasteSignalControl[]
   folders                     Folder[]
@@ -49,6 +51,35 @@ model Wallet {
   salt             String?
   deploymentTxHash String?
   user             User    @relation(fields: [userId], references: [id])
+}
+
+model CommunityProfile {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  displayName       String
+  bio               String?  @db.Text
+  avatarUrl         String?
+  profileVisibility String   @default("private")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([profileVisibility, updatedAt])
+}
+
+model CommunityVisibilitySettings {
+  userId              String   @id
+  showTasteBadges     Boolean  @default(false)
+  showOwnedItems      Boolean  @default(false)
+  showCampaignSupport Boolean  @default(false)
+  showShowAttendance  Boolean  @default(false)
+  showPlaylists       Boolean  @default(false)
+  showWalletAddress   Boolean  @default(false)
+  allowTasteMatching  Boolean  @default(false)
+  allowCityScenes     Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model SignupFaucetAttempt {

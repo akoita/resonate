@@ -1,6 +1,6 @@
 ---
 title: "Listener Community Network"
-status: planned
+status: in-progress
 owner: "@akoita"
 depends_on:
   - agent_taste_intelligence
@@ -15,12 +15,14 @@ depends_on:
 
 ## Status
 
-`planned`
+`in-progress`
 
 The Listener Community Network is a planned first-class social layer for
-Resonate. It is not implemented yet. The design goal is to make listener
-community emerge from music behavior instead of forcing users into a generic
-social network.
+Resonate. The first implementation slice is underway: listeners can create and
+govern a privacy-first community profile foundation before chat, rooms,
+benefits, or matching launch. The design goal is to make listener community
+emerge from music behavior instead of forcing users into a generic social
+network.
 
 The deeper product strategy is documented in
 [Listener Community Network RFC](../rfc/listener-community-network.md). The
@@ -205,7 +207,7 @@ recognized without turning community into a leaderboard.
 
 | Surface | Status | Notes |
 | --- | --- | --- |
-| Listener profile showcase | planned | Opt-in display of taste badges, marketplace items, stems, campaign support, show attendance, playlists, remixes, and community roles. |
+| Listener profile showcase | in-progress | `/settings` exposes profile identity and visibility controls; public profile reads redact hidden/private sections. Display of real badges, marketplace items, campaign support, attendance, playlists, remixes, and roles remains follow-up work. |
 | Artist community tab | planned | Artist-owned social space for announcements, release discussion, supporter rooms, collector rooms, campaigns, and Shows. |
 | Taste cohort suggestions | planned | Explainable recommendations to join small groups based on shared taste, city, artist affinity, or collection behavior. |
 | City scene pages | planned | Local scene surfaces tied to declared coarse location and privacy-safe aggregate demand. |
@@ -244,6 +246,28 @@ Privacy requirements:
 - wallet address hidden unless explicitly exposed;
 - private support allowed even when benefits are active;
 - explainable matching copy that states why a cohort or user was suggested.
+
+## Current Implementation
+
+The M1 profile foundation provides:
+
+- `CommunityProfile` persistence with display name, short bio, optional avatar
+  URL, and `private`, `community`, `followers`, or `public` profile visibility;
+- `CommunityVisibilitySettings` persistence with opt-in flags for taste badges,
+  owned items, campaign support, show attendance, playlists, wallet address,
+  future taste matching, and future city/scene matching;
+- authenticated self-profile APIs:
+  - `GET /community/profile/me`
+  - `PATCH /community/profile/me`
+- public profile read:
+  - `GET /community/profile/:userId`
+- `/settings` Community Profile controls for identity, profile visibility, and
+  showcase flags.
+
+Public profile reads currently expose only profiles with
+`profileVisibility = public`. Wallet address and future showcase sections are
+redacted unless the listener explicitly enables each section. Ownership-based
+eligibility for future benefits remains separate from public ownership display.
 
 ## Blockchain Boundary
 
