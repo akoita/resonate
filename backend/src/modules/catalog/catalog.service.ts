@@ -23,10 +23,39 @@ const PUBLIC_RELEASE_ROUTES: UploadRightsRoute[] = [
   "TRUSTED_FAST_PATH",
 ];
 const SOURCE_STEM_TYPES = new Set(["original", "master"]);
+const MAIN_ARTIST_CREDIT_ROLES = new Set(["main", "primary"]);
 
 type AudioRange = { start: number; end: number; total: number };
 type AudioPayload = { data: Buffer; mimeType?: string | null; range?: AudioRange };
 type AudioRequestOptions = { includeRestricted?: boolean; range?: string };
+type ReleaseArtistCreditInput = {
+  artistId?: string | null;
+  displayName?: string | null;
+  role: string;
+  sortOrder?: number;
+};
+
+const RELEASE_ARTIST_CREDITS_SELECT = {
+  orderBy: [{ sortOrder: "asc" as const }, { role: "asc" as const }],
+  select: {
+    id: true,
+    releaseId: true,
+    artistId: true,
+    role: true,
+    displayName: true,
+    sortOrder: true,
+    artist: {
+      select: {
+        id: true,
+        displayName: true,
+        profileType: true,
+        claimStatus: true,
+        imageUrl: true,
+        summary: true,
+      },
+    },
+  },
+};
 
 function sameUserId(left?: string | null, right?: string | null) {
   return !!left && !!right && left.toLowerCase() === right.toLowerCase();
@@ -37,6 +66,33 @@ function normalizeMoodTags(value?: string[] | null) {
     .map((entry) => entry.trim())
     .filter(Boolean);
   return Array.from(new Set(normalized)).slice(0, 8);
+}
+
+function normalizeCreditName(value?: string | null) {
+  return (value || "").trim().replace(/\s+/g, " ");
+}
+
+function splitFeaturedArtists(value?: string[] | string | null) {
+  const entries = Array.isArray(value) ? value : (value || "").split(",");
+  return entries.map(normalizeCreditName).filter(Boolean).slice(0, 20);
+}
+
+function publicArtistCreditName(
+  release: {
+    primaryArtist?: string | null;
+    artist?: { displayName?: string | null } | null;
+    artistCredits?: Array<{ role: string; displayName: string }> | null;
+  },
+) {
+  const mainCredits = (release.artistCredits || [])
+    .filter((credit) => MAIN_ARTIST_CREDIT_ROLES.has(credit.role.toLowerCase()))
+    .map((credit) => normalizeCreditName(credit.displayName))
+    .filter(Boolean);
+
+  return mainCredits.join(", ")
+    || normalizeCreditName(release.primaryArtist)
+    || normalizeCreditName(release.artist?.displayName)
+    || "Unknown Artist";
 }
 
 function sanitizeRecommendationReasons(value?: string[] | null) {
@@ -389,74 +445,82 @@ export class CatalogService implements OnModuleInit {
       console.log(`[Catalog] Received stems.uploaded for release ${event.releaseId} (artist: ${event.artistId})`);
       this.clearCache();
       try {
-        await prisma.release.upsert({
-          where: { id: event.releaseId },
-          update: {
-            artistId: event.artistId,
-            status: "processing",
-            processingError: null,
-            rightsSourceType: event.sourceType || "direct_upload",
-            artworkData: event.artworkData,
-            artworkMimeType: event.artworkMimeType,
-            title: event.metadata?.title ?? undefined,
-            type: event.metadata?.type ?? undefined,
-            primaryArtist: event.metadata?.primaryArtist ?? undefined,
-            featuredArtists: event.metadata?.featuredArtists?.join(", ") ?? undefined,
-            genre: event.metadata?.genre ?? undefined,
-            moods: normalizeMoodTags(event.metadata?.moods),
-            label: event.metadata?.label ?? undefined,
-            releaseDate: event.metadata?.releaseDate ? new Date(event.metadata.releaseDate) : undefined,
-            explicit: event.metadata?.explicit ?? undefined,
-            tracks: event.checksum === "retry" ? {
-              updateMany: {
-                where: { releaseId: event.releaseId },
-                data: {
-                  processingStatus: "pending",
-                  processingError: null,
-                  processingStartedAt: null,
-                  lastProgressAt: null,
+        await prisma.$transaction(async (tx) => {
+          await tx.release.upsert({
+            where: { id: event.releaseId },
+            update: {
+              artistId: event.artistId,
+              status: "processing",
+              processingError: null,
+              rightsSourceType: event.sourceType || "direct_upload",
+              artworkData: event.artworkData,
+              artworkMimeType: event.artworkMimeType,
+              title: event.metadata?.title ?? undefined,
+              type: event.metadata?.type ?? undefined,
+              primaryArtist: event.metadata?.primaryArtist ?? undefined,
+              featuredArtists: event.metadata?.featuredArtists?.join(", ") ?? undefined,
+              genre: event.metadata?.genre ?? undefined,
+              moods: normalizeMoodTags(event.metadata?.moods),
+              label: event.metadata?.label ?? undefined,
+              releaseDate: event.metadata?.releaseDate ? new Date(event.metadata.releaseDate) : undefined,
+              explicit: event.metadata?.explicit ?? undefined,
+              tracks: event.checksum === "retry" ? {
+                updateMany: {
+                  where: { releaseId: event.releaseId },
+                  data: {
+                    processingStatus: "pending",
+                    processingError: null,
+                    processingStartedAt: null,
+                    lastProgressAt: null,
+                  }
                 }
-              }
-            } : undefined
-          },
-          create: {
-            id: event.releaseId,
-            artistId: event.artistId,
-            title: event.metadata?.title || "Untitled Release",
-            status: "processing",
-            processingError: null,
-            rightsSourceType: event.sourceType || "direct_upload",
-            type: event.metadata?.type || "single",
-            primaryArtist: event.metadata?.primaryArtist,
-            featuredArtists: event.metadata?.featuredArtists?.join(", "),
-            genre: event.metadata?.genre,
-            moods: normalizeMoodTags(event.metadata?.moods),
-            label: event.metadata?.label,
-            releaseDate: event.metadata?.releaseDate
-              ? new Date(event.metadata.releaseDate)
-              : undefined,
-            explicit: event.metadata?.explicit ?? false,
-            artworkData: event.artworkData,
-            artworkMimeType: event.artworkMimeType,
-            tracks: {
-              create: event.metadata?.tracks?.map((t: any) => ({
-                id: t.id,
-                title: t.title,
-                artist: t.artist,
-                position: t.position,
-                explicit: t.explicit ?? false,
-                isrc: t.isrc,
-                stems: {
-                  create: t.stems?.map((s: any) => ({
-                    id: s.id,
-                    type: s.type,
-                    uri: s.uri,
-                    storageProvider: s.storageProvider || "local"
-                  }))
-                }
-              })),
+              } : undefined
             },
-          },
+            create: {
+              id: event.releaseId,
+              artistId: event.artistId,
+              title: event.metadata?.title || "Untitled Release",
+              status: "processing",
+              processingError: null,
+              rightsSourceType: event.sourceType || "direct_upload",
+              type: event.metadata?.type || "single",
+              primaryArtist: event.metadata?.primaryArtist,
+              featuredArtists: event.metadata?.featuredArtists?.join(", "),
+              genre: event.metadata?.genre,
+              moods: normalizeMoodTags(event.metadata?.moods),
+              label: event.metadata?.label,
+              releaseDate: event.metadata?.releaseDate
+                ? new Date(event.metadata.releaseDate)
+                : undefined,
+              explicit: event.metadata?.explicit ?? false,
+              artworkData: event.artworkData,
+              artworkMimeType: event.artworkMimeType,
+              tracks: {
+                create: event.metadata?.tracks?.map((t: any) => ({
+                  id: t.id,
+                  title: t.title,
+                  artist: t.artist,
+                  position: t.position,
+                  explicit: t.explicit ?? false,
+                  isrc: t.isrc,
+                  stems: {
+                    create: t.stems?.map((s: any) => ({
+                      id: s.id,
+                      type: s.type,
+                      uri: s.uri,
+                      storageProvider: s.storageProvider || "local"
+                    }))
+                  }
+                })),
+              },
+            },
+          });
+          await this.syncReleaseArtistCredits(tx, {
+            releaseId: event.releaseId,
+            managerArtistId: event.artistId,
+            primaryArtist: event.metadata?.primaryArtist,
+            featuredArtists: event.metadata?.featuredArtists,
+          });
         });
         await this.uploadRightsRoutingService.evaluateAndPersistInitialDecision({
           releaseId: event.releaseId,
@@ -683,13 +747,29 @@ export class CatalogService implements OnModuleInit {
     const releases = await prisma.release.findMany({
       where: {
         status: { in: ['ready', 'published'] },
-        OR: [
-          { rightsRoute: null },
-          { rightsRoute: { in: PUBLIC_RELEASE_ROUTES } },
+        AND: [
+          {
+            OR: [
+              { rightsRoute: null },
+              { rightsRoute: { in: PUBLIC_RELEASE_ROUTES } },
+            ],
+          },
+          ...(primaryArtist
+            ? [{
+                OR: [
+                  { primaryArtist: { equals: primaryArtist, mode: 'insensitive' as const } },
+                  {
+                    artistCredits: {
+                      some: {
+                        displayName: { equals: primaryArtist, mode: 'insensitive' as const },
+                        role: { in: ["main", "primary"] },
+                      },
+                    },
+                  },
+                ],
+              }]
+            : []),
         ],
-        ...(primaryArtist && {
-          primaryArtist: { equals: primaryArtist, mode: 'insensitive' as const },
-        }),
       },
       select: {
         id: true,
@@ -716,6 +796,7 @@ export class CatalogService implements OnModuleInit {
         artist: {
           select: { id: true, displayName: true, userId: true, payoutAddress: true }
         },
+        artistCredits: RELEASE_ARTIST_CREDITS_SELECT,
         tracks: {
           orderBy: { position: "asc" },
           select: {
@@ -773,6 +854,7 @@ export class CatalogService implements OnModuleInit {
     type?: string;
     primaryArtist?: string;
     featuredArtists?: string[];
+    artistCredits?: ReleaseArtistCreditInput[];
     genre?: string;
     moods?: string[];
     label?: string;
@@ -791,37 +873,140 @@ export class CatalogService implements OnModuleInit {
     const primaryArtist = input.primaryArtist?.trim() || artist.displayName;
 
     this.clearCache();
-    return prisma.release.create({
-      data: {
-        artistId: artist.id,
-        title: input.title,
-        status: "draft",
-        type: input.type ?? "single",
+    return prisma.$transaction(async (tx) => {
+      const release = await tx.release.create({
+        data: {
+          artistId: artist.id,
+          title: input.title,
+          status: "draft",
+          type: input.type ?? "single",
+          primaryArtist,
+          featuredArtists: input.featuredArtists?.join(", "),
+          genre: input.genre,
+          moods: normalizeMoodTags(input.moods),
+          label: input.label,
+          releaseDate: input.releaseDate ? new Date(input.releaseDate) : undefined,
+          explicit: input.explicit ?? false,
+          tracks: {
+            create: input.tracks?.map(t => ({
+              title: t.title,
+              position: t.position,
+              explicit: t.explicit ?? false,
+              artist: primaryArtist,
+            }))
+          }
+        },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          tracks: {
+            select: { id: true, title: true, position: true }
+          }
+        }
+      });
+      await this.syncReleaseArtistCredits(tx, {
+        releaseId: release.id,
+        managerArtistId: artist.id,
         primaryArtist,
-        featuredArtists: input.featuredArtists?.join(", "),
-        genre: input.genre,
-        moods: normalizeMoodTags(input.moods),
-        label: input.label,
-        releaseDate: input.releaseDate ? new Date(input.releaseDate) : undefined,
-        explicit: input.explicit ?? false,
-        tracks: {
-          create: input.tracks?.map(t => ({
-            title: t.title,
-            position: t.position,
-            explicit: t.explicit ?? false,
-            artist: primaryArtist,
-          }))
-        }
+        featuredArtists: input.featuredArtists,
+        artistCredits: input.artistCredits,
+      });
+      return release;
+    });
+  }
+
+  private async syncReleaseArtistCredits(
+    tx: Prisma.TransactionClient,
+    input: {
+      releaseId: string;
+      managerArtistId: string;
+      primaryArtist?: string | null;
+      featuredArtists?: string[] | string | null;
+      artistCredits?: ReleaseArtistCreditInput[] | null;
+    },
+  ) {
+    const managerArtist = await tx.artist.findUnique({
+      where: { id: input.managerArtistId },
+      select: { id: true, displayName: true },
+    });
+    if (!managerArtist) {
+      throw new BadRequestException("Release manager artist profile was not found");
+    }
+
+    const explicitCredits = (input.artistCredits || [])
+      .map((credit, index) => ({
+        role: normalizeCreditName(credit.role || "featured").toLowerCase() || "featured",
+        displayName: normalizeCreditName(credit.displayName),
+        artistId: credit.artistId?.trim() || null,
+        sortOrder: credit.sortOrder ?? index,
+      }))
+      .filter((credit) => credit.displayName || credit.artistId);
+
+    const primaryDisplayName = normalizeCreditName(input.primaryArtist) || managerArtist.displayName;
+    const fallbackCredits: ReleaseArtistCreditInput[] = [
+      {
+        role: "main",
+        displayName: primaryDisplayName,
+        sortOrder: 0,
       },
-      // Return lightweight object
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        tracks: {
-          select: { id: true, title: true, position: true }
-        }
+      ...splitFeaturedArtists(input.featuredArtists).map((displayName, index) => ({
+        role: "featured",
+        displayName,
+        sortOrder: index + 1,
+      })),
+    ];
+    const credits = explicitCredits.length > 0 ? explicitCredits : fallbackCredits;
+
+    await tx.releaseArtistCredit.deleteMany({ where: { releaseId: input.releaseId } });
+    for (const credit of credits) {
+      const artist = credit.artistId
+        ? await tx.artist.findUnique({ where: { id: credit.artistId } })
+        : await this.findOrCreatePublicArtistProfile(tx, credit.displayName || managerArtist.displayName, managerArtist);
+      if (!artist) {
+        throw new BadRequestException("Release artist credit must reference an existing artist profile");
       }
+      const displayName = normalizeCreditName(credit.displayName) || artist.displayName;
+      await tx.releaseArtistCredit.create({
+        data: {
+          releaseId: input.releaseId,
+          artistId: artist.id,
+          role: credit.role,
+          displayName,
+          sortOrder: credit.sortOrder ?? 0,
+        },
+      });
+    }
+  }
+
+  private async findOrCreatePublicArtistProfile(
+    tx: Prisma.TransactionClient,
+    displayName: string,
+    managerArtist: { id: string; displayName: string },
+  ) {
+    const normalizedDisplayName = normalizeCreditName(displayName);
+    if (!normalizedDisplayName) {
+      throw new BadRequestException("Release artist credit name is required");
+    }
+
+    if (normalizedDisplayName.toLowerCase() === managerArtist.displayName.toLowerCase()) {
+      return tx.artist.findUnique({ where: { id: managerArtist.id } });
+    }
+
+    const matches = await tx.artist.findMany({
+      where: { displayName: { equals: normalizedDisplayName, mode: "insensitive" } },
+      orderBy: { createdAt: "asc" },
+      take: 10,
+    });
+    const publicProfile = matches.find((artist) => artist.profileType === "public_artist") ?? matches[0];
+    if (publicProfile) return publicProfile;
+
+    return tx.artist.create({
+      data: {
+        displayName: normalizedDisplayName,
+        profileType: "public_artist",
+        claimStatus: "unclaimed",
+      },
     });
   }
 
@@ -927,6 +1112,7 @@ export class CatalogService implements OnModuleInit {
             status: true,
             rightsRoute: true,
             artist: { select: { displayName: true } },
+            artistCredits: RELEASE_ARTIST_CREDITS_SELECT,
           },
         },
       },
@@ -978,7 +1164,7 @@ export class CatalogService implements OnModuleInit {
         releaseId: track.release.id,
         releaseTitle: track.release.title,
         artistId: track.release.artistId,
-        artistName: track.release.primaryArtist || track.release.artist?.displayName || null,
+        artistName: publicArtistCreditName(track.release),
         genre: track.release.genre,
         moods: track.release.moods,
       },
@@ -1109,6 +1295,7 @@ export class CatalogService implements OnModuleInit {
         artist: {
           select: { id: true, displayName: true, userId: true }
         },
+        artistCredits: RELEASE_ARTIST_CREDITS_SELECT,
         tracks: {
           orderBy: { position: "asc" },
           select: {
@@ -1179,6 +1366,7 @@ export class CatalogService implements OnModuleInit {
             artist: {
               select: { id: true, displayName: true, userId: true }
             },
+            artistCredits: RELEASE_ARTIST_CREDITS_SELECT,
             tracks: {
               orderBy: { position: "asc" },
               select: {
@@ -1249,16 +1437,8 @@ export class CatalogService implements OnModuleInit {
     }
 
     const andFilters: Prisma.ReleaseWhereInput[] = [];
-    if (!options?.includeManagedCredits) {
-      andFilters.push({
-        OR: [
-          { primaryArtist: null },
-          { primaryArtist: "" },
-          { primaryArtist: { equals: artist.displayName, mode: "insensitive" as const } },
-        ],
-      });
-    }
     if (!options?.includeRestricted) {
+      andFilters.push({ status: { in: ["ready", "published"] } });
       andFilters.push({
         OR: [
           { rightsRoute: null },
@@ -1266,10 +1446,36 @@ export class CatalogService implements OnModuleInit {
         ],
       });
     }
+    const ownershipFilter: Prisma.ReleaseWhereInput = options?.includeManagedCredits
+      ? { artistId }
+      : {
+          OR: [
+            {
+              artistCredits: {
+                some: {
+                  artistId,
+                  role: { in: ["main", "primary"] },
+                },
+              },
+            },
+            {
+              AND: [
+                { artistId },
+                {
+                  OR: [
+                    { primaryArtist: null },
+                    { primaryArtist: "" },
+                    { primaryArtist: { equals: artist.displayName, mode: "insensitive" as const } },
+                  ],
+                },
+              ],
+            },
+          ],
+        };
 
     return prisma.release.findMany({
       where: {
-        artistId,
+        ...ownershipFilter,
         ...(andFilters.length > 0 ? { AND: andFilters } : {}),
       },
       select: {
@@ -1278,6 +1484,7 @@ export class CatalogService implements OnModuleInit {
         artist: {
           select: { id: true, displayName: true, userId: true }
         },
+        artistCredits: RELEASE_ARTIST_CREDITS_SELECT,
         title: true,
         status: true,
         processingError: true,
@@ -1523,6 +1730,7 @@ export class CatalogService implements OnModuleInit {
               { title: { contains: query, mode: "insensitive" } },
               { primaryArtist: { contains: query, mode: "insensitive" } },
               { featuredArtists: { contains: query, mode: "insensitive" } },
+              { artistCredits: { some: { displayName: { contains: query, mode: "insensitive" } } } },
               { tracks: { some: { title: { contains: query, mode: "insensitive" } } } },
               { tracks: { some: { artist: { contains: query, mode: "insensitive" } } } }
             ],
@@ -1554,6 +1762,7 @@ export class CatalogService implements OnModuleInit {
         artist: {
           select: { id: true, displayName: true }
         },
+        artistCredits: RELEASE_ARTIST_CREDITS_SELECT,
         tracks: {
           orderBy: { position: "asc" },
           select: {
@@ -1615,6 +1824,16 @@ export class CatalogService implements OnModuleInit {
                       },
                     },
                     {
+                      artistCredits: {
+                        some: {
+                          displayName: {
+                            contains: trimmedQuery,
+                            mode: "insensitive",
+                          },
+                        },
+                      },
+                    },
+                    {
                       genre: {
                         contains: trimmedQuery,
                         mode: "insensitive",
@@ -1659,6 +1878,7 @@ export class CatalogService implements OnModuleInit {
         artist: {
           select: { displayName: true },
         },
+        artistCredits: RELEASE_ARTIST_CREDITS_SELECT,
         tracks: {
           select: {
             id: true,
@@ -1686,10 +1906,7 @@ export class CatalogService implements OnModuleInit {
       items: releases.map((release) => ({
         id: release.id,
         title: release.title,
-        artist:
-          release.primaryArtist ||
-          release.artist?.displayName ||
-          "Unknown Artist",
+        artist: publicArtistCreditName(release),
         genre: release.genre,
         moods: release.moods,
         releaseDate: release.releaseDate?.toISOString() ?? null,

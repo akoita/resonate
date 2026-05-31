@@ -230,3 +230,58 @@ Changed files:
 rg -n "password|secret|api_key|private_key" backend/src/modules/shows backend/src/tests/shows.service.integration.spec.ts --iglob '!*.test.*' --iglob '!*.spec.*'
 rg -n "rawQuery|executeRaw|\$queryRaw|dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false" backend/src/modules/shows web/src/components/shows web/src/lib/shows.ts
 ```
+
+## Release Artist Identity Refactor - 2026-05-31
+
+### Scope Reviewed
+
+Changed backend/frontend surfaces:
+
+- `backend/prisma/schema.prisma`
+- `backend/prisma/migrations/20260531043000_release_artist_credits/migration.sql`
+- `backend/src/modules/catalog/*`
+- `backend/src/modules/analytics/*`
+- `backend/src/modules/contracts/*`
+- `backend/src/modules/generation/generation.service.ts`
+- `backend/src/modules/rights/*`
+- `web/src/app/page.tsx`
+- `web/src/lib/api.ts`
+- `web/src/lib/shows.ts`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none introduced.
+- Low: none introduced.
+
+### Notes
+
+- Public artist profiles can now be unclaimed and therefore have nullable
+  `userId` and `payoutAddress`. Authorization-sensitive paths that still rely
+  on uploader/manager ownership were reviewed and updated to fail closed when
+  the manager user id is absent.
+- Release artist credits are display/discovery metadata. The implementation
+  keeps `Release.artistId` as the manager/uploader ownership key for rights,
+  payout-adjacent workflows, and current authenticated artist analytics.
+- The migration uses deterministic SQL backfill and Prisma parameterized raw
+  queries already present in the catalog/contract paths; no string-concatenated
+  SQL was introduced.
+- Analytics payloads keep compatibility `artistId` while adding explicit
+  manager and credited-artist dimensions, reducing downstream ambiguity without
+  changing current dashboard authorization.
+- No new hardcoded secrets, client-exposed secret variables, direct HTML
+  injection, cookie handling, or new environment variables were introduced.
+
+### Commands Run
+
+```bash
+rg -n 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw' backend/src/
+rg -n '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/ | grep -v 'Guard\|Auth'
+rg -n 'JSON\.parse|eval\(' backend/src/
+rg -n '@Body\(\)|@Query\(\)|@Param\(' backend/src/modules/catalog backend/src/modules/analytics backend/src/modules/contracts backend/src/modules/generation backend/src/modules/rights | grep -v 'Pipe\|Dto\|Validation'
+rg -n 'dangerouslySetInnerHTML|innerHTML' web/src/
+rg -n 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
+rg -n 'document\.cookie|setCookie|httpOnly.*false' web/src/
+```

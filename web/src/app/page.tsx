@@ -1032,6 +1032,10 @@ function ReleaseThumb({ release, small = false }: { release: Release; small?: bo
 }
 
 function getArtistName(release: Release) {
+  const mainCredits = getMainArtistCredits(release);
+  if (mainCredits.length > 0) {
+    return mainCredits.map((credit) => credit.displayName).join(", ");
+  }
   return release.primaryArtist || release.artist?.displayName || "Unknown Artist";
 }
 
@@ -1043,6 +1047,12 @@ function normalizeArtistName(value?: string | null) {
   return (value || "").trim().toLowerCase();
 }
 
+function getMainArtistCredits(release: Release) {
+  return (release.artistCredits || [])
+    .filter((credit) => ["main", "primary"].includes(credit.role.toLowerCase()))
+    .sort((left, right) => left.sortOrder - right.sortOrder || left.displayName.localeCompare(right.displayName));
+}
+
 function normalizeArtistCreditValue(value?: string | null) {
   return (value || "")
     .trim()
@@ -1052,6 +1062,9 @@ function normalizeArtistCreditValue(value?: string | null) {
 }
 
 function getReleaseCreditProfileId(release: Release) {
+  const mainCredit = getMainArtistCredits(release)[0];
+  if (mainCredit?.artistId) return mainCredit.artistId;
+
   const primaryArtist = normalizeArtistName(release.primaryArtist);
   const profileName = normalizeArtistName(release.artist?.displayName);
   if (!release.artist?.id) return null;
@@ -1142,37 +1155,50 @@ function summarizeCreditedArtists(releases: Release[]): ArtistSummary[] {
   const byArtist = new Map<string, ArtistSummary>();
 
   for (const release of releases) {
-    const name = getArtistName(release);
-    const key = normalizeArtistName(name) || release.id;
-    const artistId = getReleaseCreditProfileId(release);
+    const credits = getMainArtistCredits(release);
+    const creditSummaries = credits.length > 0
+      ? credits.map((credit) => ({
+          name: credit.displayName,
+          artistId: credit.artistId || credit.artist?.id || null,
+        }))
+      : [{
+          name: getArtistName(release),
+          artistId: getReleaseCreditProfileId(release),
+        }];
     const stemCount = release.tracks?.reduce(
       (sum, track) => sum + (track.stems?.length ?? 0),
       0,
     ) ?? 0;
     const latestAt = getReleaseTime(release);
-    const existing = byArtist.get(key);
 
-    if (!existing) {
-      byArtist.set(key, {
-        key,
-        name,
-        artistId,
-        releaseCount: 1,
-        stemCount,
-        latestRelease: release,
-        latestAt,
-        genres: new Set(release.genre ? [release.genre] : []),
-      });
-      continue;
-    }
+    for (const credit of creditSummaries) {
+      const name = credit.name || "Unknown Artist";
+      const artistId = credit.artistId;
+      const key = artistId || normalizeArtistName(name) || release.id;
+      const existing = byArtist.get(key);
 
-    existing.releaseCount += 1;
-    existing.stemCount += stemCount;
-    if (release.genre) existing.genres.add(release.genre);
-    if (!existing.artistId && artistId) existing.artistId = artistId;
-    if (latestAt > existing.latestAt) {
-      existing.latestAt = latestAt;
-      existing.latestRelease = release;
+      if (!existing) {
+        byArtist.set(key, {
+          key,
+          name,
+          artistId,
+          releaseCount: 1,
+          stemCount,
+          latestRelease: release,
+          latestAt,
+          genres: new Set(release.genre ? [release.genre] : []),
+        });
+        continue;
+      }
+
+      existing.releaseCount += 1;
+      existing.stemCount += stemCount;
+      if (release.genre) existing.genres.add(release.genre);
+      if (!existing.artistId && artistId) existing.artistId = artistId;
+      if (latestAt > existing.latestAt) {
+        existing.latestAt = latestAt;
+        existing.latestRelease = release;
+      }
     }
   }
 
@@ -1481,7 +1507,7 @@ function StemCard({ release, variantIndex }: { release: Release; variantIndex: n
   const tag = STEM_TAGS[variantIndex % STEM_TAGS.length];
   const stemKey = tag.toLowerCase();
   const mixerHref = buildMixerHref(release.id, tag);
-  const artistName = release.primaryArtist || release.artist?.displayName || "Unknown";
+  const artistName = getArtistName(release);
   // Deterministic bars seeded by release id so rerenders don't jitter,
   // shaped per-stem so each card has its own rhythmic fingerprint.
   const bars = useMemo(() => {

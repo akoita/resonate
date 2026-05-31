@@ -63,7 +63,13 @@ backends can set `ANALYTICS_REPORT_SOURCE=bigquery` to read artist dashboard
 metrics from BigQuery with bounded artist/time-window queries, freshness
 metadata, short TTL caching, and rights-route dimensions for content protection
 metrics. Artist dashboard responses also enrich track facts from catalog
-metadata when events contain `trackId` but omit display titles. The
+metadata when events contain `trackId` but omit display titles. Catalog
+enrichment now carries manager/uploader artist dimensions alongside credited
+public artist dimensions: `artistId` remains the compatibility manager/owner
+dimension for current dashboards, while `managerArtistId`, `creditedArtistId`,
+`creditedArtistName`, `creditedArtistIds`, and `creditedArtistNames` are
+available in payload-derived clean/fact dimensions for the warehouse migration.
+The
 near-real-time target path can also
 publish validated envelopes to Pub/Sub after ledger
 persistence by setting `ANALYTICS_EVENT_PUBLISHING_ENABLED=true` and
@@ -137,7 +143,17 @@ aggregates, not from retaining raw personal data forever.
   - `GET /analytics/artist/:id`
   - `GET /analytics/artist/:id/v1`
   - `GET /analytics/rollup/daily`
-  - `GET /analytics/export/layers`
+- `GET /analytics/export/layers`
+
+## Artist Identity Dimensions
+
+`Release.artistId` is still the manager/uploader ownership key used for
+authenticated artist dashboards, payout-adjacent reports, rights routing, and
+compatibility `artistId` event payloads. Public music identity is represented
+by release artist credits. For multi-main-artist releases, analytics payloads
+and facts can carry both a lead credited artist and credited artist arrays so
+future Dataflow/BigQuery marts can choose owner, lead-credit, split-credit, or
+all-credited rollups explicitly.
 - Admin/operator warehouse load surfaces:
   - `POST /admin/analytics/warehouse/load`
   - `POST /admin/analytics/warehouse/backfill`
