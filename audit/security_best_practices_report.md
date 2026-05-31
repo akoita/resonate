@@ -326,3 +326,46 @@ rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/community backend/src/te
 rg '@Controller|@Get|@Post|@Put|@Delete|@Patch|@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/community
 rg 'JSON\.parse|eval\(' backend/src/modules/community backend/src/tests/community*
 ```
+
+## Artist Community Rooms - 2026-05-31
+
+### Scope Reviewed
+
+Changed backend surfaces:
+
+- `backend/prisma/schema.prisma`
+- `backend/prisma/migrations/20260531143000_artist_community_rooms/migration.sql`
+- `backend/src/modules/community/community.controller.ts`
+- `backend/src/modules/community/community.module.ts`
+- `backend/src/modules/community/community_rooms.service.ts`
+- `backend/src/modules/community/community_eligibility.service.ts`
+- `backend/src/tests/community*.ts`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none introduced.
+- Low: none introduced.
+
+### Notes
+
+- Room mutation, membership, messaging, reporting, deletion, and moderation
+  endpoints require JWT auth.
+- Public artist-room listing is intentionally unauthenticated, but message
+  reads require active membership or artist/operator authority.
+- Holder-room joins delegate to `CommunityEligibilityService`, keeping private
+  ownership and wallet proof details out of the room API.
+- Announcement and moderation actions are restricted to the artist owner or
+  operator/admin paths.
+- No raw SQL, hardcoded secrets, unsafe deserialization, direct HTML injection,
+  cookie handling, or new environment variables were introduced.
+
+### Commands Run
+
+```bash
+rg 'password|secret|api_key|private_key' backend/src/modules/community backend/src/tests/community* --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/community backend/src/tests/community*
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch|@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/community
+rg 'JSON\.parse|eval\(' backend/src/modules/community backend/src/tests/community*
+```

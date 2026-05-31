@@ -208,7 +208,7 @@ recognized without turning community into a leaderboard.
 | Surface | Status | Notes |
 | --- | --- | --- |
 | Listener profile showcase | in-progress | `/settings` exposes profile identity and visibility controls; public profile reads redact hidden/private sections. Display of real badges, marketplace items, campaign support, attendance, playlists, remixes, and roles remains follow-up work. |
-| Artist community tab | planned | Artist-owned social space for announcements, release discussion, supporter rooms, collector rooms, campaigns, and Shows. |
+| Artist community tab | in-progress | Backend foundation for artist public rooms, holder rooms, membership, messages, reports, and moderation basics is being built in [#999](https://github.com/akoita/resonate/issues/999). |
 | Taste cohort suggestions | planned | Explainable recommendations to join small groups based on shared taste, city, artist affinity, or collection behavior. |
 | City scene pages | planned | Local scene surfaces tied to declared coarse location and privacy-safe aggregate demand. |
 | Campaign rooms | planned | Temporary community surfaces for Shows and other campaigns with milestones, updates, supporter chat, and rewards. |
@@ -275,6 +275,11 @@ The active M2 holder-benefits slice is tracked in
 [Community Badges, Roles, And Holder Benefits Plan](community_holder_benefits_plan.md).
 It adds private badge, role, benefit-rule, and redemption foundations before
 public artist-room or listener benefit UI is exposed.
+
+The active M3 artist-community slice is tracked in
+[Artist Community Tab Plan](artist_community_tab_plan.md). It adds the off-chain
+room, membership, message, report, and moderation substrate before the public UI
+tab is exposed.
 
 ## Blockchain Boundary
 
