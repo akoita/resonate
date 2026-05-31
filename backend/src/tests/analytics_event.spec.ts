@@ -195,6 +195,7 @@ describe("analytics event envelope", () => {
       "playlist.track_added",
       "artist.upload_step_completed",
       "shows.pledge_intent_created",
+      "shows.campaign_visuals_updated",
       "commerce.settled",
       "rights.route_decided",
       "agent.recommendation_selected",

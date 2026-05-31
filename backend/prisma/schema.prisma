@@ -1004,6 +1004,12 @@ model ShowCampaign {
   artistId                    String?
   artistDisplayName           String
   artistImageUrl              String?
+  heroImageUrl                 String?
+  heroImageStorageUri          String?
+  heroImageMimeType            String?
+  cardImageUrl                 String?
+  cardImageStorageUri          String?
+  cardImageMimeType            String?
   title                       String
   description                 String?                      @db.Text
   city                        String

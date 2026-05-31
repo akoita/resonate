@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import type {
   Artist,
@@ -16,6 +16,7 @@ import {
 } from "../analytics/analytics_event";
 import { pseudonymousAnalyticsActorId } from "../analytics/analytics_identity";
 import { AnalyticsInstrumentationService } from "../analytics/analytics_instrumentation.service";
+import { StorageProvider } from "../storage/storage_provider";
 import {
   assertShowArtistAuthorityStatus,
   assertShowCampaignBeneficiaryType,
@@ -117,6 +118,11 @@ type ActivateCampaignInput = {
   contractCampaignId?: string | null;
 };
 
+type CampaignVisualUploadInput = {
+  hero?: Express.Multer.File | null;
+  card?: Express.Multer.File | null;
+};
+
 type PledgeIntentInput = {
   tierId?: string | null;
   walletAddress: string;
@@ -168,6 +174,8 @@ const TERMINAL_AUTHORITY_STATUSES: ShowArtistAuthorityStatus[] = [
   "expired",
 ];
 const SHOWS_CATALOG_CONTENT_STATUSES = ["ready", "published"];
+const SHOWS_VISUAL_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const DEFAULT_SHOWS_VISUAL_MAX_BYTES = 8 * 1024 * 1024;
 
 function requireText(value: unknown, field: string): string {
   if (typeof value !== "string" || !value.trim()) {
@@ -342,9 +350,19 @@ function configuredAllowedPaymentTokenAddresses() {
   return new Set(values.map((value) => validateOptionalAddress(value, "SHOWS_ALLOWED_PAYMENT_TOKEN_ADDRESSES")!));
 }
 
+function visualExtension(mimeType: string) {
+  if (mimeType === "image/jpeg") return "jpg";
+  if (mimeType === "image/png") return "png";
+  if (mimeType === "image/webp") return "webp";
+  return "bin";
+}
+
 @Injectable()
 export class ShowsService {
-  constructor(private readonly analyticsInstrumentationService?: AnalyticsInstrumentationService) {}
+  constructor(
+    @Optional() private readonly analyticsInstrumentationService?: AnalyticsInstrumentationService,
+    @Optional() private readonly storageProvider?: StorageProvider,
+  ) {}
 
   async listCampaigns(query: { includeSignals?: boolean; status?: string } = {}) {
     const includeSignals = query.includeSignals === true;
@@ -554,6 +572,90 @@ export class ShowsService {
         include: { events: { orderBy: { createdAt: "desc" }, take: 5 }, tiers: true },
       });
     });
+  }
+
+  async uploadCampaignVisuals(actor: Actor, campaignId: string, input: CampaignVisualUploadInput) {
+    if (!this.storageProvider) {
+      throw new BadRequestException("Campaign visual storage is not configured");
+    }
+    const campaign = await this.getCampaignForMutation(actor, campaignId);
+    if (campaign.status !== "draft") {
+      throw new BadRequestException("Campaign visuals can only be changed while the campaign is a draft");
+    }
+    if (!input.hero && !input.card) {
+      throw new BadRequestException("Provide at least one campaign visual");
+    }
+
+    const updates: Prisma.ShowCampaignUpdateInput = {};
+    if (input.hero) {
+      const stored = await this.storeCampaignVisual(campaign.id, "hero", input.hero);
+      updates.heroImageStorageUri = stored.storageUri;
+      updates.heroImageMimeType = stored.mimeType;
+      updates.heroImageUrl = `/shows/campaigns/${campaign.id}/visuals/hero`;
+    }
+    if (input.card) {
+      const stored = await this.storeCampaignVisual(campaign.id, "card", input.card);
+      updates.cardImageStorageUri = stored.storageUri;
+      updates.cardImageMimeType = stored.mimeType;
+      updates.cardImageUrl = `/shows/campaigns/${campaign.id}/visuals/card`;
+    }
+
+    const updated = await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: {
+        ...updates,
+        events: {
+          create: {
+            eventType: "campaign_updated",
+            actorUserId: actor.userId,
+            previousStatus: campaign.status,
+            nextStatus: campaign.status,
+            metadata: {
+              source: "shows-api",
+              visualSlots: [
+                ...(input.hero ? ["hero"] : []),
+                ...(input.card ? ["card"] : []),
+              ],
+            },
+          },
+        },
+      },
+      include: { events: { orderBy: { createdAt: "desc" }, take: 5 }, tiers: true },
+    });
+    await this.recordShowAnalytics("shows.campaign_visuals_updated", actor, updated, {
+      visualSlots: [
+        ...(input.hero ? ["hero"] : []),
+        ...(input.card ? ["card"] : []),
+      ],
+    });
+    return updated;
+  }
+
+  async getCampaignVisual(campaignIdOrSlug: string, slot: "hero" | "card") {
+    if (!this.storageProvider) return null;
+    const campaign = await prisma.showCampaign.findFirst({
+      where: {
+        OR: [
+          { id: campaignIdOrSlug },
+          { slug: campaignIdOrSlug },
+        ],
+      },
+      select: {
+        heroImageStorageUri: true,
+        heroImageMimeType: true,
+        cardImageStorageUri: true,
+        cardImageMimeType: true,
+      },
+    });
+    if (!campaign) return null;
+
+    const storageUri = slot === "hero" ? campaign.heroImageStorageUri : campaign.cardImageStorageUri;
+    const mimeType = slot === "hero" ? campaign.heroImageMimeType : campaign.cardImageMimeType;
+    if (!storageUri || !mimeType) return null;
+
+    const data = await this.storageProvider.download(storageUri);
+    if (!data) return null;
+    return { data, mimeType };
   }
 
   async requestAuthority(actor: Actor, campaignId: string, input: AuthorityRequestInput) {
@@ -1338,6 +1440,36 @@ export class ShowsService {
     };
   }
 
+  private async storeCampaignVisual(
+    campaignId: string,
+    slot: "hero" | "card",
+    file: Express.Multer.File,
+  ) {
+    if (!this.storageProvider) {
+      throw new BadRequestException("Campaign visual storage is not configured");
+    }
+    if (!file.buffer?.length) {
+      throw new BadRequestException(`${slot} visual file is empty`);
+    }
+    if (!SHOWS_VISUAL_MIME_TYPES.has(file.mimetype)) {
+      throw new BadRequestException(`${slot} visual must be a JPEG, PNG, or WebP image`);
+    }
+    const maxBytes = configuredNumber(["SHOWS_VISUAL_MAX_BYTES"], DEFAULT_SHOWS_VISUAL_MAX_BYTES);
+    if (file.size > maxBytes || file.buffer.length > maxBytes) {
+      throw new BadRequestException(`${slot} visual must be ${Math.floor(maxBytes / (1024 * 1024))}MB or smaller`);
+    }
+
+    const storage = await this.storageProvider.upload(
+      file.buffer,
+      `show-campaign-${campaignId}-${slot}-${randomUUID()}.${visualExtension(file.mimetype)}`,
+      file.mimetype,
+    );
+    return {
+      storageUri: storage.uri,
+      mimeType: file.mimetype,
+    };
+  }
+
   private normalizeCampaignBase(input: CampaignBaseInput, defaults: {
     defaultGoalAmountUnits?: string;
     defaultChainId: number;
@@ -1663,6 +1795,7 @@ export class ShowsService {
       campaignLevel?: string | null;
       artistAuthorityStatus?: string | null;
       confirmationStatus?: string | null;
+      visualSlots?: string[];
       geo?: AnalyticsGeoDimension;
     } = {},
   ) {
@@ -1691,6 +1824,7 @@ export class ShowsService {
           chainId: details.chainId ?? undefined,
           artistAuthorityStatus: details.artistAuthorityStatus ?? undefined,
           confirmationStatus: details.confirmationStatus ?? undefined,
+          visualSlots: details.visualSlots ?? undefined,
           campaignCountryCode: countryCode(campaign.country),
           campaignCitySlug: slugifyParts([campaign.city]),
         },
