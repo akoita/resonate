@@ -141,6 +141,7 @@ Do not repurpose an existing field with a new meaning.
 | `library.*` | Library service/web app | Saves, removes, follows, listener collection actions. |
 | `search.*` | Web app/search | Search submissions and result clicks. |
 | `marketplace.*` | Marketplace/storefront | Listing views, checkout starts, purchase intent, notifications. |
+| `community.*` | Community service/web app | Profile visibility, artist rooms, holder access, benefits, messages, reports, and moderation actions. |
 | `commerce.*` | Commerce/payments | Quotes, purchases, settlement, refunds, revenue events. |
 | `payment.*` | Payments service | Payment initiation, settlement, accounting rails. |
 | `contract.*` | Contract indexers | On-chain mint/list/sale/royalty/stake/dispute/escrow observations. |

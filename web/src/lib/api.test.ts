@@ -1457,4 +1457,75 @@ describe('API Client', () => {
       expect(result.profile.displayName).toBe('Ada Listener');
     });
   });
+
+  describe('artist community rooms', () => {
+    it('fetches public artist community rooms without authentication', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            schemaVersion: 'community-artist-rooms/v1',
+            artist: { id: 'artist-1', displayName: 'Ada Mix', imageUrl: null },
+            rooms: [],
+          }),
+      });
+
+      await api.listArtistCommunityRooms('artist 1');
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/community/artists/artist%201/rooms');
+      expect(opts.cache).toBe('no-store');
+      expect(opts.headers.has('Authorization')).toBe(false);
+    });
+
+    it('fetches authenticated artist community rooms with membership context', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            schemaVersion: 'community-artist-rooms/v1',
+            artist: { id: 'artist-1', displayName: 'Ada Mix', imageUrl: null },
+            rooms: [],
+          }),
+      });
+
+      await api.listArtistCommunityRooms('artist 1', 'test-token');
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/community/artists/artist%201/rooms/me');
+      expect(opts.headers.get('Authorization')).toBe('Bearer test-token');
+    });
+
+    it('posts artist community messages to the selected room', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            schemaVersion: 'community-message/v1',
+            message: {
+              id: 'message-1',
+              roomId: 'room-1',
+              authorId: 'user-1',
+              body: 'Hello',
+              messageType: 'message',
+              status: 'visible',
+              createdAt: '2026-05-31T00:00:00.000Z',
+              updatedAt: '2026-05-31T00:00:00.000Z',
+              deletedAt: null,
+            },
+          }),
+      });
+
+      await api.createCommunityRoomMessage('test-token', 'room 1', { body: 'Hello' });
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/community/rooms/room%201/messages');
+      expect(opts.method).toBe('POST');
+      expect(opts.headers.get('Authorization')).toBe('Bearer test-token');
+      expect(opts.body).toBe(JSON.stringify({ body: 'Hello' }));
+    });
+  });
 });

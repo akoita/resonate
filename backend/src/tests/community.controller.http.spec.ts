@@ -148,6 +148,15 @@ describe("CommunityController (http)", () => {
       });
   });
 
+  it("loads artist rooms with JWT membership context", async () => {
+    await request(app.getHttpServer())
+      .get("/community/artists/artist-1/rooms/me")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(mockCommunityRoomsService.listArtistRooms).toHaveBeenCalledWith("artist-1", "user-1");
+  });
+
   it("requires JWT for room mutations", async () => {
     await request(app.getHttpServer())
       .post("/community/rooms/room-1/join")

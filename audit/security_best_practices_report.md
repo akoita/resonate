@@ -404,3 +404,51 @@ rg -n 'password|secret|api_key|private_key' backend/src/modules/shows web/src/co
 rg -n 'rawQuery|executeRaw|\$queryRaw|JSON\.parse|eval\(' backend/src/modules/shows web/src/components/shows/CampaignDraftForm.tsx
 rg -n 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/components/shows/CampaignDraftForm.tsx
 ```
+
+## Artist Community UI, Analytics, And Maintainer Checklist - 2026-05-31
+
+### Scope Reviewed
+
+Changed surfaces:
+
+- `backend/src/modules/community/community.controller.ts`
+- `backend/src/modules/community/community_rooms.service.ts`
+- `backend/src/modules/analytics/analytics.controller.ts`
+- `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`
+- `backend/src/events/event_types.ts`
+- `web/src/components/community/ArtistCommunityTab.tsx`
+- `web/src/app/artist/[id]/page.tsx`
+- `web/src/lib/api.ts`
+- `web/src/lib/productAnalytics.ts`
+- `docs/engineering/change_impact_checklist.md`
+- `AGENTS.md`
+- `.agents/workflows/finish-issue.md`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none introduced.
+- Low: none introduced.
+
+### Notes
+
+- The new authenticated artist-room read is JWT-gated and only adds
+  membership/eligibility context for the current user.
+- Holder-room denial analytics uses compact reason codes/copy and does not emit
+  wallet holdings, ownership proofs, or private eligibility details.
+- Community message analytics excludes message bodies and report free text.
+- The artist Community tab uses React-rendered text only; no direct HTML
+  injection APIs, cookie handling, or new public environment variables were
+  introduced.
+- The maintainer checklist is documentation-only and reinforces existing secret,
+  config, analytics, privacy, moderation, lifecycle, and validation controls.
+
+### Commands Run
+
+```bash
+rg -n 'password|secret|api_key|private_key' backend/src/modules/community backend/src/modules/analytics backend/src/events/event_types.ts web/src/components/community web/src/lib/api.ts web/src/lib/productAnalytics.ts docs/engineering AGENTS.md .agents/workflows/finish-issue.md --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw|\$executeRaw|JSON\.parse|eval\(' backend/src/modules/community backend/src/modules/analytics web/src/components/community web/src/lib/api.ts web/src/lib/productAnalytics.ts
+rg -n 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/components/community web/src/app/artist web/src/lib/api.ts web/src/lib/productAnalytics.ts
+rg -n '@Controller|@Get|@Post|@Put|@Delete|@Patch|@Body\(\)|@Query\(\)|@Param\(' backend/src/modules/community backend/src/modules/analytics/analytics.controller.ts
+```

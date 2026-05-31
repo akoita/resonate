@@ -81,6 +81,12 @@ describe("CommunityController", () => {
     expect(mockCommunityRoomsService.enableArtistCommunity).toHaveBeenCalledWith("user-42", "artist-1");
   });
 
+  it("loads artist rooms with authenticated listener context", () => {
+    const ctrl = makeController();
+    ctrl.listMyArtistRooms(req, "artist-1");
+    expect(mockCommunityRoomsService.listArtistRooms).toHaveBeenCalledWith("artist-1", "user-42");
+  });
+
   it("routes artist room membership and message actions", () => {
     const ctrl = makeController();
     ctrl.joinRoom(req, "room-1");

@@ -165,6 +165,82 @@ export interface CommunityOwnershipDisplayUpdatedEvent extends BaseEvent {
   showOwnedItems: boolean;
 }
 
+export interface CommunityBenefitRedeemedEvent extends BaseEvent {
+  eventName: "community.benefit_redeemed";
+  userId: string;
+  benefitRuleId: string;
+  benefitType: string;
+}
+
+export interface CommunityArtistTabEnabledEvent extends BaseEvent {
+  eventName: "community.artist_tab_enabled";
+  userId: string;
+  artistId: string;
+}
+
+export interface CommunityRoomJoinedEvent extends BaseEvent {
+  eventName: "community.room_joined";
+  userId: string;
+  roomId: string;
+  roomType: string;
+  artistId?: string | null;
+}
+
+export interface CommunityRoomLeftEvent extends BaseEvent {
+  eventName: "community.room_left";
+  userId: string;
+  roomId: string;
+  roomType: string;
+  artistId?: string | null;
+}
+
+export interface CommunityRoomAccessDeniedEvent extends BaseEvent {
+  eventName: "community.room_access_denied";
+  userId: string;
+  roomId: string;
+  roomType: string;
+  artistId?: string | null;
+  reason: string;
+}
+
+export interface CommunityMessageCreatedEvent extends BaseEvent {
+  eventName: "community.message_created";
+  userId: string;
+  roomId: string;
+  messageId: string;
+  messageType: string;
+}
+
+export interface CommunityMessageReportedEvent extends BaseEvent {
+  eventName: "community.message_reported";
+  userId: string;
+  roomId: string;
+  messageId: string;
+  reportId: string;
+}
+
+export interface CommunityMessageDeletedEvent extends BaseEvent {
+  eventName: "community.message_deleted";
+  userId: string;
+  roomId: string;
+  messageId: string;
+}
+
+export interface CommunityMemberModeratedEvent extends BaseEvent {
+  eventName: "community.member_moderated";
+  userId: string;
+  roomId: string;
+  targetUserId: string;
+  action: string;
+}
+
+export interface CommunityRoomStatusUpdatedEvent extends BaseEvent {
+  eventName: "community.room_status_updated";
+  userId: string;
+  roomId: string;
+  status: string;
+}
+
 export interface IdentityAuthenticatedEvent extends BaseEvent {
   eventName: "identity.authenticated";
   userId: string;
@@ -832,6 +908,16 @@ export type ResonateEvent =
   | CommunityProfileVisibilityUpdatedEvent
   | CommunityProfileShowcaseUpdatedEvent
   | CommunityOwnershipDisplayUpdatedEvent
+  | CommunityBenefitRedeemedEvent
+  | CommunityArtistTabEnabledEvent
+  | CommunityRoomJoinedEvent
+  | CommunityRoomLeftEvent
+  | CommunityRoomAccessDeniedEvent
+  | CommunityMessageCreatedEvent
+  | CommunityMessageReportedEvent
+  | CommunityMessageDeletedEvent
+  | CommunityMemberModeratedEvent
+  | CommunityRoomStatusUpdatedEvent
   | IdentityAuthenticatedEvent
   | PlaylistCreatedEvent
   | PlaylistUpdatedEvent

@@ -383,6 +383,7 @@ POST   /community/benefits/:benefitId/redeem
 
 ```text
 GET    /community/artists/:artistId/rooms
+GET    /community/artists/:artistId/rooms/me
 POST   /community/artists/:artistId/rooms/enable
 POST   /community/rooms/:roomId/join
 POST   /community/rooms/:roomId/leave
@@ -422,10 +423,15 @@ boundaries.
 | `community.role_granted` | User receives a community role. |
 | `community.benefit_unlocked` | User becomes eligible for a benefit. |
 | `community.benefit_redeemed` | User redeems a benefit. |
+| `community.artist_tab_enabled` | Artist/team enables the default artist rooms. |
 | `community.room_joined` | User joins a room. |
+| `community.room_left` | User leaves a room. |
 | `community.room_access_denied` | User attempts gated room access and is denied. |
 | `community.message_created` | User posts a message. |
 | `community.message_reported` | User reports a message. |
+| `community.message_deleted` | User or moderator removes a message. |
+| `community.member_moderated` | Artist/team removes or bans a room member. |
+| `community.room_status_updated` | Artist/team pauses, reopens, or archives a room. |
 | `community.campaign_room_joined` | User joins a campaign room. |
 | `community.show_city_interest_joined` | User joins a show city demand group. |
 | `community.cohort_suggested` | System suggests a cohort. |

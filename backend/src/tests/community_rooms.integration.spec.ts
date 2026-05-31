@@ -122,6 +122,12 @@ describe("CommunityRoomsService integration", () => {
       membership: { status: "active", role: "member" },
     });
     await expect(service.joinRoom(listenerUserId, holderRoom.id)).rejects.toThrow(ForbiddenException);
+    expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.room_access_denied",
+      roomId: holderRoom.id,
+      roomType: "artist_holder",
+      artistId,
+    }));
     await expect(service.joinRoom(holderUserId, holderRoom.id)).resolves.toMatchObject({
       membership: { status: "active", role: "holder" },
     });
