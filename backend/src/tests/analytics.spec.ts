@@ -4,6 +4,13 @@ import { ArtistAnalyticsReportSource } from "../modules/analytics/analytics_bigq
 import { AnalyticsWarehouseExportService } from "../modules/analytics/analytics_warehouse";
 import { AnalyticsCatalogMetadataService } from "../modules/analytics/analytics_catalog_metadata.service";
 
+function recentAnalyticsIso(minutes = 0) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - 1);
+  date.setUTCHours(8, minutes, 0, 0);
+  return date.toISOString();
+}
+
 describe("analytics", () => {
   it("aggregates plays and payouts by artist", async () => {
     const ingest = new AnalyticsIngestService();
@@ -56,7 +63,7 @@ describe("analytics", () => {
 
     await ingest.ingest({
       eventName: "license.granted",
-      occurredAt: "2026-05-20T08:30:00.000Z",
+      occurredAt: recentAnalyticsIso(30),
       payload: {
         artistId: "artist-2",
         trackId: "track-9",
@@ -67,7 +74,7 @@ describe("analytics", () => {
     });
     await ingest.ingest({
       eventName: "payment.settled",
-      occurredAt: "2026-05-20T08:31:00.000Z",
+      occurredAt: recentAnalyticsIso(31),
       payload: {
         artistId: "artist-2",
         trackId: "track-9",
@@ -85,7 +92,7 @@ describe("analytics", () => {
     });
     await ingest.ingest({
       eventName: "rights.route_decided",
-      occurredAt: "2026-05-20T08:32:00.000Z",
+      occurredAt: recentAnalyticsIso(32),
       payload: {
         artistId: "artist-2",
         releaseId: "release-9",
@@ -132,7 +139,7 @@ describe("analytics", () => {
 
     await ingest.ingest({
       eventName: "playback.completed",
-      occurredAt: "2026-05-20T09:00:00.000Z",
+      occurredAt: recentAnalyticsIso(60),
       payload: {
         artistId: "artist-warehouse",
         trackId: "track-warehouse",
@@ -143,7 +150,7 @@ describe("analytics", () => {
     });
     await ingest.ingest({
       eventName: "commerce.settled",
-      occurredAt: "2026-05-20T09:01:00.000Z",
+      occurredAt: recentAnalyticsIso(61),
       payload: {
         artistId: "artist-warehouse",
         trackId: "track-warehouse",
@@ -211,7 +218,7 @@ describe("analytics", () => {
 
     await ingest.ingest({
       eventName: "playback.completed",
-      occurredAt: "2026-05-20T09:00:00.000Z",
+      occurredAt: recentAnalyticsIso(60),
       payload: {
         artistId: "artist-metadata",
         trackId: "track-metadata",

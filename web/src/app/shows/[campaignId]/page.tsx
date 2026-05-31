@@ -5,6 +5,7 @@ import { CampaignOperatorPanel } from "../../../components/shows/CampaignOperato
 import { PledgeIntentPanel } from "../../../components/shows/PledgeIntentPanel";
 import {
   daysUntil,
+  campaignDisplayTitle,
   formatMoney,
   getCampaign,
   progressRatio,
@@ -23,6 +24,7 @@ export default async function CampaignDetailPage({ params }: Props) {
   }
 
   const daysLeft = Math.max(0, daysUntil(campaign.deadline));
+  const displayTitle = campaignDisplayTitle(campaign);
   const progressPct = Math.round(progressRatio(campaign) * 100);
   const remainingCents = Math.max(0, campaign.goalCents - campaign.raisedCents);
   const backersNeeded = Math.max(0, campaign.thresholdBackers - campaign.backerCount);
@@ -46,7 +48,7 @@ export default async function CampaignDetailPage({ params }: Props) {
         <nav className="show-detail__breadcrumb" aria-label="Breadcrumb">
           <Link href="/shows">Shows</Link>
           <span aria-hidden>/</span>
-          <span>{campaign.artistName} in {campaign.city}</span>
+          <span>{displayTitle}</span>
         </nav>
 
         <CampaignHero campaign={campaign} />
