@@ -5465,6 +5465,8 @@ a {
 }
 
 .taste-memory-field select,
+.taste-memory-field input,
+.taste-memory-field textarea,
 .taste-memory-editor select,
 .taste-memory-editor input {
   min-height: 38px;
@@ -5473,6 +5475,58 @@ a {
   background: rgba(10, 10, 16, 0.75);
   color: var(--color-text);
   padding: 0 var(--space-3);
+}
+
+.taste-memory-field textarea {
+  min-height: 84px;
+  padding-top: var(--space-2);
+  resize: vertical;
+}
+
+.community-profile-form {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.035);
+  border-radius: var(--radius-md);
+}
+
+.community-visibility-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.community-visibility-option {
+  display: grid;
+  gap: 5px;
+  min-height: 86px;
+  padding: var(--space-3);
+  text-align: left;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--color-text);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.community-visibility-option:hover:not(:disabled),
+.community-visibility-option.active {
+  border-color: rgba(124, 92, 255, 0.55);
+  background: rgba(124, 92, 255, 0.12);
+}
+
+.community-visibility-option strong {
+  font-size: 14px;
+}
+
+.community-visibility-option span {
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .taste-memory-editor {
@@ -5541,6 +5595,7 @@ a {
   }
 
   .taste-memory-grid,
+  .community-visibility-options,
   .taste-memory-editor-inputs {
     grid-template-columns: 1fr;
   }

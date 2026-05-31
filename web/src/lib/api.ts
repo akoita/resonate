@@ -1914,6 +1914,80 @@ export async function removeTasteSignalControl(
   );
 }
 
+export type CommunityProfileVisibility = "private" | "community" | "followers" | "public";
+
+export type CommunityVisibilitySettings = {
+  showTasteBadges: boolean;
+  showOwnedItems: boolean;
+  showCampaignSupport: boolean;
+  showShowAttendance: boolean;
+  showPlaylists: boolean;
+  showWalletAddress: boolean;
+  allowTasteMatching: boolean;
+  allowCityScenes: boolean;
+};
+
+export type CommunityProfile = {
+  id: string;
+  userId: string;
+  displayName: string;
+  bio: string | null;
+  avatarUrl: string | null;
+  profileVisibility: CommunityProfileVisibility;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CommunityProfileResponse = {
+  schemaVersion: "community-profile/v1";
+  profile: CommunityProfile;
+  visibility: CommunityVisibilitySettings;
+  privacy?: {
+    notes: string[];
+  };
+};
+
+export type PublicCommunityProfileResponse = {
+  schemaVersion: "community-public-profile/v1";
+  profile: Pick<CommunityProfile, "userId" | "displayName" | "bio" | "avatarUrl" | "profileVisibility">;
+  showcase: {
+    tasteBadgesVisible: boolean;
+    ownedItemsVisible: boolean;
+    campaignSupportVisible: boolean;
+    showAttendanceVisible: boolean;
+    playlistsVisible: boolean;
+    walletAddress: string | null;
+  };
+  redactions: string[];
+};
+
+export async function getMyCommunityProfile(token: string): Promise<CommunityProfileResponse> {
+  return apiRequest<CommunityProfileResponse>("/community/profile/me", {}, token);
+}
+
+export async function updateMyCommunityProfile(
+  token: string,
+  input: {
+    displayName?: string;
+    bio?: string | null;
+    avatarUrl?: string | null;
+    profileVisibility?: CommunityProfileVisibility;
+    visibility?: Partial<CommunityVisibilitySettings>;
+  },
+): Promise<CommunityProfileResponse> {
+  return apiRequest<CommunityProfileResponse>(
+    "/community/profile/me",
+    { method: "PATCH", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+export async function getPublicCommunityProfile(userId: string): Promise<PublicCommunityProfileResponse> {
+  return apiRequest<PublicCommunityProfileResponse>(
+    `/community/profile/${encodeURIComponent(userId)}`,
+  );
+}
+
 export async function uploadStems(
   token: string,
   formData: FormData

@@ -57,17 +57,18 @@ Backend scope:
 
 - `CommunityProfile`
 - `CommunityVisibilitySettings`
-- profile badge reads;
-- marketplace ownership summary reads;
+- public profile reads with privacy redaction;
+- future profile badge reads;
+- future marketplace ownership summary reads;
 - private benefit eligibility distinct from public profile display.
 
 Frontend scope:
 
 - profile showcase settings;
-- public profile showcase;
+- public profile showcase contract;
 - hidden/private states;
-- marketplace item display cards;
-- badge display cards.
+- future marketplace item display cards;
+- future badge display cards.
 
 Analytics:
 
