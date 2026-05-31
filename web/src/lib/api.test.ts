@@ -1420,4 +1420,41 @@ describe('API Client', () => {
       expect(opts.headers.get('Authorization')).toBe('Bearer test-token');
     });
   });
+
+  describe('community profiles', () => {
+    it('fetches public community profiles without authentication and no-store cache', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            schemaVersion: 'community-public-profile/v1',
+            profile: {
+              userId: 'listener-1',
+              displayName: 'Ada Listener',
+              bio: null,
+              avatarUrl: null,
+              profileVisibility: 'public',
+            },
+            showcase: {
+              tasteBadgesVisible: false,
+              ownedItemsVisible: false,
+              campaignSupportVisible: false,
+              showAttendanceVisible: false,
+              playlistsVisible: false,
+              walletAddress: null,
+            },
+            redactions: ['wallet_address_hidden'],
+          }),
+      });
+
+      const result = await api.getPublicCommunityProfile('listener 1');
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/community/profile/listener%201');
+      expect(opts.cache).toBe('no-store');
+      expect(opts.headers.has('Authorization')).toBe(false);
+      expect(result.profile.displayName).toBe('Ada Listener');
+    });
+  });
 });

@@ -1985,6 +1985,7 @@ export async function updateMyCommunityProfile(
 export async function getPublicCommunityProfile(userId: string): Promise<PublicCommunityProfileResponse> {
   return apiRequest<PublicCommunityProfileResponse>(
     `/community/profile/${encodeURIComponent(userId)}`,
+    { cache: "no-store", silentErrorCodes: [404] },
   );
 }
 

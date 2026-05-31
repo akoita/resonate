@@ -262,7 +262,9 @@ The M1 profile foundation provides:
 - public profile read:
   - `GET /community/profile/:userId`
 - `/settings` Community Profile controls for identity, profile visibility, and
-  showcase flags.
+  showcase flags;
+- public profile route:
+  - `/community/profile/:userId`
 
 Public profile reads currently expose only profiles with
 `profileVisibility = public`. Wallet address and future showcase sections are
