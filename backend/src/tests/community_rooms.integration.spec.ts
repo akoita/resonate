@@ -9,7 +9,9 @@ const listenerUserId = `${TEST_PREFIX}listener`;
 const holderUserId = `${TEST_PREFIX}holder`;
 const otherUserId = `${TEST_PREFIX}other`;
 const artistId = `${TEST_PREFIX}artist`;
+const publicArtistId = `${TEST_PREFIX}public_artist`;
 const releaseId = `${TEST_PREFIX}release`;
+const publicReleaseId = `${TEST_PREFIX}public_release`;
 const trackId = `${TEST_PREFIX}track`;
 const stemId = `${TEST_PREFIX}stem`;
 const campaignId = `${TEST_PREFIX}campaign`;
@@ -56,6 +58,31 @@ describe("CommunityRoomsService integration", () => {
     });
     await prisma.release.create({
       data: { id: releaseId, artistId, title: "Community Room Release", status: "published" },
+    });
+    await prisma.artist.create({
+      data: {
+        id: publicArtistId,
+        displayName: "Release Credit Artist",
+        profileType: "public_artist",
+        claimStatus: "unclaimed",
+      },
+    });
+    await prisma.release.create({
+      data: {
+        id: publicReleaseId,
+        artistId,
+        title: "Release Credit Artist Single",
+        status: "published",
+        primaryArtist: "Release Credit Artist",
+        artistCredits: {
+          create: {
+            artistId: publicArtistId,
+            role: "main",
+            displayName: "Release Credit Artist",
+            sortOrder: 0,
+          },
+        },
+      },
     });
     await prisma.track.create({
       data: { id: trackId, releaseId, title: "Community Room Track" },
@@ -217,24 +244,38 @@ describe("CommunityRoomsService integration", () => {
     await prisma.communityMessage.deleteMany({ where: { room: { ownerId: { in: campaignOwnerIds } } } });
     await prisma.communityMembership.deleteMany({ where: { room: { ownerId: { in: campaignOwnerIds } } } });
     await prisma.communityRoom.deleteMany({ where: { ownerId: { in: campaignOwnerIds } } });
-    await prisma.communityModerationReport.deleteMany({ where: { room: { ownerId: artistId } } });
-    await prisma.communityMessage.deleteMany({ where: { room: { ownerId: artistId } } });
-    await prisma.communityMembership.deleteMany({ where: { room: { ownerId: artistId } } });
-    await prisma.communityRoom.deleteMany({ where: { ownerId: artistId } });
+    await prisma.communityModerationReport.deleteMany({ where: { room: { ownerId: { in: [artistId, publicArtistId] } } } });
+    await prisma.communityMessage.deleteMany({ where: { room: { ownerId: { in: [artistId, publicArtistId] } } } });
+    await prisma.communityMembership.deleteMany({ where: { room: { ownerId: { in: [artistId, publicArtistId] } } } });
+    await prisma.communityRoom.deleteMany({ where: { ownerId: { in: [artistId, publicArtistId] } } });
     await prisma.showPledge.deleteMany({ where: { campaignId: { in: campaignOwnerIds } } });
     await prisma.showCampaign.deleteMany({ where: { id: { in: campaignOwnerIds } } });
     await prisma.stemPurchase.deleteMany({ where: { buyerAddress: { equals: holderWallet, mode: "insensitive" } } });
     await prisma.stemListing.deleteMany({ where: { stemId } });
     await prisma.stem.deleteMany({ where: { id: stemId } });
     await prisma.track.deleteMany({ where: { id: trackId } });
-    await prisma.release.deleteMany({ where: { id: releaseId } });
-    await prisma.artist.deleteMany({ where: { id: artistId } });
+    await prisma.release.deleteMany({ where: { id: { in: [releaseId, publicReleaseId] } } });
+    await prisma.artist.deleteMany({ where: { id: { in: [artistId, publicArtistId] } } });
     await prisma.wallet.deleteMany({ where: { userId: { startsWith: TEST_PREFIX } } });
     await prisma.user.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.$disconnect();
   });
 
   beforeEach(() => eventBus.publish.mockClear());
+
+  it("does not auto-open rooms for manager-owned release profiles", async () => {
+    const result = await service.listArtistRooms(artistId, listenerUserId);
+
+    expect(result.artist).toMatchObject({
+      id: artistId,
+      displayName: "Community Room Artist",
+    });
+    expect(result.rooms).toEqual([]);
+    expect(eventBus.publish).not.toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.artist_tab_enabled",
+      artistId,
+    }));
+  });
 
   it("enables artist public and holder rooms", async () => {
     const result = await service.enableArtistCommunity(artistUserId, artistId);
@@ -246,6 +287,35 @@ describe("CommunityRoomsService integration", () => {
     expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
       eventName: "community.artist_tab_enabled",
       artistId,
+    }));
+  });
+
+  it("auto-opens rooms for public release artists with official catalog releases", async () => {
+    const result = await service.listArtistRooms(publicArtistId, listenerUserId);
+
+    expect(result.artist).toMatchObject({
+      id: publicArtistId,
+      displayName: "Release Credit Artist",
+    });
+    expect(result.rooms).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        roomType: "artist_public",
+        ownerType: "artist",
+        ownerId: publicArtistId,
+        artistId: publicArtistId,
+        access: expect.objectContaining({ joinable: true, reason: "open" }),
+      }),
+      expect.objectContaining({
+        roomType: "artist_holder",
+        ownerType: "artist",
+        ownerId: publicArtistId,
+        artistId: publicArtistId,
+        access: expect.objectContaining({ reason: "holder_required" }),
+      }),
+    ]));
+    expect(eventBus.publish).not.toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.artist_tab_enabled",
+      artistId: publicArtistId,
     }));
   });
 
