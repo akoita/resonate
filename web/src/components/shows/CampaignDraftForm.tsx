@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
@@ -42,7 +42,6 @@ const PAYMENT_DECIMALS = 6;
 const PAYMENT_SYMBOL = "USDC";
 const PUBLIC_CATALOG_STATUSES = new Set(["ready", "published"]);
 const MAX_GALLERY_VISUALS = 8;
-const CAMPAIGN_VISUAL_MAX_BYTES = 8 * 1024 * 1024;
 const CAMPAIGN_VISUAL_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 function addDaysForInput(days: number) {
@@ -85,9 +84,6 @@ function validateCampaignVisualFile(file: File, label: string) {
   if (!CAMPAIGN_VISUAL_MIME_TYPES.has(file.type)) {
     throw new Error(`${label} must be a JPEG, PNG, or WebP image.`);
   }
-  if (file.size > CAMPAIGN_VISUAL_MAX_BYTES) {
-    throw new Error(`${label} must be 8MB or smaller.`);
-  }
 }
 
 function validateCampaignVisualFiles(files: Array<{ file?: File | null; label: string }>) {
@@ -115,6 +111,7 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
   const router = useRouter();
   const { token, status, role, connect } = useAuth();
   const { chainId } = useZeroDev();
+  const galleryObjectUrlsRef = useRef<Set<string>>(new Set());
   const [artist, setArtist] = useState<ArtistProfile | null>(null);
   const [artistLoaded, setArtistLoaded] = useState(false);
   const [artistHasCatalogContent, setArtistHasCatalogContent] = useState<boolean | null>(null);
@@ -294,6 +291,22 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
     return () => URL.revokeObjectURL(previewUrl);
   }, [campaign?.cardImage, cardVisualFile]);
 
+  useEffect(() => () => {
+    galleryObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    galleryObjectUrlsRef.current.clear();
+  }, []);
+
+  function createGalleryPreviewUrl(file: File) {
+    const previewUrl = URL.createObjectURL(file);
+    galleryObjectUrlsRef.current.add(previewUrl);
+    return previewUrl;
+  }
+
+  function revokeGalleryPreviewUrl(previewUrl: string) {
+    if (!galleryObjectUrlsRef.current.delete(previewUrl)) return;
+    URL.revokeObjectURL(previewUrl);
+  }
+
   function updateTier(index: number, patch: Partial<TierForm>) {
     setTiers((current) => current.map((tier, tierIndex) => (
       tierIndex === index ? { ...tier, ...patch } : tier
@@ -306,41 +319,45 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
 
   function addGalleryFiles(files: File[]) {
     if (files.length === 0) return;
-    setGalleryVisuals((current) => [
-      ...current,
-      ...files.slice(0, Math.max(0, MAX_GALLERY_VISUALS - current.length)).map((file, index) => ({
+    const additions = files
+      .slice(0, Math.max(0, MAX_GALLERY_VISUALS - galleryVisuals.length))
+      .map((file, index) => ({
         id: `new-${Date.now()}-${index}-${file.name}`,
-        url: URL.createObjectURL(file),
+        url: createGalleryPreviewUrl(file),
         file,
         label: file.name,
-      })),
-    ]);
+      }));
+    if (additions.length === 0) return;
+    setGalleryVisuals((current) => [...current, ...additions]);
   }
 
   function replaceGalleryVisual(id: string, file: File | null) {
     if (!file) return;
+    const previous = galleryVisuals.find((visual) => visual.id === id);
+    if (!previous) return;
+    const previewUrl = createGalleryPreviewUrl(file);
     setGalleryVisuals((current) => current.map((visual) => (
       visual.id === id
         ? {
           ...visual,
-          url: URL.createObjectURL(file),
+          url: previewUrl,
           file,
           label: file.name,
         }
         : visual
     )));
+    if (previous) revokeGalleryPreviewUrl(previous.url);
   }
 
   function removeGalleryVisual(id: string) {
-    setGalleryVisuals((current) => {
-      const removed = current.find((visual) => visual.id === id);
-      if (removed?.persistedId) {
-        setDeletedGalleryVisualIds((deleted) => (
-          deleted.includes(removed.persistedId!) ? deleted : [...deleted, removed.persistedId!]
-        ));
-      }
-      return current.filter((visual) => visual.id !== id);
-    });
+    const removed = galleryVisuals.find((visual) => visual.id === id);
+    if (removed) revokeGalleryPreviewUrl(removed.url);
+    if (removed?.persistedId) {
+      setDeletedGalleryVisualIds((deleted) => (
+        deleted.includes(removed.persistedId!) ? deleted : [...deleted, removed.persistedId!]
+      ));
+    }
+    setGalleryVisuals((current) => current.filter((visual) => visual.id !== id));
   }
 
   function moveGalleryVisual(index: number, delta: -1 | 1) {
