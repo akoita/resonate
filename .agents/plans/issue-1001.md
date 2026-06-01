@@ -6,7 +6,14 @@ Implement the first safe, opt-in taste cohort slice for the Listener Community
 Network. Cohorts should feel explainable and useful without exposing private
 listening, wallet, location, or ownership facts about other listeners.
 
-## First Slice Scope
+## Feature-Complete Delivery Map
+
+Issue #1001 is not complete until all slices below are either implemented or
+explicitly moved to a named follow-up issue with rationale.
+
+### Slice 1: Backend Cohort Contract
+
+Status: `in-progress` in PR #1051.
 
 1. Add backend persistence:
    - `CommunityCohort`
@@ -34,13 +41,74 @@ listening, wallet, location, or ownership facts about other listeners.
    - architecture/execution plan status notes
    - security/audit note because this touches privacy and social discovery
 
+### Slice 2: Listener Cohort UI
+
+Status: `not-started`.
+
+Build the listener-facing cohort surface so the backend contract becomes useful
+inside the app:
+
+1. Add cohort cards with title, safe explanation, member count label, and status.
+2. Add join, leave, and hide controls with loading/error/success states.
+3. Add empty, disabled-consent, expired, and all-hidden states.
+4. Add entry points from listener/community surfaces, not only direct API use.
+5. Add frontend tests for suggestion rendering, join, leave, hide, and hidden
+   state persistence.
+
+### Slice 3: Cohort Generation Worker
+
+Status: `not-started`.
+
+Materialize cohorts from safe aggregate signals rather than manual seed data:
+
+1. Define source inputs from taste memory, analytics materializations, catalog
+   metadata, campaign/show support, collector behavior, and coarse city-scene
+   signals.
+2. Read from warehouse/materialized analytics tables for taste and behavioral
+   signals, with transactional DB reads only for current consent/profile state
+   and durable product entities.
+3. Generate candidate cohorts with reason codes and safe explanations.
+4. Enforce `minimumSize` before writing any user-visible cohort or membership.
+5. Write `CommunityCohort` and `CommunityCohortMembership` rows as the API
+   serving layer.
+6. Record generation metadata such as source version, materialization version,
+   signal window, and generated-at timestamp in cohort metadata.
+7. Add tests for minimum-size rejection, consent filtering, safe explanations,
+   and deterministic fixtures.
+
+### Slice 4: Cohort Lifecycle And Refresh
+
+Status: `not-started`.
+
+Keep generated cohorts fresh and reversible:
+
+1. Expire stale cohorts automatically.
+2. Refresh cohorts on a schedule without resurrecting hidden memberships.
+3. Preserve joined/left/hidden user intent across refreshes.
+4. Archive cohorts when source signals fall below threshold.
+5. Add cleanup jobs and tests for expiry, archival, and refresh behavior.
+
+### Slice 5: Operator Quality And Analytics
+
+Status: `not-started`.
+
+Make the feature observable before broader rollout:
+
+1. Track cohort funnel metrics: suggested, joined, left, hidden, disabled-consent,
+   below-threshold rejects, and stale cohorts.
+2. Add aggregate quality metrics by cohort type and reason code.
+3. Ensure analytics never expose other listener identities, raw listening
+   histories, exact private counts, wallet data, or fine location.
+4. Document rollback and kill-switch behavior for cohort generation.
+5. Add operational validation commands to the finish checklist for this feature.
+
 ## Deliberate Deferrals
 
 - No graph database yet.
-- No automated cohort generation job in this slice; seed/test-created cohorts
-  are enough to prove contracts, privacy gates, and user actions.
-- No full frontend cohort discovery UI until the backend contract is stable.
-  A follow-up can add cards/settings entry points.
+- Automated cohort generation is deferred only from Slice 1. It remains required
+  for #1001 feature completion unless moved to a named follow-up issue.
+- Full frontend cohort discovery is deferred only from Slice 1. It remains
+  required for #1001 feature completion unless moved to a named follow-up issue.
 - No Discord bridge or city-scene public pages.
 
 ## Validation
@@ -53,4 +121,3 @@ listening, wallet, location, or ownership facts about other listeners.
 - `cd backend && npx tsc --noEmit --pretty false`
 - Focused backend lint/type gate.
 - `git diff --check`
-

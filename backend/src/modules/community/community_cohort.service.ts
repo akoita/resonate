@@ -54,7 +54,7 @@ export class CommunityCohortService {
       const membership = cohort.memberships[0];
       if (!membership || membership.status === "hidden") continue;
       cohorts.push(cohortDto(cohort, membership));
-      if (!membership.suggestedEventAt) {
+      if (membership.status === "suggested" && !membership.suggestedEventAt) {
         await prisma.communityCohortMembership.update({
           where: { id: membership.id },
           data: { suggestedEventAt: now },

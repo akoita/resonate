@@ -149,6 +149,30 @@ describe("CommunityCohortService integration", () => {
     await expect(service.joinCohort(optedInUserId, cohort.id)).rejects.toThrow(NotFoundException);
   });
 
+  it("does not backfill suggestion impressions for already joined memberships", async () => {
+    const cohort = await createCohort("prejoined", {
+      cohortType: "taste",
+      reasonCode: "taste:prejoined",
+      safeExplanation: "Listeners already joined through a previous cohort flow.",
+      minimumSize: 5,
+      visibleMemberCount: 6,
+    });
+    await addMembership(cohort.id, optedInUserId, "joined");
+
+    const suggestions = await service.listSuggestions(optedInUserId);
+
+    expect(suggestions.cohorts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: cohort.id,
+        membership: expect.objectContaining({ status: "joined" }),
+      }),
+    ]));
+    expect(eventBus.publish).not.toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.cohort_suggested",
+      cohortId: cohort.id,
+    }));
+  });
+
   it("does not expose expired or archived cohorts", async () => {
     const expired = await createCohort("expired", {
       cohortType: "taste",
@@ -201,12 +225,13 @@ async function createCohort(
   });
 }
 
-async function addMembership(cohortId: string, userId: string) {
+async function addMembership(cohortId: string, userId: string, status = "suggested") {
   return prisma.communityCohortMembership.create({
     data: {
       cohortId,
       userId,
-      status: "suggested",
+      status,
+      joinedAt: status === "joined" ? new Date() : null,
     },
   });
 }

@@ -260,6 +260,34 @@ Implementation notes:
   off-chain and mutable/deletable.
 - Cohort generation jobs and frontend cards remain follow-up work.
 
+Feature-complete delivery map:
+
+- Backend cohort contract: `in-progress` in #1001/#1051. Adds persistence,
+  consent gates, minimum-size filtering, lifecycle actions, safe explanations,
+  and cohort analytics events.
+- Listener cohort UI: `not-started`. Add cohort cards, safe explanations,
+  join/leave/hide controls, empty/disabled/expired states, app entry points, and
+  frontend tests.
+- Cohort generation worker: `not-started`. Materialize cohorts from safe
+  aggregate taste, analytics, catalog, campaign/show, collector, and coarse
+  city-scene signals. The worker should read warehouse/materialized analytics
+  for taste and behavior, use transactional reads for current consent and
+  product state, enforce `minimumSize` before writing visible rows, and write
+  `CommunityCohort` / `CommunityCohortMembership` records for serving.
+- Cohort lifecycle and refresh: `not-started`. Expire stale cohorts, refresh
+  memberships without resurrecting hidden user intent, archive below-threshold
+  cohorts, and test expiry/refresh cleanup.
+- Operator quality and analytics: `not-started`. Track aggregate suggestion,
+  join, leave, hide, disabled-consent, below-threshold, stale-cohort, cohort
+  type, and reason-code metrics without exposing raw listener histories,
+  private identities, exact sensitive counts, wallet data, or fine location.
+
+Completion rule:
+
+- #1001 should remain open or be replaced by explicit follow-up issues until
+  every slice above is either implemented or intentionally deferred with
+  owner-visible rationale.
+
 Frontend scope:
 
 - suggested cohort cards;
