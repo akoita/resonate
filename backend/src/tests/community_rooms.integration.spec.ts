@@ -277,7 +277,11 @@ describe("CommunityRoomsService integration", () => {
     expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
       eventName: "community.campaign_room_joined",
       campaignId,
+      campaignSlug,
+      campaignStatus: "active",
       roomType: "show_campaign_supporter",
+      city: "Paris",
+      country: "FR",
     }));
   });
 
@@ -300,6 +304,8 @@ describe("CommunityRoomsService integration", () => {
     expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
       eventName: "community.show_city_interest_joined",
       campaignId,
+      campaignSlug,
+      campaignStatus: "active",
       city: "Paris",
       country: "FR",
     }));
@@ -365,6 +371,48 @@ describe("CommunityRoomsService integration", () => {
       eventName: "community.message_created",
       messageType: "campaign_update",
       campaignId,
+      campaignSlug,
+      campaignStatus: "active",
+      city: "Paris",
+      country: "FR",
+    }));
+    expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.campaign_update_viewed",
+      campaignId,
+      campaignSlug,
+      campaignStatus: "active",
+      roomId: joined.room.id,
+      roomType: "show_campaign_supporter",
+      latestMessageId: update.message.id,
+      visibleUpdateCount: 1,
+      city: "Paris",
+      country: "FR",
+    }));
+
+    eventBus.publish.mockClear();
+    await service.listMessages(listenerUserId, joined.room.id);
+    expect(eventBus.publish).not.toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.campaign_update_viewed",
+    }));
+
+    const laterUpdate = await service.createShowCampaignUpdate(
+      { userId: artistUserId, role: "artist" },
+      campaignId,
+      { body: "Booking hold is confirmed." },
+    );
+    eventBus.publish.mockClear();
+    await service.listMessages(listenerUserId, joined.room.id);
+    expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.campaign_update_viewed",
+      latestMessageId: laterUpdate.message.id,
+      visibleUpdateCount: 2,
+    }));
+
+    await service.deleteMessage(artistUserId, laterUpdate.message.id);
+    eventBus.publish.mockClear();
+    await service.listMessages(listenerUserId, joined.room.id);
+    expect(eventBus.publish).not.toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.campaign_update_viewed",
     }));
   });
 });

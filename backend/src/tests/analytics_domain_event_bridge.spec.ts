@@ -361,9 +361,13 @@ describe("AnalyticsDomainEventBridgeService", () => {
         occurredAt,
         userId: "user_919",
         campaignId: "campaign_919",
+        campaignSlug: "campaign-slug-919",
+        campaignStatus: "active",
         roomId: "campaign_room_919",
         roomType: "show_campaign_supporter",
         artistId: "artist_919",
+        city: "Paris",
+        country: "FR",
       },
       {
         eventName: "community.show_city_interest_joined",
@@ -372,6 +376,7 @@ describe("AnalyticsDomainEventBridgeService", () => {
         userId: "city_fan_919",
         campaignId: "campaign_919",
         campaignSlug: "campaign-slug-919",
+        campaignStatus: "active",
         roomId: "city_room_919",
         roomType: "show_city_demand",
         artistId: "artist_919",
@@ -410,7 +415,27 @@ describe("AnalyticsDomainEventBridgeService", () => {
         messageType: "campaign_update",
         campaignId: "campaign_919",
         campaignSlug: "campaign-slug-919",
+        campaignStatus: "active",
+        city: "Paris",
+        country: "FR",
         body: "do not persist campaign update body",
+      },
+      {
+        eventName: "community.campaign_update_viewed",
+        eventVersion: 1,
+        occurredAt,
+        userId: "user_919",
+        campaignId: "campaign_919",
+        campaignSlug: "campaign-slug-919",
+        campaignStatus: "active",
+        roomId: "campaign_room_919",
+        roomType: "show_campaign_supporter",
+        artistId: "artist_919",
+        latestMessageId: "campaign_update_919",
+        visibleUpdateCount: 1,
+        city: "Paris",
+        country: "FR",
+        body: "do not persist viewed update body",
       },
       {
         eventName: "community.message_reported",
@@ -712,8 +737,12 @@ describe("AnalyticsDomainEventBridgeService", () => {
         consentBasis: "show_campaign_community:v1",
         payload: expect.objectContaining({
           campaignId: "campaign_919",
+          campaignSlug: "campaign-slug-919",
+          campaignStatus: "active",
           roomId: "campaign_room_919",
           roomType: "show_campaign_supporter",
+          city: "Paris",
+          country: "FR",
         }),
       }),
     );
@@ -728,6 +757,7 @@ describe("AnalyticsDomainEventBridgeService", () => {
         payload: expect.objectContaining({
           campaignId: "campaign_919",
           campaignSlug: "campaign-slug-919",
+          campaignStatus: "active",
           roomId: "city_room_919",
           roomType: "show_city_demand",
           city: "Paris",
@@ -758,6 +788,29 @@ describe("AnalyticsDomainEventBridgeService", () => {
           messageType: "campaign_update",
           campaignId: "campaign_919",
           campaignSlug: "campaign-slug-919",
+          campaignStatus: "active",
+          city: "Paris",
+          country: "FR",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "community.campaign_update_viewed",
+        subjectType: "show_campaign",
+        subjectId: "campaign_919",
+        actorId: "user_919",
+        consentBasis: "show_campaign_community:v1",
+        payload: expect.objectContaining({
+          campaignId: "campaign_919",
+          campaignSlug: "campaign-slug-919",
+          campaignStatus: "active",
+          roomId: "campaign_room_919",
+          roomType: "show_campaign_supporter",
+          latestMessageId: "campaign_update_919",
+          visibleUpdateCount: 1,
+          city: "Paris",
+          country: "FR",
         }),
       }),
     );
@@ -829,6 +882,7 @@ describe("AnalyticsDomainEventBridgeService", () => {
     expect(serializedEvents).not.toContain("do not persist holdings");
     expect(serializedEvents).not.toContain("do not persist message body");
     expect(serializedEvents).not.toContain("do not persist campaign update body");
+    expect(serializedEvents).not.toContain("do not persist viewed update body");
     expect(serializedEvents).not.toContain("do not persist raw city source");
     expect(serializedEvents).not.toContain("do not persist report reason");
   });

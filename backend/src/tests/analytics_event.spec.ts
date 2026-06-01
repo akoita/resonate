@@ -196,6 +196,7 @@ describe("analytics event envelope", () => {
       "artist.upload_step_completed",
       "shows.pledge_intent_created",
       "shows.campaign_visuals_updated",
+      "community.campaign_update_viewed",
       "commerce.settled",
       "rights.route_decided",
       "agent.recommendation_selected",

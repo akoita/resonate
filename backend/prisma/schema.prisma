@@ -191,18 +191,20 @@ model CommunityRoom {
 }
 
 model CommunityMembership {
-  id         String        @id @default(uuid())
-  roomId     String
-  userId     String
-  role       String        @default("member")
-  sourceType String        @default("manual")
-  status     String        @default("active")
-  joinedAt   DateTime      @default(now())
-  endedAt    DateTime?
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
-  room       CommunityRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                         String        @id @default(uuid())
+  roomId                     String
+  userId                     String
+  role                       String        @default("member")
+  sourceType                 String        @default("manual")
+  status                     String        @default("active")
+  joinedAt                   DateTime      @default(now())
+  endedAt                    DateTime?
+  lastViewedCampaignUpdateId String?
+  lastViewedCampaignUpdateAt DateTime?
+  createdAt                  DateTime      @default(now())
+  updatedAt                  DateTime      @updatedAt
+  room                       CommunityRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user                       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([roomId, userId], name: "CommunityMembership_identity")
   @@index([userId, status])
