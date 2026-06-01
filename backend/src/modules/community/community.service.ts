@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
 
@@ -68,6 +69,8 @@ const DEFAULT_VISIBILITY_SETTINGS: CommunityVisibilitySettingsDto = {
   allowTasteMatching: false,
   allowCityScenes: false,
 };
+
+const PUBLIC_CAMPAIGN_SUPPORT_STATUSES = ["confirmed", "released"] as const;
 
 @Injectable()
 export class CommunityService {
@@ -159,18 +162,6 @@ export class CommunityService {
         user: {
           include: {
             communityVisibilitySettings: true,
-            communityBadges: {
-              where: {
-                badgeType: "supporter",
-                sourceType: "show_campaign",
-                revokedAt: null,
-              },
-              select: {
-                sourceId: true,
-                grantedAt: true,
-              },
-              orderBy: [{ grantedAt: "desc" }],
-            },
             wallet: { select: { address: true } },
           },
         },
@@ -185,7 +176,7 @@ export class CommunityService {
     }
     const visibility = visibilityDto(record.user.communityVisibilitySettings);
     const campaignSupport = visibility.showCampaignSupport
-      ? await this.publicCampaignSupportBadges(record.user.communityBadges)
+      ? await this.publicCampaignSupportFromPledges(userId, record.user.wallet?.address ?? null)
       : [];
 
     return publicProfileDto({
@@ -239,37 +230,54 @@ export class CommunityService {
     } as never);
   }
 
-  private async publicCampaignSupportBadges(
-    badges: Array<{ sourceId: string | null; grantedAt: Date }>,
+  private async publicCampaignSupportFromPledges(
+    userId: string,
+    walletAddress: string | null,
   ): Promise<PublicCampaignSupportRecord[]> {
-    const campaignIds = [...new Set(badges.map((badge) => badge.sourceId).filter((id): id is string => Boolean(id)))];
-    if (campaignIds.length === 0) return [];
-    const campaigns = await prisma.showCampaign.findMany({
-      where: { id: { in: campaignIds } },
-      select: {
-        id: true,
-        slug: true,
-        title: true,
-        artistDisplayName: true,
-        city: true,
-        country: true,
+    const supporterIdentities: Prisma.ShowPledgeWhereInput[] = [{ userId }];
+    if (walletAddress) {
+      supporterIdentities.push({
+        walletAddress: { equals: walletAddress, mode: "insensitive" },
+      });
+    }
+    const pledges = await prisma.showPledge.findMany({
+      where: {
+        status: { in: [...PUBLIC_CAMPAIGN_SUPPORT_STATUSES] },
+        OR: supporterIdentities,
       },
+      include: {
+        campaign: {
+          select: {
+            id: true,
+            slug: true,
+            title: true,
+            artistDisplayName: true,
+            city: true,
+            country: true,
+          },
+        },
+      },
+      orderBy: [
+        { confirmedAt: "desc" },
+        { createdAt: "desc" },
+      ],
     });
-    const campaignsById = new Map(campaigns.map((campaign) => [campaign.id, campaign]));
-    return badges.flatMap((badge) => {
-      if (!badge.sourceId) return [];
-      const campaign = campaignsById.get(badge.sourceId);
-      if (!campaign) return [];
-      return [{
+
+    const supportByCampaignId = new Map<string, PublicCampaignSupportRecord>();
+    for (const pledge of pledges) {
+      if (supportByCampaignId.has(pledge.campaignId)) continue;
+      const campaign = pledge.campaign;
+      supportByCampaignId.set(pledge.campaignId, {
         campaignId: campaign.id,
         campaignSlug: campaign.slug,
         campaignTitle: campaign.title,
         artistDisplayName: campaign.artistDisplayName,
         city: campaign.city,
         country: campaign.country,
-        grantedAt: badge.grantedAt,
-      }];
-    });
+        grantedAt: pledge.confirmedAt ?? pledge.createdAt,
+      });
+    }
+    return [...supportByCampaignId.values()];
   }
 }
 

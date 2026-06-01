@@ -192,13 +192,17 @@
   position: relative;
   z-index: 1;
   max-width: 640px;
+  max-height: calc(100% - 32px);
   padding: 40px;
   border-radius: 20px;
+  display: flex;
+  flex-direction: column;
   background:
     linear-gradient(160deg, rgba(28, 25, 56, 0.55) 0%, rgba(8, 8, 15, 0.65) 100%);
   border: 1px solid rgba(255, 255, 255, 0.10);
   backdrop-filter: blur(24px) saturate(140%);
   -webkit-backdrop-filter: blur(24px) saturate(140%);
+  overflow: hidden;
   box-shadow:
     0 24px 60px -20px rgba(0, 0, 0, 0.6),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
@@ -258,13 +262,17 @@
   font-size: 56px;
   font-weight: 700;
   line-height: 1.05;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   color: #fff;
   margin: 16px 0 16px;
   background: linear-gradient(180deg, #ffffff 30%, #C4B5FD 100%);
   -webkit-background-clip: text;
           background-clip: text;
   -webkit-text-fill-color: transparent;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
 }
 
 .home-ng .ng-hero__body {
@@ -274,12 +282,17 @@
   color: var(--ds-on-surface-variant);
   margin: 0 0 28px;
   max-width: 460px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  overflow: hidden;
 }
 
 .home-ng .ng-hero__actions {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .home-ng .ng-hero__campaign-rail {
@@ -1805,6 +1818,7 @@
   .home-ng .ng-grid-5 { grid-template-columns: repeat(4, 1fr); }
   .home-ng .ng-hero { aspect-ratio: 16 / 9; padding: 32px; }
   .home-ng .ng-hero__title { font-size: 44px; }
+  .home-ng .ng-hero__body { -webkit-line-clamp: 5; }
   .home-ng .ng-hero__campaign-rail { width: min(340px, 34%); }
 }
 
@@ -1825,6 +1839,7 @@
   }
   .home-ng .ng-hero__card { padding: 28px; }
   .home-ng .ng-hero__title { font-size: 36px; }
+  .home-ng .ng-hero__body { -webkit-line-clamp: 5; }
   .home-ng .ng-hero__campaign-rail {
     position: relative;
     right: auto;
@@ -1896,7 +1911,7 @@
   .home-ng .ng-hero { border-radius: 20px; padding: 20px; min-height: 280px; }
   .home-ng .ng-hero__card { padding: 20px; }
   .home-ng .ng-hero__title { font-size: 28px; }
-  .home-ng .ng-hero__body { font-size: 14px; margin-bottom: 20px; }
+  .home-ng .ng-hero__body { font-size: 14px; margin-bottom: 20px; -webkit-line-clamp: 4; }
   .home-ng .ng-hero__campaign-rail { grid-template-columns: 1fr; }
   .home-ng .ng-hero__campaign-tab { min-height: 64px; }
   .home-ng .ng-btn { padding: 12px 18px; font-size: 13px; }

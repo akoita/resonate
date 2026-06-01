@@ -778,6 +778,54 @@ export async function uploadShowCampaignVisuals(input: {
   });
 }
 
+export async function replaceShowCampaignVisual(input: {
+  campaign: Campaign;
+  token: string;
+  visualId: string;
+  visual: File;
+}): Promise<Campaign> {
+  const formData = new FormData();
+  formData.append("visual", input.visual);
+  return await mutateShowCampaign(`/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/visuals/${encodeURIComponent(input.visualId)}`, {
+    method: "PATCH",
+    token: input.token,
+    body: formData,
+  });
+}
+
+export async function reorderShowCampaignVisuals(input: {
+  campaign: Campaign;
+  token: string;
+  visualIds: string[];
+}): Promise<Campaign> {
+  return await mutateShowCampaign(`/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/visuals/order`, {
+    method: "PATCH",
+    token: input.token,
+    body: { visualIds: input.visualIds },
+  });
+}
+
+export async function deleteShowCampaignVisual(input: {
+  campaign: Campaign;
+  token: string;
+  visualId: string;
+}): Promise<Campaign> {
+  const response = await fetch(
+    `${API_BASE}/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/visuals/${encodeURIComponent(input.visualId)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${input.token}` },
+    },
+  );
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || `Campaign visual deletion failed with status ${response.status}`);
+  }
+
+  return mapBackendCampaign(await response.json() as BackendShowCampaign);
+}
+
 export async function approveShowCampaignAuthority(input: {
   campaign: Campaign;
   token: string;

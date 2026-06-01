@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -9,12 +10,13 @@ import {
   Request,
   Res,
   StreamableFile,
+  UploadedFile,
   UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
-import { FileFieldsInterceptor } from "@nestjs/platform-express";
+import { FileFieldsInterceptor, FileInterceptor } from "@nestjs/platform-express";
 import { Response } from "express";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
@@ -150,6 +152,43 @@ export class ShowsController {
       card: files?.card?.[0],
       gallery: files?.gallery ?? [],
     });
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("artist", "admin", "operator")
+  @Patch("campaigns/:id/visuals/order")
+  reorderCampaignVisuals(
+    @Param("id") id: string,
+    @Request() req: any,
+    @Body() body: any,
+  ) {
+    return this.showsService.reorderCampaignVisuals(this.actorFromRequest(req), id, {
+      visualIds: Array.isArray(body?.visualIds) ? body.visualIds : [],
+    });
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("artist", "admin", "operator")
+  @Patch("campaigns/:id/visuals/:visualRef")
+  @UseInterceptors(FileInterceptor("visual"))
+  replaceCampaignVisual(
+    @Param("id") id: string,
+    @Param("visualRef") visualRef: string,
+    @Request() req: any,
+    @UploadedFile() visual?: Express.Multer.File,
+  ) {
+    return this.showsService.replaceCampaignVisual(this.actorFromRequest(req), id, visualRef, visual ?? null);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("artist", "admin", "operator")
+  @Delete("campaigns/:id/visuals/:visualRef")
+  deleteCampaignVisual(
+    @Param("id") id: string,
+    @Param("visualRef") visualRef: string,
+    @Request() req: any,
+  ) {
+    return this.showsService.deleteCampaignVisual(this.actorFromRequest(req), id, visualRef);
   }
 
   @UseGuards(AuthGuard("jwt"))

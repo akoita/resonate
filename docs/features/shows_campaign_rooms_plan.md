@@ -138,11 +138,12 @@ Implementation notes:
 - Campaign supporter room joins also trigger the idempotent proof sync, so a
   confirmed backer who enters the room receives the same supporter badge/role
   foundation without a separate job.
-- Public profile reads expose campaign support badges only when the listener's
-  profile is `public` and `showCampaignSupport` is enabled. The public payload
-  includes campaign id/slug/title, artist display name, and coarse city/country,
-  but not pledge amount, wallet address, transaction hash, receipt details, or
-  private support history.
+- Public profile reads expose campaign support cards from trusted confirmed or
+  released pledge records only when the listener's profile is `public` and
+  `showCampaignSupport` is enabled. Private badge rows are not used as public
+  display source data. The public payload includes campaign id/slug/title,
+  artist display name, and coarse city/country, but not pledge amount, wallet
+  address, transaction hash, receipt details, or private support history.
 - Badge and role grant events are compact `community.badge_granted` and
   `community.role_granted` events with campaign/source references only.
 - Automatic revocation for refunded, failed, cancelled, or released lifecycle
