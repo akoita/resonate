@@ -2,6 +2,10 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
+import {
+  ACTIVE_CAMPAIGN_SUPPORT_CAMPAIGN_STATUSES,
+  ACTIVE_CAMPAIGN_SUPPORT_PLEDGE_STATUSES,
+} from "./community_eligibility.service";
 
 export const COMMUNITY_PROFILE_VISIBILITIES = ["private", "community", "followers", "public"] as const;
 
@@ -69,8 +73,6 @@ const DEFAULT_VISIBILITY_SETTINGS: CommunityVisibilitySettingsDto = {
   allowTasteMatching: false,
   allowCityScenes: false,
 };
-
-const PUBLIC_CAMPAIGN_SUPPORT_STATUSES = ["confirmed", "released"] as const;
 
 @Injectable()
 export class CommunityService {
@@ -242,8 +244,11 @@ export class CommunityService {
     }
     const pledges = await prisma.showPledge.findMany({
       where: {
-        status: { in: [...PUBLIC_CAMPAIGN_SUPPORT_STATUSES] },
+        status: { in: ACTIVE_CAMPAIGN_SUPPORT_PLEDGE_STATUSES },
         OR: supporterIdentities,
+        campaign: {
+          status: { in: ACTIVE_CAMPAIGN_SUPPORT_CAMPAIGN_STATUSES },
+        },
       },
       include: {
         campaign: {

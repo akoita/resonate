@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma, ShowPledgeStatus } from "@prisma/client";
+import { Prisma, ShowCampaignStatus, ShowPledgeStatus } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
 
@@ -16,7 +16,15 @@ export const COMMUNITY_BENEFIT_TYPES = [
 export type CommunityBenefitType = (typeof COMMUNITY_BENEFIT_TYPES)[number];
 
 const ACTIVE_RULE_STATUSES = ["active"] as const;
-const SUPPORTER_BADGE_STATUSES: ShowPledgeStatus[] = ["confirmed", "released"];
+export const ACTIVE_CAMPAIGN_SUPPORT_PLEDGE_STATUSES: ShowPledgeStatus[] = ["confirmed", "released"];
+export const ACTIVE_CAMPAIGN_SUPPORT_CAMPAIGN_STATUSES: ShowCampaignStatus[] = [
+  "active",
+  "funded",
+  "booking_confirmed",
+  "deposit_released",
+  "fulfilled",
+  "released",
+];
 
 type PolicyObject = Record<string, unknown>;
 
@@ -151,16 +159,21 @@ export class CommunityEligibilityService {
 
     const pledges = await prisma.showPledge.findMany({
       where: {
-        status: { in: SUPPORTER_BADGE_STATUSES },
+        status: { in: ACTIVE_CAMPAIGN_SUPPORT_PLEDGE_STATUSES },
         ...(campaignId ? { campaignId } : {}),
         OR: pledgeClauses,
+        campaign: {
+          status: { in: ACTIVE_CAMPAIGN_SUPPORT_CAMPAIGN_STATUSES },
+        },
       },
       include: { campaign: true },
       orderBy: [{ confirmedAt: "desc" }, { createdAt: "desc" }],
     });
 
     const granted: Array<{ campaignId: string; badgeId: string; roleId: string }> = [];
+    const activeCampaignIds = new Set<string>();
     for (const pledge of pledges) {
+      activeCampaignIds.add(pledge.campaignId);
       const [badge, badgeWasGranted] = await this.upsertSupporterBadge(userId, pledge);
       const [role, roleWasGranted] = await this.upsertSupporterRole(userId, pledge);
       if (badgeWasGranted) {
@@ -195,6 +208,7 @@ export class CommunityEligibilityService {
       }
       granted.push({ campaignId: pledge.campaignId, badgeId: badge.id, roleId: role.id });
     }
+    await this.revokeExpiredSupporterProofs(userId, [...activeCampaignIds], campaignId);
 
     return {
       schemaVersion: "community-supporter-proofs/v1",
@@ -323,6 +337,9 @@ export class CommunityEligibilityService {
         campaignId,
         status: { in: statuses },
         OR: pledgeWalletClauses,
+        campaign: {
+          status: { in: ACTIVE_CAMPAIGN_SUPPORT_CAMPAIGN_STATUSES },
+        },
       },
     });
 
@@ -437,6 +454,46 @@ export class CommunityEligibilityService {
     });
     return [role, wasGranted] as const;
   }
+
+  private async revokeExpiredSupporterProofs(userId: string, activeCampaignIds: string[], campaignId?: string) {
+    if (campaignId && activeCampaignIds.includes(campaignId)) {
+      return;
+    }
+    const now = new Date();
+    const badgeScope = campaignId
+      ? { sourceId: campaignId }
+      : activeCampaignIds.length > 0
+        ? { sourceId: { notIn: activeCampaignIds } }
+        : {};
+    const roleScope = campaignId
+      ? { scopeId: campaignId }
+      : activeCampaignIds.length > 0
+        ? { scopeId: { notIn: activeCampaignIds } }
+        : {};
+
+    await prisma.$transaction([
+      prisma.communityBadge.updateMany({
+        where: {
+          userId,
+          badgeType: "supporter",
+          sourceType: "show_campaign",
+          revokedAt: null,
+          ...badgeScope,
+        },
+        data: { revokedAt: now },
+      }),
+      prisma.communityRole.updateMany({
+        where: {
+          userId,
+          roleType: "supporter",
+          scopeType: "show_campaign",
+          revokedAt: null,
+          ...roleScope,
+        },
+        data: { revokedAt: now },
+      }),
+    ]);
+  }
 }
 
 function activeRuleWhere(now: Date): Prisma.CommunityBenefitRuleWhereInput {
@@ -547,8 +604,8 @@ function optionalNumberField(policy: PolicyObject, field: string): number | unde
 }
 
 function campaignStatusesAtLeast(minStatus: string): ShowPledgeStatus[] {
-  if (minStatus === "confirmed") return ["confirmed", "released"];
-  if (minStatus === "submitted") return ["submitted", "confirmed", "refund_available", "released"];
+  if (minStatus === "confirmed") return [...ACTIVE_CAMPAIGN_SUPPORT_PLEDGE_STATUSES];
+  if (minStatus === "submitted") return ["submitted", ...ACTIVE_CAMPAIGN_SUPPORT_PLEDGE_STATUSES];
   throw new BadRequestException("campaign_support minStatus must be submitted or confirmed");
 }
 

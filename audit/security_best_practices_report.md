@@ -1,5 +1,53 @@
 # Security Best Practices Report
 
+## Campaign Support Lifecycle Reconciliation - 2026-06-01
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/community/community_eligibility.service.ts`
+- `backend/src/modules/community/community_rooms.service.ts`
+- `backend/src/modules/community/community.service.ts`
+- `backend/src/tests/community_eligibility.integration.spec.ts`
+- `backend/src/tests/community_rooms.integration.spec.ts`
+- `backend/src/tests/community_profile.integration.spec.ts`
+- `docs/features/*`
+
+### Executive Summary
+
+Issue #1048 changes authorization-sensitive campaign supporter access and
+public support display. The scoped review found no Critical or High findings:
+invalid refund, failure, cancellation, and refund-only lifecycle states now
+stop granting private room access, private supporter proofs, and public
+campaign-support cards.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- Private supporter room reads now re-check eligibility before exposing
+  messages and mark stale memberships `removed`.
+- Supporter badges/roles remain private proofs and are revoked with `revokedAt`
+  when support is no longer lifecycle-valid.
+- Public profile support cards use the same lifecycle-valid support filters and
+  do not expose pledge amount, wallet address, transaction hash, or private
+  support history.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/modules/community backend/src/tests/community_*.integration.spec.ts --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\\$queryRaw' backend/src/modules/community backend/src/tests/community_*.integration.spec.ts`
+- `rg 'JSON\\.parse|eval\\(' backend/src/modules/community backend/src/tests/community_*.integration.spec.ts`
+- Targeted review of campaign support policy filtering, proof revocation,
+  private room read authorization, and public profile redaction behavior.
+
 ## Executive Summary
 
 The #1007 agent-mediated playback intent slice was reviewed for authorization,

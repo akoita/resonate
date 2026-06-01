@@ -2,12 +2,14 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { CommunityRoom, Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
-import { CommunityEligibilityService } from "./community_eligibility.service";
+import {
+  ACTIVE_CAMPAIGN_SUPPORT_CAMPAIGN_STATUSES,
+  CommunityEligibilityService,
+} from "./community_eligibility.service";
 
 const ROOM_STATUSES = ["active", "paused", "archived"] as const;
 const MESSAGE_TYPES = ["message", "announcement", "campaign_update"] as const;
 const MODERATION_ACTIONS = ["remove", "ban"] as const;
-const SHOW_CAMPAIGN_ROOM_STATUSES = ["active", "funded", "booking_confirmed", "deposit_released"] as const;
 const SHOW_CITY_DEMAND_SIGNAL_STATUSES = ["draft", "active", "funded", "booking_confirmed", "deposit_released"] as const;
 const SHOW_CITY_DEMAND_CAMPAIGN_STATUSES = ["active", "funded", "booking_confirmed", "deposit_released"] as const;
 
@@ -120,7 +122,10 @@ export class CommunityRoomsService {
       schemaVersion: "show-campaign-community/v1",
       campaign: campaignDto(campaign),
       rooms: await Promise.all(
-        rooms.map(async (room) => roomDto(room, membershipsByRoom.get(room.id), await this.describeRoomAccess(userId, room))),
+        rooms.map(async (room) => {
+          const membership = await this.reconcileMembershipAccess(userId, room, membershipsByRoom.get(room.id));
+          return roomDto(room, membership, await this.describeRoomAccess(userId, room));
+        }),
       ),
     };
   }
@@ -386,6 +391,7 @@ export class CommunityRoomsService {
       where: { CommunityMembership_identity: { roomId: room.id, userId } },
     });
     if (membership?.status !== "active") throw new ForbiddenException("Join this community room to read messages");
+    await this.assertMembershipStillEligible(userId, room, membership);
   }
 
   private async assertCanWriteRoom(userId: string, room: RoomRecord) {
@@ -432,6 +438,42 @@ export class CommunityRoomsService {
       reason: result.eligible ? "eligible" : gatedRoomReason(room),
       reasons: result.eligible ? result.reasons : [gatedRoomReason(room)],
     };
+  }
+
+  private async reconcileMembershipAccess(
+    userId: string,
+    room: RoomRecord,
+    membership?: { id?: string; role: string; status: string; joinedAt: Date; endedAt: Date | null } | null,
+  ) {
+    if (!membership || membership.status !== "active" || !shouldReconcileMembershipAccess(room)) {
+      return membership ?? null;
+    }
+    const result = await this.eligibility.evaluateAccessPolicy(userId, room.accessPolicyJson ?? { type: "manual" });
+    if (result.eligible) return membership;
+
+    const endedAt = new Date();
+    const updated = await prisma.communityMembership.update({
+      where: membership.id
+        ? { id: membership.id }
+        : { CommunityMembership_identity: { roomId: room.id, userId } },
+      data: {
+        status: "removed",
+        endedAt,
+      },
+    });
+    return updated;
+  }
+
+  private async assertMembershipStillEligible(
+    userId: string,
+    room: RoomRecord,
+    membership: { id: string; role: string; status: string; joinedAt: Date; endedAt: Date | null },
+  ) {
+    if (!shouldReconcileMembershipAccess(room)) return;
+    const updated = await this.reconcileMembershipAccess(userId, room, membership);
+    if (updated?.status !== "active") {
+      throw new ForbiddenException(roomAccessDeniedMessage(room));
+    }
   }
 
   private async getRoom(roomId: string) {
@@ -532,7 +574,7 @@ export class CommunityRoomsService {
 
   private async ensureShowCampaignSupporterRoomForCampaign(campaign: ShowCampaignRecord) {
     if (!isShowCampaignSupporterRoomAvailable(campaign)) {
-      throw new BadRequestException("Only active, funded, or booking-confirmed escrow campaigns can open supporter rooms");
+      throw new BadRequestException("Only support-valid escrow campaigns can open supporter rooms");
     }
 
     const room = await prisma.communityRoom.upsert({
@@ -644,7 +686,9 @@ function campaignSupportPolicy(campaignId: string): Prisma.InputJsonObject {
 
 function isShowCampaignSupporterRoomAvailable(campaign: { campaignLevel: string; status: string }) {
   return campaign.campaignLevel === "active_escrow_campaign"
-    && SHOW_CAMPAIGN_ROOM_STATUSES.includes(campaign.status as (typeof SHOW_CAMPAIGN_ROOM_STATUSES)[number]);
+    && ACTIVE_CAMPAIGN_SUPPORT_CAMPAIGN_STATUSES.includes(
+      campaign.status as (typeof ACTIVE_CAMPAIGN_SUPPORT_CAMPAIGN_STATUSES)[number],
+    );
 }
 
 function isShowCampaignCityDemandAvailable(campaign: { campaignLevel: string; status: string }) {
@@ -721,6 +765,10 @@ function publicRoomAccessDto(room: { roomType: string; status: string }) {
 
 function isGatedRoomType(roomType: string) {
   return roomType === "artist_holder" || roomType === "show_campaign_supporter";
+}
+
+function shouldReconcileMembershipAccess(room: { roomType: string; accessPolicyJson?: Prisma.JsonValue | null }) {
+  return room.roomType === "show_campaign_supporter" && Boolean(room.accessPolicyJson);
 }
 
 function gatedRoomReason(room: { roomType: string }) {
