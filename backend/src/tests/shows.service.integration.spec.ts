@@ -322,13 +322,26 @@ describe("ShowsService integration", () => {
           mimetype: "image/png",
           size: 10,
         } as Express.Multer.File,
+        gallery: [
+          {
+            buffer: Buffer.from("gallery-image"),
+            mimetype: "image/jpeg",
+            size: 13,
+          } as Express.Multer.File,
+        ],
       },
     );
     expect(visualized.heroImageUrl).toBe(`/shows/campaigns/${updated.id}/visuals/hero`);
     expect(visualized.cardImageUrl).toBe(`/shows/campaigns/${updated.id}/visuals/card`);
+    expect(visualized.visuals.some((visual) => visual.role === "gallery")).toBe(true);
     const heroVisual = await service.getCampaignVisual(updated.id, "hero");
     expect(heroVisual?.mimeType).toBe("image/webp");
     expect(heroVisual?.data.toString()).toBe("hero-image");
+    const galleryVisualRef = visualized.visuals.find((visual) => visual.role === "gallery")?.id;
+    expect(galleryVisualRef).toBeTruthy();
+    const galleryVisual = await service.getCampaignVisual(updated.id, galleryVisualRef!);
+    expect(galleryVisual?.mimeType).toBe("image/jpeg");
+    expect(galleryVisual?.data.toString()).toBe("gallery-image");
 
     await expect(service.createDraftCampaign(
       { userId, role: "artist" },

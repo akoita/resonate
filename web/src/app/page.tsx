@@ -32,6 +32,7 @@ import {
   listCampaignsSync,
   getFeaturedCampaignSync,
   daysUntil,
+  progressRatio,
   type Campaign,
 } from "../lib/shows";
 import AgentSessionPresets from "../components/agent/AgentSessionPresets";
@@ -124,6 +125,7 @@ export default function Home() {
   const [tracksToAddToPlaylist, setTracksToAddToPlaylist] = useState<LocalTrack[] | null>(null);
   const [savingReleaseId, setSavingReleaseId] = useState<string | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>(() => listCampaignsSync());
+  const [activeHeroCampaignId, setActiveHeroCampaignId] = useState("");
   const lastCatalogSearchAnalyticsKeyRef = useRef<string | null>(null);
   const { status, token, userId } = useAuth();
   const { addToast } = useToast();
@@ -213,12 +215,13 @@ export default function Home() {
   // Row data derivation.
   const resumeRow = filteredReleases.slice(0, 4);
   const stemRow = filteredReleases.slice(0, 3);
-  const featuredCampaign = useMemo(
-    () => campaigns.find((campaign) => campaign.featured) ?? campaigns[0] ?? getFeaturedCampaignSync(),
-    [campaigns],
+  const heroCampaigns = useMemo(() => selectHomeHeroCampaigns(campaigns), [campaigns]);
+  const activeHeroCampaign = useMemo(
+    () => heroCampaigns.find((campaign) => campaign.id === activeHeroCampaignId) ?? heroCampaigns[0] ?? getFeaturedCampaignSync(),
+    [activeHeroCampaignId, heroCampaigns],
   );
   const eventRow: Campaign[] = useMemo(() => campaigns.slice(0, 2), [campaigns]);
-  const featuredCampaignImage = featuredCampaign.heroImage || featuredCampaign.cardImage;
+  const activeHeroCampaignImage = activeHeroCampaign.heroImage || activeHeroCampaign.cardImage || activeHeroCampaign.visuals[0]?.url;
   const catalogStems = useMemo<StemSummary[]>(
     () => flattenStems(displayReleases),
     [displayReleases],
@@ -476,8 +479,8 @@ export default function Home() {
         {/* 1. HERO ————————————————————————————————————————————————— */}
         <section className="ng-section ng-section--tight">
           <div
-            className={`ng-hero ${featuredCampaignImage ? "ng-hero--campaign-image" : ""}`}
-            style={featuredCampaignImage ? { "--ng-hero-image": `url(${featuredCampaignImage})` } as CSSProperties : undefined}
+            className={`ng-hero ${activeHeroCampaignImage ? "ng-hero--campaign-image" : ""}`}
+            style={activeHeroCampaignImage ? { "--ng-hero-image": `url(${activeHeroCampaignImage})` } as CSSProperties : undefined}
           >
             <svg
               className="ng-hero__motif"
@@ -506,16 +509,16 @@ export default function Home() {
             <div className="ng-hero__card">
               <span className="ng-kicker ng-kicker--primary">Featured Campaign</span>
               <h2 className="ng-hero__title">
-                {campaignDisplayTitle(featuredCampaign)}
+                {campaignDisplayTitle(activeHeroCampaign)}
               </h2>
               <p className="ng-hero__body">
-                {featuredCampaign.tagline} Lock funds in a smart contract to
+                {activeHeroCampaign.tagline} Lock funds in a smart contract to
                 bring this show to life — refunded automatically if the
                 threshold isn&apos;t met.
               </p>
               <div className="ng-hero__actions">
                 <Link
-                  href={`/shows/${featuredCampaign.id}`}
+                  href={`/shows/${activeHeroCampaign.id}`}
                   className="ng-btn ng-btn--primary"
                 >
                   <span className="ms-icon" data-fill="1" aria-hidden>play_arrow</span>
@@ -526,6 +529,30 @@ export default function Home() {
                 </Link>
               </div>
             </div>
+            {heroCampaigns.length > 1 ? (
+              <div className="ng-hero__campaign-rail" aria-label="Featured campaigns">
+                {heroCampaigns.map((campaign, index) => {
+                  const image = campaign.cardImage || campaign.heroImage || campaign.visuals[0]?.url;
+                  const selected = campaign.id === activeHeroCampaign.id;
+                  return (
+                    <button
+                      key={campaign.id}
+                      type="button"
+                      className={`ng-hero__campaign-tab ${selected ? "ng-hero__campaign-tab--active" : ""}`}
+                      style={image ? { "--ng-hero-thumb": `url(${image})` } as CSSProperties : undefined}
+                      onClick={() => setActiveHeroCampaignId(campaign.id)}
+                      aria-pressed={selected}
+                    >
+                      <span className="ng-hero__campaign-index">{String(index + 1).padStart(2, "0")}</span>
+                      <span className="ng-hero__campaign-copy">
+                        <strong>{campaignDisplayTitle(campaign)}</strong>
+                        <span>{campaign.city} · {Math.round(progressRatio(campaign) * 100)}% funded</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -1116,6 +1143,29 @@ function getReleaseTime(release: Release) {
   return Number.isFinite(time) ? time : 0;
 }
 
+function selectHomeHeroCampaigns(campaigns: Campaign[]): Campaign[] {
+  return campaigns
+    .slice()
+    .sort((a, b) => scoreHomeHeroCampaign(b) - scoreHomeHeroCampaign(a))
+    .slice(0, 4);
+}
+
+function scoreHomeHeroCampaign(campaign: Campaign): number {
+  const days = daysUntil(campaign.deadline);
+  const hasVisual = Boolean(campaign.heroImage || campaign.cardImage);
+  const urgencyScore = days > 0 ? Math.max(0, 28 - Math.min(days, 28)) : 0;
+
+  return (
+    (campaign.featured ? 100 : 0)
+    + (hasVisual ? 36 : 0)
+    + (campaign.status === "active" ? 24 : 0)
+    + (campaign.status === "funded" || campaign.status === "booked" ? 16 : 0)
+    + Math.round(progressRatio(campaign) * 28)
+    + Math.min(campaign.backerCount, 24)
+    + urgencyScore
+  );
+}
+
 function getReleaseResourceCount(release: Release) {
   const stemCount = release.tracks?.reduce(
     (sum, track) => sum + (track.stems?.length ?? 0),
@@ -1648,7 +1698,7 @@ function EventCard({ campaign, variant }: { campaign: Campaign; variant: "live" 
   const badge = variant === "live"
     ? `Ends in ${days}d`
     : new Date(campaign.targetDate).toLocaleDateString("en-GB", { month: "short", day: "numeric" });
-  const visualImage = campaign.cardImage || campaign.heroImage;
+  const visualImage = campaign.cardImage || campaign.heroImage || campaign.visuals[0]?.url;
   const hasImage = Boolean(visualImage);
 
   return (

@@ -34,12 +34,13 @@ export function CampaignHero({ campaign }: Props) {
   const displayTitle = campaignDisplayTitle(campaign);
   const monogram = campaignDisplayInitial(campaign);
   const routeCode = campaignRouteCode(campaign);
-  const hasHeroImage = Boolean(campaign.heroImage);
+  const heroVisual = campaign.heroImage || campaign.visuals[0]?.url;
+  const hasHeroImage = Boolean(heroVisual);
 
   return (
     <article
       className={`campaign-hero ${hasHeroImage ? "campaign-hero--visual" : ""}`}
-      style={hasHeroImage ? { "--campaign-visual": `url(${campaign.heroImage})` } as CSSProperties : undefined}
+      style={hasHeroImage ? { "--campaign-visual": `url(${heroVisual})` } as CSSProperties : undefined}
     >
       <div className="campaign-hero__body">
         <span className="campaign-hero__eyebrow">Featured Show</span>

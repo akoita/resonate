@@ -1145,6 +1145,7 @@ model ShowCampaign {
   tiers                       ShowCampaignTier[]
   pledges                     ShowPledge[]
   events                      ShowCampaignEvent[]
+  visuals                     ShowCampaignVisual[]
 
   @@index([artistId])
   @@index([status, deadline])
@@ -1155,6 +1156,23 @@ model ShowCampaign {
   @@index([city, country])
   @@index([chainId, contractAddress])
   @@index([contractCampaignId])
+}
+
+model ShowCampaignVisual {
+  id         String       @id @default(uuid())
+  campaignId String
+  role       String       @default("gallery")
+  publicUrl  String
+  storageUri String
+  mimeType   String
+  sortOrder  Int          @default(0)
+  caption    String?      @db.Text
+  credit     String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  campaign   ShowCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, role, sortOrder])
 }
 
 model ShowCampaignTier {

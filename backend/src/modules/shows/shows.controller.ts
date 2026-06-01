@@ -67,17 +67,13 @@ export class ShowsController {
     return this.communityRoomsService.createShowCampaignUpdate(this.actorFromRequest(req), id, body);
   }
 
-  @Get("campaigns/:id/visuals/:slot")
+  @Get("campaigns/:id/visuals/:visualRef")
   async getCampaignVisual(
     @Param("id") id: string,
-    @Param("slot") slot: string,
+    @Param("visualRef") visualRef: string,
     @Res({ passthrough: true }) res: Response,
   ) {
-    if (slot !== "hero" && slot !== "card") {
-      res.status(404).send("Campaign visual not found");
-      return;
-    }
-    const visual = await this.showsService.getCampaignVisual(id, slot);
+    const visual = await this.showsService.getCampaignVisual(id, visualRef);
     if (!visual) {
       res.status(404).send("Campaign visual not found");
       return;
@@ -132,15 +128,21 @@ export class ShowsController {
   @UseInterceptors(FileFieldsInterceptor([
     { name: "hero", maxCount: 1 },
     { name: "card", maxCount: 1 },
+    { name: "gallery", maxCount: 8 },
   ]))
   uploadCampaignVisuals(
     @Param("id") id: string,
     @Request() req: any,
-    @UploadedFiles() files: { hero?: Express.Multer.File[]; card?: Express.Multer.File[] },
+    @UploadedFiles() files: {
+      hero?: Express.Multer.File[];
+      card?: Express.Multer.File[];
+      gallery?: Express.Multer.File[];
+    },
   ) {
     return this.showsService.uploadCampaignVisuals(this.actorFromRequest(req), id, {
       hero: files?.hero?.[0],
       card: files?.card?.[0],
+      gallery: files?.gallery ?? [],
     });
   }
 

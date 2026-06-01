@@ -19,6 +19,15 @@ export interface CampaignTier {
   paymentAssetSymbol: string;
 }
 
+export interface CampaignVisual {
+  id: string;
+  role: string;
+  url: string;
+  sortOrder: number;
+  caption?: string | null;
+  credit?: string | null;
+}
+
 export interface Campaign {
   id: string;
   backendId: string;
@@ -46,6 +55,7 @@ export interface Campaign {
   thresholdBackers: number;
   heroImage: string;      // optional; empty string → gradient placeholder
   cardImage: string;
+  visuals: CampaignVisual[];
   status: CampaignStatus;
   featured: boolean;
   // Sepolia escrow contract. Until Campaign.sol ships, we link to the
@@ -76,6 +86,15 @@ export function campaignRouteCode(campaign: Pick<Campaign, "title" | "city">): s
     .toUpperCase();
   const cityCode = campaign.city.slice(0, 3).toUpperCase();
   return `${titleCode || "SHW"}-${cityCode}`;
+}
+
+export function campaignVisualEndpoint(
+  campaign: Pick<Campaign, "backendId">,
+  slot: "card" | "hero",
+): string {
+  return campaign.backendId
+    ? `${API_BASE}/shows/campaigns/${encodeURIComponent(campaign.backendId)}/visuals/${slot}`
+    : "";
 }
 
 export type CatalogArtistCandidate = {
@@ -313,6 +332,7 @@ type BackendShowCampaign = {
   artistDisplayName: string;
   heroImageUrl?: string | null;
   cardImageUrl?: string | null;
+  visuals?: BackendShowCampaignVisual[];
   title: string;
   city: string;
   country: string;
@@ -340,6 +360,15 @@ type BackendShowCampaign = {
   contractCampaignId?: string | null;
   description?: string | null;
   tiers?: BackendShowCampaignTier[];
+};
+
+type BackendShowCampaignVisual = {
+  id: string;
+  role?: string | null;
+  publicUrl?: string | null;
+  sortOrder?: number | null;
+  caption?: string | null;
+  credit?: string | null;
 };
 
 type BackendShowCampaignTier = {
@@ -385,6 +414,7 @@ const CAMPAIGNS: Campaign[] = [
     thresholdBackers: 500,
     heroImage: "",
     cardImage: "",
+    visuals: [],
     status: "active",
     featured: true,
     contractAddress: SEPOLIA_REVENUE_ESCROW,
@@ -445,6 +475,7 @@ const CAMPAIGNS: Campaign[] = [
     thresholdBackers: 400,
     heroImage: "",
     cardImage: "",
+    visuals: [],
     status: "active",
     featured: false,
     contractAddress: SEPOLIA_REVENUE_ESCROW,
@@ -480,6 +511,7 @@ const CAMPAIGNS: Campaign[] = [
     thresholdBackers: 300,
     heroImage: "",
     cardImage: "",
+    visuals: [],
     status: "active",
     featured: false,
     contractAddress: SEPOLIA_REVENUE_ESCROW,
@@ -901,6 +933,16 @@ function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign 
     thresholdBackers: campaign.minimumBackers ?? 0,
     heroImage: mediaUrl(campaign.heroImageUrl),
     cardImage: mediaUrl(campaign.cardImageUrl) || mediaUrl(campaign.heroImageUrl),
+    visuals: (campaign.visuals ?? [])
+      .map((visual) => ({
+        id: visual.id,
+        role: visual.role ?? "gallery",
+        url: mediaUrl(visual.publicUrl),
+        sortOrder: visual.sortOrder ?? 0,
+        caption: visual.caption ?? null,
+        credit: visual.credit ?? null,
+      }))
+      .filter((visual) => visual.url),
     status: mapBackendStatus(campaign.status),
     featured: index === 0,
     contractAddress,
