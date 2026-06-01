@@ -36,10 +36,15 @@ export function CampaignHero({ campaign }: Props) {
   const routeCode = campaignRouteCode(campaign);
   const heroVisual = campaign.heroImage || campaign.visuals[0]?.url;
   const hasHeroImage = Boolean(heroVisual);
+  const denseCopy = displayTitle.length > 54
+    || (campaign.venue?.length ?? 0) > 72
+    || campaign.tagline.length > 260;
 
   return (
     <article
-      className={`campaign-hero ${hasHeroImage ? "campaign-hero--visual" : ""}`}
+      className={`campaign-hero ${hasHeroImage ? "campaign-hero--visual" : ""} ${
+        denseCopy ? "campaign-hero--dense-copy" : ""
+      }`}
       style={hasHeroImage ? { "--campaign-visual": `url(${heroVisual})` } as CSSProperties : undefined}
     >
       <div className="campaign-hero__body">
