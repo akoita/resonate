@@ -20,6 +20,19 @@ const futureIso = (days: number) => {
   return date.toISOString();
 };
 
+const visualFile = (name: string, body: string): Express.Multer.File => ({
+  fieldname: "gallery",
+  originalname: `${name}.webp`,
+  encoding: "7bit",
+  mimetype: "image/webp",
+  size: Buffer.byteLength(body),
+  buffer: Buffer.from(body),
+  destination: "",
+  filename: `${name}.webp`,
+  path: "",
+  stream: null as any,
+});
+
 describe("ShowsService integration", () => {
   const visualUploads = new Map<string, { data: Buffer; mimeType: string }>();
   const visualStorageProvider = {
@@ -464,6 +477,75 @@ describe("ShowsService integration", () => {
     expect(declaredCreditDraft.artistId).toBeNull();
     expect(declaredCreditDraft.artistDisplayName).toBe(`${TEST_PREFIX}Declared Credit`);
     expect(declaredCreditDraft.title).toBe(`${TEST_PREFIX}Declared Credit in Paris`);
+  });
+
+  it("lets campaign owners replace, reorder, and delete draft gallery visuals", async () => {
+    const draft = await service.createDraftCampaign(
+      { userId, role: "artist" },
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Paris",
+        country: "FR",
+        deadline: futureIso(30),
+        goalAmountUnits: "3000000",
+        bookingDeadline: futureIso(45),
+      },
+    );
+
+    const withVisuals = await service.uploadCampaignVisuals(
+      { userId, role: "artist" },
+      draft.id,
+      {
+        gallery: [
+          visualFile("gallery-one", "first"),
+          visualFile("gallery-two", "second"),
+          visualFile("gallery-three", "third"),
+        ],
+      },
+    );
+    const gallery = withVisuals.visuals.filter((visual) => visual.role === "gallery");
+    expect(gallery.map((visual) => visual.sortOrder)).toEqual([10, 11, 12]);
+
+    const replaced = await service.replaceCampaignVisual(
+      { userId, role: "artist" },
+      draft.id,
+      gallery[1].id,
+      visualFile("gallery-two-replacement", "second-replaced"),
+    );
+    const replacedVisual = replaced.visuals.find((visual) => visual.id === gallery[1].id);
+    expect(replacedVisual?.mimeType).toBe("image/webp");
+    await expect(service.getCampaignVisual(draft.id, gallery[1].id)).resolves.toMatchObject({
+      data: Buffer.from("second-replaced"),
+      mimeType: "image/webp",
+    });
+
+    const reordered = await service.reorderCampaignVisuals(
+      { userId, role: "artist" },
+      draft.id,
+      { visualIds: [gallery[2].id, gallery[0].id, gallery[1].id] },
+    );
+    expect(reordered.visuals.filter((visual) => visual.role === "gallery").map((visual) => visual.id)).toEqual([
+      gallery[2].id,
+      gallery[0].id,
+      gallery[1].id,
+    ]);
+
+    const afterDelete = await service.deleteCampaignVisual(
+      { userId, role: "artist" },
+      draft.id,
+      gallery[0].id,
+    );
+    expect(afterDelete.visuals.filter((visual) => visual.role === "gallery").map((visual) => visual.id)).toEqual([
+      gallery[2].id,
+      gallery[1].id,
+    ]);
+
+    await expect(service.reorderCampaignVisuals(
+      { userId, role: "artist" },
+      draft.id,
+      { visualIds: [gallery[2].id] },
+    )).rejects.toThrow(BadRequestException);
   });
 
   it("requires approved artist authority before activation", async () => {

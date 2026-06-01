@@ -135,7 +135,7 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     eventVersion: 1,
     producer: "shows-service",
     privacyTier: "pseudonymous",
-    payloadFields: ["campaignId", "campaignSlug", "artistId", "visualSlots", "source"],
+    payloadFields: ["campaignId", "campaignSlug", "artistId", "visualAction", "visualSlots", "galleryVisualCount", "source"],
   },
   {
     eventName: "commerce.settled",
