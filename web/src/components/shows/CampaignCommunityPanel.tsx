@@ -10,6 +10,7 @@ import {
 import {
   createShowCampaignCommunityUpdate,
   getShowCampaignCommunity,
+  joinShowCampaignCityDemand,
   joinShowCampaignCommunity,
   type Campaign,
   type ShowCampaignCommunityRoom,
@@ -18,6 +19,10 @@ import {
 type Notice = { type: "success" | "error"; message: string } | null;
 
 export function isCampaignSupporterRoomJoined(room?: ShowCampaignCommunityRoom | null) {
+  return room?.membership?.status === "active";
+}
+
+export function isCityDemandRoomJoined(room?: ShowCampaignCommunityRoom | null) {
   return room?.membership?.status === "active";
 }
 
@@ -39,26 +44,43 @@ export function canPostCampaignUpdate(role: string | null) {
   return role === "artist" || role === "admin" || role === "operator";
 }
 
-export function isCampaignCommunityAvailable(campaign: Pick<Campaign, "campaignLevel" | "rawStatus">) {
+export function isCampaignSupporterRoomAvailable(campaign: Pick<Campaign, "campaignLevel" | "rawStatus">) {
   return campaign.campaignLevel === "active_escrow_campaign"
     && ["active", "funded", "booking_confirmed", "deposit_released"].includes(campaign.rawStatus);
 }
 
+export function isCityDemandAvailable(campaign: Pick<Campaign, "campaignLevel" | "rawStatus">) {
+  if (campaign.campaignLevel === "signal") {
+    return ["draft", "active", "funded", "booking_confirmed", "deposit_released"].includes(campaign.rawStatus);
+  }
+  return ["provisional_campaign", "active_escrow_campaign"].includes(campaign.campaignLevel)
+    && ["active", "funded", "booking_confirmed", "deposit_released"].includes(campaign.rawStatus);
+}
+
+export function isCampaignCommunityAvailable(campaign: Pick<Campaign, "campaignLevel" | "rawStatus">) {
+  return isCityDemandAvailable(campaign) || isCampaignSupporterRoomAvailable(campaign);
+}
+
 export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
   const { token, status, role, connect } = useAuth();
-  const [room, setRoom] = useState<ShowCampaignCommunityRoom | null>(null);
+  const [supporterRoom, setSupporterRoom] = useState<ShowCampaignCommunityRoom | null>(null);
+  const [cityDemandRoom, setCityDemandRoom] = useState<ShowCampaignCommunityRoom | null>(null);
   const [messages, setMessages] = useState<CommunityMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [joiningCity, setJoiningCity] = useState(false);
   const [posting, setPosting] = useState(false);
   const [messageBody, setMessageBody] = useState("");
   const [updateBody, setUpdateBody] = useState("");
   const [notice, setNotice] = useState<Notice>(null);
 
-  const joined = isCampaignSupporterRoomJoined(room);
-  const action = campaignCommunityAction(room);
+  const joined = isCampaignSupporterRoomJoined(supporterRoom);
+  const cityJoined = isCityDemandRoomJoined(cityDemandRoom);
+  const action = campaignCommunityAction(supporterRoom);
   const updateAllowed = canPostCampaignUpdate(role);
   const campaignCommunityAvailable = isCampaignCommunityAvailable(campaign);
+  const supporterRoomAvailable = isCampaignSupporterRoomAvailable(campaign);
+  const cityDemandAvailable = isCityDemandAvailable(campaign);
 
   const campaignUpdates = useMemo(
     () => messages.filter((message) => message.messageType === "campaign_update"),
@@ -71,7 +93,8 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
 
   useEffect(() => {
     if (!token || !campaignCommunityAvailable) {
-      setRoom(null);
+      setSupporterRoom(null);
+      setCityDemandRoom(null);
       setMessages([]);
       return;
     }
@@ -82,10 +105,12 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
     getShowCampaignCommunity({ campaign, token })
       .then(async (community) => {
         if (!active) return;
-        const nextRoom = community.rooms[0] ?? null;
-        setRoom(nextRoom);
-        if (nextRoom && (isCampaignSupporterRoomJoined(nextRoom) || updateAllowed)) {
-          const response = await listCommunityRoomMessages(token, nextRoom.id);
+        const nextSupporterRoom = community.rooms.find((candidate) => candidate.roomType === "show_campaign_supporter") ?? null;
+        const nextCityDemandRoom = community.rooms.find((candidate) => candidate.roomType === "show_city_demand") ?? null;
+        setSupporterRoom(nextSupporterRoom);
+        setCityDemandRoom(nextCityDemandRoom);
+        if (nextSupporterRoom && (isCampaignSupporterRoomJoined(nextSupporterRoom) || updateAllowed)) {
+          const response = await listCommunityRoomMessages(token, nextSupporterRoom.id);
           if (active) setMessages(response.messages);
         } else {
           setMessages([]);
@@ -104,8 +129,8 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
     };
   }, [campaign, campaignCommunityAvailable, token, updateAllowed]);
 
-  async function refreshMessages(nextRoom = room) {
-    if (!token || !nextRoom || !isCampaignSupporterRoomJoined(nextRoom)) return;
+  async function refreshMessages(nextRoom = supporterRoom) {
+    if (!token || !nextRoom || (!isCampaignSupporterRoomJoined(nextRoom) && !updateAllowed)) return;
     const response = await listCommunityRoomMessages(token, nextRoom.id);
     setMessages(response.messages);
   }
@@ -119,7 +144,7 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
     setNotice(null);
     try {
       const result = await joinShowCampaignCommunity({ campaign, token });
-      setRoom(result.room);
+      setSupporterRoom(result.room);
       setNotice({ type: "success", message: "Supporter room joined." });
       await refreshMessages(result.room);
     } catch (err) {
@@ -129,8 +154,26 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
     }
   }
 
+  async function joinCityDemand() {
+    if (!token) {
+      await connect();
+      return;
+    }
+    setJoiningCity(true);
+    setNotice(null);
+    try {
+      const result = await joinShowCampaignCityDemand({ campaign, token });
+      setCityDemandRoom(result.room);
+      setNotice({ type: "success", message: `${campaign.city} demand group joined.` });
+    } catch (err) {
+      setNotice({ type: "error", message: err instanceof Error ? err.message : "Could not join city demand." });
+    } finally {
+      setJoiningCity(false);
+    }
+  }
+
   async function postMessage(messageType: "message" | "campaign_update") {
-    if (!token || !room) return;
+    if (!token || !supporterRoom) return;
     const body = (messageType === "campaign_update" ? updateBody : messageBody).trim();
     if (!body) return;
     setPosting(true);
@@ -138,7 +181,7 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
     try {
       const result = messageType === "campaign_update"
         ? await createShowCampaignCommunityUpdate({ campaign, token, body })
-        : await createCommunityRoomMessage(token, room.id, { body, messageType: "message" });
+        : await createCommunityRoomMessage(token, supporterRoom.id, { body, messageType: "message" });
       setMessages((current) => [...current, result.message]);
       if (messageType === "campaign_update") setUpdateBody("");
       else setMessageBody("");
@@ -154,17 +197,17 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
   }
 
   return (
-    <section className="show-community" aria-label="Campaign supporter room">
+    <section className="show-community" aria-label="Campaign community">
       <div className="show-community__header">
         <div>
-          <span className="shows-home-section__kicker">Supporter room</span>
-          <h2 className="shows-home-section__title">Campaign backers gather here.</h2>
+          <span className="shows-home-section__kicker">Campaign community</span>
+          <h2 className="shows-home-section__title">Demand starts in {campaign.city}.</h2>
         </div>
         <button
           type="button"
           className="show-community__refresh"
           onClick={() => void refreshMessages()}
-          disabled={!joined || loading}
+          disabled={!supporterRoom || (!joined && !updateAllowed) || loading}
         >
           Refresh
         </button>
@@ -178,60 +221,85 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
 
       {status !== "authenticated" ? (
         <div className="show-community__locked">
-          <strong>Connect to check supporter access</strong>
-          <p>Confirmed campaign support unlocks the private room without exposing pledge or wallet details publicly.</p>
+          <strong>Connect to join the demand signal</strong>
+          <p>Fans can join the city group first. Confirmed campaign support unlocks the private backer room without exposing pledge or wallet details publicly.</p>
           <button type="button" onClick={() => void connect()}>
             Connect wallet
           </button>
         </div>
       ) : (
         <div className="show-community__grid">
-          <article className="show-community__room">
-            <span>{room?.title ?? "Campaign supporter room"}</span>
-            <strong>{joined ? "Access active" : action.label}</strong>
-            <p>{loading ? "Checking your campaign support..." : action.reason}</p>
-            {!joined ? (
-              <button
-                type="button"
-                onClick={() => void joinRoom()}
-                disabled={joining || action.disabled}
-              >
-                {joining ? "Joining..." : action.label}
-              </button>
-            ) : null}
-          </article>
-
-          <article className="show-community__updates">
-            <div className="show-community__subhead">
-              <span>Campaign updates</span>
-              <strong>{campaignUpdates.length}</strong>
-            </div>
-            {campaignUpdates.length ? (
-              <div className="show-community__messages">
-                {campaignUpdates.map((message) => (
-                  <MessageLine key={message.id} message={message} />
-                ))}
-              </div>
-            ) : (
-              <p className="show-community__empty">No campaign updates yet.</p>
-            )}
-
-            {updateAllowed ? (
-              <div className="show-community__composer">
-                <textarea
-                  value={updateBody}
-                  onChange={(event) => setUpdateBody(event.target.value)}
-                  placeholder="Post a campaign update..."
-                  rows={3}
-                />
-                <button type="button" onClick={() => void postMessage("campaign_update")} disabled={posting || !updateBody.trim()}>
-                  Post update
+          {cityDemandAvailable ? (
+            <article className="show-community__room show-community__room--city">
+              <span>{cityDemandRoom?.title ?? `${campaign.city} demand group`}</span>
+              <strong>{cityJoined ? "Demand joined" : "Join city demand"}</strong>
+              <p>
+                {loading
+                  ? "Checking your city demand state..."
+                  : "Signal interest in this city without making a pledge yet."}
+              </p>
+              {!cityJoined ? (
+                <button
+                  type="button"
+                  onClick={() => void joinCityDemand()}
+                  disabled={joiningCity || !cityDemandRoom?.access?.joinable}
+                >
+                  {joiningCity ? "Joining..." : `Join ${campaign.city}`}
                 </button>
-              </div>
-            ) : null}
-          </article>
+              ) : null}
+            </article>
+          ) : null}
 
-          {joined ? (
+          {supporterRoomAvailable ? (
+            <article className="show-community__room">
+              <span>{supporterRoom?.title ?? "Campaign supporter room"}</span>
+              <strong>{joined ? "Access active" : action.label}</strong>
+              <p>{loading ? "Checking your campaign support..." : action.reason}</p>
+              {!joined ? (
+                <button
+                  type="button"
+                  onClick={() => void joinRoom()}
+                  disabled={joining || action.disabled}
+                >
+                  {joining ? "Joining..." : action.label}
+                </button>
+              ) : null}
+            </article>
+          ) : null}
+
+          {supporterRoomAvailable ? (
+            <article className="show-community__updates">
+              <div className="show-community__subhead">
+                <span>Campaign updates</span>
+                <strong>{campaignUpdates.length}</strong>
+              </div>
+              {campaignUpdates.length ? (
+                <div className="show-community__messages">
+                  {campaignUpdates.map((message) => (
+                    <MessageLine key={message.id} message={message} />
+                  ))}
+                </div>
+              ) : (
+                <p className="show-community__empty">No campaign updates yet.</p>
+              )}
+
+              {updateAllowed ? (
+                <div className="show-community__composer">
+                  <textarea
+                    value={updateBody}
+                    onChange={(event) => setUpdateBody(event.target.value)}
+                    placeholder="Post a campaign update..."
+                    rows={3}
+                  />
+                  <button type="button" onClick={() => void postMessage("campaign_update")} disabled={posting || !updateBody.trim()}>
+                    Post update
+                  </button>
+                </div>
+              ) : null}
+            </article>
+          ) : null}
+
+          {joined && supporterRoomAvailable ? (
             <article className="show-community__chat">
               <div className="show-community__subhead">
                 <span>Supporter messages</span>
@@ -253,7 +321,11 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
                   placeholder="Message the supporter room..."
                   rows={3}
                 />
-                <button type="button" onClick={() => void postMessage("message")} disabled={posting || !messageBody.trim()}>
+                <button
+                  type="button"
+                  onClick={() => void postMessage("message")}
+                  disabled={posting || !messageBody.trim()}
+                >
                   Send
                 </button>
               </div>

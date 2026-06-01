@@ -2307,7 +2307,7 @@
 
 .show-community__grid {
   display: grid;
-  grid-template-columns: minmax(240px, 0.72fr) minmax(0, 1.28fr);
+  grid-template-columns: minmax(190px, 0.55fr) minmax(190px, 0.55fr) minmax(0, 1.35fr);
   gap: 18px;
 }
 
@@ -2337,8 +2337,12 @@
   gap: 16px;
 }
 
+.show-community__updates {
+  grid-column: 3;
+}
+
 .show-community__chat {
-  grid-column: 2;
+  grid-column: 3;
 }
 
 .show-community__messages {
@@ -2704,6 +2708,7 @@
     grid-template-columns: 1fr;
   }
 
+  .show-community__updates,
   .show-community__chat {
     grid-column: auto;
   }

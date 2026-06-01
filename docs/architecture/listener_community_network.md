@@ -150,8 +150,8 @@ revokedAt
 
 ```text
 id
-roomType: artist_public | artist_holder | campaign | show_city | cohort | remix | announcement
-ownerType: artist | campaign | show | cohort | platform
+roomType: artist_public | artist_holder | show_campaign_supporter | show_city_demand | cohort | remix | announcement
+ownerType: artist | show_campaign | cohort | platform
 ownerId
 artistId
 title
@@ -400,6 +400,7 @@ PATCH  /community/rooms/:roomId/status
 ```text
 GET    /shows/campaigns/:campaignId/community
 POST   /shows/campaigns/:campaignId/community/join
+POST   /shows/campaigns/:campaignId/community/city-interest/join
 ```
 
 ### Cohorts

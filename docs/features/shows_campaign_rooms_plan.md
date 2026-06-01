@@ -90,7 +90,7 @@ Out of scope for Slice 1:
 
 ## Slice 2: City Demand Groups
 
-Status: `planned`
+Status: `implemented`
 
 Deliverables:
 
@@ -100,6 +100,22 @@ Deliverables:
   address data.
 - Emit `community.show_city_interest_joined`.
 - Add UI states for joining city demand from Shows detail.
+
+Implementation notes:
+
+- Shows campaign community reads now include an open `show_city_demand` room
+  when the campaign is in a demand-forming lifecycle.
+- City demand rooms use `ownerType = show_campaign` and `ownerId = campaign.id`
+  so demand membership stays tied to the campaign without new schema.
+- Fan-created `signal` campaigns can expose city demand before escrow
+  activation, while supporter rooms remain active-escrow-only.
+- Joining city demand grants an active membership with role `city_member` and
+  source `city_interest`; it does not require a pledge or wallet ownership
+  proof.
+- Analytics emits `community.show_city_interest_joined` with campaign id/slug,
+  room id/type, artist id, and coarse city/country only.
+- Shows detail community UI now separates the open city demand action from the
+  private supporter room action.
 
 ## Slice 3: Supporter Badges And Roles
 

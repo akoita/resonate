@@ -58,6 +58,12 @@ export class ShowsController {
     return this.communityRoomsService.joinShowCampaignCommunity(req.user.userId, id);
   }
 
+  @UseGuards(AuthGuard("jwt"))
+  @Post("campaigns/:id/community/city-interest/join")
+  joinCampaignCityInterest(@Param("id") id: string, @Request() req: any) {
+    return this.communityRoomsService.joinShowCampaignCityDemand(req.user.userId, id);
+  }
+
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("artist", "admin", "operator")
   @Post("campaigns/:id/community/updates")

@@ -37,6 +37,9 @@ const mockCommunityRoomsService = {
   joinShowCampaignCommunity: jest.fn().mockResolvedValue({
     schemaVersion: "community-membership/v1",
   }),
+  joinShowCampaignCityDemand: jest.fn().mockResolvedValue({
+    schemaVersion: "community-membership/v1",
+  }),
   createShowCampaignUpdate: jest.fn().mockResolvedValue({
     schemaVersion: "community-message/v1",
   }),
@@ -85,6 +88,15 @@ describe("ShowsController (http)", () => {
       .expect(201);
 
     expect(mockCommunityRoomsService.joinShowCampaignCommunity).toHaveBeenCalledWith("user-1", "campaign-1");
+  });
+
+  it("joins campaign city demand with JWT", async () => {
+    await request(app.getHttpServer())
+      .post("/shows/campaigns/campaign-1/community/city-interest/join")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(201);
+
+    expect(mockCommunityRoomsService.joinShowCampaignCityDemand).toHaveBeenCalledWith("user-1", "campaign-1");
   });
 
   it("posts campaign updates with actor role context", async () => {

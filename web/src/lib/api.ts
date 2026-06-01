@@ -2019,7 +2019,7 @@ export async function getPublicCommunityProfile(userId: string): Promise<PublicC
   );
 }
 
-export type CommunityRoomType = "artist_public" | "artist_holder" | "show_campaign_supporter";
+export type CommunityRoomType = "artist_public" | "artist_holder" | "show_campaign_supporter" | "show_city_demand";
 export type CommunityRoomStatus = "active" | "paused" | "archived";
 export type CommunityMembershipStatus = "active" | "left" | "removed" | "banned";
 export type CommunityMessageType = "message" | "announcement" | "campaign_update";

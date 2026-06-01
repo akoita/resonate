@@ -217,6 +217,16 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     sourceRefKeys: ["campaignId", "roomId", "roomType", "artistId"],
   },
   {
+    eventName: "community.show_city_interest_joined",
+    producer: "community-service",
+    subjectType: "show_campaign",
+    subjectIdKeys: ["campaignId"],
+    actorIdKeys: ["userId"],
+    consentBasis: "show_city_demand:v1",
+    payloadKeys: ["campaignId", "campaignSlug", "roomId", "roomType", "artistId", "city", "country"],
+    sourceRefKeys: ["campaignId", "campaignSlug", "roomId", "roomType", "artistId", "city", "country"],
+  },
+  {
     eventName: "community.room_left",
     producer: "community-service",
     subjectType: "community_room",

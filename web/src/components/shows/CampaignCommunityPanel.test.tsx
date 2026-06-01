@@ -5,6 +5,8 @@ import {
   canPostCampaignUpdate,
   isCampaignCommunityAvailable,
   isCampaignSupporterRoomJoined,
+  isCityDemandAvailable,
+  isCityDemandRoomJoined,
 } from "./CampaignCommunityPanel";
 
 function room(overrides: Partial<ShowCampaignCommunityRoom>): ShowCampaignCommunityRoom {
@@ -37,6 +39,18 @@ describe("CampaignCommunityPanel helpers", () => {
     }))).toBe(true);
   });
 
+  it("detects active city demand membership", () => {
+    expect(isCityDemandRoomJoined(room({
+      roomType: "show_city_demand",
+      membership: {
+        role: "city_member",
+        status: "active",
+        joinedAt: "2026-05-31T00:00:00.000Z",
+        endedAt: null,
+      },
+    }))).toBe(true);
+  });
+
   it("keeps supporter rooms locked until campaign support is confirmed", () => {
     expect(campaignCommunityAction(room({}))).toMatchObject({
       label: "Support required",
@@ -59,18 +73,30 @@ describe("CampaignCommunityPanel helpers", () => {
     expect(canPostCampaignUpdate("listener")).toBe(false);
   });
 
-  it("only exposes rooms for active campaign lifecycles", () => {
+  it("exposes city demand for active campaign and signal lifecycles", () => {
+    expect(isCityDemandAvailable({
+      campaignLevel: "signal",
+      rawStatus: "draft",
+    })).toBe(true);
     expect(isCampaignCommunityAvailable({
       campaignLevel: "active_escrow_campaign",
       rawStatus: "active",
     })).toBe(true);
     expect(isCampaignCommunityAvailable({
       campaignLevel: "active_escrow_campaign",
+      rawStatus: "draft",
+    })).toBe(false);
+    expect(isCampaignCommunityAvailable({
+      campaignLevel: "provisional_campaign",
+      rawStatus: "draft",
+    })).toBe(false);
+    expect(isCampaignCommunityAvailable({
+      campaignLevel: "active_escrow_campaign",
       rawStatus: "cancelled",
     })).toBe(false);
     expect(isCampaignCommunityAvailable({
       campaignLevel: "signal",
-      rawStatus: "active",
-    })).toBe(false);
+      rawStatus: "draft",
+    })).toBe(true);
   });
 });
