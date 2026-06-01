@@ -74,6 +74,7 @@ export default async function CampaignDetailPage({ params }: Props) {
   const galleryVisuals = campaign.visuals
     .filter((visual) => visual.role === "gallery")
     .slice(0, 6);
+  const showExpandedPitch = displayTitle.length > 54 || campaign.tagline.length > 220;
 
   return (
     <main className="shows-surface shows-page">
@@ -102,6 +103,13 @@ export default async function CampaignDetailPage({ params }: Props) {
           </section>
         ) : null}
 
+        {showExpandedPitch ? (
+          <section className="show-detail__pitch" aria-label="Campaign pitch">
+            <span className="shows-home-section__kicker">Campaign pitch</span>
+            <p>{campaign.tagline}</p>
+          </section>
+        ) : null}
+
         <section className="show-detail__snapshot" aria-label="Campaign snapshot">
           <article className="show-detail__signal-card show-detail__signal-card--primary">
             <span className="show-detail__signal-label">Campaign signal</span>
@@ -126,7 +134,7 @@ export default async function CampaignDetailPage({ params }: Props) {
           </article>
           <article className="show-detail__signal-card show-detail__signal-card--target">
             <span className="show-detail__signal-label">Show target</span>
-            <strong>{campaign.venue ?? campaign.city}</strong>
+            <strong title={campaign.venue ?? campaign.city}>{campaign.venue ?? campaign.city}</strong>
             <p>{targetDate}. Venue and production stay conditional until the threshold clears.</p>
           </article>
         </section>

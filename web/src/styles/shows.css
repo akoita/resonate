@@ -1287,6 +1287,36 @@
   max-height: 3.15em;
 }
 
+.campaign-hero--dense-copy .campaign-hero__title--split {
+  display: grid;
+  gap: 8px;
+  max-height: none;
+}
+
+.campaign-hero__title-main,
+.campaign-hero__title-accent {
+  display: block;
+  overflow: hidden;
+  background: linear-gradient(150deg, #fff 20%, color-mix(in srgb, var(--color-signal) 40%, #fff) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.campaign-hero--dense-copy .campaign-hero__title-main {
+  max-height: 2.12em;
+}
+
+.campaign-hero--dense-copy .campaign-hero__title-accent {
+  max-height: 2.4em;
+  font-size: clamp(22px, 2.2vw, 30px);
+  line-height: 1.15;
+  letter-spacing: 0;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-signal) 45%, #fff), rgba(255, 255, 255, 0.84));
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
 .campaign-hero__meta {
   display: flex;
   flex-wrap: wrap;
@@ -1323,7 +1353,7 @@
 
 .campaign-hero--dense-copy .campaign-hero__tagline,
 .campaign-hero--dense-copy .campaign-hero__eyebrow,
-.campaign-hero--dense-copy .campaign-hero__trust {
+.campaign-hero--visual .campaign-hero__trust {
   display: none;
 }
 
@@ -1693,6 +1723,29 @@
 
 .show-detail__breadcrumb a:hover {
   color: #fff;
+}
+
+.show-detail__pitch {
+  display: grid;
+  gap: 14px;
+  max-width: 920px;
+  padding: 28px 32px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background:
+    radial-gradient(circle at 4% 0%, color-mix(in srgb, var(--color-signal) 9%, transparent), transparent 36%),
+    rgba(255, 255, 255, 0.018);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 18px 44px rgba(0, 0, 0, 0.25);
+}
+
+.show-detail__pitch p {
+  margin: 0;
+  max-width: 84ch;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: clamp(14px, 1.12vw, 16px);
+  line-height: 1.72;
 }
 
 /* ─── 4-Up Signal Snapshot Cards ─────────────────────────────────── */
@@ -2834,6 +2887,22 @@
   .campaign-hero--visual .campaign-hero__title {
     font-size: clamp(30px, 10vw, 42px);
     -webkit-line-clamp: 5;
+  }
+
+  .campaign-hero--dense-copy .campaign-hero__title--split {
+    gap: 10px;
+  }
+
+  .campaign-hero--dense-copy .campaign-hero__title-main {
+    max-height: 3.18em;
+    font-size: clamp(30px, 9vw, 36px);
+    line-height: 1.06;
+  }
+
+  .campaign-hero--dense-copy .campaign-hero__title-accent {
+    max-height: 2.5em;
+    font-size: clamp(19px, 6vw, 23px);
+    line-height: 1.16;
   }
 
   .campaign-hero--visual .campaign-hero__art {
