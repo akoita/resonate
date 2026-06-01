@@ -8,7 +8,8 @@ const ROOM_STATUSES = ["active", "paused", "archived"] as const;
 const MESSAGE_TYPES = ["message", "announcement", "campaign_update"] as const;
 const MODERATION_ACTIONS = ["remove", "ban"] as const;
 const SHOW_CAMPAIGN_ROOM_STATUSES = ["active", "funded", "booking_confirmed", "deposit_released"] as const;
-const SHOW_CITY_DEMAND_ROOM_STATUSES = ["draft", "active", "funded", "booking_confirmed", "deposit_released"] as const;
+const SHOW_CITY_DEMAND_SIGNAL_STATUSES = ["draft", "active", "funded", "booking_confirmed", "deposit_released"] as const;
+const SHOW_CITY_DEMAND_CAMPAIGN_STATUSES = ["active", "funded", "booking_confirmed", "deposit_released"] as const;
 
 type RoomStatus = (typeof ROOM_STATUSES)[number];
 type MessageType = (typeof MESSAGE_TYPES)[number];
@@ -131,17 +132,19 @@ export class CommunityRoomsService {
 
   async joinShowCampaignCityDemand(userId: string, campaignIdOrSlug: string) {
     const { campaign, room } = await this.ensureShowCampaignCityDemandRoom(campaignIdOrSlug);
-    const result = await this.joinRoom(userId, room.id);
-    this.publish("community.show_city_interest_joined", userId, {
-      campaignId: campaign.id,
-      campaignSlug: campaign.slug,
-      roomId: room.id,
-      roomType: room.roomType,
-      artistId: campaign.artistId,
-      city: campaign.city,
-      country: campaign.country,
-    });
-    return result;
+    const result = await this.joinRoomMembership(userId, room.id);
+    if (result.joinedNow) {
+      this.publish("community.show_city_interest_joined", userId, {
+        campaignId: campaign.id,
+        campaignSlug: campaign.slug,
+        roomId: room.id,
+        roomType: room.roomType,
+        artistId: campaign.artistId,
+        city: campaign.city,
+        country: campaign.country,
+      });
+    }
+    return result.response;
   }
 
   async createShowCampaignUpdate(actor: Actor, campaignIdOrSlug: string, input: { body?: unknown }) {
@@ -166,6 +169,11 @@ export class CommunityRoomsService {
   }
 
   async joinRoom(userId: string, roomId: string) {
+    const result = await this.joinRoomMembership(userId, roomId);
+    return result.response;
+  }
+
+  private async joinRoomMembership(userId: string, roomId: string) {
     await this.ensureUser(userId);
     const room = await this.getRoom(roomId);
     try {
@@ -182,6 +190,10 @@ export class CommunityRoomsService {
       }
       throw error;
     }
+    const existingMembership = await prisma.communityMembership.findUnique({
+      where: { CommunityMembership_identity: { roomId, userId } },
+    });
+    const joinedNow = existingMembership?.status !== "active";
     const membership = await prisma.communityMembership.upsert({
       where: { CommunityMembership_identity: { roomId, userId } },
       update: {
@@ -198,25 +210,28 @@ export class CommunityRoomsService {
       },
     });
 
-    this.publish("community.room_joined", userId, {
-      roomId,
-      roomType: room.roomType,
-      artistId: room.artistId,
-      ...campaignSourceRef(room),
-    });
-    if (room.ownerType === "show_campaign" && room.roomType === "show_campaign_supporter") {
-      this.publish("community.campaign_room_joined", userId, {
-        campaignId: room.ownerId,
+    if (joinedNow) {
+      this.publish("community.room_joined", userId, {
         roomId,
         roomType: room.roomType,
         artistId: room.artistId,
+        ...campaignSourceRef(room),
       });
+      if (room.ownerType === "show_campaign" && room.roomType === "show_campaign_supporter") {
+        this.publish("community.campaign_room_joined", userId, {
+          campaignId: room.ownerId,
+          roomId,
+          roomType: room.roomType,
+          artistId: room.artistId,
+        });
+      }
     }
-    return {
+    const response = {
       schemaVersion: "community-membership/v1",
       room: roomDto(room, membership),
       membership: membershipDto(membership),
     };
+    return { response, joinedNow, room, membership };
   }
 
   async leaveRoom(userId: string, roomId: string) {
@@ -550,8 +565,11 @@ function isShowCampaignSupporterRoomAvailable(campaign: { campaignLevel: string;
 }
 
 function isShowCampaignCityDemandAvailable(campaign: { campaignLevel: string; status: string }) {
-  return ["signal", "provisional_campaign", "active_escrow_campaign"].includes(campaign.campaignLevel)
-    && SHOW_CITY_DEMAND_ROOM_STATUSES.includes(campaign.status as (typeof SHOW_CITY_DEMAND_ROOM_STATUSES)[number]);
+  if (campaign.campaignLevel === "signal") {
+    return SHOW_CITY_DEMAND_SIGNAL_STATUSES.includes(campaign.status as (typeof SHOW_CITY_DEMAND_SIGNAL_STATUSES)[number]);
+  }
+  return ["provisional_campaign", "active_escrow_campaign"].includes(campaign.campaignLevel)
+    && SHOW_CITY_DEMAND_CAMPAIGN_STATUSES.includes(campaign.status as (typeof SHOW_CITY_DEMAND_CAMPAIGN_STATUSES)[number]);
 }
 
 function canOperateArtist(userId: string, artist: { userId: string | null }) {

@@ -84,6 +84,14 @@ describe("CampaignCommunityPanel helpers", () => {
     })).toBe(true);
     expect(isCampaignCommunityAvailable({
       campaignLevel: "active_escrow_campaign",
+      rawStatus: "draft",
+    })).toBe(false);
+    expect(isCampaignCommunityAvailable({
+      campaignLevel: "provisional_campaign",
+      rawStatus: "draft",
+    })).toBe(false);
+    expect(isCampaignCommunityAvailable({
+      campaignLevel: "active_escrow_campaign",
       rawStatus: "cancelled",
     })).toBe(false);
     expect(isCampaignCommunityAvailable({

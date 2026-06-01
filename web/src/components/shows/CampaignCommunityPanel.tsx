@@ -50,8 +50,11 @@ export function isCampaignSupporterRoomAvailable(campaign: Pick<Campaign, "campa
 }
 
 export function isCityDemandAvailable(campaign: Pick<Campaign, "campaignLevel" | "rawStatus">) {
-  return ["signal", "provisional_campaign", "active_escrow_campaign"].includes(campaign.campaignLevel)
-    && ["draft", "active", "funded", "booking_confirmed", "deposit_released"].includes(campaign.rawStatus);
+  if (campaign.campaignLevel === "signal") {
+    return ["draft", "active", "funded", "booking_confirmed", "deposit_released"].includes(campaign.rawStatus);
+  }
+  return ["provisional_campaign", "active_escrow_campaign"].includes(campaign.campaignLevel)
+    && ["active", "funded", "booking_confirmed", "deposit_released"].includes(campaign.rawStatus);
 }
 
 export function isCampaignCommunityAvailable(campaign: Pick<Campaign, "campaignLevel" | "rawStatus">) {

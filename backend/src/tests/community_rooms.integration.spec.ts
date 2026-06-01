@@ -16,6 +16,8 @@ const campaignId = `${TEST_PREFIX}campaign`;
 const campaignSlug = `${TEST_PREFIX}campaign-slug`;
 const signalCampaignId = `${TEST_PREFIX}signal_campaign`;
 const signalCampaignSlug = `${TEST_PREFIX}signal-campaign-slug`;
+const draftEscrowCampaignId = `${TEST_PREFIX}draft_escrow_campaign`;
+const draftEscrowCampaignSlug = `${TEST_PREFIX}draft-escrow-campaign-slug`;
 const cancelledCampaignId = `${TEST_PREFIX}cancelled_campaign`;
 const cancelledCampaignSlug = `${TEST_PREFIX}cancelled-campaign-slug`;
 const holderWallet = "0x" + "1".repeat(40);
@@ -141,6 +143,23 @@ describe("CommunityRoomsService integration", () => {
         artistAuthorityStatus: "none",
       },
     });
+    await prisma.showCampaign.create({
+      data: {
+        id: draftEscrowCampaignId,
+        slug: draftEscrowCampaignSlug,
+        artistId,
+        artistDisplayName: "Community Room Artist",
+        title: "Draft escrow campaign in Paris",
+        city: "Paris",
+        country: "FR",
+        deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        goalAmountUnits: "1000000",
+        chainId: 84532,
+        campaignLevel: "active_escrow_campaign",
+        status: "draft",
+        artistAuthorityStatus: "artist_authorized",
+      },
+    });
     await prisma.showPledge.create({
       data: {
         campaignId,
@@ -155,7 +174,7 @@ describe("CommunityRoomsService integration", () => {
   });
 
   afterAll(async () => {
-    const campaignOwnerIds = [campaignId, signalCampaignId, cancelledCampaignId];
+    const campaignOwnerIds = [campaignId, signalCampaignId, draftEscrowCampaignId, cancelledCampaignId];
     await prisma.communityModerationReport.deleteMany({ where: { room: { ownerId: { in: campaignOwnerIds } } } });
     await prisma.communityMessage.deleteMany({ where: { room: { ownerId: { in: campaignOwnerIds } } } });
     await prisma.communityMembership.deleteMany({ where: { room: { ownerId: { in: campaignOwnerIds } } } });
@@ -165,7 +184,7 @@ describe("CommunityRoomsService integration", () => {
     await prisma.communityMembership.deleteMany({ where: { room: { ownerId: artistId } } });
     await prisma.communityRoom.deleteMany({ where: { ownerId: artistId } });
     await prisma.showPledge.deleteMany({ where: { campaignId } });
-    await prisma.showCampaign.deleteMany({ where: { id: { in: [campaignId, signalCampaignId, cancelledCampaignId] } } });
+    await prisma.showCampaign.deleteMany({ where: { id: { in: campaignOwnerIds } } });
     await prisma.stemPurchase.deleteMany({ where: { buyerAddress: { equals: holderWallet, mode: "insensitive" } } });
     await prisma.stemListing.deleteMany({ where: { stemId } });
     await prisma.stem.deleteMany({ where: { id: stemId } });
@@ -286,6 +305,25 @@ describe("CommunityRoomsService integration", () => {
     }));
   });
 
+  it("does not duplicate city demand analytics for already joined fans", async () => {
+    await expect(service.joinShowCampaignCityDemand(holderUserId, campaignSlug)).resolves.toMatchObject({
+      membership: { status: "active", role: "city_member" },
+      room: { roomType: "show_city_demand" },
+    });
+    expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.show_city_interest_joined",
+      campaignId,
+    }));
+
+    eventBus.publish.mockClear();
+    await expect(service.joinShowCampaignCityDemand(holderUserId, campaignSlug)).resolves.toMatchObject({
+      membership: { status: "active", role: "city_member" },
+      room: { roomType: "show_city_demand" },
+    });
+
+    expect(eventBus.publish).not.toHaveBeenCalled();
+  });
+
   it("opens city demand groups for fan signal campaigns", async () => {
     const community = await service.getShowCampaignCommunity(otherUserId, signalCampaignSlug);
 
@@ -296,6 +334,11 @@ describe("CommunityRoomsService integration", () => {
         access: expect.objectContaining({ joinable: true }),
       }),
     ]);
+  });
+
+  it("does not open city demand groups for draft escrow campaigns", async () => {
+    await expect(service.getShowCampaignCommunity(otherUserId, draftEscrowCampaignSlug)).rejects.toThrow(BadRequestException);
+    await expect(service.joinShowCampaignCityDemand(otherUserId, draftEscrowCampaignSlug)).rejects.toThrow(BadRequestException);
   });
 
   it("does not open supporter rooms for inactive campaign lifecycles", async () => {
