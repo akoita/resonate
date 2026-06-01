@@ -18,6 +18,7 @@ model User {
   agentSignals                AgentSignal[]
   communityBadges             CommunityBadge[]
   communityMemberships        CommunityMembership[]
+  communityCohortMemberships  CommunityCohortMembership[]
   communityMessages           CommunityMessage[]
   communityProfile            CommunityProfile?
   communityRoles              CommunityRole[]
@@ -126,6 +127,46 @@ model CommunityRole {
   @@index([userId, revokedAt])
   @@index([roleType, scopeType])
   @@index([visibility])
+}
+
+model CommunityCohort {
+  id                 String                      @id @default(uuid())
+  cohortType         String
+  reasonCode         String
+  title              String
+  safeExplanation    String                      @db.Text
+  minimumSize        Int                         @default(5)
+  visibleMemberCount Int                         @default(0)
+  status             String                      @default("suggested")
+  metadata           Json?
+  expiresAt          DateTime?
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+  memberships        CommunityCohortMembership[]
+
+  @@index([cohortType, status, expiresAt])
+  @@index([reasonCode, status])
+  @@index([status, visibleMemberCount])
+}
+
+model CommunityCohortMembership {
+  id               String          @id @default(uuid())
+  cohortId         String
+  userId           String
+  status           String          @default("suggested")
+  suggestedAt      DateTime        @default(now())
+  suggestedEventAt DateTime?
+  joinedAt         DateTime?
+  leftAt           DateTime?
+  hiddenAt         DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  cohort           CommunityCohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([cohortId, userId], name: "CommunityCohortMembership_identity")
+  @@index([userId, status, updatedAt])
+  @@index([cohortId, status])
 }
 
 model CommunityBenefitRule {

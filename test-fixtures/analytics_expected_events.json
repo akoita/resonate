@@ -107,6 +107,50 @@
     }
   },
   {
+    "eventName": "community.cohort_suggested",
+    "payload": {
+      "cohortId": "cohort-1",
+      "cohortType": "taste",
+      "reasonCode": "taste:ambient",
+      "membershipStatus": "suggested",
+      "minimumSize": 5,
+      "visibleMemberCount": 8
+    }
+  },
+  {
+    "eventName": "community.cohort_joined",
+    "payload": {
+      "cohortId": "cohort-1",
+      "cohortType": "taste",
+      "reasonCode": "taste:ambient",
+      "membershipStatus": "joined",
+      "minimumSize": 5,
+      "visibleMemberCount": 8
+    }
+  },
+  {
+    "eventName": "community.cohort_left",
+    "payload": {
+      "cohortId": "cohort-1",
+      "cohortType": "taste",
+      "reasonCode": "taste:ambient",
+      "membershipStatus": "left",
+      "minimumSize": 5,
+      "visibleMemberCount": 8
+    }
+  },
+  {
+    "eventName": "community.cohort_hidden",
+    "payload": {
+      "cohortId": "cohort-1",
+      "cohortType": "taste",
+      "reasonCode": "taste:ambient",
+      "membershipStatus": "hidden",
+      "minimumSize": 5,
+      "visibleMemberCount": 8
+    }
+  },
+  {
     "eventName": "library.saved",
     "payload": {
       "userCohortId": "cohort-1",

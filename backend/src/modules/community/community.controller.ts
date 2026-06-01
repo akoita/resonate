@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { CommunityCohortService } from "./community_cohort.service";
 import { CommunityEligibilityService } from "./community_eligibility.service";
 import { CommunityRoomsService } from "./community_rooms.service";
 import { CommunityService } from "./community.service";
@@ -10,6 +11,7 @@ export class CommunityController {
     private readonly communityService: CommunityService,
     private readonly communityEligibilityService: CommunityEligibilityService,
     private readonly communityRoomsService: CommunityRoomsService,
+    private readonly communityCohortService: CommunityCohortService,
   ) {}
 
   @UseGuards(AuthGuard("jwt"))
@@ -62,6 +64,30 @@ export class CommunityController {
   @Get("artists/:artistId/rooms/me")
   listMyArtistRooms(@Req() req: any, @Param("artistId") artistId: string) {
     return this.communityRoomsService.listArtistRooms(artistId, req.user.userId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Get("cohorts/suggestions")
+  listCohortSuggestions(@Req() req: any) {
+    return this.communityCohortService.listSuggestions(req.user.userId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("cohorts/:cohortId/join")
+  joinCohort(@Req() req: any, @Param("cohortId") cohortId: string) {
+    return this.communityCohortService.joinCohort(req.user.userId, cohortId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("cohorts/:cohortId/leave")
+  leaveCohort(@Req() req: any, @Param("cohortId") cohortId: string) {
+    return this.communityCohortService.leaveCohort(req.user.userId, cohortId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("cohorts/:cohortId/hide")
+  hideCohort(@Req() req: any, @Param("cohortId") cohortId: string) {
+    return this.communityCohortService.hideCohort(req.user.userId, cohortId);
   }
 
   @UseGuards(AuthGuard("jwt"))

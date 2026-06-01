@@ -220,6 +220,8 @@ Tests:
 
 ### Slice 5: Taste Cohorts
 
+Status: `partial`
+
 Purpose:
 
 - activate listener-to-listener discovery only after privacy, moderation, and
@@ -240,6 +242,23 @@ Backend scope:
 - explainable cohort reason generator;
 - minimum-size and expiry rules;
 - consent checks.
+
+Implementation notes:
+
+- The first backend contract is implemented through off-chain
+  `CommunityCohort` and `CommunityCohortMembership` records.
+- `GET /community/cohorts/suggestions` returns only cohorts with an existing
+  suggested/joined membership for the authenticated listener.
+- Taste, artist-affinity, collector, and campaign cohorts require
+  `allowTasteMatching`; city-scene cohorts require `allowCityScenes`.
+- Cohorts below `minimumSize`, expired cohorts, archived cohorts, hidden
+  memberships, and disabled-consent cohorts are not exposed.
+- Suggested explanations are cohort-level strings and are sanitized before
+  returning to users. Payloads do not expose other listener identities, raw
+  listening history, wallet data, ownership data, or private location facts.
+- Listeners can join, leave, and hide suggested cohorts. Membership remains
+  off-chain and mutable/deletable.
+- Cohort generation jobs and frontend cards remain follow-up work.
 
 Frontend scope:
 

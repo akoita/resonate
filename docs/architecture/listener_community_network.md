@@ -233,11 +233,30 @@ resolvedAt
 id
 cohortType: taste | artist_affinity | city_scene | collector | campaign
 reasonCode
+title
 safeExplanation
 minimumSize
+visibleMemberCount
 status: suggested | active | expired | archived
 createdAt
+updatedAt
 expiresAt
+```
+
+### `CommunityCohortMembership`
+
+```text
+id
+cohortId
+userId
+status: suggested | joined | left | hidden | removed
+suggestedAt
+suggestedEventAt
+joinedAt
+leftAt
+hiddenAt
+createdAt
+updatedAt
 ```
 
 ## Access Policy Shape
@@ -409,6 +428,7 @@ POST   /shows/campaigns/:campaignId/community/city-interest/join
 GET    /community/cohorts/suggestions
 POST   /community/cohorts/:cohortId/join
 POST   /community/cohorts/:cohortId/leave
+POST   /community/cohorts/:cohortId/hide
 ```
 
 ## Analytics Events
@@ -439,6 +459,8 @@ boundaries.
 | `community.role_granted` | Private scoped role is granted or reactivated. |
 | `community.cohort_suggested` | System suggests a cohort. |
 | `community.cohort_joined` | User joins a cohort. |
+| `community.cohort_left` | User leaves a cohort. |
+| `community.cohort_hidden` | User hides a suggested cohort. |
 | `community.discord_bridge_connected` | Artist links Discord. |
 
 ## Security And Abuse Requirements
