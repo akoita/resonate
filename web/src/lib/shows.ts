@@ -229,6 +229,64 @@ export type ShowPledgeConfirmation = {
 
 export type ShowPledgeReceipt = ShowPledgeConfirmation["pledge"];
 
+export type ShowCampaignCommunityRoom = {
+  id: string;
+  roomType: string;
+  ownerType: string;
+  ownerId: string;
+  artistId?: string | null;
+  title: string;
+  description?: string | null;
+  status: string;
+  membership?: {
+    role: string;
+    status: string;
+    joinedAt: string;
+    endedAt?: string | null;
+  } | null;
+  access?: {
+    joinable: boolean;
+    reason: string;
+    reasons?: string[];
+  };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ShowCampaignCommunity = {
+  schemaVersion: "show-campaign-community/v1";
+  campaign: {
+    id: string;
+    slug: string;
+    title: string;
+    artistId?: string | null;
+    artistDisplayName: string;
+    city: string;
+    country: string;
+    status: string;
+    campaignLevel: string;
+  };
+  rooms: ShowCampaignCommunityRoom[];
+};
+
+export type ShowCampaignCommunityMessage = {
+  id: string;
+  roomId: string;
+  authorId: string;
+  body: string | null;
+  messageType: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+};
+
+export type ShowCampaignCommunityMessages = {
+  schemaVersion: "community-messages/v1";
+  room: ShowCampaignCommunityRoom;
+  messages: ShowCampaignCommunityMessage[];
+};
+
 export type ShowCampaignDraftTierInput = {
   title: string;
   description?: string | null;
@@ -599,6 +657,70 @@ export async function listMyShowPledges(input: {
   }
 
   return await response.json() as ShowPledgeReceipt[];
+}
+
+export async function getShowCampaignCommunity(input: {
+  campaign: Campaign;
+  token: string;
+}): Promise<ShowCampaignCommunity> {
+  const response = await fetch(
+    `${API_BASE}/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/community`,
+    {
+      headers: { Authorization: `Bearer ${input.token}` },
+    },
+  );
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || `Campaign community lookup failed with status ${response.status}`);
+  }
+
+  return await response.json() as ShowCampaignCommunity;
+}
+
+export async function joinShowCampaignCommunity(input: {
+  campaign: Campaign;
+  token: string;
+}): Promise<{ schemaVersion: "community-membership/v1"; room: ShowCampaignCommunityRoom }> {
+  const response = await fetch(
+    `${API_BASE}/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/community/join`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}` },
+    },
+  );
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || `Campaign community join failed with status ${response.status}`);
+  }
+
+  return await response.json();
+}
+
+export async function createShowCampaignCommunityUpdate(input: {
+  campaign: Campaign;
+  token: string;
+  body: string;
+}): Promise<{ schemaVersion: "community-message/v1"; message: ShowCampaignCommunityMessage }> {
+  const response = await fetch(
+    `${API_BASE}/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/community/updates`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${input.token}`,
+      },
+      body: JSON.stringify({ body: input.body }),
+    },
+  );
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || `Campaign update failed with status ${response.status}`);
+  }
+
+  return await response.json();
 }
 
 export async function createShowCampaignDraft(input: {

@@ -549,3 +549,47 @@ rg '@Controller|@Get|@Post|@Put|@Delete|@Patch|@Body\(\)|@Query\(\)|@Param\(\)' 
 rg 'JSON\.parse|eval\(' backend/src/modules/shows backend/src/tests/shows.service.integration.spec.ts
 rg 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/app/page.tsx 'web/src/app/shows/[campaignId]/page.tsx' web/src/components/shows web/src/lib/shows.ts
 ```
+
+## Shows Campaign Supporter Rooms - 2026-06-01
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/community/community_rooms.service.ts`
+- `backend/src/modules/shows/shows.controller.ts`
+- `backend/src/modules/shows/shows.module.ts`
+- `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`
+- `backend/src/events/event_types.ts`
+- `web/src/components/shows/CampaignCommunityPanel.tsx`
+- `web/src/app/shows/[campaignId]/page.tsx`
+- `web/src/lib/shows.ts`
+- `web/src/lib/api.ts`
+- `web/src/styles/shows.css`
+- related tests and feature/architecture docs
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none introduced.
+- Low: none introduced.
+
+### Notes
+
+- Campaign supporter rooms are JWT-gated and use server-side
+  `campaign_support` eligibility against confirmed `ShowPledge` state.
+- The UI exposes safe locked copy and does not expose wallet holdings, private
+  pledge details, transaction metadata, or support history.
+- Campaign update analytics include compact campaign, room, and message
+  references only; message bodies remain excluded from analytics payloads.
+- No raw SQL, hardcoded secrets, unsafe deserialization, direct HTML injection,
+  cookie handling, or new environment variables were introduced.
+
+### Commands Run
+
+```bash
+rg -n 'password|secret|api_key|private_key|BEGIN (RSA|OPENSSH|EC|DSA|PRIVATE) KEY' backend/src/modules/community backend/src/modules/shows backend/src/modules/analytics backend/src/events/event_types.ts web/src/components/shows web/src/app/shows web/src/lib/shows.ts web/src/lib/api.ts docs/features docs/architecture --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw|\$executeRaw|JSON\.parse|eval\(' backend/src/modules/community backend/src/modules/shows backend/src/modules/analytics web/src/components/shows web/src/app/shows web/src/lib/shows.ts web/src/lib/api.ts
+rg -n 'dangerouslySetInnerHTML|innerHTML|document\.cookie|setCookie|httpOnly.*false|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|NEXT_PUBLIC_.*PRIVATE|NEXT_PUBLIC_.*TOKEN' web/src/components/shows web/src/app/shows web/src/lib/shows.ts web/src/lib/api.ts
+```

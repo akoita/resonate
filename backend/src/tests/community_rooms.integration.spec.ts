@@ -1,4 +1,4 @@
-import { ForbiddenException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { prisma } from "../db/prisma";
 import { CommunityEligibilityService } from "../modules/community/community_eligibility.service";
 import { CommunityRoomsService } from "../modules/community/community_rooms.service";
@@ -12,8 +12,13 @@ const artistId = `${TEST_PREFIX}artist`;
 const releaseId = `${TEST_PREFIX}release`;
 const trackId = `${TEST_PREFIX}track`;
 const stemId = `${TEST_PREFIX}stem`;
+const campaignId = `${TEST_PREFIX}campaign`;
+const campaignSlug = `${TEST_PREFIX}campaign-slug`;
+const cancelledCampaignId = `${TEST_PREFIX}cancelled_campaign`;
+const cancelledCampaignSlug = `${TEST_PREFIX}cancelled-campaign-slug`;
 const holderWallet = "0x" + "1".repeat(40);
 const artistWallet = "0x" + "2".repeat(40);
+const listenerWallet = "0x" + "6".repeat(40);
 
 const eventBus = { publish: jest.fn() };
 const eligibility = new CommunityEligibilityService(eventBus as any);
@@ -31,6 +36,9 @@ describe("CommunityRoomsService integration", () => {
     });
     await prisma.wallet.create({
       data: { userId: holderUserId, address: holderWallet, chainId: 84532 },
+    });
+    await prisma.wallet.create({
+      data: { userId: listenerUserId, address: listenerWallet, chainId: 84532 },
     });
     await prisma.artist.create({
       data: {
@@ -80,13 +88,64 @@ describe("CommunityRoomsService integration", () => {
         purchasedAt: new Date(),
       },
     });
+    await prisma.showCampaign.create({
+      data: {
+        id: campaignId,
+        slug: campaignSlug,
+        artistId,
+        artistDisplayName: "Community Room Artist",
+        title: "Community Room Artist in Paris",
+        city: "Paris",
+        country: "FR",
+        deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        goalAmountUnits: "1000000",
+        chainId: 84532,
+        campaignLevel: "active_escrow_campaign",
+        status: "active",
+        artistAuthorityStatus: "artist_authorized",
+      },
+    });
+    await prisma.showCampaign.create({
+      data: {
+        id: cancelledCampaignId,
+        slug: cancelledCampaignSlug,
+        artistId,
+        artistDisplayName: "Community Room Artist",
+        title: "Cancelled Community Room Artist in Paris",
+        city: "Paris",
+        country: "FR",
+        deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        goalAmountUnits: "1000000",
+        chainId: 84532,
+        campaignLevel: "active_escrow_campaign",
+        status: "cancelled",
+        artistAuthorityStatus: "artist_authorized",
+      },
+    });
+    await prisma.showPledge.create({
+      data: {
+        campaignId,
+        userId: listenerUserId,
+        walletAddress: listenerWallet,
+        amountUnits: "250000",
+        chainId: 84532,
+        status: "confirmed",
+        confirmationStatus: "confirmed",
+      },
+    });
   });
 
   afterAll(async () => {
+    await prisma.communityModerationReport.deleteMany({ where: { room: { ownerId: campaignId } } });
+    await prisma.communityMessage.deleteMany({ where: { room: { ownerId: campaignId } } });
+    await prisma.communityMembership.deleteMany({ where: { room: { ownerId: campaignId } } });
+    await prisma.communityRoom.deleteMany({ where: { ownerId: campaignId } });
     await prisma.communityModerationReport.deleteMany({ where: { room: { ownerId: artistId } } });
     await prisma.communityMessage.deleteMany({ where: { room: { ownerId: artistId } } });
     await prisma.communityMembership.deleteMany({ where: { room: { ownerId: artistId } } });
     await prisma.communityRoom.deleteMany({ where: { ownerId: artistId } });
+    await prisma.showPledge.deleteMany({ where: { campaignId } });
+    await prisma.showCampaign.deleteMany({ where: { id: { in: [campaignId, cancelledCampaignId] } } });
     await prisma.stemPurchase.deleteMany({ where: { buyerAddress: { equals: holderWallet, mode: "insensitive" } } });
     await prisma.stemListing.deleteMany({ where: { stemId } });
     await prisma.stem.deleteMany({ where: { id: stemId } });
@@ -155,5 +214,58 @@ describe("CommunityRoomsService integration", () => {
     expect(deleted.message).toMatchObject({ status: "deleted_by_moderator", body: null });
     expect(moderated.membership).toMatchObject({ status: "banned" });
     expect(paused.room).toMatchObject({ status: "paused" });
+  });
+
+  it("creates campaign supporter rooms and gates them by confirmed pledge support", async () => {
+    const locked = await service.getShowCampaignCommunity(otherUserId, campaignSlug);
+    const lockedRoom = locked.rooms[0];
+    expect(lockedRoom).toMatchObject({
+      roomType: "show_campaign_supporter",
+      ownerType: "show_campaign",
+      ownerId: campaignId,
+      access: expect.objectContaining({
+        joinable: false,
+        reason: "campaign_support_required",
+      }),
+    });
+
+    await expect(service.joinShowCampaignCommunity(otherUserId, campaignId)).rejects.toThrow(ForbiddenException);
+    await expect(service.joinShowCampaignCommunity(listenerUserId, campaignId)).resolves.toMatchObject({
+      membership: { status: "active", role: "supporter" },
+      room: { roomType: "show_campaign_supporter" },
+    });
+
+    expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.campaign_room_joined",
+      campaignId,
+      roomType: "show_campaign_supporter",
+    }));
+  });
+
+  it("does not open supporter rooms for inactive campaign lifecycles", async () => {
+    await expect(service.getShowCampaignCommunity(listenerUserId, cancelledCampaignSlug)).rejects.toThrow(BadRequestException);
+  });
+
+  it("lets campaign artists post campaign updates to supporter rooms", async () => {
+    const joined = await service.joinShowCampaignCommunity(listenerUserId, campaignId);
+    const update = await service.createShowCampaignUpdate(
+      { userId: artistUserId, role: "artist" },
+      campaignId,
+      { body: "Booking outreach has started." },
+    );
+    const messages = await service.listMessages(listenerUserId, joined.room.id);
+
+    expect(update.message).toMatchObject({
+      messageType: "campaign_update",
+      body: "Booking outreach has started.",
+    });
+    expect(messages.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ messageType: "campaign_update" }),
+    ]));
+    expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.message_created",
+      messageType: "campaign_update",
+      campaignId,
+    }));
   });
 });

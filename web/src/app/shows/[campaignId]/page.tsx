@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CampaignHero } from "../../../components/shows/CampaignHero";
+import { CampaignCommunityPanel } from "../../../components/shows/CampaignCommunityPanel";
 import { CampaignOperatorPanel } from "../../../components/shows/CampaignOperatorPanel";
 import { PledgeIntentPanel } from "../../../components/shows/PledgeIntentPanel";
 import {
@@ -148,6 +149,8 @@ export default async function CampaignDetailPage({ params }: Props) {
 
           <PledgeIntentPanel campaign={campaign} fallbackTiers={tiers} />
         </section>
+
+        <CampaignCommunityPanel campaign={campaign} />
 
         <section>
           <div className="shows-home-section__header" style={{ marginBottom: 20 }}>

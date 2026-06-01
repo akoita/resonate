@@ -328,6 +328,16 @@ describe("AnalyticsDomainEventBridgeService", () => {
         artistId: "artist_919",
       },
       {
+        eventName: "community.campaign_room_joined",
+        eventVersion: 1,
+        occurredAt,
+        userId: "user_919",
+        campaignId: "campaign_919",
+        roomId: "campaign_room_919",
+        roomType: "show_campaign_supporter",
+        artistId: "artist_919",
+      },
+      {
         eventName: "community.room_access_denied",
         eventVersion: 1,
         occurredAt,
@@ -347,6 +357,18 @@ describe("AnalyticsDomainEventBridgeService", () => {
         messageId: "message_919",
         messageType: "message",
         body: "do not persist message body",
+      },
+      {
+        eventName: "community.message_created",
+        eventVersion: 1,
+        occurredAt,
+        userId: "artist_user_919",
+        roomId: "campaign_room_919",
+        messageId: "campaign_update_919",
+        messageType: "campaign_update",
+        campaignId: "campaign_919",
+        campaignSlug: "campaign-slug-919",
+        body: "do not persist campaign update body",
       },
       {
         eventName: "community.message_reported",
@@ -640,6 +662,21 @@ describe("AnalyticsDomainEventBridgeService", () => {
     );
     expect(analyticsEvents).toContainEqual(
       expect.objectContaining({
+        eventName: "community.campaign_room_joined",
+        producer: "community-service",
+        subjectType: "show_campaign",
+        subjectId: "campaign_919",
+        actorId: "user_919",
+        consentBasis: "show_campaign_community:v1",
+        payload: expect.objectContaining({
+          campaignId: "campaign_919",
+          roomId: "campaign_room_919",
+          roomType: "show_campaign_supporter",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
         eventName: "community.message_created",
         subjectType: "community_message",
         subjectId: "message_919",
@@ -647,6 +684,20 @@ describe("AnalyticsDomainEventBridgeService", () => {
           roomId: "room_919",
           messageId: "message_919",
           messageType: "message",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "community.message_created",
+        subjectType: "community_message",
+        subjectId: "campaign_update_919",
+        payload: expect.objectContaining({
+          roomId: "campaign_room_919",
+          messageId: "campaign_update_919",
+          messageType: "campaign_update",
+          campaignId: "campaign_919",
+          campaignSlug: "campaign-slug-919",
         }),
       }),
     );
@@ -683,6 +734,7 @@ describe("AnalyticsDomainEventBridgeService", () => {
     expect(serializedEvents).not.toContain("do not persist benefit note");
     expect(serializedEvents).not.toContain("do not persist holdings");
     expect(serializedEvents).not.toContain("do not persist message body");
+    expect(serializedEvents).not.toContain("do not persist campaign update body");
     expect(serializedEvents).not.toContain("do not persist report reason");
   });
 
