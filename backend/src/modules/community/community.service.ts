@@ -45,6 +45,17 @@ type PublicProfileRecord = {
   profile: ProfileRecord;
   visibility: VisibilityRecord | null;
   wallet?: { address: string | null } | null;
+  campaignSupport?: PublicCampaignSupportRecord[];
+};
+
+type PublicCampaignSupportRecord = {
+  campaignId: string;
+  campaignSlug: string;
+  campaignTitle: string;
+  artistDisplayName: string;
+  city: string;
+  country: string;
+  grantedAt: Date;
 };
 
 const DEFAULT_VISIBILITY_SETTINGS: CommunityVisibilitySettingsDto = {
@@ -148,6 +159,18 @@ export class CommunityService {
         user: {
           include: {
             communityVisibilitySettings: true,
+            communityBadges: {
+              where: {
+                badgeType: "supporter",
+                sourceType: "show_campaign",
+                revokedAt: null,
+              },
+              select: {
+                sourceId: true,
+                grantedAt: true,
+              },
+              orderBy: [{ grantedAt: "desc" }],
+            },
             wallet: { select: { address: true } },
           },
         },
@@ -160,11 +183,16 @@ export class CommunityService {
     if (record.profileVisibility !== "public") {
       throw new NotFoundException("Community profile is not public");
     }
+    const visibility = visibilityDto(record.user.communityVisibilitySettings);
+    const campaignSupport = visibility.showCampaignSupport
+      ? await this.publicCampaignSupportBadges(record.user.communityBadges)
+      : [];
 
     return publicProfileDto({
       profile: record,
-      visibility: record.user.communityVisibilitySettings,
+      visibility,
       wallet: record.user.wallet,
+      campaignSupport,
     });
   }
 
@@ -209,6 +237,39 @@ export class CommunityService {
       userId,
       ...payload,
     } as never);
+  }
+
+  private async publicCampaignSupportBadges(
+    badges: Array<{ sourceId: string | null; grantedAt: Date }>,
+  ): Promise<PublicCampaignSupportRecord[]> {
+    const campaignIds = [...new Set(badges.map((badge) => badge.sourceId).filter((id): id is string => Boolean(id)))];
+    if (campaignIds.length === 0) return [];
+    const campaigns = await prisma.showCampaign.findMany({
+      where: { id: { in: campaignIds } },
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        artistDisplayName: true,
+        city: true,
+        country: true,
+      },
+    });
+    const campaignsById = new Map(campaigns.map((campaign) => [campaign.id, campaign]));
+    return badges.flatMap((badge) => {
+      if (!badge.sourceId) return [];
+      const campaign = campaignsById.get(badge.sourceId);
+      if (!campaign) return [];
+      return [{
+        campaignId: campaign.id,
+        campaignSlug: campaign.slug,
+        campaignTitle: campaign.title,
+        artistDisplayName: campaign.artistDisplayName,
+        city: campaign.city,
+        country: campaign.country,
+        grantedAt: badge.grantedAt,
+      }];
+    });
   }
 }
 
@@ -255,6 +316,17 @@ export function publicProfileDto(record: PublicProfileRecord) {
       tasteBadgesVisible: visibility.showTasteBadges,
       ownedItemsVisible: visibility.showOwnedItems,
       campaignSupportVisible: visibility.showCampaignSupport,
+      campaignSupport: visibility.showCampaignSupport
+        ? (record.campaignSupport ?? []).map((support) => ({
+          campaignId: support.campaignId,
+          campaignSlug: support.campaignSlug,
+          campaignTitle: support.campaignTitle,
+          artistDisplayName: support.artistDisplayName,
+          city: support.city,
+          country: support.country,
+          grantedAt: support.grantedAt.toISOString(),
+        }))
+        : [],
       showAttendanceVisible: visibility.showShowAttendance,
       playlistsVisible: visibility.showPlaylists,
       walletAddress: visibility.showWalletAddress ? record.wallet?.address ?? null : null,

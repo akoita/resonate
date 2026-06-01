@@ -218,6 +218,7 @@ Changed files:
 - Campaign artist selection now uses declared catalog artist credits instead
   of uploader profiles, reducing identity confusion when one platform profile
   uploads releases for multiple credited artists.
+
 - Server-side validation still rejects free-text/off-catalog artist subjects,
   requires ready or published catalog content, and keeps artist-owned payout
   safety tied to the authenticated artist profile.
@@ -229,6 +230,58 @@ Changed files:
 ```bash
 rg -n "password|secret|api_key|private_key" backend/src/modules/shows backend/src/tests/shows.service.integration.spec.ts --iglob '!*.test.*' --iglob '!*.spec.*'
 rg -n "rawQuery|executeRaw|\$queryRaw|dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false" backend/src/modules/shows web/src/components/shows web/src/lib/shows.ts
+```
+
+## Shows Supporter Badges And Roles - 2026-06-01
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/events/event_types.ts`
+- `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`
+- `backend/src/modules/community/community.service.ts`
+- `backend/src/modules/community/community_eligibility.service.ts`
+- `backend/src/modules/community/community_rooms.service.ts`
+- `web/src/components/community/PublicCommunityProfile.tsx`
+- `web/src/lib/api.ts`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none introduced.
+- Low: none introduced.
+
+### Notes
+
+- Confirmed campaign support now derives private supporter badges and roles
+  server-side from persisted `ShowPledge` rows; clients cannot self-assert
+  badges or roles.
+- Public profile reads expose campaign support badges only when the profile is
+  public and `showCampaignSupport` is enabled.
+- The public campaign-support payload includes campaign identity and coarse
+  city/country only. Pledge amounts, wallet addresses, transaction hashes,
+  receipts, and private support history remain excluded.
+- New `community.badge_granted` and `community.role_granted` analytics payloads
+  are compact and covered by analytics bridge redaction tests.
+- Existing scan hits for hardcoded secret strings, raw SQL, and JSON parsing
+  are pre-existing configuration/test or parameterized-query paths outside this
+  slice. No changed diff adds secrets, raw SQL, unsafe parsing, XSS sinks, or
+  cookie handling.
+
+### Commands Run
+
+```bash
+rg -n 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw' backend/src/
+rg -n 'JSON\.parse|eval\(' backend/src/
+rg -n 'dangerouslySetInnerHTML|innerHTML' web/src/
+rg -n 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
+rg -n 'document\.cookie|setCookie|httpOnly.*false' web/src/
+rg -n '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/community backend/src/modules/analytics backend/src/events | grep -v 'Guard\|Auth'
+rg -n '@Body\(\)|@Query\(\)|@Param\(' backend/src/modules/community backend/src/modules/analytics | grep -v 'Pipe\|Dto\|Validation'
+git diff -- backend/src web/src | rg -n 'secret|password|api_key|private_key|\$queryRaw|\$executeRaw|JSON\.parse|eval\(|dangerouslySetInnerHTML|innerHTML|document\.cookie|NEXT_PUBLIC_.*(SECRET|KEY|PASSWORD)'
 ```
 
 ## Release Artist Identity Refactor - 2026-05-31

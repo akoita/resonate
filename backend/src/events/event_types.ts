@@ -172,6 +172,30 @@ export interface CommunityBenefitRedeemedEvent extends BaseEvent {
   benefitType: string;
 }
 
+export interface CommunityBadgeGrantedEvent extends BaseEvent {
+  eventName: "community.badge_granted";
+  userId: string;
+  badgeType: string;
+  sourceType: string;
+  sourceId: string | null;
+  campaignId?: string | null;
+  artistId?: string | null;
+  visibility: string;
+}
+
+export interface CommunityRoleGrantedEvent extends BaseEvent {
+  eventName: "community.role_granted";
+  userId: string;
+  roleType: string;
+  scopeType: string;
+  scopeId: string | null;
+  sourceType: string;
+  sourceId: string | null;
+  campaignId?: string | null;
+  artistId?: string | null;
+  visibility: string;
+}
+
 export interface CommunityArtistTabEnabledEvent extends BaseEvent {
   eventName: "community.artist_tab_enabled";
   userId: string;
@@ -937,6 +961,8 @@ export type ResonateEvent =
   | CommunityProfileShowcaseUpdatedEvent
   | CommunityOwnershipDisplayUpdatedEvent
   | CommunityBenefitRedeemedEvent
+  | CommunityBadgeGrantedEvent
+  | CommunityRoleGrantedEvent
   | CommunityArtistTabEnabledEvent
   | CommunityRoomJoinedEvent
   | CommunityCampaignRoomJoinedEvent

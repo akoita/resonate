@@ -16,6 +16,7 @@ export const COMMUNITY_BENEFIT_TYPES = [
 export type CommunityBenefitType = (typeof COMMUNITY_BENEFIT_TYPES)[number];
 
 const ACTIVE_RULE_STATUSES = ["active"] as const;
+const SUPPORTER_BADGE_STATUSES: ShowPledgeStatus[] = ["confirmed", "released"];
 
 type PolicyObject = Record<string, unknown>;
 
@@ -33,6 +34,7 @@ export class CommunityEligibilityService {
   }
 
   async listMyBadges(userId: string) {
+    await this.syncCampaignSupporterBadges(userId);
     const badges = await prisma.communityBadge.findMany({
       where: { userId, revokedAt: null },
       orderBy: [{ grantedAt: "desc" }, { createdAt: "desc" }],
@@ -132,6 +134,76 @@ export class CommunityEligibilityService {
     } as never);
 
     return redemptionResponseDto(rule, evaluation, redemption, false);
+  }
+
+  async syncCampaignSupporterBadges(userId: string, campaignId?: string) {
+    await this.ensureUser(userId);
+    const wallet = await prisma.wallet.findUnique({ where: { userId } });
+    const pledgeClauses: Prisma.ShowPledgeWhereInput[] = [{ userId }];
+    if (wallet?.address) {
+      pledgeClauses.push({
+        walletAddress: {
+          equals: wallet.address.toLowerCase(),
+          mode: Prisma.QueryMode.insensitive,
+        },
+      });
+    }
+
+    const pledges = await prisma.showPledge.findMany({
+      where: {
+        status: { in: SUPPORTER_BADGE_STATUSES },
+        ...(campaignId ? { campaignId } : {}),
+        OR: pledgeClauses,
+      },
+      include: { campaign: true },
+      orderBy: [{ confirmedAt: "desc" }, { createdAt: "desc" }],
+    });
+
+    const granted: Array<{ campaignId: string; badgeId: string; roleId: string }> = [];
+    for (const pledge of pledges) {
+      const [badge, badgeWasGranted] = await this.upsertSupporterBadge(userId, pledge);
+      const [role, roleWasGranted] = await this.upsertSupporterRole(userId, pledge);
+      if (badgeWasGranted) {
+        this.eventBus.publish({
+          eventName: "community.badge_granted",
+          eventVersion: 1,
+          occurredAt: new Date().toISOString(),
+          userId,
+          badgeType: badge.badgeType,
+          sourceType: badge.sourceType,
+          sourceId: badge.sourceId,
+          campaignId: pledge.campaignId,
+          artistId: pledge.campaign.artistId,
+          visibility: badge.visibility,
+        } as never);
+      }
+      if (roleWasGranted) {
+        this.eventBus.publish({
+          eventName: "community.role_granted",
+          eventVersion: 1,
+          occurredAt: new Date().toISOString(),
+          userId,
+          roleType: role.roleType,
+          scopeType: role.scopeType,
+          scopeId: role.scopeId,
+          sourceType: role.sourceType,
+          sourceId: role.sourceId,
+          campaignId: pledge.campaignId,
+          artistId: pledge.campaign.artistId,
+          visibility: role.visibility,
+        } as never);
+      }
+      granted.push({ campaignId: pledge.campaignId, badgeId: badge.id, roleId: role.id });
+    }
+
+    return {
+      schemaVersion: "community-supporter-proofs/v1",
+      granted,
+      privacy: {
+        proofDetails: "private",
+        publicDisplayRequiresCampaignSupportOptIn: true,
+      },
+    };
   }
 
   private async evaluatePolicy(userId: string, rawPolicy: Prisma.JsonValue): Promise<EvaluationResult> {
@@ -304,6 +376,66 @@ export class CommunityEligibilityService {
         email: `${userId}@wallet.local`,
       },
     });
+  }
+
+  private async upsertSupporterBadge(
+    userId: string,
+    pledge: { campaignId: string },
+  ) {
+    const identity = {
+      userId,
+      badgeType: "supporter",
+      sourceType: "show_campaign",
+      sourceId: pledge.campaignId,
+    };
+    const existing = await prisma.communityBadge.findUnique({
+      where: { CommunityBadge_identity: identity },
+    });
+    const wasGranted = existing?.revokedAt !== null;
+    const badge = await prisma.communityBadge.upsert({
+      where: { CommunityBadge_identity: identity },
+      update: {
+        visibility: "private",
+        revokedAt: null,
+      },
+      create: {
+        ...identity,
+        visibility: "private",
+      },
+    });
+    return [badge, wasGranted] as const;
+  }
+
+  private async upsertSupporterRole(
+    userId: string,
+    pledge: { id: string; campaignId: string },
+  ) {
+    const identity = {
+      userId,
+      roleType: "supporter",
+      scopeType: "show_campaign",
+      scopeId: pledge.campaignId,
+    };
+    const existing = await prisma.communityRole.findUnique({
+      where: { CommunityRole_identity: identity },
+    });
+    const wasGranted = existing?.revokedAt !== null;
+    const role = await prisma.communityRole.upsert({
+      where: { CommunityRole_identity: identity },
+      update: {
+        sourceType: "campaign_pledge",
+        sourceId: pledge.id,
+        visibility: "private",
+        revokedAt: null,
+      },
+      create: {
+        ...identity,
+        sourceType: "campaign_pledge",
+        sourceId: pledge.id,
+        visibility: "private",
+      },
+    });
+    return [role, wasGranted] as const;
   }
 }
 

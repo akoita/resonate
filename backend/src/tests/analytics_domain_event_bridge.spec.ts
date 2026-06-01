@@ -312,6 +312,34 @@ describe("AnalyticsDomainEventBridgeService", () => {
         internalNote: "do not persist benefit note",
       },
       {
+        eventName: "community.badge_granted",
+        eventVersion: 1,
+        occurredAt,
+        userId: "user_919",
+        badgeType: "supporter",
+        sourceType: "show_campaign",
+        sourceId: "campaign_919",
+        campaignId: "campaign_919",
+        artistId: "artist_919",
+        visibility: "private",
+        pledgeAmount: "do not persist pledge amount",
+      },
+      {
+        eventName: "community.role_granted",
+        eventVersion: 1,
+        occurredAt,
+        userId: "user_919",
+        roleType: "supporter",
+        scopeType: "show_campaign",
+        scopeId: "campaign_919",
+        sourceType: "campaign_pledge",
+        sourceId: "pledge_919",
+        campaignId: "campaign_919",
+        artistId: "artist_919",
+        visibility: "private",
+        walletAddress: "do not persist wallet",
+      },
+      {
         eventName: "community.artist_tab_enabled",
         eventVersion: 1,
         occurredAt,
@@ -746,6 +774,38 @@ describe("AnalyticsDomainEventBridgeService", () => {
     );
     expect(analyticsEvents).toContainEqual(
       expect.objectContaining({
+        eventName: "community.badge_granted",
+        subjectType: "community_badge",
+        subjectId: "campaign_919",
+        payload: expect.objectContaining({
+          badgeType: "supporter",
+          sourceType: "show_campaign",
+          sourceId: "campaign_919",
+          campaignId: "campaign_919",
+          artistId: "artist_919",
+          visibility: "private",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "community.role_granted",
+        subjectType: "community_role",
+        subjectId: "campaign_919",
+        payload: expect.objectContaining({
+          roleType: "supporter",
+          scopeType: "show_campaign",
+          scopeId: "campaign_919",
+          sourceType: "campaign_pledge",
+          sourceId: "pledge_919",
+          campaignId: "campaign_919",
+          artistId: "artist_919",
+          visibility: "private",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
         eventName: "remix.created",
         payload: expect.objectContaining({
           stemIds: ["stem_1", "stem_2"],
@@ -764,6 +824,8 @@ describe("AnalyticsDomainEventBridgeService", () => {
     expect(serializedEvents).not.toContain("do not persist payment proof");
     expect(serializedEvents).not.toContain("do not persist failed payment proof");
     expect(serializedEvents).not.toContain("do not persist benefit note");
+    expect(serializedEvents).not.toContain("do not persist pledge amount");
+    expect(serializedEvents).not.toContain("do not persist wallet");
     expect(serializedEvents).not.toContain("do not persist holdings");
     expect(serializedEvents).not.toContain("do not persist message body");
     expect(serializedEvents).not.toContain("do not persist campaign update body");

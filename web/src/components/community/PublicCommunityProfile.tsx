@@ -38,7 +38,9 @@ export function publicCommunityShowcaseItems(profile: PublicCommunityProfileResp
       key: "campaign-support",
       label: "Campaign support",
       status: profile.showcase.campaignSupportVisible ? "visible" : "hidden",
-      value: profile.showcase.campaignSupportVisible ? "Ready for future campaign proofs" : "Hidden by listener",
+      value: profile.showcase.campaignSupportVisible
+        ? campaignSupportSummary(profile.showcase.campaignSupport.length)
+        : "Hidden by listener",
     },
     {
       key: "show-attendance",
@@ -108,6 +110,26 @@ export function PublicCommunityProfile({
           </article>
         ))}
       </section>
+
+      {profile.showcase.campaignSupportVisible && profile.showcase.campaignSupport.length > 0 ? (
+        <section className="community-profile-support" aria-label="Campaign support badges">
+          <span className="community-profile-kicker">Campaign support</span>
+          <div className="community-profile-support__grid">
+            {profile.showcase.campaignSupport.map((support) => (
+              <article key={support.campaignId} className="community-profile-support-card">
+                <span>{support.city}, {support.country}</span>
+                <strong>{support.campaignTitle}</strong>
+                <p>{support.artistDisplayName}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </main>
   );
+}
+
+function campaignSupportSummary(count: number) {
+  if (count === 0) return "No public campaign support badges yet";
+  return `${count} public campaign supporter badge${count === 1 ? "" : "s"}`;
 }

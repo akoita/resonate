@@ -119,7 +119,7 @@ Implementation notes:
 
 ## Slice 3: Supporter Badges And Roles
 
-Status: `planned`
+Status: `implemented`
 
 Deliverables:
 
@@ -129,6 +129,25 @@ Deliverables:
 - Revoke or adjust roles when pledge/campaign state moves to refund, failed,
   or released states according to policy.
 - Document badge visibility, privacy boundaries, and revocation behavior.
+
+Implementation notes:
+
+- Confirmed or released campaign pledges now derive private `supporter`
+  `CommunityBadge` rows with `sourceType = show_campaign` and private
+  `supporter` `CommunityRole` rows scoped to `show_campaign`.
+- Campaign supporter room joins also trigger the idempotent proof sync, so a
+  confirmed backer who enters the room receives the same supporter badge/role
+  foundation without a separate job.
+- Public profile reads expose campaign support badges only when the listener's
+  profile is `public` and `showCampaignSupport` is enabled. The public payload
+  includes campaign id/slug/title, artist display name, and coarse city/country,
+  but not pledge amount, wallet address, transaction hash, receipt details, or
+  private support history.
+- Badge and role grant events are compact `community.badge_granted` and
+  `community.role_granted` events with campaign/source references only.
+- Automatic revocation for refunded, failed, cancelled, or released lifecycle
+  transitions remains Slice 5; current reads derive/grant active proofs from
+  confirmed/released pledges only.
 
 ## Slice 4: Campaign Conversion Analytics
 

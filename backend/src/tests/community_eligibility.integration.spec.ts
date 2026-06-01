@@ -183,6 +183,79 @@ describe("CommunityEligibilityService integration", () => {
     expect(eventBus.publish).toHaveBeenCalledTimes(1);
   });
 
+  it("derives private supporter badges and roles from confirmed campaign pledges", async () => {
+    const campaign = await prisma.showCampaign.create({
+      data: {
+        id: `${TEST_PREFIX}supporter_campaign`,
+        slug: `${TEST_PREFIX}supporter-campaign`,
+        artistId,
+        artistDisplayName: "Community Artist",
+        title: "Community Artist in Berlin",
+        city: "Berlin",
+        country: "DE",
+        deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        goalAmountUnits: "1000000",
+        chainId: 84532,
+        status: "active",
+      },
+    });
+    await prisma.showPledge.create({
+      data: {
+        campaignId: campaign.id,
+        userId,
+        walletAddress,
+        amountUnits: "250000",
+        chainId: 84532,
+        status: "confirmed",
+        confirmationStatus: "confirmed",
+        transactionHash: "0x" + "8".repeat(64),
+      },
+    });
+
+    const response = await service.listMyBadges(userId);
+    const badge = response.badges.find((item) => item.sourceId === campaign.id);
+    const role = await prisma.communityRole.findUnique({
+      where: {
+        CommunityRole_identity: {
+          userId,
+          roleType: "supporter",
+          scopeType: "show_campaign",
+          scopeId: campaign.id,
+        },
+      },
+    });
+
+    expect(badge).toMatchObject({
+      badgeType: "supporter",
+      sourceType: "show_campaign",
+      visibility: "private",
+    });
+    expect(role).toMatchObject({
+      roleType: "supporter",
+      sourceType: "campaign_pledge",
+      visibility: "private",
+      revokedAt: null,
+    });
+    expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.badge_granted",
+      badgeType: "supporter",
+      sourceType: "show_campaign",
+      campaignId: campaign.id,
+      visibility: "private",
+    }));
+    expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.role_granted",
+      roleType: "supporter",
+      scopeType: "show_campaign",
+      campaignId: campaign.id,
+      visibility: "private",
+    }));
+
+    eventBus.publish.mockClear();
+    await service.listMyBadges(userId);
+    expect(eventBus.publish).not.toHaveBeenCalled();
+  });
+
   it("uses badges, roles, and campaign support as trusted eligibility facts", async () => {
     const campaign = await prisma.showCampaign.create({
       data: {
