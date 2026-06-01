@@ -1984,6 +1984,15 @@ export type PublicCommunityProfileResponse = {
     tasteBadgesVisible: boolean;
     ownedItemsVisible: boolean;
     campaignSupportVisible: boolean;
+    campaignSupport: Array<{
+      campaignId: string;
+      campaignSlug: string;
+      campaignTitle: string;
+      artistDisplayName: string;
+      city: string;
+      country: string;
+      grantedAt: string;
+    }>;
     showAttendanceVisible: boolean;
     playlistsVisible: boolean;
     walletAddress: string | null;

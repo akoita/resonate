@@ -17,6 +17,7 @@ const profile: PublicCommunityProfileResponse = {
     tasteBadgesVisible: false,
     ownedItemsVisible: false,
     campaignSupportVisible: false,
+    campaignSupport: [],
     showAttendanceVisible: false,
     playlistsVisible: false,
     walletAddress: null,
@@ -74,5 +75,37 @@ describe("PublicCommunityProfile", () => {
     });
     expect(html).toContain("0xabc123");
     expect(html).toContain("Ready for future showcase cards");
+  });
+
+  it("renders opt-in campaign support badges without pledge or wallet details", () => {
+    const visibleProfile: PublicCommunityProfileResponse = {
+      ...profile,
+      showcase: {
+        ...profile.showcase,
+        campaignSupportVisible: true,
+        campaignSupport: [{
+          campaignId: "campaign-1",
+          campaignSlug: "artist-paris",
+          campaignTitle: "Artist in Paris",
+          artistDisplayName: "Artist",
+          city: "Paris",
+          country: "FR",
+          grantedAt: "2026-05-31T00:00:00.000Z",
+        }],
+      },
+    };
+    const items = publicCommunityShowcaseItems(visibleProfile);
+    const html = renderToStaticMarkup(
+      <PublicCommunityProfile profile={visibleProfile} requestedUserId="listener-1" />,
+    );
+
+    expect(items.find((item) => item.key === "campaign-support")).toMatchObject({
+      status: "visible",
+      value: "1 public campaign supporter badge",
+    });
+    expect(html).toContain("Artist in Paris");
+    expect(html).toContain("Paris, FR");
+    expect(html).not.toContain("250000");
+    expect(html).not.toContain("0xabc123");
   });
 });

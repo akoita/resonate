@@ -435,6 +435,8 @@ boundaries.
 | `community.room_status_updated` | Artist/team pauses, reopens, or archives a room. |
 | `community.campaign_room_joined` | Confirmed supporter joins a Shows campaign room. |
 | `community.show_city_interest_joined` | User joins a show city demand group. |
+| `community.badge_granted` | Private badge proof is granted or reactivated. |
+| `community.role_granted` | Private scoped role is granted or reactivated. |
 | `community.cohort_suggested` | System suggests a cohort. |
 | `community.cohort_joined` | User joins a cohort. |
 | `community.discord_bridge_connected` | Artist links Discord. |

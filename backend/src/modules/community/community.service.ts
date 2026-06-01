@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
 
@@ -45,6 +46,17 @@ type PublicProfileRecord = {
   profile: ProfileRecord;
   visibility: VisibilityRecord | null;
   wallet?: { address: string | null } | null;
+  campaignSupport?: PublicCampaignSupportRecord[];
+};
+
+type PublicCampaignSupportRecord = {
+  campaignId: string;
+  campaignSlug: string;
+  campaignTitle: string;
+  artistDisplayName: string;
+  city: string;
+  country: string;
+  grantedAt: Date;
 };
 
 const DEFAULT_VISIBILITY_SETTINGS: CommunityVisibilitySettingsDto = {
@@ -57,6 +69,8 @@ const DEFAULT_VISIBILITY_SETTINGS: CommunityVisibilitySettingsDto = {
   allowTasteMatching: false,
   allowCityScenes: false,
 };
+
+const PUBLIC_CAMPAIGN_SUPPORT_STATUSES = ["confirmed", "released"] as const;
 
 @Injectable()
 export class CommunityService {
@@ -160,11 +174,16 @@ export class CommunityService {
     if (record.profileVisibility !== "public") {
       throw new NotFoundException("Community profile is not public");
     }
+    const visibility = visibilityDto(record.user.communityVisibilitySettings);
+    const campaignSupport = visibility.showCampaignSupport
+      ? await this.publicCampaignSupportFromPledges(userId, record.user.wallet?.address ?? null)
+      : [];
 
     return publicProfileDto({
       profile: record,
-      visibility: record.user.communityVisibilitySettings,
+      visibility,
       wallet: record.user.wallet,
+      campaignSupport,
     });
   }
 
@@ -209,6 +228,56 @@ export class CommunityService {
       userId,
       ...payload,
     } as never);
+  }
+
+  private async publicCampaignSupportFromPledges(
+    userId: string,
+    walletAddress: string | null,
+  ): Promise<PublicCampaignSupportRecord[]> {
+    const supporterIdentities: Prisma.ShowPledgeWhereInput[] = [{ userId }];
+    if (walletAddress) {
+      supporterIdentities.push({
+        walletAddress: { equals: walletAddress, mode: "insensitive" },
+      });
+    }
+    const pledges = await prisma.showPledge.findMany({
+      where: {
+        status: { in: [...PUBLIC_CAMPAIGN_SUPPORT_STATUSES] },
+        OR: supporterIdentities,
+      },
+      include: {
+        campaign: {
+          select: {
+            id: true,
+            slug: true,
+            title: true,
+            artistDisplayName: true,
+            city: true,
+            country: true,
+          },
+        },
+      },
+      orderBy: [
+        { confirmedAt: "desc" },
+        { createdAt: "desc" },
+      ],
+    });
+
+    const supportByCampaignId = new Map<string, PublicCampaignSupportRecord>();
+    for (const pledge of pledges) {
+      if (supportByCampaignId.has(pledge.campaignId)) continue;
+      const campaign = pledge.campaign;
+      supportByCampaignId.set(pledge.campaignId, {
+        campaignId: campaign.id,
+        campaignSlug: campaign.slug,
+        campaignTitle: campaign.title,
+        artistDisplayName: campaign.artistDisplayName,
+        city: campaign.city,
+        country: campaign.country,
+        grantedAt: pledge.confirmedAt ?? pledge.createdAt,
+      });
+    }
+    return [...supportByCampaignId.values()];
   }
 }
 
@@ -255,6 +324,17 @@ export function publicProfileDto(record: PublicProfileRecord) {
       tasteBadgesVisible: visibility.showTasteBadges,
       ownedItemsVisible: visibility.showOwnedItems,
       campaignSupportVisible: visibility.showCampaignSupport,
+      campaignSupport: visibility.showCampaignSupport
+        ? (record.campaignSupport ?? []).map((support) => ({
+          campaignId: support.campaignId,
+          campaignSlug: support.campaignSlug,
+          campaignTitle: support.campaignTitle,
+          artistDisplayName: support.artistDisplayName,
+          city: support.city,
+          country: support.country,
+          grantedAt: support.grantedAt.toISOString(),
+        }))
+        : [],
       showAttendanceVisible: visibility.showShowAttendance,
       playlistsVisible: visibility.showPlaylists,
       walletAddress: visibility.showWalletAddress ? record.wallet?.address ?? null : null,

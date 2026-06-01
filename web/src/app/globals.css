@@ -5682,6 +5682,52 @@ a {
   overflow-wrap: anywhere;
 }
 
+.community-profile-support {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.community-profile-support__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.community-profile-support-card {
+  min-height: 124px;
+  padding: var(--space-4);
+  border: 1px solid rgba(124, 92, 255, 0.24);
+  border-radius: var(--radius-md);
+  background: rgba(124, 92, 255, 0.08);
+}
+
+.community-profile-support-card span {
+  color: var(--color-accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.community-profile-support-card strong {
+  display: block;
+  margin-top: var(--space-2);
+  color: var(--color-text);
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.community-profile-support-card p {
+  margin-top: var(--space-2);
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .taste-memory-editor {
   padding: var(--space-3);
 }
@@ -5753,6 +5799,7 @@ a {
   .taste-memory-editor-inputs,
   .community-profile-hero,
   .community-profile-grid,
+  .community-profile-support__grid,
   .artist-community__layout,
   .artist-community-report {
     grid-template-columns: 1fr;

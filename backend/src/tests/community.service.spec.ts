@@ -35,6 +35,8 @@ describe("CommunityService privacy helpers", () => {
     expect(dto.showcase).toMatchObject({
       tasteBadgesVisible: false,
       ownedItemsVisible: false,
+      campaignSupportVisible: false,
+      campaignSupport: [],
       walletAddress: null,
     });
     expect(dto.redactions).toEqual(expect.arrayContaining([
@@ -71,5 +73,50 @@ describe("CommunityService privacy helpers", () => {
 
     expect(dto.showcase.walletAddress).toBe("0xabc");
     expect(dto.redactions).not.toContain("wallet_address_hidden");
+  });
+
+  it("shows campaign support badges only when explicitly enabled", () => {
+    const dto = publicProfileDto({
+      profile: {
+        id: "profile-1",
+        userId: "user-1",
+        displayName: "Ada",
+        bio: null,
+        avatarUrl: null,
+        profileVisibility: "public",
+        createdAt: date,
+        updatedAt: date,
+      },
+      visibility: {
+        showTasteBadges: false,
+        showOwnedItems: false,
+        showCampaignSupport: true,
+        showShowAttendance: false,
+        showPlaylists: false,
+        showWalletAddress: false,
+        allowTasteMatching: false,
+        allowCityScenes: false,
+      },
+      campaignSupport: [{
+        campaignId: "campaign-1",
+        campaignSlug: "artist-paris",
+        campaignTitle: "Artist in Paris",
+        artistDisplayName: "Artist",
+        city: "Paris",
+        country: "FR",
+        grantedAt: date,
+      }],
+    });
+
+    expect(dto.showcase.campaignSupportVisible).toBe(true);
+    expect(dto.showcase.campaignSupport).toEqual([
+      expect.objectContaining({
+        campaignId: "campaign-1",
+        campaignTitle: "Artist in Paris",
+        city: "Paris",
+        country: "FR",
+      }),
+    ]);
+    expect(dto.showcase.walletAddress).toBeNull();
   });
 });

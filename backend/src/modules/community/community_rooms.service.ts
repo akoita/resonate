@@ -127,7 +127,9 @@ export class CommunityRoomsService {
 
   async joinShowCampaignCommunity(userId: string, campaignIdOrSlug: string) {
     const { room } = await this.ensureShowCampaignSupporterRoom(campaignIdOrSlug);
-    return this.joinRoom(userId, room.id);
+    const result = await this.joinRoom(userId, room.id);
+    await this.eligibility.syncCampaignSupporterBadges(userId, room.ownerId);
+    return result;
   }
 
   async joinShowCampaignCityDemand(userId: string, campaignIdOrSlug: string) {

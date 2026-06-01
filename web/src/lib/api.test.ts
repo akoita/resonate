@@ -1440,6 +1440,7 @@ describe('API Client', () => {
               tasteBadgesVisible: false,
               ownedItemsVisible: false,
               campaignSupportVisible: false,
+              campaignSupport: [],
               showAttendanceVisible: false,
               playlistsVisible: false,
               walletAddress: null,
