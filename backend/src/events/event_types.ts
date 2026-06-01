@@ -215,9 +215,13 @@ export interface CommunityCampaignRoomJoinedEvent extends BaseEvent {
   eventName: "community.campaign_room_joined";
   userId: string;
   campaignId: string;
+  campaignSlug?: string | null;
+  campaignStatus?: string | null;
   roomId: string;
   roomType: string;
   artistId?: string | null;
+  city?: string | null;
+  country?: string | null;
 }
 
 export interface CommunityShowCityInterestJoinedEvent extends BaseEvent {
@@ -225,11 +229,27 @@ export interface CommunityShowCityInterestJoinedEvent extends BaseEvent {
   userId: string;
   campaignId: string;
   campaignSlug?: string | null;
+  campaignStatus?: string | null;
   roomId: string;
   roomType: string;
   artistId?: string | null;
   city: string;
   country: string;
+}
+
+export interface CommunityCampaignUpdateViewedEvent extends BaseEvent {
+  eventName: "community.campaign_update_viewed";
+  userId: string;
+  campaignId: string;
+  campaignSlug?: string | null;
+  campaignStatus?: string | null;
+  roomId: string;
+  roomType: string;
+  artistId?: string | null;
+  latestMessageId: string;
+  visibleUpdateCount: number;
+  city?: string | null;
+  country?: string | null;
 }
 
 export interface CommunityRoomLeftEvent extends BaseEvent {
@@ -967,6 +987,7 @@ export type ResonateEvent =
   | CommunityRoomJoinedEvent
   | CommunityCampaignRoomJoinedEvent
   | CommunityShowCityInterestJoinedEvent
+  | CommunityCampaignUpdateViewedEvent
   | CommunityRoomLeftEvent
   | CommunityRoomAccessDeniedEvent
   | CommunityMessageCreatedEvent

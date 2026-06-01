@@ -152,7 +152,7 @@ Implementation notes:
 
 ## Slice 4: Campaign Conversion Analytics
 
-Status: `planned`
+Status: `implemented`
 
 Deliverables:
 
@@ -164,6 +164,24 @@ Deliverables:
   history, raw location, and transaction metadata not already approved for
   analytics.
 - Update analytics taxonomy and feature docs.
+
+Implementation notes:
+
+- Campaign supporter joins now emit `community.campaign_room_joined` with
+  campaign id/slug/status, room id/type, artist id, and coarse campaign
+  city/country.
+- City demand joins now include the same campaign status and coarse campaign
+  geography while still excluding raw location source data.
+- Campaign update creation keeps using `community.message_created` with
+  `messageType = campaign_update`; campaign status and coarse city/country are
+  included, but update bodies are excluded from analytics.
+- Reading visible supporter-room campaign updates emits
+  `community.campaign_update_viewed` with the latest visible update id and
+  visible update count only when the latest seen update advances for that room
+  member. It does not include message body, report text, pledge amount, wallet
+  holdings, transaction hashes, or raw location data.
+- The analytics domain-event bridge maps these events into pseudonymous
+  analytics ledger rows under the `community.*` family.
 
 ## Slice 5: Lifecycle Reconciliation
 

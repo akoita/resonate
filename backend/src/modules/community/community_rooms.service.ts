@@ -139,6 +139,7 @@ export class CommunityRoomsService {
       this.publish("community.show_city_interest_joined", userId, {
         campaignId: campaign.id,
         campaignSlug: campaign.slug,
+        campaignStatus: campaign.status,
         roomId: room.id,
         roomType: room.roomType,
         artistId: campaign.artistId,
@@ -162,6 +163,9 @@ export class CommunityRoomsService {
       messageType: "campaign_update",
       campaignId: campaign.id,
       campaignSlug: campaign.slug,
+      campaignStatus: campaign.status,
+      city: campaign.city,
+      country: campaign.country,
     });
     return {
       schemaVersion: "community-message/v1",
@@ -221,10 +225,9 @@ export class CommunityRoomsService {
       });
       if (room.ownerType === "show_campaign" && room.roomType === "show_campaign_supporter") {
         this.publish("community.campaign_room_joined", userId, {
-          campaignId: room.ownerId,
           roomId,
           roomType: room.roomType,
-          artistId: room.artistId,
+          ...(await this.showCampaignAnalyticsRef(room)),
         });
       }
     }
@@ -266,6 +269,7 @@ export class CommunityRoomsService {
       orderBy: { createdAt: "asc" },
       take: 100,
     });
+    await this.publishCampaignUpdateViewed(userId, room, messages);
     return {
       schemaVersion: "community-messages/v1",
       room: roomDto(room),
@@ -290,7 +294,7 @@ export class CommunityRoomsService {
       roomId,
       messageId: message.id,
       messageType,
-      ...campaignSourceRef(room),
+      ...(await this.messageAnalyticsRef(room)),
     });
     return { schemaVersion: "community-message/v1", message: messageDto(message) };
   }
@@ -434,6 +438,83 @@ export class CommunityRoomsService {
     const room = await prisma.communityRoom.findUnique({ where: { id: roomId } });
     if (!room) throw new NotFoundException("Community room not found");
     return room;
+  }
+
+  private async showCampaignAnalyticsRef(room: { ownerType: string; ownerId: string; artistId: string | null }) {
+    if (room.ownerType !== "show_campaign") return {};
+    const campaign = await prisma.showCampaign.findUnique({
+      where: { id: room.ownerId },
+      select: {
+        id: true,
+        slug: true,
+        status: true,
+        artistId: true,
+        city: true,
+        country: true,
+      },
+    });
+    if (!campaign) return { campaignId: room.ownerId, artistId: room.artistId };
+    return {
+      campaignId: campaign.id,
+      campaignSlug: campaign.slug,
+      campaignStatus: campaign.status,
+      artistId: campaign.artistId,
+      city: campaign.city,
+      country: campaign.country,
+    };
+  }
+
+  private async messageAnalyticsRef(room: RoomRecord) {
+    if (room.ownerType === "show_campaign") {
+      return this.showCampaignAnalyticsRef(room);
+    }
+    return campaignSourceRef(room);
+  }
+
+  private async publishCampaignUpdateViewed(
+    userId: string,
+    room: RoomRecord,
+    messages: Array<{ id: string; messageType: string; createdAt: Date }>,
+  ) {
+    if (room.ownerType !== "show_campaign" || room.roomType !== "show_campaign_supporter") {
+      return;
+    }
+    const campaignUpdates = messages.filter((message) => message.messageType === "campaign_update");
+    if (campaignUpdates.length === 0) {
+      return;
+    }
+    const latestUpdate = campaignUpdates[campaignUpdates.length - 1];
+    const membership = await prisma.communityMembership.findUnique({
+      where: { CommunityMembership_identity: { roomId: room.id, userId } },
+      select: {
+        id: true,
+        status: true,
+        lastViewedCampaignUpdateAt: true,
+      },
+    });
+    if (
+      membership?.status !== "active"
+      || (
+        membership.lastViewedCampaignUpdateAt
+        && membership.lastViewedCampaignUpdateAt.getTime() >= latestUpdate.createdAt.getTime()
+      )
+    ) {
+      return;
+    }
+    await prisma.communityMembership.update({
+      where: { id: membership.id },
+      data: {
+        lastViewedCampaignUpdateId: latestUpdate.id,
+        lastViewedCampaignUpdateAt: latestUpdate.createdAt,
+      },
+    });
+    this.publish("community.campaign_update_viewed", userId, {
+      roomId: room.id,
+      roomType: room.roomType,
+      latestMessageId: latestUpdate.id,
+      visibleUpdateCount: campaignUpdates.length,
+      ...(await this.showCampaignAnalyticsRef(room)),
+    });
   }
 
   private async ensureUser(userId: string) {

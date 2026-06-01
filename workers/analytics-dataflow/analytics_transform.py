@@ -22,6 +22,7 @@ SUPPORTED_EVENT_FAMILIES = {
     "artist",
     "shows",
     "library",
+    "community",
     "commerce",
     "license",
     "payment",

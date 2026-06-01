@@ -699,3 +699,61 @@ rg -n 'password|secret|api_key|private_key|BEGIN (RSA|OPENSSH|EC|DSA|PRIVATE) KE
 rg -n 'rawQuery|executeRaw|\$queryRaw|\$executeRaw|JSON\.parse|eval\(' backend/src/modules/shows backend/src/modules/analytics/analytics_event.ts web/src/components/shows web/src/lib/shows.ts
 rg -n 'dangerouslySetInnerHTML|innerHTML|document\.cookie|setCookie|httpOnly.*false|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|NEXT_PUBLIC_.*PRIVATE|NEXT_PUBLIC_.*TOKEN' web/src/components/shows web/src/lib/shows.ts
 ```
+
+## Shows Campaign Conversion Analytics - 2026-06-01
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/events/event_types.ts`
+- `backend/prisma/schema.prisma`
+- `backend/prisma/migrations/20260601172000_community_campaign_update_read_state/migration.sql`
+- `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`
+- `backend/src/modules/analytics/analytics_event.ts`
+- `backend/src/modules/analytics/analytics_warehouse.ts`
+- `backend/src/modules/community/community_rooms.service.ts`
+- `backend/src/tests/analytics_event.spec.ts`
+- `backend/src/tests/analytics_domain_event_bridge.spec.ts`
+- `backend/src/tests/analytics_warehouse.spec.ts`
+- `backend/src/tests/community_rooms.integration.spec.ts`
+- `test-fixtures/analytics_expected_events.json`
+- `workers/analytics-dataflow/analytics_transform.py`
+- `workers/analytics-dataflow/test_analytics_transform.py`
+- feature and architecture docs
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none introduced.
+- Low: none introduced.
+
+### Notes
+
+- Campaign/community conversion analytics now include campaign id/slug/status,
+  room references, artist id, and coarse campaign city/country only.
+- `community.campaign_update_viewed` records the latest visible campaign update
+  id and visible update count only when the latest seen update advances for
+  that room member; update bodies remain excluded.
+- Analytics bridge tests assert that message bodies, raw location source data,
+  wallet holdings, private support history, and pledge amounts are not persisted
+  in analytics payloads.
+- Backend warehouse export and the Dataflow worker both accept the `community`
+  analytics event family so campaign/community conversion events do not land in
+  quarantine.
+- No raw SQL, hardcoded secrets, unsafe deserialization, direct HTML injection,
+  cookie handling, or new environment variables were introduced.
+- Secret-scan hits were existing documentation references about redaction and
+  operational secret handling, not committed credentials.
+- JSON parsing hits were existing analytics warehouse/report parsing paths, not
+  changed by this slice.
+
+### Commands Run
+
+```bash
+rg -n 'password|secret|api_key|private_key|BEGIN (RSA|OPENSSH|EC|DSA|PRIVATE) KEY' backend/src/modules/community backend/src/modules/analytics backend/src/events/event_types.ts docs/features docs/architecture --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw|\$executeRaw|JSON\.parse|eval\(' backend/src/modules/community backend/src/modules/analytics backend/src/events/event_types.ts
+git diff --check
+python3 -m pytest -s workers/analytics-dataflow/test_analytics_transform.py
+```

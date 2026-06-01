@@ -92,6 +92,21 @@
     }
   },
   {
+    "eventName": "community.campaign_update_viewed",
+    "payload": {
+      "campaignId": "campaign-1",
+      "campaignSlug": "artist-paris-fr",
+      "campaignStatus": "active",
+      "roomId": "room-1",
+      "roomType": "show_campaign_supporter",
+      "artistId": "artist-1",
+      "latestMessageId": "message-1",
+      "visibleUpdateCount": 1,
+      "city": "Paris",
+      "country": "FR"
+    }
+  },
+  {
     "eventName": "library.saved",
     "payload": {
       "userCohortId": "cohort-1",

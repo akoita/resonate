@@ -113,6 +113,7 @@ class AnalyticsTransformTest(unittest.TestCase):
             ("evt_search", "search.submitted"),
             ("evt_artist", "artist.upload_step_completed"),
             ("evt_shows", "shows.pledge_intent_created"),
+            ("evt_community", "community.campaign_update_viewed"),
         ]
 
         layers = process_batch(event(event_id, event_name) for event_id, event_name in events)
@@ -138,6 +139,7 @@ class AnalyticsTransformTest(unittest.TestCase):
                 "search",
                 "artist",
                 "shows",
+                "community",
             ],
         )
         self.assertEqual(len(layers.analytics_facts), len(events))

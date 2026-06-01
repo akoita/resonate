@@ -57,7 +57,7 @@ event meaning.
 | `session.*` | `session.*` | Listening or agent commerce session lifecycle. |
 | `playback.*` | `playback.*` | Player starts, completions, skips, and listen-quality signals. |
 | `library.*` | `library.*` | Saves, follows, playlists, and listener library actions. |
-| `community.*` | `community.*` | Profile visibility, holder benefits, artist rooms, access checks, message/report/moderation actions. |
+| `community.*` | `community.*` | Profile visibility, holder benefits, artist rooms, Shows campaign rooms, city demand, campaign update views, access checks, message/report/moderation actions. |
 | `commerce.*` | `commerce.*` | Quotes, purchase intent, settlement, refunds, and product commerce. |
 | `payment.*` | `payment.*` | Payment initiation, split, settlement, and accounting rails. |
 | `contract.*` | `contract.*` | Contract/indexer events such as stem sales and royalty payment observations. |
@@ -185,6 +185,24 @@ rules. Warehouse facts store only the coarse values in
 - `shows.pledge_confirmed`
   - owner: Shows Service
   - payload: campaignId, pledgeId, artistId, amountUnits, paymentAssetSymbol, confirmationStatus
+
+### Community Campaign Conversion
+
+- `community.campaign_room_joined`
+  - owner: Community Service
+  - payload: campaignId, campaignSlug, campaignStatus, roomId, roomType, artistId, city, country
+- `community.show_city_interest_joined`
+  - owner: Community Service
+  - payload: campaignId, campaignSlug, campaignStatus, roomId, roomType, artistId, city, country
+- `community.message_created`
+  - owner: Community Service
+  - payload: roomId, messageId, messageType, campaignId, campaignSlug, campaignStatus
+  - note: campaign update bodies and normal message bodies are excluded.
+- `community.campaign_update_viewed`
+  - owner: Community Service
+  - payload: campaignId, campaignSlug, campaignStatus, roomId, roomType, latestMessageId, visibleUpdateCount, city, country
+  - note: view analytics excludes message bodies, report text, wallet holdings,
+    private support history, transaction metadata, and raw location data.
 
 ### Commerce & Settlement
 

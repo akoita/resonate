@@ -20,6 +20,7 @@ export const SUPPORTED_EVENT_FAMILIES = new Set([
   "artist",
   "shows",
   "library",
+  "community",
   "commerce",
   "license",
   "payment",
