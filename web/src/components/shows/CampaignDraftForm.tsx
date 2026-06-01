@@ -42,6 +42,8 @@ const PAYMENT_DECIMALS = 6;
 const PAYMENT_SYMBOL = "USDC";
 const PUBLIC_CATALOG_STATUSES = new Set(["ready", "published"]);
 const MAX_GALLERY_VISUALS = 8;
+const CAMPAIGN_VISUAL_MAX_BYTES = 8 * 1024 * 1024;
+const CAMPAIGN_VISUAL_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 function addDaysForInput(days: number) {
   const date = new Date();
@@ -77,6 +79,21 @@ function decimalToUnits(value: string, decimals: number) {
 
 function centsToDecimal(cents: number) {
   return (cents / 100).toString();
+}
+
+function validateCampaignVisualFile(file: File, label: string) {
+  if (!CAMPAIGN_VISUAL_MIME_TYPES.has(file.type)) {
+    throw new Error(`${label} must be a JPEG, PNG, or WebP image.`);
+  }
+  if (file.size > CAMPAIGN_VISUAL_MAX_BYTES) {
+    throw new Error(`${label} must be 8MB or smaller.`);
+  }
+}
+
+function validateCampaignVisualFiles(files: Array<{ file?: File | null; label: string }>) {
+  files.forEach(({ file, label }) => {
+    if (file) validateCampaignVisualFile(file, label);
+  });
 }
 
 function initialTiers(campaign?: Campaign): TierForm[] {
@@ -361,6 +378,20 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
       if (normalizedTiers.length === 0) {
         throw new Error("Add at least one pledge tier.");
       }
+      const replacementVisuals = galleryVisuals.filter((visual) => visual.persistedId && visual.file);
+      const newGalleryVisuals = galleryVisuals.filter((visual) => !visual.persistedId && visual.file);
+      validateCampaignVisualFiles([
+        { file: heroVisualFile, label: "Hero visual" },
+        { file: cardVisualFile, label: "Preview visual" },
+        ...replacementVisuals.map((visual, index) => ({
+          file: visual.file,
+          label: `Replacement gallery visual ${index + 1}`,
+        })),
+        ...newGalleryVisuals.map((visual, index) => ({
+          file: visual.file,
+          label: `New gallery visual ${index + 1}`,
+        })),
+      ]);
 
       const draft = {
         artistId: selectedArtistCandidate?.artistId ?? null,
@@ -390,10 +421,7 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
       let saved = campaign
         ? await updateShowCampaignDraft({ campaign, token, draft })
         : await createShowCampaignDraft({ token, draft });
-      for (const visualId of deletedGalleryVisualIds) {
-        saved = await deleteShowCampaignVisual({ campaign: saved, token, visualId });
-      }
-      for (const visual of galleryVisuals) {
+      for (const visual of replacementVisuals) {
         if (visual.persistedId && visual.file) {
           saved = await replaceShowCampaignVisual({
             campaign: saved,
@@ -403,8 +431,10 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
           });
         }
       }
-      const newGalleryVisuals = galleryVisuals.filter((visual) => !visual.persistedId && visual.file);
       const galleryIdMap = new Map<string, string>();
+      for (const visualId of deletedGalleryVisualIds) {
+        saved = await deleteShowCampaignVisual({ campaign: saved, token, visualId });
+      }
       if (heroVisualFile || cardVisualFile || newGalleryVisuals.length > 0) {
         const visuals = new FormData();
         if (heroVisualFile) visuals.append("hero", heroVisualFile);
@@ -568,8 +598,8 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
         <div className="shows-create__visual-upload shows-create__visual-upload--gallery">
           <div className="shows-create__gallery-toolbar">
             <span>Gallery visuals</span>
-            <label className="shows-create__gallery-add">
-              Add images
+            <label className="shows-create__gallery-file-control">
+              <span>Add images</span>
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
@@ -608,8 +638,8 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
                     >
                       Down
                     </button>
-                    <label>
-                      Replace
+                    <label className="shows-create__gallery-file-control">
+                      <span>Replace</span>
                       <input
                         type="file"
                         accept="image/jpeg,image/png,image/webp"

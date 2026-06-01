@@ -520,8 +520,8 @@
   gap: 16px;
 }
 
-.shows-create__gallery-add,
-.shows-create__gallery-actions label {
+.shows-create__gallery-file-control {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -536,13 +536,18 @@
   font-weight: 900;
 }
 
-.shows-create__gallery-add input,
-.shows-create__gallery-actions input {
+.shows-create__gallery-file-control input {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   opacity: 0;
-  pointer-events: none;
+  cursor: pointer;
+}
+
+.shows-create__gallery-file-control:has(input:focus-visible) {
+  outline: 2px solid color-mix(in srgb, var(--color-signal) 70%, white);
+  outline-offset: 3px;
 }
 
 .shows-create__visual-gallery {
@@ -577,6 +582,15 @@
 
 .shows-create__visual-gallery-item {
   display: block;
+  min-height: 138px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--color-signal) 18%, rgba(255, 255, 255, 0.08));
+  background:
+    radial-gradient(circle at 28% 18%, color-mix(in srgb, var(--color-signal) 20%, transparent), transparent 54%),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.006));
+  background-position: center;
+  background-size: cover;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .shows-create__visual-gallery-empty {
@@ -609,7 +623,7 @@
 }
 
 .shows-create__gallery-actions button:disabled,
-.shows-create__gallery-add:has(input:disabled) {
+.shows-create__gallery-file-control:has(input:disabled) {
   opacity: 0.45;
   cursor: not-allowed;
 }
