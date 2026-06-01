@@ -698,6 +698,26 @@ export async function joinShowCampaignCommunity(input: {
   return await response.json();
 }
 
+export async function joinShowCampaignCityDemand(input: {
+  campaign: Campaign;
+  token: string;
+}): Promise<{ schemaVersion: "community-membership/v1"; room: ShowCampaignCommunityRoom }> {
+  const response = await fetch(
+    `${API_BASE}/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/community/city-interest/join`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}` },
+    },
+  );
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || `Campaign city demand join failed with status ${response.status}`);
+  }
+
+  return await response.json();
+}
+
 export async function createShowCampaignCommunityUpdate(input: {
   campaign: Campaign;
   token: string;

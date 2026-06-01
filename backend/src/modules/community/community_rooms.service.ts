@@ -8,6 +8,8 @@ const ROOM_STATUSES = ["active", "paused", "archived"] as const;
 const MESSAGE_TYPES = ["message", "announcement", "campaign_update"] as const;
 const MODERATION_ACTIONS = ["remove", "ban"] as const;
 const SHOW_CAMPAIGN_ROOM_STATUSES = ["active", "funded", "booking_confirmed", "deposit_released"] as const;
+const SHOW_CITY_DEMAND_SIGNAL_STATUSES = ["draft", "active", "funded", "booking_confirmed", "deposit_released"] as const;
+const SHOW_CITY_DEMAND_CAMPAIGN_STATUSES = ["active", "funded", "booking_confirmed", "deposit_released"] as const;
 
 type RoomStatus = (typeof ROOM_STATUSES)[number];
 type MessageType = (typeof MESSAGE_TYPES)[number];
@@ -96,22 +98,53 @@ export class CommunityRoomsService {
 
   async getShowCampaignCommunity(userId: string, campaignIdOrSlug: string) {
     await this.ensureUser(userId);
-    const { campaign, room } = await this.ensureShowCampaignSupporterRoom(campaignIdOrSlug);
-    const membership = await prisma.communityMembership.findUnique({
-      where: { CommunityMembership_identity: { roomId: room.id, userId } },
+    const campaign = await this.findShowCampaign(campaignIdOrSlug);
+    const rooms: RoomRecord[] = [];
+
+    if (isShowCampaignCityDemandAvailable(campaign)) {
+      rooms.push(await this.ensureShowCampaignCityDemandRoomForCampaign(campaign));
+    }
+    if (isShowCampaignSupporterRoomAvailable(campaign)) {
+      rooms.push((await this.ensureShowCampaignSupporterRoomForCampaign(campaign)).room);
+    }
+    if (rooms.length === 0) {
+      throw new BadRequestException("This campaign does not currently expose community rooms");
+    }
+
+    const memberships = await prisma.communityMembership.findMany({
+      where: { userId, roomId: { in: rooms.map((room) => room.id) } },
     });
-    const access = await this.describeRoomAccess(userId, room);
+    const membershipsByRoom = new Map(memberships.map((membership) => [membership.roomId, membership]));
 
     return {
       schemaVersion: "show-campaign-community/v1",
       campaign: campaignDto(campaign),
-      rooms: [roomDto(room, membership, access)],
+      rooms: await Promise.all(
+        rooms.map(async (room) => roomDto(room, membershipsByRoom.get(room.id), await this.describeRoomAccess(userId, room))),
+      ),
     };
   }
 
   async joinShowCampaignCommunity(userId: string, campaignIdOrSlug: string) {
     const { room } = await this.ensureShowCampaignSupporterRoom(campaignIdOrSlug);
     return this.joinRoom(userId, room.id);
+  }
+
+  async joinShowCampaignCityDemand(userId: string, campaignIdOrSlug: string) {
+    const { campaign, room } = await this.ensureShowCampaignCityDemandRoom(campaignIdOrSlug);
+    const result = await this.joinRoomMembership(userId, room.id);
+    if (result.joinedNow) {
+      this.publish("community.show_city_interest_joined", userId, {
+        campaignId: campaign.id,
+        campaignSlug: campaign.slug,
+        roomId: room.id,
+        roomType: room.roomType,
+        artistId: campaign.artistId,
+        city: campaign.city,
+        country: campaign.country,
+      });
+    }
+    return result.response;
   }
 
   async createShowCampaignUpdate(actor: Actor, campaignIdOrSlug: string, input: { body?: unknown }) {
@@ -136,6 +169,11 @@ export class CommunityRoomsService {
   }
 
   async joinRoom(userId: string, roomId: string) {
+    const result = await this.joinRoomMembership(userId, roomId);
+    return result.response;
+  }
+
+  private async joinRoomMembership(userId: string, roomId: string) {
     await this.ensureUser(userId);
     const room = await this.getRoom(roomId);
     try {
@@ -152,6 +190,10 @@ export class CommunityRoomsService {
       }
       throw error;
     }
+    const existingMembership = await prisma.communityMembership.findUnique({
+      where: { CommunityMembership_identity: { roomId, userId } },
+    });
+    const joinedNow = existingMembership?.status !== "active";
     const membership = await prisma.communityMembership.upsert({
       where: { CommunityMembership_identity: { roomId, userId } },
       update: {
@@ -168,25 +210,28 @@ export class CommunityRoomsService {
       },
     });
 
-    this.publish("community.room_joined", userId, {
-      roomId,
-      roomType: room.roomType,
-      artistId: room.artistId,
-      ...campaignSourceRef(room),
-    });
-    if (room.ownerType === "show_campaign") {
-      this.publish("community.campaign_room_joined", userId, {
-        campaignId: room.ownerId,
+    if (joinedNow) {
+      this.publish("community.room_joined", userId, {
         roomId,
         roomType: room.roomType,
         artistId: room.artistId,
+        ...campaignSourceRef(room),
       });
+      if (room.ownerType === "show_campaign" && room.roomType === "show_campaign_supporter") {
+        this.publish("community.campaign_room_joined", userId, {
+          campaignId: room.ownerId,
+          roomId,
+          roomType: room.roomType,
+          artistId: room.artistId,
+        });
+      }
     }
-    return {
+    const response = {
       schemaVersion: "community-membership/v1",
       room: roomDto(room, membership),
       membership: membershipDto(membership),
     };
+    return { response, joinedNow, room, membership };
   }
 
   async leaveRoom(userId: string, roomId: string) {
@@ -398,19 +443,12 @@ export class CommunityRoomsService {
   }
 
   private async ensureShowCampaignSupporterRoom(campaignIdOrSlug: string) {
-    const campaign = await prisma.showCampaign.findFirst({
-      where: {
-        OR: [
-          { id: campaignIdOrSlug },
-          { slug: campaignIdOrSlug },
-        ],
-      },
-    });
-    if (!campaign) throw new NotFoundException("Show campaign not found");
-    if (campaign.campaignLevel !== "active_escrow_campaign") {
-      throw new BadRequestException("Only active escrow campaigns can open supporter rooms");
-    }
-    if (!SHOW_CAMPAIGN_ROOM_STATUSES.includes(campaign.status as (typeof SHOW_CAMPAIGN_ROOM_STATUSES)[number])) {
+    const campaign = await this.findShowCampaign(campaignIdOrSlug);
+    return this.ensureShowCampaignSupporterRoomForCampaign(campaign);
+  }
+
+  private async ensureShowCampaignSupporterRoomForCampaign(campaign: ShowCampaignRecord) {
+    if (!isShowCampaignSupporterRoomAvailable(campaign)) {
       throw new BadRequestException("Only active, funded, or booking-confirmed escrow campaigns can open supporter rooms");
     }
 
@@ -443,6 +481,56 @@ export class CommunityRoomsService {
     return { campaign, room };
   }
 
+  private async ensureShowCampaignCityDemandRoom(campaignIdOrSlug: string) {
+    const campaign = await this.findShowCampaign(campaignIdOrSlug);
+    const room = await this.ensureShowCampaignCityDemandRoomForCampaign(campaign);
+    return { campaign, room };
+  }
+
+  private async ensureShowCampaignCityDemandRoomForCampaign(campaign: ShowCampaignRecord) {
+    if (!isShowCampaignCityDemandAvailable(campaign)) {
+      throw new BadRequestException("This campaign cannot currently accept city demand interest");
+    }
+
+    return prisma.communityRoom.upsert({
+      where: {
+        CommunityRoom_identity: {
+          roomType: "show_city_demand",
+          ownerType: "show_campaign",
+          ownerId: campaign.id,
+        },
+      },
+      update: {
+        artistId: campaign.artistId,
+        title: `${campaign.city} Demand Group`,
+        description: `Open demand signal for ${campaign.title} in ${campaign.city}, ${campaign.country}.`,
+        accessPolicyJson: Prisma.DbNull,
+      },
+      create: {
+        roomType: "show_city_demand",
+        ownerType: "show_campaign",
+        ownerId: campaign.id,
+        artistId: campaign.artistId,
+        title: `${campaign.city} Demand Group`,
+        description: `Open demand signal for ${campaign.title} in ${campaign.city}, ${campaign.country}.`,
+        status: "active",
+      },
+    });
+  }
+
+  private async findShowCampaign(campaignIdOrSlug: string) {
+    const campaign = await prisma.showCampaign.findFirst({
+      where: {
+        OR: [
+          { id: campaignIdOrSlug },
+          { slug: campaignIdOrSlug },
+        ],
+      },
+    });
+    if (!campaign) throw new NotFoundException("Show campaign not found");
+    return campaign;
+  }
+
   private publish(eventName: string, userId: string, payload: Record<string, unknown>) {
     this.eventBus.publish({
       eventName,
@@ -455,9 +543,33 @@ export class CommunityRoomsService {
 }
 
 type RoomRecord = CommunityRoom;
+type ShowCampaignRecord = {
+  id: string;
+  slug: string;
+  title: string;
+  artistId: string | null;
+  artistDisplayName: string;
+  city: string;
+  country: string;
+  status: string;
+  campaignLevel: string;
+};
 
 function campaignSupportPolicy(campaignId: string): Prisma.InputJsonObject {
   return { type: "campaign_support", campaignId, minStatus: "confirmed" };
+}
+
+function isShowCampaignSupporterRoomAvailable(campaign: { campaignLevel: string; status: string }) {
+  return campaign.campaignLevel === "active_escrow_campaign"
+    && SHOW_CAMPAIGN_ROOM_STATUSES.includes(campaign.status as (typeof SHOW_CAMPAIGN_ROOM_STATUSES)[number]);
+}
+
+function isShowCampaignCityDemandAvailable(campaign: { campaignLevel: string; status: string }) {
+  if (campaign.campaignLevel === "signal") {
+    return SHOW_CITY_DEMAND_SIGNAL_STATUSES.includes(campaign.status as (typeof SHOW_CITY_DEMAND_SIGNAL_STATUSES)[number]);
+  }
+  return ["provisional_campaign", "active_escrow_campaign"].includes(campaign.campaignLevel)
+    && SHOW_CITY_DEMAND_CAMPAIGN_STATUSES.includes(campaign.status as (typeof SHOW_CITY_DEMAND_CAMPAIGN_STATUSES)[number]);
 }
 
 function canOperateArtist(userId: string, artist: { userId: string | null }) {
@@ -547,12 +659,14 @@ function roomAccessDeniedMessage(room: { roomType: string }) {
 function roomMembershipRole(room: { roomType: string }) {
   if (room.roomType === "artist_holder") return "holder";
   if (room.roomType === "show_campaign_supporter") return "supporter";
+  if (room.roomType === "show_city_demand") return "city_member";
   return "member";
 }
 
 function roomMembershipSource(room: { roomType: string }) {
   if (room.roomType === "artist_holder") return "eligibility";
   if (room.roomType === "show_campaign_supporter") return "campaign_support";
+  if (room.roomType === "show_city_demand") return "city_interest";
   return "manual";
 }
 
