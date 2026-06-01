@@ -124,7 +124,7 @@ export default async function CampaignDetailPage({ params }: Props) {
             <strong>{daysLeft}d left</strong>
             <p>Campaign closes on {deadline}. If it misses, pledges refund automatically.</p>
           </article>
-          <article className="show-detail__signal-card">
+          <article className="show-detail__signal-card show-detail__signal-card--target">
             <span className="show-detail__signal-label">Show target</span>
             <strong>{campaign.venue ?? campaign.city}</strong>
             <p>{targetDate}. Venue and production stay conditional until the threshold clears.</p>
