@@ -14,6 +14,8 @@ const trackId = `${TEST_PREFIX}track`;
 const stemId = `${TEST_PREFIX}stem`;
 const campaignId = `${TEST_PREFIX}campaign`;
 const campaignSlug = `${TEST_PREFIX}campaign-slug`;
+const signalCampaignId = `${TEST_PREFIX}signal_campaign`;
+const signalCampaignSlug = `${TEST_PREFIX}signal-campaign-slug`;
 const cancelledCampaignId = `${TEST_PREFIX}cancelled_campaign`;
 const cancelledCampaignSlug = `${TEST_PREFIX}cancelled-campaign-slug`;
 const holderWallet = "0x" + "1".repeat(40);
@@ -122,6 +124,23 @@ describe("CommunityRoomsService integration", () => {
         artistAuthorityStatus: "artist_authorized",
       },
     });
+    await prisma.showCampaign.create({
+      data: {
+        id: signalCampaignId,
+        slug: signalCampaignSlug,
+        artistId,
+        artistDisplayName: "Community Room Artist",
+        title: "Community Room Artist fan signal in Lyon",
+        city: "Lyon",
+        country: "FR",
+        deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        goalAmountUnits: "0",
+        chainId: 84532,
+        campaignLevel: "signal",
+        status: "draft",
+        artistAuthorityStatus: "none",
+      },
+    });
     await prisma.showPledge.create({
       data: {
         campaignId,
@@ -136,16 +155,17 @@ describe("CommunityRoomsService integration", () => {
   });
 
   afterAll(async () => {
-    await prisma.communityModerationReport.deleteMany({ where: { room: { ownerId: campaignId } } });
-    await prisma.communityMessage.deleteMany({ where: { room: { ownerId: campaignId } } });
-    await prisma.communityMembership.deleteMany({ where: { room: { ownerId: campaignId } } });
-    await prisma.communityRoom.deleteMany({ where: { ownerId: campaignId } });
+    const campaignOwnerIds = [campaignId, signalCampaignId, cancelledCampaignId];
+    await prisma.communityModerationReport.deleteMany({ where: { room: { ownerId: { in: campaignOwnerIds } } } });
+    await prisma.communityMessage.deleteMany({ where: { room: { ownerId: { in: campaignOwnerIds } } } });
+    await prisma.communityMembership.deleteMany({ where: { room: { ownerId: { in: campaignOwnerIds } } } });
+    await prisma.communityRoom.deleteMany({ where: { ownerId: { in: campaignOwnerIds } } });
     await prisma.communityModerationReport.deleteMany({ where: { room: { ownerId: artistId } } });
     await prisma.communityMessage.deleteMany({ where: { room: { ownerId: artistId } } });
     await prisma.communityMembership.deleteMany({ where: { room: { ownerId: artistId } } });
     await prisma.communityRoom.deleteMany({ where: { ownerId: artistId } });
     await prisma.showPledge.deleteMany({ where: { campaignId } });
-    await prisma.showCampaign.deleteMany({ where: { id: { in: [campaignId, cancelledCampaignId] } } });
+    await prisma.showCampaign.deleteMany({ where: { id: { in: [campaignId, signalCampaignId, cancelledCampaignId] } } });
     await prisma.stemPurchase.deleteMany({ where: { buyerAddress: { equals: holderWallet, mode: "insensitive" } } });
     await prisma.stemListing.deleteMany({ where: { stemId } });
     await prisma.stem.deleteMany({ where: { id: stemId } });
@@ -218,7 +238,7 @@ describe("CommunityRoomsService integration", () => {
 
   it("creates campaign supporter rooms and gates them by confirmed pledge support", async () => {
     const locked = await service.getShowCampaignCommunity(otherUserId, campaignSlug);
-    const lockedRoom = locked.rooms[0];
+    const lockedRoom = locked.rooms.find((room) => room.roomType === "show_campaign_supporter");
     expect(lockedRoom).toMatchObject({
       roomType: "show_campaign_supporter",
       ownerType: "show_campaign",
@@ -242,8 +262,44 @@ describe("CommunityRoomsService integration", () => {
     }));
   });
 
+  it("lets any authenticated fan join campaign city demand without pledge support", async () => {
+    const community = await service.getShowCampaignCommunity(otherUserId, campaignSlug);
+    const cityRoom = community.rooms.find((room) => room.roomType === "show_city_demand");
+
+    expect(cityRoom).toMatchObject({
+      roomType: "show_city_demand",
+      access: expect.objectContaining({
+        joinable: true,
+        reason: "open",
+      }),
+    });
+
+    await expect(service.joinShowCampaignCityDemand(otherUserId, campaignSlug)).resolves.toMatchObject({
+      membership: { status: "active", role: "city_member" },
+      room: { roomType: "show_city_demand" },
+    });
+    expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.show_city_interest_joined",
+      campaignId,
+      city: "Paris",
+      country: "FR",
+    }));
+  });
+
+  it("opens city demand groups for fan signal campaigns", async () => {
+    const community = await service.getShowCampaignCommunity(otherUserId, signalCampaignSlug);
+
+    expect(community.rooms).toEqual([
+      expect.objectContaining({
+        roomType: "show_city_demand",
+        ownerId: signalCampaignId,
+        access: expect.objectContaining({ joinable: true }),
+      }),
+    ]);
+  });
+
   it("does not open supporter rooms for inactive campaign lifecycles", async () => {
-    await expect(service.getShowCampaignCommunity(listenerUserId, cancelledCampaignSlug)).rejects.toThrow(BadRequestException);
+    await expect(service.joinShowCampaignCommunity(listenerUserId, cancelledCampaignSlug)).rejects.toThrow(BadRequestException);
   });
 
   it("lets campaign artists post campaign updates to supporter rooms", async () => {

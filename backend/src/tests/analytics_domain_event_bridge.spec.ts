@@ -338,6 +338,20 @@ describe("AnalyticsDomainEventBridgeService", () => {
         artistId: "artist_919",
       },
       {
+        eventName: "community.show_city_interest_joined",
+        eventVersion: 1,
+        occurredAt,
+        userId: "city_fan_919",
+        campaignId: "campaign_919",
+        campaignSlug: "campaign-slug-919",
+        roomId: "city_room_919",
+        roomType: "show_city_demand",
+        artistId: "artist_919",
+        city: "Paris",
+        country: "FR",
+        rawLocation: "do not persist raw city source",
+      },
+      {
         eventName: "community.room_access_denied",
         eventVersion: 1,
         occurredAt,
@@ -677,6 +691,24 @@ describe("AnalyticsDomainEventBridgeService", () => {
     );
     expect(analyticsEvents).toContainEqual(
       expect.objectContaining({
+        eventName: "community.show_city_interest_joined",
+        producer: "community-service",
+        subjectType: "show_campaign",
+        subjectId: "campaign_919",
+        actorId: "city_fan_919",
+        consentBasis: "show_city_demand:v1",
+        payload: expect.objectContaining({
+          campaignId: "campaign_919",
+          campaignSlug: "campaign-slug-919",
+          roomId: "city_room_919",
+          roomType: "show_city_demand",
+          city: "Paris",
+          country: "FR",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
         eventName: "community.message_created",
         subjectType: "community_message",
         subjectId: "message_919",
@@ -735,6 +767,7 @@ describe("AnalyticsDomainEventBridgeService", () => {
     expect(serializedEvents).not.toContain("do not persist holdings");
     expect(serializedEvents).not.toContain("do not persist message body");
     expect(serializedEvents).not.toContain("do not persist campaign update body");
+    expect(serializedEvents).not.toContain("do not persist raw city source");
     expect(serializedEvents).not.toContain("do not persist report reason");
   });
 
