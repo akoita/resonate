@@ -36,6 +36,12 @@ a compact preview is not supplied, the UI reuses the hero or gallery visual
 with a safe crop and falls back to the generated concert-card atmosphere only
 as a last resort.
 
+Campaign detail pages keep the primary hero focused on the booking signal and
+pledge call-to-action even when campaign copy is long. Long `Title: Subtitle`
+campaign names render as a two-part headline, unusually long venue targets are
+clamped with the full text preserved in browser hover text, and long campaign
+pitches are expanded into a dedicated pitch section below the visual story.
+
 ## Who It Is For
 
 - Listeners who want to bring an artist to their city.
@@ -120,7 +126,7 @@ Positioning:
 | `/shows` | partial | Campaign explorer reads the backend Shows API and falls back to three seeded examples for local/offline demos. Uploaded campaign preview visuals appear on campaign cards when available. |
 | `/shows/create` | partial | Authenticated artists, admins, and operators can create draft escrow campaigns with campaign terms, evidence references, pledge tiers, a hero visual, a compact preview visual, and an ordered gallery visual set. Active escrow campaign drafts must select a declared catalog artist credit with at least one ready or published release, so the public subject matches the public catalog Artists view instead of the uploader profile. The public campaign title is the fan-facing identity used on cards, heroes, breadcrumbs, and new campaign slugs; for normal artists, platform artist identity and beneficiary wallet are still derived from the artist profile for authority and payout safety. Operators select from catalog artist credits and still need review-gated authority before activation. |
 | `/shows/:slug/edit` | partial | Draft campaigns can be edited before activation, including public campaign title/copy, hero/preview visuals, gallery add/replace/delete/reorder controls, campaign terms, authority evidence reference, beneficiary wallet, payment token, and pledge tiers. |
-| `/shows/sennarin-paris` | partial | Detail page reads the backend Shows API by slug with seeded fallback, shows funding progress, signal tiers, and how-it-works copy, and uses the uploaded hero visual, gallery mosaic, and campaign image metadata for large social previews when available. |
+| `/shows/sennarin-paris` | partial | Detail page reads the backend Shows API by slug with seeded fallback, shows funding progress, signal tiers, and how-it-works copy, and uses the uploaded hero visual, gallery mosaic, expanded campaign pitch, dense-title treatment, and campaign image metadata for large social previews when available. |
 | Escrow contract | partial | `ShowCampaignEscrow.sol` now exists with threshold, refund, booking, fulfillment, and release-gating unit/fuzz/invariant/formal coverage. Deployment now emits JSON, `.remote.env`, and ABI handoffs; production activation still needs the promoted escrow address plus per-campaign `contractCampaignId` wiring. |
 | Pledge flow | partial | Backend pledge intent, transaction confirmation, refund confirmation, and authenticated receipt reads are implemented. The detail page lets connected fans select a tier, create a receipt-ready pledge intent, execute the ERC-20 approval plus escrow pledge through the smart account, attach the mined transaction to the backend receipt, see their latest campaign pledge, and claim refunds when the campaign/pledge is refund-available and linked contract call data exists. |
 | Campaign community | partial | Shows detail pages expose a connected campaign-community panel. Any authenticated fan can join the open campaign-owned `show_city_demand` room to signal coarse city interest without pledging. Confirmed backers can join the private `show_campaign_supporter` room, artists/operators can post `campaign_update` messages, supporters can post room messages, and confirmed pledge support derives private supporter badges/roles. Public profiles can show campaign support only through listener `showCampaignSupport` opt-in. Compact `community.show_city_interest_joined`, `community.campaign_room_joined`, `community.badge_granted`, `community.role_granted`, and `community.message_created` analytics connect community activity to campaign state. Lifecycle revocation remains a #1000 follow-up slice. |

@@ -37,8 +37,10 @@ export function CampaignHero({ campaign }: Props) {
   const heroVisual = campaign.heroImage || campaign.visuals[0]?.url;
   const hasHeroImage = Boolean(heroVisual);
   const denseCopy = displayTitle.length > 54
-    || (campaign.venue?.length ?? 0) > 72
-    || campaign.tagline.length > 260;
+    || (campaign.venue?.length ?? 0) > 72;
+  const titleParts = denseCopy && displayTitle.includes(":")
+    ? displayTitle.split(/:\s*/, 2)
+    : null;
 
   return (
     <article
@@ -49,8 +51,16 @@ export function CampaignHero({ campaign }: Props) {
     >
       <div className="campaign-hero__body">
         <span className="campaign-hero__eyebrow">Featured Show</span>
-        <h1 className="campaign-hero__title">
-          {displayTitle}
+        <h1
+          className={`campaign-hero__title ${titleParts ? "campaign-hero__title--split" : ""}`}
+          aria-label={displayTitle}
+        >
+          {titleParts ? (
+            <>
+              <span className="campaign-hero__title-main">{titleParts[0]}</span>
+              <span className="campaign-hero__title-accent">{titleParts[1]}</span>
+            </>
+          ) : displayTitle}
         </h1>
         <div className="campaign-hero__meta">
           <span>
@@ -58,7 +68,7 @@ export function CampaignHero({ campaign }: Props) {
           </span>
           {campaign.venue ? (
             <span>
-              <strong>{campaign.venue}</strong>
+              <strong title={campaign.venue}>{campaign.venue}</strong>
             </span>
           ) : null}
         </div>
