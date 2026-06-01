@@ -34,6 +34,17 @@ finalize work on the current branch, follow these steps.
 
 - **If an issue exists:** Fetch the issue details from GitHub using `issue_read` (owner: `akoita`, repo: `resonate`), re-read the acceptance criteria and scope, and review every modified/added file against the issue requirements. If anything is missing, implement it before proceeding.
 - **If no issue:** Review the modified/added files to confirm the intended change is complete.
+- **No silent partials:** If this PR intentionally implements only one slice of
+  a larger feature, do not proceed until the remaining work is durable and
+  owner-visible. Use one or more of:
+  - keep the parent issue open with an explicit remaining-work checklist;
+  - create/link follow-up issues;
+  - update a feature plan or roadmap doc with slice statuses;
+  - mark the feature catalog entry or feature page as `partial`/`in-progress`
+    and link to the tracking source.
+  The PR body must distinguish "implemented in this PR" from "remaining /
+  deferred" work. Do not close a parent feature issue unless the feature is
+  usable end to end or every remaining slice has explicit follow-up tracking.
 - Reconcile linked roadmap, plan, RFC, and feature docs before proceeding.
   If a linked plan contains slices, milestones, or deliverables beyond the issue
   acceptance criteria, update their status explicitly (`implemented`, `partial`,
