@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { CommunityRoom, Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { PUBLIC_RELEASE_ROUTES } from "../catalog/catalog-public.constants";
 import { EventBus } from "../shared/event_bus";
 import {
   ACTIVE_CAMPAIGN_SUPPORT_CAMPAIGN_STATUSES,
@@ -10,6 +11,8 @@ import {
 const ROOM_STATUSES = ["active", "paused", "archived"] as const;
 const MESSAGE_TYPES = ["message", "announcement", "campaign_update"] as const;
 const MODERATION_ACTIONS = ["remove", "ban"] as const;
+const PUBLIC_RELEASE_STATUSES = ["ready", "published"] as const;
+const RELEASE_ARTIST_COMMUNITY_ROLES = ["main", "primary"] as const;
 const SHOW_CITY_DEMAND_SIGNAL_STATUSES = ["draft", "active", "funded", "booking_confirmed", "deposit_released"] as const;
 const SHOW_CITY_DEMAND_CAMPAIGN_STATUSES = ["active", "funded", "booking_confirmed", "deposit_released"] as const;
 
@@ -27,41 +30,7 @@ export class CommunityRoomsService {
 
   async enableArtistCommunity(userId: string, artistId: string) {
     const artist = await this.requireArtistOperator(userId, artistId);
-    const [publicRoom, holderRoom] = await prisma.$transaction([
-      prisma.communityRoom.upsert({
-        where: { CommunityRoom_identity: { roomType: "artist_public", ownerType: "artist", ownerId: artistId } },
-        update: { status: "active" },
-        create: {
-          roomType: "artist_public",
-          ownerType: "artist",
-          ownerId: artistId,
-          artistId,
-          title: `${artist.displayName} Community`,
-          description: "Public artist community room.",
-          status: "active",
-        },
-      }),
-      prisma.communityRoom.upsert({
-        where: { CommunityRoom_identity: { roomType: "artist_holder", ownerType: "artist", ownerId: artistId } },
-        update: { status: "active" },
-        create: {
-          roomType: "artist_holder",
-          ownerType: "artist",
-          ownerId: artistId,
-          artistId,
-          title: `${artist.displayName} Holder Room`,
-          description: "Private room for eligible holders and supporters.",
-          accessPolicyJson: {
-            type: "any_of",
-            policies: [
-              { type: "ownership", assetType: "stem_nft", artistId },
-              { type: "role", roleType: "holder", scopeType: "artist", scopeId: artistId },
-            ],
-          },
-          status: "active",
-        },
-      }),
-    ]);
+    const [publicRoom, holderRoom] = await this.ensureDefaultArtistCommunityRooms(artist, { activate: true });
 
     this.publish("community.artist_tab_enabled", userId, { artistId });
     return {
@@ -74,10 +43,19 @@ export class CommunityRoomsService {
   async listArtistRooms(artistId: string, userId?: string) {
     const artist = await prisma.artist.findUnique({ where: { id: artistId } });
     if (!artist) throw new NotFoundException("Artist not found");
-    const rooms = await prisma.communityRoom.findMany({
+    let rooms = await prisma.communityRoom.findMany({
       where: { ownerType: "artist", ownerId: artistId, status: { not: "archived" } },
       orderBy: [{ roomType: "asc" }, { createdAt: "asc" }],
     });
+
+    if (await this.shouldProvisionArtistCommunityRooms(artist, rooms)) {
+      await this.ensureDefaultArtistCommunityRooms(artist);
+      rooms = await prisma.communityRoom.findMany({
+        where: { ownerType: "artist", ownerId: artistId, status: { not: "archived" } },
+        orderBy: [{ roomType: "asc" }, { createdAt: "asc" }],
+      });
+    }
+
     const memberships = userId
       ? await prisma.communityMembership.findMany({
           where: { userId, roomId: { in: rooms.map((room) => room.id) } },
@@ -96,6 +74,89 @@ export class CommunityRoomsService {
         }),
       ),
     };
+  }
+
+  private async shouldProvisionArtistCommunityRooms(
+    artist: { id: string; displayName: string; profileType?: string | null },
+    rooms: Array<{ roomType: string }>,
+  ) {
+    if (artist.profileType !== "public_artist") {
+      return false;
+    }
+
+    const roomTypes = new Set(rooms.map((room) => room.roomType));
+    if (roomTypes.has("artist_public") && roomTypes.has("artist_holder")) {
+      return false;
+    }
+
+    const release = await prisma.release.findFirst({
+      where: {
+        status: { in: [...PUBLIC_RELEASE_STATUSES] },
+        OR: [
+          { rightsRoute: null },
+          { rightsRoute: { in: PUBLIC_RELEASE_ROUTES } },
+        ],
+        AND: [
+          {
+            artistCredits: {
+              some: {
+                artistId: artist.id,
+                role: { in: [...RELEASE_ARTIST_COMMUNITY_ROLES] },
+              },
+            },
+          },
+        ],
+      },
+      select: { id: true },
+    });
+
+    return Boolean(release);
+  }
+
+  private async ensureDefaultArtistCommunityRooms(
+    artist: { id: string; displayName: string },
+    options?: { activate?: boolean },
+  ) {
+    return prisma.$transaction([
+      prisma.communityRoom.upsert({
+        where: { CommunityRoom_identity: { roomType: "artist_public", ownerType: "artist", ownerId: artist.id } },
+        update: {
+          artistId: artist.id,
+          title: `${artist.displayName} Community`,
+          description: "Public artist community room.",
+          ...(options?.activate ? { status: "active" } : {}),
+        },
+        create: {
+          roomType: "artist_public",
+          ownerType: "artist",
+          ownerId: artist.id,
+          artistId: artist.id,
+          title: `${artist.displayName} Community`,
+          description: "Public artist community room.",
+          status: "active",
+        },
+      }),
+      prisma.communityRoom.upsert({
+        where: { CommunityRoom_identity: { roomType: "artist_holder", ownerType: "artist", ownerId: artist.id } },
+        update: {
+          artistId: artist.id,
+          title: `${artist.displayName} Holder Room`,
+          description: "Private room for eligible holders and supporters.",
+          accessPolicyJson: artistHolderPolicy(artist.id),
+          ...(options?.activate ? { status: "active" } : {}),
+        },
+        create: {
+          roomType: "artist_holder",
+          ownerType: "artist",
+          ownerId: artist.id,
+          artistId: artist.id,
+          title: `${artist.displayName} Holder Room`,
+          description: "Private room for eligible holders and supporters.",
+          accessPolicyJson: artistHolderPolicy(artist.id),
+          status: "active",
+        },
+      }),
+    ]);
   }
 
   async getShowCampaignCommunity(userId: string, campaignIdOrSlug: string) {
@@ -682,6 +743,16 @@ type ShowCampaignRecord = {
 
 function campaignSupportPolicy(campaignId: string): Prisma.InputJsonObject {
   return { type: "campaign_support", campaignId, minStatus: "confirmed" };
+}
+
+function artistHolderPolicy(artistId: string): Prisma.InputJsonObject {
+  return {
+    type: "any_of",
+    policies: [
+      { type: "ownership", assetType: "stem_nft", artistId },
+      { type: "role", roleType: "holder", scopeType: "artist", scopeId: artistId },
+    ],
+  };
 }
 
 function isShowCampaignSupporterRoomAvailable(campaign: { campaignLevel: string; status: string }) {

@@ -805,3 +805,44 @@ rg -n 'rawQuery|executeRaw|\$queryRaw|\$executeRaw|JSON\.parse|eval\(' backend/s
 git diff --check
 python3 -m pytest -s workers/analytics-dataflow/test_analytics_transform.py
 ```
+
+## Release Artist Community Room Provisioning - 2026-06-01
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/community/community_rooms.service.ts`
+- `backend/src/tests/community_rooms.integration.spec.ts`
+- `docs/features/README.md`
+- `docs/features/listener_community_network.md`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none introduced.
+- Low: none introduced.
+
+### Notes
+
+- Public artist room reads can now provision default rooms only for artist
+  profiles that already have a ready or published public official release via
+  the same release-credit criteria used by public artist catalog pages.
+- The automatic path does not publish `community.artist_tab_enabled` and does
+  not grant manager or uploader moderation rights to unclaimed public artists.
+- Holder-room access remains evaluated privately through the existing ownership
+  or role policy. The public response still exposes only the safe lock reason.
+- No schema change, data migration, raw SQL, hardcoded secrets, unsafe
+  deserialization, direct HTML injection, cookie handling, or new environment
+  variables were introduced.
+
+### Commands Run
+
+```bash
+rg 'password|secret|api_key|private_key' backend/src/modules/community backend/src/modules/catalog --iglob '!*.test.*' --iglob '!*.spec.*'
+rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/community backend/src/modules/catalog
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/community backend/src/modules/catalog
+rg 'JSON\.parse|eval\(' backend/src/modules/community backend/src/modules/catalog
+rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/community backend/src/modules/catalog
+```
