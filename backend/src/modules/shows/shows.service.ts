@@ -177,6 +177,7 @@ const TERMINAL_AUTHORITY_STATUSES: ShowArtistAuthorityStatus[] = [
 const SHOWS_CATALOG_CONTENT_STATUSES = ["ready", "published"];
 const SHOWS_VISUAL_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const DEFAULT_SHOWS_VISUAL_MAX_BYTES = 8 * 1024 * 1024;
+const MAX_SHOWS_GALLERY_VISUALS = 8;
 
 function requireText(value: unknown, field: string): string {
   if (typeof value !== "string" || !value.trim()) {
@@ -588,6 +589,9 @@ export class ShowsService {
     const galleryFiles = input.gallery?.filter(Boolean) ?? [];
     if (!input.hero && !input.card && galleryFiles.length === 0) {
       throw new BadRequestException("Provide at least one campaign visual");
+    }
+    if (galleryFiles.length > MAX_SHOWS_GALLERY_VISUALS) {
+      throw new BadRequestException(`Provide ${MAX_SHOWS_GALLERY_VISUALS} or fewer gallery visuals`);
     }
 
     const updates: Prisma.ShowCampaignUpdateInput = {};

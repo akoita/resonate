@@ -17,7 +17,7 @@ test("home hero features the Sennarin campaign and links to its detail page", as
   // Stitch-designed hero (amber/purple mesh, glass card).
   const hero = page.locator(".ng-hero").first();
   await expect(hero).toBeVisible();
-  await expect(hero.getByText("Sennarin in Paris")).toBeVisible();
+  await expect(hero.locator(".ng-hero__title")).toHaveText("Sennarin in Paris");
   await expect(hero.getByText(/Featured Campaign/i)).toBeVisible();
 
   // Primary CTA navigates to the campaign detail page.
