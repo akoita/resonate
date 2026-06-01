@@ -254,6 +254,84 @@ describe("CommunityEligibilityService integration", () => {
     eventBus.publish.mockClear();
     await service.listMyBadges(userId);
     expect(eventBus.publish).not.toHaveBeenCalled();
+
+    await prisma.showPledge.updateMany({
+      where: { campaignId: campaign.id, userId },
+      data: { status: "refund_available", refundAvailableAt: new Date() },
+    });
+    await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: { status: "refund_available", refundAvailableAt: new Date() },
+    });
+
+    const revokedResponse = await service.listMyBadges(userId);
+    const revokedRole = await prisma.communityRole.findUnique({
+      where: {
+        CommunityRole_identity: {
+          userId,
+          roleType: "supporter",
+          scopeType: "show_campaign",
+          scopeId: campaign.id,
+        },
+      },
+    });
+
+    expect(revokedResponse.badges).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ sourceId: campaign.id })]),
+    );
+    expect(revokedRole?.revokedAt).toBeInstanceOf(Date);
+  });
+
+  it("keeps released campaign support eligible after funds are released", async () => {
+    const campaign = await prisma.showCampaign.create({
+      data: {
+        id: `${TEST_PREFIX}released_supporter_campaign`,
+        slug: `${TEST_PREFIX}released-supporter-campaign`,
+        artistId,
+        artistDisplayName: "Community Artist",
+        title: "Released Community Artist in Berlin",
+        city: "Berlin",
+        country: "DE",
+        deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        goalAmountUnits: "1000000",
+        chainId: 84532,
+        status: "released",
+        releasedAt: new Date(),
+      },
+    });
+    await prisma.showPledge.create({
+      data: {
+        campaignId: campaign.id,
+        userId,
+        walletAddress,
+        amountUnits: "250000",
+        chainId: 84532,
+        status: "released",
+        confirmationStatus: "confirmed",
+        transactionHash: "0x" + "7".repeat(64),
+        releasedAt: new Date(),
+      },
+    });
+
+    const response = await service.listMyBadges(userId);
+    const benefit = await service.evaluateAccessPolicy(userId, {
+      type: "campaign_support",
+      campaignId: campaign.id,
+      minStatus: "confirmed",
+    });
+
+    expect(response.badges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          badgeType: "supporter",
+          sourceId: campaign.id,
+        }),
+      ]),
+    );
+    expect(benefit).toMatchObject({
+      eligible: true,
+      reasons: expect.arrayContaining(["private_campaign_support"]),
+    });
   });
 
   it("uses badges, roles, and campaign support as trusted eligibility facts", async () => {

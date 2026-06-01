@@ -146,9 +146,9 @@ Implementation notes:
   address, transaction hash, receipt details, or private support history.
 - Badge and role grant events are compact `community.badge_granted` and
   `community.role_granted` events with campaign/source references only.
-- Automatic revocation for refunded, failed, cancelled, or released lifecycle
-  transitions remains Slice 5; current reads derive/grant active proofs from
-  confirmed/released pledges only.
+- Lifecycle reconciliation is implemented in Slice 5: invalid refund, failure,
+  cancellation, and refund-only states revoke derived proofs, while released
+  support remains a valid historical supporter proof.
 
 ## Slice 4: Campaign Conversion Analytics
 
@@ -185,7 +185,7 @@ Implementation notes:
 
 ## Slice 5: Lifecycle Reconciliation
 
-Status: `planned`
+Status: `implemented`
 
 Deliverables:
 
@@ -195,6 +195,23 @@ Deliverables:
   support cannot keep granting sensitive access.
 - Add tests for active, confirmed, refunded, failed, cancelled, and released
   campaign/pledge combinations.
+
+Implementation notes:
+
+- Campaign support is valid for `confirmed` or `released` pledges only when the
+  campaign itself is still in a support-valid lifecycle: `active`, `funded`,
+  `booking_confirmed`, `deposit_released`, `fulfilled`, or `released`.
+- Refund-only, refunded, failed, and cancelled pledge/campaign combinations no
+  longer grant `campaign_support` eligibility.
+- Campaign supporter badge/role sync now expires stale private supporter proofs
+  by setting `revokedAt` when the campaign or pledge leaves the valid support
+  lifecycle.
+- Existing active `show_campaign_supporter` memberships are rechecked on private
+  room reads and campaign-community summaries. If support is no longer valid,
+  the membership is marked `removed` with `endedAt` before messages are exposed.
+- Public campaign-support profile cards use the same support-valid lifecycle
+  filter, so opted-in profiles do not keep showing refunded, failed, cancelled,
+  or refund-only support.
 
 ## Initial PR Scope
 

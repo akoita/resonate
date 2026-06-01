@@ -123,6 +123,22 @@ describe("CommunityService public profile integration", () => {
     );
   });
 
+  it("hides opted-in campaign support after refund lifecycle starts", async () => {
+    await prisma.showPledge.updateMany({
+      where: { campaignId, walletAddress: { equals: walletAddress, mode: "insensitive" } },
+      data: { status: "refund_available", refundAvailableAt: new Date() },
+    });
+    await prisma.showCampaign.update({
+      where: { id: campaignId },
+      data: { status: "refund_available", refundAvailableAt: new Date() },
+    });
+
+    const profile = await service.getPublicProfile(userId);
+
+    expect(profile.showcase.campaignSupportVisible).toBe(true);
+    expect(profile.showcase.campaignSupport).toEqual([]);
+  });
+
   it("hides campaign support when the listener opts out", async () => {
     await prisma.communityVisibilitySettings.update({
       where: { userId },
