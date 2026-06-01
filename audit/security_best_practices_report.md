@@ -593,3 +593,54 @@ rg -n 'password|secret|api_key|private_key|BEGIN (RSA|OPENSSH|EC|DSA|PRIVATE) KE
 rg -n 'rawQuery|executeRaw|\$queryRaw|\$executeRaw|JSON\.parse|eval\(' backend/src/modules/community backend/src/modules/shows backend/src/modules/analytics web/src/components/shows web/src/app/shows web/src/lib/shows.ts web/src/lib/api.ts
 rg -n 'dangerouslySetInnerHTML|innerHTML|document\.cookie|setCookie|httpOnly.*false|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|NEXT_PUBLIC_.*PRIVATE|NEXT_PUBLIC_.*TOKEN' web/src/components/shows web/src/app/shows web/src/lib/shows.ts web/src/lib/api.ts
 ```
+
+## Shows Campaign Visual Editor Management - 2026-06-01
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/shows/shows.controller.ts`
+- `backend/src/modules/shows/shows.service.ts`
+- `backend/src/modules/analytics/analytics_event.ts`
+- `backend/src/tests/shows.service.integration.spec.ts`
+- `web/src/components/shows/CampaignDraftForm.tsx`
+- `web/src/lib/shows.ts`
+- `web/src/styles/shows.css`
+- `docs/features/README.md`
+- `docs/features/resonate_shows.md`
+- `docs/architecture/event_taxonomy_domain_model.md`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none introduced.
+- Low: none introduced.
+
+### Notes
+
+- Gallery add, replace, delete, and reorder mutations remain restricted to
+  authenticated artist, admin, and operator roles and reuse draft campaign
+  mutation ownership checks.
+- Gallery count is capped server-side across existing and newly uploaded files,
+  not only per request.
+- Public campaign visual reads still stream presentation assets without exposing
+  storage URIs.
+- `shows.campaign_visuals_updated` now includes compact `visualAction`,
+  `visualSlots`, and gallery count fields only; raw bytes, storage URIs,
+  captions, credits, and public image URLs remain excluded from analytics and
+  warehouse facts.
+- Stored object deletion failures after DB replacement/deletion are swallowed so
+  a successfully persisted campaign edit is not rolled back by storage cleanup
+  best-effort failure.
+- No raw SQL, hardcoded secrets, unsafe deserialization, direct HTML injection,
+  cookie handling, or new environment variables were introduced.
+
+### Commands Run
+
+```bash
+rg -n 'password|secret|api_key|private_key|BEGIN (RSA|OPENSSH|EC|DSA|PRIVATE) KEY' backend/src/modules/shows backend/src/modules/analytics/analytics_event.ts web/src/components/shows web/src/lib/shows.ts --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw|\$executeRaw|JSON\.parse|eval\(' backend/src/modules/shows backend/src/modules/analytics/analytics_event.ts web/src/components/shows web/src/lib/shows.ts
+rg -n 'dangerouslySetInnerHTML|innerHTML|document\.cookie|setCookie|httpOnly.*false|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|NEXT_PUBLIC_.*PRIVATE|NEXT_PUBLIC_.*TOKEN' web/src/components/shows web/src/lib/shows.ts
+```

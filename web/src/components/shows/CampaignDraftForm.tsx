@@ -14,6 +14,9 @@ import {
 import {
   createShowCampaignDraft,
   buildCatalogArtistCandidates,
+  deleteShowCampaignVisual,
+  replaceShowCampaignVisual,
+  reorderShowCampaignVisuals,
   updateShowCampaignDraft,
   uploadShowCampaignVisuals,
   type Campaign,
@@ -27,9 +30,18 @@ type TierForm = {
   amount: string;
 };
 
+type GalleryEditorVisual = {
+  id: string;
+  persistedId?: string;
+  url: string;
+  file?: File;
+  label: string;
+};
+
 const PAYMENT_DECIMALS = 6;
 const PAYMENT_SYMBOL = "USDC";
 const PUBLIC_CATALOG_STATUSES = new Set(["ready", "published"]);
+const MAX_GALLERY_VISUALS = 8;
 
 function addDaysForInput(days: number) {
   const date = new Date();
@@ -109,12 +121,19 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
   const [tiers, setTiers] = useState<TierForm[]>(() => initialTiers(campaign));
   const [heroVisualFile, setHeroVisualFile] = useState<File | null>(null);
   const [cardVisualFile, setCardVisualFile] = useState<File | null>(null);
-  const [galleryVisualFiles, setGalleryVisualFiles] = useState<File[]>([]);
   const [heroPreviewUrl, setHeroPreviewUrl] = useState(campaign?.heroImage ?? "");
   const [cardPreviewUrl, setCardPreviewUrl] = useState(campaign?.cardImage ?? "");
-  const [galleryPreviewUrls, setGalleryPreviewUrls] = useState<string[]>(
-    () => campaign?.visuals.filter((visual) => visual.role === "gallery").map((visual) => visual.url) ?? [],
+  const [galleryVisuals, setGalleryVisuals] = useState<GalleryEditorVisual[]>(
+    () => campaign?.visuals
+      .filter((visual) => visual.role === "gallery")
+      .map((visual, index) => ({
+        id: visual.id,
+        persistedId: visual.id,
+        url: visual.url,
+        label: visual.caption || `Gallery visual ${index + 1}`,
+      })) ?? [],
   );
+  const [deletedGalleryVisualIds, setDeletedGalleryVisualIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -135,6 +154,16 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
     () => title.trim() || (artistDisplayName && city ? `${artistDisplayName} in ${city}` : ""),
     [artistDisplayName, city, title],
   );
+  const initialGalleryOrder = useMemo(
+    () => campaign?.visuals.filter((visual) => visual.role === "gallery").map((visual) => visual.id) ?? [],
+    [campaign?.visuals],
+  );
+  const currentGalleryOrder = useMemo(
+    () => galleryVisuals.map((visual) => visual.persistedId ?? visual.id),
+    [galleryVisuals],
+  );
+  const galleryOrderChanged = currentGalleryOrder.length !== initialGalleryOrder.length
+    || currentGalleryOrder.some((id, index) => id !== initialGalleryOrder[index]);
 
   useEffect(() => {
     if (!token || status !== "authenticated") {
@@ -248,18 +277,6 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
     return () => URL.revokeObjectURL(previewUrl);
   }, [campaign?.cardImage, cardVisualFile]);
 
-  useEffect(() => {
-    if (galleryVisualFiles.length === 0) {
-      setGalleryPreviewUrls(campaign?.visuals.filter((visual) => visual.role === "gallery").map((visual) => visual.url) ?? []);
-      return;
-    }
-    const previewUrls = galleryVisualFiles.map((file) => URL.createObjectURL(file));
-    setGalleryPreviewUrls(previewUrls);
-    return () => {
-      previewUrls.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
-    };
-  }, [campaign?.visuals, galleryVisualFiles]);
-
   function updateTier(index: number, patch: Partial<TierForm>) {
     setTiers((current) => current.map((tier, tierIndex) => (
       tierIndex === index ? { ...tier, ...patch } : tier
@@ -268,6 +285,56 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
 
   function removeTier(index: number) {
     setTiers((current) => current.filter((_, tierIndex) => tierIndex !== index));
+  }
+
+  function addGalleryFiles(files: File[]) {
+    if (files.length === 0) return;
+    setGalleryVisuals((current) => [
+      ...current,
+      ...files.slice(0, Math.max(0, MAX_GALLERY_VISUALS - current.length)).map((file, index) => ({
+        id: `new-${Date.now()}-${index}-${file.name}`,
+        url: URL.createObjectURL(file),
+        file,
+        label: file.name,
+      })),
+    ]);
+  }
+
+  function replaceGalleryVisual(id: string, file: File | null) {
+    if (!file) return;
+    setGalleryVisuals((current) => current.map((visual) => (
+      visual.id === id
+        ? {
+          ...visual,
+          url: URL.createObjectURL(file),
+          file,
+          label: file.name,
+        }
+        : visual
+    )));
+  }
+
+  function removeGalleryVisual(id: string) {
+    setGalleryVisuals((current) => {
+      const removed = current.find((visual) => visual.id === id);
+      if (removed?.persistedId) {
+        setDeletedGalleryVisualIds((deleted) => (
+          deleted.includes(removed.persistedId!) ? deleted : [...deleted, removed.persistedId!]
+        ));
+      }
+      return current.filter((visual) => visual.id !== id);
+    });
+  }
+
+  function moveGalleryVisual(index: number, delta: -1 | 1) {
+    setGalleryVisuals((current) => {
+      const nextIndex = index + delta;
+      if (nextIndex < 0 || nextIndex >= current.length) return current;
+      const updated = [...current];
+      const [item] = updated.splice(index, 1);
+      updated.splice(nextIndex, 0, item);
+      return updated;
+    });
   }
 
   async function submit() {
@@ -323,12 +390,48 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
       let saved = campaign
         ? await updateShowCampaignDraft({ campaign, token, draft })
         : await createShowCampaignDraft({ token, draft });
-      if (heroVisualFile || cardVisualFile || galleryVisualFiles.length > 0) {
+      for (const visualId of deletedGalleryVisualIds) {
+        saved = await deleteShowCampaignVisual({ campaign: saved, token, visualId });
+      }
+      for (const visual of galleryVisuals) {
+        if (visual.persistedId && visual.file) {
+          saved = await replaceShowCampaignVisual({
+            campaign: saved,
+            token,
+            visualId: visual.persistedId,
+            visual: visual.file,
+          });
+        }
+      }
+      const newGalleryVisuals = galleryVisuals.filter((visual) => !visual.persistedId && visual.file);
+      const galleryIdMap = new Map<string, string>();
+      if (heroVisualFile || cardVisualFile || newGalleryVisuals.length > 0) {
         const visuals = new FormData();
         if (heroVisualFile) visuals.append("hero", heroVisualFile);
         if (cardVisualFile) visuals.append("card", cardVisualFile);
-        galleryVisualFiles.forEach((file) => visuals.append("gallery", file));
+        const knownGalleryIds = new Set(saved.visuals.filter((visual) => visual.role === "gallery").map((visual) => visual.id));
+        newGalleryVisuals.forEach((visual) => {
+          if (visual.file) visuals.append("gallery", visual.file);
+        });
         saved = await uploadShowCampaignVisuals({ campaign: saved, token, visuals });
+        const createdGalleryVisuals = saved.visuals
+          .filter((visual) => visual.role === "gallery" && !knownGalleryIds.has(visual.id))
+          .sort((left, right) => left.sortOrder - right.sortOrder);
+        newGalleryVisuals.forEach((visual, index) => {
+          const created = createdGalleryVisuals[index];
+          if (created) galleryIdMap.set(visual.id, created.id);
+        });
+      }
+      const resolvedGalleryOrder = galleryVisuals
+        .map((visual) => visual.persistedId ?? galleryIdMap.get(visual.id))
+        .filter((visualId): visualId is string => Boolean(visualId));
+      if (
+        deletedGalleryVisualIds.length > 0
+        || newGalleryVisuals.length > 0
+        || galleryVisuals.some((visual) => visual.persistedId && visual.file)
+        || galleryOrderChanged
+      ) {
+        saved = await reorderShowCampaignVisuals({ campaign: saved, token, visualIds: resolvedGalleryOrder });
       }
       router.push(`/shows/${saved.id}`);
     } catch (err) {
@@ -462,26 +565,71 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
             </span>
           </label>
         </div>
-        <label className="shows-create__visual-upload shows-create__visual-upload--gallery">
-          <span>Gallery visuals</span>
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            multiple
-            onChange={(event) => setGalleryVisualFiles(Array.from(event.target.files ?? []).slice(0, 8))}
-          />
-          <span className="shows-create__visual-gallery">
-            {galleryPreviewUrls.length > 0 ? galleryPreviewUrls.slice(0, 8).map((previewUrl, index) => (
-              <span
-                key={`${previewUrl}-${index}`}
-                className="shows-create__visual-gallery-item"
-                style={{ backgroundImage: `url(${previewUrl})` }}
+        <div className="shows-create__visual-upload shows-create__visual-upload--gallery">
+          <div className="shows-create__gallery-toolbar">
+            <span>Gallery visuals</span>
+            <label className="shows-create__gallery-add">
+              Add images
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                disabled={galleryVisuals.length >= MAX_GALLERY_VISUALS}
+                onChange={(event) => {
+                  addGalleryFiles(Array.from(event.target.files ?? []));
+                  event.target.value = "";
+                }}
               />
+            </label>
+          </div>
+          <div className="shows-create__visual-gallery">
+            {galleryVisuals.length > 0 ? galleryVisuals.map((visual, index) => (
+              <figure key={visual.id} className="shows-create__visual-gallery-card">
+                <span
+                  className="shows-create__visual-gallery-item"
+                  style={{ backgroundImage: `url(${visual.url})` }}
+                />
+                <figcaption>
+                  <span>{index + 1}</span>
+                  <div className="shows-create__gallery-actions">
+                    <button
+                      type="button"
+                      aria-label={`Move ${visual.label} earlier`}
+                      disabled={index === 0}
+                      onClick={() => moveGalleryVisual(index, -1)}
+                    >
+                      Up
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Move ${visual.label} later`}
+                      disabled={index === galleryVisuals.length - 1}
+                      onClick={() => moveGalleryVisual(index, 1)}
+                    >
+                      Down
+                    </button>
+                    <label>
+                      Replace
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        onChange={(event) => {
+                          replaceGalleryVisual(visual.id, event.target.files?.[0] ?? null);
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                    <button type="button" onClick={() => removeGalleryVisual(visual.id)}>
+                      Delete
+                    </button>
+                  </div>
+                </figcaption>
+              </figure>
             )) : (
               <span className="shows-create__visual-gallery-empty">Visual story set</span>
             )}
-          </span>
-        </label>
+          </div>
+        </div>
       </div>
 
       <div className="shows-create__panel">

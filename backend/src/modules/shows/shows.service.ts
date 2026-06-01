@@ -124,6 +124,10 @@ type CampaignVisualUploadInput = {
   gallery?: Express.Multer.File[] | null;
 };
 
+type CampaignVisualOrderInput = {
+  visualIds: string[];
+};
+
 type PledgeIntentInput = {
   tierId?: string | null;
   walletAddress: string;
@@ -593,6 +597,12 @@ export class ShowsService {
     if (galleryFiles.length > MAX_SHOWS_GALLERY_VISUALS) {
       throw new BadRequestException(`Provide ${MAX_SHOWS_GALLERY_VISUALS} or fewer gallery visuals`);
     }
+    const existingGalleryCount = await prisma.showCampaignVisual.count({
+      where: { campaignId: campaign.id, role: "gallery" },
+    });
+    if (existingGalleryCount + galleryFiles.length > MAX_SHOWS_GALLERY_VISUALS) {
+      throw new BadRequestException(`Campaigns can have ${MAX_SHOWS_GALLERY_VISUALS} or fewer gallery visuals`);
+    }
 
     const updates: Prisma.ShowCampaignUpdateInput = {};
     if (input.hero) {
@@ -670,6 +680,193 @@ export class ShowsService {
         ...(galleryFiles.length > 0 ? ["gallery"] : []),
       ],
       galleryVisualCount: galleryFiles.length,
+    });
+    return updated;
+  }
+
+  async replaceCampaignVisual(
+    actor: Actor,
+    campaignId: string,
+    visualRef: string,
+    file: Express.Multer.File | null,
+  ) {
+    if (!file) {
+      throw new BadRequestException("Provide a campaign visual file");
+    }
+    const campaign = await this.getCampaignForMutation(actor, campaignId);
+    if (campaign.status !== "draft") {
+      throw new BadRequestException("Campaign visuals can only be changed while the campaign is a draft");
+    }
+
+    const visual = await this.findCampaignVisualForEdit(campaign.id, visualRef);
+    const stored = await this.storeCampaignVisual(campaign.id, visual.role, file);
+    const previousStorageUri = visual.storageUri;
+    const updates: Prisma.ShowCampaignUpdateInput = {};
+    if (visual.role === "hero") {
+      updates.heroImageStorageUri = stored.storageUri;
+      updates.heroImageMimeType = stored.mimeType;
+      updates.heroImageUrl = `/shows/campaigns/${campaign.id}/visuals/hero`;
+    }
+    if (visual.role === "card") {
+      updates.cardImageStorageUri = stored.storageUri;
+      updates.cardImageMimeType = stored.mimeType;
+      updates.cardImageUrl = `/shows/campaigns/${campaign.id}/visuals/card`;
+    }
+
+    const updated = await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: {
+        ...updates,
+        visuals: {
+          update: {
+            where: { id: visual.id },
+            data: {
+              storageUri: stored.storageUri,
+              mimeType: stored.mimeType,
+              publicUrl: visual.publicUrl,
+            },
+          },
+        },
+        events: {
+          create: {
+            eventType: "campaign_updated",
+            actorUserId: actor.userId,
+            previousStatus: campaign.status,
+            nextStatus: campaign.status,
+            metadata: {
+              source: "shows-api",
+              visualAction: "replace",
+              visualRole: visual.role,
+            },
+          },
+        },
+      },
+      include: {
+        events: { orderBy: { createdAt: "desc" }, take: 5 },
+        tiers: true,
+        visuals: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+      },
+    });
+    await this.deleteStoredCampaignVisual(previousStorageUri);
+    await this.recordShowAnalytics("shows.campaign_visuals_updated", actor, updated, {
+      visualAction: "replace",
+      visualSlots: [visual.role],
+      galleryVisualCount: updated.visuals.filter((item) => item.role === "gallery").length,
+    });
+    return updated;
+  }
+
+  async deleteCampaignVisual(actor: Actor, campaignId: string, visualRef: string) {
+    const campaign = await this.getCampaignForMutation(actor, campaignId);
+    if (campaign.status !== "draft") {
+      throw new BadRequestException("Campaign visuals can only be changed while the campaign is a draft");
+    }
+
+    const visual = await this.findCampaignVisualForEdit(campaign.id, visualRef);
+    const updates: Prisma.ShowCampaignUpdateInput = {};
+    if (visual.role === "hero") {
+      updates.heroImageStorageUri = null;
+      updates.heroImageMimeType = null;
+      updates.heroImageUrl = null;
+    }
+    if (visual.role === "card") {
+      updates.cardImageStorageUri = null;
+      updates.cardImageMimeType = null;
+      updates.cardImageUrl = null;
+    }
+
+    const updated = await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: {
+        ...updates,
+        visuals: {
+          delete: { id: visual.id },
+        },
+        events: {
+          create: {
+            eventType: "campaign_updated",
+            actorUserId: actor.userId,
+            previousStatus: campaign.status,
+            nextStatus: campaign.status,
+            metadata: {
+              source: "shows-api",
+              visualAction: "delete",
+              visualRole: visual.role,
+            },
+          },
+        },
+      },
+      include: {
+        events: { orderBy: { createdAt: "desc" }, take: 5 },
+        tiers: true,
+        visuals: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+      },
+    });
+    await this.deleteStoredCampaignVisual(visual.storageUri);
+    await this.recordShowAnalytics("shows.campaign_visuals_updated", actor, updated, {
+      visualAction: "delete",
+      visualSlots: [visual.role],
+      galleryVisualCount: updated.visuals.filter((item) => item.role === "gallery").length,
+    });
+    return updated;
+  }
+
+  async reorderCampaignVisuals(actor: Actor, campaignId: string, input: CampaignVisualOrderInput) {
+    const campaign = await this.getCampaignForMutation(actor, campaignId);
+    if (campaign.status !== "draft") {
+      throw new BadRequestException("Campaign visuals can only be changed while the campaign is a draft");
+    }
+    const visualIds = input.visualIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0);
+    if (visualIds.length > MAX_SHOWS_GALLERY_VISUALS) {
+      throw new BadRequestException(`Campaigns can have ${MAX_SHOWS_GALLERY_VISUALS} or fewer gallery visuals`);
+    }
+    if (new Set(visualIds).size !== visualIds.length) {
+      throw new BadRequestException("Gallery visual order contains duplicate items");
+    }
+
+    const existing = await prisma.showCampaignVisual.findMany({
+      where: { campaignId: campaign.id, role: "gallery" },
+      select: { id: true },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    });
+    const existingIds = existing.map((visual) => visual.id);
+    if (visualIds.length !== existingIds.length || existingIds.some((id) => !visualIds.includes(id))) {
+      throw new BadRequestException("Gallery visual order must include every existing gallery visual exactly once");
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      await Promise.all(visualIds.map((id, index) => tx.showCampaignVisual.update({
+        where: { id },
+        data: { sortOrder: 10 + index },
+      })));
+      return tx.showCampaign.update({
+        where: { id: campaign.id },
+        data: {
+          events: {
+            create: {
+              eventType: "campaign_updated",
+              actorUserId: actor.userId,
+              previousStatus: campaign.status,
+              nextStatus: campaign.status,
+              metadata: {
+                source: "shows-api",
+                visualAction: "reorder",
+                galleryVisualCount: visualIds.length,
+              },
+            },
+          },
+        },
+        include: {
+          events: { orderBy: { createdAt: "desc" }, take: 5 },
+          tiers: true,
+          visuals: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+        },
+      });
+    });
+    await this.recordShowAnalytics("shows.campaign_visuals_updated", actor, updated, {
+      visualAction: "reorder",
+      visualSlots: ["gallery"],
+      galleryVisualCount: visualIds.length,
     });
     return updated;
   }
@@ -1529,6 +1726,37 @@ export class ShowsService {
     };
   }
 
+  private async deleteStoredCampaignVisual(storageUri: string | null) {
+    if (!storageUri || !this.storageProvider) return;
+    try {
+      await this.storageProvider.delete(storageUri);
+    } catch {
+      // Visual replacement should not fail after the campaign points at the new asset.
+    }
+  }
+
+  private async findCampaignVisualForEdit(campaignId: string, visualRef: string) {
+    const visual = await prisma.showCampaignVisual.findFirst({
+      where: {
+        campaignId,
+        OR: [
+          { id: visualRef },
+          ...(visualRef === "hero" || visualRef === "card" ? [{ role: visualRef }] : []),
+        ],
+      },
+      select: {
+        id: true,
+        role: true,
+        publicUrl: true,
+        storageUri: true,
+      },
+    });
+    if (!visual) {
+      throw new NotFoundException("Campaign visual not found");
+    }
+    return visual;
+  }
+
   private async upsertCampaignVisualAsset(
     campaignId: string,
     role: "hero" | "card",
@@ -1883,6 +2111,7 @@ export class ShowsService {
       campaignLevel?: string | null;
       artistAuthorityStatus?: string | null;
       confirmationStatus?: string | null;
+      visualAction?: string | null;
       visualSlots?: string[];
       galleryVisualCount?: number;
       geo?: AnalyticsGeoDimension;
@@ -1913,6 +2142,7 @@ export class ShowsService {
           chainId: details.chainId ?? undefined,
           artistAuthorityStatus: details.artistAuthorityStatus ?? undefined,
           confirmationStatus: details.confirmationStatus ?? undefined,
+          visualAction: details.visualAction ?? undefined,
           visualSlots: details.visualSlots ?? undefined,
           galleryVisualCount: details.galleryVisualCount ?? undefined,
           campaignCountryCode: countryCode(campaign.country),
