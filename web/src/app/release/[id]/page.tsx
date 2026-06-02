@@ -2348,14 +2348,16 @@ export default function ReleaseDetails() {
 
         .release-header {
           display: flex;
-          gap: 60px;
-          align-items: flex-end;
+          gap: clamp(28px, 3vw, 52px);
+          /* center (not flex-end) so a long, multi-line title doesn't
+             strand the artwork at the bottom and look unbalanced. */
+          align-items: center;
           padding-top: 40px;
         }
 
         .header-artwork-container {
-          width: 320px;
-          height: 320px;
+          width: clamp(248px, 22vw, 320px);
+          height: clamp(248px, 22vw, 320px);
           flex-shrink: 0;
           border-radius: 20px;
           overflow: hidden;
@@ -2455,11 +2457,16 @@ export default function ReleaseDetails() {
         }
 
         .release-title-lg {
-          font-size: 84px;
+          /* Was a fixed 84px — a long title then wrapped into a giant block
+             that dwarfed the artwork. Now it scales and caps sensibly, and
+             long words wrap instead of forcing the artwork to shrink. */
+          font-size: clamp(40px, 4.6vw, 68px);
           font-weight: 900;
-          line-height: 0.9;
-          margin-bottom: 32px;
-          letter-spacing: -0.04em;
+          line-height: 0.98;
+          margin-bottom: 28px;
+          letter-spacing: -0.03em;
+          overflow-wrap: anywhere;
+          max-width: 18ch;
         }
 
         .release-artist-row {

@@ -54,33 +54,69 @@ export default function ArtistPage() {
         router.back();
     };
 
+    const coverArt = artist?.imageUrl || releases.find((r) => r.artworkUrl)?.artworkUrl || null;
+    const trackCount = releases.reduce((sum, r) => sum + (r.tracks?.length ?? 0), 0);
+    const genres = Array.from(
+        new Set(releases.map((r) => r.genre).filter((g): g is string => Boolean(g))),
+    ).slice(0, 4);
+
     return (
         <div className="page-container artist-page">
             <div className="artist-hero glass-panel">
+                {coverArt ? (
+                    <div
+                        className="artist-hero__backdrop"
+                        style={{ backgroundImage: `url(${coverArt})` }}
+                        aria-hidden="true"
+                    />
+                ) : null}
                 <Button variant="ghost" className="back-btn" onClick={handleBack}>
                     ← Back
                 </Button>
                 <div className="artist-hero-content">
                     <div className="artist-avatar-lg placeholder-avatar">
-                        {artist?.displayName?.[0] || placeholderName?.[0] || "A"}
+                        {artist?.imageUrl ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img src={artist.imageUrl} alt={artist.displayName} className="artist-avatar-img" />
+                        ) : (
+                            artist?.displayName?.[0] || placeholderName?.[0] || "A"
+                        )}
                     </div>
                     <div className="artist-info">
                         <div className="flex items-center gap-3 mb-3">
                             <span className="artist-label mb-0">Artist</span>
                             {artist ? (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30">
-                                    RESONATE PROFILE
-                                </span>
+                                <span className="artist-verified-badge">RESONATE PROFILE</span>
                             ) : null}
                         </div>
                         <h1 className="artist-name-lg text-gradient">
                             {artist?.displayName || placeholderName || "Unknown Artist"}
                         </h1>
                         <p className="artist-stats">
-                            {loading
-                                ? "Loading catalog"
-                                : `${releases.length} official release${releases.length !== 1 ? "s" : ""}`}
+                            {loading ? (
+                                "Loading catalog"
+                            ) : (
+                                <>
+                                    <span>{releases.length} release{releases.length !== 1 ? "s" : ""}</span>
+                                    {trackCount > 0 ? (
+                                        <>
+                                            <span className="artist-stats__dot">·</span>
+                                            <span>{trackCount} track{trackCount !== 1 ? "s" : ""}</span>
+                                        </>
+                                    ) : null}
+                                </>
+                            )}
                         </p>
+                        {genres.length > 0 ? (
+                            <div className="artist-genres">
+                                {genres.map((g) => (
+                                    <span key={g} className="artist-genre-chip">{g}</span>
+                                ))}
+                            </div>
+                        ) : null}
+                        {artist?.summary ? (
+                            <p className="artist-bio">{artist.summary}</p>
+                        ) : null}
                     </div>
                 </div>
             </div>

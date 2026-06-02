@@ -24,7 +24,7 @@
   width: 60vw;
   height: 60vw;
   transform: translateX(-50%);
-  background: radial-gradient(circle, rgba(0, 242, 254, 0.08) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.08) 0%, transparent 70%);
   z-index: -1;
   pointer-events: none;
 }
@@ -41,7 +41,7 @@
   text-transform: uppercase;
   letter-spacing: -0.04em;
   color: #fff;
-  text-shadow: 0 0 20px rgba(0, 242, 254, 0.4), 0 0 40px rgba(139, 92, 246, 0.4);
+  text-shadow: 0 0 20px rgba(139, 92, 246, 0.4), 0 0 40px rgba(139, 92, 246, 0.4);
   margin-bottom: 12px;
   display: flex;
   align-items: center;
@@ -50,8 +50,8 @@
 }
 
 .create-header h1 svg {
-  color: #00F2FE;
-  filter: drop-shadow(0 0 8px rgba(0, 242, 254, 0.8));
+  color: #A78BFA;
+  filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.8));
 }
 
 .create-header p {
@@ -94,7 +94,7 @@
 /* 4. Prompt Input Area */
 .prompt-label {
   font-size: 0.8rem;
-  color: #00F2FE;
+  color: #A78BFA;
   margin-bottom: 16px;
   display: flex;
   align-items: center;
@@ -110,9 +110,9 @@
   display: inline-block;
   width: 8px;
   height: 8px;
-  background: #00F2FE;
+  background: #A78BFA;
   border-radius: 50%;
-  box-shadow: 0 0 8px #00F2FE;
+  box-shadow: 0 0 8px #A78BFA;
 }
 
 .prompt-textarea {
@@ -133,12 +133,12 @@
 
 .prompt-textarea:focus {
   outline: none;
-  border-color: #00F2FE;
-  background: rgba(0, 242, 254, 0.02);
+  border-color: #A78BFA;
+  background: rgba(139, 92, 246, 0.02);
   box-shadow: 
     inset 0 4px 12px rgba(0, 0, 0, 0.5),
-    0 0 0 4px rgba(0, 242, 254, 0.15),
-    0 0 20px rgba(0, 242, 254, 0.2);
+    0 0 0 4px rgba(139, 92, 246, 0.15),
+    0 0 20px rgba(139, 92, 246, 0.2);
 }
 
 .prompt-textarea::placeholder { color: #3F3F46; }
@@ -225,7 +225,7 @@
   transition: color 0.2s;
 }
 
-.advanced-toggle:hover { color: #00F2FE; }
+.advanced-toggle:hover { color: #A78BFA; }
 .advanced-toggle svg { transition: transform 0.3s; }
 .advanced-toggle.open svg { transform: rotate(90deg); }
 
@@ -348,9 +348,9 @@
 .create-analytics-value {
   font-size: 1.8rem;
   font-weight: 700;
-  color: #00F2FE;
+  color: #A78BFA;
   font-family: var(--font-mono, monospace);
-  text-shadow: 0 0 10px rgba(0, 242, 254, 0.5);
+  text-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
 }
 
 .create-analytics-divider {
@@ -396,15 +396,17 @@
 }
 
 .generate-btn:hover:not(:disabled) {
-  background-image: linear-gradient(90deg, #00F2FE, #4FACFE, #00F2FE, #4FACFE);
+  /* Generate is the moment sound is born → coral ember, the one warm
+   * payoff in the cool agent console. */
+  background-image: linear-gradient(90deg, #FF6B4A, #FF8F6B, #FFB782, #FF8F6B);
   background-size: 300% 100%;
   animation: bg-shine 2s linear infinite;
-  color: #000;
+  color: #1A0800;
   transform: translateY(-4px);
-  box-shadow: 
-    0 20px 40px rgba(0, 242, 254, 0.2), 
-    inset 0 1px 0 rgba(255,255,255,0.3),
-    inset 0 0 0 2px #00F2FE;
+  box-shadow:
+    0 20px 40px rgba(255, 107, 74, 0.28),
+    inset 0 1px 0 rgba(255,255,255,0.35),
+    inset 0 0 0 2px rgba(255, 143, 107, 0.9);
 }
 
 @keyframes bg-shine {
@@ -414,7 +416,7 @@
 
 .generate-btn:active:not(:disabled) {
   transform: translateY(2px);
-  box-shadow: 0 4px 8px rgba(0, 242, 254, 0.2), inset 0 2px 4px rgba(0,0,0,0.5);
+  box-shadow: 0 4px 8px rgba(139, 92, 246, 0.2), inset 0 2px 4px rgba(0,0,0,0.5);
 }
 
 .generate-btn:disabled {
@@ -456,8 +458,8 @@
 }
 
 .progress-phase.active {
-  color: #00F2FE;
-  text-shadow: 0 0 8px rgba(0, 242, 254, 0.5);
+  color: #A78BFA;
+  text-shadow: 0 0 8px rgba(139, 92, 246, 0.5);
 }
 .progress-phase.done { color: #34D399; }
 
@@ -492,9 +494,9 @@
 
 .progress-bar-fill {
   height: 100%;
-  background: #00F2FE;
+  background: #A78BFA;
   transition: width 0.1s linear;
-  box-shadow: 0 0 10px #00F2FE;
+  box-shadow: 0 0 10px #A78BFA;
 }
 
 .progress-bar-fill.indeterminate {

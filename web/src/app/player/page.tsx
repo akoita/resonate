@@ -436,7 +436,7 @@ function PlayerContent() {
           />
         )}
 
-        <div className="queue-section" style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "40vh" }}>
+        <div className="queue-section" style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: "1 1 auto" }}>
           <div className="studio-label" style={{ marginBottom: "var(--space-2)" }}>Queue Manifest</div>
           <div className="queue-list" style={{ overflowY: "auto", paddingRight: "8px" }}>
             {queue.length > 0 ? (
@@ -464,7 +464,20 @@ function PlayerContent() {
                 </div>
               ))
             ) : (
-              <div style={{ fontSize: "12px", opacity: 0.4 }}>Console ready. Queue manifest empty.</div>
+              <div className="player-queue-empty">
+                <span className="player-queue-empty__icon" aria-hidden="true">
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 18V5l12-2v13" />
+                    <circle cx="6" cy="18" r="3" />
+                    <circle cx="18" cy="16" r="3" />
+                  </svg>
+                </span>
+                <strong>Your session is empty</strong>
+                <span className="player-queue-empty__hint">
+                  Play a track to build your queue. Save, playlist, stem, and license
+                  actions appear here once something&apos;s playing.
+                </span>
+              </div>
             )}
           </div>
         </div>
