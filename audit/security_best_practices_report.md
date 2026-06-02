@@ -1,5 +1,60 @@
 # Security Best Practices Report
 
+## Community Cohort Lifecycle Refresh - 2026-06-02
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/community/community_cohort_generation.service.ts`
+- `backend/src/tests/community_cohort_generation.integration.spec.ts`
+- `docs/features/*`
+- `docs/architecture/listener_community_network.md`
+
+### Executive Summary
+
+Issue #1059 adds lifecycle refresh behavior to generated listener community
+cohorts. The scoped review found no Critical or High findings: refresh remains
+admin-triggered through the existing guarded maintenance endpoint, uses Prisma
+structured queries only, keeps membership reconciliation consent and
+minimum-size gated, and makes stale/expired/archived serving state explicit
+before listener suggestions are exposed.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- Generated cohorts are marked `active` only when their visible member count
+  meets `minimumSize`.
+- Generated cohorts below `minimumSize` are marked `archived`, so they remain
+  unavailable to listener suggestion and join flows.
+- Generated cohorts with no current eligible visible members are marked
+  `expired`; previously visible suggested memberships are moved to `stale`,
+  while previously joined memberships are moved to `stale_joined` so explicit
+  join intent can be restored on requalification.
+- Hidden and left user-intent memberships remain preserved across refresh and
+  are not resurrected by generation.
+- System-managed stale memberships can be restored only when a listener
+  qualifies again through current consent and product state; `stale` restores
+  to `suggested`, while `stale_joined` restores to `joined`.
+- Admin refresh output remains aggregate-only and does not return listener IDs,
+  wallet addresses, raw listening histories, purchase addresses, or private
+  location details.
+
+### Scans Run
+
+- `rg -n 'password|secret|api_key|private_key' backend/src/modules/community/community_cohort_generation.service.ts backend/src/tests/community_cohort_generation.integration.spec.ts`
+- `rg -n 'rawQuery|executeRaw|\\$queryRaw' backend/src/modules/community/community_cohort_generation.service.ts backend/src/tests/community_cohort_generation.integration.spec.ts`
+- `rg -n 'JSON\\.parse|eval\\(' backend/src/modules/community/community_cohort_generation.service.ts backend/src/tests/community_cohort_generation.integration.spec.ts`
+- Targeted review of lifecycle state transitions, stale membership handling,
+  hidden/left preservation, generated metadata, and listener-serving filters.
+
 ## Community Cohort Generation Worker - 2026-06-02
 
 ### Scope Reviewed

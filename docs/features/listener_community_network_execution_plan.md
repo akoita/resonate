@@ -259,8 +259,8 @@ Implementation notes:
 - Listeners can join, leave, and hide suggested cohorts. Membership remains
   off-chain and mutable/deletable.
 - Cohort generation can be triggered by admins through
-  `POST /admin/community/cohorts/generate`; lifecycle refresh and operator
-  quality metrics remain follow-up work.
+  `POST /admin/community/cohorts/generate`; lifecycle refresh is implemented
+  in #1059, and operator quality metrics remain follow-up work.
 
 Feature-complete delivery map:
 
@@ -275,14 +275,18 @@ Feature-complete delivery map:
   and coarse city-scene signals. The worker uses transactional reads for current
   consent and product state, enforces `minimumSize` through persisted
   `visibleMemberCount`, preserves hidden memberships, marks no-longer-eligible
-  visible memberships `stale`, avoids duplicate memberships on repeated runs,
-  and writes `CommunityCohort` /
+  visible memberships stale while preserving prior joined intent, avoids
+  duplicate memberships on repeated runs, and writes `CommunityCohort` /
   `CommunityCohortMembership` records for serving. Future warehouse/materialized
   analytics inputs can extend the candidate sources without changing the
   listener-facing contract.
-- Cohort lifecycle and refresh: `not-started`. Expire stale cohorts, refresh
-  memberships without resurrecting hidden user intent, archive below-threshold
-  cohorts, and test expiry/refresh cleanup.
+- Cohort lifecycle and refresh: `implemented` in #1059. Admin generation
+  refreshes lifecycle state by activating generated cohorts that meet
+  `minimumSize`, archiving cohorts that fall below the threshold, expiring
+  generated cohorts with no current eligible visible members, preserving hidden
+  and left user intent, restoring system-managed stale memberships to their
+  prior suggested/joined state on requalification, and reporting lifecycle
+  counts in the aggregate admin response.
 - Operator quality and analytics: `not-started`. Track aggregate suggestion,
   join, leave, hide, disabled-consent, below-threshold, stale-cohort, cohort
   type, and reason-code metrics without exposing raw listener histories,

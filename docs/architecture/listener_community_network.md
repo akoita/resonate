@@ -119,7 +119,10 @@ Responsibilities:
   runs;
 - mark no-longer-eligible visible memberships `stale` before recomputing
   visible counts, so regenerated cohorts cannot keep stale members above the
-  privacy threshold;
+  privacy threshold, while preserving prior joined intent for requalification;
+- set generated cohort lifecycle state on every refresh: `active` when the
+  cohort meets `minimumSize`, `archived` when it falls below threshold, and
+  `expired` when there are no current eligible visible members;
 - expose an admin-triggered generation surface through
   `POST /admin/community/cohorts/generate`.
 
