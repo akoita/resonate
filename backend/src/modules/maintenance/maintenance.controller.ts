@@ -3,6 +3,7 @@ import { AuthGuard } from "@nestjs/passport";
 import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
 import { AnalyticsWarehouseLoadRequest } from "../analytics/analytics_warehouse_loader";
+import { CommunityCohortGenerationRequest } from "../community/community_cohort_generation.service";
 import { MaintenanceService } from "./maintenance.service";
 
 @Controller("admin")
@@ -35,6 +36,13 @@ export class MaintenanceController {
   @Get("analytics/pipeline/health")
   async getAnalyticsPipelineHealth() {
     return this.maintenanceService.getAnalyticsPipelineHealth();
+  }
+
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
+  @Post("community/cohorts/generate")
+  async generateCommunityCohorts(@Body() body: CommunityCohortGenerationRequest) {
+    return this.maintenanceService.generateCommunityCohorts(body ?? {});
   }
 
   @UseGuards(AuthGuard("jwt"), RolesGuard)

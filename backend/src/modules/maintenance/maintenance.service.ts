@@ -3,6 +3,10 @@ import { PrismaClient } from "@prisma/client";
 import { AnalyticsGovernanceService } from "../analytics/analytics_governance.service";
 import { AnalyticsPipelineObservabilityService } from "../analytics/analytics_observability.service";
 import { AnalyticsWarehouseLoadRequest, AnalyticsWarehouseLoaderService } from "../analytics/analytics_warehouse_loader";
+import {
+  CommunityCohortGenerationRequest,
+  CommunityCohortGenerationService,
+} from "../community/community_cohort_generation.service";
 
 const prisma = new PrismaClient();
 
@@ -14,6 +18,7 @@ export class MaintenanceService {
     private readonly analyticsGovernanceService: AnalyticsGovernanceService,
     private readonly analyticsWarehouseLoaderService: AnalyticsWarehouseLoaderService,
     private readonly analyticsPipelineObservabilityService: AnalyticsPipelineObservabilityService,
+    private readonly communityCohortGenerationService: CommunityCohortGenerationService,
   ) {}
 
   async runRetentionCleanup() {
@@ -45,6 +50,10 @@ export class MaintenanceService {
 
   async getAnalyticsPipelineHealth() {
     return this.analyticsPipelineObservabilityService.getPipelineHealth();
+  }
+
+  async generateCommunityCohorts(request: CommunityCohortGenerationRequest) {
+    return this.communityCohortGenerationService.generateCohorts(request);
   }
 
   async wipeReleases() {
