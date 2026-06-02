@@ -1466,3 +1466,141 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+ * Obsidian Frequency — Resonance Duotone (identity refresh, 2026-06)
+ * Marketplace is a PLATFORM / commerce surface → violet structure.
+ * The only warm note is the stem PLAY button → coral (the sound).
+ * Appended last so it wins ties over the rules above. See
+ * web/src/styles/identity-refresh.css for the full rationale.
+ * ════════════════════════════════════════════════════════════════════ */
+
+/* Count chip: was coral background + violet text (a mismatch). Unify violet. */
+.marketplace-count {
+  background: rgba(124, 92, 255, 0.16);
+  color: var(--r-primary-soft);
+  -webkit-text-fill-color: var(--r-primary-soft);
+  border: 1px solid rgba(124, 92, 255, 0.28);
+}
+
+/* Card hover/structure → platform violet (was coral). */
+.stem-card:hover {
+  border-color: rgba(124, 92, 255, 0.28);
+  box-shadow:
+    0 16px 36px -8px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(124, 92, 255, 0.12);
+}
+
+/* Secondary links pick up the platform colour on hover. */
+.marketplace-secondary-link:hover,
+.marketplace-manage-link:hover {
+  border-color: rgba(124, 92, 255, 0.30);
+}
+
+/* Buy / manage actions are on-chain platform actions → richer violet. */
+.marketplace-action-btn {
+  background: var(--r-grad-brand);
+  box-shadow:
+    0 8px 22px -8px rgba(124, 92, 255, 0.50),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.marketplace-action-btn:hover {
+  box-shadow:
+    0 12px 30px -8px rgba(124, 92, 255, 0.65),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+/* The stem PLAY button is the act of listening → coral ember. */
+.stem-card__play-btn {
+  background: var(--r-grad-energy);
+  color: var(--r-on-play);
+  box-shadow:
+    0 6px 18px rgba(255, 107, 74, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.30);
+}
+.stem-card__play-btn:hover {
+  filter: brightness(1.06);
+  box-shadow:
+    0 10px 26px rgba(255, 107, 74, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+ * Listing Manager — give the flat list rhythm & meaning (identity refresh)
+ * Status-colored accent bars, denser rows, glanceable stat tiles, and
+ * price emphasis turn a soulless list into a scannable seller workspace.
+ * ════════════════════════════════════════════════════════════════════ */
+
+/* Glanceable stat tiles: color the number by meaning + a top accent. */
+.marketplace-manager-summary > div {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.015));
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.marketplace-manager-summary > div::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.14);
+}
+.marketplace-manager-summary > div:hover { transform: translateY(-2px); }
+.marketplace-manager-summary strong {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+/* Active = green · Expiring = amber · Ready to relist = violet (actionable). */
+.marketplace-manager-summary > div:nth-child(2)::before { background: linear-gradient(90deg, #34d399, #10b981); }
+.marketplace-manager-summary > div:nth-child(2) strong { color: #6ee7b7; }
+.marketplace-manager-summary > div:nth-child(3)::before { background: linear-gradient(90deg, #fcd34d, #f59e0b); }
+.marketplace-manager-summary > div:nth-child(3) strong { color: #fcd34d; }
+.marketplace-manager-summary > div:nth-child(4)::before { background: var(--r-grad-brand); }
+.marketplace-manager-summary > div:nth-child(4) strong { color: var(--r-primary-soft); }
+.marketplace-manager-summary > div:nth-child(4) {
+  border-color: rgba(124, 92, 255, 0.22);
+}
+
+/* Denser rows + a status-colored left accent bar for instant scanning. */
+.marketplace-manager-row {
+  grid-template-columns: 22px 72px minmax(0, 1fr) auto;
+  padding: 12px 16px 12px 20px;
+  position: relative;
+  overflow: hidden;
+}
+.marketplace-manager-row::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: rgba(148, 163, 184, 0.45);
+}
+.marketplace-manager-row--status-active::after {
+  background: linear-gradient(180deg, #34d399, #10b981);
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.45);
+}
+.marketplace-manager-row--status-expiring_soon::after {
+  background: linear-gradient(180deg, #fcd34d, #f59e0b);
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.45);
+}
+.marketplace-manager-row--status-expired::after,
+.marketplace-manager-row--status-cancelled::after,
+.marketplace-manager-row--status-sold::after,
+.marketplace-manager-row--status-stale::after {
+  background: rgba(148, 163, 184, 0.4);
+}
+.marketplace-manager-row__art {
+  width: 72px;
+  height: 72px;
+}
+
+/* Price is the headline fact — make it pop; keep the rest quiet. */
+.marketplace-manager-row__facts span:first-child {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  color: #fff;
+}

@@ -1,0 +1,953 @@
+/* ══════════════════════════════════════════════════════════════════════
+ * Resonate · Obsidian Frequency — Identity Refresh (2026-06)
+ * ----------------------------------------------------------------------
+ * A focused, additive polish pass layered AFTER globals.css + home-nextgen.css.
+ * Goal: a more beautiful, distinctly-Resonate UI without rewriting the
+ * existing system. Nothing here is required for function — it only deepens
+ * the visual language.
+ *
+ * Identity rule — "Resonance Duotone":
+ *   VIOLET (#7C5CFF)  = the PLATFORM   → nav, structure, progress, AI/agent
+ *   CORAL  (#FF6B4A)  = the SOUND      → playback, now-playing, live energy
+ * Resolves the prior coral/violet conflict in the chrome by giving each
+ * colour a single, consistent meaning.
+ * ══════════════════════════════════════════════════════════════════════ */
+
+/* ----------------------------------------------------------------------
+ * 1. Canvas — ambient aurora + cinematic grain
+ * The app-shell is solid obsidian and the app-main above it is translucent
+ * glass, so enriching the shell gives app-wide ambient depth for free.
+ * -------------------------------------------------------------------- */
+.app-shell {
+  background:
+    radial-gradient(ellipse 60% 50% at 12% -8%, rgba(124, 92, 255, 0.10), transparent 60%),
+    radial-gradient(ellipse 50% 45% at 92% 8%, rgba(196, 181, 253, 0.06), transparent 58%),
+    radial-gradient(ellipse 70% 60% at 70% 112%, rgba(255, 107, 74, 0.045), transparent 60%),
+    var(--r-canvas);
+  position: relative;
+}
+
+/* Fine film grain — kills banding on the dark gradients, reads as texture. */
+.app-shell::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.025;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 220 220' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+}
+
+/* Keep real content above the grain. The sidebar already sits at a high
+ * z-index (5000, and 9000 for the mobile drawer) in globals.css — do NOT
+ * lower it here or the open mobile nav drawer falls behind content. Only
+ * the translucent main column needs lifting above the fixed grain layer. */
+.app-main { z-index: 1; }
+
+/* ----------------------------------------------------------------------
+ * 2. Sidebar — coherent violet active state + logo mark
+ * -------------------------------------------------------------------- */
+.app-sidebar {
+  border-right: 1px solid var(--r-outline-variant);
+}
+
+/* The brand glow is the platform colour, not coral. */
+.app-sidebar::before {
+  background: radial-gradient(circle at 0% 0%, rgba(124, 92, 255, 0.05) 0%, transparent 60%);
+}
+.app-sidebar:hover {
+  background: var(--studio-surface);
+  border-right-color: rgba(124, 92, 255, 0.18);
+}
+
+.sidebar-logo {
+  align-items: center;
+  position: relative;
+}
+.sidebar-logo::after {
+  /* hairline divider under the brand, fading out toward the edges */
+  content: "";
+  position: absolute;
+  left: var(--space-6);
+  right: var(--space-6);
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(124, 92, 255, 0.28), transparent);
+}
+
+.logo-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 0 10px rgba(124, 92, 255, 0.45))
+          drop-shadow(0 0 6px rgba(255, 107, 74, 0.28));
+  transition: transform 0.4s var(--r-ease-spring);
+}
+.app-sidebar:hover .logo-icon { transform: rotate(8deg) scale(1.06); }
+
+.logo-text {
+  background: var(--r-grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.02em;
+}
+
+/* Active nav → fully violet (the platform colour), no more coral/violet clash. */
+.sidebar-link {
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease,
+    transform 0.2s var(--r-ease-out);
+}
+.sidebar-link:hover { transform: translateX(2px); }
+
+.sidebar-link.active {
+  background: linear-gradient(100deg, rgba(124, 92, 255, 0.18), rgba(124, 92, 255, 0.06));
+  border: 1px solid rgba(124, 92, 255, 0.22);
+  box-shadow: inset 0 0 16px rgba(124, 92, 255, 0.08);
+  color: #fff;
+}
+.sidebar-link.active .link-icon {
+  color: var(--r-primary-soft);
+  opacity: 1;
+  filter: drop-shadow(0 0 8px var(--r-primary-glow));
+}
+
+.active-pill {
+  width: 3px;
+  height: 22px;
+  background: var(--r-grad-brand);
+  border-radius: 0 4px 4px 0;
+  box-shadow: 2px 0 12px rgba(124, 92, 255, 0.6);
+}
+
+.sidebar-link__new {
+  background: rgba(255, 107, 74, 0.16);
+  color: var(--r-play-soft);
+  border: 1px solid rgba(255, 107, 74, 0.30);
+}
+
+/* User chip — violet avatar glow (account = platform identity). */
+.user-avatar {
+  background: var(--r-grad-brand);
+  box-shadow: 0 4px 14px rgba(124, 92, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.user-profile { border-radius: var(--r-radius-md); }
+.user-profile:hover { border-color: rgba(124, 92, 255, 0.22); }
+
+/* ----------------------------------------------------------------------
+ * 3. Topbar — deeper glass + gradient hairline
+ * -------------------------------------------------------------------- */
+.app-topbar {
+  background: linear-gradient(180deg, rgba(8, 8, 15, 0.72), rgba(8, 8, 15, 0.40));
+  backdrop-filter: blur(40px) saturate(140%);
+  -webkit-backdrop-filter: blur(40px) saturate(140%);
+  border-bottom: 1px solid transparent;
+  border-image: linear-gradient(90deg, transparent, rgba(124, 92, 255, 0.30), rgba(255, 107, 74, 0.16), transparent) 1;
+}
+.topbar-title,
+.app-topbar h1 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+/* ----------------------------------------------------------------------
+ * 4. Player bar — the signature surface. Coral = sound.
+ * -------------------------------------------------------------------- */
+.app-player {
+  background: linear-gradient(180deg, rgba(17, 16, 30, 0.78), rgba(8, 8, 15, 0.74));
+  border: 1px solid var(--r-chrome-border);
+  border-radius: var(--r-radius-lg);
+  box-shadow:
+    var(--r-elev-3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+/* Calmer neutral lift on hover (was a heavy full-bar coral tint). */
+.app-player:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(180deg, rgba(22, 20, 39, 0.82), rgba(11, 11, 19, 0.78));
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 16px 40px -8px rgba(0, 0, 0, 0.6),
+    0 32px 80px -20px rgba(124, 92, 255, 0.20),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* Progress = platform colour, now a gradient with a head dot on hover. */
+.player-progress-bar {
+  height: 3px;
+  top: -1px;
+  background: linear-gradient(90deg, var(--r-primary), var(--r-secondary));
+  box-shadow: 0 0 14px var(--r-primary-glow);
+}
+.player-progress-bar::after {
+  content: "";
+  position: absolute;
+  right: -5px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 10px var(--r-primary-glow);
+  transform: translateY(-50%) scale(0);
+  transition: transform 0.18s var(--r-ease-out);
+}
+.player-progress-container:hover .player-progress-bar { height: 4px; top: -2px; }
+.player-progress-container:hover .player-progress-bar::after { transform: translateY(-50%) scale(1); }
+
+/* Play button — coral ember, the one warm gem. Soft breathing aura. */
+.player-btn-play {
+  width: 48px;
+  height: 48px;
+  background: var(--r-grad-energy);
+  color: var(--r-on-play);
+  box-shadow:
+    0 6px 18px rgba(255, 107, 74, 0.42),
+    0 0 0 0 rgba(255, 107, 74, 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  position: relative;
+  transition: transform 0.22s var(--r-ease-spring), box-shadow 0.3s ease, filter 0.2s ease;
+}
+.player-btn-play:hover {
+  transform: scale(1.08);
+  filter: brightness(1.06);
+  background: var(--r-grad-energy);
+  box-shadow:
+    0 10px 26px rgba(255, 107, 74, 0.60),
+    0 0 0 6px rgba(255, 107, 74, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.player-btn-play:active { transform: scale(0.96); }
+
+/* Side controls when toggled stay violet (platform control). */
+.player-btn-side.active {
+  color: var(--r-primary-soft);
+  background: rgba(124, 92, 255, 0.16);
+  box-shadow: 0 0 16px rgba(124, 92, 255, 0.22);
+}
+.player-btn-side.active:hover { background: rgba(124, 92, 255, 0.22); }
+
+.player-artwork,
+.player-artwork-placeholder {
+  border-radius: var(--r-radius-sm);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* ----------------------------------------------------------------------
+ * 5. Home — elevate the landing "wow"
+ * -------------------------------------------------------------------- */
+
+/* Hero title: keep the gradient, add a soft platform-light bloom. */
+.home-ng .ng-hero__title {
+  background: var(--r-grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.015em;
+  text-shadow: 0 0 60px rgba(124, 92, 255, 0.18);
+}
+
+/* Hero motif gets a touch more presence. */
+.home-ng .ng-hero__motif { opacity: 0.8; }
+
+/* Primary CTA: brighter brand gradient + crisper glow. */
+.home-ng .ng-btn--primary {
+  background: var(--r-grad-brand-bright);
+  box-shadow:
+    0 10px 28px -8px rgba(124, 92, 255, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+.home-ng .ng-btn--primary:hover {
+  box-shadow:
+    0 14px 38px -8px rgba(124, 92, 255, 0.70),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+
+/* "Listen Now" is a playback action → coral, the sound colour.
+ * The hero's first primary button starts a listening session. */
+.home-ng .ng-hero__actions .ng-btn--primary {
+  background: var(--r-grad-energy);
+  color: var(--r-on-play);
+  box-shadow:
+    0 10px 28px -8px rgba(255, 107, 74, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.home-ng .ng-hero__actions .ng-btn--primary:hover {
+  box-shadow:
+    0 14px 38px -8px rgba(255, 107, 74, 0.72),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+/* Filter chips: active gets a glow; inactive gets a cleaner rest state. */
+.home-ng .ng-chip {
+  border-color: var(--r-chrome-border);
+  background: var(--r-chrome-glass);
+  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease,
+    box-shadow 0.2s ease, transform 0.2s var(--r-ease-out);
+}
+.home-ng .ng-chip:hover { transform: translateY(-1px); }
+.home-ng .ng-chip--active {
+  background: var(--r-grad-brand);
+  border-color: rgba(124, 92, 255, 0.6);
+  box-shadow: 0 6px 18px -6px rgba(124, 92, 255, 0.6);
+}
+
+/* Section titles: subtle weight + tracking refinement. */
+.home-ng .ng-section-title { letter-spacing: -0.015em; }
+
+/* Recommendation + resource cards: lift, glow edge, smoother motion. */
+.home-ng .ng-recommendation-card,
+.home-ng .ng-resource-card {
+  transition: transform 0.28s var(--r-ease-out), border-color 0.28s ease,
+    box-shadow 0.28s ease, background 0.28s ease;
+}
+.home-ng .ng-recommendation-card:hover,
+.home-ng .ng-resource-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(124, 92, 255, 0.30);
+  box-shadow: var(--r-elev-2), 0 0 0 1px rgba(124, 92, 255, 0.10);
+}
+
+/* Catalog stat numbers read as instrument readouts — mono + tabular. */
+.home-ng .ng-catalog-stats {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+/* AI DJ session-intent presets are agent context — give them a quiet
+ * violet base accent and a confident hover lift. */
+.home-ng .ng-glass:hover { border-color: rgba(124, 92, 255, 0.22); }
+
+/* ----------------------------------------------------------------------
+ * 6. Global niceties — focus, selection, scrollbar
+ * -------------------------------------------------------------------- */
+::selection {
+  background: rgba(124, 92, 255, 0.32);
+  color: #fff;
+}
+
+/* Custom scrollbar (WebKit) — thin, violet on hover, on-brand. */
+.app-content::-webkit-scrollbar,
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+.app-content::-webkit-scrollbar-track,
+*::-webkit-scrollbar-track { background: transparent; }
+.app-content::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-thumb {
+  background: rgba(124, 92, 255, 0.20);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+.app-content::-webkit-scrollbar-thumb:hover,
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 92, 255, 0.42);
+  background-clip: content-box;
+}
+
+/* Keyboard focus ring — visible, on-brand, never on mouse clicks. */
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid rgba(124, 92, 255, 0.65);
+  outline-offset: 2px;
+  border-radius: var(--r-radius-xs);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar:hover .logo-icon { transform: none; }
+  /* Disable the refresh's decorative motion for reduced-motion users. */
+  .artist-community-room__meta span:first-child::before,
+  .artist-community-conversation__header > span::before,
+  .gallery-lightbox,
+  .gallery-lightbox__stage img {
+    animation: none !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+ * EXTENDED SURFACES — the same duotone, applied surface by surface.
+ *   Wallet  → pure PLATFORM (on-chain) = violet
+ *   AI DJ   → AGENT presence = electric violet, with playback = coral
+ * ════════════════════════════════════════════════════════════════════ */
+
+/* ----------------------------------------------------------------------
+ * 7. Wallet / Vault — the on-chain platform surface. Violet throughout.
+ * Removes the stray off-palette pink, adds depth + a mono-tabular balance.
+ * -------------------------------------------------------------------- */
+.vault-hero {
+  background: linear-gradient(
+    135deg,
+    rgba(124, 92, 255, 0.20) 0%,
+    rgba(17, 16, 30, 0.88) 46%,
+    rgba(196, 181, 253, 0.08) 100%
+  );
+  border-color: rgba(124, 92, 255, 0.18);
+  box-shadow: var(--r-elev-2), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.vault-hero::before {
+  background:
+    radial-gradient(circle at 15% 40%, rgba(124, 92, 255, 0.28), transparent 50%),
+    radial-gradient(circle at 85% 80%, rgba(196, 181, 253, 0.12), transparent 42%);
+}
+/* Balance is a financial readout → mono + tabular, with a violet glow. */
+.vault-balance {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  text-shadow: 0 0 40px rgba(124, 92, 255, 0.22);
+}
+.vault-card:hover {
+  border-color: rgba(124, 92, 255, 0.24);
+  box-shadow: var(--r-elev-2), 0 0 0 1px rgba(124, 92, 255, 0.08);
+}
+.vault-address-pill,
+.vault-explorer-btn {
+  font-feature-settings: "tnum" 1;
+}
+
+/* ----------------------------------------------------------------------
+ * 8. AI DJ — restore the agent's vivid electric-violet presence.
+ * Playback actions inside it speak coral (the sound the agent chose).
+ * -------------------------------------------------------------------- */
+
+/* The orb: a glowing electric-violet AI presence, not washed lavender. */
+.aid-orb {
+  background: var(--r-grad-agent);
+  box-shadow:
+    0 0 22px var(--r-agent-glow),
+    0 0 46px rgba(139, 92, 246, 0.20),
+    inset 0 0 12px rgba(255, 255, 255, 0.18);
+}
+.aid-orb-badge.active {
+  background: var(--r-agent);
+  border-color: var(--r-agent-soft);
+  color: #fff;
+}
+
+/* Agent accents — command rail, active mode, next-pick edge. */
+.aid-command { border-left-color: var(--r-agent); }
+.aid-mode-btn.active {
+  background: rgba(139, 92, 246, 0.22);
+  color: var(--r-agent-soft);
+}
+.aid-card--next-pick { border-top-color: var(--r-agent); }
+
+/* "Start session" commands the agent → consistent electric-violet
+ * (was violet fill + mismatched coral shadow). */
+.aid-toggle-btn.start {
+  background: linear-gradient(135deg, var(--r-agent), var(--r-agent-soft));
+  color: #fff;
+  box-shadow: 0 4px 18px var(--r-agent-glow);
+}
+.aid-toggle-btn.start:hover { box-shadow: 0 6px 26px rgba(139, 92, 246, 0.5); }
+
+.aid-primary-btn {
+  background: linear-gradient(135deg, var(--r-agent), var(--r-agent-soft));
+  color: #fff;
+  box-shadow: 0 3px 14px var(--r-agent-glow);
+}
+
+/* The next-pick action plays an actual track → coral, the sound colour.
+ * This is the one warm beat inside the cool agent console. */
+.aid-np-btn {
+  background: linear-gradient(135deg, rgba(255, 107, 74, 0.20), rgba(255, 143, 107, 0.12));
+  border-color: rgba(255, 107, 74, 0.34);
+  color: var(--r-play-soft);
+}
+.aid-np-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(255, 107, 74, 0.34), rgba(255, 143, 107, 0.22));
+  border-color: rgba(255, 107, 74, 0.50);
+}
+.aid-np-btn:disabled:hover {
+  background: linear-gradient(135deg, rgba(255, 107, 74, 0.20), rgba(255, 143, 107, 0.12));
+  border-color: rgba(255, 107, 74, 0.34);
+}
+
+/* ----------------------------------------------------------------------
+ * 9. Player stage (/player) — duotone art glow.
+ * The hero artwork is the sound made visible → violet platform halo
+ * with a warm coral underglow.
+ * -------------------------------------------------------------------- */
+.player-art-master {
+  box-shadow:
+    0 60px 120px rgba(0, 0, 0, 0.9),
+    0 0 60px rgba(124, 92, 255, 0.18),
+    0 24px 80px -20px rgba(255, 107, 74, 0.18);
+}
+
+/* ----------------------------------------------------------------------
+ * 10. Sonic Radar (/sonic-radar) — agent discovery feed.
+ * Electric-violet presence (agent), coral on the play affordance (sound).
+ * Drops the off-palette blue/pink mesh for a coherent duotone field.
+ * -------------------------------------------------------------------- */
+.sonic-radar-hero-bg {
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 38%, rgba(139, 92, 246, 0.22) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 50% at 18% 82%, rgba(124, 92, 255, 0.14) 0%, transparent 62%),
+    radial-gradient(ellipse 50% 40% at 84% 18%, rgba(255, 107, 74, 0.10) 0%, transparent 60%),
+    linear-gradient(135deg, rgba(15, 15, 25, 0.95) 0%, rgba(20, 15, 40, 0.92) 100%);
+}
+.sonic-radar-icon {
+  background: rgba(139, 92, 246, 0.14);
+  border-color: rgba(139, 92, 246, 0.28);
+  color: var(--r-agent-soft);
+}
+.sonic-radar-card-art,
+.sonic-radar-card-art-placeholder {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.10), rgba(196, 181, 253, 0.06));
+}
+/* The card's play affordance is the act of listening → coral. */
+.sonic-radar-play-icon {
+  background: var(--r-grad-energy);
+  color: var(--r-on-play);
+  box-shadow: 0 6px 18px rgba(255, 107, 74, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.sonic-radar-stat-value {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  letter-spacing: -0.01em;
+}
+
+/* ----------------------------------------------------------------------
+ * 11. Artist Catalog (/artist/catalog) — managed inventory.
+ * Platform surface: violet accents, mono summary counts, card lift.
+ * -------------------------------------------------------------------- */
+.artist-catalog-summary {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+}
+.artist-catalog-search:focus-within {
+  border-color: rgba(124, 92, 255, 0.4);
+  box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.14);
+}
+
+/* ----------------------------------------------------------------------
+ * 12. Settings (/settings) — quiet platform polish.
+ * -------------------------------------------------------------------- */
+.settings-toggle input { accent-color: var(--r-primary); }
+.settings-scan-progress {
+  background: rgba(124, 92, 255, 0.10);
+  border: 1px solid rgba(124, 92, 255, 0.18);
+}
+
+/* ----------------------------------------------------------------------
+ * 13. Shared input polish — consistent violet focus across forms.
+ * Many pages render bare inputs/selects/textareas; give them one
+ * coherent on-brand focus instead of the browser default.
+ * -------------------------------------------------------------------- */
+.app-content input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus-visible,
+.app-content textarea:focus-visible,
+.app-content select:focus-visible {
+  border-color: rgba(124, 92, 255, 0.5);
+  box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.16);
+  outline: none;
+}
+
+/* ----------------------------------------------------------------------
+ * 14. Player floating console (/player) — declutter so the QUEUE wins.
+ * The action layer was stacked cards + a 5-row "unavailable" list that
+ * crushed the queue. It's now a single icon-chip row + muted lock-chips,
+ * and the queue flexes to fill all remaining height.
+ * -------------------------------------------------------------------- */
+
+/* Compact, single-line status header (was a two-line block). */
+.player-status-area {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+/* Action layer — tight, no longer the page's center of gravity. */
+.player-action-panel {
+  margin: 12px 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--r-chrome-border);
+  border-bottom: 1px solid var(--r-chrome-border);
+  flex: 0 0 auto;
+}
+.player-action-kicker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.player-action-kicker { margin: 0; }
+.player-action-reason {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--r-on-surface-muted);
+  max-width: 56%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Primary actions → compact icon+label pills on one wrapping row. */
+.player-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.player-action-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 11px;
+  border: 1px solid var(--r-chrome-border);
+  background: var(--r-chrome-glass);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: transform 0.16s var(--r-ease-out), border-color 0.16s ease,
+    background 0.16s ease, box-shadow 0.16s ease;
+}
+.player-action-chip svg { opacity: 0.85; flex: 0 0 auto; }
+.player-action-chip--available:hover {
+  transform: translateY(-1px);
+  border-color: rgba(124, 92, 255, 0.5);
+  background: rgba(124, 92, 255, 0.15);
+  box-shadow: 0 8px 20px -8px rgba(124, 92, 255, 0.5);
+}
+.player-action-chip.is-saved {
+  cursor: default;
+  border-color: rgba(52, 211, 153, 0.42);
+  background: rgba(52, 211, 153, 0.12);
+  color: #a7f3d0;
+}
+.player-action-chip.is-loading {
+  cursor: progress;
+  opacity: 0.5;
+  width: 44px;
+  padding: 0;
+  justify-content: center;
+}
+
+/* Unavailable / coming-soon → quiet pills (label only; reason in tooltip),
+ * one wrapped row instead of five verbose rows. */
+.player-action-locked {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.player-action-lockchip {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--r-on-surface-muted);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  padding: 4px 11px;
+  cursor: help;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.player-action-lockchip:hover {
+  color: var(--r-secondary);
+  border-color: rgba(196, 181, 253, 0.25);
+}
+/* "Coming soon" reads as a faint promise (lavender), "unavailable" stays grey. */
+.player-action-lockchip--coming_soon {
+  color: var(--r-on-surface-variant);
+  border-color: rgba(196, 181, 253, 0.16);
+}
+
+/* Queue now owns the remaining height and reads as the main event. */
+.player-floating-console .queue-section { flex: 1 1 auto; min-height: 0; }
+.player-floating-console .queue-list { gap: 4px; display: flex; flex-direction: column; }
+.queue-item {
+  transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s var(--r-ease-out);
+}
+.queue-item:hover { transform: translateX(2px); }
+.player-share-section { flex: 0 0 auto; }
+
+/* No-track state: fill the freed space with an intentional, explanatory
+ * empty state instead of a tiny line stranded above a void — and tell the
+ * listener that the action controls appear once a track is playing. */
+.player-queue-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 10px;
+  height: 100%;
+  min-height: 220px;
+  padding: 24px;
+  color: var(--r-on-surface-muted);
+}
+.player-queue-empty__icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  color: var(--r-primary-soft);
+  background: radial-gradient(circle at 50% 35%, rgba(124, 92, 255, 0.18), rgba(124, 92, 255, 0.04));
+  border: 1px solid rgba(124, 92, 255, 0.18);
+}
+.player-queue-empty strong {
+  font-family: var(--font-display);
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.9);
+}
+.player-queue-empty__hint {
+  max-width: 280px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* ----------------------------------------------------------------------
+ * 15. Library (/library) — a real empty state + list polish.
+ * The empty state was one line of text in a void; now it's a proper
+ * onboarding panel. The track list gets quieter headers and mono
+ * durations so it reads like an instrument, not a spreadsheet.
+ * -------------------------------------------------------------------- */
+.library-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  max-width: 460px;
+  margin: 56px auto;
+  padding: 48px 28px;
+  border: 1px solid var(--r-chrome-border);
+  border-radius: var(--r-radius-lg);
+  background:
+    radial-gradient(ellipse 80% 70% at 50% 0%, rgba(124, 92, 255, 0.08), transparent 70%),
+    var(--r-chrome-glass);
+}
+.library-empty__icon {
+  width: 84px;
+  height: 84px;
+  display: grid;
+  place-items: center;
+  border-radius: 24px;
+  color: var(--r-primary-soft);
+  background: radial-gradient(circle at 50% 35%, rgba(124, 92, 255, 0.20), rgba(124, 92, 255, 0.04));
+  border: 1px solid rgba(124, 92, 255, 0.20);
+  box-shadow: inset 0 0 40px -10px rgba(124, 92, 255, 0.5);
+}
+.library-empty__title {
+  margin: 4px 0 0;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+.library-empty__text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--r-on-surface-variant);
+}
+.library-empty__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+/* Header row → quiet uppercase column labels. */
+.library-item-header > div {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--r-on-surface-muted);
+}
+/* Durations are tabular data → mono. */
+.library-item-duration {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  color: var(--r-on-surface-muted);
+}
+/* Playing row uses the platform colour consistently. */
+.library-item.playing { border-left-color: var(--r-primary); }
+.library-item.playing .library-item-title { color: var(--r-primary-soft); }
+
+/* ----------------------------------------------------------------------
+ * 16. Artist page (/artist/[id]) — surface the data it already has.
+ * The hero ignored the artist photo, bio, and genres. Now it shows a
+ * cinematic backdrop (release art), the real avatar, genre chips, and
+ * the summary — filling the empty space with meaning.
+ * -------------------------------------------------------------------- */
+.artist-hero {
+  background: linear-gradient(180deg, var(--r-surface-low), var(--r-canvas));
+}
+.artist-hero__backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0.45;
+  filter: blur(46px) saturate(150%) brightness(0.6);
+  transform: scale(1.2);
+  -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.95) 0%, transparent 92%);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.95) 0%, transparent 92%);
+  pointer-events: none;
+}
+/* Avatar: show the real photo when present; keep the violet monogram otherwise. */
+.artist-avatar-lg {
+  overflow: hidden;
+  background: var(--r-grad-brand);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+.artist-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+.artist-verified-badge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--r-agent-soft);
+  background: rgba(139, 92, 246, 0.16);
+  border: 1px solid rgba(139, 92, 246, 0.30);
+  border-radius: 6px;
+  padding: 3px 8px;
+  line-height: 1.2;
+}
+.artist-stats__dot { opacity: 0.45; }
+.artist-genres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+}
+.artist-genre-chip {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--r-secondary);
+  background: rgba(196, 181, 253, 0.10);
+  border: 1px solid rgba(196, 181, 253, 0.22);
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+.artist-bio {
+  margin-top: 16px;
+  max-width: 640px;
+  color: var(--r-on-surface-variant);
+  font-size: 14px;
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* ----------------------------------------------------------------------
+ * 17. Artist community (social rooms) — make it feel alive.
+ * Adds presence pulses, a vibrant active room, hover energy, and an
+ * inviting chat empty-state instead of a dead "No messages yet".
+ * -------------------------------------------------------------------- */
+@keyframes commLivePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); }
+  70%      { box-shadow: 0 0 0 6px rgba(52, 211, 153, 0); }
+}
+
+/* Room cards lift and glow — they feel clickable and live. */
+.artist-community-room {
+  transition: transform 0.2s var(--r-ease-out), border-color 0.2s ease,
+    background 0.2s ease, box-shadow 0.2s ease;
+}
+.artist-community-room:hover {
+  transform: translateY(-2px);
+  border-color: rgba(124, 92, 255, 0.30);
+  box-shadow: var(--r-elev-2);
+}
+.artist-community-room--active {
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.16), rgba(124, 92, 255, 0.05));
+  box-shadow: var(--r-glow-violet);
+}
+
+/* "active" status badges read as live presence — a breathing green dot. */
+.artist-community-room__meta span:first-child,
+.artist-community-conversation__header > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.artist-community-room__meta span:first-child::before,
+.artist-community-conversation__header > span::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--r-success);
+  animation: commLivePulse 2.4s ease-out infinite;
+}
+.artist-community-conversation__header > span {
+  color: var(--r-success);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* Conversation panel gets a faint top aurora so it feels like a stage. */
+.artist-community__conversation {
+  background:
+    radial-gradient(ellipse 90% 60% at 50% 0%, rgba(124, 92, 255, 0.07), transparent 70%),
+    rgba(255, 255, 255, 0.035);
+}
+
+/* Inviting chat empty-state (was a bare "No messages yet."). */
+.artist-community__chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 48px 24px;
+  color: var(--r-on-surface-variant);
+}
+.artist-community__chat-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  color: var(--r-primary-soft);
+  background: radial-gradient(circle at 50% 35%, rgba(124, 92, 255, 0.20), rgba(124, 92, 255, 0.04));
+  border: 1px solid rgba(124, 92, 255, 0.20);
+  margin-bottom: 4px;
+}
+.artist-community__chat-empty strong {
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: #fff;
+}
+.artist-community__chat-empty p {
+  margin: 0;
+  max-width: 360px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* Own composer button + send → coral? No — community is platform/social =
+ * violet. Keep the send CTA on the brand gradient with a confident glow. */
+.artist-community-composer .ui-btn-primary,
+.artist-community-composer button:not(.ui-btn-ghost) {
+  box-shadow: 0 8px 22px -8px rgba(124, 92, 255, 0.5);
+}
