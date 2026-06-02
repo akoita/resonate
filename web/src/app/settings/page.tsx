@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import AuthGate from "../../components/auth/AuthGate";
 import NotificationPreferences from "../../components/notifications/NotificationPreferences";
@@ -26,9 +25,50 @@ import { clearLibrary } from "../../lib/localLibrary";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 
+type SettingsSectionId = "library" | "taste" | "community" | "cohorts" | "notifications";
+
+const SETTINGS_SECTIONS: Array<{
+    id: SettingsSectionId;
+    label: string;
+    eyebrow: string;
+    description: string;
+}> = [
+    {
+        id: "library",
+        label: "Library",
+        eyebrow: "Local audio",
+        description: "Folders, scan behavior, and indexed files.",
+    },
+    {
+        id: "taste",
+        label: "Taste Memory",
+        eyebrow: "Recommendations",
+        description: "Signals that guide discovery and AI DJ.",
+    },
+    {
+        id: "community",
+        label: "Community",
+        eyebrow: "Public profile",
+        description: "Visibility, profile identity, and social surfaces.",
+    },
+    {
+        id: "cohorts",
+        label: "Listener Cohorts",
+        eyebrow: "Discovery",
+        description: "Privacy-safe listener groups and shared signals.",
+    },
+    {
+        id: "notifications",
+        label: "Notifications",
+        eyebrow: "Alerts",
+        description: "Disputes, marketplace, and realtime delivery.",
+    },
+];
+
 export default function SettingsPage() {
     const { addToast } = useToast();
     const { token } = useAuth();
+    const [activeSection, setActiveSection] = useState<SettingsSectionId>("library");
     const [settings, setSettings] = useState<LibrarySettings | null>(null);
     const [sourceNames, setSourceNames] = useState<string[]>([]);
     const [scanning, setScanning] = useState(false);
@@ -239,14 +279,11 @@ export default function SettingsPage() {
     if (!isSupported) {
         return (
             <AuthGate title="Connect your wallet to access settings.">
-                <main className="settings-grid">
-                    <Card>
-                        <div className="upload-section-title">Settings</div>
-                        <div className="settings-unsupported">
-                            <p>⚠️ File System Access API is not supported in this browser.</p>
-                            <p>Please use Chrome, Edge, or another Chromium-based browser.</p>
-                        </div>
-                    </Card>
+                <main className="settings-workspace">
+                    <div className="settings-unsupported">
+                        <strong>File System Access API is not supported in this browser.</strong>
+                        <p>Please use Chrome, Edge, or another Chromium-based browser.</p>
+                    </div>
                 </main>
             </AuthGate>
         );
@@ -254,142 +291,192 @@ export default function SettingsPage() {
 
     return (
         <AuthGate title="Connect your wallet to access settings.">
-            <main className="settings-grid">
-                <Card>
-                    <div className="upload-section-title">Library Settings</div>
-
-                    <div className="settings-section">
-                        <h3 className="settings-section-title">Library Sources</h3>
-                        <p className="home-subtitle">
-                            Add folders to automatically monitor and index for audio files. You can
-                            specify multiple local folders.
+            <main className="settings-workspace">
+                <header className="settings-hero">
+                    <div>
+                        <span className="settings-kicker">Account controls</span>
+                        <h1>Settings</h1>
+                        <p>
+                            Manage the parts of Resonate that shape your local library, recommendations,
+                            public community profile, and delivery preferences.
                         </p>
-
-                        <div className="settings-source">
-                            {hasSources ? (
-                                <ul className="settings-source-list">
-                                    {sourceNames.map((name, index) => (
-                                        <li key={`${index}-${name}`} className="settings-source-item">
-                                            <div className="settings-source-info">
-                                                <div className="settings-source-path">
-                                                    📂 {name}
-                                                </div>
-                                            </div>
-                                            <div className="settings-source-item-actions">
-                                                <Button
-                                                    variant="ghost"
-                                                    onClick={() => handleRescanOne(index)}
-                                                    disabled={scanning}
-                                                >
-                                                    Rescan
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    onClick={() => handleRemoveFolder(index)}
-                                                    disabled={scanning}
-                                                >
-                                                    Remove
-                                                </Button>
-                                            </div>
-                                        </li>
-                                    ))}
-                                </ul>
-                            ) : (
-                                <div className="settings-source-empty">
-                                    No library sources configured
-                                </div>
-                            )}
-                            {settings?.lastScanTime && hasSources && (
-                                <div className="settings-source-meta">
-                                    Last scanned: {new Date(settings.lastScanTime).toLocaleString()}
-                                </div>
-                            )}
-
-                            <div className="settings-source-actions">
-                                <Button variant="primary" onClick={handleAddFolder} disabled={scanning}>
-                                    Add Folder
-                                </Button>
-                                {hasSources && (
-                                    <>
-                                        <Button
-                                            variant="ghost"
-                                            onClick={handleRescanAll}
-                                            disabled={scanning}
-                                        >
-                                            {scanning ? "Scanning..." : "Rescan All"}
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            onClick={handleClearAll}
-                                            disabled={scanning}
-                                        >
-                                            Clear All
-                                        </Button>
-                                    </>
-                                )}
-                            </div>
+                    </div>
+                    <div className="settings-hero-metrics" aria-label="Settings summary">
+                        <div>
+                            <strong>{sourceNames.length}</strong>
+                            <span>Sources</span>
                         </div>
-
-                        {scanning && scanProgress && (
-                            <div className="settings-scan-progress">
-                                {scanSourceTotal > 1 && (
-                                    <p>
-                                        Source {scanSourceIndex} of {scanSourceTotal}
-                                    </p>
-                                )}
-                                <p>
-                                    {scanProgress.phase === "scanning"
-                                        ? "Scanning for audio files..."
-                                        : `Indexing: ${scanProgress.filesIndexed}/${scanProgress.filesFound}`}
-                                </p>
-                                {scanProgress.currentFile && (
-                                    <p className="settings-scan-file">{scanProgress.currentFile}</p>
-                                )}
-                                <div className="import-progress-bar">
-                                    <div
-                                        className="import-progress-fill"
-                                        style={{
-                                            width:
-                                                scanProgress.phase === "scanning"
-                                                    ? "30%"
-                                                    : scanProgress.filesFound > 0
-                                                        ? `${(scanProgress.filesIndexed / scanProgress.filesFound) * 100}%`
-                                                        : "0%",
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="settings-section">
-                        <h3 className="settings-section-title">Auto-Scan</h3>
-                        <label className="settings-toggle">
-                            <input
-                                type="checkbox"
-                                checked={settings?.autoScanOnLoad ?? true}
-                                onChange={handleToggleAutoScan}
-                            />
-                            <span>Automatically scan for new files when app loads</span>
-                        </label>
-                    </div>
-
-                    <TasteMemorySettingsPanel token={token} addToast={addToast} />
-
-                    <CommunityProfileSettingsPanel token={token} addToast={addToast} />
-
-                    <ListenerCohortsPanel token={token} addToast={addToast} />
-
-                    <div className="settings-section">
-                        <h3 className="settings-section-title">Notifications</h3>
-                        <p className="home-subtitle">
-                            Manage dispute alerts, unread badges, and realtime notification delivery for your connected wallet.
-                        </p>
-                        <div className="settings-source" style={{ marginTop: "12px" }}>
-                            <NotificationPreferences />
+                        <div>
+                            <strong>{settings?.autoScanOnLoad ?? true ? "On" : "Off"}</strong>
+                            <span>Auto-scan</span>
                         </div>
                     </div>
-                </Card>
+                </header>
+
+                <div className="settings-layout">
+                    <nav className="settings-nav" aria-label="Settings sections">
+                        {SETTINGS_SECTIONS.map((section) => (
+                            <button
+                                key={section.id}
+                                type="button"
+                                className={activeSection === section.id ? "active" : ""}
+                                onClick={() => setActiveSection(section.id)}
+                            >
+                                <span>{section.eyebrow}</span>
+                                <strong>{section.label}</strong>
+                                <small>{section.description}</small>
+                            </button>
+                        ))}
+                    </nav>
+
+                    <section className="settings-panel" aria-live="polite">
+                        {activeSection === "library" ? (
+                            <div className="settings-section">
+                                <div className="settings-section-header">
+                                    <div>
+                                        <span className="settings-kicker">Local audio</span>
+                                        <h2 className="settings-section-title">Library</h2>
+                                        <p className="settings-copy">
+                                            Add local folders, rescan sources, and decide whether Resonate scans
+                                            automatically when the app opens.
+                                        </p>
+                                    </div>
+                                    <Button variant="primary" onClick={handleAddFolder} disabled={scanning}>
+                                        Add Folder
+                                    </Button>
+                                </div>
+
+                                <div className="settings-library-grid">
+                                    <div className="settings-source">
+                                        <div className="settings-subheader">
+                                            <h3>Sources</h3>
+                                            {settings?.lastScanTime && hasSources ? (
+                                                <span>Last scanned {new Date(settings.lastScanTime).toLocaleString()}</span>
+                                            ) : null}
+                                        </div>
+
+                                        {hasSources ? (
+                                            <ul className="settings-source-list">
+                                                {sourceNames.map((name, index) => (
+                                                    <li key={`${index}-${name}`} className="settings-source-item">
+                                                        <div className="settings-source-info">
+                                                            <div className="settings-source-path">{name}</div>
+                                                        </div>
+                                                        <div className="settings-source-item-actions">
+                                                            <Button
+                                                                variant="ghost"
+                                                                onClick={() => handleRescanOne(index)}
+                                                                disabled={scanning}
+                                                            >
+                                                                Rescan
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                onClick={() => handleRemoveFolder(index)}
+                                                                disabled={scanning}
+                                                            >
+                                                                Remove
+                                                            </Button>
+                                                        </div>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        ) : (
+                                            <div className="settings-source-empty">
+                                                <strong>No library sources</strong>
+                                                <span>Add a folder to index tracks for player and AI DJ sessions.</span>
+                                            </div>
+                                        )}
+
+                                        {hasSources ? (
+                                            <div className="settings-source-actions">
+                                                <Button variant="ghost" onClick={handleRescanAll} disabled={scanning}>
+                                                    {scanning ? "Scanning..." : "Rescan All"}
+                                                </Button>
+                                                <Button variant="ghost" onClick={handleClearAll} disabled={scanning}>
+                                                    Clear All
+                                                </Button>
+                                            </div>
+                                        ) : null}
+                                    </div>
+
+                                    <aside className="settings-compact-panel">
+                                        <h3>Scan behavior</h3>
+                                        <label className="settings-toggle">
+                                            <input
+                                                type="checkbox"
+                                                checked={settings?.autoScanOnLoad ?? true}
+                                                onChange={handleToggleAutoScan}
+                                            />
+                                            <span>
+                                                <strong>Auto-scan on load</strong>
+                                                <small>Look for new files when the app starts.</small>
+                                            </span>
+                                        </label>
+                                    </aside>
+                                </div>
+
+                                {scanning && scanProgress && (
+                                    <div className="settings-scan-progress">
+                                        {scanSourceTotal > 1 && (
+                                            <p>
+                                                Source {scanSourceIndex} of {scanSourceTotal}
+                                            </p>
+                                        )}
+                                        <p>
+                                            {scanProgress.phase === "scanning"
+                                                ? "Scanning for audio files..."
+                                                : `Indexing: ${scanProgress.filesIndexed}/${scanProgress.filesFound}`}
+                                        </p>
+                                        {scanProgress.currentFile && (
+                                            <p className="settings-scan-file">{scanProgress.currentFile}</p>
+                                        )}
+                                        <div className="import-progress-bar">
+                                            <div
+                                                className="import-progress-fill"
+                                                style={{
+                                                    width:
+                                                        scanProgress.phase === "scanning"
+                                                            ? "30%"
+                                                            : scanProgress.filesFound > 0
+                                                                ? `${(scanProgress.filesIndexed / scanProgress.filesFound) * 100}%`
+                                                                : "0%",
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ) : null}
+
+                        {activeSection === "taste" ? (
+                            <TasteMemorySettingsPanel token={token} addToast={addToast} />
+                        ) : null}
+
+                        {activeSection === "community" ? (
+                            <CommunityProfileSettingsPanel token={token} addToast={addToast} />
+                        ) : null}
+
+                        {activeSection === "cohorts" ? (
+                            <ListenerCohortsPanel token={token} addToast={addToast} />
+                        ) : null}
+
+                        {activeSection === "notifications" ? (
+                            <div className="settings-section">
+                                <div className="settings-section-header">
+                                    <div>
+                                        <span className="settings-kicker">Alerts</span>
+                                        <h2 className="settings-section-title">Notifications</h2>
+                                        <p className="settings-copy">
+                                            Choose which dispute and marketplace events should reach your connected wallet.
+                                        </p>
+                                    </div>
+                                </div>
+                                <NotificationPreferences />
+                            </div>
+                        ) : null}
+                    </section>
+                </div>
             </main>
         </AuthGate>
     );
