@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import { prisma } from "../../db/prisma";
 
 const DEFAULT_MINIMUM_SIZE = 5;
+const GENERATED_COHORT_SCHEMA_VERSION = "community-cohort-generation/v1";
 const ACTIVE_CAMPAIGN_SUPPORT_PLEDGE_STATUSES = ["confirmed", "released"] as const;
 const ACTIVE_CAMPAIGN_SUPPORT_CAMPAIGN_STATUSES = [
   "active",
@@ -13,7 +14,9 @@ const ACTIVE_CAMPAIGN_SUPPORT_CAMPAIGN_STATUSES = [
   "released",
 ] as const;
 const VISIBLE_MEMBERSHIP_STATUSES = ["suggested", "joined"] as const;
+const GENERATED_COHORT_TYPES = ["taste", "artist_affinity", "city_scene", "collector", "campaign"] as const;
 const STALE_MEMBERSHIP_STATUS = "stale";
+const STALE_JOINED_MEMBERSHIP_STATUS = "stale_joined";
 const UNSAFE_SIGNAL_PATTERNS = [
   /0x[a-f0-9]{40}/i,
   /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
@@ -44,6 +47,8 @@ type MaterializedCohort = {
   cohortId: string;
   cohortType: string;
   reasonCode: string;
+  status: string;
+  lifecycleAction: "activated" | "archived" | "expired" | "unchanged";
   visibleMemberCount: number;
   minimumSize: number;
   membershipsCreated: number;
@@ -61,18 +66,24 @@ export class CommunityCohortGenerationService {
     const eligibleUsers = await this.loadEligibleUsers();
     const candidates = await this.buildCandidates(eligibleUsers);
     const materialized: MaterializedCohort[] = [];
+    const currentReasonCodes = new Set(candidates.map((candidate) => candidate.reasonCode));
 
     for (const candidate of candidates) {
       materialized.push(await this.materializeCandidate(candidate, minimumSize, generatedAt));
     }
+    materialized.push(...await this.reconcileMissingGeneratedCohorts(currentReasonCodes, minimumSize, generatedAt));
 
     return {
-      schemaVersion: "community-cohort-generation/v1",
+      schemaVersion: GENERATED_COHORT_SCHEMA_VERSION,
       generatedAt: generatedAt.toISOString(),
       summary: {
         candidateCohorts: candidates.length,
         cohortsMaterialized: materialized.length,
-        visibleCohorts: materialized.filter((cohort) => cohort.visibleMemberCount >= cohort.minimumSize).length,
+        cohortsReconciled: materialized.length,
+        visibleCohorts: materialized.filter((cohort) => cohort.status === "active" && cohort.visibleMemberCount >= cohort.minimumSize).length,
+        cohortsActivated: materialized.filter((cohort) => cohort.lifecycleAction === "activated").length,
+        cohortsArchived: materialized.filter((cohort) => cohort.lifecycleAction === "archived").length,
+        cohortsExpired: materialized.filter((cohort) => cohort.lifecycleAction === "expired").length,
         membershipsCreated: materialized.reduce((total, cohort) => total + cohort.membershipsCreated, 0),
         membershipsPreserved: materialized.reduce((total, cohort) => total + cohort.membershipsPreserved, 0),
         hiddenMembershipsPreserved: materialized.reduce((total, cohort) => total + cohort.hiddenMembershipsPreserved, 0),
@@ -336,6 +347,10 @@ export class CommunityCohortGenerationService {
 
   private async materializeCandidate(candidate: CohortCandidate, minimumSize: number, generatedAt: Date): Promise<MaterializedCohort> {
     const cohortId = cohortIdFor(candidate.reasonCode);
+    const existingCohort = await prisma.communityCohort.findUnique({
+      where: { id: cohortId },
+      select: { status: true, expiresAt: true },
+    });
     await prisma.communityCohort.upsert({
       where: { id: cohortId },
       create: {
@@ -346,7 +361,8 @@ export class CommunityCohortGenerationService {
         safeExplanation: candidate.safeExplanation,
         minimumSize,
         visibleMemberCount: 0,
-        status: "suggested",
+        status: "active",
+        expiresAt: null,
         metadata: safeMetadata(candidate, generatedAt),
       },
       update: {
@@ -355,7 +371,6 @@ export class CommunityCohortGenerationService {
         title: candidate.title,
         safeExplanation: candidate.safeExplanation,
         minimumSize,
-        status: "suggested",
         metadata: safeMetadata(candidate, generatedAt),
       },
     });
@@ -375,14 +390,14 @@ export class CommunityCohortGenerationService {
     for (const userId of [...currentUserIds].sort()) {
       const existing = existingMembershipsByUserId.get(userId);
       if (existing) {
-        if (existing.status === STALE_MEMBERSHIP_STATUS) {
+        const restoredStatus = restoredStatusFor(existing.status);
+        if (restoredStatus) {
+          const restoredData = restoredStatus === "suggested"
+            ? { status: restoredStatus, suggestedAt: generatedAt, suggestedEventAt: null }
+            : { status: restoredStatus, suggestedAt: generatedAt };
           await prisma.communityCohortMembership.update({
             where: { id: existing.id },
-            data: {
-              status: "suggested",
-              suggestedAt: generatedAt,
-              suggestedEventAt: null,
-            },
+            data: restoredData,
           });
           staleMembershipsRestored += 1;
           continue;
@@ -402,16 +417,27 @@ export class CommunityCohortGenerationService {
       membershipsCreated += 1;
     }
 
-    const staleVisibleMembershipIds = existingMemberships
+    const staleSuggestedMembershipIds = existingMemberships
       .filter((membership) => !currentUserIds.has(membership.userId))
-      .filter((membership) => VISIBLE_MEMBERSHIP_STATUSES.includes(membership.status as (typeof VISIBLE_MEMBERSHIP_STATUSES)[number]))
+      .filter((membership) => membership.status === "suggested")
       .map((membership) => membership.id);
-    if (staleVisibleMembershipIds.length > 0) {
-      const marked = await prisma.communityCohortMembership.updateMany({
-        where: { id: { in: staleVisibleMembershipIds } },
+    if (staleSuggestedMembershipIds.length > 0) {
+      const markedSuggested = await prisma.communityCohortMembership.updateMany({
+        where: { id: { in: staleSuggestedMembershipIds } },
         data: { status: STALE_MEMBERSHIP_STATUS },
       });
-      staleMembershipsMarked = marked.count;
+      staleMembershipsMarked += markedSuggested.count;
+    }
+    const staleJoinedMembershipIds = existingMemberships
+      .filter((membership) => !currentUserIds.has(membership.userId))
+      .filter((membership) => membership.status === "joined")
+      .map((membership) => membership.id);
+    if (staleJoinedMembershipIds.length > 0) {
+      const markedJoined = await prisma.communityCohortMembership.updateMany({
+        where: { id: { in: staleJoinedMembershipIds } },
+        data: { status: STALE_JOINED_MEMBERSHIP_STATUS },
+      });
+      staleMembershipsMarked += markedJoined.count;
     }
 
     const visibleMemberCount = await prisma.communityCohortMembership.count({
@@ -420,15 +446,22 @@ export class CommunityCohortGenerationService {
         status: { in: [...VISIBLE_MEMBERSHIP_STATUSES] },
       },
     });
+    const lifecycle = lifecycleFor(visibleMemberCount, minimumSize, generatedAt, existingCohort?.expiresAt ?? null);
     await prisma.communityCohort.update({
       where: { id: cohortId },
-      data: { visibleMemberCount },
+      data: {
+        visibleMemberCount,
+        status: lifecycle.status,
+        expiresAt: lifecycle.expiresAt,
+      },
     });
 
     return {
       cohortId,
       cohortType: candidate.cohortType,
       reasonCode: candidate.reasonCode,
+      status: lifecycle.status,
+      lifecycleAction: lifecycleAction(existingCohort?.status ?? null, lifecycle.status),
       visibleMemberCount,
       minimumSize,
       membershipsCreated,
@@ -436,6 +469,94 @@ export class CommunityCohortGenerationService {
       hiddenMembershipsPreserved,
       staleMembershipsMarked,
       staleMembershipsRestored,
+    };
+  }
+
+  private async reconcileMissingGeneratedCohorts(
+    currentReasonCodes: Set<string>,
+    minimumSize: number,
+    generatedAt: Date,
+  ): Promise<MaterializedCohort[]> {
+    const generatedCohorts = await prisma.communityCohort.findMany({
+      where: {
+        cohortType: { in: [...GENERATED_COHORT_TYPES] },
+      },
+      select: {
+        id: true,
+        cohortType: true,
+        reasonCode: true,
+        status: true,
+        expiresAt: true,
+        metadata: true,
+      },
+    });
+    const missingGeneratedCohorts = generatedCohorts
+      .filter((cohort) => isGeneratedCohortMetadata(cohort.metadata))
+      .filter((cohort) => !currentReasonCodes.has(cohort.reasonCode));
+
+    const reconciled: MaterializedCohort[] = [];
+    for (const cohort of missingGeneratedCohorts) {
+      reconciled.push(await this.expireMissingGeneratedCohort(cohort, minimumSize, generatedAt));
+    }
+    return reconciled;
+  }
+
+  private async expireMissingGeneratedCohort(
+    cohort: {
+      id: string;
+      cohortType: string;
+      reasonCode: string;
+      status: string;
+      expiresAt: Date | null;
+    },
+    minimumSize: number,
+    generatedAt: Date,
+  ): Promise<MaterializedCohort> {
+    const staleSuggestedMemberships = await prisma.communityCohortMembership.updateMany({
+      where: {
+        cohortId: cohort.id,
+        status: "suggested",
+      },
+      data: { status: STALE_MEMBERSHIP_STATUS },
+    });
+    const staleJoinedMemberships = await prisma.communityCohortMembership.updateMany({
+      where: {
+        cohortId: cohort.id,
+        status: "joined",
+      },
+      data: { status: STALE_JOINED_MEMBERSHIP_STATUS },
+    });
+    const visibleMemberCount = await prisma.communityCohortMembership.count({
+      where: {
+        cohortId: cohort.id,
+        status: { in: [...VISIBLE_MEMBERSHIP_STATUSES] },
+      },
+    });
+    const lifecycle = lifecycleFor(visibleMemberCount, minimumSize, generatedAt, cohort.expiresAt);
+    await prisma.communityCohort.update({
+      where: { id: cohort.id },
+      data: {
+        minimumSize,
+        visibleMemberCount,
+        status: lifecycle.status,
+        expiresAt: lifecycle.expiresAt,
+        metadata: refreshMetadata(cohort.reasonCode, generatedAt),
+      },
+    });
+
+    return {
+      cohortId: cohort.id,
+      cohortType: cohort.cohortType,
+      reasonCode: cohort.reasonCode,
+      status: lifecycle.status,
+      lifecycleAction: lifecycleAction(cohort.status, lifecycle.status),
+      visibleMemberCount,
+      minimumSize,
+      membershipsCreated: 0,
+      membershipsPreserved: 0,
+      hiddenMembershipsPreserved: 0,
+      staleMembershipsMarked: staleSuggestedMemberships.count + staleJoinedMemberships.count,
+      staleMembershipsRestored: 0,
     };
   }
 }
@@ -533,11 +654,54 @@ function cohortIdFor(reasonCode: string) {
 
 function safeMetadata(candidate: CohortCandidate, generatedAt: Date) {
   return {
-    schemaVersion: "community-cohort-generation/v1",
+    schemaVersion: GENERATED_COHORT_SCHEMA_VERSION,
     generatedAt: generatedAt.toISOString(),
     sourceTypes: [...candidate.sourceTypes].sort(),
     signalKey: candidate.reasonCode,
   };
+}
+
+function refreshMetadata(reasonCode: string, generatedAt: Date) {
+  return {
+    schemaVersion: GENERATED_COHORT_SCHEMA_VERSION,
+    generatedAt: generatedAt.toISOString(),
+    sourceTypes: [],
+    signalKey: reasonCode,
+    lifecycle: "missing_candidate",
+  };
+}
+
+function isGeneratedCohortMetadata(metadata: unknown) {
+  return Boolean(
+    metadata &&
+    typeof metadata === "object" &&
+    "schemaVersion" in metadata &&
+    (metadata as { schemaVersion?: unknown }).schemaVersion === GENERATED_COHORT_SCHEMA_VERSION,
+  );
+}
+
+function lifecycleFor(visibleMemberCount: number, minimumSize: number, generatedAt: Date, existingExpiresAt: Date | null = null) {
+  if (visibleMemberCount === 0) {
+    return { status: "expired", expiresAt: existingExpiresAt ?? generatedAt };
+  }
+  if (visibleMemberCount < minimumSize) {
+    return { status: "archived", expiresAt: null };
+  }
+  return { status: "active", expiresAt: null };
+}
+
+function lifecycleAction(previousStatus: string | null, nextStatus: string): MaterializedCohort["lifecycleAction"] {
+  if (previousStatus === nextStatus) return "unchanged";
+  if (nextStatus === "active") return "activated";
+  if (nextStatus === "archived") return "archived";
+  if (nextStatus === "expired") return "expired";
+  return "unchanged";
+}
+
+function restoredStatusFor(status: string) {
+  if (status === STALE_MEMBERSHIP_STATUS) return "suggested";
+  if (status === STALE_JOINED_MEMBERSHIP_STATUS) return "joined";
+  return null;
 }
 
 function normalizeMinimumSize(value?: number) {
