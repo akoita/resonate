@@ -88,6 +88,24 @@ describe("ListenerCohortsPanel", () => {
     expect(html).toContain("Hide");
   });
 
+  it("locks all actions on a cohort while one action is pending", () => {
+    const html = renderToStaticMarkup(
+      <ListenerCohortsContent
+        suggestions={suggestions([cohort()])}
+        loading={false}
+        consentEnabled
+        actionId="join:cohort-1"
+        onRefresh={vi.fn()}
+        onJoin={vi.fn()}
+        onLeave={vi.fn()}
+        onHide={vi.fn()}
+      />,
+    );
+
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>Joining\.\.\.<\/button>/);
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>Hide<\/button>/);
+  });
+
   it("renders joined cohorts with a leave action and no hide action", () => {
     const joined = cohort({
       membership: {

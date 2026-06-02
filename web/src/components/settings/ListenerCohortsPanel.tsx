@@ -216,6 +216,7 @@ function ListenerCohortCard({
   onHide: (cohort: CommunityCohort) => void;
 }) {
   const primaryAction = cohortPrimaryAction(cohort);
+  const cohortPending = actionId?.endsWith(`:${cohort.id}`) ?? false;
   const primaryPending = primaryAction ? actionId === `${primaryAction}:${cohort.id}` : false;
   const hidePending = actionId === `hide:${cohort.id}`;
   const isJoined = cohort.membership.status === "joined";
@@ -234,17 +235,17 @@ function ListenerCohortCard({
       </div>
       <div className="listener-cohort-card__actions">
         {primaryAction === "join" ? (
-          <Button onClick={() => onJoin(cohort)} disabled={primaryPending}>
+          <Button onClick={() => onJoin(cohort)} disabled={cohortPending}>
             {primaryPending ? "Joining..." : cohort.membership.status === "left" ? "Rejoin" : "Join"}
           </Button>
         ) : null}
         {primaryAction === "leave" ? (
-          <Button variant="ghost" onClick={() => onLeave(cohort)} disabled={primaryPending}>
+          <Button variant="ghost" onClick={() => onLeave(cohort)} disabled={cohortPending}>
             {primaryPending ? "Leaving..." : "Leave"}
           </Button>
         ) : null}
         {!isJoined && cohort.membership.status !== "hidden" ? (
-          <Button variant="ghost" onClick={() => onHide(cohort)} disabled={hidePending}>
+          <Button variant="ghost" onClick={() => onHide(cohort)} disabled={cohortPending}>
             {hidePending ? "Hiding..." : "Hide"}
           </Button>
         ) : null}
