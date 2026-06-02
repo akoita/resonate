@@ -239,13 +239,19 @@
  * 5. Home — elevate the landing "wow"
  * -------------------------------------------------------------------- */
 
-/* Hero title: keep the gradient, add a soft platform-light bloom. */
+/* Hero title: keep the gradient, add a soft platform-light bloom.
+ * Looser line-height (the 1.05 source value + gradient text-clip shaved the
+ * glyph tops) and a 4th clamped line so long campaign titles like
+ * "Felicia Farerre in Dublin: Cinematic Voice, Poetry & Ancestry" aren't
+ * cut mid-glyph at 3 lines. */
 .home-ng .ng-hero__title {
   background: var(--r-grad-text);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: -0.015em;
+  line-height: 1.12;
+  -webkit-line-clamp: 4;
   text-shadow: 0 0 60px rgba(124, 92, 255, 0.18);
 }
 
