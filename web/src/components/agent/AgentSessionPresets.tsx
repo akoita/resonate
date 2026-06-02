@@ -402,7 +402,7 @@ export default function AgentSessionPresets({
           border-radius: 12px;
           /* Clean electric-violet (agent) — matches the main "Start Session"
              and drops the muddy violet→coral mix this used to have. */
-          background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+          background: linear-gradient(135deg, var(--r-agent), var(--r-agent-soft));
           color: #fff;
           font-size: 13px;
           font-weight: 800;
@@ -433,7 +433,7 @@ export default function AgentSessionPresets({
         }
 
         .agent-session-card.selected .agent-session-start {
-          background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+          background: linear-gradient(135deg, var(--r-agent), var(--r-agent-soft));
           color: #fff;
           border-color: rgba(167, 139, 250, 0.5);
         }

@@ -40,8 +40,10 @@
   background-size: 200px 200px;
 }
 
-/* Keep real content above the grain. */
-.app-sidebar,
+/* Keep real content above the grain. The sidebar already sits at a high
+ * z-index (5000, and 9000 for the mobile drawer) in globals.css — do NOT
+ * lower it here or the open mobile nav drawer falls behind content. Only
+ * the translucent main column needs lifting above the fixed grain layer. */
 .app-main { z-index: 1; }
 
 /* ----------------------------------------------------------------------
