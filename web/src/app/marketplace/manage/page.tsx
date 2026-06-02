@@ -496,7 +496,7 @@ export default function MarketplaceListingManagerPage() {
             return (
               <article
                 key={listing.id}
-                className={`marketplace-manager-row ${isHighlighted ? "marketplace-manager-row--highlighted" : ""} ${
+                className={`marketplace-manager-row marketplace-manager-row--status-${listing.lifecycleStatus} ${isHighlighted ? "marketplace-manager-row--highlighted" : ""} ${
                   selectedListingIds.has(listing.id) ? "marketplace-manager-row--selected" : ""
                 }`}
               >

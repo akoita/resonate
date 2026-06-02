@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter, Space_Grotesk, Be_Vietnam_Pro, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+// Loaded after globals.css so the Obsidian Frequency identity refresh
+// reliably wins ties over the base chrome / aid / vault rules defined
+// inline in globals.css and the aid-*.css imports.
+import "../styles/identity-refresh.css";
 import AppShell from "../components/layout/AppShell";
 import AuthProvider from "../components/auth/AuthProvider";
 import ZeroDevProviderClient from "../components/auth/ZeroDevProviderClient";

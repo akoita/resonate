@@ -84,12 +84,17 @@ describe("PlayerActionPanel", () => {
     expect(grouped.unavailableActions.map((action) => action.key)).not.toContain("buy_license");
   });
 
-  it("renders unavailable reasons in a compact secondary area", () => {
+  it("renders unavailable actions as compact lock-chips with reasons in tooltips", () => {
     const html = renderToStaticMarkup(
       <PlayerActionPanel actionState={actionState} loading={false} onAction={vi.fn()} />,
     );
 
-    expect(html).toContain("Unavailable / Coming soon");
+    // Compact chip container instead of the old verbose stacked list.
+    expect(html).toContain("player-action-locked");
+    // Labels render as chips...
+    expect(html).toContain("Remix");
+    expect(html).toContain("Collect");
+    // ...and the reasons are preserved as tooltips (title attributes).
     expect(html).toContain("Remix rights are not available for this track.");
     expect(html).toContain("No active drop is available for this track.");
     expect(html).toContain("No active license is available.");

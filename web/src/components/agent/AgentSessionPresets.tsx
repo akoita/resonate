@@ -167,7 +167,10 @@ export default function AgentSessionPresets({
                 disabled={isStarting}
                 onClick={() => onStart(preset)}
               >
-                {isStarting && selectedIntent === preset.intent ? "Starting" : "Start with this"}
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <polygon points="6 4 20 12 6 20 6 4" />
+                </svg>
+                {isStarting && selectedIntent === preset.intent ? "Starting…" : "Start with this"}
               </button>
             ) : null}
           </article>
@@ -391,21 +394,48 @@ export default function AgentSessionPresets({
           display: flex;
           align-items: center;
           justify-content: center;
-          min-height: 34px;
-          margin-top: 14px;
-          border-radius: 10px;
-          background: rgba(124, 92, 255, 0.2);
-          color: #f5f3ff;
-          font-size: 12px;
+          gap: 7px;
+          width: 100%;
+          min-height: 40px;
+          margin-top: 16px;
+          padding: 0 16px;
+          border-radius: 12px;
+          /* Clean electric-violet (agent) — matches the main "Start Session"
+             and drops the muddy violet→coral mix this used to have. */
+          background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+          color: #fff;
+          font-size: 13px;
           font-weight: 800;
-          border: 1px solid rgba(196, 181, 253, 0.22);
+          letter-spacing: 0.01em;
+          border: 1px solid rgba(167, 139, 250, 0.5);
+          box-shadow:
+            0 8px 22px -8px rgba(139, 92, 246, 0.6),
+            inset 0 1px 0 rgba(255, 255, 255, 0.28);
           cursor: pointer;
+          transition: transform 0.18s ease, box-shadow 0.2s ease, filter 0.2s ease;
+        }
+
+        .agent-session-start svg {
+          opacity: 0.95;
+          flex: 0 0 auto;
+        }
+
+        .agent-session-start:hover:not(:disabled) {
+          transform: translateY(-1px);
+          filter: brightness(1.07);
+          box-shadow:
+            0 12px 28px -8px rgba(139, 92, 246, 0.78),
+            inset 0 1px 0 rgba(255, 255, 255, 0.34);
+        }
+
+        .agent-session-start:active:not(:disabled) {
+          transform: translateY(0);
         }
 
         .agent-session-card.selected .agent-session-start {
-          background: linear-gradient(135deg, #7c5cff, #ff7a59);
+          background: linear-gradient(135deg, #8b5cf6, #a78bfa);
           color: #fff;
-          border-color: transparent;
+          border-color: rgba(167, 139, 250, 0.5);
         }
 
         .agent-session-start:disabled {

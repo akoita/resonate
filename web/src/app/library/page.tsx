@@ -1009,10 +1009,26 @@ export default function LibraryPage() {
                             {loading && tracks.length === 0 && activeTab !== "playlists" && activeTab !== "ai_creations" ? (
                                 <div className="home-subtitle">Loading your library...</div>
                             ) : activeTab !== "playlists" && activeTab !== "ai_creations" && unifiedTracks.length === 0 && !isCollectionLoading ? (
-                                <div className="home-subtitle">
-                                    Your library is empty.{" "}
-                                    <Link href="/settings" className="text-accent">Add library sources in Settings</Link>{" "}
-                                    to get started!
+                                <div className="library-empty">
+                                    <div className="library-empty__icon" aria-hidden="true">
+                                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M9 18V5l12-2v13" />
+                                            <circle cx="6" cy="18" r="3" />
+                                            <circle cx="18" cy="16" r="3" />
+                                        </svg>
+                                    </div>
+                                    <h2 className="library-empty__title">Your library is quiet</h2>
+                                    <p className="library-empty__text">
+                                        Index a local music folder to play your own files and train the AI DJ, or explore the on-chain catalog to start collecting stems and releases.
+                                    </p>
+                                    <div className="library-empty__actions">
+                                        <Link href="/settings">
+                                            <Button variant="primary">Add a music folder</Button>
+                                        </Link>
+                                        <Link href="/">
+                                            <Button variant="ghost">Browse the catalog</Button>
+                                        </Link>
+                                    </div>
                                 </div>
                             ) : activeTab !== "playlists" && activeTab !== "ai_creations" && filteredTracks.length === 0 ? (
                                 <div className="home-subtitle">

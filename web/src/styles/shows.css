@@ -1643,22 +1643,25 @@
   animation: shows-fade-up 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* Uniform editorial gallery wall: consistent 4:5 cells that fill the
+ * width evenly for any image count, instead of a forced asymmetric
+ * masonry that turned portrait photos into a lopsided collage. */
 .show-detail__visual-story {
   display: grid;
-  grid-template-columns: 1.05fr 0.95fr 0.8fr;
-  grid-auto-rows: minmax(180px, 16vw);
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: 14px;
 }
 
 .show-detail__visual-frame {
   position: relative;
   min-height: 0;
   margin: 0;
+  aspect-ratio: 4 / 5;
   overflow: hidden;
-  border-radius: 24px;
+  border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: var(--shows-surface-low);
-  box-shadow: 0 22px 64px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.30);
 }
 
 .show-detail__visual-frame img {
@@ -1695,12 +1698,11 @@
   font-weight: 800;
 }
 
-.show-detail__visual-frame--1 {
-  grid-row: span 2;
-}
-
+/* No forced spans — every visual gets an equal, deliberate cell. */
+.show-detail__visual-frame--1,
 .show-detail__visual-frame--2 {
-  grid-column: span 2;
+  grid-row: auto;
+  grid-column: auto;
 }
 
 .show-detail__breadcrumb {
@@ -2983,4 +2985,223 @@
   .show-detail__notice-link {
     text-align: center;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+ * Obsidian Frequency — Resonance Duotone for Shows (identity refresh, 2026-06)
+ * Shows is the platform's LIVE-ENERGY product — where recorded sound
+ * becomes a real event. The platform structure stays violet (--color-signal),
+ * but the two moments of live heat speak CORAL:
+ *   • the pledge CTA  (back the show / bring the energy)
+ *   • the funding meter as it fills toward a booked show
+ * Appended last so it wins ties over the rules above.
+ * ════════════════════════════════════════════════════════════════════ */
+
+/* Pledge CTA → coral ember. Also restores correct contrast: the dark
+ * label (#1A0800) belongs on warm coral, not on the violet it sat on. */
+.campaign-hero__cta-primary {
+  background: var(--r-grad-energy);
+  color: var(--r-on-play);
+  box-shadow:
+    0 12px 32px -6px rgba(255, 107, 74, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+.campaign-hero__cta-primary:hover {
+  box-shadow:
+    0 20px 48px -4px rgba(255, 107, 74, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+/* Funding meter fills from platform-violet into coral heat — the visual
+ * story of city demand warming up into a confirmed live show. */
+.campaign-progress__fill {
+  background: linear-gradient(90deg, var(--color-signal-deep) 0%, var(--color-signal) 45%, #FF6B4A 100%);
+  box-shadow:
+    0 0 14px rgba(255, 107, 74, 0.35),
+    inset 0 1px 1px rgba(255, 255, 255, 0.4);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+ * Immersive gallery lightbox (identity refresh, 2026-06)
+ * Click a gallery visual → full-screen slideshow with arrows, keyboard
+ * nav, a thumbnail filmstrip, and a counter. A promo page should immerse.
+ * ════════════════════════════════════════════════════════════════════ */
+
+/* The grid frame becomes an "open me" affordance. */
+.show-detail__visual-open {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+  display: block;
+}
+.show-detail__visual-zoom {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgba(8, 8, 15, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  transform: scale(0.85);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.show-detail__visual-frame:hover .show-detail__visual-zoom {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.gallery-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 72px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-items: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 28px 20px 20px;
+  background: rgba(5, 5, 12, 0.86);
+  -webkit-backdrop-filter: blur(26px) saturate(120%);
+  backdrop-filter: blur(26px) saturate(120%);
+  animation: gallery-fade 0.25s ease;
+}
+@keyframes gallery-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.gallery-lightbox__stage {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+.gallery-lightbox__stage img {
+  max-width: min(90vw, 1040px);
+  max-height: 72vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 16px;
+  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  animation: gallery-pop 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes gallery-pop {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+.gallery-lightbox__caption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+.gallery-lightbox__counter {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.6);
+  font-variant-numeric: tabular-nums;
+}
+.gallery-lightbox__caption p {
+  margin: 0;
+  max-width: 60ch;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.gallery-lightbox__nav {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  transition: background 0.18s ease, transform 0.18s ease, border-color 0.18s ease;
+}
+.gallery-lightbox__nav:hover {
+  background: rgba(124, 92, 255, 0.26);
+  border-color: rgba(124, 92, 255, 0.5);
+  transform: scale(1.06);
+}
+.gallery-lightbox__nav--prev { grid-column: 1; grid-row: 1; }
+.gallery-lightbox__nav--next { grid-column: 3; grid-row: 1; }
+
+.gallery-lightbox__close {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.18s ease, transform 0.25s ease;
+}
+.gallery-lightbox__close:hover { background: rgba(255, 255, 255, 0.14); transform: rotate(90deg); }
+
+.gallery-lightbox__filmstrip {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  align-items: center;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 10px 6px;
+  scrollbar-width: none;
+}
+.gallery-lightbox__filmstrip::-webkit-scrollbar { display: none; }
+.gallery-lightbox__thumb {
+  flex: 0 0 auto;
+  width: 58px;
+  height: 74px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+.gallery-lightbox__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gallery-lightbox__thumb:hover { opacity: 0.85; transform: translateY(-2px); }
+.gallery-lightbox__thumb.is-active { opacity: 1; border-color: var(--color-signal); }
+
+@media (max-width: 767px) {
+  .gallery-lightbox { grid-template-columns: 52px minmax(0, 1fr) 52px; padding: 16px; }
+  .gallery-lightbox__nav { width: 44px; height: 44px; }
+  .gallery-lightbox__stage img { max-height: 64vh; }
+  .gallery-lightbox__close { top: 14px; right: 14px; }
 }

@@ -245,7 +245,20 @@ export default function Sidebar() {
       ) : null}
       <aside className={`app-sidebar ${isSidebarOpen ? "open" : ""}`}>
       <div className="sidebar-logo">
-        <span className="logo-icon">✨</span>
+        <span className="logo-icon" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="16" cy="16" r="11.5" stroke="url(#resonateRing)" strokeWidth="1.4" strokeDasharray="2.5 4" opacity="0.45" />
+            <circle cx="16" cy="16" r="8" stroke="url(#resonateRing)" strokeWidth="1.6" opacity="0.7" />
+            <circle cx="16" cy="16" r="4.4" stroke="#9880FF" strokeWidth="2" />
+            <circle cx="16" cy="16" r="2.4" fill="#FF6B4A" />
+            <defs>
+              <linearGradient id="resonateRing" x1="3" y1="3" x2="29" y2="29" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#C4B5FD" />
+                <stop offset="1" stopColor="#7C5CFF" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </span>
         <h2 className="logo-text">Resonate</h2>
         {showEnvBadge ? (
           <button
