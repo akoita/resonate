@@ -26,9 +26,11 @@
 :root { --app-zoom: 0.8; }
 @media (min-width: 1024px) {
   body { zoom: var(--app-zoom); }
-  /* zoom scales vh, so the 100vh full-height containers would shrink and
-   * leave a gap at the bottom (player bar floats off the edge). Compensate
-   * by dividing their height back out by the zoom factor. */
+  /* zoom scales vw/vh, so the 100vw × 100vh shell renders smaller and leaves
+   * empty bands on the right and bottom (and floats the player bar off the
+   * edge). Compensate by dividing width/height back out by the zoom factor so
+   * the scaled result fills the viewport exactly. */
+  .app-shell { width: calc(100vw / var(--app-zoom)); }
   .app-shell,
   .app-sidebar,
   .app-main { height: calc(100vh / var(--app-zoom)); }
