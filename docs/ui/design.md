@@ -198,25 +198,33 @@ Glass surfaces use white-tint overlays at precise opacities:
 | 12%     | Active/pressed state fill, floating panels    |
 | 18%     | High-emphasis interactive (selected tab)      |
 
-### 2.3 Accent Colors
+### 2.3 Accent Colors — the Resonance Duotone (three roles, one rule)
+
+Each colour means exactly one thing, so the UI reads as a vocabulary, not
+decoration. "Resonate" = two frequencies of light on obsidian.
 
 ```
-PRIMARY:   Coral Ember
-           #FF6B4A  ━━━━━━━►  #FF8F6B (gradient)
-           Hero CTAs, play buttons, active states, progress fills
+PLATFORM:  Hyacinth Violet   (--r-primary  #7C5CFF → --r-primary-soft #9880FF)
+           The default interactive colour. Navigation, structure, progress,
+           on-chain/commerce (buy, list, pledge), brand chrome, active states.
 
-SECONDARY: Electric Violet
-           #8B5CF6  ━━━━━━━►  #A78BFA (gradient)
-           AI/agent contexts, session indicators, kickers, focus rings
+SOUND:     Coral Ember       (--r-play #FF6B4A → --r-play-soft #FF8F6B, grad --r-grad-energy)
+           The act of listening ONLY: play/preview buttons, now-playing,
+           "Listen Now", and live-event heat (Shows pledge CTA + funding meter).
 
-TERTIARY:  Warm Amber
-           #FFB782
-           Soft highlights, "NEW" badges, accent details
+AGENT:     Electric Violet    (--r-agent #8B5CF6 → --r-agent-soft #A78BFA, grad --r-grad-agent)
+           AI/autonomous context only — the AI DJ orb, session start, agent
+           accents, smart-wallet/session-key trust signals. A saturated
+           sibling of platform violet.
 
-SIGNAL:    Teal Broadcast
-           #5EEAD4
-           Shows/live campaigns only — never leaks to other surfaces
+SUPPORT:   Lavender --r-secondary #C4B5FD (secondary text/accents) ·
+           Silver Lavender --r-tertiary #E2DCFF
 ```
+
+> Note: `--color-accent-rgb` is aligned to platform violet (`124, 92, 255`)
+> so every `rgba(var(--color-accent-rgb), …)` border/glow matches the violet
+> `var(--color-accent)` fill. There is no "teal/signal" accent — Shows uses
+> platform violet (`--color-signal` = `#7C5CFF`) with coral for live energy.
 
 ### 2.4 Semantic Colors
 
@@ -228,15 +236,15 @@ SIGNAL:    Teal Broadcast
 ### 2.5 Accent Rules
 
 > [!IMPORTANT]
-> - **Coral** is the dominant interactive accent. Every primary CTA, play
->   button, and progress indicator uses coral.
-> - **Violet** is reserved for AI/agent/generated contexts. It must not be
->   used as a generic accent — it semantically means "an AI produced or
->   influenced this."
-> - **Signal teal** is reserved for Shows/campaign surfaces. It must never
->   appear outside `.shows-surface`.
-> - **Amber** is a warm highlight — "NEW" pills, tertiary badges, soft
->   data-visualization accents. Not for primary actions.
+> Ask which of the three roles a surface belongs to, then pick the colour:
+> - **Platform = violet (`--r-primary`)** is the *default* interactive accent:
+>   nav, structure, progress, and on-chain/commerce actions (buy, list, pledge).
+> - **Sound = coral (`--r-play`)** is reserved for the *act of listening* —
+>   play/preview, now-playing, "Listen Now" — plus live-event heat on Shows
+>   (the pledge CTA and the funding meter). Coral is NOT a generic "primary CTA".
+> - **Agent = electric violet (`--r-agent`)** is reserved for AI/autonomous
+>   context (AI DJ, session keys, smart-wallet trust). It means "autonomous".
+> - No teal. Shows is violet platform + coral live energy.
 
 ---
 
@@ -267,6 +275,21 @@ renders contract addresses, hashes, and BPM values with fixed-width clarity.
 | `body-sm`     | Be Vietnam Pro | 12px                       | 400    | 0.01em    | 1.4         |
 | `kicker`      | Space Grotesk  | 10px                       | 700    | 0.18em    | 1           |
 | `mono`        | JetBrains Mono | 13px                       | 400    | 0         | 1.4         |
+
+> **Fluid scale (canonical):** the UI must not be sized in fixed px tuned for
+> one screen — that read oversized on laptops and at 100% on large displays.
+> Use the `clamp()`-based tokens in `tokens.css` and reference them, don't
+> hardcode px:
+>
+> | Token | Range | Use |
+> |---|---|---|
+> | `--r-text-hero` | clamp(1.9rem, 1rem + 2.1vw, 3rem) | hero / display headlines |
+> | `--r-text-h2` | clamp(1.35rem, 1.05rem + 0.85vw, 1.75rem) | section titles |
+> | `--r-text-h3` | clamp(1.1rem, 0.98rem + 0.4vw, 1.35rem) | card / sub headings |
+> | `--r-text-lead` | clamp(0.95rem, 0.88rem + 0.35vw, 1.06rem) | lead paragraphs |
+> | `--r-text-body` | clamp(0.9rem, 0.84rem + 0.3vw, 1rem) | body |
+>
+> Rollout is staged surface-by-surface; new/changed surfaces should adopt these.
 
 ### 3.3 Headline Gradient
 
@@ -801,9 +824,10 @@ home → release → agent → marketplace → library → shows → settings.
 
 ## 13. Source of Truth
 
-- `web/src/styles/tokens.css` — all design-system tokens (`--r-*` and legacy `--ds-*` aliases).
+- `web/src/styles/tokens.css` — all design-system tokens (`--r-*`, intent layer `--r-play*`/`--r-agent*`, fluid `--r-text-*`, gradients, elevation; legacy `--ds-*` aliases).
+- `web/src/styles/identity-refresh.css` — the duotone polish layer (chrome + per-surface refinements); **loaded last in `layout.tsx`**, so it wins ties. Put cross-surface refinements here.
 - `web/src/styles/home-nextgen.css` — home page component classes (`.ng-*`).
-- `web/src/styles/shows.css` — Shows surface teal scoping.
+- `web/src/styles/shows.css` — Shows surface (violet `--color-signal` + coral live energy) and the `CampaignGallery` lightbox.
 - `web/src/app/globals.css` — base typography, `.glass-panel`, persistent chrome.
 - This document is the human-readable specification. If a token value here
   disagrees with the code, **the code wins** and this file must be updated.
@@ -814,3 +838,63 @@ home → release → agent → marketplace → library → shows → settings.
 - Usability test plan — see `docs/ui/usability_test_plan.md`.
 - Per-component implementation details — each component owns its behavior
   within these visual tokens.
+
+---
+
+## 15. Guidelines for Future UI/UX Changes
+
+Read this before changing UI. These rules keep the system coherent.
+
+### Colour — pick by role, never by taste
+1. Decide which **Resonance Duotone** role the surface is (§2.3): **Platform =
+   violet** (default/structure/on-chain), **Sound = coral** (listening only),
+   **Agent = electric violet** (AI/autonomous only). Then use the matching token.
+2. **Coral is precious** — only playback/now-playing and Shows live-energy. A
+   generic "primary button" is violet, not coral. Buying/listing/pledging on
+   chain is violet (it's the platform), even though it's the key CTA.
+3. **No hardcoded hex** outside `tokens.css` / `identity-refresh.css`. Reference
+   `--r-*` tokens (incl. `--r-grad-*`, `--r-elev-*`, `--r-glow-*`). If you need a
+   colour that has a token (e.g. `--r-agent`, `--r-success`), use the token.
+
+### Scale — fluid, never fixed-to-one-screen
+
+> **Global default scale (`--app-zoom`).** Because the app is authored in fixed
+> px tuned too large, a modest global scale is baked into the *default* render
+> at desktop widths (`@media (min-width:1024px){ body{ zoom: var(--app-zoom) } }`,
+> default `0.9`) so 100% browser zoom is the comfortable density for every user —
+> not a view they have to zoom out to reach. Tune density by changing the single
+> `--app-zoom` token. ⚠️ `zoom` scales `vh`, so any full-height (`height:100vh`)
+> container must compensate with `height: calc(100vh / var(--app-zoom))` or it
+> leaves a gap at the bottom (the `.app-shell/.app-sidebar/.app-main` rules do
+> this). This is a pragmatic lever; the long-term fix is rem/fluid everywhere.
+4. **Use the fluid type tokens** (`--r-text-hero/-h2/-h3/-lead/-body`, §3.2),
+   not fixed px. Fixed px read oversized on laptops and at 100% on big screens.
+5. **Never put `aspect-ratio` on a content container** (hero, card) that holds
+   text — it makes the box too short on small screens (clips) and absurdly tall
+   on large ones. Use a fluid `min-height: clamp(...)` and let it grow to content.
+6. **Don't clip text to look tidy.** Avoid `overflow: hidden` + `max-height` on
+   text containers. If you must `-webkit-line-clamp`, keep `line-height ≥ 1.1`
+   (a tight line-height + gradient text-clip shaves glyph tops) and allow enough
+   lines for real content (campaign/track titles are long).
+7. **Numerics** (prices, durations, counts, balances, addresses) use
+   `--font-mono` + `tabular-nums`.
+
+### Craft & states
+8. **Every list/section needs a real empty state** — icon + headline + one-line
+   guidance + a CTA, not a stranded line of text in a void (see `.library-empty`,
+   `.player-queue-empty`, `.artist-community__chat-empty` for the pattern).
+9. **Glass + elevation** via `var(--studio-surface)` / `--r-elev-*`; ambient
+   depth via the `.app-shell` aurora + grain — don't add ad-hoc shadows.
+
+### Accessibility (required)
+10. Icon-only buttons get `aria-label`; decorative SVGs get `aria-hidden`.
+11. Wrap new motion (pulses, entrance animations) in
+    `@media (prefers-reduced-motion: reduce) { … animation: none }`.
+12. Keep the keyboard `:focus-visible` ring (violet) — don't remove outlines.
+
+### Verify before merge
+13. **Test at 1280, 1440, and 1920 widths** (15″ laptop → large desktop) — the
+    clipping/oversizing bugs only show at specific widths. Don't trust one viewport.
+14. `clamp()` parses (lightningcss), `tsc` clean, `eslint` clean on changed
+    files; update **this doc** and `docs/features/obsidian_frequency_design_system.md`
+    for durable design changes (per `AGENTS.md`).

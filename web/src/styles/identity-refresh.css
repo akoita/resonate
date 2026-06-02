@@ -14,6 +14,17 @@
  * ══════════════════════════════════════════════════════════════════════ */
 
 /* ----------------------------------------------------------------------
+ * NOTE on global scaling
+ * A global CSS `zoom` lever was trialled to bake a smaller default density
+ * into a fixed-px app, but `zoom` on the 100vw/100vh layout repeatedly broke
+ * the layout (bottom gap, right gap, clipped right-anchored elements) and its
+ * getBoundingClientRect coordinates are unreliable. Removed as too fragile.
+ * The proper global-scale fix is the rem/fluid migration (docs/ui/design.md
+ * §15); the fluid type tokens + hero min-height below are the artifact-free
+ * down payment on that.
+ * -------------------------------------------------------------------- */
+
+/* ----------------------------------------------------------------------
  * 1. Canvas — ambient aurora + cinematic grain
  * The app-shell is solid obsidian and the app-main above it is translucent
  * glass, so enriching the shell gives app-wide ambient depth for free.
@@ -239,14 +250,75 @@
  * 5. Home — elevate the landing "wow"
  * -------------------------------------------------------------------- */
 
-/* Hero title: keep the gradient, add a soft platform-light bloom. */
+/* Hero title: gradient + soft bloom, on the FLUID type scale so it shrinks
+ * comfortably on laptops and caps on large screens (no manual browser zoom).
+ * Looser line-height + a 4th clamped line so long campaign titles render
+ * fully instead of being cut mid-glyph at 3 lines. */
 .home-ng .ng-hero__title {
+  font-size: var(--r-text-hero);
+  line-height: 1.12;
+  -webkit-line-clamp: 4;
   background: var(--r-grad-text);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: -0.015em;
   text-shadow: 0 0 60px rgba(124, 92, 255, 0.18);
+}
+/* Hero body = short teaser (not a wall of text). Tighter clamp shrinks the
+ * text panel's proportion and lets the artwork breathe; "View Campaign"
+ * carries the full copy. (A scrollbar inside a hero is an anti-pattern.) */
+.home-ng .ng-hero__body {
+  font-size: var(--r-text-body);
+  -webkit-line-clamp: 3;
+  margin-bottom: 22px;
+}
+
+/* Campaign-image hero: drop the heavy opaque slab that hid the artwork.
+ * Replace it with a left-anchored scrim that keeps the text legible and
+ * fades to transparent so the photo is revealed (streaming-hero pattern). */
+.home-ng .ng-hero--campaign-image .ng-hero__card {
+  background: linear-gradient(100deg,
+    rgba(8, 8, 15, 0.72) 0%,
+    rgba(8, 8, 15, 0.42) 58%,
+    rgba(8, 8, 15, 0) 100%);
+  border-color: transparent;
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  max-width: 600px;
+}
+/* Drop the boxy hairline-border highlight so there's no slab edge. */
+.home-ng .ng-hero--campaign-image .ng-hero__card::before { display: none; }
+
+/* Hero geometry: drop the rigid `aspect-ratio: 21/9` — it made the hero
+ * ~1286px tall on wide screens and too SHORT on 15" laptops, where the short
+ * box + card max-height + overflow:hidden then clipped the title. A fluid
+ * min-height that grows to fit content fixes both: never too short (no clip),
+ * never absurdly tall. */
+.home-ng .ng-hero {
+  aspect-ratio: auto;
+  min-height: clamp(420px, 32vw, 560px);
+}
+.home-ng .ng-hero__card { max-height: none; }
+
+/* Carousel stability: on desktop, LOCK the hero to a fixed height so the
+ * featured carousel doesn't jump as campaigns with different title lengths
+ * rotate (a 1-line "Sennarin in Paris" vs a 4-line "Felicia Farerre in
+ * Dublin: Cinematic Voice, Poetry & Ancestry"). Sized for the worst case:
+ * the hero font ceilings at 48px (~1523px viewports) → a 4-line title is
+ * ~215px and the full hero needs ~584px. The height must reach its 596px cap
+ * by that ceiling width (not at ultrawide) — below the ceiling the fluid font
+ * shrinks, so content only gets shorter and can never exceed the band, so
+ * nothing clips. The tracking mid-term keeps small laptops from wasting
+ * vertical space while still clearing the worst case. Shorter campaigns center
+ * within it (the hero is display:flex; align-items:center). Scoped to desktop
+ * only: tablet/mobile stack the campaign rail inside the flow and keep
+ * min-height to grow. */
+@media (min-width: 1024px) {
+  .home-ng .ng-hero {
+    height: clamp(551px, 455px + 9.4vw, 596px);
+    min-height: 0;
+  }
 }
 
 /* Hero motif gets a touch more presence. */
@@ -295,7 +367,7 @@
 }
 
 /* Section titles: subtle weight + tracking refinement. */
-.home-ng .ng-section-title { letter-spacing: -0.015em; }
+.home-ng .ng-section-title { letter-spacing: -0.015em; font-size: var(--r-text-h2); }
 
 /* Recommendation + resource cards: lift, glow edge, smoother motion. */
 .home-ng .ng-recommendation-card,
