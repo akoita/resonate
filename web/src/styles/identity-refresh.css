@@ -274,6 +274,22 @@
   margin-bottom: 22px;
 }
 
+/* Campaign-image hero: drop the heavy opaque slab that hid the artwork.
+ * Replace it with a left-anchored scrim that keeps the text legible and
+ * fades to transparent so the photo is revealed (streaming-hero pattern). */
+.home-ng .ng-hero--campaign-image .ng-hero__card {
+  background: linear-gradient(100deg,
+    rgba(8, 8, 15, 0.72) 0%,
+    rgba(8, 8, 15, 0.42) 58%,
+    rgba(8, 8, 15, 0) 100%);
+  border-color: transparent;
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  max-width: 600px;
+}
+/* Drop the boxy hairline-border highlight so there's no slab edge. */
+.home-ng .ng-hero--campaign-image .ng-hero__card::before { display: none; }
+
 /* Hero geometry: drop the rigid `aspect-ratio: 21/9` — it made the hero
  * ~1286px tall on wide screens and too SHORT on 15" laptops, where the short
  * box + card max-height + overflow:hidden then clipped the title. A fluid
