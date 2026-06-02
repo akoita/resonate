@@ -173,6 +173,26 @@ describe("CommunityCohortService integration", () => {
     }));
   });
 
+  it("emits suggestion impressions once across concurrent suggestion reads", async () => {
+    const cohort = await createCohort("concurrent", {
+      cohortType: "taste",
+      reasonCode: "taste:concurrent",
+      safeExplanation: "Listeners are grouped through a shared safe taste signal.",
+      minimumSize: 5,
+      visibleMemberCount: 6,
+    });
+    await addMembership(cohort.id, optedInUserId);
+
+    await Promise.all([
+      service.listSuggestions(optedInUserId),
+      service.listSuggestions(optedInUserId),
+    ]);
+
+    expect(eventBus.publish.mock.calls.filter(([event]) => (
+      event.eventName === "community.cohort_suggested" && event.cohortId === cohort.id
+    ))).toHaveLength(1);
+  });
+
   it("does not expose expired or archived cohorts", async () => {
     const expired = await createCohort("expired", {
       cohortType: "taste",

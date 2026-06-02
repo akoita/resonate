@@ -55,11 +55,13 @@ export class CommunityCohortService {
       if (!membership || membership.status === "hidden") continue;
       cohorts.push(cohortDto(cohort, membership));
       if (membership.status === "suggested" && !membership.suggestedEventAt) {
-        await prisma.communityCohortMembership.update({
-          where: { id: membership.id },
+        const marked = await prisma.communityCohortMembership.updateMany({
+          where: { id: membership.id, suggestedEventAt: null },
           data: { suggestedEventAt: now },
         });
-        this.publish("community.cohort_suggested", userId, cohort, membership);
+        if (marked.count === 1) {
+          this.publish("community.cohort_suggested", userId, cohort, membership);
+        }
       }
     }
 
