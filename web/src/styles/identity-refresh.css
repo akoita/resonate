@@ -265,8 +265,14 @@
   letter-spacing: -0.015em;
   text-shadow: 0 0 60px rgba(124, 92, 255, 0.18);
 }
-/* Hero body on the fluid scale. */
-.home-ng .ng-hero__body { font-size: var(--r-text-body); }
+/* Hero body = short teaser (not a wall of text). Tighter clamp shrinks the
+ * text panel's proportion and lets the artwork breathe; "View Campaign"
+ * carries the full copy. (A scrollbar inside a hero is an anti-pattern.) */
+.home-ng .ng-hero__body {
+  font-size: var(--r-text-body);
+  -webkit-line-clamp: 3;
+  margin-bottom: 22px;
+}
 
 /* Hero geometry: drop the rigid `aspect-ratio: 21/9` — it made the hero
  * ~1286px tall on wide screens and too SHORT on 15" laptops, where the short
