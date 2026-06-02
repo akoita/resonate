@@ -23,7 +23,7 @@
  * (Pragmatic lever for a px-based codebase; the long-term fix is rem/fluid
  * everywhere — see docs/ui/design.md §15.)
  * -------------------------------------------------------------------- */
-:root { --app-zoom: 0.9; }
+:root { --app-zoom: 0.8; }
 @media (min-width: 1024px) {
   body { zoom: var(--app-zoom); }
   /* zoom scales vh, so the 100vh full-height containers would shrink and
