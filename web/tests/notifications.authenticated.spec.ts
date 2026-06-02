@@ -15,7 +15,9 @@ test.describe("Authenticated Notifications", () => {
         await authenticatedPage.goto("/settings");
 
         const main = authenticatedPage.getByRole("main");
-        await expect(main.getByText("Notifications", { exact: true })).toBeVisible();
-        await expect(main.getByText("Notification Preferences", { exact: false })).toBeVisible();
+        await main.getByRole("button", { name: /Notifications/i }).click();
+
+        await expect(main.getByRole("heading", { name: "Notifications" })).toBeVisible();
+        await expect(main.getByText(/Notification preferences/i)).toBeVisible();
     });
 });
