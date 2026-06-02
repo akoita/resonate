@@ -239,8 +239,14 @@
  * 5. Home — elevate the landing "wow"
  * -------------------------------------------------------------------- */
 
-/* Hero title: keep the gradient, add a soft platform-light bloom. */
+/* Hero title: gradient + soft bloom, on the FLUID type scale so it shrinks
+ * comfortably on laptops and caps on large screens (no manual browser zoom).
+ * Looser line-height + a 4th clamped line so long campaign titles render
+ * fully instead of being cut mid-glyph at 3 lines. */
 .home-ng .ng-hero__title {
+  font-size: var(--r-text-hero);
+  line-height: 1.12;
+  -webkit-line-clamp: 4;
   background: var(--r-grad-text);
   -webkit-background-clip: text;
   background-clip: text;
@@ -248,6 +254,8 @@
   letter-spacing: -0.015em;
   text-shadow: 0 0 60px rgba(124, 92, 255, 0.18);
 }
+/* Hero body on the fluid scale. */
+.home-ng .ng-hero__body { font-size: var(--r-text-body); }
 
 /* Hero motif gets a touch more presence. */
 .home-ng .ng-hero__motif { opacity: 0.8; }
@@ -295,7 +303,7 @@
 }
 
 /* Section titles: subtle weight + tracking refinement. */
-.home-ng .ng-section-title { letter-spacing: -0.015em; }
+.home-ng .ng-section-title { letter-spacing: -0.015em; font-size: var(--r-text-h2); }
 
 /* Recommendation + resource cards: lift, glow edge, smoother motion. */
 .home-ng .ng-recommendation-card,

@@ -183,6 +183,20 @@
   --r-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --r-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
+  /* ══════════════════════════════════════════════════════════════
+   * Fluid type scale (2026-06) — the UI was sized in fixed px tuned
+   * for one screen, so it read oversized on laptops and at 100% on
+   * large displays (users had to zoom the browser out). These clamp()
+   * sizes scale down on small viewports and cap on large ones, so the
+   * default density is comfortable without manual zoom. Rolled out
+   * surface by surface; consume via these tokens, don't hardcode px.
+   * ══════════════════════════════════════════════════════════════ */
+  --r-text-hero: clamp(1.9rem, 1rem + 2.1vw, 3rem);     /* ~30 → 48px */
+  --r-text-h2:   clamp(1.35rem, 1.05rem + 0.85vw, 1.75rem); /* ~22 → 28px */
+  --r-text-h3:   clamp(1.1rem, 0.98rem + 0.4vw, 1.35rem);   /* ~18 → 22px */
+  --r-text-lead: clamp(0.95rem, 0.88rem + 0.35vw, 1.06rem); /* ~15 → 17px */
+  --r-text-body: clamp(0.9rem, 0.84rem + 0.3vw, 1rem);      /* ~14 → 16px */
+
   /*
    * Legacy design-system tokens (Stitch, Apr 2026).
    * Now aliased to the canonical --r-* tokens above.
