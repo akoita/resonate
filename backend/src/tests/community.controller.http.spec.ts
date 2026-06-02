@@ -1,6 +1,7 @@
 import request from "supertest";
 import { INestApplication } from "@nestjs/common";
 import { CommunityController } from "../modules/community/community.controller";
+import { CommunityCohortService } from "../modules/community/community_cohort.service";
 import { CommunityEligibilityService } from "../modules/community/community_eligibility.service";
 import { CommunityRoomsService } from "../modules/community/community_rooms.service";
 import { CommunityService } from "../modules/community/community.service";
@@ -48,6 +49,16 @@ const mockCommunityRoomsService = {
   updateRoomStatus: jest.fn().mockResolvedValue({ schemaVersion: "community-room/v1" }),
 };
 
+const mockCommunityCohortService = {
+  listSuggestions: jest.fn().mockResolvedValue({
+    schemaVersion: "community-cohort-suggestions/v1",
+    cohorts: [],
+  }),
+  joinCohort: jest.fn().mockResolvedValue({ schemaVersion: "community-cohort-membership/v1" }),
+  leaveCohort: jest.fn().mockResolvedValue({ schemaVersion: "community-cohort-membership/v1" }),
+  hideCohort: jest.fn().mockResolvedValue({ schemaVersion: "community-cohort-membership/v1" }),
+};
+
 describe("CommunityController (http)", () => {
   let app: INestApplication;
   const token = authToken("user-1");
@@ -57,6 +68,7 @@ describe("CommunityController (http)", () => {
       { provide: CommunityService, useValue: mockCommunityService },
       { provide: CommunityEligibilityService, useValue: mockCommunityEligibilityService },
       { provide: CommunityRoomsService, useValue: mockCommunityRoomsService },
+      { provide: CommunityCohortService, useValue: mockCommunityCohortService },
     ]);
   });
 
@@ -161,6 +173,39 @@ describe("CommunityController (http)", () => {
     await request(app.getHttpServer())
       .post("/community/rooms/room-1/join")
       .expect(401);
+  });
+
+  it("requires JWT for cohort suggestions", async () => {
+    await request(app.getHttpServer())
+      .get("/community/cohorts/suggestions")
+      .expect(401);
+  });
+
+  it("loads and mutates cohort membership with JWT", async () => {
+    await request(app.getHttpServer())
+      .get("/community/cohorts/suggestions")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.schemaVersion).toBe("community-cohort-suggestions/v1");
+      });
+    await request(app.getHttpServer())
+      .post("/community/cohorts/cohort-1/join")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(201);
+    await request(app.getHttpServer())
+      .post("/community/cohorts/cohort-1/leave")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(201);
+    await request(app.getHttpServer())
+      .post("/community/cohorts/cohort-1/hide")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(201);
+
+    expect(mockCommunityCohortService.listSuggestions).toHaveBeenCalledWith("user-1");
+    expect(mockCommunityCohortService.joinCohort).toHaveBeenCalledWith("user-1", "cohort-1");
+    expect(mockCommunityCohortService.leaveCohort).toHaveBeenCalledWith("user-1", "cohort-1");
+    expect(mockCommunityCohortService.hideCohort).toHaveBeenCalledWith("user-1", "cohort-1");
   });
 
   it("enables, joins, posts, reports, and moderates rooms with JWT", async () => {

@@ -1,5 +1,56 @@
 # Security Best Practices Report
 
+## Taste Cohort Backend Contract - 2026-06-01
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/prisma/schema.prisma`
+- `backend/prisma/migrations/20260601203000_community_taste_cohorts/migration.sql`
+- `backend/src/modules/community/community_cohort.service.ts`
+- `backend/src/modules/community/community.controller.ts`
+- `backend/src/events/event_types.ts`
+- `backend/src/modules/analytics/*`
+- `backend/src/tests/community_cohort.integration.spec.ts`
+- `docs/features/*`
+- `docs/architecture/listener_community_network.md`
+
+### Executive Summary
+
+Issue #1001 adds the first backend contract for opt-in taste cohorts. The scoped
+review found no Critical or High findings: cohort suggestions are membership
+backed, consent gated, minimum-size gated, off-chain, and return cohort-level
+explanations without exposing other listener identities, raw listening history,
+wallet data, ownership data, or private location facts.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- Taste, artist-affinity, collector, and campaign cohorts require
+  `allowTasteMatching`; city-scene cohorts require `allowCityScenes`.
+- Cohorts below `minimumSize`, expired cohorts, archived cohorts, hidden
+  memberships, and disabled-consent cohorts are not exposed.
+- Cohort analytics payloads include cohort id/type, reason code, membership
+  status, minimum size, and visible member count only.
+- Membership is mutable and off-chain; join, leave, and hide do not create
+  wallet, contract, or custody side effects.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/modules/community backend/src/tests/community_cohort.integration.spec.ts --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\\$queryRaw' backend/src/modules/community backend/src/tests/community_cohort.integration.spec.ts`
+- `rg 'JSON\\.parse|eval\\(' backend/src/modules/community backend/src/tests/community_cohort.integration.spec.ts`
+- Targeted review of consent gates, minimum-size filtering, explanation
+  sanitization, analytics payload allowlists, and off-chain membership actions.
+
 ## Campaign Support Lifecycle Reconciliation - 2026-06-01
 
 ### Scope Reviewed

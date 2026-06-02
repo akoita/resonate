@@ -114,6 +114,44 @@ reading the whole codebase.
 
 ---
 
+## 🧩 No Silent Partial Features
+
+Resonate can ship large features in slices, but unfinished work must never live
+only in memory, chat history, or vague PR prose.
+
+### Rules
+
+1. **A partial implementation must leave durable tracking.** Before finishing a
+   PR that implements only part of a feature, make sure the remaining work is
+   captured in at least one durable place:
+   - the parent GitHub issue remains open with an explicit remaining-work
+     checklist;
+   - separate follow-up issues are created and linked from the parent issue/PR;
+   - a feature plan or roadmap doc lists remaining slices with statuses;
+   - the feature catalog marks the capability as `partial` or `in-progress` and
+     links to the tracking source.
+
+2. **Do not close or claim completion for a parent feature unless it is actually
+   usable end to end.** If the PR only ships a backend contract, data model,
+   UI shell, analytics foundation, or operator-only slice, describe it as a
+   slice and keep the full feature tracked.
+
+3. **PR summaries must distinguish shipped behavior from remaining work.** Use
+   clear language such as "Implemented in this PR" and "Remaining / deferred",
+   with issue links when follow-ups exist.
+
+4. **Deferred work needs an owner-visible reason.** Acceptable reasons include
+   risk reduction, dependency ordering, CI/runtime cost, product sequencing, or
+   explicit developer scope. Avoid vague deferrals like "later" without a
+   linked checklist or issue.
+
+5. **Apply this especially to complex systems.** Community/social features,
+   analytics, recommendations, marketplace lifecycle, protocol/contracts,
+   deployment, moderation, permissions, and artist/listener controls should all
+   have visible completion boundaries and follow-up tracking.
+
+---
+
 ## 🚨 Git Workflow — Branch & PR Only
 
 **NEVER push directly to `main`.** All changes must go through a feature branch and Pull Request.
