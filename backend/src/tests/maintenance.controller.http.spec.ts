@@ -10,6 +10,7 @@ const maintenanceService = {
   loadAnalyticsWarehouse: jest.fn(),
   backfillAnalyticsWarehouse: jest.fn(),
   getAnalyticsPipelineHealth: jest.fn(),
+  generateCommunityCohorts: jest.fn(),
   wipeReleases: jest.fn(),
 };
 
@@ -32,6 +33,10 @@ describe("MaintenanceController (HTTP)", () => {
     maintenanceService.getAnalyticsPipelineHealth.mockResolvedValue({
       status: "ok",
       freshness: { status: "ok" },
+    });
+    maintenanceService.generateCommunityCohorts.mockResolvedValue({
+      schemaVersion: "community-cohort-generation/v1",
+      summary: { cohortsMaterialized: 1 },
     });
   });
 
@@ -59,5 +64,24 @@ describe("MaintenanceController (HTTP)", () => {
       });
 
     expect(maintenanceService.getAnalyticsPipelineHealth).toHaveBeenCalledTimes(1);
+  });
+
+  it("POST /admin/community/cohorts/generate requires admin role and runs cohort generation", async () => {
+    await request(app.getHttpServer())
+      .post("/admin/community/cohorts/generate")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({ minimumSize: 5 })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post("/admin/community/cohorts/generate")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .send({ minimumSize: 5 })
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body.schemaVersion).toBe("community-cohort-generation/v1");
+      });
+
+    expect(maintenanceService.generateCommunityCohorts).toHaveBeenCalledWith({ minimumSize: 5 });
   });
 });

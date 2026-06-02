@@ -99,10 +99,29 @@ Responsibilities:
 
 Responsibilities:
 
-- create opt-in taste cohorts;
+- serve opt-in taste cohorts;
 - apply minimum-size and expiry rules;
-- generate safe match explanations;
+- return safe match explanations;
 - avoid exposing private listening history or private user facts.
+
+### `CommunityCohortGenerationService`
+
+Responsibilities:
+
+- materialize `CommunityCohort` and `CommunityCohortMembership` records from
+  safe transactional signals;
+- use current `CommunityVisibilitySettings` consent before creating
+  memberships;
+- build taste, artist-affinity, campaign, coarse city-scene, and collector
+  cohorts without exposing raw listener histories, wallet holdings, exact
+  sensitive counts, other listener identities, or fine location;
+- preserve hidden memberships and avoid duplicate memberships across repeated
+  runs;
+- mark no-longer-eligible visible memberships `stale` before recomputing
+  visible counts, so regenerated cohorts cannot keep stale members above the
+  privacy threshold;
+- expose an admin-triggered generation surface through
+  `POST /admin/community/cohorts/generate`.
 
 ## Domain Model
 

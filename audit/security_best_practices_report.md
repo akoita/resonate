@@ -1,5 +1,69 @@
 # Security Best Practices Report
 
+## Community Cohort Generation Worker - 2026-06-02
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/community/community_cohort_generation.service.ts`
+- `backend/src/modules/community/community.module.ts`
+- `backend/src/modules/maintenance/maintenance.controller.ts`
+- `backend/src/modules/maintenance/maintenance.module.ts`
+- `backend/src/modules/maintenance/maintenance.service.ts`
+- `backend/src/tests/community_cohort_generation.integration.spec.ts`
+- `backend/src/tests/maintenance.controller.http.spec.ts`
+- `docs/features/*`
+- `docs/architecture/listener_community_network.md`
+
+### Executive Summary
+
+Issue #1054 adds an admin-triggered cohort generation worker for the listener
+community network. The scoped review found no Critical or High findings: the
+endpoint is JWT and admin-role guarded, the worker uses Prisma structured
+queries only, cohort membership generation is consent gated, generated metadata
+stores aggregate cohort signals rather than listener identities, and suspicious
+source labels are collapsed before they can become cohort titles or reason
+codes.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- Taste, artist-affinity, collector, and campaign cohorts require
+  `allowTasteMatching`; city-scene cohorts require `allowCityScenes`.
+- Generated memberships preserve prior `hidden`, `left`, or `joined` state and
+  do not resurrect hidden listeners into visible suggestions.
+- Previously visible memberships that no longer qualify for a generated cohort
+  are marked `stale` before `visibleMemberCount` is recomputed, so stale data
+  cannot keep a cohort above the minimum-size privacy threshold.
+- Cohorts below `minimumSize` are materialized for admin observability but are
+  not visible or joinable through the listener suggestion API.
+- The admin response exposes cohort-level aggregate counts only; it does not
+  return listener IDs, wallet addresses, exact listening histories, purchase
+  addresses, or private location details.
+- The new label-sanitization regression test covers wallet-like source text so
+  unsafe catalog/user-entered labels do not leak into generated cohort titles,
+  explanations, or reason codes.
+- Lifecycle refresh, cohort archival, scheduled execution, and operator quality
+  metrics remain tracked as follow-up work under #1001.
+
+### Scans Run
+
+- `rg -n 'password|secret|api_key|private_key' backend/src/modules/community/community_cohort_generation.service.ts backend/src/modules/maintenance/maintenance.controller.ts backend/src/modules/maintenance/maintenance.service.ts backend/src/modules/community/community.module.ts backend/src/modules/maintenance/maintenance.module.ts`
+- `rg -n 'rawQuery|executeRaw|\\$queryRaw' backend/src/modules/community/community_cohort_generation.service.ts backend/src/modules/maintenance/maintenance.controller.ts backend/src/modules/maintenance/maintenance.service.ts backend/src/modules/community/community.module.ts backend/src/modules/maintenance/maintenance.module.ts`
+- `rg -n 'JSON\\.parse|eval\\(' backend/src/modules/community/community_cohort_generation.service.ts backend/src/modules/maintenance/maintenance.controller.ts backend/src/modules/maintenance/maintenance.service.ts backend/src/modules/community/community.module.ts backend/src/modules/maintenance/maintenance.module.ts`
+- `rg -n '@Post|@Body|UseGuards|Roles' backend/src/modules/maintenance/maintenance.controller.ts`
+- Targeted review of consent gates, admin authorization, minimum-size
+  enforcement, metadata shape, prior-membership preservation, and generated
+  label sanitization.
+
 ## Taste Cohort Backend Contract - 2026-06-01
 
 ### Scope Reviewed

@@ -258,8 +258,9 @@ Implementation notes:
   listening history, wallet data, ownership data, or private location facts.
 - Listeners can join, leave, and hide suggested cohorts. Membership remains
   off-chain and mutable/deletable.
-- Cohort generation jobs, lifecycle refresh, and operator quality metrics remain
-  follow-up work.
+- Cohort generation can be triggered by admins through
+  `POST /admin/community/cohorts/generate`; lifecycle refresh and operator
+  quality metrics remain follow-up work.
 
 Feature-complete delivery map:
 
@@ -269,12 +270,16 @@ Feature-complete delivery map:
 - Listener cohort UI: `implemented` in #1052. Adds `/settings` cohort cards,
   safe explanations, join/leave/hide controls, empty/loading/disabled-consent
   states, API client coverage, and frontend tests.
-- Cohort generation worker: `not-started`. Materialize cohorts from safe
-  aggregate taste, analytics, catalog, campaign/show, collector, and coarse
-  city-scene signals. The worker should read warehouse/materialized analytics
-  for taste and behavior, use transactional reads for current consent and
-  product state, enforce `minimumSize` before writing visible rows, and write
-  `CommunityCohort` / `CommunityCohortMembership` records for serving.
+- Cohort generation worker: `implemented` in #1054. Materializes cohorts from
+  safe transactional library/taste, artist-affinity, campaign/show, collector,
+  and coarse city-scene signals. The worker uses transactional reads for current
+  consent and product state, enforces `minimumSize` through persisted
+  `visibleMemberCount`, preserves hidden memberships, marks no-longer-eligible
+  visible memberships `stale`, avoids duplicate memberships on repeated runs,
+  and writes `CommunityCohort` /
+  `CommunityCohortMembership` records for serving. Future warehouse/materialized
+  analytics inputs can extend the candidate sources without changing the
+  listener-facing contract.
 - Cohort lifecycle and refresh: `not-started`. Expire stale cohorts, refresh
   memberships without resurrecting hidden user intent, archive below-threshold
   cohorts, and test expiry/refresh cleanup.
