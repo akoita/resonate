@@ -23,7 +23,12 @@
  * (Pragmatic lever for a px-based codebase; the long-term fix is rem/fluid
  * everywhere — see docs/ui/design.md §15.)
  * -------------------------------------------------------------------- */
-:root { --app-zoom: 0.8; }
+:root { --app-zoom: 1; }
+/* Responsive scale: readable (near-native) on large screens for visibility,
+ * gently scaled down only on smaller laptops where the fixed-px UI would
+ * otherwise overflow/oversize. One value per tier — tune freely. */
+@media (min-width: 1600px) { :root { --app-zoom: 0.94; } }
+@media (min-width: 1024px) and (max-width: 1599px) { :root { --app-zoom: 0.88; } }
 @media (min-width: 1024px) {
   body { zoom: var(--app-zoom); }
   /* zoom scales vw/vh, so the 100vw × 100vh shell renders smaller and leaves
