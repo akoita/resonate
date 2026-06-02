@@ -5,6 +5,7 @@ import { Button } from "../../components/ui/Button";
 import AuthGate from "../../components/auth/AuthGate";
 import NotificationPreferences from "../../components/notifications/NotificationPreferences";
 import CommunityProfileSettingsPanel from "../../components/settings/CommunityProfileSettingsPanel";
+import ListenerCohortsPanel from "../../components/settings/ListenerCohortsPanel";
 import TasteMemorySettingsPanel from "../../components/settings/TasteMemorySettingsPanel";
 import { useToast } from "../../components/ui/Toast";
 import {
@@ -24,7 +25,7 @@ import { clearLibrary } from "../../lib/localLibrary";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 
-type SettingsSectionId = "library" | "taste" | "community" | "notifications";
+type SettingsSectionId = "library" | "taste" | "community" | "cohorts" | "notifications";
 
 const SETTINGS_SECTIONS: Array<{
     id: SettingsSectionId;
@@ -49,6 +50,12 @@ const SETTINGS_SECTIONS: Array<{
         label: "Community",
         eyebrow: "Public profile",
         description: "Visibility, profile identity, and social surfaces.",
+    },
+    {
+        id: "cohorts",
+        label: "Listener Cohorts",
+        eyebrow: "Discovery",
+        description: "Privacy-safe listener groups and shared signals.",
     },
     {
         id: "notifications",
@@ -448,6 +455,10 @@ export default function SettingsPage() {
 
                         {activeSection === "community" ? (
                             <CommunityProfileSettingsPanel token={token} addToast={addToast} />
+                        ) : null}
+
+                        {activeSection === "cohorts" ? (
+                            <ListenerCohortsPanel token={token} addToast={addToast} />
                         ) : null}
 
                         {activeSection === "notifications" ? (

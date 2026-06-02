@@ -220,6 +220,8 @@ Tests:
 
 ### Slice 5: Taste Cohorts
 
+Status: `partial`
+
 Purpose:
 
 - activate listener-to-listener discovery only after privacy, moderation, and
@@ -240,6 +242,52 @@ Backend scope:
 - explainable cohort reason generator;
 - minimum-size and expiry rules;
 - consent checks.
+
+Implementation notes:
+
+- The first backend contract is implemented through off-chain
+  `CommunityCohort` and `CommunityCohortMembership` records.
+- `GET /community/cohorts/suggestions` returns only cohorts with an existing
+  suggested/joined membership for the authenticated listener.
+- Taste, artist-affinity, collector, and campaign cohorts require
+  `allowTasteMatching`; city-scene cohorts require `allowCityScenes`.
+- Cohorts below `minimumSize`, expired cohorts, archived cohorts, hidden
+  memberships, and disabled-consent cohorts are not exposed.
+- Suggested explanations are cohort-level strings and are sanitized before
+  returning to users. Payloads do not expose other listener identities, raw
+  listening history, wallet data, ownership data, or private location facts.
+- Listeners can join, leave, and hide suggested cohorts. Membership remains
+  off-chain and mutable/deletable.
+- Cohort generation jobs, lifecycle refresh, and operator quality metrics remain
+  follow-up work.
+
+Feature-complete delivery map:
+
+- Backend cohort contract: `implemented` in #1001/#1051. Adds persistence,
+  consent gates, minimum-size filtering, lifecycle actions, safe explanations,
+  and cohort analytics events.
+- Listener cohort UI: `implemented` in #1052. Adds `/settings` cohort cards,
+  safe explanations, join/leave/hide controls, empty/loading/disabled-consent
+  states, API client coverage, and frontend tests.
+- Cohort generation worker: `not-started`. Materialize cohorts from safe
+  aggregate taste, analytics, catalog, campaign/show, collector, and coarse
+  city-scene signals. The worker should read warehouse/materialized analytics
+  for taste and behavior, use transactional reads for current consent and
+  product state, enforce `minimumSize` before writing visible rows, and write
+  `CommunityCohort` / `CommunityCohortMembership` records for serving.
+- Cohort lifecycle and refresh: `not-started`. Expire stale cohorts, refresh
+  memberships without resurrecting hidden user intent, archive below-threshold
+  cohorts, and test expiry/refresh cleanup.
+- Operator quality and analytics: `not-started`. Track aggregate suggestion,
+  join, leave, hide, disabled-consent, below-threshold, stale-cohort, cohort
+  type, and reason-code metrics without exposing raw listener histories,
+  private identities, exact sensitive counts, wallet data, or fine location.
+
+Completion rule:
+
+- #1001 should remain open or be replaced by explicit follow-up issues until
+  every slice above is either implemented or intentionally deferred with
+  owner-visible rationale.
 
 Frontend scope:
 

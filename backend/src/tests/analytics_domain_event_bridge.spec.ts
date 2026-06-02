@@ -473,6 +473,19 @@ describe("AnalyticsDomainEventBridgeService", () => {
         status: "paused",
       },
       {
+        eventName: "community.cohort_suggested",
+        eventVersion: 1,
+        occurredAt,
+        userId: "user_919",
+        cohortId: "cohort_919",
+        cohortType: "taste",
+        reasonCode: "taste:ambient",
+        membershipStatus: "suggested",
+        minimumSize: 5,
+        visibleMemberCount: 8,
+        safeExplanation: "do not persist explanation copy",
+      },
+      {
         eventName: "wallet.spent",
         eventVersion: 1,
         occurredAt,
@@ -811,6 +824,23 @@ describe("AnalyticsDomainEventBridgeService", () => {
           visibleUpdateCount: 1,
           city: "Paris",
           country: "FR",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "community.cohort_suggested",
+        subjectType: "community_cohort",
+        subjectId: "cohort_919",
+        actorId: "user_919",
+        consentBasis: "community_cohort_matching:v1",
+        payload: expect.objectContaining({
+          cohortId: "cohort_919",
+          cohortType: "taste",
+          reasonCode: "taste:ambient",
+          membershipStatus: "suggested",
+          minimumSize: 5,
+          visibleMemberCount: 8,
         }),
       }),
     );

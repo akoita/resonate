@@ -313,6 +313,50 @@ export interface CommunityRoomStatusUpdatedEvent extends BaseEvent {
   status: string;
 }
 
+export interface CommunityCohortSuggestedEvent extends BaseEvent {
+  eventName: "community.cohort_suggested";
+  userId: string;
+  cohortId: string;
+  cohortType: string;
+  reasonCode: string;
+  membershipStatus: string;
+  minimumSize: number;
+  visibleMemberCount: number;
+}
+
+export interface CommunityCohortJoinedEvent extends BaseEvent {
+  eventName: "community.cohort_joined";
+  userId: string;
+  cohortId: string;
+  cohortType: string;
+  reasonCode: string;
+  membershipStatus: string;
+  minimumSize: number;
+  visibleMemberCount: number;
+}
+
+export interface CommunityCohortLeftEvent extends BaseEvent {
+  eventName: "community.cohort_left";
+  userId: string;
+  cohortId: string;
+  cohortType: string;
+  reasonCode: string;
+  membershipStatus: string;
+  minimumSize: number;
+  visibleMemberCount: number;
+}
+
+export interface CommunityCohortHiddenEvent extends BaseEvent {
+  eventName: "community.cohort_hidden";
+  userId: string;
+  cohortId: string;
+  cohortType: string;
+  reasonCode: string;
+  membershipStatus: string;
+  minimumSize: number;
+  visibleMemberCount: number;
+}
+
 export interface IdentityAuthenticatedEvent extends BaseEvent {
   eventName: "identity.authenticated";
   userId: string;
@@ -995,6 +1039,10 @@ export type ResonateEvent =
   | CommunityMessageDeletedEvent
   | CommunityMemberModeratedEvent
   | CommunityRoomStatusUpdatedEvent
+  | CommunityCohortSuggestedEvent
+  | CommunityCohortJoinedEvent
+  | CommunityCohortLeftEvent
+  | CommunityCohortHiddenEvent
   | IdentityAuthenticatedEvent
   | PlaylistCreatedEvent
   | PlaylistUpdatedEvent

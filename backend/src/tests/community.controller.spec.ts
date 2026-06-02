@@ -1,4 +1,5 @@
 import { CommunityController } from "../modules/community/community.controller";
+import { CommunityCohortService } from "../modules/community/community_cohort.service";
 
 const mockCommunityService = {
   getMyProfile: jest.fn().mockResolvedValue({ schemaVersion: "community-profile/v1" }),
@@ -25,11 +26,19 @@ const mockCommunityRoomsService = {
   updateRoomStatus: jest.fn().mockResolvedValue({ schemaVersion: "community-room/v1" }),
 };
 
+const mockCommunityCohortService = {
+  listSuggestions: jest.fn().mockResolvedValue({ schemaVersion: "community-cohort-suggestions/v1" }),
+  joinCohort: jest.fn().mockResolvedValue({ schemaVersion: "community-cohort-membership/v1" }),
+  leaveCohort: jest.fn().mockResolvedValue({ schemaVersion: "community-cohort-membership/v1" }),
+  hideCohort: jest.fn().mockResolvedValue({ schemaVersion: "community-cohort-membership/v1" }),
+};
+
 function makeController() {
   return new CommunityController(
     mockCommunityService as any,
     mockCommunityEligibilityService as any,
     mockCommunityRoomsService as any,
+    mockCommunityCohortService as unknown as CommunityCohortService,
   );
 }
 
@@ -98,5 +107,18 @@ describe("CommunityController", () => {
     expect(mockCommunityRoomsService.createMessage).toHaveBeenCalledWith("user-42", "room-1", { body: "Hello" });
     expect(mockCommunityRoomsService.reportMessage).toHaveBeenCalledWith("user-42", "message-1", { reason: "spam" });
     expect(mockCommunityRoomsService.updateRoomStatus).toHaveBeenCalledWith("user-42", "room-1", { status: "paused" });
+  });
+
+  it("routes authenticated cohort suggestions and membership actions", () => {
+    const ctrl = makeController();
+    ctrl.listCohortSuggestions(req);
+    ctrl.joinCohort(req, "cohort-1");
+    ctrl.leaveCohort(req, "cohort-1");
+    ctrl.hideCohort(req, "cohort-1");
+
+    expect(mockCommunityCohortService.listSuggestions).toHaveBeenCalledWith("user-42");
+    expect(mockCommunityCohortService.joinCohort).toHaveBeenCalledWith("user-42", "cohort-1");
+    expect(mockCommunityCohortService.leaveCohort).toHaveBeenCalledWith("user-42", "cohort-1");
+    expect(mockCommunityCohortService.hideCohort).toHaveBeenCalledWith("user-42", "cohort-1");
   });
 });
