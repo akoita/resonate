@@ -301,6 +301,23 @@
 }
 .home-ng .ng-hero__card { max-height: none; }
 
+/* Carousel stability: on desktop, LOCK the hero to a fixed height so the
+ * featured carousel doesn't jump as campaigns with different title lengths
+ * rotate (a 1-line "Sennarin in Paris" vs a 4-line "Felicia Farerre in
+ * Dublin: Cinematic Voice, Poetry & Ancestry"). Sized for the worst case:
+ * the hero font ceilings at 48px (≥1524px viewports) → a 4-line title is
+ * ~215px, and the full card ~586px. Below that the fluid font shrinks so
+ * content only gets shorter — it can never exceed this band, so nothing
+ * clips. Shorter campaigns center within it (the hero is display:flex;
+ * align-items:center). Scoped to desktop only: tablet/mobile stack the
+ * campaign rail inside the flow and must keep min-height to grow. */
+@media (min-width: 1024px) {
+  .home-ng .ng-hero {
+    height: clamp(580px, 30vw, 596px);
+    min-height: 0;
+  }
+}
+
 /* Hero motif gets a touch more presence. */
 .home-ng .ng-hero__motif { opacity: 0.8; }
 
