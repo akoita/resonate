@@ -257,6 +257,17 @@
 /* Hero body on the fluid scale. */
 .home-ng .ng-hero__body { font-size: var(--r-text-body); }
 
+/* Hero geometry: drop the rigid `aspect-ratio: 21/9` — it made the hero
+ * ~1286px tall on wide screens and too SHORT on 15" laptops, where the short
+ * box + card max-height + overflow:hidden then clipped the title. A fluid
+ * min-height that grows to fit content fixes both: never too short (no clip),
+ * never absurdly tall. */
+.home-ng .ng-hero {
+  aspect-ratio: auto;
+  min-height: clamp(420px, 32vw, 560px);
+}
+.home-ng .ng-hero__card { max-height: none; }
+
 /* Hero motif gets a touch more presence. */
 .home-ng .ng-hero__motif { opacity: 0.8; }
 
