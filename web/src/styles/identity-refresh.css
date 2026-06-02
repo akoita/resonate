@@ -14,6 +14,27 @@
  * ══════════════════════════════════════════════════════════════════════ */
 
 /* ----------------------------------------------------------------------
+ * 0. Global default scale
+ * The app is authored in fixed px tuned too large, so at 100% browser zoom
+ * it reads oversized on laptops AND large displays — users zoom the browser
+ * out to compensate and forget they have. Bake a modest scale into the
+ * DEFAULT render at desktop widths so 100% is the comfortable density for
+ * everyone, without manual zoom. Mobile (<1024px) keeps its own layout.
+ * (Pragmatic lever for a px-based codebase; the long-term fix is rem/fluid
+ * everywhere — see docs/ui/design.md §15.)
+ * -------------------------------------------------------------------- */
+:root { --app-zoom: 0.9; }
+@media (min-width: 1024px) {
+  body { zoom: var(--app-zoom); }
+  /* zoom scales vh, so the 100vh full-height containers would shrink and
+   * leave a gap at the bottom (player bar floats off the edge). Compensate
+   * by dividing their height back out by the zoom factor. */
+  .app-shell,
+  .app-sidebar,
+  .app-main { height: calc(100vh / var(--app-zoom)); }
+}
+
+/* ----------------------------------------------------------------------
  * 1. Canvas — ambient aurora + cinematic grain
  * The app-shell is solid obsidian and the app-main above it is translucent
  * glass, so enriching the shell gives app-wide ambient depth for free.

@@ -857,6 +857,16 @@ Read this before changing UI. These rules keep the system coherent.
    colour that has a token (e.g. `--r-agent`, `--r-success`), use the token.
 
 ### Scale — fluid, never fixed-to-one-screen
+
+> **Global default scale (`--app-zoom`).** Because the app is authored in fixed
+> px tuned too large, a modest global scale is baked into the *default* render
+> at desktop widths (`@media (min-width:1024px){ body{ zoom: var(--app-zoom) } }`,
+> default `0.9`) so 100% browser zoom is the comfortable density for every user —
+> not a view they have to zoom out to reach. Tune density by changing the single
+> `--app-zoom` token. ⚠️ `zoom` scales `vh`, so any full-height (`height:100vh`)
+> container must compensate with `height: calc(100vh / var(--app-zoom))` or it
+> leaves a gap at the bottom (the `.app-shell/.app-sidebar/.app-main` rules do
+> this). This is a pragmatic lever; the long-term fix is rem/fluid everywhere.
 4. **Use the fluid type tokens** (`--r-text-hero/-h2/-h3/-lead/-body`, §3.2),
    not fixed px. Fixed px read oversized on laptops and at 100% on big screens.
 5. **Never put `aspect-ratio` on a content container** (hero, card) that holds
