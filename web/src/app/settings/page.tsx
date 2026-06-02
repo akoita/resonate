@@ -6,6 +6,7 @@ import { Button } from "../../components/ui/Button";
 import AuthGate from "../../components/auth/AuthGate";
 import NotificationPreferences from "../../components/notifications/NotificationPreferences";
 import CommunityProfileSettingsPanel from "../../components/settings/CommunityProfileSettingsPanel";
+import ListenerCohortsPanel from "../../components/settings/ListenerCohortsPanel";
 import TasteMemorySettingsPanel from "../../components/settings/TasteMemorySettingsPanel";
 import { useToast } from "../../components/ui/Toast";
 import {
@@ -376,6 +377,8 @@ export default function SettingsPage() {
                     <TasteMemorySettingsPanel token={token} addToast={addToast} />
 
                     <CommunityProfileSettingsPanel token={token} addToast={addToast} />
+
+                    <ListenerCohortsPanel token={token} addToast={addToast} />
 
                     <div className="settings-section">
                         <h3 className="settings-section-title">Notifications</h3>

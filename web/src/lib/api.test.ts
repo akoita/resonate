@@ -1459,6 +1459,84 @@ describe('API Client', () => {
     });
   });
 
+  describe('community cohorts', () => {
+    it('fetches authenticated cohort suggestions without cache', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            schemaVersion: 'community-cohort-suggestions/v1',
+            cohorts: [],
+            privacy: {
+              minimumSizeEnforced: true,
+              explanationScope: 'cohort_level',
+              otherListenerIdentities: 'redacted',
+            },
+          }),
+      });
+
+      await api.getCommunityCohortSuggestions('listener-token');
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/community/cohorts/suggestions');
+      expect(opts.cache).toBe('no-store');
+      expect(opts.headers.get('Authorization')).toBe('Bearer listener-token');
+    });
+
+    it('posts cohort membership actions to encoded endpoints', async () => {
+      const response = {
+        schemaVersion: 'community-cohort-membership/v1',
+        cohort: {
+          id: 'cohort 1',
+          cohortType: 'taste',
+          reasonCode: 'taste:ambient',
+          title: 'Ambient listeners',
+          safeExplanation: 'A privacy-safe cohort.',
+          minimumSize: 5,
+          visibleMemberCount: 8,
+          memberCountLabel: '8+ listeners',
+          status: 'suggested',
+          membership: {
+            status: 'joined',
+            suggestedAt: '2026-06-01T00:00:00.000Z',
+            joinedAt: '2026-06-01T01:00:00.000Z',
+            leftAt: null,
+            hiddenAt: null,
+          },
+          expiresAt: null,
+          createdAt: '2026-06-01T00:00:00.000Z',
+          updatedAt: '2026-06-01T00:00:00.000Z',
+        },
+        membership: {
+          status: 'joined',
+          suggestedAt: '2026-06-01T00:00:00.000Z',
+          joinedAt: '2026-06-01T01:00:00.000Z',
+          leftAt: null,
+          hiddenAt: null,
+        },
+        privacy: {
+          onChain: false,
+          deletable: true,
+          otherListenerIdentities: 'redacted',
+        },
+      };
+      mockFetch
+        .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify(response) })
+        .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify(response) })
+        .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify(response) });
+
+      await api.joinCommunityCohort('listener-token', 'cohort 1');
+      await api.leaveCommunityCohort('listener-token', 'cohort 1');
+      await api.hideCommunityCohort('listener-token', 'cohort 1');
+
+      expect(mockFetch.mock.calls[0][0]).toBe('http://test-api:3000/community/cohorts/cohort%201/join');
+      expect(mockFetch.mock.calls[1][0]).toBe('http://test-api:3000/community/cohorts/cohort%201/leave');
+      expect(mockFetch.mock.calls[2][0]).toBe('http://test-api:3000/community/cohorts/cohort%201/hide');
+      expect(mockFetch.mock.calls.every(([, opts]) => opts.method === 'POST')).toBe(true);
+    });
+  });
+
   describe('artist community rooms', () => {
     it('fetches public artist community rooms without authentication', async () => {
       mockFetch.mockResolvedValueOnce({

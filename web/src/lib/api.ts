@@ -2028,6 +2028,86 @@ export async function getPublicCommunityProfile(userId: string): Promise<PublicC
   );
 }
 
+export type CommunityCohortType = "taste" | "artist_affinity" | "city_scene" | "collector" | "campaign";
+export type CommunityCohortMembershipStatus = "suggested" | "joined" | "left" | "hidden";
+
+export type CommunityCohortMembership = {
+  status: CommunityCohortMembershipStatus | string;
+  suggestedAt: string;
+  joinedAt: string | null;
+  leftAt: string | null;
+  hiddenAt: string | null;
+};
+
+export type CommunityCohort = {
+  id: string;
+  cohortType: CommunityCohortType | string;
+  reasonCode: string;
+  title: string;
+  safeExplanation: string;
+  minimumSize: number;
+  visibleMemberCount: number;
+  memberCountLabel: string;
+  status: string;
+  membership: CommunityCohortMembership;
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CommunityCohortSuggestionsResponse = {
+  schemaVersion: "community-cohort-suggestions/v1";
+  cohorts: CommunityCohort[];
+  privacy: {
+    minimumSizeEnforced: boolean;
+    explanationScope: string;
+    otherListenerIdentities: string;
+  };
+};
+
+export type CommunityCohortMembershipResponse = {
+  schemaVersion: "community-cohort-membership/v1";
+  cohort: CommunityCohort;
+  membership: CommunityCohortMembership;
+  privacy: {
+    onChain: boolean;
+    deletable: boolean;
+    otherListenerIdentities: string;
+  };
+};
+
+export async function getCommunityCohortSuggestions(token: string): Promise<CommunityCohortSuggestionsResponse> {
+  return apiRequest<CommunityCohortSuggestionsResponse>(
+    "/community/cohorts/suggestions",
+    { cache: "no-store" },
+    token,
+  );
+}
+
+export async function joinCommunityCohort(token: string, cohortId: string): Promise<CommunityCohortMembershipResponse> {
+  return apiRequest<CommunityCohortMembershipResponse>(
+    `/community/cohorts/${encodeURIComponent(cohortId)}/join`,
+    { method: "POST" },
+    token,
+  );
+}
+
+export async function leaveCommunityCohort(token: string, cohortId: string): Promise<CommunityCohortMembershipResponse> {
+  return apiRequest<CommunityCohortMembershipResponse>(
+    `/community/cohorts/${encodeURIComponent(cohortId)}/leave`,
+    { method: "POST" },
+    token,
+  );
+}
+
+export async function hideCommunityCohort(token: string, cohortId: string): Promise<CommunityCohortMembershipResponse> {
+  return apiRequest<CommunityCohortMembershipResponse>(
+    `/community/cohorts/${encodeURIComponent(cohortId)}/hide`,
+    { method: "POST" },
+    token,
+  );
+}
+
 export type CommunityRoomType = "artist_public" | "artist_holder" | "show_campaign_supporter" | "show_city_demand";
 export type CommunityRoomStatus = "active" | "paused" | "archived";
 export type CommunityMembershipStatus = "active" | "left" | "removed" | "banned";

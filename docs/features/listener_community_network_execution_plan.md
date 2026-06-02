@@ -258,16 +258,17 @@ Implementation notes:
   listening history, wallet data, ownership data, or private location facts.
 - Listeners can join, leave, and hide suggested cohorts. Membership remains
   off-chain and mutable/deletable.
-- Cohort generation jobs and frontend cards remain follow-up work.
+- Cohort generation jobs, lifecycle refresh, and operator quality metrics remain
+  follow-up work.
 
 Feature-complete delivery map:
 
-- Backend cohort contract: `in-progress` in #1001/#1051. Adds persistence,
+- Backend cohort contract: `implemented` in #1001/#1051. Adds persistence,
   consent gates, minimum-size filtering, lifecycle actions, safe explanations,
   and cohort analytics events.
-- Listener cohort UI: `not-started`. Add cohort cards, safe explanations,
-  join/leave/hide controls, empty/disabled/expired states, app entry points, and
-  frontend tests.
+- Listener cohort UI: `implemented` in #1052. Adds `/settings` cohort cards,
+  safe explanations, join/leave/hide controls, empty/loading/disabled-consent
+  states, API client coverage, and frontend tests.
 - Cohort generation worker: `not-started`. Materialize cohorts from safe
   aggregate taste, analytics, catalog, campaign/show, collector, and coarse
   city-scene signals. The worker should read warehouse/materialized analytics
