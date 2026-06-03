@@ -50,6 +50,7 @@ describe("CommunityCohortOperationsPanel", () => {
     expect(html).toContain("No visible generated cohorts yet");
     expect(html).toContain("2+ real opted-in listeners");
     expect(html).toContain("Shared safe signal");
+    expect(html).toContain("metadata-dot--muted");
     expect(html).not.toContain("mock");
     expect(html).not.toContain("synthetic");
   });

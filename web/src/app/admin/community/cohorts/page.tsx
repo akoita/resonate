@@ -19,7 +19,7 @@ type LoadState =
 
 export default function CommunityCohortAdminPage() {
   const { token, role } = useAuth();
-  const [minimumSize, setMinimumSize] = useState(5);
+  const [minimumSize, setMinimumSize] = useState(2);
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [lastGeneration, setLastGeneration] = useState<CommunityCohortGenerationResponse | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
