@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 
 const SCHEMA_VERSION = "community-cohort-quality/v1";
+const GENERATED_COHORT_SCHEMA_VERSION = "community-cohort-generation/v1";
 const SOCIAL_TASTE_COHORT_TYPES = ["taste", "artist_affinity", "collector", "campaign"] as const;
 const ACTION_EVENT_NAMES = [
   "community.cohort_suggested",
@@ -55,6 +56,7 @@ export class CommunityCohortQualityService {
           minimumSize: true,
           visibleMemberCount: true,
           expiresAt: true,
+          metadata: true,
           updatedAt: true,
         },
       }),
@@ -95,12 +97,9 @@ export class CommunityCohortQualityService {
     const disabledConsent = disabledConsentSummary(visibleMemberships);
     const allReasonCodeSummaries = reasonSummaries(cohorts);
     const reasonCodeSummaries = allReasonCodeSummaries.slice(0, DEFAULT_REASON_CODE_LIMIT);
+    const generatedCohorts = cohorts.filter((cohort) => isGeneratedCohortMetadata(cohort.metadata));
     const belowThresholdCount = cohorts.filter((cohort) => cohort.visibleMemberCount < cohort.minimumSize).length;
-    const visibleNowCount = cohorts.filter((cohort) => (
-      VISIBLE_COHORT_STATUSES.includes(cohort.status as (typeof VISIBLE_COHORT_STATUSES)[number]) &&
-      (!cohort.expiresAt || cohort.expiresAt.getTime() > now.getTime()) &&
-      cohort.visibleMemberCount >= cohort.minimumSize
-    )).length;
+    const visibleNowCount = visibleCohortCount(cohorts, now);
 
     return {
       schemaVersion: SCHEMA_VERSION,
@@ -111,6 +110,13 @@ export class CommunityCohortQualityService {
         belowThreshold: belowThresholdCount,
         byStatus: cohortStatusCounts,
         byType: cohortTypeCounts,
+        generated: {
+          total: generatedCohorts.length,
+          visibleNow: visibleCohortCount(generatedCohorts, now),
+          belowThreshold: generatedCohorts.filter((cohort) => cohort.visibleMemberCount < cohort.minimumSize).length,
+          byStatus: countBy(generatedCohorts, "status"),
+          byType: countBy(generatedCohorts, "cohortType"),
+        },
       },
       memberships: {
         total: Object.values(membershipStatusCounts).reduce((total, count) => total + count, 0),
@@ -146,6 +152,26 @@ function countRows<T extends string>(groups: Array<Record<T, string> & { _count:
     counts[group[key]] = group._count._all;
     return counts;
   }, {});
+}
+
+function countBy<T extends string>(rows: Array<Record<T, string>>, key: T) {
+  return rows.reduce<Record<string, number>>((counts, row) => {
+    counts[row[key]] = (counts[row[key]] ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
+function visibleCohortCount(cohorts: Array<{
+  status: string;
+  minimumSize: number;
+  visibleMemberCount: number;
+  expiresAt: Date | null;
+}>, now: Date) {
+  return cohorts.filter((cohort) => (
+    VISIBLE_COHORT_STATUSES.includes(cohort.status as (typeof VISIBLE_COHORT_STATUSES)[number]) &&
+    (!cohort.expiresAt || cohort.expiresAt.getTime() > now.getTime()) &&
+    cohort.visibleMemberCount >= cohort.minimumSize
+  )).length;
 }
 
 function actionCountRows(groups: Array<{ eventName: string; _count: { _all: number } }>): CountRow[] {
@@ -190,6 +216,7 @@ function reasonSummaries(cohorts: Array<{
   status: string;
   minimumSize: number;
   visibleMemberCount: number;
+  metadata: unknown;
   updatedAt: Date;
 }>) {
   const summaries = new Map<string, {
@@ -241,6 +268,15 @@ function reasonSummaries(cohorts: Array<{
 
 function safeReasonCode(reasonCode: string) {
   return /^[a-z0-9_.:-]{1,64}$/i.test(reasonCode) ? reasonCode : "community_match";
+}
+
+function isGeneratedCohortMetadata(metadata: unknown) {
+  return Boolean(
+    metadata &&
+    typeof metadata === "object" &&
+    "schemaVersion" in metadata &&
+    (metadata as { schemaVersion?: unknown }).schemaVersion === GENERATED_COHORT_SCHEMA_VERSION,
+  );
 }
 
 function bucketMemberCount(count: number) {

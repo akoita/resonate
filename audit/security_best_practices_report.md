@@ -34,9 +34,9 @@ None.
 
 ### Notes
 
-- The report exposes cohort lifecycle, membership status, stale membership,
-  disabled-consent, action-event, cohort-type, and reason-code health as
-  aggregate metrics.
+- The report exposes cohort lifecycle, generated-cohort lifecycle, membership
+  status, stale membership, disabled-consent, action-event, cohort-type, and
+  reason-code health as aggregate metrics.
 - Reason-code summaries are bounded to a small operator list and use member
   count buckets instead of exact visible listener counts.
 - Disabled-consent filtering is counted from current visibility settings but

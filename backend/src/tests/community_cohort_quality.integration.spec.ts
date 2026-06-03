@@ -59,18 +59,33 @@ describe("CommunityCohortQualityService integration", () => {
     const report = await service.getQualityReport();
 
     expect(report.cohorts).toMatchObject({
-      total: 3,
-      visibleNow: 1,
+      total: 4,
+      visibleNow: 2,
       belowThreshold: 2,
       byStatus: {
-        active: 1,
+        active: 2,
         archived: 1,
         expired: 1,
       },
       byType: {
-        taste: 1,
+        taste: 2,
         city_scene: 1,
         collector: 1,
+      },
+      generated: {
+        total: 3,
+        visibleNow: 1,
+        belowThreshold: 2,
+        byStatus: {
+          active: 1,
+          archived: 1,
+          expired: 1,
+        },
+        byType: {
+          taste: 1,
+          city_scene: 1,
+          collector: 1,
+        },
       },
     });
     expect(report.memberships).toMatchObject({
@@ -162,6 +177,7 @@ async function seedQualityData() {
       minimumSize: 5,
       visibleMemberCount: 6,
       status: "active",
+      metadata: generatedMetadata("taste:dream_pop"),
     },
   });
   const cityCohort = await prisma.communityCohort.create({
@@ -174,6 +190,7 @@ async function seedQualityData() {
       minimumSize: 5,
       visibleMemberCount: 3,
       status: "archived",
+      metadata: generatedMetadata("city_scene:paris_fr"),
     },
   });
   await prisma.communityCohort.create({
@@ -187,6 +204,20 @@ async function seedQualityData() {
       visibleMemberCount: 0,
       status: "expired",
       expiresAt: new Date(Date.now() - 60_000),
+      metadata: generatedMetadata("collector:rare_drop"),
+    },
+  });
+  await prisma.communityCohort.create({
+    data: {
+      id: `${TEST_PREFIX}manual`,
+      cohortType: "taste",
+      reasonCode: "taste:manual_editorial",
+      title: "Manual taste cohort",
+      safeExplanation: "A manually curated cohort that is not worker-generated.",
+      minimumSize: 5,
+      visibleMemberCount: 8,
+      status: "active",
+      metadata: { schemaVersion: "manual-community-cohort/v1" },
     },
   });
 
@@ -208,6 +239,15 @@ async function seedQualityData() {
       analyticsEvent("community.cohort_hidden", "hidden"),
     ],
   });
+}
+
+function generatedMetadata(signalKey: string) {
+  return {
+    schemaVersion: "community-cohort-generation/v1",
+    generatedAt: new Date().toISOString(),
+    sourceTypes: ["test"],
+    signalKey,
+  };
 }
 
 function analyticsEvent(eventName: string, suffix: string) {

@@ -263,8 +263,9 @@ Implementation notes:
   in #1059.
 - Operators can inspect privacy-safe aggregate cohort health through
   `GET /admin/community/cohorts/quality`: lifecycle counts, stale memberships,
-  disabled-consent filtering, action-event counts, cohort-type distribution,
-  and bounded reason-code summaries with bucketed member counts.
+  generated-cohort lifecycle counts, disabled-consent filtering,
+  action-event counts, cohort-type distribution, and bounded reason-code
+  summaries with bucketed member counts.
 
 Feature-complete delivery map:
 
