@@ -260,7 +260,12 @@ Implementation notes:
   off-chain and mutable/deletable.
 - Cohort generation can be triggered by admins through
   `POST /admin/community/cohorts/generate`; lifecycle refresh is implemented
-  in #1059, and operator quality metrics remain follow-up work.
+  in #1059.
+- Operators can inspect privacy-safe aggregate cohort health through
+  `GET /admin/community/cohorts/quality`: lifecycle counts, stale memberships,
+  generated-cohort lifecycle counts, disabled-consent filtering,
+  action-event counts, cohort-type distribution, and bounded reason-code
+  summaries with bucketed member counts.
 
 Feature-complete delivery map:
 
@@ -287,16 +292,17 @@ Feature-complete delivery map:
   and left user intent, restoring system-managed stale memberships to their
   prior suggested/joined state on requalification, and reporting lifecycle
   counts in the aggregate admin response.
-- Operator quality and analytics: `not-started`. Track aggregate suggestion,
-  join, leave, hide, disabled-consent, below-threshold, stale-cohort, cohort
-  type, and reason-code metrics without exposing raw listener histories,
-  private identities, exact sensitive counts, wallet data, or fine location.
+- Operator quality and analytics: `implemented` in #1064. Admins can inspect
+  aggregate suggestion, join, leave, hide, disabled-consent, below-threshold,
+  stale-membership, cohort type, and reason-code health without exposing raw
+  listener histories, private identities, exact sensitive small-group details,
+  wallet data, or fine location.
 
 Completion rule:
 
-- #1001 should remain open or be replaced by explicit follow-up issues until
-  every slice above is either implemented or intentionally deferred with
-  owner-visible rationale.
+- #1001 can be closed once #1064 lands unless the owner adds a new follow-up
+  scope. Remaining broader community work stays tracked by the parent epic and
+  separate issues such as #1037.
 
 Frontend scope:
 

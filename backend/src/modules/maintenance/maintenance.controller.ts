@@ -47,6 +47,13 @@ export class MaintenanceController {
 
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
+  @Get("community/cohorts/quality")
+  async getCommunityCohortQuality() {
+    return this.maintenanceService.getCommunityCohortQuality();
+  }
+
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
   @Delete("wipe-releases")
   wipeReleases() {
     return this.maintenanceService.wipeReleases();

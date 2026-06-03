@@ -11,6 +11,7 @@ const maintenanceService = {
   backfillAnalyticsWarehouse: jest.fn(),
   getAnalyticsPipelineHealth: jest.fn(),
   generateCommunityCohorts: jest.fn(),
+  getCommunityCohortQuality: jest.fn(),
   wipeReleases: jest.fn(),
 };
 
@@ -37,6 +38,11 @@ describe("MaintenanceController (HTTP)", () => {
     maintenanceService.generateCommunityCohorts.mockResolvedValue({
       schemaVersion: "community-cohort-generation/v1",
       summary: { cohortsMaterialized: 1 },
+    });
+    maintenanceService.getCommunityCohortQuality.mockResolvedValue({
+      schemaVersion: "community-cohort-quality/v1",
+      cohorts: { total: 0 },
+      privacy: { aggregateOnly: true },
     });
   });
 
@@ -83,5 +89,23 @@ describe("MaintenanceController (HTTP)", () => {
       });
 
     expect(maintenanceService.generateCommunityCohorts).toHaveBeenCalledWith({ minimumSize: 5 });
+  });
+
+  it("GET /admin/community/cohorts/quality requires admin role and returns aggregate quality metrics", async () => {
+    await request(app.getHttpServer())
+      .get("/admin/community/cohorts/quality")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get("/admin/community/cohorts/quality")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.schemaVersion).toBe("community-cohort-quality/v1");
+        expect(body.privacy.aggregateOnly).toBe(true);
+      });
+
+    expect(maintenanceService.getCommunityCohortQuality).toHaveBeenCalledTimes(1);
   });
 });
