@@ -312,18 +312,34 @@ export default function Sidebar() {
           );
         })}
         {showAdminLink ? (
-          <Link
-            href="/disputes/admin"
-            className={`sidebar-link ${pathname === "/disputes/admin" ? 'active' : ''}`}
-          >
-            <span className="link-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7l7-4Z" />
-                <path d="m9 12 2 2 4-4" />
-              </svg>
-            </span>
-            <span className="link-text">Admin Review</span>
-          </Link>
+          <>
+            <Link
+              href="/disputes/admin"
+              className={`sidebar-link ${pathname === "/disputes/admin" ? 'active' : ''}`}
+            >
+              <span className="link-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7l7-4Z" />
+                  <path d="m9 12 2 2 4-4" />
+                </svg>
+              </span>
+              <span className="link-text">Admin Review</span>
+            </Link>
+            <Link
+              href="/admin/community/cohorts"
+              className={`sidebar-link ${pathname === "/admin/community/cohorts" ? 'active' : ''}`}
+            >
+              <span className="link-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+              </span>
+              <span className="link-text">Cohorts</span>
+            </Link>
+          </>
         ) : null}
         <button
           type="button"

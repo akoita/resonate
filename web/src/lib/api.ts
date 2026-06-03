@@ -2076,6 +2076,103 @@ export type CommunityCohortMembershipResponse = {
   };
 };
 
+export type CommunityCohortQualityReasonSummary = {
+  cohortType: string;
+  reasonCode: string;
+  cohortCount: number;
+  activeCount: number;
+  archivedCount: number;
+  expiredCount: number;
+  belowThresholdCount: number;
+  visibleMemberBucket: string;
+};
+
+export type CommunityCohortQualityResponse = {
+  schemaVersion: "community-cohort-quality/v1";
+  generatedAt: string;
+  cohorts: {
+    total: number;
+    visibleNow: number;
+    belowThreshold: number;
+    byStatus: Record<string, number>;
+    byType: Record<string, number>;
+    generated: {
+      total: number;
+      visibleNow: number;
+      belowThreshold: number;
+      byStatus: Record<string, number>;
+      byType: Record<string, number>;
+    };
+  };
+  memberships: {
+    total: number;
+    stale: number;
+    byStatus: Record<string, number>;
+    disabledConsent: {
+      total: number;
+      byType: Record<string, number>;
+    };
+  };
+  actions: {
+    total: number;
+    byEvent: Array<{ key: string; count: number }>;
+    source: string;
+  };
+  reasonCodes: {
+    limit: number;
+    total: number;
+    summaries: CommunityCohortQualityReasonSummary[];
+  };
+  privacy: {
+    aggregateOnly: boolean;
+    noListenerIdentifiers: boolean;
+    noWalletAddresses: boolean;
+    noRawListeningHistory: boolean;
+    noFineLocation: boolean;
+    reasonCodesAreBounded: boolean;
+    memberCountsAreBucketed: boolean;
+  };
+};
+
+export type CommunityCohortGenerationResponse = {
+  schemaVersion: "community-cohort-generation/v1";
+  generatedAt: string;
+  summary: {
+    candidateCohorts: number;
+    cohortsMaterialized: number;
+    cohortsReconciled: number;
+    visibleCohorts: number;
+    cohortsActivated: number;
+    cohortsArchived: number;
+    cohortsExpired: number;
+    membershipsCreated: number;
+    membershipsPreserved: number;
+    hiddenMembershipsPreserved: number;
+    staleMembershipsMarked: number;
+    staleMembershipsRestored: number;
+  };
+  cohorts: Array<{
+    cohortId: string;
+    cohortType: string;
+    reasonCode: string;
+    status: string;
+    lifecycleAction: "activated" | "archived" | "expired" | "unchanged" | string;
+    visibleMemberCount: number;
+    minimumSize: number;
+    membershipsCreated: number;
+    membershipsPreserved: number;
+    hiddenMembershipsPreserved: number;
+    staleMembershipsMarked: number;
+    staleMembershipsRestored: number;
+  }>;
+  privacy: {
+    minimumSizeEnforced: boolean;
+    consentGated: boolean;
+    aggregateCountsOnly: boolean;
+    otherListenerIdentities: string;
+  };
+};
+
 export async function getCommunityCohortSuggestions(token: string): Promise<CommunityCohortSuggestionsResponse> {
   return apiRequest<CommunityCohortSuggestionsResponse>(
     "/community/cohorts/suggestions",
@@ -2104,6 +2201,25 @@ export async function hideCommunityCohort(token: string, cohortId: string): Prom
   return apiRequest<CommunityCohortMembershipResponse>(
     `/community/cohorts/${encodeURIComponent(cohortId)}/hide`,
     { method: "POST" },
+    token,
+  );
+}
+
+export async function getCommunityCohortQuality(token: string): Promise<CommunityCohortQualityResponse> {
+  return apiRequest<CommunityCohortQualityResponse>(
+    "/admin/community/cohorts/quality",
+    { cache: "no-store" },
+    token,
+  );
+}
+
+export async function generateCommunityCohorts(
+  token: string,
+  input: { minimumSize?: number } = {},
+): Promise<CommunityCohortGenerationResponse> {
+  return apiRequest<CommunityCohortGenerationResponse>(
+    "/admin/community/cohorts/generate",
+    { method: "POST", body: JSON.stringify(input) },
     token,
   );
 }

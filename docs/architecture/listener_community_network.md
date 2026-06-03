@@ -462,6 +462,13 @@ counts, cohort-type distribution, and bounded reason-code summaries with member
 counts bucketed instead of exact. It must not include listener IDs, wallets,
 raw listening histories, purchase addresses, or fine location.
 
+The admin UI route `/admin/community/cohorts` is a real-data validation surface
+over those two endpoints. It lets admins run generation with a selected
+`minimumSize` of 2 or more, refresh aggregate quality, and inspect the blockers
+when no generated cohort is visible. It must not create sample users, fake
+signals, seeded cohorts, or synthetic listener memberships in shared staging
+environments.
+
 ## Analytics Events
 
 Community events should use the existing analytics envelope and consent

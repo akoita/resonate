@@ -266,6 +266,14 @@ Implementation notes:
   generated-cohort lifecycle counts, disabled-consent filtering,
   action-event counts, cohort-type distribution, and bounded reason-code
   summaries with bucketed member counts.
+- Admins can validate cohorts on staging through `/admin/community/cohorts`.
+  The screen calls the same real `GET /admin/community/cohorts/quality` and
+  `POST /admin/community/cohorts/generate` endpoints, allows `minimumSize=2`
+  for staging validation while preserving the backend floor, and does not
+  create fake, mock, synthetic, or seeded cohort data. A visible listener cohort
+  still requires at least two real opted-in listeners sharing a safe signal
+  such as catalog genre, AI DJ listening signal, artist affinity, campaign
+  support, collector activity, or coarse city-scene interest.
 
 Feature-complete delivery map:
 

@@ -1535,6 +1535,105 @@ describe('API Client', () => {
       expect(mockFetch.mock.calls[2][0]).toBe('http://test-api:3000/community/cohorts/cohort%201/hide');
       expect(mockFetch.mock.calls.every(([, opts]) => opts.method === 'POST')).toBe(true);
     });
+
+    it('fetches aggregate admin cohort quality without cache', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            schemaVersion: 'community-cohort-quality/v1',
+            generatedAt: '2026-06-03T08:00:00.000Z',
+            cohorts: {
+              total: 1,
+              visibleNow: 0,
+              belowThreshold: 1,
+              byStatus: { archived: 1 },
+              byType: { taste: 1 },
+              generated: {
+                total: 1,
+                visibleNow: 0,
+                belowThreshold: 1,
+                byStatus: { archived: 1 },
+                byType: { taste: 1 },
+              },
+            },
+            memberships: {
+              total: 1,
+              stale: 0,
+              byStatus: { suggested: 1 },
+              disabledConsent: { total: 0, byType: {} },
+            },
+            actions: {
+              total: 0,
+              byEvent: [],
+              source: 'analytics_event_ledger',
+            },
+            reasonCodes: {
+              limit: 12,
+              total: 1,
+              summaries: [],
+            },
+            privacy: {
+              aggregateOnly: true,
+              noListenerIdentifiers: true,
+              noWalletAddresses: true,
+              noRawListeningHistory: true,
+              noFineLocation: true,
+              reasonCodesAreBounded: true,
+              memberCountsAreBucketed: true,
+            },
+          }),
+      });
+
+      await api.getCommunityCohortQuality('admin-token');
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/admin/community/cohorts/quality');
+      expect(opts.cache).toBe('no-store');
+      expect(opts.headers.get('Authorization')).toBe('Bearer admin-token');
+    });
+
+    it('posts real cohort generation with a configurable privacy floor', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            schemaVersion: 'community-cohort-generation/v1',
+            generatedAt: '2026-06-03T08:00:00.000Z',
+            summary: {
+              candidateCohorts: 2,
+              cohortsMaterialized: 2,
+              cohortsReconciled: 2,
+              visibleCohorts: 1,
+              cohortsActivated: 1,
+              cohortsArchived: 1,
+              cohortsExpired: 0,
+              membershipsCreated: 2,
+              membershipsPreserved: 0,
+              hiddenMembershipsPreserved: 0,
+              staleMembershipsMarked: 0,
+              staleMembershipsRestored: 0,
+            },
+            cohorts: [],
+            privacy: {
+              minimumSizeEnforced: true,
+              consentGated: true,
+              aggregateCountsOnly: true,
+              otherListenerIdentities: 'redacted',
+            },
+          }),
+      });
+
+      await api.generateCommunityCohorts('admin-token', { minimumSize: 2 });
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/admin/community/cohorts/generate');
+      expect(opts.method).toBe('POST');
+      expect(opts.headers.get('Authorization')).toBe('Bearer admin-token');
+      expect(opts.body).toBe(JSON.stringify({ minimumSize: 2 }));
+    });
   });
 
   describe('artist community rooms', () => {
