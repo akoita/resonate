@@ -7,6 +7,7 @@ import {
   CommunityCohortGenerationRequest,
   CommunityCohortGenerationService,
 } from "../community/community_cohort_generation.service";
+import { CommunityCohortQualityService } from "../community/community_cohort_quality.service";
 
 const prisma = new PrismaClient();
 
@@ -19,6 +20,7 @@ export class MaintenanceService {
     private readonly analyticsWarehouseLoaderService: AnalyticsWarehouseLoaderService,
     private readonly analyticsPipelineObservabilityService: AnalyticsPipelineObservabilityService,
     private readonly communityCohortGenerationService: CommunityCohortGenerationService,
+    private readonly communityCohortQualityService: CommunityCohortQualityService,
   ) {}
 
   async runRetentionCleanup() {
@@ -54,6 +56,10 @@ export class MaintenanceService {
 
   async generateCommunityCohorts(request: CommunityCohortGenerationRequest) {
     return this.communityCohortGenerationService.generateCohorts(request);
+  }
+
+  async getCommunityCohortQuality() {
+    return this.communityCohortQualityService.getQualityReport();
   }
 
   async wipeReleases() {

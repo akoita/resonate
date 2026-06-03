@@ -451,7 +451,16 @@ GET    /community/cohorts/suggestions
 POST   /community/cohorts/:cohortId/join
 POST   /community/cohorts/:cohortId/leave
 POST   /community/cohorts/:cohortId/hide
+POST   /admin/community/cohorts/generate
+GET    /admin/community/cohorts/quality
 ```
+
+`GET /admin/community/cohorts/quality` returns aggregate operational quality
+signals only: lifecycle counts, stale membership counts, disabled-consent
+filtering counts, cohort action-event counts, cohort-type distribution, and
+bounded reason-code summaries with member counts bucketed instead of exact. It
+must not include listener IDs, wallets, raw listening histories, purchase
+addresses, or fine location.
 
 ## Analytics Events
 

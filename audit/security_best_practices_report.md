@@ -1,5 +1,59 @@
 # Security Best Practices Report
 
+## Community Cohort Operator Quality Analytics - 2026-06-03
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/community/community_cohort_quality.service.ts`
+- `backend/src/modules/community/community.module.ts`
+- `backend/src/modules/maintenance/maintenance.controller.ts`
+- `backend/src/modules/maintenance/maintenance.service.ts`
+- `backend/src/tests/community_cohort_quality.integration.spec.ts`
+- `backend/src/tests/maintenance.controller.http.spec.ts`
+- `docs/features/*`
+- `docs/architecture/listener_community_network.md`
+
+### Executive Summary
+
+Issue #1064 adds an admin-only aggregate quality report for taste/community
+cohorts. The scoped review found no Critical or High findings: the endpoint is
+JWT and admin-role guarded through the existing maintenance controller, uses
+Prisma structured aggregate/read queries only, does not introduce writes or
+external calls, and returns operational counts without listener identifiers,
+wallet addresses, raw listening history, purchase addresses, or fine location.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- The report exposes cohort lifecycle, membership status, stale membership,
+  disabled-consent, action-event, cohort-type, and reason-code health as
+  aggregate metrics.
+- Reason-code summaries are bounded to a small operator list and use member
+  count buckets instead of exact visible listener counts.
+- Disabled-consent filtering is counted from current visibility settings but
+  never returns affected user IDs.
+- Analytics action counts come from the existing `AnalyticsEvent` ledger for
+  `community.cohort_suggested`, `community.cohort_joined`,
+  `community.cohort_left`, and `community.cohort_hidden`.
+
+### Scans Run
+
+- `rg -n 'password|secret|api_key|private_key' backend/src/modules/community/community_cohort_quality.service.ts backend/src/modules/maintenance/maintenance.controller.ts backend/src/modules/maintenance/maintenance.service.ts backend/src/tests/community_cohort_quality.integration.spec.ts backend/src/tests/maintenance.controller.http.spec.ts`
+- `rg -n 'rawQuery|executeRaw|\\$queryRaw' backend/src/modules/community/community_cohort_quality.service.ts backend/src/modules/maintenance/maintenance.controller.ts backend/src/modules/maintenance/maintenance.service.ts backend/src/tests/community_cohort_quality.integration.spec.ts backend/src/tests/maintenance.controller.http.spec.ts`
+- `rg -n 'JSON\\.parse|eval\\(' backend/src/modules/community/community_cohort_quality.service.ts backend/src/modules/maintenance/maintenance.controller.ts backend/src/modules/maintenance/maintenance.service.ts backend/src/tests/community_cohort_quality.integration.spec.ts backend/src/tests/maintenance.controller.http.spec.ts`
+- Targeted review of admin authorization, aggregate-only response shape,
+  reason-code bounding, member-count bucketing, disabled-consent counting, and
+  analytics event aggregation.
+
 ## Community Cohort Lifecycle Refresh - 2026-06-02
 
 ### Scope Reviewed
