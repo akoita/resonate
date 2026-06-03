@@ -30,13 +30,13 @@ type PanelState =
       onRefresh: () => void;
     };
 
-// Ascending so the segmented control reads as a coherent scale (the privacy
-// floor of 2 first, up to the safer operational sizes). Default is 5.
+// Ascending so the segmented control reads as a coherent scale: the real-data
+// staging validation floor of 2 first, up to safer operational sizes.
 const MINIMUM_SIZE_OPTIONS = [2, 3, 5, 10, 25];
 
 export default function CommunityCohortOperationsPanel(props: PanelState) {
   return (
-    <main className="analytics-container">
+    <main className="analytics-container cohort-operations-container">
       <header className="analytics-header-section">
         <div className="analytics-title-row">
           <div>
@@ -102,7 +102,10 @@ function ReadyPanel({
           <strong>{formatDateTime(quality.generatedAt)}</strong>
         </div>
         <div className="metadata-item">
-          <span className={`metadata-dot ${hasVisibleGeneratedCohort ? "pulsing" : ""}`} aria-hidden="true" />
+          <span
+            className={`metadata-dot ${hasVisibleGeneratedCohort ? "pulsing" : "metadata-dot--muted"}`}
+            aria-hidden="true"
+          />
           <span>Visible generated:</span>
           <strong>{formatNumber(generated.visibleNow)}</strong>
         </div>

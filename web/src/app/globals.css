@@ -12760,6 +12760,10 @@ tr[draggable="true"]:hover {
   animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.cohort-operations-container {
+  padding-bottom: 96px;
+}
+
 .analytics-header-section {
   display: flex;
   flex-direction: column;
@@ -12855,6 +12859,12 @@ tr[draggable="true"]:hover {
   background: var(--r-success);
   display: inline-block;
   box-shadow: 0 0 8px var(--r-success);
+}
+
+.metadata-dot--muted {
+  background: var(--r-on-surface-muted);
+  box-shadow: none;
+  opacity: 0.55;
 }
 
 .metadata-dot.pulsing {
