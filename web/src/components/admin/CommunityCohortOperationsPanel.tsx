@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+import Link from "next/link";
 import type {
   CommunityCohortGenerationResponse,
   CommunityCohortQualityReasonSummary,
@@ -28,7 +30,9 @@ type PanelState =
       onRefresh: () => void;
     };
 
-const MINIMUM_SIZE_OPTIONS = [5, 3, 2, 10, 25];
+// Ascending so the segmented control reads as a coherent scale (the privacy
+// floor of 2 first, up to the safer operational sizes). Default is 5.
+const MINIMUM_SIZE_OPTIONS = [2, 3, 5, 10, 25];
 
 export default function CommunityCohortOperationsPanel(props: PanelState) {
   return (
@@ -98,7 +102,7 @@ function ReadyPanel({
           <strong>{formatDateTime(quality.generatedAt)}</strong>
         </div>
         <div className="metadata-item">
-          <span className={`metadata-dot ${hasVisibleGeneratedCohort ? "pulsing" : ""}`} />
+          <span className={`metadata-dot ${hasVisibleGeneratedCohort ? "pulsing" : ""}`} aria-hidden="true" />
           <span>Visible generated:</span>
           <strong>{formatNumber(generated.visibleNow)}</strong>
         </div>
@@ -113,10 +117,10 @@ function ReadyPanel({
       </div>
 
       <section className="kpi-row" aria-label="Community cohort quality summary">
-        <Kpi label="Generated cohorts" value={formatNumber(generated.total)} detail={`${formatNumber(generated.visibleNow)} visible now`} />
-        <Kpi label="Below threshold" value={formatNumber(generated.belowThreshold)} detail={`${formatNumber(quality.cohorts.belowThreshold)} total cohorts`} />
-        <Kpi label="Stale memberships" value={formatNumber(quality.memberships.stale)} detail={`${formatNumber(quality.memberships.total)} memberships`} />
-        <Kpi label="Consent filtered" value={formatNumber(quality.memberships.disabledConsent.total)} detail="No listener identities exposed" />
+        <Kpi icon={ICONS.cohorts} label="Generated cohorts" value={formatNumber(generated.total)} detail={`${formatNumber(generated.visibleNow)} visible now`} />
+        <Kpi icon={ICONS.below} label="Below threshold" value={formatNumber(generated.belowThreshold)} detail={`${formatNumber(quality.cohorts.belowThreshold)} across all types`} />
+        <Kpi icon={ICONS.stale} label="Stale memberships" value={formatNumber(quality.memberships.stale)} detail={`of ${formatNumber(quality.memberships.total)} memberships`} />
+        <Kpi icon={ICONS.consent} label="Consent filtered" value={formatNumber(quality.memberships.disabledConsent.total)} detail="No listener identities exposed" />
       </section>
 
       <section className="premium-table-wrapper">
@@ -127,8 +131,22 @@ function ReadyPanel({
               Uses real opted-in listener signals only. A size of 2 is useful for staging validation; higher values are safer for normal operation.
             </p>
           </div>
-          <button type="button" className="wallet-connect-btn" onClick={onGenerate} disabled={isGenerating}>
-            {isGenerating ? "Generating..." : `Generate at ${minimumSize}+`}
+          <button
+            type="button"
+            className="wallet-connect-btn"
+            onClick={onGenerate}
+            disabled={isGenerating}
+            aria-busy={isGenerating}
+            style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}
+          >
+            {isGenerating ? (
+              <>
+                <span className="aid-spinner" aria-hidden="true" />
+                Generating...
+              </>
+            ) : (
+              `Generate at ${minimumSize}+`
+            )}
           </button>
         </div>
         {generateError ? (
@@ -154,12 +172,14 @@ function ReadyPanel({
         {hasVisibleGeneratedCohort ? (
           <div className="glass-metadata-bar" style={{ marginTop: "16px" }}>
             <div className="metadata-item">
-              <span className="metadata-dot pulsing" />
+              <span className="metadata-dot pulsing" aria-hidden="true" />
               <strong>Ready for listener validation</strong>
             </div>
             <div className="metadata-item">
               <span>Open:</span>
-              <strong>/settings &gt; Listener Cohorts</strong>
+              <Link href="/settings" className="cohort-inline-link" style={{ color: "var(--r-primary-soft)", fontWeight: 600 }}>
+                Settings → Listener Cohorts
+              </Link>
             </div>
           </div>
         ) : (
@@ -249,12 +269,24 @@ function ReadinessBlock({ minimumSize, quality }: { minimumSize: number; quality
       style={{
         marginTop: "16px",
         padding: "16px",
-        border: "1px solid rgba(255, 184, 76, 0.22)",
-        borderRadius: "8px",
-        background: "rgba(255, 184, 76, 0.08)",
+        border: "1px solid color-mix(in srgb, var(--r-warning) 28%, transparent)",
+        borderRadius: "var(--r-radius-sm)",
+        background: "color-mix(in srgb, var(--r-warning) 8%, transparent)",
       }}
     >
-      <h3 style={{ margin: 0, fontSize: "16px" }}>No visible generated cohorts yet</h3>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <span
+          aria-hidden="true"
+          style={{ display: "inline-flex", color: "var(--r-warning)", flexShrink: 0 }}
+        >
+          <svg {...svgProps}>
+            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+            <path d="M12 9v4" />
+            <path d="M12 17h.01" />
+          </svg>
+        </span>
+        <h3 style={{ margin: 0, fontSize: "16px" }}>No visible generated cohorts yet</h3>
+      </div>
       <div className="analytics-quality-table" role="table" style={{ marginTop: "16px" }}>
         <ReadinessRow
           label={`${minimumSize}+ real opted-in listeners`}
@@ -343,12 +375,14 @@ function ReasonSummaryTable({ rows }: { rows: CommunityCohortQualityReasonSummar
   );
 }
 
-function Kpi({ label, value, detail }: { label: string; value: string; detail: string }) {
+function Kpi({ icon, label, value, detail }: { icon?: ReactNode; label: string; value: string; detail: string }) {
   return (
     <div className="premium-kpi-card agent-context">
       <div className="kpi-header">
         <span className="kpi-label">{label}</span>
-        <div className="kpi-icon-glow">{label.slice(0, 1)}</div>
+        <div className="kpi-icon-glow" aria-hidden="true">
+          {icon ?? label.slice(0, 1)}
+        </div>
       </div>
       <div className="kpi-value-mono">{value}</div>
       <div className="kpi-subtitle-trend">
@@ -357,6 +391,49 @@ function Kpi({ label, value, detail }: { label: string; value: string; detail: s
     </div>
   );
 }
+
+const svgProps = {
+  width: 18,
+  height: 18,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+};
+
+// Monochrome line icons (inherit the kpi-icon-glow colour via currentColor),
+// one per KPI — clearer and more on-brand than a bare initial letter.
+const ICONS = {
+  cohorts: (
+    <svg {...svgProps}>
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  ),
+  below: (
+    <svg {...svgProps}>
+      <path d="M12 2v14" />
+      <path d="m6 12 6 6 6-6" />
+      <path d="M5 22h14" />
+    </svg>
+  ),
+  stale: (
+    <svg {...svgProps}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  ),
+  consent: (
+    <svg {...svgProps}>
+      <path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7l7-4Z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  ),
+} as const;
 
 function LoadingPanel() {
   return (
