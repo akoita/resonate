@@ -172,10 +172,10 @@ state.
 Cloud Monitoring uptime checks, error-rate alerts, Pub/Sub backlog, and DB CPU.
 Managed by the `observability` Terraform module; Demucs job mode is monitored
 through queue/backlog and job execution logs rather than a resident health
-endpoint. Analytics alerts cover Pub/Sub publish errors, subscription backlog,
-dead-letter forwarding, batch landing/materialization failures, Dataflow
-failures, and Dataflow system lag when the corresponding analytics mode is
-enabled.
+endpoint. Analytics alerts cover Pub/Sub publish errors, active subscription
+backlog, dead-letter forwarding, Dataflow failures, and Dataflow system lag when
+the corresponding analytics mode is enabled. Batch materialization job failure
+alerting is tracked with the batch materializer implementation.
 
 ## Source References
 
