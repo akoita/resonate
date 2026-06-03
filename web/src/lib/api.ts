@@ -2055,6 +2055,16 @@ export type CommunityCohort = {
   updatedAt: string;
 };
 
+export type CommunityCohortDetailSummary = Omit<CommunityCohort, "minimumSize" | "visibleMemberCount">;
+
+export type CommunityCohortDetailAction = {
+  id: string;
+  label: string;
+  description: string;
+  href: string;
+  status: "available" | "coming_soon" | string;
+};
+
 export type CommunityCohortSuggestionsResponse = {
   schemaVersion: "community-cohort-suggestions/v1";
   cohorts: CommunityCohort[];
@@ -2062,6 +2072,28 @@ export type CommunityCohortSuggestionsResponse = {
     minimumSizeEnforced: boolean;
     explanationScope: string;
     otherListenerIdentities: string;
+  };
+};
+
+export type CommunityCohortDetailResponse = {
+  schemaVersion: "community-cohort-detail/v1";
+  cohort: CommunityCohortDetailSummary;
+  context: {
+    signalLabel: string;
+    reasonCode: string;
+    memberCountLabel: string;
+    visibility: string;
+    status: string;
+  };
+  actions: CommunityCohortDetailAction[];
+  redactions: string[];
+  privacy: {
+    minimumSizeEnforced: boolean;
+    memberCountsAreBucketed: boolean;
+    otherListenerIdentities: string;
+    walletAddresses: string;
+    rawListeningHistory: string;
+    visibilityScope: string;
   };
 };
 
@@ -2176,6 +2208,17 @@ export type CommunityCohortGenerationResponse = {
 export async function getCommunityCohortSuggestions(token: string): Promise<CommunityCohortSuggestionsResponse> {
   return apiRequest<CommunityCohortSuggestionsResponse>(
     "/community/cohorts/suggestions",
+    { cache: "no-store" },
+    token,
+  );
+}
+
+export async function getCommunityCohortDetail(
+  token: string,
+  cohortId: string,
+): Promise<CommunityCohortDetailResponse> {
+  return apiRequest<CommunityCohortDetailResponse>(
+    `/community/cohorts/${encodeURIComponent(cohortId)}`,
     { cache: "no-store" },
     token,
   );

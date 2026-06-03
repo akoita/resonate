@@ -249,6 +249,11 @@ Implementation notes:
   `CommunityCohort` and `CommunityCohortMembership` records.
 - `GET /community/cohorts/suggestions` returns only cohorts with an existing
   suggested/joined membership for the authenticated listener.
+- `GET /community/cohorts/:cohortId` returns a detail view only for an
+  authenticated listener with a visible suggested/joined membership in that
+  cohort. The detail payload includes safe context, bucketed member-count copy,
+  privacy redactions, and music-native next actions, but omits exact raw
+  member counts and private listener facts.
 - Taste, artist-affinity, collector, and campaign cohorts require
   `allowTasteMatching`; city-scene cohorts require `allowCityScenes`.
 - Cohorts below `minimumSize`, expired cohorts, archived cohorts, hidden
@@ -257,7 +262,8 @@ Implementation notes:
   returning to users. Payloads do not expose other listener identities, raw
   listening history, wallet data, ownership data, or private location facts.
 - Listeners can join, leave, and hide suggested cohorts. Membership remains
-  off-chain and mutable/deletable.
+  off-chain and mutable/deletable. `/settings` keeps cohort cards and the
+  detail panel in sync when a listener joins, leaves, or hides a cohort.
 - Cohort generation can be triggered by admins through
   `POST /admin/community/cohorts/generate`; lifecycle refresh is implemented
   in #1059.
@@ -283,6 +289,11 @@ Feature-complete delivery map:
 - Listener cohort UI: `implemented` in #1052. Adds `/settings` cohort cards,
   safe explanations, join/leave/hide controls, empty/loading/disabled-consent
   states, API client coverage, and frontend tests.
+- Cohort detail utility: `implemented` in #1069. Adds authenticated cohort
+  detail reads and an in-settings detail panel with safe aggregate context,
+  bucketed member-count copy, music-native next actions, and explicit privacy
+  redactions. Public member lists, cohort rooms, and cohort-driven AI DJ or
+  recommendation context remain follow-up work.
 - Cohort generation worker: `implemented` in #1054. Materializes cohorts from
   safe transactional library/taste, artist-affinity, campaign/show, collector,
   and coarse city-scene signals. The worker uses transactional reads for current

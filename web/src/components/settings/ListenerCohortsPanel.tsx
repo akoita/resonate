@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  getCommunityCohortDetail,
   getCommunityCohortSuggestions,
   getMyCommunityProfile,
   hideCommunityCohort,
   joinCommunityCohort,
   leaveCommunityCohort,
   type CommunityCohort,
+  type CommunityCohortDetailResponse,
   type CommunityCohortSuggestionsResponse,
   type CommunityVisibilitySettings,
 } from "../../lib/api";
@@ -24,10 +26,16 @@ type CohortAction = "join" | "leave" | "hide";
 
 type ListenerCohortsContentProps = {
   suggestions: CommunityCohortSuggestionsResponse | null;
+  selectedCohortId: string | null;
+  detail: CommunityCohortDetailResponse | null;
   loading: boolean;
+  detailLoading: boolean;
+  detailError: string | null;
   consentEnabled: boolean;
   actionId: string | null;
   onRefresh: () => void;
+  onOpenDetail: (cohort: CommunityCohort) => void;
+  onCloseDetail: () => void;
   onJoin: (cohort: CommunityCohort) => void;
   onLeave: (cohort: CommunityCohort) => void;
   onHide: (cohort: CommunityCohort) => void;
@@ -68,7 +76,11 @@ function replaceCohort(cohorts: CommunityCohort[], next: CommunityCohort) {
 export default function ListenerCohortsPanel({ token, addToast }: Props) {
   const [suggestions, setSuggestions] = useState<CommunityCohortSuggestionsResponse | null>(null);
   const [visibility, setVisibility] = useState<CommunityVisibilitySettings | null>(null);
+  const [selectedCohortId, setSelectedCohortId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<CommunityCohortDetailResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
 
   const load = async () => {
@@ -97,6 +109,22 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- token changes are the reload boundary.
   }, [token]);
 
+  const loadDetail = async (cohortId: string) => {
+    if (!token) return;
+    setSelectedCohortId(cohortId);
+    setDetailLoading(true);
+    setDetailError(null);
+    try {
+      const response = await getCommunityCohortDetail(token, cohortId);
+      setDetail(response);
+    } catch {
+      setDetail(null);
+      setDetailError("This cohort is no longer available for your current visibility settings.");
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
   const handleAction = async (action: CohortAction, cohort: CommunityCohort) => {
     if (!token) return;
     setActionId(`${action}:${cohort.id}`);
@@ -104,14 +132,27 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
       if (action === "join") {
         const response = await joinCommunityCohort(token, cohort.id);
         setSuggestions((current) => current ? { ...current, cohorts: replaceCohort(current.cohorts, response.cohort) } : current);
+        if (selectedCohortId === cohort.id) {
+          void loadDetail(cohort.id);
+        }
         addToast({ type: "success", title: "Cohort joined", message: "This listener group is now part of your community surface." });
       } else if (action === "leave") {
         const response = await leaveCommunityCohort(token, cohort.id);
         setSuggestions((current) => current ? { ...current, cohorts: replaceCohort(current.cohorts, response.cohort) } : current);
+        if (selectedCohortId === cohort.id) {
+          setSelectedCohortId(null);
+          setDetail(null);
+          setDetailError(null);
+        }
         addToast({ type: "info", title: "Cohort left", message: "You can rejoin while the cohort remains available." });
       } else {
         await hideCommunityCohort(token, cohort.id);
         setSuggestions((current) => current ? { ...current, cohorts: current.cohorts.filter((item) => item.id !== cohort.id) } : current);
+        if (selectedCohortId === cohort.id) {
+          setSelectedCohortId(null);
+          setDetail(null);
+          setDetailError(null);
+        }
         addToast({ type: "info", title: "Cohort hidden", message: "This suggestion will stay out of your cohort list." });
       }
     } catch {
@@ -126,10 +167,20 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
   return (
     <ListenerCohortsContent
       suggestions={suggestions}
+      selectedCohortId={selectedCohortId}
+      detail={detail}
       loading={loading}
+      detailLoading={detailLoading}
+      detailError={detailError}
       consentEnabled={consentEnabled}
       actionId={actionId}
       onRefresh={load}
+      onOpenDetail={(cohort) => void loadDetail(cohort.id)}
+      onCloseDetail={() => {
+        setSelectedCohortId(null);
+        setDetail(null);
+        setDetailError(null);
+      }}
       onJoin={(cohort) => handleAction("join", cohort)}
       onLeave={(cohort) => handleAction("leave", cohort)}
       onHide={(cohort) => handleAction("hide", cohort)}
@@ -139,10 +190,16 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
 
 export function ListenerCohortsContent({
   suggestions,
+  selectedCohortId,
+  detail,
   loading,
+  detailLoading,
+  detailError,
   consentEnabled,
   actionId,
   onRefresh,
+  onOpenDetail,
+  onCloseDetail,
   onJoin,
   onLeave,
   onHide,
@@ -150,6 +207,10 @@ export function ListenerCohortsContent({
   const cohorts = useMemo(
     () => suggestions?.cohorts.filter((cohort) => cohort.membership.status !== "hidden") ?? [],
     [suggestions],
+  );
+  const selectedCohort = useMemo(
+    () => cohorts.find((cohort) => cohort.id === selectedCohortId) ?? null,
+    [cohorts, selectedCohortId],
   );
 
   return (
@@ -191,12 +252,28 @@ export function ListenerCohortsContent({
               key={cohort.id}
               cohort={cohort}
               actionId={actionId}
+              selected={cohort.id === selectedCohortId}
+              onOpenDetail={onOpenDetail}
               onJoin={onJoin}
               onLeave={onLeave}
               onHide={onHide}
             />
           ))}
         </div>
+      ) : null}
+
+      {consentEnabled && selectedCohortId ? (
+        <ListenerCohortDetailPanel
+          cohort={selectedCohort}
+          detail={detail}
+          loading={detailLoading}
+          error={detailError}
+          actionId={actionId}
+          onClose={onCloseDetail}
+          onJoin={onJoin}
+          onLeave={onLeave}
+          onHide={onHide}
+        />
       ) : null}
     </div>
   );
@@ -205,12 +282,16 @@ export function ListenerCohortsContent({
 function ListenerCohortCard({
   cohort,
   actionId,
+  selected,
+  onOpenDetail,
   onJoin,
   onLeave,
   onHide,
 }: {
   cohort: CommunityCohort;
   actionId: string | null;
+  selected: boolean;
+  onOpenDetail: (cohort: CommunityCohort) => void;
   onJoin: (cohort: CommunityCohort) => void;
   onLeave: (cohort: CommunityCohort) => void;
   onHide: (cohort: CommunityCohort) => void;
@@ -222,7 +303,7 @@ function ListenerCohortCard({
   const isJoined = cohort.membership.status === "joined";
 
   return (
-    <article className={`listener-cohort-card listener-cohort-card--${cohort.membership.status}`}>
+    <article className={`listener-cohort-card listener-cohort-card--${cohort.membership.status}${selected ? " listener-cohort-card--selected" : ""}`}>
       <div className="listener-cohort-card__body">
         <div className="listener-cohort-card__meta">
           <span>{cohortTypeLabel(cohort.cohortType)}</span>
@@ -234,6 +315,9 @@ function ListenerCohortCard({
         <div className="listener-cohort-card__reason">{cohortReasonLabel(cohort)}</div>
       </div>
       <div className="listener-cohort-card__actions">
+        <Button variant="ghost" onClick={() => onOpenDetail(cohort)} disabled={cohortPending}>
+          {selected ? "Viewing" : "Details"}
+        </Button>
         {primaryAction === "join" ? (
           <Button onClick={() => onJoin(cohort)} disabled={cohortPending}>
             {primaryPending ? "Joining..." : cohort.membership.status === "left" ? "Rejoin" : "Join"}
@@ -251,5 +335,126 @@ function ListenerCohortCard({
         ) : null}
       </div>
     </article>
+  );
+}
+
+function ListenerCohortDetailPanel({
+  cohort,
+  detail,
+  loading,
+  error,
+  actionId,
+  onClose,
+  onJoin,
+  onLeave,
+  onHide,
+}: {
+  cohort: CommunityCohort | null;
+  detail: CommunityCohortDetailResponse | null;
+  loading: boolean;
+  error: string | null;
+  actionId: string | null;
+  onClose: () => void;
+  onJoin: (cohort: CommunityCohort) => void;
+  onLeave: (cohort: CommunityCohort) => void;
+  onHide: (cohort: CommunityCohort) => void;
+}) {
+  const primaryAction = cohort ? cohortPrimaryAction(cohort) : null;
+  const cohortPending = cohort ? actionId?.endsWith(`:${cohort.id}`) ?? false : false;
+  const primaryPending = cohort && primaryAction ? actionId === `${primaryAction}:${cohort.id}` : false;
+  const hidePending = cohort ? actionId === `hide:${cohort.id}` : false;
+
+  return (
+    <aside className="listener-cohort-detail" aria-label="Listener cohort detail">
+      <div className="listener-cohort-detail__header">
+        <div>
+          <span className="settings-kicker">Cohort detail</span>
+          <h4>{detail?.cohort.title ?? cohort?.title ?? "Listener cohort"}</h4>
+          <p>{detail?.cohort.safeExplanation ?? "Loading privacy-safe cohort context..."}</p>
+        </div>
+        <Button variant="ghost" onClick={onClose}>Close</Button>
+      </div>
+
+      {loading ? (
+        <div className="listener-cohorts-state">Loading cohort detail...</div>
+      ) : null}
+
+      {!loading && error ? (
+        <div className="listener-cohorts-state listener-cohorts-state--locked">
+          <strong>Cohort detail unavailable</strong>
+          <p>{error}</p>
+        </div>
+      ) : null}
+
+      {!loading && detail ? (
+        <>
+          <div className="listener-cohort-detail__summary">
+            <div>
+              <span>Type</span>
+              <strong>{cohortTypeLabel(detail.cohort.cohortType)}</strong>
+            </div>
+            <div>
+              <span>Signal</span>
+              <strong>{detail.context.signalLabel}</strong>
+            </div>
+            <div>
+              <span>Listeners</span>
+              <strong>{detail.context.memberCountLabel}</strong>
+            </div>
+            <div>
+              <span>Status</span>
+              <strong>{detail.cohort.membership.status}</strong>
+            </div>
+          </div>
+
+          <div className="listener-cohort-detail__actions">
+            <div>
+              <span className="settings-kicker">Next actions</span>
+              <h5>Use this signal</h5>
+            </div>
+            <div className="listener-cohort-detail__action-grid">
+              {detail.actions.map((action) => (
+                <a key={action.id} href={action.href} className="listener-cohort-detail__action">
+                  <strong>{action.label}</strong>
+                  <span>{action.description}</span>
+                </a>
+              ))}
+            </div>
+          </div>
+
+          {cohort ? (
+            <div className="listener-cohort-detail__membership">
+              <span className="settings-kicker">Membership</span>
+              <div className="listener-cohort-detail__membership-actions">
+                {primaryAction === "join" ? (
+                  <Button onClick={() => onJoin(cohort)} disabled={cohortPending}>
+                    {primaryPending ? "Joining..." : cohort.membership.status === "left" ? "Rejoin" : "Join"}
+                  </Button>
+                ) : null}
+                {primaryAction === "leave" ? (
+                  <Button variant="ghost" onClick={() => onLeave(cohort)} disabled={cohortPending}>
+                    {primaryPending ? "Leaving..." : "Leave"}
+                  </Button>
+                ) : null}
+                {cohort.membership.status !== "joined" && cohort.membership.status !== "hidden" ? (
+                  <Button variant="ghost" onClick={() => onHide(cohort)} disabled={cohortPending}>
+                    {hidePending ? "Hiding..." : "Hide"}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="listener-cohort-detail__privacy">
+            <span className="settings-kicker">Privacy boundary</span>
+            <ul>
+              {detail.redactions.map((redaction) => (
+                <li key={redaction}>{redaction}</li>
+              ))}
+            </ul>
+          </div>
+        </>
+      ) : null}
+    </aside>
   );
 }

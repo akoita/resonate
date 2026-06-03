@@ -1,5 +1,60 @@
 # Security Best Practices Report
 
+## Community Cohort Detail Utility - 2026-06-03
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/community/community.controller.ts`
+- `backend/src/modules/community/community_cohort.service.ts`
+- `backend/src/tests/community.controller.http.spec.ts`
+- `backend/src/tests/community_cohort.integration.spec.ts`
+- `web/src/components/settings/ListenerCohortsPanel.tsx`
+- `web/src/lib/api.ts`
+- `docs/features/*`
+- `docs/architecture/listener_community_network.md`
+
+### Executive Summary
+
+Issue #1069 adds an authenticated listener cohort detail read and settings UI.
+The scoped review found no Critical or High findings: the endpoint is JWT
+guarded, reuses the existing membership, consent, lifecycle, expiry, and
+minimum-size gates, and the detail response redacts other listener identities,
+wallet addresses, exact private membership details, and raw listening history.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- `GET /community/cohorts/:cohortId` is protected with
+  `@UseGuards(AuthGuard("jwt"))`.
+- Detail reads call the same `requireActionableMembership` path used by cohort
+  actions, with allowed membership statuses narrowed to `suggested` and
+  `joined`.
+- Hidden, left, archived, expired, below-threshold, and disabled-consent cohorts
+  fail closed; integration tests cover those cases.
+- The detail DTO omits raw `visibleMemberCount` and `minimumSize` fields while
+  returning bucketed member-count copy and explicit privacy redactions.
+- The frontend uses the centralized typed API helper and does not introduce
+  raw HTML rendering, direct token handling, or ad hoc backend URLs.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\\$queryRaw' backend/src/`
+- `rg 'dangerouslySetInnerHTML|innerHTML' web/src/`
+- `rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/`
+- `rg -n '@Controller|@Get|@Post|@Put|@Delete|@Patch|UseGuards|AuthGuard|@Param|@Body|@Query|\\$queryRaw|\\$executeRaw|JSON\\.parse|eval\\(' backend/src/modules/community/community.controller.ts backend/src/modules/community/community_cohort.service.ts`
+- Targeted review of the cohort detail authorization path, consent checks,
+  lifecycle visibility filters, response redaction, and frontend API usage.
+
 ## Community Cohort Operator Quality Analytics - 2026-06-03
 
 ### Scope Reviewed
