@@ -1,6 +1,6 @@
 <svg width="1600" height="1120" viewBox="0 0 1600 1120" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
   <title id="title">Resonate deployment architecture</title>
-  <desc id="desc">A deployment architecture diagram for Resonate showing clients, a global HTTPS edge with managed TLS and Cloud Armor, Cloud Run services, private data services, Pub/Sub Demucs processing, analytics Pub/Sub and Dataflow, BigQuery warehouse layers, x402 settlement, ERC-4337 smart accounts, protocol contracts, and GitHub/Terraform delivery.</desc>
+  <desc id="desc">A deployment architecture diagram for Resonate showing clients, a global HTTPS edge with managed TLS and Cloud Armor, Cloud Run services, private data services, Pub/Sub Demucs processing, selectable analytics streaming or batch execution, BigQuery warehouse layers, x402 settlement, ERC-4337 smart accounts, protocol contracts, and GitHub/Terraform delivery.</desc>
   <defs>
     <linearGradient id="bg" x1="60" y1="20" x2="1540" y2="1090" gradientUnits="userSpaceOnUse">
       <stop stop-color="#F8FBFF"/>
@@ -117,10 +117,10 @@
   <rect x="512" y="734" width="132" height="42" class="analytics"/>
   <text x="532" y="760" class="small">Pub/Sub + DLQ</text>
   <rect x="666" y="734" width="150" height="42" class="analytics"/>
-  <text x="686" y="760" class="small">Dataflow Flex</text>
+  <text x="684" y="760" class="small">Stream / batch</text>
   <rect x="838" y="734" width="175" height="42" class="warehouse"/>
   <text x="858" y="760" class="small">BigQuery warehouse</text>
-  <text x="358" y="794" class="tiny">raw + clean events, facts/views, quarantine</text>
+  <text x="358" y="794" class="tiny">Dataflow streaming or batch landing/materialization</text>
   <text x="358" y="808" class="tiny">artist dashboard reports and agent taste scores</text>
 
   <rect x="330" y="842" width="720" height="132" class="panel"/>
@@ -183,5 +183,5 @@
   <path d="M863 924 C870 924 878 924 885 924" class="blueLine"/>
 
   <rect x="70" y="1030" width="1460" height="54" class="sub"/>
-  <text x="96" y="1062" class="small">Public traffic terminates at the edge; Cloud Run stays behind serverless NEGs. App CI publishes immutable images and analytics templates, while resonate-iac owns Terraform state, IAM, routing, Dataflow launch, alerts, and validation.</text>
+  <text x="96" y="1062" class="small">Public traffic terminates at the edge; Cloud Run stays behind serverless NEGs. App CI publishes immutable images and analytics templates, while resonate-iac owns Terraform state, IAM, routing, analytics mode selection, alerts, and validation.</text>
 </svg>

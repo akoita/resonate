@@ -15,8 +15,9 @@ module diagram. It follows a C4-style container/deployment view:
 - External actors: human users, AI agents, and operators
 - Cloud edge/runtime: DNS, Google-managed TLS, external HTTPS load balancer,
   Cloud Armor, serverless NEGs, Cloud Run frontend/backend/Demucs, Pub/Sub,
-  Dataflow, BigQuery, Cloud SQL, Redis, GCS, Secret Manager, IAM, Artifact
-  Registry, and Monitoring
+  selectable analytics execution with Dataflow streaming or batch BigQuery
+  landing/materialization, BigQuery, Cloud SQL, Redis, GCS, Secret Manager,
+  IAM, Artifact Registry, and Monitoring
 - Delivery control plane: `resonate` CI creates immutable images and
   `resonate-iac` applies Terraform-managed Cloud Run releases
 - Blockchain layer: ERC-4337 bundler, EntryPoint, Kernel smart accounts,
@@ -48,9 +49,15 @@ flowchart LR
   Results --> Backend
 
   Backend --> AnalyticsTopic["Pub/Sub analytics events"]
-  AnalyticsTopic --> AnalyticsSub["Dataflow subscription<br>retry + DLQ"]
+  AnalyticsTopic --> AnalyticsMode{"Analytics execution mode"}
+  AnalyticsMode -->|streaming| AnalyticsSub["Dataflow subscription<br>retry + DLQ"]
   AnalyticsSub --> Dataflow["Analytics Dataflow<br>Flex Template"]
   Dataflow --> BigQuery[("BigQuery analytics warehouse<br>raw, clean, facts, views, quarantine")]
+  AnalyticsMode -->|batch| LandingSub["Pub/Sub BigQuery subscription<br>events_landing"]
+  LandingSub --> Landing[("BigQuery events_landing")]
+  Landing --> BatchMaterializer["Batch materialization<br>Cloud Run Job / Dataform"]
+  Backend --> BatchMaterializer
+  BatchMaterializer --> BigQuery
   BigQuery --> ArtistReports["Artist analytics API<br>BigQuery report source"]
   BigQuery --> AgentTaste["Agent taste scores<br>recommendation signal"]
   ArtistReports --> Frontend
@@ -115,10 +122,23 @@ storage mode. Cloud SQL and Redis are reached through private networking.
 ### Analytics
 
 Versioned product and protocol event envelopes are persisted by the backend and
-can be published to the Terraform-managed analytics Pub/Sub topic. The Apache
-Beam/Dataflow Flex Template validates, dedupes, normalizes, quarantines, and
-writes events into BigQuery `events_raw`, `events_clean`, `analytics_facts`,
-`analytics_views`, and `analytics_quarantine` layers. Those warehouse layers
+can be published to the Terraform-managed analytics Pub/Sub topic. Each
+environment selects an analytics execution mode:
+
+- **Streaming**: the Apache Beam/Dataflow Flex Template validates, dedupes,
+  normalizes, quarantines, and writes events into BigQuery `events_raw`,
+  `events_clean`, `analytics_facts`, `analytics_views`, and
+  `analytics_quarantine` layers. This remains the preferred first-class path
+  when near-real-time analytics and budget allow it.
+- **Batch**: a Pub/Sub BigQuery subscription lands envelopes into
+  `events_landing`, while bounded Cloud Run Job, Dataform, or scheduled
+  BigQuery materialization builds the same warehouse layers from the backend
+  event ledger and/or landing table. This is the cost-sensitive testing path
+  and must stay functionally equivalent to streaming.
+
+Both modes are first-class. New event families, schema changes, privacy and
+retention behavior, quarantine handling, facts, views, and tests must evolve in
+both paths unless a deliberate exception is documented. The warehouse layers
 feed the artist analytics API and the optional agent taste scoring signal.
 
 ### Smart Accounts
@@ -152,9 +172,10 @@ state.
 Cloud Monitoring uptime checks, error-rate alerts, Pub/Sub backlog, and DB CPU.
 Managed by the `observability` Terraform module; Demucs job mode is monitored
 through queue/backlog and job execution logs rather than a resident health
-endpoint. Analytics alerts cover Pub/Sub publish errors, subscription backlog,
-dead-letter forwarding, Dataflow failures, and Dataflow system lag when the
-pipeline is enabled.
+endpoint. Analytics alerts cover Pub/Sub publish errors, active subscription
+backlog, dead-letter forwarding, Dataflow failures, and Dataflow system lag when
+the corresponding analytics mode is enabled. Batch materialization job failure
+alerting is tracked with the batch materializer implementation.
 
 ## Source References
 
