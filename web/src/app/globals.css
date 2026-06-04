@@ -6081,8 +6081,7 @@ a.listener-cohort-detail__action:focus-visible {
   .settings-section-header,
   .listener-cohort-detail__header,
   .listener-cohort-detail__membership,
-  .taste-memory-danger,
-  .artist-community__header {
+  .taste-memory-danger {
     flex-direction: column;
     align-items: stretch;
   }
@@ -6095,9 +6094,7 @@ a.listener-cohort-detail__action:focus-visible {
   .listener-cohort-detail__action-grid,
   .community-profile-hero,
   .community-profile-grid,
-  .community-profile-support__grid,
-  .artist-community__layout,
-  .artist-community-report {
+  .community-profile-support__grid {
     grid-template-columns: 1fr;
   }
 
@@ -9172,6 +9169,46 @@ tr[draggable="true"]:hover {
 .artist-community-report input {
   min-height: 38px;
   padding: 0 var(--space-3);
+}
+
+/*
+ * Responsive overrides for the artist community tab. These must live AFTER the
+ * base rules above: media queries do not add specificity, so an earlier-placed
+ * @media block (e.g. the shared one near the settings styles) is overridden by
+ * these later base declarations and never collapses the layout on mobile.
+ */
+@media (max-width: 720px) {
+  .artist-community__header {
+    flex-direction: column;
+    align-items: stretch;
+    padding: var(--space-4);
+  }
+
+  .artist-community__header-actions {
+    justify-content: flex-start;
+  }
+
+  .artist-community__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .artist-community__rooms,
+  .artist-community__conversation {
+    min-width: 0;
+  }
+
+  .artist-community__conversation {
+    padding: var(--space-4);
+  }
+
+  .artist-community-conversation__header {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .artist-community-report {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .section-header {
