@@ -8,6 +8,7 @@ import {
   analyticsWarehouseTargetFromEnv,
   LocalJsonAnalyticsWarehouseTarget,
   supportedEventVersionsFromEnv,
+  toBigQueryInsertAllJson,
 } from "../modules/analytics/analytics_warehouse_loader";
 
 describe("analytics warehouse loader", () => {
@@ -105,6 +106,32 @@ describe("analytics warehouse loader", () => {
 
     expect(localTarget.describe()).toEqual({ provider: "local_json", location: tempDir });
     expect(bigQueryTarget.describe()).toEqual({ provider: "bigquery_insert_all", location: "analytics-project" });
+  });
+
+  it("serializes BigQuery JSON columns for insertAll", () => {
+    expect(
+      toBigQueryInsertAllJson("eventsRaw", {
+        eventId: "evt-json",
+        payload: { artistId: "artist-1" },
+        sourceRefs: { clientEventId: "client-event-1" },
+        envelope: { eventId: "evt-json", payload: { artistId: "artist-1" } },
+      }),
+    ).toEqual({
+      eventId: "evt-json",
+      payload: JSON.stringify({ artistId: "artist-1" }),
+      sourceRefs: JSON.stringify({ clientEventId: "client-event-1" }),
+      envelope: JSON.stringify({ eventId: "evt-json", payload: { artistId: "artist-1" } }),
+    });
+
+    expect(
+      toBigQueryInsertAllJson("analyticsFacts", {
+        factId: "fact-json",
+        dimensions: { eventName: "playback.completed" },
+      }),
+    ).toEqual({
+      factId: "fact-json",
+      dimensions: JSON.stringify({ eventName: "playback.completed" }),
+    });
   });
 });
 

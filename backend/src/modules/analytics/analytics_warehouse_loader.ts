@@ -206,7 +206,7 @@ export class BigQueryInsertAllAnalyticsWarehouseTarget implements AnalyticsWareh
             ignoreUnknownValues: false,
             rows: chunk.map((row) => ({
               insertId: rowKey(layer.layer)(row),
-              json: row,
+              json: toBigQueryInsertAllJson(layer.layer, row),
             })),
           },
         });
@@ -258,6 +258,32 @@ export function supportedEventVersionsFromEnv(env: NodeJS.ProcessEnv = process.e
     .filter((value) => Number.isInteger(value) && value > 0);
   return versions.length > 0 ? versions : [1];
 }
+
+export function toBigQueryInsertAllJson(
+  layer: AnalyticsWarehouseLayerName,
+  row: Record<string, unknown>,
+): Record<string, unknown> {
+  const jsonFields = bigQueryJsonFieldsByLayer[layer];
+  if (!jsonFields?.length) {
+    return row;
+  }
+
+  const encoded = { ...row };
+  for (const field of jsonFields) {
+    if (field in encoded && encoded[field] !== undefined) {
+      encoded[field] = JSON.stringify(encoded[field]);
+    }
+  }
+  return encoded;
+}
+
+const bigQueryJsonFieldsByLayer: Record<AnalyticsWarehouseLayerName, readonly string[]> = {
+  eventsRaw: ["payload", "sourceRefs", "envelope"],
+  eventsClean: ["payload"],
+  analyticsFacts: ["dimensions"],
+  analyticsViews: [],
+  analyticsQuarantine: ["raw"],
+};
 
 function requestToFilters(request: AnalyticsWarehouseLoadRequest): AnalyticsEventListFilters {
   return {
