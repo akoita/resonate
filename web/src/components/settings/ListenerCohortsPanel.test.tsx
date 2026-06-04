@@ -55,7 +55,7 @@ function detail(overrides: Partial<CommunityCohortDetailResponse> = {}): Communi
       reasonCode: "taste:ambient",
       title: "Ambient night listeners",
       safeExplanation: "A privacy-safe group for listeners exploring ambient releases.",
-      memberCountLabel: "18+ listeners",
+      memberCountLabel: "10+ listeners",
       status: "suggested",
       membership: {
         status: "suggested",
@@ -71,7 +71,7 @@ function detail(overrides: Partial<CommunityCohortDetailResponse> = {}): Communi
     context: {
       signalLabel: "Shared listening signal",
       reasonCode: "taste:ambient",
-      memberCountLabel: "18+ listeners",
+      memberCountLabel: "10+ listeners",
       visibility: "suggested_or_joined_members_only",
       status: "suggested",
     },
@@ -184,6 +184,27 @@ describe("ListenerCohortsPanel", () => {
     expect(html).not.toContain("Hide");
   });
 
+  it("renders left cohorts with rejoin and hide actions", () => {
+    const left = cohort({
+      membership: {
+        status: "left",
+        suggestedAt: "2026-06-01T00:00:00.000Z",
+        joinedAt: "2026-06-01T01:00:00.000Z",
+        leftAt: "2026-06-02T01:00:00.000Z",
+        hiddenAt: null,
+      },
+    });
+    const html = renderToStaticMarkup(
+      <ListenerCohortsContent {...contentProps({
+        suggestions: suggestions([left]),
+      })} />,
+    );
+
+    expect(cohortPrimaryAction(left)).toBe("join");
+    expect(html).toContain("Rejoin");
+    expect(html).toContain("Hide");
+  });
+
   it("shows an empty state when all cohorts are hidden or unavailable", () => {
     const html = renderToStaticMarkup(
       <ListenerCohortsContent {...contentProps({
@@ -224,6 +245,7 @@ describe("ListenerCohortsPanel", () => {
     expect(html).toContain("Cohort detail");
     expect(html).toContain("Browse marketplace");
     expect(html).toContain("href=\"/marketplace\"");
+    expect(html).toContain("10+ listeners");
     expect(html).toContain("Other listener identities are hidden.");
     expect(html).toContain("Wallet addresses and exact private membership details are not exposed.");
     expect(html).not.toContain("visibleMemberCount");
@@ -241,5 +263,19 @@ describe("ListenerCohortsPanel", () => {
 
     expect(html).toContain("Cohort detail unavailable");
     expect(html).toContain("This cohort is no longer available");
+  });
+
+  it("renders detail loading state before aggregate context is available", () => {
+    const html = renderToStaticMarkup(
+      <ListenerCohortsContent {...contentProps({
+        suggestions: suggestions([cohort()]),
+        selectedCohortId: "cohort-1",
+        detailLoading: true,
+      })} />,
+    );
+
+    expect(html).toContain("Loading cohort detail...");
+    expect(html).toContain("Loading privacy-safe cohort context...");
+    expect(html).not.toContain("Browse marketplace");
   });
 });

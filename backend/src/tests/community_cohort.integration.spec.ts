@@ -123,12 +123,12 @@ describe("CommunityCohortService integration", () => {
         cohortType: "taste",
         reasonCode: "taste:detail",
         safeExplanation: "Listeners in this group share a safe listening pattern.",
-        memberCountLabel: "9+ listeners",
+        memberCountLabel: "5+ listeners",
         membership: expect.objectContaining({ status: "suggested" }),
       },
       context: {
         signalLabel: "Shared listening signal",
-        memberCountLabel: "9+ listeners",
+        memberCountLabel: "5+ listeners",
         visibility: "suggested_or_joined_members_only",
       },
       privacy: {
@@ -141,6 +141,7 @@ describe("CommunityCohortService integration", () => {
     });
     expect(detail.cohort).not.toHaveProperty("visibleMemberCount");
     expect(detail.cohort).not.toHaveProperty("minimumSize");
+    expect(JSON.stringify(detail)).not.toContain("9+ listeners");
     expect(JSON.stringify(detail)).not.toContain(optedInUserId);
     expect(JSON.stringify(detail)).not.toContain("@test.resonate");
     expect(JSON.stringify(detail)).not.toContain("0x");
