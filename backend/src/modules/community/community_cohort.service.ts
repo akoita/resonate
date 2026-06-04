@@ -226,7 +226,7 @@ function cohortDetailResponse(cohort: CommunityCohort, membership: CommunityCoho
     context: {
       signalLabel: signalLabelForType(cohort.cohortType),
       reasonCode: safeReasonCode(cohort.reasonCode),
-      memberCountLabel: bucketedMemberCountLabel(cohort.visibleMemberCount, cohort.minimumSize),
+      memberCountLabel: bucketedMemberCountLabel(cohort.visibleMemberCount),
       visibility: "suggested_or_joined_members_only",
       status: cohort.status,
     },
@@ -269,7 +269,7 @@ function cohortDetailDto(cohort: CommunityCohort, membership: CommunityCohortMem
     reasonCode: safeReasonCode(cohort.reasonCode),
     title: cohort.title,
     safeExplanation: safeExplanation(cohort.safeExplanation),
-    memberCountLabel: bucketedMemberCountLabel(cohort.visibleMemberCount, cohort.minimumSize),
+    memberCountLabel: bucketedMemberCountLabel(cohort.visibleMemberCount),
     status: cohort.status,
     membership: membershipDto(membership),
     expiresAt: cohort.expiresAt?.toISOString() ?? null,
@@ -335,10 +335,10 @@ function signalLabelForType(cohortType: string) {
   return labels[normalizeCohortType(cohortType)] ?? "Community signal";
 }
 
-function bucketedMemberCountLabel(visibleMemberCount: number, minimumSize: number) {
-  const floor = Math.max(1, minimumSize);
+function bucketedMemberCountLabel(visibleMemberCount: number) {
   const buckets = [5, 10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000];
-  const eligibleBuckets = buckets.filter((bucket) => bucket >= floor && bucket <= visibleMemberCount);
-  const bucket = eligibleBuckets[eligibleBuckets.length - 1] ?? floor;
+  const eligibleBuckets = buckets.filter((bucket) => bucket <= visibleMemberCount);
+  const bucket = eligibleBuckets[eligibleBuckets.length - 1];
+  if (!bucket) return "Small listener group";
   return `${bucket.toLocaleString("en-US")}+ listeners`;
 }

@@ -147,6 +147,23 @@ describe("CommunityCohortService integration", () => {
     expect(JSON.stringify(detail)).not.toContain("0x");
   });
 
+  it("uses coarse public member-count buckets for nonstandard privacy floors", async () => {
+    const cohort = await createCohort("detail_bucketed", {
+      cohortType: "taste",
+      reasonCode: "taste:bucketed",
+      minimumSize: 37,
+      visibleMemberCount: 40,
+    });
+    await addMembership(cohort.id, optedInUserId);
+
+    const detail = await service.getCohortDetail(optedInUserId, cohort.id);
+
+    expect(detail.cohort.memberCountLabel).toBe("25+ listeners");
+    expect(detail.context.memberCountLabel).toBe("25+ listeners");
+    expect(JSON.stringify(detail)).not.toContain("37+ listeners");
+    expect(JSON.stringify(detail)).not.toContain("40+ listeners");
+  });
+
   it("does not return cohort detail when consent or membership state is not visible", async () => {
     const cohort = await createCohort("detail_private", {
       cohortType: "taste",

@@ -6,6 +6,7 @@ import {
   cohortPrimaryAction,
   cohortReasonLabel,
   cohortTypeLabel,
+  hasVisibleSelectedCohort,
   ListenerCohortsContent,
 } from "./ListenerCohortsPanel";
 
@@ -231,6 +232,23 @@ describe("ListenerCohortsPanel", () => {
     expect(cohortTypeLabel("city_scene")).toBe("City scene");
     expect(cohortTypeLabel("unknown")).toBe("Community");
     expect(cohortReasonLabel(cohort({ cohortType: "campaign" }))).toBe("Campaign community signal");
+  });
+
+  it("detects when a selected cohort is no longer visible after refresh", () => {
+    const hidden = cohort({
+      membership: {
+        status: "hidden",
+        suggestedAt: "2026-06-01T00:00:00.000Z",
+        joinedAt: null,
+        leftAt: null,
+        hiddenAt: "2026-06-01T01:00:00.000Z",
+      },
+    });
+
+    expect(hasVisibleSelectedCohort([cohort()], "cohort-1")).toBe(true);
+    expect(hasVisibleSelectedCohort([cohort({ id: "cohort-2" })], "cohort-1")).toBe(false);
+    expect(hasVisibleSelectedCohort([hidden], "cohort-1")).toBe(false);
+    expect(hasVisibleSelectedCohort([], null)).toBe(true);
   });
 
   it("renders selected cohort detail with music action and redaction copy", () => {

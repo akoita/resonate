@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getCommunityCohortDetail,
   getCommunityCohortSuggestions,
@@ -73,6 +73,11 @@ function replaceCohort(cohorts: CommunityCohort[], next: CommunityCohort) {
   return cohorts.map((cohort) => (cohort.id === next.id ? next : cohort));
 }
 
+export function hasVisibleSelectedCohort(cohorts: CommunityCohort[], selectedCohortId: string | null) {
+  if (!selectedCohortId) return true;
+  return cohorts.some((cohort) => cohort.id === selectedCohortId && cohort.membership.status !== "hidden");
+}
+
 export default function ListenerCohortsPanel({ token, addToast }: Props) {
   const [suggestions, setSuggestions] = useState<CommunityCohortSuggestionsResponse | null>(null);
   const [visibility, setVisibility] = useState<CommunityVisibilitySettings | null>(null);
@@ -82,6 +87,17 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
+  const selectedCohortIdRef = useRef<string | null>(null);
+  const detailRequestIdRef = useRef(0);
+
+  const clearDetailSelection = () => {
+    detailRequestIdRef.current += 1;
+    selectedCohortIdRef.current = null;
+    setSelectedCohortId(null);
+    setDetail(null);
+    setDetailError(null);
+    setDetailLoading(false);
+  };
 
   const load = async () => {
     if (!token) return;
@@ -91,8 +107,12 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
         getCommunityCohortSuggestions(token),
         getMyCommunityProfile(token),
       ]);
+      const nextConsentEnabled = Boolean(profile.visibility.allowTasteMatching || profile.visibility.allowCityScenes);
       setSuggestions(nextSuggestions);
       setVisibility(profile.visibility);
+      if (!nextConsentEnabled || !hasVisibleSelectedCohort(nextSuggestions.cohorts, selectedCohortIdRef.current)) {
+        clearDetailSelection();
+      }
     } catch {
       addToast({
         type: "error",
@@ -111,17 +131,25 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
 
   const loadDetail = async (cohortId: string) => {
     if (!token) return;
+    const requestId = detailRequestIdRef.current + 1;
+    detailRequestIdRef.current = requestId;
+    selectedCohortIdRef.current = cohortId;
     setSelectedCohortId(cohortId);
+    setDetail(null);
     setDetailLoading(true);
     setDetailError(null);
     try {
       const response = await getCommunityCohortDetail(token, cohortId);
+      if (detailRequestIdRef.current !== requestId) return;
       setDetail(response);
     } catch {
+      if (detailRequestIdRef.current !== requestId) return;
       setDetail(null);
       setDetailError("This cohort is no longer available for your current visibility settings.");
     } finally {
-      setDetailLoading(false);
+      if (detailRequestIdRef.current === requestId) {
+        setDetailLoading(false);
+      }
     }
   };
 
@@ -140,18 +168,14 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
         const response = await leaveCommunityCohort(token, cohort.id);
         setSuggestions((current) => current ? { ...current, cohorts: replaceCohort(current.cohorts, response.cohort) } : current);
         if (selectedCohortId === cohort.id) {
-          setSelectedCohortId(null);
-          setDetail(null);
-          setDetailError(null);
+          clearDetailSelection();
         }
         addToast({ type: "info", title: "Cohort left", message: "You can rejoin while the cohort remains available." });
       } else {
         await hideCommunityCohort(token, cohort.id);
         setSuggestions((current) => current ? { ...current, cohorts: current.cohorts.filter((item) => item.id !== cohort.id) } : current);
         if (selectedCohortId === cohort.id) {
-          setSelectedCohortId(null);
-          setDetail(null);
-          setDetailError(null);
+          clearDetailSelection();
         }
         addToast({ type: "info", title: "Cohort hidden", message: "This suggestion will stay out of your cohort list." });
       }
@@ -176,11 +200,7 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
       actionId={actionId}
       onRefresh={load}
       onOpenDetail={(cohort) => void loadDetail(cohort.id)}
-      onCloseDetail={() => {
-        setSelectedCohortId(null);
-        setDetail(null);
-        setDetailError(null);
-      }}
+      onCloseDetail={clearDetailSelection}
       onJoin={(cohort) => handleAction("join", cohort)}
       onLeave={(cohort) => handleAction("leave", cohort)}
       onHide={(cohort) => handleAction("hide", cohort)}
