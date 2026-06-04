@@ -13581,6 +13581,29 @@ tr[draggable="true"]:hover {
   color: var(--r-on-surface-muted);
 }
 
+/*
+ * Premium table responsive behaviour. On narrow screens the four columns plus
+ * the generous cell/wrapper padding exceed the card width, so the last (Status)
+ * column overflowed and clipped against the card edge. Tighten the padding and
+ * let the wrapper scroll horizontally as a safety net so nothing is cut off.
+ */
+@media (max-width: 720px) {
+  .premium-table-wrapper {
+    padding: 16px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .premium-table th,
+  .premium-table td {
+    padding: var(--space-3) var(--space-2);
+  }
+
+  .status-capsule-badge {
+    white-space: nowrap;
+  }
+}
+
 /* Content Protection Route Decisions section */
 .rights-decisions-grid {
   display: grid;
