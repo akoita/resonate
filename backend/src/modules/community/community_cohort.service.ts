@@ -8,6 +8,7 @@ const SOCIAL_TASTE_COHORT_TYPES = ["taste", "artist_affinity", "collector", "cam
 const SUGGESTABLE_COHORT_STATUSES = ["suggested", "active"] as const;
 const SUGGESTABLE_MEMBERSHIP_STATUSES = ["suggested", "joined"] as const;
 const JOINABLE_MEMBERSHIP_STATUSES = ["suggested", "left"] as const;
+const DETAIL_MEMBERSHIP_STATUSES = ["suggested", "joined"] as const;
 const VISIBLE_MEMBER_STATUSES = ["suggested", "joined"] as const;
 const UNSAFE_EXPLANATION_PATTERNS = [
   /0x[a-f0-9]{40}/i,
@@ -90,6 +91,11 @@ export class CommunityCohortService {
     });
     this.publish("community.cohort_joined", userId, cohort, updated);
     return cohortMembershipResponse(cohort, updated);
+  }
+
+  async getCohortDetail(userId: string, cohortId: string) {
+    const { cohort, membership } = await this.requireActionableMembership(userId, cohortId, DETAIL_MEMBERSHIP_STATUSES);
+    return cohortDetailResponse(cohort, membership);
   }
 
   async leaveCohort(userId: string, cohortId: string) {
@@ -213,6 +219,65 @@ function cohortMembershipResponse(cohort: CommunityCohort, membership: Community
   };
 }
 
+function cohortDetailResponse(cohort: CommunityCohort, membership: CommunityCohortMembership) {
+  return {
+    schemaVersion: "community-cohort-detail/v1",
+    cohort: cohortDetailDto(cohort, membership),
+    context: {
+      signalLabel: signalLabelForType(cohort.cohortType),
+      reasonCode: safeReasonCode(cohort.reasonCode),
+      memberCountLabel: bucketedMemberCountLabel(cohort.visibleMemberCount),
+      visibility: "suggested_or_joined_members_only",
+      status: cohort.status,
+    },
+    actions: [
+      {
+        id: "browse_marketplace",
+        label: "Browse marketplace",
+        description: "Explore stems and releases while this cohort context is fresh.",
+        href: "/marketplace",
+        status: "available",
+      },
+      {
+        id: "open_ai_dj",
+        label: "Open AI DJ",
+        description: "Start a listening session and let future cohort-aware discovery build from here.",
+        href: "/agent",
+        status: "available",
+      },
+    ],
+    redactions: [
+      "Other listener identities are hidden.",
+      "Wallet addresses and exact private membership details are not exposed.",
+      "Raw listening history is never shown on cohort detail.",
+    ],
+    privacy: {
+      minimumSizeEnforced: true,
+      memberCountsAreBucketed: true,
+      otherListenerIdentities: "redacted",
+      walletAddresses: "redacted",
+      rawListeningHistory: "redacted",
+      visibilityScope: "authenticated_visible_membership",
+    },
+  };
+}
+
+function cohortDetailDto(cohort: CommunityCohort, membership: CommunityCohortMembership) {
+  return {
+    id: cohort.id,
+    cohortType: normalizeCohortType(cohort.cohortType),
+    reasonCode: safeReasonCode(cohort.reasonCode),
+    title: cohort.title,
+    safeExplanation: safeExplanation(cohort.safeExplanation),
+    memberCountLabel: bucketedMemberCountLabel(cohort.visibleMemberCount),
+    status: cohort.status,
+    membership: membershipDto(membership),
+    expiresAt: cohort.expiresAt?.toISOString() ?? null,
+    createdAt: cohort.createdAt.toISOString(),
+    updatedAt: cohort.updatedAt.toISOString(),
+  };
+}
+
 function membershipDto(membership: CommunityCohortMembership) {
   return {
     status: membership.status,
@@ -257,4 +322,23 @@ function safeExplanation(explanation: string) {
   return UNSAFE_EXPLANATION_PATTERNS.some((pattern) => pattern.test(trimmed))
     ? GENERIC_EXPLANATION
     : trimmed;
+}
+
+function signalLabelForType(cohortType: string) {
+  const labels: Record<string, string> = {
+    taste: "Shared listening signal",
+    artist_affinity: "Artist affinity signal",
+    city_scene: "Scene discovery signal",
+    collector: "Collector signal",
+    campaign: "Campaign community signal",
+  };
+  return labels[normalizeCohortType(cohortType)] ?? "Community signal";
+}
+
+function bucketedMemberCountLabel(visibleMemberCount: number) {
+  const buckets = [5, 10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000];
+  const eligibleBuckets = buckets.filter((bucket) => bucket <= visibleMemberCount);
+  const bucket = eligibleBuckets[eligibleBuckets.length - 1];
+  if (!bucket) return "Small listener group";
+  return `${bucket.toLocaleString("en-US")}+ listeners`;
 }

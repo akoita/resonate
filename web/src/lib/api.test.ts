@@ -1484,6 +1484,60 @@ describe('API Client', () => {
       expect(opts.headers.get('Authorization')).toBe('Bearer listener-token');
     });
 
+    it('fetches authenticated cohort detail without cache', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            schemaVersion: 'community-cohort-detail/v1',
+            cohort: {
+              id: 'cohort 1',
+              cohortType: 'taste',
+              reasonCode: 'taste:ambient',
+              title: 'Ambient listeners',
+              safeExplanation: 'A privacy-safe cohort.',
+              memberCountLabel: '8+ listeners',
+              status: 'suggested',
+              membership: {
+                status: 'suggested',
+                suggestedAt: '2026-06-01T00:00:00.000Z',
+                joinedAt: null,
+                leftAt: null,
+                hiddenAt: null,
+              },
+              expiresAt: null,
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+            },
+            context: {
+              signalLabel: 'Shared listening signal',
+              reasonCode: 'taste:ambient',
+              memberCountLabel: '8+ listeners',
+              visibility: 'suggested_or_joined_members_only',
+              status: 'suggested',
+            },
+            actions: [],
+            redactions: [],
+            privacy: {
+              minimumSizeEnforced: true,
+              memberCountsAreBucketed: true,
+              otherListenerIdentities: 'redacted',
+              walletAddresses: 'redacted',
+              rawListeningHistory: 'redacted',
+              visibilityScope: 'authenticated_visible_membership',
+            },
+          }),
+      });
+
+      await api.getCommunityCohortDetail('listener-token', 'cohort 1');
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/community/cohorts/cohort%201');
+      expect(opts.cache).toBe('no-store');
+      expect(opts.headers.get('Authorization')).toBe('Bearer listener-token');
+    });
+
     it('posts cohort membership actions to encoded endpoints', async () => {
       const response = {
         schemaVersion: 'community-cohort-membership/v1',

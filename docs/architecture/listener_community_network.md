@@ -102,6 +102,8 @@ Responsibilities:
 - serve opt-in taste cohorts;
 - apply minimum-size and expiry rules;
 - return safe match explanations;
+- serve authenticated cohort detail for listeners with a visible suggested or
+  joined membership;
 - avoid exposing private listening history or private user facts.
 
 ### `CommunityCohortGenerationService`
@@ -448,12 +450,23 @@ POST   /shows/campaigns/:campaignId/community/city-interest/join
 
 ```text
 GET    /community/cohorts/suggestions
+GET    /community/cohorts/:cohortId
 POST   /community/cohorts/:cohortId/join
 POST   /community/cohorts/:cohortId/leave
 POST   /community/cohorts/:cohortId/hide
 POST   /admin/community/cohorts/generate
 GET    /admin/community/cohorts/quality
 ```
+
+`GET /community/cohorts/:cohortId` is an authenticated listener detail read. It
+must use the same consent, lifecycle, threshold, expiry, and membership
+visibility gates as cohort suggestions, and it must fail closed for hidden,
+left, stale, archived, expired, below-threshold, or disabled-consent cohorts.
+The response is allowed to include cohort type, safe reason, safe explanation,
+bucketed member-count copy, membership state, privacy redactions, and
+music-native next actions. It must not include listener IDs, wallet addresses,
+exact hidden/private membership counts, raw listening history, fine location,
+or member lists.
 
 `GET /admin/community/cohorts/quality` returns aggregate operational quality
 signals only: lifecycle counts, stale membership counts, disabled-consent

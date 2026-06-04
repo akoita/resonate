@@ -54,6 +54,7 @@ const mockCommunityCohortService = {
     schemaVersion: "community-cohort-suggestions/v1",
     cohorts: [],
   }),
+  getCohortDetail: jest.fn().mockResolvedValue({ schemaVersion: "community-cohort-detail/v1" }),
   joinCohort: jest.fn().mockResolvedValue({ schemaVersion: "community-cohort-membership/v1" }),
   leaveCohort: jest.fn().mockResolvedValue({ schemaVersion: "community-cohort-membership/v1" }),
   hideCohort: jest.fn().mockResolvedValue({ schemaVersion: "community-cohort-membership/v1" }),
@@ -190,6 +191,13 @@ describe("CommunityController (http)", () => {
         expect(res.body.schemaVersion).toBe("community-cohort-suggestions/v1");
       });
     await request(app.getHttpServer())
+      .get("/community/cohorts/cohort-1")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.schemaVersion).toBe("community-cohort-detail/v1");
+      });
+    await request(app.getHttpServer())
       .post("/community/cohorts/cohort-1/join")
       .set("Authorization", `Bearer ${token}`)
       .expect(201);
@@ -203,6 +211,7 @@ describe("CommunityController (http)", () => {
       .expect(201);
 
     expect(mockCommunityCohortService.listSuggestions).toHaveBeenCalledWith("user-1");
+    expect(mockCommunityCohortService.getCohortDetail).toHaveBeenCalledWith("user-1", "cohort-1");
     expect(mockCommunityCohortService.joinCohort).toHaveBeenCalledWith("user-1", "cohort-1");
     expect(mockCommunityCohortService.leaveCohort).toHaveBeenCalledWith("user-1", "cohort-1");
     expect(mockCommunityCohortService.hideCohort).toHaveBeenCalledWith("user-1", "cohort-1");

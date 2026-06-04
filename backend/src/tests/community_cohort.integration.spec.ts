@@ -104,6 +104,80 @@ describe("CommunityCohortService integration", () => {
     ]));
   });
 
+  it("returns privacy-safe detail only for visible cohort memberships", async () => {
+    const cohort = await createCohort("detail_visible", {
+      cohortType: "taste",
+      reasonCode: "taste:detail",
+      safeExplanation: "Listeners in this group share a safe listening pattern.",
+      minimumSize: 5,
+      visibleMemberCount: 9,
+    });
+    await addMembership(cohort.id, optedInUserId);
+
+    const detail = await service.getCohortDetail(optedInUserId, cohort.id);
+
+    expect(detail).toMatchObject({
+      schemaVersion: "community-cohort-detail/v1",
+      cohort: {
+        id: cohort.id,
+        cohortType: "taste",
+        reasonCode: "taste:detail",
+        safeExplanation: "Listeners in this group share a safe listening pattern.",
+        memberCountLabel: "5+ listeners",
+        membership: expect.objectContaining({ status: "suggested" }),
+      },
+      context: {
+        signalLabel: "Shared listening signal",
+        memberCountLabel: "5+ listeners",
+        visibility: "suggested_or_joined_members_only",
+      },
+      privacy: {
+        minimumSizeEnforced: true,
+        memberCountsAreBucketed: true,
+        otherListenerIdentities: "redacted",
+        walletAddresses: "redacted",
+        rawListeningHistory: "redacted",
+      },
+    });
+    expect(detail.cohort).not.toHaveProperty("visibleMemberCount");
+    expect(detail.cohort).not.toHaveProperty("minimumSize");
+    expect(JSON.stringify(detail)).not.toContain("9+ listeners");
+    expect(JSON.stringify(detail)).not.toContain(optedInUserId);
+    expect(JSON.stringify(detail)).not.toContain("@test.resonate");
+    expect(JSON.stringify(detail)).not.toContain("0x");
+  });
+
+  it("uses coarse public member-count buckets for nonstandard privacy floors", async () => {
+    const cohort = await createCohort("detail_bucketed", {
+      cohortType: "taste",
+      reasonCode: "taste:bucketed",
+      minimumSize: 37,
+      visibleMemberCount: 40,
+    });
+    await addMembership(cohort.id, optedInUserId);
+
+    const detail = await service.getCohortDetail(optedInUserId, cohort.id);
+
+    expect(detail.cohort.memberCountLabel).toBe("25+ listeners");
+    expect(detail.context.memberCountLabel).toBe("25+ listeners");
+    expect(JSON.stringify(detail)).not.toContain("37+ listeners");
+    expect(JSON.stringify(detail)).not.toContain("40+ listeners");
+  });
+
+  it("does not return cohort detail when consent or membership state is not visible", async () => {
+    const cohort = await createCohort("detail_private", {
+      cohortType: "taste",
+      reasonCode: "taste:private",
+      minimumSize: 5,
+      visibleMemberCount: 6,
+    });
+    await addMembership(cohort.id, optedInUserId, "left");
+    await addMembership(cohort.id, optedOutUserId);
+
+    await expect(service.getCohortDetail(optedInUserId, cohort.id)).rejects.toThrow(NotFoundException);
+    await expect(service.getCohortDetail(optedOutUserId, cohort.id)).rejects.toThrow(ForbiddenException);
+  });
+
   it("requires city-scene consent separately from taste matching consent", async () => {
     const cityCohort = await createCohort("city_scene", {
       cohortType: "city_scene",
@@ -147,6 +221,7 @@ describe("CommunityCohortService integration", () => {
     const hidden = await service.hideCohort(optedInUserId, cohort.id);
     expect(hidden.membership.status).toBe("hidden");
     await expect(service.joinCohort(optedInUserId, cohort.id)).rejects.toThrow(NotFoundException);
+    await expect(service.getCohortDetail(optedInUserId, cohort.id)).rejects.toThrow(NotFoundException);
   });
 
   it("does not backfill suggestion impressions for already joined memberships", async () => {
@@ -219,6 +294,20 @@ describe("CommunityCohortService integration", () => {
     ]));
     await expect(service.joinCohort(optedInUserId, expired.id)).rejects.toThrow(NotFoundException);
     await expect(service.joinCohort(optedInUserId, archived.id)).rejects.toThrow(NotFoundException);
+    await expect(service.getCohortDetail(optedInUserId, expired.id)).rejects.toThrow(NotFoundException);
+    await expect(service.getCohortDetail(optedInUserId, archived.id)).rejects.toThrow(NotFoundException);
+  });
+
+  it("does not return details for below-threshold cohorts", async () => {
+    const cohort = await createCohort("detail_small", {
+      cohortType: "taste",
+      reasonCode: "taste:small_detail",
+      minimumSize: 5,
+      visibleMemberCount: 4,
+    });
+    await addMembership(cohort.id, optedInUserId);
+
+    await expect(service.getCohortDetail(optedInUserId, cohort.id)).rejects.toThrow(NotFoundException);
   });
 });
 

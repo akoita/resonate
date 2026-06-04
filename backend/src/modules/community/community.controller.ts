@@ -73,6 +73,12 @@ export class CommunityController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @Get("cohorts/:cohortId")
+  getCohortDetail(@Req() req: any, @Param("cohortId") cohortId: string) {
+    return this.communityCohortService.getCohortDetail(req.user.userId, cohortId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
   @Post("cohorts/:cohortId/join")
   joinCohort(@Req() req: any, @Param("cohortId") cohortId: string) {
     return this.communityCohortService.joinCohort(req.user.userId, cohortId);
