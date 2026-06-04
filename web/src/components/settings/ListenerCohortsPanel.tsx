@@ -69,6 +69,16 @@ export function cohortReasonLabel(cohort: CommunityCohort) {
   return reasonLabels[cohort.cohortType] ?? "Community signal";
 }
 
+export function cohortStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    suggested: "Suggested",
+    joined: "Joined",
+    left: "Left",
+    hidden: "Hidden",
+  };
+  return labels[status] ?? `${status.charAt(0).toUpperCase()}${status.slice(1)}`;
+}
+
 function replaceCohort(cohorts: CommunityCohort[], next: CommunityCohort) {
   return cohorts.map((cohort) => (cohort.id === next.id ? next : cohort));
 }
@@ -232,6 +242,24 @@ export function ListenerCohortsContent({
     () => cohorts.find((cohort) => cohort.id === selectedCohortId) ?? null,
     [cohorts, selectedCohortId],
   );
+  const detailPanelRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!selectedCohortId) return;
+    const node = detailPanelRef.current;
+    if (!node) return;
+    node.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    node.focus({ preventScroll: true });
+  }, [selectedCohortId]);
+
+  useEffect(() => {
+    if (!selectedCohortId) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCloseDetail();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [selectedCohortId, onCloseDetail]);
 
   return (
     <div className="settings-section">
@@ -274,6 +302,7 @@ export function ListenerCohortsContent({
               actionId={actionId}
               selected={cohort.id === selectedCohortId}
               onOpenDetail={onOpenDetail}
+              onCloseDetail={onCloseDetail}
               onJoin={onJoin}
               onLeave={onLeave}
               onHide={onHide}
@@ -284,6 +313,7 @@ export function ListenerCohortsContent({
 
       {consentEnabled && selectedCohortId ? (
         <ListenerCohortDetailPanel
+          panelRef={detailPanelRef}
           cohort={selectedCohort}
           detail={detail}
           loading={detailLoading}
@@ -304,6 +334,7 @@ function ListenerCohortCard({
   actionId,
   selected,
   onOpenDetail,
+  onCloseDetail,
   onJoin,
   onLeave,
   onHide,
@@ -312,6 +343,7 @@ function ListenerCohortCard({
   actionId: string | null;
   selected: boolean;
   onOpenDetail: (cohort: CommunityCohort) => void;
+  onCloseDetail: () => void;
   onJoin: (cohort: CommunityCohort) => void;
   onLeave: (cohort: CommunityCohort) => void;
   onHide: (cohort: CommunityCohort) => void;
@@ -328,15 +360,23 @@ function ListenerCohortCard({
         <div className="listener-cohort-card__meta">
           <span>{cohortTypeLabel(cohort.cohortType)}</span>
           <span>{cohort.memberCountLabel}</span>
-          <span>{cohort.membership.status}</span>
+          <span className={`listener-cohort-card__status listener-cohort-card__status--${cohort.membership.status}`}>
+            {cohortStatusLabel(cohort.membership.status)}
+          </span>
         </div>
         <h4>{cohort.title}</h4>
         <p>{cohort.safeExplanation}</p>
         <div className="listener-cohort-card__reason">{cohortReasonLabel(cohort)}</div>
       </div>
       <div className="listener-cohort-card__actions">
-        <Button variant="ghost" onClick={() => onOpenDetail(cohort)} disabled={cohortPending}>
-          {selected ? "Viewing" : "Details"}
+        <Button
+          variant="ghost"
+          onClick={() => (selected ? onCloseDetail() : onOpenDetail(cohort))}
+          disabled={cohortPending}
+          aria-expanded={selected}
+          aria-controls="listener-cohort-detail"
+        >
+          {selected ? "Hide details" : "Details"}
         </Button>
         {primaryAction === "join" ? (
           <Button onClick={() => onJoin(cohort)} disabled={cohortPending}>
@@ -359,6 +399,7 @@ function ListenerCohortCard({
 }
 
 function ListenerCohortDetailPanel({
+  panelRef,
   cohort,
   detail,
   loading,
@@ -369,6 +410,7 @@ function ListenerCohortDetailPanel({
   onLeave,
   onHide,
 }: {
+  panelRef: React.RefObject<HTMLElement | null>;
   cohort: CommunityCohort | null;
   detail: CommunityCohortDetailResponse | null;
   loading: boolean;
@@ -385,7 +427,15 @@ function ListenerCohortDetailPanel({
   const hidePending = cohort ? actionId === `hide:${cohort.id}` : false;
 
   return (
-    <aside className="listener-cohort-detail" aria-label="Listener cohort detail">
+    <aside
+      ref={panelRef}
+      id="listener-cohort-detail"
+      className="listener-cohort-detail"
+      role="region"
+      aria-label="Listener cohort detail"
+      aria-busy={loading}
+      tabIndex={-1}
+    >
       <div className="listener-cohort-detail__header">
         <div>
           <span className="settings-kicker">Cohort detail</span>
@@ -423,7 +473,7 @@ function ListenerCohortDetailPanel({
             </div>
             <div>
               <span>Status</span>
-              <strong>{detail.cohort.membership.status}</strong>
+              <strong>{cohortStatusLabel(detail.cohort.membership.status)}</strong>
             </div>
           </div>
 
@@ -433,12 +483,27 @@ function ListenerCohortDetailPanel({
               <h5>Use this signal</h5>
             </div>
             <div className="listener-cohort-detail__action-grid">
-              {detail.actions.map((action) => (
-                <a key={action.id} href={action.href} className="listener-cohort-detail__action">
-                  <strong>{action.label}</strong>
-                  <span>{action.description}</span>
-                </a>
-              ))}
+              {detail.actions.map((action) => {
+                if (action.status !== "available") {
+                  return (
+                    <div
+                      key={action.id}
+                      className="listener-cohort-detail__action listener-cohort-detail__action--soon"
+                      aria-disabled="true"
+                    >
+                      <strong>{action.label}</strong>
+                      <span>{action.description}</span>
+                      <span className="listener-cohort-detail__action-badge">Coming soon</span>
+                    </div>
+                  );
+                }
+                return (
+                  <a key={action.id} href={action.href} className="listener-cohort-detail__action">
+                    <strong>{action.label}</strong>
+                    <span>{action.description}</span>
+                  </a>
+                );
+              })}
             </div>
           </div>
 

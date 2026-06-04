@@ -5,6 +5,7 @@ import type { CommunityCohort, CommunityCohortDetailResponse, CommunityCohortSug
 import {
   cohortPrimaryAction,
   cohortReasonLabel,
+  cohortStatusLabel,
   cohortTypeLabel,
   hasVisibleSelectedCohort,
   ListenerCohortsContent,
@@ -295,5 +296,63 @@ describe("ListenerCohortsPanel", () => {
     expect(html).toContain("Loading cohort detail...");
     expect(html).toContain("Loading privacy-safe cohort context...");
     expect(html).not.toContain("Browse marketplace");
+  });
+
+  it("humanizes membership status labels for display", () => {
+    expect(cohortStatusLabel("suggested")).toBe("Suggested");
+    expect(cohortStatusLabel("joined")).toBe("Joined");
+    expect(cohortStatusLabel("left")).toBe("Left");
+    expect(cohortStatusLabel("mystery")).toBe("Mystery");
+  });
+
+  it("renders a humanized status badge instead of the raw enum on cards", () => {
+    const html = renderToStaticMarkup(
+      <ListenerCohortsContent {...contentProps({
+        suggestions: suggestions([cohort()]),
+      })} />,
+    );
+
+    expect(html).toContain("listener-cohort-card__status--suggested");
+    expect(html).toContain(">Suggested<");
+    expect(html).not.toContain(">suggested<");
+  });
+
+  it("exposes the details toggle state to assistive technology", () => {
+    const html = renderToStaticMarkup(
+      <ListenerCohortsContent {...contentProps({
+        suggestions: suggestions([cohort()]),
+        selectedCohortId: "cohort-1",
+        detail: detail(),
+      })} />,
+    );
+
+    expect(html).toContain("aria-controls=\"listener-cohort-detail\"");
+    expect(html).toContain("id=\"listener-cohort-detail\"");
+    expect(html).toContain("Hide details");
+  });
+
+  it("disables coming-soon actions instead of rendering them as live links", () => {
+    const html = renderToStaticMarkup(
+      <ListenerCohortsContent {...contentProps({
+        suggestions: suggestions([cohort()]),
+        selectedCohortId: "cohort-1",
+        detail: detail({
+          actions: [
+            {
+              id: "cohort_room",
+              label: "Open cohort room",
+              description: "Shared listening rooms arrive in a later milestone.",
+              href: "/community/rooms/cohort-1",
+              status: "coming_soon",
+            },
+          ],
+        }),
+      })} />,
+    );
+
+    expect(html).toContain("Open cohort room");
+    expect(html).toContain("Coming soon");
+    expect(html).toContain("aria-disabled=\"true\"");
+    expect(html).not.toContain("href=\"/community/rooms/cohort-1\"");
   });
 });
