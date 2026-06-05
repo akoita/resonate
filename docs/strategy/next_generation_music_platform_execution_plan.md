@@ -35,11 +35,25 @@ freedom, artist-listener relationships, and direct music-native monetization.
    before rooms, cohorts, or listener-to-listener discovery.
 3. **Utility before speculation.** Ownership should unlock access, proof,
    benefits, and cultural status without becoming the only path to belonging.
-4. **Artist action before dashboards.** Analytics should lead to recommended
+4. **Blockchain-native when the primitive fits.** Resonate should not treat
+   blockchain as a few isolated integrations. Whenever a feature involves
+   ownership, membership, rights, provenance, settlement, escrow, rewards,
+   credentials, portability, or third-party composability, evaluate whether an
+   on-chain primitive makes the product more open, verifiable, transferable, or
+   interoperable. Use the primitive only when it adds meaningful user or artist
+   value, and keep private social state off-chain by default.
+5. **AI-native when intelligence improves the loop.** Resonate should not treat
+   AI as a separate chat surface or occasional generation button. Whenever a
+   feature involves discovery, explanation, recommendation, personalization,
+   rights review, safety, creative assistance, operator triage, artist insight,
+   or agent execution, evaluate whether an AI capability can make the workflow
+   more adaptive, understandable, or useful. Keep humans in control for spend,
+   publishing, moderation, and irreversible actions.
+6. **Artist action before dashboards.** Analytics should lead to recommended
    actions artists can take.
-5. **Rights before creation.** Remix and generation workflows must begin with
+7. **Rights before creation.** Remix and generation workflows must begin with
    eligibility, consent, license state, and provenance.
-6. **Off-chain for community state.** Profiles, messages, rooms, moderation,
+8. **Off-chain for community state.** Profiles, messages, rooms, moderation,
    cohorts, and privacy controls stay off-chain.
 
 ## Roadmap Overview

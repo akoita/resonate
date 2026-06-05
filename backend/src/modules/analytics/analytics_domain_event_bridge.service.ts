@@ -328,6 +328,16 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     sourceRefKeys: ["roomId", "targetUserId", "action"],
   },
   {
+    eventName: "community.moderation_action_taken",
+    producer: "community-service",
+    subjectType: "community_moderation_report",
+    subjectIdKeys: ["reportId"],
+    actorIdKeys: ["userId"],
+    consentBasis: "artist_community_rooms:v1",
+    payloadKeys: ["reportId", "roomId", "messageId", "action", "outcome", "hasOperatorNote"],
+    sourceRefKeys: ["reportId", "roomId", "messageId", "action", "outcome"],
+  },
+  {
     eventName: "community.room_status_updated",
     producer: "community-service",
     subjectType: "community_room",

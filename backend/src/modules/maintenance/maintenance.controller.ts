@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
@@ -50,6 +50,28 @@ export class MaintenanceController {
   @Get("community/cohorts/quality")
   async getCommunityCohortQuality() {
     return this.maintenanceService.getCommunityCohortQuality();
+  }
+
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
+  @Get("community/moderation/reports")
+  async getCommunityModerationQueue(@Query("status") status?: string, @Query("limit") limit?: string) {
+    return this.maintenanceService.getCommunityModerationQueue({ status, limit });
+  }
+
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
+  @Patch("community/moderation/reports/:reportId")
+  async resolveCommunityModerationReport(
+    @Req() req: any,
+    @Param("reportId") reportId: string,
+    @Body() body: Parameters<MaintenanceService["resolveCommunityModerationReport"]>[2],
+  ) {
+    return this.maintenanceService.resolveCommunityModerationReport(
+      { userId: req.user.userId, role: req.user.role },
+      reportId,
+      body ?? {},
+    );
   }
 
   @UseGuards(AuthGuard("jwt"), RolesGuard)

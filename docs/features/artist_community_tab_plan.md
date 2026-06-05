@@ -60,16 +60,21 @@ Implementation notes:
 
 ## Slice 3: Governance And Analytics
 
-Status: `partial`
+Status: `implemented`
 
 Deliverables:
 
 - Add governed analytics events for room joins, messages, reports, bans,
   deletes, and room status updates. `implemented`
-- Add operator/admin moderation dashboards. `planned` in
-  [#1037](https://github.com/akoita/resonate/issues/1037)
-- Add retention and consent-aware data handling notes. `planned` in
-  [#1037](https://github.com/akoita/resonate/issues/1037)
+- Add operator/admin moderation dashboards. `implemented` in
+  [#1037](https://github.com/akoita/resonate/issues/1037) through
+  `/admin/community/moderation`.
+- Add retention and consent-aware data handling notes. `implemented` in
+  [#1037](https://github.com/akoita/resonate/issues/1037) for the first
+  report-queue slice: admin DTOs omit wallet addresses, user emails, raw
+  access-policy payloads, and full room history; message bodies are previewed
+  for triage; operator action notes are accepted but not persisted until a
+  durable audit-note policy is approved.
 
 Implementation notes:
 

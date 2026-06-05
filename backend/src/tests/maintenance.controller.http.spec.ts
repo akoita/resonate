@@ -12,6 +12,8 @@ const maintenanceService = {
   getAnalyticsPipelineHealth: jest.fn(),
   generateCommunityCohorts: jest.fn(),
   getCommunityCohortQuality: jest.fn(),
+  getCommunityModerationQueue: jest.fn(),
+  resolveCommunityModerationReport: jest.fn(),
   wipeReleases: jest.fn(),
 };
 
@@ -43,6 +45,17 @@ describe("MaintenanceController (HTTP)", () => {
       schemaVersion: "community-cohort-quality/v1",
       cohorts: { total: 0 },
       privacy: { aggregateOnly: true },
+    });
+    maintenanceService.getCommunityModerationQueue.mockResolvedValue({
+      schemaVersion: "community-moderation-queue/v1",
+      reports: [],
+      privacy: { operatorOnly: true, noWalletAddresses: true },
+    });
+    maintenanceService.resolveCommunityModerationReport.mockResolvedValue({
+      schemaVersion: "community-moderation-resolution/v1",
+      report: { id: "report-1", status: "resolved" },
+      action: { type: "delete_message", status: "resolved" },
+      privacy: { operatorOnly: true, noWalletAddresses: true },
     });
   });
 
@@ -107,5 +120,47 @@ describe("MaintenanceController (HTTP)", () => {
       });
 
     expect(maintenanceService.getCommunityCohortQuality).toHaveBeenCalledTimes(1);
+  });
+
+  it("GET /admin/community/moderation/reports requires admin role and returns the moderation queue", async () => {
+    await request(app.getHttpServer())
+      .get("/admin/community/moderation/reports")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get("/admin/community/moderation/reports?status=open&limit=25")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.schemaVersion).toBe("community-moderation-queue/v1");
+        expect(body.privacy.noWalletAddresses).toBe(true);
+      });
+
+    expect(maintenanceService.getCommunityModerationQueue).toHaveBeenCalledWith({ status: "open", limit: "25" });
+  });
+
+  it("PATCH /admin/community/moderation/reports/:reportId requires admin role and resolves a report", async () => {
+    await request(app.getHttpServer())
+      .patch("/admin/community/moderation/reports/report-1")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({ action: "delete_message" })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .patch("/admin/community/moderation/reports/report-1")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .send({ action: "delete_message", note: "Confirmed report." })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.schemaVersion).toBe("community-moderation-resolution/v1");
+        expect(body.action.type).toBe("delete_message");
+      });
+
+    expect(maintenanceService.resolveCommunityModerationReport).toHaveBeenCalledWith(
+      { userId: "admin-1", role: "admin" },
+      "report-1",
+      { action: "delete_message", note: "Confirmed report." },
+    );
   });
 });

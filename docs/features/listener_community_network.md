@@ -208,13 +208,13 @@ recognized without turning community into a leaderboard.
 | Surface | Status | Notes |
 | --- | --- | --- |
 | Listener profile showcase | in-progress | `/settings` exposes profile identity and visibility controls; public profile reads redact hidden/private sections. Confirmed Shows pledge support can appear on public profiles only when `showCampaignSupport` is enabled; private supporter badges/roles remain eligibility proofs. Display of owned marketplace items, attendance, playlists, remixes, and broader roles remains follow-up work. |
-| Artist community tab | implemented | `/artist/:id` exposes the Community tab with public and holder rooms, safe holder lock copy, join/leave controls, messages, artist announcements, reports, deletion, and basic message-author moderation actions. Release-defined public artists with ready or published official catalog releases auto-provision default public and holder rooms on first room read, so public artist identity is not tied to the uploader or manager profile. Broader operator/admin governance remains tracked in [#1037](https://github.com/akoita/resonate/issues/1037). |
+| Artist community tab | implemented | `/artist/:id` exposes the Community tab with public and holder rooms, safe holder lock copy, join/leave controls, messages, artist announcements, reports, deletion, and basic message-author moderation actions. Release-defined public artists with ready or published official catalog releases auto-provision default public and holder rooms on first room read, so public artist identity is not tied to the uploader or manager profile. `/admin/community/moderation` gives admins an operator-only queue for reports, room state, message previews, membership-count context, report resolution, message deletion, member removal/bans, and room pause/archive actions without returning wallet addresses, user emails, or access-policy payloads. |
 | Taste cohort suggestions | implemented | Backend cohort contracts are implemented for opt-in, off-chain suggested groups. `GET /community/cohorts/suggestions` only returns cohorts assigned to the authenticated listener and gated by `allowTasteMatching` or `allowCityScenes`; `GET /community/cohorts/:cohortId` returns authenticated detail only for visible suggested/joined memberships and includes safe aggregate context, bucketed member-count copy, music-native next actions, and explicit privacy redactions; `POST /community/cohorts/:cohortId/join`, `/leave`, and `/hide` update mutable membership state. Minimum-size, expiry/archive, and safe-explanation filters prevent exposing other listener identities, raw listening history, wallet data, ownership data, or private location facts. `/settings` exposes listener cohort cards with safe explanations, join, leave, hide, empty, loading, disabled-consent states, and a detail panel in [#1052](https://github.com/akoita/resonate/issues/1052) and [#1069](https://github.com/akoita/resonate/issues/1069). `POST /admin/community/cohorts/generate` materializes cohorts from safe transactional library/taste, artist-affinity, campaign, coarse city-scene, and collector signals in [#1054](https://github.com/akoita/resonate/issues/1054), marks no-longer-eligible visible memberships stale before threshold counts are recomputed, activates cohorts that meet `minimumSize`, archives below-threshold cohorts, and expires generated cohorts with no current eligible visible members in [#1059](https://github.com/akoita/resonate/issues/1059). `GET /admin/community/cohorts/quality` adds privacy-safe aggregate operator metrics for lifecycle health, generated-cohort health, stale memberships, disabled-consent filtering, action events, cohort types, and bounded reason-code summaries in [#1064](https://github.com/akoita/resonate/issues/1064). `/admin/community/cohorts` lets admins run the real generator, choose a staging validation `minimumSize` down to the backend floor of 2, inspect generation summaries, and see why no listener card can appear when real opted-in shared-signal data is missing in [#1066](https://github.com/akoita/resonate/issues/1066). |
 | City scene pages | planned | Local scene surfaces tied to declared coarse location and privacy-safe aggregate demand. |
 | Campaign rooms | implemented | Shows detail pages expose campaign community rooms: any authenticated fan can join an open `show_city_demand` group for coarse city interest, confirmed backers can unlock a private `show_campaign_supporter` room, artists/operators can post campaign updates, and compact campaign/community analytics now cover joins, city demand, campaign update creation/views, badge grants, and role grants. Confirmed or released pledge support derives private supporter badges/roles for eligibility and can appear as campaign-support cards on public profiles only by listener opt-in. Refund-only, refunded, failed, and cancelled lifecycle states revoke private supporter proofs, remove stale private room access on read, and stop public support cards from displaying. See [#1048](https://github.com/akoita/resonate/issues/1048) and the [Shows Campaign Rooms Plan](shows_campaign_rooms_plan.md). |
 | Holder benefit engine | in-progress | Backend foundation for private badge, role, ownership, campaign-support, and redemption eligibility is being built in [#998](https://github.com/akoita/resonate/issues/998). |
 | Discord bridge | planned | Artist-controlled connection for announcements, role mirroring, community links, or migration paths. |
-| Moderation console | planned | Artist/team tools plus platform safety workflows, AI summaries, and abuse reports. |
+| Moderation console | implemented | `/admin/community/moderation` exposes open community reports, bounded room/message context, membership status counts, and admin actions for dismiss, delete message, remove/ban member, pause room, and archive room. AI summaries and automated abuse scoring remain follow-up work. |
 
 ## Data And Privacy
 
@@ -284,14 +284,21 @@ uses authenticated room reads for membership-aware state, lets artists enable
 rooms and post announcements, lets listeners join/leave rooms, and exposes
 message report/delete plus basic member remove/ban controls from visible
 message authors. Operator/admin governance, moderation dashboards, and
-retention/consent notes are explicit follow-up work in
-[#1037](https://github.com/akoita/resonate/issues/1037).
+retention/consent notes are now implemented for the first governance slice in
+[#1037](https://github.com/akoita/resonate/issues/1037): admins can triage
+open reports at `/admin/community/moderation`, inspect bounded room/message
+context, and resolve reports without exposing wallet addresses, user emails,
+or raw access-policy JSON. Operator notes are accepted for workflow context but
+not persisted in this first slice; durable note/audit storage remains a
+follow-up if moderation policy requires it.
 
-## Blockchain Boundary
+## Blockchain-Native Boundary
 
-The community layer should use blockchain where it improves trust,
-portability, ownership, or settlement. It should not put normal social behavior
-on-chain.
+The community layer should be blockchain-native where blockchain primitives
+make community utility more open, verifiable, portable, and interoperable. This
+means evaluating on-chain ownership, membership, credentials, escrow, rights,
+rewards, and settlement whenever a community feature touches those domains. It
+does not mean putting normal social behavior on-chain.
 
 On-chain or contract-backed surfaces:
 
@@ -320,13 +327,14 @@ Hybrid access pattern:
    or transferable rights require it.
 
 This keeps the user experience fast, private, and moderatable while preserving
-web3-native value for ownership, escrow, royalties, credentials, and holder
-benefits.
+web3-native value for ownership, escrow, royalties, credentials, holder
+benefits, and partner composability.
 
-## AI And ML Uses
+## AI-Native Uses
 
-AI should support discovery, safety, and artist insight without making the
-community feel automated.
+AI should be considered anywhere it can make discovery, safety, artist insight,
+creative flow, or operator triage more adaptive and useful. It should make the
+community feel more understandable and alive, not automated or fake.
 
 Planned uses:
 

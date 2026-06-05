@@ -166,9 +166,37 @@ badgeType: early_listener | supporter | collector | attendee | curator | remixer
 sourceType: track | release | artist | marketplace_item | campaign | show | playlist | remix | manual
 sourceId
 visibility: private | community | followers | public
+credentialType: offchain | nft_proposed
+tokenContractAddress
+tokenId
+chainId
 grantedAt
 revokedAt
 ```
+
+`credentialType`, `tokenContractAddress`, `tokenId`, and `chainId` are proposed
+fields for badges that should become portable NFT credentials. The default badge
+model remains off-chain and private, but selected artist, campaign, show,
+collector, or contributor badges could be issued as NFTs when portability and
+interoperability are part of the product promise.
+
+NFT-backed badges should be treated as public or selectively revealable
+ownership credentials, not as a replacement for Resonate's privacy controls.
+Other systems can build business rules from the token contract, token metadata,
+collection, or ownership state: discounts, promotions, ticket priority, partner
+perks, Discord roles, venue access, or remix eligibility. The holder can carry
+that credential outside Resonate by connecting the owning wallet elsewhere.
+Resonate should still keep community membership, messages, moderation,
+visibility choices, and sensitive taste/community state off-chain.
+
+This makes badges a ladder:
+
+1. `offchain` badge: private, revocable, fast, and invisible unless the listener
+   chooses to show it.
+2. `nft_proposed` credential: portable proof for open ecosystems, partner
+   integrations, and owner-controlled interoperability.
+3. Benefit rules can accept either private Resonate eligibility or verified NFT
+   ownership, depending on the artist/operator policy.
 
 ### `CommunityRoom`
 
@@ -309,6 +337,20 @@ Access policies should be structured JSON evaluated by
   "type": "campaign_support",
   "campaignId": "campaign_123",
   "minStatus": "confirmed"
+}
+```
+
+```json
+{
+  "type": "nft_credential",
+  "credentialType": "community_badge",
+  "chainId": "<chain-id>",
+  "contractAddress": "<erc721-or-erc1155-contract>",
+  "metadata": {
+    "artistId": "artist_123",
+    "badgeType": "supporter",
+    "season": "2026"
+  }
 }
 ```
 
@@ -504,6 +546,7 @@ boundaries.
 | `community.message_deleted` | User or moderator removes a message. |
 | `community.member_moderated` | Artist/team removes or bans a room member. |
 | `community.room_status_updated` | Artist/team pauses, reopens, or archives a room. |
+| `community.moderation_action_taken` | Admin resolves a moderation report through the operator queue. |
 | `community.campaign_room_joined` | Confirmed supporter joins a Shows campaign room. |
 | `community.show_city_interest_joined` | User joins a show city demand group. |
 | `community.badge_granted` | Private badge proof is granted or reactivated. |
@@ -524,8 +567,12 @@ boundaries.
 - Rate-limit message creation, joins, reports, and redemption attempts.
 - Keep destructive moderation actions in an audit trail.
 - Provide operator/admin moderation surfaces for report triage, room status, and
-  governance review before community rooms become broadly discoverable. This is
-  tracked in [#1037](https://github.com/akoita/resonate/issues/1037).
+  governance review before community rooms become broadly discoverable.
+  `/admin/community/moderation` now exposes open reports, room status, message
+  previews, membership-count context, and admin resolution actions. The admin
+  DTO deliberately omits wallet addresses, user emails, raw access-policy JSON,
+  and full message history; destructive actions emit
+  `community.moderation_action_taken`.
 - Use minimum cohort sizes to avoid revealing sensitive taste or location
   inferences.
 - Fail closed for new holder grants during indexer or contract read outages.
@@ -571,3 +618,8 @@ Analytics:
 - [Listener Community Network RFC](../rfc/listener-community-network.md)
 - [Analytics Event Taxonomy v1](analytics_event_taxonomy_v1.md)
 - [Marketplace Integration](../smart-contracts/marketplace_integration.md)
+- Background: [The NFT Staircase](https://a16zcrypto.com/posts/article/the-nft-staircase/)
+- Background: [5 ways you/your company can use NFTs](https://a16zcrypto.com/posts/article/5-ways-to-use-nfts/)
+- Background: [Building partnerships with NFT projects and communities](https://a16zcrypto.com/posts/article/building-partnerships-with-nft-projects-and-communities/)
+- Background: [Tokens: A New Digital Primitive](https://a16zcrypto.com/posts/article/tokens-are-a-new-digital-primitive/)
+- Background: [NFTs and ownership](https://a16zcrypto.com/posts/article/nfts-and-ownership/)

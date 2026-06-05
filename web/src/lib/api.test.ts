@@ -1688,6 +1688,62 @@ describe('API Client', () => {
       expect(opts.headers.get('Authorization')).toBe('Bearer admin-token');
       expect(opts.body).toBe(JSON.stringify({ minimumSize: 2 }));
     });
+
+    it('fetches the admin community moderation queue with bounded context', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            schemaVersion: 'community-moderation-queue/v1',
+            generatedAt: '2026-06-04T08:00:00.000Z',
+            filters: { status: 'open', limit: 25 },
+            summary: { returnedReports: 1, openReports: 1, pausedRooms: 0, archivedRooms: 0 },
+            reports: [],
+            actions: ['no_action', 'delete_message', 'ban_member'],
+            privacy: {
+              operatorOnly: true,
+              noWalletAddresses: true,
+              noUserEmails: true,
+              noAccessPolicyPayloads: true,
+              messageBodiesArePreviewed: true,
+              actionNotesStored: false,
+            },
+          }),
+      });
+
+      await api.getCommunityModerationQueue('admin-token', { status: 'open', limit: 25 });
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/admin/community/moderation/reports?status=open&limit=25');
+      expect(opts.cache).toBe('no-store');
+      expect(opts.headers.get('Authorization')).toBe('Bearer admin-token');
+    });
+
+    it('resolves community moderation reports through the admin API', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            schemaVersion: 'community-moderation-resolution/v1',
+            report: { id: 'report-1', status: 'resolved' },
+            action: { type: 'delete_message', status: 'resolved', noteStored: false },
+            privacy: { operatorOnly: true, noWalletAddresses: true },
+          }),
+      });
+
+      await api.resolveCommunityModerationReport('admin-token', 'report 1', {
+        action: 'delete_message',
+        note: 'Confirmed report.',
+      });
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/admin/community/moderation/reports/report%201');
+      expect(opts.method).toBe('PATCH');
+      expect(opts.headers.get('Authorization')).toBe('Bearer admin-token');
+      expect(opts.body).toBe(JSON.stringify({ action: 'delete_message', note: 'Confirmed report.' }));
+    });
   });
 
   describe('artist community rooms', () => {
