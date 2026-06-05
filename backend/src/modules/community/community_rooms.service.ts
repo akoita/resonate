@@ -257,7 +257,7 @@ export class CommunityRoomsService {
     return {
       schemaVersion: "community-cohort-room-membership/v1",
       cohort: cohortRoomCohortDto(cohort),
-      room: result.response.room,
+      room: roomDto(room, result.membership, await this.describeRoomAccess(userId, room)),
       membership: result.response.membership,
       privacy: cohortRoomPrivacyDto(),
     };

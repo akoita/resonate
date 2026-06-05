@@ -364,6 +364,10 @@ describe("CommunityCohortService integration", () => {
     await roomsService.joinCohortRoom(cohortPeerUserId, cohort.id);
     expect(joined).toMatchObject({
       schemaVersion: "community-cohort-room-membership/v1",
+      room: {
+        membership: { status: "active", role: "cohort_member" },
+        access: { joinable: true, reason: "cohort_joined" },
+      },
       membership: { status: "active", role: "cohort_member" },
     });
 

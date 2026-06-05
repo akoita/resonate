@@ -114,6 +114,7 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
 
   const clearDetailSelection = () => {
     detailRequestIdRef.current += 1;
+    roomRequestIdRef.current += 1;
     selectedCohortIdRef.current = null;
     setSelectedCohortId(null);
     setDetail(null);
@@ -158,6 +159,7 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
     if (!token) return;
     const requestId = detailRequestIdRef.current + 1;
     detailRequestIdRef.current = requestId;
+    roomRequestIdRef.current += 1;
     selectedCohortIdRef.current = cohortId;
     setSelectedCohortId(cohortId);
     setDetail(null);
