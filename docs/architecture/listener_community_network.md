@@ -104,6 +104,10 @@ Responsibilities:
 - return safe match explanations;
 - serve authenticated cohort detail for listeners with a visible suggested or
   joined membership;
+- activate cohort-scoped rooms only for joined members of visible, consented,
+  above-threshold cohorts;
+- keep cohort room access derived from server-side `CommunityCohortMembership`
+  state, never from client-submitted claims;
 - avoid exposing private listening history or private user facts.
 
 ### `CommunityCohortGenerationService`
@@ -573,6 +577,13 @@ boundaries.
   DTO deliberately omits wallet addresses, user emails, raw access-policy JSON,
   and full message history; destructive actions emit
   `community.moderation_action_taken`.
+- Cohort rooms are stricter than cohort detail. Suggested members can see safe
+  aggregate detail, but only joined members of active, unexpired,
+  above-threshold cohorts with current consent can open or join the room.
+  Cohort rooms must not expose member lists, wallet addresses, raw listening
+  history, raw cohort metadata, or private eligibility details. Message authors
+  outside the current viewer are displayed as cohort members rather than raw
+  user identifiers.
 - Use minimum cohort sizes to avoid revealing sensitive taste or location
   inferences.
 - Fail closed for new holder grants during indexer or contract read outages.
@@ -588,7 +599,8 @@ Backend:
 - gated room access integration tests;
 - benefit redemption idempotency tests;
 - moderation action tests;
-- cohort consent and minimum-size tests.
+- cohort consent and minimum-size tests;
+- cohort room access-control, message redaction, and report/moderation tests.
 
 Protocol/indexer:
 
@@ -603,6 +615,7 @@ Frontend:
 - artist community tab tests;
 - holder-only room states;
 - campaign room join path;
+- cohort room ready, locked, and empty states;
 - hidden wallet and hidden ownership states.
 
 Analytics:

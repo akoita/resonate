@@ -2108,6 +2108,61 @@ export type CommunityCohortMembershipResponse = {
   };
 };
 
+export type CommunityRoomMembership = {
+  role: string;
+  status: string;
+  joinedAt: string;
+  endedAt: string | null;
+};
+
+export type CommunityCohortRoomAccess = {
+  joinable: boolean;
+  reason: string;
+  reasons?: string[];
+};
+
+export type CommunityRoomSummary = {
+  id: string;
+  roomType: string;
+  ownerType: string;
+  ownerId: string;
+  artistId: string | null;
+  title: string;
+  description: string | null;
+  status: string;
+  membership: CommunityRoomMembership | null;
+  access: CommunityCohortRoomAccess;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CommunityCohortRoomResponse = {
+  schemaVersion: "community-cohort-room/v1";
+  cohort: CommunityCohortDetailSummary;
+  room: CommunityRoomSummary;
+  emptyState: {
+    title: string;
+    description: string;
+  };
+  privacy: {
+    onChain: boolean;
+    otherListenerIdentities: string;
+    memberList: string;
+    walletAddresses: string;
+    rawListeningHistory: string;
+    accessDerivedServerSide: boolean;
+    moderation: string;
+  };
+};
+
+export type CommunityCohortRoomMembershipResponse = {
+  schemaVersion: "community-cohort-room-membership/v1";
+  cohort: CommunityCohortDetailSummary;
+  room: CommunityRoomSummary;
+  membership: CommunityRoomMembership;
+  privacy: CommunityCohortRoomResponse["privacy"];
+};
+
 export type CommunityCohortQualityReasonSummary = {
   cohortType: string;
   reasonCode: string;
@@ -2243,6 +2298,28 @@ export async function leaveCommunityCohort(token: string, cohortId: string): Pro
 export async function hideCommunityCohort(token: string, cohortId: string): Promise<CommunityCohortMembershipResponse> {
   return apiRequest<CommunityCohortMembershipResponse>(
     `/community/cohorts/${encodeURIComponent(cohortId)}/hide`,
+    { method: "POST" },
+    token,
+  );
+}
+
+export async function getCommunityCohortRoom(
+  token: string,
+  cohortId: string,
+): Promise<CommunityCohortRoomResponse> {
+  return apiRequest<CommunityCohortRoomResponse>(
+    `/community/cohorts/${encodeURIComponent(cohortId)}/room`,
+    { cache: "no-store", silentErrorCodes: [403, 404] },
+    token,
+  );
+}
+
+export async function joinCommunityCohortRoom(
+  token: string,
+  cohortId: string,
+): Promise<CommunityCohortRoomMembershipResponse> {
+  return apiRequest<CommunityCohortRoomMembershipResponse>(
+    `/community/cohorts/${encodeURIComponent(cohortId)}/room/join`,
     { method: "POST" },
     token,
   );

@@ -79,6 +79,18 @@ export class CommunityController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @Get("cohorts/:cohortId/room")
+  getCohortRoom(@Req() req: any, @Param("cohortId") cohortId: string) {
+    return this.communityRoomsService.getCohortRoom(req.user.userId, cohortId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("cohorts/:cohortId/room/join")
+  joinCohortRoom(@Req() req: any, @Param("cohortId") cohortId: string) {
+    return this.communityRoomsService.joinCohortRoom(req.user.userId, cohortId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
   @Post("cohorts/:cohortId/join")
   joinCohort(@Req() req: any, @Param("cohortId") cohortId: string) {
     return this.communityCohortService.joinCohort(req.user.userId, cohortId);

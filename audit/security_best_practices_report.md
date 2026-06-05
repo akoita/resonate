@@ -1,5 +1,66 @@
 # Security Best Practices Report
 
+## Community Cohort Scoped Rooms - 2026-06-05
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/community/community.controller.ts`
+- `backend/src/modules/community/community_rooms.service.ts`
+- `backend/src/tests/community.controller.http.spec.ts`
+- `backend/src/tests/community.controller.spec.ts`
+- `backend/src/tests/community_cohort.integration.spec.ts`
+- `web/src/components/settings/ListenerCohortsPanel.tsx`
+- `web/src/lib/api.ts`
+- related frontend tests, feature docs, architecture docs, and issue plan
+
+### Executive Summary
+
+Issue #1071 adds cohort-scoped community rooms for joined listener cohorts. The
+scoped review found no Critical or High findings: the new routes are JWT
+guarded, room exposure and membership writes are enforced server-side against
+current cohort membership, consent, lifecycle, expiry, and minimum-size gates,
+Prisma structured queries are used instead of raw SQL, and the response shape
+avoids private listener identity leakage by redacting other cohort message
+authors and omitting member lists, wallets, raw histories, and raw eligibility
+metadata.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- `GET /community/cohorts/:cohortId/room` and
+  `POST /community/cohorts/:cohortId/room/join` run through
+  `AuthGuard("jwt")`.
+- Cohort room reads, joins, and direct room access require
+  `CommunityCohortMembership.status = joined`; suggested, left, hidden, stale,
+  expired, archived, below-threshold, and disabled-consent cohorts fail closed.
+- Cohort rooms reuse the existing community message, report, and moderation
+  primitives, so reported cohort messages surface through the admin moderation
+  queue.
+- Other cohort message authors are returned as generic cohort members, while
+  the current viewer can identify only their own messages.
+- The frontend uses centralized typed API helpers and React text rendering; no
+  raw HTML rendering, direct cookie handling, or public secret environment
+  variable usage was introduced.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/modules/community backend/src/tests/community* --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\\$queryRaw' backend/src/modules/community backend/src/tests/community*`
+- `rg 'JSON\\.parse|eval\\(' backend/src/modules/community web/src/components/settings/ListenerCohortsPanel.tsx web/src/lib/api.ts`
+- `rg 'dangerouslySetInnerHTML|innerHTML|document\\.cookie|setCookie|httpOnly.*false|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/components/settings/ListenerCohortsPanel.tsx web/src/lib/api.ts`
+- Targeted review of JWT protection, cohort membership gating, consent and
+  lifecycle gates, message author redaction, report/moderation reuse, and
+  frontend rendering/API behavior.
+
 ## Community Governance Moderation Dashboard - 2026-06-05
 
 ### Scope Reviewed

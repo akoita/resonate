@@ -3,13 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getCommunityCohortDetail,
+  getCommunityCohortRoom,
   getCommunityCohortSuggestions,
   getMyCommunityProfile,
   hideCommunityCohort,
+  joinCommunityCohortRoom,
   joinCommunityCohort,
   leaveCommunityCohort,
   type CommunityCohort,
   type CommunityCohortDetailResponse,
+  type CommunityCohortRoomResponse,
   type CommunityCohortSuggestionsResponse,
   type CommunityVisibilitySettings,
 } from "../../lib/api";
@@ -28,14 +31,19 @@ type ListenerCohortsContentProps = {
   suggestions: CommunityCohortSuggestionsResponse | null;
   selectedCohortId: string | null;
   detail: CommunityCohortDetailResponse | null;
+  cohortRoom: CommunityCohortRoomResponse | null;
   loading: boolean;
   detailLoading: boolean;
+  roomLoading: boolean;
   detailError: string | null;
+  roomError: string | null;
   consentEnabled: boolean;
   actionId: string | null;
   onRefresh: () => void;
   onOpenDetail: (cohort: CommunityCohort) => void;
   onCloseDetail: () => void;
+  onLoadRoom: (cohort: CommunityCohort) => void;
+  onJoinRoom: (cohort: CommunityCohort) => void;
   onJoin: (cohort: CommunityCohort) => void;
   onLeave: (cohort: CommunityCohort) => void;
   onHide: (cohort: CommunityCohort) => void;
@@ -93,20 +101,27 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
   const [visibility, setVisibility] = useState<CommunityVisibilitySettings | null>(null);
   const [selectedCohortId, setSelectedCohortId] = useState<string | null>(null);
   const [detail, setDetail] = useState<CommunityCohortDetailResponse | null>(null);
+  const [cohortRoom, setCohortRoom] = useState<CommunityCohortRoomResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [roomLoading, setRoomLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [roomError, setRoomError] = useState<string | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
   const selectedCohortIdRef = useRef<string | null>(null);
   const detailRequestIdRef = useRef(0);
+  const roomRequestIdRef = useRef(0);
 
   const clearDetailSelection = () => {
     detailRequestIdRef.current += 1;
     selectedCohortIdRef.current = null;
     setSelectedCohortId(null);
     setDetail(null);
+    setCohortRoom(null);
     setDetailError(null);
+    setRoomError(null);
     setDetailLoading(false);
+    setRoomLoading(false);
   };
 
   const load = async () => {
@@ -146,12 +161,17 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
     selectedCohortIdRef.current = cohortId;
     setSelectedCohortId(cohortId);
     setDetail(null);
+    setCohortRoom(null);
     setDetailLoading(true);
     setDetailError(null);
+    setRoomError(null);
     try {
       const response = await getCommunityCohortDetail(token, cohortId);
       if (detailRequestIdRef.current !== requestId) return;
       setDetail(response);
+      if (response.cohort.membership.status === "joined") {
+        void loadCohortRoom(cohortId);
+      }
     } catch {
       if (detailRequestIdRef.current !== requestId) return;
       setDetail(null);
@@ -159,6 +179,27 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
     } finally {
       if (detailRequestIdRef.current === requestId) {
         setDetailLoading(false);
+      }
+    }
+  };
+
+  const loadCohortRoom = async (cohortId: string) => {
+    if (!token) return;
+    const requestId = roomRequestIdRef.current + 1;
+    roomRequestIdRef.current = requestId;
+    setRoomLoading(true);
+    setRoomError(null);
+    try {
+      const response = await getCommunityCohortRoom(token, cohortId);
+      if (roomRequestIdRef.current !== requestId) return;
+      setCohortRoom(response);
+    } catch (error) {
+      if (roomRequestIdRef.current !== requestId) return;
+      setCohortRoom(null);
+      setRoomError(error instanceof Error ? error.message : "This cohort room is not currently available.");
+    } finally {
+      if (roomRequestIdRef.current === requestId) {
+        setRoomLoading(false);
       }
     }
   };
@@ -196,6 +237,24 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
     }
   };
 
+  const handleJoinRoom = async (cohort: CommunityCohort) => {
+    if (!token) return;
+    setActionId(`join-room:${cohort.id}`);
+    try {
+      const response = await joinCommunityCohortRoom(token, cohort.id);
+      setCohortRoom((current) => current ? { ...current, room: response.room } : current);
+      addToast({ type: "success", title: "Cohort room joined", message: "You can now post in this cohort room." });
+    } catch (error) {
+      addToast({
+        type: "error",
+        title: "Could not join cohort room",
+        message: error instanceof Error ? error.message : "The cohort room is not currently available.",
+      });
+    } finally {
+      setActionId(null);
+    }
+  };
+
   const consentEnabled = Boolean(visibility?.allowTasteMatching || visibility?.allowCityScenes);
 
   return (
@@ -203,14 +262,19 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
       suggestions={suggestions}
       selectedCohortId={selectedCohortId}
       detail={detail}
+      cohortRoom={cohortRoom}
       loading={loading}
       detailLoading={detailLoading}
+      roomLoading={roomLoading}
       detailError={detailError}
+      roomError={roomError}
       consentEnabled={consentEnabled}
       actionId={actionId}
       onRefresh={load}
       onOpenDetail={(cohort) => void loadDetail(cohort.id)}
       onCloseDetail={clearDetailSelection}
+      onLoadRoom={(cohort) => void loadCohortRoom(cohort.id)}
+      onJoinRoom={(cohort) => void handleJoinRoom(cohort)}
       onJoin={(cohort) => handleAction("join", cohort)}
       onLeave={(cohort) => handleAction("leave", cohort)}
       onHide={(cohort) => handleAction("hide", cohort)}
@@ -222,14 +286,19 @@ export function ListenerCohortsContent({
   suggestions,
   selectedCohortId,
   detail,
+  cohortRoom,
   loading,
   detailLoading,
+  roomLoading,
   detailError,
+  roomError,
   consentEnabled,
   actionId,
   onRefresh,
   onOpenDetail,
   onCloseDetail,
+  onLoadRoom,
+  onJoinRoom,
   onJoin,
   onLeave,
   onHide,
@@ -316,10 +385,15 @@ export function ListenerCohortsContent({
           panelRef={detailPanelRef}
           cohort={selectedCohort}
           detail={detail}
+          cohortRoom={cohortRoom}
           loading={detailLoading}
+          roomLoading={roomLoading}
           error={detailError}
+          roomError={roomError}
           actionId={actionId}
           onClose={onCloseDetail}
+          onLoadRoom={onLoadRoom}
+          onJoinRoom={onJoinRoom}
           onJoin={onJoin}
           onLeave={onLeave}
           onHide={onHide}
@@ -402,10 +476,15 @@ function ListenerCohortDetailPanel({
   panelRef,
   cohort,
   detail,
+  cohortRoom,
   loading,
+  roomLoading,
   error,
+  roomError,
   actionId,
   onClose,
+  onLoadRoom,
+  onJoinRoom,
   onJoin,
   onLeave,
   onHide,
@@ -413,10 +492,15 @@ function ListenerCohortDetailPanel({
   panelRef: React.RefObject<HTMLElement | null>;
   cohort: CommunityCohort | null;
   detail: CommunityCohortDetailResponse | null;
+  cohortRoom: CommunityCohortRoomResponse | null;
   loading: boolean;
+  roomLoading: boolean;
   error: string | null;
+  roomError: string | null;
   actionId: string | null;
   onClose: () => void;
+  onLoadRoom: (cohort: CommunityCohort) => void;
+  onJoinRoom: (cohort: CommunityCohort) => void;
   onJoin: (cohort: CommunityCohort) => void;
   onLeave: (cohort: CommunityCohort) => void;
   onHide: (cohort: CommunityCohort) => void;
@@ -530,6 +614,18 @@ function ListenerCohortDetailPanel({
             </div>
           ) : null}
 
+          {cohort ? (
+            <CohortRoomBlock
+              cohort={cohort}
+              cohortRoom={cohortRoom}
+              loading={roomLoading}
+              error={roomError}
+              actionId={actionId}
+              onLoadRoom={onLoadRoom}
+              onJoinRoom={onJoinRoom}
+            />
+          ) : null}
+
           <div className="listener-cohort-detail__privacy">
             <span className="settings-kicker">Privacy boundary</span>
             <ul>
@@ -541,5 +637,78 @@ function ListenerCohortDetailPanel({
         </>
       ) : null}
     </aside>
+  );
+}
+
+function CohortRoomBlock({
+  cohort,
+  cohortRoom,
+  loading,
+  error,
+  actionId,
+  onLoadRoom,
+  onJoinRoom,
+}: {
+  cohort: CommunityCohort;
+  cohortRoom: CommunityCohortRoomResponse | null;
+  loading: boolean;
+  error: string | null;
+  actionId: string | null;
+  onLoadRoom: (cohort: CommunityCohort) => void;
+  onJoinRoom: (cohort: CommunityCohort) => void;
+}) {
+  const isJoined = cohort.membership.status === "joined";
+  const roomMembershipActive = cohortRoom?.room.membership?.status === "active";
+  const roomPending = actionId === `join-room:${cohort.id}`;
+
+  return (
+    <div className="listener-cohort-detail__room">
+      <span className="settings-kicker">Cohort room</span>
+      {!isJoined ? (
+        <div className="listener-cohorts-state listener-cohorts-state--locked">
+          <strong>Join required</strong>
+          <p>Join this cohort before opening its private room.</p>
+        </div>
+      ) : null}
+      {isJoined && loading ? (
+        <div className="listener-cohorts-state">Loading cohort room...</div>
+      ) : null}
+      {isJoined && !loading && error ? (
+        <div className="listener-cohorts-state listener-cohorts-state--locked">
+          <strong>Cohort room unavailable</strong>
+          <p>{error}</p>
+          <Button variant="ghost" onClick={() => onLoadRoom(cohort)}>Retry</Button>
+        </div>
+      ) : null}
+      {isJoined && !loading && !error && !cohortRoom ? (
+        <div className="listener-cohorts-state">
+          <strong>Cohort room not loaded</strong>
+          <p>Load the privacy-safe room for joined members of this cohort.</p>
+          <Button variant="ghost" onClick={() => onLoadRoom(cohort)}>Load room</Button>
+        </div>
+      ) : null}
+      {isJoined && !loading && cohortRoom ? (
+        <div className="listener-cohort-detail__room-card">
+          <div>
+            <h5>{cohortRoom.room.title}</h5>
+            <p>{roomMembershipActive ? cohortRoom.emptyState.description : "Join the room to post messages with this cohort."}</p>
+          </div>
+          <div className="listener-cohort-detail__room-meta">
+            <span>{cohortRoom.cohort.memberCountLabel}</span>
+            <span>{cohortRoom.privacy.memberList === "not_exposed" ? "Member list hidden" : "Member list limited"}</span>
+            <span>{cohortRoom.privacy.moderation === "community_moderation_queue" ? "Moderated" : "Moderation ready"}</span>
+          </div>
+          {!roomMembershipActive ? (
+            <Button onClick={() => onJoinRoom(cohort)} disabled={roomPending}>
+              {roomPending ? "Joining room..." : "Join room"}
+            </Button>
+          ) : (
+            <Button variant="ghost" disabled>
+              Room ready
+            </Button>
+          )}
+        </div>
+      ) : null}
+    </div>
   );
 }

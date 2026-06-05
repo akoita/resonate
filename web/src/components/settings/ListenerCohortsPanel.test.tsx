@@ -1,7 +1,12 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import type { CommunityCohort, CommunityCohortDetailResponse, CommunityCohortSuggestionsResponse } from "../../lib/api";
+import type {
+  CommunityCohort,
+  CommunityCohortDetailResponse,
+  CommunityCohortRoomResponse,
+  CommunityCohortSuggestionsResponse,
+} from "../../lib/api";
 import {
   cohortPrimaryAction,
   cohortReasonLabel,
@@ -103,19 +108,64 @@ function detail(overrides: Partial<CommunityCohortDetailResponse> = {}): Communi
   };
 }
 
+function cohortRoom(overrides: Partial<CommunityCohortRoomResponse> = {}): CommunityCohortRoomResponse {
+  return {
+    schemaVersion: "community-cohort-room/v1",
+    cohort: detail().cohort,
+    room: {
+      id: "room-1",
+      roomType: "cohort",
+      ownerType: "cohort",
+      ownerId: "cohort-1",
+      artistId: null,
+      title: "Ambient night listeners Room",
+      description: "Private room for joined members.",
+      status: "active",
+      membership: {
+        role: "cohort_member",
+        status: "active",
+        joinedAt: "2026-06-01T01:00:00.000Z",
+        endedAt: null,
+      },
+      access: { joinable: true, reason: "cohort_joined" },
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-01T00:00:00.000Z",
+    },
+    emptyState: {
+      title: "Cohort room is ready",
+      description: "Start with a track, stem, show, or scene signal that belongs in this privacy-safe cohort.",
+    },
+    privacy: {
+      onChain: false,
+      otherListenerIdentities: "redacted",
+      memberList: "not_exposed",
+      walletAddresses: "redacted",
+      rawListeningHistory: "redacted",
+      accessDerivedServerSide: true,
+      moderation: "community_moderation_queue",
+    },
+    ...overrides,
+  };
+}
+
 function contentProps(overrides: Partial<React.ComponentProps<typeof ListenerCohortsContent>> = {}) {
   return {
     suggestions: suggestions([]),
     selectedCohortId: null,
     detail: null,
+    cohortRoom: null,
     loading: false,
     detailLoading: false,
+    roomLoading: false,
     detailError: null,
+    roomError: null,
     consentEnabled: true,
     actionId: null,
     onRefresh: vi.fn(),
     onOpenDetail: vi.fn(),
     onCloseDetail: vi.fn(),
+    onLoadRoom: vi.fn(),
+    onJoinRoom: vi.fn(),
     onJoin: vi.fn(),
     onLeave: vi.fn(),
     onHide: vi.fn(),
@@ -269,6 +319,54 @@ describe("ListenerCohortsPanel", () => {
     expect(html).toContain("Wallet addresses and exact private membership details are not exposed.");
     expect(html).not.toContain("visibleMemberCount");
     expect(html).not.toContain("minimumSize");
+  });
+
+  it("renders joined cohort room state without exposing a member list", () => {
+    const joined = cohort({
+      membership: {
+        status: "joined",
+        suggestedAt: "2026-06-01T00:00:00.000Z",
+        joinedAt: "2026-06-01T01:00:00.000Z",
+        leftAt: null,
+        hiddenAt: null,
+      },
+    });
+    const html = renderToStaticMarkup(
+      <ListenerCohortsContent {...contentProps({
+        suggestions: suggestions([joined]),
+        selectedCohortId: "cohort-1",
+        detail: detail({
+          cohort: {
+            ...detail().cohort,
+            membership: joined.membership,
+            status: "active",
+          },
+        }),
+        cohortRoom: cohortRoom(),
+      })} />,
+    );
+
+    expect(html).toContain("Cohort room");
+    expect(html).toContain("Ambient night listeners Room");
+    expect(html).toContain("Member list hidden");
+    expect(html).toContain("Moderated");
+    expect(html).toContain("Room ready");
+    expect(html).not.toContain("wallet");
+  });
+
+  it("renders a locked cohort room state until the listener joins the cohort", () => {
+    const html = renderToStaticMarkup(
+      <ListenerCohortsContent {...contentProps({
+        suggestions: suggestions([cohort()]),
+        selectedCohortId: "cohort-1",
+        detail: detail(),
+        cohortRoom: null,
+      })} />,
+    );
+
+    expect(html).toContain("Join required");
+    expect(html).toContain("Join this cohort before opening its private room.");
+    expect(html).not.toContain("Join room");
   });
 
   it("renders detail unavailable state when the backend no longer exposes a cohort", () => {
