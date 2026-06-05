@@ -47,6 +47,39 @@ describe("CommunityModerationDashboard", () => {
     expect(html).not.toContain("@test.resonate");
     expect(html).not.toContain("0x1111111111111111111111111111111111111111");
   });
+
+  it("styles destructive moderation actions distinctly from safe ones", () => {
+    const html = renderToStaticMarkup(
+      <CommunityModerationDashboard
+        status="ready"
+        queue={queue}
+        resolvingReportId={null}
+        onRefresh={() => {}}
+        onResolve={() => {}}
+      />,
+    );
+
+    expect(html).toContain("moderation-action--danger");
+    expect(html).toContain("moderation-action--warning");
+    expect(html).toContain("moderation-action--default");
+  });
+
+  it("shows an applying indicator and keeps action labels while resolving", () => {
+    const html = renderToStaticMarkup(
+      <CommunityModerationDashboard
+        status="ready"
+        queue={queue}
+        resolvingReportId="report-1"
+        onRefresh={() => {}}
+        onResolve={() => {}}
+      />,
+    );
+
+    expect(html).toContain("Applying action");
+    expect(html).toContain("Ban Member");
+    expect(html).toMatch(/<button[^>]*disabled/);
+    expect(html).not.toContain("Working...");
+  });
 });
 
 const queue: CommunityModerationQueueResponse = {

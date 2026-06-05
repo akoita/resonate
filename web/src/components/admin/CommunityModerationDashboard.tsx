@@ -139,7 +139,7 @@ function ReadyPanel({
         {queue.reports.length === 0 ? (
           <p className="analytics-muted">The moderation queue is clear.</p>
         ) : (
-          <div className="analytics-quality-table" role="table">
+          <div className="analytics-quality-table" role="list" aria-label="Community reports">
             {queue.reports.map((report) => (
               <ReportRow
                 key={report.id}
@@ -168,13 +168,13 @@ function ReportRow({
   onRequestResolve: (action: { reportId: string; action: CommunityModerationAction }) => void;
 }) {
   return (
-    <article className="analytics-quality-row" role="row" style={{ display: "block", padding: "18px" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.3fr) minmax(220px, 0.7fr)", gap: "16px" }}>
+    <article className="moderation-report" role="listitem">
+      <div className="moderation-report__grid">
         <div>
           <div className="glass-metadata-bar" style={{ margin: 0, marginBottom: "12px" }}>
             <div className="metadata-item">
               <span>{labelize(report.room.roomType)}</span>
-              <strong>{report.room.status}</strong>
+              <strong>{labelize(report.room.status)}</strong>
             </div>
             <div className="metadata-item">
               <span>Reports:</span>
@@ -209,19 +209,23 @@ function ReportRow({
             ))}
           </div>
           {report.status === "open" ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+            <div className="moderation-actions" aria-busy={resolving}>
               {actions.map((action) => (
                 <button
                   key={action}
                   type="button"
-                  className={action === "no_action" ? "date-selector-pill" : "wallet-connect-btn"}
+                  className={`moderation-action moderation-action--${ACTION_VARIANTS[action]}`}
                   disabled={resolving || !canApplyAction(report, action)}
                   onClick={() => onRequestResolve({ reportId: report.id, action })}
-                  style={{ fontSize: "12px", padding: "8px 10px" }}
                 >
-                  {resolving ? "Working..." : ACTION_LABELS[action] ?? labelize(action)}
+                  {ACTION_LABELS[action] ?? labelize(action)}
                 </button>
               ))}
+              {resolving ? (
+                <span className="moderation-actions__status" role="status">
+                  Applying action…
+                </span>
+              ) : null}
             </div>
           ) : (
             <p className="analytics-muted">Resolved {report.resolvedAt ? formatDateTime(report.resolvedAt) : ""}</p>
