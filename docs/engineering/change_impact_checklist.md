@@ -33,7 +33,14 @@ quietly break product truth elsewhere.
    If a user or service performs a meaningful action, ask whether analytics
    should capture a compact, privacy-safe event.
 
-6. Keep local validation focused and CI broad.
+6. Build toward blockchain-native and AI-native product shape.
+   Do not add blockchain or AI for decoration, but do not skip them by habit
+   either. When a feature touches ownership, membership, rights, provenance,
+   settlement, escrow, credentials, portability, discovery, explanation,
+   personalization, creative assistance, agent execution, safety, or operator
+   triage, explicitly evaluate the relevant primitive.
+
+7. Keep local validation focused and CI broad.
    Run the tests that prove the changed slice. Defer expensive full sweeps to
    CI unless the change touches shared foundations or production safety.
 
@@ -136,6 +143,37 @@ Update when relevant:
 - redaction tests
 - security report notes
 - architecture boundary docs
+
+### Native Platform Primitives
+
+Ask:
+
+- Could a blockchain primitive make this feature more open, verifiable,
+  transferable, interoperable, or owner-controlled?
+- Does the feature involve ownership, membership, benefits, provenance, rights,
+  licensing, settlement, escrow, rewards, credentials, or third-party
+  composability?
+- If blockchain is relevant, is the design using it for product value rather
+  than novelty, while keeping private/social/moderation state off-chain by
+  default?
+- Could an AI primitive make this feature more adaptive, explanatory,
+  personalized, creative, safe, or operationally efficient?
+- Does the feature involve recommendation, search, summaries, agent execution,
+  rights review, moderation triage, artist insights, generation, remixing, or
+  support workflows?
+- If AI is relevant, are consent, provenance, evaluation, fallback behavior,
+  human confirmation, and irreversible-action boundaries clear?
+
+Update when relevant:
+
+- architecture docs for blockchain or AI primitive boundaries
+- feature docs describing why the primitive is or is not used
+- smart-contract/protocol docs when on-chain ownership, settlement, or
+  credentials are introduced
+- agent/API docs when AI agents or external tools need schemas, receipts,
+  errors, examples, or capability metadata
+- tests for proof verification, redaction, model/agent fallback, policy gates,
+  and human-confirmation requirements
 
 ### Moderation, Abuse, And Removal
 

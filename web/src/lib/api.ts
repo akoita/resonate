@@ -2267,6 +2267,110 @@ export async function generateCommunityCohorts(
   );
 }
 
+export type CommunityModerationAction =
+  | "no_action"
+  | "delete_message"
+  | "remove_member"
+  | "ban_member"
+  | "pause_room"
+  | "archive_room";
+
+export type CommunityModerationReport = {
+  id: string;
+  status: "open" | "resolved" | "dismissed" | string;
+  reason: string;
+  reporterUserId: string;
+  createdAt: string;
+  resolvedAt: string | null;
+  room: {
+    id: string;
+    roomType: string;
+    ownerType: string;
+    ownerId: string;
+    artistId: string | null;
+    title: string;
+    status: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  message: {
+    id: string;
+    roomId: string;
+    authorUserId: string;
+    bodyPreview: string | null;
+    messageType: string;
+    status: string;
+    createdAt: string;
+    updatedAt: string;
+    deletedAt: string | null;
+  } | null;
+  context: {
+    roomOpenReports: number;
+    messageReportCount: number;
+    roomMembershipsByStatus: Record<string, number>;
+  };
+};
+
+export type CommunityModerationQueueResponse = {
+  schemaVersion: "community-moderation-queue/v1";
+  generatedAt: string;
+  filters: { status: string; limit: number };
+  summary: {
+    returnedReports: number;
+    openReports: number;
+    pausedRooms: number;
+    archivedRooms: number;
+  };
+  reports: CommunityModerationReport[];
+  actions: CommunityModerationAction[];
+  privacy: {
+    operatorOnly: boolean;
+    noWalletAddresses: boolean;
+    noUserEmails: boolean;
+    noAccessPolicyPayloads: boolean;
+    messageBodiesArePreviewed: boolean;
+    actionNotesStored: boolean;
+  };
+};
+
+export type CommunityModerationResolutionResponse = {
+  schemaVersion: "community-moderation-resolution/v1";
+  report: CommunityModerationReport;
+  action: {
+    type: CommunityModerationAction;
+    status: string;
+    noteStored: boolean;
+  };
+  privacy: CommunityModerationQueueResponse["privacy"];
+};
+
+export async function getCommunityModerationQueue(
+  token: string,
+  input: { status?: "open" | "resolved" | "dismissed"; limit?: number } = {},
+): Promise<CommunityModerationQueueResponse> {
+  const params = new URLSearchParams();
+  if (input.status) params.set("status", input.status);
+  if (input.limit) params.set("limit", String(input.limit));
+  const query = params.toString();
+  return apiRequest<CommunityModerationQueueResponse>(
+    `/admin/community/moderation/reports${query ? `?${query}` : ""}`,
+    { cache: "no-store" },
+    token,
+  );
+}
+
+export async function resolveCommunityModerationReport(
+  token: string,
+  reportId: string,
+  input: { action: CommunityModerationAction; note?: string },
+): Promise<CommunityModerationResolutionResponse> {
+  return apiRequest<CommunityModerationResolutionResponse>(
+    `/admin/community/moderation/reports/${encodeURIComponent(reportId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+    token,
+  );
+}
+
 export type CommunityRoomType = "artist_public" | "artist_holder" | "show_campaign_supporter" | "show_city_demand";
 export type CommunityRoomStatus = "active" | "paused" | "archived";
 export type CommunityMembershipStatus = "active" | "left" | "removed" | "banned";

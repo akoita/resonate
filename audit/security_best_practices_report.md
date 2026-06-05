@@ -1,5 +1,71 @@
 # Security Best Practices Report
 
+## Community Governance Moderation Dashboard - 2026-06-05
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/community/community_rooms.service.ts`
+- `backend/src/modules/maintenance/maintenance.controller.ts`
+- `backend/src/modules/maintenance/maintenance.service.ts`
+- `backend/src/tests/community_rooms.integration.spec.ts`
+- `backend/src/tests/maintenance.controller.http.spec.ts`
+- `web/src/app/admin/community/moderation/page.tsx`
+- `web/src/components/admin/CommunityModerationDashboard.tsx`
+- `web/src/components/admin/CommunityModerationDashboard.test.tsx`
+- `web/src/lib/api.ts`
+- `web/src/lib/api.test.ts`
+- related feature, strategy, checklist, and architecture docs
+
+### Executive Summary
+
+Issue #1037 adds an admin-only community moderation queue and governance
+dashboard for reported community messages, room state, and moderation actions.
+The scoped review found no Critical or High findings: the new admin endpoints
+are JWT and admin-role guarded, use Prisma structured queries only, normalize
+query/body inputs, avoid raw HTML rendering, and return bounded moderation
+context without wallet addresses, user emails, raw access-policy payloads, or
+full room history.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- `GET /admin/community/moderation/reports` and
+  `PATCH /admin/community/moderation/reports/:reportId` run through
+  `AuthGuard("jwt")` and `RolesGuard` with `@Roles("admin")`.
+- Report queue filters and resolution actions are normalized against explicit
+  allow-lists before use.
+- Admin resolution writes are scoped to the reported room/message context and
+  support dismiss, delete message, remove member, ban member, pause room, and
+  archive room.
+- The moderation DTO returns message previews and membership-count context but
+  omits user emails, wallet addresses, raw access-policy JSON, and full room
+  history.
+- The frontend uses centralized typed API helpers and React text rendering; no
+  `dangerouslySetInnerHTML`, `innerHTML`, cookie handling, or public secret
+  environment variable usage was introduced.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/modules/community backend/src/modules/maintenance web/src/app/admin/community/moderation web/src/components/admin/CommunityModerationDashboard.tsx web/src/lib/api.ts --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\\$queryRaw' backend/src/modules/community backend/src/modules/maintenance`
+- `rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/community backend/src/modules/maintenance`
+- `rg 'JSON\\.parse|eval\\(' backend/src/modules/community backend/src/modules/maintenance`
+- `rg '@Body\\(\\)|@Query\\(\\)|@Param\\(\\)' backend/src/modules/community backend/src/modules/maintenance`
+- `rg 'dangerouslySetInnerHTML|innerHTML' web/src/app/admin/community/moderation web/src/components/admin/CommunityModerationDashboard.tsx web/src/lib/api.ts`
+- `rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/app/admin/community/moderation web/src/components/admin/CommunityModerationDashboard.tsx web/src/lib/api.ts`
+- `rg 'document\\.cookie|setCookie|httpOnly.*false' web/src/app/admin/community/moderation web/src/components/admin/CommunityModerationDashboard.tsx web/src/lib/api.ts`
+- Targeted review of admin authorization, queue filtering, resolution action
+  allow-lists, moderation DTO redaction, and frontend API/rendering behavior.
+
 ## Community Cohort Detail Utility - 2026-06-03
 
 ### Scope Reviewed

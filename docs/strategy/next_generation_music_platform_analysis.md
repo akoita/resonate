@@ -277,3 +277,12 @@ Resonate should be built around these principles:
 7. Agent-facing protocols should be designed as product surfaces with clear
    capabilities, quotes, actionable errors, receipts, examples, idempotency, and
    recovery paths.
+8. Resonate should be blockchain-native, not merely blockchain-enabled. For
+   each product surface, ask whether ownership, membership, provenance, rights,
+   escrow, settlement, rewards, credentials, or portability would become more
+   useful if expressed through an open, verifiable, composable blockchain
+   primitive.
+9. Resonate should be AI-native, not merely AI-assisted. For each product
+   surface, ask whether intelligence can improve discovery, explanation,
+   personalization, creative iteration, agent execution, artist insight, safety,
+   or operational triage while preserving human control and consent.

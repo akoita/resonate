@@ -339,6 +339,19 @@ export default function Sidebar() {
               </span>
               <span className="link-text">Cohorts</span>
             </Link>
+            <Link
+              href="/admin/community/moderation"
+              className={`sidebar-link ${pathname === "/admin/community/moderation" ? 'active' : ''}`}
+            >
+              <span className="link-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7l7-4Z" />
+                  <path d="M8 12h8" />
+                  <path d="M12 8v8" />
+                </svg>
+              </span>
+              <span className="link-text">Moderation</span>
+            </Link>
           </>
         ) : null}
         <button

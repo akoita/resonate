@@ -11,6 +11,15 @@ import {
 const ROOM_STATUSES = ["active", "paused", "archived"] as const;
 const MESSAGE_TYPES = ["message", "announcement", "campaign_update"] as const;
 const MODERATION_ACTIONS = ["remove", "ban"] as const;
+const MODERATION_QUEUE_STATUSES = ["open", "resolved", "dismissed"] as const;
+const MODERATION_RESOLUTION_ACTIONS = [
+  "no_action",
+  "delete_message",
+  "remove_member",
+  "ban_member",
+  "pause_room",
+  "archive_room",
+] as const;
 const PUBLIC_RELEASE_STATUSES = ["ready", "published"] as const;
 const RELEASE_ARTIST_COMMUNITY_ROLES = ["main", "primary"] as const;
 const SHOW_CITY_DEMAND_SIGNAL_STATUSES = ["draft", "active", "funded", "booking_confirmed", "deposit_released"] as const;
@@ -19,6 +28,8 @@ const SHOW_CITY_DEMAND_CAMPAIGN_STATUSES = ["active", "funded", "booking_confirm
 type RoomStatus = (typeof ROOM_STATUSES)[number];
 type MessageType = (typeof MESSAGE_TYPES)[number];
 type ModerationAction = (typeof MODERATION_ACTIONS)[number];
+type ModerationQueueStatus = (typeof MODERATION_QUEUE_STATUSES)[number];
+type ModerationResolutionAction = (typeof MODERATION_RESOLUTION_ACTIONS)[number];
 type Actor = { userId: string; role?: string | null };
 
 @Injectable()
@@ -430,6 +441,156 @@ export class CommunityRoomsService {
     return { schemaVersion: "community-room/v1", room: roomDto(updated) };
   }
 
+  async getModerationQueue(input: { status?: unknown; limit?: unknown } = {}) {
+    const status = normalizeModerationQueueStatus(input.status);
+    const limit = normalizeModerationQueueLimit(input.limit);
+    const reports = await prisma.communityModerationReport.findMany({
+      where: { status },
+      include: { room: true, message: true },
+      orderBy: [{ createdAt: "asc" }],
+      take: limit,
+    });
+    const [openReports, pausedRooms, archivedRooms] = await Promise.all([
+      prisma.communityModerationReport.count({ where: { status: "open" } }),
+      prisma.communityRoom.count({ where: { status: "paused" } }),
+      prisma.communityRoom.count({ where: { status: "archived" } }),
+    ]);
+    const hydratedReports = await Promise.all(reports.map((report) => this.moderationReportDto(report)));
+
+    return {
+      schemaVersion: "community-moderation-queue/v1",
+      generatedAt: new Date().toISOString(),
+      filters: { status, limit },
+      summary: {
+        returnedReports: hydratedReports.length,
+        openReports,
+        pausedRooms,
+        archivedRooms,
+      },
+      reports: hydratedReports,
+      actions: [...MODERATION_RESOLUTION_ACTIONS],
+      privacy: communityModerationPrivacyDto(),
+    };
+  }
+
+  async resolveModerationReport(actor: Actor, reportId: string, input: { action?: unknown; note?: unknown } = {}) {
+    const action = normalizeModerationResolutionAction(input.action);
+    const note = normalizeModerationNote(input.note);
+    const report = await prisma.communityModerationReport.findUnique({
+      where: { id: reportId },
+      include: { room: true, message: true },
+    });
+    if (!report) throw new NotFoundException("Community moderation report not found");
+    if (report.status !== "open") {
+      throw new BadRequestException("Only open moderation reports can be resolved");
+    }
+
+    if (action === "delete_message") {
+      await this.applyAdminMessageDeletion(report);
+    } else if (action === "remove_member" || action === "ban_member") {
+      await this.applyAdminMemberModeration(report, action);
+    } else if (action === "pause_room" || action === "archive_room") {
+      await prisma.communityRoom.update({
+        where: { id: report.roomId },
+        data: { status: action === "pause_room" ? "paused" : "archived" },
+      });
+    }
+
+    const updated = await prisma.communityModerationReport.update({
+      where: { id: reportId },
+      data: {
+        status: action === "no_action" ? "dismissed" : "resolved",
+        resolvedAt: new Date(),
+      },
+      include: { room: true, message: true },
+    });
+    this.publish("community.moderation_action_taken", actor.userId, {
+      reportId,
+      roomId: report.roomId,
+      messageId: report.messageId,
+      action,
+      outcome: updated.status,
+      hasOperatorNote: Boolean(note),
+    });
+
+    return {
+      schemaVersion: "community-moderation-resolution/v1",
+      report: await this.moderationReportDto(updated),
+      action: {
+        type: action,
+        status: updated.status,
+        noteStored: false,
+      },
+      privacy: communityModerationPrivacyDto(),
+    };
+  }
+
+  private async applyAdminMessageDeletion(report: ModerationReportWithContext) {
+    if (!report.messageId || !report.message) {
+      throw new BadRequestException("This report does not have a message to delete");
+    }
+    if (report.message.status !== "visible") return;
+    await prisma.communityMessage.update({
+      where: { id: report.messageId },
+      data: { status: "deleted_by_moderator", deletedAt: new Date() },
+    });
+  }
+
+  private async applyAdminMemberModeration(
+    report: ModerationReportWithContext,
+    action: "remove_member" | "ban_member",
+  ) {
+    const targetUserId = report.message?.authorId;
+    if (!targetUserId) {
+      throw new BadRequestException("This report does not have a message author to moderate");
+    }
+    const membership = await prisma.communityMembership.findUnique({
+      where: { CommunityMembership_identity: { roomId: report.roomId, userId: targetUserId } },
+    });
+    if (!membership) {
+      throw new BadRequestException("The reported message author is not a room member");
+    }
+    await prisma.communityMembership.update({
+      where: { id: membership.id },
+      data: {
+        status: action === "ban_member" ? "banned" : "removed",
+        endedAt: new Date(),
+      },
+    });
+  }
+
+  private async moderationReportDto(report: ModerationReportWithContext) {
+    const [roomOpenReports, messageReportCount, roomMembershipCounts] = await Promise.all([
+      prisma.communityModerationReport.count({ where: { roomId: report.roomId, status: "open" } }),
+      report.messageId
+        ? prisma.communityModerationReport.count({ where: { messageId: report.messageId } })
+        : Promise.resolve(0),
+      prisma.communityMembership.groupBy({
+        by: ["status"],
+        where: { roomId: report.roomId },
+        _count: { _all: true },
+      }),
+    ]);
+
+    return {
+      id: report.id,
+      status: report.status,
+      reason: previewText(report.reason, 200),
+      reporterUserId: report.reporterUserId,
+      createdAt: report.createdAt.toISOString(),
+      resolvedAt: report.resolvedAt?.toISOString() ?? null,
+      room: moderationRoomDto(report.room),
+      message: report.message ? moderationMessageDto(report.message) : null,
+      context: {
+        roomOpenReports,
+        messageReportCount,
+        roomMembershipsByStatus: Object.fromEntries(
+          roomMembershipCounts.map((row) => [row.status, row._count._all]),
+        ),
+      },
+    };
+  }
+
   private async assertRoomJoinable(userId: string, room: RoomRecord) {
     if (room.status !== "active") throw new ForbiddenException("This community room is not active");
     const existing = await prisma.communityMembership.findUnique({
@@ -729,6 +890,28 @@ export class CommunityRoomsService {
 }
 
 type RoomRecord = CommunityRoom;
+type ModerationReportWithContext = {
+  id: string;
+  roomId: string;
+  messageId: string | null;
+  reporterUserId: string;
+  reason: string;
+  status: string;
+  createdAt: Date;
+  resolvedAt: Date | null;
+  room: RoomRecord;
+  message: {
+    id: string;
+    roomId: string;
+    authorId: string;
+    body: string;
+    messageType: string;
+    status: string;
+    createdAt: Date;
+    updatedAt: Date;
+    deletedAt: Date | null;
+  } | null;
+};
 type ShowCampaignRecord = {
   id: string;
   slug: string;
@@ -912,6 +1095,71 @@ function reportDto(report: { id: string; roomId: string; messageId: string | nul
   };
 }
 
+function moderationRoomDto(room: {
+  id: string;
+  roomType: string;
+  ownerType: string;
+  ownerId: string;
+  artistId: string | null;
+  title: string;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: room.id,
+    roomType: room.roomType,
+    ownerType: room.ownerType,
+    ownerId: room.ownerId,
+    artistId: room.artistId,
+    title: room.title,
+    status: room.status,
+    createdAt: room.createdAt.toISOString(),
+    updatedAt: room.updatedAt.toISOString(),
+  };
+}
+
+function moderationMessageDto(message: {
+  id: string;
+  roomId: string;
+  authorId: string;
+  body: string;
+  messageType: string;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}) {
+  return {
+    id: message.id,
+    roomId: message.roomId,
+    authorUserId: message.authorId,
+    bodyPreview: message.status === "visible" ? previewText(message.body, 240) : null,
+    messageType: message.messageType,
+    status: message.status,
+    createdAt: message.createdAt.toISOString(),
+    updatedAt: message.updatedAt.toISOString(),
+    deletedAt: message.deletedAt?.toISOString() ?? null,
+  };
+}
+
+function communityModerationPrivacyDto() {
+  return {
+    operatorOnly: true,
+    noWalletAddresses: true,
+    noUserEmails: true,
+    noAccessPolicyPayloads: true,
+    messageBodiesArePreviewed: true,
+    actionNotesStored: false,
+  };
+}
+
+function previewText(value: string, maxLength: number) {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (compact.length <= maxLength) return compact;
+  return `${compact.slice(0, maxLength - 3)}...`;
+}
+
 function normalizeMessageType(input: unknown): MessageType {
   if (input === undefined) return "message";
   if (typeof input !== "string") throw new BadRequestException("messageType must be a string");
@@ -943,6 +1191,40 @@ function normalizeModerationAction(input: unknown): ModerationAction {
     throw new BadRequestException("action must be remove or ban");
   }
   return normalized as ModerationAction;
+}
+
+function normalizeModerationQueueStatus(input: unknown): ModerationQueueStatus {
+  if (input === undefined || input === null || input === "") return "open";
+  if (typeof input !== "string") throw new BadRequestException("status must be a string");
+  const normalized = input.trim().toLowerCase();
+  if (!MODERATION_QUEUE_STATUSES.includes(normalized as ModerationQueueStatus)) {
+    throw new BadRequestException("status must be open, resolved, or dismissed");
+  }
+  return normalized as ModerationQueueStatus;
+}
+
+function normalizeModerationQueueLimit(input: unknown) {
+  if (input === undefined || input === null || input === "") return 50;
+  const numeric = typeof input === "number" ? input : Number(input);
+  if (!Number.isFinite(numeric)) throw new BadRequestException("limit must be a number");
+  return Math.min(100, Math.max(1, Math.floor(numeric)));
+}
+
+function normalizeModerationResolutionAction(input: unknown): ModerationResolutionAction {
+  if (typeof input !== "string") throw new BadRequestException("action must be a string");
+  const normalized = input.trim().toLowerCase();
+  if (!MODERATION_RESOLUTION_ACTIONS.includes(normalized as ModerationResolutionAction)) {
+    throw new BadRequestException("action must be a supported moderation resolution action");
+  }
+  return normalized as ModerationResolutionAction;
+}
+
+function normalizeModerationNote(input: unknown) {
+  if (input === undefined || input === null || input === "") return null;
+  if (typeof input !== "string") throw new BadRequestException("note must be a string");
+  const note = input.trim();
+  if (note.length > 500) throw new BadRequestException("note must be 500 characters or fewer");
+  return note || null;
 }
 
 function normalizeRoomStatus(input: unknown): RoomStatus {

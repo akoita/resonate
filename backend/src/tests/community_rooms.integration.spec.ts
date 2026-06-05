@@ -363,6 +363,82 @@ describe("CommunityRoomsService integration", () => {
     expect(paused.room).toMatchObject({ status: "paused" });
   });
 
+  it("lets admins triage moderation reports with bounded context and resolve member actions", async () => {
+    const room = await prisma.communityRoom.create({
+      data: {
+        roomType: "artist_public",
+        ownerType: "artist",
+        ownerId: `${artistId}_governance`,
+        artistId,
+        title: "Governance Review Room",
+        description: "Room for moderation queue tests.",
+      },
+    });
+    await prisma.communityMembership.createMany({
+      data: [
+        { roomId: room.id, userId: listenerUserId, role: "member" },
+        { roomId: room.id, userId: otherUserId, role: "member" },
+      ],
+    });
+    const message = await service.createMessage(listenerUserId, room.id, {
+      body: "This reported message should appear as a preview only.",
+    });
+    const report = await service.reportMessage(otherUserId, message.message.id, {
+      reason: "privacy and safety review",
+    });
+
+    const queue = await service.getModerationQueue({ status: "open", limit: 100 });
+    const queuedReport = queue.reports.find((item) => item.id === report.report.id);
+
+    expect(queuedReport).toMatchObject({
+      status: "open",
+      reason: "privacy and safety review",
+      room: {
+        id: room.id,
+        title: "Governance Review Room",
+        status: "active",
+      },
+      message: {
+        id: message.message.id,
+        authorUserId: listenerUserId,
+        status: "visible",
+      },
+      context: {
+        messageReportCount: 1,
+        roomMembershipsByStatus: { active: 2 },
+      },
+    });
+    expect(JSON.stringify(queuedReport)).not.toContain("@test.resonate");
+    expect(JSON.stringify(queuedReport)).not.toContain(holderWallet);
+    expect(JSON.stringify(queue.privacy)).toContain("noWalletAddresses");
+
+    const resolved = await service.resolveModerationReport(
+      { userId: "admin", role: "admin" },
+      report.report.id,
+      { action: "ban_member", note: "Repeated abuse." },
+    );
+
+    expect(resolved).toMatchObject({
+      schemaVersion: "community-moderation-resolution/v1",
+      action: { type: "ban_member", status: "resolved", noteStored: false },
+      privacy: { noWalletAddresses: true, noUserEmails: true },
+    });
+    await expect(
+      prisma.communityMembership.findUniqueOrThrow({
+        where: { CommunityMembership_identity: { roomId: room.id, userId: listenerUserId } },
+      }),
+    ).resolves.toMatchObject({ status: "banned" });
+    await expect(prisma.communityModerationReport.findUniqueOrThrow({ where: { id: report.report.id } }))
+      .resolves.toMatchObject({ status: "resolved" });
+    expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.moderation_action_taken",
+      reportId: report.report.id,
+      action: "ban_member",
+      outcome: "resolved",
+      hasOperatorNote: true,
+    }));
+  });
+
   it("creates campaign supporter rooms and gates them by confirmed pledge support", async () => {
     const locked = await service.getShowCampaignCommunity(otherUserId, campaignSlug);
     const lockedRoom = locked.rooms.find((room) => room.roomType === "show_campaign_supporter");
