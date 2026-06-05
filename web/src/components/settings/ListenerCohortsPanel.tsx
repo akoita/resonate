@@ -689,23 +689,23 @@ function CohortRoomBlock({
       ) : null}
       {isJoined && !loading && cohortRoom ? (
         <div className="listener-cohort-detail__room-card">
-          <div>
+          <div className="listener-cohort-detail__room-info">
             <h5>{cohortRoom.room.title}</h5>
             <p>{roomMembershipActive ? cohortRoom.emptyState.description : "Join the room to post messages with this cohort."}</p>
-          </div>
-          <div className="listener-cohort-detail__room-meta">
-            <span>{cohortRoom.cohort.memberCountLabel}</span>
-            <span>{cohortRoom.privacy.memberList === "not_exposed" ? "Member list hidden" : "Member list limited"}</span>
-            <span>{cohortRoom.privacy.moderation === "community_moderation_queue" ? "Moderated" : "Moderation ready"}</span>
+            <div className="listener-cohort-detail__room-meta">
+              <span>{cohortRoom.cohort.memberCountLabel}</span>
+              <span>{cohortRoom.privacy.memberList === "not_exposed" ? "Member list hidden" : "Member list limited"}</span>
+              <span>{cohortRoom.privacy.moderation === "community_moderation_queue" ? "Moderated" : "Moderation ready"}</span>
+            </div>
           </div>
           {!roomMembershipActive ? (
             <Button onClick={() => onJoinRoom(cohort)} disabled={roomPending}>
               {roomPending ? "Joining room..." : "Join room"}
             </Button>
           ) : (
-            <Button variant="ghost" disabled>
-              Room ready
-            </Button>
+            <span className="listener-cohort-detail__room-status" role="status">
+              <span aria-hidden="true">✓</span> Room ready
+            </span>
           )}
         </div>
       ) : null}

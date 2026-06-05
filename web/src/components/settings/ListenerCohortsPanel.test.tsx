@@ -351,6 +351,7 @@ describe("ListenerCohortsPanel", () => {
     expect(html).toContain("Member list hidden");
     expect(html).toContain("Moderated");
     expect(html).toContain("Room ready");
+    expect(html).toContain("listener-cohort-detail__room-status");
     expect(html).not.toContain("wallet");
   });
 

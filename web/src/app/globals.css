@@ -5840,6 +5840,27 @@ a.listener-cohort-detail__action:focus-visible {
   align-items: center;
 }
 
+.listener-cohort-detail__room-info {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.listener-cohort-detail__room-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  white-space: nowrap;
+  padding: 6px var(--space-3);
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(74, 222, 128, 0.4);
+  background: rgba(74, 222, 128, 0.12);
+  color: rgba(187, 247, 208, 0.95);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .listener-cohort-detail__room-card h5 {
   margin: 0 0 4px;
   color: var(--color-text);
