@@ -476,33 +476,46 @@ export class CommunityRoomsService {
   async resolveModerationReport(actor: Actor, reportId: string, input: { action?: unknown; note?: unknown } = {}) {
     const action = normalizeModerationResolutionAction(input.action);
     const note = normalizeModerationNote(input.note);
-    const report = await prisma.communityModerationReport.findUnique({
-      where: { id: reportId },
-      include: { room: true, message: true },
-    });
-    if (!report) throw new NotFoundException("Community moderation report not found");
-    if (report.status !== "open") {
-      throw new BadRequestException("Only open moderation reports can be resolved");
-    }
-
-    if (action === "delete_message") {
-      await this.applyAdminMessageDeletion(report);
-    } else if (action === "remove_member" || action === "ban_member") {
-      await this.applyAdminMemberModeration(report, action);
-    } else if (action === "pause_room" || action === "archive_room") {
-      await prisma.communityRoom.update({
-        where: { id: report.roomId },
-        data: { status: action === "pause_room" ? "paused" : "archived" },
+    const { report, updated } = await prisma.$transaction(async (tx) => {
+      const claim = await tx.communityModerationReport.updateMany({
+        where: { id: reportId, status: "open" },
+        data: { status: "resolving" },
       });
-    }
+      if (claim.count === 0) {
+        const existing = await tx.communityModerationReport.findUnique({
+          where: { id: reportId },
+          select: { id: true },
+        });
+        if (!existing) throw new NotFoundException("Community moderation report not found");
+        throw new BadRequestException("Only open moderation reports can be resolved");
+      }
 
-    const updated = await prisma.communityModerationReport.update({
-      where: { id: reportId },
-      data: {
-        status: action === "no_action" ? "dismissed" : "resolved",
-        resolvedAt: new Date(),
-      },
-      include: { room: true, message: true },
+      const report = await tx.communityModerationReport.findUnique({
+        where: { id: reportId },
+        include: { room: true, message: true },
+      });
+      if (!report) throw new NotFoundException("Community moderation report not found");
+
+      if (action === "delete_message") {
+        await this.applyAdminMessageDeletion(tx, report);
+      } else if (action === "remove_member" || action === "ban_member") {
+        await this.applyAdminMemberModeration(tx, report, action);
+      } else if (action === "pause_room" || action === "archive_room") {
+        await tx.communityRoom.update({
+          where: { id: report.roomId },
+          data: { status: action === "pause_room" ? "paused" : "archived" },
+        });
+      }
+
+      const updated = await tx.communityModerationReport.update({
+        where: { id: reportId },
+        data: {
+          status: action === "no_action" ? "dismissed" : "resolved",
+          resolvedAt: new Date(),
+        },
+        include: { room: true, message: true },
+      });
+      return { report, updated };
     });
     this.publish("community.moderation_action_taken", actor.userId, {
       reportId,
@@ -525,18 +538,19 @@ export class CommunityRoomsService {
     };
   }
 
-  private async applyAdminMessageDeletion(report: ModerationReportWithContext) {
+  private async applyAdminMessageDeletion(tx: Prisma.TransactionClient, report: ModerationReportWithContext) {
     if (!report.messageId || !report.message) {
       throw new BadRequestException("This report does not have a message to delete");
     }
     if (report.message.status !== "visible") return;
-    await prisma.communityMessage.update({
+    await tx.communityMessage.update({
       where: { id: report.messageId },
       data: { status: "deleted_by_moderator", deletedAt: new Date() },
     });
   }
 
   private async applyAdminMemberModeration(
+    tx: Prisma.TransactionClient,
     report: ModerationReportWithContext,
     action: "remove_member" | "ban_member",
   ) {
@@ -544,13 +558,13 @@ export class CommunityRoomsService {
     if (!targetUserId) {
       throw new BadRequestException("This report does not have a message author to moderate");
     }
-    const membership = await prisma.communityMembership.findUnique({
+    const membership = await tx.communityMembership.findUnique({
       where: { CommunityMembership_identity: { roomId: report.roomId, userId: targetUserId } },
     });
     if (!membership) {
       throw new BadRequestException("The reported message author is not a room member");
     }
-    await prisma.communityMembership.update({
+    await tx.communityMembership.update({
       where: { id: membership.id },
       data: {
         status: action === "ban_member" ? "banned" : "removed",

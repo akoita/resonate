@@ -306,6 +306,17 @@ export interface CommunityMemberModeratedEvent extends BaseEvent {
   action: string;
 }
 
+export interface CommunityModerationActionTakenEvent extends BaseEvent {
+  eventName: "community.moderation_action_taken";
+  userId: string;
+  reportId: string;
+  roomId: string;
+  messageId?: string | null;
+  action: string;
+  outcome: string;
+  hasOperatorNote: boolean;
+}
+
 export interface CommunityRoomStatusUpdatedEvent extends BaseEvent {
   eventName: "community.room_status_updated";
   userId: string;
@@ -1038,6 +1049,7 @@ export type ResonateEvent =
   | CommunityMessageReportedEvent
   | CommunityMessageDeletedEvent
   | CommunityMemberModeratedEvent
+  | CommunityModerationActionTakenEvent
   | CommunityRoomStatusUpdatedEvent
   | CommunityCohortSuggestedEvent
   | CommunityCohortJoinedEvent

@@ -465,6 +465,19 @@ describe("AnalyticsDomainEventBridgeService", () => {
         action: "ban",
       },
       {
+        eventName: "community.moderation_action_taken",
+        eventVersion: 1,
+        occurredAt,
+        userId: "admin_user_919",
+        reportId: "report_919",
+        roomId: "room_919",
+        messageId: "message_919",
+        action: "ban_member",
+        outcome: "resolved",
+        hasOperatorNote: true,
+        operatorNote: "do not persist raw operator note",
+      },
+      {
         eventName: "community.room_status_updated",
         eventVersion: 1,
         occurredAt,
@@ -688,6 +701,30 @@ describe("AnalyticsDomainEventBridgeService", () => {
           chainId: 84532,
           amountEth: "0.01",
           status: "sent",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "community.moderation_action_taken",
+        producer: "community-service",
+        subjectType: "community_moderation_report",
+        subjectId: "report_919",
+        actorId: "admin_user_919",
+        payload: expect.objectContaining({
+          reportId: "report_919",
+          roomId: "room_919",
+          messageId: "message_919",
+          action: "ban_member",
+          outcome: "resolved",
+          hasOperatorNote: true,
+        }),
+        sourceRefs: expect.objectContaining({
+          reportId: "report_919",
+          roomId: "room_919",
+          messageId: "message_919",
+          action: "ban_member",
+          outcome: "resolved",
         }),
       }),
     );

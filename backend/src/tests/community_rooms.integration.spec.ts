@@ -437,6 +437,13 @@ describe("CommunityRoomsService integration", () => {
       outcome: "resolved",
       hasOperatorNote: true,
     }));
+    await expect(
+      service.resolveModerationReport(
+        { userId: "admin-2", role: "admin" },
+        report.report.id,
+        { action: "no_action" },
+      ),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it("creates campaign supporter rooms and gates them by confirmed pledge support", async () => {
