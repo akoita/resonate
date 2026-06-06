@@ -18,6 +18,8 @@ import {
 } from "../../lib/api";
 import { Button } from "../ui/Button";
 import CohortRoomConversation from "../community/CohortRoomConversation";
+import { RoomCard } from "../community/RoomCard";
+import { roomAccessLockedReason } from "../community/roomAccess";
 
 type ToastFn = (toast: { type: "success" | "error" | "info" | "warning"; title: string; message: string }) => void;
 
@@ -350,7 +352,7 @@ export function ListenerCohortsContent({
       {!consentEnabled && !loading ? (
         <div className="listener-cohorts-state listener-cohorts-state--locked">
           <strong>Community matching is off</strong>
-          <p>Enable community taste matching or city and scene community above to receive safe cohort suggestions.</p>
+          <p>{roomAccessLockedReason("consent")}</p>
         </div>
       ) : null}
 
@@ -432,46 +434,52 @@ function ListenerCohortCard({
   const isJoined = cohort.membership.status === "joined";
 
   return (
-    <article className={`listener-cohort-card listener-cohort-card--${cohort.membership.status}${selected ? " listener-cohort-card--selected" : ""}`}>
-      <div className="listener-cohort-card__body">
-        <div className="listener-cohort-card__meta">
-          <span>{cohortTypeLabel(cohort.cohortType)}</span>
+    <RoomCard
+      className={`room-card--cohort listener-cohort-card--${cohort.membership.status}`}
+      accessModel="consent"
+      eyebrow={cohortTypeLabel(cohort.cohortType)}
+      title={cohort.title}
+      selected={selected}
+      meta={
+        <>
           <span>{cohort.memberCountLabel}</span>
           <span className={`listener-cohort-card__status listener-cohort-card__status--${cohort.membership.status}`}>
             {cohortStatusLabel(cohort.membership.status)}
           </span>
-        </div>
-        <h4>{cohort.title}</h4>
-        <p>{cohort.safeExplanation}</p>
-        <div className="listener-cohort-card__reason">{cohortReasonLabel(cohort)}</div>
-      </div>
-      <div className="listener-cohort-card__actions">
-        <Button
-          variant="ghost"
-          onClick={() => (selected ? onCloseDetail() : onOpenDetail(cohort))}
-          disabled={cohortPending}
-          aria-expanded={selected}
-          aria-controls="listener-cohort-detail"
-        >
-          {selected ? "Hide details" : "Details"}
-        </Button>
-        {primaryAction === "join" ? (
-          <Button onClick={() => onJoin(cohort)} disabled={cohortPending}>
-            {primaryPending ? "Joining..." : cohort.membership.status === "left" ? "Rejoin" : "Join"}
+        </>
+      }
+      actions={
+        <>
+          <Button
+            variant="ghost"
+            onClick={() => (selected ? onCloseDetail() : onOpenDetail(cohort))}
+            disabled={cohortPending}
+            aria-expanded={selected}
+            aria-controls="listener-cohort-detail"
+          >
+            {selected ? "Hide details" : "Details"}
           </Button>
-        ) : null}
-        {primaryAction === "leave" ? (
-          <Button variant="ghost" onClick={() => onLeave(cohort)} disabled={cohortPending}>
-            {primaryPending ? "Leaving..." : "Leave"}
-          </Button>
-        ) : null}
-        {!isJoined && cohort.membership.status !== "hidden" ? (
-          <Button variant="ghost" onClick={() => onHide(cohort)} disabled={cohortPending}>
-            {hidePending ? "Hiding..." : "Hide"}
-          </Button>
-        ) : null}
-      </div>
-    </article>
+          {primaryAction === "join" ? (
+            <Button onClick={() => onJoin(cohort)} disabled={cohortPending}>
+              {primaryPending ? "Joining..." : cohort.membership.status === "left" ? "Rejoin" : "Join"}
+            </Button>
+          ) : null}
+          {primaryAction === "leave" ? (
+            <Button variant="ghost" onClick={() => onLeave(cohort)} disabled={cohortPending}>
+              {primaryPending ? "Leaving..." : "Leave"}
+            </Button>
+          ) : null}
+          {!isJoined && cohort.membership.status !== "hidden" ? (
+            <Button variant="ghost" onClick={() => onHide(cohort)} disabled={cohortPending}>
+              {hidePending ? "Hiding..." : "Hide"}
+            </Button>
+          ) : null}
+        </>
+      }
+    >
+      <p>{cohort.safeExplanation}</p>
+      <div className="listener-cohort-card__reason">{cohortReasonLabel(cohort)}</div>
+    </RoomCard>
   );
 }
 

@@ -7,6 +7,8 @@ import {
   listCommunityRoomMessages,
   type CommunityMessage,
 } from "../../lib/api";
+import { RoomCard } from "../community/RoomCard";
+import { campaignRoomAccessModel, roomAccessLockedReason } from "../community/roomAccess";
 import {
   createShowCampaignCommunityUpdate,
   getShowCampaignCommunity,
@@ -35,7 +37,7 @@ export function campaignCommunityAction(room?: ShowCampaignCommunityRoom | null)
     return { label: "Join supporter room", disabled: false, reason: "Confirmed campaign support unlocks this room." };
   }
   if (room.access?.reason === "campaign_support_required") {
-    return { label: "Support required", disabled: true, reason: "Confirm a campaign pledge to unlock the supporter room." };
+    return { label: "Support required", disabled: true, reason: roomAccessLockedReason("support") };
   }
   return { label: "Unavailable", disabled: true, reason: "The supporter room is not available right now." };
 }
@@ -230,15 +232,13 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
       ) : (
         <div className="show-community__grid">
           {cityDemandAvailable ? (
-            <article className="show-community__room show-community__room--city">
-              <span>{cityDemandRoom?.title ?? `${campaign.city} demand group`}</span>
-              <strong>{cityJoined ? "Demand joined" : "Join city demand"}</strong>
-              <p>
-                {loading
-                  ? "Checking your city demand state..."
-                  : "Signal interest in this city without making a pledge yet."}
-              </p>
-              {!cityJoined ? (
+            <RoomCard
+              className="room-card--campaign show-community__room--city"
+              accessModel={campaignRoomAccessModel("show_city_demand")}
+              eyebrow="City demand"
+              title={cityDemandRoom?.title ?? `${campaign.city} demand group`}
+              meta={<span>{cityJoined ? "Demand joined" : "Join city demand"}</span>}
+              actions={!cityJoined ? (
                 <button
                   type="button"
                   onClick={() => void joinCityDemand()}
@@ -247,15 +247,24 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
                   {joiningCity ? "Joining..." : `Join ${campaign.city}`}
                 </button>
               ) : null}
-            </article>
+            >
+              <p>
+                {loading
+                  ? "Checking your city demand state..."
+                  : "Signal interest in this city without making a pledge yet."}
+              </p>
+            </RoomCard>
           ) : null}
 
           {supporterRoomAvailable ? (
-            <article className="show-community__room">
-              <span>{supporterRoom?.title ?? "Campaign supporter room"}</span>
-              <strong>{joined ? "Access active" : action.label}</strong>
-              <p>{loading ? "Checking your campaign support..." : action.reason}</p>
-              {!joined ? (
+            <RoomCard
+              className="room-card--campaign"
+              accessModel={campaignRoomAccessModel("show_campaign_supporter")}
+              accessLocked={!joined && action.disabled}
+              eyebrow="Supporter room"
+              title={supporterRoom?.title ?? "Campaign supporter room"}
+              meta={<span>{joined ? "Access active" : action.label}</span>}
+              actions={!joined ? (
                 <button
                   type="button"
                   onClick={() => void joinRoom()}
@@ -264,7 +273,9 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
                   {joining ? "Joining..." : action.label}
                 </button>
               ) : null}
-            </article>
+            >
+              <p>{loading ? "Checking your campaign support..." : action.reason}</p>
+            </RoomCard>
           ) : null}
 
           {supporterRoomAvailable ? (

@@ -19,6 +19,9 @@ import {
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import { useAuth } from "../auth/AuthProvider";
 import { Button } from "../ui/Button";
+import { CommunityMessageItem, communityMessageRemoved } from "./CommunityMessageItem";
+import { RoomCard } from "./RoomCard";
+import { artistRoomAccessModel, roomAccessLockedReason } from "./roomAccess";
 
 type ArtistCommunityTabProps = {
   artistId: string;
@@ -79,7 +82,7 @@ export function roomAccessCopy(room: CommunityArtistRoom, authenticated: boolean
     return {
       label: "Holder access required",
       disabled: true,
-      reason: "This room is reserved for eligible holders and supporters. Resonate does not expose wallet holdings publicly.",
+      reason: roomAccessLockedReason("holder"),
     };
   }
 
@@ -90,19 +93,6 @@ export function roomAccessCopy(room: CommunityArtistRoom, authenticated: boolean
       ? "Eligibility is checked privately when you join."
       : "Open artist room.",
   };
-}
-
-function formatTime(value: string) {
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(value));
-  } catch {
-    return value;
-  }
 }
 
 function shortUserId(userId: string) {
@@ -344,33 +334,33 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
             {rooms.map((room) => {
               const action = roomAccessCopy(room, authenticated);
               const selected = activeRoom?.id === room.id;
+              const joinedRoom = isJoinedRoom(room);
               return (
-                <article
+                <RoomCard
                   key={room.id}
-                  className={`artist-community-room ${selected ? "artist-community-room--active" : ""}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveRoomId(room.id);
-                      void recordProductAnalytics(token, "community.room_selected", {
-                        subjectType: "community_room",
-                        subjectId: room.id,
-                        payload: { artistId, roomId: room.id, roomType: room.roomType },
-                      });
-                    }}
-                    className="artist-community-room__select"
-                  >
-                    <span>{roomKindLabel(room)}</span>
-                    <strong>{room.title}</strong>
-                    <small>{room.description ?? action.reason}</small>
-                  </button>
-                  <div className="artist-community-room__meta">
-                    <span>{room.status}</span>
-                    <span>{isJoinedRoom(room) ? room.membership?.role ?? "member" : action.label}</span>
-                  </div>
-                  <div className="artist-community-room__actions">
-                    {isJoinedRoom(room) ? (
+                  className="room-card--artist"
+                  accessModel={artistRoomAccessModel(room.roomType)}
+                  accessLocked={!joinedRoom && action.disabled}
+                  eyebrow={roomKindLabel(room)}
+                  title={room.title}
+                  selected={selected}
+                  selectLabel={`Open ${room.title}`}
+                  onSelect={() => {
+                    setActiveRoomId(room.id);
+                    void recordProductAnalytics(token, "community.room_selected", {
+                      subjectType: "community_room",
+                      subjectId: room.id,
+                      payload: { artistId, roomId: room.id, roomType: room.roomType },
+                    });
+                  }}
+                  meta={
+                    <>
+                      <span>{room.status}</span>
+                      <span>{joinedRoom ? room.membership?.role ?? "member" : action.label}</span>
+                    </>
+                  }
+                  actions={
+                    joinedRoom ? (
                       <Button variant="ghost" onClick={() => handleLeave(room)} disabled={busyKey === `leave-${room.id}`}>
                         Leave
                       </Button>
@@ -381,10 +371,12 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
                       >
                         {action.label}
                       </Button>
-                    )}
-                  </div>
-                  {!isJoinedRoom(room) ? <p className="artist-community-room__reason">{action.reason}</p> : null}
-                </article>
+                    )
+                  }
+                >
+                  <small>{room.description ?? action.reason}</small>
+                  {!joinedRoom ? <p className="artist-community-room__reason">{action.reason}</p> : null}
+                </RoomCard>
               );
             })}
           </div>
@@ -447,53 +439,32 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
                       ) : (
                         messages.map((message) => {
                           const ownMessage = Boolean(message.authorId && message.authorId === userId);
+                          const isAnnouncement = message.messageType === "announcement";
+                          const author = isAnnouncement
+                            ? "Artist announcement"
+                            : message.authorLabel ?? (message.authorId ? shortUserId(message.authorId) : "Member");
                           return (
-                            <article
+                            <CommunityMessageItem
                               key={message.id}
-                              className={`artist-community-message ${message.messageType === "announcement" ? "artist-community-message--announcement" : ""}`}
-                            >
-                              <div className="artist-community-message__meta">
-                                <strong>{message.messageType === "announcement" ? "Artist announcement" : message.authorLabel ?? (message.authorId ? shortUserId(message.authorId) : "Member")}</strong>
-                                <span>{formatTime(message.createdAt)}</span>
-                              </div>
-                              <p>{message.body}</p>
-                              <div className="artist-community-message__actions">
-                                <button type="button" onClick={() => setReportingMessageId(message.id)}>
-                                  Report
-                                </button>
-                                {(ownMessage || canManage) ? (
-                                  <button type="button" onClick={() => handleDelete(message)}>
-                                    Delete
-                                  </button>
-                                ) : null}
-                                {canManage && !ownMessage && message.authorId ? (
-                                  <>
-                                    <button type="button" onClick={() => handleModerate(message, "remove")}>
-                                      Remove member
-                                    </button>
-                                    <button type="button" onClick={() => handleModerate(message, "ban")}>
-                                      Ban
-                                    </button>
-                                  </>
-                                ) : null}
-                              </div>
-                              {reportingMessageId === message.id ? (
-                                <div className="artist-community-report">
-                                  <input
-                                    value={reportReason}
-                                    onChange={(event) => setReportReason(event.target.value)}
-                                    aria-label="Report reason"
-                                  />
-                                  <Button
-                                    variant="ghost"
-                                    onClick={() => handleReport(message)}
-                                    disabled={!reportReason.trim() || busyKey === `report-${message.id}`}
-                                  >
-                                    Send report
-                                  </Button>
-                                </div>
-                              ) : null}
-                            </article>
+                              message={message}
+                              author={author}
+                              removed={communityMessageRemoved(message)}
+                              announcement={isAnnouncement}
+                              canReport
+                              canDelete={ownMessage || canManage}
+                              canRemoveMember={canManage && !ownMessage && Boolean(message.authorId)}
+                              canBan={canManage && !ownMessage && Boolean(message.authorId)}
+                              onDelete={() => handleDelete(message)}
+                              onStartReport={() => setReportingMessageId(message.id)}
+                              onRemoveMember={() => handleModerate(message, "remove")}
+                              onBan={() => handleModerate(message, "ban")}
+                              reporting={reportingMessageId === message.id}
+                              reportReason={reportReason}
+                              reportBusy={busyKey === `report-${message.id}`}
+                              onReportReasonChange={setReportReason}
+                              onSubmitReport={() => handleReport(message)}
+                              onCancelReport={() => setReportingMessageId(null)}
+                            />
                           );
                         })
                       )}

@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { Button } from "../../components/ui/Button";
 import AuthGate from "../../components/auth/AuthGate";
 import NotificationPreferences from "../../components/notifications/NotificationPreferences";
 import CommunityProfileSettingsPanel from "../../components/settings/CommunityProfileSettingsPanel";
-import ListenerCohortsPanel from "../../components/settings/ListenerCohortsPanel";
 import TasteMemorySettingsPanel from "../../components/settings/TasteMemorySettingsPanel";
 import { useToast } from "../../components/ui/Toast";
 import {
@@ -458,7 +458,25 @@ export default function SettingsPage() {
                         ) : null}
 
                         {activeSection === "cohorts" ? (
-                            <ListenerCohortsPanel token={token} addToast={addToast} />
+                            <div className="settings-section">
+                                <div className="settings-section-header">
+                                    <div>
+                                        <span className="settings-kicker">Discovery</span>
+                                        <h2 className="settings-section-title">Listener Cohorts</h2>
+                                        <p className="settings-copy">
+                                            Your cohorts and their conversations now live in Community — a participation
+                                            surface, not a setting. Privacy and consent controls stay here under Community.
+                                        </p>
+                                    </div>
+                                </div>
+                                <Link href="/community" className="settings-pointer-card">
+                                    <div>
+                                        <strong>Open Community</strong>
+                                        <span>Browse your listener cohorts and pick up the conversation.</span>
+                                    </div>
+                                    <span className="settings-pointer-card__arrow" aria-hidden="true">→</span>
+                                </Link>
+                            </div>
                         ) : null}
 
                         {activeSection === "notifications" ? (

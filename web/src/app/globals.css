@@ -5629,6 +5629,169 @@ a {
   overflow-wrap: anywhere;
 }
 
+/* Shared room access badge — one vocabulary across every community surface
+   (listener cohorts, artist rooms, campaign rooms). See roomAccess.tsx. */
+.room-access-badge {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.room-access-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.85;
+}
+
+.room-access-badge--open {
+  color: #5fd0a5;
+  border-color: rgba(95, 208, 165, 0.35);
+  background: rgba(95, 208, 165, 0.12);
+}
+
+.room-access-badge--consent {
+  color: #c4b5fd;
+  border-color: rgba(196, 181, 253, 0.35);
+  background: rgba(196, 181, 253, 0.12);
+}
+
+.room-access-badge--holder {
+  color: #f5b86b;
+  border-color: rgba(245, 184, 107, 0.35);
+  background: rgba(245, 184, 107, 0.12);
+}
+
+.room-access-badge--support {
+  color: #f59ec0;
+  border-color: rgba(245, 158, 192, 0.35);
+  background: rgba(245, 158, 192, 0.12);
+}
+
+.room-access-badge.is-locked {
+  opacity: 0.75;
+}
+
+.room-access-badge.is-locked::after {
+  content: "\01F512";
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+/* Shared room card shell across every community surface. See RoomCard.tsx.
+   Container layout (lists, grids, columns) stays owned by each surface; this
+   styles only the card itself so cohorts, artist rooms, and campaign rooms read
+   as one family. */
+.room-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-4);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.room-card--selected {
+  border-color: rgba(196, 181, 253, 0.45);
+  background: rgba(124, 92, 255, 0.10);
+}
+
+.room-card__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.room-card__head--select {
+  appearance: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.room-card__head--select:hover .room-card__title,
+.room-card__head--select:focus-visible .room-card__title {
+  color: #c4b5fd;
+}
+
+.room-card__eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #c4b5fd;
+}
+
+.room-card__title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.room-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.room-card__meta > span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.room-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.room-card__body small {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.room-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: auto;
+}
+
 .listener-cohort-card__status--joined {
   border-color: rgba(74, 222, 128, 0.45);
   background: rgba(74, 222, 128, 0.14);
@@ -6211,10 +6374,70 @@ a.listener-cohort-detail__action:focus-visible {
   margin: var(--space-2) 0;
 }
 
-.settings-workspace {
+.settings-workspace,
+.community-workspace {
   width: min(1180px, calc(100vw - 48px));
   margin: 0 auto;
   padding: var(--space-6) 0 calc(var(--space-6) + 96px);
+}
+
+.community-hero {
+  padding: var(--space-5);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, rgba(255, 122, 89, 0.10), rgba(124, 92, 255, 0.16)),
+    rgba(255, 255, 255, 0.035);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.25);
+  margin-bottom: var(--space-5);
+}
+
+.community-hero h1 {
+  margin: var(--space-2) 0;
+  font-size: clamp(28px, 4.5vw, 48px);
+  line-height: 0.98;
+}
+
+.community-hero__subtitle {
+  max-width: 650px;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.settings-pointer-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius-lg);
+  background: rgba(124, 92, 255, 0.10);
+  text-decoration: none;
+  color: inherit;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.settings-pointer-card:hover {
+  background: rgba(124, 92, 255, 0.16);
+  border-color: rgba(196, 181, 253, 0.40);
+}
+
+.settings-pointer-card strong {
+  display: block;
+  font-size: 15px;
+}
+
+.settings-pointer-card span {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.settings-pointer-card__arrow {
+  font-size: 22px;
+  color: #c4b5fd;
 }
 
 .settings-hero {

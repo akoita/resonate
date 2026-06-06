@@ -10,6 +10,7 @@ import {
 } from "../../lib/api";
 import { useAuth } from "../auth/AuthProvider";
 import { Button } from "../ui/Button";
+import { CommunityMessageItem, communityMessageRemoved, formatCommunityMessageTime } from "./CommunityMessageItem";
 
 type Notice = { type: "success" | "error" | "info"; message: string } | null;
 
@@ -34,21 +35,11 @@ export function isOwnCohortMessage(message: CommunityMessage, currentUserId: str
 }
 
 export function cohortMessageRemoved(message: CommunityMessage) {
-  return message.status !== "visible" || message.body == null;
+  return communityMessageRemoved(message);
 }
 
-export function formatCohortMessageTime(value: string) {
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(value));
-  } catch {
-    return value;
-  }
-}
+/** @deprecated Use {@link formatCommunityMessageTime}; retained for compatibility. */
+export const formatCohortMessageTime = formatCommunityMessageTime;
 
 export default function CohortRoomConversation({
   roomId,
@@ -241,48 +232,24 @@ export function CohortRoomConversationView({
           {messages.map((message) => {
             const own = isOwnCohortMessage(message, currentUserId);
             const removed = cohortMessageRemoved(message);
-            const deleteBusy = busyKey === `delete:${message.id}`;
-            const reportBusy = busyKey === `report:${message.id}`;
             return (
-              <article key={message.id} className="artist-community-message">
-                <div className="artist-community-message__meta">
-                  <strong>{cohortMessageAuthorLabel(message, currentUserId)}</strong>
-                  <span>{formatCohortMessageTime(message.createdAt)}</span>
-                </div>
-                <p>{removed ? "Message removed." : message.body}</p>
-                {!removed ? (
-                  <div className="artist-community-message__actions">
-                    {own ? (
-                      <button type="button" onClick={() => onDelete(message)} disabled={deleteBusy}>
-                        {deleteBusy ? "Deleting..." : "Delete"}
-                      </button>
-                    ) : (
-                      <button type="button" onClick={() => onStartReport(message.id)}>
-                        Report
-                      </button>
-                    )}
-                  </div>
-                ) : null}
-                {reportingMessageId === message.id ? (
-                  <div className="artist-community-report">
-                    <input
-                      value={reportReason}
-                      onChange={(event) => onReportReasonChange(event.target.value)}
-                      aria-label="Report reason"
-                    />
-                    <Button
-                      variant="ghost"
-                      onClick={() => onSubmitReport(message)}
-                      disabled={!reportReason.trim() || reportBusy}
-                    >
-                      {reportBusy ? "Sending..." : "Send report"}
-                    </Button>
-                    <Button variant="ghost" onClick={onCancelReport}>
-                      Cancel
-                    </Button>
-                  </div>
-                ) : null}
-              </article>
+              <CommunityMessageItem
+                key={message.id}
+                message={message}
+                author={cohortMessageAuthorLabel(message, currentUserId)}
+                removed={removed}
+                canDelete={own}
+                canReport={!own}
+                deleteBusy={busyKey === `delete:${message.id}`}
+                onDelete={() => onDelete(message)}
+                onStartReport={() => onStartReport(message.id)}
+                reporting={reportingMessageId === message.id}
+                reportReason={reportReason}
+                reportBusy={busyKey === `report:${message.id}`}
+                onReportReasonChange={onReportReasonChange}
+                onSubmitReport={() => onSubmitReport(message)}
+                onCancelReport={onCancelReport}
+              />
             );
           })}
         </div>
