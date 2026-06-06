@@ -404,6 +404,7 @@ describe("ListenerCohortsPanel", () => {
     );
 
     expect(html).toContain("No visible members yet");
+    expect(html).toContain("Nobody has opted in to appear yet");
     expect(html).toContain("You are hidden");
     expect(html).toContain("Join this cohort before your community profile can appear here.");
     expect(html).toContain("Private and non-joined members stay anonymous.");

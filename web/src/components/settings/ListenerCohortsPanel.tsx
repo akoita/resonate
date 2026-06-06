@@ -681,6 +681,8 @@ function CohortMemberVisibilityBlock({
         </span>
       </div>
 
+      <p className="listener-cohort-detail__viewer-copy">{memberVisibility.currentViewer.reason}</p>
+
       {visibleMembers.length > 0 ? (
         <div className="listener-cohort-detail__member-grid">
           {visibleMembers.map((member) => {
@@ -717,12 +719,11 @@ function CohortMemberVisibilityBlock({
         </div>
       ) : (
         <div className="listener-cohorts-state">
-          <strong>No visible members yet</strong>
+          <strong>Nobody has opted in to appear yet</strong>
           <p>{memberVisibility.anonymousMemberLabel}</p>
         </div>
       )}
 
-      <p className="listener-cohort-detail__viewer-copy">{memberVisibility.currentViewer.reason}</p>
       {visibleMembers.length > 0 ? (
         <p className="listener-cohort-detail__anonymous-copy">{memberVisibility.anonymousMemberLabel}</p>
       ) : null}
