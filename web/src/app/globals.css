@@ -5889,6 +5889,7 @@ a {
 
 .listener-cohort-detail__summary div,
 .listener-cohort-detail__membership,
+.listener-cohort-detail__members,
 .listener-cohort-detail__room,
 .listener-cohort-detail__privacy {
   padding: var(--space-3);
@@ -5900,6 +5901,115 @@ a {
 .listener-cohort-detail__summary span,
 .listener-cohort-detail__action span,
 .listener-cohort-detail__privacy li {
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.listener-cohort-detail__members {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.listener-cohort-detail__members-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.listener-cohort-detail__members-header h5 {
+  margin: 3px 0 0;
+  color: var(--color-text);
+  font-size: 16px;
+}
+
+.listener-cohort-detail__viewer-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px var(--space-3);
+  border: 1px solid rgba(251, 191, 36, 0.36);
+  border-radius: var(--radius-full);
+  background: rgba(251, 191, 36, 0.10);
+  color: rgba(253, 230, 138, 0.95);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.listener-cohort-detail__viewer-state.is-visible {
+  border-color: rgba(74, 222, 128, 0.4);
+  background: rgba(74, 222, 128, 0.12);
+  color: rgba(187, 247, 208, 0.95);
+}
+
+.listener-cohort-detail__member-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.listener-cohort-detail__member {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: center;
+  min-height: 58px;
+  padding: var(--space-2);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.055);
+  color: inherit;
+  text-decoration: none;
+}
+
+a.listener-cohort-detail__member:hover {
+  border-color: rgba(74, 222, 128, 0.32);
+  background: rgba(74, 222, 128, 0.08);
+}
+
+a.listener-cohort-detail__member:focus-visible {
+  outline: 2px solid rgba(74, 222, 128, 0.55);
+  outline-offset: 2px;
+}
+
+.listener-cohort-detail__member-avatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.10);
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.listener-cohort-detail__member-avatar.has-image {
+  background-position: center;
+  background-size: cover;
+}
+
+.listener-cohort-detail__member-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.listener-cohort-detail__member-copy strong {
+  color: var(--color-text);
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listener-cohort-detail__member-copy small,
+.listener-cohort-detail__viewer-copy,
+.listener-cohort-detail__anonymous-copy {
+  margin: 0;
   color: var(--color-muted);
   font-size: 12px;
   line-height: 1.45;
@@ -6319,6 +6429,7 @@ a.listener-cohort-detail__action:focus-visible {
   .settings-section-header,
   .listener-cohort-detail__header,
   .listener-cohort-detail__membership,
+  .listener-cohort-detail__members-header,
   .listener-cohort-detail__room-card,
   .taste-memory-danger {
     flex-direction: column;
@@ -6331,6 +6442,7 @@ a.listener-cohort-detail__action:focus-visible {
   .listener-cohort-card,
   .listener-cohort-detail__summary,
   .listener-cohort-detail__action-grid,
+  .listener-cohort-detail__member-grid,
   .community-profile-hero,
   .community-profile-grid,
   .community-profile-support__grid {

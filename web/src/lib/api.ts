@@ -2075,6 +2075,31 @@ export type CommunityCohortDetailAction = {
   status: "available" | "coming_soon" | string;
 };
 
+export type CommunityCohortVisibleMember = {
+  memberKey: string;
+  userId: string | null;
+  displayName: string;
+  avatarUrl: string | null;
+  profileVisibility: CommunityProfileVisibility | string;
+  cohortMembershipStatus: CommunityCohortMembershipStatus | string;
+  profileHref: string | null;
+};
+
+export type CommunityCohortMemberVisibility = {
+  visibilityScope: string;
+  memberListLabel: string;
+  anonymousMemberLabel: string;
+  visibleMemberLimit: number;
+  visibleMembers: CommunityCohortVisibleMember[];
+  currentViewer: {
+    canAppear: boolean;
+    profileVisibility: CommunityProfileVisibility | string;
+    cohortMembershipStatus: CommunityCohortMembershipStatus | string;
+    matchingConsentEnabled: boolean;
+    reason: string;
+  };
+};
+
 export type CommunityCohortSuggestionsResponse = {
   schemaVersion: "community-cohort-suggestions/v1";
   cohorts: CommunityCohort[];
@@ -2097,6 +2122,7 @@ export type CommunityCohortDetailResponse = {
   };
   actions: CommunityCohortDetailAction[];
   redactions: string[];
+  memberVisibility?: CommunityCohortMemberVisibility;
   privacy: {
     minimumSizeEnforced: boolean;
     memberCountsAreBucketed: boolean;

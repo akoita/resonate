@@ -18,7 +18,7 @@ test.describe("Upload Flow", () => {
     test("UPLOAD-01: Auth gate shows for unauthenticated users", async ({ page }) => {
         await page.goto("/artist/upload");
         // Should show auth gate message for unauthenticated users
-        await expect(page.getByText("Connect your wallet to upload releases.")).toBeVisible();
+        await expect(page.getByRole("main").getByText("Connect your wallet to upload releases.")).toBeVisible();
     });
 
     test("UPLOAD-02: Auth gate has connect button", async ({ page }) => {
