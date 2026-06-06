@@ -1,5 +1,68 @@
 # Security Best Practices Report
 
+## Cohort-Driven Discovery And AI DJ Context - 2026-06-06
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/community/community_cohort.service.ts`
+- `backend/src/modules/recommendations/recommendations.service.ts`
+- `backend/src/modules/agents/agent_selector.service.ts`
+- `backend/src/modules/agents/agent_orchestrator.service.ts`
+- `backend/src/modules/sessions/sessions.service.ts`
+- `backend/src/events/event_types.ts`
+- `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`
+- `web/src/app/page.tsx`
+- `web/src/lib/api.ts`
+- related tests, feature docs, analytics taxonomy docs, and issue plan
+
+### Executive Summary
+
+Issue #1072 adds joined cohort context as an additive, explainable discovery
+signal for Home recommendations and AI DJ picks. The scoped review found no
+Critical or High findings: cohort context is derived server-side from
+authenticated joined memberships, current consent settings, visible cohort
+lifecycle state, and minimum-size gates; recommendation and agent analytics use
+aggregate cohort influence metadata and omit listener identities, wallet data,
+raw listening history, and exact raw membership details.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- `CommunityCohortService.getDiscoveryContextForUser()` returns only joined,
+  consented, active/suggested, unexpired cohorts that meet minimum visible
+  size.
+- Suggested-only, left, hidden, stale, archived, expired, below-threshold, and
+  consent-disabled cohorts fail closed for discovery influence.
+- Recommendation and AI DJ explanation strings use bounded cohort labels and
+  reason codes, not member lists or raw eligibility facts.
+- `cohortInfluence` event metadata is aggregate-only and intentionally excludes
+  other listener identities, wallets, raw histories, and exact membership
+  details.
+- The frontend uses centralized typed API helpers and React text rendering; no
+  raw HTML rendering, direct cookie handling, or public secret environment
+  variable usage was introduced.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/`
+- `rg 'JSON\.parse|eval\(' backend/src/`
+- `rg 'dangerouslySetInnerHTML|innerHTML' web/src/`
+- `rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/`
+- `rg 'document\.cookie|setCookie|httpOnly.*false' web/src/`
+- Targeted review of membership gating, consent/lifecycle filters, analytics
+  payload shape, recommendation explanation copy, and frontend rendering/API
+  behavior.
+
 ## Community Cohort Scoped Rooms - 2026-06-05
 
 ### Scope Reviewed

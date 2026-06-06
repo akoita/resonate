@@ -242,6 +242,20 @@ export default function Home() {
     () => buildHomeRecommendations(songRecommendations, displayReleases).slice(0, 4),
     [songRecommendations, displayReleases],
   );
+  // Distinct cohort labels actually influencing the picks on screen (honest signal —
+  // reflects matched tracks, not just consented cohorts available in the response).
+  const cohortLabels = useMemo(() => {
+    const labels = new Set<string>();
+    for (const item of recommendedForYou) {
+      for (const reason of item.reasons) {
+        if (reason.startsWith("cohort:")) {
+          const label = reason.slice("cohort:".length).trim();
+          if (label) labels.add(label);
+        }
+      }
+    }
+    return [...labels];
+  }, [recommendedForYou]);
   const managedArtists = summarizeManagedArtists(status === "authenticated" ? myReleases : []).slice(0, 5);
   const recentUploads = (status === "authenticated" ? myReleases : [])
     .slice()
@@ -304,7 +318,7 @@ export default function Home() {
   }, [catalogArtists]);
 
   const handleStartRecommendedSession = async (recommendation: HomeRecommendation) => {
-    const seedGenre = recommendation.moods?.[0] || recommendation.genre || recommendation.reasons[0]?.replace(/^(genre|mood):/, "") || "Discovery";
+    const seedGenre = recommendation.moods?.[0] || recommendation.genre || recommendation.reasons[0]?.replace(/^(genre|mood|cohort):/, "") || "Discovery";
     const seedKey = recommendation.trackId || recommendation.releaseId || recommendation.key;
     if (status !== "authenticated" || !token) {
       addToast({
@@ -595,6 +609,17 @@ export default function Home() {
               <div>
                 <span className="ng-kicker ng-kicker--violet">Personalized picks</span>
                 <h3 className="ng-section-title">Recommended for You</h3>
+                {cohortLabels.length > 0 && (
+                  <span
+                    className="ng-section-flag"
+                    title={`Influenced by your community: ${cohortLabels.join(", ")}`}
+                  >
+                    <span className="ms-icon" aria-hidden style={{ fontSize: 14 }}>groups</span>
+                    {cohortLabels.length === 1
+                      ? `Tuned by your ${cohortLabels[0]} cohort`
+                      : `Tuned by ${cohortLabels.length} of your cohorts`}
+                  </span>
+                )}
               </div>
               <Link href="/agent" className="ng-section-link">
                 Open AI DJ
@@ -1308,7 +1333,16 @@ function buildHomeRecommendations(
 }
 
 function formatRecommendationReason(reasons: string[]) {
-  const first = reasons.find(Boolean);
+  // Drop internal/diagnostic markers (e.g. `downranked:genre:*`) so they never reach the UI.
+  const meaningful = reasons.filter((reason) => reason && !reason.startsWith("downranked:"));
+  // Cohort context is the most specific, human-meaningful signal — surface it ahead of
+  // generic taste/mood matches even when it was scored after them.
+  const cohort = meaningful.find((reason) => reason.startsWith("cohort:"));
+  if (cohort) {
+    const label = cohort.slice("cohort:".length).trim();
+    return label ? `From your ${label} cohort` : "Cohort signal";
+  }
+  const first = meaningful[0];
   if (!first) return "Catalog signal";
   if (first.startsWith("genre:")) return "Taste match";
   if (first.startsWith("mood:")) return "Mood match";

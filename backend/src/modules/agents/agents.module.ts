@@ -21,6 +21,7 @@ import { X402Module } from "../x402/x402.module";
 import { PaymentsModule } from "../payments/payments.module";
 import { SharedModule } from "../shared/shared.module";
 import { RecommendationsModule } from "../recommendations/recommendations.module";
+import { CommunityModule } from "../community/community.module";
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { RecommendationsModule } from "../recommendations/recommendations.module
     X402Module,
     PaymentsModule,
     RecommendationsModule,
+    CommunityModule,
   ],
   controllers: [
     AgentsController,

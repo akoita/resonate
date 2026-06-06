@@ -12,12 +12,15 @@ issues: [977, 978, 979, 980, 981, 982, 983, 989]
 `partial`
 
 The AI DJ and commerce-agent selector can now consume optional BigQuery-backed
-user-track taste scores as an additive ranking signal, and the analytics
-Dataflow output has a repeatable baseline materialization path for those scores.
+user-track taste scores and joined listener cohort context as additive ranking
+signals, and the analytics Dataflow output has a repeatable baseline
+materialization path for warehouse scores.
 The existing deterministic selector remains the default behavior: when BigQuery
 taste signals are disabled, unavailable, or missing for a candidate track,
 recommendations fall back to catalog, learned genre, listing, embedding, and
-metadata-derived audio-feature signals.
+metadata-derived audio-feature signals. When a listener has joined eligible
+cohorts, the selector can also use safe cohort hints from transactional
+membership state; this path does not require BigQuery or Dataflow.
 
 This is the serving hook for a broader warehouse learning loop. A Dataform-ready
 orchestration template now exists for scheduled materialization planning.
@@ -77,6 +80,14 @@ another explainable signal.
 5. Matching rows add a `bigquery_taste_score` recommendation signal and trace.
 6. Missing rows or BigQuery failures return empty scores and keep the
    deterministic selector path intact.
+
+Separately, `AgentSelectorService` can ask
+`CommunityCohortService.getDiscoveryContextForUser()` for joined cohort context
+for the current listener. That context is consent-gated, minimum-size gated,
+and bounded to cohort-level labels and reason codes. Matching candidates receive
+a `cohort_context` signal and safe explanation text such as "From your Dream Pop
+listeners cohort"; hidden, left, stale, archived, expired, below-threshold, or
+consent-disabled cohorts are not used.
 
 The selector never performs an unbounded warehouse scan during recommendation.
 It queries only the current `userId` and the candidate `trackIds` already found

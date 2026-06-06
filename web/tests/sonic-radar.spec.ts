@@ -12,9 +12,8 @@ test.describe("Sonic Radar Page", () => {
     test("sonic radar page shows auth gate or content", async ({ page }) => {
         await page.goto("/sonic-radar");
         // Without auth, AuthGate renders; with auth, the hero section renders
-        const authPanel = page.locator(".auth-panel");
-        const hero = page.locator(".sonic-radar-hero");
-        await expect(authPanel.or(hero)).toBeVisible({ timeout: 10000 });
+        const pageState = page.locator(".auth-panel, .sonic-radar-hero").first();
+        await expect(pageState).toBeVisible({ timeout: 10000 });
     });
 
     test("sonic radar auth gate has correct prompt", async ({ page }) => {
@@ -28,10 +27,8 @@ test.describe("Sonic Radar Page", () => {
     test("sonic radar empty state links to AI DJ when authenticated", async ({ page }) => {
         await page.goto("/sonic-radar");
         // If authenticated and empty, there should be a CTA to launch AI DJ
-        const emptyState = page.getByText("No discoveries yet");
-        const hero = page.locator(".sonic-radar-hero");
-        const authPanel = page.locator(".auth-panel");
-        await expect(emptyState.or(hero).or(authPanel)).toBeVisible({ timeout: 10000 });
+        const pageState = page.locator(".auth-panel, .sonic-radar-hero").or(page.getByText("No discoveries yet")).first();
+        await expect(pageState).toBeVisible({ timeout: 10000 });
     });
 
     test("sonic radar page has working navigation from sidebar", async ({ page }) => {
@@ -41,9 +38,8 @@ test.describe("Sonic Radar Page", () => {
             await navLink.click();
             await expect(page).toHaveURL(/sonic-radar/);
             // Page loaded successfully — auth gate or hero visible
-            const authPanel = page.locator(".auth-panel");
-            const hero = page.locator(".sonic-radar-hero");
-            await expect(authPanel.or(hero)).toBeVisible({ timeout: 10000 });
+            const pageState = page.locator(".auth-panel, .sonic-radar-hero").first();
+            await expect(pageState).toBeVisible({ timeout: 10000 });
         }
     });
 });

@@ -108,6 +108,7 @@ export interface RecommendationGeneratedEvent extends BaseEvent {
   userId: string;
   trackIds: string[];
   strategy: string;
+  cohortInfluence?: CohortInfluenceEventSummary;
 }
 
 export interface TasteMemorySettingsUpdatedEvent extends BaseEvent {
@@ -489,6 +490,7 @@ export interface AgentTrackSelectedEvent extends BaseEvent {
   trackId: string;
   strategy: string;
   preferences: Record<string, unknown>;
+  cohortInfluence?: CohortInfluenceEventSummary;
 }
 
 export interface AgentDecisionMadeEvent extends BaseEvent {
@@ -533,6 +535,15 @@ export interface AgentSelectionEvent extends BaseEvent {
   candidates: string[];
   count?: number;
   strategy?: string;
+  cohortInfluence?: CohortInfluenceEventSummary;
+}
+
+export interface CohortInfluenceEventSummary {
+  availableCount?: number;
+  appliedCount: number;
+  cohortIds: string[];
+  cohortTypes: string[];
+  reasonCodes: string[];
 }
 
 export interface AgentMixPlannedEvent extends BaseEvent {

@@ -1,5 +1,6 @@
 import { Injectable, Optional } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
+import { CommunityCohortDiscoveryContext, CommunityCohortService } from "../community/community_cohort.service";
 import { EventBus } from "../shared/event_bus";
 import { scoreMultiplierForSignal, TasteMemoryPolicy, TasteMemoryService } from "./taste_memory.service";
 
@@ -25,6 +26,7 @@ export class RecommendationsService {
   constructor(
     private readonly eventBus: EventBus,
     @Optional() private readonly tasteMemoryService?: TasteMemoryService,
+    @Optional() private readonly communityCohortService?: CommunityCohortService,
   ) { }
 
   setPreferences(userId: string, prefs: UserPreferences) {
@@ -57,6 +59,7 @@ export class RecommendationsService {
     const prefs = policy && this.tasteMemoryService
       ? this.tasteMemoryService.filterPreferencesWithPolicy(mergedPrefs, policy)
       : mergedPrefs;
+    const cohortContext = await this.communityCohortService?.getDiscoveryContextForUser(userId) ?? [];
     const allowExplicit = prefs.allowExplicit ?? false;
     const normalizedGenres = (prefs.genres ?? [])
       .map((genre) => genre.trim())
@@ -125,6 +128,11 @@ export class RecommendationsService {
       if (track.release.genre) {
         score += 5;
       }
+      const cohortMatches = matchingCohortContexts(track, cohortContext);
+      for (const cohort of cohortMatches) {
+        score += 12;
+        reasons.push(`cohort:${cohort.title}`);
+      }
       if (recent.includes(track.id)) {
         score -= 100;
         reasons.push("recently_played");
@@ -158,12 +166,20 @@ export class RecommendationsService {
       occurredAt: new Date().toISOString(),
       userId,
       trackIds: selected.map((entry) => entry.track.id),
-      strategy: normalizedGenres.length || normalizedMood ? "preference_mapping" : "recent_first",
+      strategy: normalizedGenres.length || normalizedMood
+        ? "preference_mapping"
+        : cohortContext.length
+          ? "cohort_context"
+          : "recent_first",
+      cohortInfluence: cohortInfluenceSummary(cohortContext, selected.flatMap((entry) =>
+        matchingCohortContexts(entry.track, cohortContext),
+      )),
     });
 
     return {
       userId,
       preferences: prefs,
+      cohortContext: cohortContextSummary(cohortContext),
       items: selected.map(({ track, score, reasons }) => ({
         id: track.id,
         title: track.title,
@@ -178,6 +194,61 @@ export class RecommendationsService {
       })),
     };
   }
+}
+
+type RecommendationTrack = Awaited<ReturnType<typeof prisma.track.findMany>>[number] & {
+  release: {
+    genre: string | null;
+    moods: string[];
+    title: string;
+    artist?: { displayName: string | null } | null;
+  };
+};
+
+function matchingCohortContexts(
+  track: RecommendationTrack,
+  cohorts: CommunityCohortDiscoveryContext[],
+) {
+  if (cohorts.length === 0) return [];
+  const haystack = [
+    track.title,
+    track.release.title,
+    track.release.genre ?? "",
+    ...(track.release.moods ?? []),
+    track.artist ?? "",
+    track.release.artist?.displayName ?? "",
+  ].join(" ").toLowerCase();
+
+  return cohorts.filter((cohort) =>
+    cohort.queryHints.some((hint) => haystack.includes(hint.toLowerCase())),
+  );
+}
+
+function cohortContextSummary(cohorts: CommunityCohortDiscoveryContext[]) {
+  return {
+    applied: cohorts.length > 0,
+    count: cohorts.length,
+    cohorts: cohorts.map((cohort) => ({
+      cohortId: cohort.cohortId,
+      cohortType: cohort.cohortType,
+      reasonCode: cohort.reasonCode,
+      title: cohort.title,
+    })),
+  };
+}
+
+function cohortInfluenceSummary(
+  available: CommunityCohortDiscoveryContext[],
+  matched: CommunityCohortDiscoveryContext[],
+) {
+  const byId = new Map(matched.map((cohort) => [cohort.cohortId, cohort]));
+  return {
+    availableCount: available.length,
+    appliedCount: byId.size,
+    cohortIds: [...byId.values()].map((cohort) => cohort.cohortId),
+    cohortTypes: [...new Set([...byId.values()].map((cohort) => cohort.cohortType))],
+    reasonCodes: [...new Set([...byId.values()].map((cohort) => cohort.reasonCode))],
+  };
 }
 
 function shouldUseStoredPreferences(

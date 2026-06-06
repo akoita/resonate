@@ -105,6 +105,20 @@ Examples:
 - "Five people in Lyon saved this release this week."
 - "This listener also collects stems from your top three artists."
 
+Joined cohorts now also provide a privacy-safe discovery context for the
+authenticated listener. `CommunityCohortService.getDiscoveryContextForUser()`
+returns only joined, consented, active/suggested, unexpired cohorts that meet
+the minimum visible-size threshold. Home recommendations and AI DJ selection use
+that bounded context as an additive ranking signal and return safe explanation
+copy such as "From your Dream Pop listeners cohort." Suggested-only, left,
+hidden, stale, expired, archived, below-threshold, and consent-disabled cohorts
+do not influence discovery.
+
+This serving path is transactional and does not require Dataflow, BigQuery, or
+warehouse materializations. Batch/streaming analytics may enrich aggregate
+reporting later, but the core listener UX uses current cohort membership and
+governed event data already available to the app.
+
 ### City Scenes
 
 City and region groups connect the community layer to
@@ -361,6 +375,8 @@ Candidate event families:
 - `community.profile_visibility_updated`
 - `community.cohort_suggested`
 - `community.cohort_joined`
+- `recommendation.generated` with aggregate `cohortInfluence`
+- `agent.selection` / `agent.track_selected` with aggregate `cohortInfluence`
 - `community.room_joined`
 - `community.message_created`
 - `community.message_reported`
