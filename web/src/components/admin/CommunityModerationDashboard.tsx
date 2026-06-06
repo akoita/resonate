@@ -237,6 +237,16 @@ function ReportRow({
   );
 }
 
+const ASSIST_RISK_TONE: Record<string, string> = {
+  high: "var(--r-error)",
+  medium: "var(--r-warning)",
+  low: "var(--r-success)",
+};
+
+function assistRiskTone(level: string) {
+  return ASSIST_RISK_TONE[level] ?? "var(--r-text-muted)";
+}
+
 function ModerationAssistPanel({ report }: { report: CommunityModerationReport }) {
   return (
     <section
@@ -245,6 +255,7 @@ function ModerationAssistPanel({ report }: { report: CommunityModerationReport }
         marginTop: "12px",
         padding: "12px",
         border: "1px solid rgba(139, 92, 246, 0.35)",
+        borderRadius: "var(--radius-md)",
         background: "rgba(139, 92, 246, 0.08)",
       }}
     >
@@ -258,11 +269,11 @@ function ModerationAssistPanel({ report }: { report: CommunityModerationReport }
         <div className="glass-metadata-bar" style={{ margin: 0 }}>
           <div className="metadata-item">
             <span>Severity:</span>
-            <strong>{labelize(report.assist.severity)}</strong>
+            <strong style={{ color: assistRiskTone(report.assist.severity) }}>{labelize(report.assist.severity)}</strong>
           </div>
           <div className="metadata-item">
             <span>Likelihood:</span>
-            <strong>{labelize(report.assist.likelihood)}</strong>
+            <strong style={{ color: assistRiskTone(report.assist.likelihood) }}>{labelize(report.assist.likelihood)}</strong>
           </div>
         </div>
       </div>
