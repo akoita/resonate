@@ -1,5 +1,67 @@
 # Security Best Practices Report
 
+## AI-Native Moderation Assist - 2026-06-06
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/community/community_rooms.service.ts`
+- `backend/src/tests/community_rooms.integration.spec.ts`
+- `backend/src/tests/maintenance.controller.http.spec.ts`
+- `web/src/components/admin/CommunityModerationDashboard.tsx`
+- `web/src/components/admin/CommunityModerationDashboard.test.tsx`
+- `web/src/lib/api.ts`
+- `docs/features/README.md`
+- `docs/features/listener_community_network.md`
+- `docs/issue-1083-implementation-plan.md`
+
+### Executive Summary
+
+Issue #1083 adds advisory moderation summaries and risk hints to the admin
+community moderation queue. The scoped review found no Critical or High
+findings: the assist is generated from the existing privacy-bounded moderation
+DTO surface, remains read-only, does not add model calls or new environment
+configuration, and cannot delete messages, ban members, pause/archive rooms, or
+resolve reports without the existing explicit admin action flow.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- `GET /admin/community/moderation/reports` remains guarded by JWT auth and
+  admin role checks through `MaintenanceController`.
+- The assist generator runs after moderation DTO hydration and consumes only
+  report reason, room title/type/status, message preview/status/type, report
+  counts, and membership status counts.
+- No emails, wallet addresses, raw access-policy payloads, raw private listener
+  data, or unbounded thread bodies are added to the response or sent to a model.
+- Queue reads remain read-only; report, message, membership, and room state
+  mutations still happen only through `resolveModerationReport` after a human
+  admin chooses an action.
+- The frontend renders assist text through React text nodes and keeps action
+  buttons behind the existing confirmation flow.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/`
+- `rg 'JSON\.parse|eval\(' backend/src/`
+- `rg 'dangerouslySetInnerHTML|innerHTML' web/src/`
+- `rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/`
+- `rg 'document\.cookie|setCookie|httpOnly.*false' web/src/`
+- `rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/community backend/src/modules/maintenance`
+- `rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/community backend/src/modules/maintenance`
+- Targeted review of the changed moderation DTO assist generation, admin route
+  boundary, explicit human enforcement path, frontend rendering, and typed API
+  contract.
+
 ## Opt-In Cohort Member Visibility - 2026-06-06
 
 ### Scope Reviewed

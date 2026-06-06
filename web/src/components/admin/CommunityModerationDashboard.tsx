@@ -197,6 +197,7 @@ function ReportRow({
           ) : (
             <p className="analytics-muted">Reported message is no longer available.</p>
           )}
+          <ModerationAssistPanel report={report} />
         </div>
 
         <div>
@@ -233,6 +234,61 @@ function ReportRow({
         </div>
       </div>
     </article>
+  );
+}
+
+const ASSIST_RISK_TONE: Record<string, string> = {
+  high: "var(--r-error)",
+  medium: "var(--r-warning)",
+  low: "var(--r-success)",
+};
+
+function assistRiskTone(level: string) {
+  return ASSIST_RISK_TONE[level] ?? "var(--r-text-muted)";
+}
+
+function ModerationAssistPanel({ report }: { report: CommunityModerationReport }) {
+  if (!report.assist) return null;
+  const assist = report.assist;
+
+  return (
+    <section
+      aria-label="Advisory moderation assist"
+      style={{
+        marginTop: "12px",
+        padding: "12px",
+        border: "1px solid rgba(139, 92, 246, 0.35)",
+        borderRadius: "var(--radius-md)",
+        background: "rgba(139, 92, 246, 0.08)",
+      }}
+    >
+      <div className="analytics-title-row" style={{ alignItems: "flex-start", gap: "12px" }}>
+        <div>
+          <p className="artist-analytics-eyebrow" style={{ margin: "0 0 4px", color: "var(--r-primary-soft)" }}>
+            AI Assist
+          </p>
+          <p style={{ margin: 0, fontWeight: 700 }}>{assist.summary}</p>
+        </div>
+        <div className="glass-metadata-bar" style={{ margin: 0 }}>
+          <div className="metadata-item">
+            <span>Severity:</span>
+            <strong style={{ color: assistRiskTone(assist.severity) }}>{labelize(assist.severity)}</strong>
+          </div>
+          <div className="metadata-item">
+            <span>Likelihood:</span>
+            <strong style={{ color: assistRiskTone(assist.likelihood) }}>{labelize(assist.likelihood)}</strong>
+          </div>
+        </div>
+      </div>
+      <ul style={{ margin: "10px 0 0", paddingLeft: "18px", color: "var(--r-text-muted)", fontSize: "13px" }}>
+        {assist.reviewFocus.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+      <p className="analytics-muted" style={{ margin: "10px 0 0", fontSize: "12px" }}>
+        {assist.advisory.copy}
+      </p>
+    </section>
   );
 }
 

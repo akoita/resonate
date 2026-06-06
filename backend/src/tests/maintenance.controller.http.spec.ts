@@ -48,7 +48,24 @@ describe("MaintenanceController (HTTP)", () => {
     });
     maintenanceService.getCommunityModerationQueue.mockResolvedValue({
       schemaVersion: "community-moderation-queue/v1",
-      reports: [],
+      reports: [
+        {
+          id: "report-1",
+          status: "open",
+          assist: {
+            summary: "Single reported community message. Review the preview and room context before deciding.",
+            severity: "low",
+            likelihood: "low",
+            reasonCodes: ["single_report_review"],
+            reviewFocus: ["Compare the report reason with the message preview."],
+            source: "bounded_moderation_context",
+            advisory: {
+              noAutoEnforcement: true,
+              copy: "Advisory only. A human admin must choose and confirm any moderation action.",
+            },
+          },
+        },
+      ],
       privacy: { operatorOnly: true, noWalletAddresses: true },
     });
     maintenanceService.resolveCommunityModerationReport.mockResolvedValue({
@@ -135,6 +152,7 @@ describe("MaintenanceController (HTTP)", () => {
       .expect(({ body }) => {
         expect(body.schemaVersion).toBe("community-moderation-queue/v1");
         expect(body.privacy.noWalletAddresses).toBe(true);
+        expect(body.reports[0].assist.advisory.noAutoEnforcement).toBe(true);
       });
 
     expect(maintenanceService.getCommunityModerationQueue).toHaveBeenCalledWith({ status: "open", limit: "25" });

@@ -41,11 +41,33 @@ describe("CommunityModerationDashboard", () => {
     expect(html).toContain("Moderation Queue");
     expect(html).toContain("Ada Mix Holder Room");
     expect(html).toContain("Safety review requested");
+    expect(html).toContain("AI Assist");
+    expect(html).toContain("Report mentions possible safety concerns.");
+    expect(html).toContain("Advisory only");
     expect(html).toContain("Ban Member");
     expect(html).toContain("Pause Room");
     expect(html).toContain("No emails or wallets");
     expect(html).not.toContain("@test.resonate");
     expect(html).not.toContain("0x1111111111111111111111111111111111111111");
+  });
+
+  it("renders legacy moderation queue responses that do not include assist", () => {
+    const legacyReport = { ...queue.reports[0] };
+    delete legacyReport.assist;
+
+    const html = renderToStaticMarkup(
+      <CommunityModerationDashboard
+        status="ready"
+        queue={{ ...queue, reports: [legacyReport] }}
+        resolvingReportId={null}
+        onRefresh={() => {}}
+        onResolve={() => {}}
+      />,
+    );
+
+    expect(html).toContain("Ada Mix Holder Room");
+    expect(html).toContain("Ban Member");
+    expect(html).not.toContain("AI Assist");
   });
 
   it("styles destructive moderation actions distinctly from safe ones", () => {
@@ -126,6 +148,21 @@ const queue: CommunityModerationQueueResponse = {
         roomOpenReports: 1,
         messageReportCount: 1,
         roomMembershipsByStatus: { active: 8, banned: 1 },
+      },
+      assist: {
+        summary: "Report mentions possible safety concerns.",
+        severity: "high",
+        likelihood: "medium",
+        reasonCodes: ["safety_language_signal"],
+        reviewFocus: [
+          "Assess harassment, threat, or safety policy concerns.",
+          "Apply no action unless the human review confirms it.",
+        ],
+        source: "bounded_moderation_context",
+        advisory: {
+          noAutoEnforcement: true,
+          copy: "Advisory only. A human admin must choose and confirm any moderation action.",
+        },
       },
     },
   ],
