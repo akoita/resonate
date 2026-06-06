@@ -1,6 +1,6 @@
 export const STEM_MARKETPLACE_STATUS_EVENT = "resonate:stem-marketplace-status-updated";
 
-export type StemMarketplaceStatus = "idle" | "minted" | "listed";
+export type StemMarketplaceStatus = "idle" | "minted" | "listing_pending" | "listed";
 
 export interface StemMarketplaceStatusEventDetail {
   stemId: string;

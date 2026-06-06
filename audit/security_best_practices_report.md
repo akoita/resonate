@@ -1,5 +1,57 @@
 # Security Best Practices Report
 
+## Marketplace Listing Indexing State - 2026-06-07
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/contracts/contracts.service.ts`
+- `backend/src/modules/contracts/metadata.controller.ts`
+- `backend/src/tests/metadata.controller.integration.spec.ts`
+- `web/src/components/marketplace/BatchMintListModal.tsx`
+- `web/src/components/marketplace/MintStemButton.tsx`
+- `web/src/hooks/useContracts.ts`
+- `web/src/lib/api.ts`
+- `web/src/lib/stemMarketplaceStatus.ts`
+
+### Executive Summary
+
+This bugfix narrows marketplace listing confirmation to backend-indexed active
+listings and removes localStorage as an authoritative source for public listing
+state. The scoped review found no Critical or High findings: the new `stemId`
+filter is handled through Prisma structured filters, client-side local hints
+are downgraded to pending/indexing state until backend confirmation, and no
+new secrets, cookie handling, or HTML injection surfaces were introduced.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- `GET /metadata/listings` remains a public marketplace read endpoint; the new
+  `stemId` query parameter only narrows public active listing results and does
+  not expose private owner data.
+- The frontend now treats wallet transaction success as `listing_pending` until
+  `/metadata/listings?status=active&stemId=...` returns a confirmed listing.
+- The existing Prisma tagged `$queryRaw` in `contracts.service.ts` is
+  parameterized, outside this patch's marketplace listing path, and was not a
+  finding.
+- No environment-dependent configuration values, secrets, or production URLs
+  were added.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/modules/contracts backend/src/tests/metadata.controller.integration.spec.ts --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/contracts backend/src/tests/metadata.controller.integration.spec.ts`
+- `rg 'dangerouslySetInnerHTML|innerHTML' web/src/components/marketplace web/src/hooks/useContracts.ts web/src/lib/api.ts web/src/lib/stemMarketplaceStatus.ts`
+- `rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/components/marketplace web/src/hooks/useContracts.ts web/src/lib/api.ts web/src/lib/stemMarketplaceStatus.ts`
+
 ## NFT-Verifiable Artist Holder Room Access - 2026-06-07
 
 ### Scope Reviewed
