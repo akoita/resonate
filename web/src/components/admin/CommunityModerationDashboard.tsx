@@ -248,6 +248,9 @@ function assistRiskTone(level: string) {
 }
 
 function ModerationAssistPanel({ report }: { report: CommunityModerationReport }) {
+  if (!report.assist) return null;
+  const assist = report.assist;
+
   return (
     <section
       aria-label="Advisory moderation assist"
@@ -264,26 +267,26 @@ function ModerationAssistPanel({ report }: { report: CommunityModerationReport }
           <p className="artist-analytics-eyebrow" style={{ margin: "0 0 4px", color: "var(--r-primary-soft)" }}>
             AI Assist
           </p>
-          <p style={{ margin: 0, fontWeight: 700 }}>{report.assist.summary}</p>
+          <p style={{ margin: 0, fontWeight: 700 }}>{assist.summary}</p>
         </div>
         <div className="glass-metadata-bar" style={{ margin: 0 }}>
           <div className="metadata-item">
             <span>Severity:</span>
-            <strong style={{ color: assistRiskTone(report.assist.severity) }}>{labelize(report.assist.severity)}</strong>
+            <strong style={{ color: assistRiskTone(assist.severity) }}>{labelize(assist.severity)}</strong>
           </div>
           <div className="metadata-item">
             <span>Likelihood:</span>
-            <strong style={{ color: assistRiskTone(report.assist.likelihood) }}>{labelize(report.assist.likelihood)}</strong>
+            <strong style={{ color: assistRiskTone(assist.likelihood) }}>{labelize(assist.likelihood)}</strong>
           </div>
         </div>
       </div>
       <ul style={{ margin: "10px 0 0", paddingLeft: "18px", color: "var(--r-text-muted)", fontSize: "13px" }}>
-        {report.assist.reviewFocus.map((item) => (
+        {assist.reviewFocus.map((item) => (
           <li key={item}>{item}</li>
         ))}
       </ul>
       <p className="analytics-muted" style={{ margin: "10px 0 0", fontSize: "12px" }}>
-        {report.assist.advisory.copy}
+        {assist.advisory.copy}
       </p>
     </section>
   );

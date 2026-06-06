@@ -384,7 +384,7 @@ describe("CommunityRoomsService integration", () => {
       body: "This reported message should appear as a preview only.",
     });
     const report = await service.reportMessage(otherUserId, message.message.id, {
-      reason: "privacy and safety review",
+      reason: "harassment and doxxing review",
     });
 
     const queue = await service.getModerationQueue({ status: "open", limit: 100 });
@@ -392,7 +392,7 @@ describe("CommunityRoomsService integration", () => {
 
     expect(queuedReport).toMatchObject({
       status: "open",
-      reason: "privacy and safety review",
+      reason: "harassment and doxxing review",
       room: {
         id: room.id,
         title: "Governance Review Room",

@@ -2422,7 +2422,7 @@ export type CommunityModerationReport = {
     messageReportCount: number;
     roomMembershipsByStatus: Record<string, number>;
   };
-  assist: {
+  assist?: {
     summary: string;
     severity: "low" | "medium" | "high" | string;
     likelihood: "low" | "medium" | "high" | string;

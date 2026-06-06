@@ -27,6 +27,12 @@ const SHOW_CITY_DEMAND_CAMPAIGN_STATUSES = ["active", "funded", "booking_confirm
 const VISIBLE_COHORT_STATUSES = ["suggested", "active"] as const;
 const COHORT_ROOM_MEMBERSHIP_STATUS = "joined";
 const SOCIAL_TASTE_COHORT_TYPES = ["taste", "artist_affinity", "collector", "campaign"] as const;
+const MODERATION_ASSIST_SAFETY_PATTERN =
+  /\b(threat(?:en(?:ed|ing|s)?)?|harm(?:ed|ful|ing|s)?|abus(?:e|ed|ive|ing)|harass(?:ed|es|ing|ment)?|hat(?:e|eful)|violence|violent|unsafe|safety)\b/;
+const MODERATION_ASSIST_PRIVACY_PATTERN =
+  /\b(private|privacy|doxx?(?:ed|es|ing)?|emails?|wallets?|addresses?|personal)\b/;
+const MODERATION_ASSIST_SPAM_PATTERN =
+  /\b(spam(?:med|ming|my)?|scam(?:med|mer|ming|s)?|phish(?:ed|ing)?|fraud|bots?)\b/;
 
 type RoomStatus = (typeof ROOM_STATUSES)[number];
 type MessageType = (typeof MESSAGE_TYPES)[number];
@@ -1381,13 +1387,9 @@ function collectModerationAssistSignals(input: {
   if (messageReportCount >= 2) reasonCodes.add("repeated_message_reports");
   if (roomOpenReports >= 3) reasonCodes.add("room_report_cluster");
   if (input.room.status !== "active") reasonCodes.add("room_status_review");
-  if (/\b(threat|harm|abuse|harass|hate|violence|unsafe|safety)\b/.test(text)) {
-    reasonCodes.add("safety_language_signal");
-  }
-  if (/\b(private|privacy|dox|doxx|email|wallet|address|personal)\b/.test(text)) {
-    reasonCodes.add("privacy_language_signal");
-  }
-  if (/\b(spam|scam|phish|fraud|bot)\b/.test(text)) reasonCodes.add("spam_language_signal");
+  if (MODERATION_ASSIST_SAFETY_PATTERN.test(text)) reasonCodes.add("safety_language_signal");
+  if (MODERATION_ASSIST_PRIVACY_PATTERN.test(text)) reasonCodes.add("privacy_language_signal");
+  if (MODERATION_ASSIST_SPAM_PATTERN.test(text)) reasonCodes.add("spam_language_signal");
   if (reasonCodes.size === 0) reasonCodes.add("single_report_review");
 
   return {

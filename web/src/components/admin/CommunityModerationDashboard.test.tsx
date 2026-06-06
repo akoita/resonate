@@ -51,6 +51,25 @@ describe("CommunityModerationDashboard", () => {
     expect(html).not.toContain("0x1111111111111111111111111111111111111111");
   });
 
+  it("renders legacy moderation queue responses that do not include assist", () => {
+    const legacyReport = { ...queue.reports[0] };
+    delete legacyReport.assist;
+
+    const html = renderToStaticMarkup(
+      <CommunityModerationDashboard
+        status="ready"
+        queue={{ ...queue, reports: [legacyReport] }}
+        resolvingReportId={null}
+        onRefresh={() => {}}
+        onResolve={() => {}}
+      />,
+    );
+
+    expect(html).toContain("Ada Mix Holder Room");
+    expect(html).toContain("Ban Member");
+    expect(html).not.toContain("AI Assist");
+  });
+
   it("styles destructive moderation actions distinctly from safe ones", () => {
     const html = renderToStaticMarkup(
       <CommunityModerationDashboard
