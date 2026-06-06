@@ -41,8 +41,39 @@ export default function NotificationBell() {
   const hasMounted = useSyncExternalStore(subscribe, () => true, () => false);
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useDisputeNotifications(address ?? undefined);
   const [open, setOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [menuTop, setMenuTop] = useState(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+
+  // Track narrow viewports so the dropdown can pin to the screen instead of the bell.
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 480px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  // Anchor the fixed mobile dropdown just below the bell.
+  const measureMenuTop = () => {
+    if (dropdownRef.current) {
+      setMenuTop(dropdownRef.current.getBoundingClientRect().bottom + 8);
+    }
+  };
+
+  const toggleOpen = () => {
+    if (!open) measureMenuTop();
+    setOpen((prev) => !prev);
+  };
+
+  // Keep the mobile anchor correct if the viewport resizes while open.
+  useEffect(() => {
+    if (!open || !isMobile) return;
+    const onResize = () => measureMenuTop();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [open, isMobile]);
 
   const getNotificationHref = (notification: DisputeNotification) => {
     if (notification.type === "listing_expiring_soon" || notification.type === "listing_expired") {
@@ -117,7 +148,7 @@ export default function NotificationBell() {
     <div ref={dropdownRef} style={{ position: "relative", display: "inline-block" }}>
       {/* Bell button */}
       <button
-        onClick={() => setOpen(!open)}
+        onClick={toggleOpen}
         style={bellBtnStyle}
         aria-label="Notifications"
       >
@@ -129,7 +160,7 @@ export default function NotificationBell() {
 
       {/* Dropdown */}
       {open && (
-        <div style={dropdownStyle}>
+        <div style={{ ...dropdownStyle, ...(isMobile ? dropdownMobileStyle(menuTop) : {}) }}>
           <div style={dropdownHeaderStyle}>
             <span style={{ fontWeight: 600, fontSize: "14px" }}>Notifications</span>
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -224,6 +255,18 @@ const dropdownStyle: React.CSSProperties = {
   zIndex: 1000,
   backdropFilter: "blur(20px)",
 };
+
+// On narrow screens, pin the dropdown to the viewport so it can't overflow off
+// the left edge (the bell sits mid-header, so a right-anchored 340px box clips).
+const dropdownMobileStyle = (top: number): React.CSSProperties => ({
+  position: "fixed",
+  top,
+  left: 12,
+  right: 12,
+  width: "auto",
+  maxHeight: `calc(100dvh - ${top + 12}px)`,
+  overflowY: "auto",
+});
 
 const dropdownHeaderStyle: React.CSSProperties = {
   display: "flex",
