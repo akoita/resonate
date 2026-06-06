@@ -20,6 +20,16 @@ import {
   type Track,
 } from "../lib/api";
 import { artistProfileHref, catalogArtistHref } from "../lib/artistRoutes";
+import {
+  flattenCatalogStems,
+  getArtistName,
+  getCatalogSortTime,
+  getTrackArtistName,
+  summarizeCreditedArtists,
+  summarizeManagedArtists,
+  type CatalogArtistSummary,
+  type CatalogStemSummary,
+} from "../lib/catalogDisplay";
 import { type LocalTrack, saveTracksMetadata } from "../lib/localLibrary";
 import { usePlayer } from "../lib/playerContext";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
@@ -63,28 +73,6 @@ type FilterOption = {
   energy?: "low" | "medium" | "high";
 };
 type CatalogView = "releases" | "artists" | "stems";
-
-type ArtistSummary = {
-  key: string;
-  name: string;
-  artistId: string | null;
-  releaseCount: number;
-  stemCount: number;
-  latestRelease?: Release;
-  latestAt: number;
-  genres: Set<string>;
-};
-
-type StemSummary = {
-  id: string;
-  releaseId: string;
-  releaseTitle: string;
-  title: string;
-  type: string;
-  artistName: string;
-  artworkUrl?: string | null;
-  createdAt: string;
-};
 
 type HomeRecommendation = {
   key: string;
@@ -222,27 +210,34 @@ export default function Home() {
   );
   const eventRow: Campaign[] = useMemo(() => campaigns.slice(0, 2), [campaigns]);
   const activeHeroCampaignImage = activeHeroCampaign.heroImage || activeHeroCampaign.cardImage || activeHeroCampaign.visuals[0]?.url;
-  const catalogStems = useMemo<StemSummary[]>(
-    () => flattenStems(displayReleases),
+  const catalogStems = useMemo<CatalogStemSummary[]>(
+    () => flattenCatalogStems(displayReleases),
     [displayReleases],
   );
-  const catalogArtists = useMemo<ArtistSummary[]>(
+  const catalogArtists = useMemo<CatalogArtistSummary[]>(
     () => summarizeCreditedArtists(displayReleases),
     [displayReleases],
   );
   const normalizedSearch = catalogSearch.trim().toLowerCase();
-  const browseReleases = useMemo(
-    () => filterReleases(displayReleases, normalizedSearch).slice(0, 18),
+  const catalogFilteredReleases = useMemo(
+    () => filterReleases(displayReleases, normalizedSearch),
     [displayReleases, normalizedSearch],
   );
-  const browseArtists = useMemo(
-    () => filterArtists(catalogArtists, normalizedSearch).slice(0, 12),
+  const catalogFilteredArtists = useMemo(
+    () => filterArtists(catalogArtists, normalizedSearch),
     [catalogArtists, normalizedSearch],
   );
-  const browseStems = useMemo(
-    () => filterStems(catalogStems, normalizedSearch).slice(0, 12),
+  const catalogFilteredStems = useMemo(
+    () => filterStems(catalogStems, normalizedSearch),
     [catalogStems, normalizedSearch],
   );
+  const browseReleases = useMemo(() => catalogFilteredReleases.slice(0, 18), [catalogFilteredReleases]);
+  const browseArtists = useMemo(() => catalogFilteredArtists.slice(0, 12), [catalogFilteredArtists]);
+  const browseStems = useMemo(() => catalogFilteredStems.slice(0, 12), [catalogFilteredStems]);
+  const catalogVisibleCount =
+    catalogView === "releases" ? browseReleases.length : catalogView === "artists" ? browseArtists.length : browseStems.length;
+  const catalogTotalCount =
+    catalogView === "releases" ? catalogFilteredReleases.length : catalogView === "artists" ? catalogFilteredArtists.length : catalogFilteredStems.length;
   const recommendedForYou = useMemo(
     () => buildHomeRecommendations(songRecommendations, displayReleases).slice(0, 4),
     [songRecommendations, displayReleases],
@@ -250,7 +245,7 @@ export default function Home() {
   const managedArtists = summarizeManagedArtists(status === "authenticated" ? myReleases : []).slice(0, 5);
   const recentUploads = (status === "authenticated" ? myReleases : [])
     .slice()
-    .sort((a, b) => getReleaseTime(b) - getReleaseTime(a))
+    .sort((a, b) => getCatalogSortTime(b) - getCatalogSortTime(a))
     .slice(0, 4);
 
   useEffect(() => {
@@ -659,18 +654,34 @@ export default function Home() {
           <div className="ng-catalog-shell ng-glass">
             <header className="ng-catalog-header">
               <div>
-                <span className="ng-kicker ng-kicker--violet">Global catalog</span>
-                <h3 className="ng-section-title">Browse Everything</h3>
+                <span className="ng-kicker ng-kicker--violet">Global catalog snapshot</span>
+                <h3 className="ng-section-title">Recently Added</h3>
               </div>
-              <label className="ng-catalog-search">
-                <span className="ms-icon" aria-hidden>search</span>
-                <input
-                  value={catalogSearch}
-                  onChange={(event) => setCatalogSearch(event.target.value)}
-                  placeholder="Search releases, artists, stems"
-                  aria-label="Search catalog"
-                />
-              </label>
+              <div className="ng-catalog-actions">
+                <label className="ng-catalog-search">
+                  <span className="ms-icon" aria-hidden>search</span>
+                  <input
+                    value={catalogSearch}
+                    onChange={(event) => setCatalogSearch(event.target.value)}
+                    placeholder="Search this snapshot"
+                    aria-label="Search catalog snapshot"
+                  />
+                  {catalogSearch && (
+                    <button
+                      type="button"
+                      className="ng-catalog-search__clear"
+                      onClick={() => setCatalogSearch("")}
+                      aria-label="Clear search"
+                    >
+                      <span className="ms-icon" aria-hidden>close</span>
+                    </button>
+                  )}
+                </label>
+                <Link href="/catalog" className="ng-section-link">
+                  Open catalog
+                  <span className="ms-icon" aria-hidden style={{ fontSize: 14 }}>arrow_forward</span>
+                </Link>
+              </div>
             </header>
 
             <div className="ng-catalog-stats" aria-label="Catalog totals">
@@ -701,6 +712,14 @@ export default function Home() {
                   {view}
                 </button>
               ))}
+            </div>
+
+            <div className="ng-catalog-window" aria-live="polite">
+              {catalogTotalCount === 0
+                ? `No ${catalogView} yet`
+                : catalogVisibleCount < catalogTotalCount
+                  ? `Showing ${catalogVisibleCount} of ${catalogTotalCount} ${catalogView} · newest first`
+                  : `${catalogTotalCount} ${catalogView} · newest first`}
             </div>
 
             {catalogView === "releases" && (
@@ -833,6 +852,13 @@ export default function Home() {
                 )}
               </div>
             )}
+
+            <div className="ng-catalog-footer">
+              <Link href="/catalog" className="ng-btn ng-btn--secondary">
+                Browse catalog
+                <span className="ms-icon" aria-hidden>arrow_forward</span>
+              </Link>
+            </div>
           </div>
         </section>
 
@@ -916,7 +942,7 @@ export default function Home() {
                         <ReleaseThumb release={release} small />
                         <span className="ng-upload-row__main">
                           <strong>{release.title}</strong>
-                          <small>{getReleaseResourceCount(release)} resources · {formatRelativeTime(getReleaseTime(release))}</small>
+                          <small>{getReleaseResourceCount(release)} resources · {formatRelativeTime(getCatalogSortTime(release))}</small>
                         </span>
                         <span className={`ng-status-pill ${getStatusClass(release.status)}`}>
                           {formatStatus(release.status)}
@@ -1085,64 +1111,6 @@ function ReleaseThumb({ release, small = false }: { release: Release; small?: bo
   );
 }
 
-function getArtistName(release: Release) {
-  const mainCredits = getMainArtistCredits(release);
-  if (mainCredits.length > 0) {
-    return mainCredits.map((credit) => credit.displayName).join(", ");
-  }
-  return release.primaryArtist || release.artist?.displayName || "Unknown Artist";
-}
-
-function getArtistProfileName(release: Release) {
-  return release.artist?.displayName || release.primaryArtist || "Unknown Artist";
-}
-
-function normalizeArtistName(value?: string | null) {
-  return (value || "").trim().toLowerCase();
-}
-
-function getMainArtistCredits(release: Release) {
-  return (release.artistCredits || [])
-    .filter((credit) => ["main", "primary"].includes(credit.role.toLowerCase()))
-    .sort((left, right) => left.sortOrder - right.sortOrder || left.displayName.localeCompare(right.displayName));
-}
-
-function normalizeArtistCreditValue(value?: string | null) {
-  return (value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/^[\s._-]*\d+[\s._-]+/, "")
-    .replace(/[\s._-]+/g, " ");
-}
-
-function getReleaseCreditProfileId(release: Release) {
-  const mainCredit = getMainArtistCredits(release)[0];
-  if (mainCredit?.artistId) return mainCredit.artistId;
-
-  const primaryArtist = normalizeArtistName(release.primaryArtist);
-  const profileName = normalizeArtistName(release.artist?.displayName);
-  if (!release.artist?.id) return null;
-  return !primaryArtist || primaryArtist === profileName ? release.artist.id : null;
-}
-
-function getTrackArtistName(track: Track, release: Release) {
-  const trackArtist = track.artist?.trim();
-  const releaseArtist = getArtistName(release);
-  if (!trackArtist) return releaseArtist;
-
-  if (normalizeArtistCreditValue(trackArtist) === normalizeArtistCreditValue(track.title)) {
-    return releaseArtist;
-  }
-
-  return trackArtist;
-}
-
-function getReleaseTime(release: Release) {
-  const raw = release.releaseDate || release.createdAt;
-  const time = raw ? new Date(raw).getTime() : 0;
-  return Number.isFinite(time) ? time : 0;
-}
-
 function selectHomeHeroCampaigns(campaigns: Campaign[]): Campaign[] {
   return campaigns
     .slice()
@@ -1211,118 +1179,6 @@ function mapReleaseToLocalTracks(release: Release): LocalTrack[] {
   }));
 }
 
-function flattenStems(releases: Release[]): StemSummary[] {
-  return releases.flatMap((release) =>
-    (release.tracks ?? []).flatMap((track) =>
-      (track.stems ?? []).map((stem) => ({
-        id: stem.id,
-        releaseId: release.id,
-        releaseTitle: release.title,
-        title: stem.title || track.title,
-        type: stem.type || "stem",
-        artistName: stem.artist || getTrackArtistName(track, release),
-        artworkUrl: stem.artworkUrl || release.artworkUrl,
-        createdAt: track.createdAt || release.createdAt,
-      })),
-    ),
-  );
-}
-
-function summarizeCreditedArtists(releases: Release[]): ArtistSummary[] {
-  const byArtist = new Map<string, ArtistSummary>();
-
-  for (const release of releases) {
-    const credits = getMainArtistCredits(release);
-    const creditSummaries = credits.length > 0
-      ? credits.map((credit) => ({
-          name: credit.displayName,
-          artistId: credit.artistId || credit.artist?.id || null,
-        }))
-      : [{
-          name: getArtistName(release),
-          artistId: getReleaseCreditProfileId(release),
-        }];
-    const stemCount = release.tracks?.reduce(
-      (sum, track) => sum + (track.stems?.length ?? 0),
-      0,
-    ) ?? 0;
-    const latestAt = getReleaseTime(release);
-
-    for (const credit of creditSummaries) {
-      const name = credit.name || "Unknown Artist";
-      const artistId = credit.artistId;
-      const key = artistId || normalizeArtistName(name) || release.id;
-      const existing = byArtist.get(key);
-
-      if (!existing) {
-        byArtist.set(key, {
-          key,
-          name,
-          artistId,
-          releaseCount: 1,
-          stemCount,
-          latestRelease: release,
-          latestAt,
-          genres: new Set(release.genre ? [release.genre] : []),
-        });
-        continue;
-      }
-
-      existing.releaseCount += 1;
-      existing.stemCount += stemCount;
-      if (release.genre) existing.genres.add(release.genre);
-      if (!existing.artistId && artistId) existing.artistId = artistId;
-      if (latestAt > existing.latestAt) {
-        existing.latestAt = latestAt;
-        existing.latestRelease = release;
-      }
-    }
-  }
-
-  return Array.from(byArtist.values()).sort((a, b) => b.latestAt - a.latestAt);
-}
-
-function summarizeManagedArtists(releases: Release[]): ArtistSummary[] {
-  const byArtist = new Map<string, ArtistSummary>();
-
-  for (const release of releases) {
-    const name = getArtistProfileName(release);
-    const artistId = release.artist?.id || release.artistId || null;
-    const key = artistId || normalizeArtistName(name) || release.id;
-    const stemCount = release.tracks?.reduce(
-      (sum, track) => sum + (track.stems?.length ?? 0),
-      0,
-    ) ?? 0;
-    const latestAt = getReleaseTime(release);
-    const existing = byArtist.get(key);
-
-    if (!existing) {
-      byArtist.set(key, {
-        key,
-        name,
-        artistId,
-        releaseCount: 1,
-        stemCount,
-        latestRelease: release,
-        latestAt,
-        genres: new Set(release.genre ? [release.genre] : []),
-      });
-      continue;
-    }
-
-    existing.releaseCount += 1;
-    existing.stemCount += stemCount;
-    if (release.genre) existing.genres.add(release.genre);
-    if (!existing.artistId && artistId) existing.artistId = artistId;
-    if (latestAt > existing.latestAt) {
-      existing.latestAt = latestAt;
-      existing.latestRelease = release;
-    }
-  }
-
-  return Array.from(byArtist.values()).sort((a, b) => b.latestAt - a.latestAt);
-}
-
 function filterReleases(releases: Release[], query: string) {
   if (!query) return releases;
   return releases.filter((release) =>
@@ -1336,7 +1192,7 @@ function filterReleases(releases: Release[], query: string) {
   );
 }
 
-function filterArtists(artists: ArtistSummary[], query: string) {
+function filterArtists(artists: CatalogArtistSummary[], query: string) {
   if (!query) return artists;
   return artists.filter((artist) =>
     [
@@ -1347,7 +1203,7 @@ function filterArtists(artists: ArtistSummary[], query: string) {
   );
 }
 
-function filterStems(stems: StemSummary[], query: string) {
+function filterStems(stems: CatalogStemSummary[], query: string) {
   if (!query) return stems;
   return stems.filter((stem) =>
     [
