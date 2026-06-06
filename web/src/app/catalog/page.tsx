@@ -16,6 +16,7 @@ import { listPublishedReleases, type Release } from "../../lib/api";
 type CatalogView = "releases" | "artists" | "stems";
 
 const CATALOG_VIEWS: CatalogView[] = ["releases", "artists", "stems"];
+const RECENT_CATALOG_LIMIT = 200;
 
 export default function GlobalCatalogPage() {
   const [releases, setReleases] = useState<Release[]>([]);
@@ -28,7 +29,7 @@ export default function GlobalCatalogPage() {
   useEffect(() => {
     let cancelled = false;
 
-    listPublishedReleases(200)
+    listPublishedReleases(RECENT_CATALOG_LIMIT)
       .then((items) => {
         if (!cancelled) setReleases(sortCatalogReleases(items));
       })
@@ -95,10 +96,10 @@ export default function GlobalCatalogPage() {
         <section className="ng-section ng-catalog-hero">
           <div className="ng-catalog-hero__intro">
             <span className="ng-kicker ng-kicker--violet">Global catalog</span>
-            <h1 className="ng-section-title">Browse the catalog</h1>
+            <h1 className="ng-section-title">Browse recent catalog</h1>
             <p className="ng-catalog-hero__subtitle">
-              Every published release, artist, and stem on Resonate — search the
-              full library and dive into anything that catches your ear.
+              Search the latest {RECENT_CATALOG_LIMIT} public releases on
+              Resonate, including their credited artists and stems.
             </p>
           </div>
           <label className="ng-catalog-search ng-catalog-search--hero">
@@ -107,7 +108,7 @@ export default function GlobalCatalogPage() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search releases, artists, stems"
-              aria-label="Search global catalog"
+              aria-label="Search recent catalog"
             />
             {query && (
               <button
@@ -124,14 +125,14 @@ export default function GlobalCatalogPage() {
 
         <section className="ng-section">
           <div className="ng-catalog-shell ng-glass">
-            <div className="ng-catalog-stats" aria-label="Catalog totals">
+            <div className="ng-catalog-stats" aria-label="Recent catalog totals">
               <div>
                 <strong>{releases.length}</strong>
-                <span>Releases</span>
+                <span>Recent releases</span>
               </div>
               <div>
                 <strong>{artists.length}</strong>
-                <span>Artists</span>
+                <span>Credited artists</span>
               </div>
               <div>
                 <strong>{stems.length}</strong>
@@ -164,10 +165,10 @@ export default function GlobalCatalogPage() {
               </div>
               <div className="ng-catalog-window" aria-live="polite">
                 {loading
-                  ? "Loading catalog"
+                  ? "Loading recent catalog"
                   : isSearching
-                    ? `${currentCount} of ${totalCounts[view]} ${view}`
-                    : `${currentCount} ${currentCount === 1 ? singularize(view) : view}`}
+                    ? `${currentCount} of ${totalCounts[view]} recent ${view}`
+                    : `${currentCount} recent ${currentCount === 1 ? singularize(view) : view}`}
               </div>
             </div>
 
