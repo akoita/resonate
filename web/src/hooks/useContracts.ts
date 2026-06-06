@@ -1777,13 +1777,15 @@ export function useBatchMintAndList() {
         setResults(doneResults);
         options?.onProgress?.(doneResults);
 
-        // 4. Persist locally and notify mounted buttons in the same tab
+        // 4. Persist locally and notify mounted buttons in the same tab.
+        // The wallet transaction succeeded, but the public marketplace listing
+        // is not authoritative until the backend indexer exposes it.
         for (let i = 0; i < stems.length; i++) {
           const stemId = stems[i].stemId;
           const tokenId =
             tokenIdByTokenUri.get(authorizations[i].tokenURI) ?? fallbackTokenIds[i];
           if (tokenId == null) continue;
-          persistStemMarketplaceStatus(stemId, "listed", tokenId);
+          persistStemMarketplaceStatus(stemId, "listing_pending", tokenId);
         }
 
         // 5. Notify backend for each stem (best-effort, non-blocking)

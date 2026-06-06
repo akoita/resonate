@@ -1153,6 +1153,7 @@ export class ContractsService implements OnModuleInit {
     status?: string;
     sellerAddress?: string;
     chainId?: number;
+    stemId?: string;
     artistId?: string;
     releaseId?: string;
     genre?: string;
@@ -1164,13 +1165,14 @@ export class ContractsService implements OnModuleInit {
     limit?: number;
     offset?: number;
   }) {
-    const { status, sellerAddress, chainId, artistId, releaseId, genre, search, sortBy, minPrice, maxPrice, excludeSellerAddress, limit = 20, offset = 0 } = options;
+    const { status, sellerAddress, chainId, stemId, artistId, releaseId, genre, search, sortBy, minPrice, maxPrice, excludeSellerAddress, limit = 20, offset = 0 } = options;
 
     // Build stem relation filter for artist/release/genre/search
     const stemFilter: any = {};
     const trackFilter: any = {};
     const releaseFilter: any = {};
 
+    if (stemId) stemFilter.id = stemId;
     if (artistId) releaseFilter.artistId = artistId;
     if (releaseId) releaseFilter.id = releaseId;
     if (genre) releaseFilter.genre = { contains: genre, mode: "insensitive" as const };

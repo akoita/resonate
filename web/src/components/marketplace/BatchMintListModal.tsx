@@ -239,7 +239,7 @@ export function BatchMintListModal({
             </div>
             <p className="batch-progress-text">
               {allDone
-                ? `All ${stems.length} stems minted & listed!`
+                ? `All ${stems.length} stems submitted for marketplace indexing`
                 : pending
                   ? `Processing ${stems.length} stems... (one passkey prompt)`
                   : failedCount > 0

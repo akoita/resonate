@@ -232,6 +232,78 @@ describe('MetadataController (integration)', () => {
       }
     });
 
+    it('filters marketplace listings by exact stem id', async () => {
+      const matchingTxHash = '0x' + '6'.repeat(64);
+      const otherTxHash = '0x' + '7'.repeat(64);
+      const otherStem = await prisma.stem.create({
+        data: { trackId: `${TEST_PREFIX}track`, type: 'drums', uri: '/meta/drums.mp3' },
+      });
+
+      await prisma.stemListing.createMany({
+        data: [
+          {
+            listingId: 842n,
+            stemId,
+            tokenId: 42n,
+            chainId: 31337,
+            contractAddress: '0xStemNFT',
+            sellerAddress: creatorWalletAddress,
+            pricePerUnit: '50000',
+            amount: 1n,
+            paymentToken: ('0x' + '3'.repeat(40)).toLowerCase(),
+            expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+            transactionHash: matchingTxHash,
+            blockNumber: 104n,
+            status: 'active',
+            listedAt: new Date(),
+          },
+          {
+            listingId: 843n,
+            stemId: otherStem.id,
+            tokenId: 43n,
+            chainId: 31337,
+            contractAddress: '0xStemNFT',
+            sellerAddress: creatorWalletAddress,
+            pricePerUnit: '50000',
+            amount: 1n,
+            paymentToken: ('0x' + '3'.repeat(40)).toLowerCase(),
+            expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+            transactionHash: otherTxHash,
+            blockNumber: 105n,
+            status: 'active',
+            listedAt: new Date(),
+          },
+        ],
+      });
+
+      try {
+        const result = await controller.getListings(
+          'active',
+          undefined,
+          '31337',
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          stemId,
+        );
+
+        expect(result.listings.map((listing) => listing.listingId)).toEqual(['842']);
+        expect(result.total).toBe(1);
+      } finally {
+        await prisma.stemListing.deleteMany({
+          where: { transactionHash: { in: [matchingTxHash, otherTxHash] } },
+        });
+        await prisma.stem.delete({ where: { id: otherStem.id } }).catch(() => {});
+      }
+    });
+
     it('hydrates an indexed listing when the frontend listing intent arrives after the indexer', async () => {
       const previousChainId = process.env.AA_CHAIN_ID;
       process.env.AA_CHAIN_ID = '31337';

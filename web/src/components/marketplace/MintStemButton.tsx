@@ -13,6 +13,7 @@ import {
     clearStemMarketplaceStatus,
     persistStemMarketplaceStatus,
     STEM_MARKETPLACE_STATUS_EVENT,
+    type StemMarketplaceStatus,
     type StemMarketplaceStatusEventDetail,
 } from "../../lib/stemMarketplaceStatus";
 import { useToast } from "../ui/Toast";
@@ -79,10 +80,10 @@ interface MintStemButtonProps {
     disabledLabel?: string;
 }
 
-// TTL for localStorage "listed" hint: 1 hour.
-// Within this window, we trust the on-chain receipt as proof the listing exists.
-// After this, the backend indexer should have caught up and becomes authoritative.
-const LISTED_TTL_MS = 60 * 60 * 1000;
+// Keep a successful wallet transaction visible while the backend indexer catches up.
+// "Listed" is reserved for listings confirmed by the marketplace API.
+const LISTING_PENDING_TTL_MS = 60 * 60 * 1000;
+type MintStemButtonState = "idle" | "confirming_mint" | "minted" | "confirming_list" | "listing_pending" | "listed";
 
 export function MintStemButton({
     stemId,
@@ -121,10 +122,30 @@ export function MintStemButton({
         asset: listingAsset,
     });
     const listingPriceUnavailable = !paymentAssetsLoading && listingPriceUnits <= 0n;
-    // State machine: "idle" -> "minted" -> "listed"
+    // State machine: "idle" -> "minted" -> "listing_pending" -> "listed"
     // "confirming_mint" and "confirming_list" are transient states while polling the backend
-    const [state, setState] = useState<"idle" | "confirming_mint" | "minted" | "confirming_list" | "listed">("idle");
+    const [state, setState] = useState<MintStemButtonState>("idle");
     const [mintedTokenId, setMintedTokenId] = useState<bigint | null>(null);
+    const notifyListing = useCallback(async (input: {
+        tokenId: bigint;
+        transactionHash: string;
+    }) => {
+        await fetch("/api/contracts/notify-listing", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                tokenId: input.tokenId.toString(),
+                seller: smartAccountAddress || address,
+                price: listingPriceUnits.toString(),
+                amount: "1",
+                paymentToken: listingToken,
+                licenseType: "personal",
+                durationSeconds: String(7 * 24 * 60 * 60),
+                transactionHash: input.transactionHash,
+                stemId,
+            }),
+        });
+    }, [address, listingPriceUnits, listingToken, smartAccountAddress, stemId]);
     const applyStatusDetail = useCallback((detail: StemMarketplaceStatusEventDetail) => {
         if (detail.stemId !== stemId) return;
 
@@ -145,7 +166,7 @@ export function MintStemButton({
     const checkStatus = useCallback(async () => {
         try {
             const localData = localStorage.getItem(`stem_status_${stemId}`);
-            let localStatus: string | null = null;
+            let localStatus: StemMarketplaceStatus | null = null;
             let localTimestamp: number | null = null;
 
             // Parse localStorage: supports both legacy string ("listed") and new JSON format
@@ -156,35 +177,38 @@ export function MintStemButton({
                     localTimestamp = parsed.timestamp;
                 } catch {
                     // Legacy format: plain string "listed" or "minted"
-                    localStatus = localData;
+                    if (localData === "listed" || localData === "minted") {
+                        localStatus = localData;
+                    }
                 }
             }
 
-            // If localStorage says "listed" and it's within TTL, trust it immediately.
-            // The on-chain tx receipt already proved the listing was created.
-            if (localStatus === "listed" && localTimestamp && (Date.now() - localTimestamp < LISTED_TTL_MS)) {
-                const localId = localStorage.getItem(`stem_token_id_${stemId}`);
-                if (localId) {
-                    setMintedTokenId(BigInt(localId));
-                    setState("listed");
-                    return; // Trust the recent on-chain confirmation
-                }
-            }
+            const localId = localStorage.getItem(`stem_token_id_${stemId}`);
+            const localTokenId = localId ? BigInt(localId) : null;
+            const localStatusAge =
+                localTimestamp != null ? Date.now() - localTimestamp : Number.POSITIVE_INFINITY;
+            const isRecentPending =
+                localStatus === "listing_pending" && localStatusAge < LISTING_PENDING_TTL_MS;
 
-            // For "minted" hint or stale/legacy "listed", show minted while we verify
-            if (localStatus === "minted" || localStatus === "listed") {
-                const localId = localStorage.getItem(`stem_token_id_${stemId}`);
-                if (localId) {
-                    setMintedTokenId(BigInt(localId));
-                    setState("minted"); // Start at minted, backend may upgrade to listed
+            if (localTokenId != null) {
+                setMintedTokenId(localTokenId);
+                if (isRecentPending || localStatus === "listed") {
+                    setState("listing_pending");
+                } else if (localStatus === "minted") {
+                    setState("minted");
                 }
             }
 
             // Verify with backend API (source of truth)
             const listings = await getListingsByStem(stemId);
             if (listings && listings.length > 0) {
-                persistStemMarketplaceStatus(stemId, "listed", mintedTokenId);
+                persistStemMarketplaceStatus(stemId, "listed", localTokenId ?? mintedTokenId);
                 setState("listed");
+                return;
+            }
+
+            if (isRecentPending && localTokenId != null) {
+                setState("listing_pending");
                 return;
             }
 
@@ -218,6 +242,9 @@ export function MintStemButton({
             const detail = (event as CustomEvent<StemMarketplaceStatusEventDetail>).detail;
             if (detail) {
                 applyStatusDetail(detail);
+                if (detail.status === "listing_pending") {
+                    window.setTimeout(() => void checkStatus(), 5000);
+                }
             }
         };
 
@@ -261,7 +288,7 @@ export function MintStemButton({
 
         try {
             // List for the resolved marketplace price, 1 unit, 7 days
-            await list({
+            const hash = await list({
                 tokenId: mintedTokenId,
                 pricePerUnit: listingPriceUnits,
                 amount: BigInt(1),
@@ -271,6 +298,15 @@ export function MintStemButton({
 
             // Tx confirmed on-chain — wait for backend indexer to confirm listing
             setState("confirming_list");
+            persistStemMarketplaceStatus(stemId, "listing_pending", mintedTokenId);
+            try {
+                await notifyListing({
+                    tokenId: mintedTokenId,
+                    transactionHash: hash,
+                });
+            } catch {
+                // Best-effort — indexer can still catch up from chain events.
+            }
 
             const confirmed = await pollForListing(stemId);
             if (confirmed) {
@@ -282,13 +318,11 @@ export function MintStemButton({
                     message: `${stemType} stem (Token #${mintedTokenId}) is now on the marketplace for ${listingPriceLabel}`,
                 });
             } else {
-                // Listing tx went through but indexer hasn't confirmed yet
-                // Stay in "minted" so user can retry
-                setState("minted");
+                setState("listing_pending");
                 addToast({
                     type: "warning",
-                    title: "Listing Pending",
-                    message: "Transaction succeeded but marketplace hasn't confirmed yet. Try again in a moment.",
+                    title: "Listing Indexing",
+                    message: "Transaction succeeded. The listing will appear once the marketplace indexer confirms it.",
                 });
             }
         } catch (error) {
@@ -348,44 +382,37 @@ export function MintStemButton({
 
             const actualTokenId = tokenId ?? await pollForMintedTokenId(stemId);
 
-            // Tx confirmed on-chain (mint + approve + list).
-            // The batch UserOp waited for receipt, so listing is confirmed.
-            // Mark as "listed" immediately — on-chain receipt is proof.
             setMintedTokenId(actualTokenId);
-            setState("listed");
-            persistStemMarketplaceStatus(stemId, "listed", actualTokenId);
+            setState("confirming_list");
+            persistStemMarketplaceStatus(stemId, "listing_pending", actualTokenId);
 
-            addToast({
-                type: "success",
-                title: "Minted & Listed!",
-                message: `${stemType} stem (Token #${actualTokenId}) is now on the marketplace for ${listingPriceLabel}`,
-            });
-
-            // Notify backend to create listing in DB + broadcast WebSocket
-            // Wrapped in its own try-catch so failures here don't corrupt state
+            // Notify backend so it can attach listing metadata while the indexer catches up.
             try {
-                await fetch("/api/contracts/notify-listing", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        tokenId: actualTokenId.toString(),
-                        seller: smartAccountAddress || address,
-                        price: listingPriceUnits.toString(),
-                        amount: "1",
-                        paymentToken: listingToken,
-                        licenseType: "personal",
-                        durationSeconds: String(7 * 24 * 60 * 60),
-                        transactionHash: hash,
-                        stemId,
-                    }),
+                await notifyListing({
+                    tokenId: actualTokenId,
+                    transactionHash: hash,
                 });
             } catch {
-                // Best-effort — indexer will catch up eventually
+                // Best-effort — indexer can still catch up from chain events.
             }
 
-            // Kick off background indexer poll (non-blocking) so the
-            // marketplace page picks up the listing faster
-            pollForListing(stemId).catch(() => { /* indexer will catch up eventually */ });
+            const confirmed = await pollForListing(stemId);
+            if (confirmed) {
+                setState("listed");
+                persistStemMarketplaceStatus(stemId, "listed", actualTokenId);
+                addToast({
+                    type: "success",
+                    title: "Minted & Listed!",
+                    message: `${stemType} stem (Token #${actualTokenId}) is now on the marketplace for ${listingPriceLabel}`,
+                });
+            } else {
+                setState("listing_pending");
+                addToast({
+                    type: "warning",
+                    title: "Listing Indexing",
+                    message: "Transaction succeeded. The listing will appear once the marketplace indexer confirms it.",
+                });
+            }
         } catch (error) {
             console.error("Mint & List failed:", error);
             setState("idle");
@@ -438,6 +465,29 @@ export function MintStemButton({
                 }}
             >
                 ✓ Listed
+            </button>
+        );
+    }
+
+    if (state === "listing_pending") {
+        return (
+            <button
+                disabled
+                title="The wallet transaction succeeded. Waiting for the marketplace indexer to confirm the public listing."
+                style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    background: "rgba(139,92,246,0.12)",
+                    color: "#c4b5fd",
+                    border: "1px solid rgba(139,92,246,0.3)",
+                    borderRadius: 10,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "wait",
+                    transition: "all 0.2s",
+                }}
+            >
+                Indexing listing...
             </button>
         );
     }

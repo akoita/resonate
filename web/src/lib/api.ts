@@ -2795,8 +2795,11 @@ export async function getListings(limit = 20, offset = 0) {
 }
 
 export async function getListingsByStem(stemId: string) {
-  const allListings = await getListings(100);
-  return allListings.listings.filter(l => l.stem?.id === stemId);
+  const result = await apiRequest<{ listings: APIListing[]; total: number }>(
+    `/metadata/listings?status=active&stemId=${encodeURIComponent(stemId)}&limit=20&offset=0`,
+    {}
+  );
+  return result.listings;
 }
 
 export async function getStemNftInfo(stemId: string) {

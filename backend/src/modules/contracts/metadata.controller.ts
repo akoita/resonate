@@ -563,7 +563,8 @@ export class MetadataController {
     @Query("maxPrice") maxPrice?: string,
     @Query("excludeSeller") excludeSeller?: string,
     @Query("limit") limitStr?: string,
-    @Query("offset") offsetStr?: string
+    @Query("offset") offsetStr?: string,
+    @Query("stemId") stemId?: string
   ) {
     const chainId = chainIdStr ? parseInt(chainIdStr) : undefined;
     const limit = limitStr ? parseInt(limitStr) : 20;
@@ -573,6 +574,7 @@ export class MetadataController {
       status,
       sellerAddress: seller,
       chainId,
+      stemId,
       artistId,
       releaseId,
       genre,
