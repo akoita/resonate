@@ -520,6 +520,15 @@
   margin-bottom: 18px;
 }
 
+.home-ng .ng-catalog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  min-width: 0;
+  flex: 1 1 520px;
+}
+
 .home-ng .ng-catalog-search {
   flex: 0 1 360px;
   min-width: min(100%, 260px);
@@ -546,6 +555,14 @@
 
 .home-ng .ng-catalog-search input::placeholder {
   color: rgba(255, 255, 255, 0.42);
+}
+
+.home-ng .ng-catalog-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
 }
 
 .home-ng .ng-catalog-stats {
@@ -592,6 +609,10 @@
   scrollbar-width: none;
 }
 
+.home-ng .ng-catalog-toolbar .ng-segmented {
+  margin-bottom: 0;
+}
+
 .home-ng .ng-segmented::-webkit-scrollbar { display: none; }
 
 .home-ng .ng-segmented__item {
@@ -611,6 +632,30 @@
 .home-ng .ng-segmented__item.active {
   color: #FFFFFF;
   background: linear-gradient(135deg, #7C5CFF, #A085FF);
+}
+
+.home-ng .ng-catalog-window {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  margin-bottom: 18px;
+  border-radius: 999px;
+  padding: 0 13px;
+  color: rgba(255, 255, 255, 0.66);
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: var(--ds-font-display);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.home-ng .ng-catalog-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
 }
 
 .home-ng .ng-resource-grid {
@@ -926,6 +971,26 @@
 .home-ng .ng-empty-state p {
   margin: 0;
   max-width: 300px;
+}
+
+.home-ng.ng-catalog-page .ng-main {
+  padding-top: 28px;
+}
+
+.home-ng .ng-catalog-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-top: 18px;
+}
+
+.home-ng .ng-catalog-hero .ng-section-title {
+  font-size: 42px;
+}
+
+.home-ng .ng-catalog-results {
+  max-height: none;
 }
 
 /* ---------- Recommended for You -------------------------------- */
@@ -1876,7 +1941,25 @@
   .home-ng .ng-ops-panel { padding: 16px; }
   .home-ng .ng-catalog-header,
   .home-ng .ng-ops-panel__header { flex-direction: column; align-items: stretch; }
+  .home-ng .ng-catalog-actions,
+  .home-ng .ng-catalog-toolbar,
+  .home-ng .ng-catalog-hero {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .home-ng .ng-catalog-actions {
+    flex-basis: auto;
+  }
   .home-ng .ng-catalog-search { flex-basis: auto; min-width: 0; }
+  .home-ng .ng-catalog-window {
+    justify-content: center;
+    width: 100%;
+    white-space: normal;
+    text-align: center;
+  }
+  .home-ng .ng-catalog-footer { justify-content: stretch; }
+  .home-ng .ng-catalog-footer .ng-btn,
+  .home-ng .ng-catalog-actions .ng-section-link { justify-content: center; }
   .home-ng .ng-catalog-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .home-ng .ng-catalog-stats > div { padding: 12px 8px; }
   .home-ng .ng-catalog-stats strong { font-size: 20px; }
@@ -1916,6 +1999,7 @@
   .home-ng .ng-hero__campaign-tab { min-height: 64px; }
   .home-ng .ng-btn { padding: 12px 18px; font-size: 13px; }
   .home-ng .ng-section-title { font-size: 22px; }
+  .home-ng .ng-catalog-hero .ng-section-title { font-size: 30px; }
   .home-ng .ng-event-card__title { font-size: 20px; }
   .home-ng .ng-event-card__overlay { padding: 20px; }
 }

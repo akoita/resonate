@@ -13,8 +13,16 @@ Expose a minimal catalog service to store, index, and query tracks and stems.
 
 ## Current User Surfaces
 
-- The home page catalog browser (`/`) lists published releases, artists, and
-  stems from `GET /catalog/published`.
+- The home page catalog browser (`/`) presents a compact recent-catalog
+  snapshot of published releases, artists, and stems from
+  `GET /catalog/published`. It shows visible-vs-total counts and links to the
+  fuller `/catalog` browser so the preview is not mistaken for an exhaustive
+  list.
+- The global catalog page (`/catalog`) provides a fuller public browse surface
+  for releases, artists, and stems with shared search and tabbed views.
+- Catalog discovery sorts recent surfaces by catalog addition time
+  (`Release.createdAt`) rather than the musical release date, so legacy albums
+  uploaded today still appear in recent artist/release discovery.
 - Global artist discovery groups releases by first-class `ReleaseArtistCredit`
   rows. Main artist credits can include several equal-billing collaborators;
   featured and production credits are preserved for richer metadata.
@@ -57,6 +65,8 @@ Expose a minimal catalog service to store, index, and query tracks and stems.
 - Index updates occur within 1 minute of ingestion events.
 - Listeners can add or save catalog release tracks from the home catalog
   browser without opening the release detail page.
+- Listeners can open `/catalog` from the home snapshot to browse the larger
+  public catalog without the home-page preview limit.
 
 ## Dependencies
 
