@@ -1590,6 +1590,83 @@ describe('API Client', () => {
       expect(mockFetch.mock.calls.every(([, opts]) => opts.method === 'POST')).toBe(true);
     });
 
+    it('loads and joins cohort rooms through encoded authenticated endpoints', async () => {
+      const roomResponse = {
+        schemaVersion: 'community-cohort-room/v1',
+        cohort: {
+          id: 'cohort 1',
+          cohortType: 'taste',
+          reasonCode: 'taste:ambient',
+          title: 'Ambient listeners',
+          safeExplanation: 'A privacy-safe cohort.',
+          memberCountLabel: '10+ listeners',
+          status: 'active',
+          membership: {
+            status: 'joined',
+            suggestedAt: '2026-06-01T00:00:00.000Z',
+            joinedAt: '2026-06-01T01:00:00.000Z',
+            leftAt: null,
+            hiddenAt: null,
+          },
+          expiresAt: null,
+          createdAt: '2026-06-01T00:00:00.000Z',
+          updatedAt: '2026-06-01T00:00:00.000Z',
+        },
+        room: {
+          id: 'room-1',
+          roomType: 'cohort',
+          ownerType: 'cohort',
+          ownerId: 'cohort 1',
+          artistId: null,
+          title: 'Ambient listeners Room',
+          description: 'Private room for joined members.',
+          status: 'active',
+          membership: null,
+          access: { joinable: true, reason: 'cohort_joined' },
+          createdAt: '2026-06-01T00:00:00.000Z',
+          updatedAt: '2026-06-01T00:00:00.000Z',
+        },
+        emptyState: {
+          title: 'Cohort room is ready',
+          description: 'Start with a track.',
+        },
+        privacy: {
+          onChain: false,
+          otherListenerIdentities: 'redacted',
+          memberList: 'not_exposed',
+          walletAddresses: 'redacted',
+          rawListeningHistory: 'redacted',
+          accessDerivedServerSide: true,
+          moderation: 'community_moderation_queue',
+        },
+      };
+      mockFetch
+        .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify(roomResponse) })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({
+            ...roomResponse,
+            schemaVersion: 'community-cohort-room-membership/v1',
+            membership: {
+              role: 'cohort_member',
+              status: 'active',
+              joinedAt: '2026-06-01T01:00:00.000Z',
+              endedAt: null,
+            },
+          }),
+        });
+
+      await api.getCommunityCohortRoom('listener-token', 'cohort 1');
+      await api.joinCommunityCohortRoom('listener-token', 'cohort 1');
+
+      expect(mockFetch.mock.calls[0][0]).toBe('http://test-api:3000/community/cohorts/cohort%201/room');
+      expect(mockFetch.mock.calls[0][1].cache).toBe('no-store');
+      expect(mockFetch.mock.calls[0][1].headers.get('Authorization')).toBe('Bearer listener-token');
+      expect(mockFetch.mock.calls[1][0]).toBe('http://test-api:3000/community/cohorts/cohort%201/room/join');
+      expect(mockFetch.mock.calls[1][1].method).toBe('POST');
+    });
+
     it('fetches aggregate admin cohort quality without cache', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,

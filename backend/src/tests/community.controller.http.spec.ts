@@ -47,6 +47,8 @@ const mockCommunityRoomsService = {
   deleteMessage: jest.fn().mockResolvedValue({ schemaVersion: "community-message/v1" }),
   moderateMember: jest.fn().mockResolvedValue({ schemaVersion: "community-membership/v1" }),
   updateRoomStatus: jest.fn().mockResolvedValue({ schemaVersion: "community-room/v1" }),
+  getCohortRoom: jest.fn().mockResolvedValue({ schemaVersion: "community-cohort-room/v1" }),
+  joinCohortRoom: jest.fn().mockResolvedValue({ schemaVersion: "community-cohort-room-membership/v1" }),
 };
 
 const mockCommunityCohortService = {
@@ -198,6 +200,20 @@ describe("CommunityController (http)", () => {
         expect(res.body.schemaVersion).toBe("community-cohort-detail/v1");
       });
     await request(app.getHttpServer())
+      .get("/community/cohorts/cohort-1/room")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.schemaVersion).toBe("community-cohort-room/v1");
+      });
+    await request(app.getHttpServer())
+      .post("/community/cohorts/cohort-1/room/join")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(201)
+      .expect((res) => {
+        expect(res.body.schemaVersion).toBe("community-cohort-room-membership/v1");
+      });
+    await request(app.getHttpServer())
       .post("/community/cohorts/cohort-1/join")
       .set("Authorization", `Bearer ${token}`)
       .expect(201);
@@ -212,6 +228,8 @@ describe("CommunityController (http)", () => {
 
     expect(mockCommunityCohortService.listSuggestions).toHaveBeenCalledWith("user-1");
     expect(mockCommunityCohortService.getCohortDetail).toHaveBeenCalledWith("user-1", "cohort-1");
+    expect(mockCommunityRoomsService.getCohortRoom).toHaveBeenCalledWith("user-1", "cohort-1");
+    expect(mockCommunityRoomsService.joinCohortRoom).toHaveBeenCalledWith("user-1", "cohort-1");
     expect(mockCommunityCohortService.joinCohort).toHaveBeenCalledWith("user-1", "cohort-1");
     expect(mockCommunityCohortService.leaveCohort).toHaveBeenCalledWith("user-1", "cohort-1");
     expect(mockCommunityCohortService.hideCohort).toHaveBeenCalledWith("user-1", "cohort-1");

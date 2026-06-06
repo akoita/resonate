@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { CommunityRoom, Prisma } from "@prisma/client";
+import { CommunityCohort, CommunityCohortMembership, CommunityRoom, Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { PUBLIC_RELEASE_ROUTES } from "../catalog/catalog-public.constants";
 import { EventBus } from "../shared/event_bus";
@@ -24,6 +24,9 @@ const PUBLIC_RELEASE_STATUSES = ["ready", "published"] as const;
 const RELEASE_ARTIST_COMMUNITY_ROLES = ["main", "primary"] as const;
 const SHOW_CITY_DEMAND_SIGNAL_STATUSES = ["draft", "active", "funded", "booking_confirmed", "deposit_released"] as const;
 const SHOW_CITY_DEMAND_CAMPAIGN_STATUSES = ["active", "funded", "booking_confirmed", "deposit_released"] as const;
+const VISIBLE_COHORT_STATUSES = ["suggested", "active"] as const;
+const COHORT_ROOM_MEMBERSHIP_STATUS = "joined";
+const SOCIAL_TASTE_COHORT_TYPES = ["taste", "artist_affinity", "collector", "campaign"] as const;
 
 type RoomStatus = (typeof ROOM_STATUSES)[number];
 type MessageType = (typeof MESSAGE_TYPES)[number];
@@ -227,6 +230,39 @@ export class CommunityRoomsService {
     return result.response;
   }
 
+  async getCohortRoom(userId: string, cohortId: string) {
+    const cohort = await this.requireCohortRoomAccess(userId, cohortId);
+    const room = await this.ensureCohortRoomForCohort(cohort);
+    const membership = await prisma.communityMembership.findUnique({
+      where: { CommunityMembership_identity: { roomId: room.id, userId } },
+    });
+
+    return {
+      schemaVersion: "community-cohort-room/v1",
+      cohort: cohortRoomCohortDto(cohort),
+      room: roomDto(room, membership, await this.describeRoomAccess(userId, room)),
+      emptyState: {
+        title: "Cohort room is ready",
+        description: "Start with a track, stem, show, or scene signal that belongs in this privacy-safe cohort.",
+      },
+      privacy: cohortRoomPrivacyDto(),
+    };
+  }
+
+  async joinCohortRoom(userId: string, cohortId: string) {
+    const cohort = await this.requireCohortRoomAccess(userId, cohortId);
+    const room = await this.ensureCohortRoomForCohort(cohort);
+    const result = await this.joinRoomMembership(userId, room.id);
+
+    return {
+      schemaVersion: "community-cohort-room-membership/v1",
+      cohort: cohortRoomCohortDto(cohort),
+      room: roomDto(room, result.membership, await this.describeRoomAccess(userId, room)),
+      membership: result.response.membership,
+      privacy: cohortRoomPrivacyDto(),
+    };
+  }
+
   async createShowCampaignUpdate(actor: Actor, campaignIdOrSlug: string, input: { body?: unknown }) {
     const { campaign, room } = await this.ensureShowCampaignSupporterRoom(campaignIdOrSlug);
     await this.requireCampaignOperator(actor, campaign);
@@ -350,7 +386,10 @@ export class CommunityRoomsService {
     return {
       schemaVersion: "community-messages/v1",
       room: roomDto(room),
-      messages: messages.map(messageDto),
+      messages: messages.map((message) => messageDto(message, {
+        viewerUserId: userId,
+        redactOtherAuthors: isCohortRoom(room),
+      })),
     };
   }
 
@@ -373,7 +412,10 @@ export class CommunityRoomsService {
       messageType,
       ...(await this.messageAnalyticsRef(room)),
     });
-    return { schemaVersion: "community-message/v1", message: messageDto(message) };
+    return {
+      schemaVersion: "community-message/v1",
+      message: messageDto(message, { viewerUserId: userId, redactOtherAuthors: isCohortRoom(room) }),
+    };
   }
 
   async reportMessage(userId: string, messageId: string, input: { reason?: unknown }) {
@@ -613,6 +655,10 @@ export class CommunityRoomsService {
     if (existing?.status === "banned") {
       throw new ForbiddenException("You cannot join this community room");
     }
+    if (isCohortRoom(room)) {
+      await this.assertCohortRoomAccess(userId, room);
+      return;
+    }
     if (room.accessPolicyJson) {
       const result = await this.eligibility.evaluateAccessPolicy(userId, room.accessPolicyJson ?? { type: "manual" });
       if (!result.eligible) {
@@ -667,6 +713,14 @@ export class CommunityRoomsService {
   }
 
   private async describeRoomAccess(userId: string, room: RoomRecord) {
+    if (isCohortRoom(room)) {
+      const access = await this.checkCohortRoomAccess(userId, room.ownerId);
+      return {
+        joinable: room.status === "active" && access.allowed,
+        reason: access.allowed ? "cohort_joined" : access.reason,
+        reasons: [access.allowed ? "cohort_joined" : access.reason],
+      };
+    }
     if (!room.accessPolicyJson) return publicRoomAccessDto(room);
     const result = await this.eligibility.evaluateAccessPolicy(userId, room.accessPolicyJson);
     return {
@@ -683,6 +737,20 @@ export class CommunityRoomsService {
   ) {
     if (!membership || membership.status !== "active" || !shouldReconcileMembershipAccess(room)) {
       return membership ?? null;
+    }
+    if (isCohortRoom(room)) {
+      const access = await this.checkCohortRoomAccess(userId, room.ownerId);
+      if (access.allowed) return membership;
+
+      return prisma.communityMembership.update({
+        where: membership.id
+          ? { id: membership.id }
+          : { CommunityMembership_identity: { roomId: room.id, userId } },
+        data: {
+          status: "removed",
+          endedAt: new Date(),
+        },
+      });
     }
     const result = await this.eligibility.evaluateAccessPolicy(userId, room.accessPolicyJson ?? { type: "manual" });
     if (result.eligible) return membership;
@@ -840,6 +908,91 @@ export class CommunityRoomsService {
     });
 
     return { campaign, room };
+  }
+
+  private async ensureCohortRoomForCohort(cohort: CommunityCohort) {
+    return prisma.communityRoom.upsert({
+      where: {
+        CommunityRoom_identity: {
+          roomType: "cohort",
+          ownerType: "cohort",
+          ownerId: cohort.id,
+        },
+      },
+      update: {
+        title: `${cohort.title} Room`,
+        description: "Private room for joined members of this privacy-safe listener cohort.",
+        accessPolicyJson: cohortRoomPolicy(cohort.id, cohort.cohortType),
+      },
+      create: {
+        roomType: "cohort",
+        ownerType: "cohort",
+        ownerId: cohort.id,
+        title: `${cohort.title} Room`,
+        description: "Private room for joined members of this privacy-safe listener cohort.",
+        accessPolicyJson: cohortRoomPolicy(cohort.id, cohort.cohortType),
+        status: "active",
+      },
+    });
+  }
+
+  private async requireCohortRoomAccess(userId: string, cohortId: string) {
+    await this.ensureUser(userId);
+    const access = await this.checkCohortRoomAccess(userId, cohortId, { includeCohort: true });
+    if (access.allowed && access.cohort) return access.cohort;
+    if (access.reason === "cohort_not_found") throw new NotFoundException("Community cohort not found");
+    if (access.reason === "cohort_matching_disabled") {
+      throw new ForbiddenException("Community cohort matching is disabled for this listener");
+    }
+    throw new NotFoundException("Community cohort room not found");
+  }
+
+  private async assertCohortRoomAccess(userId: string, room: RoomRecord) {
+    const access = await this.checkCohortRoomAccess(userId, room.ownerId);
+    if (access.allowed) return;
+    if (access.reason === "cohort_matching_disabled") {
+      throw new ForbiddenException("Community cohort matching is disabled for this listener");
+    }
+    throw new ForbiddenException(cohortRoomDeniedMessage(access.reason));
+  }
+
+  private async checkCohortRoomAccess(
+    userId: string,
+    cohortId: string,
+    options: { includeCohort?: boolean } = {},
+  ): Promise<{
+    allowed: boolean;
+    reason: string;
+    cohort?: CommunityCohort;
+    membership?: CommunityCohortMembership;
+  }> {
+    const cohort = await prisma.communityCohort.findUnique({
+      where: { id: cohortId },
+      include: {
+        memberships: {
+          where: { userId },
+          take: 1,
+        },
+      },
+    });
+    if (!cohort) return { allowed: false, reason: "cohort_not_found" };
+    if (!isCohortVisibleForRoom(cohort)) {
+      return { allowed: false, reason: "cohort_room_unavailable", cohort: options.includeCohort ? cohort : undefined };
+    }
+    const visibility = await prisma.communityVisibilitySettings.findUnique({ where: { userId } });
+    if (!hasCohortConsentForRoom(cohort.cohortType, visibility)) {
+      return { allowed: false, reason: "cohort_matching_disabled", cohort: options.includeCohort ? cohort : undefined };
+    }
+    const membership = cohort.memberships[0];
+    if (!membership || membership.status !== COHORT_ROOM_MEMBERSHIP_STATUS) {
+      return {
+        allowed: false,
+        reason: "cohort_join_required",
+        cohort: options.includeCohort ? cohort : undefined,
+        membership,
+      };
+    }
+    return { allowed: true, reason: "cohort_joined", cohort, membership };
   }
 
   private async ensureShowCampaignCityDemandRoom(campaignIdOrSlug: string) {
@@ -1032,16 +1185,20 @@ function publicRoomAccessDto(room: { roomType: string; status: string }) {
 }
 
 function isGatedRoomType(roomType: string) {
-  return roomType === "artist_holder" || roomType === "show_campaign_supporter";
+  return roomType === "artist_holder" || roomType === "show_campaign_supporter" || roomType === "cohort";
 }
 
-function shouldReconcileMembershipAccess(room: { roomType: string; accessPolicyJson?: Prisma.JsonValue | null }) {
-  return room.roomType === "show_campaign_supporter" && Boolean(room.accessPolicyJson);
+function shouldReconcileMembershipAccess(room: { roomType: string; ownerType?: string; accessPolicyJson?: Prisma.JsonValue | null }) {
+  return (
+    (room.roomType === "show_campaign_supporter" && Boolean(room.accessPolicyJson))
+    || isCohortRoom(room)
+  );
 }
 
 function gatedRoomReason(room: { roomType: string }) {
   if (room.roomType === "show_campaign_supporter") return "campaign_support_required";
   if (room.roomType === "artist_holder") return "holder_required";
+  if (room.roomType === "cohort") return "cohort_join_required";
   return "open";
 }
 
@@ -1052,6 +1209,9 @@ function roomAccessDeniedMessage(room: { roomType: string }) {
   if (room.roomType === "artist_holder") {
     return "Holder access is locked for this listener";
   }
+  if (room.roomType === "cohort") {
+    return "Join this cohort before opening the room";
+  }
   return "Community room access denied";
 }
 
@@ -1059,6 +1219,7 @@ function roomMembershipRole(room: { roomType: string }) {
   if (room.roomType === "artist_holder") return "holder";
   if (room.roomType === "show_campaign_supporter") return "supporter";
   if (room.roomType === "show_city_demand") return "city_member";
+  if (room.roomType === "cohort") return "cohort_member";
   return "member";
 }
 
@@ -1066,6 +1227,7 @@ function roomMembershipSource(room: { roomType: string }) {
   if (room.roomType === "artist_holder") return "eligibility";
   if (room.roomType === "show_campaign_supporter") return "campaign_support";
   if (room.roomType === "show_city_demand") return "city_interest";
+  if (room.roomType === "cohort") return "cohort_membership";
   return "manual";
 }
 
@@ -1082,11 +1244,17 @@ function membershipDto(membership: { role: string; status: string; joinedAt: Dat
   };
 }
 
-function messageDto(message: { id: string; roomId: string; authorId: string; body: string; messageType: string; status: string; createdAt: Date; updatedAt: Date; deletedAt: Date | null }) {
+function messageDto(
+  message: { id: string; roomId: string; authorId: string; body: string; messageType: string; status: string; createdAt: Date; updatedAt: Date; deletedAt: Date | null },
+  options: { viewerUserId?: string; redactOtherAuthors?: boolean } = {},
+) {
+  const isOwnMessage = options.viewerUserId === message.authorId;
+  const shouldRedactAuthor = options.redactOtherAuthors && !isOwnMessage;
   return {
     id: message.id,
     roomId: message.roomId,
-    authorId: message.authorId,
+    authorId: shouldRedactAuthor ? null : message.authorId,
+    authorLabel: shouldRedactAuthor ? "Cohort member" : isOwnMessage ? "You" : null,
     body: message.status === "visible" ? message.body : null,
     messageType: message.messageType,
     status: message.status,
@@ -1166,6 +1334,92 @@ function communityModerationPrivacyDto() {
     messageBodiesArePreviewed: true,
     actionNotesStored: false,
   };
+}
+
+function cohortRoomPolicy(cohortId: string, cohortType: string): Prisma.InputJsonObject {
+  return {
+    type: "cohort_membership",
+    cohortId,
+    cohortType,
+    requiredMembershipStatus: COHORT_ROOM_MEMBERSHIP_STATUS,
+  };
+}
+
+function cohortRoomCohortDto(cohort: CommunityCohort) {
+  return {
+    id: cohort.id,
+    cohortType: cohort.cohortType,
+    reasonCode: safeCohortReasonCode(cohort.reasonCode),
+    title: cohort.title,
+    safeExplanation: safeCohortExplanation(cohort.safeExplanation),
+    status: cohort.status,
+    memberCountLabel: bucketedCohortMemberCountLabel(cohort.visibleMemberCount),
+    expiresAt: cohort.expiresAt?.toISOString() ?? null,
+  };
+}
+
+function cohortRoomPrivacyDto() {
+  return {
+    onChain: false,
+    otherListenerIdentities: "redacted",
+    memberList: "not_exposed",
+    walletAddresses: "redacted",
+    rawListeningHistory: "redacted",
+    accessDerivedServerSide: true,
+    moderation: "community_moderation_queue",
+  };
+}
+
+function isCohortRoom(room: { roomType: string; ownerType?: string }) {
+  return room.roomType === "cohort" && room.ownerType === "cohort";
+}
+
+function isCohortVisibleForRoom(cohort: { status: string; expiresAt: Date | null; minimumSize: number; visibleMemberCount: number }) {
+  return VISIBLE_COHORT_STATUSES.includes(cohort.status as (typeof VISIBLE_COHORT_STATUSES)[number])
+    && (!cohort.expiresAt || cohort.expiresAt.getTime() > Date.now())
+    && cohort.minimumSize > 0
+    && cohort.visibleMemberCount >= cohort.minimumSize;
+}
+
+function hasCohortConsentForRoom(
+  cohortType: string,
+  visibility: { allowTasteMatching?: boolean | null; allowCityScenes?: boolean | null } | null,
+) {
+  if (cohortType === "city_scene") return visibility?.allowCityScenes === true;
+  if (SOCIAL_TASTE_COHORT_TYPES.includes(cohortType as (typeof SOCIAL_TASTE_COHORT_TYPES)[number])) {
+    return visibility?.allowTasteMatching === true;
+  }
+  return false;
+}
+
+function cohortRoomDeniedMessage(reason: string) {
+  if (reason === "cohort_join_required") return "Join this cohort before opening the room";
+  if (reason === "cohort_room_unavailable") return "This cohort is not currently open for chat";
+  return "Community cohort room access denied";
+}
+
+function safeCohortReasonCode(reasonCode: string) {
+  return /^[a-z_]+:[a-z0-9_-]+$/i.test(reasonCode) ? reasonCode : "cohort:shared_signal";
+}
+
+function safeCohortExplanation(explanation: string) {
+  const unsafePatterns = [
+    /0x[a-f0-9]{40}/i,
+    /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i,
+    /\b(user(id)?|wallet|address|transaction|txhash|private)\b/i,
+  ];
+  if (unsafePatterns.some((pattern) => pattern.test(explanation))) {
+    return "This room is based on shared, privacy-safe community signals.";
+  }
+  return explanation;
+}
+
+function bucketedCohortMemberCountLabel(count: number) {
+  if (count >= 100) return "100+ listeners";
+  if (count >= 50) return "50+ listeners";
+  if (count >= 25) return "25+ listeners";
+  if (count >= 10) return "10+ listeners";
+  return "5+ listeners";
 }
 
 function previewText(value: string, maxLength: number) {

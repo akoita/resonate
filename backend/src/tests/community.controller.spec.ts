@@ -24,6 +24,8 @@ const mockCommunityRoomsService = {
   deleteMessage: jest.fn().mockResolvedValue({ schemaVersion: "community-message/v1" }),
   moderateMember: jest.fn().mockResolvedValue({ schemaVersion: "community-membership/v1" }),
   updateRoomStatus: jest.fn().mockResolvedValue({ schemaVersion: "community-room/v1" }),
+  getCohortRoom: jest.fn().mockResolvedValue({ schemaVersion: "community-cohort-room/v1" }),
+  joinCohortRoom: jest.fn().mockResolvedValue({ schemaVersion: "community-cohort-room-membership/v1" }),
 };
 
 const mockCommunityCohortService = {
@@ -112,11 +114,15 @@ describe("CommunityController", () => {
   it("routes authenticated cohort suggestions and membership actions", () => {
     const ctrl = makeController();
     ctrl.listCohortSuggestions(req);
+    ctrl.getCohortRoom(req, "cohort-1");
+    ctrl.joinCohortRoom(req, "cohort-1");
     ctrl.joinCohort(req, "cohort-1");
     ctrl.leaveCohort(req, "cohort-1");
     ctrl.hideCohort(req, "cohort-1");
 
     expect(mockCommunityCohortService.listSuggestions).toHaveBeenCalledWith("user-42");
+    expect(mockCommunityRoomsService.getCohortRoom).toHaveBeenCalledWith("user-42", "cohort-1");
+    expect(mockCommunityRoomsService.joinCohortRoom).toHaveBeenCalledWith("user-42", "cohort-1");
     expect(mockCommunityCohortService.joinCohort).toHaveBeenCalledWith("user-42", "cohort-1");
     expect(mockCommunityCohortService.leaveCohort).toHaveBeenCalledWith("user-42", "cohort-1");
     expect(mockCommunityCohortService.hideCohort).toHaveBeenCalledWith("user-42", "cohort-1");

@@ -1,14 +1,21 @@
 import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import { prisma } from "../db/prisma";
 import { CommunityCohortService } from "../modules/community/community_cohort.service";
+import { CommunityEligibilityService } from "../modules/community/community_eligibility.service";
+import { CommunityRoomsService } from "../modules/community/community_rooms.service";
 
 const TEST_PREFIX = `community_cohort_${Date.now()}_`;
 const optedInUserId = `${TEST_PREFIX}opted_in`;
 const optedOutUserId = `${TEST_PREFIX}opted_out`;
 const cityUserId = `${TEST_PREFIX}city_user`;
+const cohortPeerUserId = `${TEST_PREFIX}cohort_peer`;
 
 const eventBus = { publish: jest.fn() };
 const service = new CommunityCohortService(eventBus as any);
+const roomsService = new CommunityRoomsService(
+  new CommunityEligibilityService(eventBus as any),
+  eventBus as any,
+);
 
 describe("CommunityCohortService integration", () => {
   beforeAll(async () => {
@@ -17,6 +24,7 @@ describe("CommunityCohortService integration", () => {
         { id: optedInUserId, email: `${optedInUserId}@test.resonate` },
         { id: optedOutUserId, email: `${optedOutUserId}@test.resonate` },
         { id: cityUserId, email: `${cityUserId}@test.resonate` },
+        { id: cohortPeerUserId, email: `${cohortPeerUserId}@test.resonate` },
       ],
     });
     await prisma.communityVisibilitySettings.createMany({
@@ -24,11 +32,21 @@ describe("CommunityCohortService integration", () => {
         { userId: optedInUserId, allowTasteMatching: true, allowCityScenes: false },
         { userId: optedOutUserId, allowTasteMatching: false, allowCityScenes: false },
         { userId: cityUserId, allowTasteMatching: false, allowCityScenes: true },
+        { userId: cohortPeerUserId, allowTasteMatching: true, allowCityScenes: false },
       ],
     });
   });
 
   afterAll(async () => {
+    const cohortRooms = await prisma.communityRoom.findMany({
+      where: { ownerType: "cohort", ownerId: { startsWith: TEST_PREFIX } },
+      select: { id: true },
+    });
+    const cohortRoomIds = cohortRooms.map((room) => room.id);
+    await prisma.communityModerationReport.deleteMany({ where: { roomId: { in: cohortRoomIds } } });
+    await prisma.communityMessage.deleteMany({ where: { roomId: { in: cohortRoomIds } } });
+    await prisma.communityMembership.deleteMany({ where: { roomId: { in: cohortRoomIds } } });
+    await prisma.communityRoom.deleteMany({ where: { id: { in: cohortRoomIds } } });
     await prisma.communityCohortMembership.deleteMany({ where: { userId: { startsWith: TEST_PREFIX } } });
     await prisma.communityCohort.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.communityVisibilitySettings.deleteMany({ where: { userId: { startsWith: TEST_PREFIX } } });
@@ -308,6 +326,121 @@ describe("CommunityCohortService integration", () => {
     await addMembership(cohort.id, optedInUserId);
 
     await expect(service.getCohortDetail(optedInUserId, cohort.id)).rejects.toThrow(NotFoundException);
+  });
+
+  it("opens cohort rooms only for joined members and reuses room message moderation", async () => {
+    const cohort = await createCohort("room_joined", {
+      cohortType: "taste",
+      reasonCode: "taste:room_joined",
+      safeExplanation: "Joined listeners can coordinate around a shared safe music signal.",
+      minimumSize: 5,
+      visibleMemberCount: 12,
+    });
+    await addMembership(cohort.id, optedInUserId, "joined");
+    await addMembership(cohort.id, cohortPeerUserId, "joined");
+
+    const roomResponse = await roomsService.getCohortRoom(optedInUserId, cohort.id);
+    expect(roomResponse).toMatchObject({
+      schemaVersion: "community-cohort-room/v1",
+      cohort: {
+        id: cohort.id,
+        memberCountLabel: "10+ listeners",
+      },
+      room: {
+        roomType: "cohort",
+        ownerType: "cohort",
+        ownerId: cohort.id,
+        access: { joinable: true, reason: "cohort_joined" },
+      },
+      privacy: {
+        memberList: "not_exposed",
+        otherListenerIdentities: "redacted",
+        accessDerivedServerSide: true,
+      },
+    });
+    expect(JSON.stringify(roomResponse)).not.toContain("@test.resonate");
+
+    const joined = await roomsService.joinCohortRoom(optedInUserId, cohort.id);
+    await roomsService.joinCohortRoom(cohortPeerUserId, cohort.id);
+    expect(joined).toMatchObject({
+      schemaVersion: "community-cohort-room-membership/v1",
+      room: {
+        membership: { status: "active", role: "cohort_member" },
+        access: { joinable: true, reason: "cohort_joined" },
+      },
+      membership: { status: "active", role: "cohort_member" },
+    });
+
+    const ownMessage = await roomsService.createMessage(optedInUserId, joined.room.id, { body: "Try this stem later." });
+    const peerMessage = await roomsService.createMessage(cohortPeerUserId, joined.room.id, { body: "This release fits the cohort." });
+    const messages = await roomsService.listMessages(optedInUserId, joined.room.id);
+
+    expect(messages.messages).toEqual([
+      expect.objectContaining({
+        id: ownMessage.message.id,
+        authorId: optedInUserId,
+        authorLabel: "You",
+      }),
+      expect.objectContaining({
+        id: peerMessage.message.id,
+        authorId: null,
+        authorLabel: "Cohort member",
+      }),
+    ]);
+    expect(JSON.stringify(messages)).not.toContain(cohortPeerUserId);
+    expect(JSON.stringify(messages)).not.toContain(`${cohortPeerUserId}@test.resonate`);
+
+    const report = await roomsService.reportMessage(optedInUserId, peerMessage.message.id, { reason: "Needs review." });
+    const queue = await roomsService.getModerationQueue();
+    expect(queue.reports).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: report.report.id,
+        room: expect.objectContaining({ roomType: "cohort", ownerType: "cohort", ownerId: cohort.id }),
+      }),
+    ]));
+  });
+
+  it("keeps suggested, expired, below-threshold, and consent-disabled cohorts out of rooms", async () => {
+    const joinedCohort = await createCohort("room_direct_gate", {
+      cohortType: "taste",
+      reasonCode: "taste:direct_gate",
+      minimumSize: 5,
+      visibleMemberCount: 7,
+    });
+    await addMembership(joinedCohort.id, optedInUserId, "joined");
+    await addMembership(joinedCohort.id, cohortPeerUserId, "suggested");
+    const room = (await roomsService.getCohortRoom(optedInUserId, joinedCohort.id)).room;
+
+    await expect(roomsService.getCohortRoom(cohortPeerUserId, joinedCohort.id)).rejects.toThrow(NotFoundException);
+    await expect(roomsService.joinRoom(cohortPeerUserId, room.id)).rejects.toThrow(ForbiddenException);
+
+    const consentDisabled = await createCohort("room_consent", {
+      cohortType: "taste",
+      reasonCode: "taste:consent",
+      minimumSize: 5,
+      visibleMemberCount: 7,
+    });
+    await addMembership(consentDisabled.id, optedOutUserId, "joined");
+    await expect(roomsService.getCohortRoom(optedOutUserId, consentDisabled.id)).rejects.toThrow(ForbiddenException);
+
+    const expired = await createCohort("room_expired", {
+      cohortType: "taste",
+      reasonCode: "taste:room_expired",
+      minimumSize: 5,
+      visibleMemberCount: 7,
+      expiresAt: new Date(Date.now() - 60_000),
+    });
+    const small = await createCohort("room_small", {
+      cohortType: "taste",
+      reasonCode: "taste:room_small",
+      minimumSize: 5,
+      visibleMemberCount: 4,
+    });
+    await addMembership(expired.id, optedInUserId, "joined");
+    await addMembership(small.id, optedInUserId, "joined");
+
+    await expect(roomsService.getCohortRoom(optedInUserId, expired.id)).rejects.toThrow(NotFoundException);
+    await expect(roomsService.getCohortRoom(optedInUserId, small.id)).rejects.toThrow(NotFoundException);
   });
 });
 
