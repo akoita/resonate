@@ -88,7 +88,9 @@ export class CommunityRoomsService {
       artist: artistDto(artist),
       rooms: await Promise.all(
         rooms.map(async (room) => {
-          const membership = membershipsByRoom.get(room.id);
+          const membership = userId
+            ? await this.reconcileMembershipAccess(userId, room, membershipsByRoom.get(room.id))
+            : null;
           const access = userId ? await this.describeRoomAccess(userId, room) : publicRoomAccessDto(room);
           return roomDto(room, membership, access);
         }),
@@ -1206,6 +1208,7 @@ function isGatedRoomType(roomType: string) {
 function shouldReconcileMembershipAccess(room: { roomType: string; ownerType?: string; accessPolicyJson?: Prisma.JsonValue | null }) {
   return (
     (room.roomType === "show_campaign_supporter" && Boolean(room.accessPolicyJson))
+    || (room.roomType === "artist_holder" && Boolean(room.accessPolicyJson))
     || isCohortRoom(room)
   );
 }

@@ -14,6 +14,8 @@ const releaseId = `${TEST_PREFIX}release`;
 const publicReleaseId = `${TEST_PREFIX}public_release`;
 const trackId = `${TEST_PREFIX}track`;
 const stemId = `${TEST_PREFIX}stem`;
+const publicTrackId = `${TEST_PREFIX}public_track`;
+const publicStemId = `${TEST_PREFIX}public_stem`;
 const campaignId = `${TEST_PREFIX}campaign`;
 const campaignSlug = `${TEST_PREFIX}campaign-slug`;
 const signalCampaignId = `${TEST_PREFIX}signal_campaign`;
@@ -27,6 +29,7 @@ const releasedCampaignSlug = `${TEST_PREFIX}released-campaign-slug`;
 const holderWallet = "0x" + "1".repeat(40);
 const artistWallet = "0x" + "2".repeat(40);
 const listenerWallet = "0x" + "6".repeat(40);
+const resaleBuyerWallet = "0x" + "a".repeat(40);
 
 const eventBus = { publish: jest.fn() };
 const eligibility = new CommunityEligibilityService(eventBus as any);
@@ -90,6 +93,12 @@ describe("CommunityRoomsService integration", () => {
     await prisma.stem.create({
       data: { id: stemId, trackId, type: "vocals", uri: `ipfs://${TEST_PREFIX}stem` },
     });
+    await prisma.track.create({
+      data: { id: publicTrackId, releaseId: publicReleaseId, title: "Release Credit Artist Track" },
+    });
+    await prisma.stem.create({
+      data: { id: publicStemId, trackId: publicTrackId, type: "drums", uri: `ipfs://${TEST_PREFIX}public-stem` },
+    });
     const listing = await prisma.stemListing.create({
       data: {
         listingId: 99901n,
@@ -118,6 +127,37 @@ describe("CommunityRoomsService integration", () => {
         sellerReceived: "940000",
         transactionHash: "0x" + "5".repeat(64),
         blockNumber: 99902n,
+        purchasedAt: new Date(),
+      },
+    });
+    const publicArtistListing = await prisma.stemListing.create({
+      data: {
+        listingId: 99911n,
+        stemId: publicStemId,
+        tokenId: 99911n,
+        chainId: 84532,
+        contractAddress: "0x" + "7".repeat(40),
+        sellerAddress: artistWallet,
+        pricePerUnit: "1000000",
+        amount: 1n,
+        paymentToken: "0x0000000000000000000000000000000000000000",
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        transactionHash: "0x" + "8".repeat(64),
+        blockNumber: 99911n,
+        listedAt: new Date(),
+      },
+    });
+    await prisma.stemPurchase.create({
+      data: {
+        listingId: publicArtistListing.id,
+        buyerAddress: holderWallet,
+        amount: 1n,
+        totalPaid: "1000000",
+        royaltyPaid: "50000",
+        protocolFeePaid: "10000",
+        sellerReceived: "940000",
+        transactionHash: "0x" + "9".repeat(64),
+        blockNumber: 99912n,
         purchasedAt: new Date(),
       },
     });
@@ -250,10 +290,17 @@ describe("CommunityRoomsService integration", () => {
     await prisma.communityRoom.deleteMany({ where: { ownerId: { in: [artistId, publicArtistId] } } });
     await prisma.showPledge.deleteMany({ where: { campaignId: { in: campaignOwnerIds } } });
     await prisma.showCampaign.deleteMany({ where: { id: { in: campaignOwnerIds } } });
-    await prisma.stemPurchase.deleteMany({ where: { buyerAddress: { equals: holderWallet, mode: "insensitive" } } });
-    await prisma.stemListing.deleteMany({ where: { stemId } });
-    await prisma.stem.deleteMany({ where: { id: stemId } });
-    await prisma.track.deleteMany({ where: { id: trackId } });
+    await prisma.stemPurchase.deleteMany({
+      where: {
+        OR: [
+          { buyerAddress: { equals: holderWallet, mode: "insensitive" } },
+          { buyerAddress: { equals: resaleBuyerWallet, mode: "insensitive" } },
+        ],
+      },
+    });
+    await prisma.stemListing.deleteMany({ where: { stemId: { in: [stemId, publicStemId] } } });
+    await prisma.stem.deleteMany({ where: { id: { in: [stemId, publicStemId] } } });
+    await prisma.track.deleteMany({ where: { id: { in: [trackId, publicTrackId] } } });
     await prisma.release.deleteMany({ where: { id: { in: [releaseId, publicReleaseId] } } });
     await prisma.artist.deleteMany({ where: { id: { in: [artistId, publicArtistId] } } });
     await prisma.wallet.deleteMany({ where: { userId: { startsWith: TEST_PREFIX } } });
@@ -319,10 +366,26 @@ describe("CommunityRoomsService integration", () => {
     }));
   });
 
+  it("recognizes stem ownership for release-credited public artist holder rooms", async () => {
+    const result = await service.listArtistRooms(publicArtistId, holderUserId);
+    const holderRoom = result.rooms.find((room) => room.roomType === "artist_holder");
+
+    expect(holderRoom).toMatchObject({
+      ownerType: "artist",
+      ownerId: publicArtistId,
+      access: {
+        joinable: true,
+        reason: "eligible",
+        reasons: expect.arrayContaining(["stem_nft_holder"]),
+      },
+    });
+  });
+
   it("allows public joins but gates holder rooms through private eligibility", async () => {
     const rooms = await service.enableArtistCommunity(artistUserId, artistId);
     const publicRoom = rooms.rooms.find((room) => room.roomType === "artist_public")!;
     const holderRoom = rooms.rooms.find((room) => room.roomType === "artist_holder")!;
+    await prisma.communityMembership.deleteMany({ where: { roomId: holderRoom.id, userId: holderUserId } });
 
     await expect(service.joinRoom(listenerUserId, publicRoom.id)).resolves.toMatchObject({
       membership: { status: "active", role: "member" },
@@ -336,7 +399,126 @@ describe("CommunityRoomsService integration", () => {
     }));
     await expect(service.joinRoom(holderUserId, holderRoom.id)).resolves.toMatchObject({
       membership: { status: "active", role: "holder" },
+      room: { roomType: "artist_holder" },
     });
+  });
+
+  it("keeps artist holder access off-chain and private in room responses", async () => {
+    const rooms = await service.enableArtistCommunity(artistUserId, artistId);
+    const holderRoom = rooms.rooms.find((room) => room.roomType === "artist_holder")!;
+    await prisma.communityMembership.deleteMany({ where: { roomId: holderRoom.id, userId: holderUserId } });
+
+    const response = await service.listArtistRooms(artistId, holderUserId);
+    const eligibleHolderRoom = response.rooms.find((room) => room.roomType === "artist_holder")!;
+
+    expect(eligibleHolderRoom).toMatchObject({
+      membership: null,
+      access: {
+        joinable: true,
+        reason: "eligible",
+        reasons: expect.arrayContaining(["stem_nft_holder"]),
+      },
+    });
+    expect(JSON.stringify(eligibleHolderRoom)).not.toContain(holderWallet);
+    expect(JSON.stringify(eligibleHolderRoom)).not.toContain("99901");
+  });
+
+  it("keeps moderation bans stronger than holder ownership", async () => {
+    const rooms = await service.enableArtistCommunity(artistUserId, artistId);
+    const holderRoom = rooms.rooms.find((room) => room.roomType === "artist_holder")!;
+    await prisma.communityMembership.deleteMany({ where: { roomId: holderRoom.id, userId: holderUserId } });
+
+    await service.joinRoom(holderUserId, holderRoom.id);
+    const moderated = await service.moderateMember(artistUserId, holderRoom.id, holderUserId, { action: "ban" });
+
+    expect(moderated.membership).toMatchObject({ status: "banned", role: "holder" });
+    await expect(service.joinRoom(holderUserId, holderRoom.id)).rejects.toThrow(ForbiddenException);
+  });
+
+  it("removes active artist holder memberships when ownership eligibility disappears", async () => {
+    const rooms = await service.enableArtistCommunity(artistUserId, artistId);
+    const holderRoom = rooms.rooms.find((room) => room.roomType === "artist_holder")!;
+    await prisma.communityMembership.deleteMany({ where: { roomId: holderRoom.id, userId: holderUserId } });
+    await service.joinRoom(holderUserId, holderRoom.id);
+    const resaleListing = await prisma.stemListing.create({
+      data: {
+        listingId: 99921n,
+        stemId,
+        tokenId: 99901n,
+        chainId: 84532,
+        contractAddress: "0x" + "a".repeat(40),
+        sellerAddress: holderWallet,
+        pricePerUnit: "1000000",
+        amount: 0n,
+        paymentToken: "0x0000000000000000000000000000000000000000",
+        status: "sold",
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        transactionHash: "0x" + "b".repeat(64),
+        blockNumber: 99921n,
+        listedAt: new Date(),
+        soldAt: new Date(),
+      },
+    });
+    await prisma.stemPurchase.create({
+      data: {
+        listingId: resaleListing.id,
+        buyerAddress: resaleBuyerWallet,
+        amount: 1n,
+        totalPaid: "1000000",
+        royaltyPaid: "50000",
+        protocolFeePaid: "10000",
+        sellerReceived: "940000",
+        transactionHash: "0x" + "c".repeat(64),
+        blockNumber: 99922n,
+        purchasedAt: new Date(),
+      },
+    });
+    const publicStemResaleListing = await prisma.stemListing.create({
+      data: {
+        listingId: 99931n,
+        stemId: publicStemId,
+        tokenId: 99911n,
+        chainId: 84532,
+        contractAddress: "0x" + "d".repeat(40),
+        sellerAddress: holderWallet,
+        pricePerUnit: "1000000",
+        amount: 0n,
+        paymentToken: "0x0000000000000000000000000000000000000000",
+        status: "sold",
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        transactionHash: "0x" + "e".repeat(64),
+        blockNumber: 99931n,
+        listedAt: new Date(),
+        soldAt: new Date(),
+      },
+    });
+    await prisma.stemPurchase.create({
+      data: {
+        listingId: publicStemResaleListing.id,
+        buyerAddress: resaleBuyerWallet,
+        amount: 1n,
+        totalPaid: "1000000",
+        royaltyPaid: "50000",
+        protocolFeePaid: "10000",
+        sellerReceived: "940000",
+        transactionHash: "0x" + "f".repeat(64),
+        blockNumber: 99932n,
+        purchasedAt: new Date(),
+      },
+    });
+
+    const response = await service.listArtistRooms(artistId, holderUserId);
+    const revokedHolderRoom = response.rooms.find((room) => room.roomType === "artist_holder")!;
+
+    expect(revokedHolderRoom).toMatchObject({
+      membership: { status: "removed", role: "holder" },
+      access: {
+        joinable: false,
+        reason: "holder_required",
+        reasons: ["holder_required"],
+      },
+    });
+    await expect(service.listMessages(holderUserId, holderRoom.id)).rejects.toThrow(ForbiddenException);
   });
 
   it("supports announcements, messages, reports, deletion, and member moderation", async () => {

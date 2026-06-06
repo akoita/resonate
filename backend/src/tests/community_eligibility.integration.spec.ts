@@ -154,7 +154,7 @@ describe("CommunityEligibilityService integration", () => {
     expect(benefit).toMatchObject({
       eligible: true,
       redeemable: true,
-      reasons: expect.arrayContaining(["private_ownership"]),
+      reasons: expect.arrayContaining(["stem_nft_holder"]),
       privacy: { proofDetails: "private" },
     });
   });
@@ -443,6 +443,32 @@ describe("CommunityEligibilityService integration", () => {
       eligible: false,
       redeemable: false,
       reasons: expect.arrayContaining(["ownership_missing"]),
+    });
+  });
+
+  it("fails closed for unsupported ownership asset types", async () => {
+    await prisma.communityBenefitRule.create({
+      data: {
+        artistId,
+        title: `${TEST_PREFIX}unsupported ownership asset`,
+        benefitType: "room_access",
+        status: "active",
+        eligibilityPolicy: {
+          type: "ownership",
+          assetType: "collectible_moment",
+          artistId,
+        },
+        redemptionPolicy: { settlementType: "none" },
+      },
+    });
+
+    const response = await service.listMyBenefits(userId);
+    const benefit = response.benefits.find((item) => item.title === `${TEST_PREFIX}unsupported ownership asset`);
+
+    expect(benefit).toMatchObject({
+      eligible: false,
+      redeemable: false,
+      reasons: expect.arrayContaining(["ownership_asset_unsupported"]),
     });
   });
 });

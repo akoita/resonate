@@ -72,5 +72,7 @@ describe("ArtistCommunityTab helpers", () => {
       label: "Join holder room",
       disabled: false,
     });
+    expect(roomAccessCopy(holderRoom, true).reason).toContain("holder proof is checked privately");
+    expect(roomAccessCopy(holderRoom, false).reason).toContain("holder proof");
   });
 });
