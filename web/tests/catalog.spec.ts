@@ -74,7 +74,7 @@ test.describe("Catalog & Home Page", () => {
         ).toBeVisible();
     });
 
-    test("HOME-09: Global catalog snapshot exposes releases, artists, stems, and full catalog navigation", async ({ page }) => {
+    test("HOME-09: Global catalog snapshot exposes releases, artists, stems, and recent catalog navigation", async ({ page }) => {
         await page.goto("/");
         await expect(page.getByRole("heading", { name: "Recently Added" })).toBeVisible();
         await expect(page.getByRole("tab", { name: "releases" })).toBeVisible();
@@ -82,6 +82,16 @@ test.describe("Catalog & Home Page", () => {
         await expect(page.getByRole("tab", { name: "stems" })).toBeVisible();
         await expect(page.getByLabel("Search catalog snapshot")).toBeVisible();
         await expect(page.getByRole("link", { name: /Browse catalog/i })).toHaveAttribute("href", "/catalog");
+    });
+
+    test("CATALOG-01: Recent catalog page exposes the larger recent browse window", async ({ page }) => {
+        await page.goto("/catalog");
+        await expect(page.getByRole("heading", { name: "Browse recent catalog" })).toBeVisible();
+        await expect(page.getByText("Search the latest 200 public releases")).toBeVisible();
+        await expect(page.getByLabel("Search recent catalog")).toBeVisible();
+        await expect(page.getByRole("tab", { name: /releases/i })).toBeVisible();
+        await expect(page.getByRole("tab", { name: /artists/i })).toBeVisible();
+        await expect(page.getByRole("tab", { name: /stems/i })).toBeVisible();
     });
 
     test("HOME-09b: Release cards expose library and playlist actions", async ({ page }) => {
