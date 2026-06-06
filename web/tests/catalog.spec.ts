@@ -74,13 +74,14 @@ test.describe("Catalog & Home Page", () => {
         ).toBeVisible();
     });
 
-    test("HOME-09: Global catalog browser exposes releases, artists, and stems tabs", async ({ page }) => {
+    test("HOME-09: Global catalog snapshot exposes releases, artists, stems, and full catalog navigation", async ({ page }) => {
         await page.goto("/");
-        await expect(page.getByRole("heading", { name: "Browse Everything" })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Recently Added" })).toBeVisible();
         await expect(page.getByRole("tab", { name: "releases" })).toBeVisible();
         await expect(page.getByRole("tab", { name: "artists" })).toBeVisible();
         await expect(page.getByRole("tab", { name: "stems" })).toBeVisible();
-        await expect(page.getByLabel("Search catalog")).toBeVisible();
+        await expect(page.getByLabel("Search catalog snapshot")).toBeVisible();
+        await expect(page.getByRole("link", { name: /Browse catalog/i })).toHaveAttribute("href", "/catalog");
     });
 
     test("HOME-09b: Release cards expose library and playlist actions", async ({ page }) => {
