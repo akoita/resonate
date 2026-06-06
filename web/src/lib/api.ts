@@ -2494,7 +2494,13 @@ export type CommunityArtistRoomsResponse = {
 export type CommunityMessage = {
   id: string;
   roomId: string;
-  authorId: string;
+  // `authorId` is redacted to `null` for other listeners in privacy-scoped rooms
+  // (e.g. cohort rooms); it is only present for the viewer's own messages there.
+  authorId: string | null;
+  // Server-provided display label for privacy-scoped rooms: "You" for the
+  // viewer's own messages, "Cohort member" for redacted peers, otherwise null.
+  // Optional so parallel message shapes (e.g. campaign rooms) stay assignable.
+  authorLabel?: string | null;
   body: string | null;
   messageType: CommunityMessageType | string;
   status: string;

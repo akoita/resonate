@@ -297,9 +297,10 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
   };
 
   const handleModerate = (message: CommunityMessage, action: "remove" | "ban") => {
-    if (!token || !activeRoom) return;
-    void runAction(`${action}-${message.authorId}`, async () => {
-      await moderateCommunityRoomMember(token, activeRoom.id, message.authorId, action);
+    if (!token || !activeRoom || !message.authorId) return;
+    const authorId = message.authorId;
+    void runAction(`${action}-${authorId}`, async () => {
+      await moderateCommunityRoomMember(token, activeRoom.id, authorId, action);
       setNotice({ type: "success", message: action === "ban" ? "Member banned." : "Member removed." });
     });
   };
@@ -445,14 +446,14 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
                         </div>
                       ) : (
                         messages.map((message) => {
-                          const ownMessage = message.authorId === userId;
+                          const ownMessage = Boolean(message.authorId && message.authorId === userId);
                           return (
                             <article
                               key={message.id}
                               className={`artist-community-message ${message.messageType === "announcement" ? "artist-community-message--announcement" : ""}`}
                             >
                               <div className="artist-community-message__meta">
-                                <strong>{message.messageType === "announcement" ? "Artist announcement" : shortUserId(message.authorId)}</strong>
+                                <strong>{message.messageType === "announcement" ? "Artist announcement" : message.authorLabel ?? (message.authorId ? shortUserId(message.authorId) : "Member")}</strong>
                                 <span>{formatTime(message.createdAt)}</span>
                               </div>
                               <p>{message.body}</p>
@@ -465,7 +466,7 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
                                     Delete
                                   </button>
                                 ) : null}
-                                {canManage && !ownMessage ? (
+                                {canManage && !ownMessage && message.authorId ? (
                                   <>
                                     <button type="button" onClick={() => handleModerate(message, "remove")}>
                                       Remove member

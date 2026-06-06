@@ -5888,6 +5888,20 @@ a.listener-cohort-detail__action:focus-visible {
   background: rgba(255, 255, 255, 0.06);
 }
 
+.cohort-room-conversation {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.cohort-room-conversation__messages {
+  display: grid;
+  gap: var(--space-2);
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
 .listener-cohort-detail__privacy ul {
   display: grid;
   gap: var(--space-2);
