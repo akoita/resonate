@@ -19,6 +19,7 @@ import {
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import { useAuth } from "../auth/AuthProvider";
 import { Button } from "../ui/Button";
+import { CommunityMessageItem, communityMessageRemoved } from "./CommunityMessageItem";
 
 type ArtistCommunityTabProps = {
   artistId: string;
@@ -90,19 +91,6 @@ export function roomAccessCopy(room: CommunityArtistRoom, authenticated: boolean
       ? "Eligibility is checked privately when you join."
       : "Open artist room.",
   };
-}
-
-function formatTime(value: string) {
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(value));
-  } catch {
-    return value;
-  }
 }
 
 function shortUserId(userId: string) {
@@ -447,53 +435,32 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
                       ) : (
                         messages.map((message) => {
                           const ownMessage = Boolean(message.authorId && message.authorId === userId);
+                          const isAnnouncement = message.messageType === "announcement";
+                          const author = isAnnouncement
+                            ? "Artist announcement"
+                            : message.authorLabel ?? (message.authorId ? shortUserId(message.authorId) : "Member");
                           return (
-                            <article
+                            <CommunityMessageItem
                               key={message.id}
-                              className={`artist-community-message ${message.messageType === "announcement" ? "artist-community-message--announcement" : ""}`}
-                            >
-                              <div className="artist-community-message__meta">
-                                <strong>{message.messageType === "announcement" ? "Artist announcement" : message.authorLabel ?? (message.authorId ? shortUserId(message.authorId) : "Member")}</strong>
-                                <span>{formatTime(message.createdAt)}</span>
-                              </div>
-                              <p>{message.body}</p>
-                              <div className="artist-community-message__actions">
-                                <button type="button" onClick={() => setReportingMessageId(message.id)}>
-                                  Report
-                                </button>
-                                {(ownMessage || canManage) ? (
-                                  <button type="button" onClick={() => handleDelete(message)}>
-                                    Delete
-                                  </button>
-                                ) : null}
-                                {canManage && !ownMessage && message.authorId ? (
-                                  <>
-                                    <button type="button" onClick={() => handleModerate(message, "remove")}>
-                                      Remove member
-                                    </button>
-                                    <button type="button" onClick={() => handleModerate(message, "ban")}>
-                                      Ban
-                                    </button>
-                                  </>
-                                ) : null}
-                              </div>
-                              {reportingMessageId === message.id ? (
-                                <div className="artist-community-report">
-                                  <input
-                                    value={reportReason}
-                                    onChange={(event) => setReportReason(event.target.value)}
-                                    aria-label="Report reason"
-                                  />
-                                  <Button
-                                    variant="ghost"
-                                    onClick={() => handleReport(message)}
-                                    disabled={!reportReason.trim() || busyKey === `report-${message.id}`}
-                                  >
-                                    Send report
-                                  </Button>
-                                </div>
-                              ) : null}
-                            </article>
+                              message={message}
+                              author={author}
+                              removed={communityMessageRemoved(message)}
+                              announcement={isAnnouncement}
+                              canReport
+                              canDelete={ownMessage || canManage}
+                              canRemoveMember={canManage && !ownMessage && Boolean(message.authorId)}
+                              canBan={canManage && !ownMessage && Boolean(message.authorId)}
+                              onDelete={() => handleDelete(message)}
+                              onStartReport={() => setReportingMessageId(message.id)}
+                              onRemoveMember={() => handleModerate(message, "remove")}
+                              onBan={() => handleModerate(message, "ban")}
+                              reporting={reportingMessageId === message.id}
+                              reportReason={reportReason}
+                              reportBusy={busyKey === `report-${message.id}`}
+                              onReportReasonChange={setReportReason}
+                              onSubmitReport={() => handleReport(message)}
+                              onCancelReport={() => setReportingMessageId(null)}
+                            />
                           );
                         })
                       )}
