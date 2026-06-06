@@ -328,6 +328,12 @@ The best tradeoff is a hybrid system:
 > off-chain systems for social interaction, privacy, moderation, discovery, and
 > product experience.
 
+The detailed decision framework for NFT-backed community membership is in
+[Blockchain-Native Community Membership Boundaries](community-membership-boundaries.md).
+In short: NFTs can prove public, durable, portable credentials, but private
+taste cohorts, city cohorts, cohort room membership, messages, reports,
+moderation state, and profile visibility preferences stay off-chain.
+
 ### Good On-Chain Fits
 
 - Stem NFT and collectible ownership.
@@ -510,7 +516,9 @@ Why fifth:
 - How should Resonate prevent sybil behavior in campaign referrals and holder
   rewards?
 - Which community actions are safe to put on-chain, and which should remain
-  off-chain product state?
+  off-chain product state? See
+  [Blockchain-Native Community Membership Boundaries](community-membership-boundaries.md)
+  for the current decision framework.
 
 ## Risks And Mitigations
 

@@ -202,6 +202,13 @@ This makes badges a ladder:
 3. Benefit rules can accept either private Resonate eligibility or verified NFT
    ownership, depending on the artist/operator policy.
 
+See
+[Blockchain-Native Community Membership Boundaries](../rfc/community-membership-boundaries.md)
+for the current on-chain/off-chain decision framework. The key architecture
+rule is that NFT ownership can unlock or attest to eligibility, but community
+membership, room state, moderation, profile visibility, private cohorts, cohort
+rooms, and messages remain backend-owned product state.
+
 ### `CommunityRoom`
 
 ```text
@@ -633,6 +640,7 @@ Analytics:
 - [Listener Community Network](../features/listener_community_network.md)
 - [Listener Community Network Execution Plan](../features/listener_community_network_execution_plan.md)
 - [Listener Community Network RFC](../rfc/listener-community-network.md)
+- [Blockchain-Native Community Membership Boundaries](../rfc/community-membership-boundaries.md)
 - [Analytics Event Taxonomy v1](analytics_event_taxonomy_v1.md)
 - [Marketplace Integration](../smart-contracts/marketplace_integration.md)
 - Background: [The NFT Staircase](https://a16zcrypto.com/posts/article/the-nft-staircase/)
