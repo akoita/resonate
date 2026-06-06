@@ -1,0 +1,23 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-NonInteractive",
+              "-Command",
+              "$ErrorActionPreference='SilentlyContinue'; $raw=[Console]::In.ReadToEnd(); try{$j=$raw|ConvertFrom-Json}catch{exit 0}; $cmd=[string]$j.tool_input.command; if([string]::IsNullOrWhiteSpace($cmd)){exit 0}; if($cmd.TrimStart() -match '^wsl(\\.exe)?(\\s|$)'){exit 0}; $r='This repo is enforced WSL-only on Windows hosts. Re-run the command inside WSL: wsl.exe -d ubuntu-24.04 -- bash -lc ''<your command>'''; $o=@{hookSpecificOutput=@{hookEventName='PreToolUse';permissionDecision='deny';permissionDecisionReason=$r}}|ConvertTo-Json -Compress -Depth 5; [Console]::Out.Write($o); exit 0"
+            ],
+            "timeout": 15,
+            "statusMessage": "Enforcing WSL-only shell"
+          }
+        ]
+      }
+    ]
+  }
+}
