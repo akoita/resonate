@@ -197,6 +197,7 @@ function ReportRow({
           ) : (
             <p className="analytics-muted">Reported message is no longer available.</p>
           )}
+          <ModerationAssistPanel report={report} />
         </div>
 
         <div>
@@ -233,6 +234,47 @@ function ReportRow({
         </div>
       </div>
     </article>
+  );
+}
+
+function ModerationAssistPanel({ report }: { report: CommunityModerationReport }) {
+  return (
+    <section
+      aria-label="Advisory moderation assist"
+      style={{
+        marginTop: "12px",
+        padding: "12px",
+        border: "1px solid rgba(139, 92, 246, 0.35)",
+        background: "rgba(139, 92, 246, 0.08)",
+      }}
+    >
+      <div className="analytics-title-row" style={{ alignItems: "flex-start", gap: "12px" }}>
+        <div>
+          <p className="artist-analytics-eyebrow" style={{ margin: "0 0 4px", color: "var(--r-primary-soft)" }}>
+            AI Assist
+          </p>
+          <p style={{ margin: 0, fontWeight: 700 }}>{report.assist.summary}</p>
+        </div>
+        <div className="glass-metadata-bar" style={{ margin: 0 }}>
+          <div className="metadata-item">
+            <span>Severity:</span>
+            <strong>{labelize(report.assist.severity)}</strong>
+          </div>
+          <div className="metadata-item">
+            <span>Likelihood:</span>
+            <strong>{labelize(report.assist.likelihood)}</strong>
+          </div>
+        </div>
+      </div>
+      <ul style={{ margin: "10px 0 0", paddingLeft: "18px", color: "var(--r-text-muted)", fontSize: "13px" }}>
+        {report.assist.reviewFocus.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+      <p className="analytics-muted" style={{ margin: "10px 0 0", fontSize: "12px" }}>
+        {report.assist.advisory.copy}
+      </p>
+    </section>
   );
 }
 

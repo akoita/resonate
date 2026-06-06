@@ -407,10 +407,30 @@ describe("CommunityRoomsService integration", () => {
         messageReportCount: 1,
         roomMembershipsByStatus: { active: 2 },
       },
+      assist: {
+        severity: "high",
+        likelihood: "medium",
+        reasonCodes: expect.arrayContaining(["privacy_language_signal", "safety_language_signal"]),
+        source: "bounded_moderation_context",
+        advisory: {
+          noAutoEnforcement: true,
+        },
+      },
     });
+    expect(queuedReport?.assist.summary).toContain("privacy");
+    expect(queuedReport?.assist.reviewFocus).toEqual(expect.arrayContaining([
+      "Check for personal data exposure in the preview.",
+      "Apply no action unless the human review confirms it.",
+    ]));
     expect(JSON.stringify(queuedReport)).not.toContain("@test.resonate");
     expect(JSON.stringify(queuedReport)).not.toContain(holderWallet);
     expect(JSON.stringify(queue.privacy)).toContain("noWalletAddresses");
+    await expect(prisma.communityModerationReport.findUniqueOrThrow({ where: { id: report.report.id } }))
+      .resolves.toMatchObject({ status: "open" });
+    await expect(prisma.communityMessage.findUniqueOrThrow({ where: { id: message.message.id } }))
+      .resolves.toMatchObject({ status: "visible" });
+    await expect(prisma.communityRoom.findUniqueOrThrow({ where: { id: room.id } }))
+      .resolves.toMatchObject({ status: "active" });
 
     const resolved = await service.resolveModerationReport(
       { userId: "admin", role: "admin" },

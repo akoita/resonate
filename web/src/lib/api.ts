@@ -2422,6 +2422,18 @@ export type CommunityModerationReport = {
     messageReportCount: number;
     roomMembershipsByStatus: Record<string, number>;
   };
+  assist: {
+    summary: string;
+    severity: "low" | "medium" | "high" | string;
+    likelihood: "low" | "medium" | "high" | string;
+    reasonCodes: string[];
+    reviewFocus: string[];
+    source: "bounded_moderation_context" | string;
+    advisory: {
+      noAutoEnforcement: boolean;
+      copy: string;
+    };
+  };
 };
 
 export type CommunityModerationQueueResponse = {

@@ -41,6 +41,9 @@ describe("CommunityModerationDashboard", () => {
     expect(html).toContain("Moderation Queue");
     expect(html).toContain("Ada Mix Holder Room");
     expect(html).toContain("Safety review requested");
+    expect(html).toContain("AI Assist");
+    expect(html).toContain("Report mentions possible safety concerns.");
+    expect(html).toContain("Advisory only");
     expect(html).toContain("Ban Member");
     expect(html).toContain("Pause Room");
     expect(html).toContain("No emails or wallets");
@@ -126,6 +129,21 @@ const queue: CommunityModerationQueueResponse = {
         roomOpenReports: 1,
         messageReportCount: 1,
         roomMembershipsByStatus: { active: 8, banned: 1 },
+      },
+      assist: {
+        summary: "Report mentions possible safety concerns.",
+        severity: "high",
+        likelihood: "medium",
+        reasonCodes: ["safety_language_signal"],
+        reviewFocus: [
+          "Assess harassment, threat, or safety policy concerns.",
+          "Apply no action unless the human review confirms it.",
+        ],
+        source: "bounded_moderation_context",
+        advisory: {
+          noAutoEnforcement: true,
+          copy: "Advisory only. A human admin must choose and confirm any moderation action.",
+        },
       },
     },
   ],
