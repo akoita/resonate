@@ -7,6 +7,7 @@ import {
   listCommunityRoomMessages,
   type CommunityMessage,
 } from "../../lib/api";
+import { RoomAccessBadge, campaignRoomAccessModel, roomAccessLockedReason } from "../community/roomAccess";
 import {
   createShowCampaignCommunityUpdate,
   getShowCampaignCommunity,
@@ -35,7 +36,7 @@ export function campaignCommunityAction(room?: ShowCampaignCommunityRoom | null)
     return { label: "Join supporter room", disabled: false, reason: "Confirmed campaign support unlocks this room." };
   }
   if (room.access?.reason === "campaign_support_required") {
-    return { label: "Support required", disabled: true, reason: "Confirm a campaign pledge to unlock the supporter room." };
+    return { label: "Support required", disabled: true, reason: roomAccessLockedReason("support") };
   }
   return { label: "Unavailable", disabled: true, reason: "The supporter room is not available right now." };
 }
@@ -231,6 +232,7 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
         <div className="show-community__grid">
           {cityDemandAvailable ? (
             <article className="show-community__room show-community__room--city">
+              <RoomAccessBadge model={campaignRoomAccessModel("show_city_demand")} />
               <span>{cityDemandRoom?.title ?? `${campaign.city} demand group`}</span>
               <strong>{cityJoined ? "Demand joined" : "Join city demand"}</strong>
               <p>
@@ -252,6 +254,10 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
 
           {supporterRoomAvailable ? (
             <article className="show-community__room">
+              <RoomAccessBadge
+                model={campaignRoomAccessModel("show_campaign_supporter")}
+                locked={!joined && action.disabled}
+              />
               <span>{supporterRoom?.title ?? "Campaign supporter room"}</span>
               <strong>{joined ? "Access active" : action.label}</strong>
               <p>{loading ? "Checking your campaign support..." : action.reason}</p>

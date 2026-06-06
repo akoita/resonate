@@ -58,7 +58,7 @@ describe("ArtistCommunityTab helpers", () => {
       label: "Holder access required",
       disabled: true,
     });
-    expect(roomAccessCopy(holderRoom, true).reason).toContain("does not expose wallet holdings publicly");
+    expect(roomAccessCopy(holderRoom, true).reason).toContain("holdings stay private");
   });
 
   it("lets authenticated eligible listeners join holder rooms", () => {

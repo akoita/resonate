@@ -5629,6 +5629,68 @@ a {
   overflow-wrap: anywhere;
 }
 
+/* Shared room access badge — one vocabulary across every community surface
+   (listener cohorts, artist rooms, campaign rooms). See roomAccess.tsx. */
+.room-access-badge {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.room-access-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.85;
+}
+
+.room-access-badge--open {
+  color: #5fd0a5;
+  border-color: rgba(95, 208, 165, 0.35);
+  background: rgba(95, 208, 165, 0.12);
+}
+
+.room-access-badge--consent {
+  color: #c4b5fd;
+  border-color: rgba(196, 181, 253, 0.35);
+  background: rgba(196, 181, 253, 0.12);
+}
+
+.room-access-badge--holder {
+  color: #f5b86b;
+  border-color: rgba(245, 184, 107, 0.35);
+  background: rgba(245, 184, 107, 0.12);
+}
+
+.room-access-badge--support {
+  color: #f59ec0;
+  border-color: rgba(245, 158, 192, 0.35);
+  background: rgba(245, 158, 192, 0.12);
+}
+
+.room-access-badge.is-locked {
+  opacity: 0.75;
+}
+
+.room-access-badge.is-locked::after {
+  content: "\01F512";
+  font-size: 9px;
+  opacity: 0.7;
+}
+
 .listener-cohort-card__status--joined {
   border-color: rgba(74, 222, 128, 0.45);
   background: rgba(74, 222, 128, 0.14);

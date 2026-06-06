@@ -18,6 +18,7 @@ import {
 } from "../../lib/api";
 import { Button } from "../ui/Button";
 import CohortRoomConversation from "../community/CohortRoomConversation";
+import { RoomAccessBadge, roomAccessLockedReason } from "../community/roomAccess";
 
 type ToastFn = (toast: { type: "success" | "error" | "info" | "warning"; title: string; message: string }) => void;
 
@@ -350,7 +351,7 @@ export function ListenerCohortsContent({
       {!consentEnabled && !loading ? (
         <div className="listener-cohorts-state listener-cohorts-state--locked">
           <strong>Community matching is off</strong>
-          <p>Enable community taste matching or city and scene community above to receive safe cohort suggestions.</p>
+          <p>{roomAccessLockedReason("consent")}</p>
         </div>
       ) : null}
 
@@ -435,6 +436,7 @@ function ListenerCohortCard({
     <article className={`listener-cohort-card listener-cohort-card--${cohort.membership.status}${selected ? " listener-cohort-card--selected" : ""}`}>
       <div className="listener-cohort-card__body">
         <div className="listener-cohort-card__meta">
+          <RoomAccessBadge model="consent" />
           <span>{cohortTypeLabel(cohort.cohortType)}</span>
           <span>{cohort.memberCountLabel}</span>
           <span className={`listener-cohort-card__status listener-cohort-card__status--${cohort.membership.status}`}>

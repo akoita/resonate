@@ -20,6 +20,7 @@ import { recordProductAnalytics } from "../../lib/productAnalytics";
 import { useAuth } from "../auth/AuthProvider";
 import { Button } from "../ui/Button";
 import { CommunityMessageItem, communityMessageRemoved } from "./CommunityMessageItem";
+import { RoomAccessBadge, artistRoomAccessModel, roomAccessLockedReason } from "./roomAccess";
 
 type ArtistCommunityTabProps = {
   artistId: string;
@@ -80,7 +81,7 @@ export function roomAccessCopy(room: CommunityArtistRoom, authenticated: boolean
     return {
       label: "Holder access required",
       disabled: true,
-      reason: "This room is reserved for eligible holders and supporters. Resonate does not expose wallet holdings publicly.",
+      reason: roomAccessLockedReason("holder"),
     };
   }
 
@@ -354,6 +355,10 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
                     <small>{room.description ?? action.reason}</small>
                   </button>
                   <div className="artist-community-room__meta">
+                    <RoomAccessBadge
+                      model={artistRoomAccessModel(room.roomType)}
+                      locked={!isJoinedRoom(room) && action.disabled}
+                    />
                     <span>{room.status}</span>
                     <span>{isJoinedRoom(room) ? room.membership?.role ?? "member" : action.label}</span>
                   </div>
