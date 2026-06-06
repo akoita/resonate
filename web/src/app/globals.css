@@ -6305,6 +6305,40 @@ a.listener-cohort-detail__action:focus-visible {
   line-height: 1.65;
 }
 
+.settings-pointer-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius-lg);
+  background: rgba(124, 92, 255, 0.10);
+  text-decoration: none;
+  color: inherit;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.settings-pointer-card:hover {
+  background: rgba(124, 92, 255, 0.16);
+  border-color: rgba(196, 181, 253, 0.40);
+}
+
+.settings-pointer-card strong {
+  display: block;
+  font-size: 15px;
+}
+
+.settings-pointer-card span {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.settings-pointer-card__arrow {
+  font-size: 22px;
+  color: #c4b5fd;
+}
+
 .settings-hero {
   display: flex;
   align-items: flex-end;
