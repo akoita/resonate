@@ -1,5 +1,65 @@
 # Security Best Practices Report
 
+## NFT-Verifiable Artist Holder Room Access - 2026-06-07
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/community/community_eligibility.service.ts`
+- `backend/src/modules/community/community_rooms.service.ts`
+- `backend/src/tests/community_eligibility.integration.spec.ts`
+- `backend/src/tests/community_rooms.integration.spec.ts`
+- `web/src/components/community/ArtistCommunityTab.tsx`
+- `web/src/components/community/ArtistCommunityTab.test.tsx`
+- `docs/features/README.md`
+- `docs/features/listener_community_network.md`
+- `docs/issue-1096-implementation-plan.md`
+
+### Executive Summary
+
+Issue #1096 uses existing indexed stem/NFT ownership as a private eligibility
+input for artist holder rooms while keeping community membership, messages,
+moderation state, and visibility off-chain. The scoped review found no Critical
+or High findings: holder proof evaluation stays server-side, response DTOs
+expose only bounded reason codes, unsupported ownership asset types fail
+closed, and moderation bans/removals continue to override ownership.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- `GET /community/artists/:artistId/rooms/me` and `POST /community/rooms/:roomId/join`
+  remain JWT guarded for personalized holder access and membership writes.
+- Public artist room listing still returns only non-personal public room access
+  state; private holder eligibility is only evaluated for authenticated reads.
+- Holder eligibility uses Prisma structured queries against indexed wallet and
+  purchase state; no raw SQL or client-provided ownership claim is trusted.
+- Artist holder memberships are reconciled off-chain, and stale ownership
+  eligibility changes active memberships to `removed`.
+- Existing moderation state remains stronger than ownership: a banned listener
+  cannot rejoin a holder room even if ownership still exists.
+- Holder-room DTOs and frontend copy do not expose wallet addresses, token IDs,
+  purchase IDs, listing IDs, or exact ownership details.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/modules/community backend/src/tests/community_*.integration.spec.ts --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/community backend/src/tests/community_*.integration.spec.ts`
+- `rg 'JSON\.parse|eval\(' backend/src/modules/community backend/src/tests/community_*.integration.spec.ts`
+- `rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/community`
+- `rg '@Controller|@Get|@Post|@Put|@Delete|@Patch|UseGuards' backend/src/modules/community/community.controller.ts`
+- `rg 'dangerouslySetInnerHTML|innerHTML|document\.cookie|setCookie|httpOnly.*false|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/components/community web/src/lib/api.ts`
+- Targeted review of holder proof evaluation, artist-room access DTOs,
+  membership reconciliation, moderation override behavior, frontend rendering,
+  and feature documentation.
+
 ## AI-Native Moderation Assist - 2026-06-06
 
 ### Scope Reviewed

@@ -25,6 +25,8 @@ export const ACTIVE_CAMPAIGN_SUPPORT_CAMPAIGN_STATUSES: ShowCampaignStatus[] = [
   "fulfilled",
   "released",
 ];
+const OWNERSHIP_POLICY_ASSET_TYPES = ["stem_nft"] as const;
+const OWNERSHIP_ARTIST_CREDIT_ROLES = ["main", "primary"] as const;
 
 type PolicyObject = Record<string, unknown>;
 
@@ -282,6 +284,11 @@ export class CommunityEligibilityService {
   }
 
   private async evaluateOwnershipPolicy(userId: string, policy: PolicyObject): Promise<EvaluationResult> {
+    const assetType = optionalStringField(policy, "assetType") ?? "stem_nft";
+    if (!OWNERSHIP_POLICY_ASSET_TYPES.includes(assetType as (typeof OWNERSHIP_POLICY_ASSET_TYPES)[number])) {
+      return { eligible: false, reasons: ["ownership_asset_unsupported"] };
+    }
+
     const wallet = await prisma.wallet.findUnique({ where: { userId } });
     if (!wallet?.address) {
       return { eligible: false, reasons: ["wallet_missing"] };
@@ -300,7 +307,25 @@ export class CommunityEligibilityService {
     if (trackId !== undefined || artistId !== undefined) {
       listingWhere.stem = {
         ...(trackId ? { trackId } : {}),
-        ...(artistId ? { track: { release: { artistId } } } : {}),
+        ...(artistId
+          ? {
+              track: {
+                release: {
+                  OR: [
+                    { artistId },
+                    {
+                      artistCredits: {
+                        some: {
+                          artistId,
+                          role: { in: [...OWNERSHIP_ARTIST_CREDIT_ROLES] },
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            }
+          : {}),
       };
     }
 
@@ -313,7 +338,7 @@ export class CommunityEligibilityService {
     });
 
     return purchase
-      ? { eligible: true, reasons: ["private_ownership"] }
+      ? { eligible: true, reasons: ["stem_nft_holder"] }
       : { eligible: false, reasons: ["ownership_missing"] };
   }
 

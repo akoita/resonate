@@ -90,7 +90,7 @@ export function roomAccessCopy(room: CommunityArtistRoom, authenticated: boolean
     label: room.roomType === "artist_holder" ? "Join holder room" : "Join room",
     disabled: false,
     reason: room.roomType === "artist_holder"
-      ? "Eligibility is checked privately when you join."
+      ? "Your holder proof is checked privately when you join."
       : "Open artist room.",
   };
 }
