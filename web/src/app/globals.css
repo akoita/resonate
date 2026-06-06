@@ -6273,10 +6273,36 @@ a.listener-cohort-detail__action:focus-visible {
   margin: var(--space-2) 0;
 }
 
-.settings-workspace {
+.settings-workspace,
+.community-workspace {
   width: min(1180px, calc(100vw - 48px));
   margin: 0 auto;
   padding: var(--space-6) 0 calc(var(--space-6) + 96px);
+}
+
+.community-hero {
+  padding: var(--space-5);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, rgba(255, 122, 89, 0.10), rgba(124, 92, 255, 0.16)),
+    rgba(255, 255, 255, 0.035);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.25);
+  margin-bottom: var(--space-5);
+}
+
+.community-hero h1 {
+  margin: var(--space-2) 0;
+  font-size: clamp(28px, 4.5vw, 48px);
+  line-height: 0.98;
+}
+
+.community-hero__subtitle {
+  max-width: 650px;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 15px;
+  line-height: 1.65;
 }
 
 .settings-hero {
