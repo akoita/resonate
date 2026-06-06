@@ -74,6 +74,21 @@
   margin: 0;
 }
 
+.home-ng .ng-section-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 107, 74, 0.14);
+  color: #FFD4C7;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
 .home-ng .ng-section-link {
   display: inline-flex;
   align-items: center;
