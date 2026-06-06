@@ -29,6 +29,7 @@ const releasedCampaignSlug = `${TEST_PREFIX}released-campaign-slug`;
 const holderWallet = "0x" + "1".repeat(40);
 const artistWallet = "0x" + "2".repeat(40);
 const listenerWallet = "0x" + "6".repeat(40);
+const resaleBuyerWallet = "0x" + "a".repeat(40);
 
 const eventBus = { publish: jest.fn() };
 const eligibility = new CommunityEligibilityService(eventBus as any);
@@ -289,7 +290,14 @@ describe("CommunityRoomsService integration", () => {
     await prisma.communityRoom.deleteMany({ where: { ownerId: { in: [artistId, publicArtistId] } } });
     await prisma.showPledge.deleteMany({ where: { campaignId: { in: campaignOwnerIds } } });
     await prisma.showCampaign.deleteMany({ where: { id: { in: campaignOwnerIds } } });
-    await prisma.stemPurchase.deleteMany({ where: { buyerAddress: { equals: holderWallet, mode: "insensitive" } } });
+    await prisma.stemPurchase.deleteMany({
+      where: {
+        OR: [
+          { buyerAddress: { equals: holderWallet, mode: "insensitive" } },
+          { buyerAddress: { equals: resaleBuyerWallet, mode: "insensitive" } },
+        ],
+      },
+    });
     await prisma.stemListing.deleteMany({ where: { stemId: { in: [stemId, publicStemId] } } });
     await prisma.stem.deleteMany({ where: { id: { in: [stemId, publicStemId] } } });
     await prisma.track.deleteMany({ where: { id: { in: [trackId, publicTrackId] } } });
@@ -432,7 +440,72 @@ describe("CommunityRoomsService integration", () => {
     const holderRoom = rooms.rooms.find((room) => room.roomType === "artist_holder")!;
     await prisma.communityMembership.deleteMany({ where: { roomId: holderRoom.id, userId: holderUserId } });
     await service.joinRoom(holderUserId, holderRoom.id);
-    await prisma.stemPurchase.deleteMany({ where: { buyerAddress: { equals: holderWallet, mode: "insensitive" } } });
+    const resaleListing = await prisma.stemListing.create({
+      data: {
+        listingId: 99921n,
+        stemId,
+        tokenId: 99901n,
+        chainId: 84532,
+        contractAddress: "0x" + "a".repeat(40),
+        sellerAddress: holderWallet,
+        pricePerUnit: "1000000",
+        amount: 0n,
+        paymentToken: "0x0000000000000000000000000000000000000000",
+        status: "sold",
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        transactionHash: "0x" + "b".repeat(64),
+        blockNumber: 99921n,
+        listedAt: new Date(),
+        soldAt: new Date(),
+      },
+    });
+    await prisma.stemPurchase.create({
+      data: {
+        listingId: resaleListing.id,
+        buyerAddress: resaleBuyerWallet,
+        amount: 1n,
+        totalPaid: "1000000",
+        royaltyPaid: "50000",
+        protocolFeePaid: "10000",
+        sellerReceived: "940000",
+        transactionHash: "0x" + "c".repeat(64),
+        blockNumber: 99922n,
+        purchasedAt: new Date(),
+      },
+    });
+    const publicStemResaleListing = await prisma.stemListing.create({
+      data: {
+        listingId: 99931n,
+        stemId: publicStemId,
+        tokenId: 99911n,
+        chainId: 84532,
+        contractAddress: "0x" + "d".repeat(40),
+        sellerAddress: holderWallet,
+        pricePerUnit: "1000000",
+        amount: 0n,
+        paymentToken: "0x0000000000000000000000000000000000000000",
+        status: "sold",
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        transactionHash: "0x" + "e".repeat(64),
+        blockNumber: 99931n,
+        listedAt: new Date(),
+        soldAt: new Date(),
+      },
+    });
+    await prisma.stemPurchase.create({
+      data: {
+        listingId: publicStemResaleListing.id,
+        buyerAddress: resaleBuyerWallet,
+        amount: 1n,
+        totalPaid: "1000000",
+        royaltyPaid: "50000",
+        protocolFeePaid: "10000",
+        sellerReceived: "940000",
+        transactionHash: "0x" + "f".repeat(64),
+        blockNumber: 99932n,
+        purchasedAt: new Date(),
+      },
+    });
 
     const response = await service.listArtistRooms(artistId, holderUserId);
     const revokedHolderRoom = response.rooms.find((room) => room.roomType === "artist_holder")!;

@@ -90,8 +90,9 @@ on-chain.
 
 ## Open Implementation Question
 
-`evaluateOwnershipPolicy()` currently infers ownership from indexed
-`StemPurchase` records rather than a live `balanceOf` read. For this first
-slice, that matches the existing backend data model and tests. A later issue can
-add a fresh on-chain balance read or ownership snapshot table if resale/transfer
-correctness requires it.
+`evaluateOwnershipPolicy()` currently computes current holder eligibility from
+indexed marketplace purchases minus indexed marketplace sales for each stem NFT
+token. This covers Resonate-indexed marketplace resale without exposing wallet,
+token, listing, or purchase details in community responses. A later issue can
+add a fresh on-chain `balanceOf` read or ownership snapshot table if off-platform
+ERC-1155 transfers need to affect holder-room eligibility immediately.

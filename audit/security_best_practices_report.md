@@ -39,8 +39,9 @@ None.
   remain JWT guarded for personalized holder access and membership writes.
 - Public artist room listing still returns only non-personal public room access
   state; private holder eligibility is only evaluated for authenticated reads.
-- Holder eligibility uses Prisma structured queries against indexed wallet and
-  purchase state; no raw SQL or client-provided ownership claim is trusted.
+- Holder eligibility uses Prisma structured queries against indexed wallet,
+  marketplace purchase, and marketplace resale state; no raw SQL or
+  client-provided ownership claim is trusted.
 - Artist holder memberships are reconciled off-chain, and stale ownership
   eligibility changes active memberships to `removed`.
 - Existing moderation state remains stronger than ownership: a banned listener
