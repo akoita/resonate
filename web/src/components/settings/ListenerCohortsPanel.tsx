@@ -17,6 +17,7 @@ import {
   type CommunityVisibilitySettings,
 } from "../../lib/api";
 import { Button } from "../ui/Button";
+import CohortRoomConversation from "../community/CohortRoomConversation";
 
 type ToastFn = (toast: { type: "success" | "error" | "info" | "warning"; title: string; message: string }) => void;
 
@@ -662,6 +663,7 @@ function CohortRoomBlock({
   const isJoined = cohort.membership.status === "joined";
   const roomMembershipActive = cohortRoom?.room.membership?.status === "active";
   const roomPending = actionId === `join-room:${cohort.id}`;
+  const [conversationOpen, setConversationOpen] = useState(false);
 
   return (
     <div className="listener-cohort-detail__room">
@@ -710,6 +712,28 @@ function CohortRoomBlock({
             </span>
           )}
         </div>
+      ) : null}
+      {isJoined && !loading && cohortRoom && roomMembershipActive ? (
+        <>
+          <Button
+            variant="ghost"
+            onClick={() => setConversationOpen((open) => !open)}
+            aria-expanded={conversationOpen}
+            aria-controls="cohort-room-conversation"
+          >
+            {conversationOpen ? "Hide conversation" : "Open conversation"}
+          </Button>
+          {conversationOpen ? (
+            <div id="cohort-room-conversation">
+              <CohortRoomConversation
+                roomId={cohortRoom.room.id}
+                roomActive={cohortRoom.room.status === "active"}
+                emptyTitle={cohortRoom.emptyState.title}
+                emptyDescription={cohortRoom.emptyState.description}
+              />
+            </div>
+          ) : null}
+        </>
       ) : null}
     </div>
   );
