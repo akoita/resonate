@@ -20,7 +20,8 @@ import { recordProductAnalytics } from "../../lib/productAnalytics";
 import { useAuth } from "../auth/AuthProvider";
 import { Button } from "../ui/Button";
 import { CommunityMessageItem, communityMessageRemoved } from "./CommunityMessageItem";
-import { RoomAccessBadge, artistRoomAccessModel, roomAccessLockedReason } from "./roomAccess";
+import { RoomCard } from "./RoomCard";
+import { artistRoomAccessModel, roomAccessLockedReason } from "./roomAccess";
 
 type ArtistCommunityTabProps = {
   artistId: string;
@@ -333,37 +334,33 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
             {rooms.map((room) => {
               const action = roomAccessCopy(room, authenticated);
               const selected = activeRoom?.id === room.id;
+              const joinedRoom = isJoinedRoom(room);
               return (
-                <article
+                <RoomCard
                   key={room.id}
-                  className={`artist-community-room ${selected ? "artist-community-room--active" : ""}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveRoomId(room.id);
-                      void recordProductAnalytics(token, "community.room_selected", {
-                        subjectType: "community_room",
-                        subjectId: room.id,
-                        payload: { artistId, roomId: room.id, roomType: room.roomType },
-                      });
-                    }}
-                    className="artist-community-room__select"
-                  >
-                    <span>{roomKindLabel(room)}</span>
-                    <strong>{room.title}</strong>
-                    <small>{room.description ?? action.reason}</small>
-                  </button>
-                  <div className="artist-community-room__meta">
-                    <RoomAccessBadge
-                      model={artistRoomAccessModel(room.roomType)}
-                      locked={!isJoinedRoom(room) && action.disabled}
-                    />
-                    <span>{room.status}</span>
-                    <span>{isJoinedRoom(room) ? room.membership?.role ?? "member" : action.label}</span>
-                  </div>
-                  <div className="artist-community-room__actions">
-                    {isJoinedRoom(room) ? (
+                  className="room-card--artist"
+                  accessModel={artistRoomAccessModel(room.roomType)}
+                  accessLocked={!joinedRoom && action.disabled}
+                  eyebrow={roomKindLabel(room)}
+                  title={room.title}
+                  selected={selected}
+                  selectLabel={`Open ${room.title}`}
+                  onSelect={() => {
+                    setActiveRoomId(room.id);
+                    void recordProductAnalytics(token, "community.room_selected", {
+                      subjectType: "community_room",
+                      subjectId: room.id,
+                      payload: { artistId, roomId: room.id, roomType: room.roomType },
+                    });
+                  }}
+                  meta={
+                    <>
+                      <span>{room.status}</span>
+                      <span>{joinedRoom ? room.membership?.role ?? "member" : action.label}</span>
+                    </>
+                  }
+                  actions={
+                    joinedRoom ? (
                       <Button variant="ghost" onClick={() => handleLeave(room)} disabled={busyKey === `leave-${room.id}`}>
                         Leave
                       </Button>
@@ -374,10 +371,12 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
                       >
                         {action.label}
                       </Button>
-                    )}
-                  </div>
-                  {!isJoinedRoom(room) ? <p className="artist-community-room__reason">{action.reason}</p> : null}
-                </article>
+                    )
+                  }
+                >
+                  <small>{room.description ?? action.reason}</small>
+                  {!joinedRoom ? <p className="artist-community-room__reason">{action.reason}</p> : null}
+                </RoomCard>
               );
             })}
           </div>

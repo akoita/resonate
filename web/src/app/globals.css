@@ -5691,6 +5691,107 @@ a {
   opacity: 0.7;
 }
 
+/* Shared room card shell across every community surface. See RoomCard.tsx.
+   Container layout (lists, grids, columns) stays owned by each surface; this
+   styles only the card itself so cohorts, artist rooms, and campaign rooms read
+   as one family. */
+.room-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-4);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.room-card--selected {
+  border-color: rgba(196, 181, 253, 0.45);
+  background: rgba(124, 92, 255, 0.10);
+}
+
+.room-card__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.room-card__head--select {
+  appearance: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.room-card__head--select:hover .room-card__title,
+.room-card__head--select:focus-visible .room-card__title {
+  color: #c4b5fd;
+}
+
+.room-card__eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #c4b5fd;
+}
+
+.room-card__title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.room-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.room-card__meta > span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.room-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.room-card__body small {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.room-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: auto;
+}
+
 .listener-cohort-card__status--joined {
   border-color: rgba(74, 222, 128, 0.45);
   background: rgba(74, 222, 128, 0.14);
