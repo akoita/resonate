@@ -666,6 +666,16 @@ export default function Home() {
                     placeholder="Search this snapshot"
                     aria-label="Search catalog snapshot"
                   />
+                  {catalogSearch && (
+                    <button
+                      type="button"
+                      className="ng-catalog-search__clear"
+                      onClick={() => setCatalogSearch("")}
+                      aria-label="Clear search"
+                    >
+                      <span className="ms-icon" aria-hidden>close</span>
+                    </button>
+                  )}
                 </label>
                 <Link href="/catalog" className="ng-section-link">
                   Open catalog
@@ -705,7 +715,11 @@ export default function Home() {
             </div>
 
             <div className="ng-catalog-window" aria-live="polite">
-              Showing {catalogVisibleCount} of {catalogTotalCount} {catalogView}
+              {catalogTotalCount === 0
+                ? `No ${catalogView} yet`
+                : catalogVisibleCount < catalogTotalCount
+                  ? `Showing ${catalogVisibleCount} of ${catalogTotalCount} ${catalogView} · newest first`
+                  : `${catalogTotalCount} ${catalogView} · newest first`}
             </div>
 
             {catalogView === "releases" && (
