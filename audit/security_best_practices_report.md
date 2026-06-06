@@ -41,7 +41,7 @@ None.
 - Visible member previews require joined membership plus `public` or
   `community` profile visibility and matching consent for the cohort type.
 - Community-visible profile previews are contextual summaries only; only public
-  profiles receive public profile links.
+  profiles receive public profile links or stable user identifiers.
 - Private, followers-only, suggested-only, left, hidden, and consent-disabled
   members are omitted from preview DTOs and represented only by coarse
   anonymous copy.

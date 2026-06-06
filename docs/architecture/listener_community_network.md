@@ -512,7 +512,9 @@ The response is allowed to include cohort type, safe reason, safe explanation,
 bucketed member-count copy, membership state, privacy redactions, music-native
 next actions, and capped visible-member profile summaries for joined members
 whose profile visibility is `public` or `community` and whose matching consent
-is still enabled. It must not include non-opted-in listener IDs, wallet
+is still enabled. Public profile summaries may include public profile links;
+community-visible contextual summaries must not include stable public links or
+stable user identifiers. It must not include non-opted-in listener IDs, wallet
 addresses, exact hidden/private membership counts, raw listening history, fine
 location, raw cohort metadata, or private member lists.
 

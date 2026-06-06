@@ -122,10 +122,13 @@ governed event data already available to the app.
 Cohort detail can also show a capped preview of joined members who explicitly
 make their community profile visible. Public and community-visible profiles can
 appear as small profile summaries for authenticated listeners who can access
-the cohort; private, follower-scoped, suggested-only, left, hidden,
-consent-disabled, expired, archived, and below-threshold members remain
-anonymous. The UI explains whether the current listener can appear based on
-their profile visibility, joined status, and taste/city matching consent.
+the cohort. Public profiles can link to their public profile route, while
+community-visible profiles remain contextual summaries without stable public
+profile links or exposed stable user identifiers. Private, follower-scoped,
+suggested-only, left, hidden, consent-disabled, expired, archived, and
+below-threshold members remain anonymous. The UI explains whether the current
+listener can appear based on their profile visibility, joined status, and
+taste/city matching consent.
 
 ### City Scenes
 

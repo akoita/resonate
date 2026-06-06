@@ -39,9 +39,10 @@ below-threshold members must remain aggregate-only.
    - keep the route authenticated and behind the same cohort visibility gates
      as the existing detail response;
    - return at most a small fixed number of visible members;
-   - include only safe profile fields: user id for profile-link routing,
-     display name, avatar URL, profile visibility, and joined/suggested
-     cohort-member status if needed for copy;
+   - include only safe profile fields: public user id for public profile-link
+     routing, display name, avatar URL, profile visibility, and joined
+     cohort-member status if needed for copy. Community-visible contextual
+     summaries should not expose stable user identifiers;
    - do not include wallet address, email, raw listening history, raw cohort
      metadata, exact private member counts, or private eligibility facts.
 2. Define member visibility rules by reusing existing settings first:

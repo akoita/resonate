@@ -272,7 +272,7 @@ describe("CommunityCohortService integration", () => {
     });
     expect(detail.memberVisibility.visibleMembers).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        userId: optedInUserId,
+        userId: null,
         displayName: "Visible Viewer",
         profileVisibility: "community",
         cohortMembershipStatus: "joined",
@@ -285,7 +285,7 @@ describe("CommunityCohortService integration", () => {
         profileVisibility: "public",
       }),
       expect.objectContaining({
-        userId: communityMemberUserId,
+        userId: null,
         displayName: "Community Listener",
         avatarUrl: null,
         profileVisibility: "community",
@@ -293,7 +293,28 @@ describe("CommunityCohortService integration", () => {
       }),
     ]));
     expect(detail.memberVisibility.visibleMembers).toHaveLength(3);
+    const visibleViewer = detail.memberVisibility.visibleMembers.find((member) => member.displayName === "Visible Viewer");
+    const publicMember = detail.memberVisibility.visibleMembers.find((member) => member.displayName === "Public Listener");
+    const communityMember = detail.memberVisibility.visibleMembers.find((member) => member.displayName === "Community Listener");
+    expect(visibleViewer).toMatchObject({
+      userId: null,
+      profileHref: null,
+    });
+    expect(visibleViewer?.memberKey).toMatch(/^visible-member-\d+$/);
+    expect(publicMember).toMatchObject({
+      userId: publicMemberUserId,
+      profileHref: `/community/profile/${encodeURIComponent(publicMemberUserId)}`,
+    });
+    expect(publicMember?.memberKey).toMatch(/^visible-member-\d+$/);
+    expect(communityMember).toMatchObject({
+      userId: null,
+      profileHref: null,
+    });
+    expect(communityMember?.memberKey).toMatch(/^visible-member-\d+$/);
     const serialized = JSON.stringify(detail);
+    expect(serialized).not.toContain(optedInUserId);
+    expect(serialized).toContain(publicMemberUserId);
+    expect(serialized).not.toContain(communityMemberUserId);
     expect(serialized).not.toContain(privateMemberUserId);
     expect(serialized).not.toContain(followersMemberUserId);
     expect(serialized).not.toContain(consentDisabledMemberUserId);

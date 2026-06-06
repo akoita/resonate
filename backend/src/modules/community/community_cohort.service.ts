@@ -24,7 +24,8 @@ const DISCOVERY_HINT_LIMIT = 4;
 type CohortWithMembership = CommunityCohort & { memberships: CommunityCohortMembership[] };
 
 type CommunityCohortVisibleMember = {
-  userId: string;
+  memberKey: string;
+  userId: string | null;
   displayName: string;
   avatarUrl: string | null;
   profileVisibility: string;
@@ -311,7 +312,7 @@ export class CommunityCohortService {
       anonymousMemberLabel: "Private and non-joined members stay anonymous.",
       visibleMemberLimit: COHORT_MEMBER_PREVIEW_LIMIT,
       visibleMembers: members
-        .map((member) => visibleMemberDto(member))
+        .map((member, index) => visibleMemberDto(member, index))
         .filter((member): member is NonNullable<typeof member> => member !== null),
       currentViewer: {
         canAppear,
@@ -518,7 +519,7 @@ function visibleMemberDto(member: {
       updatedAt: Date;
     } | null;
   };
-}) {
+}, index: number) {
   const profile = member.user.communityProfile;
   if (!profile) return null;
   const profileVisibility = normalizeProfileVisibility(profile.profileVisibility);
@@ -526,13 +527,16 @@ function visibleMemberDto(member: {
     return null;
   }
 
+  const isPublicProfile = profileVisibility === "public";
+
   return {
-    userId: member.user.id,
+    memberKey: `visible-member-${index}`,
+    userId: isPublicProfile ? member.user.id : null,
     displayName: safeDisplayText(profile.displayName, "Community member"),
     avatarUrl: safeAvatarUrl(profile.avatarUrl),
     profileVisibility,
     cohortMembershipStatus: member.status,
-    profileHref: profileVisibility === "public"
+    profileHref: isPublicProfile
       ? `/community/profile/${encodeURIComponent(member.user.id)}`
       : null,
   };

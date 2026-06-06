@@ -2076,7 +2076,8 @@ export type CommunityCohortDetailAction = {
 };
 
 export type CommunityCohortVisibleMember = {
-  userId: string;
+  memberKey: string;
+  userId: string | null;
   displayName: string;
   avatarUrl: string | null;
   profileVisibility: CommunityProfileVisibility | string;

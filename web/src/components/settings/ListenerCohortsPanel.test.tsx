@@ -336,6 +336,7 @@ describe("ListenerCohortsPanel", () => {
             visibleMemberLimit: 6,
             visibleMembers: [
               {
+                memberKey: "visible-member-0",
                 userId: "public-listener",
                 displayName: "Public Listener",
                 avatarUrl: "https://example.test/public-listener.png",
@@ -344,7 +345,8 @@ describe("ListenerCohortsPanel", () => {
                 profileHref: "/community/profile/public-listener",
               },
               {
-                userId: "community-listener",
+                memberKey: "visible-member-1",
+                userId: null,
                 displayName: "Community Listener",
                 avatarUrl: null,
                 profileVisibility: "community",
@@ -371,6 +373,7 @@ describe("ListenerCohortsPanel", () => {
     expect(html).toContain("Community Listener");
     expect(html).toContain("Community profile");
     expect(html).toContain("href=\"/community/profile/public-listener\"");
+    expect(html).not.toContain("community-listener");
     expect(html).toContain("You can appear");
     expect(html).toContain("Your profile can appear in joined cohort previews.");
     expect(html).toContain("Private and non-joined members stay anonymous.");

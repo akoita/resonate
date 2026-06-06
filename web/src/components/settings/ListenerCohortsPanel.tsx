@@ -705,13 +705,13 @@ function CohortMemberVisibilityBlock({
             );
             if (member.profileHref) {
               return (
-                <a key={member.userId} href={member.profileHref} className="listener-cohort-detail__member">
+                <a key={member.memberKey} href={member.profileHref} className="listener-cohort-detail__member">
                   {memberContent}
                 </a>
               );
             }
             return (
-              <div key={member.userId} className="listener-cohort-detail__member">
+              <div key={member.memberKey} className="listener-cohort-detail__member">
                 {memberContent}
               </div>
             );
