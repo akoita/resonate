@@ -1,4 +1,5 @@
 import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { CommunityCohortService } from "../modules/community/community_cohort.service";
 import { CommunityEligibilityService } from "../modules/community/community_eligibility.service";
@@ -163,6 +164,69 @@ describe("CommunityCohortService integration", () => {
     expect(JSON.stringify(detail)).not.toContain(optedInUserId);
     expect(JSON.stringify(detail)).not.toContain("@test.resonate");
     expect(JSON.stringify(detail)).not.toContain("0x");
+  });
+
+  it("returns discovery context only for joined consented cohorts", async () => {
+    const joined = await createCohort("discovery_joined", {
+      cohortType: "taste",
+      reasonCode: "taste:dream_pop",
+      title: "Dream Pop listeners",
+      safeExplanation: "Listeners sharing privacy-safe dream pop taste.",
+      minimumSize: 5,
+      visibleMemberCount: 9,
+      metadata: { schemaVersion: "community-cohort-generation/v1", signalKey: "taste:dream_pop" },
+    });
+    const suggested = await createCohort("discovery_suggested", {
+      cohortType: "taste",
+      reasonCode: "taste:ambient",
+      title: "Ambient listeners",
+      minimumSize: 5,
+      visibleMemberCount: 9,
+    });
+    const hidden = await createCohort("discovery_hidden", {
+      cohortType: "taste",
+      reasonCode: "taste:private",
+      title: "Private listeners",
+      minimumSize: 5,
+      visibleMemberCount: 9,
+    });
+    const expired = await createCohort("discovery_expired", {
+      cohortType: "taste",
+      reasonCode: "taste:expired_context",
+      title: "Expired listeners",
+      minimumSize: 5,
+      visibleMemberCount: 9,
+      expiresAt: new Date(Date.now() - 60_000),
+    });
+    await addMembership(joined.id, optedInUserId, "joined");
+    await addMembership(suggested.id, optedInUserId, "suggested");
+    await addMembership(hidden.id, optedInUserId, "hidden");
+    await addMembership(expired.id, optedInUserId, "joined");
+    await addMembership(joined.id, optedOutUserId, "joined");
+
+    const optedInContext = await service.getDiscoveryContextForUser(optedInUserId);
+    const optedOutContext = await service.getDiscoveryContextForUser(optedOutUserId);
+
+    expect(optedInContext).toEqual([
+      expect.objectContaining({
+        cohortId: joined.id,
+        cohortType: "taste",
+        reasonCode: "taste:dream_pop",
+        title: "Dream Pop listeners",
+        explanation: "From your Dream Pop listeners cohort",
+        queryHints: expect.arrayContaining(["dream pop"]),
+        analytics: {
+          cohortId: joined.id,
+          cohortType: "taste",
+          reasonCode: "taste:dream_pop",
+        },
+      }),
+    ]);
+    expect(JSON.stringify(optedInContext)).not.toContain(optedInUserId);
+    expect(JSON.stringify(optedInContext)).not.toContain(cohortPeerUserId);
+    expect(JSON.stringify(optedInContext)).not.toContain("@test.resonate");
+    expect(JSON.stringify(optedInContext)).not.toContain("0x");
+    expect(optedOutContext).toEqual([]);
   });
 
   it("uses coarse public member-count buckets for nonstandard privacy floors", async () => {
@@ -450,16 +514,18 @@ async function createCohort(
     cohortType: string;
     reasonCode: string;
     safeExplanation?: string;
+    title?: string;
     minimumSize: number;
     visibleMemberCount: number;
     status?: string;
     expiresAt?: Date;
+    metadata?: Prisma.InputJsonValue;
   },
 ) {
   return prisma.communityCohort.create({
     data: {
       id: `${TEST_PREFIX}${suffix}`,
-      title: `Cohort ${suffix}`,
+      title: data.title ?? `Cohort ${suffix}`,
       safeExplanation: data.safeExplanation ?? "A privacy-safe community cohort.",
       status: data.status ?? "suggested",
       ...data,

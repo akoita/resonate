@@ -292,6 +292,62 @@ describe("agent learning loop", () => {
     expect(result.selected[0]?.agentRecommendation?.explanation).toContain("Nearby vibe match");
   });
 
+  it("uses joined cohort context as an explainable AI DJ signal", async () => {
+    const tool = {
+      run: jest.fn().mockImplementation(async (input: { query: string }) => ({
+        items: input.query === "dream pop"
+          ? [{ id: "dream", title: "Dream Pop Signal", hasListing: false, release: { genre: "Dream Pop" } }]
+          : [],
+      })),
+    };
+    const cohortContext = [{
+      cohortId: "cohort-1",
+      cohortType: "taste",
+      reasonCode: "taste:dream_pop",
+      title: "Dream Pop listeners",
+      explanation: "From your Dream Pop listeners cohort",
+      queryHints: ["dream pop"],
+      analytics: {
+        cohortId: "cohort-1",
+        cohortType: "taste",
+        reasonCode: "taste:dream_pop",
+      },
+    }];
+    const communityCohortService = {
+      getDiscoveryContextForUser: jest.fn().mockResolvedValue(cohortContext),
+    };
+    const selector = new AgentSelectorService(
+      { get: jest.fn().mockReturnValue(tool) } as any,
+      undefined,
+      undefined,
+      undefined,
+      communityCohortService as any,
+    );
+
+    const result = await selector.select({
+      userId: "user-1",
+      queries: [],
+      recentTrackIds: [],
+      limit: 1,
+    });
+
+    expect(communityCohortService.getDiscoveryContextForUser).toHaveBeenCalledWith("user-1");
+    expect(tool.run).toHaveBeenCalledWith(expect.objectContaining({ query: "dream pop" }));
+    expect(result.selected.map((track: any) => track.id)).toEqual(["dream"]);
+    expect(result.selected[0]?.agentRecommendation?.signals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "cohort_context",
+          weight: 12,
+          reason: "taste:dream_pop",
+        }),
+      ]),
+    );
+    expect(result.selected[0]?.agentRecommendation?.explanation).toContain("From your Dream Pop listeners cohort");
+    expect(JSON.stringify(result)).not.toContain("user-1");
+    expect(JSON.stringify(result)).not.toContain("0x");
+  });
+
   it("returns no selections when original and expanded taste queries miss", async () => {
     const tool = {
       run: jest.fn().mockResolvedValue({ items: [] }),

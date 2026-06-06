@@ -205,7 +205,7 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     eventVersion: 1,
     producer: "recommendations-service",
     privacyTier: "pseudonymous",
-    payloadFields: ["userCohortId", "trackIds", "strategy", "candidateCount"],
+    payloadFields: ["userCohortId", "trackIds", "strategy", "candidateCount", "cohortInfluence"],
   },
   {
     eventName: "stems.uploaded",

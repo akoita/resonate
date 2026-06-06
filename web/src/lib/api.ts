@@ -1833,6 +1833,16 @@ export type SongRecommendationsResponse = {
     genres?: string[];
     allowExplicit?: boolean;
   };
+  cohortContext?: {
+    applied: boolean;
+    count: number;
+    cohorts: Array<{
+      cohortId: string;
+      cohortType: string;
+      reasonCode: string;
+      title: string;
+    }>;
+  };
   items: SongRecommendationItem[];
 };
 

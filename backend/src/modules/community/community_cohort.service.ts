@@ -16,8 +16,24 @@ const UNSAFE_EXPLANATION_PATTERNS = [
   /\b(user(id)?|wallet|address|transaction|txhash|private)\b/i,
 ] as const;
 const GENERIC_EXPLANATION = "This group is based on shared, privacy-safe community signals.";
+const DISCOVERY_CONTEXT_LIMIT = 5;
+const DISCOVERY_HINT_LIMIT = 4;
 
 type CohortWithMembership = CommunityCohort & { memberships: CommunityCohortMembership[] };
+
+export interface CommunityCohortDiscoveryContext {
+  cohortId: string;
+  cohortType: string;
+  reasonCode: string;
+  title: string;
+  explanation: string;
+  queryHints: string[];
+  analytics: {
+    cohortId: string;
+    cohortType: string;
+    reasonCode: string;
+  };
+}
 
 @Injectable()
 export class CommunityCohortService {
@@ -122,6 +138,40 @@ export class CommunityCohortService {
     });
     this.publish("community.cohort_hidden", userId, cohort, updated);
     return cohortMembershipResponse(cohort, updated);
+  }
+
+  async getDiscoveryContextForUser(userId: string): Promise<CommunityCohortDiscoveryContext[]> {
+    await this.ensureUser(userId);
+    const visibility = await prisma.communityVisibilitySettings.findUnique({ where: { userId } });
+    const now = new Date();
+    const cohorts = await prisma.communityCohort.findMany({
+      where: {
+        status: { in: [...SUGGESTABLE_COHORT_STATUSES] },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        visibleMemberCount: { gte: 1 },
+        memberships: {
+          some: {
+            userId,
+            status: "joined",
+          },
+        },
+      },
+      include: {
+        memberships: {
+          where: { userId, status: "joined" },
+          take: 1,
+        },
+      },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      take: DISCOVERY_CONTEXT_LIMIT * 2,
+    });
+
+    return cohorts
+      .filter((cohort) => cohort.memberships.length > 0)
+      .filter((cohort) => hasCohortConsent(cohort.cohortType, visibility))
+      .filter((cohort) => meetsMinimumSize(cohort))
+      .slice(0, DISCOVERY_CONTEXT_LIMIT)
+      .map(discoveryContextDto);
   }
 
   private async requireActionableMembership(
@@ -341,4 +391,68 @@ function bucketedMemberCountLabel(visibleMemberCount: number) {
   const bucket = eligibleBuckets[eligibleBuckets.length - 1];
   if (!bucket) return "Small listener group";
   return `${bucket.toLocaleString("en-US")}+ listeners`;
+}
+
+function discoveryContextDto(cohort: CommunityCohort): CommunityCohortDiscoveryContext {
+  const cohortType = normalizeCohortType(cohort.cohortType);
+  const reasonCode = safeReasonCode(cohort.reasonCode);
+  const title = safeDisplayText(cohort.title, "Listener cohort");
+  return {
+    cohortId: cohort.id,
+    cohortType,
+    reasonCode,
+    title,
+    explanation: `From your ${title} cohort`,
+    queryHints: discoveryQueryHints(cohort, reasonCode, title),
+    analytics: {
+      cohortId: cohort.id,
+      cohortType,
+      reasonCode,
+    },
+  };
+}
+
+function discoveryQueryHints(cohort: CommunityCohort, reasonCode: string, title: string) {
+  const rawHints = [
+    signalFromReasonCode(reasonCode),
+    title
+      .replace(/\b(listeners|supporters|collectors|cohort|community)\b/gi, " ")
+      .trim(),
+    signalFromMetadata(cohort.metadata),
+  ];
+  const hints: string[] = [];
+  for (const raw of rawHints) {
+    const hint = safeDiscoveryHint(raw);
+    if (hint && !hints.some((existing) => existing.toLowerCase() === hint.toLowerCase())) {
+      hints.push(hint);
+    }
+    if (hints.length >= DISCOVERY_HINT_LIMIT) break;
+  }
+  return hints;
+}
+
+function signalFromReasonCode(reasonCode: string) {
+  const [, signal] = reasonCode.split(":", 2);
+  return signal?.replace(/[_-]+/g, " ");
+}
+
+function signalFromMetadata(metadata: unknown) {
+  if (!metadata || typeof metadata !== "object") return undefined;
+  const signalKey = (metadata as { signalKey?: unknown }).signalKey;
+  if (typeof signalKey !== "string") return undefined;
+  return signalFromReasonCode(signalKey);
+}
+
+function safeDisplayText(value: string, fallback: string) {
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  if (!trimmed || trimmed.length > 80) return fallback;
+  return UNSAFE_EXPLANATION_PATTERNS.some((pattern) => pattern.test(trimmed)) ? fallback : trimmed;
+}
+
+function safeDiscoveryHint(value: string | undefined) {
+  const trimmed = value?.trim().replace(/\s+/g, " ");
+  if (!trimmed || trimmed.length > 48) return undefined;
+  if (!/^[a-z0-9][a-z0-9 '&./-]*$/i.test(trimmed)) return undefined;
+  if (UNSAFE_EXPLANATION_PATTERNS.some((pattern) => pattern.test(trimmed))) return undefined;
+  return trimmed;
 }

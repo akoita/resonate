@@ -135,6 +135,7 @@ export class AgentOrchestratorService {
         candidates: selection.candidates,
         count: selection.selected.length,
         strategy: selection.strategy,
+        cohortInfluence: cohortInfluenceFromRecommendations(selection.selected),
       });
     }
 
@@ -240,4 +241,17 @@ export class AgentOrchestratorService {
 
     return `Generate a 30-second track: ${parts.join(", ")}`;
   }
+}
+
+function cohortInfluenceFromRecommendations(selected: Array<{ agentRecommendation?: { signals?: Array<{ label: string; reason: string }> } }>) {
+  const cohortSignals = selected.flatMap((track) =>
+    track.agentRecommendation?.signals?.filter((signal) => signal.label === "cohort_context") ?? [],
+  );
+  const reasonCodes = [...new Set(cohortSignals.map((signal) => signal.reason).filter(Boolean))];
+  return {
+    appliedCount: reasonCodes.length,
+    cohortIds: [],
+    cohortTypes: [...new Set(reasonCodes.map((reason) => reason.split(":", 1)[0]).filter(Boolean))],
+    reasonCodes,
+  };
 }

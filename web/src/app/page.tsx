@@ -1312,6 +1312,10 @@ function formatRecommendationReason(reasons: string[]) {
   if (!first) return "Catalog signal";
   if (first.startsWith("genre:")) return "Taste match";
   if (first.startsWith("mood:")) return "Mood match";
+  if (first.startsWith("cohort:")) {
+    const label = first.slice("cohort:".length).trim();
+    return label ? `From your ${label} cohort` : "Cohort signal";
+  }
   return first.replace(/_/g, " ");
 }
 

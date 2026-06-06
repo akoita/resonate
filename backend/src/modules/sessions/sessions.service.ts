@@ -329,6 +329,7 @@ export class SessionsService {
       trackId: track.id,
       strategy: "runtime",
       preferences: (this.agentPreferences.get(sessionId) ?? {}) as Record<string, unknown>,
+      cohortInfluence: cohortInfluenceFromSignals(selected.signals),
     });
 
     return {
@@ -366,4 +367,17 @@ export class SessionsService {
       [trackId, ...recent.filter((id) => id !== trackId)].slice(0, 20),
     );
   }
+}
+
+function cohortInfluenceFromSignals(signals?: Array<{ label: string; reason: string }>) {
+  const reasonCodes = [...new Set((signals ?? [])
+    .filter((signal) => signal.label === "cohort_context")
+    .map((signal) => signal.reason)
+    .filter(Boolean))];
+  return {
+    appliedCount: reasonCodes.length,
+    cohortIds: [],
+    cohortTypes: [...new Set(reasonCodes.map((reason) => reason.split(":", 1)[0]).filter(Boolean))],
+    reasonCodes,
+  };
 }

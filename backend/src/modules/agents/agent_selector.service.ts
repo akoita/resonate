@@ -3,6 +3,7 @@ import { ToolRegistry } from "./tools/tool_registry";
 import { expandAgentTasteQueries } from "./agent_taste_expansion";
 import { AgentAudioFeatureService, AgentAudioFeatures } from "./agent_audio_feature.service";
 import { AgentBigQueryTasteSignalService, AgentTasteScore } from "./agent_bigquery_taste_signal.service";
+import { CommunityCohortDiscoveryContext, CommunityCohortService } from "../community/community_cohort.service";
 import {
   hasSignal,
   scoreMultiplierForSignal,
@@ -59,6 +60,8 @@ export class AgentSelectorService {
     private readonly bigQueryTasteSignals?: AgentBigQueryTasteSignalService,
     @Optional()
     private readonly tasteMemoryService?: TasteMemoryService,
+    @Optional()
+    private readonly communityCohortService?: CommunityCohortService,
   ) { }
 
   async select(input: AgentSelectorInput) {
@@ -66,7 +69,11 @@ export class AgentSelectorService {
     const originalQueries = (input.queries ?? [])
       .filter(Boolean)
       .filter((query) => !isHiddenTasteQuery(policy, query));
-    const queries = expandAgentTasteQueries(originalQueries);
+    const cohortContext = input.userId
+      ? await this.communityCohortService?.getDiscoveryContextForUser(input.userId) ?? []
+      : [];
+    const cohortQueries = cohortContext.flatMap((cohort) => cohort.queryHints);
+    const queries = expandAgentTasteQueries(uniqueCaseInsensitive([...originalQueries, ...cohortQueries]));
     const limit = input.limit ?? 5;
 
     // Gather candidates from all vibes/queries
@@ -143,6 +150,7 @@ export class AgentSelectorService {
         learnedGenreWeights: input.learnedGenreWeights ?? {},
         similarityScore: similarityScores.get(track.id) ?? 0,
         bigQueryTasteScore: bigQueryTasteScores.get(track.id),
+        cohortContext,
         recent: input.recentTrackIds.includes(track.id),
         energy: input.energy,
         tastePolicy: policy,
@@ -193,6 +201,7 @@ export class AgentSelectorService {
       learnedGenreWeights: Record<string, number>;
       similarityScore: number;
       bigQueryTasteScore?: AgentTasteScore;
+      cohortContext: CommunityCohortDiscoveryContext[];
       recent: boolean;
       energy?: "low" | "medium" | "high";
       tastePolicy?: TasteMemoryPolicy;
@@ -260,6 +269,16 @@ export class AgentSelectorService {
       }
     }
 
+    const cohortMatches = matchingCohortContexts(track, context.cohortContext);
+    for (const cohort of cohortMatches) {
+      signals.push({
+        label: "cohort_context",
+        weight: 12,
+        reason: cohort.reasonCode,
+      });
+      explanation.push(cohort.explanation);
+    }
+
     const featureResult = await this.audioFeatures?.getOrCreate(track.id);
     const audioFeatures = featureResult?.status === "ok" ? featureResult.features : undefined;
     if (audioFeatures) {
@@ -308,6 +327,35 @@ function isHiddenTasteQuery(policy: TasteMemoryPolicy | undefined, query: string
     || hasSignal(policy?.hidden ?? new Map(), "mood", query)
     || hasSignal(policy?.hidden ?? new Map(), "intent", query)
     || hasSignal(policy?.hidden ?? new Map(), "scene", query);
+}
+
+function uniqueCaseInsensitive(values: string[]) {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    const key = trimmed.toLowerCase();
+    if (!trimmed || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(trimmed);
+  }
+  return unique;
+}
+
+function matchingCohortContexts(
+  track: AgentCandidateTrack & { matchedQueries: string[] },
+  cohorts: CommunityCohortDiscoveryContext[],
+) {
+  if (cohorts.length === 0) return [];
+  const haystack = [
+    track.title ?? "",
+    track.release?.title ?? "",
+    track.release?.genre ?? "",
+    ...track.matchedQueries,
+  ].join(" ").toLowerCase();
+  return cohorts.filter((cohort) =>
+    cohort.queryHints.some((hint) => haystack.includes(hint.toLowerCase())),
+  );
 }
 
 function analyticsTasteExplanation(explanation?: string): {

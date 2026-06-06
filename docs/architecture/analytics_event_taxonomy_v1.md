@@ -215,7 +215,7 @@ when they follow the privacy and versioning rules above.
 | `contract.dispute_resolved` | `contracts-indexer` | `dispute` | resolver address | `disputeId`, `tokenId`, `outcome`, `resolverAddress` | `chainId`, `transactionHash` |
 | `rights.route_decided` | `rights-service` | `release` | none/operator when known | `releaseId`, `artistId`, `route`, `evidenceTypes` | `decisionReason` |
 | `release_rights.request_updated` | `rights-service` | `release_rights_request` | none/operator when known | `requestId`, `releaseId`, `status` | none |
-| `agent.track_selected` | `agent-runtime` | `track` | agent/user when known | `sessionId`, `trackId`, `strategy` | `artistId`, `releaseId`, `source` |
+| `agent.track_selected` | `agent-runtime` | `track` | agent/user when known | `sessionId`, `trackId`, `strategy` | `artistId`, `releaseId`, `source`, aggregate `cohortInfluence` |
 | `agent.intent_viewed` | `web-app` | `agent_session` when known | auth user | `source` | `presetCount`, `intents`, `clientEventId` |
 | `agent.intent_selected` | `web-app` | `agent_session` when known | auth user | `intent`, `intentName`, `source` | `mood`, `energy`, `licenseType`, `queueStyle`, `commercePosture`, `clientEventId` |
 | `agent.session_started` | `web-app` | `agent_session` | auth user | `source` | `intent`, `intentName`, `mood`, `energy`, `licenseType`, `queueStyle`, `commercePosture`, `clientEventId` |
@@ -225,7 +225,7 @@ when they follow the privacy and versioning rules above.
 | `agent.decision_made` | `agent-runtime` | `track` | agent/user when known | `sessionId`, `reason` | `trackId`, `artistId`, `releaseId`, `licenseType`, `priceUsd` |
 | `agent.purchase_completed` | `agent-purchase-service` | `listing` | `userId` | `sessionId`, `userId`, `listingId`, `tokenId`, `amount`, `priceUsd`, `txHash` | `mode` |
 | `agent.purchase_failed` | `agent-purchase-service` | `listing` | `userId` | `sessionId`, `userId`, `listingId`, `error` | `tokenId`, `amount`, `priceUsd` |
-| `recommendation.generated` | `recommendations-service` | none | `userId` | `userId`, `trackIds`, `strategy` | `candidateCount` |
+| `recommendation.generated` | `recommendations-service` | none | `userId` | `userId`, `trackIds`, `strategy` | `candidateCount`, aggregate `cohortInfluence` |
 | `recommendation.preferences_updated` | `recommendations-service` | none | `userId` | `userId`, `preferences` | none |
 | `generation.started` | `generation-service` | `generation_job` | `userId` | `jobId`, `userId` | `artistId`, `durationSeconds`, `seed` |
 | `generation.progress` | `generation-service` | `generation_job` | none | `jobId`, `phase` | none |

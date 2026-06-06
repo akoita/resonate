@@ -671,7 +671,7 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     subjectType: "track",
     subjectIdKeys: ["trackId"],
     sessionIdKeys: ["sessionId"],
-    payloadKeys: ["sessionId", "trackId", "artistId", "releaseId", "strategy", "source"],
+    payloadKeys: ["sessionId", "trackId", "artistId", "releaseId", "strategy", "source", "cohortInfluence"],
     sourceRefKeys: ["sessionId", "trackId", "artistId", "releaseId"],
   },
   {
@@ -689,7 +689,7 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     subjectType: "track",
     subjectIdKeys: ["trackId"],
     sessionIdKeys: ["sessionId"],
-    payloadKeys: ["sessionId", "trackId", "candidates", "count", "strategy"],
+    payloadKeys: ["sessionId", "trackId", "candidates", "count", "strategy", "cohortInfluence"],
     sourceRefKeys: ["sessionId", "trackId", "strategy"],
   },
   {
@@ -800,7 +800,7 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     eventName: "recommendation.generated",
     producer: "recommendations-service",
     actorIdKeys: ["userId"],
-    payloadKeys: ["userId", "trackIds", "strategy"],
+    payloadKeys: ["userId", "trackIds", "strategy", "cohortInfluence"],
     sourceRefKeys: ["userId"],
   },
   {
