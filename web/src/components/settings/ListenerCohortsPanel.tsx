@@ -12,6 +12,7 @@ import {
   leaveCommunityCohort,
   type CommunityCohort,
   type CommunityCohortDetailResponse,
+  type CommunityCohortMemberVisibility,
   type CommunityCohortRoomResponse,
   type CommunityCohortSuggestionsResponse,
   type CommunityVisibilitySettings,
@@ -88,6 +89,13 @@ export function cohortStatusLabel(status: string) {
     hidden: "Hidden",
   };
   return labels[status] ?? `${status.charAt(0).toUpperCase()}${status.slice(1)}`;
+}
+
+function profileVisibilityLabel(visibility: string) {
+  if (visibility === "public") return "Public";
+  if (visibility === "community") return "Community";
+  if (visibility === "followers") return "Followers";
+  return "Private";
 }
 
 function replaceCohort(cohorts: CommunityCohort[], next: CommunityCohort) {
@@ -572,6 +580,10 @@ function ListenerCohortDetailPanel({
             </div>
           </div>
 
+          {detail.memberVisibility ? (
+            <CohortMemberVisibilityBlock memberVisibility={detail.memberVisibility} />
+          ) : null}
+
           <div className="listener-cohort-detail__actions">
             <div>
               <span className="settings-kicker">Next actions</span>
@@ -648,6 +660,73 @@ function ListenerCohortDetailPanel({
         </>
       ) : null}
     </aside>
+  );
+}
+
+function CohortMemberVisibilityBlock({
+  memberVisibility,
+}: {
+  memberVisibility: CommunityCohortMemberVisibility;
+}) {
+  const visibleMembers = memberVisibility.visibleMembers;
+  return (
+    <section className="listener-cohort-detail__members" aria-label="Visible cohort members">
+      <div className="listener-cohort-detail__members-header">
+        <div>
+          <span className="settings-kicker">Member visibility</span>
+          <h5>{memberVisibility.memberListLabel}</h5>
+        </div>
+        <span className={`listener-cohort-detail__viewer-state ${memberVisibility.currentViewer.canAppear ? "is-visible" : ""}`}>
+          {memberVisibility.currentViewer.canAppear ? "You can appear" : "You are hidden"}
+        </span>
+      </div>
+
+      {visibleMembers.length > 0 ? (
+        <div className="listener-cohort-detail__member-grid">
+          {visibleMembers.map((member) => {
+            const memberContent = (
+              <>
+                <span
+                  className={`listener-cohort-detail__member-avatar ${member.avatarUrl ? "has-image" : ""}`}
+                  style={member.avatarUrl ? { backgroundImage: `url("${member.avatarUrl}")` } : undefined}
+                  aria-hidden
+                >
+                  {!member.avatarUrl ? (
+                    <span>{member.displayName.trim().charAt(0).toUpperCase() || "R"}</span>
+                  ) : null}
+                </span>
+                <span className="listener-cohort-detail__member-copy">
+                  <strong>{member.displayName}</strong>
+                  <small>{profileVisibilityLabel(member.profileVisibility)} profile</small>
+                </span>
+              </>
+            );
+            if (member.profileHref) {
+              return (
+                <a key={member.userId} href={member.profileHref} className="listener-cohort-detail__member">
+                  {memberContent}
+                </a>
+              );
+            }
+            return (
+              <div key={member.userId} className="listener-cohort-detail__member">
+                {memberContent}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="listener-cohorts-state">
+          <strong>No visible members yet</strong>
+          <p>{memberVisibility.anonymousMemberLabel}</p>
+        </div>
+      )}
+
+      <p className="listener-cohort-detail__viewer-copy">{memberVisibility.currentViewer.reason}</p>
+      {visibleMembers.length > 0 ? (
+        <p className="listener-cohort-detail__anonymous-copy">{memberVisibility.anonymousMemberLabel}</p>
+      ) : null}
+    </section>
   );
 }
 

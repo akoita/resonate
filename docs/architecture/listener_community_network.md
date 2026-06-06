@@ -509,10 +509,12 @@ must use the same consent, lifecycle, threshold, expiry, and membership
 visibility gates as cohort suggestions, and it must fail closed for hidden,
 left, stale, archived, expired, below-threshold, or disabled-consent cohorts.
 The response is allowed to include cohort type, safe reason, safe explanation,
-bucketed member-count copy, membership state, privacy redactions, and
-music-native next actions. It must not include listener IDs, wallet addresses,
-exact hidden/private membership counts, raw listening history, fine location,
-or member lists.
+bucketed member-count copy, membership state, privacy redactions, music-native
+next actions, and capped visible-member profile summaries for joined members
+whose profile visibility is `public` or `community` and whose matching consent
+is still enabled. It must not include non-opted-in listener IDs, wallet
+addresses, exact hidden/private membership counts, raw listening history, fine
+location, raw cohort metadata, or private member lists.
 
 `GET /admin/community/cohorts/quality` returns aggregate operational quality
 signals only: lifecycle counts, stale membership counts, disabled-consent

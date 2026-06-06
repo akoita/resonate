@@ -9,7 +9,9 @@ const SUGGESTABLE_COHORT_STATUSES = ["suggested", "active"] as const;
 const SUGGESTABLE_MEMBERSHIP_STATUSES = ["suggested", "joined"] as const;
 const JOINABLE_MEMBERSHIP_STATUSES = ["suggested", "left"] as const;
 const DETAIL_MEMBERSHIP_STATUSES = ["suggested", "joined"] as const;
-const VISIBLE_MEMBER_STATUSES = ["suggested", "joined"] as const;
+const COHORT_MEMBER_PREVIEW_STATUSES = ["joined"] as const;
+const COHORT_MEMBER_PROFILE_VISIBILITIES = ["public", "community"] as const;
+const COHORT_MEMBER_PREVIEW_LIMIT = 6;
 const UNSAFE_EXPLANATION_PATTERNS = [
   /0x[a-f0-9]{40}/i,
   /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i,
@@ -20,6 +22,30 @@ const DISCOVERY_CONTEXT_LIMIT = 5;
 const DISCOVERY_HINT_LIMIT = 4;
 
 type CohortWithMembership = CommunityCohort & { memberships: CommunityCohortMembership[] };
+
+type CommunityCohortVisibleMember = {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  profileVisibility: string;
+  cohortMembershipStatus: string;
+  profileHref: string | null;
+};
+
+type CommunityCohortMemberVisibility = {
+  visibilityScope: string;
+  memberListLabel: string;
+  anonymousMemberLabel: string;
+  visibleMemberLimit: number;
+  visibleMembers: CommunityCohortVisibleMember[];
+  currentViewer: {
+    canAppear: boolean;
+    profileVisibility: string;
+    cohortMembershipStatus: string;
+    matchingConsentEnabled: boolean;
+    reason: string;
+  };
+};
 
 export interface CommunityCohortDiscoveryContext {
   cohortId: string;
@@ -111,7 +137,8 @@ export class CommunityCohortService {
 
   async getCohortDetail(userId: string, cohortId: string) {
     const { cohort, membership } = await this.requireActionableMembership(userId, cohortId, DETAIL_MEMBERSHIP_STATUSES);
-    return cohortDetailResponse(cohort, membership);
+    const memberVisibility = await this.getMemberVisibility(userId, cohort, membership);
+    return cohortDetailResponse(cohort, membership, memberVisibility);
   }
 
   async leaveCohort(userId: string, cohortId: string) {
@@ -217,6 +244,85 @@ export class CommunityCohortService {
     });
   }
 
+  private async getMemberVisibility(
+    viewerId: string,
+    cohort: CommunityCohort,
+    viewerMembership: CommunityCohortMembership,
+  ): Promise<CommunityCohortMemberVisibility> {
+    const memberConsentWhere = cohort.cohortType === "city_scene"
+      ? { allowCityScenes: true }
+      : { allowTasteMatching: true };
+    const [members, viewer] = await Promise.all([
+      prisma.communityCohortMembership.findMany({
+        where: {
+          cohortId: cohort.id,
+          status: { in: [...COHORT_MEMBER_PREVIEW_STATUSES] },
+          user: {
+            communityProfile: {
+              is: {
+                profileVisibility: { in: [...COHORT_MEMBER_PROFILE_VISIBILITIES] },
+              },
+            },
+            communityVisibilitySettings: {
+              is: memberConsentWhere,
+            },
+          },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              communityProfile: {
+                select: {
+                  displayName: true,
+                  avatarUrl: true,
+                  profileVisibility: true,
+                  updatedAt: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ id: "asc" }],
+        take: COHORT_MEMBER_PREVIEW_LIMIT,
+      }),
+      prisma.user.findUnique({
+        where: { id: viewerId },
+        select: {
+          communityProfile: {
+            select: {
+              profileVisibility: true,
+            },
+          },
+          communityVisibilitySettings: true,
+        },
+      }),
+    ]);
+
+    const matchingConsentEnabled = hasCohortConsent(cohort.cohortType, viewer?.communityVisibilitySettings ?? null);
+    const profileVisibility = normalizeProfileVisibility(viewer?.communityProfile?.profileVisibility ?? "private");
+    const canAppear = viewerMembership.status === "joined" &&
+      matchingConsentEnabled &&
+      COHORT_MEMBER_PROFILE_VISIBILITIES.includes(profileVisibility as (typeof COHORT_MEMBER_PROFILE_VISIBILITIES)[number]);
+
+    return {
+      visibilityScope: "joined_public_or_community_profiles",
+      memberListLabel: members.length > 0 ? "Opted-in cohort members" : "No visible members yet",
+      anonymousMemberLabel: "Private and non-joined members stay anonymous.",
+      visibleMemberLimit: COHORT_MEMBER_PREVIEW_LIMIT,
+      visibleMembers: members
+        .map((member) => visibleMemberDto(member))
+        .filter((member): member is NonNullable<typeof member> => member !== null),
+      currentViewer: {
+        canAppear,
+        profileVisibility,
+        cohortMembershipStatus: viewerMembership.status,
+        matchingConsentEnabled,
+        reason: currentViewerVisibilityReason(viewerMembership.status, profileVisibility, matchingConsentEnabled),
+      },
+    };
+  }
+
   private publish(
     eventName: "community.cohort_suggested" | "community.cohort_joined" | "community.cohort_left" | "community.cohort_hidden",
     userId: string,
@@ -269,7 +375,11 @@ function cohortMembershipResponse(cohort: CommunityCohort, membership: Community
   };
 }
 
-function cohortDetailResponse(cohort: CommunityCohort, membership: CommunityCohortMembership) {
+function cohortDetailResponse(
+  cohort: CommunityCohort,
+  membership: CommunityCohortMembership,
+  memberVisibility: CommunityCohortMemberVisibility,
+) {
   return {
     schemaVersion: "community-cohort-detail/v1",
     cohort: cohortDetailDto(cohort, membership),
@@ -297,14 +407,16 @@ function cohortDetailResponse(cohort: CommunityCohort, membership: CommunityCoho
       },
     ],
     redactions: [
-      "Other listener identities are hidden.",
+      "Only opted-in public or community profile summaries can appear.",
+      "Private, hidden, left, and non-joined members stay anonymous.",
       "Wallet addresses and exact private membership details are not exposed.",
       "Raw listening history is never shown on cohort detail.",
     ],
+    memberVisibility,
     privacy: {
       minimumSizeEnforced: true,
       memberCountsAreBucketed: true,
-      otherListenerIdentities: "redacted",
+      otherListenerIdentities: "opted_in_profile_summaries_only",
       walletAddresses: "redacted",
       rawListeningHistory: "redacted",
       visibilityScope: "authenticated_visible_membership",
@@ -391,6 +503,74 @@ function bucketedMemberCountLabel(visibleMemberCount: number) {
   const bucket = eligibleBuckets[eligibleBuckets.length - 1];
   if (!bucket) return "Small listener group";
   return `${bucket.toLocaleString("en-US")}+ listeners`;
+}
+
+function visibleMemberDto(member: {
+  userId: string;
+  status: string;
+  joinedAt: Date | null;
+  user: {
+    id: string;
+    communityProfile: {
+      displayName: string;
+      avatarUrl: string | null;
+      profileVisibility: string;
+      updatedAt: Date;
+    } | null;
+  };
+}) {
+  const profile = member.user.communityProfile;
+  if (!profile) return null;
+  const profileVisibility = normalizeProfileVisibility(profile.profileVisibility);
+  if (!COHORT_MEMBER_PROFILE_VISIBILITIES.includes(profileVisibility as (typeof COHORT_MEMBER_PROFILE_VISIBILITIES)[number])) {
+    return null;
+  }
+
+  return {
+    userId: member.user.id,
+    displayName: safeDisplayText(profile.displayName, "Community member"),
+    avatarUrl: safeAvatarUrl(profile.avatarUrl),
+    profileVisibility,
+    cohortMembershipStatus: member.status,
+    profileHref: profileVisibility === "public"
+      ? `/community/profile/${encodeURIComponent(member.user.id)}`
+      : null,
+  };
+}
+
+function normalizeProfileVisibility(visibility: string) {
+  return ["private", "community", "followers", "public"].includes(visibility) ? visibility : "private";
+}
+
+function safeAvatarUrl(value: string | null) {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed.length > 500) return null;
+  try {
+    const url = new URL(trimmed);
+    return ["http:", "https:"].includes(url.protocol) ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function currentViewerVisibilityReason(
+  membershipStatus: string,
+  profileVisibility: string,
+  matchingConsentEnabled: boolean,
+) {
+  if (membershipStatus !== "joined") {
+    return "Join this cohort before your community profile can appear here.";
+  }
+  if (!matchingConsentEnabled) {
+    return "Community matching is off, so your profile is hidden from cohort member previews.";
+  }
+  if (profileVisibility === "public" || profileVisibility === "community") {
+    return "Your profile can appear in joined cohort previews.";
+  }
+  if (profileVisibility === "followers") {
+    return "Follower-scoped profiles stay hidden from cohort member previews.";
+  }
+  return "Your profile is private, so it stays hidden from cohort member previews.";
 }
 
 function discoveryContextDto(cohort: CommunityCohort): CommunityCohortDiscoveryContext {

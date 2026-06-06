@@ -1,5 +1,66 @@
 # Security Best Practices Report
 
+## Opt-In Cohort Member Visibility - 2026-06-06
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/community/community_cohort.service.ts`
+- `backend/src/tests/community_cohort.integration.spec.ts`
+- `web/src/components/settings/ListenerCohortsPanel.tsx`
+- `web/src/components/settings/ListenerCohortsPanel.test.tsx`
+- `web/src/lib/api.ts`
+- `web/src/app/globals.css`
+- related feature docs, architecture docs, and issue plan
+
+### Executive Summary
+
+Issue #1070 adds capped cohort member previews for joined public/community
+profiles while preserving anonymous treatment for private, follower-scoped,
+suggested-only, left, hidden, consent-disabled, expired, archived, and
+below-threshold members. The scoped review found no Critical or High findings:
+membership visibility is selected server-side through authenticated cohort
+detail gates, current profile visibility, current taste/city consent, joined
+membership status, safe avatar URL validation, and bucketed aggregate count
+copy.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- `GET /community/cohorts/:cohortId` remains authenticated and continues to
+  fail closed for hidden, left, expired, archived, below-threshold, and
+  consent-disabled viewer states.
+- Visible member previews require joined membership plus `public` or
+  `community` profile visibility and matching consent for the cohort type.
+- Community-visible profile previews are contextual summaries only; only public
+  profiles receive public profile links.
+- Private, followers-only, suggested-only, left, hidden, and consent-disabled
+  members are omitted from preview DTOs and represented only by coarse
+  anonymous copy.
+- The frontend renders profile summary fields through React text rendering and
+  does not introduce raw HTML rendering, direct cookie handling, client-side
+  secret usage, or ad hoc API fetches.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/`
+- `rg 'JSON\.parse|eval\(' backend/src/modules/community backend/src/tests/community_cohort.integration.spec.ts`
+- `rg 'dangerouslySetInnerHTML|innerHTML' web/src/components/settings web/src/lib/api.ts web/src/app/globals.css`
+- `rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/`
+- `rg 'document\.cookie|setCookie|httpOnly.*false' web/src/components/settings web/src/lib/api.ts`
+- Targeted review of cohort membership gates, consent filters, profile
+  visibility filters, redaction copy, count bucketing, avatar URL handling, and
+  frontend rendering/API behavior.
+
 ## Cohort-Driven Discovery And AI DJ Context - 2026-06-06
 
 ### Scope Reviewed

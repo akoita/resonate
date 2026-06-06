@@ -92,7 +92,8 @@ function detail(overrides: Partial<CommunityCohortDetailResponse> = {}): Communi
       },
     ],
     redactions: [
-      "Other listener identities are hidden.",
+      "Only opted-in public or community profile summaries can appear.",
+      "Private, hidden, left, and non-joined members stay anonymous.",
       "Wallet addresses and exact private membership details are not exposed.",
       "Raw listening history is never shown on cohort detail.",
     ],
@@ -315,10 +316,97 @@ describe("ListenerCohortsPanel", () => {
     expect(html).toContain("Browse marketplace");
     expect(html).toContain("href=\"/marketplace\"");
     expect(html).toContain("10+ listeners");
-    expect(html).toContain("Other listener identities are hidden.");
+    expect(html).toContain("Only opted-in public or community profile summaries can appear.");
+    expect(html).toContain("Private, hidden, left, and non-joined members stay anonymous.");
     expect(html).toContain("Wallet addresses and exact private membership details are not exposed.");
     expect(html).not.toContain("visibleMemberCount");
     expect(html).not.toContain("minimumSize");
+  });
+
+  it("renders opted-in cohort member summaries without private members", () => {
+    const html = renderToStaticMarkup(
+      <ListenerCohortsContent {...contentProps({
+        suggestions: suggestions([cohort()]),
+        selectedCohortId: "cohort-1",
+        detail: detail({
+          memberVisibility: {
+            visibilityScope: "joined_public_or_community_profiles",
+            memberListLabel: "Opted-in cohort members",
+            anonymousMemberLabel: "Private and non-joined members stay anonymous.",
+            visibleMemberLimit: 6,
+            visibleMembers: [
+              {
+                userId: "public-listener",
+                displayName: "Public Listener",
+                avatarUrl: "https://example.test/public-listener.png",
+                profileVisibility: "public",
+                cohortMembershipStatus: "joined",
+                profileHref: "/community/profile/public-listener",
+              },
+              {
+                userId: "community-listener",
+                displayName: "Community Listener",
+                avatarUrl: null,
+                profileVisibility: "community",
+                cohortMembershipStatus: "joined",
+                profileHref: null,
+              },
+            ],
+            currentViewer: {
+              canAppear: true,
+              profileVisibility: "community",
+              cohortMembershipStatus: "joined",
+              matchingConsentEnabled: true,
+              reason: "Your profile can appear in joined cohort previews.",
+            },
+          },
+        }),
+      })} />,
+    );
+
+    expect(html).toContain("Member visibility");
+    expect(html).toContain("Opted-in cohort members");
+    expect(html).toContain("Public Listener");
+    expect(html).toContain("Public profile");
+    expect(html).toContain("Community Listener");
+    expect(html).toContain("Community profile");
+    expect(html).toContain("href=\"/community/profile/public-listener\"");
+    expect(html).toContain("You can appear");
+    expect(html).toContain("Your profile can appear in joined cohort previews.");
+    expect(html).toContain("Private and non-joined members stay anonymous.");
+    expect(html).not.toContain("Private Listener");
+    expect(html).not.toContain("private-listener");
+    expect(html).not.toContain("@test.resonate");
+  });
+
+  it("renders anonymous cohort member empty state and current-listener visibility copy", () => {
+    const html = renderToStaticMarkup(
+      <ListenerCohortsContent {...contentProps({
+        suggestions: suggestions([cohort()]),
+        selectedCohortId: "cohort-1",
+        detail: detail({
+          memberVisibility: {
+            visibilityScope: "joined_public_or_community_profiles",
+            memberListLabel: "No visible members yet",
+            anonymousMemberLabel: "Private and non-joined members stay anonymous.",
+            visibleMemberLimit: 6,
+            visibleMembers: [],
+            currentViewer: {
+              canAppear: false,
+              profileVisibility: "private",
+              cohortMembershipStatus: "suggested",
+              matchingConsentEnabled: true,
+              reason: "Join this cohort before your community profile can appear here.",
+            },
+          },
+        }),
+      })} />,
+    );
+
+    expect(html).toContain("No visible members yet");
+    expect(html).toContain("You are hidden");
+    expect(html).toContain("Join this cohort before your community profile can appear here.");
+    expect(html).toContain("Private and non-joined members stay anonymous.");
   });
 
   it("renders joined cohort room state without exposing a member list", () => {

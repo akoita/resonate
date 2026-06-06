@@ -10,6 +10,13 @@ const optedInUserId = `${TEST_PREFIX}opted_in`;
 const optedOutUserId = `${TEST_PREFIX}opted_out`;
 const cityUserId = `${TEST_PREFIX}city_user`;
 const cohortPeerUserId = `${TEST_PREFIX}cohort_peer`;
+const publicMemberUserId = `${TEST_PREFIX}public_member`;
+const communityMemberUserId = `${TEST_PREFIX}community_member`;
+const privateMemberUserId = `${TEST_PREFIX}private_member`;
+const followersMemberUserId = `${TEST_PREFIX}followers_member`;
+const consentDisabledMemberUserId = `${TEST_PREFIX}consent_disabled_member`;
+const leftMemberUserId = `${TEST_PREFIX}left_member`;
+const hiddenMemberUserId = `${TEST_PREFIX}hidden_member`;
 
 const eventBus = { publish: jest.fn() };
 const service = new CommunityCohortService(eventBus as any);
@@ -26,6 +33,13 @@ describe("CommunityCohortService integration", () => {
         { id: optedOutUserId, email: `${optedOutUserId}@test.resonate` },
         { id: cityUserId, email: `${cityUserId}@test.resonate` },
         { id: cohortPeerUserId, email: `${cohortPeerUserId}@test.resonate` },
+        { id: publicMemberUserId, email: `${publicMemberUserId}@test.resonate` },
+        { id: communityMemberUserId, email: `${communityMemberUserId}@test.resonate` },
+        { id: privateMemberUserId, email: `${privateMemberUserId}@test.resonate` },
+        { id: followersMemberUserId, email: `${followersMemberUserId}@test.resonate` },
+        { id: consentDisabledMemberUserId, email: `${consentDisabledMemberUserId}@test.resonate` },
+        { id: leftMemberUserId, email: `${leftMemberUserId}@test.resonate` },
+        { id: hiddenMemberUserId, email: `${hiddenMemberUserId}@test.resonate` },
       ],
     });
     await prisma.communityVisibilitySettings.createMany({
@@ -34,6 +48,59 @@ describe("CommunityCohortService integration", () => {
         { userId: optedOutUserId, allowTasteMatching: false, allowCityScenes: false },
         { userId: cityUserId, allowTasteMatching: false, allowCityScenes: true },
         { userId: cohortPeerUserId, allowTasteMatching: true, allowCityScenes: false },
+        { userId: publicMemberUserId, allowTasteMatching: true, allowCityScenes: false },
+        { userId: communityMemberUserId, allowTasteMatching: true, allowCityScenes: false },
+        { userId: privateMemberUserId, allowTasteMatching: true, allowCityScenes: false },
+        { userId: followersMemberUserId, allowTasteMatching: true, allowCityScenes: false },
+        { userId: consentDisabledMemberUserId, allowTasteMatching: false, allowCityScenes: false },
+        { userId: leftMemberUserId, allowTasteMatching: true, allowCityScenes: false },
+        { userId: hiddenMemberUserId, allowTasteMatching: true, allowCityScenes: false },
+      ],
+    });
+    await prisma.communityProfile.createMany({
+      data: [
+        {
+          userId: optedInUserId,
+          displayName: "Visible Viewer",
+          profileVisibility: "community",
+        },
+        {
+          userId: publicMemberUserId,
+          displayName: "Public Listener",
+          avatarUrl: "https://example.test/public-listener.png",
+          profileVisibility: "public",
+        },
+        {
+          userId: communityMemberUserId,
+          displayName: "Community Listener",
+          avatarUrl: "javascript:alert(1)",
+          profileVisibility: "community",
+        },
+        {
+          userId: privateMemberUserId,
+          displayName: "Private Listener",
+          profileVisibility: "private",
+        },
+        {
+          userId: followersMemberUserId,
+          displayName: "Followers Listener",
+          profileVisibility: "followers",
+        },
+        {
+          userId: consentDisabledMemberUserId,
+          displayName: "Consent Disabled Listener",
+          profileVisibility: "public",
+        },
+        {
+          userId: leftMemberUserId,
+          displayName: "Left Listener",
+          profileVisibility: "public",
+        },
+        {
+          userId: hiddenMemberUserId,
+          displayName: "Hidden Listener",
+          profileVisibility: "public",
+        },
       ],
     });
   });
@@ -50,6 +117,7 @@ describe("CommunityCohortService integration", () => {
     await prisma.communityRoom.deleteMany({ where: { id: { in: cohortRoomIds } } });
     await prisma.communityCohortMembership.deleteMany({ where: { userId: { startsWith: TEST_PREFIX } } });
     await prisma.communityCohort.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
+    await prisma.communityProfile.deleteMany({ where: { userId: { startsWith: TEST_PREFIX } } });
     await prisma.communityVisibilitySettings.deleteMany({ where: { userId: { startsWith: TEST_PREFIX } } });
     await prisma.user.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.$disconnect();
@@ -153,7 +221,7 @@ describe("CommunityCohortService integration", () => {
       privacy: {
         minimumSizeEnforced: true,
         memberCountsAreBucketed: true,
-        otherListenerIdentities: "redacted",
+        otherListenerIdentities: "opted_in_profile_summaries_only",
         walletAddresses: "redacted",
         rawListeningHistory: "redacted",
       },
@@ -164,6 +232,102 @@ describe("CommunityCohortService integration", () => {
     expect(JSON.stringify(detail)).not.toContain(optedInUserId);
     expect(JSON.stringify(detail)).not.toContain("@test.resonate");
     expect(JSON.stringify(detail)).not.toContain("0x");
+  });
+
+  it("returns only joined public or community-visible cohort member summaries", async () => {
+    const cohort = await createCohort("member_visibility", {
+      cohortType: "taste",
+      reasonCode: "taste:member_visibility",
+      safeExplanation: "Listeners in this group share a safe taste signal.",
+      minimumSize: 5,
+      visibleMemberCount: 12,
+    });
+    await addMembership(cohort.id, optedInUserId, "joined");
+    await addMembership(cohort.id, publicMemberUserId, "joined");
+    await addMembership(cohort.id, communityMemberUserId, "joined");
+    await addMembership(cohort.id, privateMemberUserId, "joined");
+    await addMembership(cohort.id, followersMemberUserId, "joined");
+    await addMembership(cohort.id, consentDisabledMemberUserId, "joined");
+    await addMembership(cohort.id, leftMemberUserId, "left");
+    await addMembership(cohort.id, hiddenMemberUserId, "hidden");
+
+    const detail = await service.getCohortDetail(optedInUserId, cohort.id);
+    await prisma.communityCohortMembership.updateMany({
+      where: { cohortId: cohort.id, userId: optedInUserId },
+      data: { status: "left", leftAt: new Date() },
+    });
+
+    expect(detail.memberVisibility).toMatchObject({
+      visibilityScope: "joined_public_or_community_profiles",
+      memberListLabel: "Opted-in cohort members",
+      anonymousMemberLabel: "Private and non-joined members stay anonymous.",
+      visibleMemberLimit: 6,
+      currentViewer: {
+        canAppear: true,
+        profileVisibility: "community",
+        cohortMembershipStatus: "joined",
+        matchingConsentEnabled: true,
+        reason: "Your profile can appear in joined cohort previews.",
+      },
+    });
+    expect(detail.memberVisibility.visibleMembers).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        userId: optedInUserId,
+        displayName: "Visible Viewer",
+        profileVisibility: "community",
+        cohortMembershipStatus: "joined",
+        profileHref: null,
+      }),
+      expect.objectContaining({
+        userId: publicMemberUserId,
+        displayName: "Public Listener",
+        avatarUrl: "https://example.test/public-listener.png",
+        profileVisibility: "public",
+      }),
+      expect.objectContaining({
+        userId: communityMemberUserId,
+        displayName: "Community Listener",
+        avatarUrl: null,
+        profileVisibility: "community",
+        profileHref: null,
+      }),
+    ]));
+    expect(detail.memberVisibility.visibleMembers).toHaveLength(3);
+    const serialized = JSON.stringify(detail);
+    expect(serialized).not.toContain(privateMemberUserId);
+    expect(serialized).not.toContain(followersMemberUserId);
+    expect(serialized).not.toContain(consentDisabledMemberUserId);
+    expect(serialized).not.toContain(leftMemberUserId);
+    expect(serialized).not.toContain(hiddenMemberUserId);
+    expect(serialized).not.toContain("Private Listener");
+    expect(serialized).not.toContain("Followers Listener");
+    expect(serialized).not.toContain("Consent Disabled Listener");
+    expect(serialized).not.toContain("Left Listener");
+    expect(serialized).not.toContain("Hidden Listener");
+    expect(serialized).not.toContain("@test.resonate");
+    expect(serialized).not.toContain("0x");
+    expect(serialized).not.toContain("12+ listeners");
+  });
+
+  it("hides the current viewer from member previews when not joined or profile-visible", async () => {
+    const cohort = await createCohort("member_visibility_suggested", {
+      cohortType: "taste",
+      reasonCode: "taste:member_visibility_suggested",
+      minimumSize: 5,
+      visibleMemberCount: 8,
+    });
+    await addMembership(cohort.id, optedInUserId, "suggested");
+
+    const detail = await service.getCohortDetail(optedInUserId, cohort.id);
+
+    expect(detail.memberVisibility.visibleMembers).toEqual([]);
+    expect(detail.memberVisibility.currentViewer).toMatchObject({
+      canAppear: false,
+      profileVisibility: "community",
+      cohortMembershipStatus: "suggested",
+      matchingConsentEnabled: true,
+      reason: "Join this cohort before your community profile can appear here.",
+    });
   });
 
   it("returns discovery context only for joined consented cohorts", async () => {
