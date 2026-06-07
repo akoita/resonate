@@ -486,6 +486,53 @@ describe("AnalyticsDomainEventBridgeService", () => {
         status: "paused",
       },
       {
+        eventName: "community.discord_bridge_connected",
+        eventVersion: 1,
+        occurredAt,
+        actorId: "artist_user_919",
+        artistId: "artist_919",
+        publicLinkEnabled: true,
+        announcementMirrorEnabled: true,
+        roleSyncEnabled: false,
+        webhookUrl: "do not persist webhook url",
+        inviteUrl: "do not persist invite url",
+      },
+      {
+        eventName: "community.discord_announcement_mirrored",
+        eventVersion: 1,
+        occurredAt,
+        actorId: "artist_user_919",
+        artistId: "artist_919",
+        roomId: "room_919",
+        messageId: "message_919",
+        attemptId: "discord_attempt_919",
+        status: "completed",
+        webhookUrl: "do not persist mirrored webhook url",
+        body: "do not persist mirrored announcement body",
+      },
+      {
+        eventName: "community.discord_role_sync_completed",
+        eventVersion: 1,
+        occurredAt,
+        actorId: "artist_user_919",
+        artistId: "artist_919",
+        mappingCount: 2,
+        status: "dry_run",
+        reason: "discord_account_linking_required",
+        memberIds: ["do not persist member id"],
+      },
+      {
+        eventName: "community.discord_role_sync_failed",
+        eventVersion: 1,
+        occurredAt,
+        actorId: "artist_user_919",
+        artistId: "artist_919",
+        mappingCount: 1,
+        status: "skipped",
+        reason: "role_sync_disabled",
+        discordUserIds: ["do not persist discord user id"],
+      },
+      {
         eventName: "community.cohort_suggested",
         eventVersion: 1,
         occurredAt,
@@ -846,6 +893,66 @@ describe("AnalyticsDomainEventBridgeService", () => {
     );
     expect(analyticsEvents).toContainEqual(
       expect.objectContaining({
+        eventName: "community.discord_bridge_connected",
+        producer: "community-service",
+        subjectType: "artist",
+        subjectId: "artist_919",
+        actorId: "artist_user_919",
+        consentBasis: "artist_discord_bridge:v1",
+        payload: expect.objectContaining({
+          artistId: "artist_919",
+          publicLinkEnabled: true,
+          announcementMirrorEnabled: true,
+          roleSyncEnabled: false,
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "community.discord_announcement_mirrored",
+        subjectType: "community_message",
+        subjectId: "message_919",
+        actorId: "artist_user_919",
+        consentBasis: "artist_discord_bridge:v1",
+        payload: expect.objectContaining({
+          artistId: "artist_919",
+          roomId: "room_919",
+          messageId: "message_919",
+          attemptId: "discord_attempt_919",
+          status: "completed",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "community.discord_role_sync_completed",
+        subjectType: "artist",
+        subjectId: "artist_919",
+        actorId: "artist_user_919",
+        payload: expect.objectContaining({
+          artistId: "artist_919",
+          mappingCount: 2,
+          status: "dry_run",
+          reason: "discord_account_linking_required",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "community.discord_role_sync_failed",
+        subjectType: "artist",
+        subjectId: "artist_919",
+        actorId: "artist_user_919",
+        payload: expect.objectContaining({
+          artistId: "artist_919",
+          mappingCount: 1,
+          status: "skipped",
+          reason: "role_sync_disabled",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
         eventName: "community.campaign_update_viewed",
         subjectType: "show_campaign",
         subjectId: "campaign_919",
@@ -952,6 +1059,12 @@ describe("AnalyticsDomainEventBridgeService", () => {
     expect(serializedEvents).not.toContain("do not persist viewed update body");
     expect(serializedEvents).not.toContain("do not persist raw city source");
     expect(serializedEvents).not.toContain("do not persist report reason");
+    expect(serializedEvents).not.toContain("do not persist webhook url");
+    expect(serializedEvents).not.toContain("do not persist invite url");
+    expect(serializedEvents).not.toContain("do not persist mirrored webhook url");
+    expect(serializedEvents).not.toContain("do not persist mirrored announcement body");
+    expect(serializedEvents).not.toContain("do not persist member id");
+    expect(serializedEvents).not.toContain("do not persist discord user id");
   });
 
   it("does not throw domain publishing when analytics ingest fails", async () => {

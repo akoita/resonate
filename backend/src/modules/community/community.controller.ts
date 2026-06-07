@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { CommunityCohortService } from "./community_cohort.service";
+import { CommunityDiscordBridgeService } from "./community_discord_bridge.service";
 import { CommunityEligibilityService } from "./community_eligibility.service";
 import { CommunityRoomsService } from "./community_rooms.service";
 import { CommunityService } from "./community.service";
@@ -12,6 +13,7 @@ export class CommunityController {
     private readonly communityEligibilityService: CommunityEligibilityService,
     private readonly communityRoomsService: CommunityRoomsService,
     private readonly communityCohortService: CommunityCohortService,
+    private readonly communityDiscordBridgeService: CommunityDiscordBridgeService,
   ) {}
 
   @UseGuards(AuthGuard("jwt"))
@@ -53,6 +55,65 @@ export class CommunityController {
   @Post("artists/:artistId/rooms/enable")
   enableArtistCommunity(@Req() req: any, @Param("artistId") artistId: string) {
     return this.communityRoomsService.enableArtistCommunity(req.user.userId, artistId);
+  }
+
+  @Get("artists/:artistId/discord")
+  getPublicArtistDiscord(@Param("artistId") artistId: string) {
+    return this.communityDiscordBridgeService.getPublicArtistBridge(artistId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Get("artists/:artistId/discord/manage")
+  getArtistDiscordBridge(@Req() req: any, @Param("artistId") artistId: string) {
+    return this.communityDiscordBridgeService.getArtistBridge(req.user.userId, artistId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("artists/:artistId/discord/connect")
+  connectArtistDiscordBridge(
+    @Req() req: any,
+    @Param("artistId") artistId: string,
+    @Body() body: Parameters<CommunityDiscordBridgeService["connectArtistBridge"]>[2],
+  ) {
+    return this.communityDiscordBridgeService.connectArtistBridge(req.user.userId, artistId, body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("artists/:artistId/discord/disconnect")
+  disconnectArtistDiscordBridge(@Req() req: any, @Param("artistId") artistId: string) {
+    return this.communityDiscordBridgeService.disconnectArtistBridge(req.user.userId, artistId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("artists/:artistId/discord/test")
+  testArtistDiscordBridge(@Req() req: any, @Param("artistId") artistId: string) {
+    return this.communityDiscordBridgeService.testArtistBridge(req.user.userId, artistId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("artists/:artistId/discord/role-mappings")
+  upsertArtistDiscordRoleMapping(
+    @Req() req: any,
+    @Param("artistId") artistId: string,
+    @Body() body: Parameters<CommunityDiscordBridgeService["upsertRoleMapping"]>[2],
+  ) {
+    return this.communityDiscordBridgeService.upsertRoleMapping(req.user.userId, artistId, body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("artists/:artistId/discord/sync-roles")
+  syncArtistDiscordRoles(@Req() req: any, @Param("artistId") artistId: string) {
+    return this.communityDiscordBridgeService.syncRoles(req.user.userId, artistId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("artists/:artistId/discord/retry/:attemptId")
+  retryArtistDiscordAttempt(
+    @Req() req: any,
+    @Param("artistId") artistId: string,
+    @Param("attemptId") attemptId: string,
+  ) {
+    return this.communityDiscordBridgeService.retryAttempt(req.user.userId, artistId, attemptId);
   }
 
   @Get("artists/:artistId/rooms")

@@ -2,18 +2,24 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  connectArtistDiscordBridge,
   createCommunityRoomMessage,
   deleteCommunityMessage,
+  disconnectArtistDiscordBridge,
   enableArtistCommunity,
+  getArtistDiscordBridge,
   joinCommunityRoom,
   leaveCommunityRoom,
   listArtistCommunityRooms,
   listCommunityRoomMessages,
   moderateCommunityRoomMember,
   reportCommunityMessage,
+  retryArtistDiscordAttempt,
+  testArtistDiscordBridge,
   type ArtistProfile,
   type CommunityArtistRoom,
   type CommunityArtistRoomsResponse,
+  type CommunityDiscordBridge,
   type CommunityMessage,
 } from "../../lib/api";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
@@ -105,6 +111,22 @@ function roomKindLabel(room: CommunityArtistRoom) {
   return "Community room";
 }
 
+export function discordBridgeSummary(bridge: CommunityDiscordBridge | null) {
+  if (bridge?.status === "connected") {
+    return `Connected to ${bridge.serverName ?? "Discord"}${bridge.channelName ? ` / ${bridge.channelName}` : ""}.`;
+  }
+  if (bridge?.status === "failed") {
+    return `Last Discord sync failed: ${bridge.lastFailureReason ?? "unknown error"}`;
+  }
+  return "Connect an official Discord webhook to mirror artist announcements.";
+}
+
+export function discordBridgeActionLabel(bridge: CommunityDiscordBridge | null) {
+  return bridge?.status === "connected" || bridge?.status === "failed"
+    ? "Update Discord"
+    : "Connect Discord";
+}
+
 export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps) {
   const { token, status, userId, role } = useAuth();
   const authenticated = status === "authenticated" && Boolean(token);
@@ -123,6 +145,13 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
   const [announcementDraft, setAnnouncementDraft] = useState("");
   const [reportingMessageId, setReportingMessageId] = useState<string | null>(null);
   const [reportReason, setReportReason] = useState("Concern for moderator review");
+  const [discordBridge, setDiscordBridge] = useState<CommunityDiscordBridge | null>(null);
+  const [discordWebhookUrl, setDiscordWebhookUrl] = useState("");
+  const [discordInviteUrl, setDiscordInviteUrl] = useState("");
+  const [discordServerName, setDiscordServerName] = useState("");
+  const [discordChannelName, setDiscordChannelName] = useState("");
+  const [discordPublicLinkEnabled, setDiscordPublicLinkEnabled] = useState(false);
+  const [discordMirrorEnabled, setDiscordMirrorEnabled] = useState(true);
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -132,6 +161,8 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
   const activeRoom = rooms.find((room) => room.id === activeRoomId) ?? rooms[0] ?? null;
   const activeMessageRoomId = activeRoom?.id ?? null;
   const canReadActiveRoom = Boolean(activeRoom && (canManage || isJoinedRoom(activeRoom)));
+  const publicDiscord = roomsState?.discord ?? null;
+  const canSaveDiscordBridge = Boolean(discordWebhookUrl.trim() || discordBridge?.webhookUrlMasked);
 
   const loadRooms = useCallback(async () => {
     setLoadingRooms(true);
@@ -154,6 +185,29 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
     }
   }, [artistId, token]);
 
+  const loadDiscordBridge = useCallback(async () => {
+    if (!token || !canManage) {
+      setDiscordBridge(null);
+      return;
+    }
+    try {
+      const response = await getArtistDiscordBridge(token, artistId);
+      setDiscordBridge(response.bridge);
+      if (response.bridge) {
+        setDiscordInviteUrl(response.bridge.inviteUrl ?? "");
+        setDiscordServerName(response.bridge.serverName ?? "");
+        setDiscordChannelName(response.bridge.channelName ?? "");
+        setDiscordPublicLinkEnabled(response.bridge.publicLinkEnabled);
+        setDiscordMirrorEnabled(Boolean(response.bridge.announcementMirrorEnabled));
+      }
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error instanceof Error ? error.message : "Could not load Discord bridge settings.",
+      });
+    }
+  }, [artistId, canManage, token]);
+
   const loadMessages = useCallback(async (roomId: string) => {
     if (!token) return;
     setLoadingMessages(true);
@@ -174,6 +228,10 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
   useEffect(() => {
     void loadRooms();
   }, [loadRooms]);
+
+  useEffect(() => {
+    void loadDiscordBridge();
+  }, [loadDiscordBridge]);
 
   useEffect(() => {
     void recordProductAnalytics(token, "community.artist_tab_viewed", {
@@ -267,6 +325,59 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
     });
   };
 
+  const handleConnectDiscord = () => {
+    if (!token || !canManage) return;
+    void runAction("discord-connect", async () => {
+      const response = await connectArtistDiscordBridge(token, artistId, {
+        webhookUrl: discordWebhookUrl,
+        inviteUrl: discordInviteUrl,
+        serverName: discordServerName,
+        channelName: discordChannelName,
+        publicLinkEnabled: discordPublicLinkEnabled,
+        announcementMirrorEnabled: discordMirrorEnabled,
+      });
+      setDiscordBridge(response.bridge);
+      setDiscordWebhookUrl("");
+      setNotice({ type: "success", message: "Discord bridge connected." });
+      await loadRooms();
+    });
+  };
+
+  const handleTestDiscord = () => {
+    if (!token || !canManage) return;
+    void runAction("discord-test", async () => {
+      const response = await testArtistDiscordBridge(token, artistId);
+      setDiscordBridge(response.bridge);
+      setNotice({
+        type: response.ok ? "success" : "error",
+        message: response.ok ? "Discord test message sent." : response.attempt.errorReason ?? "Discord test failed.",
+      });
+    });
+  };
+
+  const handleDisconnectDiscord = () => {
+    if (!token || !canManage) return;
+    void runAction("discord-disconnect", async () => {
+      const response = await disconnectArtistDiscordBridge(token, artistId);
+      setDiscordBridge(response.bridge);
+      setDiscordWebhookUrl("");
+      setNotice({ type: "success", message: "Discord bridge disconnected." });
+      await loadRooms();
+    });
+  };
+
+  const handleRetryDiscord = (attemptId: string) => {
+    if (!token || !canManage) return;
+    void runAction(`discord-retry-${attemptId}`, async () => {
+      const response = await retryArtistDiscordAttempt(token, artistId, attemptId);
+      setNotice({
+        type: response.ok ? "success" : "error",
+        message: response.ok ? "Discord retry completed." : response.attempt.errorReason ?? "Discord retry failed.",
+      });
+      await loadDiscordBridge();
+    });
+  };
+
   const handleReport = (message: CommunityMessage) => {
     if (!token || !reportReason.trim()) return;
     void runAction(`report-${message.id}`, async () => {
@@ -318,6 +429,99 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
       {notice ? (
         <div className={`artist-community__notice artist-community__notice--${notice.type}`}>
           {notice.message}
+        </div>
+      ) : null}
+
+      {publicDiscord?.inviteUrl ? (
+        <div className="artist-community__notice artist-community__notice--info">
+          Official Discord:{" "}
+          <a href={publicDiscord.inviteUrl} target="_blank" rel="noreferrer">
+            {publicDiscord.serverName ?? "Join server"}
+          </a>
+        </div>
+      ) : null}
+
+      {canManage ? (
+        <div className="artist-community__empty">
+          <strong>Discord bridge</strong>
+          <p>
+            {discordBridgeSummary(discordBridge)}
+          </p>
+          <div className="artist-community-composer">
+            <label htmlFor="artist-discord-webhook">Webhook URL</label>
+            <input
+              id="artist-discord-webhook"
+              value={discordWebhookUrl}
+              onChange={(event) => setDiscordWebhookUrl(event.target.value)}
+              placeholder={discordBridge?.webhookUrlMasked ?? "https://discord.com/api/webhooks/..."}
+            />
+            <label htmlFor="artist-discord-invite">Public invite URL</label>
+            <input
+              id="artist-discord-invite"
+              value={discordInviteUrl}
+              onChange={(event) => setDiscordInviteUrl(event.target.value)}
+              placeholder="https://discord.gg/..."
+            />
+            <label htmlFor="artist-discord-server">Server name</label>
+            <input
+              id="artist-discord-server"
+              value={discordServerName}
+              onChange={(event) => setDiscordServerName(event.target.value)}
+              placeholder="Official server"
+            />
+            <label htmlFor="artist-discord-channel">Announcement channel</label>
+            <input
+              id="artist-discord-channel"
+              value={discordChannelName}
+              onChange={(event) => setDiscordChannelName(event.target.value)}
+              placeholder="#announcements"
+            />
+            <label>
+              <input
+                type="checkbox"
+                checked={discordPublicLinkEnabled}
+                onChange={(event) => setDiscordPublicLinkEnabled(event.target.checked)}
+              />
+              Show official Discord link publicly
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={discordMirrorEnabled}
+                onChange={(event) => setDiscordMirrorEnabled(event.target.checked)}
+              />
+              Mirror artist announcements
+            </label>
+            <div className="artist-community__header-actions">
+              <Button onClick={handleConnectDiscord} disabled={!canSaveDiscordBridge || busyKey === "discord-connect"}>
+                {discordBridgeActionLabel(discordBridge)}
+              </Button>
+              <Button variant="ghost" onClick={handleTestDiscord} disabled={!discordBridge || busyKey === "discord-test"}>
+                Test
+              </Button>
+              <Button variant="ghost" onClick={handleDisconnectDiscord} disabled={!discordBridge || busyKey === "discord-disconnect"}>
+                Disconnect
+              </Button>
+            </div>
+            {discordBridge?.recentAttempts.some((attempt) => attempt.status === "failed") ? (
+              <div className="artist-community__rooms" aria-label="Discord retry queue">
+                {discordBridge.recentAttempts
+                  .filter((attempt) => attempt.status === "failed")
+                  .slice(0, 3)
+                  .map((attempt) => (
+                    <button
+                      key={attempt.id}
+                      type="button"
+                      className="artist-community__notice artist-community__notice--error"
+                      onClick={() => handleRetryDiscord(attempt.id)}
+                      disabled={busyKey === `discord-retry-${attempt.id}`}
+                    >
+                      Retry {attempt.action}: {attempt.errorReason ?? "failed"}
+                    </button>
+                  ))}
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

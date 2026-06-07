@@ -35,12 +35,24 @@ const mockCommunityCohortService = {
   hideCohort: jest.fn().mockResolvedValue({ schemaVersion: "community-cohort-membership/v1" }),
 };
 
+const mockCommunityDiscordBridgeService = {
+  getPublicArtistBridge: jest.fn().mockResolvedValue({ schemaVersion: "community-discord-public/v1" }),
+  getArtistBridge: jest.fn().mockResolvedValue({ schemaVersion: "community-discord-bridge/v1" }),
+  connectArtistBridge: jest.fn().mockResolvedValue({ schemaVersion: "community-discord-bridge/v1" }),
+  disconnectArtistBridge: jest.fn().mockResolvedValue({ schemaVersion: "community-discord-bridge/v1" }),
+  testArtistBridge: jest.fn().mockResolvedValue({ schemaVersion: "community-discord-bridge-test/v1" }),
+  upsertRoleMapping: jest.fn().mockResolvedValue({ schemaVersion: "community-discord-role-mapping/v1" }),
+  syncRoles: jest.fn().mockResolvedValue({ schemaVersion: "community-discord-role-sync/v1" }),
+  retryAttempt: jest.fn().mockResolvedValue({ schemaVersion: "community-discord-retry/v1" }),
+};
+
 function makeController() {
   return new CommunityController(
     mockCommunityService as any,
     mockCommunityEligibilityService as any,
     mockCommunityRoomsService as any,
     mockCommunityCohortService as unknown as CommunityCohortService,
+    mockCommunityDiscordBridgeService as any,
   );
 }
 

@@ -510,6 +510,28 @@ POST   /community/rooms/:roomId/members/:userId/moderate
 PATCH  /community/rooms/:roomId/status
 ```
 
+### Discord Bridge
+
+```text
+GET    /community/artists/:artistId/discord
+GET    /community/artists/:artistId/discord/manage
+POST   /community/artists/:artistId/discord/connect
+POST   /community/artists/:artistId/discord/disconnect
+POST   /community/artists/:artistId/discord/test
+POST   /community/artists/:artistId/discord/role-mappings
+POST   /community/artists/:artistId/discord/sync-roles
+POST   /community/artists/:artistId/discord/retry/:attemptId
+```
+
+Artist Discord bridge management is artist/team/operator scoped. Public reads
+return only the official invite metadata when the artist explicitly enables
+public display. Webhook URLs are write-only secrets: they are stored
+server-side, masked in artist DTOs, and never returned in full. Announcement
+mirroring is non-blocking and records retryable `CommunityDiscordSyncAttempt`
+rows. Role sync currently reports aggregate candidate counts from server-side
+`CommunityRole` rows; member-level Discord role assignment requires future
+listener Discord account linking and explicit consent.
+
 ### Shows And Campaign Rooms
 
 ```text
@@ -590,6 +612,9 @@ boundaries.
 | `community.cohort_left` | User leaves a cohort. |
 | `community.cohort_hidden` | User hides a suggested cohort. |
 | `community.discord_bridge_connected` | Artist links Discord. |
+| `community.discord_announcement_mirrored` | Artist announcement is delivered to Discord. |
+| `community.discord_role_sync_completed` | Artist runs Discord role sync status successfully. |
+| `community.discord_role_sync_failed` | Artist role sync cannot run, for example because role sync is disabled. |
 
 ## Security And Abuse Requirements
 

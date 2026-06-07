@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { CommunityCohort, CommunityCohortMembership, CommunityRoom, Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { PUBLIC_RELEASE_ROUTES } from "../catalog/catalog-public.constants";
@@ -7,6 +7,7 @@ import {
   ACTIVE_CAMPAIGN_SUPPORT_CAMPAIGN_STATUSES,
   CommunityEligibilityService,
 } from "./community_eligibility.service";
+import { CommunityDiscordBridgeService } from "./community_discord_bridge.service";
 import { CommunityModerationAssistService } from "./community_moderation_assist.service";
 
 const ROOM_STATUSES = ["active", "paused", "archived"] as const;
@@ -42,6 +43,8 @@ export class CommunityRoomsService {
     private readonly eligibility: CommunityEligibilityService,
     private readonly eventBus: EventBus,
     private readonly moderationAssist: CommunityModerationAssistService,
+    @Optional()
+    private readonly discordBridge?: CommunityDiscordBridgeService,
   ) {}
 
   async enableArtistCommunity(userId: string, artistId: string) {
@@ -52,6 +55,7 @@ export class CommunityRoomsService {
     return {
       schemaVersion: "community-artist-rooms/v1",
       artist: artistDto(artist),
+      discord: await this.publicDiscordDto(artistId),
       rooms: [roomDto(publicRoom), roomDto(holderRoom)],
     };
   }
@@ -82,6 +86,7 @@ export class CommunityRoomsService {
     return {
       schemaVersion: "community-artist-rooms/v1",
       artist: artistDto(artist),
+      discord: await this.publicDiscordDto(artistId),
       rooms: await Promise.all(
         rooms.map(async (room) => {
           const membership = userId
@@ -92,6 +97,11 @@ export class CommunityRoomsService {
         }),
       ),
     };
+  }
+
+  private async publicDiscordDto(artistId: string) {
+    const response = await this.discordBridge?.getPublicArtistBridge(artistId);
+    return response?.discord ?? null;
   }
 
   private async shouldProvisionArtistCommunityRooms(
@@ -416,6 +426,9 @@ export class CommunityRoomsService {
       messageType,
       ...(await this.messageAnalyticsRef(room)),
     });
+    if (messageType === "announcement") {
+      await this.discordBridge?.mirrorAnnouncement({ room, message });
+    }
     return {
       schemaVersion: "community-message/v1",
       message: messageDto(message, { viewerUserId: userId, redactOtherAuthors: isCohortRoom(room) }),
